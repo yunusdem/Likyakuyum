@@ -1,0 +1,15 @@
+import { Router } from "express";
+import { IstatistikController } from "../controllers/istatistik.controller.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
+
+const router = Router();
+
+router.use(authenticate);
+
+router.get("/", IstatistikController.listIstatistikler);
+router.post("/", IstatistikController.createIstatistik);
+router.get("/:id", IstatistikController.getIstatistikById);
+router.put("/:id", IstatistikController.updateIstatistik);
+router.delete("/:id", IstatistikController.deleteIstatistik);
+
+export default router;

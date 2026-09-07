@@ -1,0 +1,529 @@
+// 
+// user.scss
+// Clean Sidebar Layout, Tablet/Mobile Drawer & Header Edge-to-Edge Styling
+//
+
+#miniSidebar {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  background-color: var(--#{$prefix}navbar-bg, #ffffff) !important;
+  border-right: 1px dashed var(--#{$prefix}gray-300) !important;
+  z-index: 1024 !important;
+  overflow: hidden !important;
+  transition: width 0.25s ease-in-out, transform 0.25s ease-in-out !important;
+
+  .brand-logo {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    width: 100% !important;
+    height: 65px !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0.75rem 1rem !important;
+    background-color: var(--#{$prefix}navbar-bg, #ffffff) !important;
+    border-bottom: 1px dashed var(--#{$prefix}gray-300) !important;
+    flex-shrink: 0 !important;
+    z-index: 10 !important;
+
+    a {
+      display: flex !important;
+      align-items: center !important;
+      text-decoration: none !important;
+    }
+  }
+
+  .sidebar-menu-wrapper {
+    flex: 1 1 auto !important;
+    height: calc(100vh - 65px - 75px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.75rem !important;
+
+    .navbar-nav {
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      background-color: transparent !important;
+    }
+
+    .nav-link {
+      display: flex !important;
+      align-items: center !important;
+      transition: all 0.15s ease-in-out;
+      border-radius: 6px;
+
+      &.dropdown-toggle {
+        display: flex !important;
+        align-items: center !important;
+
+        &::after {
+          margin-left: auto !important;
+          float: none !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+        }
+      }
+
+      .nav-icon {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 20px !important;
+        height: 20px !important;
+        flex-shrink: 0 !important;
+        margin-right: 0.5rem !important;
+
+        svg {
+          width: 18px !important;
+          height: 18px !important;
+          display: block !important;
+        }
+      }
+
+      .text {
+        display: inline-flex !important;
+        align-items: center !important;
+        margin-left: 0 !important;
+        line-height: 1.2 !important;
+      }
+
+      &.active {
+        background-color: var(--user-menu-selected-bg, #0284c7) !important;
+        color: var(--user-menu-selected-text, #ffffff) !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+
+        .text, .nav-icon, svg, span {
+          color: var(--user-menu-selected-text, #ffffff) !important;
+        }
+
+        .badge {
+          background-color: rgba(255, 255, 255, 0.25) !important;
+          color: var(--user-menu-selected-text, #ffffff) !important;
+        }
+      }
+
+      &:hover:not(.active) {
+        background-color: rgba(0, 0, 0, 0.05) !important;
+        color: var(--user-menu-selected-bg, #0284c7) !important;
+      }
+    }
+  }
+
+  .quick-action-btn {
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+    border: 1px solid transparent;
+
+    &:hover {
+      background-color: var(--#{$prefix}gray-100, rgba(0, 0, 0, 0.05));
+      border-color: var(--#{$prefix}gray-200, rgba(0, 0, 0, 0.08));
+      transform: none !important;
+
+      span {
+        color: var(--#{$prefix}primary, #0284c7) !important;
+      }
+    }
+  }
+
+  .sidebar-toggle-btn {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    background-color: var(--#{$prefix}gray-100, #f8fafc) !important;
+    border-color: var(--#{$prefix}gray-300, #e2e8f0) !important;
+    transition: background-color 0.12s ease !important;
+    cursor: pointer !important;
+
+    &:hover {
+      background-color: var(--#{$prefix}gray-200, #e2e8f0) !important;
+      transform: none !important;
+    }
+  }
+
+  .upgrade-ui {
+    position: relative !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: 75px !important;
+    margin-top: auto !important;
+    flex-shrink: 0 !important;
+    background-color: var(--#{$prefix}body-bg, #f8f9fa) !important;
+    border-top: 1px dashed var(--#{$prefix}gray-300) !important;
+    padding: 0.75rem 1rem !important;
+    display: flex !important;
+    align-items: center !important;
+    z-index: 10 !important;
+  }
+}
+
+// ----------------------------------------------------
+// Global Header Navbar Sticky, Flush with Top & Full Width
+// ----------------------------------------------------
+html, body {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#content {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+.navbar-glass {
+  position: sticky !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+  z-index: 1020 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  border-top: 0 !important;
+  border-bottom: 1px dashed var(--#{$prefix}gray-300) !important;
+  background-color: var(--#{$prefix}body-bg, #ffffff) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+// ----------------------------------------------------
+// Desktop Large Screens (>= 1200px)
+// ----------------------------------------------------
+@media (min-width: 1200px) {
+  html.expanded, html:not(.collapsed) {
+    #miniSidebar {
+      width: 250px !important;
+      transform: translateX(0) !important;
+
+      .brand-logo a {
+        margin: 0 auto !important;
+      }
+
+      .site-logo-text {
+        display: inline !important;
+      }
+      .nav-link .text {
+        display: inline !important;
+      }
+      .upgrade-ui {
+        display: flex !important;
+      }
+    }
+
+    #content {
+      margin-left: 250px !important;
+      width: calc(100% - 250px) !important;
+      transition: margin-left 0.25s ease-in-out, width 0.25s ease-in-out !important;
+    }
+  }
+
+  html.collapsed {
+    #miniSidebar {
+      width: 60px !important;
+      transform: translateX(0) !important;
+
+      .site-logo-text {
+        display: none !important;
+      }
+      .nav-heading {
+        display: none !important;
+      }
+      .nav-line {
+        display: block !important;
+      }
+      .nav-link {
+        padding: 10px 12px !important;
+        justify-content: center !important;
+
+        .text, .badge, &::after {
+          display: none !important;
+        }
+      }
+      .upgrade-ui {
+        display: none !important;
+      }
+    }
+
+    #content {
+      margin-left: 60px !important;
+      width: calc(100% - 60px) !important;
+      transition: margin-left 0.25s ease-in-out, width 0.25s ease-in-out !important;
+    }
+  }
+}
+
+// ----------------------------------------------------
+// Tablet, Small Laptop & Mobile Screens (< 1200px)
+// Header & Content ALWAYS stretch 100% to the far left!
+// ----------------------------------------------------
+@media (max-width: 1199.98px) {
+  #miniSidebar {
+    width: 270px !important;
+    z-index: 1055 !important;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.25) !important;
+    transition: transform 0.25s ease-in-out !important;
+  }
+
+  // When closed, hide completely off-screen
+  html.collapsed #miniSidebar,
+  html:not(.expanded) #miniSidebar {
+    transform: translateX(-100%) !important;
+  }
+
+  // When open, slide in over content
+  html.expanded #miniSidebar {
+    transform: translateX(0) !important;
+  }
+
+  // Content & Header ALWAYS stretch 100% to the very left edge!
+  #content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+
+  .navbar-glass {
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    margin-left: 0 !important;
+  }
+}
+
+// Mobile/Tablet Backdrop Overlay
+.sidebar-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(3px);
+  z-index: 1050;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+// Mobile Quick Actions Strip
+.header-quick-actions-mobile {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.quick-action-mobile-pill {
+  transition: all 0.15s ease;
+  &:hover, &:active {
+    background-color: var(--#{$prefix}primary-bg-subtle, #e0f2fe) !important;
+    border-color: #0284c7 !important;
+  }
+}
+
+// Date Input & UI/UX Improvements
+.custom-date-input {
+  cursor: pointer !important;
+  position: relative;
+
+  &::-webkit-calendar-picker-indicator {
+    cursor: pointer !important;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
+// Custom Document Listing Table Styling
+.custom-document-table {
+  thead th {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    padding: 10px 12px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    vertical-align: middle !important;
+  }
+
+  tbody td {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+    color: #334155;
+    border-bottom: 1px solid #f1f5f9 !important;
+  }
+
+  tbody tr:hover {
+    background-color: #f8fafc !important;
+  }
+
+  tbody tr.table-active,
+  tbody tr.table-active > td {
+    background-color: #bae6fd !important;
+    --bs-table-bg: #bae6fd !important;
+    --bs-table-accent-bg: #bae6fd !important;
+    box-shadow: inset 0 0 0 9999px #bae6fd !important;
+    color: #0369a1 !important;
+  }
+}
+
+// Global ERP Table Row Selection Styling (Vibrant Light Blue)
+table.table tbody tr.table-active,
+table.table tbody tr.table-active > td,
+table.table tbody tr.table-active > th,
+tr.lookup-selected-row,
+tr.lookup-selected-row > td,
+tr.lookup-selected-row > th {
+  background-color: #bae6fd !important;
+  --bs-table-bg: #bae6fd !important;
+  --bs-table-accent-bg: #bae6fd !important;
+  box-shadow: inset 0 0 0 9999px #bae6fd !important;
+  color: #0369a1 !important;
+}
+
+table.table tbody tr.table-active:hover > td,
+tr.lookup-selected-row:hover > td {
+  background-color: #7dd3fc !important;
+  --bs-table-bg: #7dd3fc !important;
+  --bs-table-accent-bg: #7dd3fc !important;
+  box-shadow: inset 0 0 0 9999px #7dd3fc !important;
+}
+
+// ERP Top Action Ribbon Toolbar
+.erp-action-toolbar-wrapper {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.erp-toolbar-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.erp-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: #ffffff;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+  color: #334155;
+  flex-shrink: 0 !important;
+  transform: none !important;
+
+  svg {
+    display: block;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+
+  .erp-tb-label {
+    display: inline-block;
+    white-space: nowrap;
+  }
+
+  &:hover {
+    background-color: #f1f5f9;
+    border-color: #94a3b8 !important;
+    color: #0f172a;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transform: none !important;
+  }
+
+  &:active {
+    background-color: #e2e8f0;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+    transform: none !important;
+  }
+
+  &.erp-tb-btn-secondary {
+    background: #f8fafc;
+    color: #64748b;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+.erp-tb-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background-color: #cbd5e1;
+  margin: 0 3px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+// ----------------------------------------------------
+// Solid Dual-Tone Logo Text matching LK Monogram
+// Likya: Gold/Yellow | Kuyum: Dark Gold/Bronze (No gradient)
+// ----------------------------------------------------
+.brand-text-likya {
+  font-family: 'Cinzel', 'Playfair Display', 'Bodoni Moda', 'Marcellus', 'Georgia', serif !important;
+  font-weight: 700 !important;
+  color: #C88F18 !important;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+
+.brand-text-kuyum {
+  font-family: 'Cinzel', 'Playfair Display', 'Bodoni Moda', 'Marcellus', 'Georgia', serif !important;
+  font-weight: 700 !important;
+  color: #6D3D04 !important;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+
+// Dark backgrounds (login brand panel, dark mode)
+.login-brand-panel,
+.dark-theme,
+[data-bs-theme="dark"] {
+  .brand-text-likya {
+    color: #F6C543 !important;
+  }
+  .brand-text-kuyum {
+    color: #BA8021 !important;
+  }
+}
