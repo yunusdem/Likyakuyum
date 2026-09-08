@@ -20,19 +20,12 @@ export interface ApiResponse<T = any> {
 
 export type ConnectionMode = "cloud" | "local";
 
-export const LOCAL_AGENT_URL = "http://127.0.0.1:25050/api/v1";
-
 /**
- * Returns current active connection mode (cloud or local agent)
+ * Returns current active connection mode (default: cloud)
  */
 export const getConnectionMode = (): ConnectionMode => {
   const saved = localStorage.getItem("kuyumcu_erp_connection_mode");
   if (saved === "cloud" || saved === "local") return saved;
-  // Varsayılan olarak eğer sunucu adı 'localhost' ise yerel agent modu
-  const lastServer = localStorage.getItem("kuyumcu_erp_last_server");
-  if (lastServer === "localhost" || lastServer === "127.0.0.1") {
-    return "local";
-  }
   return "cloud";
 };
 
@@ -45,32 +38,17 @@ export const setConnectionMode = (mode: ConnectionMode): void => {
 };
 
 /**
- * Returns active effective API Base URL based on selected connection mode
+ * Returns active effective API Base URL (Standard backend /api/v1)
  */
 export const getEffectiveApiUrl = (): string => {
-  const mode = getConnectionMode();
-  if (mode === "local") {
-    return LOCAL_AGENT_URL;
-  }
   return envConfig.apiUrl || "/api/v1";
 };
 
 /**
- * Ping local agent to verify if it is running on the client machine
+ * Backward compatibility stub
  */
-export const checkLocalAgentStatus = async (timeoutMs = 1500): Promise<boolean> => {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch("http://127.0.0.1:25050/api/v1/agent-status", {
-      method: "GET",
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    return res.ok;
-  } catch {
-    return false;
-  }
+export const checkLocalAgentStatus = async (): Promise<boolean> => {
+  return true;
 };
 
 class ApiClient {

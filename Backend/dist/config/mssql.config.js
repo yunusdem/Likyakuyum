@@ -3,17 +3,51 @@ import { env } from "./env.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 /**
+ * Parses server address and port from inputs like:
+ * - "88.245.10.20,1433" (SQL Server comma notation)
+ * - "88.245.10.20:1433" (Colon notation)
+ * - "localhost" -> "127.0.0.1"
+ * - "myserver.com" -> default port (1433)
+ */
+export const parseServerAndPort = (serverInput, defaultPort = 1433) => {
+    if (!serverInput || !serverInput.trim()) {
+        return { host: "127.0.0.1", port: defaultPort };
+    }
+    const raw = serverInput.trim();
+    if (raw.toLowerCase() === "localhost") {
+        return { host: "127.0.0.1", port: defaultPort };
+    }
+    let host = raw;
+    let port = defaultPort;
+    // SQL Server comma notation (örn: "88.245.10.20,1433")
+    if (raw.includes(",")) {
+        const parts = raw.split(",");
+        host = parts[0].trim();
+        const p = Number(parts[1]?.trim());
+        if (!isNaN(p) && p > 0) {
+            port = p;
+        }
+    }
+    else if (raw.includes(":") && !raw.includes("::")) {
+        // Colon notation (örn: "88.245.10.20:1433")
+        const parts = raw.split(":");
+        host = parts[0].trim();
+        const p = Number(parts[1]?.trim());
+        if (!isNaN(p) && p > 0) {
+            port = p;
+        }
+    }
+    if (host.toLowerCase() === "localhost") {
+        host = "127.0.0.1";
+    }
+    return { host, port };
+};
+/**
  * Normalizes database server address.
  * Converts 'localhost' to '127.0.0.1' to prevent IPv6 / DNS resolution issues on Windows Server.
  */
 export const normalizeServerName = (server) => {
-    if (!server)
-        return "127.0.0.1";
-    const trimmed = server.trim();
-    if (trimmed.toLowerCase() === "localhost") {
-        return "127.0.0.1";
-    }
-    return trimmed;
+    return parseServerAndPort(server).host;
 };
 /**
  * In-memory registry of server+db credentials learned dynamically from user logins / requests
@@ -23,9 +57,10 @@ export const dbCredentialsMap = new Map();
  * Register credentials dynamically for a specific server and database
  */
 export const setDbCredentials = (server, database, user, password) => {
-    const s = normalizeServerName(server || env.DB_SERVER);
+    const { host: s, port } = parseServerAndPort(server || env.DB_SERVER, Number(env.DB_PORT) || 1433);
     const d = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
-    const key = `${s.toLowerCase()}:${d.toLowerCase()}`;
+    const keyWithPort = `${s.toLowerCase()}:${port}:${d.toLowerCase()}`;
+    const keyWithoutPort = `${s.toLowerCase()}:${d.toLowerCase()}`;
     if (user && user.trim()) {
         const credPassword = password !== undefined && password !== null && String(password).trim() !== ""
             ? password
@@ -34,20 +69,25 @@ export const setDbCredentials = (server, database, user, password) => {
             user: user.trim(),
             password: credPassword,
         };
-        dbCredentialsMap.set(key, creds);
-        // Register both 127.0.0.1 and localhost keys for resilience
-        dbCredentialsMap.set(`localhost:${d.toLowerCase()}`, creds);
-        dbCredentialsMap.set(`127.0.0.1:${d.toLowerCase()}`, creds);
+        dbCredentialsMap.set(keyWithPort, creds);
+        dbCredentialsMap.set(keyWithoutPort, creds);
+        if (s === "127.0.0.1") {
+            dbCredentialsMap.set(`localhost:${port}:${d.toLowerCase()}`, creds);
+            dbCredentialsMap.set(`localhost:${d.toLowerCase()}`, creds);
+        }
     }
 };
 /**
  * Base MSSQL Configuration Object Template
  */
 export const createMssqlConfig = (server, database, user, password) => {
-    const targetServer = normalizeServerName(server || env.DB_SERVER);
+    const { host: targetServer, port: targetPort } = parseServerAndPort(server || env.DB_SERVER, Number(env.DB_PORT) || 1433);
     const targetDb = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
-    const key = `${targetServer.toLowerCase()}:${targetDb.toLowerCase()}`;
-    const storedCreds = dbCredentialsMap.get(key) || dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
+    const keyWithPort = `${targetServer.toLowerCase()}:${targetPort}:${targetDb.toLowerCase()}`;
+    const keyWithoutPort = `${targetServer.toLowerCase()}:${targetDb.toLowerCase()}`;
+    const storedCreds = dbCredentialsMap.get(keyWithPort) ||
+        dbCredentialsMap.get(keyWithoutPort) ||
+        dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
     const finalUser = (user && user.trim()) || storedCreds?.user || env.DB_USER || "SA";
     const finalPassword = password !== undefined && password !== null && String(password).trim() !== ""
         ? password
@@ -56,7 +96,7 @@ export const createMssqlConfig = (server, database, user, password) => {
             : (env.DB_PASSWORD || ""));
     return {
         server: targetServer,
-        port: Number(env.DB_PORT) || 1433,
+        port: targetPort,
         database: targetDb,
         user: finalUser,
         password: finalPassword,
@@ -70,34 +110,36 @@ export const createMssqlConfig = (server, database, user, password) => {
             min: 2,
             idleTimeoutMillis: 30000,
         },
-        connectionTimeout: 10000,
+        connectionTimeout: 15000,
         requestTimeout: 30000,
     };
 };
 export const mssqlConfig = createMssqlConfig();
 /**
- * Multi-tenant Connection Pool Cache (Key: server:database:user:password)
+ * Multi-tenant Connection Pool Cache (Key: server:port:database:user:password)
  */
 const poolCache = new Map();
 /**
  * Generates cache key for given server and database
  */
 export const getPoolKey = (server, database) => {
-    const s = normalizeServerName(server || env.DB_SERVER);
+    const { host, port } = parseServerAndPort(server || env.DB_SERVER, Number(env.DB_PORT) || 1433);
     const d = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
-    return `${s.toLowerCase()}:${d.toLowerCase()}`;
+    return `${host.toLowerCase()}:${port}:${d.toLowerCase()}`;
 };
 /**
  * Gets or initializes a MSSQL connection pool dynamically for the specified server, database, and credentials.
  */
 export const getDbPool = async (server, database, user, password) => {
-    const targetServer = normalizeServerName(server || env.DB_SERVER);
+    const { host: targetServer, port: targetPort } = parseServerAndPort(server || env.DB_SERVER, Number(env.DB_PORT) || 1433);
     const targetDb = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
-    const baseKey = getPoolKey(targetServer, targetDb);
+    const baseKey = `${targetServer.toLowerCase()}:${targetPort}:${targetDb.toLowerCase()}`;
     if (user && user.trim()) {
-        setDbCredentials(targetServer, targetDb, user, password);
+        setDbCredentials(server, targetDb, user, password);
     }
-    const storedCreds = dbCredentialsMap.get(baseKey) || dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
+    const storedCreds = dbCredentialsMap.get(baseKey) ||
+        dbCredentialsMap.get(`${targetServer.toLowerCase()}:${targetDb.toLowerCase()}`) ||
+        dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
     const finalUser = (user && user.trim()) || storedCreds?.user || env.DB_USER || "SA";
     const finalPassword = password !== undefined && password !== null && String(password).trim() !== ""
         ? password
@@ -107,7 +149,7 @@ export const getDbPool = async (server, database, user, password) => {
     const fullCacheKey = `${baseKey}:${finalUser}:${finalPassword}`;
     if (!poolCache.has(fullCacheKey)) {
         const poolPromise = (async () => {
-            let activeConfig = createMssqlConfig(targetServer, targetDb, finalUser, finalPassword);
+            let activeConfig = createMssqlConfig(server, targetDb, finalUser, finalPassword);
             let pool;
             try {
                 pool = await new sql.ConnectionPool(activeConfig).connect();

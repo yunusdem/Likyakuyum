@@ -6,6 +6,7 @@ export const loginSchema = z.object({
     .object({
       username: z.string().min(1, "Kullanıcı adı girilmelidir"),
       password: z.string().min(1, "Şifre girilmelidir"),
+      mode: z.enum(["cloud", "local"]).optional().default("cloud"),
       dbServer: z.string().optional(),
       server: z.string().optional(),
       serverName: z.string().optional(),
@@ -17,14 +18,28 @@ export const loginSchema = z.object({
       dbPassword: z.string().optional(),
       passwordDb: z.string().optional(),
     })
-    .refine((data) => !!(data.dbServer || data.server || data.serverName || data.host), {
-      message: "Lütfen sunucu adını seçiniz veya giriniz",
-      path: ["dbServer"],
-    })
-    .refine((data) => !!(data.dbName || data.database), {
-      message: "Lütfen veritabanı adını seçiniz veya giriniz",
-      path: ["dbName"],
-    }),
+    .refine(
+      (data) => {
+        // Cloud modunda sunucu adı zorunlu değildir, merkezi sunucu kullanılır
+        if (data.mode === "cloud") return true;
+        return !!(data.dbServer || data.server || data.serverName || data.host);
+      },
+      {
+        message: "Lütfen yerel sunucu adını veya IP adresini (örn: 88.245.x.x,1433) giriniz",
+        path: ["dbServer"],
+      }
+    )
+    .refine(
+      (data) => {
+        // Cloud modunda veritabanı adı zorunlu değildir, merkezi veritabanı kullanılır
+        if (data.mode === "cloud") return true;
+        return !!(data.dbName || data.database);
+      },
+      {
+        message: "Lütfen yerel veritabanı adını (örn: R2016_dvz) giriniz",
+        path: ["dbName"],
+      }
+    ),
 });
 
 

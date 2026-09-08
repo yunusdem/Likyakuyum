@@ -7,38 +7,50 @@ import { setDbCredentials } from "../config/mssql.config.js";
 import { env } from "../config/env.config.js";
 export class AuthService {
     static async login(input) {
-        const rawServer = (input.dbServer || input.server || input.serverName || input.host || "").trim();
+        const mode = input.mode === "local" ? "local" : "cloud";
+        let targetServer = "";
+        let targetDb = "";
+        let targetDbUser = "";
+        let targetDbPassword = "";
+        const rawServer = (input.dbServer ||
+            input.server ||
+            input.serverName ||
+            input.host ||
+            "").trim();
         const rawDb = (input.dbName || input.database || "").trim();
-        const rawDbUser = (input.dbUser || input.user || "").trim() || "SA";
+        const rawDbUser = (input.dbUser || input.user || "").trim();
         const rawDbPassword = input.dbPassword !== undefined && input.dbPassword !== null
             ? input.dbPassword
-            : (input.passwordDb !== undefined && input.passwordDb !== null ? input.passwordDb : "");
-        if (!rawServer) {
-            throw ApiError.badRequest("Lütfen sunucu adını seçiniz veya giriniz.");
+            : (input.passwordDb !== undefined && input.passwordDb !== null
+                ? input.passwordDb
+                : "");
+        if (mode === "cloud") {
+            // Bulut Modu: Formdan gelen sunucu/vt/kullanıcı/şifre varsa kullanılır, boşsa .env merkezi ayarları kullanılır
+            targetServer = rawServer && rawServer !== "test" ? rawServer : (env.DB_SERVER || "127.0.0.1");
+            targetDb = rawDb || env.DB_NAME || "R2016_dvz";
+            targetDbUser = rawDbUser || env.DB_USER || "SA";
+            targetDbPassword =
+                rawDbPassword !== "" && rawDbPassword !== null && rawDbPassword !== undefined
+                    ? rawDbPassword
+                    : (env.DB_PASSWORD || "");
         }
-        if (!rawDb) {
-            throw ApiError.badRequest("Lütfen veritabanı adını seçiniz veya giriniz.");
+        else {
+            // Yerel Mod (Müşteri Dükkan SQL Server): Müşterinin statik IP/tünel adresi ve bağlantı bilgileri
+            if (!rawServer) {
+                throw ApiError.badRequest("Yerel veritabanı modu için lütfen sunucu IP adresini (örn: 88.245.x.x,1433) giriniz.");
+            }
+            targetServer = rawServer;
+            targetDb = rawDb || "R2016_dvz";
+            targetDbUser = rawDbUser || "sa";
+            targetDbPassword = rawDbPassword;
         }
-        if (!rawDbUser) {
-            throw ApiError.badRequest("Lütfen veritabanı kullanıcı adını giriniz.");
-        }
-        // Windows Server ortamında Node.js'in SQL Server'a bağlanabilmesi için localhost -> 127.0.0.1 fallback
-        const cleanServer = rawServer.toLowerCase() === "localhost" ? "127.0.0.1" : rawServer;
-        const cleanDb = rawDb;
-        const cleanDbUser = rawDbUser;
-        const cleanDbPassword = rawDbPassword !== null && rawDbPassword !== undefined && String(rawDbPassword).trim() !== ""
-            ? rawDbPassword
-            : (env.DB_PASSWORD || "");
-        // Dinamik olarak MSSQL havuzuna kullanıcının login ekranından girdiği bilgileri kaydet
-        setDbCredentials(cleanServer, cleanDb, cleanDbUser, cleanDbPassword);
-        if (rawServer !== cleanServer) {
-            setDbCredentials(rawServer, cleanDb, cleanDbUser, cleanDbPassword);
-        }
+        // Dinamik bağlantı havuzuna hedef sunucu kimlik bilgilerini kaydet
+        setDbCredentials(targetServer, targetDb, targetDbUser, targetDbPassword);
         const dbContext = {
-            dbServer: cleanServer,
-            dbName: cleanDb,
-            dbUser: cleanDbUser,
-            dbPassword: cleanDbPassword,
+            dbServer: targetServer,
+            dbName: targetDb,
+            dbUser: targetDbUser,
+            dbPassword: targetDbPassword,
         };
         const user = await UserSqlRepository.findByUsername(input.username, dbContext);
         if (!user) {
