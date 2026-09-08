@@ -169,6 +169,8 @@ export class PanoSqlRepository {
             INSERT INTO TODVZ_PANO(PANO_NO, YENILEME_ARALIGI, FIRMA_ADI, PARA_BASLIGI, ALIS_KURU_BASLIGI, SATIS_KURU_BASLIGI, FIRMA_ADI_OZELLIKLERI, TARIH_SAAT_OZELLIKLERI, BASLIK_OZELLIKLERI, SATIR_OZELLIKLERI, ZEMIN_RENGI, BOSLUK_SAYISI, HTML_DOSYA_ADI, KOD_ALANI_GENISLIGI, KUR_ALANI_GENISLIGI)
             VALUES(@PANO_NO, @YENILEME_ARALIGI, @FIRMA_ADI, @PARA_BASLIGI, @ALIS_KURU_BASLIGI, @SATIS_KURU_BASLIGI, @FIRMA_ADI_OZELLIKLERI, @TARIH_SAAT_OZELLIKLERI, @BASLIK_OZELLIKLERI, @SATIR_OZELLIKLERI, @ZEMIN_RENGI, @BOSLUK_SAYISI, @HTML_DOSYA_ADI, @KOD_ALANI_GENISLIGI, @KUR_ALANI_GENISLIGI)
             SET @PANO_ID = SCOPE_IDENTITY()
+            IF @PANO_ID IS NULL OR @PANO_ID <= 0
+              SET @PANO_ID = IDENT_CURRENT(''TODVZ_PANO'')
             IF @@ERROR<>0 SET @HATA_MESAJI = ''Pano tanımı kaydedilemedi''
           END
           ELSE BEGIN
@@ -399,7 +401,18 @@ export class PanoSqlRepository {
             }
         }
         const outId = procReq.parameters.PANO_ID?.value;
-        const savedPanoId = outId && Number(outId) > 0 ? Number(outId) : (targetPanoId || 0);
+        let savedPanoId = outId && Number(outId) > 0 ? Number(outId) : (targetPanoId || 0);
+        if (!savedPanoId && dto.panoNo) {
+            // Fallback query for newly inserted panoId by PANO_NO
+            const findIdRes = await pool.request()
+                .input("panoNo", sql.VarChar(50), dto.panoNo.trim())
+                .query(`
+          SELECT TOP 1 PANO_ID FROM [dbo].[TODVZ_PANO] WHERE LTRIM(RTRIM(ISNULL(PANO_NO, ''))) = @panoNo ORDER BY PANO_ID DESC
+        `);
+            if (findIdRes.recordset.length > 0 && findIdRes.recordset[0].PANO_ID > 0) {
+                savedPanoId = findIdRes.recordset[0].PANO_ID;
+            }
+        }
         if (!savedPanoId) {
             throw ApiError.internal("Pano tanımı kaydedildi fakat PANO_ID alınamadı.");
         }
