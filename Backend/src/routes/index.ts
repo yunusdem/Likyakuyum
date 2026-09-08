@@ -11,6 +11,7 @@ import cariRoutes from "./cari.routes.js";
 import cariHareketRoutes from "./cariHareket.routes.js";
 import healthRoutes from "./health.routes.js";
 import kurRoutes from "./kur.routes.js";
+import panoRoutes from "./pano.routes.js";
 
 const apiRouter = Router();
 
@@ -33,6 +34,8 @@ apiRouter.use("/accounts", cariRoutes);
 apiRouter.use("/cari-hareket", cariHareketRoutes);
 apiRouter.use("/cari-hareketler", cariHareketRoutes);
 apiRouter.use("/kur", kurRoutes);
+apiRouter.use("/pano", panoRoutes);
+apiRouter.use("/kur/pano-tanimi", panoRoutes);
 
 export default apiRouter;
 
