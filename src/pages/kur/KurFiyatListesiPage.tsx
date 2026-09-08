@@ -29,6 +29,7 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import LookupModal from "../../components/common/LookupModal";
 import {
   KurService,
   KurTablosuItem,
@@ -967,12 +968,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   });
 
-  // Filtered rows for search modal
-  const filteredRows = rows.filter(
-    (r) =>
-      r.kod.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.ad.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+
 
   return (
     <div className="container-fluid py-2 px-3 kuyumcu-kur-container">
@@ -1448,84 +1444,71 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         </Modal.Footer>
       </Modal>
 
-      {/* Lookup / Search Modal */}
-      <Modal
+      {/* Lookup / Search Modal (Dürbün ile Seçim - D- Vezne Tanımları gibi) */}
+      <LookupModal<KurRowItem>
         show={showSearchModal}
         onHide={() => setShowSearchModal(false)}
-        size="lg"
-        centered
-      >
-        <Modal.Header closeButton className="py-2 bg-light">
-          <Modal.Title className="fs-6 d-flex align-items-center gap-2">
-            <IconSearch size={18} className="text-primary" />
-            <span>Para Birimi / Kur Arama (F4 Genel)</span>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-3">
-          <InputGroup className="mb-3">
-            <InputGroup.Text>
-              <IconFilter size={16} />
-            </InputGroup.Text>
-            <Form.Control
-              autoFocus
-              placeholder="Kod veya para birimi adı yazınız..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            {searchTerm && (
-              <Button variant="outline-secondary" onClick={() => setSearchTerm("")}>
-                <IconX size={16} />
-              </Button>
-            )}
-          </InputGroup>
-
-          <div className="table-responsive" style={{ maxHeight: "350px" }}>
-            <table className="table table-sm table-hover table-bordered mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th style={{ width: "50px" }}>#</th>
-                  <th style={{ width: "80px" }}>Kod</th>
-                  <th>Ad</th>
-                  <th className="text-end">Efektif Alış</th>
-                  <th className="text-end">Efektif Satış</th>
-                  <th className="text-end">Parite</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((r, i) => (
-                  <tr
-                    key={r.paraId}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => {
-                      setShowSearchModal(false);
-                      const originalIdx = rows.findIndex((item) => item.paraId === r.paraId);
-                      if (originalIdx >= 0) {
-                        const cellKey = getCellKey(originalIdx, "efektifAlis");
-                        setTimeout(() => {
-                          inputRefs.current[cellKey]?.focus();
-                          inputRefs.current[cellKey]?.select();
-                        }, 100);
-                      }
-                    }}
-                  >
-                    <td>{i + 1}</td>
-                    <td className="fw-bold">{r.kod}</td>
-                    <td>{r.ad}</td>
-                    <td className="text-end font-monospace">{formatDisplayNumber(r.efektifAlis, 4)}</td>
-                    <td className="text-end font-monospace">{formatDisplayNumber(r.efektifSatis, 4)}</td>
-                    <td className="text-end font-monospace">{formatDisplayNumber(r.parite, 6)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Modal.Body>
-        <Modal.Footer className="py-2">
-          <Button variant="secondary" size="sm" onClick={() => setShowSearchModal(false)}>
-            Kapat
-          </Button>
-        </Modal.Footer>
-      </Modal>
+        title="Para Birimi / Kur Arama (Dürbün)"
+        searchPlaceholder="Kod veya para birimi adı yazınız..."
+        items={rows}
+        isLoading={isLoading}
+        filterFn={(r, term) => {
+          const t = term.toLowerCase();
+          return r.kod.toLowerCase().includes(t) || r.ad.toLowerCase().includes(t);
+        }}
+        columns={[
+          {
+            header: "Kod",
+            width: "80px",
+            align: "center",
+            render: (r) => <span className="badge bg-light text-dark border font-monospace fw-bold">{r.kod}</span>,
+          },
+          {
+            header: "Para Birimi Adı",
+            render: (r) => <span className="fw-semibold text-dark">{r.ad}</span>,
+          },
+          {
+            header: "Efektif Alış",
+            width: "120px",
+            align: "right",
+            render: (r) => <span className="font-monospace text-danger fw-bold">{formatDisplayNumber(r.efektifAlis, 4)}</span>,
+          },
+          {
+            header: "Efektif Satış",
+            width: "120px",
+            align: "right",
+            render: (r) => <span className="font-monospace text-success fw-bold">{formatDisplayNumber(r.efektifSatis, 4)}</span>,
+          },
+          {
+            header: "Döviz Alış",
+            width: "120px",
+            align: "right",
+            render: (r) => <span className="font-monospace text-muted">{formatDisplayNumber(r.dovizAlis, 4)}</span>,
+          },
+          {
+            header: "Döviz Satış",
+            width: "120px",
+            align: "right",
+            render: (r) => <span className="font-monospace text-muted">{formatDisplayNumber(r.dovizSatis, 4)}</span>,
+          },
+          {
+            header: "Parite",
+            width: "100px",
+            align: "right",
+            render: (r) => <span className="font-monospace">{formatDisplayNumber(r.parite, 6)}</span>,
+          },
+        ]}
+        onSelect={(r) => {
+          const originalIdx = rows.findIndex((item) => item.paraId === r.paraId);
+          if (originalIdx >= 0) {
+            const cellKey = getCellKey(originalIdx, "dovizAlis");
+            setTimeout(() => {
+              inputRefs.current[cellKey]?.focus();
+              inputRefs.current[cellKey]?.select();
+            }, 100);
+          }
+        }}
+      />
     </div>
   );
 };

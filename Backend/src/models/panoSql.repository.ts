@@ -188,6 +188,7 @@ export class PanoSqlRepository {
         CREATE TABLE [dbo].[TODVZ_PANO_SATIRI] (
           [PANO_ID] INT NOT NULL,
           [PARA_ID] INT NOT NULL,
+          [SATIR_NO] INT NOT NULL DEFAULT 0,
           [GORUNECEK_AD] VARCHAR(100) NULL,
           [SIRA_NO] INT NOT NULL DEFAULT 0,
           [GORUNUR] BIT NOT NULL DEFAULT 1,
@@ -197,6 +198,8 @@ export class PanoSqlRepository {
       END
       ELSE
       BEGIN
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[TODVZ_PANO_SATIRI]') AND name = 'SATIR_NO')
+          ALTER TABLE [dbo].[TODVZ_PANO_SATIRI] ADD [SATIR_NO] INT NOT NULL DEFAULT 0;
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[TODVZ_PANO_SATIRI]') AND name = 'GORUNECEK_AD')
           ALTER TABLE [dbo].[TODVZ_PANO_SATIRI] ADD [GORUNECEK_AD] VARCHAR(100) NULL;
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[TODVZ_PANO_SATIRI]') AND name = 'SIRA_NO')
@@ -208,81 +211,79 @@ export class PanoSqlRepository {
       END
 
       -- 3. Procedure SODVZ_PANO_TANIMI_SIL
-      IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[SODVZ_PANO_TANIMI_SIL]') AND type in (N'P', N'PC'))
-      BEGIN
-        EXEC('
-          CREATE PROCEDURE [dbo].[SODVZ_PANO_TANIMI_SIL]
-            @PANO_ID INT
-          AS
-          BEGIN
-            DECLARE @HATA_MESAJI VARCHAR(250)
-            DELETE FROM TODVZ_PANO_SATIRI WHERE PANO_ID = @PANO_ID
-            DELETE FROM TODVZ_PANO WHERE PANO_ID = @PANO_ID
-            IF @@ERROR <> 0 SET @HATA_MESAJI = ''Pano tanımı silinemedi''
-            IF @HATA_MESAJI IS NULL RETURN 0
-            RAISERROR (@HATA_MESAJI,16,1)
-            RETURN 1
-          END
-        ');
-      END
+      EXEC('
+        CREATE OR ALTER PROCEDURE [dbo].[SODVZ_PANO_TANIMI_SIL]
+          @PANO_ID INT
+        AS
+        BEGIN
+          SET NOCOUNT ON;
+          DECLARE @HATA_MESAJI VARCHAR(250)
+          DELETE FROM TODVZ_PANO_SATIRI WHERE PANO_ID = @PANO_ID
+          DELETE FROM TODVZ_PANO WHERE PANO_ID = @PANO_ID
+          IF @@ERROR <> 0 SET @HATA_MESAJI = ''Pano tanımı silinemedi''
+          IF @HATA_MESAJI IS NULL RETURN 0
+          RAISERROR (@HATA_MESAJI,16,1)
+          RETURN 1
+        END
+      ');
 
       -- 4. Procedure SODVZ_PANO_TANIMI_KAYDET
-      IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[SODVZ_PANO_TANIMI_KAYDET]') AND type in (N'P', N'PC'))
-      BEGIN
-        EXEC('
-          CREATE PROCEDURE [dbo].[SODVZ_PANO_TANIMI_KAYDET]
-            @PANO_ID INT OUTPUT,
-            @PANO_NO VARCHAR(50) = NULL,
-            @YENILEME_ARALIGI INT = 5,
-            @FIRMA_ADI VARCHAR(250) = NULL,
-            @PARA_BASLIGI VARCHAR(250) = NULL,
-            @ALIS_KURU_BASLIGI VARCHAR(250) = NULL,
-            @SATIS_KURU_BASLIGI VARCHAR(250) = NULL,
-            @FIRMA_ADI_OZELLIKLERI VARCHAR(250) = NULL,
-            @TARIH_SAAT_OZELLIKLERI VARCHAR(250) = NULL,
-            @BASLIK_OZELLIKLERI VARCHAR(250) = NULL,
-            @SATIR_OZELLIKLERI VARCHAR(250) = NULL,
-            @ZEMIN_RENGI INT = 0,
-            @BOSLUK_SAYISI INT = 0,
-            @HTML_DOSYA_ADI VARCHAR(250) = NULL,
-            @KOD_ALANI_GENISLIGI INT = 60,
-            @KUR_ALANI_GENISLIGI INT = 40
-          AS
+      EXEC('
+        CREATE OR ALTER PROCEDURE [dbo].[SODVZ_PANO_TANIMI_KAYDET]
+          @PANO_ID INT OUTPUT,
+          @PANO_NO VARCHAR(50) = NULL,
+          @YENILEME_ARALIGI INT = 5,
+          @FIRMA_ADI VARCHAR(250) = NULL,
+          @PARA_BASLIGI VARCHAR(250) = NULL,
+          @ALIS_KURU_BASLIGI VARCHAR(250) = NULL,
+          @SATIS_KURU_BASLIGI VARCHAR(250) = NULL,
+          @FIRMA_ADI_OZELLIKLERI VARCHAR(250) = NULL,
+          @TARIH_SAAT_OZELLIKLERI VARCHAR(250) = NULL,
+          @BASLIK_OZELLIKLERI VARCHAR(250) = NULL,
+          @SATIR_OZELLIKLERI VARCHAR(250) = NULL,
+          @ZEMIN_RENGI INT = 0,
+          @BOSLUK_SAYISI INT = 0,
+          @HTML_DOSYA_ADI VARCHAR(250) = NULL,
+          @KOD_ALANI_GENISLIGI INT = 60,
+          @KUR_ALANI_GENISLIGI INT = 40
+        AS
+        BEGIN
+          SET NOCOUNT ON;
+          DECLARE @HATA_MESAJI VARCHAR(250)
+          IF @PANO_ID IS NULL OR @PANO_ID <= 0
           BEGIN
-            DECLARE @HATA_MESAJI VARCHAR(250)
-            IF @PANO_ID IS NULL
-            BEGIN
-              INSERT INTO TODVZ_PANO(PANO_NO, YENILEME_ARALIGI, FIRMA_ADI, PARA_BASLIGI, ALIS_KURU_BASLIGI, SATIS_KURU_BASLIGI, FIRMA_ADI_OZELLIKLERI, TARIH_SAAT_OZELLIKLERI, BASLIK_OZELLIKLERI, SATIR_OZELLIKLERI, ZEMIN_RENGI, BOSLUK_SAYISI, HTML_DOSYA_ADI, KOD_ALANI_GENISLIGI, KUR_ALANI_GENISLIGI)
-              VALUES(@PANO_NO, @YENILEME_ARALIGI, @FIRMA_ADI, @PARA_BASLIGI, @ALIS_KURU_BASLIGI, @SATIS_KURU_BASLIGI, @FIRMA_ADI_OZELLIKLERI, @TARIH_SAAT_OZELLIKLERI, @BASLIK_OZELLIKLERI, @SATIR_OZELLIKLERI, @ZEMIN_RENGI, @BOSLUK_SAYISI, @HTML_DOSYA_ADI, @KOD_ALANI_GENISLIGI, @KUR_ALANI_GENISLIGI)
-              SET @PANO_ID = SCOPE_IDENTITY()
-              IF @@ERROR<>0 SET @HATA_MESAJI = ''Pano tanımı kaydedilemedi''
-            END
-            ELSE BEGIN
-              UPDATE TODVZ_PANO
-                SET PANO_NO = @PANO_NO,
-                    YENILEME_ARALIGI = @YENILEME_ARALIGI,
-                    FIRMA_ADI = @FIRMA_ADI,
-                    PARA_BASLIGI = @PARA_BASLIGI,
-                    ALIS_KURU_BASLIGI = @ALIS_KURU_BASLIGI,
-                    SATIS_KURU_BASLIGI = @SATIS_KURU_BASLIGI,
-                    FIRMA_ADI_OZELLIKLERI = @FIRMA_ADI_OZELLIKLERI,
-                    TARIH_SAAT_OZELLIKLERI = @TARIH_SAAT_OZELLIKLERI,
-                    BASLIK_OZELLIKLERI = @BASLIK_OZELLIKLERI,
-                    SATIR_OZELLIKLERI = @SATIR_OZELLIKLERI,
-                    ZEMIN_RENGI = @ZEMIN_RENGI,
-                    BOSLUK_SAYISI = @BOSLUK_SAYISI,
-                    HTML_DOSYA_ADI = @HTML_DOSYA_ADI,
-                    KOD_ALANI_GENISLIGI = @KOD_ALANI_GENISLIGI,
-                    KUR_ALANI_GENISLIGI = @KUR_ALANI_GENISLIGI
-              WHERE PANO_ID = @PANO_ID
-              IF @@ERROR<>0 SET @HATA_MESAJI = ''Pano tanımı kaydedilemedi''
-            END
-            IF @HATA_MESAJI IS NULL RETURN 0
-            RAISERROR (@HATA_MESAJI,16,1)
-            RETURN 1
+            INSERT INTO TODVZ_PANO(PANO_NO, YENILEME_ARALIGI, FIRMA_ADI, PARA_BASLIGI, ALIS_KURU_BASLIGI, SATIS_KURU_BASLIGI, FIRMA_ADI_OZELLIKLERI, TARIH_SAAT_OZELLIKLERI, BASLIK_OZELLIKLERI, SATIR_OZELLIKLERI, ZEMIN_RENGI, BOSLUK_SAYISI, HTML_DOSYA_ADI, KOD_ALANI_GENISLIGI, KUR_ALANI_GENISLIGI)
+            VALUES(@PANO_NO, @YENILEME_ARALIGI, @FIRMA_ADI, @PARA_BASLIGI, @ALIS_KURU_BASLIGI, @SATIS_KURU_BASLIGI, @FIRMA_ADI_OZELLIKLERI, @TARIH_SAAT_OZELLIKLERI, @BASLIK_OZELLIKLERI, @SATIR_OZELLIKLERI, @ZEMIN_RENGI, @BOSLUK_SAYISI, @HTML_DOSYA_ADI, @KOD_ALANI_GENISLIGI, @KUR_ALANI_GENISLIGI)
+            SET @PANO_ID = SCOPE_IDENTITY()
+            IF @PANO_ID IS NULL OR @PANO_ID <= 0
+              SET @PANO_ID = IDENT_CURRENT(''TODVZ_PANO'')
+            IF @@ERROR<>0 SET @HATA_MESAJI = ''Pano tanımı kaydedilemedi''
           END
-        ');
-      END
+          ELSE BEGIN
+            UPDATE TODVZ_PANO
+              SET PANO_NO = @PANO_NO,
+                  YENILEME_ARALIGI = @YENILEME_ARALIGI,
+                  FIRMA_ADI = @FIRMA_ADI,
+                  PARA_BASLIGI = @PARA_BASLIGI,
+                  ALIS_KURU_BASLIGI = @ALIS_KURU_BASLIGI,
+                  SATIS_KURU_BASLIGI = @SATIS_KURU_BASLIGI,
+                  FIRMA_ADI_OZELLIKLERI = @FIRMA_ADI_OZELLIKLERI,
+                  TARIH_SAAT_OZELLIKLERI = @TARIH_SAAT_OZELLIKLERI,
+                  BASLIK_OZELLIKLERI = @BASLIK_OZELLIKLERI,
+                  SATIR_OZELLIKLERI = @SATIR_OZELLIKLERI,
+                  ZEMIN_RENGI = @ZEMIN_RENGI,
+                  BOSLUK_SAYISI = @BOSLUK_SAYISI,
+                  HTML_DOSYA_ADI = @HTML_DOSYA_ADI,
+                  KOD_ALANI_GENISLIGI = @KOD_ALANI_GENISLIGI,
+                  KUR_ALANI_GENISLIGI = @KUR_ALANI_GENISLIGI
+            WHERE PANO_ID = @PANO_ID
+            IF @@ERROR<>0 SET @HATA_MESAJI = ''Pano tanımı kaydedilemedi''
+          END
+          IF @HATA_MESAJI IS NULL RETURN 0
+          RAISERROR (@HATA_MESAJI,16,1)
+          RETURN 1
+        END
+      ');
     `;
     try {
       await pool.request().query(script);
@@ -298,6 +299,7 @@ export class PanoSqlRepository {
   public static async findAll(dbContext?: { dbServer?: string; dbName?: string }): Promise<PanoModel[]> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await PanoSqlRepository.ensureTablesAndProceduresExist(pool);
+
 
     const res = await pool
       .request()
@@ -351,7 +353,24 @@ export class PanoSqlRepository {
     if (headerRes.recordset.length === 0) return null;
     const r = headerRes.recordset[0];
 
-    // Fetch lines joined with TODVZ_PARA
+    // Query columns of TODVZ_PANO_SATIRI to build compatible SELECT query
+    const colCheck = await pool.request().query<{ COLUMN_NAME: string }>(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_PANO_SATIRI'
+    `);
+    const existingCols = new Set(colCheck.recordset.map((c) => c.COLUMN_NAME.toUpperCase()));
+
+    const siraExpr = existingCols.has("SIRA_NO") && existingCols.has("SATIR_NO")
+      ? "ISNULL(PS.[SIRA_NO], ISNULL(PS.[SATIR_NO], 0))"
+      : existingCols.has("SIRA_NO")
+      ? "ISNULL(PS.[SIRA_NO], 0)"
+      : existingCols.has("SATIR_NO")
+      ? "ISNULL(PS.[SATIR_NO], 0)"
+      : "0";
+    const gorAdExpr = existingCols.has("GORUNECEK_AD") ? "PS.[GORUNECEK_AD]" : "NULL";
+    const gorExpr = existingCols.has("GORUNUR") ? "PS.[GORUNUR]" : "1";
+    const carpanExpr = existingCols.has("CARPAN") ? "PS.[CARPAN]" : "1.0";
+
+    // Fetch lines joined with TODVZ_PARA, excluding TL / TRY base currency
     const linesRes = await pool
       .request()
       .input("panoId", sql.Int, id)
@@ -359,16 +378,17 @@ export class PanoSqlRepository {
         SELECT 
           PS.[PANO_ID],
           PS.[PARA_ID],
-          PS.[GORUNECEK_AD],
-          PS.[SIRA_NO],
-          PS.[GORUNUR],
-          PS.[CARPAN],
+          ${gorAdExpr} AS [GORUNECEK_AD],
+          ${siraExpr} AS [SIRA_NO],
+          ${gorExpr} AS [GORUNUR],
+          ${carpanExpr} AS [CARPAN],
           LTRIM(RTRIM(ISNULL(P.[KOD], ''))) AS [PARA_KOD],
           LTRIM(RTRIM(ISNULL(P.[AD], ''))) AS [PARA_AD]
         FROM [dbo].[TODVZ_PANO_SATIRI] PS
         INNER JOIN [dbo].[TODVZ_PARA] P ON PS.[PARA_ID] = P.[PARA_ID]
         WHERE PS.[PANO_ID] = @panoId
-        ORDER BY PS.[SIRA_NO] ASC, PS.[PARA_ID] ASC
+          AND UPPER(LTRIM(RTRIM(ISNULL(P.[KOD], '')))) NOT IN ('TL', 'TRY', 'TL.', 'YTL', 'TRL')
+        ORDER BY [SIRA_NO] ASC, PS.[PARA_ID] ASC
       `);
 
     let satirlar: PanoSatiriModel[] = linesRes.recordset.map((line) => ({
@@ -381,7 +401,7 @@ export class PanoSqlRepository {
       carpan: line.CARPAN ?? 1.0,
     }));
 
-    // If satirlar is empty, automatically populate with currencies from TODVZ_PARA
+    // If satirlar is empty, automatically populate with currencies from TODVZ_PARA (excluding TL/TRY)
     if (satirlar.length === 0) {
       try {
         const defaultParaRes = await pool.request().query<{ PARA_ID: number; KOD: string; AD: string }>(`
@@ -432,8 +452,9 @@ export class PanoSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await PanoSqlRepository.ensureTablesAndProceduresExist(pool);
 
+    const targetPanoId = dto.panoId && Number(dto.panoId) > 0 ? Number(dto.panoId) : null;
     const procReq = pool.request();
-    procReq.output("PANO_ID", sql.Int, dto.panoId && dto.panoId > 0 ? dto.panoId : null);
+    procReq.output("PANO_ID", sql.Int, targetPanoId);
     procReq.input("PANO_NO", sql.VarChar(50), dto.panoNo || "");
     procReq.input("YENILEME_ARALIGI", sql.Int, dto.yenilemeAraligi ?? 5);
     procReq.input("FIRMA_ADI", sql.VarChar(250), dto.firmaAdi || "");
@@ -457,10 +478,9 @@ export class PanoSqlRepository {
     try {
       await procReq.execute("SODVZ_PANO_TANIMI_KAYDET");
     } catch (procErr: any) {
-      // If error is related to parameter type mismatch, attempt fallback with VarChar
       if (procErr?.message && procErr.message.includes("converting")) {
         const fallbackReq = pool.request();
-        fallbackReq.output("PANO_ID", sql.Int, dto.panoId && dto.panoId > 0 ? dto.panoId : null);
+        fallbackReq.output("PANO_ID", sql.Int, targetPanoId);
         fallbackReq.input("PANO_NO", sql.VarChar(50), dto.panoNo || "");
         fallbackReq.input("YENILEME_ARALIGI", sql.Int, dto.yenilemeAraligi ?? 5);
         fallbackReq.input("FIRMA_ADI", sql.VarChar(250), dto.firmaAdi || "");
@@ -483,7 +503,20 @@ export class PanoSqlRepository {
       }
     }
 
-    const savedPanoId: number = procReq.parameters.PANO_ID.value || dto.panoId;
+    const outId = procReq.parameters.PANO_ID?.value;
+    let savedPanoId: number = outId && Number(outId) > 0 ? Number(outId) : (targetPanoId || 0);
+
+    if (!savedPanoId && dto.panoNo) {
+      // Fallback query for newly inserted panoId by PANO_NO
+      const findIdRes = await pool.request()
+        .input("panoNo", sql.VarChar(50), dto.panoNo.trim())
+        .query<{ PANO_ID: number }>(`
+          SELECT TOP 1 PANO_ID FROM [dbo].[TODVZ_PANO] WHERE LTRIM(RTRIM(ISNULL(PANO_NO, ''))) = @panoNo ORDER BY PANO_ID DESC
+        `);
+      if (findIdRes.recordset.length > 0 && findIdRes.recordset[0].PANO_ID > 0) {
+        savedPanoId = findIdRes.recordset[0].PANO_ID;
+      }
+    }
 
     if (!savedPanoId) {
       throw ApiError.internal("Pano tanımı kaydedildi fakat PANO_ID alınamadı.");
@@ -491,6 +524,21 @@ export class PanoSqlRepository {
 
     // Process lines in TODVZ_PANO_SATIRI
     if (dto.satirlar !== undefined) {
+      // 1. Deduplicate by paraId to prevent primary key collision
+      const seenParaIds = new Set<number>();
+      const uniqueLines: typeof dto.satirlar = [];
+      for (const line of dto.satirlar) {
+        if (!line.paraId || seenParaIds.has(line.paraId)) continue;
+        seenParaIds.add(line.paraId);
+        uniqueLines.push(line);
+      }
+
+      // 2. Discover available columns in TODVZ_PANO_SATIRI (e.g. SATIR_NO, SIRA_NO)
+      const colCheck = await pool.request().query<{ COLUMN_NAME: string }>(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_PANO_SATIRI'
+      `);
+      const existingCols = new Set(colCheck.recordset.map((c) => c.COLUMN_NAME.toUpperCase()));
+
       const transaction = new sql.Transaction(pool);
       try {
         await transaction.begin();
@@ -500,21 +548,55 @@ export class PanoSqlRepository {
         delReq.input("panoId", sql.Int, savedPanoId);
         await delReq.query("DELETE FROM [dbo].[TODVZ_PANO_SATIRI] WHERE [PANO_ID] = @panoId");
 
-        // Insert new lines
+        // Insert new lines supplying all non-null required columns dynamically
         let index = 1;
-        for (const line of dto.satirlar) {
-          if (!line.paraId) continue;
+        for (const line of uniqueLines) {
+          const seq = line.siraNo !== undefined && line.siraNo > 0 ? line.siraNo : index++;
           const insReq = new sql.Request(transaction);
           insReq.input("panoId", sql.Int, savedPanoId);
           insReq.input("paraId", sql.Int, line.paraId);
-          insReq.input("gorunecekAd", sql.VarChar(100), line.gorunecekAd || null);
-          insReq.input("siraNo", sql.Int, line.siraNo !== undefined ? line.siraNo : index++);
-          insReq.input("gorunur", sql.Bit, line.gorunur !== undefined ? (line.gorunur ? 1 : 0) : 1);
-          insReq.input("carpan", sql.Float, line.carpan ?? 1.0);
+
+          const colList = ["[PANO_ID]", "[PARA_ID]"];
+          const valList = ["@panoId", "@paraId"];
+
+          // SATIR_NO column
+          if (existingCols.has("SATIR_NO")) {
+            colList.push("[SATIR_NO]");
+            valList.push("@satirNo");
+            insReq.input("satirNo", sql.Int, seq);
+          }
+
+          // SIRA_NO column
+          if (existingCols.has("SIRA_NO")) {
+            colList.push("[SIRA_NO]");
+            valList.push("@siraNo");
+            insReq.input("siraNo", sql.Int, seq);
+          }
+
+          // GORUNECEK_AD column
+          if (existingCols.has("GORUNECEK_AD")) {
+            colList.push("[GORUNECEK_AD]");
+            valList.push("@gorunecekAd");
+            insReq.input("gorunecekAd", sql.VarChar(100), line.gorunecekAd || null);
+          }
+
+          // GORUNUR column
+          if (existingCols.has("GORUNUR")) {
+            colList.push("[GORUNUR]");
+            valList.push("@gorunur");
+            insReq.input("gorunur", sql.Bit, line.gorunur !== undefined ? (line.gorunur ? 1 : 0) : 1);
+          }
+
+          // CARPAN column
+          if (existingCols.has("CARPAN")) {
+            colList.push("[CARPAN]");
+            valList.push("@carpan");
+            insReq.input("carpan", sql.Float, line.carpan ?? 1.0);
+          }
 
           await insReq.query(`
-            INSERT INTO [dbo].[TODVZ_PANO_SATIRI] ([PANO_ID], [PARA_ID], [GORUNECEK_AD], [SIRA_NO], [GORUNUR], [CARPAN])
-            VALUES (@panoId, @paraId, @gorunecekAd, @siraNo, @gorunur, @carpan)
+            INSERT INTO [dbo].[TODVZ_PANO_SATIRI] (${colList.join(", ")})
+            VALUES (${valList.join(", ")})
           `);
         }
 
@@ -562,7 +644,7 @@ export class PanoSqlRepository {
 
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
 
-    // Fetch current live rates from latest TODVZ_KUR_TABLOSU (fallback DOVIZ -> EFEKTIF)
+    // Fetch current live rates from latest TODVZ_KUR_TABLOSU (TUR = 0 preferred Gişe Kuru, fallback latest)
     const ratesRes = await pool.query<{
       PARA_ID: number;
       ALIS: number | null;
@@ -575,7 +657,12 @@ export class PanoSqlRepository {
       FROM [dbo].[TODVZ_KUR_TABLOSU] KT
       INNER JOIN [dbo].[TODVZ_KUR] K ON KT.[KUR_TABLOSU_ID] = K.[KUR_TABLOSU_ID]
       WHERE KT.[KUR_TABLOSU_ID] = (
-        SELECT TOP 1 [KUR_TABLOSU_ID] FROM [dbo].[TODVZ_KUR_TABLOSU] ORDER BY [KUR_TABLOSU_ID] DESC
+        SELECT TOP 1 [KUR_TABLOSU_ID] 
+        FROM [dbo].[TODVZ_KUR_TABLOSU] 
+        ORDER BY CASE WHEN [TUR] = 0 THEN 0 ELSE 1 END ASC, [ZAMAN] DESC, [KUR_TABLOSU_ID] DESC
+      )
+      AND K.[PARA_ID] NOT IN (
+        SELECT [PARA_ID] FROM [dbo].[TODVZ_PARA] WHERE UPPER(LTRIM(RTRIM(ISNULL([KOD],'')))) IN ('TL','TRY','TL.','YTL','TRL')
       )
     `);
 
@@ -587,18 +674,21 @@ export class PanoSqlRepository {
       });
     }
 
-    pano.satirlar = pano.satirlar.map((line) => {
-      const live = ratesMap.get(line.paraId);
-      const alisVal = live?.alis !== null && live?.alis !== undefined && !isNaN(Number(live.alis)) ? Number(live.alis) : null;
-      const satisVal = live?.satis !== null && live?.satis !== undefined && !isNaN(Number(live.satis)) ? Number(live.satis) : null;
-      const multiplier = line.carpan && line.carpan > 0 ? line.carpan : 1.0;
+    // Filter out TL / TRY from satirlar and assign live rates
+    pano.satirlar = pano.satirlar
+      .filter((s) => !["TL", "TRY", "TL.", "YTL", "TRL"].includes((s.kod || "").trim().toUpperCase()))
+      .map((line) => {
+        const live = ratesMap.get(line.paraId);
+        const alisVal = live?.alis !== null && live?.alis !== undefined && !isNaN(Number(live.alis)) ? Number(live.alis) : null;
+        const satisVal = live?.satis !== null && live?.satis !== undefined && !isNaN(Number(live.satis)) ? Number(live.satis) : null;
+        const multiplier = line.carpan && line.carpan > 0 ? line.carpan : 1.0;
 
-      return {
-        ...line,
-        dovizAlis: alisVal !== null ? alisVal * multiplier : null,
-        dovizSatis: satisVal !== null ? satisVal * multiplier : null,
-      };
-    });
+        return {
+          ...line,
+          dovizAlis: alisVal !== null ? alisVal * multiplier : null,
+          dovizSatis: satisVal !== null ? satisVal * multiplier : null,
+        };
+      });
 
     return pano;
   }

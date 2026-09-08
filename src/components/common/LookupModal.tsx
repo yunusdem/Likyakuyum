@@ -21,7 +21,7 @@ export interface LookupModalProps<T> {
   onSelect: (item: T) => void;
 }
 
-export function LookupModal<T extends { id?: string | number }>({
+export function LookupModal<T extends Record<string, any>>({
   show,
   onHide,
   title,
@@ -35,6 +35,18 @@ export function LookupModal<T extends { id?: string | number }>({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItem, setSelectedItem] = useState<T | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const getItemId = (it: any) => {
+    if (!it) return "";
+    if (it.id !== undefined && it.id !== null) return String(it.id);
+    if (it.ID !== undefined && it.ID !== null) return String(it.ID);
+    if (it.panoId !== undefined && it.panoId !== null) return String(it.panoId);
+    if (it.paraId !== undefined && it.paraId !== null) return String(it.paraId);
+    if (it.kod !== undefined && it.kod !== null) return `kod-${it.kod}`;
+    if (it.code !== undefined && it.code !== null) return `code-${it.code}`;
+    if (it.cariKartId !== undefined && it.cariKartId !== null) return `cari-${it.cariKartId}`;
+    return "";
+  };
 
   // Reset selection and search term whenever modal opens
   useEffect(() => {
@@ -81,7 +93,7 @@ export function LookupModal<T extends { id?: string | number }>({
         setSelectedItem(filteredItems[0]);
       } else {
         const currIdx = filteredItems.findIndex(
-          (it) => (it.id !== undefined ? it.id === selectedItem.id : it === selectedItem)
+          (it) => (getItemId(it) ? getItemId(it) === getItemId(selectedItem) : it === selectedItem)
         );
         if (currIdx < filteredItems.length - 1) {
           setSelectedItem(filteredItems[currIdx + 1]);
@@ -91,7 +103,7 @@ export function LookupModal<T extends { id?: string | number }>({
       e.preventDefault();
       if (selectedItem) {
         const currIdx = filteredItems.findIndex(
-          (it) => (it.id !== undefined ? it.id === selectedItem.id : it === selectedItem)
+          (it) => (getItemId(it) ? getItemId(it) === getItemId(selectedItem) : it === selectedItem)
         );
         if (currIdx > 0) {
           setSelectedItem(filteredItems[currIdx - 1]);
@@ -213,16 +225,6 @@ export function LookupModal<T extends { id?: string | number }>({
               </thead>
               <tbody>
                 {filteredItems.map((item, index) => {
-                  const getItemId = (it: any) => {
-                    if (!it) return "";
-                    if (it.id !== undefined && it.id !== null) return String(it.id);
-                    if (it.ID !== undefined && it.ID !== null) return String(it.ID);
-                    if (it.kod !== undefined && it.kod !== null) return `kod-${it.kod}`;
-                    if (it.code !== undefined && it.code !== null) return `code-${it.code}`;
-                    if (it.cariKartId !== undefined && it.cariKartId !== null) return `cari-${it.cariKartId}`;
-                    return "";
-                  };
-
                   const itemId = getItemId(item);
                   const selectedId = getItemId(selectedItem);
                   const isSelected = Boolean(

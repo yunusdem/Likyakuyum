@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Card,
   Row,
@@ -28,9 +28,11 @@ import {
   IconCopy,
   IconExternalLink,
   IconGripVertical,
+  IconBinoculars,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import LookupModal from "../../components/common/LookupModal";
 import { PanoService, PanoModel, PanoSatiriModel, SavePanoPayload } from "../../services/panoService";
 import { ProductDefinitionService, ProductItem } from "../../services/productDefinitionService";
 import { FontSelectDropdown } from "../settings/UserDefinitionsPage";
@@ -95,12 +97,16 @@ export const PanoTanimiPage: React.FC = () => {
   // Available currencies from system
   const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
 
+  // Auto-save debounce timer ref
+  const autoSaveTimeoutRef = useRef<any>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<string | null>(null);
+
   // Active form data matching procedure parameters
   const [form, setForm] = useState<PanoModel>({
     panoId: 0,
     panoNo: "PANO_01",
     yenilemeAraligi: 5,
-    firmaAdi: "KESKİNLER DÖVİZ SINIRLI YETKİLİ MÜESSESE A.Ş.",
+    firmaAdi: "",
     paraBasligi: "DÖVİZ",
     alisKuruBasligi: "WE BUY - ALIŞ",
     satisKuruBasligi: "WE SELL - SATIŞ",
@@ -108,7 +114,7 @@ export const PanoTanimiPage: React.FC = () => {
     tarihSaatOzellikleri: "font:Inter, sans-serif;size:14;bold:1;color:#fbbf24;bgColor:transparent",
     baslikOzellikleri: "font:Inter, sans-serif;size:16;bold:1;color:#60a5fa;bgColor:transparent",
     satirOzellikleri: "font:Fira Code, monospace;size:18;bold:1;color:#ffffff;bgColor:transparent",
-    zeminRengi: "#0f172a",
+    zeminRengi: localStorage.getItem("pano_active_theme_bg") || "#0f172a",
     boslukSayisi: 10,
     htmlDosyaAdi: "Pano_Dikey.html",
     kodAlaniGenisligi: 60,
@@ -136,7 +142,7 @@ export const PanoTanimiPage: React.FC = () => {
 
   const [showHtmlModal, setShowHtmlModal] = useState<boolean>(false);
 
-  // Load panos and currencies on mount
+  // Load panos and currencies on mount (excluding TL/TRY)
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -145,16 +151,26 @@ export const PanoTanimiPage: React.FC = () => {
         ProductDefinitionService.getProducts().catch(() => []),
       ]);
 
-      setAvailableProducts(prods);
+      // Filter out TL / TRY from available currencies (TL is fixed base currency)
+      const nonTlProducts = prods.filter(
+        (p) => !["TL", "TRY", "TL.", "YTL", "TRL"].includes((p.kod || "").trim().toUpperCase())
+      );
+      setAvailableProducts(nonTlProducts);
 
       if (panoList && panoList.length > 0) {
-        setPanos(panoList);
+        const sanitizedPanos = panoList.map((p) => ({
+          ...p,
+          satirlar: (p.satirlar || []).filter(
+            (s) => !["TL", "TRY", "TL.", "YTL", "TRL"].includes((s.kod || "").trim().toUpperCase())
+          ),
+        }));
+        setPanos(sanitizedPanos);
         setCurrentIndex(0);
-        setForm(panoList[0]);
-        setUseHtmlFile(Boolean(panoList[0].htmlDosyaAdi));
+        setForm(sanitizedPanos[0]);
+        setUseHtmlFile(Boolean(sanitizedPanos[0].htmlDosyaAdi));
       } else {
         // Create initial default pano form
-        const initialLines: PanoSatiriModel[] = prods.slice(0, 8).map((p, idx) => ({
+        const initialLines: PanoSatiriModel[] = nonTlProducts.slice(0, 8).map((p, idx) => ({
           paraId: p.id,
           kod: p.kod,
           ad: p.ad,
@@ -164,11 +180,12 @@ export const PanoTanimiPage: React.FC = () => {
           carpan: 1.0,
         }));
 
+        const initialBg = localStorage.getItem("pano_active_theme_bg") || "#0f172a";
         const newForm: PanoModel = {
           panoId: 0,
           panoNo: "PANO_01",
           yenilemeAraligi: 5,
-          firmaAdi: "KESKİNLER DÖVİZ SINIRLI YETKİLİ MÜESSESE A.Ş.",
+          firmaAdi: "",
           paraBasligi: "DÖVİZ",
           alisKuruBasligi: "WE BUY - ALIŞ",
           satisKuruBasligi: "WE SELL - SATIŞ",
@@ -176,7 +193,7 @@ export const PanoTanimiPage: React.FC = () => {
           tarihSaatOzellikleri: "font:Inter, sans-serif;size:14;bold:1;color:#fbbf24;bgColor:transparent",
           baslikOzellikleri: "font:Inter, sans-serif;size:16;bold:1;color:#38bdf8;bgColor:transparent",
           satirOzellikleri: "font:Fira Code, monospace;size:18;bold:1;color:#ffffff;bgColor:transparent",
-          zeminRengi: "#000000",
+          zeminRengi: initialBg,
           boslukSayisi: 10,
           htmlDosyaAdi: "Pano_Dikey.html",
           kodAlaniGenisligi: 60,
@@ -220,38 +237,99 @@ export const PanoTanimiPage: React.FC = () => {
     if (panos.length > 0) selectPano(panos[panos.length - 1], panos.length - 1);
   };
 
-  // Reset form to new Pano
-  const handleNew = () => {
-    const defaultLines: PanoSatiriModel[] = availableProducts.slice(0, 8).map((p, idx) => ({
-      paraId: p.id,
-      kod: p.kod,
-      ad: p.ad,
-      gorunecekAd: `${p.kod} - ${p.ad}`,
-      siraNo: idx + 1,
-      gorunur: true,
-      carpan: 1.0,
-    }));
+  // Auto-save appearance changes (Zemin Rengi, Font/Stil özellikleri)
+  const autoSaveAppearance = useCallback((updates: Partial<PanoModel>) => {
+    setForm((prev) => {
+      const merged = { ...prev, ...updates };
 
+      // 1. Immediately store in localStorage so PanoPage syncs instantly
+      if (merged.zeminRengi) {
+        localStorage.setItem("pano_active_theme_bg", merged.zeminRengi);
+      }
+      const appearanceData = {
+        zeminRengi: merged.zeminRengi,
+        firmaAdiOzellikleri: merged.firmaAdiOzellikleri,
+        tarihSaatOzellikleri: merged.tarihSaatOzellikleri,
+        baslikOzellikleri: merged.baslikOzellikleri,
+        satirOzellikleri: merged.satirOzellikleri,
+        boslukSayisi: merged.boslukSayisi,
+        kodAlaniGenisligi: merged.kodAlaniGenisligi,
+        kurAlaniGenisligi: merged.kurAlaniGenisligi,
+      };
+      localStorage.setItem("pano_appearance_settings", JSON.stringify(appearanceData));
+
+      // 2. Debounced auto-save to backend if pano already exists
+      if (merged.panoId && merged.panoId > 0) {
+        if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = setTimeout(async () => {
+          try {
+            await PanoService.savePano({
+              panoId: merged.panoId,
+              panoNo: merged.panoNo,
+              yenilemeAraligi: Number(merged.yenilemeAraligi) || 5,
+              firmaAdi: merged.firmaAdi,
+              paraBasligi: merged.paraBasligi,
+              alisKuruBasligi: merged.alisKuruBasligi,
+              satisKuruBasligi: merged.satisKuruBasligi,
+              firmaAdiOzellikleri: merged.firmaAdiOzellikleri,
+              tarihSaatOzellikleri: merged.tarihSaatOzellikleri,
+              baslikOzellikleri: merged.baslikOzellikleri,
+              satirOzellikleri: merged.satirOzellikleri,
+              zeminRengi: merged.zeminRengi,
+              boslukSayisi: Number(merged.boslukSayisi) || 0,
+              htmlDosyaAdi: merged.htmlDosyaAdi,
+              kodAlaniGenisligi: Number(merged.kodAlaniGenisligi) || 60,
+              kurAlaniGenisligi: Number(merged.kurAlaniGenisligi) || 40,
+              satirlar: (merged.satirlar || []).map((s, idx) => ({
+                paraId: s.paraId,
+                gorunecekAd: s.gorunecekAd,
+                siraNo: s.siraNo || idx + 1,
+                gorunur: s.gorunur,
+                carpan: Number(s.carpan) || 1.0,
+              })),
+            });
+            setAutoSaveStatus("Görünüm otomatik kaydedildi");
+            setTimeout(() => setAutoSaveStatus(null), 2500);
+          } catch (e) {
+            console.warn("Auto-save appearance warning:", e);
+          }
+        }, 600);
+      } else {
+        setAutoSaveStatus("Görünüm rengi güncellendi");
+        setTimeout(() => setAutoSaveStatus(null), 2000);
+      }
+
+      return merged;
+    });
+  }, []);
+
+  // Reset form to new Pano (Tüm her yer temizlenir)
+  const handleNew = () => {
+    setCurrentIndex(-1);
+    setUseHtmlFile(false);
     setForm({
       panoId: 0,
-      panoNo: `PANO_${String(panos.length + 1).padStart(2, "0")}`,
+      panoNo: "",
       yenilemeAraligi: 5,
-      firmaAdi: "KESKİNLER DÖVİZ SINIRLI YETKİLİ MÜESSESE A.Ş.",
+      firmaAdi: "",
       paraBasligi: "DÖVİZ",
-      alisKuruBasligi: "WE BUY - ALIŞ",
-      satisKuruBasligi: "WE SELL - SATIŞ",
+      alisKuruBasligi: "ALIŞ",
+      satisKuruBasligi: "SATIŞ",
       firmaAdiOzellikleri: "font:Outfit, sans-serif;size:24;bold:1;color:#ffffff;bgColor:transparent",
       tarihSaatOzellikleri: "font:Inter, sans-serif;size:14;bold:1;color:#fbbf24;bgColor:transparent",
       baslikOzellikleri: "font:Inter, sans-serif;size:16;bold:1;color:#38bdf8;bgColor:transparent",
       satirOzellikleri: "font:Fira Code, monospace;size:18;bold:1;color:#ffffff;bgColor:transparent",
       zeminRengi: "#000000",
-      boslukSayisi: 10,
-      htmlDosyaAdi: "Pano_Dikey.html",
+      boslukSayisi: 0,
+      htmlDosyaAdi: "",
       kodAlaniGenisligi: 60,
       kurAlaniGenisligi: 40,
-      satirlar: defaultLines,
+      satirlar: [],
     });
-    setAlertInfo({ type: "warning", message: "Yeni Pano tanımı oluşturuldu. Kaydet butonuna basarak kaydedebilirsiniz." });
+    setAlertInfo({
+      type: "warning",
+      message: "Yeni kayıt modu: Tüm alanlar temizlendi. Pano No ve bilgileri girip sol üstteki 'Kaydet' butonuna basarak kaydedebilirsiniz.",
+    });
   };
 
   // Save via stored procedure SODVZ_PANO_TANIMI_KAYDET
@@ -264,34 +342,42 @@ export const PanoTanimiPage: React.FC = () => {
     setSaving(true);
     setAlertInfo(null);
     try {
+      // Clean and sanitize rows, ensuring SATIR_NO / siraNo are numbers and no TL/TRY
+      const sanitizedRows = form.satirlar
+        .filter((s) => s.paraId && !["TL", "TRY", "TL.", "YTL", "TRL"].includes((s.kod || "").trim().toUpperCase()))
+        .map((s, idx) => ({
+          paraId: s.paraId,
+          gorunecekAd: s.gorunecekAd || `${s.kod} - ${s.ad}`,
+          siraNo: s.siraNo ? Number(s.siraNo) : idx + 1,
+          gorunur: s.gorunur !== undefined ? Boolean(s.gorunur) : true,
+          carpan: Number(s.carpan) || 1.0,
+        }));
+
       const payload: SavePanoPayload = {
-        panoId: form.panoId > 0 ? form.panoId : null,
+        panoId: form.panoId > 0 ? Number(form.panoId) : null,
         panoNo: form.panoNo.trim(),
         yenilemeAraligi: Number(form.yenilemeAraligi) || 5,
-        firmaAdi: form.firmaAdi,
-        paraBasligi: form.paraBasligi,
-        alisKuruBasligi: form.alisKuruBasligi,
-        satisKuruBasligi: form.satisKuruBasligi,
+        firmaAdi: form.firmaAdi || "",
+        paraBasligi: form.paraBasligi || "DÖVİZ",
+        alisKuruBasligi: form.alisKuruBasligi || "ALIŞ",
+        satisKuruBasligi: form.satisKuruBasligi || "SATIŞ",
         firmaAdiOzellikleri: form.firmaAdiOzellikleri,
         tarihSaatOzellikleri: form.tarihSaatOzellikleri,
         baslikOzellikleri: form.baslikOzellikleri,
         satirOzellikleri: form.satirOzellikleri,
-        zeminRengi: form.zeminRengi,
+        zeminRengi: form.zeminRengi || "#000000",
         boslukSayisi: Number(form.boslukSayisi) || 0,
-        htmlDosyaAdi: useHtmlFile ? form.htmlDosyaAdi : "",
+        htmlDosyaAdi: useHtmlFile ? (form.htmlDosyaAdi || "Pano_Dikey.html") : "",
         kodAlaniGenisligi: Number(form.kodAlaniGenisligi) || 60,
         kurAlaniGenisligi: Number(form.kurAlaniGenisligi) || 40,
-        satirlar: form.satirlar.map((s, idx) => ({
-          paraId: s.paraId,
-          gorunecekAd: s.gorunecekAd,
-          siraNo: s.siraNo || idx + 1,
-          gorunur: s.gorunur,
-          carpan: Number(s.carpan) || 1.0,
-        })),
+        satirlar: sanitizedRows,
       };
 
       const saved = await PanoService.savePano(payload);
       setForm(saved);
+      if (saved.zeminRengi) {
+        localStorage.setItem("pano_active_theme_bg", saved.zeminRengi);
+      }
       setAlertInfo({ type: "success", message: `SODVZ_PANO_TANIMI_KAYDET: '${saved.panoNo}' tanımı başarıyla kaydedildi.` });
 
       // Refresh list
@@ -330,6 +416,25 @@ export const PanoTanimiPage: React.FC = () => {
   };
 
   // Currency lines table helpers
+  const handleAddCurrency = (prodId: number) => {
+    const prod = availableProducts.find((p) => p.id === prodId);
+    if (!prod) return;
+    if (form.satirlar.some((s) => s.paraId === prod.id)) {
+      setAlertInfo({ type: "warning", message: `'${prod.kod}' para birimi zaten listede ekli.` });
+      return;
+    }
+    const newLine: PanoSatiriModel = {
+      paraId: prod.id,
+      kod: prod.kod,
+      ad: prod.ad,
+      gorunecekAd: `${prod.kod} - ${prod.ad}`,
+      siraNo: form.satirlar.length + 1,
+      gorunur: true,
+      carpan: 1.0,
+    };
+    setForm({ ...form, satirlar: [...form.satirlar, newLine] });
+  };
+
   const handleAddAllCurrencies = () => {
     const existingParaIds = new Set(form.satirlar.map((s) => s.paraId));
     const newLines: PanoSatiriModel[] = [...form.satirlar];
@@ -404,7 +509,7 @@ export const PanoTanimiPage: React.FC = () => {
   const saveStyleModal = () => {
     if (activeStyleKey) {
       const serialized = serializeStyleString(tempStyle);
-      setForm({ ...form, [activeStyleKey]: serialized });
+      autoSaveAppearance({ [activeStyleKey]: serialized });
     }
     setShowStyleModal(false);
   };
@@ -436,6 +541,7 @@ export const PanoTanimiPage: React.FC = () => {
         onNext={handleNext}
         onLast={handleLast}
         onRefresh={loadData}
+        onClear={handleNew}
         onPrint={() => window.print()}
         disabled={saving || loading}
         rightContent={
@@ -468,30 +574,112 @@ export const PanoTanimiPage: React.FC = () => {
         <Card.Body className="p-3 bg-body">
           <Row className="g-3">
             {/* Left Pane: Form Parameters matching Procedure Parameters & Desktop Screenshot */}
-            <Col lg={6} xl={5} className="d-flex flex-column gap-2.5 border-end-lg pe-lg-3">
-              {/* Row 1: Pano No & HTML Dosya */}
+            <Col xs={12} lg={6} xl={5} className="d-flex flex-column gap-2.5 border-end-lg pe-lg-3">
+              {/* Row 1: Pano No with Lookup Button */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Pano No</Form.Label>
                 </Col>
-                <Col sm={8}>
-                  <Form.Control
-                    type="text"
-                    size="sm"
-                    value={form.panoNo}
-                    onChange={(e) => setForm({ ...form, panoNo: e.target.value })}
-                    placeholder="Örn: DIKEY, PANO_01"
-                    className="fw-bold font-monospace bg-white border"
-                  />
+                <Col xs={12} sm={8}>
+                  <InputGroup size="sm">
+                    <Form.Control
+                      type="text"
+                      value={form.panoNo}
+                      onChange={(e) => setForm({ ...form, panoNo: e.target.value })}
+                      placeholder="Örn: DIKEY, PANO_01"
+                      className="fw-bold font-monospace bg-white border"
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      type="button"
+                      onClick={() => setShowSearchModal(true)}
+                      title="Pano Listesi / Pano Seç"
+                      className="d-flex align-items-center justify-content-center px-2.5 bg-light border-start-0"
+                      style={{ borderColor: "#ced4da" }}
+                    >
+                      <span className="d-inline-flex align-items-center gap-1 text-primary">
+                        <IconBinoculars size={16} strokeWidth={2} />
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                          <polyline points="12 5 19 12 12 19" />
+                        </svg>
+                      </span>
+                    </Button>
+                  </InputGroup>
+                </Col>
+              </Row>
+
+              {/* Row 2: HTML Dosya with Lookup Button */}
+              <Row className="g-2 align-items-center">
+                <Col xs={12} sm={4}>
+                  <div className="d-flex align-items-center gap-2">
+                    <FormCheck
+                      type="checkbox"
+                      id="htmlFileToggle"
+                      checked={useHtmlFile}
+                      onChange={(e) => setUseHtmlFile(e.target.checked)}
+                      className="mb-0"
+                    />
+                    <Form.Label htmlFor="htmlFileToggle" className="fw-semibold small mb-0 user-select-none" style={{ cursor: "pointer" }}>
+                      HTML Dosya
+                    </Form.Label>
+                  </div>
+                </Col>
+                <Col xs={12} sm={8}>
+                  <InputGroup size="sm">
+                    <Form.Control
+                      type="text"
+                      value={form.htmlDosyaAdi}
+                      disabled={!useHtmlFile}
+                      onChange={(e) => setForm({ ...form, htmlDosyaAdi: e.target.value })}
+                      placeholder="Pano_Dikey.html"
+                      className="bg-white font-monospace"
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      type="button"
+                      disabled={!useHtmlFile}
+                      onClick={() => setShowHtmlModal(true)}
+                      title="HTML Şablon Dosyaları Seç"
+                      className="d-flex align-items-center justify-content-center px-2.5 bg-light border-start-0"
+                      style={{ borderColor: "#ced4da" }}
+                    >
+                      <span className="d-inline-flex align-items-center gap-1 text-primary">
+                        <IconBinoculars size={16} strokeWidth={2} />
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                          <polyline points="12 5 19 12 12 19" />
+                        </svg>
+                      </span>
+                    </Button>
+                  </InputGroup>
                 </Col>
               </Row>
 
               {/* Row 2: Yenileme Süresi */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Yenileme süresi</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <InputGroup size="sm">
                     <Form.Control
                       type="number"
@@ -508,15 +696,15 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Row 3: Pano Başlığı */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Pano başlığı</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <Form.Control
                     type="text"
                     size="sm"
                     value={form.firmaAdi}
-                    onChange={(e) => setForm({ ...form, firmaAdi: e.target.value })}
+                    onChange={(e) => autoSaveAppearance({ firmaAdi: e.target.value })}
                     placeholder="Firma / Pano Adı Başlığı"
                     className="bg-white border"
                   />
@@ -525,10 +713,10 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Row 4: Para Adı Başlığı */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Para adı başlığı</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <Form.Control
                     type="text"
                     size="sm"
@@ -542,10 +730,10 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Row 5: Satış Kuru Başlığı */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Satış kuru başlığı</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <Form.Control
                     type="text"
                     size="sm"
@@ -559,10 +747,10 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Row 6: Alış Kuru Başlığı */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Alış kuru başlığı</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <Form.Control
                     type="text"
                     size="sm"
@@ -578,12 +766,17 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Style Buttons Section (Matching Screenshot Desktop Layout) */}
               <div className="bg-light p-2.5 rounded-3 border">
-                <div className="fw-semibold text-dark small mb-2 d-flex align-items-center gap-1.5">
-                  <IconTypography size={16} className="text-primary" />
-                  <span>Yazı Tipi & Stil Özellikleri</span>
+                <div className="fw-semibold text-dark small mb-2 d-flex align-items-center justify-content-between">
+                  <div className="d-flex align-items-center gap-1.5">
+                    <IconTypography size={16} className="text-primary" />
+                    <span>Yazı Tipi & Stil Özellikleri</span>
+                  </div>
+                  <Badge bg="info" className="px-1.5 py-0.5 text-white fw-normal" style={{ fontSize: "10px" }}>
+                    Otomatik Kayıt
+                  </Badge>
                 </div>
                 <Row className="g-2 mb-2">
-                  <Col sm={6}>
+                  <Col xs={12} sm={6}>
                     <Button
                       variant="outline-secondary"
                       size="sm"
@@ -594,7 +787,7 @@ export const PanoTanimiPage: React.FC = () => {
                       <IconPalette size={14} className="text-muted ms-1" />
                     </Button>
                   </Col>
-                  <Col sm={6}>
+                  <Col xs={12} sm={6}>
                     <Button
                       variant="outline-secondary"
                       size="sm"
@@ -607,7 +800,7 @@ export const PanoTanimiPage: React.FC = () => {
                   </Col>
                 </Row>
                 <Row className="g-2">
-                  <Col sm={6}>
+                  <Col xs={12} sm={6}>
                     <Button
                       variant="outline-secondary"
                       size="sm"
@@ -618,7 +811,7 @@ export const PanoTanimiPage: React.FC = () => {
                       <IconPalette size={14} className="text-muted ms-1" />
                     </Button>
                   </Col>
-                  <Col sm={6}>
+                  <Col xs={12} sm={6}>
                     <Button
                       variant="outline-secondary"
                       size="sm"
@@ -632,36 +825,39 @@ export const PanoTanimiPage: React.FC = () => {
                 </Row>
               </div>
 
-              {/* Zemin Rengi Picker */}
+              {/* Zemin Rengi Picker (Otomatik Kayıtlı) */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
-                  <Form.Label className="fw-semibold small mb-0">Zemin rengi</Form.Label>
+                <Col xs={12} sm={4}>
+                  <Form.Label className="fw-semibold small mb-0 d-flex align-items-center gap-1">
+                    <span>Zemin rengi</span>
+                  </Form.Label>
                 </Col>
-                <Col sm={8} className="d-flex align-items-center gap-2">
+                <Col xs={12} sm={8} className="d-flex align-items-center gap-2 flex-wrap">
                   <Form.Control
                     type="color"
                     size="sm"
                     value={form.zeminRengi || "#000000"}
-                    onChange={(e) => setForm({ ...form, zeminRengi: e.target.value })}
+                    onChange={(e) => autoSaveAppearance({ zeminRengi: e.target.value })}
                     style={{ width: "44px", height: "32px", cursor: "pointer", padding: "2px" }}
                     className="border rounded flex-shrink-0"
+                    title="Pano sayfasında anında geçerli olur ve otomatik kaydedilir"
                   />
                   <Form.Control
                     type="text"
                     size="sm"
                     value={form.zeminRengi}
-                    onChange={(e) => setForm({ ...form, zeminRengi: e.target.value })}
+                    onChange={(e) => autoSaveAppearance({ zeminRengi: e.target.value })}
                     placeholder="#000000"
                     className="font-monospace text-uppercase"
-                    style={{ width: "100px" }}
+                    style={{ width: "95px" }}
                   />
                   {user?.appearance?.programBgColor && (
                     <Button
                       variant="outline-secondary"
                       size="sm"
-                      onClick={() => setForm({ ...form, zeminRengi: user.appearance?.programBgColor || "#000000" })}
-                      className="py-1 px-2 text-nowrap small border"
-                      title="Aktif kullanıcı tanımlarındaki tema rengini al"
+                      onClick={() => autoSaveAppearance({ zeminRengi: user.appearance?.programBgColor || "#000000" })}
+                      className="py-1 px-2 text-nowrap small border flex-shrink-0"
+                      title="Kullanıcı ayarlarındaki aktif program temasının rengini aktar"
                     >
                       Tema Rengini Al
                     </Button>
@@ -670,6 +866,7 @@ export const PanoTanimiPage: React.FC = () => {
                     className="rounded border shadow-2xs flex-grow-1"
                     style={{
                       height: "32px",
+                      minWidth: "70px",
                       backgroundColor: form.zeminRengi || "#000000",
                       display: "flex",
                       alignItems: "center",
@@ -686,17 +883,17 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Boşluk Sayısı */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Sola eklenecek boşluk</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <Form.Control
                     type="number"
                     size="sm"
                     min={0}
                     max={200}
                     value={form.boslukSayisi}
-                    onChange={(e) => setForm({ ...form, boslukSayisi: Number(e.target.value) || 0 })}
+                    onChange={(e) => autoSaveAppearance({ boslukSayisi: Number(e.target.value) || 0 })}
                     className="text-center fw-bold"
                   />
                 </Col>
@@ -704,10 +901,10 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Para kodu genişliği % */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Para kodu genişliği %</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <Form.Control
                     type="number"
                     size="sm"
@@ -716,8 +913,7 @@ export const PanoTanimiPage: React.FC = () => {
                     value={form.kodAlaniGenisligi}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 50;
-                      setForm({
-                        ...form,
+                      autoSaveAppearance({
                         kodAlaniGenisligi: val,
                         kurAlaniGenisligi: 100 - val,
                       });
@@ -729,10 +925,10 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Kur alanı genişliği % */}
               <Row className="g-2 align-items-center">
-                <Col sm={4}>
+                <Col xs={12} sm={4}>
                   <Form.Label className="fw-semibold small mb-0">Kur alanı genişliği %</Form.Label>
                 </Col>
-                <Col sm={8}>
+                <Col xs={12} sm={8}>
                   <Form.Control
                     type="number"
                     size="sm"
@@ -741,8 +937,7 @@ export const PanoTanimiPage: React.FC = () => {
                     value={form.kurAlaniGenisligi}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 50;
-                      setForm({
-                        ...form,
+                      autoSaveAppearance({
                         kurAlaniGenisligi: val,
                         kodAlaniGenisligi: 100 - val,
                       });
@@ -753,45 +948,8 @@ export const PanoTanimiPage: React.FC = () => {
               </Row>
             </Col>
 
-            {/* Right Pane: HTML Template Config & Currency Table Grid */}
-            <Col lg={6} xl={7} className="d-flex flex-column gap-2.5">
-              {/* Top HTML File Section */}
-              <Card className="bg-light border shadow-2xs mb-1">
-                <Card.Body className="p-2.5">
-                  <Row className="g-2 align-items-center">
-                    <Col sm={3}>
-                      <FormCheck
-                        type="checkbox"
-                        id="htmlFileToggle"
-                        label="HTML Dosya"
-                        checked={useHtmlFile}
-                        onChange={(e) => setUseHtmlFile(e.target.checked)}
-                        className="fw-bold small mb-0"
-                      />
-                    </Col>
-                    <Col sm={9}>
-                      <InputGroup size="sm">
-                        <Form.Control
-                          type="text"
-                          value={form.htmlDosyaAdi}
-                          disabled={!useHtmlFile}
-                          onChange={(e) => setForm({ ...form, htmlDosyaAdi: e.target.value })}
-                          placeholder="Pano_Dikey.html"
-                          className="bg-white font-monospace"
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          disabled={!useHtmlFile}
-                          onClick={() => setShowHtmlModal(true)}
-                          title="HTML Şablon Dosyaları Seç"
-                        >
-                          ...
-                        </Button>
-                      </InputGroup>
-                    </Col>
-                  </Row>
-                </Card.Body>
-              </Card>
+            {/* Right Pane: Currency Table Grid */}
+            <Col xs={12} lg={6} xl={7} className="d-flex flex-column gap-2.5">
 
               {/* Currency Satırları Grid Table Header & Buttons */}
               <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-1">
@@ -801,7 +959,27 @@ export const PanoTanimiPage: React.FC = () => {
                   </Badge>
                   <span>Pano Gösterilecek Para Birimleri Listesi</span>
                 </div>
-                <div className="d-flex align-items-center gap-2">
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <Form.Select
+                    size="sm"
+                    className="py-1 px-2 small bg-white"
+                    style={{ width: "170px" }}
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAddCurrency(Number(e.target.value));
+                      }
+                    }}
+                  >
+                    <option value="">+ Para Birimi Ekle...</option>
+                    {availableProducts
+                      .filter((prod) => !form.satirlar.some((s) => s.paraId === prod.id))
+                      .map((prod) => (
+                        <option key={prod.id} value={prod.id}>
+                          {prod.kod} - {prod.ad}
+                        </option>
+                      ))}
+                  </Form.Select>
                   <Button
                     variant="outline-primary"
                     size="sm"
@@ -995,38 +1173,29 @@ export const PanoTanimiPage: React.FC = () => {
           </Row>
         </Card.Body>
 
-        {/* Footer Action Buttons (Matching Screenshot ✓ Güncelle and ✕ Vazgeç) */}
-        <Card.Footer className="bg-light border-top py-2.5 px-3 d-flex align-items-center justify-content-between">
-          <span className="text-muted small fw-semibold font-monospace">
-            {panos.length > 0 ? (currentIndex === 0 ? "İlk kayıt" : currentIndex === panos.length - 1 ? "Son kayıt" : `Kayıt ${currentIndex + 1}`) : "Yeni Kayıt Modu"}
-          </span>
-          <div className="d-flex align-items-center gap-2">
-            <Button
-              variant="success"
-              size="sm"
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 fw-bold shadow-xs d-flex align-items-center gap-1.5"
-            >
-              <IconCheck size={18} />
-              <span>Güncelle / Kaydet</span>
-            </Button>
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              onClick={loadData}
-              disabled={saving}
-              className="px-3 fw-medium d-flex align-items-center gap-1.5"
-            >
-              <IconX size={18} />
-              <span>Vazgeç</span>
-            </Button>
+        {/* Footer Status Bar (Top buttons are used for all actions) */}
+        <Card.Footer className="bg-light border-top py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="text-muted small fw-semibold font-monospace">
+              {panos.length > 0 ? (currentIndex === 0 ? "İlk kayıt" : currentIndex === panos.length - 1 ? "Son kayıt" : `Kayıt ${currentIndex + 1} / ${panos.length}`) : "Yeni Kayıt Modu"}
+            </span>
+            {form.panoNo && (
+              <Badge bg="secondary" className="font-monospace small">
+                {form.panoNo}
+              </Badge>
+            )}
           </div>
+          {autoSaveStatus && (
+            <Badge bg="success" className="small fw-semibold py-1 px-2 d-flex align-items-center gap-1 shadow-2xs">
+              <IconCheck size={13} />
+              <span>{autoSaveStatus}</span>
+            </Badge>
+          )}
         </Card.Footer>
       </Card>
 
       {/* 1. Style Property Modal */}
-      <Modal show={showStyleModal} onHide={() => setShowStyleModal(false)} centered size="md">
+      <Modal show={showStyleModal} onHide={() => setShowStyleModal(false)} centered>
         <Modal.Header closeButton className="bg-light py-2">
           <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
             <IconPalette size={20} className="text-primary" />
@@ -1139,71 +1308,48 @@ export const PanoTanimiPage: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* 2. Pano Search Modal (Ara / Bul) */}
-      <Modal show={showSearchModal} onHide={() => setShowSearchModal(false)} size="lg" centered>
-        <Modal.Header closeButton className="bg-light py-2">
-          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
-            <IconSearch size={20} className="text-primary" />
-            <span>Pano Tanımı Arama</span>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-3">
-          <InputGroup size="sm" className="mb-3">
-            <InputGroup.Text className="bg-light text-muted">
-              <IconSearch size={16} />
-            </InputGroup.Text>
-            <Form.Control
-              type="search"
-              placeholder="Pano No, Firma Adı veya HTML Dosya Adı ile ara..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-          </InputGroup>
-
-          <div className="table-responsive border rounded max-vh-50">
-            <Table hover size="sm" className="mb-0 align-middle">
-              <thead className="bg-light border-bottom">
-                <tr className="small text-muted">
-                  <th># ID</th>
-                  <th>Pano No</th>
-                  <th>Firma / Pano Başlığı</th>
-                  <th>HTML Dosya</th>
-                  <th className="text-center">Yenileme (sn)</th>
-                  <th className="text-center">Seç</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSearchPanos.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center text-muted py-4 small">
-                      Aramanıza uygun Pano tanımı bulunamadı.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSearchPanos.map((pano) => {
-                    const originalIdx = panos.findIndex((p) => p.panoId === pano.panoId);
-                    return (
-                      <tr key={pano.panoId} style={{ cursor: "pointer" }} onClick={() => { selectPano(pano, originalIdx); setShowSearchModal(false); }}>
-                        <td className="fw-bold small">#{pano.panoId}</td>
-                        <td className="fw-bold font-monospace text-primary small">{pano.panoNo}</td>
-                        <td className="small">{pano.firmaAdi}</td>
-                        <td className="small font-monospace text-muted">{pano.htmlDosyaAdi || "-"}</td>
-                        <td className="text-center small">{pano.yenilemeAraligi}s</td>
-                        <td className="text-center">
-                          <Button variant="primary" size="sm" className="py-0 px-2 small">
-                            Seç
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </Table>
-          </div>
-        </Modal.Body>
-      </Modal>
+      {/* 2. Pano Search Modal (Dürbün ile Seçim - D- Vezne Tanımları gibi) */}
+      <LookupModal<PanoModel>
+        show={showSearchModal}
+        onHide={() => setShowSearchModal(false)}
+        title="Pano Tanımı Arama (Dürbün)"
+        searchPlaceholder="Pano No, Firma Adı veya HTML Dosya Adı ile ara..."
+        items={panos}
+        filterFn={(p, term) => {
+          const t = term.toLowerCase();
+          return (
+            p.panoNo.toLowerCase().includes(t) ||
+            p.firmaAdi.toLowerCase().includes(t) ||
+            (p.htmlDosyaAdi ? p.htmlDosyaAdi.toLowerCase().includes(t) : false)
+          );
+        }}
+        columns={[
+          {
+            header: "Pano No",
+            width: "120px",
+            render: (p) => <span className="badge bg-primary-subtle text-primary border font-monospace fw-bold">{p.panoNo}</span>,
+          },
+          {
+            header: "Firma / Pano Başlığı",
+            render: (p) => <span className="fw-semibold text-dark">{p.firmaAdi || "-"}</span>,
+          },
+          {
+            header: "HTML Dosya",
+            width: "140px",
+            render: (p) => <span className="font-monospace text-muted small">{p.htmlDosyaAdi || "-"}</span>,
+          },
+          {
+            header: "Yenileme",
+            width: "90px",
+            align: "center",
+            render: (p) => <span className="font-monospace small">{p.yenilemeAraligi}s</span>,
+          },
+        ]}
+        onSelect={(p) => {
+          const originalIdx = panos.findIndex((item) => item.panoId === p.panoId);
+          selectPano(p, originalIdx !== -1 ? originalIdx : 0);
+        }}
+      />
 
       {/* 3. HTML File Chooser Modal */}
       <Modal show={showHtmlModal} onHide={() => setShowHtmlModal(false)} centered>

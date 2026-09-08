@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Container, Row, Col, Card, Form, Button, Badge, Spinner } from "react-bootstrap";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Container, Row, Col, Card, Form, Button, Badge, Spinner, Modal, Table, InputGroup } from "react-bootstrap";
 import {
   IconDeviceTv,
   IconMaximize,
@@ -11,9 +11,14 @@ import {
   IconClock,
   IconBuildingStore,
   IconSparkles,
+  IconSearch,
+  IconBinoculars,
 } from "@tabler/icons-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import ERPToolbar from "../../components/common/ERPToolbar";
+import LookupModal from "../../components/common/LookupModal";
 import { PanoService, PanoModel, PanoSatiriModel } from "../../services/panoService";
+import { useAuth } from "../../context/AuthContext";
 
 interface ParsedStyle {
   fontFamily: string;
@@ -56,6 +61,7 @@ const parseStyleToCss = (styleStr: string, defaultFontSize: string = "18px"): Pa
 export const PanoPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const requestedId = Number(searchParams.get("id")) || 0;
 
   const [allPanos, setAllPanos] = useState<PanoModel[]>([]);
@@ -66,6 +72,7 @@ export const PanoPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<Date>(new Date());
+  const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
 
   // Realtime clock
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -96,7 +103,6 @@ export const PanoPage: React.FC = () => {
   // Load live board data for selected Pano
   const fetchLiveBoard = useCallback(async () => {
     if (!selectedPanoId || selectedPanoId <= 0) {
-      // If no valid id, attempt loading all panos first
       try {
         const list = await PanoService.getAllPanos();
         if (list.length > 0) {
@@ -143,6 +149,22 @@ export const PanoPage: React.FC = () => {
     fetchLiveBoard();
   }, [fetchLiveBoard]);
 
+  // Toolbar Navigation
+  const handleFirst = () => {
+    if (allPanos.length > 0) setSelectedPanoId(allPanos[0].panoId);
+  };
+  const handlePrev = () => {
+    const idx = allPanos.findIndex((p) => p.panoId === selectedPanoId);
+    if (idx > 0) setSelectedPanoId(allPanos[idx - 1].panoId);
+  };
+  const handleNext = () => {
+    const idx = allPanos.findIndex((p) => p.panoId === selectedPanoId);
+    if (idx >= 0 && idx < allPanos.length - 1) setSelectedPanoId(allPanos[idx + 1].panoId);
+  };
+  const handleLast = () => {
+    if (allPanos.length > 0) setSelectedPanoId(allPanos[allPanos.length - 1].panoId);
+  };
+
   // Auto Refresh Interval
   useEffect(() => {
     if (!activePano) return;
@@ -181,78 +203,53 @@ export const PanoPage: React.FC = () => {
   const baslikStyle = parseStyleToCss(activePano?.baslikOzellikleri || "", "18px");
   const satirStyle = parseStyleToCss(activePano?.satirOzellikleri || "", "22px");
 
-  const visibleSatirlar = (activePano?.satirlar || []).filter((s) => s.gorunur);
+  // Dynamic Background Color matching PanoTanimiPage / User appearance / activePano
+  const savedThemeBg = localStorage.getItem("pano_active_theme_bg");
+  const effectiveBgColor = activePano?.zeminRengi || savedThemeBg || user?.appearance?.programBgColor || "#0f172a";
+
+  const visibleSatirlar = (activePano?.satirlar || []).filter(
+    (s) => s.gorunur && !["TL", "TRY", "TL.", "YTL", "TRL"].includes((s.kod || "").trim().toUpperCase())
+  );
 
   return (
     <div
       className="pano-live-page min-vh-100 d-flex flex-column"
       style={{
-        backgroundColor: activePano?.zeminRengi || "#000000",
+        backgroundColor: effectiveBgColor,
         color: "#ffffff",
         paddingLeft: `${activePano?.boslukSayisi || 0}px`,
         paddingRight: `${activePano?.boslukSayisi || 0}px`,
         transition: "background-color 0.3s ease",
       }}
     >
-      {/* Top Control Bar (Hidden in Fullscreen mode if desired, or compact) */}
+      {/* 1. Standard Top ERP Action Toolbar */}
       {!isFullscreen && (
-        <div className="bg-dark text-white p-2 border-bottom border-secondary d-flex align-items-center justify-content-between flex-wrap gap-2 print-none">
-          <div className="d-flex align-items-center gap-2">
-            <IconDeviceTv className="text-warning" size={22} />
-            <span className="fw-bold text-light me-2">C- Canlı Döviz Panosu</span>
-            {allPanos.length > 0 && (
-              <Form.Select
+        <div className="print-none">
+          <ERPToolbar
+            pageTitle={activePano ? `C- Pano (${activePano.panoNo})` : "C- Pano"}
+            pageIcon={<IconDeviceTv size={20} className="text-warning" />}
+            onNew={() => navigate("/kur/pano-tanimi")}
+            onSave={fetchLiveBoard}
+            onSearch={() => setShowSearchModal(true)}
+            onFirst={handleFirst}
+            onPrev={handlePrev}
+            onNext={handleNext}
+            onLast={handleLast}
+            onRefresh={fetchLiveBoard}
+            onPrint={() => window.print()}
+            disabled={loading}
+            rightContent={
+              <Button
+                variant="primary"
                 size="sm"
-                value={selectedPanoId}
-                onChange={(e) => setSelectedPanoId(Number(e.target.value))}
-                className="bg-secondary text-white border-0 fw-semibold"
-                style={{ width: "200px" }}
+                onClick={toggleFullscreen}
+                className="d-flex align-items-center gap-1 py-1 px-2.5 fw-bold shadow-xs"
               >
-                {allPanos.map((p) => (
-                  <option key={p.panoId} value={p.panoId}>
-                    {p.panoNo} - {p.firmaAdi}
-                  </option>
-                ))}
-              </Form.Select>
-            )}
-          </div>
-
-          <div className="d-flex align-items-center gap-2">
-            <Badge bg="secondary" className="d-flex align-items-center gap-1 font-monospace">
-              <IconRefresh size={12} className={loading ? "spin-icon" : ""} />
-              <span>Yenileme: {activePano?.yenilemeAraligi || 5} sn</span>
-            </Badge>
-
-            <Button
-              variant="outline-light"
-              size="sm"
-              onClick={fetchLiveBoard}
-              title="Şimdi Yenile"
-              className="py-1 px-2"
-            >
-              <IconRefresh size={16} />
-            </Button>
-
-            <Button
-              variant="outline-warning"
-              size="sm"
-              onClick={() => navigate("/kur/pano-tanimi")}
-              className="d-flex align-items-center gap-1 py-1 px-2.5 fw-semibold"
-            >
-              <IconSettings size={16} />
-              <span>Pano Tanımı</span>
-            </Button>
-
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={toggleFullscreen}
-              className="d-flex align-items-center gap-1 py-1 px-2.5 fw-bold"
-            >
-              {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
-              <span>{isFullscreen ? "Çık" : "TV Tam Ekran"}</span>
-            </Button>
-          </div>
+                {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
+                <span>{isFullscreen ? "Çık" : "TV Tam Ekran"}</span>
+              </Button>
+            }
+          />
         </div>
       )}
 
@@ -275,7 +272,7 @@ export const PanoPage: React.FC = () => {
           <div className="w-100 h-100 d-flex flex-column">
             {/* Header: Company Title & Real-time Date/Clock */}
             <div className="d-flex align-items-center justify-content-between pb-3 mb-3 border-bottom border-secondary border-2 flex-wrap gap-2">
-              {/* Firma Adı */}
+              {/* Firma / Pano Başlığı */}
               <div
                 style={{
                   fontFamily: firmaStyle.fontFamily,
@@ -285,9 +282,9 @@ export const PanoPage: React.FC = () => {
                   backgroundColor: firmaStyle.backgroundColor,
                   letterSpacing: "0.5px",
                 }}
-                className="text-truncate"
+                className="text-truncate fw-bold"
               >
-                {activePano?.firmaAdi || "KESKİNLER DÖVİZ SINIRLI YETKİLİ MÜESSESE A.Ş."}
+                {activePano?.firmaAdi || "DÖVİZ VE ALTIN FİYATLARI"}
               </div>
 
               {/* Realtime Date & Time Header */}
@@ -435,6 +432,45 @@ export const PanoPage: React.FC = () => {
           </div>
         )}
       </Container>
+
+      {/* Pano Search Modal (Dürbün ile Pano Seçimi) */}
+      <LookupModal<PanoModel>
+        show={showSearchModal}
+        onHide={() => setShowSearchModal(false)}
+        title="Pano Seçimi (Dürbün)"
+        searchPlaceholder="Pano No veya Firma Adı ile ara..."
+        items={allPanos}
+        isLoading={loading && allPanos.length === 0}
+        filterFn={(p, term) => {
+          const t = term.toLowerCase();
+          return p.panoNo.toLowerCase().includes(t) || (p.firmaAdi ? p.firmaAdi.toLowerCase().includes(t) : false);
+        }}
+        columns={[
+          {
+            header: "Pano No",
+            width: "120px",
+            render: (p) => <span className="badge bg-primary-subtle text-primary border font-monospace fw-bold">{p.panoNo}</span>,
+          },
+          {
+            header: "Firma / Pano Başlığı",
+            render: (p) => <span className="fw-semibold text-dark">{p.firmaAdi || "-"}</span>,
+          },
+          {
+            header: "Yenileme",
+            width: "90px",
+            align: "center",
+            render: (p) => <span className="font-monospace small">{p.yenilemeAraligi} sn</span>,
+          },
+          {
+            header: "HTML Şablon",
+            width: "140px",
+            render: (p) => <span className="font-monospace text-muted small">{p.htmlDosyaAdi || "-"}</span>,
+          },
+        ]}
+        onSelect={(p) => {
+          setSelectedPanoId(p.panoId);
+        }}
+      />
     </div>
   );
 };
