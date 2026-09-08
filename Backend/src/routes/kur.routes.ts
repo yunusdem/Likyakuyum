@@ -1,0 +1,16 @@
+import { Router } from "express";
+import { KurController } from "../controllers/kur.controller.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
+
+const router = Router();
+
+router.use(authenticate);
+
+router.get("/tablo", KurController.getTablo);
+router.post("/kaydet", KurController.saveTablo);
+router.post("/sakla", KurController.sakla);
+router.get("/tarihler", KurController.getStoredDates);
+router.delete("/tablo/:id", KurController.deleteTablo);
+router.get("/tcmb", KurController.fetchTcmb);
+
+export default router;

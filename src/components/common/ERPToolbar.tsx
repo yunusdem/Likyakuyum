@@ -11,6 +11,7 @@ import {
   IconBuilding,
   IconUserCheck as IconUser,
   IconFileText,
+  IconChartLine,
 } from "@tabler/icons-react";
 
 export interface ERPToolbarProps {
@@ -37,6 +38,7 @@ export interface ERPToolbarProps {
   disabled?: boolean;
   pageTitle?: string;
   pageIcon?: React.ReactNode;
+  rightContent?: React.ReactNode;
 }
 
 const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> = {
@@ -64,6 +66,9 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/cari/hareket-listesi": { title: "E- Cari Hareket Listesi", icon: <IconFileText size={20} /> },
   "/ayarlar/firma-tanimlari": { title: "Firma Tanımları", icon: <IconBuilding size={20} /> },
   "/ayarlar/kullanici-tanimlari": { title: "Kullanıcı Tanımları", icon: <IconUser size={20} /> },
+  "/kur/anlik-fiyat-listesi": { title: "A- Anlık Fiyat Listesi", icon: <IconChartLine size={20} /> },
+  "/kur/gunluk-fiyat-listesi": { title: "B- Günlük Fiyat Listesi", icon: <IconChartLine size={20} /> },
+  "/kur/saklanan-fiyat-listesi": { title: "C- Saklanan Fiyat Listesi", icon: <IconChartLine size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({
@@ -81,6 +86,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   disabled = false,
   pageTitle,
   pageIcon,
+  rightContent,
 }) => {
   const location = useLocation();
   const routeMatch = ROUTE_PAGE_MAP[location.pathname];
@@ -91,9 +97,13 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (disabled) return;
 
-      if (e.key === "F2") {
+      if (e.key === "F1") {
         e.preventDefault();
         if (onSave) onSave();
+      } else if (e.key === "F2") {
+        e.preventDefault();
+        if (onDelete) onDelete();
+        else if (onSave) onSave();
       } else if (e.key === "F3") {
         e.preventDefault();
         if (onSearch) {
@@ -106,19 +116,25 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
         }
       } else if (e.key === "F4") {
         e.preventDefault();
-        if (onNew) onNew();
+        if (onSearch) onSearch();
+        else if (onNew) onNew();
         else if (onClear) onClear();
       } else if (e.key === "F5") {
         if (onRefresh) {
           e.preventDefault();
           onRefresh();
         }
+      } else if (e.key === "F10") {
+        if (onPrint) {
+          e.preventDefault();
+          onPrint();
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onSave, onSearch, onNew, onClear, onRefresh, disabled]);
+  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, disabled]);
 
   const defaultHandler = (actionName: string) => {
     if (actionName === "Ara/Bul") {
@@ -184,13 +200,13 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           </svg>
         </button>
 
-        {/* 2. Kaydet (F2) */}
+        {/* 2. Kaydet (F1) */}
         <button
           type="button"
           disabled={disabled}
           onClick={onSave || (() => defaultHandler("Kaydet"))}
           className="erp-tb-btn"
-          title="Kaydet (F2)"
+          title="Kaydet (F1)"
           aria-label="Kaydet"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -211,7 +227,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           </svg>
         </button>
 
-        {/* 3. Ara / Bul (F3) */}
+        {/* 3. Ara / Bul (F4) */}
         <button
           type="button"
           disabled={disabled}
@@ -228,7 +244,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
             })
           }
           className="erp-tb-btn"
-          title="Ara / Bul (F3)"
+          title="Ara / Bul (F4)"
           aria-label="Ara / Bul"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -254,13 +270,13 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           </svg>
         </button>
 
-        {/* 4. Sil */}
+        {/* 4. Sil (F2) */}
         <button
           type="button"
           disabled={disabled}
           onClick={onDelete || (() => defaultHandler("Sil"))}
           className="erp-tb-btn"
-          title="Sil"
+          title="Sil (F2)"
           aria-label="Sil"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -337,13 +353,13 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
 
         <span className="erp-tb-divider" />
 
-        {/* 8. Yazdır (Ctrl+P) */}
+        {/* 8. Yazdır (F10) */}
         <button
           type="button"
           disabled={disabled}
           onClick={onPrint || (() => window.print())}
           className="erp-tb-btn"
-          title="Yazdır (Ctrl+P)"
+          title="Yazdır (F10)"
           aria-label="Yazdır"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -371,8 +387,9 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
         </div>
       )}
 
-      {/* Sağ Toolbar Grubu: Yenile */}
-      <div className="d-flex align-items-center gap-1 ms-auto">
+      {/* Sağ Toolbar Grubu: Custom RightContent + Yenile */}
+      <div className="d-flex align-items-center gap-2 ms-auto">
+        {rightContent}
         {onRefresh && (
           <button
             type="button"
