@@ -1,5 +1,7 @@
 export interface MasakListInfo {
   key: string;
+  /** Backend / TODVZ_MASAK_LISTE.LISTE_KOD karsiligi */
+  listeKod: "A" | "B" | "C" | "3AB";
   code: string;
   shortTitle: string;
   title: string;
@@ -16,6 +18,7 @@ export interface MasakListInfo {
 export const MASAK_LISTS: MasakListInfo[] = [
   {
     key: "a",
+    listeKod: "A",
     code: "A",
     shortTitle: "BMGK Kararları (Madde 5)",
     title: "Birleşmiş Milletler Güvenlik Konseyi Kararına İstinaden Malvarlıkları Dondurulanlar",
@@ -30,6 +33,7 @@ export const MASAK_LISTS: MasakListInfo[] = [
   },
   {
     key: "b",
+    listeKod: "B",
     code: "B",
     shortTitle: "Yabancı Ülke Talepleri (Madde 6)",
     title: "Yabancı Ülke Taleplerine İstinaden Malvarlıkları Dondurulanlar",
@@ -44,6 +48,7 @@ export const MASAK_LISTS: MasakListInfo[] = [
   },
   {
     key: "c",
+    listeKod: "C",
     code: "C",
     shortTitle: "İç Dondurma Kararı (Madde 7)",
     title: "İç Dondurma Kararı ile Malvarlıkları Dondurulanlar",
@@ -58,6 +63,7 @@ export const MASAK_LISTS: MasakListInfo[] = [
   },
   {
     key: "3a3b",
+    listeKod: "3AB",
     code: "3.A-B",
     shortTitle: "Kitle İmha Silahları (7262 S.K.)",
     title: "7262 Sayılı Kanun 3.A ve 3.B Maddeleri Kapsamında Malvarlıkları Dondurulanlar",
