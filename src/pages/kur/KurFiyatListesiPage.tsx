@@ -37,7 +37,7 @@ import {
 } from "../../services/kurService";
 import { printReportTable } from "../../utils/printReport";
 
-export type KurPageType = "anlik" | "gunluk" | "saklanan";
+export type KurPageType = "anlik" | "saklanan";
 
 interface KurFiyatListesiPageProps {
   pageType?: KurPageType;
@@ -53,41 +53,61 @@ const EDITABLE_COLS = [
 
 type EditableCol = (typeof EDITABLE_COLS)[number];
 
+// TL / TRY para birimi kur işlemlerinde hiç gözükmez, yerel para birimi olduğu için sabittir
+export const isTlCurrency = (code?: string, name?: string) => {
+  const c = (code || "").trim().toUpperCase();
+  const n = (name || "").trim().toUpperCase();
+  return (
+    c === "TL" ||
+    c === "TRY" ||
+    c === "YTL" ||
+    c === "TL." ||
+    c === "TRL" ||
+    c.startsWith("TL") ||
+    n.includes("TÜRK LİRASI") ||
+    n.includes("TURK LIRASI") ||
+    n.includes("TÜRK LIRA") ||
+    n.includes("TURK LIRA") ||
+    n.includes("YEREL") ||
+    n === "TL" ||
+    n === "TRY" ||
+    n === "LİRA" ||
+    n === "LIRA"
+  );
+};
+
+export const filterOutTl = (items?: KurRowItem[]): KurRowItem[] => {
+  if (!items) return [];
+  return items.filter((r) => !isTlCurrency(r.kod, r.ad));
+};
+
 export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   pageType: propPageType,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Determine effective page type from prop or current URL path
+  // Determine effective page type from prop or current URL path: anlik veya saklanan
   const effectivePageType: KurPageType =
-    propPageType ||
-    (location.pathname.includes("gunluk")
-      ? "gunluk"
-      : location.pathname.includes("saklanan")
+    propPageType === "saklanan" || location.pathname.includes("saklanan")
       ? "saklanan"
-      : "anlik");
+      : "anlik";
 
   // TUR:
   // - A: Anlık Fiyat Listesi (Gişe Kuru) -> TUR = 0
-  // - B: Günlük Fiyat Listesi (Resmi Kapanış Kuru) -> TUR = 2 (veya 1)
-  // - C: Saklanan Fiyat Listesi (Tarihsel Kur Arşivi) -> TUR = 2
+  // - B: Saklanan Fiyat Listesi (Tarihsel Kur Arşivi) -> TUR = 2
   const tur = effectivePageType === "anlik" ? 0 : 2;
 
   // Window / Page titles
   const pageTitle =
     effectivePageType === "anlik"
       ? "A- Anlık Fiyat Listesi"
-      : effectivePageType === "gunluk"
-      ? "B- Günlük Fiyat Listesi"
-      : "C- Saklanan Fiyat Listesi";
+      : "B- Saklanan Fiyat Listesi";
 
   const windowTitle =
     effectivePageType === "anlik"
       ? "Gişe kuru"
-      : effectivePageType === "gunluk"
-      ? "Günlük Fiyat Listesi (Resmi Kapanış)"
-      : "Saklanan Fiyat Listesi (Kur Arşivi)";
+      : "Saklanan Fiyat Listesi";
 
   // Date & Time helpers for current moment
   const getCurrentDateStr = () => {
@@ -177,11 +197,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             // Tarih ve saat otomatik olarak şu anki tarih ve saat olacak
             setTarih(getCurrentDateStr());
             setSaat(getCurrentTimeStr());
-            setRows(tablo.satirlar || []);
+            const filteredRows = filterOutTl(tablo.satirlar);
+            setRows(filteredRows);
 
             // Verisi bulunmayan satırlar / hücreler boş olarak gelecek
             const initialInputs: Record<string, string> = {};
-            (tablo.satirlar || []).forEach((r, idx) => {
+            filteredRows.forEach((r, idx) => {
               EDITABLE_COLS.forEach((col) => {
                 const num = r[col];
                 initialInputs[getCellKey(idx, col)] =
@@ -193,58 +214,60 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             setIsDirty(false);
             setStatusText(tablo.id ? "Son kayıt" : "Yeni Kayıt");
           }
-        } else if (effectivePageType === "gunluk") {
-          // B- Günlük Fiyat Listesi: TUR = 2 (Günün Kapanış Tablosu)
-          const todayStr = params?.tarih || getCurrentDateStr();
-          const tablo = await KurService.getKurTablosu({
-            tur: 2,
-            tarih: todayStr,
-            id: params?.id,
-          });
-
-          if (tablo) {
-            setTabloId(tablo.id);
-            setTarih(tablo.tarih);
-            const zDt = new Date(tablo.zaman);
-            setSaat(
-              `${String(zDt.getHours()).padStart(2, "0")}:${String(zDt.getMinutes()).padStart(2, "0")}`
-            );
-            setRows(tablo.satirlar || []);
-
-            const initialInputs: Record<string, string> = {};
-            (tablo.satirlar || []).forEach((r, idx) => {
-              EDITABLE_COLS.forEach((col) => {
-                const num = r[col];
-                initialInputs[getCellKey(idx, col)] =
-                  num !== null && num !== undefined && !isNaN(num) && num !== 0 ? num.toFixed(6) : "";
-              });
-            });
-            setRawInputs(initialInputs);
-            setStatusText(tablo.id ? `Günün Kapanışı (ID: ${tablo.id})` : "Kapanış Henüz Açılmadı");
-          }
         } else {
-          // C- Saklanan Fiyat Listesi: TUR = 2 (Arşiv / Geçmiş Günler)
+          // B- Saklanan Fiyat Listesi: TUR = 2
+          // "saklanan fiyatlarda bugünkü son kur gelir"
+          const todayStr = getCurrentDateStr();
           const datesList = await KurService.getStoredDates(2);
           setStoredDates(datesList);
 
           let targetId = params?.id;
           let targetTarih = params?.tarih;
 
-          if (!targetId && !targetTarih && datesList.length > 0) {
-            const latest = datesList[datesList.length - 1];
-            targetId = latest.id;
-            targetTarih = latest.tarih;
-            setSelectedDateIdx(datesList.length - 1);
+          // İlk açılışta veya parametre belirtilmediğinde: bugünkü son kur gelir
+          if (!targetId && !targetTarih) {
+            const todayItem = datesList.find((d) => d.tarih === todayStr);
+            if (todayItem) {
+              targetId = todayItem.id;
+              targetTarih = todayItem.tarih;
+              const idx = datesList.findIndex((d) => d.id === targetId);
+              setSelectedDateIdx(idx >= 0 ? idx : datesList.length - 1);
+            } else if (datesList.length > 0) {
+              // Bugüne ait özel kapanış yoksa arşivdeki en son güne git
+              const latest = datesList[datesList.length - 1];
+              targetId = latest.id;
+              targetTarih = latest.tarih;
+              setSelectedDateIdx(datesList.length - 1);
+            } else {
+              targetTarih = todayStr;
+            }
           } else if (targetId) {
             const idx = datesList.findIndex((d) => d.id === targetId);
             setSelectedDateIdx(idx >= 0 ? idx : -1);
           }
 
-          const tablo = await KurService.getKurTablosu({
+          let tablo = await KurService.getKurTablosu({
             tur: 2,
             tarih: targetTarih,
             id: targetId,
           });
+
+          // Eğer bugünkü arşiv tablosu henüz açılmamışsa veya boşsa, bugünkü son kuru canlı gişe kurundan (TUR=0) getir
+          if (
+            targetTarih === todayStr &&
+            (!tablo || !tablo.id || !tablo.satirlar || tablo.satirlar.every((s) => !s.dovizAlis && !s.dovizSatis))
+          ) {
+            const anlikTablo = await KurService.getKurTablosu({ tur: 0 });
+            if (anlikTablo && anlikTablo.satirlar && anlikTablo.satirlar.length > 0) {
+              tablo = {
+                ...anlikTablo,
+                id: 0,
+                tur: 2,
+                tarih: todayStr,
+                zaman: anlikTablo.zaman || new Date().toISOString(),
+              };
+            }
+          }
 
           if (tablo) {
             setTabloId(tablo.id);
@@ -253,10 +276,11 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             setSaat(
               `${String(zDt.getHours()).padStart(2, "0")}:${String(zDt.getMinutes()).padStart(2, "0")}`
             );
-            setRows(tablo.satirlar || []);
+            const filteredRows = filterOutTl(tablo.satirlar);
+            setRows(filteredRows);
 
             const initialInputs: Record<string, string> = {};
-            (tablo.satirlar || []).forEach((r, idx) => {
+            filteredRows.forEach((r, idx) => {
               EDITABLE_COLS.forEach((col) => {
                 const num = r[col];
                 initialInputs[getCellKey(idx, col)] =
@@ -264,7 +288,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               });
             });
             setRawInputs(initialInputs);
-            setStatusText(tablo.id ? `Arşiv Kaydı (ID: ${tablo.id})` : "Kayıt Seçiniz");
+            setStatusText(tablo.id ? `Saklanan Kayıt (ID: ${tablo.id})` : "Bugünkü Son Kur");
           }
         }
       } catch (err: any) {
@@ -340,6 +364,39 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     setStatusText("Düzenleniyor...");
   };
 
+  // Helper to focus and select cell
+  const focusCell = (rIdx: number, targetCol: EditableCol) => {
+    const key = getCellKey(rIdx, targetCol);
+    const target = inputRefs.current[key];
+    if (target) {
+      target.focus();
+      target.select();
+      setActiveCell({ row: rIdx, col: targetCol });
+    }
+  };
+
+  // Sağa / ileriye git (Döviz Alış -> Döviz Satış -> Efektif Alış -> Efektif Satış -> Parite -> Sonraki satır Döviz Alış)
+  const moveToNextCell = (rIdx: number, cIdx: number) => {
+    if (cIdx < EDITABLE_COLS.length - 1) {
+      focusCell(rIdx, EDITABLE_COLS[cIdx + 1]);
+    } else if (rIdx < rows.length - 1) {
+      // En sona gelince entera basınca alt satırdaki Döviz Alış'a in
+      focusCell(rIdx + 1, "dovizAlis");
+    } else {
+      // En son satırın Parite hücresindeyse ilk satırın Döviz Alış'ına dön
+      focusCell(0, "dovizAlis");
+    }
+  };
+
+  // Sola / geriye git
+  const moveToPrevCell = (rIdx: number, cIdx: number) => {
+    if (cIdx > 0) {
+      focusCell(rIdx, EDITABLE_COLS[cIdx - 1]);
+    } else if (rIdx > 0) {
+      focusCell(rIdx - 1, "parite");
+    }
+  };
+
   // Keyboard Navigation inside the Data Grid
   const handleCellKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
@@ -350,49 +407,70 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
     if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
-
       if (e.shiftKey) {
-        // Move backward
-        if (colIndex > 0) {
-          const prevCol = EDITABLE_COLS[colIndex - 1];
-          const prevKey = getCellKey(rowIndex, prevCol);
-          inputRefs.current[prevKey]?.focus();
-          inputRefs.current[prevKey]?.select();
-        } else if (rowIndex > 0) {
-          const prevCol = EDITABLE_COLS[EDITABLE_COLS.length - 1];
-          const prevKey = getCellKey(rowIndex - 1, prevCol);
-          inputRefs.current[prevKey]?.focus();
-          inputRefs.current[prevKey]?.select();
-        }
+        moveToPrevCell(rowIndex, colIndex);
       } else {
-        // Move forward
-        if (colIndex < EDITABLE_COLS.length - 1) {
-          const nextCol = EDITABLE_COLS[colIndex + 1];
-          const nextKey = getCellKey(rowIndex, nextCol);
-          inputRefs.current[nextKey]?.focus();
-          inputRefs.current[nextKey]?.select();
-        } else if (rowIndex < rows.length - 1) {
-          // Son sütundan çıkıldığında: Eğer dovizAlis doluysa oraya, sadece efektif kullanılıyorsa efektifAlis'e zıpla
-          const nextStartCol = rows[rowIndex].dovizAlis ? "dovizAlis" : "efektifAlis";
-          const nextKey = getCellKey(rowIndex + 1, nextStartCol);
-          inputRefs.current[nextKey]?.focus();
-          inputRefs.current[nextKey]?.select();
-        }
+        moveToNextCell(rowIndex, colIndex);
       }
     } else if (e.key === "ArrowDown") {
+      e.preventDefault();
       if (rowIndex < rows.length - 1) {
-        e.preventDefault();
-        const nextKey = getCellKey(rowIndex + 1, col);
-        inputRefs.current[nextKey]?.focus();
-        inputRefs.current[nextKey]?.select();
+        focusCell(rowIndex + 1, col);
       }
     } else if (e.key === "ArrowUp") {
+      e.preventDefault();
       if (rowIndex > 0) {
-        e.preventDefault();
-        const prevKey = getCellKey(rowIndex - 1, col);
-        inputRefs.current[prevKey]?.focus();
-        inputRefs.current[prevKey]?.select();
+        focusCell(rowIndex - 1, col);
       }
+    } else if (e.key === "ArrowRight") {
+      // "ilk sağa basınca yazı varsa sonuna birdaha basınca sağdaki ilgili gridie kayacak şekilde olacak."
+      const input = e.currentTarget;
+      const valLength = input.value.length;
+      const start = input.selectionStart ?? 0;
+      const end = input.selectionEnd ?? 0;
+
+      // Hücre boşsa doğrudan sağdaki hücreye geç
+      if (valLength === 0) {
+        e.preventDefault();
+        moveToNextCell(rowIndex, colIndex);
+        return;
+      }
+
+      // Yazı var ama tümü seçiliyse veya imleç henüz sonda değilse:
+      // İlk sağa basınca imleci yazının sonuna getir
+      if (start !== valLength || end !== valLength) {
+        e.preventDefault();
+        input.setSelectionRange(valLength, valLength);
+        return;
+      }
+
+      // İmleç zaten yazının en sonundaysa: bir daha basılınca sağdaki hücreye geç
+      e.preventDefault();
+      moveToNextCell(rowIndex, colIndex);
+    } else if (e.key === "ArrowLeft") {
+      const input = e.currentTarget;
+      const valLength = input.value.length;
+      const start = input.selectionStart ?? 0;
+      const end = input.selectionEnd ?? 0;
+
+      // Hücre boşsa doğrudan soldaki hücreye geç
+      if (valLength === 0) {
+        e.preventDefault();
+        moveToPrevCell(rowIndex, colIndex);
+        return;
+      }
+
+      // Yazı var ama tümü seçiliyse veya imleç henüz en başta değilse:
+      // İlk sola basınca imleci yazının en başına getir
+      if (start !== 0 || end !== 0) {
+        e.preventDefault();
+        input.setSelectionRange(0, 0);
+        return;
+      }
+
+      // İmleç zaten yazının en başındaysa: bir daha basılınca soldaki hücreye geç
+      e.preventDefault();
+      moveToPrevCell(rowIndex, colIndex);
     }
   };
 
@@ -484,7 +562,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
       setTabloId(result.id);
       setKapanisKurTablosuId(result.kapanisKurTablosuId ?? null);
-      setRows(result.satirlar || []);
+      setRows(filterOutTl(result.satirlar));
       setLastSavedZaman(result.zaman);
       setIsDirty(false);
       setStatusText("Son kayıt");
@@ -519,7 +597,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     }
   };
 
-  // B- Ekranı: Günün Kapanışını Anlık Kurlardan Oluştur (TUR = 2, @KAYNAK_KUR_TABLOSU_ID = anlikTabloId)
+  // Kapanış Kur Tablosunu Anlık Kurlardan Oluştur / Sakla (TUR = 2, @KAYNAK_KUR_TABLOSU_ID = anlikTabloId)
   const handleCreateGunlukKapanisFromAnlik = async () => {
     try {
       setIsArchiving(true);
@@ -542,7 +620,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       });
 
       setTabloId(kapanisTablo.id);
-      setRows(kapanisTablo.satirlar || []);
+      setRows(filterOutTl(kapanisTablo.satirlar));
       setAlertSuccess(
         `Günün resmi kapanış kur tablosu anlık kurlardan başarıyla oluşturuldu! (ID: ${kapanisTablo.id})`
       );
@@ -967,38 +1045,13 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         </Alert>
       )}
 
-      {/* Screen B Notice: Günlük Kapanış Henüz Açılmadıysa Banner */}
-      {effectivePageType === "gunluk" && !tabloId && !isLoading && (
-        <Alert variant="warning" className="d-flex align-items-center justify-content-between py-2 px-3 mb-2 shadow-sm">
-          <div className="d-flex align-items-center gap-2">
-            <IconAlertCircle size={20} className="text-warning flex-shrink-0" />
-            <div>
-              <strong>Günün Kapanış Tablosu Henüz Oluşturulmadı.</strong>
-              <div className="small text-muted">
-                Gün sonu geldiğinde anlık gişe kurlarını tek tıkla resmi kapanış tablosuna aktarabilirsiniz.
-              </div>
-            </div>
-          </div>
-          <Button
-            variant="warning"
-            size="sm"
-            className="fw-semibold text-dark shadow-xs"
-            onClick={handleCreateGunlukKapanisFromAnlik}
-            disabled={isArchiving}
-          >
-            {isArchiving ? <Spinner size="sm" /> : <IconCopy size={16} className="me-1" />}
-            Anlık Kurlardan Günün Kapanışını Oluştur
-          </Button>
-        </Alert>
-      )}
-
-      {/* Screen C Action Buttons: Arşivden Geri Yükle & Başka Güne Kopyala */}
+      {/* Saklanan Fiyat Listesi Eylemleri: Anlık Listeye Aktar & Başka Güne Kopyala */}
       {effectivePageType === "saklanan" && (
         <div className="d-flex align-items-center justify-content-between bg-white border p-2 rounded mb-2 shadow-2xs gap-2">
           <div className="d-flex align-items-center gap-2">
             <IconArchive size={18} className="text-primary" />
             <span className="small text-secondary fw-semibold">
-              Arşiv Kaydı: {tarih} {saat} (Tablo ID: {tabloId || "-"})
+              Saklanan Kur Kaydı: {tarih} {saat} {tabloId ? `(Kayıt No: ${tabloId})` : "(Bugünkü Son Kur)"}
             </span>
           </div>
 

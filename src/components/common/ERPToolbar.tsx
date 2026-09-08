@@ -67,8 +67,7 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/ayarlar/firma-tanimlari": { title: "Firma Tanımları", icon: <IconBuilding size={20} /> },
   "/ayarlar/kullanici-tanimlari": { title: "Kullanıcı Tanımları", icon: <IconUser size={20} /> },
   "/kur/anlik-fiyat-listesi": { title: "A- Anlık Fiyat Listesi", icon: <IconChartLine size={20} /> },
-  "/kur/gunluk-fiyat-listesi": { title: "B- Günlük Fiyat Listesi", icon: <IconChartLine size={20} /> },
-  "/kur/saklanan-fiyat-listesi": { title: "C- Saklanan Fiyat Listesi", icon: <IconChartLine size={20} /> },
+  "/kur/saklanan-fiyat-listesi": { title: "B- Saklanan Fiyat Listesi", icon: <IconChartLine size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({

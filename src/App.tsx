@@ -120,7 +120,7 @@ export default function App() {
             <Route path="cari/hareket-listesi" element={<CariHareketListPage />} />
             <Route path="cari/hareketler" element={<CariHareketListPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
-            <Route path="kur/gunluk-fiyat-listesi" element={<KurFiyatListesiPage pageType="gunluk" />} />
+            <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
             <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
             <Route path="masak" element={<MasakListsPage />} />
