@@ -2,14 +2,29 @@ import { z } from "zod";
 import { UserRole } from "../constants/roles.js";
 
 export const loginSchema = z.object({
-  body: z.object({
-    username: z.string().min(1, "Kullanıcı adı girilmelidir"),
-    password: z.string().min(1, "Şifre girilmelidir"),
-    dbServer: z.string().min(1, "Lütfen sunucu adını seçiniz veya giriniz"),
-    dbName: z.string().min(1, "Lütfen veritabanı adını seçiniz veya giriniz"),
-    dbUser: z.string().optional(),
-    dbPassword: z.string().optional(),
-  }),
+  body: z
+    .object({
+      username: z.string().min(1, "Kullanıcı adı girilmelidir"),
+      password: z.string().min(1, "Şifre girilmelidir"),
+      dbServer: z.string().optional(),
+      server: z.string().optional(),
+      serverName: z.string().optional(),
+      host: z.string().optional(),
+      dbName: z.string().optional(),
+      database: z.string().optional(),
+      dbUser: z.string().optional(),
+      user: z.string().optional(),
+      dbPassword: z.string().optional(),
+      passwordDb: z.string().optional(),
+    })
+    .refine((data) => !!(data.dbServer || data.server || data.serverName || data.host), {
+      message: "Lütfen sunucu adını seçiniz veya giriniz",
+      path: ["dbServer"],
+    })
+    .refine((data) => !!(data.dbName || data.database), {
+      message: "Lütfen veritabanı adını seçiniz veya giriniz",
+      path: ["dbName"],
+    }),
 });
 
 

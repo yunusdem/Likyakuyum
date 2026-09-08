@@ -1,7 +1,7 @@
 import { ApiError } from "../utils/ApiError.js";
 import { verifyAccessToken } from "../utils/token.utils.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
-import { setDbCredentials } from "../config/mssql.config.js";
+import { setDbCredentials, normalizeServerName } from "../config/mssql.config.js";
 /**
  * Middleware to authenticate requests via JWT Bearer token in Authorization header or cookie.
  */
@@ -34,12 +34,16 @@ export const authenticate = (req, res, next) => {
         req.user = decoded;
         req.accessToken = token;
         // Header ve token üzerinden veritabanı bilgilerini havuza kaydet
-        const srv = decoded.dbServer || req.headers["x-db-server"] || "localhost";
+        const rawSrv = decoded.dbServer || req.headers["x-db-server"] || "localhost";
+        const srv = normalizeServerName(rawSrv);
         const db = decoded.dbName || req.headers["x-db-name"] || "R2016_dvz";
         const u = decoded.dbUser || req.headers["x-db-user"] || "SA";
         const p = decoded.dbPassword !== undefined ? decoded.dbPassword : req.headers["x-db-password"];
         if (srv && db && u) {
             setDbCredentials(srv, db, u, p);
+            if (rawSrv !== srv) {
+                setDbCredentials(rawSrv, db, u, p);
+            }
         }
         next();
     }

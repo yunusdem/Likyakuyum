@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "agent": "node local-agent/server.js"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.8.2",

@@ -1,6 +1,25 @@
 import dotenv from "dotenv";
 import { z } from "zod";
-// Load environment variables from .env file
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Multi-path dotenv loader for Windows Server / PM2 resilience
+const potentialEnvPaths = [
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(process.cwd(), "Backend", ".env"),
+    path.resolve(__dirname, "../../.env"),
+    path.resolve(__dirname, "../.env"),
+    path.resolve(__dirname, ".env"),
+];
+for (const envPath of potentialEnvPaths) {
+    if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath });
+        break;
+    }
+}
+// Fallback in case none matched explicitly
 dotenv.config();
 const envSchema = z.object({
     PORT: z
@@ -11,10 +30,16 @@ const envSchema = z.object({
     API_PREFIX: z.string().default("/api/v1"),
     CORS_ORIGIN: z
         .string()
-        .default("http://localhost:3000,http://localhost:5173")
+        .default("http://localhost:3000,http://localhost:5173,http://likyakuyum.com,https://likyakuyum.com,*")
         .transform((val) => val.split(",").map((s) => s.trim())),
-    JWT_ACCESS_SECRET: z.string().min(16, "JWT_ACCESS_SECRET must be at least 16 characters long"),
-    JWT_REFRESH_SECRET: z.string().min(16, "JWT_REFRESH_SECRET must be at least 16 characters long"),
+    JWT_ACCESS_SECRET: z
+        .string()
+        .min(16, "JWT_ACCESS_SECRET must be at least 16 characters long")
+        .default("kuyumcu_erp_super_secret_access_jwt_key_2026_!@#$"),
+    JWT_REFRESH_SECRET: z
+        .string()
+        .min(16, "JWT_REFRESH_SECRET must be at least 16 characters long")
+        .default("kuyumcu_erp_super_secret_refresh_jwt_key_2026_!@#$"),
     JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
     JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
     RATE_LIMIT_WINDOW_MS: z
@@ -47,7 +72,13 @@ const envSchema = z.object({
 const parseEnv = () => {
     const result = envSchema.safeParse(process.env);
     if (!result.success) {
-        console.error("❌ Geçersiz ortam değişkenleri (Invalid Environment Variables):");
+        console.warn("⚠️ Bazı ortam değişkenleri okunamadı, güvenli varsayılanlar uygulanıyor:", result.error.format());
+        // Fallback: parse with empty object to use all defaults
+        const fallbackResult = envSchema.safeParse({});
+        if (fallbackResult.success) {
+            return fallbackResult.data;
+        }
+        console.error("❌ Kritik hata: Geçersiz ortam değişkenleri:");
         console.error(JSON.stringify(result.error.format(), null, 2));
         process.exit(1);
     }

@@ -7,26 +7,42 @@ import { AuthResponseData, TokenPair } from "../types/auth.types.js";
 import { UserResponseDto } from "../types/user.types.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { setDbCredentials } from "../config/mssql.config.js";
+import { env } from "../config/env.config.js";
 
 export class AuthService {
   public static async login(input: LoginInput): Promise<AuthResponseData> {
-    const cleanServer = input.dbServer?.trim();
-    const cleanDb = input.dbName?.trim();
-    const cleanDbUser = input.dbUser?.trim() || "SA";
-    const cleanDbPassword = input.dbPassword !== undefined && input.dbPassword !== null ? input.dbPassword : "";
+    const rawServer = (input.dbServer || (input as any).server || (input as any).serverName || (input as any).host || "").trim();
+    const rawDb = (input.dbName || (input as any).database || "").trim();
+    const rawDbUser = (input.dbUser || (input as any).user || "").trim() || "SA";
+    const rawDbPassword =
+      input.dbPassword !== undefined && input.dbPassword !== null
+        ? input.dbPassword
+        : ((input as any).passwordDb !== undefined && (input as any).passwordDb !== null ? (input as any).passwordDb : "");
 
-    if (!cleanServer) {
+    if (!rawServer) {
       throw ApiError.badRequest("Lütfen sunucu adını seçiniz veya giriniz.");
     }
-    if (!cleanDb) {
+    if (!rawDb) {
       throw ApiError.badRequest("Lütfen veritabanı adını seçiniz veya giriniz.");
     }
-    if (!cleanDbUser) {
+    if (!rawDbUser) {
       throw ApiError.badRequest("Lütfen veritabanı kullanıcı adını giriniz.");
     }
 
-    // Dinamik olarak MSSQL havuzuna kimlik bilgilerini kaydet
+    // Windows Server ortamında Node.js'in SQL Server'a bağlanabilmesi için localhost -> 127.0.0.1 fallback
+    const cleanServer = rawServer.toLowerCase() === "localhost" ? "127.0.0.1" : rawServer;
+    const cleanDb = rawDb;
+    const cleanDbUser = rawDbUser;
+    const cleanDbPassword =
+      rawDbPassword !== null && rawDbPassword !== undefined && String(rawDbPassword).trim() !== ""
+        ? rawDbPassword
+        : (env.DB_PASSWORD || "");
+
+    // Dinamik olarak MSSQL havuzuna kullanıcının login ekranından girdiği bilgileri kaydet
     setDbCredentials(cleanServer, cleanDb, cleanDbUser, cleanDbPassword);
+    if (rawServer !== cleanServer) {
+      setDbCredentials(rawServer, cleanDb, cleanDbUser, cleanDbPassword);
+    }
 
     const dbContext = {
       dbServer: cleanServer,

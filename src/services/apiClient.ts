@@ -18,16 +18,66 @@ export interface ApiResponse<T = any> {
   meta?: any;
 }
 
-class ApiClient {
-  private baseUrl: string;
+export type ConnectionMode = "cloud" | "local";
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
+export const LOCAL_AGENT_URL = "http://127.0.0.1:25050/api/v1";
+
+/**
+ * Returns current active connection mode (cloud or local agent)
+ */
+export const getConnectionMode = (): ConnectionMode => {
+  const saved = localStorage.getItem("kuyumcu_erp_connection_mode");
+  if (saved === "cloud" || saved === "local") return saved;
+  // Varsayılan olarak eğer sunucu adı 'localhost' ise yerel agent modu
+  const lastServer = localStorage.getItem("kuyumcu_erp_last_server");
+  if (lastServer === "localhost" || lastServer === "127.0.0.1") {
+    return "local";
   }
+  return "cloud";
+};
 
+/**
+ * Sets active connection mode and notifies listeners
+ */
+export const setConnectionMode = (mode: ConnectionMode): void => {
+  localStorage.setItem("kuyumcu_erp_connection_mode", mode);
+  window.dispatchEvent(new CustomEvent("kuyumcu_connection_mode_changed", { detail: { mode } }));
+};
+
+/**
+ * Returns active effective API Base URL based on selected connection mode
+ */
+export const getEffectiveApiUrl = (): string => {
+  const mode = getConnectionMode();
+  if (mode === "local") {
+    return LOCAL_AGENT_URL;
+  }
+  return envConfig.apiUrl || "/api/v1";
+};
+
+/**
+ * Ping local agent to verify if it is running on the client machine
+ */
+export const checkLocalAgentStatus = async (timeoutMs = 1500): Promise<boolean> => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch("http://127.0.0.1:25050/api/v1/agent-status", {
+      method: "GET",
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+};
+
+class ApiClient {
   private buildUrl(path: string, params?: Record<string, any>): string {
     const cleanPath = path.startsWith("/") ? path : `/${path}`;
-    let url = `${this.baseUrl}${cleanPath}`;
+    const activeBaseUrl = getEffectiveApiUrl();
+    let url = `${activeBaseUrl}${cleanPath}`;
     if (params) {
       const searchParams = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
@@ -102,7 +152,13 @@ class ApiClient {
         throw new Error(`İstek zaman aşımına uğradı (${timeoutMs}ms). Sunucu yanıt vermedi.`);
       }
       if (error.message === "Failed to fetch" || error.name === "TypeError") {
-        throw new Error("Backend API sunucusuna ulaşılamadı (http://localhost:5000). Sunucunun çalıştığından emin olunuz.");
+        const mode = getConnectionMode();
+        if (mode === "local") {
+          throw new Error(
+            "⚠️ Yerel SQL Köprüsü (Local Agent) çalışmıyor! Lütfen bilgisayarınızdaki 'start-agent.bat' dosyasını çalıştırarak yerel servisi başlatınız (Port: 25050)."
+          );
+        }
+        throw new Error("Backend API sunucusuna ulaşılamadı. Sunucunun çalıştığından emin olunuz.");
       }
 
       // If it is an authentication/login error or invalid credentials, keep the console clean without stack trace
@@ -142,4 +198,4 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(envConfig.apiUrl);
+export const apiClient = new ApiClient();

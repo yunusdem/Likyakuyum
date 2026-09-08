@@ -16,6 +16,7 @@ import CariCardListPage from "./pages/cari/CariCardListPage";
 import CariHareketPage from "./pages/cari/CariHareketPage";
 import CariHareketListPage from "./pages/cari/CariHareketListPage";
 import KurFiyatListesiPage from "./pages/kur/KurFiyatListesiPage";
+import MasakListsPage from "./pages/settings/MasakListsPage";
 import LoginPage from "./pages/auth/LoginPage";
 
 
@@ -121,6 +122,8 @@ export default function App() {
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<KurFiyatListesiPage pageType="gunluk" />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
+            <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
+            <Route path="masak" element={<MasakListsPage />} />
             <Route path=":section/*" element={<ModulePage />} />
 
 

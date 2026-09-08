@@ -178,8 +178,8 @@ html.expanded #miniSidebar {
     display: none;
   }
   .nav-link {
-    white-space: nowrap;
-    overflow: hidden;
+    white-space: normal;
+    overflow: visible;
     padding: 10px 12px;
     color: var(--#{$prefix}gray-600);
     font-weight: 500;
@@ -224,8 +224,8 @@ html.expanded #miniSidebar {
       }
       .dropdown-menu {
         .nav-link {
-          white-space: nowrap;
-          overflow: hidden;
+          white-space: normal;
+          overflow: visible;
           padding: 0.5rem 1rem;
           color: var(--#{$prefix}gray-600);
           font-weight: 500;

@@ -3,6 +3,19 @@ import { env } from "./env.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 /**
+ * Normalizes database server address.
+ * Converts 'localhost' to '127.0.0.1' to prevent IPv6 / DNS resolution issues on Windows Server.
+ */
+export const normalizeServerName = (server) => {
+    if (!server)
+        return "127.0.0.1";
+    const trimmed = server.trim();
+    if (trimmed.toLowerCase() === "localhost") {
+        return "127.0.0.1";
+    }
+    return trimmed;
+};
+/**
  * In-memory registry of server+db credentials learned dynamically from user logins / requests
  */
 export const dbCredentialsMap = new Map();
@@ -10,39 +23,46 @@ export const dbCredentialsMap = new Map();
  * Register credentials dynamically for a specific server and database
  */
 export const setDbCredentials = (server, database, user, password) => {
-    const s = (server && server.trim()) || env.DB_SERVER || "localhost";
+    const s = normalizeServerName(server || env.DB_SERVER);
     const d = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
     const key = `${s.toLowerCase()}:${d.toLowerCase()}`;
     if (user && user.trim()) {
-        dbCredentialsMap.set(key, {
+        const credPassword = password !== undefined && password !== null && String(password).trim() !== ""
+            ? password
+            : (env.DB_PASSWORD || "");
+        const creds = {
             user: user.trim(),
-            password: password !== undefined ? password : "",
-        });
+            password: credPassword,
+        };
+        dbCredentialsMap.set(key, creds);
+        // Register both 127.0.0.1 and localhost keys for resilience
+        dbCredentialsMap.set(`localhost:${d.toLowerCase()}`, creds);
+        dbCredentialsMap.set(`127.0.0.1:${d.toLowerCase()}`, creds);
     }
 };
 /**
  * Base MSSQL Configuration Object Template
  */
 export const createMssqlConfig = (server, database, user, password) => {
-    const targetServer = (server && server.trim()) || env.DB_SERVER || "localhost";
+    const targetServer = normalizeServerName(server || env.DB_SERVER);
     const targetDb = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
     const key = `${targetServer.toLowerCase()}:${targetDb.toLowerCase()}`;
-    const storedCreds = dbCredentialsMap.get(key);
+    const storedCreds = dbCredentialsMap.get(key) || dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
     const finalUser = (user && user.trim()) || storedCreds?.user || env.DB_USER || "SA";
-    const finalPassword = password !== undefined && password !== null
+    const finalPassword = password !== undefined && password !== null && String(password).trim() !== ""
         ? password
-        : (storedCreds?.password !== undefined
+        : (storedCreds?.password
             ? storedCreds.password
             : (env.DB_PASSWORD || ""));
     return {
         server: targetServer,
-        port: env.DB_PORT || 1433,
+        port: Number(env.DB_PORT) || 1433,
         database: targetDb,
         user: finalUser,
         password: finalPassword,
         options: {
-            encrypt: env.DB_ENCRYPT,
-            trustServerCertificate: env.DB_TRUST_SERVER_CERTIFICATE,
+            encrypt: false,
+            trustServerCertificate: true,
             enableArithAbort: true,
         },
         pool: {
@@ -50,7 +70,7 @@ export const createMssqlConfig = (server, database, user, password) => {
             min: 2,
             idleTimeoutMillis: 30000,
         },
-        connectionTimeout: 8000,
+        connectionTimeout: 10000,
         requestTimeout: 30000,
     };
 };
@@ -63,7 +83,7 @@ const poolCache = new Map();
  * Generates cache key for given server and database
  */
 export const getPoolKey = (server, database) => {
-    const s = (server && server.trim()) || env.DB_SERVER || "localhost";
+    const s = normalizeServerName(server || env.DB_SERVER);
     const d = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
     return `${s.toLowerCase()}:${d.toLowerCase()}`;
 };
@@ -71,76 +91,89 @@ export const getPoolKey = (server, database) => {
  * Gets or initializes a MSSQL connection pool dynamically for the specified server, database, and credentials.
  */
 export const getDbPool = async (server, database, user, password) => {
-    const targetServer = (server && server.trim()) || env.DB_SERVER || "localhost";
+    const targetServer = normalizeServerName(server || env.DB_SERVER);
     const targetDb = (database && database.trim()) || env.DB_NAME || "R2016_dvz";
     const baseKey = getPoolKey(targetServer, targetDb);
     if (user && user.trim()) {
         setDbCredentials(targetServer, targetDb, user, password);
     }
-    const storedCreds = dbCredentialsMap.get(baseKey);
+    const storedCreds = dbCredentialsMap.get(baseKey) || dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
     const finalUser = (user && user.trim()) || storedCreds?.user || env.DB_USER || "SA";
-    const finalPassword = password !== undefined && password !== null
+    const finalPassword = password !== undefined && password !== null && String(password).trim() !== ""
         ? password
-        : (storedCreds?.password !== undefined
+        : (storedCreds?.password
             ? storedCreds.password
             : (env.DB_PASSWORD || ""));
     const fullCacheKey = `${baseKey}:${finalUser}:${finalPassword}`;
     if (!poolCache.has(fullCacheKey)) {
-        const config = createMssqlConfig(targetServer, targetDb, finalUser, finalPassword);
-        const poolPromise = new sql.ConnectionPool(config)
-            .connect()
-            .then(async (pool) => {
-            logger.info(`✅ MSSQL Havuzu Aktif: [${targetServer} -> ${targetDb} (User: ${finalUser})]`);
+        const poolPromise = (async () => {
+            let activeConfig = createMssqlConfig(targetServer, targetDb, finalUser, finalPassword);
+            let pool;
             try {
-                await pool.request().query(`
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TIODVZ_PARA' AND is_disabled = 0)
-              DISABLE TRIGGER [TIODVZ_PARA] ON [dbo].[TODVZ_PARA];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TUODVZ_PARA' AND is_disabled = 0)
-              DISABLE TRIGGER [TUODVZ_PARA] ON [dbo].[TODVZ_PARA];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_PARA' AND is_disabled = 0)
-              DISABLE TRIGGER [TDODVZ_PARA] ON [dbo].[TODVZ_PARA];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TIODVZ_YAZICI' AND is_disabled = 0)
-              DISABLE TRIGGER [TIODVZ_YAZICI] ON [dbo].[TODVZ_YAZICI];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TUODVZ_YAZICI' AND is_disabled = 0)
-              DISABLE TRIGGER [TUODVZ_YAZICI] ON [dbo].[TODVZ_YAZICI];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_YAZICI' AND is_disabled = 0)
-              DISABLE TRIGGER [TDODVZ_YAZICI] ON [dbo].[TODVZ_YAZICI];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TIODVZ_VEZNE' AND is_disabled = 0)
-              DISABLE TRIGGER [TIODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TUODVZ_VEZNE' AND is_disabled = 0)
-              DISABLE TRIGGER [TUODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
-            IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_VEZNE' AND is_disabled = 0)
-              DISABLE TRIGGER [TDODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
-          `);
+                pool = await new sql.ConnectionPool(activeConfig).connect();
             }
             catch (err) {
-                // Ignore if table or trigger does not exist in target database
+                // Ağ / DNS / Soket hatası durumunda 127.0.0.1 <-> localhost fallback dene
+                const isNetworkErr = err?.code === "ESOCKET" ||
+                    err?.code === "ETIMEOUT" ||
+                    err?.code === "ECONNREFUSED" ||
+                    err?.message?.includes("Failed to connect") ||
+                    err?.message?.includes("getaddrinfo");
+                if (isNetworkErr) {
+                    const fallbackHost = targetServer === "127.0.0.1" ? "localhost" : "127.0.0.1";
+                    try {
+                        activeConfig = { ...activeConfig, server: fallbackHost };
+                        pool = await new sql.ConnectionPool(activeConfig).connect();
+                    }
+                    catch (fallbackErr) {
+                        logger.warn("⚠️ MSSQL veritabanı çevrimdışı veya bağlanılamadı. Lütfen SQL Server servisinin çalıştığından emin olun.");
+                        poolCache.delete(fullCacheKey);
+                        throw ApiError.badRequest(`Belirtilen sunucu (${server || targetServer}) veya veritabanına (${targetDb}) ulaşılamadı. Lütfen SQL Server servisinin ve TCP/IP portunun (1433) açık olduğundan emin olunuz.`);
+                    }
+                }
+                else {
+                    logger.warn("⚠️ MSSQL veritabanı çevrimdışı veya bağlanılamadı. Lütfen SQL Server servisinin çalıştığından emin olun.");
+                    poolCache.delete(fullCacheKey);
+                    if (err?.message?.includes("Login failed for user")) {
+                        throw ApiError.badRequest(`Veritabanı bağlantısı başarılı ancak veritabanı kullanıcısı doğrulanamadı: '${finalUser}' kullanıcısı için şifre hatalı. Lütfen 'Diğer Alanlar'dan SQL kullanıcı adı ve şifrenizi kontrol ediniz.`);
+                    }
+                    throw ApiError.badRequest(`Belirtilen sunucu (${server || targetServer}) veya veritabanına (${targetDb}) bağlanılamadı. Hata: ${err?.message || "Bilinmeyen SQL hatası"}`);
+                }
+            }
+            try {
+                await pool.request().query(`
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TIODVZ_PARA' AND is_disabled = 0)
+            DISABLE TRIGGER [TIODVZ_PARA] ON [dbo].[TODVZ_PARA];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TUODVZ_PARA' AND is_disabled = 0)
+            DISABLE TRIGGER [TUODVZ_PARA] ON [dbo].[TODVZ_PARA];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_PARA' AND is_disabled = 0)
+            DISABLE TRIGGER [TDODVZ_PARA] ON [dbo].[TODVZ_PARA];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TIODVZ_YAZICI' AND is_disabled = 0)
+            DISABLE TRIGGER [TIODVZ_YAZICI] ON [dbo].[TODVZ_YAZICI];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TUODVZ_YAZICI' AND is_disabled = 0)
+            DISABLE TRIGGER [TUODVZ_YAZICI] ON [dbo].[TODVZ_YAZICI];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_YAZICI' AND is_disabled = 0)
+            DISABLE TRIGGER [TDODVZ_YAZICI] ON [dbo].[TODVZ_YAZICI];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TIODVZ_VEZNE' AND is_disabled = 0)
+            DISABLE TRIGGER [TIODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TUODVZ_VEZNE' AND is_disabled = 0)
+            DISABLE TRIGGER [TUODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_VEZNE' AND is_disabled = 0)
+            DISABLE TRIGGER [TDODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
+        `);
+            }
+            catch (triggerErr) {
+                // Ignore trigger errors if table/trigger doesn't exist
             }
             return pool;
-        })
-            .catch((err) => {
-            logger.warn(`[Giriş Hatası] Yanlış giriş: [${targetServer} -> ${targetDb}] veritabanına bağlanılamadı. Hata: ${err?.message || err}`);
-            poolCache.delete(fullCacheKey);
-            throw ApiError.badRequest(`Belirtilen sunucu (${targetServer}) veya veritabanına (${targetDb}) bağlanılamadı. Lütfen sunucu adı, veritabanı adı, kullanıcı adı veya şifreyi kontrol ediniz.`);
-        });
+        })();
         poolCache.set(fullCacheKey, poolPromise);
     }
     return poolCache.get(fullCacheKey);
 };
 /**
- * Checks database connectivity on startup
+ * Checks database connectivity on startup (Silent)
  */
 export const checkDbConnection = async () => {
-    try {
-        if (!env.DB_PASSWORD && dbCredentialsMap.size === 0) {
-            logger.info("ℹ️ MSSQL bağlantı bilgileri kullanıcı girişinde dinamik olarak alınacaktır.");
-            return false;
-        }
-        const pool = await getDbPool();
-        const result = await pool.request().query("SELECT 1 as isAlive");
-        return result.recordset.length > 0;
-    }
-    catch (error) {
-        return false;
-    }
+    return false;
 };

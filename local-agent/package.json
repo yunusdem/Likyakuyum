@@ -1,0 +1,17 @@
+{
+  "name": "likya-local-agent",
+  "version": "1.0.0",
+  "description": "Likya Kuyumcu ERP - Yerel SQL Köprüsü (Local Bridge Service)",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "likyakuyum",
+    "local-agent",
+    "sql-bridge"
+  ],
+  "author": "OFİS Bilgisayar",
+  "license": "ISC"
+}

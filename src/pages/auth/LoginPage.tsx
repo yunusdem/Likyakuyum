@@ -19,6 +19,13 @@ import {
 } from "@tabler/icons-react";
 import { useAuth } from "../../context/AuthContext";
 import { ComboboxInput } from "../../components/common/ComboboxInput";
+import {
+  getConnectionMode,
+  setConnectionMode,
+  checkLocalAgentStatus,
+  ConnectionMode,
+} from "../../services/apiClient";
+import { IconDeviceDesktop, IconCloud, IconRefresh } from "@tabler/icons-react";
 
 const PREDEFINED_SERVERS = ["localhost"];
 const PREDEFINED_DBS = ["R2016_dvz"];
@@ -42,21 +49,21 @@ export const LoginPage: React.FC = () => {
 
   const [dbServer, setDbServer] = useState<string>(() => {
     const saved = localStorage.getItem("kuyumcu_erp_last_server");
-    if (saved && saved !== "test") return saved;
+    if (saved && saved !== "test" && saved.trim()) return saved.trim();
     if (saved === "test") localStorage.removeItem("kuyumcu_erp_last_server");
-    return "";
+    return PREDEFINED_SERVERS[0] || "localhost";
   });
 
   const [dbName, setDbName] = useState<string>(() => {
     const saved = localStorage.getItem("kuyumcu_erp_last_db");
-    if (saved && saved !== "test") return saved;
+    if (saved && saved !== "test" && saved.trim()) return saved.trim();
     if (saved === "test") localStorage.removeItem("kuyumcu_erp_last_db");
-    return "";
+    return PREDEFINED_DBS[0] || "R2016_dvz";
   });
 
   // MSSQL Veritabanı Kullanıcı Adı ve Şifresi (DB_USER, DB_PASSWORD)
   const [dbUser, setDbUser] = useState<string>(() => {
-    return localStorage.getItem("kuyumcu_erp_db_user") || "";
+    return localStorage.getItem("kuyumcu_erp_db_user") || "SA";
   });
   const [dbPassword, setDbPassword] = useState<string>(() => {
     return localStorage.getItem("kuyumcu_erp_db_password") || "";
@@ -70,6 +77,34 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Çalışma Modu (Bulut Sunucu veya Yerel SQL Agent)
+  const [connectionMode, setConnectionModeState] = useState<ConnectionMode>(() => getConnectionMode());
+  const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
+  const [isCheckingAgent, setIsCheckingAgent] = useState<boolean>(false);
+
+  const verifyAgent = async () => {
+    setIsCheckingAgent(true);
+    const isUp = await checkLocalAgentStatus(1500);
+    setAgentOnline(isUp);
+    setIsCheckingAgent(false);
+  };
+
+  useEffect(() => {
+    if (connectionMode === "local") {
+      verifyAgent();
+    }
+  }, [connectionMode]);
+
+  const handleConnectionModeChange = (mode: ConnectionMode) => {
+    setConnectionModeState(mode);
+    setConnectionMode(mode);
+    if (mode === "local") {
+      setDbServer("localhost");
+      localStorage.setItem("kuyumcu_erp_last_server", "localhost");
+      verifyAgent();
+    }
+  };
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -128,6 +163,11 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setErrorMsg(null);
 
+    if (connectionMode === "local" && agentOnline === false) {
+      setErrorMsg("Yerel SQL Köprüsü (Local Agent) çalışmıyor! Lütfen bilgisayarınızda 'start-agent.bat' dosyasını çalıştırıp 'Yenile' butonuna tıklayınız.");
+      return;
+    }
+
     const cleanServer = dbServer.trim();
     if (!cleanServer) {
       setErrorMsg("Lütfen sunucu adını giriniz veya listeden seçiniz.");
@@ -181,16 +221,27 @@ export const LoginPage: React.FC = () => {
 
       navigate("/dashboard", { replace: true });
     } catch (err: any) {
-      // User-friendly error message without technical noise
-      const isAuthError =
-        err.message?.includes("Geçersiz") ||
-        err.message?.includes("şifre") ||
-        err.message?.includes("kullanıcı") ||
-        err.message?.includes("401");
+      const isDbAuthError =
+        err.message?.includes("veritabanı kullanıcısı") ||
+        err.message?.includes("Diğer Alanlar") ||
+        err.message?.includes("kullanıcısı için şifre hatalı");
 
-      const msg = isAuthError
+      if (isDbAuthError) {
+        setShowOtherFields(true);
+      }
+
+      const isAuthError =
+        !isDbAuthError &&
+        (err.message?.includes("Geçersiz") ||
+          err.message?.includes("şifre") ||
+          err.message?.includes("kullanıcı") ||
+          err.message?.includes("401"));
+
+      const msg = isDbAuthError
+        ? err.message
+        : isAuthError
         ? "Kullanıcı adı veya şifre hatalı. Lütfen bilgilerinizi kontrol ediniz."
-        : (err.message || "Giriş başarısız. Lütfen bilgilerinizi kontrol ediniz.");
+        : err.message || "Giriş başarısız. Lütfen bilgilerinizi kontrol ediniz.";
 
       setErrorMsg(msg);
     } finally {
@@ -397,9 +448,91 @@ export const LoginPage: React.FC = () => {
 
 
               {/* Form Title */}
-              <div className="text-center mb-4">
+              <div className="text-center mb-3">
                 <h3 className="fw-bold mb-1" style={{ color: "#784405" }}>Giriş Yap</h3>
               </div>
+
+              {/* Çalışma Modu Seçici (Hibrit Mimari: Yerel SQL veya Bulut) */}
+              <div
+                className="p-1 mb-3 rounded-3 d-flex align-items-center"
+                style={{ backgroundColor: "#f3ede2", border: "1px solid #e7dcce" }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-sm flex-fill py-1.5 px-2 border-0 rounded-2 fw-semibold d-flex align-items-center justify-content-center gap-1.5"
+                  style={{
+                    backgroundColor: connectionMode === "local" ? "#ffffff" : "transparent",
+                    color: connectionMode === "local" ? "#9e640b" : "#78716c",
+                    boxShadow: connectionMode === "local" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                    fontSize: "0.82rem",
+                    transition: "all 0.2s ease",
+                  }}
+                  onClick={() => handleConnectionModeChange("local")}
+                >
+                  <IconDeviceDesktop size={16} />
+                  <span>Yerel SQL (Local Agent)</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm flex-fill py-1.5 px-2 border-0 rounded-2 fw-semibold d-flex align-items-center justify-content-center gap-1.5"
+                  style={{
+                    backgroundColor: connectionMode === "cloud" ? "#ffffff" : "transparent",
+                    color: connectionMode === "cloud" ? "#9e640b" : "#78716c",
+                    boxShadow: connectionMode === "cloud" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                    fontSize: "0.82rem",
+                    transition: "all 0.2s ease",
+                  }}
+                  onClick={() => handleConnectionModeChange("cloud")}
+                >
+                  <IconCloud size={16} />
+                  <span>Bulut Sunucu Modu</span>
+                </button>
+              </div>
+
+              {/* Yerel SQL Modu Canlı Durum Bildirimi */}
+              {connectionMode === "local" && (
+                <div className="mb-3">
+                  {agentOnline === true && (
+                    <div
+                      className="d-flex align-items-center justify-content-between p-2 rounded-2"
+                      style={{ backgroundColor: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46", fontSize: "0.78rem" }}
+                    >
+                      <div className="d-flex align-items-center gap-2">
+                        <span className="rounded-circle bg-success" style={{ width: "8px", height: "8px" }} />
+                        <span className="fw-semibold">Yerel SQL Köprüsü Aktif (Port: 25050)</span>
+                      </div>
+                      <span className="text-muted" style={{ fontSize: "0.72rem" }}>Bilgisayarınızdaki SQL hazır</span>
+                    </div>
+                  )}
+
+                  {agentOnline === false && (
+                    <div
+                      className="d-flex align-items-center justify-content-between p-2.5 rounded-2"
+                      style={{ backgroundColor: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: "0.78rem" }}
+                    >
+                      <div className="d-flex align-items-center gap-2">
+                        <span className="rounded-circle bg-warning" style={{ width: "8px", height: "8px" }} />
+                        <div>
+                          <div className="fw-semibold">Yerel SQL Köprüsü Çalışmıyor!</div>
+                          <div className="text-muted" style={{ fontSize: "0.72rem" }}>
+                            Bilgisayarınızda <strong>start-agent.bat</strong> dosyasını çalıştırınız.
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-warning py-0.5 px-2 fw-semibold d-flex align-items-center gap-1"
+                        style={{ fontSize: "0.72rem" }}
+                        disabled={isCheckingAgent}
+                        onClick={verifyAgent}
+                      >
+                        <IconRefresh size={13} />
+                        <span>{isCheckingAgent ? "..." : "Yenile"}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Error Alert */}
               {errorMsg && (

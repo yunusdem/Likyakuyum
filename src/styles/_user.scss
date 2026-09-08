@@ -60,6 +60,12 @@
       align-items: center !important;
       transition: all 0.15s ease-in-out;
       border-radius: 6px;
+      white-space: normal !important;
+      word-break: break-word !important;
+      overflow-wrap: break-word !important;
+      overflow: visible !important;
+      line-height: 1.35 !important;
+      padding: 0.45rem 0.65rem !important;
 
       &.dropdown-toggle {
         display: flex !important;
@@ -71,6 +77,7 @@
           display: inline-flex !important;
           align-items: center !important;
           justify-content: center !important;
+          flex-shrink: 0 !important;
         }
       }
 
@@ -91,10 +98,13 @@
       }
 
       .text {
-        display: inline-flex !important;
-        align-items: center !important;
+        display: block !important;
         margin-left: 0 !important;
-        line-height: 1.2 !important;
+        line-height: 1.35 !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        flex: 1 1 auto !important;
       }
 
       &.active {
@@ -116,6 +126,30 @@
       &:hover:not(.active) {
         background-color: rgba(0, 0, 0, 0.05) !important;
         color: var(--user-menu-selected-bg, #0284c7) !important;
+      }
+    }
+
+    .dropdown-menu {
+      padding-left: 0.25rem !important;
+      padding-right: 0.25rem !important;
+
+      .nav-item {
+        width: 100% !important;
+      }
+
+      .nav-link {
+        margin: 0.125rem 0.25rem 0.125rem 0.65rem !important;
+        padding: 0.35rem 0.5rem !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        font-size: 0.84rem !important;
+
+        .text {
+          white-space: normal !important;
+          word-break: break-word !important;
+          line-height: 1.35 !important;
+        }
       }
     }
   }
@@ -203,7 +237,7 @@ html, body {
 @media (min-width: 1200px) {
   html.expanded, html:not(.collapsed) {
     #miniSidebar {
-      width: 250px !important;
+      width: 270px !important;
       transform: translateX(0) !important;
 
       .brand-logo a {
@@ -222,8 +256,8 @@ html, body {
     }
 
     #content {
-      margin-left: 250px !important;
-      width: calc(100% - 250px) !important;
+      margin-left: 270px !important;
+      width: calc(100% - 270px) !important;
       transition: margin-left 0.25s ease-in-out, width 0.25s ease-in-out !important;
     }
   }

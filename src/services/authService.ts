@@ -38,15 +38,35 @@ export const AuthService = {
    * Performs user login via backend API
    */
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const res = await apiClient.post<AuthResponse>("/auth/login", credentials);
+    const serverVal = credentials.dbServer?.trim() || "localhost";
+    const dbVal = credentials.dbName?.trim() || "R2016_dvz";
+    const userVal = credentials.dbUser?.trim() || "SA";
+    const passwordVal = credentials.dbPassword !== undefined && credentials.dbPassword !== null ? credentials.dbPassword : "";
+
+    const payload = {
+      username: credentials.username?.trim() || "",
+      password: credentials.password || "",
+      dbServer: serverVal,
+      server: serverVal,
+      serverName: serverVal,
+      host: serverVal,
+      dbName: dbVal,
+      database: dbVal,
+      dbUser: userVal,
+      user: userVal,
+      dbPassword: passwordVal,
+      passwordDb: passwordVal,
+    };
+
+    const res = await apiClient.post<AuthResponse>("/auth/login", payload);
     if (res.data && res.data.tokens?.accessToken) {
       this.setSession(
         res.data.tokens.accessToken,
         res.data.user,
-        credentials.dbServer,
-        credentials.dbName,
-        credentials.dbUser,
-        credentials.dbPassword
+        serverVal,
+        dbVal,
+        userVal,
+        passwordVal
       );
     }
     return res.data;
