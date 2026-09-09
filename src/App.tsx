@@ -21,6 +21,12 @@ import PanoPage from "./pages/kur/PanoPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
+import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
+import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
+import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
+import EBelgeGidenPage from "./pages/ebelge/EBelgeGidenPage";
+import EBelgeIrsaliyePage from "./pages/ebelge/EBelgeIrsaliyePage";
+import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import LoginPage from "./pages/auth/LoginPage";
 
 
@@ -112,6 +118,14 @@ export default function App() {
             <Route path="ayarlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
             <Route path="tanimlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
             <Route path="ayarlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
+            {/* e-Belge (ICE entegratör) */}
+            <Route path="e-belge" element={<EBelgeHomePage />} />
+            <Route path="e-belge/gelen" element={<EBelgeGelenPage />} />
+            <Route path="e-belge/dogrula" element={<EBelgeDogrulaPage />} />
+            <Route path="e-belge/giden" element={<EBelgeGidenPage />} />
+            <Route path="e-belge/irsaliye" element={<EBelgeIrsaliyePage />} />
+            <Route path="ayarlar/e-belge" element={<EBelgeSettingsPage />} />
+            <Route path="tanimlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
             <Route path="cari/kart-kayit" element={<CariCardRegistrationPage />} />
             <Route path="cari/kayit" element={<CariCardRegistrationPage />} />

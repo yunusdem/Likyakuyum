@@ -45,9 +45,29 @@ export class CariDekontSqlRepository {
             [PARA_ID] INT NOT NULL DEFAULT 0,
             [MEBLAG] FLOAT NOT NULL DEFAULT 0,
             [KUR] FLOAT NOT NULL DEFAULT 1.0,
-            [GISE_KURU] FLOAT NOT NULL DEFAULT 1.0
+            [GISE_KURU] FLOAT NOT NULL DEFAULT 1.0,
+            [ACIKLAMA] VARCHAR(250) NULL,
+            [HAS_ORANI] FLOAT NULL
           );
           CREATE INDEX [IX_TODVZ_CARI_DEKONT_SATIRI_ID] ON [dbo].[TODVZ_CARI_DEKONT_SATIRI] ([CARI_DEKONT_ID]);
+        END
+        ELSE
+        BEGIN
+          IF NOT EXISTS (
+            SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'TODVZ_CARI_DEKONT_SATIRI' AND COLUMN_NAME = 'ACIKLAMA'
+          )
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_CARI_DEKONT_SATIRI] ADD [ACIKLAMA] VARCHAR(250) NULL;
+          END
+
+          IF NOT EXISTS (
+            SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'TODVZ_CARI_DEKONT_SATIRI' AND COLUMN_NAME = 'HAS_ORANI'
+          )
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_CARI_DEKONT_SATIRI] ADD [HAS_ORANI] FLOAT NULL;
+          END
         END
       `);
             // 3. Staging table TODVZ_ISKELE_CARI_DEKONT_SATIR
@@ -155,7 +175,8 @@ export class CariDekontSqlRepository {
                       IPTAL_TARIHI = @IPTAL_TARIHI,
                       GUNCELLEYEN_ID = @KULLANICI_ID,
                       GUNCELLEME_ZAMANI = @ZAMAN,
-                      VEZNE_ID = @VEZNE_ID
+                      VEZNE_ID = @VEZNE_ID,
+                      ONCEKI_ID = @ONCEKI_ID
                   WHERE CARI_DEKONT_ID = @CARI_DEKONT_ID;
                 END
 
@@ -197,19 +218,95 @@ export class CariDekontSqlRepository {
         const targetDekontId = isUpdate ? Number(dto.cariDekontId) : null;
         const guid = crypto.randomUUID();
         const tip = dto.tip === 1 ? 1 : 0;
-        const parseDate = (d) => {
+        const parseDate = (d, label = "Tarih") => {
             if (!d)
-                return new Date();
+                return null;
             const dt = new Date(d);
-            return isNaN(dt.getTime()) ? new Date() : dt;
+            if (isNaN(dt.getTime())) {
+                throw ApiError.badRequest(`${label} alanında geçersiz bir tarih formatı girildi: '${d}'. Lütfen GG.AA.YYYY formatında giriniz.`);
+            }
+            const y = dt.getFullYear();
+            if (y < 1900 || y > 2099) {
+                throw ApiError.badRequest(`${label} yılı (${y}) geçersizdir. Takvim standartları gereği yıl 1900 ile 2099 arasında 4 haneli olmalıdır (Örn: 2026 veya 2028).`);
+            }
+            return dt;
         };
-        const tarihDate = parseDate(dto.tarih);
-        const vadeDate = dto.vade ? parseDate(dto.vade) : null;
-        const iptalTarihiDate = dto.iptalTarihi ? parseDate(dto.iptalTarihi) : null;
+        const tarihDate = parseDate(dto.tarih, "İşlem Tarihi") || new Date();
+        const vadeDate = parseDate(dto.vade, "Vade Tarihi");
+        const iptalTarihiDate = parseDate(dto.iptalTarihi, "İptal Tarihi");
+        // 1. Borclu / Alacakli Cari Kontrolü
+        const targetCari = dto.alacakliId || dto.borcluId;
+        if (!targetCari || targetCari <= 0) {
+            throw ApiError.badRequest("Lütfen geçerli bir Cari Hesap seçiniz.");
+        }
+        const cariCheck = await pool
+            .request()
+            .input("cid", sql.Int, targetCari)
+            .query(`SELECT TOP 1 [CARI_KART_ID] FROM [dbo].[TODVZ_CARI_KART] WHERE [CARI_KART_ID] = @cid`);
+        if (cariCheck.recordset.length === 0) {
+            throw ApiError.badRequest(`Seçilen Cari Kart (ID: ${targetCari}) veritabanında bulunamadı. Lütfen arama butonundan geçerli bir Cari Hesap seçiniz.`);
+        }
+        const finalBorcluId = dto.borcluId && dto.borcluId > 0 ? dto.borcluId : targetCari;
+        const finalAlacakliId = dto.alacakliId && dto.alacakliId > 0 ? dto.alacakliId : targetCari;
+        // Telefon bilgisini Cari Karta senkronize et (formda girildiyse)
+        if (dto.telefon && dto.telefon.trim() && targetCari) {
+            try {
+                await pool
+                    .request()
+                    .input("cid", sql.Int, targetCari)
+                    .input("tel", sql.VarChar(50), dto.telefon.trim())
+                    .query(`UPDATE [dbo].[TODVZ_CARI_KART] SET [TELEFON] = @tel WHERE [CARI_KART_ID] = @cid AND (ISNULL([TELEFON],'') <> @tel)`);
+            }
+            catch (telErr) {
+                logger.warn("Cari telefon güncelleme uyarısı:", telErr);
+            }
+        }
+        // 2. Vezne Kontrolü ve Fallback
+        let finalVezneId = dto.vezneId || 1;
+        const vezneCheck = await pool
+            .request()
+            .input("vid", sql.Int, finalVezneId)
+            .query(`SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] WHERE [VEZNE_ID] = @vid`);
+        if (vezneCheck.recordset.length === 0) {
+            const fallbackVezne = await pool
+                .request()
+                .query(`SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] ORDER BY [VEZNE_ID] ASC`);
+            if (fallbackVezne.recordset.length > 0) {
+                finalVezneId = fallbackVezne.recordset[0].VEZNE_ID;
+            }
+        }
+        // 3. Kullanıcı Kontrolü ve Fallback
+        let finalKullaniciId = dto.kullaniciId || 1;
+        const userCheck = await pool
+            .request()
+            .input("uid", sql.Int, finalKullaniciId)
+            .query(`SELECT TOP 1 [KULLANICI_ID] FROM [dbo].[TODVZ_KULLANICI] WHERE [KULLANICI_ID] = @uid`);
+        if (userCheck.recordset.length === 0) {
+            const fallbackUser = await pool
+                .request()
+                .query(`SELECT TOP 1 [KULLANICI_ID] FROM [dbo].[TODVZ_KULLANICI] ORDER BY [KULLANICI_ID] ASC`);
+            if (fallbackUser.recordset.length > 0) {
+                finalKullaniciId = fallbackUser.recordset[0].KULLANICI_ID;
+            }
+        }
+        // 4. Önceki Belge Kontrolü (Foreign Key ihlalini engellemek için)
+        let finalOncekiId = null;
+        if (dto.oncekiId !== null && dto.oncekiId !== undefined && Number(dto.oncekiId) > 0) {
+            const oncekiCheck = await pool
+                .request()
+                .input("oid", sql.Int, Number(dto.oncekiId))
+                .query(`SELECT TOP 1 [CARI_DEKONT_ID] FROM [dbo].[TODVZ_CARI_DEKONT] WHERE [CARI_DEKONT_ID] = @oid`);
+            if (oncekiCheck.recordset.length > 0) {
+                finalOncekiId = Number(dto.oncekiId);
+            }
+            else {
+                throw ApiError.badRequest(`Girdiğiniz 'Önceki Belge' numarası (${dto.oncekiId}) sistemde kayıtlı bir dekont ile eşleşmiyor. Lütfen geçerli bir önceki dekont numarası giriniz veya bu alanı boş bırakınız.`);
+            }
+        }
         // Filter valid lines
         const validLines = (dto.satirlar || []).filter((l) => l.paraId > 0 && Number(l.meblag) > 0);
         if (validLines.length === 0) {
-            throw ApiError.badRequest("Lütfen en az bir geçerli miktar içeren dekont satırı giriniz.");
+            throw ApiError.badRequest("Lütfen en az bir geçerli para birimi ve miktar içeren dekont satırı giriniz.");
         }
         // Step 1: Insert rows into staging table TODVZ_ISKELE_CARI_DEKONT_SATIR
         try {
@@ -240,25 +337,75 @@ export class CariDekontSqlRepository {
             throw ApiError.badRequest("Dekont satırları iskeleye eklenemedi: " + (insertErr?.message || insertErr));
         }
         // Step 2: Execute Stored Procedure SODVZ_CARI_DEKONT_KAYDET
+        // If targetDekontId is NULL (new record), pre-allocate in TODVZ_CARI_DEKONT using SCOPE_IDENTITY()
+        // to guarantee @OUT_ID is NEVER null (protects against trigger-wiped @@IDENTITY in legacy DBs).
+        const execQuery = `
+      DECLARE @OUT_ID INT = @targetDekontId;
+
+      IF @OUT_ID IS NULL OR @OUT_ID = 0
+      BEGIN
+        INSERT INTO [dbo].[TODVZ_CARI_DEKONT] (
+          TIP, TARIH, ACIKLAMA, KUR_CINSI, BORCLU_ID, ALACAKLI_ID,
+          SATIR_DURUMU, EVRAK_TURU, VADE, IPTAL_TARIHI,
+          EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI,
+          VEZNE_ID, ONCEKI_ID
+        )
+        VALUES (
+          @tip, @tarih, @aciklama, @kurCinsi, @borcluId, @alacakliId,
+          @satirDurumu, @evrakTuru, @vade, @iptalTarihi,
+          @kullaniciId, GETDATE(), @kullaniciId, GETDATE(),
+          @vezneId, @oncekiId
+        );
+        SELECT @OUT_ID = SCOPE_IDENTITY();
+        IF @OUT_ID IS NULL OR @OUT_ID = 0
+          SELECT @OUT_ID = IDENT_CURRENT('TODVZ_CARI_DEKONT');
+        IF @OUT_ID IS NULL OR @OUT_ID = 0
+          SELECT @OUT_ID = MAX(CARI_DEKONT_ID) FROM [dbo].[TODVZ_CARI_DEKONT];
+      END
+
+      EXEC [dbo].[SODVZ_CARI_DEKONT_KAYDET]
+        @CARI_DEKONT_ID = @OUT_ID OUTPUT,
+        @TIP = @tip,
+        @TARIH = @tarih,
+        @ACIKLAMA = @aciklama,
+        @KUR_CINSI = @kurCinsi,
+        @BORCLU_ID = @borcluId,
+        @ALACAKLI_ID = @alacakliId,
+        @KULLANICI_ID = @kullaniciId,
+        @VEZNE_ID = @vezneId,
+        @DEGISIKLIK_TAKIP_VAR = @degisiklikTakipVar,
+        @SATIR_DURUMU = @satirDurumu,
+        @EVRAK_TURU = @evrakTuru,
+        @VADE = @vade,
+        @IPTAL_TARIHI = @iptalTarihi,
+        @ONCEKI_ID = @oncekiId,
+        @GUID = @guid;
+
+      SELECT @OUT_ID AS [CARI_DEKONT_ID];
+    `;
         const procReq = pool.request();
-        procReq.output("CARI_DEKONT_ID", sql.Int, targetDekontId);
-        procReq.input("TIP", sql.TinyInt, tip);
-        procReq.input("TARIH", sql.DateTime, tarihDate);
-        procReq.input("ACIKLAMA", sql.VarChar(100), (dto.aciklama || "").substring(0, 100));
-        procReq.input("KUR_CINSI", sql.TinyInt, dto.kurCinsi ?? 0);
-        procReq.input("BORCLU_ID", sql.Int, dto.borcluId);
-        procReq.input("ALACAKLI_ID", sql.Int, dto.alacakliId);
-        procReq.input("KULLANICI_ID", sql.Int, dto.kullaniciId || 1);
-        procReq.input("VEZNE_ID", sql.Int, dto.vezneId || 1);
-        procReq.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar !== undefined ? (dto.degisiklikTakipVar ? 1 : 0) : 1);
-        procReq.input("SATIR_DURUMU", sql.TinyInt, dto.satirDurumu ?? 0);
-        procReq.input("EVRAK_TURU", sql.TinyInt, dto.evrakTuru ?? 0);
-        procReq.input("VADE", sql.DateTime, vadeDate);
-        procReq.input("IPTAL_TARIHI", sql.DateTime, iptalTarihiDate);
-        procReq.input("ONCEKI_ID", sql.Int, dto.oncekiId ?? null);
-        procReq.input("GUID", sql.VarChar(50), guid);
+        procReq.input("targetDekontId", sql.Int, targetDekontId);
+        procReq.input("tip", sql.TinyInt, tip);
+        procReq.input("tarih", sql.DateTime, tarihDate);
+        procReq.input("aciklama", sql.VarChar(100), (dto.aciklama || "").substring(0, 100));
+        procReq.input("kurCinsi", sql.TinyInt, dto.kurCinsi ?? 0);
+        procReq.input("borcluId", sql.Int, finalBorcluId);
+        procReq.input("alacakliId", sql.Int, finalAlacakliId);
+        procReq.input("kullaniciId", sql.Int, finalKullaniciId);
+        procReq.input("vezneId", sql.Int, finalVezneId);
+        procReq.input("degisiklikTakipVar", sql.Bit, dto.degisiklikTakipVar !== undefined ? (dto.degisiklikTakipVar ? 1 : 0) : 1);
+        procReq.input("satirDurumu", sql.TinyInt, dto.satirDurumu ?? 0);
+        procReq.input("evrakTuru", sql.TinyInt, dto.evrakTuru ?? 0);
+        procReq.input("vade", sql.DateTime, vadeDate);
+        procReq.input("iptalTarihi", sql.DateTime, iptalTarihiDate);
+        procReq.input("oncekiId", sql.Int, finalOncekiId);
+        procReq.input("guid", sql.VarChar(50), guid);
+        let savedDekontId = targetDekontId || 0;
         try {
-            await procReq.execute("SODVZ_CARI_DEKONT_KAYDET");
+            const execRes = await procReq.query(execQuery);
+            if (execRes.recordset.length > 0 && execRes.recordset[0].CARI_DEKONT_ID > 0) {
+                savedDekontId = execRes.recordset[0].CARI_DEKONT_ID;
+            }
         }
         catch (procErr) {
             // Clean up staging on error if procedure rollback missed it
@@ -266,11 +413,46 @@ export class CariDekontSqlRepository {
                 await pool.request().input("guid", sql.VarChar(50), guid).query("DELETE FROM [dbo].[TODVZ_ISKELE_CARI_DEKONT_SATIR] WHERE GUID = @guid");
             }
             catch { }
-            logger.error("SODVZ_CARI_DEKONT_KAYDET execution error:", procErr);
-            throw ApiError.badRequest("Cari dekont kaydedilemedi: " + (procErr?.message || procErr));
+            const rawMsg = procErr?.originalError?.message || procErr?.message || String(procErr);
+            let userFriendlyMsg = rawMsg;
+            if (rawMsg.includes("60238")) {
+                userFriendlyMsg = "Kayıt işlemi veritabanı kuralları gereği geri alındı. Lütfen seçilen cari hesabın risk/bakiye limitini, vezne yetkisini ve işlem tarihinin onaylı hesap döneminde olup olmadığını kontrol ediniz.";
+            }
+            else if (rawMsg.includes("Onaylanmış hesap dönemine")) {
+                userFriendlyMsg = "Onaylanmış hesap dönemine ait işlem yapılamaz. Lütfen 'İşlem Tarihi' alanına güncel döneme ait bir tarih giriniz.";
+            }
+            else if (rawMsg.includes("Cari bakiye sınırı aşıldı")) {
+                userFriendlyMsg = "Cari bakiye sınırı aşıldı: Seçilen cari hesabın borç/alacak bakiye limiti dolduğu için işlem kaydedilemiyor. Lütfen cari kart tanımından bakiye limitini kontrol ediniz.";
+            }
+            else if (rawMsg.includes("out-of-range") || rawMsg.includes("converting date")) {
+                userFriendlyMsg = "Tarih alanlarından birinde geçersiz bir değer (örn: 20028 gibi aşırı büyük bir yıl) girildi. Lütfen tarihleri 1900-2099 aralığında 4 haneli olarak kontrol ediniz.";
+            }
+            else if (rawMsg.includes("FOREIGN KEY")) {
+                if (rawMsg.includes("ONCEKI_ID") || rawMsg.includes("TODVZ_CARI_DEKONT_TODVZ_CARI_DEKONT")) {
+                    userFriendlyMsg = "Girdiğiniz 'Önceki Belge' numarası sistemde kayıtlı bir dekont ile eşleşmiyor. Lütfen geçerli bir önceki dekont numarası giriniz veya bu alanı boş bırakınız.";
+                }
+                else if (rawMsg.includes("VEZNE")) {
+                    userFriendlyMsg = "Seçilen Vezne veritabanında bulunamadı. Lütfen kullanıcınızın veznesini kontrol ediniz.";
+                }
+                else if (rawMsg.includes("KULLANICI")) {
+                    userFriendlyMsg = "İşlemi yapan kullanıcı veritabanında bulunamadı.";
+                }
+                else if (rawMsg.includes("PARA")) {
+                    userFriendlyMsg = "Tabloda seçilen para birimi veritabanında bulunamadı.";
+                }
+                else if (rawMsg.includes("CARI_KART") || rawMsg.includes("BORCLU") || rawMsg.includes("ALACAKLI")) {
+                    userFriendlyMsg = "Seçilen Cari Hesap veritabanında bulunamadı. Lütfen arama butonundan geçerli bir Cari Hesap seçiniz.";
+                }
+                else {
+                    userFriendlyMsg = `İlişkisel Veri (Foreign Key) Hatası: ${rawMsg}`;
+                }
+            }
+            else if (rawMsg.includes("Tarihli cari dekonta donüşmüş")) {
+                userFriendlyMsg = rawMsg;
+            }
+            logger.error("SODVZ_CARI_DEKONT_KAYDET execution error:", { raw: rawMsg, friendly: userFriendlyMsg });
+            throw ApiError.badRequest(userFriendlyMsg);
         }
-        const outId = procReq.parameters.CARI_DEKONT_ID?.value;
-        let savedDekontId = outId && Number(outId) > 0 ? Number(outId) : (targetDekontId || 0);
         if (!savedDekontId) {
             // Fallback query for newly inserted ID
             const fallbackRes = await pool.request().query(`
@@ -278,6 +460,49 @@ export class CariDekontSqlRepository {
       `);
             if (fallbackRes.recordset.length > 0 && fallbackRes.recordset[0].ID > 0) {
                 savedDekontId = fallbackRes.recordset[0].ID;
+            }
+        }
+        // 4.5. ONCEKI_ID alanını TODVZ_CARI_DEKONT tablosuna kalıcı olarak garanti et
+        try {
+            await pool
+                .request()
+                .input("dekontId", sql.Int, savedDekontId)
+                .input("oncekiId", sql.Int, finalOncekiId)
+                .query(`
+          UPDATE [dbo].[TODVZ_CARI_DEKONT]
+          SET [ONCEKI_ID] = @oncekiId
+          WHERE [CARI_DEKONT_ID] = @dekontId
+        `);
+        }
+        catch (oncekiErr) {
+            logger.warn("ONCEKI_ID güncelleme uyarısı:", oncekiErr);
+        }
+        // 5. Satır Açıklamalarını ve Ayar / Has Oranlarını TODVZ_CARI_DEKONT_SATIRI tablosuna kaydet
+        for (let i = 0; i < validLines.length; i++) {
+            const line = validLines[i];
+            const seq = line.satirNo !== undefined && line.satirNo > 0 ? line.satirNo : i + 1;
+            const rowAciklama = (line.aciklama || "").trim();
+            const rowHasOrani = line.hasOrani !== undefined && line.hasOrani !== null && !isNaN(Number(line.hasOrani))
+                ? Number(line.hasOrani)
+                : null;
+            try {
+                await pool
+                    .request()
+                    .input("dekontId", sql.Int, savedDekontId)
+                    .input("satirNo", sql.Int, seq)
+                    .input("satirIdx", sql.Int, i + 1)
+                    .input("totalLines", sql.Int, validLines.length)
+                    .input("aciklama", sql.VarChar(250), rowAciklama ? rowAciklama.substring(0, 250) : null)
+                    .input("hasOrani", sql.Float, rowHasOrani)
+                    .query(`
+            UPDATE [dbo].[TODVZ_CARI_DEKONT_SATIRI]
+            SET [ACIKLAMA] = CASE WHEN @aciklama IS NOT NULL THEN @aciklama ELSE [ACIKLAMA] END,
+                [HAS_ORANI] = CASE WHEN @hasOrani IS NOT NULL THEN @hasOrani ELSE [HAS_ORANI] END
+            WHERE [CARI_DEKONT_ID] = @dekontId AND ([SATIR_NO] = @satirNo OR [SATIR_NO] = @satirIdx OR @totalLines = 1)
+          `);
+            }
+            catch (lineErr) {
+                logger.warn("Satır güncellemesi uyarısı:", lineErr);
             }
         }
         const result = await CariDekontSqlRepository.findById(savedDekontId, dbContext);
@@ -292,17 +517,19 @@ export class CariDekontSqlRepository {
     static async deleteViaProcedure(id, kullaniciId = 1, degisiklikTakipVar = true, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await CariDekontSqlRepository.ensureTablesAndProceduresExist(pool);
-        const procReq = pool.request();
-        procReq.input("CARI_DEKONT_ID", sql.Int, id);
-        procReq.input("KULLANICI_ID", sql.Int, kullaniciId || 1);
-        procReq.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, degisiklikTakipVar ? 1 : 0);
-        try {
-            await procReq.execute("SODVZ_CARI_DEKONT_SIL");
+        const checkRes = await pool
+            .request()
+            .input("id", sql.Int, id)
+            .query("SELECT CARI_DEKONT_ID FROM [dbo].[TODVZ_CARI_DEKONT] WHERE CARI_DEKONT_ID = @id");
+        if (checkRes.recordset.length === 0) {
+            throw ApiError.notFound("Silinmek istenen dekont bulunamadı.");
         }
-        catch (procErr) {
-            logger.error("SODVZ_CARI_DEKONT_SIL execution error:", procErr);
-            throw ApiError.badRequest("Cari dekont silinemedi: " + (procErr?.message || procErr));
-        }
+        await pool
+            .request()
+            .input("id", sql.Int, id)
+            .input("kullaniciId", sql.Int, kullaniciId)
+            .input("degisiklikTakipVar", sql.Bit, degisiklikTakipVar ? 1 : 0)
+            .execute("SODVZ_CARI_DEKONT_SIL");
     }
     /**
      * Find single Cari Dekont by ID with lines
@@ -318,8 +545,10 @@ export class CariDekontSqlRepository {
           D.*,
           ISNULL(CB.KOD, '') AS [BORCLU_KOD],
           ISNULL(CB.AD, '') AS [BORCLU_AD],
+          ISNULL(CB.TELEFON, '') AS [BORCLU_TELEFON],
           ISNULL(CA.KOD, '') AS [ALACAKLI_KOD],
           ISNULL(CA.AD, '') AS [ALACAKLI_AD],
+          ISNULL(CA.TELEFON, '') AS [ALACAKLI_TELEFON],
           ISNULL(V.KOD, '') AS [VEZNE_KOD],
           ISNULL(V.AD, '') AS [VEZNE_AD]
         FROM [dbo].[TODVZ_CARI_DEKONT] D
@@ -339,7 +568,8 @@ export class CariDekontSqlRepository {
           S.*,
           ISNULL(P.KOD, '') AS [PARA_KOD],
           ISNULL(P.AD, '') AS [PARA_AD],
-          ISNULL(P.HAS_ORANI, 1.0) AS [HAS_ORANI]
+          ISNULL(S.HAS_ORANI, ISNULL(P.HAS_ORANI, 1.0)) AS [HAS_ORANI],
+          ISNULL(S.ACIKLAMA, '') AS [SATIR_ACIKLAMA]
         FROM [dbo].[TODVZ_CARI_DEKONT_SATIRI] S
         LEFT JOIN [dbo].[TODVZ_PARA] P ON S.PARA_ID = P.PARA_ID
         WHERE S.CARI_DEKONT_ID = @dekontId
@@ -370,8 +600,12 @@ export class CariDekontSqlRepository {
                 kur,
                 giseKuru,
                 tutar,
+                aciklama: line.SATIR_ACIKLAMA || "",
             };
         });
+        const borcluTelefon = h.BORCLU_TELEFON || "";
+        const alacakliTelefon = h.ALACAKLI_TELEFON || "";
+        const telefon = (h.TIP === 0 ? alacakliTelefon : borcluTelefon) || alacakliTelefon || borcluTelefon || "";
         return {
             cariDekontId: h.CARI_DEKONT_ID,
             dekontNo: `DK-${String(h.CARI_DEKONT_ID).padStart(6, "0")}`,
@@ -381,16 +615,19 @@ export class CariDekontSqlRepository {
             aciklama: h.ACIKLAMA || "",
             kurCinsi: h.KUR_CINSI ?? 0,
             borcluId: h.BORCLU_ID,
-            borcluKod: h.BORCLU_KOD || "",
-            borcluAd: h.BORCLU_AD || "",
+            borcluKod: (h.BORCLU_KOD || "").trim(),
+            borcluAd: (h.BORCLU_AD || "").trim(),
+            borcluTelefon: (borcluTelefon || "").trim(),
             alacakliId: h.ALACAKLI_ID,
-            alacakliKod: h.ALACAKLI_KOD || "",
-            alacakliAd: h.ALACAKLI_AD || "",
+            alacakliKod: (h.ALACAKLI_KOD || "").trim(),
+            alacakliAd: (h.ALACAKLI_AD || "").trim(),
+            alacakliTelefon: (alacakliTelefon || "").trim(),
+            telefon: (telefon || "").trim(),
             kullaniciId: h.EKLEYEN_ID,
-            ekleyenAd: h.EKLEYEN_AD || "",
+            ekleyenAd: (h.EKLEYEN_AD || "").trim(),
             vezneId: h.VEZNE_ID,
-            vezneKod: h.VEZNE_KOD || "",
-            vezneAd: h.VEZNE_AD || "",
+            vezneKod: (h.VEZNE_KOD || "").trim(),
+            vezneAd: (h.VEZNE_AD || "").trim(),
             satirDurumu: h.SATIR_DURUMU ?? 0,
             evrakTuru: h.EVRAK_TURU ?? 0,
             vade: h.VADE ? new Date(h.VADE).toISOString().split("T")[0] : null,
@@ -469,11 +706,11 @@ export class CariDekontSqlRepository {
             tip: r.TIP,
             tipLabel: r.TIP === 0 ? "Emanet Alma (Giriş)" : "Emanet Verme (Çıkış)",
             tarih: r.TARIH ? new Date(r.TARIH).toISOString().split("T")[0] : "",
-            cariKod: r.CARI_KOD || "",
-            cariAd: r.CARI_AD || "",
-            vezneKod: r.VEZNE_KOD || "",
-            vezneAd: r.VEZNE_AD || "",
-            aciklama: r.ACIKLAMA || "",
+            cariKod: (r.CARI_KOD || "").trim(),
+            cariAd: (r.CARI_AD || "").trim(),
+            vezneKod: (r.VEZNE_KOD || "").trim(),
+            vezneAd: (r.VEZNE_AD || "").trim(),
+            aciklama: (r.ACIKLAMA || "").trim(),
             kalemSayisi: r.KALEM_SAYISI || 0,
             toplamMiktar: Number((r.TOPLAM_MIKTAR || 0).toFixed(2)),
         }));

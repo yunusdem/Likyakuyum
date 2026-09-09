@@ -14,6 +14,7 @@ import kurRoutes from "./kur.routes.js";
 import panoRoutes from "./pano.routes.js";
 import banknotRoutes from "./banknot.routes.js";
 import cariDekontRoutes from "./cariDekont.routes.js";
+import ebelgeRoutes from "./ebelge.routes.js";
 
 const apiRouter = Router();
 
@@ -42,6 +43,7 @@ apiRouter.use("/pano", panoRoutes);
 apiRouter.use("/kur/pano-tanimi", panoRoutes);
 apiRouter.use("/banknot", banknotRoutes);
 apiRouter.use("/banknotes", banknotRoutes);
+apiRouter.use("/e-belge", ebelgeRoutes);
 
 export default apiRouter;
 
