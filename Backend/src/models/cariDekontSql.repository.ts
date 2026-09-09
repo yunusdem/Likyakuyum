@@ -102,6 +102,7 @@ export interface SaveCariDekontSatiriDto {
   tip?: number;
   paraId: number;
   meblag: number;
+  hasOrani?: number;
   kur?: number;
   giseKuru?: number;
   aciklama?: string;
@@ -173,7 +174,8 @@ export class CariDekontSqlRepository {
             [MEBLAG] FLOAT NOT NULL DEFAULT 0,
             [KUR] FLOAT NOT NULL DEFAULT 1.0,
             [GISE_KURU] FLOAT NOT NULL DEFAULT 1.0,
-            [ACIKLAMA] VARCHAR(250) NULL
+            [ACIKLAMA] VARCHAR(250) NULL,
+            [HAS_ORANI] FLOAT NULL
           );
           CREATE INDEX [IX_TODVZ_CARI_DEKONT_SATIRI_ID] ON [dbo].[TODVZ_CARI_DEKONT_SATIRI] ([CARI_DEKONT_ID]);
         END
@@ -185,6 +187,14 @@ export class CariDekontSqlRepository {
           )
           BEGIN
             ALTER TABLE [dbo].[TODVZ_CARI_DEKONT_SATIRI] ADD [ACIKLAMA] VARCHAR(250) NULL;
+          END
+
+          IF NOT EXISTS (
+            SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'TODVZ_CARI_DEKONT_SATIRI' AND COLUMN_NAME = 'HAS_ORANI'
+          )
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_CARI_DEKONT_SATIRI] ADD [HAS_ORANI] FLOAT NULL;
           END
         END
       `);
@@ -296,7 +306,8 @@ export class CariDekontSqlRepository {
                       IPTAL_TARIHI = @IPTAL_TARIHI,
                       GUNCELLEYEN_ID = @KULLANICI_ID,
                       GUNCELLEME_ZAMANI = @ZAMAN,
-                      VEZNE_ID = @VEZNE_ID
+                      VEZNE_ID = @VEZNE_ID,
+                      ONCEKI_ID = @ONCEKI_ID
                   WHERE CARI_DEKONT_ID = @CARI_DEKONT_ID;
                 END
 
@@ -597,26 +608,48 @@ export class CariDekontSqlRepository {
       }
     }
 
-    // 5. Satır Açıklamalarını TODVZ_CARI_DEKONT_SATIRI tablosuna kaydet
+    // 4.5. ONCEKI_ID alanını TODVZ_CARI_DEKONT tablosuna kalıcı olarak garanti et
+    try {
+      await pool
+        .request()
+        .input("dekontId", sql.Int, savedDekontId)
+        .input("oncekiId", sql.Int, finalOncekiId)
+        .query(`
+          UPDATE [dbo].[TODVZ_CARI_DEKONT]
+          SET [ONCEKI_ID] = @oncekiId
+          WHERE [CARI_DEKONT_ID] = @dekontId
+        `);
+    } catch (oncekiErr) {
+      logger.warn("ONCEKI_ID güncelleme uyarısı:", oncekiErr);
+    }
+
+    // 5. Satır Açıklamalarını ve Ayar / Has Oranlarını TODVZ_CARI_DEKONT_SATIRI tablosuna kaydet
     for (let i = 0; i < validLines.length; i++) {
       const line = validLines[i];
       const seq = line.satirNo !== undefined && line.satirNo > 0 ? line.satirNo : i + 1;
       const rowAciklama = (line.aciklama || "").trim();
-      if (rowAciklama) {
-        try {
-          await pool
-            .request()
-            .input("dekontId", sql.Int, savedDekontId)
-            .input("satirNo", sql.Int, seq)
-            .input("aciklama", sql.VarChar(250), rowAciklama.substring(0, 250))
-            .query(`
-              UPDATE [dbo].[TODVZ_CARI_DEKONT_SATIRI]
-              SET [ACIKLAMA] = @aciklama
-              WHERE [CARI_DEKONT_ID] = @dekontId AND [SATIR_NO] = @satirNo
-            `);
-        } catch (lineErr) {
-          logger.warn("Satır açıklaması güncellenirken uyarı:", lineErr);
-        }
+      const rowHasOrani =
+        line.hasOrani !== undefined && line.hasOrani !== null && !isNaN(Number(line.hasOrani))
+          ? Number(line.hasOrani)
+          : null;
+
+      try {
+        await pool
+          .request()
+          .input("dekontId", sql.Int, savedDekontId)
+          .input("satirNo", sql.Int, seq)
+          .input("satirIdx", sql.Int, i + 1)
+          .input("totalLines", sql.Int, validLines.length)
+          .input("aciklama", sql.VarChar(250), rowAciklama ? rowAciklama.substring(0, 250) : null)
+          .input("hasOrani", sql.Float, rowHasOrani)
+          .query(`
+            UPDATE [dbo].[TODVZ_CARI_DEKONT_SATIRI]
+            SET [ACIKLAMA] = CASE WHEN @aciklama IS NOT NULL THEN @aciklama ELSE [ACIKLAMA] END,
+                [HAS_ORANI] = CASE WHEN @hasOrani IS NOT NULL THEN @hasOrani ELSE [HAS_ORANI] END
+            WHERE [CARI_DEKONT_ID] = @dekontId AND ([SATIR_NO] = @satirNo OR [SATIR_NO] = @satirIdx OR @totalLines = 1)
+          `);
+      } catch (lineErr) {
+        logger.warn("Satır güncellemesi uyarısı:", lineErr);
       }
     }
 
@@ -698,7 +731,7 @@ export class CariDekontSqlRepository {
           S.*,
           ISNULL(P.KOD, '') AS [PARA_KOD],
           ISNULL(P.AD, '') AS [PARA_AD],
-          ISNULL(P.HAS_ORANI, 1.0) AS [HAS_ORANI],
+          ISNULL(S.HAS_ORANI, ISNULL(P.HAS_ORANI, 1.0)) AS [HAS_ORANI],
           ISNULL(S.ACIKLAMA, '') AS [SATIR_ACIKLAMA]
         FROM [dbo].[TODVZ_CARI_DEKONT_SATIRI] S
         LEFT JOIN [dbo].[TODVZ_PARA] P ON S.PARA_ID = P.PARA_ID
@@ -751,19 +784,19 @@ export class CariDekontSqlRepository {
       aciklama: h.ACIKLAMA || "",
       kurCinsi: h.KUR_CINSI ?? 0,
       borcluId: h.BORCLU_ID,
-      borcluKod: h.BORCLU_KOD || "",
-      borcluAd: h.BORCLU_AD || "",
-      borcluTelefon,
+      borcluKod: (h.BORCLU_KOD || "").trim(),
+      borcluAd: (h.BORCLU_AD || "").trim(),
+      borcluTelefon: (borcluTelefon || "").trim(),
       alacakliId: h.ALACAKLI_ID,
-      alacakliKod: h.ALACAKLI_KOD || "",
-      alacakliAd: h.ALACAKLI_AD || "",
-      alacakliTelefon,
-      telefon,
+      alacakliKod: (h.ALACAKLI_KOD || "").trim(),
+      alacakliAd: (h.ALACAKLI_AD || "").trim(),
+      alacakliTelefon: (alacakliTelefon || "").trim(),
+      telefon: (telefon || "").trim(),
       kullaniciId: h.EKLEYEN_ID,
-      ekleyenAd: h.EKLEYEN_AD || "",
+      ekleyenAd: (h.EKLEYEN_AD || "").trim(),
       vezneId: h.VEZNE_ID,
-      vezneKod: h.VEZNE_KOD || "",
-      vezneAd: h.VEZNE_AD || "",
+      vezneKod: (h.VEZNE_KOD || "").trim(),
+      vezneAd: (h.VEZNE_AD || "").trim(),
       satirDurumu: h.SATIR_DURUMU ?? 0,
       evrakTuru: h.EVRAK_TURU ?? 0,
       vade: h.VADE ? new Date(h.VADE).toISOString().split("T")[0] : null,
@@ -875,11 +908,11 @@ export class CariDekontSqlRepository {
       tip: r.TIP,
       tipLabel: r.TIP === 0 ? "Emanet Alma (Giriş)" : "Emanet Verme (Çıkış)",
       tarih: r.TARIH ? new Date(r.TARIH).toISOString().split("T")[0] : "",
-      cariKod: r.CARI_KOD || "",
-      cariAd: r.CARI_AD || "",
-      vezneKod: r.VEZNE_KOD || "",
-      vezneAd: r.VEZNE_AD || "",
-      aciklama: r.ACIKLAMA || "",
+      cariKod: (r.CARI_KOD || "").trim(),
+      cariAd: (r.CARI_AD || "").trim(),
+      vezneKod: (r.VEZNE_KOD || "").trim(),
+      vezneAd: (r.VEZNE_AD || "").trim(),
+      aciklama: (r.ACIKLAMA || "").trim(),
       kalemSayisi: r.KALEM_SAYISI || 0,
       toplamMiktar: Number((r.TOPLAM_MIKTAR || 0).toFixed(2)),
     }));

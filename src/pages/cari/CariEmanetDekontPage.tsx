@@ -88,6 +88,8 @@ export const CariEmanetDekontPage: React.FC = () => {
   const [satirDurumu, setSatirDurumu] = useState<number>(0); // @SATIR_DURUMU (0: Normal, 1: İptal, 2: Beklemede)
   const [evrakTuru, setEvrakTuru] = useState<number>(0); // @EVRAK_TURU (0: Cari Dekont, 1: Fiş / Dönüşüm)
   const [oncekiId, setOncekiId] = useState<number | null>(null); // @ONCEKI_ID
+  const [oncekiInputText, setOncekiInputText] = useState<string>("");
+  const [showOncekiLookupModal, setShowOncekiLookupModal] = useState<boolean>(false);
 
   // Cari (Borçlu / Alacaklı)
   const [cariKartId, setCariKartId] = useState<number | null>(null);
@@ -185,7 +187,12 @@ export const CariEmanetDekontPage: React.FC = () => {
         CariDekontService.getDekontList({ limit: 100 }).catch(() => [] as CariDekontListItem[]),
       ]);
 
-      setCariList(cariler);
+      const trimmedCariler = cariler.map((c) => ({
+        ...c,
+        kod: (c.kod || "").trim(),
+        ad: (c.ad || "").trim(),
+      }));
+      setCariList(trimmedCariler);
       setVezneList(vezneler);
       setParaList(paralar);
       setSavedDekonts(dekontlar);
@@ -221,57 +228,74 @@ export const CariEmanetDekontPage: React.FC = () => {
       setSatirDurumu(data.satirDurumu ?? 0);
       setEvrakTuru(data.evrakTuru ?? 0);
       setOncekiId(data.oncekiId ?? null);
+      setOncekiInputText(data.oncekiId ? `DK-${String(data.oncekiId).padStart(6, "0")}` : "");
+      try {
+        sessionStorage.setItem("lastCariDekontId", String(recordId));
+      } catch {}
 
       // Cari
       const activeCariId = data.tip === 0 ? data.alacakliId : data.borcluId;
-      const activeCariKod = data.tip === 0 ? data.alacakliKod : data.borcluKod;
-      const activeCariAd = data.tip === 0 ? data.alacakliAd : data.borcluAd;
+      const rawKod = data.tip === 0 ? data.alacakliKod : data.borcluKod;
+      const rawAd = data.tip === 0 ? data.alacakliAd : data.borcluAd;
+      const activeCariKod = (rawKod || "").replace(/\s+/g, " ").trim();
+      const activeCariAd = (rawAd || "").replace(/\s+/g, " ").trim();
 
       const matchedCari = cariList.find((c) => c.id === activeCariId);
-      const activeCariTelefon =
+      const activeCariTelefon = (
         data.telefon ||
         (data.tip === 0 ? data.alacakliTelefon : data.borcluTelefon) ||
         matchedCari?.telefon ||
-        "";
+        ""
+      ).trim();
 
       setCariKartId(activeCariId || null);
-      setCariKod(activeCariKod || "");
-      setCariAd(activeCariAd || "");
+      setCariKod(activeCariKod);
+      setCariAd(activeCariAd);
       setCariTelefon(activeCariTelefon);
-      setCariInputText(activeCariKod && activeCariAd ? `${activeCariKod} - ${activeCariAd}` : (activeCariAd || activeCariKod || ""));
+      setCariInputText(
+        activeCariKod && activeCariAd
+          ? `${activeCariKod} - ${activeCariAd}`
+          : activeCariAd || activeCariKod || ""
+      );
       setShowCariSuggest(false);
 
       // Vezne
       setVezneId(data.vezneId);
-      setVezneKod(data.vezneKod);
-      setVezneAd(data.vezneAd);
+      setVezneKod((data.vezneKod || "").trim());
+      setVezneAd((data.vezneAd || "").trim());
 
       // Teslim bilgisi
       if (data.tip === 0) {
         setTeslimEden(activeCariAd || "");
-        setTeslimAlan(data.ekleyenAd || user?.username || "Veznedar");
+        setTeslimAlan((data.ekleyenAd || user?.username || "Veznedar").trim());
       } else {
-        setTeslimEden(user?.username || "Veznedar");
+        setTeslimEden((user?.username || "Veznedar").trim());
         setTeslimAlan(activeCariAd || "");
       }
 
       // Satırlar
       if (data.satirlar && data.satirlar.length > 0) {
         setSatirlar(
-          data.satirlar.map((s, idx) => ({
-            id: `line-${s.satirNo || idx + 1}-${Date.now()}`,
-            satirNo: s.satirNo || idx + 1,
-            paraId: s.paraId,
-            paraKodu: s.paraKodu || "",
-            paraAdi: s.paraAdi || "",
-            meblag: s.meblag,
-            hasOrani: s.hasOrani || 1.0,
-            hasMiktar: s.hasMiktar,
-            kur: s.kur,
-            giseKuru: s.giseKuru,
-            tutar: s.tutar,
-            aciklama: s.aciklama || "",
-          }))
+          data.satirlar.map((s, idx) => {
+            const h =
+              s.hasOrani !== undefined && s.hasOrani !== null && !isNaN(Number(s.hasOrani)) && Number(s.hasOrani) > 0
+                ? Number(s.hasOrani)
+                : 1.0;
+            return {
+              id: `line-${s.satirNo || idx + 1}-${Date.now()}`,
+              satirNo: s.satirNo || idx + 1,
+              paraId: s.paraId,
+              paraKodu: (s.paraKodu || "").trim(),
+              paraAdi: (s.paraAdi || "").trim(),
+              meblag: s.meblag,
+              hasOrani: h,
+              hasMiktar: s.hasMiktar,
+              kur: s.kur,
+              giseKuru: s.giseKuru,
+              tutar: s.tutar,
+              aciklama: s.aciklama || "",
+            };
+          })
         );
       } else {
         setSatirlar([
@@ -306,6 +330,23 @@ export const CariEmanetDekontPage: React.FC = () => {
     }
   }, [user]);
 
+  // Sayfa yenilendiğinde (F5) son çalışılan dekontu geri yükle
+  const hasRestoredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (!isLoadingLookups && !hasRestoredRef.current) {
+      hasRestoredRef.current = true;
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramId = urlParams.get("id");
+        const storedId = sessionStorage.getItem("lastCariDekontId");
+        const targetIdToLoad = paramId ? Number(paramId) : storedId ? Number(storedId) : null;
+        if (targetIdToLoad && targetIdToLoad > 0) {
+          loadDekontRecord(targetIdToLoad);
+        }
+      } catch {}
+    }
+  }, [isLoadingLookups, loadDekontRecord]);
+
   // Yeni Kayıt Butonu (Reset form)
   const handleNew = () => {
     setCariDekontId(null);
@@ -315,6 +356,10 @@ export const CariEmanetDekontPage: React.FC = () => {
     setVade("");
     setIptalTarihi("");
     setOncekiId(null);
+    setOncekiInputText("");
+    try {
+      sessionStorage.removeItem("lastCariDekontId");
+    } catch {}
     setTip(0); // Varsayılan Emanet Alma (Giriş)
     setCariKartId(null);
     setCariKod("");
@@ -350,18 +395,37 @@ export const CariEmanetDekontPage: React.FC = () => {
     setAlertInfo(null);
   };
 
+  // Önceki Belge Girişi & Dürbün Seçimi
+  const handleOncekiInputChange = (val: string) => {
+    setOncekiInputText(val);
+    const digits = val.replace(/[^0-9]/g, "");
+    if (digits) {
+      setOncekiId(Number(digits));
+    } else {
+      setOncekiId(null);
+    }
+  };
+
+  const handleSelectOncekiDekont = (item: CariDekontListItem) => {
+    setOncekiId(item.cariDekontId);
+    setOncekiInputText(item.dekontNo || `DK-${String(item.cariDekontId).padStart(6, "0")}`);
+    setShowOncekiLookupModal(false);
+  };
+
   // Cari Seçildiğinde
   const handleSelectCari = (cari: CariKartItem) => {
+    const cleanKod = (cari.kod || "").replace(/\s+/g, " ").trim();
+    const cleanAd = (cari.ad || "").replace(/\s+/g, " ").trim();
     setCariKartId(cari.id);
-    setCariKod(cari.kod);
-    setCariAd(cari.ad);
-    setCariTelefon(cari.telefon || "");
-    setCariInputText(cari.kod ? `${cari.kod} - ${cari.ad}` : cari.ad);
+    setCariKod(cleanKod);
+    setCariAd(cleanAd);
+    setCariTelefon((cari.telefon || "").trim());
+    setCariInputText(cleanKod && cleanAd ? `${cleanKod} - ${cleanAd}` : cleanAd || cleanKod);
     setShowCariSuggest(false);
     if (tip === 0) {
-      setTeslimEden(cari.ad);
+      setTeslimEden(cleanAd);
     } else {
-      setTeslimAlan(cari.ad);
+      setTeslimAlan(cleanAd);
     }
     setShowCariLookup(false);
   };
@@ -391,17 +455,19 @@ export const CariEmanetDekontPage: React.FC = () => {
     // Birebir eşleşme varsa cariyi hemen bağla
     const exact = cariList.find(
       (c) =>
-        (c.kod && c.kod.toLowerCase() === trimmed) ||
-        (c.ad && c.ad.toLowerCase() === trimmed) ||
-        `${c.kod} - ${c.ad}`.toLowerCase() === trimmed
+        (c.kod && c.kod.replace(/\s+/g, " ").trim().toLowerCase() === trimmed) ||
+        (c.ad && c.ad.replace(/\s+/g, " ").trim().toLowerCase() === trimmed) ||
+        `${(c.kod || "").replace(/\s+/g, " ").trim()} - ${(c.ad || "").replace(/\s+/g, " ").trim()}`.toLowerCase() === trimmed
     );
     if (exact) {
+      const cleanKod = (exact.kod || "").replace(/\s+/g, " ").trim();
+      const cleanAd = (exact.ad || "").replace(/\s+/g, " ").trim();
       setCariKartId(exact.id);
-      setCariKod(exact.kod);
-      setCariAd(exact.ad);
-      setCariTelefon(exact.telefon || "");
-      if (tip === 0) setTeslimEden(exact.ad);
-      else setTeslimAlan(exact.ad);
+      setCariKod(cleanKod);
+      setCariAd(cleanAd);
+      setCariTelefon((exact.telefon || "").trim());
+      if (tip === 0) setTeslimEden(cleanAd);
+      else setTeslimAlan(cleanAd);
     }
   };
 
@@ -847,6 +913,7 @@ export const CariEmanetDekontPage: React.FC = () => {
           tip,
           paraId: line.paraId,
           meblag: parseFloat(String(line.meblag).replace(",", ".")) || 0,
+          hasOrani: parseFloat(String(line.hasOrani).replace(",", ".")) || 1.0,
           kur: parseFloat(String(line.kur).replace(",", ".")) || 1.0,
           giseKuru: parseFloat(String(line.giseKuru).replace(",", ".")) || 1.0,
           aciklama: line.aciklama,
@@ -856,6 +923,9 @@ export const CariEmanetDekontPage: React.FC = () => {
       const saved = await CariDekontService.saveDekont(payload);
       setCariDekontId(saved.cariDekontId);
       setDekontNo(saved.dekontNo);
+      try {
+        sessionStorage.setItem("lastCariDekontId", String(saved.cariDekontId));
+      } catch {}
 
       setAlertInfo({
         type: "success",
@@ -867,6 +937,9 @@ export const CariEmanetDekontPage: React.FC = () => {
       setSavedDekonts(updatedList);
       const newIdx = updatedList.findIndex((d) => d.cariDekontId === saved.cariDekontId);
       if (newIdx !== -1) setCurrentIndex(newIdx);
+
+      // Reload saved record from DB
+      await loadDekontRecord(saved.cariDekontId);
     } catch (err: any) {
       setAlertInfo({
         type: "danger",
@@ -1391,14 +1464,39 @@ export const CariEmanetDekontPage: React.FC = () => {
                     </Form.Label>
                   </Col>
                   <Col xs={8}>
-                    <Form.Control
-                      type="number"
-                      size="sm"
-                      value={oncekiId ?? ""}
-                      onChange={(e) => setOncekiId(e.target.value ? Number(e.target.value) : null)}
-                      placeholder=""
-                      className="font-monospace"
-                    />
+                    <InputGroup size="sm">
+                      <Form.Control
+                        type="text"
+                        value={oncekiInputText}
+                        onChange={(e) => handleOncekiInputChange(e.target.value)}
+                        placeholder="Örn: DK-000005"
+                        className={oncekiId ? "font-monospace fw-bold text-dark" : "font-monospace"}
+                      />
+                      <Button
+                        variant="outline-secondary"
+                        onClick={() => setShowOncekiLookupModal(true)}
+                        title="Önceki Dekont Listesi (Dürbün)"
+                        className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
+                        style={{ borderColor: "#ced4da" }}
+                      >
+                        <span className="d-inline-flex align-items-center gap-1" style={{ color: "#7c8db5" }}>
+                          <IconBinoculars size={16} strokeWidth={1.8} />
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                            <polyline points="12 5 19 12 12 19" />
+                          </svg>
+                        </span>
+                      </Button>
+                    </InputGroup>
                   </Col>
                 </Row>
 
@@ -1724,6 +1822,37 @@ export const CariEmanetDekontPage: React.FC = () => {
           return v.kod.toLowerCase().includes(t) || v.ad.toLowerCase().includes(t);
         }}
         onSelect={handleSelectVezne}
+      />
+
+      {/* Önceki Belge Lookup Modalı (Dürbün) */}
+      <LookupModal<CariDekontListItem>
+        show={showOncekiLookupModal}
+        onHide={() => setShowOncekiLookupModal(false)}
+        title="Önceki Belge Seçimi (Dürbün)"
+        items={savedDekonts.filter((d) => !cariDekontId || d.cariDekontId !== cariDekontId)}
+        isLoading={isLoadingLookups}
+        searchPlaceholder="Dekont no, cari kodu veya ünvanı ile arayınız..."
+        columns={[
+          { header: "Dekont No", width: "120px", render: (d) => <span className="font-monospace fw-bold text-primary">{d.dekontNo}</span> },
+          { header: "Tür", width: "120px", render: (d) => <Badge bg={d.tip === 0 ? "success" : "danger"}>{d.tipLabel}</Badge> },
+          { header: "Tarih", width: "100px", render: (d) => <span className="font-monospace">{d.tarih}</span> },
+          { header: "Cari Kodu", width: "110px", render: (d) => <span className="font-monospace">{d.cariKod}</span> },
+          { header: "Cari Ünvanı", render: (d) => <span className="fw-semibold">{d.cariAd}</span> },
+          { header: "Vezne", width: "110px", render: (d) => <span>{d.vezneAd}</span> },
+          { header: "Miktar", width: "100px", align: "right", render: (d) => <span className="font-monospace">{d.toplamMiktar.toFixed(2)}</span> },
+          { header: "Açıklama", render: (d) => <span className="text-muted small">{d.aciklama || "-"}</span> },
+        ]}
+        filterFn={(d, term) => {
+          const t = term.toLowerCase();
+          return (
+            d.dekontNo.toLowerCase().includes(t) ||
+            d.cariKod.toLowerCase().includes(t) ||
+            d.cariAd.toLowerCase().includes(t) ||
+            d.vezneAd.toLowerCase().includes(t) ||
+            d.aciklama.toLowerCase().includes(t)
+          );
+        }}
+        onSelect={handleSelectOncekiDekont}
       />
     </div>
   );

@@ -87,6 +87,7 @@ export interface SaveCariDekontPayload {
     tip?: number;
     paraId: number;
     meblag: number;
+    hasOrani?: number;
     kur?: number;
     giseKuru?: number;
     aciklama?: string;
