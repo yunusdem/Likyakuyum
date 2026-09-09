@@ -12,7 +12,7 @@ import cariHareketRoutes from "./cariHareket.routes.js";
 import healthRoutes from "./health.routes.js";
 import kurRoutes from "./kur.routes.js";
 import panoRoutes from "./pano.routes.js";
-import masakRoutes from "./masak.routes.js";
+import banknotRoutes from "./banknot.routes.js";
 
 const apiRouter = Router();
 
@@ -37,7 +37,8 @@ apiRouter.use("/cari-hareketler", cariHareketRoutes);
 apiRouter.use("/kur", kurRoutes);
 apiRouter.use("/pano", panoRoutes);
 apiRouter.use("/kur/pano-tanimi", panoRoutes);
-apiRouter.use("/masak", masakRoutes);
+apiRouter.use("/banknot", banknotRoutes);
+apiRouter.use("/banknotes", banknotRoutes);
 
 export default apiRouter;
 

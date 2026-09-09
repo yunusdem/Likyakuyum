@@ -19,6 +19,7 @@ import KurFiyatListesiPage from "./pages/kur/KurFiyatListesiPage";
 import PanoTanimiPage from "./pages/kur/PanoTanimiPage";
 import PanoPage from "./pages/kur/PanoPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
+import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import LoginPage from "./pages/auth/LoginPage";
 
 
@@ -109,6 +110,8 @@ export default function App() {
             <Route path="tanimlar/numarator-tanimlari" element={<NumeratorDefinitionsPage />} />
             <Route path="ayarlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
             <Route path="tanimlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
+            <Route path="ayarlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
+            <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
             <Route path="cari/kart-kayit" element={<CariCardRegistrationPage />} />
             <Route path="cari/kayit" element={<CariCardRegistrationPage />} />
             <Route path="cari/kart-duzeltme" element={<CariCardRegistrationPage />} />

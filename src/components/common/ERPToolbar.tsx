@@ -13,7 +13,6 @@ import {
   IconFileText,
   IconChartLine,
   IconDeviceTv,
-  IconShieldCheck,
 } from "@tabler/icons-react";
 
 export interface ERPToolbarProps {
@@ -72,8 +71,8 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kur/saklanan-fiyat-listesi": { title: "B- Saklanan Fiyat Listesi", icon: <IconChartLine size={20} /> },
   "/kur/pano": { title: "C- Pano", icon: <IconDeviceTv size={20} /> },
   "/kur/pano-tanimi": { title: "D- Pano Tanımı", icon: <IconDeviceTv size={20} /> },
-  "/masak": { title: "MASAK Malvarlıkları Dondurulanlar", icon: <IconShieldCheck size={20} /> },
-  "/ayarlar/masak-dondurulanlar": { title: "MASAK Malvarlıkları Dondurulanlar", icon: <IconShieldCheck size={20} /> },
+  "/ayarlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
+  "/tanimlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({
