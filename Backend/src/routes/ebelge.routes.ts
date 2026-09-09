@@ -7,14 +7,26 @@ const router = Router();
 
 router.use(authenticate);
 
-// Bağlantı ayarları — mali sonuç doğuran entegratör erişimini yapılandırdığı için
-// yalnızca yönetici rolleri değiştirebilir.
-router.get("/ayar", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER), EbelgeController.getAyar);
-router.put("/ayar", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER), EbelgeController.saveAyar);
-router.post("/ayar/test", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER), EbelgeController.testBaglanti);
+/**
+ * YETKİ NOTU (10.09.2026 — kullanıcı kararı)
+ *
+ * e-Belge uçlarının tamamı `admin`, `manager` ve **`cashier`** rollerine açıktır.
+ * Bu, kasiyerin ayarları değiştirebileceği ve **GİB'e belge gönderebileceği** anlamına gelir;
+ * gönderim ve kabul/red işlemleri geri alınamaz.
+ *
+ * Bu bilinçli bir karardır: "kasiyer de görsün, her şey açık olsun" (kullanıcı talebi).
+ * Daraltmak gerekirse `authorizeRoles` çağrılarından `UserRole.CASHIER` çıkarılır.
+ *
+ * `user` rolü hâlâ kısıtlıdır — talep yalnızca kasiyer içindi.
+ */
 
-router.get("/kontor", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER), EbelgeController.getKontor);
-router.get("/log", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER), EbelgeController.getLogs);
+// Bağlantı ayarları — entegratör kimlik bilgileri burada tutulur.
+router.get("/ayar", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.getAyar);
+router.put("/ayar", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.saveAyar);
+router.post("/ayar/test", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.testBaglanti);
+
+router.get("/kontor", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.getKontor);
+router.get("/log", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.getLogs);
 
 // Gelen kutusu — okuma uçları, giriş yapmış her kullanıcıya açık.
 // (Kabul/red gibi mali sonuç doğuran işlemler Faz 4'te ayrı yetkiyle eklenecek.)
@@ -26,7 +38,7 @@ router.get("/gelen/:uuid", EbelgeController.getGelenDetay);
 // Kabul / red — GERİ ALINAMAZ, mali sonuç doğurur. Ayrı yetki isteniyor.
 router.post(
   "/gelen/:uuid/cevap",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.gelenCevapVer
 );
 // Okundu / işlendi işaretleme — mali sonuç doğurmaz, her kullanıcı yapabilir.
@@ -42,24 +54,24 @@ router.get("/giden", EbelgeController.listGiden);
 // Onay (DraftApproval) ucu Faz 6'da BİLEREK açılmamıştır; belge GİB'e gönderilmez.
 router.post(
   "/giden/taslak",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.taslakGonder
 );
 router.post(
   "/giden/:uuid/iptal",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.taslakIptal
 );
 
 // e-Fatura GERÇEK GÖNDERİMİ (Faz 7) — belge GİB'e gider, GERİ ALINAMAZ.
 router.post(
   "/giden/gonder",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.faturaGonder
 );
 router.post(
   "/giden/:uuid/onayla",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.taslakOnayla
 );
 router.get("/giden/:uuid/statu", EbelgeController.gidenStatuYenile);
@@ -67,7 +79,7 @@ router.get("/giden/:uuid/statu", EbelgeController.gidenStatuYenile);
 // Belgeyi alıcıya e-posta ile gönderir — tekrar çağrılırsa yeniden mail gider.
 router.post(
   "/giden/:uuid/mail",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.belgeMailGonder
 );
 
@@ -82,7 +94,7 @@ router.get("/irsaliye/:ettn/pdf", EbelgeController.irsaliyePdf);
 // Gönderim — GİB'e gider, GERİ ALINAMAZ
 router.post(
   "/irsaliye/gonder",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.irsaliyeGonder
 );
 
@@ -93,12 +105,12 @@ router.post("/earsiv/arsiv/senkronize", EbelgeController.earsivArsivSenkronize);
 router.post("/earsiv/arsiv/:uuid/statu", EbelgeController.earsivArsivStatu);
 router.post(
   "/earsiv/gonder",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.earsivGonder
 );
 router.post(
   "/earsiv/:uuid/iptal",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.earsivIptal
 );
 router.get("/earsiv/durum", EbelgeController.earsivDurum);
@@ -108,7 +120,7 @@ router.get("/earsiv/:uuid/pdf", EbelgeController.earsivPdf);
 // Vergi mükellefi olmayan kişiden alımda düzenlenir (kuyumcuda hurda altın alımı).
 router.post(
   "/gider-pusulasi/gonder",
-  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER),
+  authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER),
   EbelgeController.giderPusulasiGonder
 );
 router.get("/gider-pusulasi/:uuid/pdf", EbelgeController.giderPusulasiPdf);
