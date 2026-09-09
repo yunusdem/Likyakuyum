@@ -20,6 +20,7 @@ import PanoTanimiPage from "./pages/kur/PanoTanimiPage";
 import PanoPage from "./pages/kur/PanoPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
+import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
 import LoginPage from "./pages/auth/LoginPage";
 
 
@@ -124,6 +125,9 @@ export default function App() {
             <Route path="cari/hareket-duzeltme" element={<CariHareketPage />} />
             <Route path="cari/hareket-listesi" element={<CariHareketListPage />} />
             <Route path="cari/hareketler" element={<CariHareketListPage />} />
+            <Route path="cari/emanet-dekont" element={<CariEmanetDekontPage />} />
+            <Route path="cari/cari-emanet-dekont" element={<CariEmanetDekontPage />} />
+            <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />

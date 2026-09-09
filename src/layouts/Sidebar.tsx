@@ -128,7 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       }
 
       // 3. Only process single characters
-      if (e.key.length !== 1) return;
+      if (!e.key || typeof e.key !== "string" || e.key.length !== 1) return;
 
       // 4. Do nothing if user is currently typing in an input/textarea/select/editable field or modal
       const target = e.target as HTMLElement | null;
@@ -311,7 +311,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                       {menu.title}
                     </CustomToggle>
                     <Accordion.Collapse eventKey={index.toString()}>
-                      <ListGroup as="ul" className="dropdown-menu flex-column show position-static bg-transparent border-0 py-0">
+                      <ListGroup as="ul" className="dropdown-menu sidebar-submenu-list flex-column show position-static bg-transparent py-1">
                         {menu.children.map(function (
                           menuLevel1Item,
                           menuLevel1Index
@@ -355,7 +355,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                           >
                                             <Link
                                               to={to2}
-                                              className={`nav-link py-1 px-3 ${currentPath === to2 ? "active" : ""
+                                              className={`nav-link sidebar-sub-link py-1 px-3 ${currentPath === to2 ? "active" : ""
                                                 }`}
                                             >
                                               <span className="text">
@@ -382,7 +382,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                               >
                                 <Link
                                   to={to1}
-                                  className={`nav-link py-1 px-3 ${currentPath === to1 ? "active" : ""
+                                  className={`nav-link sidebar-sub-link py-1 px-3 ${currentPath === to1 ? "active" : ""
                                     }`}
                                 >
                                   <span className="text">

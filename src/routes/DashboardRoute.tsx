@@ -83,6 +83,7 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "H- Cari Ekstre", link: "cari/ekstre" },
       { id: uuid(), name: "I- Cari Bakiye Raporu", link: "cari/bakiye-raporu" },
       { id: uuid(), name: "J- POS Ekstre", link: "cari/pos-ekstre" },
+      { id: uuid(), name: "K- Cari Emanet Dekont", link: "cari/emanet-dekont" },
     ],
   },
 
