@@ -102,6 +102,24 @@ export function applyAppearanceToDOM(appearance?: any) {
 }
 
 
+// Top-level pre-hydration execution: immediately apply saved theme from cache before any component mounts
+if (typeof window !== "undefined") {
+  try {
+    const cached = localStorage.getItem("kuyumcu_active_appearance");
+    if (cached) {
+      applyAppearanceToDOM(JSON.parse(cached));
+    } else {
+      const storedUser = localStorage.getItem("kuyumcu_erp_user");
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser);
+        if (parsed?.appearance) {
+          applyAppearanceToDOM(parsed.appearance);
+        }
+      }
+    }
+  } catch {}
+}
+
 /**
  * Enterprise Theme Applier for Kuyumcu ERP
  * Dynamically applies the logged-in user's Appearance (colors, fonts, grids, menus, headers)
@@ -111,17 +129,50 @@ export const UserThemeApplier: React.FC = () => {
   const { user } = useAuth();
 
   useEffect(() => {
-    // Apply initial user theme on mount and when auth user changes
+    // 1. Initial mount check: apply cached appearance immediately to avoid any color flash on page reload
+    try {
+      const cached = localStorage.getItem("kuyumcu_active_appearance");
+      if (cached) {
+        applyAppearanceToDOM(JSON.parse(cached));
+        return;
+      }
+    } catch {}
+
     if (user?.appearance) {
       applyAppearanceToDOM(user.appearance);
+      try {
+        localStorage.setItem("kuyumcu_active_appearance", JSON.stringify(user.appearance));
+      } catch {}
+    }
+  }, []);
+
+  useEffect(() => {
+    // 2. When auth user profile loads or updates
+    if (user?.appearance) {
+      const cached = localStorage.getItem("kuyumcu_active_appearance");
+      if (cached) {
+        try {
+          applyAppearanceToDOM(JSON.parse(cached));
+        } catch {
+          applyAppearanceToDOM(user.appearance);
+        }
+      } else {
+        applyAppearanceToDOM(user.appearance);
+        try {
+          localStorage.setItem("kuyumcu_active_appearance", JSON.stringify(user.appearance));
+        } catch {}
+      }
     }
   }, [user?.appearance]);
 
   useEffect(() => {
-    // Global listener for live theme events (direct DOM manipulation, no React state conflict)
+    // 3. Global listener for live theme events (direct DOM manipulation, no React state conflict)
     const handlePreview = (e: CustomEvent) => {
       if (e.detail) {
         applyAppearanceToDOM(e.detail);
+        try {
+          localStorage.setItem("kuyumcu_active_appearance", JSON.stringify(e.detail));
+        } catch {}
       }
     };
     window.addEventListener("kuyumcu_preview_appearance" as any, handlePreview);

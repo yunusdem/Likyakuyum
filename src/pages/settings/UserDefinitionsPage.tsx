@@ -50,6 +50,7 @@ import { CashDeskService } from "../../services/cashDeskService";
 import LookupModal from "../../components/common/LookupModal";
 
 import { useAuth } from "../../context/AuthContext";
+import { AuthService } from "../../services/authService";
 
 
 export type UserProfile = UserProfileDto;
@@ -810,7 +811,7 @@ const defaultNewUserTemplate: UserProfile = {
 };
 
 const UserDefinitionsPage: React.FC = () => {
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshUser } = useAuth();
   const rawDb = localStorage.getItem("kuyumcu_erp_active_db");
   const activeDb = rawDb && rawDb !== "test" ? rawDb : "R2016_dvz";
   const rawServer = localStorage.getItem("kuyumcu_erp_active_server");
@@ -831,31 +832,58 @@ const UserDefinitionsPage: React.FC = () => {
   const autoSaveTimerRef = useRef<any>(null);
 
   const autoSaveAppearance = useCallback(
-    (newAppearance: UserProfile["appearance"], userToSave: UserProfile) => {
+    (newAppearance: UserProfile["appearance"], userToSave?: UserProfile) => {
+      // 1. Anında localStorage'a kaydet (F5 / Sayfa yenilemede 0ms içinde kalıcı koruma)
+      try {
+        localStorage.setItem("kuyumcu_active_appearance", JSON.stringify(newAppearance));
+        const storedUser = AuthService.getUser();
+        if (storedUser) {
+          storedUser.appearance = newAppearance;
+          localStorage.setItem("kuyumcu_erp_user", JSON.stringify(storedUser));
+        }
+      } catch (e) {
+        console.warn("Yerel depolama görünüm yazma hatası:", e);
+      }
+
+      // 2. Anında DOM'a ve diğer pencerelere CustomEvent ile canlı uygula
+      window.dispatchEvent(new CustomEvent("kuyumcu_preview_appearance", { detail: newAppearance }));
+
+      // 3. Veritabanına (MSSQL TODVZ_KULLANICI) kalıcı olarak kaydet
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
 
       autoSaveTimerRef.current = setTimeout(async () => {
         try {
-          // If editing an existing user record in the DB, update that user record directly
-          // CRITICAL: NEVER overwrite logged-in user session (kuyumcu_erp_user) or trigger refreshUser()!
-          if (userToSave.id) {
-            await UserService.updateUser(userToSave.id, {
-              ...userToSave,
+          // A) Giriş yapmış kullanıcının görünümünü veritabanına doğrudan kaydet
+          await UserService.updateMyAppearance(newAppearance).catch((err) => {
+            console.warn("updateMyAppearance hatası:", err);
+          });
+
+          // B) Eğer düzenlenmekte olan kullanıcının ID'si varsa, o kullanıcının kartını da güncelle
+          const targetUser = userToSave || currentUser;
+          if (targetUser && targetUser.id) {
+            await UserService.updateUser(targetUser.id, {
+              ...targetUser,
               appearance: newAppearance,
+            }).catch((err) => {
+              console.warn("UserService.updateUser görünüm hatası:", err);
             });
-            // Update local users array
+
+            // Local users listesini güncelle
             setUsers((prev) =>
-              prev.map((u) => (String(u.id) === String(userToSave.id) ? { ...u, appearance: newAppearance } : u))
+              prev.map((u) => (String(u.id) === String(targetUser.id) ? { ...u, appearance: newAppearance } : u))
             );
           }
+
+          // C) Auth context profilini yenile
+          await refreshUser().catch(() => {});
         } catch (err) {
-          console.warn("Otomatik görünüm veritabanı kaydı:", err);
+          console.warn("Otomatik görünüm veritabanı kaydı hatası:", err);
         }
       }, 150);
     },
-    []
+    [currentUser, refreshUser]
   );
 
 
@@ -870,15 +898,12 @@ const UserDefinitionsPage: React.FC = () => {
       appearance: newAppearance,
     };
     setCurrentUser(updatedUser);
-    window.dispatchEvent(new CustomEvent("kuyumcu_preview_appearance", { detail: newAppearance }));
 
-    if (currentUser.id && !isNewRecord) {
-      autoSaveAppearance(newAppearance, updatedUser);
-      setAlertSuccess(`"${preset.name}" tema paketi uygulandı ve veritabanına otomatik kaydedildi.`);
-    } else {
-      setAlertSuccess(`"${preset.name}" tema paketi seçildi. Yeni kullanıcıyı kaydetmek için sol üstteki "Kaydet" (💾) butonuna basınız.`);
-    }
-    setTimeout(() => setAlertSuccess(null), 3000);
+    // Anında localStorage + veritabanı kaydı + DOM güncellemesi yap
+    autoSaveAppearance(newAppearance, updatedUser);
+
+    setAlertSuccess(`"${preset.name}" tema paketi seçildi ve kalıcı olarak kaydedildi.`);
+    setTimeout(() => setAlertSuccess(null), 3500);
   };
 
 
@@ -934,13 +959,34 @@ const UserDefinitionsPage: React.FC = () => {
       const dbUsers = res.data || [];
       setUsers(dbUsers);
 
-      if (selectIndex !== undefined && dbUsers.length > 0 && selectIndex >= 0) {
-        const idx = Math.min(selectIndex, dbUsers.length - 1);
-        setUserIndex(idx);
-        setCurrentUser(JSON.parse(JSON.stringify(dbUsers[idx])));
+      if (dbUsers.length > 0) {
+        let targetIdx = 0;
+        if (selectIndex !== undefined && selectIndex >= 0) {
+          targetIdx = Math.min(selectIndex, dbUsers.length - 1);
+        } else {
+          // Giriş yapmış kullanıcıyı bul veya ilk kullanıcıyı getir
+          const authIdx = dbUsers.findIndex(
+            (u) =>
+              (authUser?.id && String(u.id) === String(authUser.id)) ||
+              (authUser?.username && u.username?.toLowerCase() === authUser.username.toLowerCase())
+          );
+          targetIdx = authIdx !== -1 ? authIdx : 0;
+        }
+
+        setUserIndex(targetIdx);
+        const selectedUser = JSON.parse(JSON.stringify(dbUsers[targetIdx]));
+
+        // Eğer yerel depolamada aktif bir görünüm varsa ve aktif kullanıcıysa, formu bu görünümle senkronize et
+        const cachedApp = localStorage.getItem("kuyumcu_active_appearance");
+        if (cachedApp && (!authUser?.id || String(selectedUser.id) === String(authUser.id))) {
+          try {
+            selectedUser.appearance = { ...selectedUser.appearance, ...JSON.parse(cachedApp) };
+          } catch {}
+        }
+
+        setCurrentUser(selectedUser);
         setIsNewRecord(false);
       } else {
-        // Always default to new user creation mode
         setUserIndex(0);
         setCurrentUser({
           ...defaultNewUserTemplate,
@@ -1019,13 +1065,8 @@ const UserDefinitionsPage: React.FC = () => {
 
     setCurrentUser(updatedUser);
 
-    // Direct DOM style update
-    window.dispatchEvent(new CustomEvent("kuyumcu_preview_appearance", { detail: updatedAppearance }));
-
-    // Auto-save to SQL database (only for existing saved user records, never touches active auth session)
-    if (currentUser.id && !isNewRecord) {
-      autoSaveAppearance(updatedAppearance, updatedUser);
-    }
+    // Anında localStorage + DOM + veritabanı kaydı
+    autoSaveAppearance(updatedAppearance, updatedUser);
   };
 
 
@@ -1060,42 +1101,49 @@ const UserDefinitionsPage: React.FC = () => {
         return;
       }
 
-      // Her zaman yeni kullanıcı ekleme modunda: Kullanıcı adı, şifre ve vezne ile yeni kayıt eklenir
-      const isDuplicate = users.some(
-        (u) => u.id && u.username.toLowerCase() === trimmedUsername.toLowerCase()
-      );
-      if (isDuplicate) {
-        setAlertError(`"${trimmedUsername}" kullanıcı adı daha önce kayıtlıdır. Lütfen farklı bir kullanıcı adı seçiniz.`);
-        return;
+      if (!isNewRecord && currentUser.id) {
+        // Mevcut kullanıcıyı güncelle
+        const updated = await UserService.updateUser(currentUser.id, {
+          ...currentUser,
+          username: trimmedUsername.replace(/\s+/g, ""),
+        });
+        setAlertSuccess(`"${updated.username}" kullanıcısı başarıyla güncellendi.`);
+        const res = await UserService.listUsers();
+        setUsers(res.data || []);
+        if (authUser?.id && String(currentUser.id) === String(authUser.id)) {
+          await refreshUser().catch(() => {});
+        }
+        setTimeout(() => setAlertSuccess(null), 4000);
+      } else {
+        // Yeni kullanıcı oluştur
+        const isDuplicate = users.some(
+          (u) => u.id && u.username.toLowerCase() === trimmedUsername.toLowerCase()
+        );
+        if (isDuplicate) {
+          setAlertError(`"${trimmedUsername}" kullanıcı adı daha önce kayıtlıdır. Lütfen farklı bir kullanıcı adı seçiniz.`);
+          return;
+        }
+
+        const { id, ...newUserData } = currentUser;
+        const created = await UserService.createUser({
+          ...newUserData,
+          username: trimmedUsername.replace(/\s+/g, ""),
+        });
+        setAlertSuccess(`"${created.username}" kullanıcısı başarıyla veritabanına eklendi.`);
+
+        // Veritabanındaki kullanıcı listesini güncelle
+        const res = await UserService.listUsers();
+        const updatedList = res.data || [];
+        setUsers(updatedList);
+        const newIdx = updatedList.findIndex((u) => u.id === created.id);
+        if (newIdx !== -1) {
+          setUserIndex(newIdx);
+        }
+        setCurrentUser(created);
+        setIsNewRecord(false);
+        setTimeout(() => setAlertSuccess(null), 4500);
       }
-
-      const { id, ...newUserData } = currentUser;
-      const created = await UserService.createUser({
-        ...newUserData,
-        username: trimmedUsername.replace(/\s+/g, ""),
-      });
-      setAlertSuccess(`"${created.username}" kullanıcısı başarıyla veritabanına eklendi.`);
-
-      // Veritabanındaki kullanıcı listesini arka planda güncelle
-      const res = await UserService.listUsers();
-      setUsers(res.data || []);
-
-      // Formu her zaman yeni kullanıcı eklemeye hazır olarak temizle
-      setCurrentUser({
-        ...defaultNewUserTemplate,
-        id: "",
-        username: "",
-        fullName: "",
-        password: "",
-        cashierCode: cashierList.length > 0 ? (cashierList[0].kod || String(cashierList[0].id)) : "00",
-        isActive: true,
-      });
-      setIsNewRecord(true);
-      setTimeout(() => setAlertSuccess(null), 4500);
     } catch (err: any) {
-
-
-
       setAlertError(err.message || "Kaydetme sırasında bir hata oluştu.");
       setTimeout(() => setAlertError(null), 6000);
     } finally {
