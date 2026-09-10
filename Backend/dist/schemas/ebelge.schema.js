@@ -36,6 +36,8 @@ export const ebelgeAyarSchema = z.object({
     })
         .default(""),
     firmaAlias: z.string().trim().max(150).default(""),
+    firmaIl: z.string().trim().max(50).default(""),
+    firmaIlce: z.string().trim().max(50).default(""),
     aktif: z.boolean().default(false),
 });
 /* ==========================================================================

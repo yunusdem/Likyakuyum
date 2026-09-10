@@ -36,8 +36,8 @@ const temel = (): UblFaturaGirdi => ({
   senaryo: "TICARIFATURA",
   faturaTipi: "SATIS",
   paraBirimi: "TRY",
-  gonderici: { vknTckn: "1234567890", unvan: "Likya Kuyum A.Ş." },
-  alici: { vknTckn: "9876543210", unvan: "Alıcı A.Ş." },
+  gonderici: { vknTckn: "1234567890", unvan: "Likya Kuyum A.Ş.", il: "Antalya", ilce: "Muratpaşa" },
+  alici: { vknTckn: "9876543210", unvan: "Alıcı A.Ş.", il: "Antalya", ilce: "Muratpaşa" },
   satirlar: [{ ad: "Bilezik", miktar: 1, birimFiyat: 1000, kdvOrani: 20 }],
 });
 
@@ -321,4 +321,22 @@ test("geriye dönük uyum: sade SATIS faturası bozulmadı", () => {
   assert.ok(!xml.includes("BillingReference"));
   assert.ok(!xml.includes("PricingExchangeRate"));
   assert.equal(o.LegalMonetaryTotal.PayableAmount["#text"], "1200.00");
+});
+
+test("ext ad alanı bildirilir ve UBLExtensions ilk çocuk elemandır", () => {
+  const { xml } = buildInvoiceXml(temel());
+  assert.ok(xml.includes('xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"'));
+  // ICE imzayı buraya yazıyor; eleman kökten hemen sonra, UBLVersionID'den önce olmalı
+  assert.ok(xml.indexOf("<ext:UBLExtensions>") < xml.indexOf("<cbc:UBLVersionID>"));
+});
+
+test("adreste il/ilçe zorunlu (UBL-TR AddressType)", () => {
+  assert.throws(
+    () => buildInvoiceXml({ ...temel(), alici: { vknTckn: "9876543210", unvan: "Alıcı A.Ş." } as any }),
+    /il ve ilçe zorunludur/
+  );
+  assert.throws(
+    () => buildInvoiceXml({ ...temel(), gonderici: { vknTckn: "1234567890", unvan: "X", il: "Antalya" } as any }),
+    /Bağlantı Ayarları/
+  );
 });

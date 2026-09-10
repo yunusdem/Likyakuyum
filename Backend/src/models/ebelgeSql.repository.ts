@@ -26,6 +26,8 @@ export interface EbelgeAyarKayit {
   uygulamaSurum: string;
   firmaVkn: string;
   firmaAlias: string;
+  firmaIl: string;
+  firmaIlce: string;
   aktif: boolean;
   guncelleyen: string | null;
   guncellemeTarihi: Date | null;
@@ -41,6 +43,8 @@ export interface SaveEbelgeAyarDto {
   uygulamaSurum: string;
   firmaVkn: string;
   firmaAlias: string;
+  firmaIl: string;
+  firmaIlce: string;
   aktif: boolean;
 }
 
@@ -169,12 +173,20 @@ export class EbelgeSqlRepository {
           [UYGULAMA_SURUM] VARCHAR(50) NOT NULL DEFAULT '1.0',
           [FIRMA_VKN] VARCHAR(11) NOT NULL DEFAULT '',
           [FIRMA_ALIAS] NVARCHAR(150) NOT NULL DEFAULT '',
+          [FIRMA_IL] NVARCHAR(50) NOT NULL DEFAULT '',
+          [FIRMA_ILCE] NVARCHAR(50) NOT NULL DEFAULT '',
           [AKTIF] BIT NOT NULL DEFAULT 0,
           [GUNCELLEYEN] NVARCHAR(50) NULL,
           [GUNCELLEME_TARIHI] DATETIME NULL,
           CONSTRAINT [PK_TODVZ_EBELGE_AYAR] PRIMARY KEY CLUSTERED ([ID] ASC)
         );
       END
+
+      -- Sonradan eklenen kolonlar: UBL-TR'de adreste il/ilce zorunludur.
+      IF COL_LENGTH('dbo.TODVZ_EBELGE_AYAR', 'FIRMA_IL') IS NULL
+        ALTER TABLE [dbo].[TODVZ_EBELGE_AYAR] ADD [FIRMA_IL] NVARCHAR(50) NOT NULL DEFAULT '';
+      IF COL_LENGTH('dbo.TODVZ_EBELGE_AYAR', 'FIRMA_ILCE') IS NULL
+        ALTER TABLE [dbo].[TODVZ_EBELGE_AYAR] ADD [FIRMA_ILCE] NVARCHAR(50) NOT NULL DEFAULT '';
 
       IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TODVZ_EBELGE_GELEN')
       BEGIN
@@ -331,6 +343,8 @@ export class EbelgeSqlRepository {
         LTRIM(RTRIM(ISNULL([UYGULAMA_SURUM], '1.0'))) as uygulamaSurum,
         LTRIM(RTRIM(ISNULL([FIRMA_VKN], ''))) as firmaVkn,
         LTRIM(RTRIM(ISNULL([FIRMA_ALIAS], ''))) as firmaAlias,
+        LTRIM(RTRIM(ISNULL([FIRMA_IL], ''))) as firmaIl,
+        LTRIM(RTRIM(ISNULL([FIRMA_ILCE], ''))) as firmaIlce,
         ISNULL([AKTIF], 0) as aktif,
         [GUNCELLEYEN] as guncelleyen,
         [GUNCELLEME_TARIHI] as guncellemeTarihi
@@ -410,6 +424,8 @@ export class EbelgeSqlRepository {
       uygulamaSurum: kayit.uygulamaSurum,
       firmaVkn: kayit.firmaVkn,
       firmaAlias: kayit.firmaAlias,
+      firmaIl: kayit.firmaIl,
+      firmaIlce: kayit.firmaIlce,
       aktif: kayit.aktif,
       guncelleyen: kayit.guncelleyen,
       guncellemeTarihi: kayit.guncellemeTarihi,
@@ -455,6 +471,8 @@ export class EbelgeSqlRepository {
       .input("uygulamaSurum", sql.VarChar(50), dto.uygulamaSurum)
       .input("firmaVkn", sql.VarChar(11), dto.firmaVkn)
       .input("firmaAlias", sql.NVarChar(150), dto.firmaAlias)
+      .input("firmaIl", sql.NVarChar(50), dto.firmaIl)
+      .input("firmaIlce", sql.NVarChar(50), dto.firmaIlce)
       .input("aktif", sql.Bit, dto.aktif)
       .input("guncelleyen", sql.NVarChar(50), kullanici);
 
@@ -472,6 +490,8 @@ export class EbelgeSqlRepository {
             [UYGULAMA_SURUM] = @uygulamaSurum,
             [FIRMA_VKN] = @firmaVkn,
             [FIRMA_ALIAS] = @firmaAlias,
+            [FIRMA_IL] = @firmaIl,
+            [FIRMA_ILCE] = @firmaIlce,
             [AKTIF] = @aktif,
             [GUNCELLEYEN] = @guncelleyen,
             [GUNCELLEME_TARIHI] = GETDATE()
@@ -481,11 +501,11 @@ export class EbelgeSqlRepository {
       await request.query(`
         INSERT INTO [dbo].[TODVZ_EBELGE_AYAR]
           ([ORTAM], [SERVIS_URL], [KULLANICI_ADI], [SIFRE_SIFRELI], [SIFRE_IV], [SIFRE_TAG],
-           [UYGULAMA_ADI], [UYGULAMA_SURUM], [FIRMA_VKN], [FIRMA_ALIAS], [AKTIF],
+           [UYGULAMA_ADI], [UYGULAMA_SURUM], [FIRMA_VKN], [FIRMA_ALIAS], [FIRMA_IL], [FIRMA_ILCE], [AKTIF],
            [GUNCELLEYEN], [GUNCELLEME_TARIHI])
         VALUES
           (@ortam, @servisUrl, @kullaniciAdi, @sifreSifreli, @sifreIv, @sifreTag,
-           @uygulamaAdi, @uygulamaSurum, @firmaVkn, @firmaAlias, @aktif,
+           @uygulamaAdi, @uygulamaSurum, @firmaVkn, @firmaAlias, @firmaIl, @firmaIlce, @aktif,
            @guncelleyen, GETDATE())
       `);
     }

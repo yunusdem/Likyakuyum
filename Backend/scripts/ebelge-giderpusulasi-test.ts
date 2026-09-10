@@ -56,6 +56,7 @@ const temelGirdi = (): GiderPusulasiGirdi => ({
     ad: "Ayşe",
     soyad: "Yılmaz",
     il: "Antalya",
+    ilce: "Muratpaşa",
   },
   satirlar: [{ ad: "22 Ayar Hurda Altın", miktar: 10, birimKodu: "GRM", birimFiyat: 175, vergiOrani: 10 }],
 });
@@ -205,7 +206,7 @@ test("hatalı girdiler reddedilir", () => {
   dene({ satirlar: [{ ad: "A", miktar: 0, birimFiyat: 10, vergiOrani: 10 }] }, /miktar/);
   dene({ satirlar: [{ ad: "A", miktar: 1, birimFiyat: Infinity, vergiOrani: 10 }] }, /sonlu/);
   dene({ alici: { vknTckn: "123" } as any }, /VKN\/TCKN/);
-  dene({ alici: { vknTckn: "12345678901", unvan: "X" } as any }, /ad ve soyad/);
+  dene({ alici: { vknTckn: "12345678901", unvan: "X", il: "Antalya", ilce: "Muratpaşa" } as any }, /ad ve soyad/);
   dene({ paraBirimi: "TRYY" }, /üç harfli/);
 });
 
@@ -227,7 +228,7 @@ test("iade doğrulamaları", () => {
     () =>
       iade({
         iadeDayanak: { belgeTipi: "BELGESIZ", belgeTarihi: "2026-02-01" },
-        alici: { vknTckn: "1234567890", unvan: "Tüzel" } as any,
+        alici: { vknTckn: "1234567890", unvan: "Tüzel", il: "Antalya", ilce: "Muratpaşa" } as any,
       }),
     /gerçek TCKN/
   );

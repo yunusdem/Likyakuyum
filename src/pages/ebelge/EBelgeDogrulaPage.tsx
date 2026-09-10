@@ -594,11 +594,11 @@ const EBelgeDogrulaPage: React.FC = () => {
               <Form.Control size="sm" value={aliciVd} onChange={(e) => setAliciVd(e.target.value)} />
             </Col>
             <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">İl</Form.Label>
+              <Form.Label className="small mb-1">İl <span className="text-danger">*</span></Form.Label>
               <Form.Control size="sm" value={aliciIl} onChange={(e) => setAliciIl(e.target.value)} />
             </Col>
             <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">İlçe</Form.Label>
+              <Form.Label className="small mb-1">İlçe <span className="text-danger">*</span></Form.Label>
               <Form.Control size="sm" value={aliciIlce} onChange={(e) => setAliciIlce(e.target.value)} />
             </Col>
           </Row>

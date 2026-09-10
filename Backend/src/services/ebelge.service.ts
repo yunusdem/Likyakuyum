@@ -118,6 +118,8 @@ export class EbelgeService {
       uygulamaSurum: "1.0",
       firmaVkn,
       firmaAlias: "",
+      firmaIl: "",
+      firmaIlce: "",
       aktif: false,
       guncelleyen: null,
       guncellemeTarihi: null,
@@ -479,8 +481,10 @@ export class EbelgeService {
       soyad: verilen?.soyad,
       vergiDairesi: verilen?.vergiDairesi,
       adres: verilen?.adres || firma.adres || undefined,
-      ilce: verilen?.ilce,
-      il: verilen?.il,
+      // UBL-TR adreste il/ilçe zorunlu; firma tablosunda bu kolonlar yok, bu yüzden
+      // e-Belge ayarlarından alınır (§16.17).
+      ilce: verilen?.ilce || ayar?.firmaIlce || undefined,
+      il: verilen?.il || ayar?.firmaIl || undefined,
       ulke: verilen?.ulke,
       telefon: verilen?.telefon || firma.telefon || undefined,
       eposta: verilen?.eposta,

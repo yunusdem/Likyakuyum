@@ -183,6 +183,14 @@ export const dogrulaGiderPusulasi = (girdi: GiderPusulasiGirdi): void => {
     if (!taraf.unvan?.trim() && !(taraf.ad?.trim() && taraf.soyad?.trim())) {
       throw ApiError.badRequest(`${ad} için unvan ya da ad+soyad girilmelidir.`);
     }
+    // UBL-TR AddressType'ta CitySubdivisionName (ilçe) ve CityName (il) zorunludur;
+    // eksikse ICE şema doğrulaması "PostalAddress ... geçersiz Country alt öğesi" der.
+    if (!taraf.ilce?.trim() || !taraf.il?.trim()) {
+      throw ApiError.badRequest(
+        `${ad} adresinde il ve ilçe zorunludur (UBL-TR kuralı).` +
+          (ad === "Düzenleyen" ? " E-Belge → Bağlantı Ayarları ekranından firma il/ilçe bilgisini giriniz." : "")
+      );
+    }
   }
 
   if (!girdi.satirlar?.length) {

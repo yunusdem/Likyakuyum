@@ -90,6 +90,9 @@ export interface EbelgeAyarView {
   uygulamaSurum: string;
   firmaVkn: string;
   firmaAlias: string;
+  /** UBL-TR'de adreste zorunlu: gönderici il / ilçe */
+  firmaIl: string;
+  firmaIlce: string;
   aktif: boolean;
   guncelleyen: string | null;
   guncellemeTarihi: Date | null;

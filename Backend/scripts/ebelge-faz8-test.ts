@@ -16,8 +16,8 @@ const parser = new XMLParser({ removeNSPrefix: true, parseTagValue: false });
 const uuid = '11111111-1111-4111-8111-111111111111';
 const input = () => ({ uuid, belgeNo: 'ABC2026000000001', tarih: '2026-01-01', saat: '10:00:00',
   senaryo: 'EARSIVFATURA' as const, faturaTipi: 'SATIS' as const, paraBirimi: 'TRY',
-  gonderici: { vknTckn: '1234567890', unvan: 'Test satıcı' },
-  alici: { vknTckn: '9876543210', unvan: 'Test alıcı' },
+  gonderici: { vknTckn: '1234567890', unvan: 'Test satıcı', il: 'Antalya', ilce: 'Muratpaşa' },
+  alici: { vknTckn: '9876543210', unvan: 'Test alıcı', il: 'Antalya', ilce: 'Muratpaşa' },
   satirlar: [{ ad: 'Test ürün', aciklama: 'A & B', miktar: 2, birimFiyat: 100, kdvOrani: 20 }] });
 let rows: Map<string, any>;
 let calls: { method: string; body: string }[];

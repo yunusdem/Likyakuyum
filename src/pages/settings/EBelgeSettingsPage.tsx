@@ -43,6 +43,8 @@ const BOS_AYAR: EbelgeAyarKaydet = {
   uygulamaSurum: "1.0",
   firmaVkn: "",
   firmaAlias: "",
+  firmaIl: "",
+  firmaIlce: "",
   aktif: false,
 };
 
@@ -70,6 +72,8 @@ const EBelgeSettingsPage: React.FC = () => {
         uygulamaSurum: ayar.uygulamaSurum,
         firmaVkn: ayar.firmaVkn,
         firmaAlias: ayar.firmaAlias,
+        firmaIl: ayar.firmaIl ?? "",
+        firmaIlce: ayar.firmaIlce ?? "",
         aktif: ayar.aktif,
       });
     } catch (err: any) {
@@ -296,6 +300,32 @@ const EBelgeSettingsPage: React.FC = () => {
                         onChange={(e) => alanDegistir("firmaAlias", e.target.value)}
                         placeholder="urn:mail:defaultgb@..."
                       />
+                    </Col>
+
+                    <Col xs={12} md={6}>
+                      <Form.Label className="small mb-1">Firma İl</Form.Label>
+                      <Form.Control
+                        size="sm"
+                        value={form.firmaIl}
+                        maxLength={50}
+                        onChange={(e) => alanDegistir("firmaIl", e.target.value)}
+                        placeholder="Denizli"
+                      />
+                    </Col>
+
+                    <Col xs={12} md={6}>
+                      <Form.Label className="small mb-1">Firma İlçe</Form.Label>
+                      <Form.Control
+                        size="sm"
+                        value={form.firmaIlce}
+                        maxLength={50}
+                        onChange={(e) => alanDegistir("firmaIlce", e.target.value)}
+                        placeholder="Pamukkale"
+                      />
+                      <div className="text-muted mt-1" style={{ fontSize: "0.72rem" }}>
+                        UBL-TR adres kuralı gereği il ve ilçe zorunludur; boş bırakılırsa belge
+                        şema doğrulamasından geçmez.
+                      </div>
                     </Col>
 
                     <Col xs={12} md={6}>

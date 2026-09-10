@@ -21,6 +21,8 @@ export interface EbelgeAyar {
   uygulamaSurum: string;
   firmaVkn: string;
   firmaAlias: string;
+  firmaIl: string;
+  firmaIlce: string;
   aktif: boolean;
   guncelleyen: string | null;
   guncellemeTarihi: string | null;
@@ -38,6 +40,8 @@ export interface EbelgeAyarKaydet {
   uygulamaSurum: string;
   firmaVkn: string;
   firmaAlias: string;
+  firmaIl: string;
+  firmaIlce: string;
   aktif: boolean;
 }
 
