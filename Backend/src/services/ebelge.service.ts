@@ -560,6 +560,9 @@ export class EbelgeService {
 
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
     const sonuc = await getUserListEFatura(config, vknTckn.trim());
+    if (!sonuc.basarili) {
+      throw ApiError.unprocessable(sonuc.mesaj || "Mükellef sorgusu başarısız; belge türü belirlenemedi.");
+    }
 
     await EbelgeSqlRepository.writeLog(
       {
@@ -1281,7 +1284,8 @@ export class EbelgeService {
     }
 
     const basarili = String(sonuc?.success).toLowerCase() === "true";
-    const durum = basarili ? "GONDERILDI" : "TASLAK";
+    const acikRed = String(sonuc?.success).toLowerCase() === "false";
+    const durum = basarili ? "GONDERILDI" : acikRed ? "TASLAK" : "BELIRSIZ";
 
     await EbelgeSqlRepository.earsivDurumGecir(
       uuid,
@@ -1308,6 +1312,7 @@ export class EbelgeService {
     );
 
     if (!basarili) {
+      if (!acikRed) throw ApiError.conflict("Onay sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz.");
       throw ApiError.badRequest(
         sonuc?.response_message?.trim() || "Taslak onaylanamadı; belge taslak olarak kaldı."
       );
@@ -1615,6 +1620,13 @@ export class EbelgeService {
    * karşı taraf mükellef mi? → ICE son sıra kontrolü → **SQL rezervasyonu** →
    * gönderim → sonucu belge bazında doğrula.
    */
+  public static async giderPusulasiOnizle(girdi: GiderPusulasiGirdi, dbContext?: DbContext) {
+    if ((girdi.paraBirimi || "TRY") !== "TRY") throw ApiError.badRequest("Yalnızca TRY destekleniyor.");
+    const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
+    const { ozet } = buildGiderPusulasiXml({ ...girdi, gonderici });
+    return { ozet, iceDogrulamasiYapildi: false };
+  }
+
   public static async giderPusulasiGonder(
     girdi: GiderPusulasiGirdi,
     kullanici: string,
@@ -2319,7 +2331,7 @@ export class EbelgeService {
 
   /** Giden belge listesi */
   public static async listGiden(
-    filtre: { sayfa?: number; boyut?: number; arama?: string; durum?: string },
+    filtre: { sayfa?: number; boyut?: number; arama?: string; durum?: string; belgeTuru?: string; baslangicTarihi?: string; bitisTarihi?: string },
     dbContext?: DbContext
   ) {
     return EbelgeSqlRepository.listGiden(filtre, dbContext);

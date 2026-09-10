@@ -3,6 +3,9 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EbelgeService } from "../services/ebelge.service.js";
+import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
+import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
+import { ebelgeKaynakKimlikSchema, ebelgeKaynakGonderSchema, ebelgeKaynakListeSchema } from "../schemas/ebelge.schema.js";
 import {
   ebelgeAyarSchema,
   ebelgeDogrulaSchema,
@@ -16,6 +19,22 @@ import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { ICE_BELGE_STATULERI } from "../services/ice/ice.efatura.js";
 
 export class EbelgeController {
+  public static kaynakListe = asyncHandler(async (req: Request, res: Response) => {
+    const parsed = ebelgeKaynakListeSchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest("Kaynak belge filtresi geçersiz.",parsed.error.format());
+    return ApiResponse.ok(res,"Kaynak belgeler listelendi.",await EbelgeKaynakRepository.list(parsed.data,EbelgeController.getDbContext(req)));
+  });
+  public static kaynakHazirla = asyncHandler(async (req: Request, res: Response) => {
+    const parsed = ebelgeKaynakKimlikSchema.safeParse(req.body);
+    if (!parsed.success) throw ApiError.badRequest("Kaynak belge kimliği geçersiz.");
+    return ApiResponse.ok(res,"Kaynak belge doğrulandı; henüz gönderilmedi.",await EbelgeKaynakService.hazirla(parsed.data,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));
+  });
+  public static kaynakGonder = asyncHandler(async (req: Request, res: Response) => {
+    const parsed = ebelgeKaynakGonderSchema.safeParse(req.body);
+    if (!parsed.success) throw ApiError.badRequest("Kaynak belge gönderim bilgileri geçersiz.");
+    const p = parsed.data;
+    return ApiResponse.ok(res,"Kaynak belge gönderildi.",await EbelgeKaynakService.gonder(p,p.parmakizi,p.senaryo,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));
+  });
   private static getDbContext(req: Request) {
     return {
       dbServer: req.user?.dbServer || (req.query.dbServer as string) || (req.body?.dbServer as string),
@@ -334,12 +353,25 @@ export class EbelgeController {
    * GET /api/v1/e-belge/giden
    */
   public static listGiden = asyncHandler(async (req: Request, res: Response) => {
+    for (const key of ["baslangicTarihi", "bitisTarihi"] as const) {
+      const value = req.query[key];
+      if (value && (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) {
+        throw ApiError.badRequest("Geçerli bir tarih giriniz.");
+      }
+    }
+    if (req.query.baslangicTarihi && req.query.bitisTarihi && req.query.baslangicTarihi > req.query.bitisTarihi) {
+      throw ApiError.badRequest("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+    }
     const sonuc = await EbelgeService.listGiden(
       {
         sayfa: req.query.sayfa ? Number(req.query.sayfa) : 1,
         boyut: req.query.boyut ? Number(req.query.boyut) : 50,
         arama: (req.query.arama as string) || undefined,
-        durum: (req.query.durum as string) || undefined,
+          durum: (req.query.durum as string) || undefined,
+          belgeTuru: (req.query.belgeTuru as string) || undefined,
+          baslangicTarihi: (req.query.baslangicTarihi as string) || undefined,
+          bitisTarihi: (req.query.bitisTarihi as string) || undefined,
       },
       EbelgeController.getDbContext(req)
     );
@@ -680,6 +712,13 @@ export class EbelgeController {
   /**
    * POST /api/v1/e-belge/gider-pusulasi/gonder
    */
+  public static giderPusulasiOnizle = asyncHandler(async (req: Request, res: Response) => {
+    const parsed = ebelgeGiderPusulasiSchema.safeParse(req.body);
+    if (!parsed.success) throw ApiError.badRequest("Gider pusulası bilgileri geçersiz.", parsed.error.format());
+    const sonuc = await EbelgeService.giderPusulasiOnizle(parsed.data as any, EbelgeController.getDbContext(req));
+    return ApiResponse.ok(res, "Yerel kontrol tamamlandı; ICE doğrulaması yapılmadı.", sonuc);
+  });
+
   public static giderPusulasiGonder = asyncHandler(async (req: Request, res: Response) => {
     const parsed = ebelgeGiderPusulasiSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -303,3 +303,16 @@ export const ebelgeGiderPusulasiSchema = z.object({
 });
 
 export type EbelgeGiderPusulasiInput = z.infer<typeof ebelgeGiderPusulasiSchema>;
+
+export const ebelgeKaynakKimlikSchema = z.object({
+  evrakTuru: z.literal(0), belgeId: z.number().int().positive(), belgeTuru: z.number().int().min(0).max(3),
+});
+export const ebelgeKaynakGonderSchema = ebelgeKaynakKimlikSchema.extend({
+  parmakizi: z.string().regex(/^[a-f0-9]{64}$/), senaryo: z.enum(["TICARIFATURA","EARSIVFATURA"]),
+});
+const kaynakTarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0,10) === v, "Geçersiz tarih");
+export const ebelgeKaynakListeSchema = z.object({
+  arama: z.string().trim().max(150).optional(), durum: z.string().max(30).optional(),
+  belgeTuru: z.coerce.number().int().min(0).max(3).optional(), sayfa: z.coerce.number().int().min(1).max(100000).default(1),
+  baslangicTarihi: kaynakTarih.optional(), bitisTarihi: kaynakTarih.optional(),
+}).refine(v => !v.baslangicTarihi || !v.bitisTarihi || v.baslangicTarihi <= v.bitisTarihi, "Tarih aralığı geçersiz.");

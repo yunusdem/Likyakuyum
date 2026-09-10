@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import {
   IconFileCheck,
@@ -13,6 +13,7 @@ import {
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
+import EBelgeCariSec from "./EBelgeCariSec";
 import {
   EBELGE_BIRIMLER,
   EbelgeDogrulamaSonucu,
@@ -71,6 +72,63 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [dogrulaniyor, setDogrulaniyor] = useState<boolean>(false);
   const [sonuc, setSonuc] = useState<EbelgeDogrulamaSonucu | null>(null);
   const [alertInfo, setAlertInfo] = useState<AlertInfo>(null);
+  const [mukellefSorgulaniyor, setMukellefSorgulaniyor] = useState(false);
+  /** Sonucu ekranda duran numara. Numara değişince tür seçimi geçersizleşir. */
+  const [sorgulananVkn, setSorgulananVkn] = useState("");
+  /** Otomatik sorgunun aynı numara için tekrar tekrar denenmesini engeller. */
+  const otomatikDenenen = useRef("");
+  /** Geç dönen eski sorgunun yeni sonucu ezmesini engeller. */
+  const sorguSirasi = useRef(0);
+
+  const mukellefSorgula = async (vknParam?: string, otomatik = false) => {
+    const vkn = (vknParam ?? aliciVkn).trim();
+    if (!/^\d{10,11}$/.test(vkn)) {
+      if (!otomatik) setAlertInfo({ type: "danger", message: "VKN 10, TCKN 11 haneli olmalıdır." });
+      return;
+    }
+    const sira = ++sorguSirasi.current;
+    setMukellefSorgulaniyor(true);
+    setSonuc(null);
+    setTaslakOnayAcik(false);
+    setDogrulananGirdi("");
+    try {
+      const cevap = await ebelgeService.mukellefSorgula(vkn);
+      if (sira !== sorguSirasi.current) return;
+      setSorgulananVkn(vkn);
+      setSenaryo(cevap.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA");
+      setAlertInfo({ type: "success", message: cevap.mukellefMi
+        ? "Alıcı e-Fatura mükellefi. e-Fatura seçildi; belgeyi doğrulayarak devam edin."
+        : "Alıcı e-Fatura mükellefi değil. e-Arşiv seçildi; belgeyi doğrulayarak devam edin." });
+    } catch (err: any) {
+      if (sira !== sorguSirasi.current) return;
+      // Sorgu hatası "mükellef değil" demek değildir; tür seçimi belirsiz bırakılır.
+      setSorgulananVkn("");
+      setAlertInfo({ type: "danger", message: (err?.message || "Mükellef sorgulanamadı") +
+        " — belge türü belirlenemedi. Numarayı kontrol edip Mükellef Sorgula ile tekrar deneyin." });
+    } finally {
+      if (sira === sorguSirasi.current) setMukellefSorgulaniyor(false);
+    }
+  };
+
+  // TCKN/VKN tamamlanınca tür sorgusu kendiliğinden çalışır; sonuç e-Fatura/e-Arşiv'i seçer.
+  useEffect(() => {
+    const vkn = aliciVkn.trim();
+    if (!/^\d{10,11}$/.test(vkn)) {
+      otomatikDenenen.current = "";
+      if (sorgulananVkn) setSorgulananVkn("");
+      return;
+    }
+    if (vkn === sorgulananVkn || vkn === otomatikDenenen.current) return;
+    const zaman = setTimeout(() => {
+      otomatikDenenen.current = vkn;
+      void mukellefSorgula(vkn, true);
+    }, 600);
+    return () => clearTimeout(zaman);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aliciVkn, sorgulananVkn]);
+
+  /** Numara değişti ve sorgu sonucu yok → tür seçimi güvenilmez. */
+  const turBelirsiz = /^\d{10,11}$/.test(aliciVkn.trim()) && aliciVkn.trim() !== sorgulananVkn;
 
   // Taslak — iki adımlı onay
   const [taslakOnayAcik, setTaslakOnayAcik] = useState<boolean>(false);
@@ -345,6 +403,7 @@ const EBelgeDogrulaPage: React.FC = () => {
 
   const taslakVerilebilir = Boolean(
     sonuc && dogrulamaGuncel && sonuc.semaGecerli && sonuc.schematronGecerli && !taslakSonuc && !dogrulaniyor
+      && !turBelirsiz && !mukellefSorgulaniyor
   );
 
   return (
@@ -360,7 +419,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           setAlertInfo(null);
         }}
         onPrint={() => window.print()}
-        disabled={dogrulaniyor || taslakGonderiliyor}
+        disabled={dogrulaniyor || taslakGonderiliyor || mukellefSorgulaniyor}
       />
 
       {satirlar.some((s) => s.kdvOrani === 0) && (
@@ -389,7 +448,7 @@ const EBelgeDogrulaPage: React.FC = () => {
         </Alert>
       )}
 
-      <fieldset disabled={dogrulaniyor || taslakGonderiliyor}>
+      <fieldset disabled={dogrulaniyor || taslakGonderiliyor || mukellefSorgulaniyor}>
       <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
         <Card.Body className="p-3 bg-body">
           <div className="fw-semibold mb-2" style={{ fontSize: "13px" }}>
@@ -561,9 +620,25 @@ const EBelgeDogrulaPage: React.FC = () => {
           <div className="fw-semibold mt-3 mb-2" style={{ fontSize: "13px" }}>
             Alıcı
           </div>
+          <EBelgeCariSec onSelect={(cari, lookups) => {
+            setAliciVkn(cari.vergiKimlikNo?.trim() || "");
+            setAliciUnvan(cari.ad);
+            const adlar = cari.ad.trim().split(/\s+/);
+            setAliciSoyad(adlar.length > 1 ? adlar.pop()! : "");
+            setAliciAd(adlar.join(" "));
+            setAliciIl(lookups.ilList.find(x => x.id === cari.ilId)?.ad || "");
+            setAliciIlce(lookups.ilceList.find(x => x.id === cari.ilceId)?.ad || "");
+            setAliciVd(lookups.vergiDairesiList.find(x => x.id === cari.vergiDairesiId)?.ad || "");
+            setSonuc(null); setDogrulananGirdi(""); setTaslakOnayAcik(false);
+            setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
+          }} />
           <Row className="g-2">
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">VKN / TCKN</Form.Label>
+              <Button size="sm" variant="outline-primary" className="mb-1" disabled={mukellefSorgulaniyor}
+                onClick={() => { otomatikDenenen.current = ""; void mukellefSorgula(); }}>
+                {mukellefSorgulaniyor ? "Sorgulanıyor…" : "Mükellef Sorgula"}
+              </Button>
               <Form.Control
                 size="sm"
                 value={aliciVkn}
@@ -813,6 +888,18 @@ const EBelgeDogrulaPage: React.FC = () => {
       </Card>
 
       </fieldset>
+      {mukellefSorgulaniyor && (
+        <Alert variant="info" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
+          Alıcının e-Fatura mükellefiyeti sorgulanıyor; belge türü sonuca göre seçilecek…
+        </Alert>
+      )}
+      {turBelirsiz && !mukellefSorgulaniyor && (
+        <Alert variant="warning" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
+          <IconAlertTriangle size={15} className="me-1" />
+          Bu numara için mükellef sorgusu sonuçlanmadı; <strong>e-Fatura mı e-Arşiv mi olduğu belirlenmedi</strong>.
+          Sorgu tamamlanmadan gönderim yapılamaz — <strong>Mükellef Sorgula</strong> ile tekrar deneyin.
+        </Alert>
+      )}
       {sonuc && !dogrulamaGuncel && <Alert variant="warning">Belge bilgileri değişti. Göndermeden önce yeniden doğrulayınız.</Alert>}
       {sonuc && dogrulamaGuncel && (
         <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden">
