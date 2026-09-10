@@ -274,7 +274,10 @@ export const buildGiderPusulasiXml = (girdi) => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>` +
         `<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"` +
         ` xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"` +
-        ` xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">` +
+        ` xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">` +
+        // ICE serileştiricisi imza icin ext:UBLExtensions ekliyor; onek burada bildirilmezse
+        // "prefix ext is not bound" hatasi aliniyor. UBL-TR-de bu eleman ilk cocuk olmali.
+        `<ext:UBLExtensions><ext:UBLExtension><ext:ExtensionContent/></ext:UBLExtension></ext:UBLExtensions>` +
         `<cbc:UBLVersionID>2.1</cbc:UBLVersionID>` +
         `<cbc:CustomizationID>TR1.2.1</cbc:CustomizationID>` +
         `<cbc:ProfileID>GIDERPUSULASI</cbc:ProfileID>` +

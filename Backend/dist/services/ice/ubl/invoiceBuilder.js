@@ -32,9 +32,14 @@ export const dogrulaGirdi = (girdi) => {
         throw ApiError.badRequest("Alıcı VKN/TCKN zorunludur.");
     const tarih = girdi.tarih || bugun();
     const d = new Date(tarih);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(tarih) || !Number.isFinite(d.getTime()) || d.toISOString().slice(0, 10) !== tarih ||
-        girdi.belgeNo.trim().slice(3, 7) !== tarih.slice(0, 4)) {
-        throw ApiError.badRequest("Geçerli bir düzenleme tarihi giriniz; belge numarasındaki yıl tarihle aynı olmalıdır.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tarih) || !Number.isFinite(d.getTime()) || d.toISOString().slice(0, 10) !== tarih) {
+        throw ApiError.badRequest("Geçerli bir düzenleme tarihi giriniz (GG.AA.YYYY).");
+    }
+    const belgeYili = girdi.belgeNo.trim().slice(3, 7);
+    if (belgeYili !== tarih.slice(0, 4)) {
+        // Sık yapılan hata: seri numarası elle yazılırken yıl bloğu atlanıyor.
+        throw ApiError.badRequest(`Belge numarasındaki yıl (${belgeYili}) düzenleme tarihinin yılıyla (${tarih.slice(0, 4)}) uyuşmuyor. ` +
+            `Fatura numarası 3 karakter seri + yıl + 9 haneli sıra olmalıdır. Örnek: ${girdi.belgeNo.trim().slice(0, 3)}${tarih.slice(0, 4)}000000001`);
     }
     if (!/^[A-Z]{3}$/.test((girdi.paraBirimi || "TRY").toUpperCase())) {
         throw ApiError.badRequest("Para birimi üç harfli kod olmalıdır.");
@@ -314,7 +319,10 @@ export const buildInvoiceXml = (girdi) => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>` +
         `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"` +
         ` xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"` +
-        ` xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">` +
+        ` xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">` +
+        // ICE serileştiricisi imza icin ext:UBLExtensions ekliyor; onek burada bildirilmezse
+        // "prefix ext is not bound" hatasi aliniyor. UBL-TR-de bu eleman ilk cocuk olmali.
+        `<ext:UBLExtensions><ext:UBLExtension><ext:ExtensionContent/></ext:UBLExtension></ext:UBLExtensions>` +
         `<cbc:UBLVersionID>2.1</cbc:UBLVersionID>` +
         `<cbc:CustomizationID>TR1.2</cbc:CustomizationID>` +
         `<cbc:ProfileID>${escapeXml(girdi.senaryo)}</cbc:ProfileID>` +
