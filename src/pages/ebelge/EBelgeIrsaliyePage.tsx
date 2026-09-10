@@ -48,6 +48,8 @@ const EBelgeIrsaliyePage: React.FC = () => {
 
   const [aliciVkn, setAliciVkn] = useState<string>("");
   const [aliciUnvan, setAliciUnvan] = useState<string>("");
+  const [aliciAd, setAliciAd] = useState<string>("");
+  const [aliciSoyad, setAliciSoyad] = useState<string>("");
   const [aliciIl, setAliciIl] = useState<string>("");
   const [aliciIlce, setAliciIlce] = useState<string>("");
 
@@ -108,6 +110,8 @@ const EBelgeIrsaliyePage: React.FC = () => {
     alici: {
       vknTckn: aliciVkn.trim(),
       unvan: aliciUnvan.trim() || undefined,
+      ad: aliciAd.trim() || undefined,
+      soyad: aliciSoyad.trim() || undefined,
       il: aliciIl.trim() || undefined,
       ilce: aliciIlce.trim() || undefined,
     },
@@ -130,7 +134,11 @@ const EBelgeIrsaliyePage: React.FC = () => {
   const onKontrol = (): string | null => {
     if (!belgeNo.trim()) return "İrsaliye numarası zorunludur.";
     if (!aliciVkn.trim()) return "Alıcı VKN/TCKN zorunludur.";
-    if (!aliciUnvan.trim()) return "Alıcı unvanı zorunludur.";
+    if (!/^\d{10,11}$/.test(aliciVkn.trim())) return "Alıcı VKN 10, TCKN 11 haneli olmalıdır.";
+    if (aliciVkn.trim().length === 11 && (!aliciAd.trim() || !aliciSoyad.trim()))
+      return "Alıcı TCKN ile tanımlandığında Alıcı Ad ve Alıcı Soyad alanları zorunludur. Şoför bilgileri ayrı tutulur.";
+    if (!aliciUnvan.trim() && !(aliciAd.trim() && aliciSoyad.trim()))
+      return "Alıcı için unvan ya da ad ve soyad giriniz.";
     if (satirlar.some((s) => !s.ad.trim())) return "Her satırda mal adı bulunmalıdır.";
     if (satirlar.some((s) => !(s.miktar > 0))) return "Her satırda sevk miktarı sıfırdan büyük olmalıdır.";
     if (!sevkTarihi) return "Fiili sevk tarihi zorunludur.";
@@ -340,13 +348,37 @@ const EBelgeIrsaliyePage: React.FC = () => {
               )}
             </Col>
             <Col xs={12} md={5} lg={4}>
-              <Form.Label className="small mb-1">Unvan</Form.Label>
+              <Form.Label className="small mb-1">Unvan (TCKN için isteğe bağlı)</Form.Label>
               <Form.Control
                 size="sm"
                 value={aliciUnvan}
                 disabled={kilitli}
                 onChange={(e) => degisti(setAliciUnvan)(e.target.value)}
               />
+            </Col>
+            <Col xs={6} md={3}>
+              <Form.Group controlId="irsaliye-alici-ad">
+                <Form.Label className="small mb-1">Alıcı Ad{aliciVkn.trim().length === 11 ? " *" : ""}</Form.Label>
+                <Form.Control
+                  size="sm"
+                  value={aliciAd}
+                  disabled={kilitli}
+                  required={aliciVkn.trim().length === 11}
+                  onChange={(e) => degisti(setAliciAd)(e.target.value)}
+                />
+              </Form.Group>
+            </Col>
+            <Col xs={6} md={3}>
+              <Form.Group controlId="irsaliye-alici-soyad">
+                <Form.Label className="small mb-1">Alıcı Soyad{aliciVkn.trim().length === 11 ? " *" : ""}</Form.Label>
+                <Form.Control
+                  size="sm"
+                  value={aliciSoyad}
+                  disabled={kilitli}
+                  required={aliciVkn.trim().length === 11}
+                  onChange={(e) => degisti(setAliciSoyad)(e.target.value)}
+                />
+              </Form.Group>
             </Col>
             <Col xs={6} md={2}>
               <Form.Label className="small mb-1">İl</Form.Label>
@@ -675,7 +707,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
                         <strong>geri alınamaz</strong>. Belge numarası ({belgeNo.toUpperCase()})
                         kullanılmış sayılır.
                         <br />
-                        Alıcı: <strong>{aliciUnvan}</strong> ({aliciVkn}) · Sevk: {sevkTarihi}
+                        Alıcı: <strong>{aliciVkn.trim().length === 11 ? `${aliciAd.trim()} ${aliciSoyad.trim()}` : aliciUnvan.trim() || `${aliciAd.trim()} ${aliciSoyad.trim()}`}</strong> ({aliciVkn}) · Sevk: {sevkTarihi}
                         {plaka ? ` · Plaka: ${plaka}` : ""}
                       </Alert>
                       <div className="d-flex gap-2">
