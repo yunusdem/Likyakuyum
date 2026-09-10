@@ -244,14 +244,22 @@ html, body {
   width: 100% !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
-  padding-top: 0.25rem !important;
-  padding-bottom: 0.25rem !important;
+  padding-top: 0.125rem !important;
+  padding-bottom: 0.125rem !important;
   z-index: 1020 !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
   border-top: 0 !important;
   border-bottom: 1px dashed var(--#{$prefix}gray-300) !important;
   background-color: var(--#{$prefix}body-bg, #ffffff) !important;
   backdrop-filter: blur(8px) !important;
+}
+
+main.custom-container {
+  padding-top: 0.25rem !important;
+}
+
+.erp-action-toolbar-wrapper {
+  margin-top: 0 !important;
 }
 
 // ----------------------------------------------------

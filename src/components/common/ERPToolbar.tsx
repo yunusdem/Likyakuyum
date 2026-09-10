@@ -55,16 +55,23 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/tanimlar/istatistik-tanimlari": { title: "İstatistik Tanımları", icon: <IconChartBar size={20} /> },
   "/ayarlar/urun-tanimlari": { title: "Ürün Tanımları", icon: <IconPackage size={20} /> },
   "/tanimlar/urun-tanimlari": { title: "Ürün Tanımları", icon: <IconPackage size={20} /> },
-  "/cari/kart-kayit": { title: "Cari Kart Kayıt", icon: <IconUserPlus size={20} /> },
-  "/cari/kayit": { title: "Cari Kart Kayıt", icon: <IconUserPlus size={20} /> },
-  "/cari/kart-duzeltme": { title: "Cari Kart Düzeltme", icon: <IconUserCheck size={20} /> },
-  "/cari/kart-listesi": { title: "Cari Kart Listesi", icon: <IconFileText size={20} /> },
-  "/cari/listesi": { title: "Cari Kart Listesi", icon: <IconFileText size={20} /> },
-  "/cari/cari-kart-listesi": { title: "Cari Kart Listesi", icon: <IconFileText size={20} /> },
-  "/cari/detayli-kart-listesi": { title: "Cari Kart Listesi", icon: <IconFileText size={20} /> },
+  "/cari/kart-kayit": { title: "A- Cari Kart Kayıt", icon: <IconUserPlus size={20} /> },
+  "/cari/kayit": { title: "A- Cari Kart Kayıt", icon: <IconUserPlus size={20} /> },
+  "/cari/cari-kart-kayit": { title: "A- Cari Kart Kayıt", icon: <IconUserPlus size={20} /> },
+  "/cari/kart-duzeltme": { title: "B- Cari Kart Düzeltme", icon: <IconUserCheck size={20} /> },
   "/cari/hareket-kayit": { title: "C- Cari Hareket Kayıt", icon: <IconCash size={20} /> },
   "/cari/hareket-duzeltme": { title: "D- Cari Hareket Düzeltme", icon: <IconCash size={20} /> },
-  "/cari/hareket-listesi": { title: "E- Cari Hareket Listesi", icon: <IconFileText size={20} /> },
+  "/cari/emanet-dekont": { title: "E- Cari Emanet Dekont Kayıt", icon: <IconFileText size={20} /> },
+  "/cari/emanet-kayit": { title: "E- Cari Emanet Dekont Kayıt", icon: <IconFileText size={20} /> },
+  "/cari/emanet-dekont-kayit": { title: "E- Cari Emanet Dekont Kayıt", icon: <IconFileText size={20} /> },
+  "/cari/emanet-duzeltme": { title: "F- Cari Emanet Dekont Düzeltme", icon: <IconFileText size={20} /> },
+  "/cari/emanet-dekont-duzeltme": { title: "F- Cari Emanet Dekont Düzeltme", icon: <IconFileText size={20} /> },
+  "/cari/hareket-listesi": { title: "G- Cari Hareket Listesi", icon: <IconFileText size={20} /> },
+  "/cari/hareketler": { title: "G- Cari Hareket Listesi", icon: <IconFileText size={20} /> },
+  "/cari/kart-listesi": { title: "H- Cari Kart Listesi", icon: <IconFileText size={20} /> },
+  "/cari/listesi": { title: "H- Cari Kart Listesi", icon: <IconFileText size={20} /> },
+  "/cari/cari-kart-listesi": { title: "H- Cari Kart Listesi", icon: <IconFileText size={20} /> },
+  "/cari/detayli-kart-listesi": { title: "I- Detaylı Cari Kart Listesi", icon: <IconFileText size={20} /> },
   "/ayarlar/firma-tanimlari": { title: "Firma Tanımları", icon: <IconBuilding size={20} /> },
   "/ayarlar/kullanici-tanimlari": { title: "Kullanıcı Tanımları", icon: <IconUser size={20} /> },
   "/kur/anlik-fiyat-listesi": { title: "A- Anlık Fiyat Listesi", icon: <IconChartLine size={20} /> },
@@ -158,7 +165,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   };
 
   return (
-    <div className="erp-action-toolbar-wrapper mb-3 p-1.5 d-flex align-items-center justify-content-between flex-wrap gap-1 bg-white border rounded shadow-2xs">
+    <div className="erp-action-toolbar-wrapper mb-2 p-1.5 d-flex align-items-center justify-content-between flex-wrap gap-1 bg-white border rounded shadow-2xs">
       {/* Sol Toolbar Buton Grubu - Sıfır Sayfa Titremesi / Sıfır Kayma */}
       <div className="d-flex align-items-center flex-wrap erp-toolbar-strip gap-1">
         {/* 1. Yeni Kayıt (F4) - Boş Belge & Üst Köşesinde Artı (+) İkonu */}

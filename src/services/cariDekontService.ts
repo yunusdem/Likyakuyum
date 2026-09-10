@@ -42,6 +42,8 @@ export interface CariDekontModel {
   vade: string | null;
   iptalTarihi: string | null;
   oncekiId: number | null;
+  teslimEden?: string;
+  teslimAlan?: string;
   eklemeZamani: string;
   guncellemeZamani: string;
   toplamMiktar: number;
@@ -82,6 +84,8 @@ export interface SaveCariDekontPayload {
   vade?: string | null;
   iptalTarihi?: string | null;
   oncekiId?: number | null;
+  teslimEden?: string;
+  teslimAlan?: string;
   satirlar: {
     satirNo?: number;
     tip?: number;

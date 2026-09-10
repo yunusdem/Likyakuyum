@@ -18,15 +18,17 @@ const UserMenu: React.FC = () => {
       variant="outline-danger"
       size="sm"
       onClick={handleLogout}
-      className="d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-3 fw-medium"
+      className="d-flex align-items-center justify-content-center rounded-2"
       style={{
-        fontSize: "0.85rem",
+        width: "32px",
+        height: "32px",
+        padding: 0,
         transition: "all 0.15s ease",
       }}
-      title="Sistemden Çıkış Yap"
+      title="Çıkış Yap"
+      aria-label="Çıkış Yap"
     >
       <IconLogout size={17} strokeWidth={1.8} />
-      <span>Çıkış yap</span>
     </Button>
   );
 };

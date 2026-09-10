@@ -32,42 +32,42 @@ const quickActions = [
   {
     title: "Kur",
     to: "/kur/anlik-fiyat-listesi",
-    icon: <IconChartLine size={19} strokeWidth={2} className="text-primary" />,
+    icon: <IconChartLine size={18} strokeWidth={2} className="text-primary" />,
   },
   {
-    title: "Fiyat Gör",
+    title: "Fiyat",
     to: "/vezne/fiyat-kontrolu",
-    icon: <IconScan size={19} strokeWidth={2} className="text-success" />,
+    icon: <IconScan size={18} strokeWidth={2} className="text-success" />,
   },
   {
-    title: "Sarraf Fişi",
+    title: "Sarraf",
     to: "/vezne/genel-sarraf-fisi",
-    icon: <IconDiamond size={19} strokeWidth={2} className="text-warning" />,
+    icon: <IconDiamond size={18} strokeWidth={2} className="text-warning" />,
   },
   {
-    title: "Döviz Fişi",
+    title: "Döviz",
     to: "/vezne/doviz-fisi",
-    icon: <IconReceipt2 size={19} strokeWidth={2} className="text-info" />,
+    icon: <IconReceipt2 size={18} strokeWidth={2} className="text-info" />,
   },
   {
-    title: "Parekende Fişi",
+    title: "Perakende",
     to: "/vezne/perakende-fisi",
-    icon: <IconShoppingCart size={19} strokeWidth={2} className="text-danger" />,
+    icon: <IconShoppingCart size={18} strokeWidth={2} className="text-danger" />,
   },
   {
     title: "Banka",
     to: "/banka/hesap-kartlari",
-    icon: <IconBuildingBank size={19} strokeWidth={2} className="text-secondary" />,
+    icon: <IconBuildingBank size={18} strokeWidth={2} className="text-secondary" />,
   },
   {
-    title: "Cari Hareket Kayıt",
+    title: "C. Hareket",
     to: "/cari/hareket-kayit",
-    icon: <IconArrowsExchange size={19} strokeWidth={2} className="text-purple" style={{ color: "#7c3aed" }} />,
+    icon: <IconArrowsExchange size={18} strokeWidth={2} className="text-purple" style={{ color: "#7c3aed" }} />,
   },
   {
-    title: "E- Belge",
+    title: "E-Belge",
     to: "/e-belge",
-    icon: <IconFileCertificate size={19} strokeWidth={2} className="text-primary" />,
+    icon: <IconFileCertificate size={18} strokeWidth={2} className="text-primary" />,
   },
 ];
 
@@ -110,26 +110,26 @@ const Header: React.FC = () => {
   return (
     <Fragment>
       <header className="navbar-glass bg-white border-bottom sticky-top shadow-xs">
-        <Container fluid className="px-2 px-lg-4 py-1">
+        <Container fluid className="px-2 px-lg-3 py-0.5">
           <div className="d-flex align-items-center justify-content-between w-100">
             {/* Left Area: Toggle & Title / Desktop Quick Actions */}
-            <div className="d-flex align-items-center gap-2">
+            <div className="d-flex align-items-center gap-1 gap-lg-2">
               <button
                 type="button"
-                className="btn btn-light border p-2 d-flex align-items-center justify-content-center rounded-2 sidebar-toggle-btn shadow-xs"
+                className="btn btn-light border p-0 d-flex align-items-center justify-content-center rounded-2 sidebar-toggle-btn shadow-xs"
                 onClick={toggleSidebar}
                 title={isExpanded ? "Menüyü Daralt / Kapat" : "Menüyü Genişlet / Aç"}
-                style={{ width: "38px", height: "38px" }}
+                style={{ width: "32px", height: "32px" }}
               >
                 {isExpanded ? (
                   <IconArrowBarLeft
-                    size={20}
+                    size={18}
                     strokeWidth={2}
                     className="text-dark"
                   />
                 ) : (
                   <IconArrowBarRight
-                    size={20}
+                    size={18}
                     strokeWidth={2}
                     className="text-dark"
                   />
@@ -141,8 +141,8 @@ const Header: React.FC = () => {
                 <img
                   src="/images/logo/logo.svg"
                   alt="Likya Kuyum Logo"
-                  className="flex-shrink-0 me-2"
-                  style={{ width: "32px", height: "32px", objectFit: "contain" }}
+                  className="flex-shrink-0 me-1.5"
+                  style={{ width: "26px", height: "26px", objectFit: "contain" }}
                 />
                 <span className="fw-bold fs-6 text-nowrap">
                   <span className="brand-text-likya">Likya</span>{" "}
@@ -152,19 +152,19 @@ const Header: React.FC = () => {
 
 
               {/* Desktop Quick Actions (Icon + Text Label) */}
-              <div className="d-none d-md-flex align-items-center gap-1 gap-lg-2 ms-2 border-start ps-3">
+              <div className="d-none d-md-flex align-items-center gap-2 gap-lg-2.5 ms-2 border-start ps-3">
                 {quickActions.map((action, idx) => (
                   <Link
                     key={idx}
                     to={action.to}
-                    className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-1 rounded-2 quick-action-btn"
+                    className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
                   >
-                    <span className="d-flex align-items-center justify-content-center mb-1">
+                    <span className="d-flex align-items-center justify-content-center" style={{ marginBottom: "2px" }}>
                       {action.icon}
                     </span>
                     <span
                       style={{
-                        fontSize: "11px",
+                        fontSize: "10.5px",
                         fontWeight: 600,
                         color: "#64748b",
                         lineHeight: 1,
@@ -180,16 +180,16 @@ const Header: React.FC = () => {
                 <Dropdown align="end" className="d-inline-flex">
                   <Dropdown.Toggle
                     as="div"
-                    className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-1 rounded-2 quick-action-btn"
+                    className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
                     style={{ cursor: "pointer" }}
                     id="dropdown-masak-quick"
                   >
-                    <span className="d-flex align-items-center justify-content-center mb-1 position-relative">
-                      <IconShieldCheck size={19} strokeWidth={2} style={{ color: "#dc2626" }} />
+                    <span className="d-flex align-items-center justify-content-center position-relative" style={{ marginBottom: "2px" }}>
+                      <IconShieldCheck size={18} strokeWidth={2} style={{ color: "#dc2626" }} />
                     </span>
                     <span
                       style={{
-                        fontSize: "11px",
+                        fontSize: "10.5px",
                         fontWeight: 700,
                         color: "#dc2626",
                         lineHeight: 1,
@@ -290,20 +290,21 @@ const Header: React.FC = () => {
             <ListGroup
               bsPrefix="list-unstyled"
               as={"ul"}
-              className="d-flex align-items-center mb-0 gap-1 gap-md-2"
+              className="d-flex align-items-center mb-0 gap-1"
             >
               {/* Fullscreen Toggle Button */}
               <ListGroup.Item as="li">
                 <Button
                   variant="ghost"
-                  className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-2"
+                  className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-0"
                   onClick={toggleFullscreen}
                   title={isFullscreen ? "Tam Ekrandan Çık" : "Tam Ekran Yap"}
+                  style={{ width: "32px", height: "32px" }}
                 >
                   {isFullscreen ? (
-                    <IconMinimize size={20} strokeWidth={1.75} />
+                    <IconMinimize size={18} strokeWidth={1.75} />
                   ) : (
-                    <IconMaximize size={20} strokeWidth={1.75} />
+                    <IconMaximize size={18} strokeWidth={1.75} />
                   )}
                 </Button>
               </ListGroup.Item>
@@ -312,12 +313,13 @@ const Header: React.FC = () => {
               <ListGroup.Item as="li">
                 <Button
                   variant="ghost"
-                  className="position-relative btn-icon rounded-circle text-secondary p-2"
+                  className="position-relative btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-0"
                   onClick={() => setIsNotificationOpen(true)}
                   title="Bildirimler"
+                  style={{ width: "32px", height: "32px" }}
                 >
-                  <IconBell size={20} />
-                  <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger mt-2 ms-n2" style={{ fontSize: "9px" }}>
+                  <IconBell size={18} />
+                  <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style={{ fontSize: "8.5px", marginTop: "4px", marginLeft: "-6px" }}>
                     2<span className="visually-hidden">okunmamış bildirim</span>
                   </span>
                 </Button>

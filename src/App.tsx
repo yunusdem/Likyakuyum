@@ -58,7 +58,7 @@ const DashboardLayout: React.FC = () => {
       {/* 3. Main Content Area */}
       <div id="content" className="position-relative min-vh-100 d-flex flex-column">
         <Header />
-        <main className="flex-grow-1 custom-container py-3">
+        <main className="flex-grow-1 custom-container pt-1 pb-3">
           <Outlet />
         </main>
         <footer className="custom-container py-3 border-top mt-auto bg-body">
@@ -140,6 +140,10 @@ export default function App() {
             <Route path="cari/hareket-listesi" element={<CariHareketListPage />} />
             <Route path="cari/hareketler" element={<CariHareketListPage />} />
             <Route path="cari/emanet-dekont" element={<CariEmanetDekontPage />} />
+            <Route path="cari/emanet-duzeltme" element={<CariEmanetDekontPage />} />
+            <Route path="cari/emanet-dekont-duzeltme" element={<CariEmanetDekontPage />} />
+            <Route path="cari/emanet-dekont-kayit" element={<CariEmanetDekontPage />} />
+            <Route path="cari/emanet-kayit" element={<CariEmanetDekontPage />} />
             <Route path="cari/cari-emanet-dekont" element={<CariEmanetDekontPage />} />
             <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
