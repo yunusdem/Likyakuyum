@@ -4,12 +4,14 @@ import { Link } from "react-router-dom";
 import { EbelgeKaynakHazir, EbelgeKaynakSatiri, ebelgeService, ebelgeTutar, ebelgeGidenDurumRozet } from "../../services/ebelgeService";
 
 const key = (k: { evrakTuru: number; belgeId: number; belgeTuru: number }) => `${k.evrakTuru}:${k.belgeId}:${k.belgeTuru}`;
-const turAdi = (tur: number) => ({ 0: 'Fatura', 1: 'Fatura', 2: 'e-İrsaliye', 3: 'e-Gider' }[tur] || `Tür ${tur}`);
+const turAdi = (k: { kaynak?: string; belgeTuru: number }) =>
+  k.kaynak === 'DOVIZ' ? 'e-Döviz'
+    : ({ 0: 'Fatura', 1: 'Fatura', 2: 'e-İrsaliye', 3: 'e-Gider' }[k.belgeTuru] || `Tür ${k.belgeTuru}`);
 export default function EBelgeKaynakPage() {
   const [kayitlar, setKayitlar] = useState<EbelgeKaynakSatiri[]>([]);
   const [sayfa, setSayfa] = useState(1); const [toplam, setToplam] = useState(0);
   const [arama, setArama] = useState(''); const [durum, setDurum] = useState('');
-  const [tur, setTur] = useState(''); const [ilk, setIlk] = useState(''); const [son, setSon] = useState('');
+  const [tur, setTur] = useState(''); const [kaynak, setKaynak] = useState(''); const [ilk, setIlk] = useState(''); const [son, setSon] = useState('');
   const [busy, setBusy] = useState(false); const [hata, setHata] = useState('');
   const [secili, setSecili] = useState<string[]>([]);
   const [hazirlar, setHazirlar] = useState<EbelgeKaynakHazir[]>([]);
@@ -18,7 +20,8 @@ export default function EBelgeKaynakPage() {
   const yukle = async (p = 1) => {
     setBusy(true); setHata(''); setSecili([]); setHazirlar([]); setOnay(false);
     try { const data = await ebelgeService.kaynakListe({ sayfa: p, arama: arama || undefined, durum: durum || undefined,
-      belgeTuru: tur === '' ? undefined : Number(tur), baslangicTarihi: ilk || undefined, bitisTarihi: son || undefined });
+      belgeTuru: tur === '' ? undefined : Number(tur), kaynak: (kaynak || undefined) as 'FATURA' | 'DOVIZ' | undefined,
+      baslangicTarihi: ilk || undefined, bitisTarihi: son || undefined });
       setKayitlar(data.kayitlar); setToplam(data.toplam); setSayfa(p);
     } catch (e: any) { setKayitlar([]); setToplam(0); setHata(e.message || 'Kaynak belgeler alınamadı.'); }
     finally { setBusy(false); }
@@ -45,7 +48,10 @@ export default function EBelgeKaynakPage() {
     }
     await yukle(sayfa);
   };
-  const secilebilir = kayitlar.filter(k => [0,1].includes(k.belgeTuru) && !k.uuid && ['GONDERILMEDI','HATA'].includes(k.durum) && !k.eskiEttn && !k.eskiDurum);
+  // e-Döviz fişleri de gönderilebilir; fatura tarafında yalnızca 0/1 türleri desteklenir.
+  const secilebilir = kayitlar.filter(k =>
+    (k.kaynak === 'DOVIZ' || [0,1].includes(k.belgeTuru)) &&
+    !k.uuid && ['GONDERILMEDI','HATA'].includes(k.durum) && !k.eskiEttn && !k.eskiDurum);
   return <div className="container-fluid py-3">
     <div className="d-flex justify-content-between mb-3"><h5>Kesilmiş Belgeler — ICE Gönderimi</h5><Link to="/e-belge/giden">Giden Kutusu</Link></div>
     {hata && <Alert variant="danger">{hata}</Alert>}
@@ -53,11 +59,12 @@ export default function EBelgeKaynakPage() {
       <Col md={4}><Form.Label>Belge no / ünvan</Form.Label><Form.Control size="sm" value={arama} onChange={e => setArama(e.target.value)} /></Col>
       <Col md={2}><Form.Label>İlk tarih</Form.Label><Form.Control size="sm" type="date" value={ilk} onChange={e => setIlk(e.target.value)} /></Col>
       <Col md={2}><Form.Label>Son tarih</Form.Label><Form.Control size="sm" type="date" value={son} onChange={e => setSon(e.target.value)} /></Col>
+      <Col md={2}><Form.Label>Kaynak</Form.Label><Form.Select size="sm" value={kaynak} onChange={e => setKaynak(e.target.value)}><option value="">Tümü</option><option value="FATURA">Fatura / İrsaliye / Gider</option><option value="DOVIZ">e-Döviz fişi</option></Form.Select></Col>
       <Col md={2}><Form.Label>Belge türü</Form.Label><Form.Select size="sm" value={tur} onChange={e => setTur(e.target.value)}><option value="">Tümü</option><option value="0">Fatura (kaynak 0)</option><option value="1">Fatura (kaynak 1)</option><option value="2">e-İrsaliye</option><option value="3">e-Gider</option></Form.Select></Col>
       <Col md={2}><Form.Label>Durum</Form.Label><Form.Select size="sm" value={durum} onChange={e => setDurum(e.target.value)}><option value="">Tümü</option><option value="GONDERILMEDI">Gönderilmedi</option><option value="GONDERILDI">Gönderildi</option><option value="HATA">Hatalı</option><option value="GONDERILIYOR">Gönderiliyor</option><option value="KONTROL_GEREKLI">Kontrol gerekli</option><option value="BELIRSIZ">Sonuç belirsiz</option></Form.Select></Col>
     </Row><Button className="mt-2" size="sm" onClick={() => yukle(1)}>Listele</Button></fieldset></Card.Body></Card>
     <Card><Card.Body>
-      <p className="small text-secondary">Mevcut sistemin e-Belge listesinden okunur. Eski ETTN/durum kayıtları yeniden gönderimden önce kontrol gerektirir. Faturalarda e-Fatura/e-Arşiv türü mükellef sorgusuyla belirlenir.</p>
+      <p className="small text-secondary">Mevcut sistemin e-Belge ve e-Döviz listelerinden okunur. Eski ETTN/durum kayıtları yeniden gönderimden önce kontrol gerektirir. Faturalarda e-Fatura/e-Arşiv türü mükellef sorgusuyla belirlenir; e-Döviz fişleri gönderim öncesi ICE önizlemesiyle doğrulanır. İptal edilmiş döviz fişleri listelenmez.</p>
       <div className="d-flex gap-2 align-items-center mb-2">
         <Button size="sm" disabled={busy || !secilebilir.length} onClick={() => { setSecili(secili.length ? [] : secilebilir.map(key)); setHazirlar([]); setOnay(false); }}>Gönderilebilirleri seç / kaldır</Button>
         <Button size="sm" disabled={busy || !secili.length} onClick={hazirla}>Seçilenleri hazırla</Button>
@@ -72,7 +79,7 @@ export default function EBelgeKaynakPage() {
         <tbody>{kayitlar.map(k => { const rozet=ebelgeGidenDurumRozet(k.durum); return <tr key={key(k)}>
           <td><Form.Check aria-label={`${k.belgeNo} seç`} disabled={busy || !secilebilir.some(s => key(s)===key(k))} checked={secili.includes(key(k))} onChange={e => {
             setSecili(o => e.target.checked ? [...o,key(k)] : o.filter(id => id!==key(k))); setHazirlar([]); setOnay(false);
-          }} /></td><td>{k.belgeNo}</td><td>{k.tarih?.slice(0,10)}</td><td>{k.unvan}</td><td>{ebelgeTutar(k.tutar,k.paraBirimi)}</td><td>{turAdi(k.belgeTuru)}</td>
+          }} /></td><td>{k.belgeNo}</td><td>{k.tarih?.slice(0,10)}</td><td>{k.unvan}</td><td>{ebelgeTutar(k.tutar,k.paraBirimi)}</td><td>{turAdi(k)}</td>
           <td><Badge bg={rozet.bg} text={rozet.text}>{rozet.etiket}</Badge><small className="d-block">{k.hata}</small>
             {(k.eskiEttn || k.eskiDurum !== 0) && <small className="d-block">Eski durum: {k.eskiDurum} · ETTN: {k.eskiEttn || '-'}</small>}</td>
         </tr>; })}{!kayitlar.length && <tr><td colSpan={7}>{busy ? 'Yükleniyor…' : 'Kayıt bulunamadı. Kaynak sistemdeki e-Belge başlangıç tarihi ve belge türü seçimleri listeyi belirler.'}</td></tr>}</tbody>

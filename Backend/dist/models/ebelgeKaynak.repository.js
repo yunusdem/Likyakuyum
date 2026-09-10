@@ -1,22 +1,20 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
-import { DbContext, EbelgeSqlRepository } from "./ebelgeSql.repository.js";
+import { EbelgeSqlRepository } from "./ebelgeSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
-
-export type KaynakKimlik = { evrakTuru: number; belgeId: number; belgeTuru: number };
 /**
  * e-Döviz fişleri ayrı bir görünümden gelir ve `EVRAK_TURU` taşımaz.
  * Tek bir anahtar şemasında toplamak için bu sabit kullanılır; fatura görünümü
  * yalnızca EVRAK_TURU=0 döndürdüğü için çakışma olmaz.
  */
 export const DOVIZ_EVRAK_TURU = 99;
-export const dovizMi = (k: { evrakTuru: number }) => k.evrakTuru === DOVIZ_EVRAK_TURU;
-export const kaynakAnahtar = (k: KaynakKimlik) => `${k.evrakTuru}:${k.belgeId}:${k.belgeTuru}`;
+export const dovizMi = (k) => k.evrakTuru === DOVIZ_EVRAK_TURU;
+export const kaynakAnahtar = (k) => `${k.evrakTuru}:${k.belgeId}:${k.belgeTuru}`;
 export class EbelgeKaynakRepository {
-  private static async pool(ctx?: DbContext) {
-    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
-    await EbelgeSqlRepository.ensureTablesExist(pool);
-    await pool.request().query(`
+    static async pool(ctx) {
+        const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
+        await EbelgeSqlRepository.ensureTablesExist(pool);
+        await pool.request().query(`
       IF OBJECT_ID('dbo.TODVZ_EBELGE_KAYNAK','U') IS NULL
       BEGIN TRY
         CREATE TABLE dbo.TODVZ_EBELGE_KAYNAK (
@@ -29,19 +27,19 @@ export class EbelgeKaynakRepository {
       IF OBJECT_ID('dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI','V') IS NULL
         THROW 50002, 'Kaynak e-Döviz görünümü bu veritabanında bulunamadı.', 1;
     `);
-    return pool;
-  }
-  static async list(f: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "DOVIZ"; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }, ctx?: DbContext) {
-    const pool = await this.pool(ctx);
-    const r = pool.request().input("arama", sql.NVarChar(200), `%${f.arama || ""}%`)
-      .input("durum", sql.VarChar(30), f.durum || null).input("tur", sql.Int, f.belgeTuru ?? null)
-      .input("kaynak", sql.VarChar(10), f.kaynak || null)
-      .input("ilk", sql.Date, f.baslangicTarihi || null).input("son", sql.Date, f.bitisTarihi || null)
-      .input("atla", sql.Int, (f.sayfa - 1) * 50);
-    // İki kaynak tek listede birleşir: sarraf/fatura görünümü ve e-Döviz fişi görünümü.
-    // e-Döviz'de EVRAK_TURU yoktur; DOVIZ_EVRAK_TURU sabitiyle temsil edilir.
-    // İptal edilmiş döviz fişleri hiç listelenmez.
-    const result = await r.query(`
+        return pool;
+    }
+    static async list(f, ctx) {
+        const pool = await this.pool(ctx);
+        const r = pool.request().input("arama", sql.NVarChar(200), `%${f.arama || ""}%`)
+            .input("durum", sql.VarChar(30), f.durum || null).input("tur", sql.Int, f.belgeTuru ?? null)
+            .input("kaynak", sql.VarChar(10), f.kaynak || null)
+            .input("ilk", sql.Date, f.baslangicTarihi || null).input("son", sql.Date, f.bitisTarihi || null)
+            .input("atla", sql.Int, (f.sayfa - 1) * 50);
+        // İki kaynak tek listede birleşir: sarraf/fatura görünümü ve e-Döviz fişi görünümü.
+        // e-Döviz'de EVRAK_TURU yoktur; DOVIZ_EVRAK_TURU sabitiyle temsil edilir.
+        // İptal edilmiş döviz fişleri hiç listelenmez.
+        const result = await r.query(`
       WITH Kaynaklar AS (
         SELECT V.EVRAK_TURU evrakTuru, V.BELGE_ID belgeId, V.BELGE_TURU belgeTuru,
           'FATURA' kaynak, RTRIM(V.BELGE_NO) belgeNo, V.TARIH tarih, RTRIM(V.UNVAN) unvan,
@@ -79,31 +77,30 @@ export class EbelgeKaynakRepository {
       SELECT * FROM #Kaynak WHERE @durum IS NULL OR durum=@durum
         ORDER BY tarih DESC,belgeId DESC,belgeTuru OFFSET @atla ROWS FETCH NEXT 50 ROWS ONLY;
     `);
-    return { toplam: (result.recordsets as any)[0][0].toplam, kayitlar: (result.recordsets as any)[1] };
-  }
-  /**
-   * e-Döviz detayı: başlık `VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI`'nden, belge içeriği
-   * `VODVZ_E_DOVIZ_BELGESI_XSLT`'ten okunur (FIS_ID = BELGE_ID ile eşleşir).
-   * `VODVZ_E_DOVIZ_BELGESI` görünümü yalnızca UUID taşıdığı için henüz
-   * gönderilmemiş fişlerde kullanılamaz; bu yüzden XSLT görünümü kaynak alınır.
-   */
-  static async dovizDetay(k: KaynakKimlik, ctx?: DbContext) {
-    const pool = await this.pool(ctx);
-    const res = await pool.request().input("id", sql.Int, k.belgeId).input("tip", sql.Int, k.belgeTuru).query(`
+        return { toplam: result.recordsets[0][0].toplam, kayitlar: result.recordsets[1] };
+    }
+    /**
+     * e-Döviz detayı: başlık `VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI`'nden, belge içeriği
+     * `VODVZ_E_DOVIZ_BELGESI_XSLT`'ten okunur (FIS_ID = BELGE_ID ile eşleşir).
+     * `VODVZ_E_DOVIZ_BELGESI` görünümü yalnızca UUID taşıdığı için henüz
+     * gönderilmemiş fişlerde kullanılamaz; bu yüzden XSLT görünümü kaynak alınır.
+     */
+    static async dovizDetay(k, ctx) {
+        const pool = await this.pool(ctx);
+        const res = await pool.request().input("id", sql.Int, k.belgeId).input("tip", sql.Int, k.belgeTuru).query(`
       SELECT TOP 2 D.*, X.*
       FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
       LEFT JOIN dbo.VODVZ_E_DOVIZ_BELGESI_XSLT X ON X.FIS_ID=D.BELGE_ID
       WHERE D.BELGE_ID=@id AND D.FIS_TIPI=@tip AND ISNULL(D.IPTAL,0)=0;
     `);
-    if (res.recordset.length !== 1) {
-      throw ApiError.notFound("Kaynak döviz fişi bulunamadı, iptal edilmiş veya tekil değil.");
+        if (res.recordset.length !== 1) {
+            throw ApiError.notFound("Kaynak döviz fişi bulunamadı, iptal edilmiş veya tekil değil.");
+        }
+        return { baslik: res.recordset[0], satirlar: [] };
     }
-    return { baslik: res.recordset[0], satirlar: [] as any[] };
-  }
-
-  static async detay(k: KaynakKimlik, ctx?: DbContext) {
-    const pool = await this.pool(ctx);
-    const res = await pool.request().input("evrak", sql.Int, k.evrakTuru).input("id", sql.Int, k.belgeId).input("tur", sql.Int, k.belgeTuru).query(`
+    static async detay(k, ctx) {
+        const pool = await this.pool(ctx);
+        const res = await pool.request().input("evrak", sql.Int, k.evrakTuru).input("id", sql.Int, k.belgeId).input("tur", sql.Int, k.belgeTuru).query(`
       SELECT V.*,F.VERGI_KIMLIK_NO,F.VERGI_DAIRESI_ADI,F.IL_ADI,F.ILCE_ADI,F.ADRES,
         T.E_FATURA_KDV_MUAFIYET_KODU,T.E_FATURA_KDV_MUAFIYET_ADI
       FROM dbo.VODVZ_GONDERIME_HAZIR_E_BELGE V
@@ -113,14 +110,15 @@ export class EbelgeKaynakRepository {
       SELECT SATIR_NO,PARA_ADI,BIRIM_ADI,MIKTAR,TUTAR,KDV_ORANI,KDV
         FROM dbo.VODVZ_E_FATURA_SATIRI WHERE EVRAK_TURU=@evrak AND EVRAK_ID=@id ORDER BY SATIR_NO;
     `);
-    const sets = res.recordsets as any;
-    if (sets[0].length !== 1) throw ApiError.notFound("Kaynak belge bulunamadı veya tekil değil.");
-    return { baslik: sets[0][0], satirlar: sets[1] as any[] };
-  }
-  static async reserve(k: KaynakKimlik, belgeNo: string, ctx?: DbContext) {
-    const pool = await this.pool(ctx);
-    try {
-      const r = await pool.request().input("key", sql.VarChar(80), kaynakAnahtar(k)).input("no", sql.VarChar(40), belgeNo).query(`
+        const sets = res.recordsets;
+        if (sets[0].length !== 1)
+            throw ApiError.notFound("Kaynak belge bulunamadı veya tekil değil.");
+        return { baslik: sets[0][0], satirlar: sets[1] };
+    }
+    static async reserve(k, belgeNo, ctx) {
+        const pool = await this.pool(ctx);
+        try {
+            const r = await pool.request().input("key", sql.VarChar(80), kaynakAnahtar(k)).input("no", sql.VarChar(40), belgeNo).query(`
         SET XACT_ABORT ON;
         BEGIN TRANSACTION;
         IF EXISTS(SELECT 1 FROM dbo.TODVZ_EBELGE_KAYNAK WITH(UPDLOCK,HOLDLOCK) WHERE ANAHTAR=@key)
@@ -130,15 +128,18 @@ export class EbelgeKaynakRepository {
         COMMIT;
         SELECT @n n;
       `);
-      if (r.recordset[0].n !== 1) throw ApiError.conflict("Kaynak belge daha önce işleme alınmış; durumunu kontrol edin.");
-    } catch (e: any) {
-      if ([2601,2627,1205].includes(e.number)) throw ApiError.conflict("Kaynak belge başka bir işlem tarafından alındı.");
-      throw e;
+            if (r.recordset[0].n !== 1)
+                throw ApiError.conflict("Kaynak belge daha önce işleme alınmış; durumunu kontrol edin.");
+        }
+        catch (e) {
+            if ([2601, 2627, 1205].includes(e.number))
+                throw ApiError.conflict("Kaynak belge başka bir işlem tarafından alındı.");
+            throw e;
+        }
     }
-  }
-  static async sonuc(k: KaynakKimlik, durum: string, mesaj: string, ctx?: DbContext) {
-    const pool = await this.pool(ctx);
-    await pool.request().input("key",sql.VarChar(80),kaynakAnahtar(k)).input("durum",sql.VarChar(30),durum)
-      .input("mesaj",sql.NVarChar(2000),mesaj.slice(0,2000)).query(`UPDATE dbo.TODVZ_EBELGE_KAYNAK SET DURUM=@durum,HATA=@mesaj,TARIH=SYSDATETIME() WHERE ANAHTAR=@key`);
-  }
+    static async sonuc(k, durum, mesaj, ctx) {
+        const pool = await this.pool(ctx);
+        await pool.request().input("key", sql.VarChar(80), kaynakAnahtar(k)).input("durum", sql.VarChar(30), durum)
+            .input("mesaj", sql.NVarChar(2000), mesaj.slice(0, 2000)).query(`UPDATE dbo.TODVZ_EBELGE_KAYNAK SET DURUM=@durum,HATA=@mesaj,TARIH=SYSDATETIME() WHERE ANAHTAR=@key`);
+    }
 }

@@ -1,0 +1,326 @@
+import { escapeXml } from "./ice.client.js";
+import { callWithSession } from "./ice.session.js";
+import { IceConnectionConfig } from "./ice.types.js";
+import { ApiError } from "../../utils/ApiError.js";
+
+/**
+ * e-Döviz (Döviz Alım/Satım Belgesi) ICE operasyonları.
+ *
+ * Kaynak: docs/ice/integration-2026-09-09.wsdl
+ *
+ * ## Doğrulanan noktalar
+ *
+ * 1. e-Döviz **fatura değildir**; UBL `CreditNote` tabanlı, yetkili müessese belgesidir.
+ *    Bu yüzden e-Fatura/e-Arşiv hattından gönderilemez, kendi ucu vardır.
+ *
+ * 2. `preview_edoviz_basic`, `send_edoviz_basic` ile **aynı girdiyi** (`eDoviz_Belge`)
+ *    alır ve yalnızca metin döndürür — yani **mali sonuç doğurmadan** doğrulama
+ *    yapılabilir. e-Gider Pusulası'nda olmayan bu güvence burada var; gönderim
+ *    öncesi her belge için önizleme çalıştırılır.
+ *
+ * 3. Alan sırası `eDoviz_Belge` sequence'ı ile birebir aynı olmak zorundadır:
+ *    Login_Request_Header, Baslik_Bilgileri, Yetkili_Muessese, Musteri,
+ *    Alis_Satis_Bilgileri, Odeme_Bilgileri, Ek_Bilgiler, Komisyon_Bilgileri,
+ *    Kiymetli_Maden_Bilgileri, Tutar_Bilgileri, BuyBack, TutarHesaplanmasin.
+ */
+
+export interface EDovizTaraf {
+  vknTckn?: string;
+  pasaportNo?: string;
+  unvan?: string;
+  ad?: string;
+  soyad?: string;
+  adres?: string;
+  ulke?: string;
+  sehir?: string;
+  ilce?: string;
+  vergiDairesi?: string;
+  telefon?: string;
+  eposta?: string;
+  ticaretSicilNo?: string;
+  musteriTuru?: string;
+}
+
+export interface EDovizGirdi {
+  belgeNo: string;
+  uuid: string;
+  profileId: string;
+  creditNoteTypeCode: string;
+  duzenlemeTarihi: string;
+  duzenlemeSaati: string;
+  notlar?: string[];
+  yetkiliMuessese: EDovizTaraf;
+  musteri: EDovizTaraf;
+  alisSatis: {
+    dovizKodu: string;
+    dolarKarsilikKuru: number;
+    tlKarsilikKuru: number;
+    vergiOrani: number;
+    vergiTutari: number;
+    vergiMatrah: number;
+    dovizMiktar: number;
+  };
+  ekBilgiler?: {
+    istatistikNo?: string;
+    geldigiUlke?: string;
+    gelisNedeni?: string;
+    ihracatYabanciSermaye: boolean;
+    gumrukBeyanTarihi: string;
+    gumrukBeyanNo?: string;
+    dbtTarihi: string;
+    dbtSayi?: string;
+    gmtyTarihi: string;
+    gmtySayi?: string;
+    vezne?: string;
+  };
+  komisyon?: { vergiHaric?: number; vergi?: number; dahilToplam?: number };
+  tutar: {
+    miktar: number;
+    kod: string;
+    tlKarsilikKuru: number;
+    dolarKarsilikKuru: number;
+    safAltinKarsiligi: number;
+    lineExtensionAmount: number;
+    taxExclusiveAmount: number;
+    taxInclusiveAmount: number;
+    payableAmount: number;
+    vergiOrani: number;
+    vergiMatrahi: number;
+    vergiTutari: number;
+  };
+  /** true ise ICE toplamları yeniden hesaplamaz; gönderdiğimiz tutarlar kullanılır. */
+  tutarHesaplanmasin: boolean;
+}
+
+export interface IceEDovizSatirSonucu {
+  success?: boolean | string;
+  shema_is_validate?: boolean | string;
+  schematron_is_validate?: boolean | string;
+  ettn?: string;
+  ID?: string;
+  response_message?: string;
+}
+
+export interface IceEDovizSonucu {
+  success?: boolean | string;
+  response_code?: number | string;
+  response_message?: string;
+  CreditNoteType_responseTypes?: {
+    CreditNoteType_responseType?: IceEDovizSatirSonucu | IceEDovizSatirSonucu[];
+  };
+}
+
+const alan = (ad: string, deger: unknown): string => {
+  if (deger === undefined || deger === null) return "";
+  const metin = String(deger).trim();
+  if (!metin) return "";
+  return `<${ad}>${escapeXml(metin)}</${ad}>`;
+};
+
+/** Boş bloğu hiç göndermemek için: içi boşsa etiket de üretilmez. */
+const blok = (ad: string, icerik: string): string => (icerik ? `<${ad}>${icerik}</${ad}>` : "");
+
+const tarafXml = (ad: string, t: EDovizTaraf, musteriMi: boolean): string =>
+  blok(
+    ad,
+    alan("Vkn_Tckn", t.vknTckn) +
+      (musteriMi ? alan("Pasaport_No", t.pasaportNo) : "") +
+      alan("Unvan", t.unvan) +
+      alan("Adi", t.ad) +
+      alan("Soyadi", t.soyad) +
+      alan("Adres", t.adres) +
+      alan("Ulke", t.ulke) +
+      alan("Sehir", t.sehir) +
+      alan("Ilce", t.ilce) +
+      alan(musteriMi ? "VergiDairesi" : "Vergi_Dairesi", t.vergiDairesi) +
+      alan("Telefon", t.telefon) +
+      alan("Email", t.eposta) +
+      alan("Ticaret_Sicil_No", t.ticaretSicilNo) +
+      (musteriMi ? alan("Musteri_Turu", t.musteriTuru) : "")
+  );
+
+/**
+ * `eDoviz_Belge` gövdesini üretir. Alan sırası WSDL sequence'ı ile birebir aynıdır;
+ * sıra bozulursa ICE belgeyi reddeder.
+ */
+export const buildEDovizInnerXml = (loginHeaderXml: string, g: EDovizGirdi): string =>
+  `<_eDovizBelge>` +
+  loginHeaderXml +
+  blok(
+    "Baslik_Bilgileri",
+    alan("ID", g.belgeNo) +
+      alan("UUID", g.uuid) +
+      alan("ProfileID", g.profileId) +
+      alan("CreditNoteTypeCode", g.creditNoteTypeCode) +
+      alan("Duzenleme_Tarihi", g.duzenlemeTarihi) +
+      alan("Duzenleme_Saati", g.duzenlemeSaati) +
+      blok("Notlar", (g.notlar || []).map((n) => alan("string", n)).join(""))
+  ) +
+  tarafXml("Yetkili_Muessese", g.yetkiliMuessese, false) +
+  tarafXml("Musteri", g.musteri, true) +
+  blok(
+    "Alis_Satis_Bilgileri",
+    alan("Doviz_Kodu", g.alisSatis.dovizKodu) +
+      alan("Dolar_Karsilik_Kuru", g.alisSatis.dolarKarsilikKuru) +
+      alan("TL_Karsilik_Kuru", g.alisSatis.tlKarsilikKuru) +
+      alan("Vergi_Orani", g.alisSatis.vergiOrani) +
+      alan("Vergi_Tutari", g.alisSatis.vergiTutari) +
+      alan("Vergi_Matrah", g.alisSatis.vergiMatrah) +
+      alan("Doviz_Miktar", g.alisSatis.dovizMiktar)
+  ) +
+  blok(
+    "Ek_Bilgiler",
+    alan("Istatistik_No", g.ekBilgiler?.istatistikNo) +
+      alan("Geldigi_Ulke", g.ekBilgiler?.geldigiUlke) +
+    alan("Gelis_Nedeni", g.ekBilgiler?.gelisNedeni) +
+      alan("Ihracat_Yabanci_Sermaye", g.ekBilgiler?.ihracatYabanciSermaye) +
+      alan("Gumruk_Beyan_Tarihi", g.ekBilgiler?.gumrukBeyanTarihi) +
+      alan("Gumruk_Beyan_No", g.ekBilgiler?.gumrukBeyanNo) +
+      alan("DBT_Tarihi", g.ekBilgiler?.dbtTarihi) +
+      alan("DBT_Sayi", g.ekBilgiler?.dbtSayi) +
+      alan("GMTY_Tarihi", g.ekBilgiler?.gmtyTarihi) +
+      alan("GMTY_Sayi", g.ekBilgiler?.gmtySayi) +
+      alan("Vezne", g.ekBilgiler?.vezne)
+  ) +
+  blok(
+    "Komisyon_Bilgileri",
+    alan("Komisyon_Tutar_Vergi_Haric", g.komisyon?.vergiHaric) +
+      alan("Komisyon_Tutar_Vergi", g.komisyon?.vergi) +
+      alan("Komisyon_Dahil_Toplam", g.komisyon?.dahilToplam)
+  ) +
+  blok(
+    "Tutar_Bilgileri",
+    alan("Miktar", g.tutar.miktar) +
+      alan("Kod", g.tutar.kod) +
+      alan("TL_Karsilik_Kuru", g.tutar.tlKarsilikKuru) +
+    alan("Dolar_Karsilik_Kuru", g.tutar.dolarKarsilikKuru) +
+      alan("Saf_Altin_Karsiligi", g.tutar.safAltinKarsiligi) +
+      alan("Vergi_Orani", g.tutar.vergiOrani) +
+      alan("Vergi_Matrahi", g.tutar.vergiMatrahi) +
+      alan("Vergi_Tutari", g.tutar.vergiTutari) +
+      alan("LineExtensionAmount", g.tutar.lineExtensionAmount) +
+      alan("TaxExclusiveAmount", g.tutar.taxExclusiveAmount) +
+      alan("TaxInclusiveAmount", g.tutar.taxInclusiveAmount) +
+      alan("PayableAmount", g.tutar.payableAmount)
+  ) +
+  `<TutarHesaplanmasin>${g.tutarHesaplanmasin ? "true" : "false"}</TutarHesaplanmasin>` +
+  `</_eDovizBelge>`;
+
+/**
+ * `preview_edoviz_basic` — belgeyi ICE'ye **göndermeden** önizler.
+ *
+ * Mali sonuç doğurmaz; okuma çağrısı sayıldığı için auth hatasında tekrar denenebilir.
+ */
+export const previewEDoviz = async (
+  config: IceConnectionConfig,
+  girdi: EDovizGirdi
+): Promise<{ onizleme: string }> => {
+  const { data } = await callWithSession<any>(config, {
+    method: "preview_edoviz_basic",
+    buildInnerXml: (loginHeaderXml) => buildEDovizInnerXml(loginHeaderXml, girdi),
+    authHatasindaTekrarla: true,
+  });
+
+  const onizleme = typeof data === "string" ? data : String(data ?? "");
+  if (!onizleme.trim()) {
+    throw ApiError.unprocessable("ICE e-Döviz önizlemesi boş döndü; belge doğrulanamadı.");
+  }
+  return { onizleme };
+};
+
+/**
+ * `send_edoviz_basic` — e-Döviz belgesini gönderir.
+ *
+ * ⚠️ Mali sonuç doğurur. Yazma çağrısıdır: auth hatasında otomatik tekrar KAPALI.
+ */
+export const sendEDoviz = async (
+  config: IceConnectionConfig,
+  girdi: EDovizGirdi
+): Promise<IceEDovizSonucu> => {
+  const { data } = await callWithSession<IceEDovizSonucu>(config, {
+    method: "send_edoviz_basic",
+    buildInnerXml: (loginHeaderXml) => buildEDovizInnerXml(loginHeaderXml, girdi),
+    authHatasindaTekrarla: false,
+    timeoutMs: 120_000,
+  });
+  return data || {};
+};
+
+/**
+ * `send_edoviz_iptal` — gönderilmiş e-Döviz belgesini iptal eder.
+ *
+ * ⚠️ Mali sonuç doğurur.
+ */
+export const sendEDovizIptal = async (
+  config: IceConnectionConfig,
+  belgeNo: string,
+  iptalTarihi: string
+): Promise<{ basarili: boolean; mesaj: string }> => {
+  const { data } = await callWithSession<any>(config, {
+    method: "send_edoviz_iptal",
+    buildInnerXml: (loginHeaderXml) =>
+      `<sendEDovizRequest>` +
+      loginHeaderXml +
+      alan("belgeNo", belgeNo) +
+      alan("iptalTarihi", iptalTarihi) +
+      `</sendEDovizRequest>`,
+    authHatasindaTekrarla: false,
+    timeoutMs: 120_000,
+  });
+  return {
+    basarili: String(data?.success).toLowerCase() === "true",
+    mesaj: data?.response_message ? String(data.response_message) : "",
+  };
+};
+
+/**
+ * `Get_EDoviz_Status` — UUID listesinin ICE'deki durumunu sorgular.
+ *
+ * Belirsiz kalan gönderimlerde yeniden göndermeden önce buraya bakılır.
+ */
+export const getEDovizStatus = async (
+  config: IceConnectionConfig,
+  uuidListesi: string[]
+): Promise<any[]> => {
+  const { data } = await callWithSession<any>(config, {
+    method: "Get_EDoviz_Status",
+    buildInnerXml: (loginHeaderXml) =>
+      `<Get_EDoviz_Status_Request>` +
+      loginHeaderXml +
+      `<UUID_List>${uuidListesi.map((u) => alan("string", u)).join("")}</UUID_List>` +
+      `</Get_EDoviz_Status_Request>`,
+    authHatasindaTekrarla: true,
+  });
+  const kayit = data?.Get_EDoviz_Status_Response;
+  if (!kayit) return [];
+  return Array.isArray(kayit) ? kayit : [kayit];
+};
+
+/**
+ * `GetEDoviz_XML_PDF` — gönderilmiş belgenin XML/PDF çıktısı.
+ */
+export const getEDovizCikti = async (
+  config: IceConnectionConfig,
+  ettn: string,
+  secenekler: { pdf?: boolean; xml?: boolean } = { pdf: true }
+): Promise<{ xml: string | null; pdf: Buffer | null; mesaj: string }> => {
+  const { data } = await callWithSession<any>(config, {
+    method: "GetEDoviz_XML_PDF",
+    buildInnerXml: (loginHeaderXml) =>
+      `<GetEDoviz_XML_PDF>` +
+      loginHeaderXml +
+      alan("ETTN", ettn) +
+      `<get_pdf>${secenekler.pdf ? "true" : "false"}</get_pdf>` +
+      `<get_xml>${secenekler.xml ? "true" : "false"}</get_xml>` +
+      `</GetEDoviz_XML_PDF>`,
+    authHatasindaTekrarla: true,
+    timeoutMs: 120_000,
+  });
+
+  const pdfBase64 = data?.edoviz_pdf ? String(data.edoviz_pdf) : "";
+  return {
+    xml: data?.edoviz_xml ? String(data.edoviz_xml) : null,
+    pdf: pdfBase64 ? Buffer.from(pdfBase64, "base64") : null,
+    mesaj: data?.response_message ? String(data.response_message) : "",
+  };
+};

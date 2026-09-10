@@ -9,6 +9,9 @@ router.use(authenticate);
 router.get("/kaynak", EbelgeController.kaynakListe);
 router.post("/kaynak/hazirla", EbelgeController.kaynakHazirla);
 router.post("/kaynak/gonder", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.kaynakGonder);
+router.get("/doviz/:uuid/durum", EbelgeController.dovizDurum);
+router.get("/doviz/:uuid/pdf", EbelgeController.dovizPdf);
+router.post("/doviz/:uuid/iptal", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.dovizIptal);
 
 /**
  * YETKİ NOTU (10.09.2026 — kullanıcı kararı)
@@ -128,5 +131,12 @@ router.post(
 );
 router.get("/gider-pusulasi/:uuid/pdf", EbelgeController.giderPusulasiPdf);
 router.post("/gider-pusulasi/onizle", EbelgeController.giderPusulasiOnizle);
+
+// e-Müstahsil: doğrulama mali sonuç doğurmaz; gönderim ve iptal geri alınamaz işlemlerdir.
+router.post("/mustahsil/dogrula", EbelgeController.mustahsilDogrula);
+router.post("/mustahsil/gonder", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.mustahsilGonder);
+router.post("/mustahsil/:uuid/iptal", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.mustahsilIptal);
+router.get("/mustahsil/gelen", EbelgeController.mustahsilGelen);
+router.post("/mustahsil/gelen/:uuid/statu", EbelgeController.mustahsilGelenStatu);
 
 export default router;

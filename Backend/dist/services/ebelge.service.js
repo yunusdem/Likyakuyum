@@ -7,6 +7,8 @@ import { getGiderPusulasiCikti, sendGiderPusulasi, } from "./ice/ice.giderpusula
 import { despatchAdviceCheckValidate, getDespatchAdviceCikti, getDespatchAdviceStatus, getDespatchAdvices, getUserListDespatchAdvice, irsaliyeGonderimSatirlari, sendDespatchAdvice, } from "./ice/ice.irsaliye.js";
 import { buildDespatchAdviceXml, } from "./ice/ubl/despatchAdviceBuilder.js";
 import { buildGiderPusulasiXml, } from "./ice/ubl/giderPusulasiBuilder.js";
+import { buildMustahsilXml } from "./ice/ubl/mustahsilBuilder.js";
+import { cancelMustahsil, getProducerReceipts, sendMustahsil, setProducerReceiptStatus, validateMustahsil } from "./ice/ice.mustahsil.js";
 import { getEarsivMailStatu, getEArchive, setEArchiveStatus, getEarsivRaporStatu, previewInvoice, sendDocumentEmail, sendEarsiv, sendEarsivIptal, } from "./ice/ice.earsiv.js";
 import { buildInvoiceXml, toBase64, } from "./ice/ubl/invoiceBuilder.js";
 import { assertAllowedServiceUrl } from "./ice/ice.client.js";
@@ -372,6 +374,9 @@ export class EbelgeService {
         }
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
         const sonuc = await getUserListEFatura(config, vknTckn.trim());
+        if (!sonuc.basarili) {
+            throw ApiError.unprocessable(sonuc.mesaj || "Mükellef sorgusu başarısız; belge türü belirlenemedi.");
+        }
         await EbelgeSqlRepository.writeLog({
             metod: "getUserList_EFatura",
             yon: "GIDEN",
@@ -849,7 +854,8 @@ export class EbelgeService {
             throw ApiError.conflict(`Onay sonucu belirsiz (${kayit.belgeNo}). ICE portalinden kontrol ediniz; yeniden onaylamayınız.`);
         }
         const basarili = String(sonuc?.success).toLowerCase() === "true";
-        const durum = basarili ? "GONDERILDI" : "TASLAK";
+        const acikRed = String(sonuc?.success).toLowerCase() === "false";
+        const durum = basarili ? "GONDERILDI" : acikRed ? "TASLAK" : "BELIRSIZ";
         await EbelgeSqlRepository.earsivDurumGecir(uuid, "ONAYLANIYOR", durum, {
             mesaj: `${sonuc?.response_message ?? ""} ${sonuc?.response_message_detail ?? ""}`.trim() || durum,
         }, dbContext);
@@ -863,6 +869,8 @@ export class EbelgeService {
             cevapOzet: `${sonuc?.response_message ?? ""} ${sonuc?.response_message_detail ?? ""}`.trim(),
         }, dbContext);
         if (!basarili) {
+            if (!acikRed)
+                throw ApiError.conflict("Onay sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz.");
             throw ApiError.badRequest(sonuc?.response_message?.trim() || "Taslak onaylanamadı; belge taslak olarak kaldı.");
         }
         return {
@@ -1092,6 +1100,13 @@ export class EbelgeService {
      * karşı taraf mükellef mi? → ICE son sıra kontrolü → **SQL rezervasyonu** →
      * gönderim → sonucu belge bazında doğrula.
      */
+    static async giderPusulasiOnizle(girdi, dbContext) {
+        if ((girdi.paraBirimi || "TRY") !== "TRY")
+            throw ApiError.badRequest("Yalnızca TRY destekleniyor.");
+        const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
+        const { ozet } = buildGiderPusulasiXml({ ...girdi, gonderici });
+        return { ozet, iceDogrulamasiYapildi: false };
+    }
     static async giderPusulasiGonder(girdi, kullanici, dbContext) {
         const belgeNo = girdi.belgeNo.trim().toUpperCase();
         const tarih = girdi.tarih || new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
@@ -1229,6 +1244,64 @@ export class EbelgeService {
             throw ApiError.notFound("Belgenin PDF çıktısı alınamadı.");
         return pdf;
     }
+    static async mustahsilDogrula(girdi, dbContext) {
+        const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
+        const { xml, uuid, ozet } = buildMustahsilXml({ ...girdi, gonderici });
+        const sonuc = await validateMustahsil(await EbelgeSqlRepository.getConnectionConfig(dbContext), toBase64(xml), true);
+        const sema = String(sonuc.shema_validate).toLowerCase() === "true", schematron = String(sonuc.shematron_validate).toLowerCase() === "true";
+        if (!sema || !schematron)
+            throw ApiError.unprocessable(sonuc.response_message || "e-Müstahsil şema/schematron doğrulamasından geçemedi.");
+        return { uuid, belgeNo: girdi.belgeNo.toUpperCase(), semaGecerli: sema, schematronGecerli: schematron, html: sonuc.producerreceipt_html || null, ozet };
+    }
+    static async mustahsilGonder(girdi, kullanici, dbContext) {
+        const belgeNo = girdi.belgeNo.trim().toUpperCase();
+        if (await EbelgeSqlRepository.gidenBelgeNoVarMi(belgeNo, dbContext))
+            throw ApiError.conflict("Bu müstahsil makbuzu numarası daha önce kullanılmış.");
+        const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext), uretilen = buildMustahsilXml({ ...girdi, belgeNo, gonderici });
+        const config = await EbelgeSqlRepository.getConnectionConfig(dbContext), kontrol = await validateMustahsil(config, toBase64(uretilen.xml), false);
+        if (String(kontrol.shema_validate).toLowerCase() !== "true" || String(kontrol.shematron_validate).toLowerCase() !== "true")
+            throw ApiError.unprocessable(kontrol.response_message || "e-Müstahsil doğrulanamadı; gönderilmedi.");
+        await EbelgeSqlRepository.insertGiden({ uuid: uretilen.uuid, belgeNo, belgeTuru: "EMustahsil", profil: "EARSIVBELGE", faturaTipi: "MUSTAHSILMAKBUZ", taslakMi: false,
+            aliciVkn: girdi.uretici.vknTckn, aliciUnvan: girdi.uretici.unvan || [girdi.uretici.ad, girdi.uretici.soyad].filter(Boolean).join(" "), duzenlemeTarihi: new Date(girdi.tarih || new Date()),
+            tutar: uretilen.ozet.netOdenecek, paraBirimi: "TRY", gonderimDurumu: "GONDERILIYOR", iceResponseMesaj: "Gönderim başlatıldı; sonuç kesinleşmeden tekrarlamayın.", olusturan: kullanici, gonderen: kullanici, gonderimTarihi: new Date() }, dbContext);
+        let sonuc;
+        try {
+            sonuc = await sendMustahsil(config, toBase64(uretilen.xml));
+        }
+        catch {
+            await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", "BELIRSIZ", { mesaj: "ICE sonucu alınamadı; portalden kontrol edin." }, dbContext).catch(() => undefined);
+            throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uretilen.uuid}); yeniden göndermeyiniz.`);
+        }
+        const ss = gonderimSatirlari(sonuc), ilk = ss[0], dogru = (v) => String(v).toLowerCase() === "true";
+        const basarili = dogru(sonuc.success) && ss.length === 1 && dogru(ilk?.success) && dogru(ilk?.shema_is_validate) && dogru(ilk?.schematron_is_validate) && String(ilk?.ettn || "").toLowerCase() === uretilen.uuid.toLowerCase() && ilk?.ID === belgeNo;
+        const acikRed = String(sonuc.success).toLowerCase() === "false" || (ss.length === 1 && String(ilk?.success).toLowerCase() === "false"), durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
+        await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", durum, { kod: String(sonuc.response_code ?? ""), mesaj: ilk?.response_message || sonuc.response_message || durum }, dbContext);
+        await EbelgeSqlRepository.writeLog({ metod: "send_emustahsil", yon: "GIDEN", basarili, kullanici, ilgiliUuid: uretilen.uuid, istekOzet: `belgeNo=${belgeNo} net=${uretilen.ozet.netOdenecek}`, cevapOzet: `durum=${durum}` }, dbContext);
+        if (!basarili)
+            throw ApiError.conflict(durum === "BELIRSIZ" ? "Gönderim sonucu belirsiz; yeniden göndermeyiniz." : ilk?.response_message || sonuc.response_message || "e-Müstahsil reddedildi.");
+        return { uuid: uretilen.uuid, belgeNo, durum, mesaj: sonuc.response_message || "", ozet: uretilen.ozet };
+    }
+    static async mustahsilIptal(uuid, tarih, kullanici, dbContext) {
+        const k = await EbelgeSqlRepository.getGiden(uuid, dbContext);
+        if (!k || k.belgeTuru !== "EMustahsil")
+            throw ApiError.notFound("e-Müstahsil bulunamadı.");
+        if (k.gonderimDurumu !== "GONDERILDI")
+            throw ApiError.conflict("Yalnız gönderilmiş e-Müstahsil iptal edilebilir.");
+        let s;
+        try {
+            s = await cancelMustahsil(await EbelgeSqlRepository.getConnectionConfig(dbContext), k.belgeNo, tarih.toISOString());
+        }
+        catch {
+            throw ApiError.conflict("İptal sonucu belirsiz; tekrar iptal göndermeyiniz.");
+        }
+        if (!s.basarili)
+            throw ApiError.conflict(s.mesaj || "İptal reddedildi.");
+        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL", { mesaj: s.mesaj, kullanici, iptalTarihi: tarih }, dbContext);
+        return { uuid, durum: "IPTAL", mesaj: s.mesaj };
+    }
+    static async mustahsilGelen(f, kullanici, dbContext) { const x = await getProducerReceipts(await EbelgeSqlRepository.getConnectionConfig(dbContext), f); await EbelgeSqlRepository.writeLog({ metod: "GetProducerReceipt", yon: "GELEN", basarili: true, kullanici, cevapOzet: `adet=${x.length}` }, dbContext); return x; }
+    static async mustahsilGelenStatu(uuid, statu, kullanici, dbContext) { const ok = await setProducerReceiptStatus(await EbelgeSqlRepository.getConnectionConfig(dbContext), uuid, statu); if (!ok)
+        throw ApiError.unprocessable("ICE durum değişikliğini kabul etmedi."); await EbelgeSqlRepository.writeLog({ metod: "Set_ProducerReceipt_Status", yon: "GELEN", basarili: true, kullanici, ilgiliUuid: uuid, istekOzet: `statu=${statu}` }, dbContext); return { uuid, statu }; }
     static async earsivGonder(girdi, kullanici, dbContext) {
         const belgeNo = girdi.belgeNo.trim().toUpperCase();
         girdi = { ...girdi, belgeNo, tarih: girdi.tarih || new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" }) };

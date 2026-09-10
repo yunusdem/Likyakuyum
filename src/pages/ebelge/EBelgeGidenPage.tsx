@@ -137,6 +137,17 @@ const EBelgeGidenPage: React.FC = () => {
       setAlertInfo({ type: "danger", message: err?.message || "Belge bilgisi alınamadı." });
     } finally { setDetayYukleniyor(false); }
   };
+  const dovizGoruntule = async (satir: EbelgeGidenSatiri, pdf: boolean) => {
+    setDetayYukleniyor(true); setPdfUrl(null);
+    try {
+      if (pdf) setPdfUrl(await ebelgeService.getDovizPdfBlobUrl(satir.uuid));
+      else {
+        const d = await ebelgeService.dovizDurum(satir.uuid);
+        setAlertInfo({ type: "success", message: `${satir.belgeNo}: ${d?.STATUS_DESCRIPTION || d?.STATUS || "ICE durum kaydı alındı."}` });
+      }
+    } catch (err: any) { setAlertInfo({ type: "danger", message: err?.message || "e-Döviz bilgisi alınamadı." }); }
+    finally { setDetayYukleniyor(false); }
+  };
 
   const listeYukle = useCallback(
     async (hedefSayfa = 1) => {
@@ -174,7 +185,13 @@ const EBelgeGidenPage: React.FC = () => {
     setIptalEdiliyor(true);
     setAlertInfo(null);
     try {
-      if (iptalEdilecek.belgeTuru === "EArsiv") {
+      if (iptalEdilecek.belgeTuru === "EDoviz") {
+        await ebelgeService.dovizIptal(iptalEdilecek.uuid);
+        setAlertInfo({ type: "success", message: `${iptalEdilecek.belgeNo} e-Döviz belgesi iptal edildi.` });
+      } else if (iptalEdilecek.belgeTuru === "EMustahsil") {
+        await ebelgeService.mustahsilIptal(iptalEdilecek.uuid);
+        setAlertInfo({ type: "success", message: `${iptalEdilecek.belgeNo} e-Müstahsil makbuzu iptal edildi.` });
+      } else if (iptalEdilecek.belgeTuru === "EArsiv") {
         // e-Arşiv: belge silinmez, GİB'e iptal BİLDİRİMİ gider
         await ebelgeService.earsivIptal(iptalEdilecek.uuid);
         setAlertInfo({
@@ -311,11 +328,11 @@ const EBelgeGidenPage: React.FC = () => {
         <Card className="shadow-sm border rounded-3 overflow-hidden mb-3" style={{ borderColor: "#dc2626" }}>
           <Card.Body className="p-3 bg-body">
             <Alert
-              variant={iptalEdilecek.belgeTuru === "EArsiv" ? "danger" : "warning"}
+              variant={["EArsiv", "EDoviz", "EMustahsil"].includes(iptalEdilecek.belgeTuru) ? "danger" : "warning"}
               className="py-2 px-3 mb-2 border rounded shadow-2xs small"
             >
               <IconAlertTriangle size={15} className="me-1" />
-              {iptalEdilecek.belgeTuru === "EArsiv" ? (
+              {["EArsiv", "EDoviz", "EMustahsil"].includes(iptalEdilecek.belgeTuru) ? (
                 <>
                   <strong>{iptalEdilecek.belgeNo}</strong> için GİB'e{" "}
                   <strong>iptal bildirimi</strong> gönderilecek. Belge silinmez, iptal edildiği
@@ -331,7 +348,7 @@ const EBelgeGidenPage: React.FC = () => {
             <div className="d-flex gap-2">
               <Button size="sm" variant="danger" onClick={iptalEt} disabled={iptalEdiliyor}>
                 {iptalEdiliyor ? <Spinner animation="border" size="sm" className="me-1" /> : null}
-                {iptalEdilecek.belgeTuru === "EArsiv"
+                {["EArsiv", "EDoviz", "EMustahsil"].includes(iptalEdilecek.belgeTuru)
                   ? "Evet, iptal bildirimi gönder"
                   : "Evet, taslağı iptal et"}
               </Button>
@@ -407,7 +424,7 @@ const EBelgeGidenPage: React.FC = () => {
               <Form.Label className="small mb-1">Belge türü</Form.Label>
               <Form.Select size="sm" value={belgeTuru} onChange={e => setBelgeTuru(e.target.value)} disabled={topluBusy}>
                 <option value="">Tümü</option><option value="EFatura">e-Fatura</option><option value="EArsiv">e-Arşiv</option>
-                <option value="EGiderPusulasi">e-Gider</option><option value="EIrsaliye">e-İrsaliye</option>
+                <option value="EGiderPusulasi">e-Gider</option><option value="EIrsaliye">e-İrsaliye</option><option value="EDoviz">e-Döviz</option><option value="EMustahsil">e-Müstahsil</option>
               </Form.Select>
             </Col>
             <Col xs={6} md={3} lg={2}><Form.Label className="small mb-1">İlk tarih</Form.Label>
@@ -500,7 +517,7 @@ const EBelgeGidenPage: React.FC = () => {
                             bg={satir.belgeTuru === "EArsiv" ? "info-subtle" : "secondary-subtle"}
                             text={satir.belgeTuru === "EArsiv" ? "info" : "secondary"}
                           >
-                            {{ EFatura: "e-Fatura", EArsiv: "e-Arşiv", EGiderPusulasi: "e-Gider", EIrsaliye: "e-İrsaliye" }[satir.belgeTuru] || satir.belgeTuru}
+                            {{ EFatura: "e-Fatura", EArsiv: "e-Arşiv", EGiderPusulasi: "e-Gider", EIrsaliye: "e-İrsaliye", EDoviz: "e-Döviz", EMustahsil: "e-Müstahsil" }[satir.belgeTuru] || satir.belgeTuru}
                           </Badge>
                         </td>
                         <td>{satir.profil || "-"}</td>
@@ -517,8 +534,13 @@ const EBelgeGidenPage: React.FC = () => {
                             {["GONDERILDI", "IPTAL"].includes(satir.gonderimDurumu) &&
                               <Button size="sm" variant="link" disabled={detayYukleniyor} onClick={() => earsivGoruntule(satir, true)}>PDF</Button>}
                           </>}
+                          {satir.belgeTuru === "EDoviz" && <>
+                            <Button size="sm" variant="link" disabled={detayYukleniyor} onClick={() => dovizGoruntule(satir, false)}>Durum</Button>
+                            {["GONDERILDI", "IPTAL"].includes(satir.gonderimDurumu) &&
+                              <Button size="sm" variant="link" disabled={detayYukleniyor} onClick={() => dovizGoruntule(satir, true)}>PDF</Button>}
+                          </>}
                           {/* E-posta ile gönder — yalnızca gönderimi kesinleşmiş belgelerde */}
-                          {satir.gonderimDurumu === "GONDERILDI" && (
+                          {satir.gonderimDurumu === "GONDERILDI" && !["EDoviz", "EMustahsil"].includes(satir.belgeTuru) && (
                             <Button
                               size="sm"
                               variant="link"
@@ -551,7 +573,7 @@ const EBelgeGidenPage: React.FC = () => {
                             </Button>
                           )}
                           {(satir.gonderimDurumu === "TASLAK" ||
-                            (satir.belgeTuru === "EArsiv" &&
+                            (["EArsiv", "EDoviz", "EMustahsil"].includes(satir.belgeTuru) &&
                               satir.gonderimDurumu === "GONDERILDI")) && (
                             <Button
                               size="sm"
@@ -559,7 +581,7 @@ const EBelgeGidenPage: React.FC = () => {
                               className="p-0"
                               style={{ color: "#dc2626" }}
                               title={
-                                satir.belgeTuru === "EArsiv"
+                                ["EArsiv", "EDoviz", "EMustahsil"].includes(satir.belgeTuru)
                                   ? "İptal bildirimi gönder"
                                   : "Taslağı iptal et"
                               }

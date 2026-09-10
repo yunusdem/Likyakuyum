@@ -5,7 +5,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { EbelgeService } from "../services/ebelge.service.js";
 import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
-import { ebelgeKaynakKimlikSchema, ebelgeKaynakGonderSchema, ebelgeKaynakListeSchema } from "../schemas/ebelge.schema.js";
+import { ebelgeKaynakKimlikSchema, ebelgeKaynakGonderSchema, ebelgeKaynakListeSchema, ebelgeMustahsilSchema } from "../schemas/ebelge.schema.js";
 import {
   ebelgeAyarSchema,
   ebelgeDogrulaSchema,
@@ -34,6 +34,25 @@ export class EbelgeController {
     if (!parsed.success) throw ApiError.badRequest("Kaynak belge gönderim bilgileri geçersiz.");
     const p = parsed.data;
     return ApiResponse.ok(res,"Kaynak belge gönderildi.",await EbelgeKaynakService.gonder(p,p.parmakizi,p.senaryo,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));
+  });
+  public static dovizDurum = asyncHandler(async (req: Request, res: Response) => {
+    const uuid = String(req.params.uuid || "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(uuid)) throw ApiError.badRequest("ETTN geçersiz.");
+    return ApiResponse.ok(res, "e-Döviz durumu alındı.", await EbelgeKaynakService.dovizDurum(uuid,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));
+  });
+  public static dovizPdf = asyncHandler(async (req: Request, res: Response) => {
+    const uuid = String(req.params.uuid || "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(uuid)) throw ApiError.badRequest("ETTN geçersiz.");
+    const pdf = await EbelgeKaynakService.dovizPdf(uuid,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req));
+    res.setHeader("Content-Type", "application/pdf"); res.setHeader("Content-Disposition", `inline; filename="${uuid}.pdf"`);
+    return res.status(200).end(pdf);
+  });
+  public static dovizIptal = asyncHandler(async (req: Request, res: Response) => {
+    const uuid = String(req.params.uuid || "").trim();
+    const ham = String(req.body?.iptalTarihi || "").trim();
+    const tarih = new Date(`${ham || new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" })}T12:00:00+03:00`);
+    if (!/^[0-9a-f-]{36}$/i.test(uuid) || Number.isNaN(tarih.getTime())) throw ApiError.badRequest("ETTN veya iptal tarihi geçersiz.");
+    return ApiResponse.ok(res, "e-Döviz iptal edildi.", await EbelgeKaynakService.dovizIptal(uuid,tarih,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));
   });
   private static getDbContext(req: Request) {
     return {
@@ -752,6 +771,11 @@ export class EbelgeController {
     res.setHeader("Content-Length", String(pdf.length));
     return res.status(200).end(pdf);
   });
+  public static mustahsilDogrula = asyncHandler(async(req:Request,res:Response)=>{const p=ebelgeMustahsilSchema.safeParse(req.body);if(!p.success)throw ApiError.badRequest("e-Müstahsil bilgileri geçersiz.",p.error.format());return ApiResponse.ok(res,"e-Müstahsil doğrulandı; gönderilmedi.",await EbelgeService.mustahsilDogrula(p.data as any,EbelgeController.getDbContext(req)));});
+  public static mustahsilGonder = asyncHandler(async(req:Request,res:Response)=>{const p=ebelgeMustahsilSchema.safeParse(req.body);if(!p.success)throw ApiError.badRequest("e-Müstahsil bilgileri geçersiz.",p.error.format());return ApiResponse.created(res,"e-Müstahsil gönderildi.",await EbelgeService.mustahsilGonder(p.data as any,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));});
+  public static mustahsilIptal = asyncHandler(async(req:Request,res:Response)=>{const uuid=String(req.params.uuid||"");const tarih=new Date(`${String(req.body?.iptalTarihi||new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Istanbul"}))}T12:00:00+03:00`);if(!uuid||Number.isNaN(tarih.getTime()))throw ApiError.badRequest("ETTN veya tarih geçersiz.");return ApiResponse.ok(res,"e-Müstahsil iptal edildi.",await EbelgeService.mustahsilIptal(uuid,tarih,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));});
+  public static mustahsilGelen = asyncHandler(async(req:Request,res:Response)=>ApiResponse.ok(res,"Gelen e-Müstahsiller alındı.",await EbelgeService.mustahsilGelen({limit:Number(req.query.limit)||100,uuid:req.query.uuid?String(req.query.uuid):undefined,baslangic:req.query.baslangic?String(req.query.baslangic):undefined,bitis:req.query.bitis?String(req.query.bitis):undefined,okunanlar:req.query.okunanlar==="true",islenenler:req.query.islenenler==="true"},EbelgeController.getKullanici(req),EbelgeController.getDbContext(req))));
+  public static mustahsilGelenStatu = asyncHandler(async(req:Request,res:Response)=>{const statu=String(req.body?.statu||"") as any;if(!["Okunmadı","Okundu","Islendi","Islenmedi"].includes(statu))throw ApiError.badRequest("Durum geçersiz.");return ApiResponse.ok(res,"Durum güncellendi.",await EbelgeService.mustahsilGelenStatu(String(req.params.uuid),statu,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req)));});
 
   /**
    * GET /api/v1/e-belge/log?limit=50

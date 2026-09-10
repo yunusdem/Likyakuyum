@@ -169,7 +169,7 @@ export const ebelgeIrsaliyeSchema = z.object({
     satirlar: z.array(irsSatirSchema).min(1, "İrsaliyede en az bir satır bulunmalıdır.").max(500),
     sevkiyat: z.object({
         sevkTarihi: z.string().trim().regex(TARIH, "Fiili sevk tarihi YYYY-AA-GG olmalıdır."),
-        sevkSaati: z.string().trim().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
+        sevkSaati: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, "Geçerli fiili sevk saati zorunludur (SS:DD:SS)."),
         plaka: z.string().trim().max(20).optional(),
         soforler: z
             .array(z.object({
@@ -187,12 +187,12 @@ export const ebelgeIrsaliyeSchema = z.object({
             .optional(),
         teslimatAdresi: z
             .object({
+            postaKodu: z.string().trim().regex(/^\d{5}$/, "Teslimat posta kodu 5 haneli olmalıdır."),
             adres: z.string().trim().max(300).optional(),
             ilce: z.string().trim().max(100).optional(),
             il: z.string().trim().max(100).optional(),
             ulke: z.string().trim().max(100).optional(),
-        })
-            .optional(),
+        }),
     }),
     siparisNo: z.string().trim().max(60).optional(),
     siparisTarihi: z.string().trim().regex(TARIH).optional(),
@@ -267,3 +267,38 @@ export const ebelgeGiderPusulasiSchema = z.object({
     })
         .optional(),
 });
+export const ebelgeMustahsilSchema = z.object({
+    belgeNo: z.string().trim().regex(/^[A-Za-z0-9]{3}\d{13}$/),
+    uuid: z.string().uuid().optional(), tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    saat: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/).optional(),
+    paraBirimi: z.literal("TRY").optional(), notlar: z.array(z.string().trim().max(1000)).max(10).optional(),
+    gonderici: gpTarafSchema.partial({ vknTckn: true }).optional(), uretici: gpTarafSchema,
+    smsKodu: z.string().trim().min(1).max(60), smsSaglayiciAdi: z.string().trim().min(1).max(150),
+    smsSaglayiciVkn: z.string().regex(/^\d{10}$/),
+    satirlar: z.array(z.object({ ad: z.string().trim().min(1).max(300), aciklama: z.string().trim().max(1000).optional(),
+        miktar: z.number().positive(), birimKodu: z.string().trim().max(10).optional(), birimFiyat: z.number().nonnegative(),
+        stopajOrani: z.number().min(0).max(100), stopajKodu: z.string().regex(/^\d{4}$/), stopajAdi: z.string().trim().max(150).optional() })).min(1).max(500),
+});
+// evrakTuru 0 = fatura görünümü, 99 = e-Döviz fişi (DOVIZ_EVRAK_TURU).
+// e-Döviz'de belgeTuru alanı FIS_TIPI'dir; fatura türlerinden daha geniş olabilir.
+export const ebelgeKaynakKimlikSchema = z.union([
+    z.object({
+        evrakTuru: z.literal(0), belgeId: z.number().int().positive(), belgeTuru: z.number().int().min(0).max(3),
+    }),
+    z.object({
+        evrakTuru: z.literal(99), belgeId: z.number().int().positive(), belgeTuru: z.number().int().min(0).max(255),
+    }),
+]);
+export const ebelgeKaynakGonderSchema = z.intersection(ebelgeKaynakKimlikSchema, z.object({
+    parmakizi: z.string().regex(/^[a-f0-9]{64}$/),
+    // e-Döviz'de senaryo yerine CreditNoteTypeCode taşınır; fatura senaryoları sabit kalır.
+    senaryo: z.union([z.enum(["TICARIFATURA", "EARSIVFATURA"]), z.string().trim().min(1).max(40)]),
+}));
+const kaynakTarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v, "Geçersiz tarih");
+export const ebelgeKaynakListeSchema = z.object({
+    arama: z.string().trim().max(150).optional(), durum: z.string().max(30).optional(),
+    belgeTuru: z.coerce.number().int().min(0).max(255).optional(),
+    kaynak: z.enum(["FATURA", "DOVIZ"]).optional(),
+    sayfa: z.coerce.number().int().min(1).max(100000).default(1),
+    baslangicTarihi: kaynakTarih.optional(), bitisTarihi: kaynakTarih.optional(),
+}).refine(v => !v.baslangicTarihi || !v.bitisTarihi || v.baslangicTarihi <= v.bitisTarihi, "Tarih aralığı geçersiz.");
