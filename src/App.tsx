@@ -26,6 +26,8 @@ import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
 import EBelgeGidenPage from "./pages/ebelge/EBelgeGidenPage";
 import EBelgeIrsaliyePage from "./pages/ebelge/EBelgeIrsaliyePage";
+import EBelgeGiderPage from "./pages/ebelge/EBelgeGiderPage";
+import EBelgeKaynakPage from "./pages/ebelge/EBelgeKaynakPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import LoginPage from "./pages/auth/LoginPage";
 
@@ -124,6 +126,8 @@ export default function App() {
             <Route path="e-belge/dogrula" element={<EBelgeDogrulaPage />} />
             <Route path="e-belge/giden" element={<EBelgeGidenPage />} />
             <Route path="e-belge/irsaliye" element={<EBelgeIrsaliyePage />} />
+            <Route path="e-belge/gider" element={<EBelgeGiderPage />} />
+            <Route path="e-belge/kaynak" element={<EBelgeKaynakPage />} />
             <Route path="ayarlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="tanimlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />

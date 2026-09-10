@@ -988,7 +988,7 @@ export class EbelgeSqlRepository {
 
   /** Giden belge listesi */
   public static async listGiden(
-    filtre: { sayfa?: number; boyut?: number; arama?: string; durum?: string },
+    filtre: { sayfa?: number; boyut?: number; arama?: string; durum?: string; belgeTuru?: string; baslangicTarihi?: string; bitisTarihi?: string },
     dbContext?: DbContext
   ): Promise<{ kayitlar: any[]; toplam: number }> {
     const pool = await this.getPool(dbContext);
@@ -1005,6 +1005,18 @@ export class EbelgeSqlRepository {
     if (filtre.durum && filtre.durum !== "TUMU") {
       kosullar.push("[GONDERIM_DURUMU] = @durum");
       request.input("durum", sql.VarChar(20), filtre.durum);
+    }
+    if (filtre.belgeTuru) {
+      kosullar.push("[BELGE_TURU] = @belgeTuru");
+      request.input("belgeTuru", sql.VarChar(20), filtre.belgeTuru);
+    }
+    if (filtre.baslangicTarihi) {
+      kosullar.push("[DUZENLEME_TARIHI] >= @baslangic");
+      request.input("baslangic", sql.Date, filtre.baslangicTarihi);
+    }
+    if (filtre.bitisTarihi) {
+      kosullar.push("[DUZENLEME_TARIHI] < DATEADD(day, 1, @bitis)");
+      request.input("bitis", sql.Date, filtre.bitisTarihi);
     }
 
     const where = kosullar.length ? `WHERE ${kosullar.join(" AND ")}` : "";

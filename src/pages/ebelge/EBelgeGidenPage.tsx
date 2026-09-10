@@ -34,6 +34,27 @@ const EBelgeGidenPage: React.FC = () => {
   const [alertInfo, setAlertInfo] = useState<AlertInfo>(null);
   const [arama, setArama] = useState<string>("");
   const [durum, setDurum] = useState<string>("TUMU");
+  const [belgeTuru, setBelgeTuru] = useState("");
+  const [baslangicTarihi, setBaslangicTarihi] = useState("");
+  const [bitisTarihi, setBitisTarihi] = useState("");
+  const [secimler, setSecimler] = useState<string[]>([]);
+  const [topluBusy, setTopluBusy] = useState(false);
+  const [topluOnay, setTopluOnay] = useState(false);
+  const [islemSonuclari, setIslemSonuclari] = useState<Record<string, string>>({});
+  const seciliTaslaklar = kayitlar.filter(s => secimler.includes(s.uuid) && s.belgeTuru === "EFatura" && s.gonderimDurumu === "TASLAK");
+  const topluGonder = async () => {
+    setTopluBusy(true); setTopluOnay(false);
+    for (const satir of seciliTaslaklar) {
+      setIslemSonuclari(o => ({ ...o, [satir.uuid]: "Gönderiliyor…" }));
+      try {
+        const sonuc = await ebelgeService.taslakOnayla(satir.uuid);
+        setIslemSonuclari(o => ({ ...o, [satir.uuid]: `${sonuc.durum}: ${sonuc.mesaj || ""}` }));
+      } catch (e: any) {
+        setIslemSonuclari(o => ({ ...o, [satir.uuid]: e.message || "İşlem tamamlanamadı; durumu kontrol edin." }));
+      }
+    }
+    setSecimler([]); setTopluBusy(false); await listeYukle(sayfa);
+  };
   const [seciliUuid, setSeciliUuid] = useState<string | null>(null);
   const [arsivAcik, setArsivAcik] = useState(false);
 
@@ -126,17 +147,21 @@ const EBelgeGidenPage: React.FC = () => {
           boyut: SAYFA_BOYUTU,
           arama: arama.trim() || undefined,
           durum: durum === "TUMU" ? undefined : durum,
+          belgeTuru: belgeTuru || undefined,
+          baslangicTarihi: baslangicTarihi || undefined,
+          bitisTarihi: bitisTarihi || undefined,
         });
         setKayitlar(sonuc.kayitlar);
         setToplam(sonuc.toplam);
         setSayfa(hedefSayfa);
+        setSecimler([]); setTopluOnay(false);
       } catch (err: any) {
         setAlertInfo({ type: "danger", message: err?.message || "Liste alınamadı." });
       } finally {
         setYukleniyor(false);
       }
     },
-    [arama, durum]
+    [arama, durum, belgeTuru, baslangicTarihi, bitisTarihi]
   );
 
   useEffect(() => {
@@ -371,13 +396,24 @@ const EBelgeGidenPage: React.FC = () => {
                 <option value="TASLAK">Taslak</option>
                 <option value="GONDERILDI">Gönderildi</option>
                 <option value="IPTAL">İptal</option>
-                <option value="HATA">Hata</option>
+                <option value="HATA">Hatalı</option>
                 <option value="GONDERILIYOR">Gönderim sürüyor / kontrol gerekli</option>
                 <option value="BELIRSIZ">Gönderim sonucu belirsiz</option>
                 <option value="IPTAL_EDILIYOR">İptal sürüyor / kontrol gerekli</option>
                 <option value="IPTAL_BELIRSIZ">İptal sonucu belirsiz</option>
               </Form.Select>
             </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Belge türü</Form.Label>
+              <Form.Select size="sm" value={belgeTuru} onChange={e => setBelgeTuru(e.target.value)} disabled={topluBusy}>
+                <option value="">Tümü</option><option value="EFatura">e-Fatura</option><option value="EArsiv">e-Arşiv</option>
+                <option value="EGiderPusulasi">e-Gider</option><option value="EIrsaliye">e-İrsaliye</option>
+              </Form.Select>
+            </Col>
+            <Col xs={6} md={3} lg={2}><Form.Label className="small mb-1">İlk tarih</Form.Label>
+              <Form.Control size="sm" type="date" value={baslangicTarihi} onChange={e => setBaslangicTarihi(e.target.value)} disabled={topluBusy} /></Col>
+            <Col xs={6} md={3} lg={2}><Form.Label className="small mb-1">Son tarih</Form.Label>
+              <Form.Control size="sm" type="date" value={bitisTarihi} onChange={e => setBitisTarihi(e.target.value)} disabled={topluBusy} /></Col>
             <Col xs={6} md={2} lg={2}>
               <Button size="sm" variant="primary" onClick={() => listeYukle(1)} disabled={yukleniyor}>
                 Filtrele
@@ -389,6 +425,16 @@ const EBelgeGidenPage: React.FC = () => {
 
       <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden">
         <Card.Body className="p-3 bg-body">
+          <div className="d-flex gap-2 align-items-center mb-2">
+            <Button size="sm" disabled={topluBusy || yukleniyor || !kayitlar.length} onClick={() => setSecimler(secimler.length === kayitlar.length ? [] : kayitlar.map(s => s.uuid))}>Sayfadakileri seç / kaldır</Button>
+            <span className="small">{secimler.length} seçili · {seciliTaslaklar.length} gönderilebilir taslak</span>
+            <Button size="sm" disabled={topluBusy || !seciliTaslaklar.length} onClick={() => setTopluOnay(true)}>Seçili taslakları gönder</Button>
+          </div>
+          {topluOnay && <Alert variant="warning">
+            {seciliTaslaklar.map(s => s.belgeNo).join(", ")} belgeleri GİB'e gönderilecek.
+            <Button className="ms-2" size="sm" onClick={topluGonder}>Gönderimi onayla</Button>
+            <Button className="ms-2" size="sm" variant="secondary" onClick={() => setTopluOnay(false)}>Vazgeç</Button>
+          </Alert>}
           <div className="d-flex align-items-center justify-content-between mb-2">
             <span className="fw-semibold" style={{ fontSize: "13px" }}>
               Giden Belgeler
@@ -402,6 +448,7 @@ const EBelgeGidenPage: React.FC = () => {
             <Table className="table table-sm custom-document-table mb-0" hover>
               <thead>
                 <tr>
+                  <th>Seç</th>
                   <th style={{ width: "110px" }}>Tarih</th>
                   <th style={{ width: "160px" }}>Belge No</th>
                   <th>Alıcı</th>
@@ -417,14 +464,14 @@ const EBelgeGidenPage: React.FC = () => {
               <tbody>
                 {yukleniyor ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-4">
+                    <td colSpan={9} className="text-center py-4">
                       <Spinner animation="border" size="sm" className="me-2" />
                       <span className="small text-secondary">Yükleniyor…</span>
                     </td>
                   </tr>
                 ) : kayitlar.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center text-secondary py-4 small">
+                    <td colSpan={9} className="text-center text-secondary py-4 small">
                       Kayıt yok. Belge Doğrulama ekranından taslak oluşturabilirsiniz.
                     </td>
                   </tr>
@@ -438,7 +485,9 @@ const EBelgeGidenPage: React.FC = () => {
                         onClick={() => setSeciliUuid(satir.uuid)}
                         style={{ cursor: "pointer" }}
                       >
-                        <td>{ebelgeTarihSaat(satir.olusturmaTarihi).slice(0, 10)}</td>
+                        <td><Form.Check aria-label={`${satir.belgeNo} seç`} checked={secimler.includes(satir.uuid)} disabled={topluBusy}
+                          onChange={e => setSecimler(o => e.target.checked ? [...o, satir.uuid] : o.filter(id => id !== satir.uuid))} /></td>
+                        <td>{ebelgeTarihSaat(satir.duzenlemeTarihi || satir.olusturmaTarihi).slice(0, 10)}</td>
                         <td className="font-monospace">{satir.belgeNo}<small className="d-block text-secondary" style={{ overflowWrap: "anywhere" }}>{satir.uuid}</small></td>
                         <td className="text-truncate" style={{ maxWidth: "300px" }} title={satir.aliciUnvan || ""}>
                           {satir.aliciUnvan || satir.aliciVkn || "-"}
@@ -451,7 +500,7 @@ const EBelgeGidenPage: React.FC = () => {
                             bg={satir.belgeTuru === "EArsiv" ? "info-subtle" : "secondary-subtle"}
                             text={satir.belgeTuru === "EArsiv" ? "info" : "secondary"}
                           >
-                            {satir.belgeTuru === "EArsiv" ? "e-Arşiv" : "e-Fatura"}
+                            {{ EFatura: "e-Fatura", EArsiv: "e-Arşiv", EGiderPusulasi: "e-Gider", EIrsaliye: "e-İrsaliye" }[satir.belgeTuru] || satir.belgeTuru}
                           </Badge>
                         </td>
                         <td>{satir.profil || "-"}</td>
@@ -460,6 +509,7 @@ const EBelgeGidenPage: React.FC = () => {
                             {rozet.etiket}
                           </Badge>
                           {satir.iceResponseMesaj && <small className="d-block">{satir.iceResponseMesaj}</small>}
+                          {islemSonuclari[satir.uuid] && <small className="d-block fw-semibold">{islemSonuclari[satir.uuid]}</small>}
                         </td>
                         <td className="text-center">
                           {satir.belgeTuru === "EArsiv" && <>

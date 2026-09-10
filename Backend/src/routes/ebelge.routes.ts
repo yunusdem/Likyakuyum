@@ -6,6 +6,9 @@ import { UserRole } from "../constants/roles.js";
 const router = Router();
 
 router.use(authenticate);
+router.get("/kaynak", EbelgeController.kaynakListe);
+router.post("/kaynak/hazirla", EbelgeController.kaynakHazirla);
+router.post("/kaynak/gonder", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.kaynakGonder);
 
 /**
  * YETKİ NOTU (10.09.2026 — kullanıcı kararı)
@@ -124,5 +127,6 @@ router.post(
   EbelgeController.giderPusulasiGonder
 );
 router.get("/gider-pusulasi/:uuid/pdf", EbelgeController.giderPusulasiPdf);
+router.post("/gider-pusulasi/onizle", EbelgeController.giderPusulasiOnizle);
 
 export default router;

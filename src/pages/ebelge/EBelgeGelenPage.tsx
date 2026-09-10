@@ -110,6 +110,13 @@ const EBelgeGelenPage: React.FC = () => {
         disabled={yukleniyor || senkronEdiliyor}
       />
 
+      {/* Kapsam: ICE gelen kutusu yalnız e-Fatura döndürür. Diğer türler burada listelenmez. */}
+      <Alert variant="secondary" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
+        Bu liste yalnızca <strong>gelen e-Fatura</strong> belgelerini kapsar. Gelen{" "}
+        <strong>e-İrsaliye</strong> için e-İrsaliye ekranını kullanın; e-Arşiv ve e-Gider
+        yalnızca giden belge türleridir, gelen kutusuna düşmez.
+      </Alert>
+
       {alertInfo && (
         <Alert
           variant={alertInfo.type}

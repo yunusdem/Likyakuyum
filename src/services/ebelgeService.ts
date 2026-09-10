@@ -206,6 +206,22 @@ export interface EbelgeHesapOzeti {
   tevkifatGruplari?: { kod: string; oran: number; matrah: number; vergi: number }[];
 }
 
+export interface EbelgeKaynakKimlik { evrakTuru: number; belgeId: number; belgeTuru: number }
+export interface EbelgeKaynakSatiri extends EbelgeKaynakKimlik {
+  belgeNo: string; tarih: string; unvan: string; tutar: number; paraBirimi: string; durum: string; hata: string | null;
+  eskiEttn: string | null; eskiDurum: number; uuid: string | null;
+}
+export interface EbelgeKaynakHazir extends EbelgeKaynakKimlik {
+  belgeNo: string; unvan: string; tutar: number; belgeTuruAdi: string; parmakizi: string; senaryo: string; durum: string;
+}
+export interface EbelgeGiderIstegi {
+  belgeNo: string; tarih: string; belgeTipi: "SATIS" | "IADE"; paraBirimi: "TRY";
+  alici: EbelgeTaraf;
+  vergiTuruKodu: string;
+  satirlar: { ad: string; miktar: number; birimKodu: string; birimFiyat: number; vergiOrani: number }[];
+  iadeDayanak?: { belgeTipi: "EARSIV_FATURA" | "BELGESIZ" | "SATIS_FISI"; belgeNo?: string; belgeTarihi: string };
+}
+
 export interface EbelgeMukellefSonucu {
   mukellefMi: boolean;
   kullanicilar: { Identifier?: string; Alias?: string; Title?: string; Type?: string }[];
@@ -373,6 +389,18 @@ const ebelgePdfBlobUrl = async (yol: string): Promise<string> => {
 };
 
 export const ebelgeService = {
+  async kaynakListe(filtre: { arama?: string; durum?: string; belgeTuru?: number; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }) {
+    return (await apiClient.get<{ toplam: number; kayitlar: EbelgeKaynakSatiri[] }>("/e-belge/kaynak",filtre)).data;
+  },
+  async kaynakHazirla(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakHazir>("/e-belge/kaynak/hazirla",k)).data; },
+  async kaynakGonder(k: EbelgeKaynakHazir) { return (await apiClient.post<{ durum: string; mesaj: string }>("/e-belge/kaynak/gonder",k)).data; },
+  async giderOnizle(girdi: EbelgeGiderIstegi) {
+    return (await apiClient.post<{ ozet: { malHizmetToplam: number; vergiToplam: number; odenecekTutar: number }; iceDogrulamasiYapildi: false }>("/e-belge/gider-pusulasi/onizle", girdi)).data;
+  },
+  async giderGonder(girdi: EbelgeGiderIstegi) {
+    return (await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>("/e-belge/gider-pusulasi/gonder", girdi)).data;
+  },
+  async giderPdf(uuid: string) { return ebelgePdfBlobUrl(`/e-belge/gider-pusulasi/${encodeURIComponent(uuid)}/pdf`); },
   async listEarsivArsiv(sayfa = 1, arama = "") {
     const res = await apiClient.get<{ toplam: number; kayitlar: EbelgeArsivSatiri[] }>("/e-belge/earsiv/arsiv", { sayfa, arama });
     return res.data;
@@ -624,7 +652,7 @@ export const ebelgeService = {
   },
 
   /** Giden belge listesi */
-  async listGiden(filtre: { sayfa?: number; boyut?: number; arama?: string; durum?: string } = {}) {
+  async listGiden(filtre: { sayfa?: number; boyut?: number; arama?: string; durum?: string; belgeTuru?: string; baslangicTarihi?: string; bitisTarihi?: string } = {}) {
     const res = await apiClient.get<{ kayitlar: EbelgeGidenSatiri[]; toplam: number }>(
       "/e-belge/giden",
       filtre
@@ -738,6 +766,11 @@ export const ebelgeGidenDurumRozet = (
   durum?: string | null
 ): { bg: string; text: string; etiket: string } => {
   switch (durum) {
+    case "GONDERILMEDI":
+      return { bg: "secondary-subtle", text: "secondary", etiket: "Gönderilmedi" };
+    case "KONTROL_GEREKLI":
+      return { bg: "warning-subtle", text: "warning", etiket: "Kontrol gerekli" };
+    case "ONAYLANIYOR":
     case "GONDERILIYOR":
     case "IPTAL_EDILIYOR":
       return { bg: "warning-subtle", text: "warning", etiket: "İşlem sürüyor / kontrol gerekli" };
