@@ -52,6 +52,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
   const [aliciSoyad, setAliciSoyad] = useState<string>("");
   const [aliciIl, setAliciIl] = useState<string>("");
   const [aliciIlce, setAliciIlce] = useState<string>("");
+  const [teslimatPostaKodu, setTeslimatPostaKodu] = useState<string>("");
 
   const [sevkTarihi, setSevkTarihi] = useState<string>(bugunISO());
   const [sevkSaati, setSevkSaati] = useState<string>("");
@@ -118,7 +119,8 @@ const EBelgeIrsaliyePage: React.FC = () => {
     satirlar,
     sevkiyat: {
       sevkTarihi,
-      sevkSaati: sevkSaati || undefined,
+      sevkSaati,
+      teslimatAdresi: { postaKodu: teslimatPostaKodu.trim() },
       plaka: plaka.trim() || undefined,
       soforler:
         soforAd.trim() && soforSoyad.trim()
@@ -142,6 +144,10 @@ const EBelgeIrsaliyePage: React.FC = () => {
     if (satirlar.some((s) => !s.ad.trim())) return "Her satırda mal adı bulunmalıdır.";
     if (satirlar.some((s) => !(s.miktar > 0))) return "Her satırda sevk miktarı sıfırdan büyük olmalıdır.";
     if (!sevkTarihi) return "Fiili sevk tarihi zorunludur.";
+    if (!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(sevkSaati))
+      return "Geçerli fiili sevk saati giriniz.";
+    if (!/^\d{5}$/.test(teslimatPostaKodu.trim()))
+      return "Teslimat posta kodu 5 haneli olmalıdır.";
     if (sevkTarihi < tarih) return "Fiili sevk tarihi, düzenleme tarihinden önce olamaz.";
     if (!plaka.trim() && !tasiyiciVkn.trim())
       return "Araç plakası veya taşıyıcı firma bilgisinden en az biri zorunludur.";
@@ -398,6 +404,21 @@ const EBelgeIrsaliyePage: React.FC = () => {
                 onChange={(e) => degisti(setAliciIlce)(e.target.value)}
               />
             </Col>
+            <Col xs={6} md={3}>
+              <Form.Group controlId="irsaliye-teslimat-posta-kodu">
+                <Form.Label className="small mb-1">Teslimat Posta Kodu *</Form.Label>
+                <Form.Control
+                  size="sm"
+                  inputMode="numeric"
+                  maxLength={5}
+                  value={teslimatPostaKodu}
+                  disabled={kilitli}
+                  required
+                  onChange={(e) => degisti(setTeslimatPostaKodu)(e.target.value.replace(/\D/g, ""))}
+                />
+                <Form.Text>Teslimat için alıcının il ve ilçesi kullanılır.</Form.Text>
+              </Form.Group>
+            </Col>
           </Row>
 
           <div className="fw-semibold mt-3 mb-2" style={{ fontSize: "13px" }}>
@@ -418,7 +439,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
               />
             </Col>
             <Col xs={6} md={2} lg={2}>
-              <Form.Label className="small mb-1">Sevk Saati</Form.Label>
+              <Form.Label className="small mb-1">Sevk Saati *</Form.Label>
               <Form.Control
                 size="sm"
                 type="time"

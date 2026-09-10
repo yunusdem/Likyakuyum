@@ -18,7 +18,7 @@ import { UblTaraf, kimlikSemasi } from "./invoiceBuilder.js";
  *  DespatchSupplierParty → DeliveryCustomerParty → BuyerCustomerParty →
  *  SellerSupplierParty → OriginatorCustomerParty → Shipment → DespatchLine[]`
  *
- * `DespatchLineType`: `ID → Note[] → DeliveredQuantity → OutstandingQuantity → … → Item → Shipment[]`
+ * `DespatchLineType`: `ID → Note[] → DeliveredQuantity → … → OrderLineReference → Item → Shipment[]`
  * `ShipmentStageType`: `ID → TransportModeCode → … → TransportMeans → DriverPerson[]`
  * `RoadTransportType`: `LicensePlateID` (plaka)
  *
@@ -57,16 +57,16 @@ export interface IrsaliyeSatiri {
 export interface SevkiyatBilgisi {
   /** Fiili sevk tarihi (YYYY-AA-GG) — zorunlu */
   sevkTarihi: string;
-  /** Fiili sevk saati (SS:DD:SS) */
-  sevkSaati?: string;
+  /** Fiili sevk saati (SS:DD:SS) — zorunlu */
+  sevkSaati: string;
   /** Araç plakası */
   plaka?: string;
   /** Şoför bilgileri */
   soforler?: { ad: string; soyad: string; tckn?: string }[];
   /** Taşıyıcı firma (kendi aracımız değilse) */
   tasiyici?: { vknTckn: string; unvan: string };
-  /** Teslimat adresi — verilmezse alıcının adresi kullanılır */
-  teslimatAdresi?: { adres?: string; ilce?: string; il?: string; ulke?: string };
+  /** Posta kodu zorunlu; diğer alanlar verilmezse alıcının adresi kullanılır. */
+  teslimatAdresi: { adres?: string; ilce?: string; il?: string; ulke?: string; postaKodu: string };
 }
 
 export interface IrsaliyeGirdi {
@@ -174,8 +174,11 @@ export const dogrulaIrsaliye = (girdi: IrsaliyeGirdi): void => {
   if (sevk.sevkTarihi < tarih) {
     throw ApiError.badRequest("Fiili sevk tarihi, irsaliye düzenleme tarihinden önce olamaz.");
   }
-  if (sevk.sevkSaati && !/^\d{2}:\d{2}:\d{2}$/.test(sevk.sevkSaati)) {
-    throw ApiError.badRequest("Fiili sevk saati SS:DD:SS biçiminde olmalıdır.");
+  if (!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(sevk.sevkSaati || "")) {
+    throw ApiError.badRequest("Fiili sevk saati zorunludur ve SS:DD:SS biçiminde geçerli olmalıdır.");
+  }
+  if (!/^\d{5}$/.test(sevk.teslimatAdresi?.postaKodu?.trim() || "")) {
+    throw ApiError.badRequest("Teslimat posta kodu 5 haneli olmalıdır.");
   }
 
   // Taşıma bilgisi: ya plaka ya taşıyıcı firma bildirilmelidir
@@ -246,11 +249,12 @@ const partyXml = (taraf: UblTaraf): string => {
  * şema sırası: `GoodsItem[] → ShipmentStage[] → Delivery → TransportHandlingUnit[]`.
  */
 const shipmentXml = (sevk: SevkiyatBilgisi, alici: UblTaraf): string => {
-  const adres = sevk.teslimatAdresi || {
+  const adres = {
     adres: alici.adres,
     ilce: alici.ilce,
     il: alici.il,
     ulke: alici.ulke,
+    ...sevk.teslimatAdresi,
   };
 
   const soforXml = (sevk.soforler || [])
@@ -259,7 +263,7 @@ const shipmentXml = (sevk: SevkiyatBilgisi, alici: UblTaraf): string => {
         `<cac:DriverPerson>` +
         `<cbc:FirstName>${escapeXml(s.ad)}</cbc:FirstName>` +
         `<cbc:FamilyName>${escapeXml(s.soyad)}</cbc:FamilyName>` +
-        (s.tckn?.trim() ? `<cbc:NationalityID>${escapeXml(s.tckn)}</cbc:NationalityID>` : "") +
+        (s.tckn?.trim() ? `<cbc:NationalityID schemeID="TCKN">${escapeXml(s.tckn.trim())}</cbc:NationalityID>` : "") +
         `</cac:DriverPerson>`
     )
     .join("");
@@ -269,7 +273,7 @@ const shipmentXml = (sevk: SevkiyatBilgisi, alici: UblTaraf): string => {
       ? `<cac:ShipmentStage>` +
         (sevk.plaka?.trim()
           ? `<cac:TransportMeans><cac:RoadTransport>` +
-            `<cbc:LicensePlateID>${escapeXml(sevk.plaka.trim().toUpperCase())}</cbc:LicensePlateID>` +
+            `<cbc:LicensePlateID schemeID="PLAKA">${escapeXml(sevk.plaka.replace(/\s/g, "").toUpperCase())}</cbc:LicensePlateID>` +
             `</cac:RoadTransport></cac:TransportMeans>`
           : "") +
         soforXml +
@@ -281,12 +285,11 @@ const shipmentXml = (sevk: SevkiyatBilgisi, alici: UblTaraf): string => {
     `<cbc:ID>1</cbc:ID>` +
     stageXml +
     `<cac:Delivery>` +
-    `<cbc:ActualDeliveryDate>${escapeXml(sevk.sevkTarihi)}</cbc:ActualDeliveryDate>` +
-    (sevk.sevkSaati ? `<cbc:ActualDeliveryTime>${escapeXml(sevk.sevkSaati)}</cbc:ActualDeliveryTime>` : "") +
     `<cac:DeliveryAddress>` +
     etiket("cbc:StreetName", adres.adres) +
     etiket("cbc:CitySubdivisionName", adres.ilce) +
     etiket("cbc:CityName", adres.il) +
+    etiket("cbc:PostalZone", adres.postaKodu) +
     `<cac:Country><cbc:Name>${escapeXml(adres.ulke || "Türkiye")}</cbc:Name></cac:Country>` +
     `</cac:DeliveryAddress>` +
     (sevk.tasiyici
@@ -296,6 +299,10 @@ const shipmentXml = (sevk: SevkiyatBilgisi, alici: UblTaraf): string => {
         `<cac:PartyName><cbc:Name>${escapeXml(sevk.tasiyici.unvan)}</cbc:Name></cac:PartyName>` +
         `</cac:CarrierParty>`
       : "") +
+    `<cac:Despatch>` +
+    `<cbc:ActualDespatchDate>${escapeXml(sevk.sevkTarihi)}</cbc:ActualDespatchDate>` +
+    `<cbc:ActualDespatchTime>${escapeXml(sevk.sevkSaati)}</cbc:ActualDespatchTime>` +
+    `</cac:Despatch>` +
     `</cac:Delivery>` +
     `</cac:Shipment>`
   );
@@ -303,13 +310,14 @@ const shipmentXml = (sevk: SevkiyatBilgisi, alici: UblTaraf): string => {
 
 /**
  * `cac:DespatchLine` — irsaliye satırı.
- * **Tutar yoktur**: yalnızca `DeliveredQuantity` ve `Item`.
+ * **Tutar yoktur**: miktar, zorunlu satır referansı ve mal bilgisi.
  */
 const despatchLineXml = (satir: IrsaliyeSatiri, siraNo: number): string =>
   `<cac:DespatchLine>` +
   `<cbc:ID>${siraNo}</cbc:ID>` +
   (satir.not?.trim() ? `<cbc:Note>${escapeXml(satir.not)}</cbc:Note>` : "") +
   `<cbc:DeliveredQuantity unitCode="${escapeXml(satir.birimKodu || "C62")}">${miktarStr(satir.miktar)}</cbc:DeliveredQuantity>` +
+  `<cac:OrderLineReference><cbc:LineID>${siraNo}</cbc:LineID></cac:OrderLineReference>` +
   `<cac:Item>` +
   etiket("cbc:Description", satir.aciklama) +
   `<cbc:Name>${escapeXml(satir.ad)}</cbc:Name>` +

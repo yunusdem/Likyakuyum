@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { XMLParser } from "fast-xml-parser";
+import { ebelgeIrsaliyeSchema } from "../src/schemas/ebelge.schema.js";
 
 import {
   buildDespatchAdviceXml,
@@ -34,7 +35,7 @@ const temel = (): IrsaliyeGirdi => ({
   satirlar: [
     { ad: "22 Ayar Bilezik", miktar: 5, birimKodu: "GRM", stokKodu: "BLZ-22", marka: "Likya" },
   ],
-  sevkiyat: { sevkTarihi: "2026-02-10", sevkSaati: "10:00:00", plaka: "07 ABC 123" },
+  sevkiyat: { sevkTarihi: "2026-02-10", sevkSaati: "10:00:00", plaka: "07 ABC 123", teslimatAdresi: { postaKodu: "34000" } },
 });
 
 /* ---------------------------------------------------------------- yapı */
@@ -97,7 +98,8 @@ test("plaka RoadTransport/LicensePlateID altında", () => {
   const { xml } = buildDespatchAdviceXml(temel());
   const stage = parser.parse(xml).DespatchAdvice.Shipment.ShipmentStage;
 
-  assert.equal(stage.TransportMeans.RoadTransport.LicensePlateID, "07 ABC 123");
+  assert.equal(stage.TransportMeans.RoadTransport.LicensePlateID["#text"], "07ABC123");
+  assert.equal(stage.TransportMeans.RoadTransport.LicensePlateID["@_schemeID"], "PLAKA");
 });
 
 test("şoför DriverPerson altında, birden çok olabilir", () => {
@@ -115,16 +117,19 @@ test("şoför DriverPerson altında, birden çok olabilir", () => {
 
   assert.equal(soforler.length, 2);
   assert.equal(soforler[0].FirstName, "Ali");
-  assert.equal(soforler[0].NationalityID, "12345678901");
+  assert.equal(soforler[0].NationalityID["#text"], "12345678901");
+  assert.equal(soforler[0].NationalityID["@_schemeID"], "TCKN");
   assert.equal(soforler[1].FamilyName, "Can");
 });
 
-test("fiili sevk tarihi Delivery altında; teslimat adresi alıcıdan devralınır", () => {
+test("fiili sevk tarihi Delivery/Despatch altında; teslimat adresi ve posta kodu korunur", () => {
   const { xml } = buildDespatchAdviceXml(temel());
   const teslim = parser.parse(xml).DespatchAdvice.Shipment.Delivery;
 
-  assert.equal(teslim.ActualDeliveryDate, "2026-02-10");
-  assert.equal(teslim.ActualDeliveryTime, "10:00:00");
+  assert.equal(teslim.Despatch.ActualDespatchDate, "2026-02-10");
+  assert.equal(teslim.Despatch.ActualDespatchTime, "10:00:00");
+  assert.equal(teslim.ActualDeliveryDate, undefined);
+  assert.equal(teslim.DeliveryAddress.PostalZone, "34000");
   assert.equal(teslim.DeliveryAddress.CityName, "İstanbul");
   assert.equal(teslim.DeliveryAddress.CitySubdivisionName, "Fatih");
 });
@@ -133,6 +138,7 @@ test("taşıyıcı firma CarrierParty altında", () => {
   const { xml } = buildDespatchAdviceXml({
     ...temel(),
     sevkiyat: {
+      ...temel().sevkiyat,
       sevkTarihi: "2026-02-11",
       tasiyici: { vknTckn: "1112223334", unvan: "Kargo A.Ş." },
     },
@@ -187,12 +193,12 @@ test("hatalı girdiler reddedilir", () => {
 test("sevkiyat doğrulamaları", () => {
   const sevk = (s: any, beklenen: RegExp) =>
     assert.throws(
-      () => buildDespatchAdviceXml({ ...temel(), sevkiyat: s } as IrsaliyeGirdi),
+      () => buildDespatchAdviceXml({ ...temel(), sevkiyat: { ...temel().sevkiyat, ...s } } as IrsaliyeGirdi),
       beklenen
     );
 
   // Plaka da taşıyıcı da yoksa
-  sevk({ sevkTarihi: "2026-02-10" }, /plakası veya taşıyıcı/);
+  sevk({ sevkTarihi: "2026-02-10", plaka: undefined }, /plakası veya taşıyıcı/);
   // Sevk tarihi düzenleme tarihinden önce olamaz
   sevk({ sevkTarihi: "2026-02-01", plaka: "07 A 1" }, /düzenleme tarihinden önce/);
   sevk({ sevkTarihi: "gecersiz", plaka: "07 A 1" }, /Fiili sevk tarihi/);
@@ -218,7 +224,46 @@ test("XML kaçışlama uygulanır", () => {
 test("plaka büyük harfe çevrilir", () => {
   const { xml } = buildDespatchAdviceXml({
     ...temel(),
-    sevkiyat: { sevkTarihi: "2026-02-10", plaka: "07 abc 123" },
+    sevkiyat: { ...temel().sevkiyat, plaka: "07 abc 123" },
   });
-  assert.ok(xml.includes("<cbc:LicensePlateID>07 ABC 123</cbc:LicensePlateID>"));
+  assert.ok(xml.includes('<cbc:LicensePlateID schemeID="PLAKA">07ABC123</cbc:LicensePlateID>'));
+});
+
+test("ICE XSD hatası: her satırda Item öncesinde OrderLineReference bulunur", () => {
+  const girdi = temel();
+  girdi.satirlar.push({ ad: "İkinci ürün", miktar: 2 });
+  const satirlar = parser.parse(buildDespatchAdviceXml(girdi).xml).DespatchAdvice.DespatchLine;
+  satirlar.forEach((satir: any, i: number) => {
+    assert.equal(satir.OrderLineReference.LineID, String(i + 1));
+    const alanlar = Object.keys(satir);
+    assert.ok(alanlar.indexOf("OrderLineReference") < alanlar.indexOf("Item"));
+  });
+});
+
+test("eksik veya geçersiz sevk saati ve posta kodu XML üretilmeden reddedilir", () => {
+  for (const saat of [undefined, "", "24:00:00", "12:60:00", "12:00:60"]) {
+    const girdi = temel();
+    girdi.sevkiyat.sevkSaati = saat as any;
+    assert.throws(() => buildDespatchAdviceXml(girdi), /sevk saati/);
+  }
+  for (const kod of [undefined, "", "1234", "123456", "abcde"]) {
+    const girdi = temel();
+    girdi.sevkiyat.teslimatAdresi.postaKodu = kod as any;
+    assert.throws(() => buildDespatchAdviceXml(girdi), /posta kodu/);
+  }
+});
+
+test("API şeması posta kodunu korur ve eksik zorunlu sevk alanlarını reddeder", () => {
+  const girdi = temel();
+  const parsed = ebelgeIrsaliyeSchema.parse(girdi);
+  assert.equal(parsed.sevkiyat.teslimatAdresi.postaKodu, "34000");
+  const teslim = parser.parse(buildDespatchAdviceXml(parsed as IrsaliyeGirdi).xml).DespatchAdvice.Shipment.Delivery;
+  assert.equal(teslim.DeliveryAddress.PostalZone, "34000");
+  assert.equal(teslim.Despatch.ActualDespatchTime, "10:00:00");
+  assert.deepEqual(Object.keys(teslim), ["DeliveryAddress", "Despatch"]);
+  for (const alan of ["sevkSaati", "teslimatAdresi"]) {
+    assert.equal(ebelgeIrsaliyeSchema.safeParse({
+      ...girdi, sevkiyat: { ...girdi.sevkiyat, [alan]: undefined },
+    }).success, false);
+  }
 });

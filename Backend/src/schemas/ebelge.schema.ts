@@ -195,7 +195,7 @@ export const ebelgeIrsaliyeSchema = z.object({
   satirlar: z.array(irsSatirSchema).min(1, "İrsaliyede en az bir satır bulunmalıdır.").max(500),
   sevkiyat: z.object({
     sevkTarihi: z.string().trim().regex(TARIH, "Fiili sevk tarihi YYYY-AA-GG olmalıdır."),
-    sevkSaati: z.string().trim().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
+    sevkSaati: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, "Geçerli fiili sevk saati zorunludur (SS:DD:SS)."),
     plaka: z.string().trim().max(20).optional(),
     soforler: z
       .array(
@@ -215,12 +215,12 @@ export const ebelgeIrsaliyeSchema = z.object({
       .optional(),
     teslimatAdresi: z
       .object({
+        postaKodu: z.string().trim().regex(/^\d{5}$/, "Teslimat posta kodu 5 haneli olmalıdır."),
         adres: z.string().trim().max(300).optional(),
         ilce: z.string().trim().max(100).optional(),
         il: z.string().trim().max(100).optional(),
         ulke: z.string().trim().max(100).optional(),
-      })
-      .optional(),
+      }),
   }),
   siparisNo: z.string().trim().max(60).optional(),
   siparisTarihi: z.string().trim().regex(TARIH).optional(),
