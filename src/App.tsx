@@ -21,12 +21,14 @@ import PanoPage from "./pages/kur/PanoPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
-import DovizFisiPage from "./pages/vezne/DovizFisiPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
 import EBelgeGidenPage from "./pages/ebelge/EBelgeGidenPage";
 import EBelgeIrsaliyePage from "./pages/ebelge/EBelgeIrsaliyePage";
+import EBelgeGiderPage from "./pages/ebelge/EBelgeGiderPage";
+import EBelgeKaynakPage from "./pages/ebelge/EBelgeKaynakPage";
+import EBelgeMustahsilPage from "./pages/ebelge/EBelgeMustahsilPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import LoginPage from "./pages/auth/LoginPage";
 
@@ -125,6 +127,9 @@ export default function App() {
             <Route path="e-belge/dogrula" element={<EBelgeDogrulaPage />} />
             <Route path="e-belge/giden" element={<EBelgeGidenPage />} />
             <Route path="e-belge/irsaliye" element={<EBelgeIrsaliyePage />} />
+            <Route path="e-belge/gider" element={<EBelgeGiderPage />} />
+            <Route path="e-belge/kaynak" element={<EBelgeKaynakPage />} />
+            <Route path="e-belge/mustahsil" element={<EBelgeMustahsilPage />} />
             <Route path="ayarlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="tanimlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
@@ -147,11 +152,6 @@ export default function App() {
             <Route path="cari/emanet-kayit" element={<CariEmanetDekontPage />} />
             <Route path="cari/cari-emanet-dekont" element={<CariEmanetDekontPage />} />
             <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
-            <Route path="vezne/doviz-fisi" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fis" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fisi-kayit" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fisi-duzeltme" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fis-duzeltme" element={<DovizFisiPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />

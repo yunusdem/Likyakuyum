@@ -1,0 +1,197 @@
+<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+    xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+    xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+    <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+    <cbc:CustomizationID>TR1.2.1</cbc:CustomizationID>
+    <cbc:ProfileID>GIDERPUSULASI</cbc:ProfileID>
+    <cbc:ID>GIP2026000000001</cbc:ID>
+    <cbc:CopyIndicator>false</cbc:CopyIndicator>
+    <cbc:UUID>7DC52246-5750-496E-8BF2-BD27BC0764DC</cbc:UUID>
+    <cbc:IssueDate>2026-03-01</cbc:IssueDate>
+    <cbc:IssueTime>12:00:00</cbc:IssueTime>
+    <cbc:CreditNoteTypeCode>IADE</cbc:CreditNoteTypeCode>
+    <cbc:Note>İşlem Açıklaması</cbc:Note>
+	<cbc:DocumentCurrencyCode>TRY</cbc:DocumentCurrencyCode>
+    <cac:BillingReference>
+		<cac:InvoiceDocumentReference>
+			<cbc:ID schemeID="BELGESIZ" />
+			<cbc:IssueDate>2026-02-01</cbc:IssueDate>
+		</cac:InvoiceDocumentReference>
+	</cac:BillingReference>
+	<cac:AdditionalDocumentReference>
+        <cbc:ID>7DC52246-5750-496E-8BF2-BD27BC0764DC</cbc:ID>
+        <cbc:IssueDate>2026-02-01</cbc:IssueDate>
+        <cac:Attachment>
+            <cbc:EmbeddedDocumentBinaryObject characterSetCode="UTF-8" encodingCode="Base64" filename="GIP2026000000001.xslt" mimeCode="application/xml"> </cbc:EmbeddedDocumentBinaryObject>
+        </cac:Attachment>
+    </cac:AdditionalDocumentReference>
+	<cac:Signature>
+        <cbc:ID schemeID="VKN">1234567890</cbc:ID>
+        <cac:SignatoryParty>
+            <cac:PartyIdentification>
+                <cbc:ID schemeID="VKN">1234567890</cbc:ID>
+            </cac:PartyIdentification>
+            <cac:PartyName>
+                <cbc:Name>AAA Anonim Şirketi</cbc:Name>
+            </cac:PartyName>
+            <cac:PostalAddress>
+                <cbc:Room>1</cbc:Room>
+                <cbc:StreetName>Cadde/Sokak</cbc:StreetName>
+                <cbc:BuildingName>Bina Adı</cbc:BuildingName>
+                <cbc:BuildingNumber>Bina No</cbc:BuildingNumber>
+                <cbc:CitySubdivisionName>İlçe</cbc:CitySubdivisionName>
+                <cbc:CityName>İl</cbc:CityName>
+                <cbc:PostalZone>Posta Kodu</cbc:PostalZone>
+                <cbc:Region>Bölge</cbc:Region>
+                <cbc:District>Mahalle</cbc:District>
+                <cac:Country>
+                    <cbc:IdentificationCode>TR</cbc:IdentificationCode>
+                    <cbc:Name>TÜRKİYE</cbc:Name>
+                </cac:Country>
+            </cac:PostalAddress>
+            <cac:PartyTaxScheme>
+                <cac:TaxScheme>
+                    <cbc:Name>Vergi Dairesi</cbc:Name>
+                </cac:TaxScheme>
+            </cac:PartyTaxScheme>
+        </cac:SignatoryParty>
+		        <cac:DigitalSignatureAttachment>
+            <cac:ExternalReference>
+                <cbc:URI>#Signature_GIP2026000000001</cbc:URI>
+            </cac:ExternalReference>
+        </cac:DigitalSignatureAttachment>
+    </cac:Signature>
+    <cac:AccountingSupplierParty>
+        <cac:Party>
+            <cbc:WebsiteURI>https://www.aaa.com.tr</cbc:WebsiteURI>
+            <cac:PartyIdentification>
+                <cbc:ID schemeID="VKN">1234567890</cbc:ID>
+            </cac:PartyIdentification>
+            <cac:PartyName>
+                <cbc:Name>AAA Anonim Şirketi</cbc:Name>
+            </cac:PartyName>
+            <cac:PostalAddress>
+                <cbc:Room>1</cbc:Room>
+                <cbc:StreetName>Cadde/Sokak</cbc:StreetName>
+                <cbc:BuildingName>Bina Adı</cbc:BuildingName>
+                <cbc:BuildingNumber>Bina No</cbc:BuildingNumber>
+                <cbc:CitySubdivisionName>İlçe</cbc:CitySubdivisionName>
+                <cbc:CityName>İl</cbc:CityName>
+                <cbc:PostalZone>Posta Kodu</cbc:PostalZone>
+                <cbc:Region>Bölge</cbc:Region>
+                <cbc:District>Mahalle</cbc:District>
+                <cac:Country>
+                    <cbc:IdentificationCode>TR</cbc:IdentificationCode>
+                    <cbc:Name>TÜRKİYE</cbc:Name>
+                </cac:Country>
+            </cac:PostalAddress>
+            <cac:PartyTaxScheme>
+                <cac:TaxScheme>
+                    <cbc:Name>Vergi Dairesi</cbc:Name>
+                </cac:TaxScheme>
+            </cac:PartyTaxScheme>
+            <cac:Contact> 
+                <cac:OtherCommunication> <!-- Belgeyi düzenleyen mükelefin çalışmış olduğu Operatör bilgisi -->
+					<cbc:ChannelCode name="SMS_PROVIDER">Operatör Adı</cbc:ChannelCode>
+					<cbc:Value>VKN bilgisi</cbc:Value>
+				</cac:OtherCommunication>
+            </cac:Contact>
+        </cac:Party>
+    </cac:AccountingSupplierParty>
+    <cac:AccountingCustomerParty>
+        <cac:Party>
+            <cac:PartyIdentification>
+                <cbc:ID schemeID="TCKN">12345678901</cbc:ID> <!-- SchemeID Belgesiz olan işlemler için Gerçek TCKN yazılmalıdır. -->
+            </cac:PartyIdentification>
+            <cac:PostalAddress>
+                <cbc:Room>1</cbc:Room>
+                <cbc:StreetName>Cadde/Sokak</cbc:StreetName>
+                <cbc:BuildingName>Bina Adı</cbc:BuildingName>
+                <cbc:BuildingNumber>Bina No</cbc:BuildingNumber>
+                <cbc:CitySubdivisionName>İlçe</cbc:CitySubdivisionName>
+                <cbc:CityName>İl</cbc:CityName>
+                <cbc:PostalZone>Posta Kodu</cbc:PostalZone>
+                <cbc:Region>Bölge</cbc:Region>
+                <cbc:District>Mahalle</cbc:District>
+                <cac:Country>
+                    <cbc:Name>TÜRKİYE</cbc:Name>
+                </cac:Country>
+            </cac:PostalAddress>
+            <cac:PartyTaxScheme>
+                <cac:TaxScheme>
+                    <cbc:Name>Vergi Dairesi</cbc:Name>
+                </cac:TaxScheme>
+            </cac:PartyTaxScheme>
+            <cac:Contact> <!-- SMS Kodu yazılması durumunda kullanılacak alan -->
+				<cbc:ID>SMS Kodu yazılacak</cbc:ID>
+				<cbc:Name>SMS</cbc:Name>
+                <cbc:Telephone>5555555555</cbc:Telephone>
+            </cac:Contact>
+            <cac:Person>
+                <cbc:FirstName>İsim</cbc:FirstName>
+                <cbc:FamilyName>Soyisim</cbc:FamilyName>
+			</cac:Person>
+        </cac:Party>
+    </cac:AccountingCustomerParty>
+	<cac:Delivery>
+		<cac:DeliveryParty>
+			<cbc:IndustryClassificationCode name="YETKIBELGENO">Kargo Firması Yetki Belgesi Numarası</cbc:IndustryClassificationCode>
+			<cac:PartyIdentification>
+                <cbc:ID schemeID="VKN">0123456789</cbc:ID>
+            </cac:PartyIdentification>
+			<cac:PartyName>
+                <cbc:Name>Kargo Firması Unvanı</cbc:Name>
+            </cac:PartyName>
+			<cac:PostalAddress>
+				<cbc:CitySubdivisionName>İlçe</cbc:CitySubdivisionName>
+                <cbc:CityName>İl</cbc:CityName>
+                <cac:Country>
+                    <cbc:Name>Ülke</cbc:Name>
+                </cac:Country>
+			</cac:PostalAddress>
+		</cac:DeliveryParty>
+	</cac:Delivery>
+    <cac:TaxTotal>
+        <cbc:TaxAmount currencyID="TRY">175</cbc:TaxAmount>
+        <cac:TaxSubtotal>
+            <cbc:TaxableAmount currencyID="TRY">1750</cbc:TaxableAmount>
+            <cbc:TaxAmount currencyID="TRY">175</cbc:TaxAmount>
+			<cbc:Percent>10</cbc:Percent>
+            <cac:TaxCategory>
+                <cac:TaxScheme>
+                    <cbc:TaxTypeCode>0015</cbc:TaxTypeCode>
+                </cac:TaxScheme>
+            </cac:TaxCategory>
+        </cac:TaxSubtotal>
+     </cac:TaxTotal>
+    <cac:LegalMonetaryTotal>
+        <cbc:LineExtensionAmount currencyID="TRY">1750</cbc:LineExtensionAmount>
+        <cbc:TaxExclusiveAmount currencyID="TRY">1750</cbc:TaxExclusiveAmount>
+        <cbc:TaxInclusiveAmount currencyID="TRY">1925</cbc:TaxInclusiveAmount>
+        <cbc:PayableAmount currencyID="TRY">1925</cbc:PayableAmount>
+    </cac:LegalMonetaryTotal>
+    <cac:CreditNoteLine>
+        <cbc:ID>1</cbc:ID>
+		<cbc:CreditedQuantity unitCode="C62">1</cbc:CreditedQuantity>
+		<cbc:LineExtensionAmount currencyID="TRY">1750</cbc:LineExtensionAmount>
+		<cac:TaxTotal>
+        <cbc:TaxAmount currencyID="TRY">175</cbc:TaxAmount>
+        <cac:TaxSubtotal>
+            <cbc:TaxableAmount currencyID="TRY">1750</cbc:TaxableAmount>
+            <cbc:TaxAmount currencyID="TRY">175</cbc:TaxAmount>
+			<cbc:Percent>10</cbc:Percent>
+            <cac:TaxCategory>
+                <cac:TaxScheme>
+                    <cbc:TaxTypeCode>0015</cbc:TaxTypeCode>
+                </cac:TaxScheme>
+            </cac:TaxCategory>
+        </cac:TaxSubtotal>
+     </cac:TaxTotal>
+        <cac:Item>
+            <cbc:Name>Ürün Adı</cbc:Name>
+        </cac:Item>
+        <cac:Price>
+            <cbc:PriceAmount currencyID="TRY">1750</cbc:PriceAmount>
+        </cac:Price>
+    </cac:CreditNoteLine>
+</CreditNote>

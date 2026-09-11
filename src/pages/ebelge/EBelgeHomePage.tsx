@@ -67,6 +67,13 @@ const KARTLAR: ModulKarti[] = [
     hazir: true,
   },
   {
+    baslik: "e-Müstahsil Oluştur",
+    aciklama: "Üretici bilgileri, SMS doğrulaması ve stopajla e-Müstahsil makbuzu düzenleyin.",
+    ikon: <IconFileCheck size={26} />,
+    yol: "/e-belge/mustahsil",
+    hazir: true,
+  },
+  {
     baslik: "Kesilmiş Belgeleri Gönder",
     aciklama: "Sistemde kesilmiş belgeleri listeleyin, seçip ICE'ye gönderin; gönderilmedi, gönderildi ve hatalı sonuçları izleyin.",
     ikon: <IconSend size={26} />,

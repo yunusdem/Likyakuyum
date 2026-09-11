@@ -1,0 +1,781 @@
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+                                                             Mayıs 2026 
+                                                               ANKARA 
+                                               GELİR İDARESİ BAŞKANLIĞI 
+                            Uygulama ve Veri Yönetimi Daire Başkanlığı (III) 
+UBL-TR 
+(Müstahsil Makbuzu) 
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  2 / 17 
+Versiyon Yayım Tarihi Eklenen/Silinen/Değişen Bölüm Açıklama 
+1.0 04.01.2018 -- İlk yayım tarihi 
+1.1 22.05.2026 
+“2.2 Müstahsil Makbuzu Elemanları -
+Genel” bölümü açıklamaları 
+güncellenmiştir. 
+AccountingSupplierParty ve 
+AccountingCustomerParty alan 
+açıklamaları güncellenmiştir. 
+“2.3.14 AccountingSupplierParty”  alanı 
+güncellenmiştir. 
+ 
+İlgili alana, e -Müstahsil 
+Makbuzunun, çıktısının muhatabı 
+tarafından ıslak imza ile 
+imzalanarak düzenlenmesi yerine 
+kullanılacak bilgiler eklenmiştir. 
+“2.3.15 AccountingCustomerParty” alanı 
+güncellenmiştir. 
+İlgili alana, e -Müstahsil 
+Makbuzunun, çıktısının muhatabı 
+tarafından ıslak imza ile 
+imzalanarak düzenlenmesi yerine 
+kullanılacak bilgiler eklenmiştir. 
+“2.4 e-Müstahsil Makbuzunun 
+Düzenlenmesi ve Teslimi ” başlıklı bölüm 
+eklenmiştir. 
+e-Müstahsil Makbuzunun, 
+çıktısının muhatabı tarafından 
+ıslak imza ile imzalanarak 
+düzenlenmesi yerine müstahsil 
+makbuzunun muhataplarının 
+bilgilerinin bilgi teknolojileri 
+ve/veya iletişim araç ve ortamları 
+üzerinden doğrulanmasına ilişkin 
+açıklamaların yer aldığı bölüm 
+eklenmiştir. 
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  3 / 17 
+İçindekiler 
+1 Giriş .............................................................................................................................................. 4 
+2 MÜSTAHSİL MAKBUZU ................................................................................................................. 5 
+2.1 XSD Gösterimi ........................................................................................................................ 5 
+2.2 Müstahsil Makbuzu Elemanları-Genel .................................................................................. 6 
+2.3 Müstahsil Makbuzu Elemanları-Detay .................................................................................. 7 
+2.3.1 UBLExtensions ................................................................................................................ 7 
+2.3.2 UBLVersionID ................................................................................................................. 8 
+2.3.3 CustomizationID ............................................................................................................. 8 
+2.3.4 ProfileID ......................................................................................................................... 8 
+2.3.5 ID .................................................................................................................................... 8 
+2.3.6 CopyIndicator ................................................................................................................. 9 
+2.3.7 UUID ............................................................................................................................... 9 
+2.3.8 IssueDate ........................................................................................................................ 9 
+2.3.9 IssueTime ....................................................................................................................... 9 
+2.3.10 CreditNoteTypeCode ................................................................................................... 10 
+2.3.11 Note ............................................................................................................................. 10 
+2.3.12 AdditionalDocumentReference ................................................................................... 10 
+2.3.13 Signature ...................................................................................................................... 11 
+2.3.14 AccountingSupplierParty ............................................................................................. 12 
+2.3.15 AccountingCustomerParty ........................................................................................... 13 
+2.3.16 Delivery ........................................................................................................................ 14 
+2.3.17 TaxTotal ........................................................................................................................ 15 
+2.3.18 LegalMonetaryTotal ..................................................................................................... 15 
+2.3.19 CreditNoteLine ............................................................................................................. 16 
+2.4 e-Müstahsil Makbuzunun Düzenlenmesi ve Teslimi ........................................................... 17 
+ 
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  4 / 17 
+ 
+1 Giriş 
+509 Sıra Numaralı Vergi Usul Kanunu Genel Tebliği ile düzenlenen e -Müstahsil 
+Makbuzu Uygulaması kapsamında müstahsil makbuzu belgesinin ve buna ait e -Arşiv 
+Raporunun oluşturulması, mali mühür ile zaman damgalı şekilde imzalanması ve 
+oluşturulan raporların Başkanlık sistemine aktarılması süreçleri bu kılavuzda 
+açıklanmıştır.  
+Kılavuzda yer alan açıklamaların anlaşılabilmesi için XML (eXtensible Markup 
+Language-Genişletilebilir İşaretleme Dili) ve adı geçen diğer kavramlar hakkında temel 
+düzeyde bilgi sahibi olunması gerekmektedir.  
+Kılavuzda verilen örnekler, şema yapısında yer alan elemanların kullanım şeklini 
+gösterme amacıyla hazırlanmış olup, mükelleflerin hazırlayacağı raporlarda 
+elemanların kullanımı bakımından bağlayıcı değildir. 
+Bu kılavuz, müstahsil makbuzu belgesinde geçen elemanlara ait XSD, tanımlama, 
+kullanım şekilleri, kardinaliteler hakkında bilgi vermek ve örnek kullanım şekillerini 
+göstermek amacı ile hazırlanmıştır. 
+Kılavuz içerisinde müstahsil makbuzuna ilişkin her bir eleman açıklanırken aş ağıdaki 
+tablo yapısı kullanılmıştır. 
+ 
+[Eleman: UBL adı] [Eleman: Türkçe karşılığı] 
+Diyagram Bu satırda anlatılan elemanın diyagramı sunulmaktadır. 
+Kardinalite Bu bölümde elemanın kardinalitesi sunulmaktadır. 
+Kardinaliteler aşağıdaki şekilde olabilir: 
+Zorunlu(1): Eleman zorunlu ve mutlaka bir tane bulunmak  
+zorundadır. 
+Zorunlu(1..n): Eleman zorunlu ve en az bir tane bulunmak 
+zorundadır. Eleman birden fazla tekrarlayabilir. 
+Seçimli(0..1): Eleman seçimlidir ve en çok bir tane bulunabilir. 
+Seçimli(0..n): Eleman seçimlidir ve birden fazla tekrarlayabilir. 
+Açıklama Elemanın ne amaçla kullanıldığı bu bölümde açıklanmaktadır. 
+Kullanım Elemanın nasıl kullanılacağı, diğer elemanlar arasındaki ilişkiler, 
+elemanın veri tipi, elemandaki kısıtlar detaylı olarak bu bölümde 
+açıklanır. Karmaşık elemanların gösterdiği ortak  sınıflar ayrıca 
+“Bknz.” ile referans verilmektedir. 
+Örnek Eleman için bir veya daha çok XML örneği bu bölümde  
+sunulmaktadır. 
+ 
+ 
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  5 / 17 
+ 
+2 MÜSTAHSİL MAKBUZU 
+2.1 XSD Gösterimi 
+ 
+Müstahsil makbuzu belgesine ait XSD şemasının ana elemanlarının gösterimi aşağıdaki 
+gibidir. 
+Müstahsil makbuzunun BAŞKANLIK’a raporlanması konusu e -Arşiv teknik kılavuzunda 
+ayrıca açıklanacaktır. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  6 / 17 
+2.2 Müstahsil Makbuzu Elemanları-Genel 
+ 
+Müstahsil makbuzu belgesine ait XSD şemasında yer alan ana elemanların Türkçe karşılıkları 
+ve içeriğine ilişkin açıklamalar, aşağıdaki tabloda yer almaktadır. 
+ 
+No UBL Adı Türkçe Karşılığı İçerik 
+1 UBLExtensions UBL Genişletme Alanı UBL Genişletme Alanı – Bu alanda 
+XAdES formatında Elektronik İmza 
+bilgileri bulunmaktadır. 
+2 UBLVersionID UBL Versiyon Numarası UBL Versiyon Numarası 
+3 CustomizationID Özelleştirme Numarası UBL Özelleştirme Numarası 
+4 ProfileID Senaryo Kullanılan Senaryo 
+5 ID Müstahsil Makbuzu 
+Numarası 
+Müstahsil makbuzuna Ait Numara 
+6 CopyIndicator Asıl / Suret Müstahsil makbuzunun Asıl veya 
+Suret Bilgisi 
+7 UUID Evrensel Tekil Tanımlama 
+Numarası (ETTN) 
+Müstahsil makbuzunun Evrensel 
+Tekliğini Sağlayan Numara 
+8 IssueDate Düzenleme Tarihi Müstahsil makbuzunun Düzenleme 
+Tarihi 
+9 IssueTime Düzenleme Zamanı Müstahsil makbuzunun Düzenleme 
+Zamanı 
+10 CreditNoteTypeCode Tip Kodu Müstahsil makbuzunun Tip Kodu 
+11 Note Not Müstahsil makbuzu ile İlgili Genel 
+Açıklamalar 
+12 AdditionalDocumentReference İlave Doküman/Bilgiler Müstahsil makbuzuna Eklenmek 
+İstenen Diğer Belge veya Bilgileri  
+13 Signature Mali Mühür/İmza Elektronik Mali Mühür ve/veya 
+Elektronik İmza ile Bunlara Ait 
+Sertifika Bilgileri 
+14 AccountingSupplierParty Müstahsil Makbuzunu 
+Düzenleyen Taraf 
+Müstahsil makbuzundaki Malları Satın 
+Alan Bilgileri 
+15 AccountingCustomerParty Üretici/Çiftçi Müstahsil makbuzundaki Malları 
+Üreten Taraf Bilgileri 
+16 Delivery Teslimat Bilgileri Müstahsil makbuzundaki Malların 
+Sevkiyatını Sağlayan Taraf Bilgileri 
+17 TaxTotal Toplam Vergi Vergi Bilgileri ve Toplamlar 
+18 LegalMonetaryTotal Parasal Toplamlar Tutarların Toplamları 
+19 CreditNoteLine Müstahsil makbuzu 
+kalemleri 
+Müstahsil makbuzundaki kalemlerin 
+bilgileri 
+ 
+ 
+Tabloda yer alan ana elemanların her birine ait açıklamalar izleyen bölümde 
+yapılacaktır. Açıklama yöntemi olarak öncelikle elemanın adı, Türkçe karşılığı, kullanım 
+şekli ve örneklere yer verilecektir. 
+ 
+ 
+ 
+ 
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  7 / 17 
+2.3 Müstahsil Makbuzu Elemanları-Detay 
+ 
+2.3.1 UBLExtensions 
+UBLExtensions UBL Genişletme Alanı 
+ 
+ 
+Diyagram 
+ 
+ 
+ 
+Kardinalite Zorunlu(1..1) 
+Açıklama Bu alana XAdES formatında mali mühür/ elektronik imza bilgileri  
+yazılacaktır. 
+Kullanım Bknz. Ortak Sınıflar: UBLExtension 
+Örnek <ext:UBLExtensions> 
+<ext:UBLExtension> 
+<ext:ExtensionContent> 
+<ds:Signature Id="h12345"> 
+<ds:SignedInfo> 
+<ds:CanonicalizationMethod 
+Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n- 
+20010315#WithComments"/> 
+<ds:SignatureMethod Algorithm=" 
+http://www.w3.org/2000/09/xmldsig#rsa-sha1"/> 
+<ds:Reference URI=""> 
+<ds:Transforms> 
+<ds:Transform 
+Algorithm=" http://www.w3.org/2000/09/xmldsig#enveloped -signature"/> 
+</ds:Transforms> 
+<ds:DigestMethod 
+Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/> 
+<ds:DigestValue>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU1GU 
+XhEUzhi</ds:DigestValue> 
+</ds:Reference> 
+<ds:Reference URI="12345KeyInfo "> 
+<ds:DigestMethod 
+Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/> 
+<ds:DigestValue>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU1GU 
+XhEUzhi</ds:DigestValue> 
+</ds:Reference> 
+</ds:SignedInfo> 
+<ds:SignatureValue>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU1 
+GUXhEUzhi</ds:SignatureValue> 
+<ds:KeyInfo Id="h12345KeyInfo"> 
+<ds:X509Data> 
+<ds:X509Certificate>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU1 
+GUXhEUzhi</ds:X509Certificate> 
+</ds:X509Data> 
+<ds:KeyValue> 
+<ds:RSAKeyValue> 
+<ds:Modulus>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU1GUXhE 
+Uzhi</ds:Modulus> 
+<ds:Exponent>AQAB</ds:Exponent> 
+</ds:RSAKeyValue> 
+</ds:KeyValue> 
+</ds:KeyInfo> 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  8 / 17 
+</ds:Signature> 
+</ext:ExtensionContent> 
+</ext:UBLExtension> 
+</ext:UBLExtensions> 
+ 
+2.3.2 UBLVersionID 
+ 
+UBLVersionID UBL Versiyon Numarası 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama XSD dokümanının UBL sürümü yazılacaktır. 
+Kullanım Bu değer için “2.1” kullanılacaktır. 
+Örnek <cbc:UBLVersionID>2.1</cbc:UBLVersionID> 
+ 
+2.3.3 CustomizationID 
+ 
+CustomizationID Özelleştirme Numarası 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama UBL’ in özelleştirme numarasıdır. 
+Kullanım Bu değer için “TR1.2.1” kullanılacaktır. 
+Örnek <cbc:CustomizationID>TR1.2.1</cbc:CustomizationID> 
+ 
+2.3.4 ProfileID 
+ 
+ProfileID Senaryo 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama Kullanılan senaryodur. 
+Kullanım EARSIVBELGE girilecektir. 
+Örnek <cbc:ProfileID>EARSIVBELGE</cbc: ProfileID> 
+ 
+2.3.5 ID 
+ID Müstahsil makbuzu Numarası 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+ 
+ 
+ 
+Açıklama 
+Üç haneli alfa numerik birim kod ile 13 haneli müteselsil 
+numaranın birleşi minden meydana gelen müstahsil makbuzu 
+numarası bu elemana yazılacaktır. Müteselsil numaranın ilk 
+dört hanesi müstahsil makbuzunun düzenlendiği yılı kalan 
+dokuz hane ise müteselsil numarayı ifade etmektedir. 
+Müstahsil makbuzu düzenleyen bünyesinde aynı müstahsil 
+makbuzu numarası birden fazla kullanılamaz. 
+Kullanım Alfa numerik 
+Örnek <cbc:ID>GIB2016000000001</cbc:ID> 
+ 
+ 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  9 / 17 
+2.3.6 CopyIndicator 
+ 
+CopyIndicator Asıl/Suret 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama Bu elemanda düzenlenen müstahsil makbuzunun asıl veya suret 
+olduğu gösterilecektir. 
+Kullanım Asıl ise “false”, suret ise “true” 
+Örnek <cbc:CopyIndicator>false</cbc:CopyIndicator> 
+ 
+2.3.7 UUID 
+ 
+UUID Evrensel Tekil Tanımlama Numarası 
+Diyagram  
+Kardinalite Zorunlu (1) 
+ 
+Açıklama 
+Evrensel Tekil Tanımlama Numarası (ETTN), düzenlenen 
+müstahsil makbuzunun evrensel eşsizliğini sağlayan 
+numaradır. Bu numara müstahsil makbuzu düzenleyen 
+tarafından standartlara uygun olarak üretilecektir. 
+Kullanım GUID formatı 
+Örnek <cbc:UUID>e093a490-dd99-11dd-ad8b-0800200c9a66</cbc:UUID> 
+ 
+2.3.8 IssueDate 
+ 
+IssueDate Düzenleme Tarihi 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama Bu elemana müstahsil makbuzunun düzenleme tarihi 
+yazılacaktır. 
+Kullanım Yıl-Ay-Gün (YYYY-AA-GG) 
+Örnek <cbc:IssueDate>2016-01-01</cbc:IssueDate> 
+ 
+2.3.9 IssueTime 
+ 
+IssueTime Düzenleme Zamanı 
+Diyagram  
+Kardinalite Seçimli (1) 
+Açıklama Bu elemana müstahsil makbuzunun düzenleme saati 
+yazılacaktır. 
+Kullanım Saat:Dakika:Saniye 
+Örnek <cbc:IssueTime>14:50:00</cbc:IssueTime> 
+ 
+ 
+ 
+ 
+ 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  10 / 17 
+2.3.10 CreditNoteTypeCode 
+ 
+CreditNoteTypeCode CreditNote Tipi Kodu 
+Diyagram 
+ 
+Kardinalite Seçimli (0…1) 
+Açıklama Bu elemana belgenin müstahsil makbuzu olduğunu belirtir  
+MUSTAHSILMAKBUZ yazılacaktır. 
+Kullanım MUSTAHSILMAKBUZ 
+Örnek <cbc:CreditNoteTypeCode>MUSTAHSILMAKBUZ</cbc: 
+CreditNoteTypeCode > 
+ 
+2.3.11 Note 
+ 
+Note Not 
+Diyagram 
+ 
+Kardinalite Seçimli (0…n) 
+ 
+Açıklama 
+Yer verilmek istenen genel açıklamalar için bu eleman  
+kullanılacaktır. Birden fazla açıklama yapılmak istenmesi halinde 
+elemanın tekrar kullanımı mümkündür. 
+Kullanım Serbest Metin 
+Örnek <cbc:Note>….</cbc:Note> 
+ 
+ 
+2.3.12 AdditionalDocumentReference 
+ 
+AdditionalDocumentReference İlave Doküman 
+ 
+ 
+ 
+ 
+ 
+ 
+Diyagram 
+ 
+ 
+Kardinalite Seçimli (0…n) 
+Açıklama Müstahsil makbuzuna eklenmek istenen diğer belgeler için bu 
+eleman kullanılabilecektir. 
+Kullanım Bknz. Ortak Sınıflar: DocumentReference 
+Örnek <cac:AdditionalDocumentReference> 
+<cbc:ID>01jal3f6t71000</cbc:ID> 
+<cbc:IssueDate>2017-11-29</cbc:IssueDate> 
+<cbc:DocumentType>XSLT</cbc:DocumentType> 
+<cac:Attachment> 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  11 / 17 
+<cbc:EmbeddedDocumentBinaryObject 
+mimeCode="application/xml" encodingCode="Base64" 
+characterSetCode="UTF-8" filename="GIB2017000000008.xslt"> 
+PD……. 
+</cbc:EmbeddedDocumentBinaryObject> 
+</cac:Attachment> 
+</cac:AdditionalDocumentReference> 
+ 
+ 
+2.3.13 Signature 
+ 
+Signature Mali Mühür/İmza 
+ 
+ 
+ 
+Diyagram 
+ 
+Kardinalite Zorunlu (1…n) 
+Açıklama Bu elemanda kullanılan mali mühür ve/veya elektronik imza ile  
+sertifikalara ilişkin bilgilere yer verilecektir. 
+Kullanım Bknz. Ortak Sınıflar: Signature 
+Örnek <cac:Signature> 
+<cbc:ID>1288331521</cbc:ID> 
+<cac:SignatoryParty> 
+<cac:PartyIdentification> 
+<cbc:ID 
+schemeID="VKN">9205121120</cbc:ID> 
+</cac:PartyIdentification> 
+<cac:PostalAddress> 
+<cbc:StreetName>Ihlamur Mahallesi Selvi 
+Caddesi Sedir Sokak</cbc:StreetName> 
+<cbc:BuildingNumber> 
+75/A</cbc:BuildingNumber> 
+<cbc:CitySubdivisionName> 
+Kızılay</cbc:CitySubdivisionName> 
+<cbc:CityName>Ankara</cbc:CityName> 
+<cbc:PostalZone>06100</cbc:PostalZone> 
+<cac:Country> 
+<cbc:Name>Türkiye</cbc:Name> 
+</cac:Country> 
+</cac:PostalAddress> 
+</cac:SignatoryParty> 
+<cac:DigitalSignatureAttachment> 
+<cac:ExternalReference> 
+<cbc:URI>#12345</cbc:URI> 
+</cac:ExternalReference> 
+</cac:DigitalSignatureAttachment> 
+</cac:Signature> 
+ 
+ 
+ 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  12 / 17 
+2.3.14 AccountingSupplierParty 
+ 
+AccountingSupplierParty Makbuz Düzenleyen Taraf 
+ 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama Müstahsil makbuzunu düzenleyen taraf için bu eleman 
+kullanılacaktır. Ayrıca bu eleman altında , e-Müstahsil 
+Makbuzunu düzenleyenlerin SMS gönderme konusunda hizmet 
+aldığı operator bilgisinin yazılacağı 
+“/Party/Contact/OtherCommunication” alanı kullanılmalıdır. 
+Kullanım Bknz. Ortak Sınıflar: SupplierParty 
+Örnek <cac:AccountingSupplierParty> 
+        <cac:Party> 
+            <cbc:WebsiteURI>https://www.aaa.com.tr</cbc:WebsiteURI> 
+            <cac:PartyIdentification> 
+                <cbc:ID schemeID="VKN">1234567890</cbc:ID> 
+            </cac:PartyIdentification> 
+            <cac:PartyName> 
+                <cbc:Name>AAA Anonim Şirketi</cbc:Name> 
+            </cac:PartyName> 
+            <cac:PostalAddress> 
+                <cbc:Room>1</cbc:Room> 
+                <cbc:StreetName>Cadde/Sokak</cbc:StreetName> 
+                <cbc:BuildingName>Bina Adı</cbc:BuildingName> 
+                <cbc:BuildingNumber>Bina No</cbc:BuildingNumber> 
+                <cbc:CitySubdivisionName>İlçe</cbc:CitySubdivisionName> 
+                <cbc:CityName>İl</cbc:CityName> 
+                <cbc:PostalZone>Posta Kodu</cbc:PostalZone> 
+                <cbc:Region>Bölge</cbc:Region> 
+                <cbc:District>Mahalle</cbc:District> 
+                <cac:Country> 
+                    <cbc:IdentificationCode>TR</cbc:IdentificationCode> 
+                    <cbc:Name>TÜRKİYE</cbc:Name> 
+                </cac:Country> 
+            </cac:PostalAddress> 
+            <cac:PartyTaxScheme> 
+                <cac:TaxScheme> 
+                    <cbc:Name>Vergi Dairesi</cbc:Name> 
+                </cac:TaxScheme> 
+            </cac:PartyTaxScheme> 
+            <cac:Contact> 
+                <cac:OtherCommunication> 
+                    <!-- Belgeyi düzenleyen mükelefin çalışmış olduğu Operatör 
+bilgisi --> 
+                    <cbc:ChannelCode name="SMS_PROVIDER">Uygulama 
+Adı</cbc:ChannelCode> 
+                    <cbc:Value>VKN bilgisi</cbc:Value> 
+                </cac:OtherCommunication> 
+            </cac:Contact> 
+        </cac:Party> 
+    </cac:AccountingSupplierParty> 
+ 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  13 / 17 
+2.3.15 AccountingCustomerParty 
+ 
+AccountingCustomerParty Üretici/Çiftçi Taraf 
+ 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama Malları satan taraf için bu eleman kullanılacaktır. 
+ 
+e-Müstahsil Makbuzunda, malı satan tarafın telefonuna gönderilen 
+SMS KODU yazılmalıdır. 
+ 
+Bu alan altında yer alan; 
+“Contact”/”Telephone” alanına malı satan tarafın telefon bilgisi 
+(SMS gönderilen telefon bilgisi), 
+ 
+“Contact”/”Name” alanına “SMS” yazılarak “Contact”/”ID” alanına 
+SMS kodu yazılmalıdır. 
+Kullanım Bknz. Ortak Sınıflar: CustomerParty 
+Örnek <cac:AccountingCustomerParty> 
+<cac:Party> 
+<cbc:WebsiteURI/> 
+<cac:PartyIdentification> 
+<cbc:ID schemeID="TCKN">14604153088</cbc:ID> 
+</cac:PartyIdentification> 
+<cac:PostalAddress> 
+<cbc:StreetName>AAA Mah. BBB Cad. 
+No:67</cbc:StreetName> 
+<cbc:CitySubdivisionName>Merkez</cbc:CitySubdivisionName
+> 
+<cbc:CityName>Niğde</cbc:CityName> 
+<cbc:Region>Sazlıca</cbc:Region> 
+<cac:Country> 
+<cbc:Name>Türkiye</cbc:Name> 
+</cac:Country> 
+</cac:PostalAddress> 
+<cac:Contact> <!-- SMS Kodu yazılması durumunda 
+kullanılacak alan --> 
+    <cbc:ID>SMS Kodu 
+yazılacak</cbc:ID> 
+    <cbc:Name>SMS</cbc:Name> 
+                <cbc:Telephone>5555555555</cbc:Telephone> 
+</cac:Contact> 
+ 
+<cac:Person> 
+<cbc:FirstName>ÇifçiAd</cbc:FirstName> 
+<cbc:FamilyName>ÇifçiSoyad</cbc:FamilyName> 
+</cac:Person> 
+</cac:Party> 
+</cac:AccountingCustomerParty> 
+ 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  14 / 17 
+2.3.16 Delivery 
+ 
+Delivery Gönderim, Taşıma, Sevkiyat 
+Bilgileri 
+ 
+Diyagram 
+ 
+ 
+Kardinalite Seçimli(0..n) 
+Açıklama Bu elemana gönderim, taşıma ve sevkiyat ile ilgili bilgiler  
+yazılabilecektir. 
+Kullanım Bknz. Ortak Sınıflar: Delivery 
+Örnek <cac:Delivery> 
+<cbc:ActualDeliveryDate>2017-09-01</cbc:ActualDeliveryDate> 
+</cac:Delivery> 
+ 
+ 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  15 / 17 
+2.3.17 TaxTotal 
+ 
+TaxTotal Toplam Vergi 
+ 
+ 
+Diyagram 
+ 
+ 
+Kardinalite Zorunlu (1…n) 
+Açıklama Bu elemana vergi ve diğer yasal yükümlülükler ile ilgili bilgiler  
+yazılacaktır. 
+Kullanım Bknz. Ortak Sınıflar: TaxTotal 
+Örnek <cac:TaxTotal> 
+<cbc:TaxAmount currencyID="TRY">350</cbc:TaxAmount> 
+<cac:TaxSubtotal> 
+<cbc:TaxableAmount 
+currencyID="TRY">17500</cbc:TaxableAmount> 
+<cbc:TaxAmount currencyID="TRY">350</cbc:TaxAmount> 
+<cbc:CalculationSequenceNumeric>1</cbc:CalculationSequenceNu
+meric> 
+<cbc:Percent>2</cbc:Percent> 
+<cac:TaxCategory> 
+<cac:TaxScheme> 
+<cbc:Name>GELİR VERGİSİ S. (MUHTASAR)</cbc:Name> 
+<cbc:TaxTypeCode>0003</cbc:TaxTypeCode> 
+</cac:TaxScheme> 
+</cac:TaxCategory> 
+</cac:TaxSubtotal> 
+</cac:TaxTotal> 
+ 
+2.3.18 LegalMonetaryTotal 
+ 
+LegalMonetaryTotal Parasal Toplamlar 
+ 
+ 
+ 
+ 
+ 
+Diyagram 
+ 
+Kardinalite Zorunlu (1) 
+Açıklama Bu elemanda tutarların toplamları yer alacaktır. 
+Kullanım Bknz. Ortak Sınıflar: LegalMonetaryTotal 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  16 / 17 
+Örnek <cac:LegalMonetaryTotal> 
+<cbc:LineExtensionAmount 
+currencyID="TRY">90</cbc:LineExtensionAmount> 
+<cbc:TaxExclusiveAmount 
+currencyID="TRY">80</cbc:TaxExclusiveAmount> 
+<cbc:TaxInclusiveAmount 
+currencyID="TRY">94</cbc:TaxInclusiveAmount> 
+<cbc:AllowanceTotal currencyID="TRY">10</cbc: 
+AllowanceTotal > 
+<cbc:PayableRoundingAmount 
+currencyID="TRY">0.4</cbc:PayableRoundingAmount> 
+<cbc:PayableAmount 
+currencyID="TRY">94.4</cbc:PayableAmount> 
+</cac:LegalMonetaryTotal> 
+ 
+2.3.19 CreditNoteLine 
+ 
+CreditNoteLine Kalem Bilgileri 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Diyagram 
+ 
+Kardinalite Zorunlu (1…n) 
+Açıklama Bu elemanda müstahsil makbuzunda yer alan kalemlere ait  
+bilgiler yer alacaktır. 
+Kullanım Bknz. Ortak Sınıflar: CreditNoteLine 
+Örnek <cac:CreditNoteLine> 
+<cbc:ID>1</cbc:ID> 
+<cbc:CreditedQuantity unitCode="C62">5</cbc:CreditedQuantity> 
+<cbc:LineExtensionAmount 
+currencyID="TRY">17500</cbc:LineExtension
+Amount> 
+<cac:TaxTotal> 
+<cbc:TaxAmount currencyID="TRY">350</cbc:TaxAmount> 
+<cac:TaxSubtotal> 
+<cbc:TaxableAmount 
+currencyID="TRY">17500</cbc:TaxableAmou
+nt> 
+<cbc:TaxAmount currencyID="TRY">350</cbc:TaxAmount> 
+<cbc:CalculationSequenceNumeric>1</cbc:CalculationSequenceN
+um eric> 
+<cbc:Percent>2</cbc:Percent> 
+
+ 
+UBL-TR Müstahsil Makbuzu Kılavuzu                                                                                 Mayıs/2026 
+Versiyon : 1.1                                                                                                                                  17 / 17 
+<cac:TaxCategory> 
+<cac:TaxScheme> 
+<cbc:Name>GELİR VERGİSİ S. (MUHTASAR)</cbc:Name> 
+<cbc:TaxTypeCode>0003</cbc:TaxTypeCode> 
+</cac:TaxScheme> 
+</cac:TaxCategory> 
+</cac:TaxSubtotal> 
+</cac:TaxTotal> 
+<cac:Item> 
+<cbc:Name>Büyükbaş hayvan</cbc:Name> 
+</cac:Item> 
+<cac:Price> 
+<cbc:PriceAmount currencyID="TRY">3500</cbc:PriceAmount> 
+</cac:Price> 
+</cac:CreditNoteLine> 
+ 
+ 
+2.4 e-Müstahsil Makbuzunun Düzenlenmesi ve Teslimi 
+ 
+e-Müstahsil Makbuzunun, çıktısının muhatabı tarafından ıslak imza ile imzalanarak 
+düzenlenmesi yerine bu Kılavuzun yayınlanması akabinde ebelge.gib.gov.tr adresinde 
+yayımlanacak duyuruda belirtilen tarihten itibaren,  malları satan tarafın telefonuna 
+gönderilecek SMS kodunun, telefon numarasının ve SMS’i gönderen operatör bilgisinin e-
+Müstahsil Makbuzunda yer alması suretiyle düzenlenmesi gerekmektedir. 

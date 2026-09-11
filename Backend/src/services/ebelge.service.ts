@@ -50,6 +50,8 @@ import {
   buildGiderPusulasiXml,
   type GiderPusulasiGirdi,
 } from "./ice/ubl/giderPusulasiBuilder.js";
+import { buildMustahsilXml, type MustahsilGirdi } from "./ice/ubl/mustahsilBuilder.js";
+import { cancelMustahsil, getProducerReceipts, sendMustahsil, setProducerReceiptStatus, validateMustahsil } from "./ice/ice.mustahsil.js";
 import {
   getEarsivMailStatu,
   getEArchive,
@@ -1845,6 +1847,45 @@ export class EbelgeService {
     if (!pdf?.length) throw ApiError.notFound("Belgenin PDF çıktısı alınamadı.");
     return pdf;
   }
+
+  public static async mustahsilDogrula(girdi: MustahsilGirdi, dbContext?: DbContext) {
+    const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
+    const {xml,uuid,ozet}=buildMustahsilXml({...girdi,gonderici});
+    const sonuc=await validateMustahsil(await EbelgeSqlRepository.getConnectionConfig(dbContext),toBase64(xml),true);
+    const sema=String(sonuc.shema_validate).toLowerCase()==="true", schematron=String(sonuc.shematron_validate).toLowerCase()==="true";
+    if(!sema||!schematron) throw ApiError.unprocessable(sonuc.response_message||"e-Müstahsil şema/schematron doğrulamasından geçemedi.");
+    return {uuid,belgeNo:girdi.belgeNo.toUpperCase(),semaGecerli:sema,schematronGecerli:schematron,html:sonuc.producerreceipt_html||null,ozet};
+  }
+
+  public static async mustahsilGonder(girdi:MustahsilGirdi,kullanici:string,dbContext?:DbContext) {
+    const belgeNo=girdi.belgeNo.trim().toUpperCase();
+    if(await EbelgeSqlRepository.gidenBelgeNoVarMi(belgeNo,dbContext)) throw ApiError.conflict("Bu müstahsil makbuzu numarası daha önce kullanılmış.");
+    const gonderici=await this.goncericiTamamla(girdi.gonderici,dbContext), uretilen=buildMustahsilXml({...girdi,belgeNo,gonderici});
+    const config=await EbelgeSqlRepository.getConnectionConfig(dbContext), kontrol=await validateMustahsil(config,toBase64(uretilen.xml),false);
+    if(String(kontrol.shema_validate).toLowerCase()!=="true"||String(kontrol.shematron_validate).toLowerCase()!=="true") throw ApiError.unprocessable(kontrol.response_message||"e-Müstahsil doğrulanamadı; gönderilmedi.");
+    await EbelgeSqlRepository.insertGiden({uuid:uretilen.uuid,belgeNo,belgeTuru:"EMustahsil",profil:"EARSIVBELGE",faturaTipi:"MUSTAHSILMAKBUZ",taslakMi:false,
+      aliciVkn:girdi.uretici.vknTckn,aliciUnvan:girdi.uretici.unvan||[girdi.uretici.ad,girdi.uretici.soyad].filter(Boolean).join(" "),duzenlemeTarihi:new Date(girdi.tarih||new Date()),
+      tutar:uretilen.ozet.netOdenecek,paraBirimi:"TRY",gonderimDurumu:"GONDERILIYOR",iceResponseMesaj:"Gönderim başlatıldı; sonuç kesinleşmeden tekrarlamayın.",olusturan:kullanici,gonderen:kullanici,gonderimTarihi:new Date()} as any,dbContext);
+    let sonuc;
+    try { sonuc=await sendMustahsil(config,toBase64(uretilen.xml)); }
+    catch { await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid,"GONDERILIYOR","BELIRSIZ",{mesaj:"ICE sonucu alınamadı; portalden kontrol edin."},dbContext).catch(()=>undefined); throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uretilen.uuid}); yeniden göndermeyiniz.`); }
+    const ss=gonderimSatirlari(sonuc), ilk=ss[0], dogru=(v:unknown)=>String(v).toLowerCase()==="true";
+    const basarili=dogru(sonuc.success)&&ss.length===1&&dogru(ilk?.success)&&dogru(ilk?.shema_is_validate)&&dogru(ilk?.schematron_is_validate)&&String(ilk?.ettn||"").toLowerCase()===uretilen.uuid.toLowerCase()&&ilk?.ID===belgeNo;
+    const acikRed=String(sonuc.success).toLowerCase()==="false"||(ss.length===1&&String(ilk?.success).toLowerCase()==="false"), durum=basarili?"GONDERILDI":acikRed?"HATA":"BELIRSIZ";
+    await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid,"GONDERILIYOR",durum,{kod:String(sonuc.response_code??""),mesaj:ilk?.response_message||sonuc.response_message||durum},dbContext);
+    await EbelgeSqlRepository.writeLog({metod:"send_emustahsil",yon:"GIDEN",basarili,kullanici,ilgiliUuid:uretilen.uuid,istekOzet:`belgeNo=${belgeNo} net=${uretilen.ozet.netOdenecek}`,cevapOzet:`durum=${durum}`} as any,dbContext);
+    if(!basarili) throw ApiError.conflict(durum==="BELIRSIZ"?"Gönderim sonucu belirsiz; yeniden göndermeyiniz.":ilk?.response_message||sonuc.response_message||"e-Müstahsil reddedildi.");
+    return {uuid:uretilen.uuid,belgeNo,durum,mesaj:sonuc.response_message||"",ozet:uretilen.ozet};
+  }
+
+  public static async mustahsilIptal(uuid:string,tarih:Date,kullanici:string,dbContext?:DbContext) {
+    const k=await EbelgeSqlRepository.getGiden(uuid,dbContext); if(!k||k.belgeTuru!=="EMustahsil") throw ApiError.notFound("e-Müstahsil bulunamadı.");
+    if(k.gonderimDurumu!=="GONDERILDI") throw ApiError.conflict("Yalnız gönderilmiş e-Müstahsil iptal edilebilir.");
+    let s; try{s=await cancelMustahsil(await EbelgeSqlRepository.getConnectionConfig(dbContext),k.belgeNo,tarih.toISOString());}catch{throw ApiError.conflict("İptal sonucu belirsiz; tekrar iptal göndermeyiniz.");}
+    if(!s.basarili) throw ApiError.conflict(s.mesaj||"İptal reddedildi."); await EbelgeSqlRepository.earsivDurumGecir(uuid,"GONDERILDI","IPTAL",{mesaj:s.mesaj,kullanici,iptalTarihi:tarih},dbContext); return {uuid,durum:"IPTAL",mesaj:s.mesaj};
+  }
+  public static async mustahsilGelen(f:any,kullanici:string,dbContext?:DbContext){const x=await getProducerReceipts(await EbelgeSqlRepository.getConnectionConfig(dbContext),f); await EbelgeSqlRepository.writeLog({metod:"GetProducerReceipt",yon:"GELEN",basarili:true,kullanici,cevapOzet:`adet=${x.length}`} as any,dbContext); return x;}
+  public static async mustahsilGelenStatu(uuid:string,statu:"Okunmadı"|"Okundu"|"Islendi"|"Islenmedi",kullanici:string,dbContext?:DbContext){const ok=await setProducerReceiptStatus(await EbelgeSqlRepository.getConnectionConfig(dbContext),uuid,statu); if(!ok)throw ApiError.unprocessable("ICE durum değişikliğini kabul etmedi."); await EbelgeSqlRepository.writeLog({metod:"Set_ProducerReceipt_Status",yon:"GELEN",basarili:true,kullanici,ilgiliUuid:uuid,istekOzet:`statu=${statu}`} as any,dbContext); return {uuid,statu};}
 
   public static async earsivGonder(
     girdi: UblFaturaGirdi,
