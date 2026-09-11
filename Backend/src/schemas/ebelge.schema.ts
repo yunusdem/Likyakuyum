@@ -89,8 +89,8 @@ export const ebelgeDogrulaSchema = z.object({
   uuid: z.string().trim().uuid().optional(),
   tarih: ebelgeTarihSchema.optional(),
   saat: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/).optional(),
-  senaryo: z.enum(["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA"]),
-  faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI"]),
+  senaryo: z.enum(["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"]),
+  faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI", "TEKNOLOJIDESTEK"]),
   paraBirimi: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
   notlar: z.array(z.string().max(1000)).max(10).optional(),
   /** Boş bırakılırsa ayar + TODVZ_TANIM'dan tamamlanır */
@@ -181,6 +181,7 @@ const irsSatirSchema = z.object({
 });
 
 const TARIH = /^\d{4}-\d{2}-\d{2}$/;
+const PLAKA = /^[A-Z0-9 -]+$/i;
 
 export const ebelgeIrsaliyeSchema = z.object({
   belgeNo: z.string().trim().min(1, "İrsaliye numarası zorunludur."),
@@ -196,7 +197,13 @@ export const ebelgeIrsaliyeSchema = z.object({
   sevkiyat: z.object({
     sevkTarihi: z.string().trim().regex(TARIH, "Fiili sevk tarihi YYYY-AA-GG olmalıdır."),
     sevkSaati: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, "Geçerli fiili sevk saati zorunludur (SS:DD:SS)."),
-    plaka: z.string().trim().min(1, "Araç plakası zorunludur.").max(20),
+    plaka: z.string().trim().min(1, "Plaka/dorse bilgisi zorunludur.").max(50)
+      .regex(PLAKA, "Plaka/dorse yalnızca harf, rakam, boşluk ve tire içerebilir."),
+    /** 14.09.2026 GİB Schematron plaka/dorse schemeID değeri. */
+    plakaTuru: z.enum([
+      "PLAKA", "DORSE", "DORSEPLAKA",
+      "YABANCIPLAKA", "YABANCIDORSE", "YABANCIDORSEPLAKA",
+    ]).default("PLAKA"),
     soforler: z
       .array(
         z.object({

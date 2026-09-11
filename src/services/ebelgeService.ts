@@ -132,14 +132,17 @@ export interface EbelgeSenkronizasyonSonucu {
    Giden belge doğrulama (Faz 5)
    ========================================================================== */
 
-export type EbelgeSenaryo = "TEMELFATURA" | "TICARIFATURA" | "EARSIVFATURA";
+export type EbelgeSenaryo =
+  | "TEMELFATURA" | "TICARIFATURA" | "EARSIVFATURA"
+  | "YATIRIMTESVIK" | "KAMU";
 export type EbelgeFaturaTipi =
   | "SATIS"
   | "IADE"
   | "TEVKIFAT"
   | "ISTISNA"
   | "OZELMATRAH"
-  | "IHRACKAYITLI";
+  | "IHRACKAYITLI"
+  | "TEKNOLOJIDESTEK";
 
 export interface EbelgeTaraf {
   vknTckn: string;
@@ -306,6 +309,9 @@ export const EBELGE_BIRIMLER: { kod: string; ad: string }[] = [
    ========================================================================== */
 
 export type EbelgeIrsaliyeTipi = "SEVK" | "MATBUDAN";
+export type EbelgePlakaTuru =
+  | "PLAKA" | "DORSE" | "DORSEPLAKA"
+  | "YABANCIPLAKA" | "YABANCIDORSE" | "YABANCIDORSEPLAKA";
 
 export interface EbelgeIrsaliyeSatiri {
   ad: string;
@@ -321,7 +327,8 @@ export interface EbelgeSevkiyat {
   /** Fiili sevk tarihi — zorunlu */
   sevkTarihi: string;
   sevkSaati: string;
-  plaka: string;
+    plaka: string;
+    plakaTuru: EbelgePlakaTuru;
   soforler?: { ad: string; soyad: string; tckn?: string }[];
   tasiyici?: { vknTckn: string; unvan: string };
   teslimatAdresi: { adres?: string; ilce?: string; il?: string; ulke?: string; postaKodu: string };

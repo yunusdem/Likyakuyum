@@ -20,6 +20,7 @@ import {
   EbelgeIrsaliyeDogrulama,
   EbelgeIrsaliyeSatiri,
   EbelgeIrsaliyeTipi,
+  EbelgePlakaTuru,
   ebelgeService,
 } from "../../services/ebelgeService";
 
@@ -57,6 +58,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
   const [sevkTarihi, setSevkTarihi] = useState<string>(bugunISO());
   const [sevkSaati, setSevkSaati] = useState<string>("");
   const [plaka, setPlaka] = useState<string>("");
+  const [plakaTuru, setPlakaTuru] = useState<EbelgePlakaTuru>("PLAKA");
   const [soforAd, setSoforAd] = useState<string>("");
   const [soforSoyad, setSoforSoyad] = useState<string>("");
   const [soforTckn, setSoforTckn] = useState<string>("");
@@ -122,6 +124,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
       sevkSaati,
       teslimatAdresi: { postaKodu: teslimatPostaKodu.trim() },
       plaka: plaka.trim(),
+      plakaTuru,
       soforler:
         soforAd.trim() && soforSoyad.trim()
           ? [{ ad: soforAd.trim(), soyad: soforSoyad.trim(), tckn: soforTckn.trim() || undefined }]
@@ -149,7 +152,9 @@ const EBelgeIrsaliyePage: React.FC = () => {
     if (!/^\d{5}$/.test(teslimatPostaKodu.trim()))
       return "Teslimat posta kodu 5 haneli olmalıdır.";
     if (sevkTarihi < tarih) return "Fiili sevk tarihi, düzenleme tarihinden önce olamaz.";
-    if (!plaka.trim()) return "Araç plakası zorunludur.";
+    if (!plaka.trim()) return "Plaka/dorse bilgisi zorunludur.";
+    if (plaka.trim().length > 50 || !/^[A-Z0-9 -]+$/i.test(plaka.trim()))
+      return "Plaka/dorse en fazla 50 karakter olmalı; yalnızca harf, rakam, boşluk ve tire içermelidir.";
     return null;
   };
 
@@ -451,12 +456,29 @@ const EBelgeIrsaliyePage: React.FC = () => {
               />
             </Col>
             <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">Araç Plakası *</Form.Label>
+              <Form.Label className="small mb-1">Plaka / Dorse Türü *</Form.Label>
+              <Form.Select
+                size="sm"
+                value={plakaTuru}
+                disabled={kilitli}
+                onChange={(e) => degisti(setPlakaTuru)(e.target.value as EbelgePlakaTuru)}
+              >
+                <option value="PLAKA">Yerli araç plakası</option>
+                <option value="DORSE">Yerli dorse</option>
+                <option value="DORSEPLAKA">Yerli araç + dorse</option>
+                <option value="YABANCIPLAKA">Yabancı araç plakası</option>
+                <option value="YABANCIDORSE">Yabancı dorse</option>
+                <option value="YABANCIDORSEPLAKA">Yabancı araç + dorse</option>
+              </Form.Select>
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Plaka / Dorse *</Form.Label>
               <Form.Control
                 size="sm"
                 className="font-monospace"
                 placeholder="07 ABC 123"
                 value={plaka}
+                maxLength={50}
                 required
                 disabled={kilitli}
                 onChange={(e) => degisti(setPlaka)(e.target.value.toUpperCase())}
@@ -511,7 +533,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
                 />
               </div>
               <div className="text-secondary" style={{ fontSize: "11.5px" }}>
-                Plaka zorunludur; taşıyıcı firma bilgisi varsa ayrıca girilebilir
+                Plaka/dorse zorunludur; türü GİB schemeID alanına aktarılır
               </div>
             </Col>
           </Row>

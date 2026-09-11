@@ -38,6 +38,9 @@ export type IrsaliyeSenaryo = "TEMELIRSALIYE";
 
 /** `DespatchAdviceTypeCode` — sevk / matbudan elektronik ortama aktarılan */
 export type IrsaliyeTipi = "SEVK" | "MATBUDAN";
+export type PlakaTuru =
+  | "PLAKA" | "DORSE" | "DORSEPLAKA"
+  | "YABANCIPLAKA" | "YABANCIDORSE" | "YABANCIDORSEPLAKA";
 
 export interface IrsaliyeSatiri {
   /** Mal adı */
@@ -59,8 +62,10 @@ export interface SevkiyatBilgisi {
   sevkTarihi: string;
   /** Fiili sevk saati (SS:DD:SS) — zorunlu */
   sevkSaati: string;
-  /** Araç plakası — e-İrsaliyede zorunlu */
+  /** Araç/dorse plakası — e-İrsaliyede zorunlu */
   plaka: string;
+  /** 14.09.2026 GİB Schematron LicensePlateID schemeID değeri. */
+  plakaTuru?: PlakaTuru;
   /** Şoför bilgileri */
   soforler?: { ad: string; soyad: string; tckn?: string }[];
   /** Taşıyıcı firma (kendi aracımız değilse) */
@@ -184,7 +189,17 @@ export const dogrulaIrsaliye = (girdi: IrsaliyeGirdi): void => {
   // 14.09.2026 itibarıyla e-İrsaliye plaka kontrolüne hazırlık:
   // taşıyıcı firma bilgisi verilmiş olsa dahi araç plakası zorunludur.
   if (!sevk.plaka?.trim()) {
-    throw ApiError.badRequest("Sevkiyatta araç plakası zorunludur.");
+    throw ApiError.badRequest("Sevkiyatta plaka/dorse bilgisi zorunludur.");
+  }
+  if (sevk.plaka.trim().length > 50 || !/^[A-Z0-9 -]+$/i.test(sevk.plaka.trim())) {
+    throw ApiError.badRequest("Plaka/dorse en fazla 50 karakter olmalı; yalnızca harf, rakam, boşluk ve tire içermelidir.");
+  }
+  const plakaTurleri: PlakaTuru[] = [
+    "PLAKA", "DORSE", "DORSEPLAKA",
+    "YABANCIPLAKA", "YABANCIDORSE", "YABANCIDORSEPLAKA",
+  ];
+  if (sevk.plakaTuru && !plakaTurleri.includes(sevk.plakaTuru)) {
+    throw ApiError.badRequest("Geçersiz plaka/dorse türü.");
   }
   if (sevk.tasiyici && !/^\d{10}$|^\d{11}$/.test(sevk.tasiyici.vknTckn?.trim() || "")) {
     throw ApiError.badRequest("Taşıyıcı firma VKN/TCKN 10 veya 11 haneli rakam olmalıdır.");
@@ -272,7 +287,7 @@ const shipmentXml = (sevk: SevkiyatBilgisi, alici: UblTaraf): string => {
       ? `<cac:ShipmentStage>` +
         (sevk.plaka?.trim()
           ? `<cac:TransportMeans><cac:RoadTransport>` +
-            `<cbc:LicensePlateID schemeID="PLAKA">${escapeXml(sevk.plaka.replace(/\s/g, "").toUpperCase())}</cbc:LicensePlateID>` +
+            `<cbc:LicensePlateID schemeID="${sevk.plakaTuru || "PLAKA"}">${escapeXml(sevk.plaka.replace(/\s/g, "").toUpperCase())}</cbc:LicensePlateID>` +
             `</cac:RoadTransport></cac:TransportMeans>`
           : "") +
         soforXml +

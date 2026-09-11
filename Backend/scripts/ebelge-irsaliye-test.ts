@@ -102,6 +102,15 @@ test("plaka RoadTransport/LicensePlateID altında", () => {
   assert.equal(stage.TransportMeans.RoadTransport.LicensePlateID["@_schemeID"], "PLAKA");
 });
 
+test("14.09.2026 plaka/dorse schemeID değerleri XML'e aktarılır", () => {
+  for (const plakaTuru of ["PLAKA", "DORSE", "DORSEPLAKA", "YABANCIPLAKA", "YABANCIDORSE", "YABANCIDORSEPLAKA"] as const) {
+    const girdi = temel();
+    girdi.sevkiyat.plakaTuru = plakaTuru;
+    const stage = parser.parse(buildDespatchAdviceXml(girdi).xml).DespatchAdvice.Shipment.ShipmentStage;
+    assert.equal(stage.TransportMeans.RoadTransport.LicensePlateID["@_schemeID"], plakaTuru);
+  }
+});
+
 test("şoför DriverPerson altında, birden çok olabilir", () => {
   const { xml } = buildDespatchAdviceXml({
     ...temel(),
@@ -198,14 +207,16 @@ test("sevkiyat doğrulamaları", () => {
     );
 
   // Taşıyıcı firma girilmiş olsa dahi plaka zorunludur
-  sevk({ sevkTarihi: "2026-02-10", plaka: undefined }, /plakası zorunludur/);
+  sevk({ sevkTarihi: "2026-02-10", plaka: undefined }, /plaka\/dorse bilgisi zorunludur/);
   sevk(
     { sevkTarihi: "2026-02-10", plaka: undefined, tasiyici: { vknTckn: "1112223334", unvan: "Kargo A.Ş." } },
-    /plakası zorunludur/
+    /plaka\/dorse bilgisi zorunludur/
   );
   // Sevk tarihi düzenleme tarihinden önce olamaz
   sevk({ sevkTarihi: "2026-02-01", plaka: "07 A 1" }, /düzenleme tarihinden önce/);
   sevk({ sevkTarihi: "gecersiz", plaka: "07 A 1" }, /Fiili sevk tarihi/);
+  sevk({ plaka: "07@ABC" }, /yalnızca harf/);
+  sevk({ plakaTuru: "YANLIS" }, /Geçersiz plaka/);
   sevk(
     { sevkTarihi: "2026-02-10", plaka: "07 A 1", soforler: [{ ad: "Ali", soyad: "" }] },
     /ad ve soyad/

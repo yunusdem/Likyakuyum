@@ -107,6 +107,35 @@ test("istisna: kod varken pozitif KDV reddedilir", () => {
   );
 });
 
+test("14.09.2026: 233 kabul edilir; 555 KDV 0 ile reddedilir", () => {
+  assert.doesNotThrow(() => buildInvoiceXml({
+    ...temel(), faturaTipi: "ISTISNA",
+    satirlar: [{ ad: "X", miktar: 1, birimFiyat: 100, kdvOrani: 0, istisnaKodu: "233" }],
+  }));
+  assert.throws(() => buildInvoiceXml({
+    ...temel(), satirlar: [{ ad: "X", miktar: 1, birimFiyat: 100, kdvOrani: 0, istisnaKodu: "555" }],
+  }), /555.*KDV 0/);
+  assert.throws(() => buildInvoiceXml({
+    ...temel(), senaryo: "KAMU", satirlar: [{ ad: "X", miktar: 1, birimFiyat: 100, kdvOrani: 20, istisnaKodu: "555" }],
+  }), /555.*senaryolu/);
+});
+
+test("14.09.2026: 308/339 yalnızca YATIRIMTESVIK profilinde", () => {
+  for (const kod of ["308", "339"]) {
+    const satirlar = [{ ad: "X", miktar: 1, birimFiyat: 100, kdvOrani: 0, istisnaKodu: kod }];
+    assert.throws(() => buildInvoiceXml({ ...temel(), satirlar }), /yalnızca YATIRIMTESVIK/);
+    assert.doesNotThrow(() => buildInvoiceXml({ ...temel(), senaryo: "YATIRIMTESVIK", satirlar }));
+  }
+});
+
+test("14.09.2026: IADE+KAMU ve TEKNOLOJIDESTEK+EARSIVFATURA profil kuralları", () => {
+  const iadeFaturalar = [{ belgeNo: "ABC2026000000002", tarih: "2026-01-01" }];
+  assert.doesNotThrow(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE", senaryo: "KAMU", iadeFaturalar }));
+  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE", senaryo: "TICARIFATURA", iadeFaturalar }), /IADE.*TICARIFATURA/);
+  assert.doesNotThrow(() => buildInvoiceXml({ ...temel(), faturaTipi: "TEKNOLOJIDESTEK", senaryo: "EARSIVFATURA" }));
+  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "TEKNOLOJIDESTEK", senaryo: "TEMELFATURA" }), /yalnızca EARSIVFATURA/);
+});
+
 /* ================================================================ tevkifat */
 
 test("tevkifat: KDV tutarı üzerinden hesaplanır ve ödenecekten düşer", () => {
@@ -187,6 +216,7 @@ test("iade: BillingReference LineCountNumeric ile Supplier arasında", () => {
   const { xml } = buildInvoiceXml({
     ...temel(),
     faturaTipi: "IADE",
+    senaryo: "TEMELFATURA",
     iadeFaturalar: [{ belgeNo: "ABC2025000000099", tarih: "2025-12-01" }],
   });
 
@@ -204,6 +234,7 @@ test("iade: birden çok dayanak fatura yazılabilir", () => {
   const { xml } = buildInvoiceXml({
     ...temel(),
     faturaTipi: "IADE",
+    senaryo: "TEMELFATURA",
     iadeFaturalar: [
       { belgeNo: "ABC2025000000001", tarih: "2025-11-01" },
       { belgeNo: "ABC2025000000002", tarih: "2025-11-02" },
@@ -214,7 +245,7 @@ test("iade: birden çok dayanak fatura yazılabilir", () => {
 });
 
 test("iade: dayanak yoksa ve yanlış tipte kullanılırsa reddedilir", () => {
-  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE" }), /iade edilen fatura/);
+  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE", senaryo: "TEMELFATURA" }), /iade edilen fatura/);
   assert.throws(
     () =>
       buildInvoiceXml({
@@ -228,6 +259,7 @@ test("iade: dayanak yoksa ve yanlış tipte kullanılırsa reddedilir", () => {
       buildInvoiceXml({
         ...temel(),
         faturaTipi: "IADE",
+        senaryo: "TEMELFATURA",
         iadeFaturalar: [{ belgeNo: "X", tarih: "01.01.2025" }],
       }),
     /YYYY-AA-GG/

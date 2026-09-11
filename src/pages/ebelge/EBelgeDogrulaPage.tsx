@@ -203,6 +203,26 @@ const EBelgeDogrulaPage: React.FC = () => {
       });
       return;
     }
+    if (satirlar.some((s) => s.istisnaKodu?.trim() === "555" && s.kdvOrani === 0)) {
+      setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu KDV 0 ile kullanılamaz." });
+      return;
+    }
+    if (satirlar.some((s) => s.istisnaKodu?.trim() === "555") && ["YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
+      setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu özel senaryolu faturada kullanılamaz." });
+      return;
+    }
+    if (satirlar.some((s) => ["308", "339"].includes(s.istisnaKodu?.trim() || "")) && senaryo !== "YATIRIMTESVIK") {
+      setAlertInfo({ type: "danger", message: "308 ve 339 kodları yalnızca Yatırım Teşvik profilinde kullanılabilir." });
+      return;
+    }
+    if (iadeMi && !["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
+      setAlertInfo({ type: "danger", message: `İade faturası ${senaryo} profilinde kullanılamaz.` });
+      return;
+    }
+    if (faturaTipi === "TEKNOLOJIDESTEK" && senaryo !== "EARSIVFATURA") {
+      setAlertInfo({ type: "danger", message: "Teknoloji Destek faturası yalnızca e-Arşiv Fatura profilinde kullanılabilir." });
+      return;
+    }
     if (tevkifatliMi && !satirlar.some((s) => s.tevkifatKodu?.trim())) {
       setAlertInfo({
         type: "danger",
@@ -485,6 +505,8 @@ const EBelgeDogrulaPage: React.FC = () => {
                 <option value="TICARIFATURA">Ticari Fatura</option>
                 <option value="TEMELFATURA">Temel Fatura</option>
                 <option value="EARSIVFATURA">e-Arşiv Fatura</option>
+                <option value="YATIRIMTESVIK">Yatırım Teşvik</option>
+                <option value="KAMU">Kamu</option>
               </Form.Select>
             </Col>
             <Col xs={6} md={3} lg={2}>
@@ -500,6 +522,7 @@ const EBelgeDogrulaPage: React.FC = () => {
                 <option value="ISTISNA">İstisna</option>
                 <option value="OZELMATRAH">Özel Matrah</option>
                 <option value="IHRACKAYITLI">İhraç Kayıtlı</option>
+                <option value="TEKNOLOJIDESTEK">Teknoloji Destek</option>
               </Form.Select>
             </Col>
             <Col xs={6} md={3} lg={1}>
