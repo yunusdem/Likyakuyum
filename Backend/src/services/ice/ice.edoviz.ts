@@ -2,6 +2,7 @@ import { escapeXml } from "./ice.client.js";
 import { callWithSession } from "./ice.session.js";
 import { IceConnectionConfig } from "./ice.types.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { logger } from "../../utils/logger.js";
 
 /**
  * e-Döviz (Döviz Alım/Satım Belgesi) ICE operasyonları.
@@ -360,6 +361,9 @@ export const getEDovizStatus = async (
   });
   // Boş SOAP Result, bu UUID için kayıt olmadığını belirtir. Beklenmeyen veya
   // hata içeren cevapların "kayıt yok" kabul edilmesi tekrar gönderime yol açar.
+  // Durum cevabının ham hâli loglanır: isSuccecss/STATUS alanlarının ICE'de ne
+  // anlama geldiği belgelenmemiş; filtre kararı bu kayıtlara bakılarak doğrulanır.
+  logger.info(`ICE Get_EDoviz_Status ham cevap (${uuidListesi.join(",")}) → ${data === '' ? '<boş>' : JSON.stringify(data).slice(0, 1500)}`);
   if (data === '') return [];
   const kayit = data?.Get_EDoviz_Status_Response;
   if (kayit === undefined || kayit === null) throw ApiError.conflict('ICE e-Döviz durum yanıtı doğrulanamadı. Gönderim durduruldu.');
