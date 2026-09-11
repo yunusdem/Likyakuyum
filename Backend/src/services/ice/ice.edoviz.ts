@@ -302,12 +302,14 @@ export const getEDovizStatus = async (
   const kayit = data?.Get_EDoviz_Status_Response;
   if (kayit === undefined || kayit === null) throw ApiError.conflict('ICE e-Döviz durum yanıtı doğrulanamadı. Gönderim durduruldu.');
   if (kayit === '') return [];
-  // ICE, tanımadığı UUID için de içi boş bir zarf döndürebiliyor. Zarfın varlığını
-  // "kayıt var" saymak hiç gönderilmemiş belgeyi kilitler; bu yüzden yalnızca
-  // UUID veya durum alanı dolu olan kayıtlar gerçek kabul edilir.
+  // ICE, tanımadığı UUID'yi de kayıt olarak geri döndürüyor: UUID alanı istekten
+  // yankılanıyor, `isSuccecss` false ve durum alanları boş kalıyor. Kaydın varlığını
+  // "belge mevcut" saymak hiç gönderilmemiş belgeyi kilitler; bu yüzden yalnızca
+  // isSuccecss doğru olan ya da bir durum bilgisi taşıyan kayıtlar gerçek sayılır.
   const dolu = (v: any) => String(v ?? '').trim() !== '';
-  return (Array.isArray(kayit) ? kayit : [kayit])
-    .filter((k) => dolu(k?.UUID) || dolu(k?.STATUS) || dolu(k?.STATUS_DESCRIPTION));
+  return (Array.isArray(kayit) ? kayit : [kayit]).filter(
+    (k) => String(k?.isSuccecss).toLowerCase() === 'true' || dolu(k?.STATUS) || dolu(k?.STATUS_DESCRIPTION),
+  );
 };
 
 /**
