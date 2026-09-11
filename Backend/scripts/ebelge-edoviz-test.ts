@@ -118,6 +118,18 @@ test('Kimliksiz müşteri reddedilir; TCKN veya pasaport zorunludur', () => {
     () => dovizGirdisi({ baslik: { ...baslik(), Customer_PartyIdentification_ID: '', Customer_PartyIdentification: '', Customer_PartyIdentification_PassportID: '' } }),
     /pasaport/
   );
+  // Görünüm kimlik yerine tür etiketi (GERCEKKISI) yazıyorsa bu kimlik sayılmaz:
+  // pasaport da yoksa reddedilir; varsa etiket Musteri_Turu'na taşınır.
+  assert.throws(
+    () => dovizGirdisi({ baslik: { ...baslik(), Customer_PartyIdentification_ID: 'GERCEKKISI', Customer_PartyIdentification_PassportID: '' } }),
+    /kimliksiz/
+  );
+  const etiketli = dovizGirdisi({ baslik: { ...baslik(), Customer_PartyIdentification_ID: 'GERCEKKISI' } });
+  assert.equal(etiketli.musteri.vknTckn, '');
+  assert.equal(etiketli.musteri.musteriTuru, 'GERCEKKISI');
+  // Tür yoksa kimlikten türetilir: 10 hane VKN tüzel, TCKN/pasaport gerçek kişi.
+  assert.equal(dovizGirdisi({ baslik: { ...baslik(), Customer_PartyIdentification_ID: '1234567890' } }).musteri.musteriTuru, 'TUZELKISI');
+  assert.equal(dovizGirdisi(kayit).musteri.musteriTuru, 'GERCEKKISI');
 });
 
 test('Üretilen XML, WSDL sequence sırasını korur', () => {
@@ -156,7 +168,7 @@ test('ICE koşulsuz okuduğu bloklar hep gönderilir; verisi olmayan blok gönde
   // "Nesne başvurusu bir nesnenin örneğine ayarlanmadı" hatası verir. Bu yüzden
   // Notlar dizisi ile metin alanları boş da olsa etiket olarak yazılır.
   assert.match(xml, /<Notlar><\/Notlar>|<Notlar><string>/, 'Notlar etiketi her zaman yazılmalı');
-  assert.match(xml, /<Musteri>.*<Musteri_Turu><\/Musteri_Turu><\/Musteri>/, 'boş metin alanı etiket olarak yazılmalı');
+  assert.match(xml, /<Musteri>.*<Adres><\/Adres>.*<Musteri_Turu>GERCEKKISI<\/Musteri_Turu><\/Musteri>/, 'boş metin alanı etiket olarak yazılmalı, tür dolu gitmeli');
   assert.match(xml, /<Ek_Bilgiler>.*<Ihracat_Yabanci_Sermaye>false<\/Ihracat_Yabanci_Sermaye>.*<\/Ek_Bilgiler>/);
   // Tarih alanları boş etiket olarak yazılamaz (ayrıştırılamaz); yoksa hiç gitmez.
   assert.ok(!xml.includes('<Gumruk_Beyan_Tarihi>'), 'kaynakta olmayan gümrük tarihi uydurulmamalı');

@@ -364,11 +364,21 @@ export function dovizGirdisi(kaynak: { baslik: any }): EDovizGirdi {
     vezne: temiz(b.VEZNE_KODU),
   } : undefined;
 
-  const musteriVkn = temiz(b.Customer_PartyIdentification_ID || b.Customer_PartyIdentification);
+  // Görünüm, müşteri kimliği yokken kimlik kolonuna tür etiketi (GERCEKKISI /
+  // TUZELKISI) yazıyor. Bu bir TCKN/VKN değildir; ICE'ye kimlik diye gitmemeli,
+  // Musteri_Turu alanına taşınmalı.
+  const kimlikHam = temiz(b.Customer_PartyIdentification_ID || b.Customer_PartyIdentification);
+  const turEtiketi = /^(GERCEK_?KISI|TUZEL_?KISI)$/i.test(kimlikHam) ? kimlikHam.toUpperCase().replace("_", "") : "";
+  const musteriVkn = turEtiketi ? "" : kimlikHam;
   const pasaport = temiz(b.Customer_PartyIdentification_PassportID);
   if (!musteriVkn && !pasaport) {
-    throw ApiError.badRequest("Müşteri TCKN/VKN veya pasaport numarası kaynak fişte yok; gönderim durduruldu.");
+    throw ApiError.badRequest(
+      "Müşteri TCKN/VKN veya pasaport numarası kaynak fişte yok; gönderim durduruldu. " +
+        "Fişte müşteri kimliği beyan edilmemiş; e-Döviz belgesi kimliksiz müşteriye kesilemez."
+    );
   }
+  // Tür belirtilmemişse kimlikten türetilir: 10 hane VKN tüzel kişi, TCKN/pasaport gerçek kişi.
+  const musteriTuru = turEtiketi || (musteriVkn.length === 10 ? "TUZELKISI" : "GERCEKKISI");
 
   return {
     belgeNo,
@@ -397,6 +407,7 @@ export function dovizGirdisi(kaynak: { baslik: any }): EDovizGirdi {
     musteri: {
       vknTckn: musteriVkn,
       pasaportNo: pasaport,
+      musteriTuru,
       unvan: temiz(b.Customer_PartyName),
       ad: temiz(b.Customer_Person_FirstName),
       soyad: temiz(b.Customer_Person_FamilyName),
