@@ -300,8 +300,14 @@ export const getEDovizStatus = async (
   // hata içeren cevapların "kayıt yok" kabul edilmesi tekrar gönderime yol açar.
   if (data === '') return [];
   const kayit = data?.Get_EDoviz_Status_Response;
-  if (!kayit) throw ApiError.conflict('ICE e-Döviz durum yanıtı doğrulanamadı. Gönderim durduruldu.');
-  return Array.isArray(kayit) ? kayit : [kayit];
+  if (kayit === undefined || kayit === null) throw ApiError.conflict('ICE e-Döviz durum yanıtı doğrulanamadı. Gönderim durduruldu.');
+  if (kayit === '') return [];
+  // ICE, tanımadığı UUID için de içi boş bir zarf döndürebiliyor. Zarfın varlığını
+  // "kayıt var" saymak hiç gönderilmemiş belgeyi kilitler; bu yüzden yalnızca
+  // UUID veya durum alanı dolu olan kayıtlar gerçek kabul edilir.
+  const dolu = (v: any) => String(v ?? '').trim() !== '';
+  return (Array.isArray(kayit) ? kayit : [kayit])
+    .filter((k) => dolu(k?.UUID) || dolu(k?.STATUS) || dolu(k?.STATUS_DESCRIPTION));
 };
 
 /**
