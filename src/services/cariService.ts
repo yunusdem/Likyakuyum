@@ -123,6 +123,7 @@ export interface CariLookups {
   hukukiYapiList: LookupItem[];
   sektorList: LookupItem[];
   meslekList: LookupItem[];
+  bankaList?: any[];
   ulkeList: LookupItem[];
   paraList: LookupItem[];
   istatistikList: LookupItem[];

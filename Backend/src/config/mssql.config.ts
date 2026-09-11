@@ -157,6 +157,18 @@ export const mssqlConfig = createMssqlConfig();
  */
 const poolCache = new Map<string, Promise<sql.ConnectionPool>>();
 
+export const getActivePool = async (): Promise<sql.ConnectionPool | null> => {
+  if (poolCache.size > 0) {
+    for (const p of poolCache.values()) {
+      try {
+        const pool = await p;
+        if (pool && pool.connected) return pool;
+      } catch {}
+    }
+  }
+  return null;
+};
+
 /**
  * Generates cache key for given server and database
  */
@@ -175,6 +187,11 @@ export const getDbPool = async (
   user?: string,
   password?: string
 ): Promise<sql.ConnectionPool> => {
+  if (!server && !database) {
+    const active = await getActivePool();
+    if (active) return active;
+  }
+
   const { host: targetServer, port: targetPort } = parseServerAndPort(
     server || env.DB_SERVER,
     Number(env.DB_PORT) || 1433
@@ -190,6 +207,13 @@ export const getDbPool = async (
     dbCredentialsMap.get(baseKey) ||
     dbCredentialsMap.get(`${targetServer.toLowerCase()}:${targetDb.toLowerCase()}`) ||
     dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
+
+  if ((!user || !password) && (!storedCreds || !storedCreds.password)) {
+    const active = await getActivePool();
+    if (active && active.connected) {
+      return active;
+    }
+  }
 
   const finalUser = (user && user.trim()) || storedCreds?.user || env.DB_USER || "SA";
   const finalPassword =
@@ -209,6 +233,12 @@ export const getDbPool = async (
       try {
         pool = await new sql.ConnectionPool(activeConfig).connect();
       } catch (err: any) {
+        const fallbackPool = await getActivePool();
+        if (fallbackPool && fallbackPool.connected) {
+          logger.info("[MSSQL] Yeni havuz bağlantısı başarısız oldu, mevcut aktif bağlı havuz kullanılıyor.");
+          return fallbackPool;
+        }
+
         // Ağ / DNS / Soket hatası durumunda 127.0.0.1 <-> localhost fallback dene
         const isNetworkErr =
           err?.code === "ESOCKET" ||

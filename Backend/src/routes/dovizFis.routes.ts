@@ -1,0 +1,17 @@
+import { Router } from "express";
+import { DovizFisController } from "../controllers/dovizFis.controller.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
+
+const router = Router();
+
+router.get("/debug-info", DovizFisController.getDebugInfo);
+
+router.use(authenticate);
+
+router.get("/", DovizFisController.getFisList);
+router.get("/vezne-bakiye/:vezneId", DovizFisController.getVezneBakiye);
+router.get("/:id", DovizFisController.getFisById);
+router.post("/kaydet", DovizFisController.saveFis);
+router.delete("/:id", DovizFisController.deleteFis);
+
+export default router;

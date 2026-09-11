@@ -38,6 +38,7 @@ export function LookupModal<T extends Record<string, any>>({
 
   const getItemId = (it: any) => {
     if (!it) return "";
+    if (it.fisId !== undefined && it.fisId !== null) return `fis-${it.fisId}`;
     if (it.id !== undefined && it.id !== null) return String(it.id);
     if (it.ID !== undefined && it.ID !== null) return String(it.ID);
     if (it.panoId !== undefined && it.panoId !== null) return String(it.panoId);
@@ -83,7 +84,15 @@ export function LookupModal<T extends Record<string, any>>({
     }
   };
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // Scroll selected row into view automatically
+  useEffect(() => {
+    if (selectedItem) {
+      const el = document.querySelector(".lookup-selected-row");
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [selectedItem]);
+
+  const handleGlobalKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleConfirm();
@@ -120,6 +129,7 @@ export function LookupModal<T extends Record<string, any>>({
       centered
       backdrop="static"
       keyboard={true}
+      onKeyDown={handleGlobalKeyDown}
       onEntered={() => {
         // Safe focus after modal animation completes to avoid focus-trap flicker
         searchInputRef.current?.focus();
@@ -145,7 +155,7 @@ export function LookupModal<T extends Record<string, any>>({
               setSearchTerm(e.target.value);
               setSelectedItem(null);
             }}
-            onKeyDown={handleSearchKeyDown}
+            onKeyDown={handleGlobalKeyDown}
             className="border-start-0"
           />
           {searchTerm && (

@@ -15,6 +15,8 @@ import panoRoutes from "./pano.routes.js";
 import banknotRoutes from "./banknot.routes.js";
 import cariDekontRoutes from "./cariDekont.routes.js";
 import ebelgeRoutes from "./ebelge.routes.js";
+import dovizFisRoutes from "./dovizFis.routes.js";
+import tanimlarRoutes from "./tanimlar.routes.js";
 
 const apiRouter = Router();
 
@@ -38,6 +40,9 @@ apiRouter.use("/cari-hareket", cariHareketRoutes);
 apiRouter.use("/cari-hareketler", cariHareketRoutes);
 apiRouter.use("/cari-dekont", cariDekontRoutes);
 apiRouter.use("/cari/dekont", cariDekontRoutes);
+apiRouter.use("/doviz-fis", dovizFisRoutes);
+apiRouter.use("/vezne/doviz-fis", dovizFisRoutes);
+apiRouter.use("/tanimlar", tanimlarRoutes);
 apiRouter.use("/kur", kurRoutes);
 apiRouter.use("/pano", panoRoutes);
 apiRouter.use("/kur/pano-tanimi", panoRoutes);

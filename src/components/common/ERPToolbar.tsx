@@ -13,6 +13,7 @@ import {
   IconFileText,
   IconChartLine,
   IconDeviceTv,
+  IconReceipt,
 } from "@tabler/icons-react";
 
 export interface ERPToolbarProps {
@@ -80,6 +81,11 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kur/pano-tanimi": { title: "D- Pano Tanımı", icon: <IconDeviceTv size={20} /> },
   "/ayarlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
   "/tanimlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
+  "/vezne/doviz-fisi": { title: "G- Döviz Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fis": { title: "G- Döviz Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi-kayit": { title: "G- Döviz Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi-duzeltme": { title: "H- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fis-duzeltme": { title: "H- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({
