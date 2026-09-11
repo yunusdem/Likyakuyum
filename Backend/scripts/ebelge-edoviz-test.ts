@@ -256,10 +256,23 @@ test('Durum sorgusu: ICE belgeyi tanıyorsa askıdaki giden kaydı GONDERILDI ol
   assert.deepEqual(gecisler, ['GONDERILIYOR>GONDERILDI:EDoviz'], 'giden kaydı e-Döviz türüyle GONDERILDI olmalı');
   assert.deepEqual(durumlar.map(d => d.durum), ['GONDERILDI'], 'kaynak fiş de kapatılmalı');
 
-  // ICE tanımıyorsa (boş cevap) kayıt olduğu gibi kalır; yeniden gönderim kararı kullanıcıya bırakılır.
-  gecisler = []; durumlar = []; overrides['Get_EDoviz_Status'] = '';
-  assert.equal(await kaynak.dovizDurum(ettn, 'test'), null);
+  // ICE tanımıyorsa (yalnız UUID yankısı, isSuccecss=false) belge ICE'de oluşmamıştır.
+  // Gönderim 5 dakikadan eskiyse kayıt HATA'ya çekilir ve kaynak yeniden gönderilebilir olur.
+  gecisler = []; durumlar = [];
+  overrides['Get_EDoviz_Status'] = `<Get_EDoviz_Status_Response><isSuccecss>false</isSuccecss><UUID>${ettn}</UUID></Get_EDoviz_Status_Response>`;
+  (repo as any).getGiden = async () => ({ uuid: ettn, belgeTuru: 'EDoviz', gonderimDurumu: 'GONDERILIYOR', KAYNAK_FIS_ID: '99:501:1:DVZ2026000000042', GONDERIM_TARIHI: new Date(Date.now() - 10 * 60 * 1000) });
+  const eski = await kaynak.dovizDurum(ettn, 'test');
+  assert.equal(eski.STATUS, 'BULUNAMADI');
+  assert.deepEqual(gecisler, ['GONDERILIYOR>HATA:EDoviz'], 'eski ve tanınmayan gönderim HATA olmalı');
+  assert.deepEqual(durumlar.map(d => d.durum), ['HATA'], 'kaynak fiş yeniden gönderilebilir olmalı');
+
+  // Taze gönderimde (5 dk içinde) ICE gecikmiş olabilir: kayda dokunulmaz, ekrana "bekliyor" döner.
+  gecisler = []; durumlar = [];
+  (repo as any).getGiden = async () => ({ uuid: ettn, belgeTuru: 'EDoviz', gonderimDurumu: 'GONDERILIYOR', GONDERIM_TARIHI: new Date() });
+  const taze = await kaynak.dovizDurum(ettn, 'test');
+  assert.equal(taze.STATUS, 'BEKLIYOR');
   assert.deepEqual(gecisler, []);
+  assert.deepEqual(durumlar, []);
 
   // Zaten kesinleşmiş kayıt (GONDERILDI) yeniden yazılmaz.
   (repo as any).getGiden = async () => ({ uuid: ettn, belgeTuru: 'EDoviz', gonderimDurumu: 'GONDERILDI' });

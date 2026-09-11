@@ -103,6 +103,26 @@ export class EbelgeKaynakService {
         { mesaj, kod: temiz(sonuc.STATUS) || undefined }, ctx, "EDoviz");
       const k = kaynakKimlikCoz(temiz(giden.KAYNAK_FIS_ID || giden.kaynakFisId));
       if (k) await EbelgeKaynakRepository.sonuc(k, "GONDERILDI", mesaj, ctx).catch(() => undefined);
+      return sonuc;
+    }
+
+    // ICE ETTN'yi tanımıyorsa (isSuccecss=false, yalnız UUID yankısı) belge ICE'de
+    // oluşmamıştır: ya istek ulaşmadı ya reddedildi. Askıdaki kayıt HATA'ya çekilir
+    // ki kaynak yeniden gönderilebilsin. ICE'nin gecikmeli işleme ihtimaline karşı
+    // yalnızca 5 dakikadan eski gönderimler kapatılır; tazeler dokunulmadan bekler.
+    if (askida && !sonuc) {
+      const baslangic = new Date(giden.GONDERIM_TARIHI || giden.gonderimTarihi || giden.OLUSTURMA_TARIHI || 0).getTime();
+      const eskiMi = Number.isFinite(baslangic) && baslangic > 0 && Date.now() - baslangic > 5 * 60 * 1000;
+      const mesaj = eskiMi
+        ? "ICE bu ETTN'yi tanımıyor; belge ICE'de oluşmamış. Gönderim ICE'ye ulaşmadı veya reddedildi. Belge yeniden gönderilebilir."
+        : "ICE bu ETTN'yi henüz tanımıyor; gönderim yeni. Birkaç dakika sonra durumu yeniden sorgulayınız.";
+      if (eskiMi) {
+        await EbelgeSqlRepository.earsivDurumGecir(uuid, giden.gonderimDurumu, "HATA", { mesaj }, ctx, "EDoviz");
+        const k = kaynakKimlikCoz(temiz(giden.KAYNAK_FIS_ID || giden.kaynakFisId));
+        if (k) await EbelgeKaynakRepository.sonuc(k, "HATA", mesaj, ctx).catch(() => undefined);
+      }
+      // Ekran STATUS_DESCRIPTION'ı gösterir; boş cevabı "kayıt alındı" diye sunmak yanıltıcıydı.
+      return { isSuccecss: false, UUID: uuid, STATUS: eskiMi ? "BULUNAMADI" : "BEKLIYOR", STATUS_DESCRIPTION: mesaj };
     }
     return sonuc;
   }
