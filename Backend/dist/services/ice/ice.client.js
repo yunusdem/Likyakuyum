@@ -191,6 +191,13 @@ export const callSoap = async (options) => {
     const fault = extractFault(body);
     if (fault) {
         logger.warn(`ICE ${method}: fault ${fault.code} — ${fault.message}`);
+        // Sunucu tarafı (.NET) hatalarında hangi alanın sorun çıkardığı ancak
+        // gönderilen gövde ve fault ayrıntısıyla anlaşılır. Oturum anahtarları
+        // maskelenir; belge içerikleri zaten tam olarak loglanır.
+        logger.warn(`ICE ${method}: gönderilen istek → ${maskSensitive(envelope, 6000)}`);
+        if (body.Fault?.detail !== undefined) {
+            logger.warn(`ICE ${method}: fault ayrıntısı → ${JSON.stringify(body.Fault.detail).slice(0, 3000)}`);
+        }
         throw mapFaultToApiError(fault.code, fault.message);
     }
     if (!response.ok) {
