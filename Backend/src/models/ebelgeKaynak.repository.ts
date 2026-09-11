@@ -12,6 +12,12 @@ export type KaynakKimlik = { evrakTuru: number; belgeId: number; belgeTuru: numb
 export const DOVIZ_EVRAK_TURU = 99;
 export const dovizMi = (k: { evrakTuru: number }) => k.evrakTuru === DOVIZ_EVRAK_TURU;
 export const kaynakAnahtar = (k: KaynakKimlik) => `${k.evrakTuru}:${k.belgeId}:${k.belgeTuru}${dovizMi(k) && k.belgeNo ? ':' + k.belgeNo.trim() : ''}`;
+/** `kaynakAnahtar`'ın tersi: giden kaydındaki KAYNAK_FIS_ID'den kimliği geri kurar. */
+export const kaynakKimlikCoz = (anahtar: string): KaynakKimlik | null => {
+  const [evrak, id, tur, ...no] = (anahtar || '').split(':');
+  const k = { evrakTuru: Number(evrak), belgeId: Number(id), belgeTuru: Number(tur), belgeNo: no.join(':') || undefined };
+  return Number.isInteger(k.evrakTuru) && Number.isInteger(k.belgeId) && Number.isInteger(k.belgeTuru) && anahtar?.includes(':') ? k : null;
+};
 export function kaynakSecim(k: any): { secilebilir: boolean; engel: string | null } {
   let engel: string | null = null;
   if (k.uuid) engel = 'Belge giden kutusunda mevcut. Gönderim durumunu giden kutusundan kontrol edin.';

@@ -1269,13 +1269,13 @@ export class EbelgeService {
             sonuc = await sendMustahsil(config, toBase64(uretilen.xml));
         }
         catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", "BELIRSIZ", { mesaj: "ICE sonucu alınamadı; portalden kontrol edin." }, dbContext).catch(() => undefined);
+            await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", "BELIRSIZ", { mesaj: "ICE sonucu alınamadı; portalden kontrol edin." }, dbContext, "EMustahsil").catch(() => undefined);
             throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uretilen.uuid}); yeniden göndermeyiniz.`);
         }
         const ss = gonderimSatirlari(sonuc), ilk = ss[0], dogru = (v) => String(v).toLowerCase() === "true";
         const basarili = dogru(sonuc.success) && ss.length === 1 && dogru(ilk?.success) && dogru(ilk?.shema_is_validate) && dogru(ilk?.schematron_is_validate) && String(ilk?.ettn || "").toLowerCase() === uretilen.uuid.toLowerCase() && ilk?.ID === belgeNo;
         const acikRed = String(sonuc.success).toLowerCase() === "false" || (ss.length === 1 && String(ilk?.success).toLowerCase() === "false"), durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
-        await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", durum, { kod: String(sonuc.response_code ?? ""), mesaj: ilk?.response_message || sonuc.response_message || durum }, dbContext);
+        await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", durum, { kod: String(sonuc.response_code ?? ""), mesaj: ilk?.response_message || sonuc.response_message || durum }, dbContext, "EMustahsil");
         await EbelgeSqlRepository.writeLog({ metod: "send_emustahsil", yon: "GIDEN", basarili, kullanici, ilgiliUuid: uretilen.uuid, istekOzet: `belgeNo=${belgeNo} net=${uretilen.ozet.netOdenecek}`, cevapOzet: `durum=${durum}` }, dbContext);
         if (!basarili)
             throw ApiError.conflict(durum === "BELIRSIZ" ? "Gönderim sonucu belirsiz; yeniden göndermeyiniz." : ilk?.response_message || sonuc.response_message || "e-Müstahsil reddedildi.");
@@ -1296,7 +1296,7 @@ export class EbelgeService {
         }
         if (!s.basarili)
             throw ApiError.conflict(s.mesaj || "İptal reddedildi.");
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL", { mesaj: s.mesaj, kullanici, iptalTarihi: tarih }, dbContext);
+        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL", { mesaj: s.mesaj, kullanici, iptalTarihi: tarih }, dbContext, "EMustahsil");
         return { uuid, durum: "IPTAL", mesaj: s.mesaj };
     }
     static async mustahsilGelen(f, kullanici, dbContext) { const x = await getProducerReceipts(await EbelgeSqlRepository.getConnectionConfig(dbContext), f); await EbelgeSqlRepository.writeLog({ metod: "GetProducerReceipt", yon: "GELEN", basarili: true, kullanici, cevapOzet: `adet=${x.length}` }, dbContext); return x; }

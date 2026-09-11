@@ -1868,11 +1868,11 @@ export class EbelgeService {
       tutar:uretilen.ozet.netOdenecek,paraBirimi:"TRY",gonderimDurumu:"GONDERILIYOR",iceResponseMesaj:"Gönderim başlatıldı; sonuç kesinleşmeden tekrarlamayın.",olusturan:kullanici,gonderen:kullanici,gonderimTarihi:new Date()} as any,dbContext);
     let sonuc;
     try { sonuc=await sendMustahsil(config,toBase64(uretilen.xml)); }
-    catch { await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid,"GONDERILIYOR","BELIRSIZ",{mesaj:"ICE sonucu alınamadı; portalden kontrol edin."},dbContext).catch(()=>undefined); throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uretilen.uuid}); yeniden göndermeyiniz.`); }
+    catch { await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid,"GONDERILIYOR","BELIRSIZ",{mesaj:"ICE sonucu alınamadı; portalden kontrol edin."},dbContext,"EMustahsil").catch(()=>undefined); throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uretilen.uuid}); yeniden göndermeyiniz.`); }
     const ss=gonderimSatirlari(sonuc), ilk=ss[0], dogru=(v:unknown)=>String(v).toLowerCase()==="true";
     const basarili=dogru(sonuc.success)&&ss.length===1&&dogru(ilk?.success)&&dogru(ilk?.shema_is_validate)&&dogru(ilk?.schematron_is_validate)&&String(ilk?.ettn||"").toLowerCase()===uretilen.uuid.toLowerCase()&&ilk?.ID===belgeNo;
     const acikRed=String(sonuc.success).toLowerCase()==="false"||(ss.length===1&&String(ilk?.success).toLowerCase()==="false"), durum=basarili?"GONDERILDI":acikRed?"HATA":"BELIRSIZ";
-    await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid,"GONDERILIYOR",durum,{kod:String(sonuc.response_code??""),mesaj:ilk?.response_message||sonuc.response_message||durum},dbContext);
+    await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid,"GONDERILIYOR",durum,{kod:String(sonuc.response_code??""),mesaj:ilk?.response_message||sonuc.response_message||durum},dbContext,"EMustahsil");
     await EbelgeSqlRepository.writeLog({metod:"send_emustahsil",yon:"GIDEN",basarili,kullanici,ilgiliUuid:uretilen.uuid,istekOzet:`belgeNo=${belgeNo} net=${uretilen.ozet.netOdenecek}`,cevapOzet:`durum=${durum}`} as any,dbContext);
     if(!basarili) throw ApiError.conflict(durum==="BELIRSIZ"?"Gönderim sonucu belirsiz; yeniden göndermeyiniz.":ilk?.response_message||sonuc.response_message||"e-Müstahsil reddedildi.");
     return {uuid:uretilen.uuid,belgeNo,durum,mesaj:sonuc.response_message||"",ozet:uretilen.ozet};
@@ -1882,7 +1882,7 @@ export class EbelgeService {
     const k=await EbelgeSqlRepository.getGiden(uuid,dbContext); if(!k||k.belgeTuru!=="EMustahsil") throw ApiError.notFound("e-Müstahsil bulunamadı.");
     if(k.gonderimDurumu!=="GONDERILDI") throw ApiError.conflict("Yalnız gönderilmiş e-Müstahsil iptal edilebilir.");
     let s; try{s=await cancelMustahsil(await EbelgeSqlRepository.getConnectionConfig(dbContext),k.belgeNo,tarih.toISOString());}catch{throw ApiError.conflict("İptal sonucu belirsiz; tekrar iptal göndermeyiniz.");}
-    if(!s.basarili) throw ApiError.conflict(s.mesaj||"İptal reddedildi."); await EbelgeSqlRepository.earsivDurumGecir(uuid,"GONDERILDI","IPTAL",{mesaj:s.mesaj,kullanici,iptalTarihi:tarih},dbContext); return {uuid,durum:"IPTAL",mesaj:s.mesaj};
+    if(!s.basarili) throw ApiError.conflict(s.mesaj||"İptal reddedildi."); await EbelgeSqlRepository.earsivDurumGecir(uuid,"GONDERILDI","IPTAL",{mesaj:s.mesaj,kullanici,iptalTarihi:tarih},dbContext,"EMustahsil"); return {uuid,durum:"IPTAL",mesaj:s.mesaj};
   }
   public static async mustahsilGelen(f:any,kullanici:string,dbContext?:DbContext){const x=await getProducerReceipts(await EbelgeSqlRepository.getConnectionConfig(dbContext),f); await EbelgeSqlRepository.writeLog({metod:"GetProducerReceipt",yon:"GELEN",basarili:true,kullanici,cevapOzet:`adet=${x.length}`} as any,dbContext); return x;}
   public static async mustahsilGelenStatu(uuid:string,statu:"Okunmadı"|"Okundu"|"Islendi"|"Islenmedi",kullanici:string,dbContext?:DbContext){const ok=await setProducerReceiptStatus(await EbelgeSqlRepository.getConnectionConfig(dbContext),uuid,statu); if(!ok)throw ApiError.unprocessable("ICE durum değişikliğini kabul etmedi."); await EbelgeSqlRepository.writeLog({metod:"Set_ProducerReceipt_Status",yon:"GELEN",basarili:true,kullanici,ilgiliUuid:uuid,istekOzet:`statu=${statu}`} as any,dbContext); return {uuid,statu};}

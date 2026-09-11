@@ -10,6 +10,12 @@ import { ApiError } from "../utils/ApiError.js";
 export const DOVIZ_EVRAK_TURU = 99;
 export const dovizMi = (k) => k.evrakTuru === DOVIZ_EVRAK_TURU;
 export const kaynakAnahtar = (k) => `${k.evrakTuru}:${k.belgeId}:${k.belgeTuru}${dovizMi(k) && k.belgeNo ? ':' + k.belgeNo.trim() : ''}`;
+/** `kaynakAnahtar`'ın tersi: giden kaydındaki KAYNAK_FIS_ID'den kimliği geri kurar. */
+export const kaynakKimlikCoz = (anahtar) => {
+    const [evrak, id, tur, ...no] = (anahtar || '').split(':');
+    const k = { evrakTuru: Number(evrak), belgeId: Number(id), belgeTuru: Number(tur), belgeNo: no.join(':') || undefined };
+    return Number.isInteger(k.evrakTuru) && Number.isInteger(k.belgeId) && Number.isInteger(k.belgeTuru) && anahtar?.includes(':') ? k : null;
+};
 export function kaynakSecim(k) {
     let engel = null;
     if (k.uuid)

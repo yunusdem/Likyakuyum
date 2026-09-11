@@ -242,3 +242,28 @@ test('Giden kutusunda mevcut belge yeniden hazırlanmaz', async () => {
   gidenVar = true;
   await assert.rejects(kaynak.dovizHazirla(kimlik), /zaten mevcut/);
 });
+
+test('Durum sorgusu: ICE belgeyi tanıyorsa askıdaki giden kaydı GONDERILDI olur', async () => {
+  // Gönderim ICE'ye ulaşmış ama son adım (durum geçişi) başarısız olmuşsa kayıt
+  // GONDERILIYOR'da takılır. Durum sorgusunda ICE'nin belgeyi tanıması sonucun
+  // kendisidir: giden kaydı ve kaynak fiş GONDERILDI'ye çekilir.
+  let gecisler: string[] = [];
+  (repo as any).getGiden = async () => ({ uuid: ettn, belgeTuru: 'EDoviz', gonderimDurumu: 'GONDERILIYOR', KAYNAK_FIS_ID: '99:501:1:DVZ2026000000042' });
+  (repo as any).earsivDurumGecir = async (_u: string, b: string, d: string, _s: any, _c: any, tur: string) => { gecisler.push(`${b}>${d}:${tur}`); };
+  overrides['Get_EDoviz_Status'] = `<Get_EDoviz_Status_Response><isSuccecss>true</isSuccecss><UUID>${ettn}</UUID><STATUS>GONDERILDI</STATUS></Get_EDoviz_Status_Response>`;
+  const sonuc = await kaynak.dovizDurum(ettn, 'test');
+  assert.equal(String(sonuc.STATUS), 'GONDERILDI');
+  assert.deepEqual(gecisler, ['GONDERILIYOR>GONDERILDI:EDoviz'], 'giden kaydı e-Döviz türüyle GONDERILDI olmalı');
+  assert.deepEqual(durumlar.map(d => d.durum), ['GONDERILDI'], 'kaynak fiş de kapatılmalı');
+
+  // ICE tanımıyorsa (boş cevap) kayıt olduğu gibi kalır; yeniden gönderim kararı kullanıcıya bırakılır.
+  gecisler = []; durumlar = []; overrides['Get_EDoviz_Status'] = '';
+  assert.equal(await kaynak.dovizDurum(ettn, 'test'), null);
+  assert.deepEqual(gecisler, []);
+
+  // Zaten kesinleşmiş kayıt (GONDERILDI) yeniden yazılmaz.
+  (repo as any).getGiden = async () => ({ uuid: ettn, belgeTuru: 'EDoviz', gonderimDurumu: 'GONDERILDI' });
+  overrides['Get_EDoviz_Status'] = `<Get_EDoviz_Status_Response><isSuccecss>true</isSuccecss><UUID>${ettn}</UUID></Get_EDoviz_Status_Response>`;
+  await kaynak.dovizDurum(ettn, 'test');
+  assert.deepEqual(gecisler, []);
+});

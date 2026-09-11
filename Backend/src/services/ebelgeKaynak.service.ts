@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { EbelgeKaynakRepository, KaynakKimlik, dovizMi, kaynakAnahtar } from "../models/ebelgeKaynak.repository.js";
+import { EbelgeKaynakRepository, KaynakKimlik, dovizMi, kaynakAnahtar, kaynakKimlikCoz } from "../models/ebelgeKaynak.repository.js";
 import { EDovizGirdi, getEDovizCikti, getEDovizStatus, previewEDoviz, sendEDoviz, sendEDovizIptal } from "./ice/ice.edoviz.js";
 import { DbContext, EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { EbelgeService } from "./ebelge.service.js";
@@ -86,12 +86,24 @@ export class EbelgeKaynakService {
   }
 
   static async dovizDurum(uuid: string, kullanici: string, ctx?: DbContext) {
-    await this.dovizGiden(uuid, ctx);
+    const giden = await this.dovizGiden(uuid, ctx);
     const config = await EbelgeSqlRepository.getConnectionConfig(ctx);
     const kayitlar = await getEDovizStatus(config, [uuid]);
     const sonuc = kayitlar.find((r) => String(r.UUID || "").toLowerCase() === uuid.toLowerCase()) || kayitlar[0] || null;
     await EbelgeSqlRepository.writeLog({ metod: "Get_EDoviz_Status", yon: "GIDEN", basarili: !!sonuc,
       kullanici, ilgiliUuid: uuid, cevapOzet: sonuc ? `STATUS=${sonuc.STATUS || ""}` : "Kayıt dönmedi" } as any, ctx);
+
+    // Gönderim sonucu kesinleşmemiş (GONDERILIYOR/BELIRSIZ) kayıtlar için ICE'nin
+    // belgeyi tanıması sonucun kendisidir: belge ICE'de kayıtlı → GONDERILDI.
+    // Kaynak fişin durumu da aynı şekilde kapatılır ki liste bir daha göstermesin.
+    const askida = ["GONDERILIYOR", "BELIRSIZ"].includes(String(giden.gonderimDurumu || ""));
+    if (askida && sonuc) {
+      const mesaj = temiz(sonuc.STATUS_DESCRIPTION || sonuc.STATUS) || "ICE durum sorgusu belgeyi doğruladı.";
+      await EbelgeSqlRepository.earsivDurumGecir(uuid, giden.gonderimDurumu, "GONDERILDI",
+        { mesaj, kod: temiz(sonuc.STATUS) || undefined }, ctx, "EDoviz");
+      const k = kaynakKimlikCoz(temiz(giden.KAYNAK_FIS_ID || giden.kaynakFisId));
+      if (k) await EbelgeKaynakRepository.sonuc(k, "GONDERILDI", mesaj, ctx).catch(() => undefined);
+    }
     return sonuc;
   }
 
@@ -116,7 +128,7 @@ export class EbelgeKaynakService {
     await EbelgeSqlRepository.writeLog({ metod: "send_edoviz_iptal", yon: "GIDEN", basarili: sonuc.basarili,
       kullanici, ilgiliUuid: uuid, istekOzet: `belgeNo=${kayit.belgeNo} iptalTarihi=${gun}`, cevapOzet: sonuc.mesaj } as any, ctx);
     if (!sonuc.basarili) throw ApiError.conflict(sonuc.mesaj || "e-Döviz iptali reddedildi.");
-    await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL", { mesaj: sonuc.mesaj, kullanici, iptalTarihi }, ctx);
+    await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL", { mesaj: sonuc.mesaj, kullanici, iptalTarihi }, ctx, "EDoviz");
     return { uuid, durum: "IPTAL", mesaj: sonuc.mesaj };
   }
 
@@ -234,7 +246,7 @@ export class EbelgeKaynakService {
       } catch {
         await EbelgeSqlRepository.earsivDurumGecir(girdi.uuid, "GONDERILIYOR", "BELIRSIZ", {
           mesaj: "ICE gönderim sonucu alınamadı. Yeniden göndermeyiniz; ICE portalinden ETTN ile kontrol ediniz.",
-        }, ctx).catch(() => undefined);
+        }, ctx, "EDoviz").catch(() => undefined);
         throw ApiError.conflict(
           `Gönderim sonucu belirsiz (ETTN: ${girdi.uuid}). Giden kutusunu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`
         );
@@ -258,7 +270,7 @@ export class EbelgeKaynakService {
         mesaj: durum === "BELIRSIZ"
           ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden ETTN ile kontrol ediniz."
           : ilk?.response_message || sonuc.response_message || durum,
-      }, ctx);
+      }, ctx, "EDoviz");
       await EbelgeSqlRepository.writeLog({
         metod: "send_edoviz_basic", yon: "GIDEN", basarili, kullanici, ilgiliUuid: girdi.uuid,
         istekOzet: `belgeNo=${girdi.belgeNo} tutar=${girdi.tutar.payableAmount}`,

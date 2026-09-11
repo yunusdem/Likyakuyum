@@ -952,13 +952,21 @@ export class EbelgeSqlRepository {
     beklenen: string,
     durum: string,
     sonuc: { mesaj?: string; kod?: string; kullanici?: string; iptalTarihi?: Date } = {},
-    dbContext?: DbContext
+    dbContext?: DbContext,
+    /**
+     * Adı e-Arşiv'den kalsa da bu geçiş e-Döviz ve e-Müstahsil için de kullanılır.
+     * Filtre sabit 'EArsiv' iken diğer türlerde UPDATE 0 satır etkiliyor ve
+     * gönderim ICE'ye ulaştığı halde "durum değişti" hatasıyla kayıt
+     * GONDERILIYOR'da takılı kalıyordu. Çağıran kendi türünü verir.
+     */
+    belgeTuru: "EArsiv" | "EDoviz" | "EMustahsil" = "EArsiv"
   ): Promise<void> {
     const pool = await this.getPool(dbContext);
     const res = await pool.request()
       .input("uuid", sql.VarChar(60), uuid)
       .input("beklenen", sql.VarChar(20), beklenen)
       .input("durum", sql.VarChar(20), durum)
+      .input("belgeTuru", sql.VarChar(20), belgeTuru)
       .input("mesaj", sql.NVarChar(1000), sonuc.mesaj?.slice(0, 1000) ?? null)
       .input("kod", sql.VarChar(20), sonuc.kod?.slice(0, 20) ?? null)
       .input("kullanici", sql.NVarChar(50), sonuc.kullanici ?? null)
@@ -969,7 +977,7 @@ export class EbelgeSqlRepository {
             [ICE_RESPONSE_CODE] = @kod,
             [IPTAL_TARIHI] = CASE WHEN @durum = 'IPTAL' THEN @iptalTarihi ELSE [IPTAL_TARIHI] END,
             [IPTAL_EDEN] = CASE WHEN @durum = 'IPTAL' THEN @kullanici ELSE [IPTAL_EDEN] END
-        WHERE [UUID] = @uuid AND [BELGE_TURU] = 'EArsiv' AND [GONDERIM_DURUMU] = @beklenen
+        WHERE [UUID] = @uuid AND [BELGE_TURU] = @belgeTuru AND [GONDERIM_DURUMU] = @beklenen
       `);
     if ((res.rowsAffected?.[0] ?? 0) !== 1) {
       throw ApiError.conflict("Belgenin durumu değişti veya işlem zaten sürüyor. Giden kutusunu yenileyiniz.");
