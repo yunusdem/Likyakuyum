@@ -164,7 +164,8 @@ export class EbelgeKaynakService {
    */
   static async dovizHazirla(k: KaynakKimlik, ctx?: DbContext) {
     const kaynak = await EbelgeKaynakRepository.dovizDetay(k, ctx);
-    const girdi = dovizGirdisi(kaynak);
+    const ayar = await EbelgeSqlRepository.getAyar(ctx);
+    const girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn });
     if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) {
       throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
     }
@@ -194,7 +195,8 @@ export class EbelgeKaynakService {
     if (kaynakParmakizi(kaynak) !== parmakizi) {
       throw ApiError.conflict("Kaynak döviz fişi değişmiş. Yeniden hazırlayın ve onaylayın.");
     }
-    const girdi = dovizGirdisi(kaynak);
+    const ayar = await EbelgeSqlRepository.getAyar(ctx);
+    const girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn });
     if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) {
       throw ApiError.conflict("Belge giden kutusunda zaten mevcut; yeniden gönderilmedi.");
     }
@@ -309,8 +311,12 @@ const isoTarih = (v: unknown, ad: string): string => {
  * Tutarlar ERP'de hazır hesaplanmış olduğundan `TutarHesaplanmasin=true` gönderilir;
  * böylece ICE kendi hesabını dayatıp fişle uyumsuz belge üretmez.
  */
-export function dovizGirdisi(kaynak: { baslik: any }): EDovizGirdi {
+export function dovizGirdisi(kaynak: { baslik: any }, gonderici?: { vknTckn?: string }): EDovizGirdi {
   const b = kaynak.baslik;
+  // Fatura akışıyla aynı öncelik (goncericiTamamla): E-Belge ayarındaki Firma VKN
+  // öncelikli, yoksa görünümdeki firma. ICE hesabı ile belgedeki yetkili müessese
+  // aynı mükellef olmalı; ayar bu eşleşmenin tek yönetilebilir noktası.
+  const yetkiliVkn = temiz(gonderici?.vknTckn) || temiz(b.Supplier_PartyIdentification);
   if (Number(b.IPTAL || 0) !== 0) throw ApiError.conflict("Bu döviz fişi iptal edilmiş; gönderilemez.");
   if (Number(b.E_BELGE_DURUMU || 0) !== 0) {
     throw ApiError.conflict("Eski sistemde işlem/ETTN kaydı var. ICE sonucunu doğrulamadan yeniden gönderilemez.");
@@ -393,7 +399,7 @@ export function dovizGirdisi(kaynak: { baslik: any }): EDovizGirdi {
     duzenlemeTarihi: isoTarih(b.IssueDate || b.TARIH, "Düzenleme tarihi"),
     duzenlemeSaati: isoTarih(b.IssueTime || b.TARIH, "Düzenleme saati"),
     yetkiliMuessese: {
-      vknTckn: temiz(b.Supplier_PartyIdentification),
+      vknTckn: yetkiliVkn,
       unvan: temiz(b.Supplier_PartyName),
       adres: temiz(b.Supplier_StreetName),
       ulke: temiz(b.Supplier_CountryName),

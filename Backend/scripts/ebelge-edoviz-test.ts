@@ -72,6 +72,8 @@ beforeEach(() => {
   (kaynakRepo as any).reserve = async () => { cagrilar.push('reserve'); };
   (kaynakRepo as any).sonuc = async (_k: any, durum: string, mesaj: string) => { durumlar.push({ durum, mesaj }); };
   (repo as any).gidenBelgeNoVarMi = async () => gidenVar;
+  // Ayar boş: gönderici VKN görünümden gelir (fatura akışıyla aynı öncelik).
+  (repo as any).getAyar = async () => ({ firmaVkn: '' });
   (repo as any).getConnectionConfig = async () => config;
   (repo as any).insertGiden = async (k: any) => { cagrilar.push('insertGiden'); gidenKayitlari.push(k); gidenVar = true; };
   (repo as any).earsivDurumGecir = async (_u: string, _b: string, d: string) => { cagrilar.push('durum:' + d); };
@@ -130,6 +132,11 @@ test('Kimliksiz müşteri reddedilir; TCKN veya pasaport zorunludur', () => {
   // Tür yoksa kimlikten türetilir: 10 hane VKN tüzel, TCKN/pasaport gerçek kişi.
   assert.equal(dovizGirdisi({ baslik: { ...baslik(), Customer_PartyIdentification_ID: '1234567890' } }).musteri.musteriTuru, 'TUZELKISI');
   assert.equal(dovizGirdisi(kayit).musteri.musteriTuru, 'GERCEKKISI');
+  // Gönderici VKN: fatura akışıyla aynı öncelik — E-Belge ayarındaki Firma VKN
+  // varsa o, yoksa görünümdeki firma.
+  assert.equal(dovizGirdisi(kayit, { vknTckn: '31534209546' }).yetkiliMuessese.vknTckn, '31534209546');
+  assert.equal(dovizGirdisi(kayit, { vknTckn: '' }).yetkiliMuessese.vknTckn, '1234567890');
+  assert.equal(dovizGirdisi(kayit).yetkiliMuessese.vknTckn, '1234567890');
 });
 
 test('Üretilen XML, WSDL sequence sırasını korur', () => {
