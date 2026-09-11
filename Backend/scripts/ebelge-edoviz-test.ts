@@ -170,6 +170,11 @@ test('ICE koşulsuz okuduğu bloklar hep gönderilir; verisi olmayan blok gönde
   // örneğine ayarlanmadı" hatası veriyor. Komisyonsuz alımda gerçek değer sıfırdır.
   assert.match(xml, /<Komisyon_Bilgileri><Komisyon_Tutar_Vergi_Haric>0</);
   assert.match(xml, /<Kiymetli_Maden_Bilgileri><Kiymetli_Maden_Adi><\/Kiymetli_Maden_Adi><Adet>0<\/Adet><\/Kiymetli_Maden_Bilgileri>/);
+  // WSDL: Saf_Altin_Karsiligi → Vergi_Adi → Vergi_Kodu → Vergi_Orani. Vergi kodu
+  // hiç gönderilmediğinde ICE null referans veriyor; alımda oran sıfır olsa da gider.
+  assert.match(xml, /<Saf_Altin_Karsiligi>0<\/Saf_Altin_Karsiligi><Vergi_Adi>BSMV<\/Vergi_Adi><Vergi_Kodu>0021<\/Vergi_Kodu><Vergi_Orani>/);
+  // Ödeme hesap blokları nesne olarak okunur; nakitte boş ama mevcut gider.
+  assert.match(xml, /<Odeme_Yapan_Hesap><Yetkili_Muessese_Dosya_Numarası><\/Yetkili_Muessese_Dosya_Numarası><Sube_Kodu><\/Sube_Kodu><Odeme_Aciklamasi><\/Odeme_Aciklamasi><\/Odeme_Yapan_Hesap><Odeme_Yapilan_Hesap>/);
   assert.match(xml, /<BuyBack><Komisyon_Tutari>0<\/Komisyon_Tutari><\/BuyBack>/);
   // .NET tarafında XML'de hiç gelmeyen metin ve dizi alanları null olur ve
   // "Nesne başvurusu bir nesnenin örneğine ayarlanmadı" hatası verir. Bu yüzden

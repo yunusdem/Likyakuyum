@@ -452,6 +452,11 @@ export function dovizGirdisi(kaynak, gonderici) {
             tlKarsilikKuru,
             dolarKarsilikKuru,
             safAltinKarsiligi: sayi(b.SAF_ALTIN_KARSILIGI) ?? 0,
+            // Döviz alım/satımında vergi BSMV'dir (GİB vergi kodu 0021). Görünüm kod
+            // taşıyorsa o kullanılır; alımda oran ve tutar sıfır olsa da kod gönderilir,
+            // çünkü ICE vergi kodunu tabloda arıyor ve boş/eksik kodda null referans veriyor.
+            vergiAdi: temiz(b.TaxTypeName || b.VERGI_ADI) || "BSMV",
+            vergiKodu: temiz(b.TaxTypeCode || b.VERGI_KODU) || "0021",
             lineExtensionAmount: lineExt,
             taxExclusiveAmount: taxExcl,
             taxInclusiveAmount: taxIncl,

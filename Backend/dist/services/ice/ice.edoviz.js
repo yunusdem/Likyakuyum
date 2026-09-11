@@ -61,7 +61,12 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
         alan("Doviz_Miktar", g.alisSatis.dovizMiktar)) +
     blok("Odeme_Bilgileri", alan("Odeme_Yontemi", g.odeme.yontemi) +
         alan("Son_Odeme_Tarihi", g.odeme.sonOdemeTarihi) +
-        metin("Aciklama", g.odeme.aciklama)) +
+        metin("Aciklama", g.odeme.aciklama) +
+        // Hesap blokları WSDL'de isteğe bağlı görünür ama ICE nesne olarak okuyor;
+        // gelmediğinde null referans verir. Nakit ödemede içerik yoktur, boş gider.
+        // "Numarası" etiketindeki Türkçe karakter WSDL'de böyle tanımlı; değiştirilmez.
+        `<Odeme_Yapan_Hesap>${metin("Yetkili_Muessese_Dosya_Numarası", "")}${metin("Sube_Kodu", "")}${metin("Odeme_Aciklamasi", "")}</Odeme_Yapan_Hesap>` +
+        `<Odeme_Yapilan_Hesap>${metin("Yetkili_Muessese_Dosya_Numarası", "")}${metin("Sube_Kodu", "")}${metin("Odeme_Aciklamasi", "")}</Odeme_Yapilan_Hesap>`) +
     // Ek_Bilgiler nesnesi ICE tarafında koşulsuz okunuyor; blok hiç gelmezse null
     // referans verir. Blok her zaman gönderilir ama gümrük tarihleri uydurulmaz:
     // tarih alanları yalnızca kaynak fişte varsa yazılır (.NET'te eksik tarih
@@ -92,6 +97,8 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
         alan("TL_Karsilik_Kuru", g.tutar.tlKarsilikKuru) +
         alan("Dolar_Karsilik_Kuru", g.tutar.dolarKarsilikKuru) +
         alan("Saf_Altin_Karsiligi", g.tutar.safAltinKarsiligi) +
+        metin("Vergi_Adi", g.tutar.vergiAdi) +
+        metin("Vergi_Kodu", g.tutar.vergiKodu) +
         alan("Vergi_Orani", g.tutar.vergiOrani) +
         alan("Vergi_Matrahi", g.tutar.vergiMatrahi) +
         alan("Vergi_Tutari", g.tutar.vergiTutari) +
