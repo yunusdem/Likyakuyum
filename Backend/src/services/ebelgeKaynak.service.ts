@@ -374,7 +374,12 @@ export function dovizGirdisi(kaynak: { baslik: any }): EDovizGirdi {
     belgeNo,
     uuid: kaynakEttn || temiz(b.UUID) || randomUUID(),
     profileId: temiz(b.ProfileId) || "TEMELDOVIZ",
-    creditNoteTypeCode: temiz(b.CreditNoteTypeCode) || "DOVIZALIM",
+    // ICE'nin kabul ettiği belge tipi kodları yalnızca DOVIZALIMBELGESI ve
+    // DOVIZSATIMBELGESI (dokuman.iceteknoloji.com.tr, send_edoviz_basic
+    // parametreleri). Görünümdeki "DOVIZALIM" değeri ICE'de eşleşmeyip null
+    // referans hatasına yol açıyordu; bu yüzden kod, fişin kendi tipinden
+    // türetilir. FIS_TIPI=1 satış (DIS/YSS serisi), diğerleri alış (DIA/YAB).
+    creditNoteTypeCode: Number(b.FIS_TIPI) === 1 ? "DOVIZSATIMBELGESI" : "DOVIZALIMBELGESI",
     duzenlemeTarihi: isoTarih(b.IssueDate || b.TARIH, "Düzenleme tarihi"),
     duzenlemeSaati: isoTarih(b.IssueTime || b.TARIH, "Düzenleme saati"),
     yetkiliMuessese: {

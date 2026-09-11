@@ -87,7 +87,10 @@ const adapterTakli = async () => {
 test('Döviz fişi ICE girdisine eşlenir; pasaportlu müşteri kabul edilir', () => {
   const g = dovizGirdisi(kayit);
   assert.equal(g.belgeNo, 'DVZ2026000000042');
-  assert.equal(g.creditNoteTypeCode, 'DOVIZALIM');
+  // ICE yalnızca DOVIZALIMBELGESI / DOVIZSATIMBELGESI tanır; görünümdeki
+  // "DOVIZALIM" metni değil, fişin FIS_TIPI değeri belirleyicidir.
+  assert.equal(g.creditNoteTypeCode, 'DOVIZSATIMBELGESI', 'FIS_TIPI=1 satış belgesidir');
+  assert.equal(dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 0 } }).creditNoteTypeCode, 'DOVIZALIMBELGESI');
   assert.equal(g.musteri.pasaportNo, 'U1234567');
   assert.equal(g.musteri.ad, 'John');
   assert.equal(g.alisSatis.dovizKodu, 'USD');
