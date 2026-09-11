@@ -386,15 +386,18 @@ export class EbelgeSqlRepository {
    */
   public static async getFirmaBilgisi(
     dbContext?: DbContext
-  ): Promise<{ vkn: string; unvan: string; adres: string; telefon: string }> {
+  ): Promise<{ vkn: string; unvan: string; adres: string; telefon: string; dosyaNo?: string }> {
     const pool = await this.getPool(dbContext);
     try {
+      // DOSYA_NO: Yetkili Müessese Dosya Numarası. ICE e-Döviz'de ödeme hesap
+      // bloğunda zorunlu tutuyor ("gönderilmek zorundadır"); firma tanımından okunur.
       const res = await pool.request().query(`
         SELECT TOP 1
           LTRIM(RTRIM(ISNULL([VERGI_KIMLIK_NO], ''))) as vkn,
           LTRIM(RTRIM(ISNULL([FIRMA_ADI], ''))) as unvan,
           LTRIM(RTRIM(ISNULL([ADRES], ''))) as adres,
-          LTRIM(RTRIM(ISNULL([TELEFON], ''))) as telefon
+          LTRIM(RTRIM(ISNULL([TELEFON], ''))) as telefon,
+          LTRIM(RTRIM(ISNULL([DOSYA_NO], ''))) as dosyaNo
         FROM [dbo].[TODVZ_TANIM]
       `);
       const row = res.recordset[0];
@@ -403,6 +406,7 @@ export class EbelgeSqlRepository {
         unvan: row?.unvan || "",
         adres: row?.adres || "",
         telefon: row?.telefon || "",
+        dosyaNo: row?.dosyaNo || "",
       };
     } catch (err) {
       logger.warn("EbelgeSqlRepository.getFirmaBilgisi uyarısı:", err);

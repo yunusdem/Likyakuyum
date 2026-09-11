@@ -70,7 +70,15 @@ export interface EDovizGirdi {
     yontemi: "NAKIT" | "EFTHAVALE" | "KREDIKARTIBANKAKARTI" | "DIGER";
     sonOdemeTarihi: string;
     aciklama?: string;
+    /** Yetkili Müessese Dosya Numarası — ICE ödeme hesap bloğunda zorunlu tutuyor. */
+    yetkiliMuesseseDosyaNo?: string;
   };
+  /**
+   * İstatistik kodu (TCMB/Hazine döviz işlem istatistiği). ICE bunu belge türüyle
+   * (alım/satım) doğrular; gümrük bilgisi olmayan fişte de gönderilmesi gerekir,
+   * bu yüzden Ek_Bilgiler'den bağımsız tutulur.
+   */
+  istatistikNo?: string;
   ekBilgiler?: {
     istatistikNo?: string;
     geldigiUlke?: string;
@@ -214,15 +222,18 @@ export const buildEDovizInnerXml = (loginHeaderXml: string, g: EDovizGirdi): str
       // Hesap blokları WSDL'de isteğe bağlı görünür ama ICE nesne olarak okuyor;
       // gelmediğinde null referans verir. Nakit ödemede içerik yoktur, boş gider.
       // "Numarası" etiketindeki Türkçe karakter WSDL'de böyle tanımlı; değiştirilmez.
-      `<Odeme_Yapan_Hesap>${metin("Yetkili_Muessese_Dosya_Numarası", "")}${metin("Sube_Kodu", "")}${metin("Odeme_Aciklamasi", "")}</Odeme_Yapan_Hesap>` +
-      `<Odeme_Yapilan_Hesap>${metin("Yetkili_Muessese_Dosya_Numarası", "")}${metin("Sube_Kodu", "")}${metin("Odeme_Aciklamasi", "")}</Odeme_Yapilan_Hesap>`
+      // Dosya numarası ICE'de zorunlu ("Yetkili Müessese Dosya Numarası gönderilmek
+      // zorundadır"). Alımda ödemeyi yapan, satımda ödeme yapılan taraf müessesedir;
+      // ICE hangisini okuduğunu belirtmediği için iki blokta da gönderilir.
+      `<Odeme_Yapan_Hesap>${metin("Yetkili_Muessese_Dosya_Numarası", g.odeme.yetkiliMuesseseDosyaNo)}${metin("Sube_Kodu", "")}${metin("Odeme_Aciklamasi", "")}</Odeme_Yapan_Hesap>` +
+      `<Odeme_Yapilan_Hesap>${metin("Yetkili_Muessese_Dosya_Numarası", g.odeme.yetkiliMuesseseDosyaNo)}${metin("Sube_Kodu", "")}${metin("Odeme_Aciklamasi", "")}</Odeme_Yapilan_Hesap>`
   ) +
   // Ek_Bilgiler nesnesi ICE tarafında koşulsuz okunuyor; blok hiç gelmezse null
   // referans verir. Blok her zaman gönderilir ama gümrük tarihleri uydurulmaz:
   // tarih alanları yalnızca kaynak fişte varsa yazılır (.NET'te eksik tarih
   // null olmaz, varsayılan değer alır). Metin alanları boş da olsa yazılır.
   `<Ek_Bilgiler>` +
-    metin("Istatistik_No", g.ekBilgiler?.istatistikNo) +
+    metin("Istatistik_No", g.istatistikNo ?? g.ekBilgiler?.istatistikNo) +
     metin("Geldigi_Ulke", g.ekBilgiler?.geldigiUlke) +
     metin("Gelis_Nedeni", g.ekBilgiler?.gelisNedeni) +
     `<Ihracat_Yabanci_Sermaye>${g.ekBilgiler?.ihracatYabanciSermaye ? "true" : "false"}</Ihracat_Yabanci_Sermaye>` +

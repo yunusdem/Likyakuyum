@@ -197,7 +197,8 @@ export class EbelgeKaynakService {
   static async dovizHazirla(k: KaynakKimlik, ctx?: DbContext) {
     const kaynak = await EbelgeKaynakRepository.dovizDetay(k, ctx);
     const ayar = await EbelgeSqlRepository.getAyar(ctx);
-    const girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn });
+    const firma = await EbelgeSqlRepository.getFirmaBilgisi(ctx);
+    const girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn, dosyaNo: firma.dosyaNo });
     if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) {
       throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
     }
@@ -228,7 +229,8 @@ export class EbelgeKaynakService {
       throw ApiError.conflict("Kaynak döviz fişi değişmiş. Yeniden hazırlayın ve onaylayın.");
     }
     const ayar = await EbelgeSqlRepository.getAyar(ctx);
-    const girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn });
+    const firma = await EbelgeSqlRepository.getFirmaBilgisi(ctx);
+    const girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn, dosyaNo: firma.dosyaNo });
     if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) {
       throw ApiError.conflict("Belge giden kutusunda zaten mevcut; yeniden gönderilmedi.");
     }
@@ -343,8 +345,19 @@ const isoTarih = (v: unknown, ad: string): string => {
  * Tutarlar ERP'de hazır hesaplanmış olduğundan `TutarHesaplanmasin=true` gönderilir;
  * böylece ICE kendi hesabını dayatıp fişle uyumsuz belge üretmez.
  */
-export function dovizGirdisi(kaynak: { baslik: any }, gonderici?: { vknTckn?: string }): EDovizGirdi {
+export function dovizGirdisi(kaynak: { baslik: any }, gonderici?: { vknTckn?: string; dosyaNo?: string }): EDovizGirdi {
   const b = kaynak.baslik;
+  // ICE: "Yetkili Müessese Dosya Numarası gönderilmek zorundadır." Firma tanımından
+  // gelir; gönderici bilgisi verilmiş ama dosya no boşsa ICE'ye gitmeden durdurulur,
+  // çünkü ret kesindir ve belge numarası boşa yakılmasın.
+  const dosyaNo = temiz(gonderici?.dosyaNo);
+  // Kontrol, çağıran dosya numarasını iletmeyi üstlendiğinde (anahtar mevcut) çalışır;
+  // salt eşleme amaçlı çağrılar (yalnız VKN verilen) ICE kuralına takılmaz.
+  if (gonderici && "dosyaNo" in gonderici && !dosyaNo) {
+    throw ApiError.badRequest(
+      "Yetkili Müessese Dosya Numarası boş. Firma tanımındaki 'Dosya No' alanını doldurun; ICE e-Döviz belgesinde zorunlu tutuyor."
+    );
+  }
   // Fatura akışıyla aynı öncelik (goncericiTamamla): E-Belge ayarındaki Firma VKN
   // öncelikli, yoksa görünümdeki firma. ICE hesabı ile belgedeki yetkili müessese
   // aynı mükellef olmalı; ayar bu eşleşmenin tek yönetilebilir noktası.
@@ -467,7 +480,11 @@ export function dovizGirdisi(kaynak: { baslik: any }, gonderici?: { vknTckn?: st
       dovizMiktar: miktar,
     },
     // Döviz alım/satımı vezneden nakit yapılır; bedel işlem anında ödenir.
-    odeme: { yontemi: 'NAKIT', sonOdemeTarihi: isoTarih(b.IssueDate || b.TARIH, 'Son ödeme tarihi') },
+    odeme: { yontemi: 'NAKIT', sonOdemeTarihi: isoTarih(b.IssueDate || b.TARIH, 'Son ödeme tarihi'), yetkiliMuesseseDosyaNo: dosyaNo },
+    // ICE istatistik kodunu belge türüyle doğrular ("ISTATISTIKNO ile Belge türü
+    // uyumsuzluğu"); gümrük bilgisi olmayan fişte de gitmeli. Görünüm vermezse
+    // fişin istatistik tanımından (TODVZ_ISTATISTIK.KOD) okunur.
+    istatistikNo: temiz(b.ISTATISTIK_NO || b.ISTATISTIK_KOD),
     ekBilgiler,
     komisyon: sayi(b.KOMISYON) === undefined ? undefined : {
       vergiHaric: sayi(b.KOMISYON),

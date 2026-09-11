@@ -50,6 +50,8 @@ const baslik = () => ({
   TaxableAmount: 0, TaxAmount: 0, TaxPercent: 0,
   LineExtensionAmount: 34500, TaxExclusiveAmount: 34500, TaxInclusiveAmount: 34500, PayableAmount: 34500,
   KOMISYON: 50, BMV: 2.5, VEZNE_KODU: 'VZN1',
+  // Fişin istatistik tanımından gelen kod (TODVZ_ISTATISTIK.KOD); ICE belge türüyle doğrular.
+  ISTATISTIK_KOD: '1010',
 });
 
 let kayit: { baslik: any };
@@ -74,6 +76,8 @@ beforeEach(() => {
   (repo as any).gidenBelgeNoVarMi = async () => gidenVar;
   // Ayar boş: gönderici VKN görünümden gelir (fatura akışıyla aynı öncelik).
   (repo as any).getAyar = async () => ({ firmaVkn: '' });
+  // Firma tanımındaki Dosya No: ICE ödeme hesap bloğunda zorunlu tutuyor.
+  (repo as any).getFirmaBilgisi = async () => ({ vkn: '', unvan: '', adres: '', telefon: '', dosyaNo: 'DSY-001' });
   (repo as any).getConnectionConfig = async () => config;
   (repo as any).insertGiden = async (k: any) => { cagrilar.push('insertGiden'); gidenKayitlari.push(k); gidenVar = true; };
   (repo as any).earsivDurumGecir = async (_u: string, _b: string, d: string) => { cagrilar.push('durum:' + d); };
@@ -137,6 +141,17 @@ test('Kimliksiz müşteri reddedilir; TCKN veya pasaport zorunludur', () => {
   assert.equal(dovizGirdisi(kayit, { vknTckn: '31534209546' }).yetkiliMuessese.vknTckn, '31534209546');
   assert.equal(dovizGirdisi(kayit, { vknTckn: '' }).yetkiliMuessese.vknTckn, '1234567890');
   assert.equal(dovizGirdisi(kayit).yetkiliMuessese.vknTckn, '1234567890');
+
+  // ICE iş kuralları (gerçek ret mesajlarından): istatistik kodu gümrük bilgisi
+  // olmasa da gitmeli; Yetkili Müessese Dosya Numarası ödeme hesap bloğunda zorunlu.
+  const xmlDosyali = buildEDovizInnerXml('', dovizGirdisi(kayit, { vknTckn: '', dosyaNo: 'DSY-001' }));
+  assert.match(xmlDosyali, /<Ek_Bilgiler><Istatistik_No>1010<\/Istatistik_No>/, 'istatistik kodu Ek_Bilgiler içinde gitmeli');
+  assert.match(xmlDosyali, /<Odeme_Yapan_Hesap><Yetkili_Muessese_Dosya_Numarası>DSY-001<\/Yetkili_Muessese_Dosya_Numarası>/);
+  assert.match(xmlDosyali, /<Odeme_Yapilan_Hesap><Yetkili_Muessese_Dosya_Numarası>DSY-001<\/Yetkili_Muessese_Dosya_Numarası>/);
+  // Gönderici bilgisi verilmiş ama dosya no boşsa ICE'ye gitmeden durdurulur (ret kesin, numara yakılmasın).
+  assert.throws(() => dovizGirdisi(kayit, { vknTckn: '', dosyaNo: '' }), /Dosya No/);
+  // Gönderici bilgisi hiç verilmemişse (salt eşleme testleri) kontrol devreye girmez.
+  assert.equal(dovizGirdisi(kayit).odeme.yetkiliMuesseseDosyaNo, '');
 });
 
 test('Üretilen XML, WSDL sequence sırasını korur', () => {
