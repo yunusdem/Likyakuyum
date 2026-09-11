@@ -128,6 +128,18 @@ const birlesikGovde = (loginHeaderXml: string, g: EDovizGirdi): string =>
       `</_eDovizBelge>`,
   );
 
+/** Sessiz cikisi ve yutulan hatalari gorunur kilar. */
+let sonAdim = "baslangic";
+const adim = (ad: string) => {
+  sonAdim = ad;
+  console.log(`[adim] ${ad}`);
+};
+process.on("exit", (kod) => {
+  if (sonAdim !== "bitti") console.log(`[cikis] Surec "${sonAdim}" adiminda kapandi (kod ${kod}).`);
+});
+process.on("unhandledRejection", (e: any) => console.error("[yakalanmamis reddetme]", e?.message || e));
+process.on("uncaughtException", (e: any) => console.error("[yakalanmamis hata]", e?.message || e));
+
 async function main() {
   if (!belgeNo) {
     console.error("Kullanim: npx tsx scripts/ebelge-edoviz-ice-tani.ts <BELGE_NO>");
@@ -135,18 +147,23 @@ async function main() {
     return;
   }
 
+  adim("veritabani havuzu aliniyor");
   const pool = await getDbPool();
   const res = await pool
     .request()
     .input("no", sql.VarChar(40), belgeNo)
+    // fis aranıyor
     .query(`SELECT TOP 1 BELGE_ID, FIS_TIPI FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI
             WHERE RTRIM(BELGE_NO)=@no AND ISNULL(IPTAL,0)=0`);
   const satir = res.recordset[0];
   if (!satir) throw new Error(`${belgeNo} gönderime hazır döviz fişleri arasında bulunamadı.`);
 
   const kimlik = { evrakTuru: DOVIZ_EVRAK_TURU, belgeId: Number(satir.BELGE_ID), belgeTuru: Number(satir.FIS_TIPI), belgeNo };
+  adim("fis ayrintisi okunuyor");
   const kaynak = await EbelgeKaynakRepository.dovizDetay(kimlik);
+  adim("ICE girdisi hazirlaniyor");
   const girdi = dovizGirdisi(kaynak);
+  adim("ICE baglanti ayari okunuyor");
   const config = await EbelgeSqlRepository.getConnectionConfig();
 
   const varyantlar: { ad: string; govde: (h: string) => string }[] = [
@@ -155,6 +172,7 @@ async function main() {
     { ad: "3. Doküman gövdesi + WSDL ek blokları", govde: (h) => birlesikGovde(h, girdi) },
   ];
 
+  adim("varyantlar deneniyor");
   console.log(`Belge : ${belgeNo} (BELGE_ID=${kimlik.belgeId}, FIS_TIPI=${kimlik.belgeTuru})`);
   console.log(`ICE   : ${config.servisUrl}`);
   console.log("");
@@ -171,6 +189,7 @@ async function main() {
       console.log(`   ICE cevabi (ilk 400 karakter): ${metin.slice(0, 400)}`);
       console.log("");
       console.log("SONUC: ICE bu govdeyi kabul ediyor. Uretim kodu buna gore duzeltilecek.");
+      adim("bitti");
       return;
     } catch (e: any) {
       console.log(`HATA   -- ${v.ad}`);
@@ -179,6 +198,7 @@ async function main() {
     }
   }
   console.log("SONUC: Hicbir varyant gecmedi. Sorun govde yapisi degil; alan icerikleri incelenmeli.");
+  adim("bitti");
 }
 
 main().catch((e) => {

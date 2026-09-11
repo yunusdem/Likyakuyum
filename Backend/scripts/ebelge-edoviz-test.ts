@@ -136,10 +136,16 @@ test('Üretilen XML, WSDL sequence sırasını korur', () => {
   assert.ok(!xml.includes('<Ek_Bilgiler>'), 'zorunlu tarihleri eksik Ek_Bilgiler üretilmemeli');
 });
 
-test('Boş blok üretilmez', () => {
+test('ICE koşulsuz okuduğu bloklar hep gönderilir; verisi olmayan blok gönderilmez', () => {
   const g = dovizGirdisi({ baslik: { ...baslik(), KOMISYON: null, BMV: null } });
   const xml = buildEDovizInnerXml('', g as EDovizGirdi);
-  assert.ok(!xml.includes('<Komisyon_Bilgileri>'), 'komisyon yoksa blok gönderilmemeli');
+  // ICE bu üç bloğu koşulsuz okuyor; gelmediğinde "Nesne başvurusu bir nesnenin
+  // örneğine ayarlanmadı" hatası veriyor. Komisyonsuz alımda gerçek değer sıfırdır.
+  assert.match(xml, /<Komisyon_Bilgileri><Komisyon_Tutar_Vergi_Haric>0</);
+  assert.match(xml, /<Kiymetli_Maden_Bilgileri><Adet>0<\/Adet><\/Kiymetli_Maden_Bilgileri>/);
+  assert.match(xml, /<BuyBack><Komisyon_Tutari>0<\/Komisyon_Tutari><\/BuyBack>/);
+  // Gümrük verisi olmayan fişte Ek_Bilgiler uydurulmaz.
+  assert.ok(!xml.includes('<Ek_Bilgiler>'), 'gümrük verisi yokken Ek_Bilgiler gönderilmemeli');
 });
 
 test('Hazırlama önizleme çağırır, gönderim yapmaz', async () => {

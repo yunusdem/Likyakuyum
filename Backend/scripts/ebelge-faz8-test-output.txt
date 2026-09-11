@@ -1,0 +1,119 @@
+2026-09-09 23:11:55 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:55 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:55 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:55 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:55 [[31merror[39m]: Error: offline simulated timeout
+    at TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:103:27)
+    at Test.runInAsyncScope (node:async_hooks:213:14)
+    at Test.run (node:internal/test_runner/test:1106:25)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:55 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:55 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[31merror[39m]: Error: offline simulated timeout
+    at TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:159:75)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[31merror[39m]: Error: offline mail hata
+    at TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:166:80)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[33mwarn[39m]: Error: Entegratör servisine ulaşılamadı (GetInvoice_EMail_Statu): offline mail hata
+    at callSoap (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.client.ts:203:11)
+    at async callWithSession (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.session.ts:213:12)
+    at async getEarsivMailStatu (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.earsiv.ts:212:20)
+    at async Promise.all (index 1)
+    at async EbelgeService.earsivDurum (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ebelge.service.ts:951:27)
+    at async TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:167:18)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[31merror[39m]: Error: offline rapor hata
+    at TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:169:38)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[31merror[39m]: Error: offline mail hata
+    at TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:166:80)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[33mwarn[39m]: Error: Entegratör servisine ulaşılamadı (GetInvoice_Rapor_Statu): offline rapor hata
+    at callSoap (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.client.ts:203:11)
+    at async callWithSession (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.session.ts:213:12)
+    at async getEarsivRaporStatu (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.earsiv.ts:181:20)
+    at async Promise.all (index 0)
+    at async EbelgeService.earsivDurum (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ebelge.service.ts:951:27)
+    at async waitForActual (node:assert:621:5)
+    at async strict.rejects (node:assert:744:25)
+    at async TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:170:3)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[33mwarn[39m]: Error: Entegratör servisine ulaşılamadı (GetInvoice_EMail_Statu): offline mail hata
+    at callSoap (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.client.ts:203:11)
+    at async callWithSession (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.session.ts:213:12)
+    at async getEarsivMailStatu (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ice\ice.earsiv.ts:212:20)
+    at async Promise.all (index 1)
+    at async EbelgeService.earsivDurum (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\services\ebelge.service.ts:951:27)
+    at async waitForActual (node:assert:621:5)
+    at async strict.rejects (node:assert:744:25)
+    at async TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:170:3)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[33mwarn[39m]: Error: Tekrar eden belge numarası
+    at Object.batch (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:190:62)
+    at EbelgeSqlRepository.ensureTablesExist (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\models\ebelgeSql.repository.ts:300:28)
+    at TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:191:29)
+    at Test.runInAsyncScope (node:async_hooks:213:14)
+    at Test.run (node:internal/test_runner/test:1106:25)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[33mwarn[39m]: Error: Tekrar eden belge numarası
+    at Object.batch (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:190:62)
+    at EbelgeSqlRepository.ensureTablesExist (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\src\models\ebelgeSql.repository.ts:300:28)
+    at TestContext.<anonymous> (C:\Users\yavuz\OneDrive\Masaüstü\kuyumcu\Backend\scripts\ebelge-faz8-test.ts:192:29)
+    at async Test.run (node:internal/test_runner/test:1113:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+2026-09-09 23:11:56 [[32minfo[39m]: [32mICE Login başarılı (offline-test)[39m
+✔ Başarılı gönderim: kalıcı kayıt, aynı ETTN ve WSDL zarfı (48.1093ms)
+✔ Aynı numaralı eşzamanlı isteklerden yalnızca biri gönderir (5.2507ms)
+✔ SQL yer tutma hatasında ICE gönderimi yapılmaz (3.0271ms)
+✔ Bağlantı kopması BELIRSIZ bırakır, tekrar göndermez (11.1065ms)
+✔ ICE başarılı fakat SQL sonuç kaydı başarısız: rezervasyon korunur (2.6316ms)
+✔ Log hatası kesinleşmiş gönderim kaydını kaybettirmez (4.8775ms)
+✔ Üst yanıt başarılı, satır başarısız ise GONDERILDI olmaz (3.2332ms)
+✔ Eksik veya farklı ETTN içeren yanıt BELIRSIZ kalır (4.5732ms)
+✔ Doğrulama geçmezse kayıt ve gönderim yok (2.0211ms)
+✔ Mükellef sorgu hatası mükellef değil sayılmaz (2.6986ms)
+✔ e-Fatura mükellefine e-Arşiv gönderilmez (3.7472ms)
+✔ ICE son numarasıyla çakışma engellenir (1.7096ms)
+✔ Eksik özel vergi senaryolarında gerçek gönderim yapılmaz (0.3342ms)
+✔ İptal eşzamanlı isteklerde bir kez yapılır; istenen tarih saklanır (37.8706ms)
+✔ İptalde zaman aşımı tekrar iptale izin vermez (2.9568ms)
+✔ Durum sorgusu kısmi hatayı açıklar; iki hata başarı sayılmaz (9.2461ms)
+✔ PDF başarısız/bozuk yanıtları reddeder (7.2542ms)
+✔ UBL açıklama alanı OASIS sequence sırasında; tarihler gerçek takvim tarihi (1.0392ms)
+✔ Tablo/indeks kurulum hatası yutulmaz; sonraki çağrı tekrar dener (4.2239ms)
+✔ Arşiv senkronizasyonu WSDL sırasını kullanır, giden durumunu değiştirmez (4.1501ms)
+✔ Arşiv sınırı dolunca tam senkronizasyon iddia edilmez (1.2676ms)
+✔ Eksik başlık atlanır, sahte sıfır tutarlı kayıt oluşmaz (1.307ms)
+✔ Boş arşiv geçerlidir; bozuk SOAP sonucu reddedilir (1.2806ms)
+✔ Arşiv işareti sadece ICE kabul ettikten sonra kaydedilir (2.845ms)
+✔ Arşiv dışında UUID işaretlenemez; mali durum kelimeleri kabul edilmez (1.4957ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2003.306

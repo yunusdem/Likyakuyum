@@ -61,9 +61,14 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
         alan("GMTY_Tarihi", g.ekBilgiler?.gmtyTarihi) +
         alan("GMTY_Sayi", g.ekBilgiler?.gmtySayi) +
         alan("Vezne", g.ekBilgiler?.vezne)) +
-    blok("Komisyon_Bilgileri", alan("Komisyon_Tutar_Vergi_Haric", g.komisyon?.vergiHaric) +
-        alan("Komisyon_Tutar_Vergi", g.komisyon?.vergi) +
-        alan("Komisyon_Dahil_Toplam", g.komisyon?.dahilToplam)) +
+    // Komisyon, kıymetli maden ve BuyBack blokları her belgede gönderilir. ICE bu
+    // blokları koşulsuz okuduğu için blok hiç gelmediğinde null referans hatası
+    // veriyor. Komisyonsuz, madensiz ve buyback'siz bir döviz alımında bu alanların
+    // gerçek değeri sıfırdır; uydurma veri değil, fişin kendi değeridir.
+    blok("Komisyon_Bilgileri", alan("Komisyon_Tutar_Vergi_Haric", g.komisyon?.vergiHaric ?? 0) +
+        alan("Komisyon_Tutar_Vergi", g.komisyon?.vergi ?? 0) +
+        alan("Komisyon_Dahil_Toplam", g.komisyon?.dahilToplam ?? 0)) +
+    blok("Kiymetli_Maden_Bilgileri", alan("Kiymetli_Maden_Adi", g.kiymetliMaden?.ad) + alan("Adet", g.kiymetliMaden?.adet ?? 0)) +
     blok("Tutar_Bilgileri", alan("Miktar", g.tutar.miktar) +
         alan("Kod", g.tutar.kod) +
         alan("TL_Karsilik_Kuru", g.tutar.tlKarsilikKuru) +
@@ -76,6 +81,7 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
         alan("TaxExclusiveAmount", g.tutar.taxExclusiveAmount) +
         alan("TaxInclusiveAmount", g.tutar.taxInclusiveAmount) +
         alan("PayableAmount", g.tutar.payableAmount)) +
+    blok("BuyBack", alan("Komisyon_Tutari", g.buyBackKomisyonTutari ?? 0)) +
     `<TutarHesaplanmasin>${g.tutarHesaplanmasin ? "true" : "false"}</TutarHesaplanmasin>` +
     `</_eDovizBelge>`;
 /**
