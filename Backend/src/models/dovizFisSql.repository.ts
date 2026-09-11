@@ -993,7 +993,15 @@ export class DovizFisSqlRepository {
             KIMLIK_KAYNAGI = COALESCE(@CLEAN_KIMLIK_KAYNAGI, KIMLIK_KAYNAGI),
             POSTA_KODU = COALESCE(@CLEAN_POSTA_KODU, POSTA_KODU),
             ILCE = COALESCE(@CLEAN_ILCE, ILCE),
-            IL = COALESCE(@CLEAN_IL, IL)
+            IL = COALESCE(@CLEAN_IL, IL),
+            GM_BEYANNAME_NO = @GM_BEYANNAME_NO,
+            GM_BEYANNAME_TARIH = @GM_BEYANNAME_TARIH,
+            GM_DOVIZ_SAYI = @GM_DOVIZ_SAYI,
+            GM_DOVIZ_TARIH = @GM_DOVIZ_TARIH,
+            GM_TEYIT_SAYI = @GM_TEYIT_SAYI,
+            GM_TEYIT_TARIH = @GM_TEYIT_TARIH,
+            GM_FATURA_NO = @GM_FATURA_NO,
+            TIP = @TIP
           WHERE FIS_ID = @P_FIS_ID;
         END
 
@@ -1034,6 +1042,14 @@ export class DovizFisSqlRepository {
             updReq.input("U_POSTA_KODU", sql.VarChar(20), (dto.postaKodu || "").trim().slice(0, 20) || null);
             updReq.input("U_ILCE", sql.VarChar(100), (dto.ilce || "").trim().slice(0, 100) || null);
             updReq.input("U_IL", sql.VarChar(100), (dto.il || "").trim().slice(0, 100) || null);
+            updReq.input("U_GM_NO", sql.VarChar(30), (dto.gmBeyannameNo || "").trim().slice(0, 30) || null);
+            updReq.input("U_GM_TARIH", sql.DateTime, safeDate(dto.gmBeyannameTarih));
+            updReq.input("U_GM_DVZ_SAYI", sql.VarChar(30), (dto.gmDovizSayi || "").trim().slice(0, 30) || null);
+            updReq.input("U_GM_DVZ_TARIH", sql.DateTime, safeDate(dto.gmDovizTarih));
+            updReq.input("U_GM_TYT_SAYI", sql.VarChar(30), (dto.gmTeyitSayi || "").trim().slice(0, 30) || null);
+            updReq.input("U_GM_TYT_TARIH", sql.DateTime, safeDate(dto.gmTeyitTarih));
+            updReq.input("U_GM_FATURA", sql.VarChar(30), (dto.gmFaturaNo || "").trim().slice(0, 30) || null);
+            updReq.input("U_TIP", sql.TinyInt, tip);
             await updReq.query(`
               UPDATE [dbo].[TODVZ_FIS]
               SET 
@@ -1044,7 +1060,15 @@ export class DovizFisSqlRepository {
                 KIMLIK_KAYNAGI = COALESCE(@U_KAYNAK, KIMLIK_KAYNAGI),
                 POSTA_KODU = COALESCE(@U_POSTA_KODU, POSTA_KODU),
                 ILCE = COALESCE(@U_ILCE, ILCE),
-                IL = COALESCE(@U_IL, IL)
+                IL = COALESCE(@U_IL, IL),
+                GM_BEYANNAME_NO = @U_GM_NO,
+                GM_BEYANNAME_TARIH = @U_GM_TARIH,
+                GM_DOVIZ_SAYI = @U_GM_DVZ_SAYI,
+                GM_DOVIZ_TARIH = @U_GM_DVZ_TARIH,
+                GM_TEYIT_SAYI = @U_GM_TYT_SAYI,
+                GM_TEYIT_TARIH = @U_GM_TYT_TARIH,
+                GM_FATURA_NO = @U_GM_FATURA,
+                TIP = @U_TIP
               WHERE FIS_ID = @UPD_ID
             `);
           } catch (updErr) {

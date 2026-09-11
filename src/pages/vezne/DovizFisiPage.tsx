@@ -26,6 +26,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { DovizFisiPrintModal } from "./DovizFisiPrintModal";
+import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
 import { KurService, KurRowItem } from "../../services/kurService";
@@ -205,6 +206,26 @@ export const DovizFisiPage: React.FC = () => {
   // Modals
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
+  const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
+
+  // Kuruş ve ondalık basamak sayıları (Firma Tanımlarından alınır)
+  const tlKurusSayisi = useMemo(() => {
+    return companyDefinitions?.TL_KURUS_SAYISI !== undefined && companyDefinitions?.TL_KURUS_SAYISI !== null
+      ? Number(companyDefinitions.TL_KURUS_SAYISI)
+      : 2;
+  }, [companyDefinitions]);
+
+  const dovizKurusSayisi = useMemo(() => {
+    return companyDefinitions?.DOVIZ_KURUS_SAYISI !== undefined && companyDefinitions?.DOVIZ_KURUS_SAYISI !== null
+      ? Number(companyDefinitions.DOVIZ_KURUS_SAYISI)
+      : 2;
+  }, [companyDefinitions]);
+
+  const kurKurusSayisi = useMemo(() => {
+    return companyDefinitions?.KUR_KURUS_SAYISI !== undefined && companyDefinitions?.KUR_KURUS_SAYISI !== null
+      ? Number(companyDefinitions.KUR_KURUS_SAYISI)
+      : 4;
+  }, [companyDefinitions]);
   const [showCariModal, setShowCariModal] = useState<boolean>(false);
   const [showVezneModal, setShowVezneModal] = useState<boolean>(false);
   const [showParaModal, setShowParaModal] = useState<boolean>(false);
@@ -455,7 +476,7 @@ export const DovizFisiPage: React.FC = () => {
   const loadLookupsAndList = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [cariler, vezneler, paralar, kurTabloRes, istatistikler, fisler, cariLk] = await Promise.all([
+      const [cariler, vezneler, paralar, kurTabloRes, istatistikler, fisler, cariLk, compDef] = await Promise.all([
         CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
         apiClient.get<VezneItem[]>("/vezne").then((r) => r.data || []).catch(() => [] as VezneItem[]),
         apiClient.get<ParaItem[]>("/para").then((r) => r.data || []).catch(() => [] as ParaItem[]),
@@ -463,7 +484,12 @@ export const DovizFisiPage: React.FC = () => {
         StatisticService.getStatistics().catch(() => [] as StatisticItem[]),
         DovizFisService.getFisList({ limit: 100 }).catch(() => [] as DovizFisListItem[]),
         CariService.getLookups().catch(() => null),
+        CompanyService.getDefinitions().catch(() => null),
       ]);
+
+      if (compDef) {
+        setCompanyDefinitions(compDef);
+      }
 
       if (cariLk) {
         setLookupData({
@@ -588,7 +614,7 @@ export const DovizFisiPage: React.FC = () => {
       setFisId(fis.fisId);
       setIsGonderildi(true);
 
-      const isGibLocked = (fis as any).eBelgeDurumu === 1 || (fis as any).E_BELGE_DURUMU === 1;
+      const isGibLocked = isDuzeltmeMode ? false : Boolean((fis as any).eBelgeDurumu === 1 || (fis as any).E_BELGE_DURUMU === 1);
       setIsLocked(isGibLocked);
       if (isGibLocked) {
         setNotification({
@@ -722,6 +748,33 @@ export const DovizFisiPage: React.FC = () => {
         setDetayVekilKimlikNo((fis as any).vekilKimlikNo);
       }
 
+      // Gümrük Beyanname Bilgileri
+      setGmBeyannameNo(fis.gmBeyannameNo || (fis as any).GM_BEYANNAME_NO || "");
+      setGmBeyannameTarih(
+        fis.gmBeyannameTarih
+          ? String(fis.gmBeyannameTarih).split("T")[0]
+          : ((fis as any).GM_BEYANNAME_TARIH
+              ? String((fis as any).GM_BEYANNAME_TARIH).split("T")[0]
+              : "")
+      );
+      setGmDovizSayi(fis.gmDovizSayi || (fis as any).GM_DOVIZ_SAYI || "");
+      setGmDovizTarih(
+        fis.gmDovizTarih
+          ? String(fis.gmDovizTarih).split("T")[0]
+          : ((fis as any).GM_DOVIZ_TARIH
+              ? String((fis as any).GM_DOVIZ_TARIH).split("T")[0]
+              : "")
+      );
+      setGmTeyitSayi(fis.gmTeyitSayi || (fis as any).GM_TEYIT_SAYI || "");
+      setGmTeyitTarih(
+        fis.gmTeyitTarih
+          ? String(fis.gmTeyitTarih).split("T")[0]
+          : ((fis as any).GM_TEYIT_TARIH
+              ? String((fis as any).GM_TEYIT_TARIH).split("T")[0]
+              : "")
+      );
+      setGmFaturaNo(fis.gmFaturaNo || (fis as any).GM_FATURA_NO || "");
+
       if (fis.satirlar && fis.satirlar.length > 0) {
         setLines(
           fis.satirlar.map((s, idx) => ({
@@ -730,15 +783,15 @@ export const DovizFisiPage: React.FC = () => {
             paraId: s.paraId,
             paraKodu: s.paraKodu || "",
             paraAdi: s.paraAdi || "",
-            miktar: s.miktar || "",
-            kur: s.kur ? Number(s.kur).toFixed(4) : "",
+            miktar: s.miktar != null ? Number(s.miktar).toFixed(dovizKurusSayisi) : "",
+            kur: s.kur ? Number(s.kur).toFixed(kurKurusSayisi) : "",
             komisyonOrani: s.komisyonOrani || "",
             komisyon: s.komisyon || "",
             bmvOrani: s.bmvOrani || (fis.tip === 1 ? "0.2" : ""),
             bmv: s.bmv || "",
             kmvOrani: s.kmvOrani || "",
             kmv: s.kmv || "",
-            tutar: s.tutar || "",
+            tutar: s.tutar != null ? Number(s.tutar).toFixed(tlKurusSayisi) : "",
           }))
         );
       } else {
@@ -782,11 +835,12 @@ export const DovizFisiPage: React.FC = () => {
     []
   );
 
-  const calculateRowTutar = (miktar: number | string, kur: number | string): number => {
+  const calculateRowTutar = useCallback((miktar: number | string, kur: number | string): number => {
     const m = typeof miktar === "number" ? miktar : parseFloat(String(miktar).replace(/,/g, ".")) || 0;
     const k = typeof kur === "number" ? kur : parseFloat(String(kur).replace(/,/g, ".")) || 0;
-    return Math.round(m * k * 100) / 100;
-  };
+    const factor = Math.pow(10, tlKurusSayisi);
+    return Math.round(m * k * factor) / factor;
+  }, [tlKurusSayisi]);
 
   const handleAddRow = () => {
     setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
@@ -882,10 +936,11 @@ export const DovizFisiPage: React.FC = () => {
 
         // 1. Komisyon % ve Komisyon Tutarı (Tutar * %Komisyon)
         const komRate = parseFloat(String(updated.komisyonOrani || "0").replace(/,/g, ".")) || 0;
+        const factor = Math.pow(10, tlKurusSayisi);
         if (field === "komisyon") {
           updated.komisyon = value;
         } else if (komRate > 0 && tutar > 0) {
-          updated.komisyon = (Math.round(tutar * (komRate / 100) * 100) / 100).toFixed(2);
+          updated.komisyon = (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
         } else if (field === "komisyonOrani" && !value) {
           updated.komisyon = "";
         }
@@ -901,7 +956,7 @@ export const DovizFisiPage: React.FC = () => {
           if (field === "bmv") {
             updated.bmv = value;
           } else if (bmvRate > 0 && tutar > 0) {
-            updated.bmv = (Math.round(tutar * (bmvRate / 100) * 100) / 100).toFixed(2);
+            updated.bmv = (Math.round(tutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
           } else if (field === "bmvOrani" && !value) {
             updated.bmv = "";
           }
@@ -914,7 +969,7 @@ export const DovizFisiPage: React.FC = () => {
         if (field === "kmvOrani") {
           const kmvRate = parseFloat(String(value || "0").replace(/,/g, ".")) || 0;
           if (kmvRate > 0 && tutar > 0) {
-            updated.kmv = (Math.round(tutar * (kmvRate / 100) * 100) / 100).toFixed(2);
+            updated.kmv = (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
           } else if (!value) {
             updated.kmv = "";
           }
@@ -933,16 +988,17 @@ export const DovizFisiPage: React.FC = () => {
         if (row.id !== rowId) return row;
         const m = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
         const tutar = calculateRowTutar(m, autoKur);
+        const factor = Math.pow(10, tlKurusSayisi);
         const bmvOrani = tip === 1 ? "0.2" : "0";
-        const bmvVal = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * 100) / 100).toFixed(2) : "";
+        const bmvVal = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
         const komRate = parseFloat(String(row.komisyonOrani || "0").replace(/,/g, ".")) || 0;
-        const komVal = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * 100) / 100).toFixed(2) : row.komisyon;
+        const komVal = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi) : row.komisyon;
         return {
           ...row,
           paraId: para.id,
           paraKodu: para.kod,
           paraAdi: para.ad,
-          kur: autoKur.toFixed(4),
+          kur: autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : "",
           tutar: tutar > 0 ? tutar : "",
           bmvOrani,
           bmv: bmvVal,
@@ -998,20 +1054,21 @@ export const DovizFisiPage: React.FC = () => {
 
   // Toplam Masraf: Tablodaki satırların toplam BMV ve Komisyon toplamıdır.
   const totalMasraf = useMemo(() => {
-    return Math.round((calculatedBsmv + totalKomisyon) * 100) / 100;
-  }, [calculatedBsmv, totalKomisyon]);
+    const factor = Math.pow(10, tlKurusSayisi);
+    return Math.round((calculatedBsmv + totalKomisyon) * factor) / factor;
+  }, [calculatedBsmv, totalKomisyon, tlKurusSayisi]);
 
   // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + Toplam BMV)
   const sonToplam = useMemo(() => {
+    const factor = Math.pow(10, tlKurusSayisi);
     if (tip === 1) {
-      return Math.round((totalTutar + calculatedBsmv) * 100) / 100;
+      return Math.round((totalTutar + calculatedBsmv) * factor) / factor;
     } else {
-      return Math.round((totalTutar - totalMasraf) * 100) / 100;
+      return Math.round((totalTutar - totalMasraf) * factor) / factor;
     }
-  }, [totalTutar, calculatedBsmv, totalMasraf, tip]);
+  }, [totalTutar, calculatedBsmv, totalMasraf, tip, tlKurusSayisi]);
 
   const handleTipChange = (newTip: number) => {
-    if (isLocked) return;
     setTip(newTip);
     setLines((prev) =>
       prev.map((row) => {
@@ -1024,11 +1081,12 @@ export const DovizFisiPage: React.FC = () => {
         }
         const m = parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
         const tutar = calculateRowTutar(m, rate);
+        const factor = Math.pow(10, tlKurusSayisi);
         const bmvOrani = newTip === 1 ? (row.paraId || row.miktar ? "0.2" : "") : "0";
-        const bmv = newTip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * 100) / 100).toFixed(2) : "";
+        const bmv = newTip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
         return {
           ...row,
-          kur: rate > 0 ? rate.toFixed(4) : row.kur,
+          kur: rate > 0 ? rate.toFixed(kurKurusSayisi) : row.kur,
           tutar: tutar > 0 ? tutar : "",
           bmvOrani,
           bmv,
@@ -1050,7 +1108,7 @@ export const DovizFisiPage: React.FC = () => {
         const tutar = calculateRowTutar(m, newRate);
         return {
           ...row,
-          kur: newRate.toFixed(4),
+          kur: newRate > 0 ? newRate.toFixed(kurKurusSayisi) : row.kur,
           tutar: tutar > 0 ? tutar : "",
         };
       })
@@ -1250,7 +1308,7 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const handleToolbarSave = async () => {
-    if (isLocked) {
+    if (isLocked && !isDuzeltmeMode) {
       setNotification({
         type: "warning",
         message: "GİB'e gönderilmiş olan bu fiş değiştirilemez.",
@@ -1915,9 +1973,7 @@ export const DovizFisiPage: React.FC = () => {
               fontSize: "1.15rem",
             }}
           >
-            {tip === 1
-              ? (isGonderildi ? "SATIŞ FİŞİ - GÖNDERİLDİ" : "SATIŞ FİŞİ")
-              : (isGonderildi ? "ALIŞ FİŞİ - GÖNDERİLDİ" : "ALIŞ FİŞİ")}
+            {tip === 1 ? "SATIŞ FİŞİ" : "ALIŞ FİŞİ"}
           </div>
 
           {/* En Üstteki 3 Alan (Geniş kenarlıklı ve rahat boşluklu kartlar) */}
@@ -2103,7 +2159,6 @@ export const DovizFisiPage: React.FC = () => {
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       <Form.Select
                         size="sm"
-                        disabled={isLocked}
                         value={tip}
                         onChange={(e) => handleTipChange(Number(e.target.value))}
                         className="fw-bold text-uppercase"
@@ -2364,6 +2419,15 @@ export const DovizFisiPage: React.FC = () => {
                           value={row.miktar}
                           onFocus={() => setActiveRowIndex(idx)}
                           onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== "") {
+                              const num = parseFloat(val.replace(/,/g, "."));
+                              if (!isNaN(num)) {
+                                handleLineFieldChange(row.id, "miktar", num.toFixed(dovizKurusSayisi));
+                              }
+                            }
+                          }}
                           onKeyDown={(e) => handleCellKeyDown(e, idx, "miktar")}
                         />
                       </td>
@@ -2380,6 +2444,15 @@ export const DovizFisiPage: React.FC = () => {
                           value={row.kur}
                           onFocus={() => setActiveRowIndex(idx)}
                           onChange={(e) => handleLineFieldChange(row.id, "kur", e.target.value)}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== "") {
+                              const num = parseFloat(val.replace(/,/g, "."));
+                              if (!isNaN(num)) {
+                                handleLineFieldChange(row.id, "kur", num.toFixed(kurKurusSayisi));
+                              }
+                            }
+                          }}
                           onKeyDown={(e) => handleCellKeyDown(e, idx, "kur")}
                         />
                       </td>
@@ -2483,7 +2556,7 @@ export const DovizFisiPage: React.FC = () => {
                       {/* Tutar */}
                       <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ borderRight: "1px solid #e2e8f0", fontSize: "13px" }}>
                         {row.tutar
-                          ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })
                           : ""}
                       </td>
 
@@ -2517,7 +2590,7 @@ export const DovizFisiPage: React.FC = () => {
                     type="text"
                     readOnly
                     className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                    value={totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    value={totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
                   />
                 </div>
                 <div className="d-flex align-items-center">
@@ -2528,7 +2601,7 @@ export const DovizFisiPage: React.FC = () => {
                     type="text"
                     readOnly
                     className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                    value={totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    value={totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
                   />
                 </div>
               </Col>
@@ -2562,7 +2635,7 @@ export const DovizFisiPage: React.FC = () => {
                     type="text"
                     readOnly
                     className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                    value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
                   />
                 </div>
                 <div className="d-flex align-items-center">
@@ -2573,7 +2646,7 @@ export const DovizFisiPage: React.FC = () => {
                     type="text"
                     readOnly
                     className="form-control form-control-sm text-end font-monospace fw-bold text-primary bg-light"
-                    value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
                   />
                 </div>
               </Col>
@@ -3806,6 +3879,9 @@ export const DovizFisiPage: React.FC = () => {
           const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
           return usdPara ? (tip === 1 ? (usdPara.efektifSatis || usdPara.dovizSatis || 47.2) : (usdPara.efektifAlis || usdPara.dovizAlis || 47.2)) : 47.2;
         })()}
+        dovizKurusSayisi={dovizKurusSayisi}
+        kurKurusSayisi={kurKurusSayisi}
+        tlKurusSayisi={tlKurusSayisi}
       />
     </div>
   );

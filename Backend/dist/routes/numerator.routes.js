@@ -1,0 +1,12 @@
+import { Router } from "express";
+import { NumeratorController } from "../controllers/numerator.controller.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
+const router = Router();
+router.use(authenticate);
+router.get("/", NumeratorController.listNumerators);
+router.post("/", NumeratorController.createNumerator);
+router.post("/save", NumeratorController.saveNumerator);
+router.get("/:id", NumeratorController.getNumeratorById);
+router.put("/:id", NumeratorController.updateNumerator);
+router.delete("/:id", NumeratorController.deleteNumerator);
+export default router;

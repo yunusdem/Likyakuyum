@@ -41,6 +41,9 @@ export interface DovizFisiPrintModalProps {
   bsmvTutari?: number;
   komisyonTutari?: number;
   giseUsdKuru?: number;
+  dovizKurusSayisi?: number;
+  kurKurusSayisi?: number;
+  tlKurusSayisi?: number;
 }
 
 /**
@@ -158,10 +161,17 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
   bsmvTutari,
   komisyonTutari,
   giseUsdKuru,
+  dovizKurusSayisi,
+  kurKurusSayisi,
+  tlKurusSayisi,
 }) => {
   const isSatis = tip === 1;
   const [qrUrl, setQrUrl] = useState<string>("");
   const [company, setCompany] = useState<TodvzTanimDto | null>(null);
+
+  const effMiktarKurus = dovizKurusSayisi ?? (company?.DOVIZ_KURUS_SAYISI !== undefined && company?.DOVIZ_KURUS_SAYISI !== null ? Number(company.DOVIZ_KURUS_SAYISI) : 2);
+  const effKurKurus = kurKurusSayisi ?? (company?.KUR_KURUS_SAYISI !== undefined && company?.KUR_KURUS_SAYISI !== null ? Number(company.KUR_KURUS_SAYISI) : 4);
+  const effTlKurus = tlKurusSayisi ?? (company?.TL_KURUS_SAYISI !== undefined && company?.TL_KURUS_SAYISI !== null ? Number(company.TL_KURUS_SAYISI) : 2);
 
   // Fallback / default company values matching the real thermal receipt
   const firmaAdi = company?.FIRMA_ADI || "DİKMEN DOVİZ AS";
@@ -519,19 +529,19 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
                           <tr>
                             <td style={{ padding: "1px 0" }}>Döviz/Efektifin Mik. / Brm</td>
                             <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
-                              {fmt(m, 2)} {pKod}
+                              {fmt(m, effMiktarKurus)} {pKod}
                             </td>
                           </tr>
                           <tr>
                             <td style={{ padding: "1px 0" }}>Uygulanan Kur</td>
                             <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
-                              {fmt(k, 4)}
+                              {fmt(k, effKurKurus)}
                             </td>
                           </tr>
                           <tr>
                             <td style={{ padding: "1px 0" }}>TL Karşılığı</td>
                             <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
-                              {fmt(tut, 2)} TL
+                              {fmt(tut, effTlKurus)} TL
                             </td>
                           </tr>
                           {usdEquivalent !== null && (
@@ -556,7 +566,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
                     <tr>
                       <td style={{ padding: "1px 0" }}>BSMV</td>
                       <td style={{ textAlign: "right", fontWeight: 800, padding: "1px 0" }}>
-                        {fmt(bsmvVal, 2)} TL
+                        {fmt(bsmvVal, effTlKurus)} TL
                       </td>
                     </tr>
                   )}
@@ -567,7 +577,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
                       Toplam Tutar
                     </td>
                     <td style={{ textAlign: "right", fontWeight: 900, fontSize: "12px", paddingTop: "3px" }}>
-                      {fmt(grandTotal, 2)} TL
+                      {fmt(grandTotal, effTlKurus)} TL
                     </td>
                   </tr>
                 </tbody>
@@ -598,7 +608,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: "11px", marginTop: "3px" }}>
-                    <span>A.P.: {fmt(grandTotal, 2)}</span>
+                    <span>A.P.: {fmt(grandTotal, effTlKurus)}</span>
                     <span>P.U.: 0,00</span>
                   </div>
                 </>

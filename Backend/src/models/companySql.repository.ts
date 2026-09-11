@@ -178,42 +178,182 @@ export class CompanySqlRepository {
         { name: "HAS_GUMUS_PARA_ID", type: sql.Int },
       ];
 
-      // Bind all parameters
-      for (const col of columnMapping) {
-        const val = data[col.name];
-        if (col.len && (col.type === sql.VarChar || col.type === sql.Char)) {
-          request.input(col.name as string, (col.type as any)(col.len), val !== undefined ? val : null);
-        } else {
-          request.input(col.name as string, col.type as any, val !== undefined ? val : null);
+      // Ensure at least one row exists in TODVZ_TANIM
+      if (existing.recordset.length === 0) {
+        await pool.request().query(`
+          INSERT INTO [dbo].[TODVZ_TANIM] (SURUM, SUBE_KODU, FIRMA_ADI) 
+          VALUES ('2016', '1', 'Firma Tanımı');
+        `);
+      }
+
+      // Re-fetch existing row
+      const currentRes = await pool.request().query<TodvzTanimEntity>(`
+        SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]
+      `);
+      const existingRow = currentRes.recordset[0] as any || {};
+
+      // 1. Check if SODVZ_FIRMA_TANIMI_KAYDET procedure exists; if not, create it
+      try {
+        const procCheck = await pool.request().query(`
+          SELECT OBJECT_ID(N'[dbo].[SODVZ_FIRMA_TANIMI_KAYDET]') AS procId
+        `);
+        if (!procCheck.recordset[0]?.procId) {
+          await pool.request().query(`
+            CREATE PROCEDURE [dbo].[SODVZ_FIRMA_TANIMI_KAYDET]
+              @FIRMA_ADI VARCHAR(200) = NULL,
+              @DOSYA_NO VARCHAR(20) = NULL,
+              @SUBE_KODU VARCHAR(20) = NULL,
+              @SUBE_ADI VARCHAR(200) = NULL,
+              @VERGI_DAIRESI_ID INT = NULL,
+              @VERGI_KIMLIK_NO VARCHAR(50) = NULL,
+              @ADRES VARCHAR(200) = NULL,
+              @POSTA_KODU_ID INT = NULL,
+              @ILCE_ID INT = NULL,
+              @IL_ID INT = NULL,
+              @ULKE_ID INT = NULL,
+              @TELEFON VARCHAR(20) = NULL,
+              @WEB_ADRESI VARCHAR(100) = NULL,
+              @EPOSTA VARCHAR(100) = NULL,
+              @MERSIS_NO VARCHAR(20) = NULL,
+              @TICARET_SICIL_NO VARCHAR(20) = NULL,
+              @YETKILI_MUESSESE_TIPI TINYINT = 0,
+              @E_DEFTER_MUKELLEFI BIT = 0
+            AS
+            BEGIN
+              SET NOCOUNT ON;
+              UPDATE [dbo].[TODVZ_TANIM]
+              SET 
+                [FIRMA_ADI] = @FIRMA_ADI,
+                [DOSYA_NO] = @DOSYA_NO,
+                [SUBE_KODU] = @SUBE_KODU,
+                [SUBE_ADI] = @SUBE_ADI,
+                [VERGI_DAIRESI_ID] = @VERGI_DAIRESI_ID,
+                [VERGI_KIMLIK_NO] = @VERGI_KIMLIK_NO,
+                [ADRES] = @ADRES,
+                [POSTA_KODU_ID] = @POSTA_KODU_ID,
+                [ILCE_ID] = @ILCE_ID,
+                [IL_ID] = @IL_ID,
+                [ULKE_ID] = @ULKE_ID,
+                [TELEFON] = @TELEFON,
+                [WEB_ADRESI] = @WEB_ADRESI,
+                [EPOSTA] = @EPOSTA,
+                [MERSIS_NO] = @MERSIS_NO,
+                [TICARET_SICIL_NO] = @TICARET_SICIL_NO,
+                [YETKILI_MUESSESE_TIPI] = @YETKILI_MUESSESE_TIPI,
+                [E_DEFTER_MUKELLEFI] = @E_DEFTER_MUKELLEFI;
+            END;
+          `);
         }
+      } catch (procCreateErr: any) {
+        logger.warn("Could not check/create SODVZ_FIRMA_TANIMI_KAYDET procedure:", procCreateErr.message);
       }
 
-      if (existing.recordset.length > 0) {
-        // UPDATE existing row
-        const setClauses = columnMapping.map((col) => `[${col.name as string}] = @${col.name as string}`).join(",\n");
-        const updateQuery = `
-          UPDATE [dbo].[TODVZ_TANIM]
-          SET ${setClauses};
+      // 2. Execute SODVZ_FIRMA_TANIMI_KAYDET stored procedure
+      const parseNum = (v: any) => (v !== undefined && v !== null && v !== "" && !isNaN(Number(v))) ? Number(v) : null;
+      try {
+        const procReq = pool.request();
+        const fAdi = (data.FIRMA_ADI !== undefined ? data.FIRMA_ADI : existingRow.FIRMA_ADI) || null;
+        const dosyaNo = (data.DOSYA_NO !== undefined ? data.DOSYA_NO : existingRow.DOSYA_NO) || null;
+        const subeKodu = (data.SUBE_KODU !== undefined ? data.SUBE_KODU : existingRow.SUBE_KODU) || "1";
+        const subeAdi = (data.SUBE_ADI !== undefined ? data.SUBE_ADI : existingRow.SUBE_ADI) || null;
+        const vdId = parseNum(data.VERGI_DAIRESI_ID) ?? parseNum(existingRow.VERGI_DAIRESI_ID);
+        const vkn = (data.VERGI_KIMLIK_NO !== undefined ? data.VERGI_KIMLIK_NO : existingRow.VERGI_KIMLIK_NO) || null;
+        const adres = (data.ADRES !== undefined ? data.ADRES : existingRow.ADRES) || null;
+        const pkId = parseNum(data.POSTA_KODU_ID) ?? parseNum(existingRow.POSTA_KODU_ID);
+        const ilceId = parseNum(data.ILCE_ID) ?? parseNum(existingRow.ILCE_ID);
+        const ilId = parseNum(data.IL_ID) ?? parseNum(existingRow.IL_ID);
+        const ulkeId = parseNum(data.ULKE_ID) ?? parseNum(existingRow.ULKE_ID);
+        const telefon = (data.TELEFON !== undefined ? data.TELEFON : existingRow.TELEFON) || null;
+        const webAdresi = (data.WEB_ADRESI !== undefined ? data.WEB_ADRESI : existingRow.WEB_ADRESI) || null;
+        const eposta = (data.EPOSTA !== undefined ? data.EPOSTA : existingRow.EPOSTA) || null;
+        const mersisNo = (data.MERSIS_NO !== undefined ? data.MERSIS_NO : existingRow.MERSIS_NO) || null;
+        const tSicilNo = (data.TICARET_SICIL_NO !== undefined ? data.TICARET_SICIL_NO : existingRow.TICARET_SICIL_NO) || null;
+        const muesseseTipi = Number(data.YETKILI_MUESSESE_TIPI ?? existingRow.YETKILI_MUESSESE_TIPI ?? 0);
+        const eDefter = data.E_DEFTER_MUKELLEFI !== undefined ? (data.E_DEFTER_MUKELLEFI ? 1 : 0) : (existingRow.E_DEFTER_MUKELLEFI ? 1 : 0);
 
-          SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM];
-        `;
+        procReq.input("FIRMA_ADI", sql.VarChar(200), fAdi);
+        procReq.input("DOSYA_NO", sql.VarChar(20), dosyaNo ? String(dosyaNo).slice(0, 20) : null);
+        procReq.input("SUBE_KODU", sql.VarChar(20), subeKodu ? String(subeKodu).slice(0, 20) : "1");
+        procReq.input("SUBE_ADI", sql.VarChar(200), subeAdi);
+        procReq.input("VERGI_DAIRESI_ID", sql.Int, vdId);
+        procReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), vkn);
+        procReq.input("ADRES", sql.VarChar(200), adres);
+        procReq.input("POSTA_KODU_ID", sql.Int, pkId);
+        procReq.input("ILCE_ID", sql.Int, ilceId);
+        procReq.input("IL_ID", sql.Int, ilId);
+        procReq.input("ULKE_ID", sql.Int, ulkeId);
+        procReq.input("TELEFON", sql.VarChar(20), telefon ? String(telefon).slice(0, 20) : null);
+        procReq.input("WEB_ADRESI", sql.VarChar(100), webAdresi);
+        procReq.input("EPOSTA", sql.VarChar(100), eposta);
+        procReq.input("MERSIS_NO", sql.VarChar(20), mersisNo ? String(mersisNo).slice(0, 20) : null);
+        procReq.input("TICARET_SICIL_NO", sql.VarChar(20), tSicilNo ? String(tSicilNo).slice(0, 20) : null);
+        procReq.input("YETKILI_MUESSESE_TIPI", sql.TinyInt, muesseseTipi);
+        procReq.input("E_DEFTER_MUKELLEFI", sql.Bit, eDefter);
 
-        const result = await request.query<TodvzTanimEntity>(updateQuery);
-        return result.recordset[0];
-      } else {
-        // INSERT row
-        const colNames = columnMapping.map((col) => `[${col.name as string}]`).join(", ");
-        const paramNames = columnMapping.map((col) => `@${col.name as string}`).join(", ");
-        const insertQuery = `
-          INSERT INTO [dbo].[TODVZ_TANIM] (${colNames})
-          VALUES (${paramNames});
-
-          SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM];
-        `;
-
-        const result = await request.query<TodvzTanimEntity>(insertQuery);
-        return result.recordset[0];
+        await procReq.execute("SODVZ_FIRMA_TANIMI_KAYDET");
+      } catch (procErr: any) {
+        logger.warn("SODVZ_FIRMA_TANIMI_KAYDET execution error, continuing with full update:", procErr.message);
       }
+
+      // 3. Update all table columns to ensure other tabs (Para, Muhasebe, Limitler, E-Belge, Fiş vb.) are saved
+      const updateReq = pool.request();
+      for (const col of columnMapping) {
+        let val = data[col.name];
+
+        // If field was not provided in incoming data, preserve existing value from database
+        if (val === undefined && existingRow && existingRow[col.name] !== undefined) {
+          val = existingRow[col.name];
+        }
+
+        // Special handling for NOT NULL columns like SURUM
+        if (col.name === "SURUM") {
+          val = (val || existingRow?.SURUM || "2016").toString().trim().slice(0, col.len || 20);
+        }
+
+        if (col.type === sql.DateTime) {
+          let dateVal: Date | null = null;
+          if (val instanceof Date && !isNaN(val.getTime())) {
+            dateVal = val;
+          } else if (typeof val === "string" || typeof val === "number") {
+            const parsed = new Date(val);
+            if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
+              dateVal = parsed;
+            }
+          }
+          updateReq.input(col.name as string, sql.DateTime, dateVal);
+          continue;
+        }
+
+        if (col.type === sql.Bit) {
+          updateReq.input(col.name as string, sql.Bit, val ? 1 : 0);
+          continue;
+        }
+
+        if (col.type === sql.Int || col.type === sql.TinyInt || col.type === sql.Float) {
+          const numVal = (val !== undefined && val !== null && val !== "") ? Number(val) : null;
+          updateReq.input(col.name as string, col.type as any, (numVal !== null && !isNaN(numVal)) ? numVal : null);
+          continue;
+        }
+
+        if (col.len && (col.type === sql.VarChar || col.type === sql.Char)) {
+          const strVal = (val !== undefined && val !== null) ? String(val).slice(0, col.len) : null;
+          updateReq.input(col.name as string, (col.type as any)(col.len), strVal);
+          continue;
+        }
+
+        updateReq.input(col.name as string, col.type as any, val !== undefined ? val : null);
+      }
+
+      const setClauses = columnMapping.map((col) => `[${col.name as string}] = @${col.name as string}`).join(",\n");
+      const updateQuery = `
+        UPDATE [dbo].[TODVZ_TANIM]
+        SET ${setClauses};
+
+        SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM];
+      `;
+
+      const result = await updateReq.query<TodvzTanimEntity>(updateQuery);
+      return result.recordset[0];
     } catch (error: any) {
       logger.error("Error updating TODVZ_TANIM:", error);
       throw ApiError.internal(`Firma tanımları güncellenirken hata oluştu: ${error.message}`);
