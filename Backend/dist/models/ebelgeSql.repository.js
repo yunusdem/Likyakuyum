@@ -776,8 +776,9 @@ export class EbelgeSqlRepository {
         const res = await pool
             .request()
             .input("belgeNo", sql.VarChar(40), belgeNo)
-            // ICE'nin reddettiği (HATA) gönderim belge oluşturmaz; aynı numara yeniden denenebilir.
-            .query(`SELECT TOP 1 1 AS v FROM [dbo].[TODVZ_EBELGE_GIDEN] WHERE [BELGE_NO] = @belgeNo AND [GONDERIM_DURUMU] <> 'HATA'`);
+            // ICE, reddettiği belgenin numarasını da kaydeder ("bu tarihte zaten oluşturulmuş");
+            // HATA dahil her giden kaydı numarayı kilitler. Düzeltme yeni numaralı fişle yapılır.
+            .query(`SELECT TOP 1 1 AS v FROM [dbo].[TODVZ_EBELGE_GIDEN] WHERE [BELGE_NO] = @belgeNo`);
         return res.recordset.length > 0;
     }
     /** Giden belge listesi */

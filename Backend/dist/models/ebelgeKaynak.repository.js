@@ -92,10 +92,10 @@ export class EbelgeKaynakRepository {
           OR (K.kaynak='DOVIZ' AND R.ANAHTAR=CONCAT(K.evrakTuru,':',K.belgeId,':',K.belgeTuru,':',K.belgeNo))
         ORDER BY CASE WHEN R.DURUM='HATA' THEN 1 ELSE 0 END,R.TARIH DESC) R
       OUTER APPLY (SELECT TOP 1 * FROM dbo.TODVZ_EBELGE_GIDEN G
-        WHERE (G.BELGE_NO=K.belgeNo OR G.UUID=NULLIF(K.eskiEttn,''))
-          -- ICE'nin reddettiği (HATA) gönderim belge oluşturmaz, numarayı tüketmez;
-          -- kaynak yeniden gönderilebilir kalmalı, bu yüzden kilit sayılmaz.
-          AND G.GONDERIM_DURUMU<>'HATA'
+        -- ICE, reddettiği belgenin numarasını da kaydeder ("bu tarihte zaten
+        -- oluşturulmuş"); HATA dahil her giden kaydı numarayı kilitler. Düzeltme
+        -- yeni numaralı fişle yapılır.
+        WHERE G.BELGE_NO=K.belgeNo OR G.UUID=NULLIF(K.eskiEttn,'')
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
       WHERE (@kaynak IS NULL OR (@kaynak='DOVIZ' AND K.kaynak='DOVIZ')
         OR (@kaynak='FATURA' AND K.kaynak='FATURA' AND K.belgeTuru IN(0,1))

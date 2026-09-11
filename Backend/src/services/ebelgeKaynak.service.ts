@@ -113,8 +113,10 @@ export class EbelgeKaynakService {
     if (askida && !sonuc) {
       const baslangic = new Date(giden.GONDERIM_TARIHI || giden.gonderimTarihi || giden.OLUSTURMA_TARIHI || 0).getTime();
       const eskiMi = Number.isFinite(baslangic) && baslangic > 0 && Date.now() - baslangic > 5 * 60 * 1000;
+      // ICE reddettiği belgenin numarasını da kaydeder; aynı numara o tarihte bir daha
+      // gönderilemez. Bu yüzden "yeniden gönderilebilir" denmez: düzeltme yeni fişle yapılır.
       const mesaj = eskiMi
-        ? "ICE bu ETTN'yi tanımıyor; belge ICE'de oluşmamış. Gönderim ICE'ye ulaşmadı veya reddedildi. Belge yeniden gönderilebilir."
+        ? "ICE bu ETTN için geçerli belge tanımıyor; gönderim reddedilmiş veya tamamlanmamış. Belge numarası ICE'de kayıtlı kaldığı için aynı numara yeniden gönderilemez; fişi düzeltip yeni numarayla kesiniz."
         : "ICE bu ETTN'yi henüz tanımıyor; gönderim yeni. Birkaç dakika sonra durumu yeniden sorgulayınız.";
       if (eskiMi) {
         await EbelgeSqlRepository.earsivDurumGecir(uuid, giden.gonderimDurumu, "HATA", { mesaj }, ctx, "EDoviz");
@@ -302,7 +304,8 @@ export class EbelgeKaynakService {
       if (!basarili) {
         throw ApiError.conflict(durum === "BELIRSIZ"
           ? "Gönderim sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz."
-          : ilk?.response_message || sonuc.response_message || "e-Döviz gönderimi reddedildi.");
+          : `${ilk?.response_message || sonuc.response_message || "e-Döviz gönderimi reddedildi."} ` +
+            "ICE bu belge numarasını kaydetti; aynı numara bu tarihte yeniden gönderilemez. Fişi düzeltip yeni numarayla kesiniz.");
       }
 
       await EbelgeKaynakRepository.sonuc(k, "GONDERILDI", sonuc.response_message || "Gönderildi", ctx);
