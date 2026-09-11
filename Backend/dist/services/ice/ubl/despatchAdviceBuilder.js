@@ -85,7 +85,17 @@ export const dogrulaIrsaliye = (girdi) => {
     // 14.09.2026 itibarıyla e-İrsaliye plaka kontrolüne hazırlık:
     // taşıyıcı firma bilgisi verilmiş olsa dahi araç plakası zorunludur.
     if (!sevk.plaka?.trim()) {
-        throw ApiError.badRequest("Sevkiyatta araç plakası zorunludur.");
+        throw ApiError.badRequest("Sevkiyatta plaka/dorse bilgisi zorunludur.");
+    }
+    if (sevk.plaka.trim().length > 50 || !/^[A-Z0-9 -]+$/i.test(sevk.plaka.trim())) {
+        throw ApiError.badRequest("Plaka/dorse en fazla 50 karakter olmalı; yalnızca harf, rakam, boşluk ve tire içermelidir.");
+    }
+    const plakaTurleri = [
+        "PLAKA", "DORSE", "DORSEPLAKA",
+        "YABANCIPLAKA", "YABANCIDORSE", "YABANCIDORSEPLAKA",
+    ];
+    if (sevk.plakaTuru && !plakaTurleri.includes(sevk.plakaTuru)) {
+        throw ApiError.badRequest("Geçersiz plaka/dorse türü.");
     }
     if (sevk.tasiyici && !/^\d{10}$|^\d{11}$/.test(sevk.tasiyici.vknTckn?.trim() || "")) {
         throw ApiError.badRequest("Taşıyıcı firma VKN/TCKN 10 veya 11 haneli rakam olmalıdır.");
@@ -160,7 +170,7 @@ const shipmentXml = (sevk, alici) => {
         ? `<cac:ShipmentStage>` +
             (sevk.plaka?.trim()
                 ? `<cac:TransportMeans><cac:RoadTransport>` +
-                    `<cbc:LicensePlateID schemeID="PLAKA">${escapeXml(sevk.plaka.replace(/\s/g, "").toUpperCase())}</cbc:LicensePlateID>` +
+                    `<cbc:LicensePlateID schemeID="${sevk.plakaTuru || "PLAKA"}">${escapeXml(sevk.plaka.replace(/\s/g, "").toUpperCase())}</cbc:LicensePlateID>` +
                     `</cac:RoadTransport></cac:TransportMeans>`
                 : "") +
             soforXml +

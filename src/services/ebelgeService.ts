@@ -209,16 +209,20 @@ export interface EbelgeHesapOzeti {
   tevkifatGruplari?: { kod: string; oran: number; matrah: number; vergi: number }[];
 }
 
-export interface EbelgeKaynakKimlik { evrakTuru: number; belgeId: number; belgeTuru: number }
+export interface EbelgeKaynakKimlik { evrakTuru: number; belgeId: number; belgeTuru: number; belgeNo?: string }
 /** Kaynak listesi iki görünümden gelir: fatura (evrakTuru 0) ve e-Döviz fişi (evrakTuru 99). */
 export const EBELGE_DOVIZ_EVRAK_TURU = 99;
 export interface EbelgeKaynakSatiri extends EbelgeKaynakKimlik {
   kaynak: "FATURA" | "DOVIZ";
   belgeNo: string; tarih: string; unvan: string; tutar: number; paraBirimi: string; durum: string; hata: string | null;
-  eskiEttn: string | null; eskiDurum: number; uuid: string | null;
+  eskiEttn: string | null; eskiDurum: number; uuid: string | null; secilebilir: boolean; engel: string | null;
+}
+export interface EbelgeKaynakDetay {
+  belgeNo: string; tarih: string; unvan: string; tur: string; paraBirimi: string; tutar: number;
+  ettn: string; durum: number; satirlar: { ad: string; miktar: number; kur?: number; tutar: number; kdv?: number }[];
 }
 export interface EbelgeKaynakHazir extends EbelgeKaynakKimlik {
-  belgeNo: string; unvan: string; tutar: number; belgeTuruAdi: string; parmakizi: string; senaryo: string; durum: string;
+  belgeNo: string; unvan: string; tutar: number; belgeTuruAdi: string; parmakizi: string; senaryo: string; durum: string; paraBirimi?: string;
 }
 export interface EbelgeMustahsilIstegi {
   belgeNo:string; tarih:string; saat?:string; paraBirimi:"TRY"; smsKodu:string; smsSaglayiciAdi:string; smsSaglayiciVkn:string;
@@ -404,11 +408,15 @@ const ebelgePdfBlobUrl = async (yol: string): Promise<string> => {
 };
 
 export const ebelgeService = {
-  async kaynakListe(filtre: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "DOVIZ"; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }) {
+  async kaynakListe(filtre: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ"; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }) {
     return (await apiClient.get<{ toplam: number; kayitlar: EbelgeKaynakSatiri[] }>("/e-belge/kaynak",filtre)).data;
   },
-  async kaynakHazirla(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakHazir>("/e-belge/kaynak/hazirla",k)).data; },
-  async kaynakGonder(k: EbelgeKaynakHazir) { return (await apiClient.post<{ durum: string; mesaj: string }>("/e-belge/kaynak/gonder",k)).data; },
+  async kaynakDetay(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakDetay>("/e-belge/kaynak/detay",k)).data; },
+  async kaynakPdf(k: EbelgeKaynakKimlik) {
+    return ebelgePdfBlobUrl(`/e-belge/kaynak/${k.evrakTuru}/${k.belgeId}/${k.belgeTuru}/pdf${k.belgeNo ? '?belgeNo=' + encodeURIComponent(k.belgeNo) : ''}`);
+  },
+  async kaynakHazirla(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakHazir>("/e-belge/kaynak/hazirla",k,{ timeoutMs: 180_000 })).data; },
+  async kaynakGonder(k: EbelgeKaynakHazir) { return (await apiClient.post<{ durum: string; mesaj: string }>("/e-belge/kaynak/gonder",k,{ timeoutMs: 300_000 })).data; },
   async dovizDurum(uuid: string) { return (await apiClient.get<any>(`/e-belge/doviz/${encodeURIComponent(uuid)}/durum`)).data; },
   async getDovizPdfBlobUrl(uuid: string) { return ebelgePdfBlobUrl(`/e-belge/doviz/${encodeURIComponent(uuid)}/pdf`); },
   async dovizIptal(uuid: string, iptalTarihi?: string) { return (await apiClient.post<{ durum: string; mesaj: string }>(`/e-belge/doviz/${encodeURIComponent(uuid)}/iptal`,{ iptalTarihi })).data; },

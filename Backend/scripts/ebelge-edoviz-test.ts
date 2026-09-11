@@ -3,15 +3,36 @@ import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
 import sql from 'mssql';
 import { XMLParser } from 'fast-xml-parser';
-import { EbelgeKaynakRepository as kaynakRepo, KaynakKimlik, DOVIZ_EVRAK_TURU } from '../src/models/ebelgeKaynak.repository.js';
+import { EbelgeKaynakRepository as kaynakRepo, kaynakSecim, kaynakAnahtar, KaynakKimlik, DOVIZ_EVRAK_TURU } from '../src/models/ebelgeKaynak.repository.js';
 import { EbelgeSqlRepository as repo } from '../src/models/ebelgeSql.repository.js';
 import { EbelgeKaynakService as kaynak, dovizGirdisi } from '../src/services/ebelgeKaynak.service.js';
 import { buildEDovizInnerXml, EDovizGirdi } from '../src/services/ice/ice.edoviz.js';
+import { clearSession } from '../src/services/ice/ice.session.js';
+const config = { servisUrl: 'https://integration.iceteknoloji.com.tr/integration.asmx', kullaniciAdi: 'offline-edoviz', sifre: 'offline', uygulamaAdi: 'offline', uygulamaSurum: '1' };
+const ettn = 'b005795e-b8a8-4142-9fd4-a096f32bcbcc';
+let overrides: Record<string, string | Error>;
 
 // Gerçek SQL ve HTTP erişimini test başarısızlığına çevir.
 (sql.ConnectionPool.prototype as any).connect = () => { throw new Error('TEST: gerçek SQL yasak'); };
 (kaynakRepo as any).pool = () => { throw new Error('TEST: taklit edilmemiş kaynak repository çağrısı'); };
-globalThis.fetch = (async () => { throw new Error('TEST: gerçek ICE çağrısı yasak'); }) as any;
+globalThis.fetch = async (_url, init) => {
+  const method = String((init?.headers as any).SOAPAction).split('/').pop()!.replaceAll('"', '');
+  if (method !== 'Login') cagrilar.push(method);
+  const defaults: Record<string, string> = {
+    Login: '<isSuccecss>true</isSuccecss><Login_Request_Header><Session_ID>offline</Session_ID><IP_Number>127.0.0.1</IP_Number><Security_Key>offline</Security_Key></Login_Request_Header>',
+    Get_EDoviz_Status: '',
+    preview_edoviz_basic: '&lt;html&gt;Fiş önizlemesi&lt;/html&gt;',
+    send_edoviz_basic: `<success>true</success><CreditNoteType_responseTypes><CreditNoteType_responseType><success>true</success><shema_is_validate>true</shema_is_validate><schematron_is_validate>true</schematron_is_validate><ettn>${ettn}</ettn><ID>DVZ2026000000042</ID></CreditNoteType_responseType></CreditNoteType_responseTypes>`,
+  };
+  const value = overrides[method] ?? defaults[method];
+  if (value instanceof Error) throw value;
+  assert.notEqual(value, undefined, `Beklenmeyen ICE operasyonu: ${method}`);
+  if (method === 'send_edoviz_basic') {
+    assert.equal(gidenKayitlari.length, 1, 'ICE çağrısından önce giden kaydı yazılmalı');
+    assert.ok(String(init?.body).toLowerCase().includes(ettn));
+  }
+  return new Response(`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><${method}Response><${method}Result>${value}</${method}Result></${method}Response></soap:Body></soap:Envelope>`);
+};
 
 const kimlik: KaynakKimlik = { evrakTuru: DOVIZ_EVRAK_TURU, belgeId: 501, belgeTuru: 1 };
 const baslik = () => ({
@@ -40,6 +61,7 @@ let durumlar: { durum: string; mesaj: string }[];
 let gidenKayitlari: any[];
 
 beforeEach(() => {
+  clearSession(config); overrides = {};
   kayit = { baslik: baslik() };
   gidenVar = false; onizlemeHatasi = null; cagrilar = []; durumlar = []; gidenKayitlari = [];
   gonderimSonucu = {
@@ -50,8 +72,8 @@ beforeEach(() => {
   (kaynakRepo as any).reserve = async () => { cagrilar.push('reserve'); };
   (kaynakRepo as any).sonuc = async (_k: any, durum: string, mesaj: string) => { durumlar.push({ durum, mesaj }); };
   (repo as any).gidenBelgeNoVarMi = async () => gidenVar;
-  (repo as any).getConnectionConfig = async () => ({ servisUrl: 'x', kullaniciAdi: 'y', sifre: 'z' });
-  (repo as any).insertGiden = async (k: any) => { cagrilar.push('insertGiden'); gidenKayitlari.push(k); };
+  (repo as any).getConnectionConfig = async () => config;
+  (repo as any).insertGiden = async (k: any) => { cagrilar.push('insertGiden'); gidenKayitlari.push(k); gidenVar = true; };
   (repo as any).earsivDurumGecir = async (_u: string, _b: string, d: string) => { cagrilar.push('durum:' + d); };
   (repo as any).writeLog = async () => { cagrilar.push('log'); };
 });
@@ -121,15 +143,55 @@ test('Boş blok üretilmez', () => {
 });
 
 test('Hazırlama önizleme çağırır, gönderim yapmaz', async () => {
-  const mod = await adapterTakli();
-  const eski = mod.previewEDoviz;
-  (mod as any).previewEDoviz = async () => { cagrilar.push('preview'); return { onizleme: '<html/>' }; };
-  try {
-    const hazir = await kaynak.dovizHazirla(kimlik);
-    assert.equal(hazir.belgeTuruAdi, 'e-Döviz');
-    assert.equal(hazir.tutar, 34500);
-    assert.deepEqual(cagrilar, ['preview']);
-  } finally { (mod as any).previewEDoviz = eski; }
+  const hazir = await kaynak.dovizHazirla(kimlik);
+  assert.equal(hazir.belgeTuruAdi, 'e-Döviz');
+  assert.equal(hazir.tutar, 34500);
+  assert.deepEqual(cagrilar, ['preview_edoviz_basic']);
+});
+
+test('Durumu sıfır yeni döviz ETTN ile seçilir; gerçek gönderim kaydı kilitli kalır', () => {
+  const row = { kaynak: 'DOVIZ', belgeTuru: 0, durum: 'GONDERILMEDI', eskiEttn: ettn, eskiDurum: 0 };
+  assert.equal(kaynakSecim(row).secilebilir, true);
+  for (const patch of [{ uuid: ettn }, { eskiDurum: 1 }, { eskiHata: 'Servis reddi' }, { durum: 'BELIRSIZ' }, { durum: 'GONDERILIYOR' }]) {
+    assert.equal(kaynakSecim({ ...row, ...patch }).secilebilir, false);
+  }
+  assert.equal(kaynakSecim({ ...row, kaynak: 'FATURA' }).secilebilir, false);
+  assert.notEqual(kaynakAnahtar({ ...kimlik, belgeNo: 'DVZ2026000000042' }), kaynakAnahtar({ ...kimlik, belgeNo: 'DVZ2026000000043' }));
+});
+
+test('Yeni ETTN korunur; ICE kontrolü ve önizleme sonrası bir kez gönderilir', async () => {
+  kayit.baslik.ETTN = ettn; kayit.baslik.UUID = ettn; kayit.baslik.PayableAmountCurrency = 'TRY';
+  const hazir = await kaynak.dovizHazirla(kimlik);
+  assert.equal(hazir.paraBirimi, 'TRY');
+  assert.deepEqual(cagrilar, ['Get_EDoviz_Status', 'preview_edoviz_basic']);
+  await kaynak.dovizGonder(kimlik, hazir.parmakizi, 'offline');
+  assert.equal(gidenKayitlari[0].uuid, ettn);
+  assert.equal(gidenKayitlari[0].paraBirimi, 'TRY');
+  assert.equal(cagrilar.filter(c => c === 'send_edoviz_basic').length, 1);
+  assert.ok(cagrilar.includes('durum:GONDERILDI'));
+  await assert.rejects(kaynak.dovizGonder(kimlik, hazir.parmakizi, 'offline'), /zaten mevcut/);
+});
+
+test('ICE kaydı, bozuk durum cevabı, hata metni ve bağlantı hatasında gönderim açılmaz', async () => {
+  kayit.baslik.ETTN = ettn; kayit.baslik.UUID = ettn;
+  for (const value of ['<Get_EDoviz_Status_Response><UUID>' + ettn + '</UUID><STATUS_DESCRIPTION>Gönderildi</STATUS_DESCRIPTION></Get_EDoviz_Status_Response>', '<unexpected/>', new Error('offline bağlantı hatası')]) {
+    overrides.Get_EDoviz_Status = value;
+    await assert.rejects(kaynak.dovizHazirla(kimlik));
+  }
+  delete overrides.Get_EDoviz_Status;
+  overrides.preview_edoviz_basic = 'Vergi kimlik numarası geçersiz';
+  await assert.rejects(kaynak.dovizHazirla(kimlik), /önizlemesi doğrulanamadı/);
+  assert.equal(gidenKayitlari.length, 0);
+});
+
+test('Gönderim zaman aşımında sonuç belirsiz kalır ve tekrar gönderilmez', async () => {
+  kayit.baslik.ETTN = ettn; kayit.baslik.UUID = ettn;
+  const hazir = await kaynak.dovizHazirla(kimlik);
+  overrides.send_edoviz_basic = new Error('offline zaman aşımı');
+  await assert.rejects(kaynak.dovizGonder(kimlik, hazir.parmakizi, 'offline'), /belirsiz/);
+  assert.ok(cagrilar.includes('durum:BELIRSIZ'));
+  await assert.rejects(kaynak.dovizGonder(kimlik, hazir.parmakizi, 'offline'), /zaten mevcut/);
+  assert.equal(cagrilar.filter(c => c === 'send_edoviz_basic').length, 1);
 });
 
 test('Giden kutusunda mevcut belge yeniden hazırlanmaz', async () => {

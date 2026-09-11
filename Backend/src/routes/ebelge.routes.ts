@@ -7,6 +7,8 @@ const router = Router();
 
 router.use(authenticate);
 router.get("/kaynak", EbelgeController.kaynakListe);
+router.post('/kaynak/detay', EbelgeController.kaynakDetay);
+router.get('/kaynak/:evrak/:id/:tur/pdf', EbelgeController.kaynakPdf);
 router.post("/kaynak/hazirla", EbelgeController.kaynakHazirla);
 router.post("/kaynak/gonder", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.kaynakGonder);
 router.get("/doviz/:uuid/durum", EbelgeController.dovizDurum);

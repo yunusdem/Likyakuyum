@@ -63,14 +63,14 @@ export const MasakListsPage: React.FC = () => {
   }, []);
 
   const listeYukle = useCallback(
-    async (istenenSayfa: number = page) => {
+    async (istenenSayfa: number = page, filtre?: { listeKod?: string; ad?: string; kimlikNo?: string }) => {
       setYukleniyor(true);
       setHata(null);
       try {
         const sonuc = await MasakService.getListe({
-          listeKod: listeKod || undefined,
-          q: ad.trim() || undefined,
-          kimlikNo: kimlikNo.trim() || undefined,
+          listeKod: (filtre?.listeKod ?? listeKod) || undefined,
+          q: (filtre?.ad ?? ad).trim() || undefined,
+          kimlikNo: (filtre?.kimlikNo ?? kimlikNo).trim() || undefined,
           page: istenenSayfa,
           pageSize: SAYFA_BOYUTU,
         });
@@ -101,7 +101,7 @@ export const MasakListsPage: React.FC = () => {
     setListeKod(deger);
     setPage(1);
     // Filtre değişince listeyi hemen tazele
-    setTimeout(() => listeYukle(1), 0);
+    void listeYukle(1, { listeKod: deger });
   };
 
   const sonSayfa = Math.max(Math.ceil(toplam / SAYFA_BOYUTU), 1);
@@ -112,7 +112,7 @@ export const MasakListsPage: React.FC = () => {
     setKimlikNo("");
     setListeKod("");
     setPage(1);
-    setTimeout(() => listeYukle(1), 0);
+    void listeYukle(1, { listeKod: '', ad: '', kimlikNo: '' });
   };
 
   return (
@@ -498,14 +498,6 @@ export const MasakListsPage: React.FC = () => {
                   <td className="bg-light fw-semibold text-muted">Kaynak</td>
                   <td className="text-muted" style={{ fontSize: "0.76rem" }}>
                     {masakTarihSaat(detay.guncellemeZamani)}
-                    {detay.kaynakUrl && (
-                      <>
-                        {" · "}
-                        <a href={detay.kaynakUrl} target="_blank" rel="noopener noreferrer">
-                          Excel dosyası <IconExternalLink size={12} />
-                        </a>
-                      </>
-                    )}
                   </td>
                 </tr>
               </tbody>

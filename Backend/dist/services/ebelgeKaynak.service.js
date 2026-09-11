@@ -5,6 +5,7 @@ import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { EbelgeService } from "./ebelge.service.js";
 import { hesapla } from "./ice/ubl/invoiceBuilder.js";
 import { ApiError } from "../utils/ApiError.js";
+import { kaynakFisPdf } from './ebelgeKaynakPdf.js';
 const temiz = (v) => String(v ?? "").trim();
 export const kaynakParmakizi = (kaynak) => createHash("sha256").update(JSON.stringify(kaynak)).digest("hex");
 /** Uses the ERP's invoice-line view; never derives gold tax bases from raw gram/currency rows. */
@@ -53,6 +54,32 @@ export function kaynakFaturaGirdisi(kaynak) {
             il: temiz(b.IL_ADI), ilce: temiz(b.ILCE_ADI), adres: temiz(b.ADRES), vergiDairesi: temiz(b.VERGI_DAIRESI_ADI) }, satirlar };
 }
 export class EbelgeKaynakService {
+    static async detay(k, ctx) {
+        const kaynak = dovizMi(k) ? await EbelgeKaynakRepository.dovizDetay(k, ctx) : await EbelgeKaynakRepository.detay(k, ctx);
+        const b = kaynak.baslik;
+        const paraBirimi = temiz(dovizMi(k) ? b.PayableAmountCurrency || b.PARA_KODU : b.PARA_KODU).replace(/^TL$/, 'TRY');
+        return { belgeNo: temiz(b.BELGE_NO), tarih: new Date(b.TARIH).toISOString(), unvan: temiz(b.UNVAN),
+            tur: dovizMi(k) ? 'e-Döviz' : ({ 0: 'Fatura', 1: 'Fatura', 2: 'e-İrsaliye', 3: 'e-Gider' }[k.belgeTuru] || 'Belge'),
+            paraBirimi, tutar: Number(dovizMi(k) ? b.PayableAmount : b.MIKTAR), ettn: temiz(b.ETTN), durum: Number(b.E_BELGE_DURUMU || 0),
+            firma: temiz(b.Supplier_PartyName), vergiKimlikNo: temiz(b.Customer_PartyIdentification_ID || b.VERGI_KIMLIK_NO),
+            satirlar: dovizMi(k) ? [{ ad: temiz(b.PARA_ADI || b.PARA_KODU), miktar: Number(b.MIKTAR), kur: Number(b.KUR), tutar: Number(b.PayableAmount) }]
+                : kaynak.satirlar.map(s => ({ ad: temiz(s.PARA_ADI), miktar: Number(s.MIKTAR), tutar: Number(s.TUTAR), kdv: Number(s.KDV) })),
+        };
+    }
+    static async pdf(k, ctx) {
+        return kaynakFisPdf(await this.detay(k, ctx));
+    }
+    static async dovizIceKontrol(girdi, kaynak, ctx) {
+        const config = await EbelgeSqlRepository.getConnectionConfig(ctx);
+        if (temiz(kaynak.baslik.ETTN)) {
+            const durumlar = await getEDovizStatus(config, [girdi.uuid]);
+            if (durumlar.length) {
+                const mesaj = durumlar.map(d => temiz(d.STATUS_DESCRIPTION || d.STATUS)).filter(Boolean).join('; ');
+                throw ApiError.conflict(`ETTN için ICE kaydı veya kontrol yanıtı mevcut${mesaj ? ': ' + mesaj : ''}. Yeniden gönderilmedi; ICE durumunu kontrol edin.`);
+            }
+        }
+        return config;
+    }
     static async dovizGiden(uuid, ctx) {
         const kayit = await EbelgeSqlRepository.getGiden(uuid, ctx);
         if (!kayit || kayit.belgeTuru !== "EDoviz")
@@ -154,7 +181,7 @@ export class EbelgeKaynakService {
         if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) {
             throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
         }
-        const config = await EbelgeSqlRepository.getConnectionConfig(ctx);
+        const config = await this.dovizIceKontrol(girdi, kaynak, ctx);
         await previewEDoviz(config, girdi);
         const adSoyad = [girdi.musteri.ad, girdi.musteri.soyad].filter(Boolean).join(" ");
         return {
@@ -165,6 +192,7 @@ export class EbelgeKaynakService {
             parmakizi: kaynakParmakizi(kaynak),
             senaryo: girdi.creditNoteTypeCode,
             tutar: girdi.tutar.payableAmount,
+            paraBirimi: temiz(kaynak.baslik.PayableAmountCurrency) || girdi.tutar.kod,
             durum: "HAZIR",
         };
     }
@@ -182,11 +210,14 @@ export class EbelgeKaynakService {
         if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) {
             throw ApiError.conflict("Belge giden kutusunda zaten mevcut; yeniden gönderilmedi.");
         }
-        const config = await EbelgeSqlRepository.getConnectionConfig(ctx);
+        const config = await this.dovizIceKontrol(girdi, kaynak, ctx);
         await EbelgeKaynakRepository.reserve(k, girdi.belgeNo, ctx);
         try {
             // Gönderimden hemen önce son bir doğrulama: reddedilecek belge numarayı yakmasın.
             await previewEDoviz(config, girdi);
+            const guncel = await EbelgeKaynakRepository.dovizDetay(k, ctx);
+            if (kaynakParmakizi(guncel) !== parmakizi)
+                throw ApiError.conflict('Kaynak döviz fişi değişmiş; yeniden hazırlayın.');
             await EbelgeSqlRepository.insertGiden({
                 uuid: girdi.uuid,
                 belgeNo: girdi.belgeNo,
@@ -198,7 +229,7 @@ export class EbelgeKaynakService {
                 aliciUnvan: girdi.musteri.unvan || [girdi.musteri.ad, girdi.musteri.soyad].filter(Boolean).join(" ") || null,
                 duzenlemeTarihi: new Date(girdi.duzenlemeTarihi),
                 tutar: girdi.tutar.payableAmount,
-                paraBirimi: girdi.tutar.kod,
+                paraBirimi: temiz(kaynak.baslik.PayableAmountCurrency) || girdi.tutar.kod,
                 gonderimDurumu: "GONDERILIYOR",
                 iceResponseMesaj: "Gönderim başlatıldı. Sonuç kesinleşmeden yeniden göndermeyiniz.",
                 kaynakFisId: kaynakAnahtar(k),
@@ -288,8 +319,15 @@ export function dovizGirdisi(kaynak) {
     const b = kaynak.baslik;
     if (Number(b.IPTAL || 0) !== 0)
         throw ApiError.conflict("Bu döviz fişi iptal edilmiş; gönderilemez.");
-    if (Number(b.E_BELGE_DURUMU || 0) !== 0 || temiz(b.ETTN)) {
+    if (Number(b.E_BELGE_DURUMU || 0) !== 0) {
         throw ApiError.conflict("Eski sistemde işlem/ETTN kaydı var. ICE sonucunu doğrulamadan yeniden gönderilemez.");
+    }
+    const kaynakEttn = temiz(b.ETTN);
+    if (kaynakEttn && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(kaynakEttn)) {
+        throw ApiError.badRequest('Kaynak ETTN geçersiz. Fişin ETTN alanını kontrol edin.');
+    }
+    if (kaynakEttn && temiz(b.UUID) && kaynakEttn.toLowerCase() !== temiz(b.UUID).toLowerCase()) {
+        throw ApiError.conflict('Kaynak ETTN ile döviz belgesinin UUID alanı uyuşmuyor.');
     }
     if (temiz(b.E_BELGE_HATA_ACIKLAMASI)) {
         throw ApiError.conflict("Eski sistem hata kaydı var; gönderim sonucu kontrol edilmelidir.");
@@ -311,7 +349,7 @@ export function dovizGirdisi(kaynak) {
     const tlKarsilikKuru = zorunluSayi(b.TL_KARSILIK_KURU ?? b.KUR, "TL karşılık kuru");
     if (tlKarsilikKuru <= 0)
         throw ApiError.badRequest("TL karşılık kuru sıfır veya negatif olamaz.");
-    const dolarKarsilikKuru = sayi(b.DOLAR_KARSILIK_KURU ?? b.DOLAR_KURU) ?? 0;
+    const dolarKarsilikKuru = sayi(b.DOLAR_KARSILIK_KURU ?? b.DOLAR_KURU ?? b.PricingExchangeRate) ?? 0;
     const vergiOrani = sayi(b.TaxPercent) ?? 0;
     const vergiTutari = sayi(b.TaxAmount) ?? 0;
     const vergiMatrah = sayi(b.TaxableAmount) ?? 0;
@@ -340,7 +378,7 @@ export function dovizGirdisi(kaynak) {
     }
     return {
         belgeNo,
-        uuid: temiz(b.UUID) || randomUUID(),
+        uuid: kaynakEttn || temiz(b.UUID) || randomUUID(),
         profileId: temiz(b.ProfileId) || "TEMELDOVIZ",
         creditNoteTypeCode: temiz(b.CreditNoteTypeCode) || "DOVIZALIM",
         duzenlemeTarihi: isoTarih(b.IssueDate || b.TARIH, "Düzenleme tarihi"),

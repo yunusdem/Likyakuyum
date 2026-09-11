@@ -14,16 +14,14 @@ import {
   IconBuildingBank,
   IconArrowsExchange,
   IconFileCertificate,
-  IconShieldCheck,
-  IconDownload,
 } from "@tabler/icons-react";
-import { Container, ListGroup, Button, Dropdown, Badge } from "react-bootstrap";
+import { Container, ListGroup, Button } from "react-bootstrap";
 
 //import custom components
 import UserMenu from "./UserMenu";
 import NoficationList from "components/common/NoficationList";
 import MasakModal from "components/masak/MasakModal";
-import { MASAK_LISTS } from "data/masakData";
+import MasakMenu from "components/masak/MasakMenu";
 
 //import custom hooks
 import useMenu from "hooks/useMenu";
@@ -177,112 +175,7 @@ const Header: React.FC = () => {
                 ))}
 
                 {/* MASAK Quick Action Dropdown (Beside E-Belge) */}
-                <Dropdown align="end" className="d-inline-flex">
-                  <Dropdown.Toggle
-                    as="div"
-                    className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
-                    style={{ cursor: "pointer" }}
-                    id="dropdown-masak-quick"
-                  >
-                    <span className="d-flex align-items-center justify-content-center position-relative" style={{ marginBottom: "2px" }}>
-                      <IconShieldCheck size={18} strokeWidth={2} style={{ color: "#dc2626" }} />
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "10.5px",
-                        fontWeight: 700,
-                        color: "#dc2626",
-                        lineHeight: 1,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      MASAK
-                    </span>
-                  </Dropdown.Toggle>
-
-                  <Dropdown.Menu
-                    className="shadow-lg border-0 py-2"
-                    style={{
-                      minWidth: "380px",
-                      maxWidth: "420px",
-                      borderRadius: "10px",
-                      zIndex: 1060,
-                    }}
-                  >
-                    <div className="px-3 py-2 border-bottom d-flex align-items-center justify-content-between">
-                      <div>
-                        <div className="fw-bold text-dark d-flex align-items-center gap-1.5" style={{ fontSize: "13px" }}>
-                          <IconShieldCheck size={17} className="text-danger" />
-                          MASAK Malvarlığı Dondurulanlar
-                        </div>
-                        <div className="text-muted" style={{ fontSize: "11px" }}>
-                          T.C. Hazine ve Maliye Bakanlığı Resmi Listeleri
-                        </div>
-                      </div>
-                      <Badge bg="danger" style={{ fontSize: "10px" }}>Resmi Liste</Badge>
-                    </div>
-
-                    <div className="py-1">
-                      {MASAK_LISTS.map((item) => (
-                        <a
-                          key={item.key}
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={item.filename}
-                          className="dropdown-item px-3 py-2 d-flex align-items-center justify-content-between text-wrap"
-                          style={{ whiteSpace: "normal" }}
-                        >
-                          <div className="d-flex align-items-center gap-2 me-2">
-                            <span
-                              className="badge px-1.5 py-1 rounded"
-                              style={{
-                                backgroundColor: item.badgeBg,
-                                color: item.badgeText,
-                                fontSize: "11px",
-                                minWidth: "32px",
-                                textAlign: "center",
-                              }}
-                            >
-                              {item.code}
-                            </span>
-                            <div>
-                              <div className="fw-semibold text-dark" style={{ fontSize: "12px", lineHeight: 1.3 }}>
-                                {item.shortTitle}
-                              </div>
-                              <div className="text-muted" style={{ fontSize: "10.5px" }}>
-                                {item.lawReference}
-                              </div>
-                            </div>
-                          </div>
-                          <span
-                            className="btn btn-sm btn-outline-danger p-1 rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                            style={{ width: "26px", height: "26px" }}
-                            title="Excel İndir (.xlsx)"
-                          >
-                            <IconDownload size={13} />
-                          </span>
-                        </a>
-                      ))}
-                    </div>
-
-                    <div className="px-3 pt-2 pb-1 border-top mt-1 d-flex align-items-center justify-content-between">
-                      <Link
-                        to="/ayarlar/masak-dondurulanlar"
-                        className="text-primary text-decoration-none fw-semibold small d-flex align-items-center gap-1"
-                      >
-                        <span>Tüm Listeleri & Mevzuatı Aç</span>
-                      </Link>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-link text-secondary text-decoration-none p-0 small"
-                        onClick={() => setIsMasakModalOpen(true)}
-                      >
-                        Detaylı İncele
-                      </button>
-                    </div>
-                  </Dropdown.Menu>
-                </Dropdown>
+                <MasakMenu onUpdate={() => setIsMasakModalOpen(true)} />
               </div>
             </div>
 
@@ -353,23 +246,7 @@ const Header: React.FC = () => {
               </Link>
             ))}
 
-            {/* Mobile MASAK Button */}
-            <button
-              type="button"
-              onClick={() => setIsMasakModalOpen(true)}
-              className="d-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill btn p-0"
-            >
-              <IconShieldCheck size={16} strokeWidth={2} style={{ color: "#dc2626" }} />
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  color: "#dc2626",
-                }}
-              >
-                MASAK
-              </span>
-            </button>
+            <MasakMenu mobile onUpdate={() => setIsMasakModalOpen(true)} />
           </div>
         </Container>
       </header>

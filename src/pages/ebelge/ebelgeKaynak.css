@@ -1,0 +1,10 @@
+.ebelge-kaynak .kaynak-filtre { display: grid; grid-template-columns: minmax(140px, 1.6fr) repeat(2, minmax(130px, 1fr)) repeat(2, minmax(130px, 1.1fr)) auto auto; gap: 10px; align-items: end; }
+.ebelge-kaynak .kaynak-filtre .form-label { margin-bottom: 4px; }
+.ebelge-kaynak .kaynak-tablo { font-size: 14px; }
+.ebelge-kaynak .kaynak-tablo td { vertical-align: top; white-space: normal; }
+.ebelge-kaynak .kaynak-tablo td:nth-child(6) { white-space: nowrap; }
+.ebelge-kaynak .kaynak-tablo .btn-link { font-size: inherit; }
+.ebelge-kaynak .kaynak-aciklama { min-width: 250px; max-width: 480px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.ebelge-kaynak .kaynak-ettn { display: block; font-family: monospace; user-select: all; }
+@media (max-width: 1100px) { .ebelge-kaynak .kaynak-filtre { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .ebelge-kaynak .kaynak-filtre { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

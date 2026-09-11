@@ -9,6 +9,23 @@ import { ebelgeAyarSchema, ebelgeDogrulaSchema, ebelgeTaslakSchema, ebelgeTarihS
 import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { ICE_BELGE_STATULERI } from "../services/ice/ice.efatura.js";
 export class EbelgeController {
+    static kaynakDetay = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKaynakKimlikSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest('Kaynak belge kimliği geçersiz.');
+        return ApiResponse.ok(res, 'Fiş detayı alındı.', await EbelgeKaynakService.detay(parsed.data, EbelgeController.getDbContext(req)));
+    });
+    static kaynakPdf = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKaynakKimlikSchema.safeParse({ evrakTuru: Number(req.params.evrak), belgeId: Number(req.params.id),
+            belgeTuru: Number(req.params.tur), belgeNo: req.query.belgeNo });
+        if (!parsed.success)
+            throw ApiError.badRequest('Kaynak belge kimliği geçersiz.');
+        const pdf = await EbelgeKaynakService.pdf(parsed.data, EbelgeController.getDbContext(req));
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="fis-${parsed.data.belgeId}.pdf"`);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).end(pdf);
+    });
     static kaynakListe = asyncHandler(async (req, res) => {
         const parsed = ebelgeKaynakListeSchema.safeParse(req.query);
         if (!parsed.success)

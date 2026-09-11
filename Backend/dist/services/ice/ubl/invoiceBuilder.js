@@ -84,12 +84,22 @@ export const dogrulaGirdi = (girdi) => {
         if (satir.iskontoOrani != null && (satir.iskontoOrani < 0 || satir.iskontoOrani >= 100)) {
             throw ApiError.badRequest(`${no}. satırda iskonto oranı 0-100 aralığında olmalıdır.`);
         }
-        // İstisna yalnızca KDV oranı 0 iken anlamlıdır
-        if (satir.istisnaKodu?.trim() && satir.kdvOrani !== 0) {
+        const istisnaKodu = satir.istisnaKodu?.trim();
+        // 14.09.2026 kuralı: 555 sıfır KDV ile kullanılamaz; diğer istisnalar sıfır KDV ister.
+        if (istisnaKodu === "555" && satir.kdvOrani === 0) {
+            throw ApiError.badRequest(`${no}. satırda 555 vergi muafiyet kodu KDV 0 ile kullanılamaz.`);
+        }
+        if (istisnaKodu === "555" && (girdi.senaryo === "YATIRIMTESVIK" || girdi.senaryo === "KAMU")) {
+            throw ApiError.badRequest(`${no}. satırda 555 vergi muafiyet kodu özel senaryolu faturada kullanılamaz.`);
+        }
+        if (istisnaKodu && istisnaKodu !== "555" && satir.kdvOrani !== 0) {
             throw ApiError.badRequest(`${no}. satırda KDV istisnası bildirilmiş ancak KDV oranı ${satir.kdvOrani}. İstisnalı satırda oran 0 olmalıdır.`);
         }
-        if (satir.kdvOrani === 0 && !satir.istisnaKodu?.trim()) {
+        if (satir.kdvOrani === 0 && !istisnaKodu) {
             throw ApiError.badRequest(`${no}. satırda KDV oranı 0 ancak istisna kodu yok. Sıfır oranlı satış için GİB istisna kodu zorunludur.`);
+        }
+        if ((istisnaKodu === "308" || istisnaKodu === "339") && girdi.senaryo !== "YATIRIMTESVIK") {
+            throw ApiError.badRequest(`${no}. satırda ${istisnaKodu} kodu yalnızca YATIRIMTESVIK profilinde kullanılabilir.`);
         }
         // Tevkifat: kod ve oran birlikte verilmelidir
         const tevkifatKod = satir.tevkifatKodu?.trim();
@@ -115,6 +125,10 @@ export const dogrulaGirdi = (girdi) => {
     }
     // İade faturasında dayanak fatura zorunlu
     if (girdi.faturaTipi === "IADE") {
+        const iadeProfilleri = ["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"];
+        if (!iadeProfilleri.includes(girdi.senaryo)) {
+            throw ApiError.badRequest(`IADE fatura tipi ${girdi.senaryo} profilinde kullanılamaz.`);
+        }
         if (!girdi.iadeFaturalar?.length) {
             throw ApiError.badRequest("İade faturasında iade edilen fatura bilgisi zorunludur.");
         }
@@ -126,6 +140,9 @@ export const dogrulaGirdi = (girdi) => {
                 throw ApiError.badRequest(`${i + 1}. iade referansının tarihi YYYY-AA-GG biçiminde olmalıdır.`);
             }
         });
+    }
+    if (girdi.faturaTipi === "TEKNOLOJIDESTEK" && girdi.senaryo !== "EARSIVFATURA") {
+        throw ApiError.badRequest("TEKNOLOJIDESTEK fatura tipi yalnızca EARSIVFATURA profilinde kullanılabilir.");
     }
     if (girdi.faturaTipi !== "IADE" && girdi.iadeFaturalar?.length) {
         throw ApiError.badRequest("İade referansı yalnızca IADE tipi faturada kullanılabilir.");

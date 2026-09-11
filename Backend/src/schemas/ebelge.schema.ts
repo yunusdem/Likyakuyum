@@ -333,6 +333,7 @@ export const ebelgeKaynakKimlikSchema = z.union([
   }),
   z.object({
     evrakTuru: z.literal(99), belgeId: z.number().int().positive(), belgeTuru: z.number().int().min(0).max(255),
+    belgeNo: z.string().trim().min(1).max(40).optional(),
   }),
 ]);
 export const ebelgeKaynakGonderSchema = z.intersection(
@@ -347,7 +348,7 @@ const kaynakTarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => Number.i
 export const ebelgeKaynakListeSchema = z.object({
   arama: z.string().trim().max(150).optional(), durum: z.string().max(30).optional(),
   belgeTuru: z.coerce.number().int().min(0).max(255).optional(),
-  kaynak: z.enum(["FATURA", "DOVIZ"]).optional(),
+  kaynak: z.enum(["FATURA", "IRSALIYE", "GIDER", "DOVIZ"]).optional(),
   sayfa: z.coerce.number().int().min(1).max(100000).default(1),
   baslangicTarihi: kaynakTarih.optional(), bitisTarihi: kaynakTarih.optional(),
 }).refine(v => !v.baslangicTarihi || !v.bitisTarihi || v.baslangicTarihi <= v.bitisTarihi, "Tarih aralığı geçersiz.");

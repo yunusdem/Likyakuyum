@@ -86,10 +86,16 @@ export const previewEDoviz = async (config, girdi) => {
         buildInnerXml: (loginHeaderXml) => buildEDovizInnerXml(loginHeaderXml, girdi),
         authHatasindaTekrarla: true,
     });
-    const onizleme = typeof data === "string" ? data : String(data ?? "");
-    if (!onizleme.trim()) {
+    const onizleme = typeof data === "string" ? data.trim() : '';
+    if (!onizleme) {
         throw ApiError.unprocessable("ICE e-Döviz önizlemesi boş döndü; belge doğrulanamadı.");
     }
+    // Servis hata metni de döndürebilir; her dolu metin başarılı önizleme değildir.
+    const decoded = onizleme.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    const belge = /^(?:<!doctype\s+html|<html[\s/>]|%PDF-)/i.test(decoded) ||
+        /^(?:<!doctype\s+html|<html[\s/>]|%PDF-)/i.test(Buffer.from(onizleme, 'base64').toString('utf8').trim());
+    if (!belge)
+        throw ApiError.unprocessable(`ICE e-Döviz önizlemesi doğrulanamadı: ${onizleme.slice(0, 1000)}`);
     return { onizleme };
 };
 /**
@@ -141,9 +147,13 @@ export const getEDovizStatus = async (config, uuidListesi) => {
             `</Get_EDoviz_Status_Request>`,
         authHatasindaTekrarla: true,
     });
+    // Boş SOAP Result, bu UUID için kayıt olmadığını belirtir. Beklenmeyen veya
+    // hata içeren cevapların "kayıt yok" kabul edilmesi tekrar gönderime yol açar.
+    if (data === '')
+        return [];
     const kayit = data?.Get_EDoviz_Status_Response;
     if (!kayit)
-        return [];
+        throw ApiError.conflict('ICE e-Döviz durum yanıtı doğrulanamadı. Gönderim durduruldu.');
     return Array.isArray(kayit) ? kayit : [kayit];
 };
 /**

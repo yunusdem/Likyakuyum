@@ -3,8 +3,6 @@ import { Modal, Button, Form, Spinner, Alert, Badge } from "react-bootstrap";
 import {
   IconShieldCheck,
   IconRefresh,
-  IconExternalLink,
-  IconDownload,
   IconCheck,
   IconAlertTriangle,
   IconHistory,
@@ -36,8 +34,6 @@ interface KaynakSatiri {
   secili: boolean;
   kayitSayisi: number;
   sonGuncelleme: string | null;
-  indirmeUrl: string;
-  dosyaAdi: string;
 }
 
 type Sekme = "adresler" | "gecmis";
@@ -56,18 +52,16 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
   const [gecmis, setGecmis] = useState<MasakGecmisKaydi[]>([]);
   const [gecmisYukleniyor, setGecmisYukleniyor] = useState<boolean>(false);
 
-  /** Varsayılan satırlar: adresler masakData'dan, sayılar backend'den */
+  /** Her açılışta adresler boş; kayıt sayıları backend'den okunur. */
   const varsayilanSatirlar = useCallback((): KaynakSatiri[] => {
     return MASAK_LISTS.map((item) => ({
       listeKod: item.listeKod,
       code: item.code,
       baslik: item.shortTitle,
-      url: item.url,
+      url: '',
       secili: true,
       kayitSayisi: 0,
       sonGuncelleme: null,
-      indirmeUrl: item.url,
-      dosyaAdi: item.filename,
     }));
   }, []);
 
@@ -84,8 +78,6 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
           return d
             ? {
                 ...satir,
-                // Son başarılı güncellemede kullanılan adres varsa o gelir
-                url: d.kaynakUrl || satir.url,
                 kayitSayisi: d.kayitSayisi,
                 sonGuncelleme: d.sonGuncelleme,
               }
@@ -115,6 +107,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
     if (!show) return;
     setSekme("adresler");
     setRapor(null);
+    setSatirlar(varsayilanSatirlar());
     durumYukle();
   }, [show, durumYukle]);
 
@@ -130,7 +123,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
 
   const secililer = satirlar.filter((s) => s.secili);
   const gecersizAdresVar = secililer.some((s) => !masakAdresGecerliMi(s.url));
-  const baslatilabilir = !guncelleniyor && secililer.length > 0 && !gecersizAdresVar;
+  const baslatilabilir = !durumYukleniyor && !guncelleniyor && secililer.length > 0 && !gecersizAdresVar;
 
   const guncellemeyiBaslat = async () => {
     setGuncelleniyor(true);
@@ -149,7 +142,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
           return d
             ? {
                 ...satir,
-                url: d.kaynakUrl || satir.url,
+                url: sonuc.sonuclar.some(s => s.listeKod === satir.listeKod && s.durum === 'basarili') ? '' : satir.url,
                 kayitSayisi: d.kayitSayisi,
                 sonGuncelleme: d.sonGuncelleme,
               }
@@ -270,34 +263,17 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
                           type="text"
                           value={satir.url}
                           disabled={guncelleniyor}
-                          isInvalid={satir.secili && !adresGecerli}
+                          aria-label={`${satir.code} liste adresi`}
+                          autoComplete="off"
+                          isInvalid={satir.secili && !!satir.url.trim() && !adresGecerli}
                           onChange={(e) => satirGuncelle(satir.listeKod, { url: e.target.value })}
                           placeholder="https://ms.hmb.gov.tr/uploads/... .xlsx"
                           className="font-monospace"
                           style={{ fontSize: "0.74rem" }}
                         />
-                        <a
-                          href={satir.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-sm btn-outline-secondary d-flex align-items-center"
-                          title="Bağlantıyı yeni sekmede aç"
-                        >
-                          <IconExternalLink size={15} />
-                        </a>
-                        <a
-                          href={satir.indirmeUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={satir.dosyaAdi}
-                          className="btn btn-sm btn-outline-secondary d-flex align-items-center"
-                          title="Excel dosyasını indir"
-                        >
-                          <IconDownload size={15} />
-                        </a>
                       </div>
 
-                      {satir.secili && !adresGecerli && (
+                      {satir.secili && !!satir.url.trim() && !adresGecerli && (
                         <div className="text-danger mt-1" style={{ fontSize: "0.74rem" }}>
                           Adres https://ms.hmb.gov.tr/ ile başlamalı ve .xlsx ile bitmelidir.
                         </div>
@@ -307,8 +283,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
                 })}
 
                 <div className="text-muted" style={{ fontSize: "0.76rem" }}>
-                  Adres değiştiyse MASAK sayfasındaki yeni bağlantıyı ilgili satıra yapıştırın.
-                  Başarılı güncellemeden sonra adres kaydedilir, bir dahaki sefere hazır gelir.
+                  Güncellemek istediğiniz listelerin güncel adreslerini girin; diğer listelerin seçimini kaldırın.
                 </div>
               </div>
             )}

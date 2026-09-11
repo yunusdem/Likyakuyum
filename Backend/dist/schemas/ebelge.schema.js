@@ -77,8 +77,8 @@ export const ebelgeDogrulaSchema = z.object({
     uuid: z.string().trim().uuid().optional(),
     tarih: ebelgeTarihSchema.optional(),
     saat: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/).optional(),
-    senaryo: z.enum(["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA"]),
-    faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI"]),
+    senaryo: z.enum(["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"]),
+    faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI", "TEKNOLOJIDESTEK"]),
     paraBirimi: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
     notlar: z.array(z.string().max(1000)).max(10).optional(),
     /** Boş bırakılırsa ayar + TODVZ_TANIM'dan tamamlanır */
@@ -156,6 +156,7 @@ const irsSatirSchema = z.object({
     not: z.string().trim().max(300).optional(),
 });
 const TARIH = /^\d{4}-\d{2}-\d{2}$/;
+const PLAKA = /^[A-Z0-9 -]+$/i;
 export const ebelgeIrsaliyeSchema = z.object({
     belgeNo: z.string().trim().min(1, "İrsaliye numarası zorunludur."),
     uuid: z.string().trim().max(60).optional(),
@@ -170,7 +171,13 @@ export const ebelgeIrsaliyeSchema = z.object({
     sevkiyat: z.object({
         sevkTarihi: z.string().trim().regex(TARIH, "Fiili sevk tarihi YYYY-AA-GG olmalıdır."),
         sevkSaati: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, "Geçerli fiili sevk saati zorunludur (SS:DD:SS)."),
-        plaka: z.string().trim().min(1, "Araç plakası zorunludur.").max(20),
+        plaka: z.string().trim().min(1, "Plaka/dorse bilgisi zorunludur.").max(50)
+            .regex(PLAKA, "Plaka/dorse yalnızca harf, rakam, boşluk ve tire içerebilir."),
+        /** 14.09.2026 GİB Schematron plaka/dorse schemeID değeri. */
+        plakaTuru: z.enum([
+            "PLAKA", "DORSE", "DORSEPLAKA",
+            "YABANCIPLAKA", "YABANCIDORSE", "YABANCIDORSEPLAKA",
+        ]).default("PLAKA"),
         soforler: z
             .array(z.object({
             ad: z.string().trim().min(1).max(100),
@@ -287,6 +294,7 @@ export const ebelgeKaynakKimlikSchema = z.union([
     }),
     z.object({
         evrakTuru: z.literal(99), belgeId: z.number().int().positive(), belgeTuru: z.number().int().min(0).max(255),
+        belgeNo: z.string().trim().min(1).max(40).optional(),
     }),
 ]);
 export const ebelgeKaynakGonderSchema = z.intersection(ebelgeKaynakKimlikSchema, z.object({
@@ -298,7 +306,7 @@ const kaynakTarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => Number.i
 export const ebelgeKaynakListeSchema = z.object({
     arama: z.string().trim().max(150).optional(), durum: z.string().max(30).optional(),
     belgeTuru: z.coerce.number().int().min(0).max(255).optional(),
-    kaynak: z.enum(["FATURA", "DOVIZ"]).optional(),
+    kaynak: z.enum(["FATURA", "IRSALIYE", "GIDER", "DOVIZ"]).optional(),
     sayfa: z.coerce.number().int().min(1).max(100000).default(1),
     baslangicTarihi: kaynakTarih.optional(), bitisTarihi: kaynakTarih.optional(),
 }).refine(v => !v.baslangicTarihi || !v.bitisTarihi || v.baslangicTarihi <= v.bitisTarihi, "Tarih aralığı geçersiz.");
