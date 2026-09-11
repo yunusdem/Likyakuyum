@@ -60,6 +60,16 @@ export interface EDovizGirdi {
     vergiMatrah: number;
     dovizMiktar: number;
   };
+  /**
+   * WSDL'de blok isteğe bağlı görünse de içindeki `Odeme_Yontemi` ve
+   * `Son_Odeme_Tarihi` zorunlu; ICE blok hiç gelmediğinde null referans hatası
+   * verip isteği reddediyor. Bu yüzden her belgede gönderilir.
+   */
+  odeme: {
+    yontemi: "NAKIT" | "EFTHAVALE" | "KREDIKARTIBANKAKARTI" | "DIGER";
+    sonOdemeTarihi: string;
+    aciklama?: string;
+  };
   ekBilgiler?: {
     istatistikNo?: string;
     geldigiUlke?: string;
@@ -167,6 +177,12 @@ export const buildEDovizInnerXml = (loginHeaderXml: string, g: EDovizGirdi): str
       alan("Vergi_Tutari", g.alisSatis.vergiTutari) +
       alan("Vergi_Matrah", g.alisSatis.vergiMatrah) +
       alan("Doviz_Miktar", g.alisSatis.dovizMiktar)
+  ) +
+  blok(
+    "Odeme_Bilgileri",
+    alan("Odeme_Yontemi", g.odeme.yontemi) +
+      alan("Son_Odeme_Tarihi", g.odeme.sonOdemeTarihi) +
+      alan("Aciklama", g.odeme.aciklama)
   ) +
   blok(
     "Ek_Bilgiler",

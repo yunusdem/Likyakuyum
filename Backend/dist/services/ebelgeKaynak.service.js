@@ -418,6 +418,8 @@ export function dovizGirdisi(kaynak) {
             vergiMatrah,
             dovizMiktar: miktar,
         },
+        // Döviz alım/satımı vezneden nakit yapılır; bedel işlem anında ödenir.
+        odeme: { yontemi: 'NAKIT', sonOdemeTarihi: isoTarih(b.IssueDate || b.TARIH, 'Son ödeme tarihi') },
         ekBilgiler,
         komisyon: sayi(b.KOMISYON) === undefined ? undefined : {
             vergiHaric: sayi(b.KOMISYON),

@@ -47,6 +47,9 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
         alan("Vergi_Tutari", g.alisSatis.vergiTutari) +
         alan("Vergi_Matrah", g.alisSatis.vergiMatrah) +
         alan("Doviz_Miktar", g.alisSatis.dovizMiktar)) +
+    blok("Odeme_Bilgileri", alan("Odeme_Yontemi", g.odeme.yontemi) +
+        alan("Son_Odeme_Tarihi", g.odeme.sonOdemeTarihi) +
+        alan("Aciklama", g.odeme.aciklama)) +
     blok("Ek_Bilgiler", alan("Istatistik_No", g.ekBilgiler?.istatistikNo) +
         alan("Geldigi_Ulke", g.ekBilgiler?.geldigiUlke) +
         alan("Gelis_Nedeni", g.ekBilgiler?.gelisNedeni) +
