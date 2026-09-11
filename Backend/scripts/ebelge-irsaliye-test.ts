@@ -197,8 +197,12 @@ test("sevkiyat doğrulamaları", () => {
       beklenen
     );
 
-  // Plaka da taşıyıcı da yoksa
-  sevk({ sevkTarihi: "2026-02-10", plaka: undefined }, /plakası veya taşıyıcı/);
+  // Taşıyıcı firma girilmiş olsa dahi plaka zorunludur
+  sevk({ sevkTarihi: "2026-02-10", plaka: undefined }, /plakası zorunludur/);
+  sevk(
+    { sevkTarihi: "2026-02-10", plaka: undefined, tasiyici: { vknTckn: "1112223334", unvan: "Kargo A.Ş." } },
+    /plakası zorunludur/
+  );
   // Sevk tarihi düzenleme tarihinden önce olamaz
   sevk({ sevkTarihi: "2026-02-01", plaka: "07 A 1" }, /düzenleme tarihinden önce/);
   sevk({ sevkTarihi: "gecersiz", plaka: "07 A 1" }, /Fiili sevk tarihi/);
@@ -261,7 +265,7 @@ test("API şeması posta kodunu korur ve eksik zorunlu sevk alanlarını reddede
   assert.equal(teslim.DeliveryAddress.PostalZone, "34000");
   assert.equal(teslim.Despatch.ActualDespatchTime, "10:00:00");
   assert.deepEqual(Object.keys(teslim), ["DeliveryAddress", "Despatch"]);
-  for (const alan of ["sevkSaati", "teslimatAdresi"]) {
+  for (const alan of ["sevkSaati", "teslimatAdresi", "plaka"]) {
     assert.equal(ebelgeIrsaliyeSchema.safeParse({
       ...girdi, sevkiyat: { ...girdi.sevkiyat, [alan]: undefined },
     }).success, false);

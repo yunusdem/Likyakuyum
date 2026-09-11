@@ -59,8 +59,8 @@ export interface SevkiyatBilgisi {
   sevkTarihi: string;
   /** Fiili sevk saati (SS:DD:SS) — zorunlu */
   sevkSaati: string;
-  /** Araç plakası */
-  plaka?: string;
+  /** Araç plakası — e-İrsaliyede zorunlu */
+  plaka: string;
   /** Şoför bilgileri */
   soforler?: { ad: string; soyad: string; tckn?: string }[];
   /** Taşıyıcı firma (kendi aracımız değilse) */
@@ -181,11 +181,10 @@ export const dogrulaIrsaliye = (girdi: IrsaliyeGirdi): void => {
     throw ApiError.badRequest("Teslimat posta kodu 5 haneli olmalıdır.");
   }
 
-  // Taşıma bilgisi: ya plaka ya taşıyıcı firma bildirilmelidir
-  if (!sevk.plaka?.trim() && !sevk.tasiyici?.vknTckn?.trim()) {
-    throw ApiError.badRequest(
-      "Sevkiyatta araç plakası veya taşıyıcı firma bilgisinden en az biri zorunludur."
-    );
+  // 14.09.2026 itibarıyla e-İrsaliye plaka kontrolüne hazırlık:
+  // taşıyıcı firma bilgisi verilmiş olsa dahi araç plakası zorunludur.
+  if (!sevk.plaka?.trim()) {
+    throw ApiError.badRequest("Sevkiyatta araç plakası zorunludur.");
   }
   if (sevk.tasiyici && !/^\d{10}$|^\d{11}$/.test(sevk.tasiyici.vknTckn?.trim() || "")) {
     throw ApiError.badRequest("Taşıyıcı firma VKN/TCKN 10 veya 11 haneli rakam olmalıdır.");

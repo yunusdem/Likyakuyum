@@ -121,7 +121,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
       sevkTarihi,
       sevkSaati,
       teslimatAdresi: { postaKodu: teslimatPostaKodu.trim() },
-      plaka: plaka.trim() || undefined,
+      plaka: plaka.trim(),
       soforler:
         soforAd.trim() && soforSoyad.trim()
           ? [{ ad: soforAd.trim(), soyad: soforSoyad.trim(), tckn: soforTckn.trim() || undefined }]
@@ -149,8 +149,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
     if (!/^\d{5}$/.test(teslimatPostaKodu.trim()))
       return "Teslimat posta kodu 5 haneli olmalıdır.";
     if (sevkTarihi < tarih) return "Fiili sevk tarihi, düzenleme tarihinden önce olamaz.";
-    if (!plaka.trim() && !tasiyiciVkn.trim())
-      return "Araç plakası veya taşıyıcı firma bilgisinden en az biri zorunludur.";
+    if (!plaka.trim()) return "Araç plakası zorunludur.";
     return null;
   };
 
@@ -452,12 +451,13 @@ const EBelgeIrsaliyePage: React.FC = () => {
               />
             </Col>
             <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">Araç Plakası</Form.Label>
+              <Form.Label className="small mb-1">Araç Plakası *</Form.Label>
               <Form.Control
                 size="sm"
                 className="font-monospace"
                 placeholder="07 ABC 123"
                 value={plaka}
+                required
                 disabled={kilitli}
                 onChange={(e) => degisti(setPlaka)(e.target.value.toUpperCase())}
               />
@@ -511,7 +511,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
                 />
               </div>
               <div className="text-secondary" style={{ fontSize: "11.5px" }}>
-                Plaka veya taşıyıcı firmadan en az biri zorunlu
+                Plaka zorunludur; taşıyıcı firma bilgisi varsa ayrıca girilebilir
               </div>
             </Col>
           </Row>

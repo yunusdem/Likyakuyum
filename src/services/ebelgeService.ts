@@ -321,7 +321,7 @@ export interface EbelgeSevkiyat {
   /** Fiili sevk tarihi — zorunlu */
   sevkTarihi: string;
   sevkSaati: string;
-  plaka?: string;
+  plaka: string;
   soforler?: { ad: string; soyad: string; tckn?: string }[];
   tasiyici?: { vknTckn: string; unvan: string };
   teslimatAdresi: { adres?: string; ilce?: string; il?: string; ulke?: string; postaKodu: string };

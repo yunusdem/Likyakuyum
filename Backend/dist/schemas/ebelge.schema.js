@@ -170,7 +170,7 @@ export const ebelgeIrsaliyeSchema = z.object({
     sevkiyat: z.object({
         sevkTarihi: z.string().trim().regex(TARIH, "Fiili sevk tarihi YYYY-AA-GG olmalıdır."),
         sevkSaati: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/, "Geçerli fiili sevk saati zorunludur (SS:DD:SS)."),
-        plaka: z.string().trim().max(20).optional(),
+        plaka: z.string().trim().min(1, "Araç plakası zorunludur.").max(20),
         soforler: z
             .array(z.object({
             ad: z.string().trim().min(1).max(100),
