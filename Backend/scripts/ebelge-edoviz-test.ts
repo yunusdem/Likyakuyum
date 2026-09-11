@@ -136,7 +136,12 @@ test('Üretilen XML, WSDL sequence sırasını korur', () => {
   assert.equal(parsed.k._eDovizBelge.Baslik_Bilgileri.ID, 'DVZ2026000000042');
   assert.equal(parsed.k._eDovizBelge.TutarHesaplanmasin, true);
   assert.equal(parsed.k._eDovizBelge.Tutar_Bilgileri.Saf_Altin_Karsiligi, 0);
-  assert.ok(!xml.includes('<Ek_Bilgiler>'), 'zorunlu tarihleri eksik Ek_Bilgiler üretilmemeli');
+  // Ek_Bilgiler bloğu ICE'de koşulsuz okunduğu için her zaman gider; ama gümrük
+  // tarihleri kaynak fişte yoksa uydurulmaz — tarih etiketleri hiç yazılmaz.
+  assert.ok(xml.includes('<Ek_Bilgiler>'), 'Ek_Bilgiler bloğu her belgede gönderilmeli');
+  for (const tarihAlani of ['Gumruk_Beyan_Tarihi', 'DBT_Tarihi', 'GMTY_Tarihi']) {
+    assert.ok(!xml.includes(`<${tarihAlani}>`), `${tarihAlani} kaynakta yokken uydurulmamalı`);
+  }
 });
 
 test('ICE koşulsuz okuduğu bloklar hep gönderilir; verisi olmayan blok gönderilmez', () => {
@@ -145,10 +150,16 @@ test('ICE koşulsuz okuduğu bloklar hep gönderilir; verisi olmayan blok gönde
   // ICE bu üç bloğu koşulsuz okuyor; gelmediğinde "Nesne başvurusu bir nesnenin
   // örneğine ayarlanmadı" hatası veriyor. Komisyonsuz alımda gerçek değer sıfırdır.
   assert.match(xml, /<Komisyon_Bilgileri><Komisyon_Tutar_Vergi_Haric>0</);
-  assert.match(xml, /<Kiymetli_Maden_Bilgileri><Adet>0<\/Adet><\/Kiymetli_Maden_Bilgileri>/);
+  assert.match(xml, /<Kiymetli_Maden_Bilgileri><Kiymetli_Maden_Adi><\/Kiymetli_Maden_Adi><Adet>0<\/Adet><\/Kiymetli_Maden_Bilgileri>/);
   assert.match(xml, /<BuyBack><Komisyon_Tutari>0<\/Komisyon_Tutari><\/BuyBack>/);
-  // Gümrük verisi olmayan fişte Ek_Bilgiler uydurulmaz.
-  assert.ok(!xml.includes('<Ek_Bilgiler>'), 'gümrük verisi yokken Ek_Bilgiler gönderilmemeli');
+  // .NET tarafında XML'de hiç gelmeyen metin ve dizi alanları null olur ve
+  // "Nesne başvurusu bir nesnenin örneğine ayarlanmadı" hatası verir. Bu yüzden
+  // Notlar dizisi ile metin alanları boş da olsa etiket olarak yazılır.
+  assert.match(xml, /<Notlar><\/Notlar>|<Notlar><string>/, 'Notlar etiketi her zaman yazılmalı');
+  assert.match(xml, /<Musteri>.*<Musteri_Turu><\/Musteri_Turu><\/Musteri>/, 'boş metin alanı etiket olarak yazılmalı');
+  assert.match(xml, /<Ek_Bilgiler>.*<Ihracat_Yabanci_Sermaye>false<\/Ihracat_Yabanci_Sermaye>.*<\/Ek_Bilgiler>/);
+  // Tarih alanları boş etiket olarak yazılamaz (ayrıştırılamaz); yoksa hiç gitmez.
+  assert.ok(!xml.includes('<Gumruk_Beyan_Tarihi>'), 'kaynakta olmayan gümrük tarihi uydurulmamalı');
 });
 
 test('Hazırlama önizleme çağırır, gönderim yapmaz', async () => {

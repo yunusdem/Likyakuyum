@@ -9,22 +9,32 @@ const alan = (ad, deger) => {
         return "";
     return `<${ad}>${escapeXml(metin)}</${ad}>`;
 };
+/**
+ * Metin alanı: boş olsa da etiket yazılır. ICE (.NET) tarafında XML'de hiç
+ * gelmeyen metin `""` değil `null` olur ve sunucu ona dokunduğu anda "Nesne
+ * başvurusu bir nesnenin örneğine ayarlanmadı" hatası verir. Boş etiket ise
+ * `""` olarak okunur. Tarih ve sayı alanlarında bu yapılmaz: boş `<X></X>`
+ * tarih/sayı olarak ayrıştırılamaz; onlar için `alan` kullanılır.
+ */
+const metin = (ad, deger) => `<${ad}>${escapeXml(deger === undefined || deger === null ? "" : String(deger).trim())}</${ad}>`;
 /** Boş bloğu hiç göndermemek için: içi boşsa etiket de üretilmez. */
 const blok = (ad, icerik) => (icerik ? `<${ad}>${icerik}</${ad}>` : "");
-const tarafXml = (ad, t, musteriMi) => blok(ad, alan("Vkn_Tckn", t.vknTckn) +
-    (musteriMi ? alan("Pasaport_No", t.pasaportNo) : "") +
-    alan("Unvan", t.unvan) +
-    alan("Adi", t.ad) +
-    alan("Soyadi", t.soyad) +
-    alan("Adres", t.adres) +
-    alan("Ulke", t.ulke) +
-    alan("Sehir", t.sehir) +
-    alan("Ilce", t.ilce) +
-    alan(musteriMi ? "VergiDairesi" : "Vergi_Dairesi", t.vergiDairesi) +
-    alan("Telefon", t.telefon) +
-    alan("Email", t.eposta) +
-    alan("Ticaret_Sicil_No", t.ticaretSicilNo) +
-    (musteriMi ? alan("Musteri_Turu", t.musteriTuru) : ""));
+const tarafXml = (ad, t, musteriMi) => blok(ad, metin("Vkn_Tckn", t.vknTckn) +
+    (musteriMi ? metin("Pasaport_No", t.pasaportNo) : "") +
+    metin("Unvan", t.unvan) +
+    metin("Adi", t.ad) +
+    metin("Soyadi", t.soyad) +
+    metin("Adres", t.adres) +
+    metin("Ulke", t.ulke) +
+    metin("Sehir", t.sehir) +
+    metin("Ilce", t.ilce) +
+    metin(musteriMi ? "VergiDairesi" : "Vergi_Dairesi", t.vergiDairesi) +
+    metin("Web_Site", "") +
+    metin("Telefon", t.telefon) +
+    metin("Fax", "") +
+    metin("Email", t.eposta) +
+    metin("Ticaret_Sicil_No", t.ticaretSicilNo) +
+    (musteriMi ? metin("Musteri_Turu", t.musteriTuru) : ""));
 /**
  * `eDoviz_Belge` gövdesini üretir. Alan sırası WSDL sequence'ı ile birebir aynıdır;
  * sıra bozulursa ICE belgeyi reddeder.
@@ -37,7 +47,9 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
         alan("CreditNoteTypeCode", g.creditNoteTypeCode) +
         alan("Duzenleme_Tarihi", g.duzenlemeTarihi) +
         alan("Duzenleme_Saati", g.duzenlemeSaati) +
-        blok("Notlar", (g.notlar || []).map((n) => alan("string", n)).join(""))) +
+        // Notlar .NET tarafında dizidir; etiket hiç gelmezse null olur ve sunucu
+        // üzerinde döngü kurduğu anda null referans verir. Boş da olsa gönderilir.
+        `<Notlar>${(g.notlar || []).map((n) => alan("string", n)).join("")}</Notlar>`) +
     tarafXml("Yetkili_Muessese", g.yetkiliMuessese, false) +
     tarafXml("Musteri", g.musteri, true) +
     blok("Alis_Satis_Bilgileri", alan("Doviz_Kodu", g.alisSatis.dovizKodu) +
@@ -49,18 +61,24 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
         alan("Doviz_Miktar", g.alisSatis.dovizMiktar)) +
     blok("Odeme_Bilgileri", alan("Odeme_Yontemi", g.odeme.yontemi) +
         alan("Son_Odeme_Tarihi", g.odeme.sonOdemeTarihi) +
-        alan("Aciklama", g.odeme.aciklama)) +
-    blok("Ek_Bilgiler", alan("Istatistik_No", g.ekBilgiler?.istatistikNo) +
-        alan("Geldigi_Ulke", g.ekBilgiler?.geldigiUlke) +
-        alan("Gelis_Nedeni", g.ekBilgiler?.gelisNedeni) +
-        alan("Ihracat_Yabanci_Sermaye", g.ekBilgiler?.ihracatYabanciSermaye) +
-        alan("Gumruk_Beyan_Tarihi", g.ekBilgiler?.gumrukBeyanTarihi) +
-        alan("Gumruk_Beyan_No", g.ekBilgiler?.gumrukBeyanNo) +
-        alan("DBT_Tarihi", g.ekBilgiler?.dbtTarihi) +
-        alan("DBT_Sayi", g.ekBilgiler?.dbtSayi) +
-        alan("GMTY_Tarihi", g.ekBilgiler?.gmtyTarihi) +
-        alan("GMTY_Sayi", g.ekBilgiler?.gmtySayi) +
-        alan("Vezne", g.ekBilgiler?.vezne)) +
+        metin("Aciklama", g.odeme.aciklama)) +
+    // Ek_Bilgiler nesnesi ICE tarafında koşulsuz okunuyor; blok hiç gelmezse null
+    // referans verir. Blok her zaman gönderilir ama gümrük tarihleri uydurulmaz:
+    // tarih alanları yalnızca kaynak fişte varsa yazılır (.NET'te eksik tarih
+    // null olmaz, varsayılan değer alır). Metin alanları boş da olsa yazılır.
+    `<Ek_Bilgiler>` +
+    metin("Istatistik_No", g.ekBilgiler?.istatistikNo) +
+    metin("Geldigi_Ulke", g.ekBilgiler?.geldigiUlke) +
+    metin("Gelis_Nedeni", g.ekBilgiler?.gelisNedeni) +
+    `<Ihracat_Yabanci_Sermaye>${g.ekBilgiler?.ihracatYabanciSermaye ? "true" : "false"}</Ihracat_Yabanci_Sermaye>` +
+    alan("Gumruk_Beyan_Tarihi", g.ekBilgiler?.gumrukBeyanTarihi) +
+    metin("Gumruk_Beyan_No", g.ekBilgiler?.gumrukBeyanNo) +
+    alan("DBT_Tarihi", g.ekBilgiler?.dbtTarihi) +
+    metin("DBT_Sayi", g.ekBilgiler?.dbtSayi) +
+    alan("GMTY_Tarihi", g.ekBilgiler?.gmtyTarihi) +
+    metin("GMTY_Sayi", g.ekBilgiler?.gmtySayi) +
+    metin("Vezne", g.ekBilgiler?.vezne) +
+    `</Ek_Bilgiler>` +
     // Komisyon, kıymetli maden ve BuyBack blokları her belgede gönderilir. ICE bu
     // blokları koşulsuz okuduğu için blok hiç gelmediğinde null referans hatası
     // veriyor. Komisyonsuz, madensiz ve buyback'siz bir döviz alımında bu alanların
@@ -68,7 +86,7 @@ export const buildEDovizInnerXml = (loginHeaderXml, g) => `<_eDovizBelge>` +
     blok("Komisyon_Bilgileri", alan("Komisyon_Tutar_Vergi_Haric", g.komisyon?.vergiHaric ?? 0) +
         alan("Komisyon_Tutar_Vergi", g.komisyon?.vergi ?? 0) +
         alan("Komisyon_Dahil_Toplam", g.komisyon?.dahilToplam ?? 0)) +
-    blok("Kiymetli_Maden_Bilgileri", alan("Kiymetli_Maden_Adi", g.kiymetliMaden?.ad) + alan("Adet", g.kiymetliMaden?.adet ?? 0)) +
+    blok("Kiymetli_Maden_Bilgileri", metin("Kiymetli_Maden_Adi", g.kiymetliMaden?.ad) + alan("Adet", g.kiymetliMaden?.adet ?? 0)) +
     blok("Tutar_Bilgileri", alan("Miktar", g.tutar.miktar) +
         alan("Kod", g.tutar.kod) +
         alan("TL_Karsilik_Kuru", g.tutar.tlKarsilikKuru) +
