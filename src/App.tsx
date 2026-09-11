@@ -21,6 +21,7 @@ import PanoPage from "./pages/kur/PanoPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
+import DovizFisiPage from "./pages/vezne/DovizFisiPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -151,7 +152,12 @@ export default function App() {
             <Route path="cari/emanet-dekont-kayit" element={<CariEmanetDekontPage />} />
             <Route path="cari/emanet-kayit" element={<CariEmanetDekontPage />} />
             <Route path="cari/cari-emanet-dekont" element={<CariEmanetDekontPage />} />
-            <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
+                        <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
+            <Route path="vezne/doviz-fisi" element={<DovizFisiPage />} />
+            <Route path="vezne/doviz-fis" element={<DovizFisiPage />} />
+            <Route path="vezne/doviz-fisi-kayit" element={<DovizFisiPage />} />
+            <Route path="vezne/doviz-fisi-duzeltme" element={<DovizFisiPage />} />
+            <Route path="vezne/doviz-fis-duzeltme" element={<DovizFisiPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
