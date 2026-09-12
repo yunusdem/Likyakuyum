@@ -5,7 +5,7 @@ import { DbContext, EbelgeSqlRepository } from "../models/ebelgeSql.repository.j
 import { EbelgeService } from "./ebelge.service.js";
 import { hesapla, UblFaturaGirdi } from "./ice/ubl/invoiceBuilder.js";
 import { ApiError } from "../utils/ApiError.js";
-import { KaynakFisDetay, kaynakFisPdf } from './ebelgeKaynakPdf.js';
+import { KaynakFisDetay, kaynakFisPdf, eDovizBelgePdf } from './ebelgeKaynakPdf.js';
 
 const temiz = (v: unknown) => String(v ?? "").trim();
 export const kaynakParmakizi = (kaynak: unknown) => createHash("sha256").update(JSON.stringify(kaynak)).digest("hex");
@@ -65,7 +65,24 @@ export class EbelgeKaynakService {
   }
 
   static async pdf(k: KaynakKimlik, ctx?: DbContext) {
-    return kaynakFisPdf(await this.detay(k, ctx));
+    if (!dovizMi(k)) return kaynakFisPdf(await this.detay(k, ctx));
+    // e-Döviz: ICE'nin resmî çıktısıyla aynı düzen ve ICE'ye giden girdiyle aynı veri.
+    // Fiş henüz gönderilebilir durumda değilse (kimlik/istatistik/dosya no eksik)
+    // ayrıntılı belge kurulamaz; sade önizlemeye düşülür, kullanıcı yine bir çıktı görür.
+    const kaynak = await EbelgeKaynakRepository.dovizDetay(k, ctx);
+    const [ayar, firma] = await Promise.all([EbelgeSqlRepository.getAyar(ctx), EbelgeSqlRepository.getFirmaBilgisi(ctx)]);
+    let girdi: EDovizGirdi;
+    try {
+      girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn, dosyaNo: firma.dosyaNo });
+    } catch (e) {
+      if (e instanceof ApiError) return kaynakFisPdf(await this.detay(k, ctx));
+      throw e;
+    }
+    const giden = await EbelgeSqlRepository.getGiden(girdi.uuid, ctx).catch(() => null);
+    return eDovizBelgePdf(girdi, {
+      hesapVkn: temiz(ayar?.firmaVkn) || girdi.yetkiliMuessese.vknTckn,
+      onizleme: String(giden?.gonderimDurumu || "") !== "GONDERILDI",
+    });
   }
 
   private static async dovizIceKontrol(girdi: EDovizGirdi, kaynak: { baslik: any }, ctx?: DbContext) {
