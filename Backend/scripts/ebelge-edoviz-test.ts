@@ -145,13 +145,19 @@ test('Kimliksiz müşteri reddedilir; TCKN veya pasaport zorunludur', () => {
   // ICE iş kuralları (gerçek ret mesajlarından): istatistik kodu gümrük bilgisi
   // olmasa da gitmeli; Yetkili Müessese Dosya Numarası ödeme hesap bloğunda zorunlu.
   const xmlDosyali = buildEDovizInnerXml('', dovizGirdisi(kayit, { vknTckn: '', dosyaNo: 'DSY-001' }));
-  // GİB kılavuzu 3.12: ISTATISTIKNO / GELDIGIULKE / GELISNEDENI yalnızca ALIM belgesine
-  // yazılır. Fikstür satış (FIS_TIPI=1): bu alanlar hiç gitmez; alımda kod gider, yoksa durur.
-  assert.ok(!xmlDosyali.includes('<Istatistik_No>'), 'satım belgesinde Istatistik_No gönderilmemeli');
-  assert.ok(!xmlDosyali.includes('<Geldigi_Ulke>'), 'satım belgesinde Geldigi_Ulke gönderilmemeli');
+  // ICE'nin gözlenen kuralı: Istatistik_No her iki türde gider; kodun türü belge türüyle
+  // eşleşmeli. Satımda hiç göndermemek, boş göndermek ve alış kodu göndermek aynı reti
+  // verdi ("ISTATISTIKNO ile Belge türü uyumsuzluğu"). Tür, fişin istatistik tanımından
+  // (TODVZ_ISTATISTIK.FIS_TIPI) ICE'ye gitmeden doğrulanır; ret numarayı yaktığı için.
+  assert.match(xmlDosyali, /<Ek_Bilgiler><Istatistik_No>1010<\/Istatistik_No><Geldigi_Ulke><\/Geldigi_Ulke><Gelis_Nedeni><\/Gelis_Nedeni>/, 'satım belgesinde de istatistik kodu gitmeli');
   const xmlAlim = buildEDovizInnerXml('', dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 0 } }, { vknTckn: '', dosyaNo: 'DSY-001' }));
-  assert.match(xmlAlim, /<Ek_Bilgiler><Istatistik_No>1010<\/Istatistik_No><Geldigi_Ulke><\/Geldigi_Ulke><Gelis_Nedeni><\/Gelis_Nedeni>/, 'alım belgesinde istatistik kodu gitmeli');
-  assert.throws(() => dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 0, ISTATISTIK_KOD: '' } }), /istatistik/i, 'alımda kod yoksa ICE\'ye gitmeden durmalı');
+  assert.match(xmlAlim, /<Ek_Bilgiler><Istatistik_No>1010<\/Istatistik_No>/, 'alım belgesinde istatistik kodu gitmeli');
+  assert.throws(() => dovizGirdisi({ baslik: { ...baslik(), ISTATISTIK_KOD: '' } }), /istatistik kodu yok/i, 'kod yoksa ICE\'ye gitmeden durmalı');
+  // Alış kodu (FIS_TIPI=0 tanımlı istatistik) satış fişine takılmışsa ICE'ye gitmeden durur.
+  assert.throws(() => dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 1, ISTATISTIK_KOD: '9249', ISTATISTIK_FIS_TIPI: 0 } }), /alış türüne ait; bu bir satış fişi/);
+  // Tür bilgisi eşleşiyorsa geçer; tanım türü bilinmiyorsa (null) engel konmaz, ICE karar verir.
+  assert.equal(dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 1, ISTATISTIK_KOD: '10285', ISTATISTIK_FIS_TIPI: 1 } }).istatistikNo, '10285');
+  assert.equal(dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 1, ISTATISTIK_KOD: '10285', ISTATISTIK_FIS_TIPI: null } }).istatistikNo, '10285');
   assert.match(xmlDosyali, /<Odeme_Yapan_Hesap><Yetkili_Muessese_Dosya_Numarası>DSY-001<\/Yetkili_Muessese_Dosya_Numarası>/);
   assert.match(xmlDosyali, /<Odeme_Yapilan_Hesap><Yetkili_Muessese_Dosya_Numarası>DSY-001<\/Yetkili_Muessese_Dosya_Numarası>/);
   // Gönderici bilgisi verilmiş ama dosya no boşsa ICE'ye gitmeden durdurulur (ret kesin, numara yakılmasın).

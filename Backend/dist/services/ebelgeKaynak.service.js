@@ -435,13 +435,20 @@ export function dovizGirdisi(kaynak, gonderici) {
     }
     // Tür belirtilmemişse kimlikten türetilir: 10 hane VKN tüzel kişi, TCKN/pasaport gerçek kişi.
     const musteriTuru = turEtiketi || (musteriVkn.length === 10 ? "TUZELKISI" : "GERCEKKISI");
-    // GİB kılavuzu (3.12): ISTATISTIKNO yalnızca döviz ALIM belgesine yazılır ve alımda
-    // beklenir. Kod yoksa ICE reddeder ve belge numarası yanar; bu yüzden alım fişinde
-    // istatistik tanımı boşsa ICE'ye gitmeden durdurulur. Satımda alan hiç gönderilmez.
-    const alimMi = Number(b.FIS_TIPI) !== 1;
+    // ICE'nin gözlenen kuralı: Istatistik_No her iki belge türünde de bekleniyor ve
+    // kodun türü belge türüyle eşleşmeli ("ISTATISTIKNO ile Belge türü uyumsuzluğu").
+    // ICE reddedince belge numarası yanıyor; bu yüzden hem kodun varlığı hem de türü
+    // ICE'ye gitmeden fişin istatistik tanımından (TODVZ_ISTATISTIK.FIS_TIPI) doğrulanır.
+    const fisTipi = Number(b.FIS_TIPI) === 1 ? 1 : 0;
     const istatistikNo = temiz(b.ISTATISTIK_NO || b.ISTATISTIK_KOD);
-    if (alimMi && !istatistikNo) {
-        throw ApiError.badRequest("Döviz alım fişinde istatistik kodu yok. Fişte alış türüne uygun bir istatistik seçin; GİB alım belgesinde ISTATISTIKNO zorunludur.");
+    const turAdi = (t) => (t === 1 ? "satış" : "alış");
+    if (!istatistikNo) {
+        throw ApiError.badRequest(`Döviz ${turAdi(fisTipi)} fişinde istatistik kodu yok. Fişte ${turAdi(fisTipi)} türüne uygun bir istatistik seçin; ICE e-Döviz belgesinde zorunlu tutuyor.`);
+    }
+    const istatistikTipi = b.ISTATISTIK_FIS_TIPI === undefined || b.ISTATISTIK_FIS_TIPI === null ? null : Number(b.ISTATISTIK_FIS_TIPI);
+    if (istatistikTipi !== null && istatistikTipi !== fisTipi) {
+        throw ApiError.badRequest(`Fişin istatistik kodu (${istatistikNo}) ${turAdi(istatistikTipi)} türüne ait; bu bir ${turAdi(fisTipi)} fişi. ` +
+            `ICE bunu "ISTATISTIKNO ile Belge türü uyumsuzluğu" diye reddeder ve belge numarası yanar. Fişte ${turAdi(fisTipi)} istatistiği seçin.`);
     }
     return {
         belgeNo,
@@ -493,8 +500,8 @@ export function dovizGirdisi(kaynak, gonderici) {
         },
         // Döviz alım/satımı vezneden nakit yapılır; bedel işlem anında ödenir.
         odeme: { yontemi: 'NAKIT', sonOdemeTarihi: isoTarih(b.IssueDate || b.TARIH, 'Son ödeme tarihi'), yetkiliMuesseseDosyaNo: dosyaNo },
-        // Yalnızca alım belgesinde; satımda GİB kılavuzu gereği hiç gönderilmez.
-        istatistikNo: alimMi ? istatistikNo : undefined,
+        // Her iki türde gönderilir; türü yukarıda fişin istatistik tanımıyla doğrulandı.
+        istatistikNo,
         ekBilgiler,
         komisyon: sayi(b.KOMISYON) === undefined ? undefined : {
             vergiHaric: sayi(b.KOMISYON),

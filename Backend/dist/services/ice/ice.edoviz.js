@@ -1,4 +1,4 @@
-import { escapeXml } from "./ice.client.js";
+import { escapeXml, maskSensitive } from "./ice.client.js";
 import { callWithSession } from "./ice.session.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
@@ -51,11 +51,14 @@ const ekBilgilerXml = (g) => {
     const alim = g.creditNoteTypeCode === "DOVIZALIMBELGESI";
     const e = g.ekBilgiler;
     return (`<Ek_Bilgiler>` +
-        (alim
-            ? metin("Istatistik_No", g.istatistikNo ?? e?.istatistikNo) +
-                metin("Geldigi_Ulke", e?.geldigiUlke) +
-                metin("Gelis_Nedeni", e?.gelisNedeni)
-            : "") +
+        // ICE'nin gözlenen kuralı GİB metninden farklı: Istatistik_No her iki türde de
+        // bekleniyor ve kodun türü belge türüyle (alım/satım) eşleşmeli. Satımda alanı
+        // hiç göndermemek de, boş göndermek de, alış kodu göndermek de aynı reti verdi:
+        // "ISTATISTIKNO ile Belge türü uyumsuzluğu". Kod, fişin istatistik tanımından
+        // gelir; türü servis katmanında ICE'ye gitmeden doğrulanır.
+        metin("Istatistik_No", g.istatistikNo ?? e?.istatistikNo) +
+        metin("Geldigi_Ulke", e?.geldigiUlke) +
+        metin("Gelis_Nedeni", e?.gelisNedeni) +
         `<Ihracat_Yabanci_Sermaye>${alim && e?.ihracatYabanciSermaye ? "true" : "false"}</Ihracat_Yabanci_Sermaye>` +
         (alim
             ? alan("Gumruk_Beyan_Tarihi", e?.gumrukBeyanTarihi) +
@@ -162,13 +165,25 @@ export const previewEDoviz = async (config, girdi) => {
  * ⚠️ Mali sonuç doğurur. Yazma çağrısıdır: auth hatasında otomatik tekrar KAPALI.
  */
 export const sendEDoviz = async (config, girdi) => {
+    let gonderilen = "";
     const { data } = await callWithSession(config, {
         method: "send_edoviz_basic",
-        buildInnerXml: (loginHeaderXml) => buildEDovizInnerXml(loginHeaderXml, girdi),
+        buildInnerXml: (loginHeaderXml) => (gonderilen = buildEDovizInnerXml(loginHeaderXml, girdi)),
         authHatasindaTekrarla: false,
         timeoutMs: 120_000,
     });
-    return data || {};
+    const sonuc = data || {};
+    // İş kuralı retleri SOAP fault değildir; istemci katmanı onları loglamaz. Hangi
+    // gövdenin neden reddedildiğini görmek için ret durumunda istek ve cevap loglanır
+    // (oturum anahtarları maskeli). Kabulde sadece özet yazılır.
+    if (String(sonuc.success).toLowerCase() !== "true") {
+        logger.warn(`ICE send_edoviz_basic reddetti (${girdi.belgeNo}) → cevap: ${JSON.stringify(sonuc).slice(0, 1500)}`);
+        logger.warn(`ICE send_edoviz_basic reddedilen istek (${girdi.belgeNo}) → ${maskSensitive(gonderilen, 6000)}`);
+    }
+    else {
+        logger.info(`ICE send_edoviz_basic kabul (${girdi.belgeNo}, ${girdi.creditNoteTypeCode}, istatistik=${girdi.istatistikNo ?? ""})`);
+    }
+    return sonuc;
 };
 /**
  * `send_edoviz_iptal` — gönderilmiş e-Döviz belgesini iptal eder.
