@@ -125,7 +125,7 @@ export class DovizFisController {
     } catch (e: any) { vezneler = [{ error: e.message }]; }
 
     try {
-      const iRes = await pool.request().query("SELECT TOP 10 ISTATISTIK_ID, KOD, AD, FIS_DIZAYN_TIPI FROM TODVZ_ISTATISTIK ORDER BY ISTATISTIK_ID ASC");
+      const iRes = await pool.request().query("SELECT TOP 10 ISTATISTIK_ID, KOD, ACIKLAMA AS AD, FIS_DIZAYN_TIPI FROM TODVZ_ISTATISTIK ORDER BY ISTATISTIK_ID ASC");
       istatistikler = iRes.recordset || [];
     } catch (e: any) { istatistikler = [{ error: e.message }]; }
 
@@ -311,4 +311,74 @@ export class DovizFisController {
       dryRunResult,
     });
   });
+
+  /**
+   * GET /api/v1/doviz-fis/istatistikler?tip=0
+   * Lists statistics from TODVZ_ISTATISTIK filtered by tip (0: Alış, 1: Satış)
+   */
+  public static getIstatistikler = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = DovizFisController.getDbContext(req);
+    const { IstatistikService } = await import("../services/istatistik.service.js");
+    const tipParam = req.query.tip;
+    const all = await IstatistikService.listIstatistikler(dbContext);
+
+    let filtered = all;
+    if (tipParam !== undefined && tipParam !== null && tipParam !== "") {
+      const tipVal = parseInt(String(tipParam), 10);
+      if (!isNaN(tipVal)) {
+        filtered = all.filter((item) => item.fisTipi === tipVal);
+      }
+    }
+
+    const mapped = filtered.map((item) => ({
+      id: item.id,
+      ISTATISTIK_ID: item.id,
+      kod: (item.kod || "").trim(),
+      KOD: (item.kod || "").trim(),
+      ad: (item.aciklama || "").trim(),
+      AD: (item.aciklama || "").trim(),
+      aciklama: (item.aciklama || "").trim(),
+      tip: item.fisTipi,
+      TIP: item.fisTipi,
+      fisTipi: item.fisTipi,
+      fisDizaynTipi: item.fisDizaynTipi,
+      FIS_DIZAYN_TIPI: item.fisDizaynTipi,
+      ciktiSatirSayisi: item.ciktiSatirSayisi,
+      CIKTI_SATIR_SAYISI: item.ciktiSatirSayisi,
+    }));
+
+    return ApiResponse.ok(res, "İstatistikler başarıyla listelendi.", mapped);
+  });
+
+  /**
+   * GET /api/v1/doviz-fis/kayitsiz-musteriler
+   * Returns list of unregistered customers from TODVZ_KAYITSIZ_MUSTERI
+   */
+  public static getKayitsizMusteriler = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = DovizFisController.getDbContext(req);
+    const { getDbPool, getActivePool } = await import("../config/mssql.config.js");
+    let pool = await getActivePool();
+    if (!pool) {
+      pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    }
+
+    try {
+      const result = await pool.request().query(`
+        SELECT TOP 300
+          KAYITSIZ_MUSTERI_ID AS id,
+          UNVAN AS ad,
+          UNVAN AS unvan,
+          VERGI_KIMLIK_NO AS vergiKimlikNo,
+          ADRES AS adres,
+          TELEFON AS telefon
+        FROM TODVZ_KAYITSIZ_MUSTERI WITH (NOLOCK)
+        ORDER BY KAYITSIZ_MUSTERI_ID DESC
+      `);
+      return ApiResponse.ok(res, "Kayıtsız müşteriler listelendi.", result.recordset || []);
+    } catch {
+      // Return empty array gracefully if table is not populated
+      return ApiResponse.ok(res, "Kayıtsız müşteriler listelendi.", []);
+    }
+  });
 }
+

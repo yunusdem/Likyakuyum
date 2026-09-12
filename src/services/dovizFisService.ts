@@ -238,10 +238,67 @@ export class DovizFisService {
   }
 
   /**
-   * Get dynamic Vezne balances for TL, USD, EUR
+   * Get dynamic Vezne balances for TL, USD, EUR and all currencies
    */
-  public static async getVezneBakiye(vezneId: number): Promise<{ tl: number; usd: number; eur: number }> {
-    const res = await apiClient.get<{ tl: number; usd: number; eur: number }>(`/doviz-fis/vezne-bakiye/${vezneId}`);
-    return res.data || { tl: 0, usd: 0, eur: 0 };
+  public static async getVezneBakiye(vezneId: number): Promise<VezneBakiyeResponse> {
+    const res = await apiClient.get<VezneBakiyeResponse>(`/doviz-fis/vezne-bakiye/${vezneId}`);
+    return res.data || { tl: 0, usd: 0, eur: 0, bakiyeler: [] };
+  }
+
+  /**
+   * Get TODVZ_ISTATISTIK list filtered by tip (0: Alış, 1: Satış)
+   */
+  public static async getIstatistikler(tip?: number): Promise<IstatistikSecimItem[]> {
+    const params = tip !== undefined ? { tip } : undefined;
+    const res = await apiClient.get<IstatistikSecimItem[]>("/doviz-fis/istatistikler", params);
+    return res.data || [];
+  }
+
+  /**
+   * Get TODVZ_KAYITSIZ_MUSTERI list
+   */
+  public static async getKayitsizMusteriler(): Promise<KayitsizMusteriItem[]> {
+    try {
+      const res = await apiClient.get<KayitsizMusteriItem[]>("/doviz-fis/kayitsiz-musteriler");
+      return res.data || [];
+    } catch {
+      return [];
+    }
   }
 }
+
+export interface KayitsizMusteriItem {
+  id: number;
+  ad: string;
+  unvan?: string;
+  vergiKimlikNo?: string;
+  adres?: string;
+  telefon?: string;
+}
+
+export interface IstatistikSecimItem {
+  id: number;
+  kod: string;
+  ad: string;
+  tip: number;
+  fisDizaynTipi?: number;
+  ciktiSatirSayisi?: number;
+  aciklama?: string;
+  fisTipi?: number;
+}
+
+export interface VezneBakiyeDetailItem {
+  paraId: number;
+  kod: string;
+  ad: string;
+  miktar: number;
+}
+
+export interface VezneBakiyeResponse {
+  tl: number;
+  usd: number;
+  eur: number;
+  bakiyeler?: VezneBakiyeDetailItem[];
+}
+
+

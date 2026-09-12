@@ -1394,49 +1394,107 @@ export class DovizFisSqlRepository {
   public static async getVezneBakiye(
     vezneId: number,
     dbContext?: { dbServer?: string; dbName?: string }
-  ): Promise<{ tl: number; usd: number; eur: number }> {
+  ): Promise<{
+    tl: number;
+    usd: number;
+    eur: number;
+    bakiyeler: { paraId: number; kod: string; ad: string; miktar: number }[];
+  }> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
 
-      const tlRes = await pool
-        .request()
-        .input("VEZNE_ID", sql.Int, vezneId)
-        .query(`
-          SELECT 
-            SUM(CASE WHEN F.TIP = 1 THEN ISNULL(F.ODEME_TUTARI, 0) WHEN F.TIP = 0 THEN -ISNULL(F.ODEME_TUTARI, 0) ELSE 0 END) AS TL_TOTAL
-          FROM [dbo].[TODVZ_FIS] F
-          WHERE F.VEZNE_ID = @VEZNE_ID AND (F.IPTAL = 0 OR F.IPTAL IS NULL);
-        `);
-
-      const currRes = await pool
-        .request()
-        .input("VEZNE_ID", sql.Int, vezneId)
-        .query(`
-          SELECT 
-            UPPER(LTRIM(RTRIM(ISNULL(P.KOD, '')))) AS KOD,
-            SUM(CASE WHEN F.TIP = 0 THEN ISNULL(S.MIKTAR, 0) WHEN F.TIP = 1 THEN -ISNULL(S.MIKTAR, 0) ELSE 0 END) AS MIKTAR
-          FROM [dbo].[TODVZ_FIS_SATIRI] S
-          INNER JOIN [dbo].[TODVZ_FIS] F ON S.FIS_ID = F.FIS_ID
-          INNER JOIN [dbo].[TODVZ_PARA] P ON S.PARA_ID = P.PARA_ID
-          WHERE F.VEZNE_ID = @VEZNE_ID AND (F.IPTAL = 0 OR F.IPTAL IS NULL)
-          GROUP BY P.KOD;
-        `);
-
-      const tl = tlRes.recordset?.[0]?.TL_TOTAL || 0;
+      let bakiyeler: { paraId: number; kod: string; ad: string; miktar: number }[] = [];
+      let tl = 0;
       let usd = 0;
       let eur = 0;
 
-      if (currRes.recordset) {
-        currRes.recordset.forEach((r: any) => {
-          if (r.KOD === "USD") usd = Number(r.MIKTAR) || 0;
-          if (r.KOD === "EUR") eur = Number(r.MIKTAR) || 0;
-        });
+      // 1. TODVZ_VEZNE_BAKIYE tablosundan çekmeyi dene
+      const tableCheck = await pool.request().query(`
+        SELECT 1 FROM sys.tables WHERE name = 'TODVZ_VEZNE_BAKIYE'
+      `);
+
+      if (tableCheck.recordset && tableCheck.recordset.length > 0) {
+        const vbRes = await pool
+          .request()
+          .input("VEZNE_ID", sql.Int, vezneId)
+          .query(`
+            SELECT 
+              P.PARA_ID,
+              UPPER(LTRIM(RTRIM(ISNULL(P.KOD, '')))) AS KOD,
+              ISNULL(P.AD, P.KOD) AS AD,
+              ISNULL(VB.MIKTAR, 0) AS MIKTAR
+            FROM [dbo].[TODVZ_VEZNE_BAKIYE] VB
+            INNER JOIN [dbo].[TODVZ_PARA] P ON VB.PARA_ID = P.PARA_ID
+            WHERE VB.VEZNE_ID = @VEZNE_ID
+            ORDER BY P.SIRA_NO, P.KOD;
+          `);
+
+        if (vbRes.recordset && vbRes.recordset.length > 0) {
+          bakiyeler = vbRes.recordset.map((r: any) => ({
+            paraId: Number(r.PARA_ID),
+            kod: String(r.KOD || "").trim(),
+            ad: String(r.AD || "").trim(),
+            miktar: Number(r.MIKTAR) || 0,
+          }));
+
+          const tlItem = bakiyeler.find((b) => b.kod === "TL" || b.kod === "TRY");
+          const usdItem = bakiyeler.find((b) => b.kod === "USD");
+          const eurItem = bakiyeler.find((b) => b.kod === "EUR");
+
+          tl = tlItem ? tlItem.miktar : 0;
+          usd = usdItem ? usdItem.miktar : 0;
+          eur = eurItem ? eurItem.miktar : 0;
+        }
       }
 
-      return { tl, usd, eur };
+      // 2. Eğer TODVZ_VEZNE_BAKIYE boşsa veya yoksa fişlerden dinamik hesapla
+      if (bakiyeler.length === 0) {
+        const tlRes = await pool
+          .request()
+          .input("VEZNE_ID", sql.Int, vezneId)
+          .query(`
+            SELECT 
+              SUM(CASE WHEN F.TIP = 1 THEN ISNULL(F.ODEME_TUTARI, 0) WHEN F.TIP = 0 THEN -ISNULL(F.ODEME_TUTARI, 0) ELSE 0 END) AS TL_TOTAL
+            FROM [dbo].[TODVZ_FIS] F
+            WHERE F.VEZNE_ID = @VEZNE_ID AND (F.IPTAL = 0 OR F.IPTAL IS NULL);
+          `);
+
+        const currRes = await pool
+          .request()
+          .input("VEZNE_ID", sql.Int, vezneId)
+          .query(`
+            SELECT 
+              P.PARA_ID,
+              UPPER(LTRIM(RTRIM(ISNULL(P.KOD, '')))) AS KOD,
+              ISNULL(P.AD, P.KOD) AS AD,
+              SUM(CASE WHEN F.TIP = 0 THEN ISNULL(S.MIKTAR, 0) WHEN F.TIP = 1 THEN -ISNULL(S.MIKTAR, 0) ELSE 0 END) AS MIKTAR
+            FROM [dbo].[TODVZ_FIS_SATIRI] S
+            INNER JOIN [dbo].[TODVZ_FIS] F ON S.FIS_ID = F.FIS_ID
+            INNER JOIN [dbo].[TODVZ_PARA] P ON S.PARA_ID = P.PARA_ID
+            WHERE F.VEZNE_ID = @VEZNE_ID AND (F.IPTAL = 0 OR F.IPTAL IS NULL)
+            GROUP BY P.PARA_ID, P.KOD, P.AD
+            ORDER BY P.KOD;
+          `);
+
+        tl = tlRes.recordset?.[0]?.TL_TOTAL || 0;
+        if (currRes.recordset) {
+          bakiyeler = currRes.recordset.map((r: any) => ({
+            paraId: Number(r.PARA_ID),
+            kod: String(r.KOD || "").trim(),
+            ad: String(r.AD || "").trim(),
+            miktar: Number(r.MIKTAR) || 0,
+          }));
+          const usdItem = bakiyeler.find((b) => b.kod === "USD");
+          const eurItem = bakiyeler.find((b) => b.kod === "EUR");
+          usd = usdItem ? usdItem.miktar : 0;
+          eur = eurItem ? eurItem.miktar : 0;
+        }
+      }
+
+      return { tl, usd, eur, bakiyeler };
     } catch (e) {
       logger.warn("getVezneBakiye error, returning 0:", e);
-      return { tl: 0, usd: 0, eur: 0 };
+      return { tl: 0, usd: 0, eur: 0, bakiyeler: [] };
     }
   }
 }

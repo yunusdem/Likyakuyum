@@ -38,11 +38,12 @@ export interface ERPToolbarProps {
   onEDocument?: () => void;
   onConsolidatedDB?: () => void;
   disabled?: boolean;
-  pageTitle?: string;
+  pageTitle?: React.ReactNode;
   pageIcon?: React.ReactNode;
   rightContent?: React.ReactNode;
   hideSearch?: boolean;
   hideDelete?: boolean;
+  disableShortcuts?: boolean;
 }
 
 const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> = {
@@ -108,6 +109,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   rightContent,
   hideSearch,
   hideDelete,
+  disableShortcuts = false,
 }) => {
   const location = useLocation();
   const routeMatch = ROUTE_PAGE_MAP[location.pathname];
@@ -128,7 +130,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   // Global ERP keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (disabled) return;
+      if (disabled || disableShortcuts) return;
 
       if (e.key === "F1") {
         e.preventDefault();
@@ -169,7 +171,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, disabled, shouldShowSearch, shouldShowDelete]);
+  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete]);
 
   const defaultHandler = (actionName: string) => {
     if (actionName === "Ara/Bul") {
