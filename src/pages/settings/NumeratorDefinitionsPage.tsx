@@ -287,7 +287,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
           savedCount++;
         } else {
           // If inactive, ensure it is deleted cleanly
-          await NumeratorService.deleteNumerator(`${row.tur}_null`).catch(() => {});
+          await NumeratorService.deleteNumerator(`${row.tur}_${row.yaziciId ?? "null"}`).catch(() => {});
           deletedCount++;
         }
       }

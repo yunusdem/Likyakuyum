@@ -89,6 +89,13 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/vezne/doviz-fisi-kayit": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fisi-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fis-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/transfer-kayit": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/transfer-duzeltme": { title: "F- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
+  "/vezne/vezne-transferi-kayit": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/vezne-transferi-duzeltme": { title: "F- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
+  "/vezne/vezne-transferi": { title: "Vezne Transferi", icon: <IconCash size={20} /> },
+  "/vezne/izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
+  "/vezne/vezne-izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({
