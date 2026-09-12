@@ -24,6 +24,8 @@ import RaporPage from "./pages/rapor/RaporPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
 import DovizFisiPage from "./pages/vezne/DovizFisiPage";
+import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
+import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -160,6 +162,14 @@ export default function App() {
             <Route path="vezne/doviz-fisi-kayit" element={<DovizFisiPage />} />
             <Route path="vezne/doviz-fisi-duzeltme" element={<DovizFisiPage />} />
             <Route path="vezne/doviz-fis-duzeltme" element={<DovizFisiPage />} />
+            <Route path="vezne/transfer-kayit" element={<VezneTransferiPage />} />
+            <Route path="vezne/transfer-duzeltme" element={<VezneTransferiPage />} />
+            <Route path="vezne/vezne-transferi-kayit" element={<VezneTransferiPage />} />
+            <Route path="vezne/vezne-transferi-duzeltme" element={<VezneTransferiPage />} />
+            <Route path="vezne/vezne-transferi" element={<VezneTransferiPage />} />
+            <Route path="vezne/transfer" element={<VezneTransferiPage />} />
+            <Route path="vezne/izleme" element={<VezneIzlemePage />} />
+            <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
