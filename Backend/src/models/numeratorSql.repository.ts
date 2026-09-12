@@ -169,7 +169,7 @@ export class NumeratorSqlRepository {
   }
 
   /**
-   * Saves (inserts or updates) a numerator definition using the SODVZ_NUMERATOR_KAYDET stored procedure.
+   * Saves a numerator by DELETE + INSERT — guarantees zero duplicate key errors regardless of previous state.
    */
   public static async saveViaProcedure(
     data: NumeratorInputDto,
@@ -193,25 +193,25 @@ export class NumeratorSqlRepository {
       const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
       const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
       const onuneSifirKoy = data.onuneSifirKoy !== false;
-      const yaziciOrtakAlan = cleanYaziciId === null ? 1 : 0;
 
-      // 1. Bu TUR'a ait TÜM kayıtları sil — SP her zaman temiz INSERT yapacak, asla duplicate key olmayacak
-      const cleanupReq = pool.request();
-      cleanupReq.input("TUR", sql.TinyInt, tur);
-      await cleanupReq.query(`DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;`);
+      // Tek sorguda: önce bu TUR'un tüm kayıtlarını sil, sonra temiz INSERT yap
+      // SP'nin ISNULL eşleşme sorunundan tamamen bağımsız, kesinlikle çakışmasız
+      const req = pool.request();
+      req.input("YAZICI_ID", sql.Int, cleanYaziciId);
+      req.input("TUR", sql.TinyInt, tur);
+      req.input("ONEK", sql.VarChar(50), onek);
+      req.input("BASLANGIC", sql.Int, baslangic);
+      req.input("BITIS", sql.Int, bitis);
+      req.input("UZUNLUK", sql.Int, uzunluk);
+      req.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
 
-      // 2. Doğrudan SODVZ_NUMERATOR_KAYDET Stored Procedure'ünü çalıştır
-      const procReq = pool.request();
-      procReq.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
-      procReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
-      procReq.input("TUR", sql.TinyInt, tur);
-      procReq.input("ONEK", sql.VarChar(50), onek);
-      procReq.input("BASLANGIC", sql.Int, baslangic);
-      procReq.input("BITIS", sql.Int, bitis);
-      procReq.input("UZUNLUK", sql.Int, uzunluk);
-      procReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
-
-      await procReq.execute("SODVZ_NUMERATOR_KAYDET");
+      await req.query(`
+        DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;
+        INSERT INTO [dbo].[TODVZ_NUMERATOR]
+          ([YAZICI_ID], [TUR], [ONEK], [BASLANGIC], [BITIS], [UZUNLUK], [ONUNE_SIFIR_KOY])
+        VALUES
+          (@YAZICI_ID, @TUR, @ONEK, @BASLANGIC, @BITIS, @UZUNLUK, @ONUNE_SIFIR_KOY);
+      `);
 
       const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, cleanYaziciId, dbContext);
       if (!saved) {
