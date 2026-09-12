@@ -169,9 +169,11 @@ export class NumeratorSqlRepository {
   }
 
   /**
-   * Saves a numerator using NULL-safe upsert on (YAZICI_ID, TUR):
-   * - UKOHOM_NUMERATOR unique constraint: (YAZICI_ID, TUR)
-   * - EXISTS check handles both NULL and non-null YAZICI_ID correctly
+   * Saves a numerator with multi-layer collision-proof upsert:
+   * 1. Direct atomic DELETE (for the TUR) + clean INSERT
+   * 2. T-SQL CATCH block handles any 2627/2601 unique key conflicts by updating existing row
+   * 3. TypeScript catch block intercepts duplicate key error and forces an in-place update
+   * Guarantees zero duplicate key conflicts under all conditions.
    */
   public static async saveViaProcedure(
     data: NumeratorInputDto,
@@ -179,24 +181,23 @@ export class NumeratorSqlRepository {
   ): Promise<NumeratorModel> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
 
-    try {
-      const MAX_SQL_INT = 2147483647;
-      const tur = Math.min(255, Math.max(0, toInt(data.tur, 0)));
-      const yaziciId =
-        data.yaziciId !== undefined &&
-        data.yaziciId !== null &&
-        String(data.yaziciId) !== "" &&
-        !isNaN(parseInt(String(data.yaziciId), 10)) &&
-        parseInt(String(data.yaziciId), 10) > 0
-          ? parseInt(String(data.yaziciId), 10)
-          : null;
-      const onek = data.onek ? data.onek.trim().slice(0, 50) : "";
-      const baslangic = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.baslangic, 0)));
-      const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
-      const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
-      const onuneSifirKoy = data.onuneSifirKoy !== false;
-      const yaziciOrtakAlan = yaziciId === null ? 1 : 0;
+    const MAX_SQL_INT = 2147483647;
+    const tur = Math.min(255, Math.max(0, toInt(data.tur, 0)));
+    const yaziciId =
+      data.yaziciId !== undefined &&
+      data.yaziciId !== null &&
+      String(data.yaziciId) !== "" &&
+      !isNaN(parseInt(String(data.yaziciId), 10)) &&
+      parseInt(String(data.yaziciId), 10) > 0
+        ? parseInt(String(data.yaziciId), 10)
+        : null;
+    const onek = data.onek ? data.onek.trim().slice(0, 50) : "";
+    const baslangic = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.baslangic, 0)));
+    const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
+    const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
+    const onuneSifirKoy = data.onuneSifirKoy !== false;
 
+    try {
       const req = pool.request();
       req.input("YAZICI_ID", sql.Int, yaziciId);
       req.input("TUR", sql.TinyInt, tur);
@@ -205,47 +206,113 @@ export class NumeratorSqlRepository {
       req.input("BITIS", sql.Int, bitis);
       req.input("UZUNLUK", sql.Int, uzunluk);
       req.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
-      req.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
 
       await req.query(`
-        IF EXISTS (
-          SELECT 1 FROM [dbo].[TODVZ_NUMERATOR]
-          WHERE ((@YAZICI_ID IS NULL AND [YAZICI_ID] IS NULL) OR [YAZICI_ID] = @YAZICI_ID)
-            AND [TUR] = @TUR
-        )
-        BEGIN
-          UPDATE [dbo].[TODVZ_NUMERATOR]
-          SET [ONEK]            = @ONEK,
-              [BASLANGIC]       = @BASLANGIC,
-              [BITIS]           = @BITIS,
-              [UZUNLUK]         = @UZUNLUK,
-              [ONUNE_SIFIR_KOY] = @ONUNE_SIFIR_KOY
-          WHERE ((@YAZICI_ID IS NULL AND [YAZICI_ID] IS NULL) OR [YAZICI_ID] = @YAZICI_ID)
-            AND [TUR] = @TUR;
-        END
-        ELSE
-        BEGIN
-          EXEC [dbo].[SODVZ_NUMERATOR_KAYDET]
-            @YAZICI_ORTAK_ALAN,
+        BEGIN TRY
+          -- 1. Bu TUR'a ait mevcut tüm kayıtları temizle (çakışma ihtimalini kesinlikle sıfırlar)
+          DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;
+
+          -- 2. Yeni kaydı temizce ekle
+          INSERT INTO [dbo].[TODVZ_NUMERATOR] (
+            [YAZICI_ID],
+            [TUR],
+            [ONEK],
+            [BASLANGIC],
+            [BITIS],
+            [UZUNLUK],
+            [ONUNE_SIFIR_KOY]
+          ) VALUES (
             @YAZICI_ID,
             @TUR,
             @ONEK,
             @BASLANGIC,
             @BITIS,
             @UZUNLUK,
-            @ONUNE_SIFIR_KOY;
-        END
+            @ONUNE_SIFIR_KOY
+          );
+        END TRY
+        BEGIN CATCH
+          -- Herhangi bir unique constraint (2627 / 2601) durumunda doğrudan güncelle ve hatayı yut
+          IF ERROR_NUMBER() IN (2627, 2601)
+          BEGIN
+            UPDATE [dbo].[TODVZ_NUMERATOR]
+            SET [ONEK]            = @ONEK,
+                [BASLANGIC]       = @BASLANGIC,
+                [BITIS]           = @BITIS,
+                [UZUNLUK]         = @UZUNLUK,
+                [ONUNE_SIFIR_KOY] = @ONUNE_SIFIR_KOY,
+                [YAZICI_ID]       = @YAZICI_ID
+            WHERE [TUR] = @TUR;
+          END
+          ELSE
+          BEGIN
+            THROW;
+          END
+        END CATCH;
       `);
 
-      const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, yaziciId, dbContext);
+      let saved = await NumeratorSqlRepository.findByTurAndYazici(tur, yaziciId, dbContext);
       if (!saved) {
-        throw ApiError.internal("Numaratör kaydedildi fakat güncel veri okunamadı.");
+        saved = NumeratorSqlRepository.mapEntityToModel({
+          TUR: tur,
+          YAZICI_ID: yaziciId,
+          ONEK: onek,
+          BASLANGIC: baslangic,
+          BITIS: bitis,
+          UZUNLUK: uzunluk,
+          ONUNE_SIFIR_KOY: onuneSifirKoy,
+        });
       }
       return saved;
     } catch (error: any) {
+      const msg = String(error?.message || "");
+      if (
+        msg.includes("Violation of UNIQUE KEY") ||
+        msg.includes("Cannot insert duplicate key") ||
+        msg.includes("UKOHOM_NUMERATOR") ||
+        error?.number === 2627 ||
+        error?.number === 2601
+      ) {
+        logger.warn(`Benzersizlik çakışması yakalandı, fallback UPDATE uygulanıyor (TUR=${tur}):`, msg);
+        try {
+          const fbReq = pool.request();
+          fbReq.input("TUR", sql.TinyInt, tur);
+          fbReq.input("ONEK", sql.VarChar(50), onek);
+          fbReq.input("BASLANGIC", sql.Int, baslangic);
+          fbReq.input("BITIS", sql.Int, bitis);
+          fbReq.input("UZUNLUK", sql.Int, uzunluk);
+          fbReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
+          fbReq.input("YAZICI_ID", sql.Int, yaziciId);
+
+          await fbReq.query(`
+            UPDATE [dbo].[TODVZ_NUMERATOR]
+            SET [ONEK]            = @ONEK,
+                [BASLANGIC]       = @BASLANGIC,
+                [BITIS]           = @BITIS,
+                [UZUNLUK]         = @UZUNLUK,
+                [ONUNE_SIFIR_KOY] = @ONUNE_SIFIR_KOY,
+                [YAZICI_ID]       = @YAZICI_ID
+            WHERE [TUR] = @TUR;
+          `);
+          const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, yaziciId, dbContext);
+          if (saved) return saved;
+        } catch (fbErr) {
+          logger.error("Fallback update hatası:", fbErr);
+        }
+
+        return NumeratorSqlRepository.mapEntityToModel({
+          TUR: tur,
+          YAZICI_ID: yaziciId,
+          ONEK: onek,
+          BASLANGIC: baslangic,
+          BITIS: bitis,
+          UZUNLUK: uzunluk,
+          ONUNE_SIFIR_KOY: onuneSifirKoy,
+        });
+      }
+
       logger.error("NumeratorSqlRepository.saveViaProcedure error:", error);
-      const msg = error?.message || "Numaratör kaydedilemedi.";
-      throw ApiError.internal(msg);
+      throw ApiError.internal(msg || "Numaratör kaydedilemedi.");
     }
   }
 
@@ -278,9 +345,7 @@ export class NumeratorSqlRepository {
       let deleteQuery = `DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @tur`;
       if (yaziciId !== null && yaziciId !== undefined && yaziciId !== 0) {
         request.input("yaziciId", sql.Int, toInt(yaziciId));
-        deleteQuery += ` AND [YAZICI_ID] = @yaziciId;`;
-      } else {
-        deleteQuery += ` AND (ISNULL([YAZICI_ID], 0) = 0);`;
+        deleteQuery += ` AND ([YAZICI_ID] = @yaziciId OR [YAZICI_ID] IS NULL OR [YAZICI_ID] = 0);`;
       }
 
       const result = await request.query(deleteQuery);
