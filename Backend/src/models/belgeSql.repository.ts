@@ -104,9 +104,12 @@ export class BelgeSqlRepository {
     const res = await pool.request()
       .input("id", sql.Int, p.fisId || null)
       .input("no", sql.VarChar(40), p.belgeNo?.trim().toUpperCase() || null).query(`
-      SELECT TOP 2 D.*, RTRIM(I.KOD) AS ISTATISTIK_KOD, I.FIS_TIPI AS ISTATISTIK_FIS_TIPI
+      -- FIS_* kolonları: XSLT görünümünde tutar/vezne yoksa belgeVeri bunlara düşer.
+      SELECT TOP 2 D.*, RTRIM(I.KOD) AS ISTATISTIK_KOD, I.FIS_TIPI AS ISTATISTIK_FIS_TIPI,
+        RTRIM(VZ.KOD) AS FIS_VEZNE_KODU, F.ODEME_TUTARI AS FIS_ODEME_TUTARI, F.TOPLAM_TUTAR AS FIS_TOPLAM_TUTAR
       FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
       LEFT JOIN dbo.TODVZ_FIS F ON F.FIS_ID=D.BELGE_ID
+      LEFT JOIN dbo.TODVZ_VEZNE VZ ON VZ.VEZNE_ID=F.VEZNE_ID
       LEFT JOIN dbo.TODVZ_ISTATISTIK I ON I.ISTATISTIK_ID=F.ISTATISTIK_ID
       WHERE (@id IS NULL OR D.BELGE_ID=@id) AND (@no IS NULL OR RTRIM(D.BELGE_NO)=@no);
     `);
@@ -131,11 +134,15 @@ export class BelgeSqlRepository {
       .input("bas", sql.Date, f.baslangic || null).input("bit", sql.Date, f.bitis || null)
       .input("arama", sql.NVarChar(100), f.arama?.trim() ? `%${f.arama.trim()}%` : null)
       .input("atla", sql.Int, (sayfa - 1) * boyut).input("al", sql.Int, boyut).query(`
+      -- Görünümde yalnızca BELGE_ID, FIS_TIPI, BELGE_NO, TARIH, UNVAN, MIKTAR, PARA_KODU, ETTN, IPTAL, E_BELGE_DURUMU
+      -- kolonları garanti (ebelgeKaynak listesiyle aynı). Tutar ve vezne TODVZ_FIS / TODVZ_VEZNE'den okunur.
       SELECT D.BELGE_ID fisId, D.FIS_TIPI fisTipi, RTRIM(D.BELGE_NO) belgeNo, D.TARIH tarih, RTRIM(D.UNVAN) unvan,
-        D.MIKTAR miktar, RTRIM(D.PARA_KODU) paraKodu, D.PayableAmount tutar, RTRIM(ISNULL(D.VEZNE_KODU,'')) vezne,
+        D.MIKTAR miktar, RTRIM(D.PARA_KODU) paraKodu, ISNULL(F.ODEME_TUTARI, F.TOPLAM_TUTAR) tutar, RTRIM(ISNULL(V.KOD,'')) vezne,
         RTRIM(ISNULL(D.ETTN,'')) ettn, ISNULL(D.IPTAL,0) iptal, G.GONDERIM_DURUMU gonderimDurumu
       INTO #F
       FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
+      LEFT JOIN dbo.TODVZ_FIS F ON F.FIS_ID=D.BELGE_ID
+      LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
       OUTER APPLY (SELECT TOP 1 G.GONDERIM_DURUMU FROM dbo.TODVZ_EBELGE_GIDEN G
         WHERE G.BELGE_NO=RTRIM(D.BELGE_NO) OR G.UUID=NULLIF(RTRIM(D.ETTN),'') ORDER BY G.OLUSTURMA_TARIHI DESC) G
       WHERE (@tip IS NULL OR D.FIS_TIPI=@tip)
