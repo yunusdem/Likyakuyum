@@ -435,6 +435,14 @@ export function dovizGirdisi(kaynak, gonderici) {
     }
     // Tür belirtilmemişse kimlikten türetilir: 10 hane VKN tüzel kişi, TCKN/pasaport gerçek kişi.
     const musteriTuru = turEtiketi || (musteriVkn.length === 10 ? "TUZELKISI" : "GERCEKKISI");
+    // GİB kılavuzu (3.12): ISTATISTIKNO yalnızca döviz ALIM belgesine yazılır ve alımda
+    // beklenir. Kod yoksa ICE reddeder ve belge numarası yanar; bu yüzden alım fişinde
+    // istatistik tanımı boşsa ICE'ye gitmeden durdurulur. Satımda alan hiç gönderilmez.
+    const alimMi = Number(b.FIS_TIPI) !== 1;
+    const istatistikNo = temiz(b.ISTATISTIK_NO || b.ISTATISTIK_KOD);
+    if (alimMi && !istatistikNo) {
+        throw ApiError.badRequest("Döviz alım fişinde istatistik kodu yok. Fişte alış türüne uygun bir istatistik seçin; GİB alım belgesinde ISTATISTIKNO zorunludur.");
+    }
     return {
         belgeNo,
         uuid: kaynakEttn || temiz(b.UUID) || randomUUID(),
@@ -485,10 +493,8 @@ export function dovizGirdisi(kaynak, gonderici) {
         },
         // Döviz alım/satımı vezneden nakit yapılır; bedel işlem anında ödenir.
         odeme: { yontemi: 'NAKIT', sonOdemeTarihi: isoTarih(b.IssueDate || b.TARIH, 'Son ödeme tarihi'), yetkiliMuesseseDosyaNo: dosyaNo },
-        // ICE istatistik kodunu belge türüyle doğrular ("ISTATISTIKNO ile Belge türü
-        // uyumsuzluğu"); gümrük bilgisi olmayan fişte de gitmeli. Görünüm vermezse
-        // fişin istatistik tanımından (TODVZ_ISTATISTIK.KOD) okunur.
-        istatistikNo: temiz(b.ISTATISTIK_NO || b.ISTATISTIK_KOD),
+        // Yalnızca alım belgesinde; satımda GİB kılavuzu gereği hiç gönderilmez.
+        istatistikNo: alimMi ? istatistikNo : undefined,
         ekBilgiler,
         komisyon: sayi(b.KOMISYON) === undefined ? undefined : {
             vergiHaric: sayi(b.KOMISYON),

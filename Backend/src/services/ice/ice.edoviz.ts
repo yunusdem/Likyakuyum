@@ -184,6 +184,41 @@ const tarafXml = (ad: string, t: EDovizTaraf, musteriMi: boolean): string =>
   );
 
 /**
+ * Ek_Bilgiler bloğu. GİB e-Döviz Teknik Kılavuzu (v1.0, 3.12 AdditionalDocumentReference):
+ * "Döviz ALIM belgesine ISTATISTIKNO, GELDIGIULKE, GELISNEDENI yazılacaktır. Döviz alım
+ * belgesi ihracat ya da yabancı sermaye bedeli için düzenlendiği durumda ek olarak
+ * gümrük beyanname / DBT / GMTY tarih-no bilgileri yazılacaktır."
+ *
+ * Yani bu alanlar yalnızca alım belgesine aittir. SATIM belgesinde gönderilmeleri
+ * (boş etiket olarak bile) ICE'de "ISTATISTIKNO ile Belge türü uyumsuzluğu" retine
+ * yol açtı; satımda hiç yazılmazlar. Blok ve Ihracat_Yabanci_Sermaye (zorunlu boolean)
+ * her belgede gider; tarih alanları yalnızca kaynakta varsa yazılır (uydurulmaz).
+ */
+const ekBilgilerXml = (g: EDovizGirdi): string => {
+  const alim = g.creditNoteTypeCode === "DOVIZALIMBELGESI";
+  const e = g.ekBilgiler;
+  return (
+    `<Ek_Bilgiler>` +
+    (alim
+      ? metin("Istatistik_No", g.istatistikNo ?? e?.istatistikNo) +
+        metin("Geldigi_Ulke", e?.geldigiUlke) +
+        metin("Gelis_Nedeni", e?.gelisNedeni)
+      : "") +
+    `<Ihracat_Yabanci_Sermaye>${alim && e?.ihracatYabanciSermaye ? "true" : "false"}</Ihracat_Yabanci_Sermaye>` +
+    (alim
+      ? alan("Gumruk_Beyan_Tarihi", e?.gumrukBeyanTarihi) +
+        metin("Gumruk_Beyan_No", e?.gumrukBeyanNo) +
+        alan("DBT_Tarihi", e?.dbtTarihi) +
+        metin("DBT_Sayi", e?.dbtSayi) +
+        alan("GMTY_Tarihi", e?.gmtyTarihi) +
+        metin("GMTY_Sayi", e?.gmtySayi)
+      : "") +
+    metin("Vezne", e?.vezne) +
+    `</Ek_Bilgiler>`
+  );
+};
+
+/**
  * `eDoviz_Belge` gövdesini üretir. Alan sırası WSDL sequence'ı ile birebir aynıdır;
  * sıra bozulursa ICE belgeyi reddeder.
  */
@@ -232,19 +267,7 @@ export const buildEDovizInnerXml = (loginHeaderXml: string, g: EDovizGirdi): str
   // referans verir. Blok her zaman gönderilir ama gümrük tarihleri uydurulmaz:
   // tarih alanları yalnızca kaynak fişte varsa yazılır (.NET'te eksik tarih
   // null olmaz, varsayılan değer alır). Metin alanları boş da olsa yazılır.
-  `<Ek_Bilgiler>` +
-    metin("Istatistik_No", g.istatistikNo ?? g.ekBilgiler?.istatistikNo) +
-    metin("Geldigi_Ulke", g.ekBilgiler?.geldigiUlke) +
-    metin("Gelis_Nedeni", g.ekBilgiler?.gelisNedeni) +
-    `<Ihracat_Yabanci_Sermaye>${g.ekBilgiler?.ihracatYabanciSermaye ? "true" : "false"}</Ihracat_Yabanci_Sermaye>` +
-    alan("Gumruk_Beyan_Tarihi", g.ekBilgiler?.gumrukBeyanTarihi) +
-    metin("Gumruk_Beyan_No", g.ekBilgiler?.gumrukBeyanNo) +
-    alan("DBT_Tarihi", g.ekBilgiler?.dbtTarihi) +
-    metin("DBT_Sayi", g.ekBilgiler?.dbtSayi) +
-    alan("GMTY_Tarihi", g.ekBilgiler?.gmtyTarihi) +
-    metin("GMTY_Sayi", g.ekBilgiler?.gmtySayi) +
-    metin("Vezne", g.ekBilgiler?.vezne) +
-  `</Ek_Bilgiler>` +
+  ekBilgilerXml(g) +
   // Komisyon, kıymetli maden ve BuyBack blokları her belgede gönderilir. ICE bu
   // blokları koşulsuz okuduğu için blok hiç gelmediğinde null referans hatası
   // veriyor. Komisyonsuz, madensiz ve buyback'siz bir döviz alımında bu alanların

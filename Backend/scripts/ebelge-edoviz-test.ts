@@ -145,7 +145,13 @@ test('Kimliksiz müşteri reddedilir; TCKN veya pasaport zorunludur', () => {
   // ICE iş kuralları (gerçek ret mesajlarından): istatistik kodu gümrük bilgisi
   // olmasa da gitmeli; Yetkili Müessese Dosya Numarası ödeme hesap bloğunda zorunlu.
   const xmlDosyali = buildEDovizInnerXml('', dovizGirdisi(kayit, { vknTckn: '', dosyaNo: 'DSY-001' }));
-  assert.match(xmlDosyali, /<Ek_Bilgiler><Istatistik_No>1010<\/Istatistik_No>/, 'istatistik kodu Ek_Bilgiler içinde gitmeli');
+  // GİB kılavuzu 3.12: ISTATISTIKNO / GELDIGIULKE / GELISNEDENI yalnızca ALIM belgesine
+  // yazılır. Fikstür satış (FIS_TIPI=1): bu alanlar hiç gitmez; alımda kod gider, yoksa durur.
+  assert.ok(!xmlDosyali.includes('<Istatistik_No>'), 'satım belgesinde Istatistik_No gönderilmemeli');
+  assert.ok(!xmlDosyali.includes('<Geldigi_Ulke>'), 'satım belgesinde Geldigi_Ulke gönderilmemeli');
+  const xmlAlim = buildEDovizInnerXml('', dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 0 } }, { vknTckn: '', dosyaNo: 'DSY-001' }));
+  assert.match(xmlAlim, /<Ek_Bilgiler><Istatistik_No>1010<\/Istatistik_No><Geldigi_Ulke><\/Geldigi_Ulke><Gelis_Nedeni><\/Gelis_Nedeni>/, 'alım belgesinde istatistik kodu gitmeli');
+  assert.throws(() => dovizGirdisi({ baslik: { ...baslik(), FIS_TIPI: 0, ISTATISTIK_KOD: '' } }), /istatistik/i, 'alımda kod yoksa ICE\'ye gitmeden durmalı');
   assert.match(xmlDosyali, /<Odeme_Yapan_Hesap><Yetkili_Muessese_Dosya_Numarası>DSY-001<\/Yetkili_Muessese_Dosya_Numarası>/);
   assert.match(xmlDosyali, /<Odeme_Yapilan_Hesap><Yetkili_Muessese_Dosya_Numarası>DSY-001<\/Yetkili_Muessese_Dosya_Numarası>/);
   // Gönderici bilgisi verilmiş ama dosya no boşsa ICE'ye gitmeden durdurulur (ret kesin, numara yakılmasın).
