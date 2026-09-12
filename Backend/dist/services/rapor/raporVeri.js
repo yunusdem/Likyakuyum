@@ -36,9 +36,37 @@ function sinirla(satirlar, tanim, filtreOzeti, ekDipnot) {
     return { satirlar, filtreOzeti, ekDipnot, toplamKayit: satirlar.length };
 }
 const aralikOzeti = (p) => `${tarihTr(p.baslangic)} – ${tarihTr(p.bitis)}`;
+/** Ortak filtre parçaları: cari kod aralığı, vezne kod aralığı, para listesi. Parametreler request'e eklenir, SQL parçası döner. */
+function filtreler(req, p, alias) {
+    const parcalar = [];
+    if (alias.cari) {
+        req.input("cbas", sql.VarChar(50), p.cariBaslangic?.trim() || null).input("cbit", sql.VarChar(50), p.cariBitis?.trim() || null).input("cari", sql.Int, p.cariKartId || null);
+        parcalar.push(`(@cari IS NULL OR ${alias.cari}.CARI_KART_ID=@cari)`, `(@cbas IS NULL OR RTRIM(${alias.cari}.KOD)>=@cbas)`, `(@cbit IS NULL OR RTRIM(${alias.cari}.KOD)<=@cbit)`);
+    }
+    if (alias.vezne) {
+        req.input("vbas", sql.VarChar(50), p.vezneBaslangic?.trim() || null).input("vbit", sql.VarChar(50), p.vezneBitis?.trim() || null).input("v", sql.Int, p.vezneId || null);
+        parcalar.push(`(@v IS NULL OR ${alias.vezne}.VEZNE_ID=@v)`, `(@vbas IS NULL OR RTRIM(${alias.vezne}.KOD)>=@vbas)`, `(@vbit IS NULL OR RTRIM(${alias.vezne}.KOD)<=@vbit)`);
+    }
+    if (alias.para) {
+        req.input("para", sql.Int, p.paraId || null);
+        const ids = (p.paraIdler || []).filter(n => Number.isInteger(n) && n > 0);
+        ids.forEach((id, i) => req.input(`pl${i}`, sql.Int, id));
+        parcalar.push(`(@para IS NULL OR ${alias.para}=@para)`);
+        if (ids.length)
+            parcalar.push(`${alias.para} IN (${ids.map((_, i) => `@pl${i}`).join(",")})`);
+    }
+    return parcalar.length ? " AND " + parcalar.join(" AND ") : "";
+}
+const ozetEk = (p) => [
+    p.cariKartId ? "Seçili cari" : p.cariBaslangic || p.cariBitis ? `Cari ${p.cariBaslangic || "…"} → ${p.cariBitis || "…"}` : "",
+    p.vezneId ? "Seçili vezne" : p.vezneBaslangic || p.vezneBitis ? `Vezne ${p.vezneBaslangic || "…"} → ${p.vezneBitis || "…"}` : "",
+    p.paraId ? "Seçili para" : p.paraIdler?.length ? `${p.paraIdler.length} para` : "",
+].filter(Boolean).map(x => " · " + x).join("");
 /** Vezne bakiyeleri (tarih dahil) — fiş + nakit cari hareket. Bkz. docs/raporlar.md karar E7. */
-async function vezneBakiyeleri(pool, tarih, vezneId) {
-    const res = await pool.request().input("t", sql.Date, tarih).input("v", sql.Int, vezneId || null).query(`
+async function vezneBakiyeleri(pool, tarih, p) {
+    const req = pool.request().input("t", sql.Date, tarih);
+    const f = p ? filtreler(req, p, { vezne: "V" }) : "";
+    const res = await req.query(`
     ;WITH H AS (
       SELECT F.VEZNE_ID vezneId, S.PARA_ID paraId, SUM(CASE WHEN F.TIP=0 THEN S.MIKTAR ELSE -S.MIKTAR END) miktar
       FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID
@@ -54,7 +82,7 @@ async function vezneBakiyeleri(pool, tarih, vezneId) {
     SELECT H.vezneId, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, H.paraId,
       RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo, SUM(H.miktar) miktar
     FROM H LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.vezneId LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=H.paraId
-    WHERE (@v IS NULL OR H.vezneId=@v)
+    WHERE 1=1 ${f}
     GROUP BY H.vezneId, V.KOD, V.AD, H.paraId, P.KOD, P.AD, P.SIRA_NO
     ORDER BY V.KOD, ISNULL(P.SIRA_NO,99), P.KOD;`);
     return res.recordset;
@@ -65,7 +93,9 @@ export const RAPOR_SORGULARI = {
     async CARBAK1(pool, p, t) {
         if (!p.tarih)
             throw ApiError.badRequest("Tarih zorunludur.");
-        const res = await pool.request().input("t", sql.Date, p.tarih).input("cari", sql.Int, p.cariKartId || null).input("para", sql.Int, p.paraId || null).query(`
+        const req = pool.request().input("t", sql.Date, p.tarih);
+        const f = filtreler(req, p, { cari: "C", para: "B.PARA_ID" });
+        const res = await req.query(`
       ;WITH B AS (
         SELECT H.CARI_KART_ID, S.PARA_ID, SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE 0 END) BORC, SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE 0 END) ALACAK
         FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
@@ -76,7 +106,7 @@ export const RAPOR_SORGULARI = {
       FROM dbo.TODVZ_CARI_KART C
       LEFT JOIN B ON B.CARI_KART_ID=C.CARI_KART_ID
       LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=B.PARA_ID
-      WHERE (@cari IS NULL OR C.CARI_KART_ID=@cari) AND (@para IS NULL OR B.PARA_ID=@para)
+      WHERE 1=1 ${f}
       ORDER BY C.KOD, ISNULL(P.SIRA_NO,99), P.KOD;`);
         const satirlar = res.recordset.map((r) => {
             const bakiye = Number(r.bakiye) || 0;
@@ -84,69 +114,68 @@ export const RAPOR_SORGULARI = {
                 yon: bakiye > 0 ? "Alacak" : bakiye < 0 ? "Borç" : "-",
                 hasKarsiligi: Math.abs(bakiye) * (Number(r.hasOrani) || 0), cariBaslik: `${r.cariKod} — ${r.cariAd}` };
         });
-        return sinirla(satirlar, t, `${tarihTr(p.tarih)} tarihine kadar${p.cariKartId ? " · Seçili cari" : " · Tüm cariler"}${p.paraId ? " · Seçili para" : ""}`, "Yön: Alacak = carinin bizden alacağı, Borç = carinin bize borcu. Has karşılığı = bakiye × para tanımındaki has oranı. Sıfır bakiyeli cariler de listelenir.");
+        return sinirla(satirlar, t, `${tarihTr(p.tarih)} tarihine kadar${ozetEk(p) || " · Tüm cariler"}`, "Yön: Alacak = carinin bizden alacağı, Borç = carinin bize borcu. Has karşılığı = bakiye × para tanımındaki has oranı. Sıfır bakiyeli cariler de listelenir.");
     },
-    /** R2 Cari ekstre — devir + yürüyen bakiye (para bazında) */
+    /** R2 Cari ekstre — cari aralığı (Ahmet -> Mehmet), tarih aralığı, tek para; cari × para grubu, devir + yürüyen bakiye */
     async CAREKS1(pool, p, t) {
-        if (!p.cariKartId)
-            throw ApiError.badRequest("Cari kart seçilmelidir.");
+        if (!p.cariKartId && !p.cariBaslangic && !p.cariBitis)
+            throw ApiError.badRequest("Cari aralığı (başlangıç ve/veya bitiş) seçilmelidir.");
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
-        const req = pool.request().input("cari", sql.Int, p.cariKartId).input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
+        const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
+        const f = filtreler(req, p, { cari: "C", para: "S.PARA_ID" });
         const res = await req.query(`
-      SELECT RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd FROM dbo.TODVZ_CARI_KART C WHERE C.CARI_KART_ID=@cari;
-      SELECT S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
+      SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
         SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE 0 END) borc, SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE 0 END) alacak
-      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID
-      WHERE H.CARI_KART_ID=@cari AND CAST(H.TARIH AS date)<@bas GROUP BY S.PARA_ID, P.KOD, P.SIRA_NO;
-      SELECT H.CARI_HAREKET_ID id, H.TARIH tarih, H.HAREKET_TIPI hareketTipi, H.TIP tip, RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama,
-        S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
       FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
-      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID
-      WHERE H.CARI_KART_ID=@cari AND CAST(H.TARIH AS date) BETWEEN @bas AND @bit
-      ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
+      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID
+      WHERE CAST(H.TARIH AS date)<@bas ${f} GROUP BY C.CARI_KART_ID, C.KOD, C.AD, S.PARA_ID, P.KOD, P.SIRA_NO;
+      SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, H.CARI_HAREKET_ID id, H.TARIH tarih, H.HAREKET_TIPI hareketTipi, H.TIP tip,
+        RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
+      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
+      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID
+      WHERE CAST(H.TARIH AS date) BETWEEN @bas AND @bit ${f}
+      ORDER BY C.KOD, ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
         const sets = res.recordsets;
-        const cari = sets[0][0];
-        if (!cari)
-            throw ApiError.notFound("Cari kart bulunamadı.");
-        const devirler = new Map();
-        for (const d of sets[1])
-            devirler.set(Number(d.paraId), { paraKod: d.paraKod, siraNo: d.siraNo, bakiye: Number(d.alacak) - Number(d.borc) });
+        const anahtar = (r) => `${r.cariKod}|${r.paraKod}`;
+        const gruplar = new Map();
+        const ekle = (r) => { const k = anahtar(r); if (!gruplar.has(k))
+            gruplar.set(k, { cariKod: r.cariKod, cariAd: r.cariAd, paraKod: r.paraKod, siraNo: Number(r.siraNo), devir: 0, hareketler: [] }); return gruplar.get(k); };
+        for (const d of sets[0])
+            ekle(d).devir = Number(d.alacak) - Number(d.borc);
+        for (const h of sets[1])
+            ekle(h).hareketler.push(h);
         const satirlar = [];
-        const paralar = new Map();
-        for (const [id, d] of devirler)
-            paralar.set(id, { paraKod: d.paraKod, siraNo: d.siraNo });
-        for (const h of sets[2])
-            if (!paralar.has(Number(h.paraId)))
-                paralar.set(Number(h.paraId), { paraKod: h.paraKod, siraNo: h.siraNo });
-        for (const [paraId, pr] of [...paralar.entries()].sort((a, b) => a[1].siraNo - b[1].siraNo || a[1].paraKod.localeCompare(b[1].paraKod))) {
-            let bakiye = devirler.get(paraId)?.bakiye || 0;
-            satirlar.push({ paraKod: pr.paraKod, tarih: p.baslangic, hareketTipi: "Devir", aciklama: `${tarihTr(p.baslangic)} öncesi devir`, vezneKod: "",
+        for (const g of [...gruplar.values()].sort((x, y) => x.cariKod.localeCompare(y.cariKod) || x.siraNo - y.siraNo || x.paraKod.localeCompare(y.paraKod))) {
+            let bakiye = g.devir;
+            const ortak = { grupAnahtar: `${g.cariKod}|${g.paraKod}`, grupBaslik: `${g.cariKod} — ${g.cariAd} · ${g.paraKod}`, cariKod: g.cariKod, cariAd: g.cariAd, paraKod: g.paraKod };
+            satirlar.push({ ...ortak, tarih: p.baslangic, hareketTipi: "Devir", aciklama: `${tarihTr(p.baslangic)} öncesi devir`, vezneKod: "",
                 borc: bakiye < 0 ? -bakiye : 0, alacak: bakiye > 0 ? bakiye : 0, bakiye: Math.abs(bakiye), yon: bakiye > 0 ? "A" : bakiye < 0 ? "B" : "" });
-            for (const h of sets[2].filter((x) => Number(x.paraId) === paraId)) {
+            for (const h of g.hareketler) {
                 const meblag = Number(h.meblag) || 0;
                 bakiye += Number(h.tip) === 1 ? meblag : -meblag;
-                satirlar.push({ paraKod: pr.paraKod, tarih: h.tarih, hareketTipi: HAREKET_TIPI[Number(h.hareketTipi)] || "Diğer", aciklama: h.aciklama, vezneKod: h.vezneKod,
+                satirlar.push({ ...ortak, tarih: h.tarih, hareketTipi: HAREKET_TIPI[Number(h.hareketTipi)] || "Diğer", aciklama: h.aciklama, vezneKod: h.vezneKod,
                     borc: Number(h.tip) === 0 ? meblag : 0, alacak: Number(h.tip) === 1 ? meblag : 0, bakiye: Math.abs(bakiye), yon: bakiye > 0 ? "A" : bakiye < 0 ? "B" : "" });
             }
         }
-        return sinirla(satirlar, t, `${cari.cariKod} — ${cari.cariAd} · ${aralikOzeti(p)}`, "Yön: A = cari alacaklı (bizden alacağı var), B = cari borçlu. Devir satırı, başlangıç tarihinden önceki tüm hareketlerin net bakiyesidir.");
+        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p)}`, "Yön: A = cari alacaklı (bizden alacağı var), B = cari borçlu. Her cari ve para birimi ayrı gruplanır; ilk satır başlangıç tarihinden önceki devirdir.");
     },
     /** R3 Cari hareket listesi */
     async CARHAR1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
-        const res = await pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
-            .input("cari", sql.Int, p.cariKartId || null).input("v", sql.Int, p.vezneId || null).input("para", sql.Int, p.paraId || null).query(`
+        const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
+        const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" });
+        const res = await req.query(`
       SELECT H.TARIH tarih, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, H.HAREKET_TIPI hareketTipiKod, H.TIP tipKod,
         RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, RTRIM(P.KOD) paraKod, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
       FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
       JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID
-      WHERE CAST(H.TARIH AS date) BETWEEN @bas AND @bit AND (@cari IS NULL OR H.CARI_KART_ID=@cari) AND (@v IS NULL OR H.VEZNE_ID=@v) AND (@para IS NULL OR S.PARA_ID=@para)
+      WHERE CAST(H.TARIH AS date) BETWEEN @bas AND @bit ${f}
       ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
         const satirlar = res.recordset.map((r) => ({ ...r, meblag: Number(r.meblag), hareketTipi: HAREKET_TIPI[Number(r.hareketTipiKod)] || "Diğer",
             tip: Number(r.tipKod) === 1 ? "Alacak" : "Borç", borc: Number(r.tipKod) === 0 ? Number(r.meblag) : 0, alacak: Number(r.tipKod) === 1 ? Number(r.meblag) : 0 }));
-        return sinirla(satirlar, t, `${aralikOzeti(p)}${p.cariKartId ? " · Seçili cari" : ""}${p.vezneId ? " · Seçili vezne" : ""}${p.paraId ? " · Seçili para" : ""}`);
+        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p)}`);
     },
     /** R4 Cari kart listesi */
     async CARKRT1(pool, p, t) {
@@ -188,11 +217,13 @@ export const RAPOR_SORGULARI = {
     async KARZAR1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
-        const res = await pool.request().input("bit", sql.Date, p.bitis).input("para", sql.Int, p.paraId || null).input("v", sql.Int, p.vezneId || null).query(`
+        const req = pool.request().input("bit", sql.Date, p.bitis);
+        const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
+        const res = await req.query(`
       SELECT F.FIS_ID fisId, F.TARIH tarih, F.TIP tip, S.PARA_ID paraId, RTRIM(P.KOD) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo,
         S.MIKTAR miktar, S.KUR kur, S.TUTAR tutar, S.KOMISYON komisyon, S.BMV bmv, S.KMV kmv, S.KDV kdv
-      FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID
-      WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date)<=@bit AND (@para IS NULL OR S.PARA_ID=@para) AND (@v IS NULL OR F.VEZNE_ID=@v)
+      FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
+      WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date)<=@bit ${f}
         AND RTRIM(UPPER(P.KOD)) NOT IN ('TL','TRY')
       ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, F.TARIH, F.FIS_ID, S.SATIR_NO;`);
         const bas = new Date(p.baslangic);
@@ -240,50 +271,55 @@ export const RAPOR_SORGULARI = {
         }
         const satirlar = [...ozet.entries()].map(([id, o]) => { const s = stok.get(id); return { ...o, ortMaliyet: s.miktar > 0 ? s.maliyet / s.miktar : s.sonOrt, kalanMiktar: s.miktar, netKar: o.brutKar + o.komisyon - o.vergiler }; })
             .filter(o => o.alisMiktar || o.satisMiktar || o.komisyon);
-        return sinirla(satirlar, t, `${aralikOzeti(p)}${p.paraId ? " · Seçili para" : " · Tüm dövizler"}${p.vezneId ? " · Seçili vezne" : ""}`);
+        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`);
     },
     /** R7 Vergiler ve komisyon — vezne → gün → para, iptal fişler hariç */
     async VERKOM1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
-        const res = await pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).input("v", sql.Int, p.vezneId || null).input("para", sql.Int, p.paraId || null).query(`
+        const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
+        const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
+        const res = await req.query(`
       SELECT RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, CAST(F.TARIH AS date) gun, RTRIM(P.KOD) paraKod,
         COUNT(DISTINCT F.FIS_ID) adet, SUM(S.MIKTAR) miktar, SUM(S.TUTAR) tutar, SUM(S.KOMISYON) komisyon, SUM(S.BMV) bmv, SUM(S.KMV) kmv, SUM(S.KDV) kdv
       FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
-      WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@v IS NULL OR F.VEZNE_ID=@v) AND (@para IS NULL OR S.PARA_ID=@para)
+      WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit ${f}
       GROUP BY V.KOD, V.AD, CAST(F.TARIH AS date), P.KOD, P.SIRA_NO
       ORDER BY V.KOD, CAST(F.TARIH AS date), ISNULL(P.SIRA_NO,99), P.KOD;`);
         const satirlar = res.recordset.map((r) => ({ ...r, adet: Number(r.adet), miktar: Number(r.miktar), tutar: Number(r.tutar), komisyon: Number(r.komisyon), bmv: Number(r.bmv), kmv: Number(r.kmv), kdv: Number(r.kdv),
             toplamVergi: (Number(r.bmv) || 0) + (Number(r.kmv) || 0) + (Number(r.kdv) || 0), vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }));
-        return sinirla(satirlar, t, `${aralikOzeti(p)}${p.vezneId ? " · Seçili vezne" : " · Tüm vezneler"}${p.paraId ? " · Seçili para" : ""}`);
+        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm vezneler"}`);
     },
     /** R8 Vezne bakiye raporu (tarih bazlı) */
     async VEZBAK1(pool, p, t) {
         if (!p.tarih)
             throw ApiError.badRequest("Tarih zorunludur.");
         const kur = await kurCoz(pool, p);
-        const rows = await vezneBakiyeleri(pool, p.tarih, p.vezneId);
-        const satirlar = rows.filter(r => !p.paraId || r.paraId === p.paraId).map(r => ({ ...r, miktar: Number(r.miktar), kur: kur.kurlar.get(r.paraId) ?? 0,
+        const rows = await vezneBakiyeleri(pool, p.tarih, p);
+        const paraSet = new Set((p.paraIdler || []).map(Number));
+        const satirlar = rows.filter(r => (!p.paraId || r.paraId === p.paraId) && (!paraSet.size || paraSet.has(Number(r.paraId)))).map(r => ({ ...r, miktar: Number(r.miktar), kur: kur.kurlar.get(r.paraId) ?? 0,
             tlKarsiligi: Number(r.miktar) * (kur.kurlar.get(r.paraId) ?? 0), vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }));
-        return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${p.vezneId ? " · Seçili vezne" : " · Tüm vezneler"} · ${kur.aciklama}`, VEZNE_BAKIYE_DIPNOT);
+        return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p) || " · Tüm vezneler"} · ${kur.aciklama}`, VEZNE_BAKIYE_DIPNOT);
     },
     /** R9 Vezne hareket listesi — tarih + saat aralığı */
     async VEZHAR1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
-        const res = await pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
+        const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
             .input("sbas", sql.VarChar(8), p.baslangicSaat || "00:00:00").input("sbit", sql.VarChar(8), p.bitisSaat || "23:59:59")
-            .input("v", sql.Int, p.vezneId || null).input("para", sql.Int, p.paraId || null).input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null).query(`
+            .input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
+        const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
+        const res = await req.query(`
       SELECT F.FIS_ID fisId, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, ISNULL(F.ZAMAN,F.TARIH) zaman, F.TIP tipKod,
         RTRIM(ISNULL(F.SERI_NO,''))+RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan, RTRIM(P.KOD) paraKod,
         S.MIKTAR miktar, S.KUR kur, S.TUTAR tutar, S.KOMISYON komisyon, S.BMV bmv
       FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
       WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit
         AND CAST(ISNULL(F.ZAMAN,F.TARIH) AS time) BETWEEN CAST(@sbas AS time) AND CAST(@sbit AS time)
-        AND (@v IS NULL OR F.VEZNE_ID=@v) AND (@para IS NULL OR S.PARA_ID=@para) AND (@tip IS NULL OR F.TIP=@tip)
+        AND (@tip IS NULL OR F.TIP=@tip) ${f}
       ORDER BY V.KOD, ISNULL(F.ZAMAN,F.TARIH), F.FIS_ID, S.SATIR_NO;`);
         const satirlar = res.recordset.map((r) => ({ ...r, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", miktar: Number(r.miktar), kur: Number(r.kur), tutar: Number(r.tutar), komisyon: Number(r.komisyon), bmv: Number(r.bmv),
             vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }));
-        return sinirla(satirlar, t, `${aralikOzeti(p)} · ${p.baslangicSaat || "00:00"}–${p.bitisSaat || "23:59"}${p.vezneId ? " · Seçili vezne" : " · Tüm vezneler"}${p.paraId ? " · Seçili para" : ""}${p.fisTipi === 0 ? " · Alış" : p.fisTipi === 1 ? " · Satış" : ""}`, "İptal edilmiş fişler listelenmez.");
+        return sinirla(satirlar, t, `${aralikOzeti(p)} · ${(p.baslangicSaat || "00:00").slice(0, 5)}–${(p.bitisSaat || "23:59").slice(0, 5)}${ozetEk(p) || " · Tüm vezneler"}${p.fisTipi === 0 ? " · Alış" : p.fisTipi === 1 ? " · Satış" : ""}`, "İptal edilmiş fişler listelenmez.");
     },
 };

@@ -14,6 +14,9 @@ export type RaporParametreTipi =
   | "fisTipi"        // 0 alış / 1 satış / tümü
   | "kurSecimi"      // kurTuru (0 anlık gişe | 2 saklanan) + kurTarihi + kurAlani (alis|satis)
   | "kmt"            // Kur / Miktar / TL gösterimi (kâr-zarar)
+  | "cariAralik"     // cariBaslangic + cariBitis (cari KODU aralığı: Ahmet -> Mehmet)
+  | "vezneAralik"    // vezneBaslangic + vezneBitis (vezne KODU aralığı)
+  | "paraCoklu"      // paraIdler: virgülle ayrılmış PARA_ID listesi (boş = tümü)
   | "metin";         // serbest arama
 
 export interface RaporParametre {

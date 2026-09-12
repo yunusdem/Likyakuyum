@@ -15,6 +15,11 @@ const parametreSema = z.object({
   kurTuru: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().optional()),
   kurTarihi: tarih, kurAlani: z.enum(["alis", "satis"]).optional(),
   arama: z.string().trim().max(100).optional(), kmt: z.string().trim().max(10).optional(),
+  // Aralık ve çoklu seçim
+  cariBaslangic: z.string().trim().max(50).optional(), cariBitis: z.string().trim().max(50).optional(),
+  vezneBaslangic: z.string().trim().max(50).optional(), vezneBitis: z.string().trim().max(50).optional(),
+  paraIdler: z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)),
+    z.array(z.number().int().positive()).max(50).optional()),
 });
 const kodSema = z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{1,20}$/);
 
@@ -30,6 +35,8 @@ export class RaporController {
     const p = parametreSema.safeParse(req.query);
     if (!p.success) throw ApiError.badRequest(p.error.issues[0]?.message || "Rapor parametreleri geçersiz.", p.error.format());
     if (p.data.baslangic && p.data.bitis && p.data.baslangic > p.data.bitis) throw ApiError.badRequest("Başlangıç tarihi bitişten sonra olamaz.");
+    if (p.data.cariBaslangic && p.data.cariBitis && p.data.cariBaslangic > p.data.cariBitis) throw ApiError.badRequest("Başlangıç cari kodu bitişten büyük olamaz.");
+    if (p.data.vezneBaslangic && p.data.vezneBitis && p.data.vezneBaslangic > p.data.vezneBitis) throw ApiError.badRequest("Başlangıç vezne kodu bitişten büyük olamaz.");
     return p.data;
   }
   private static kod(req: Request) {

@@ -12,14 +12,14 @@
       "varsayilan": "-30g"
     },
     {
-      "ad": "cariKartId",
-      "etiket": "Cari kart",
-      "tip": "cari"
+      "ad": "cariBaslangic",
+      "etiket": "Cari aralığı (koddan koda)",
+      "tip": "cariAralik"
     },
     {
-      "ad": "vezneId",
-      "etiket": "Vezne",
-      "tip": "vezne"
+      "ad": "vezneBaslangic",
+      "etiket": "Vezne aralığı (koddan koda)",
+      "tip": "vezneAralik"
     },
     {
       "ad": "paraId",

@@ -12,14 +12,14 @@
       "varsayilan": "-30g"
     },
     {
-      "ad": "vezneId",
-      "etiket": "Vezne",
-      "tip": "vezne"
+      "ad": "vezneBaslangic",
+      "etiket": "Vezne aralığı (koddan koda)",
+      "tip": "vezneAralik"
     },
     {
-      "ad": "paraId",
-      "etiket": "Para",
-      "tip": "para"
+      "ad": "paraIdler",
+      "etiket": "Para (birden fazla seçilebilir)",
+      "tip": "paraCoklu"
     }
   ],
   "kolonlar": [
