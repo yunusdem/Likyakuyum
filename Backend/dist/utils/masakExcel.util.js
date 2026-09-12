@@ -12,8 +12,10 @@ import { logger } from "./logger.js";
 /** İndirmeye izin verilen tek adres öneki (SSRF önlemi) */
 export const MASAK_IZINLI_ONEK = "https://ms.hmb.gov.tr/";
 /**
- * Varsayılan kaynak adresleri. Kullanıcı ekrandan yeni adres girerse o kullanılır;
- * girilen adres TODVZ_MASAK_LISTE.KAYNAK_URL'de kalıcı olur (bkz. yol haritası 8.4).
+ * Standart listelerin varsayılan kaynak adresleri. Kullanıcı ekrandan yeni adres girerse o
+ * kullanılır; girilen adres güncelleme geçmişinde saklanır ve bir sonraki açılışta ekrana
+ * dolu gelir. Kullanıcı tanımlı listelerin (ör. "D") burada karşılığı yoktur — adresi ve adı
+ * ekrandan gelir. Bu yüzden erişimde `MASAK_KAYNAKLAR[kod]` undefined olabilir.
  */
 export const MASAK_KAYNAKLAR = {
     A: {

@@ -187,10 +187,15 @@ export const NumeratorDefinitionsPage: React.FC = () => {
 
       for (const row of rows) {
         if (row.isActive) {
+          const MAX_INT = 2147483647;
           const cleanOnek = (String(row.onek || "")).trim().slice(0, 50);
-          const cleanBaslangic = parseInt(String(row.baslangic).replace(/[^0-9]/g, ""), 10) || 0;
-          const cleanBitis = parseInt(String(row.bitis).replace(/[^0-9]/g, ""), 10) || 0;
-          const cleanUzunluk = Math.max(1, parseInt(String(row.uzunluk).replace(/[^0-9]/g, ""), 10) || 10);
+          const rawBaslangic = parseInt(String(row.baslangic).replace(/[^0-9]/g, ""), 10) || 0;
+          const rawBitis = parseInt(String(row.bitis).replace(/[^0-9]/g, ""), 10) || 0;
+          const rawUzunluk = parseInt(String(row.uzunluk).replace(/[^0-9]/g, ""), 10) || 10;
+
+          const cleanBaslangic = Math.min(MAX_INT, Math.max(0, rawBaslangic));
+          const cleanBitis = Math.min(MAX_INT, Math.max(0, rawBitis));
+          const cleanUzunluk = Math.min(50, Math.max(1, rawUzunluk));
 
           await NumeratorService.saveNumerator({
             tur: row.tur,
@@ -484,6 +489,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         <input
                           type="text"
                           inputMode="numeric"
+                          maxLength={10}
                           value={
                             activeCell?.tur === row.tur && activeCell?.col === "baslangic"
                               ? row.baslangic
@@ -491,14 +497,15 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                           }
                           disabled={!isRowActive}
                           onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9]/g, "");
+                            const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
                             handleFieldChange(row.tur, "baslangic", raw);
                           }}
                           onFocus={() => setActiveCell({ tur: row.tur, col: "baslangic" })}
                           onBlur={() => {
                             setActiveCell(null);
                             const parsed = parseInt(String(row.baslangic).replace(/[^0-9]/g, ""), 10);
-                            handleFieldChange(row.tur, "baslangic", isNaN(parsed) ? "" : parsed);
+                            const safe = isNaN(parsed) ? "" : Math.min(2147483647, Math.max(0, parsed));
+                            handleFieldChange(row.tur, "baslangic", safe);
                           }}
                           style={{
                             width: "100%",
@@ -527,6 +534,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         <input
                           type="text"
                           inputMode="numeric"
+                          maxLength={10}
                           value={
                             activeCell?.tur === row.tur && activeCell?.col === "bitis"
                               ? row.bitis
@@ -534,14 +542,15 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                           }
                           disabled={!isRowActive}
                           onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9]/g, "");
+                            const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
                             handleFieldChange(row.tur, "bitis", raw);
                           }}
                           onFocus={() => setActiveCell({ tur: row.tur, col: "bitis" })}
                           onBlur={() => {
                             setActiveCell(null);
                             const parsed = parseInt(String(row.bitis).replace(/[^0-9]/g, ""), 10);
-                            handleFieldChange(row.tur, "bitis", isNaN(parsed) || parsed === 0 ? "" : parsed);
+                            const safe = isNaN(parsed) || parsed === 0 ? "" : Math.min(2147483647, Math.max(0, parsed));
+                            handleFieldChange(row.tur, "bitis", safe);
                           }}
                           style={{
                             width: "100%",
@@ -570,17 +579,19 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         <input
                           type="text"
                           inputMode="numeric"
+                          maxLength={2}
                           value={row.uzunluk}
                           disabled={!isRowActive}
                           onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9]/g, "");
+                            const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 2);
                             handleFieldChange(row.tur, "uzunluk", raw);
                           }}
                           onFocus={() => setActiveCell({ tur: row.tur, col: "uzunluk" })}
                           onBlur={() => {
                             setActiveCell(null);
                             const parsed = parseInt(String(row.uzunluk).replace(/[^0-9]/g, ""), 10);
-                            handleFieldChange(row.tur, "uzunluk", isNaN(parsed) ? "" : parsed);
+                            const safe = isNaN(parsed) || parsed === 0 ? "" : Math.min(50, Math.max(1, parsed));
+                            handleFieldChange(row.tur, "uzunluk", safe);
                           }}
                           style={{
                             width: "100%",
