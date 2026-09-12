@@ -180,11 +180,16 @@ export const RaporPage: React.FC = () => {
       </React.Fragment>;
       case "paraCoklu": {
         const secili = String(degerler.paraIdler ?? "").split(",").filter(Boolean);
+        // Tikli liste: Ctrl gerekmez, her para ayrı onay kutusu (yönetici geri bildirimi 12.09.2026)
+        const degistir = (id: string, ac: boolean) => set("paraIdler", (ac ? [...secili, id] : secili.filter(x => x !== id)).join(","));
         return <Col md={3} key={p.ad}>{etiket}
-          <Form.Select size="sm" multiple htmlSize={Math.min(Math.max(paralar.length, 3), 6)} value={secili}
-            onChange={e => set("paraIdler", Array.from(e.target.selectedOptions).map(o => o.value).join(","))} title="Ctrl ile birden fazla seçin; boş = tümü">
-            {paralar.map(v => <option key={v.id} value={String(v.id)}>{v.kod} — {v.ad}</option>)}</Form.Select>
-          <div className="form-text">{secili.length ? `${secili.length} para seçili` : "Boş bırakılırsa tüm paralar"}</div></Col>;
+          <div className="border rounded bg-white px-2 py-1" style={{ maxHeight: 132, overflowY: "auto" }}>
+            <Form.Check type="checkbox" id={`${p.ad}-tumu`} className="small fw-semibold" label={secili.length ? "Seçimi temizle (tümü)" : "Tümü (hiçbiri seçili değil)"}
+              checked={!secili.length} onChange={() => set("paraIdler", "")} />
+            {paralar.map(v => <Form.Check key={v.id} type="checkbox" id={`${p.ad}-${v.id}`} className="small" label={`${v.kod} — ${v.ad}`}
+              checked={secili.includes(String(v.id))} onChange={e => degistir(String(v.id), e.target.checked)} />)}
+          </div>
+          <div className="form-text">{secili.length ? `${secili.length} para seçili` : "Hiçbiri seçilmezse tüm paralar"}</div></Col>;
       }
       case "kmt": return <Col md={2} key={p.ad}>{etiket}<Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
         <option value="">Kur + Miktar + TL</option><option value="K">Kur</option><option value="M">Miktar</option><option value="T">TL</option></Form.Select></Col>;
