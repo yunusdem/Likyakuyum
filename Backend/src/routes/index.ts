@@ -22,6 +22,7 @@ import belgeRoutes from "./belge.routes.js";
 import raporRoutes from "./rapor.routes.js";
 import vezneTransferiRoutes from "./vezneTransferi.routes.js";
 import vezneIzlemeRoutes from "./vezneIzleme.routes.js";
+import sarrafFisRoutes from "./sarrafFis.routes.js";
 
 const apiRouter = Router();
 
@@ -61,6 +62,8 @@ apiRouter.use("/e-belge", ebelgeRoutes);
 apiRouter.use("/masak", masakRoutes);
 apiRouter.use("/belge", belgeRoutes);
 apiRouter.use("/rapor", raporRoutes);
+apiRouter.use("/sarraf-fis", sarrafFisRoutes);
+apiRouter.use("/vezne/sarraf-fis", sarrafFisRoutes);
 
 export default apiRouter;
 

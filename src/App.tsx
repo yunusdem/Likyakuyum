@@ -26,6 +26,7 @@ import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
 import DovizFisiPage from "./pages/vezne/DovizFisiPage";
 import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
+import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -170,6 +171,10 @@ export default function App() {
             <Route path="vezne/transfer" element={<VezneTransferiPage />} />
             <Route path="vezne/izleme" element={<VezneIzlemePage />} />
             <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
+            <Route path="vezne/sarraf-fisi" element={<SarrafFisiPage />} />
+            <Route path="vezne/sarraf-fisi-kayit" element={<SarrafFisiPage />} />
+            <Route path="vezne/sarraf-fisi-duzeltme" element={<SarrafFisiPage />} />
+            <Route path="vezne/genel-sarraf-fisi" element={<SarrafFisiPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
