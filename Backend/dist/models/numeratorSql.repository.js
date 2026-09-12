@@ -125,11 +125,13 @@ export class NumeratorSqlRepository {
         }
     }
     /**
-     * Saves a numerator by DELETE + INSERT — guarantees zero duplicate key errors regardless of previous state.
+     * Saves a numerator using explicit transaction: DELETE all for TUR, then INSERT fresh.
+     * Transaction ensures atomicity — no duplicate key possible under any circumstance.
      */
     static async saveViaProcedure(data, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        const transaction = new sql.Transaction(pool);
         try {
-            const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             const MAX_SQL_INT = 2147483647;
             const tur = Math.min(255, Math.max(0, toInt(data.tur, 0)));
             const rawYaziciId = data.yaziciId !== undefined &&
@@ -144,23 +146,27 @@ export class NumeratorSqlRepository {
             const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
             const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
             const onuneSifirKoy = data.onuneSifirKoy !== false;
-            // Tek sorguda: önce bu TUR'un tüm kayıtlarını sil, sonra temiz INSERT yap
-            // SP'nin ISNULL eşleşme sorunundan tamamen bağımsız, kesinlikle çakışmasız
-            const req = pool.request();
-            req.input("YAZICI_ID", sql.Int, cleanYaziciId);
-            req.input("TUR", sql.TinyInt, tur);
-            req.input("ONEK", sql.VarChar(50), onek);
-            req.input("BASLANGIC", sql.Int, baslangic);
-            req.input("BITIS", sql.Int, bitis);
-            req.input("UZUNLUK", sql.Int, uzunluk);
-            req.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
-            await req.query(`
-        DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;
+            await transaction.begin();
+            // 1. Bu TUR'a ait tüm satırları sil
+            const delReq = new sql.Request(transaction);
+            delReq.input("TUR", sql.TinyInt, tur);
+            await delReq.query(`DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;`);
+            // 2. Temiz INSERT — transaction içinde olduğu için araya başka kayıt giremez
+            const insReq = new sql.Request(transaction);
+            insReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
+            insReq.input("TUR", sql.TinyInt, tur);
+            insReq.input("ONEK", sql.VarChar(50), onek);
+            insReq.input("BASLANGIC", sql.Int, baslangic);
+            insReq.input("BITIS", sql.Int, bitis);
+            insReq.input("UZUNLUK", sql.Int, uzunluk);
+            insReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
+            await insReq.query(`
         INSERT INTO [dbo].[TODVZ_NUMERATOR]
           ([YAZICI_ID], [TUR], [ONEK], [BASLANGIC], [BITIS], [UZUNLUK], [ONUNE_SIFIR_KOY])
         VALUES
           (@YAZICI_ID, @TUR, @ONEK, @BASLANGIC, @BITIS, @UZUNLUK, @ONUNE_SIFIR_KOY);
       `);
+            await transaction.commit();
             const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, cleanYaziciId, dbContext);
             if (!saved) {
                 throw ApiError.internal("Numaratör kaydedildi fakat güncel veri okunamadı.");
@@ -168,6 +174,10 @@ export class NumeratorSqlRepository {
             return saved;
         }
         catch (error) {
+            try {
+                await transaction.rollback();
+            }
+            catch (_) { }
             logger.error("NumeratorSqlRepository.saveViaProcedure error:", error);
             const msg = error?.message || "Numaratör kaydedilemedi.";
             throw ApiError.internal(msg);
