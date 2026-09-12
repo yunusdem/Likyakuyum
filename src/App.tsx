@@ -20,6 +20,7 @@ import PanoTanimiPage from "./pages/kur/PanoTanimiPage";
 import PanoPage from "./pages/kur/PanoPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
 import BelgePage from "./pages/belge/BelgePage";
+import RaporPage from "./pages/rapor/RaporPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
 import DovizFisiPage from "./pages/vezne/DovizFisiPage";
@@ -168,6 +169,7 @@ export default function App() {
             <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
             <Route path="masak" element={<MasakListsPage />} />
             <Route path="raporlar/belge" element={<BelgePage />} />
+            <Route path="raporlar/:yol" element={<RaporPage />} />
             <Route path=":section/*" element={<ModulePage />} />
 
 

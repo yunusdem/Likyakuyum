@@ -1,0 +1,67 @@
+{
+  "kod": "VEZBAK1",
+  "ad": "Vezne Bakiye Raporu (Tarih Bazlı)",
+  "aciklama": "Seçilen tarih itibarıyla vezne × para bakiyeleri ve seçilen kurla TL karşılığı.",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "tarih",
+      "etiket": "Tarih (dahil)",
+      "tip": "tarih",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "vezneId",
+      "etiket": "Vezne",
+      "tip": "vezne"
+    },
+    {
+      "ad": "paraId",
+      "etiket": "Para",
+      "tip": "para"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1.2,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paraAd",
+      "baslik": "Para adı",
+      "g": 3
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 2.4,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.8,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tlKarsiligi",
+      "baslik": "TL karşılığı",
+      "g": 2.6,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneKod",
+    "baslik": "Vezne {{vezneBaslik}}",
+    "altToplam": true
+  }
+}

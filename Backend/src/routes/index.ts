@@ -19,6 +19,7 @@ import dovizFisRoutes from "./dovizFis.routes.js";
 import tanimlarRoutes from "./tanimlar.routes.js";
 import masakRoutes from "./masak.routes.js";
 import belgeRoutes from "./belge.routes.js";
+import raporRoutes from "./rapor.routes.js";
 
 const apiRouter = Router();
 
@@ -53,6 +54,7 @@ apiRouter.use("/banknotes", banknotRoutes);
 apiRouter.use("/e-belge", ebelgeRoutes);
 apiRouter.use("/masak", masakRoutes);
 apiRouter.use("/belge", belgeRoutes);
+apiRouter.use("/rapor", raporRoutes);
 
 export default apiRouter;
 

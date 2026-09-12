@@ -1,0 +1,112 @@
+{
+  "kod": "KARZAR1",
+  "ad": "Kâr / Zarar Faaliyet Analizi",
+  "aciklama": "Para bazında alış-satış özeti ve ağırlıklı ortalama maliyet yöntemiyle kâr.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "-30g"
+    },
+    {
+      "ad": "paraId",
+      "etiket": "Para",
+      "tip": "para"
+    },
+    {
+      "ad": "vezneId",
+      "etiket": "Vezne",
+      "tip": "vezne"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paraAd",
+      "baslik": "Para adı",
+      "g": 2.2
+    },
+    {
+      "anahtar": "alisMiktar",
+      "baslik": "Alış miktar",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "alisTutar",
+      "baslik": "Alış TL",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "satisMiktar",
+      "baslik": "Satış miktar",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "satisTutar",
+      "baslik": "Satış TL",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "satisMaliyeti",
+      "baslik": "Satış maliyeti",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "brutKar",
+      "baslik": "Brüt kâr",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon (+)",
+      "g": 1.7,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "vergiler",
+      "baslik": "Vergiler (−)",
+      "g": 1.7,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "netKar",
+      "baslik": "Net kâr",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "ortMaliyet",
+      "baslik": "Ort. maliyet",
+      "g": 1.5,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "kalanMiktar",
+      "baslik": "Kalan",
+      "g": 1.6,
+      "bicim": "sayi"
+    }
+  ],
+  "dipnot": "Yöntem: ağırlıklı ortalama maliyet. Her alış, ilgili dövizin stokuna alış tutarıyla eklenir; her satışta o andaki ortalama maliyet (toplam maliyet ÷ stok miktarı) ile satış maliyeti hesaplanır. Brüt kâr = satış TL − satış maliyeti. Net kâr = brüt kâr + komisyon − (BSMV + KMV + KDV). Ortalama maliyet kayıtların başından itibaren yürütülür; dönem dışındaki hareketler yalnızca maliyeti etkiler, kâra yazılmaz. Stok sıfırken yapılan satışlarda maliyet olarak satış kuru alınır (kâr 0). İptal fişler kapsam dışıdır."
+}

@@ -1,0 +1,89 @@
+{
+  "kod": "CARHAR1",
+  "ad": "Cari Hareket Listesi",
+  "aciklama": "Tarih aralığındaki tüm cari hareketleri; cari, vezne ve para filtresi.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "-30g"
+    },
+    {
+      "ad": "cariKartId",
+      "etiket": "Cari kart",
+      "tip": "cari"
+    },
+    {
+      "ad": "vezneId",
+      "etiket": "Vezne",
+      "tip": "vezne"
+    },
+    {
+      "ad": "paraId",
+      "etiket": "Para",
+      "tip": "para"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.6,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "cariKod",
+      "baslik": "Kod",
+      "g": 1.4
+    },
+    {
+      "anahtar": "cariAd",
+      "baslik": "Cari adı",
+      "g": 4
+    },
+    {
+      "anahtar": "hareketTipi",
+      "baslik": "Hareket",
+      "g": 1.8
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "B/A",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 3.5
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "borc",
+      "baslik": "Borç",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "alacak",
+      "baslik": "Alacak",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "paraKod",
+    "baslik": "Para birimi: {{paraKod}}",
+    "altToplam": true
+  }
+}

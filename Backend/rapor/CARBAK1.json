@@ -1,0 +1,86 @@
+{
+  "kod": "CARBAK1",
+  "ad": "Cari Bakiye Raporu",
+  "aciklama": "Seçilen tarihe kadar cari bakiyeleri; para ve has bazında, sıfır bakiyeliler dahil.",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "tarih",
+      "etiket": "Tarih (dahil)",
+      "tip": "tarih",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "cariKartId",
+      "etiket": "Cari kart",
+      "tip": "cari"
+    },
+    {
+      "ad": "paraId",
+      "etiket": "Para",
+      "tip": "para"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "cariKod",
+      "baslik": "Kod",
+      "g": 2
+    },
+    {
+      "anahtar": "cariAd",
+      "baslik": "Cari adı",
+      "g": 5
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1.3,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "borc",
+      "baslik": "Borç",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "alacak",
+      "baslik": "Alacak",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "bakiye",
+      "baslik": "Bakiye",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "yon",
+      "baslik": "Yön",
+      "g": 1.2,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "hasOrani",
+      "baslik": "Has oranı",
+      "g": 1.4,
+      "bicim": "sayi4"
+    },
+    {
+      "anahtar": "hasKarsiligi",
+      "baslik": "Has karşılığı",
+      "g": 2.2,
+      "bicim": "sayi4",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "cariKod",
+    "baslik": "{{cariBaslik}}",
+    "altToplam": false
+  },
+  "dipnot": "Borç/alacak ve bakiye para biriminde; has karşılığı para tanımındaki has oranıyla hesaplanır ve yalnızca has karşılığı toplanır."
+}

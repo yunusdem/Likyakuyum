@@ -30,7 +30,7 @@ export function sablonOku(duzenDosyasi) {
     return sablon;
 }
 /** Türkçe destekli TTF yazı tipi; e-Döviz PDF'i ile aynı arama sırası (EBELGE_PDF_FONT). */
-function yaziTipleri() {
+export function yaziTipleri() {
     const adaylar = [process.env.EBELGE_PDF_FONT,
         path.join(process.env.WINDIR || "C:/Windows", "Fonts", "arial.ttf"),
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",

@@ -1,0 +1,100 @@
+{
+  "kod": "VERKOM1",
+  "ad": "Vergiler ve Komisyon",
+  "aciklama": "Vezne → gün → para bazında komisyon, BSMV, KMV ve KDV toplamları (iptal fişler hariç).",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "-30g"
+    },
+    {
+      "ad": "vezneId",
+      "etiket": "Vezne",
+      "tip": "vezne"
+    },
+    {
+      "ad": "paraId",
+      "etiket": "Para",
+      "tip": "para"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "gun",
+      "baslik": "Gün",
+      "g": 1.6,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "adet",
+      "baslik": "Fiş",
+      "g": 0.9,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bmv",
+      "baslik": "BSMV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "toplamVergi",
+      "baslik": "Toplam vergi",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneKod",
+    "baslik": "Vezne {{vezneBaslik}}",
+    "altToplam": true
+  },
+  "dipnot": "Miktar farklı para birimlerinde olduğu için toplanmaz. İptal edilmiş fişler kapsam dışıdır."
+}

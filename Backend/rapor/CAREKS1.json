@@ -1,0 +1,77 @@
+{
+  "kod": "CAREKS1",
+  "ad": "Cari Ekstre",
+  "aciklama": "Tek carinin tarih aralığındaki hareketleri; devir ve yürüyen bakiye (para bazında).",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "cariKartId",
+      "etiket": "Cari kart",
+      "tip": "cari",
+      "zorunlu": true
+    },
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "-30g"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.6,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "hareketTipi",
+      "baslik": "Hareket",
+      "g": 1.8
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 4
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "borc",
+      "baslik": "Borç",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "alacak",
+      "baslik": "Alacak",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bakiye",
+      "baslik": "Bakiye",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "yon",
+      "baslik": "B/A",
+      "g": 0.7,
+      "hiza": "center"
+    }
+  ],
+  "grup": {
+    "anahtar": "paraKod",
+    "baslik": "Para birimi: {{paraKod}}",
+    "altToplam": true
+  },
+  "dipnot": "Her para birimi ayrı gruplanır; ilk satır başlangıç tarihinden önceki devirdir. B/A: B = cari borçlu, A = cari alacaklı."
+}

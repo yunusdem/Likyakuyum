@@ -1,0 +1,57 @@
+{
+  "kod": "FIRVAR1",
+  "ad": "Firma Varlıkları Raporu",
+  "aciklama": "Vezne bakiyeleri ve cari alacak/borçların seçilen kurla TL toplamı (banka hesapları hariç).",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "tarih",
+      "etiket": "Tarih (dahil)",
+      "tip": "tarih",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "kaynak",
+      "baslik": "Kaynak",
+      "g": 4.5
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1.2,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 2.4,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.8,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tlKarsiligi",
+      "baslik": "TL karşılığı",
+      "g": 2.6,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "grup",
+    "baslik": "{{grup}}",
+    "altToplam": true
+  }
+}

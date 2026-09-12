@@ -58,7 +58,7 @@ export function sablonOku(duzenDosyasi: string): BelgeSablon {
 }
 
 /** Türkçe destekli TTF yazı tipi; e-Döviz PDF'i ile aynı arama sırası (EBELGE_PDF_FONT). */
-function yaziTipleri(): { normal: string; kalin: string } {
+export function yaziTipleri(): { normal: string; kalin: string } {
   const adaylar = [process.env.EBELGE_PDF_FONT,
     path.join(process.env.WINDIR || "C:/Windows", "Fonts", "arial.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",

@@ -1,0 +1,61 @@
+{
+  "kod": "CARKRT1",
+  "ad": "Cari Kart Listesi",
+  "aciklama": "Tanımlı cari kartlar; kod, ad veya vergi numarasıyla arama.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "arama",
+      "etiket": "Ara (kod / ad / vergi no)",
+      "tip": "metin"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "kod",
+      "baslik": "Kod",
+      "g": 1.4
+    },
+    {
+      "anahtar": "ad",
+      "baslik": "Ad / Ünvan",
+      "g": 4
+    },
+    {
+      "anahtar": "kisilik",
+      "baslik": "Kişilik",
+      "g": 1.4
+    },
+    {
+      "anahtar": "vergiNo",
+      "baslik": "VKN / TCKN",
+      "g": 1.8
+    },
+    {
+      "anahtar": "pasaportNo",
+      "baslik": "Pasaport",
+      "g": 1.4
+    },
+    {
+      "anahtar": "telefon",
+      "baslik": "Telefon",
+      "g": 1.6
+    },
+    {
+      "anahtar": "eposta",
+      "baslik": "E-posta",
+      "g": 2.4
+    },
+    {
+      "anahtar": "adres",
+      "baslik": "Adres",
+      "g": 4
+    },
+    {
+      "anahtar": "karaListe",
+      "baslik": "Kara liste",
+      "g": 1,
+      "hiza": "center"
+    }
+  ]
+}

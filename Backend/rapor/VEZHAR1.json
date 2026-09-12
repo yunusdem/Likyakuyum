@@ -1,0 +1,103 @@
+{
+  "kod": "VEZHAR1",
+  "ad": "Vezne Hareket Listesi",
+  "aciklama": "Tarih ve saat aralığındaki alış/satış fişleri; vezne, para ve tip filtresi.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "baslangicSaat",
+      "etiket": "Saat aralığı",
+      "tip": "saatAralik"
+    },
+    {
+      "ad": "vezneId",
+      "etiket": "Vezne",
+      "tip": "vezne"
+    },
+    {
+      "ad": "paraId",
+      "etiket": "Para",
+      "tip": "para"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Tip",
+      "tip": "fisTipi"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 2,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 2.2
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 3.6
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.5,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bmv",
+      "baslik": "BSMV",
+      "g": 1.3,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneKod",
+    "baslik": "Vezne {{vezneBaslik}}",
+    "altToplam": true
+  }
+}
