@@ -1369,8 +1369,10 @@ export const CariEmanetDekontPage: React.FC = () => {
         pageTitle={isDuzeltmeMode ? "F- Cari Emanet Dekont Düzeltme" : "E- Cari Emanet Dekont Kayıt"}
         onNew={handleNew}
         onSave={handleSave}
-        onDelete={handleDelete}
-        onSearch={() => setShowDekontSearchModal(true)}
+        onDelete={isDuzeltmeMode ? handleDelete : undefined}
+        onSearch={isDuzeltmeMode ? () => setShowDekontSearchModal(true) : undefined}
+        hideSearch={!isDuzeltmeMode}
+        hideDelete={!isDuzeltmeMode}
         onFirst={handleFirst}
         onPrev={handlePrev}
         onNext={handleNext}

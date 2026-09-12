@@ -767,8 +767,10 @@ export const CariHareketPage: React.FC = () => {
         pageTitle={pageTitle}
         onNew={handleNewRecord}
         onSave={handleSave}
-        onSearch={handleOpenSearchModal}
-        onDelete={currentHareketId ? () => setShowDeleteModal(true) : undefined}
+        onSearch={isEditMode ? handleOpenSearchModal : undefined}
+        onDelete={isEditMode && currentHareketId ? () => setShowDeleteModal(true) : undefined}
+        hideSearch={!isEditMode}
+        hideDelete={!isEditMode}
         onFirst={navInfo.firstId ? handleNavFirst : undefined}
         onPrev={navInfo.prevId ? handleNavPrev : undefined}
         onNext={navInfo.nextId ? handleNavNext : undefined}

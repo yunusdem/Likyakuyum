@@ -13,6 +13,8 @@ const ModulePage: React.FC = () => {
     .replace(/-/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+  const isKayit = location.pathname.includes("kayit");
+
   return (
     <Container fluid className="py-3 px-3 px-lg-4">
       {/* 1. Üst ERP Aksiyon Şeridi (Ribbon Toolbar) */}
@@ -22,7 +24,9 @@ const ModulePage: React.FC = () => {
         onRefresh={() => alert(`"${pageTitle}" verileri yenilendi.`)}
         onNew={() => alert(`"${pageTitle}" için yeni kayıt ekranı açıldı.`)}
         onPrint={() => window.print()}
-        onSearch={() => alert("Kayıt arama filtresi açıldı.")}
+        onSearch={isKayit ? undefined : () => alert("Kayıt arama filtresi açıldı.")}
+        hideSearch={isKayit}
+        hideDelete={isKayit}
       />
 
       {/* Breadcrumb Header */}

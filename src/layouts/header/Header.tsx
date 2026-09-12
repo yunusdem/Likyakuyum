@@ -22,6 +22,7 @@ import UserMenu from "./UserMenu";
 import NoficationList from "components/common/NoficationList";
 import MasakModal from "components/masak/MasakModal";
 import MasakMenu from "components/masak/MasakMenu";
+import HeaderThemeSelector from "components/theme/HeaderThemeSelector";
 
 //import custom hooks
 import useMenu from "hooks/useMenu";
@@ -179,12 +180,17 @@ const Header: React.FC = () => {
               </div>
             </div>
 
-            {/* Right Area: Action Icons (Fullscreen, Notification, User Menu) */}
+            {/* Right Area: Action Icons (Theme Selector, Fullscreen, Notification, User Menu) */}
             <ListGroup
               bsPrefix="list-unstyled"
               as={"ul"}
-              className="d-flex align-items-center mb-0 gap-1"
+              className="d-flex align-items-center mb-0 gap-1.5"
             >
+              {/* Theme Quick Selector Dropdown & Modal */}
+              <ListGroup.Item as="li" className="me-1">
+                <HeaderThemeSelector />
+              </ListGroup.Item>
+
               {/* Fullscreen Toggle Button */}
               <ListGroup.Item as="li">
                 <Button

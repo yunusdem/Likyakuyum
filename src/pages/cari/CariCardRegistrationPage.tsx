@@ -611,14 +611,22 @@ export const CariCardRegistrationPage: React.FC = () => {
         pageIcon={<IconUsers size={20} />}
         onNew={handleNewCari}
         onSave={handleSave}
-        onSearch={() => {
-          setShowLookupModal(true);
-        }}
-        onDelete={() => {
-          if (selectedCari && !isNewRecord && isEditPage) {
-            setShowDeleteModal(true);
-          }
-        }}
+        onSearch={
+          isEditPage
+            ? () => {
+                setShowLookupModal(true);
+              }
+            : undefined
+        }
+        onDelete={
+          isEditPage && selectedCari && !isNewRecord
+            ? () => {
+                setShowDeleteModal(true);
+              }
+            : undefined
+        }
+        hideSearch={!isEditPage}
+        hideDelete={!isEditPage}
         onFirst={() => isEditPage && handleNavigate("first")}
         onPrev={() => isEditPage && handleNavigate("prev")}
         onNext={() => isEditPage && handleNavigate("next")}

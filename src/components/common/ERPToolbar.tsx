@@ -41,6 +41,8 @@ export interface ERPToolbarProps {
   pageTitle?: string;
   pageIcon?: React.ReactNode;
   rightContent?: React.ReactNode;
+  hideSearch?: boolean;
+  hideDelete?: boolean;
 }
 
 const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> = {
@@ -81,11 +83,11 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kur/pano-tanimi": { title: "D- Pano Tanımı", icon: <IconDeviceTv size={20} /> },
   "/ayarlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
   "/tanimlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
-  "/vezne/doviz-fisi": { title: "G- Döviz Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fis": { title: "G- Döviz Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fisi-kayit": { title: "G- Döviz Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fisi-duzeltme": { title: "H- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fis-duzeltme": { title: "H- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fis": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi-kayit": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fis-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({
@@ -104,11 +106,25 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   pageTitle,
   pageIcon,
   rightContent,
+  hideSearch,
+  hideDelete,
 }) => {
   const location = useLocation();
   const routeMatch = ROUTE_PAGE_MAP[location.pathname];
   const finalTitle = pageTitle || routeMatch?.title || "";
   const finalIcon = pageIcon || routeMatch?.icon || <IconFileText size={20} />;
+
+  // Kayıt sayfası tespiti (kayıt sayfalarında arama ve silme butonları gelmez)
+  const isKayitPage =
+    location.pathname.includes("-kayit") ||
+    location.pathname.includes("/kayit") ||
+    ((location.pathname.includes("doviz-fisi") || location.pathname.includes("doviz-fis")) && !location.pathname.includes("duzeltme")) ||
+    ((location.pathname.includes("emanet") || location.pathname.includes("emanet-dekont")) && !location.pathname.includes("duzeltme")) ||
+    (location.pathname.includes("kart") && !location.pathname.includes("duzeltme") && !location.pathname.includes("liste"));
+
+  const shouldShowSearch = hideSearch !== undefined ? !hideSearch : (!isKayitPage && Boolean(onSearch));
+  const shouldShowDelete = hideDelete !== undefined ? !hideDelete : (!isKayitPage && Boolean(onDelete));
+
   // Global ERP keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -118,24 +134,26 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
         e.preventDefault();
         if (onSave) onSave();
       } else if (e.key === "F2") {
-        e.preventDefault();
-        if (onDelete) onDelete();
-        else if (onSave) onSave();
+        if (shouldShowDelete && onDelete) {
+          e.preventDefault();
+          onDelete();
+        }
       } else if (e.key === "F3") {
-        e.preventDefault();
-        if (onSearch) {
+        if (shouldShowSearch && onSearch) {
+          e.preventDefault();
           onSearch();
-        } else {
-          const searchInput = document.querySelector<HTMLInputElement>(
-            "input[type='search'], input[placeholder*='ara' i], input[placeholder*='Ara' i]"
-          );
-          if (searchInput) searchInput.focus();
         }
       } else if (e.key === "F4") {
-        e.preventDefault();
-        if (onSearch) onSearch();
-        else if (onNew) onNew();
-        else if (onClear) onClear();
+        if (shouldShowSearch && onSearch) {
+          e.preventDefault();
+          onSearch();
+        } else if (onNew) {
+          e.preventDefault();
+          onNew();
+        } else if (onClear) {
+          e.preventDefault();
+          onClear();
+        }
       } else if (e.key === "F5") {
         if (onRefresh) {
           e.preventDefault();
@@ -151,7 +169,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, disabled]);
+  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, disabled, shouldShowSearch, shouldShowDelete]);
 
   const defaultHandler = (actionName: string) => {
     if (actionName === "Ara/Bul") {
@@ -245,68 +263,72 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
         </button>
 
         {/* 3. Ara / Bul (F4) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={
-            onSearch ||
-            (() => {
-              const searchInput = document.querySelector<HTMLInputElement>(
-                "input[type='search'], input[placeholder*='ara' i], input[placeholder*='Ara' i]"
-              );
-              if (searchInput) {
-                searchInput.focus();
-                searchInput.select();
-              }
-            })
-          }
-          className="erp-tb-btn"
-          title="Ara / Bul (F4)"
-          aria-label="Ara / Bul"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            {/* Sol ve Sağ Üst Göz Mercekleri */}
-            <rect x="3.5" y="3" width="5" height="3" rx="1" fill="#1e293b" stroke="#000000" strokeWidth="0.5" />
-            <rect x="15.5" y="3" width="5" height="3" rx="1" fill="#1e293b" stroke="#000000" strokeWidth="0.5" />
+        {shouldShowSearch && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={
+              onSearch ||
+              (() => {
+                const searchInput = document.querySelector<HTMLInputElement>(
+                  "input[type='search'], input[placeholder*='ara' i], input[placeholder*='Ara' i]"
+                );
+                if (searchInput) {
+                  searchInput.focus();
+                  searchInput.select();
+                }
+              })
+            }
+            className="erp-tb-btn"
+            title="Ara / Bul (F4)"
+            aria-label="Ara / Bul"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              {/* Sol ve Sağ Üst Göz Mercekleri */}
+              <rect x="3.5" y="3" width="5" height="3" rx="1" fill="#1e293b" stroke="#000000" strokeWidth="0.5" />
+              <rect x="15.5" y="3" width="5" height="3" rx="1" fill="#1e293b" stroke="#000000" strokeWidth="0.5" />
 
-            {/* Sol Dürbün Gövdesi */}
-            <path d="M4 6H8L10 16.5H2.5L4 6Z" fill="#0f172a" stroke="#000000" strokeWidth="0.8" />
-            <ellipse cx="6.2" cy="17.2" rx="4" ry="2.2" fill="#000000" />
-            <ellipse cx="6.2" cy="17.2" rx="2.6" ry="1.2" fill="#38bdf8" fillOpacity="0.45" />
+              {/* Sol Dürbün Gövdesi */}
+              <path d="M4 6H8L10 16.5H2.5L4 6Z" fill="#0f172a" stroke="#000000" strokeWidth="0.8" />
+              <ellipse cx="6.2" cy="17.2" rx="4" ry="2.2" fill="#000000" />
+              <ellipse cx="6.2" cy="17.2" rx="2.6" ry="1.2" fill="#38bdf8" fillOpacity="0.45" />
 
-            {/* Sağ Dürbün Gövdesi */}
-            <path d="M16 6H20L21.5 16.5H14L16 6Z" fill="#0f172a" stroke="#000000" strokeWidth="0.8" />
-            <ellipse cx="17.8" cy="17.2" rx="4" ry="2.2" fill="#000000" />
-            <ellipse cx="17.8" cy="17.2" rx="2.6" ry="1.2" fill="#38bdf8" fillOpacity="0.45" />
+              {/* Sağ Dürbün Gövdesi */}
+              <path d="M16 6H20L21.5 16.5H14L16 6Z" fill="#0f172a" stroke="#000000" strokeWidth="0.8" />
+              <ellipse cx="17.8" cy="17.2" rx="4" ry="2.2" fill="#000000" />
+              <ellipse cx="17.8" cy="17.2" rx="2.6" ry="1.2" fill="#38bdf8" fillOpacity="0.45" />
 
-            {/* Orta Bağlantı Köprüsü ve Netlik Ayar Tekerleği */}
-            <rect x="8" y="7.5" width="8" height="2.5" rx="0.5" fill="#334155" />
-            <rect x="10.5" y="5.5" width="3" height="6.5" rx="1" fill="#64748b" stroke="#000000" strokeWidth="0.5" />
-            <line x1="11" y1="8" x2="13" y2="8" stroke="#cbd5e1" strokeWidth="0.8" />
-            <rect x="8" y="12" width="8" height="2" fill="#1e293b" />
-          </svg>
-        </button>
+              {/* Orta Bağlantı Köprüsü ve Netlik Ayar Tekerleği */}
+              <rect x="8" y="7.5" width="8" height="2.5" rx="0.5" fill="#334155" />
+              <rect x="10.5" y="5.5" width="3" height="6.5" rx="1" fill="#64748b" stroke="#000000" strokeWidth="0.5" />
+              <line x1="11" y1="8" x2="13" y2="8" stroke="#cbd5e1" strokeWidth="0.8" />
+              <rect x="8" y="12" width="8" height="2" fill="#1e293b" />
+            </svg>
+          </button>
+        )}
 
         {/* 4. Sil (F2) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onDelete || (() => defaultHandler("Sil"))}
-          className="erp-tb-btn"
-          title="Sil (F2)"
-          aria-label="Sil"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            {/* Trash Lid */}
-            <path d="M3 6H21" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
-            <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6" stroke="#dc2626" strokeWidth="1.8" strokeLinecap="round" />
-            {/* Trash Can Body (Red Fill) */}
-            <path d="M19 6L18 20C18 20.5523 17.5523 21 17 21H7C6.44772 21 6 20.5523 6 20L5 6" fill="#fee2e2" stroke="#dc2626" strokeWidth="1.8" />
-            {/* Vertical Inner Lines */}
-            <line x1="10" y1="10" x2="10" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="14" y1="10" x2="14" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
+        {shouldShowDelete && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onDelete || (() => defaultHandler("Sil"))}
+            className="erp-tb-btn"
+            title="Sil (F2)"
+            aria-label="Sil"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              {/* Trash Lid */}
+              <path d="M3 6H21" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
+              <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6" stroke="#dc2626" strokeWidth="1.8" strokeLinecap="round" />
+              {/* Trash Can Body (Red Fill) */}
+              <path d="M19 6L18 20C18 20.5523 17.5523 21 17 21H7C6.44772 21 6 20.5523 6 20L5 6" fill="#fee2e2" stroke="#dc2626" strokeWidth="1.8" />
+              {/* Vertical Inner Lines */}
+              <line x1="10" y1="10" x2="10" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="14" y1="10" x2="14" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
 
         <span className="erp-tb-divider" />
 
