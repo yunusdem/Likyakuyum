@@ -726,7 +726,7 @@ export const DovizFisiPage: React.FC = () => {
       setUnvan(fis.unvan || "İSİM BEYAN EDİLMEMİŞTİR");
       setCariKartId(fis.cariKartId);
       setVergiKimlikNo(fis.vergiKimlikNo || "");
-      setGelisNedeni(fis.gelisNedeni || "32 SAYILI KARAR GEREĞİ");
+      setGelisNedeni(fis.gelisNedeni || "");
       setKurTuru(fis.kurTuru ?? 0);
       setIstatistikId(fis.istatistikId);
       setIstatistikKodu(fis.istatistikKodu || (fis.tip === 1 ? "10285" : "9249"));
@@ -2012,6 +2012,13 @@ export const DovizFisiPage: React.FC = () => {
         if (matchUy) finalUyrukId = Number(matchUy.id);
       }
 
+      const isAnonymous = !unvan || !unvan.trim() || 
+        unvan.trim().toLocaleUpperCase('tr-TR') === "İSİM BEYAN EDİLMEMİŞTİR" || 
+        unvan.trim().toLocaleUpperCase('tr-TR') === "ISIM BEYAN EDILMEMISTIR" ||
+        unvan.trim().toLowerCase() === "isim beyan edilmemiştir";
+
+      const finalUnvan = isAnonymous ? "İSİM BEYAN EDİLMEMİŞTİR" : unvan.trim();
+
       const payload: SaveDovizFisPayload = {
         fisId: fisId || undefined,
         vezneId: activeVezneId,
@@ -2024,8 +2031,8 @@ export const DovizFisiPage: React.FC = () => {
         kurTuru,
         istatistikId: istatistikId || undefined,
         cariKartId: (cariKartId && Number(cariKartId) > 0) ? Number(cariKartId) : null,
-        unvan: (unvan && unvan.trim()) ? unvan.trim() : "İSİM BEYAN EDİLMEMİŞTİR",
-        kisilikTipi: detayCariTipi === "Firma" ? 2 : 1,
+        unvan: finalUnvan,
+        kisilikTipi: isAnonymous ? 0 : (detayCariTipi === "Firma" ? 2 : 1),
         ulkeId: finalUlkeId,
         uyrukId: finalUyrukId,
         hukukiYapiId: finalHukukiYapiId,
@@ -2215,32 +2222,65 @@ export const DovizFisiPage: React.FC = () => {
   // Keyboard shortcut listener (F1..F10, ESC)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (showKurListesiModal) {
-          e.preventDefault();
-          setShowKurListesiModal(false);
-          return;
+      const isAnyModalOpen =
+        showKurListesiModal ||
+        showVezneBakiyeModal ||
+        showTlHesabiModal ||
+        showDetayModal ||
+        showParaSaymaModal ||
+        showIstatistikModal ||
+        showSearchModal ||
+        showCariModal ||
+        showVezneModal ||
+        showParaModal ||
+        showGumrukModal ||
+        showPrintModal;
+
+      if (isAnyModalOpen) {
+        if (e.key === "Escape") {
+          if (showKurListesiModal) {
+            e.preventDefault();
+            setShowKurListesiModal(false);
+            return;
+          }
+          if (showVezneBakiyeModal) {
+            e.preventDefault();
+            setShowVezneBakiyeModal(false);
+            return;
+          }
+          if (showTlHesabiModal) {
+            e.preventDefault();
+            setShowTlHesabiModal(false);
+            return;
+          }
+          if (showDetayModal) {
+            e.preventDefault();
+            setShowDetayModal(false);
+            return;
+          }
+          if (showParaSaymaModal) {
+            e.preventDefault();
+            setShowParaSaymaModal(false);
+            return;
+          }
+          if (showIstatistikModal) {
+            e.preventDefault();
+            setShowIstatistikModal(false);
+            return;
+          }
+          if (showGumrukModal) {
+            e.preventDefault();
+            setShowGumrukModal(false);
+            return;
+          }
+          if (showPrintModal) {
+            e.preventDefault();
+            setShowPrintModal(false);
+            return;
+          }
         }
-        if (showVezneBakiyeModal) {
-          e.preventDefault();
-          setShowVezneBakiyeModal(false);
-          return;
-        }
-        if (showTlHesabiModal) {
-          e.preventDefault();
-          setShowTlHesabiModal(false);
-          return;
-        }
-        if (showDetayModal) {
-          e.preventDefault();
-          setShowDetayModal(false);
-          return;
-        }
-        if (showParaSaymaModal) {
-          e.preventDefault();
-          setShowParaSaymaModal(false);
-          return;
-        }
+        // Modal açıkken sayfa toolbar kısayollarını (F1 Kaydet vb.) çalıştırma
+        return;
       }
 
       if (e.key === "F1") {
@@ -2294,6 +2334,12 @@ export const DovizFisiPage: React.FC = () => {
     showTlHesabiModal,
     showDetayModal,
     showParaSaymaModal,
+    showSearchModal,
+    showCariModal,
+    showVezneModal,
+    showParaModal,
+    showGumrukModal,
+    showPrintModal,
     handleOpenBanknotSay,
   ]);
 
@@ -2732,10 +2778,15 @@ export const DovizFisiPage: React.FC = () => {
                             setUnvan(e.target.value.slice(0, 100));
                             if (cariKartId) setCariKartId(null);
                           }}
+                          onBlur={() => {
+                            if (!unvan || !unvan.trim()) {
+                              setUnvan("İSİM BEYAN EDİLMEMİŞTİR");
+                            }
+                          }}
                           className="fw-semibold px-2.5 py-1"
                           style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           placeholder="İSİM BEYAN EDİLMEMİŞTİR"
-                          title="Ünvan (Elle serbest yazabilir veya dürbün ile Cari/Müşteri seçebilirsiniz)"
+                          title="Ünvan (Elle serbest yazabilir veya boş bırakabilirsiniz - İSİM BEYAN EDİLMEMİŞTİR olarak kaydedilir)"
                         />
                         <Button
                           variant="outline-secondary"
@@ -3348,6 +3399,12 @@ export const DovizFisiPage: React.FC = () => {
               onKeyDown={(e) => handleDetayFieldKeyDown(e, 0)}
               value={unvan}
               onChange={(e) => setUnvan(e.target.value)}
+              onBlur={() => {
+                if (!unvan || !unvan.trim()) {
+                  setUnvan("İSİM BEYAN EDİLMEMİŞTİR");
+                }
+              }}
+              placeholder="İSİM BEYAN EDİLMEMİŞTİR"
             />
             <Button variant="link" size="sm" className="p-0 text-secondary" title="Ek Bilgiler">
               <IconPaperclip size={18} />

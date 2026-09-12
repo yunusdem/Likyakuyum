@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Modal, Form, Button, InputGroup } from "react-bootstrap";
 import { IconCalculator, IconX, IconCheck, IconBinoculars } from "@tabler/icons-react";
 import { ParaItem } from "./DovizFisiPage";
@@ -38,7 +38,11 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
   const [selectedParaKod, setSelectedParaKod] = useState<string>("USD");
   const [kurStr, setKurStr] = useState<string>("1.000000");
   const [showParaLookup, setShowParaLookup] = useState<boolean>(false);
+
   const tlInputRef = useRef<HTMLInputElement | null>(null);
+  const dovizKodInputRef = useRef<HTMLInputElement | null>(null);
+  const kurInputRef = useRef<HTMLInputElement | null>(null);
+  const tamamBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Modal açıldığında varsayılan para ve kur hazırla, TL miktarı inputuna odaklan
   useEffect(() => {
@@ -75,8 +79,9 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
     setKurStr(rate > 0 ? rate.toFixed(kurKurusSayisi) : "1.000000");
     setShowParaLookup(false);
     setTimeout(() => {
-      tlInputRef.current?.focus();
-    }, 50);
+      kurInputRef.current?.focus();
+      kurInputRef.current?.select();
+    }, 100);
   };
 
   // Sayısal parser
@@ -97,7 +102,7 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
         })
       : "0";
 
-  const handleTamam = () => {
+  const handleTamam = useCallback(() => {
     if (!selectedPara) return;
     if (tlMiktariNum <= 0 || kurNum <= 0 || miktarNum <= 0) return;
 
@@ -108,25 +113,29 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
       tutar: tlMiktariNum,
     });
     onClose();
-  };
+  }, [selectedPara, tlMiktariNum, kurNum, miktarNum, onApply, dovizKurusSayisi, onClose]);
 
-  // ESC ve Enter dinleyicisi
+  // ESC ve F1 dinleyicisi (Modal genelinde)
   useEffect(() => {
     if (!show) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (showParaLookup) return;
+
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
-      } else if (e.key === "Enter") {
+      } else if (e.key === "F1") {
         e.preventDefault();
+        e.stopPropagation();
         handleTamam();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  });
+  }, [show, showParaLookup, handleTamam, onClose]);
 
   const paraLookupColumns: LookupColumn<ParaItem>[] = [
     { header: "Kod", width: "90px", render: (p) => p.kod },
@@ -199,7 +208,7 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
             </button>
           </div>
 
-          {/* Modal Form Gövdesi (Görsel 3 Referansı) */}
+          {/* Modal Form Gövdesi */}
           <div className="p-4" style={{ backgroundColor: "#f1f5f9" }}>
             {/* 1. TL Miktarı */}
             <div className="d-flex align-items-center mb-3">
@@ -229,6 +238,13 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
                     setTlMiktariStr(val);
                   }}
                   onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      dovizKodInputRef.current?.focus();
+                      dovizKodInputRef.current?.select();
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -244,6 +260,7 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
               <div className="flex-grow-1">
                 <InputGroup size="sm">
                   <Form.Control
+                    ref={dovizKodInputRef}
                     type="text"
                     className="font-monospace fw-bold text-uppercase"
                     style={{ fontSize: "13.5px", padding: "6px 10px" }}
@@ -257,12 +274,23 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
                         if (rate > 0) setKurStr(rate.toFixed(kurKurusSayisi));
                       }
                     }}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        kurInputRef.current?.focus();
+                        kurInputRef.current?.select();
+                      } else if (e.key === "F4") {
+                        e.preventDefault();
+                        setShowParaLookup(true);
+                      }
+                    }}
                   />
                   <Button
                     variant="outline-secondary"
                     className="px-2.5"
                     onClick={() => setShowParaLookup(true)}
-                    title="Para Seç (Dürbün)"
+                    title="Para Seç (Dürbün - F4)"
                   >
                     <IconBinoculars size={14} />
                   </Button>
@@ -280,6 +308,7 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
               </label>
               <div className="flex-grow-1">
                 <Form.Control
+                  ref={kurInputRef}
                   type="text"
                   size="sm"
                   className="text-end font-monospace fw-semibold"
@@ -290,6 +319,13 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
                     const parts = val.split(/[.,]/);
                     if (parts.length > 2) val = parts[0] + "." + parts.slice(1).join("");
                     setKurStr(val);
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      tamamBtnRef.current?.focus();
+                    }
                   }}
                 />
               </div>
@@ -315,13 +351,14 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
               </div>
             </div>
 
-            {/* Tamam Butonu (Görsel 3 Referansı) */}
+            {/* Tamam Butonu */}
             <div className="d-flex justify-content-center pt-3 border-top">
               <Button
+                ref={tamamBtnRef}
                 variant="light"
                 className="d-flex align-items-center justify-content-center gap-2 px-4 py-2 border shadow-xs fw-semibold"
                 style={{
-                  minWidth: "130px",
+                  minWidth: "140px",
                   borderColor: "#94a3b8",
                   backgroundColor: "#ffffff",
                   fontSize: "13px",
@@ -330,7 +367,7 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
                 disabled={!selectedPara || tlMiktariNum <= 0 || kurNum <= 0}
               >
                 <IconCheck size={18} className="text-success stroke-2" />
-                <span>Tamam</span>
+                <span>Tamam (F1)</span>
               </Button>
             </div>
           </div>

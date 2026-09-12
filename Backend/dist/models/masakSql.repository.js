@@ -1,7 +1,12 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
+/** Kod, ad ve adresi sabit olan standart listeler (ekranda her zaman görünür, silinemez) */
 export const MASAK_LISTE_KODLARI = ["A", "B", "C", "3AB"];
+/** Büyük harf, rakam ve . _ - karakterleri; 1-10 karakter (kolon VARCHAR(10)) */
+export const MASAK_LISTE_KOD_DESENI = /^[A-Z0-9][A-Z0-9._-]{0,9}$/;
+export const masakListeKodGecerliMi = (kod) => typeof kod === "string" && MASAK_LISTE_KOD_DESENI.test(kod);
+export const masakStandartListeMi = (kod) => MASAK_LISTE_KODLARI.includes(kod);
 export class MasakSqlRepository {
     /**
      * TODVZ_MASAK_LISTE ve TODVZ_MASAK_GUNCELLEME tablolarını (ve indekslerini) yoksa oluşturur.
@@ -126,9 +131,13 @@ export class MasakSqlRepository {
         return res.recordset[0]?.ADET ?? 0;
     }
     /**
-     * Liste bazında durum: kayıt sayısı, son güncelleme, son kullanılan adres.
-     * Tabloda kayıt yoksa (ör. hiç güncellenmemiş veya son deneme başarısız) son BAŞARILI
-     * güncelleme log'undaki adres döndürülür — böylece adres giriş ekranı yine dolu gelir.
+     * Liste bazında durum: kayıt sayısı, son güncelleme, son girilen adres.
+     *
+     * - Standart dört liste her zaman döner; kullanıcının eklediği listeler (veri veya
+     *   güncelleme geçmişinde kodu geçen) onların ardından gelir.
+     * - Adres olarak EN SON DENENEN güncellemenin adresi döner (başarılı ya da değil):
+     *   kullanıcı ekranda ne girdiyse bir sonraki açılışta onu görür. Hiç deneme yoksa
+     *   tablodaki verinin adresi kullanılır.
      */
     static async getDurum(dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
@@ -150,7 +159,6 @@ export class MasakSqlRepository {
       INNER JOIN (
         SELECT [LISTE_KOD], MAX([GUNCELLEME_ID]) AS [SON_ID]
         FROM [dbo].[TODVZ_MASAK_GUNCELLEME]
-        WHERE [DURUM] = 'BASARILI'
         GROUP BY [LISTE_KOD]
       ) S ON S.[SON_ID] = G.[GUNCELLEME_ID];
     `);
@@ -158,17 +166,49 @@ export class MasakSqlRepository {
         logRes.recordset.forEach((r) => logUrlMap.set(r.LISTE_KOD, r.KAYNAK_URL));
         const dataMap = new Map();
         dataRes.recordset.forEach((r) => dataMap.set(r.LISTE_KOD, r));
-        return MASAK_LISTE_KODLARI.map((kod) => {
+        // Standart kodlar sabit sırayla, ardından kullanıcı tanımlı kodlar alfabetik
+        const ozelKodlar = Array.from(new Set([...dataMap.keys(), ...logUrlMap.keys()]))
+            .filter((kod) => !masakStandartListeMi(kod))
+            .sort((a, b) => a.localeCompare(b, "tr-TR"));
+        const kodlar = [...MASAK_LISTE_KODLARI, ...ozelKodlar];
+        return kodlar.map((kod) => {
             const row = dataMap.get(kod);
             return {
                 listeKod: kod,
                 listeAdi: row?.LISTE_ADI ?? null,
                 kayitSayisi: row?.KAYIT_SAYISI ?? 0,
                 sonGuncelleme: MasakSqlRepository.formatIso(row?.SON_GUNCELLEME ?? null),
-                kaynakUrl: row?.KAYNAK_URL ?? logUrlMap.get(kod) ?? null,
+                kaynakUrl: logUrlMap.get(kod) ?? row?.KAYNAK_URL ?? null,
                 kaynakHash: row?.KAYNAK_HASH ?? null,
             };
         });
+    }
+    /**
+     * Kullanıcı tanımlı bir listeyi tamamen kaldırır: verisi ve güncelleme geçmişi silinir,
+     * böylece durum ekranında bir daha görünmez. Standart listeler için çağrılmaz (servis engeller).
+     */
+    static async deleteListe(listeKod, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        await MasakSqlRepository.ensureTablesExist(pool);
+        const tx = new sql.Transaction(pool);
+        await tx.begin();
+        try {
+            const veri = await new sql.Request(tx)
+                .input("listeKod", sql.VarChar(10), listeKod)
+                .query("DELETE FROM [dbo].[TODVZ_MASAK_LISTE] WHERE [LISTE_KOD] = @listeKod");
+            const gecmis = await new sql.Request(tx)
+                .input("listeKod", sql.VarChar(10), listeKod)
+                .query("DELETE FROM [dbo].[TODVZ_MASAK_GUNCELLEME] WHERE [LISTE_KOD] = @listeKod");
+            await tx.commit();
+            return {
+                silinenKayit: veri.rowsAffected[0] ?? 0,
+                silinenGecmis: gecmis.rowsAffected[0] ?? 0,
+            };
+        }
+        catch (error) {
+            await tx.rollback();
+            throw error;
+        }
     }
     /**
      * Bir listenin tüm kayıtlarını yenisiyle değiştirir (tam değişim).

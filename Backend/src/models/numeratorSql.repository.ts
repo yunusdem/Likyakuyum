@@ -159,7 +159,8 @@ export class NumeratorSqlRepository {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       const request = pool.request();
 
-      const tur = toInt(data.tur, 0);
+      const MAX_SQL_INT = 2147483647;
+      const tur = Math.min(255, Math.max(0, toInt(data.tur, 0)));
       const yaziciId =
         data.yaziciId !== undefined &&
         data.yaziciId !== null &&
@@ -168,9 +169,9 @@ export class NumeratorSqlRepository {
           ? parseInt(String(data.yaziciId), 10)
           : null;
       const onek = data.onek ? data.onek.trim().slice(0, 50) : "";
-      const baslangic = toInt(data.baslangic, 0);
-      const bitis = toInt(data.bitis, 0);
-      const uzunluk = Math.max(1, toInt(data.uzunluk, 10));
+      const baslangic = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.baslangic, 0)));
+      const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
+      const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
       const onuneSifirKoy = data.onuneSifirKoy !== false;
       const yaziciOrtakAlan =
         data.yaziciOrtakAlan !== undefined

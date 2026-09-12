@@ -292,8 +292,13 @@ export class DovizFisSqlRepository {
         const finalToplamTutar = Number(dto.toplamTutar) || toplamTutar;
         const finalOdemeTutari = Number(dto.odemeTutari) || calculatedOdeme;
         const yuvarlama = Number(dto.yuvarlama) || 0;
-        const unvan = (dto.unvan || "").trim() || "İsim beyan edilmemiştir";
-        const gelisNedeni = (dto.gelisNedeni || "").trim() || "32 SAYILI KARAR GEREĞİ";
+        const rawUnvan = (dto.unvan || "").trim();
+        const isIsimBeyanEdilmemis = !rawUnvan ||
+            rawUnvan.toLocaleUpperCase('tr-TR') === "İSİM BEYAN EDİLMEMİŞTİR" ||
+            rawUnvan.toLocaleUpperCase('tr-TR') === "ISIM BEYAN EDILMEMISTIR" ||
+            rawUnvan.toLowerCase() === "isim beyan edilmemiştir";
+        const unvan = isIsimBeyanEdilmemis ? "İSİM BEYAN EDİLMEMİŞTİR" : rawUnvan;
+        const gelisNedeni = (dto.gelisNedeni || "").trim();
         const kurTuru = dto.kurTuru ?? 0;
         const istatistikId = dto.istatistikId || (tip === 1 ? 10285 : 9249);
         const kullaniciId = Number(dto.kullaniciId) || 1;
@@ -334,12 +339,18 @@ export class DovizFisSqlRepository {
         // Execute strictly via Stored Procedure SODVZ_FIS_KAYDET
         try {
             const procReq = pool.request();
-            const cleanSeriNo = (dto.seriNo && dto.seriNo.trim()) ? dto.seriNo.trim().slice(0, 20) : (seriNo ? seriNo.slice(0, 20) : null);
-            const cleanBelgeNo = (dto.belgeNo && dto.belgeNo.trim()) ? dto.belgeNo.trim().slice(0, 20) : (belgeNo ? belgeNo.slice(0, 20) : null);
+            const userRawSeriNo = (dto.seriNo && dto.seriNo.trim()) ? dto.seriNo.trim().slice(0, 20) : null;
+            const userRawBelgeNo = (dto.belgeNo && dto.belgeNo.trim()) ? dto.belgeNo.trim().slice(0, 20) : null;
+            const userRawGelisNedeni = (dto.gelisNedeni && dto.gelisNedeni.trim()) ? dto.gelisNedeni.trim().slice(0, 100) : null;
+            const userRawVkn = (dto.vergiKimlikNo && dto.vergiKimlikNo.trim()) ? dto.vergiKimlikNo.trim().slice(0, 20) : null;
+            const userRawAdres = (dto.adres && dto.adres.trim()) ? dto.adres.trim().slice(0, 100) : null;
+            const cleanSeriNo = userRawSeriNo || (seriNo ? seriNo.slice(0, 20) : null);
+            const cleanBelgeNo = userRawBelgeNo || (belgeNo ? belgeNo.slice(0, 20) : null);
             const cleanUnvan = unvan.slice(0, 200);
-            const cleanGelisNedeni = gelisNedeni.slice(0, 100);
-            const cleanVkn = (dto.vergiKimlikNo || "").trim().slice(0, 20) || null;
-            const cleanAdres = (dto.adres || "").trim().slice(0, 100) || null;
+            const cleanGelisNedeni = userRawGelisNedeni;
+            const cleanVkn = userRawVkn || "11111111111";
+            const cleanAdres = userRawAdres || "-";
+            const cleanKisilikTipi = isIsimBeyanEdilmemis ? 0 : (dto.kisilikTipi || 0);
             const cleanTel = (dto.telefonNo || "").trim().slice(0, 20) || null;
             const cleanPasaport = (dto.pasaportNo || "").trim().slice(0, 20) || null;
             const cleanBaba = (dto.babaAdi || "").trim().slice(0, 200) || null;
@@ -368,7 +379,12 @@ export class DovizFisSqlRepository {
             procReq.input("ISTATISTIK_ID", sql.Int, istatistikId);
             procReq.input("CARI_KART_ID", sql.Int, toValidId(dto.cariKartId));
             procReq.input("UNVAN", sql.VarChar(200), cleanUnvan);
-            procReq.input("KISILIK_TIPI", sql.TinyInt, dto.kisilikTipi || 0);
+            procReq.input("KISILIK_TIPI", sql.TinyInt, cleanKisilikTipi);
+            procReq.input("USER_RAW_SERI_NO", sql.VarChar(20), userRawSeriNo);
+            procReq.input("USER_RAW_BELGE_NO", sql.VarChar(20), userRawBelgeNo);
+            procReq.input("USER_RAW_GELIS_NEDENI", sql.VarChar(100), userRawGelisNedeni);
+            procReq.input("USER_RAW_VKN", sql.VarChar(20), userRawVkn);
+            procReq.input("USER_RAW_ADRES", sql.VarChar(100), userRawAdres);
             procReq.input("UYRUK_ID", sql.Int, toValidId(dto.uyrukId));
             procReq.input("ULKE_ID", sql.Int, toValidId(dto.ulkeId));
             procReq.input("PASAPORT_NO", sql.VarChar(20), cleanPasaport);
@@ -694,6 +710,24 @@ export class DovizFisSqlRepository {
           WHERE BANKA_HESABI_ID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM TODVZ_CARI_KART WHERE CARI_KART_ID = #TODVZ_ISKELE_FIS_SATIRI.BANKA_HESABI_ID);
         END
 
+        DECLARE @EXEC_UNVAN VARCHAR(200) = CASE 
+          WHEN @UNVAN IS NULL OR LTRIM(RTRIM(@UNVAN)) = '' OR @UNVAN = 'İsim beyan edilmemiştir' OR @UNVAN = 'İSİM BEYAN EDİLMEMİŞTİR' 
+          THEN 'İSİM BEYAN EDİLMEMİŞTİR.' 
+          ELSE @UNVAN 
+        END;
+
+        DECLARE @EXEC_VKN VARCHAR(20) = CASE 
+          WHEN @VERGI_KIMLIK_NO IS NULL OR LTRIM(RTRIM(@VERGI_KIMLIK_NO)) = '' 
+          THEN '11111111111' 
+          ELSE @VERGI_KIMLIK_NO 
+        END;
+
+        DECLARE @EXEC_ADRES VARCHAR(100) = CASE 
+          WHEN @ADRES IS NULL OR LTRIM(RTRIM(@ADRES)) = '' 
+          THEN '-' 
+          ELSE @ADRES 
+        END;
+
         EXEC [dbo].[SODVZ_FIS_KAYDET]
           @FIS_ID = @P_FIS_ID OUTPUT,
           @VEZNE_ID = @EFF_VEZNE_ID,
@@ -706,16 +740,16 @@ export class DovizFisSqlRepository {
           @KUR_TURU = @KUR_TURU,
           @ISTATISTIK_ID = @EFF_ISTATISTIK_ID,
           @CARI_KART_ID = @EFF_CARI_KART_ID,
-          @UNVAN = @UNVAN,
+          @UNVAN = @EXEC_UNVAN,
           @KISILIK_TIPI = @KISILIK_TIPI,
           @UYRUK_ID = @EFF_UYRUK_ID,
           @ULKE_ID = @EFF_ULKE_ID,
           @PASAPORT_NO = @PASAPORT_NO,
           @HUKUKI_YAPI_ID = @EFF_HUKUKI_YAPI_ID,
           @VERGI_DAIRESI_ID = @EFF_VERGI_DAIRESI_ID,
-          @VERGI_KIMLIK_NO = @VERGI_KIMLIK_NO,
+          @VERGI_KIMLIK_NO = @EXEC_VKN,
           @BABA_ADI = @BABA_ADI,
-          @ADRES = @ADRES,
+          @ADRES = @EXEC_ADRES,
           @ILCE_ID = @EFF_ILCE_ID,
           @POSTA_KODU_ID = @EFF_POSTA_KODU_ID,
           @IL_ID = @EFF_IL_ID,
@@ -765,6 +799,12 @@ export class DovizFisSqlRepository {
         BEGIN
           UPDATE [dbo].[TODVZ_FIS]
           SET 
+            UNVAN = @UNVAN,
+            SERI_NO = @USER_RAW_SERI_NO,
+            BELGE_NO = @USER_RAW_BELGE_NO,
+            GELIS_NEDENI = @USER_RAW_GELIS_NEDENI,
+            VERGI_KIMLIK_NO = @USER_RAW_VKN,
+            ADRES = @USER_RAW_ADRES,
             DERNEK_AMACI = COALESCE(@CLEAN_DERNEK_AMACI, DERNEK_AMACI),
             SIRKET_TURU = COALESCE(@SIRKET_TURU_VAL, SIRKET_TURU),
             YETKILI_KISI_ID = COALESCE(@YETKILI_KISI_ID, YETKILI_KISI_ID),
@@ -782,20 +822,36 @@ export class DovizFisSqlRepository {
             GM_FATURA_NO = @GM_FATURA_NO,
             TIP = @TIP
           WHERE FIS_ID = @P_FIS_ID;
+
+          IF @USER_RAW_SERI_NO IS NULL
+          BEGIN
+            UPDATE [dbo].[TODVZ_FIS_SATIRI]
+            SET SERI_NO = NULL
+            WHERE FIS_ID = @P_FIS_ID;
+          END
+
+          IF @USER_RAW_BELGE_NO IS NULL
+          BEGIN
+            UPDATE [dbo].[TODVZ_FIS_SATIRI]
+            SET BELGE_NO = NULL
+            WHERE FIS_ID = @P_FIS_ID;
+          END
         END
 
         IF OBJECT_ID('tempdb..#TODVZ_ISKELE_FIS_SATIRI') IS NOT NULL
           DROP TABLE #TODVZ_ISKELE_FIS_SATIRI;
 
-        SELECT @P_FIS_ID AS OUT_FIS_ID, @P_SERI_NO AS OUT_SERI_NO, @P_BELGE_NO AS OUT_BELGE_NO, @P_YENI_KAYIT AS OUT_YENI_KAYIT;
+        SELECT 
+          @P_FIS_ID AS OUT_FIS_ID, 
+          COALESCE(@USER_RAW_SERI_NO, @P_SERI_NO) AS OUT_SERI_NO, 
+          COALESCE(@USER_RAW_BELGE_NO, @P_BELGE_NO) AS OUT_BELGE_NO, 
+          @P_YENI_KAYIT AS OUT_YENI_KAYIT;
       `;
             const procResult = await procReq.query(batchQuery);
             const outRecord = procResult.recordset?.[0];
             savedFisId = outRecord?.OUT_FIS_ID || targetFisId || 0;
-            if (outRecord?.OUT_SERI_NO)
-                seriNo = outRecord.OUT_SERI_NO;
-            if (outRecord?.OUT_BELGE_NO)
-                belgeNo = outRecord.OUT_BELGE_NO;
+            seriNo = userRawSeriNo ? userRawSeriNo : (outRecord?.OUT_SERI_NO || null);
+            belgeNo = userRawBelgeNo ? userRawBelgeNo : (outRecord?.OUT_BELGE_NO || null);
             // If savedFisId is still 0, try to resolve by GUID or Vezne
             if (!savedFisId || savedFisId <= 0) {
                 const resolveReq = pool.request();
@@ -1005,13 +1061,13 @@ export class DovizFisSqlRepository {
             zaman: row.ZAMAN ? new Date(row.ZAMAN).toLocaleTimeString("tr-TR") : "",
             seriNo: (row.SERI_NO || "").trim(),
             belgeNo: (row.BELGE_NO || "").trim(),
-            gelisNedeni: (row.GELIS_NEDENI || "32 SAYILI KARAR GEREĞİ").trim(),
+            gelisNedeni: (row.GELIS_NEDENI || "").trim(),
             kurTuru: Number(row.KUR_TURU) || 0,
             kurTuruLabel: (Number(row.KUR_TURU) || 0) === 0 ? "Efektif" : "Döviz",
             istatistikId: row.ISTATISTIK_ID || null,
             cariKartId: row.CARI_KART_ID || null,
             cariKod: (row.CARI_KOD || "").trim(),
-            unvan: (row.UNVAN || row.CARI_AD || "İsim beyan edilmemiştir").trim(),
+            unvan: (row.UNVAN || row.CARI_AD || "İSİM BEYAN EDİLMEMİŞTİR").trim(),
             kisilikTipi: Number(row.KISILIK_TIPI) || 0,
             uyrukId: row.UYRUK_ID || null,
             ulkeId: row.ULKE_ID || null,

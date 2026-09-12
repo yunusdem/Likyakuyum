@@ -61,7 +61,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
         id: s.id,
         kod: s.kod || "",
         aciklama: s.aciklama || "",
-        fisTipi: s.fisTipi ?? 0,
+        fisTipi: s.fisTipi ?? 1,
         komisyonOrani: s.komisyonOrani ?? 0,
         bmvOrani: s.bmvOrani ?? 0,
         kmvOrani: s.kmvOrani ?? 0,
@@ -96,7 +96,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
       clientId: `new_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       kod: "",
       aciklama: "",
-      fisTipi: 0,
+      fisTipi: 1,
       komisyonOrani: 0,
       bmvOrani: 0,
       kmvOrani: 0,
@@ -196,7 +196,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
         const payload: StatisticFormData = {
           kod: (row.kod || "").trim().slice(0, 20),
           aciklama: (row.aciklama || "").trim(),
-          fisTipi: parseInt(String(row.fisTipi), 10) || 0,
+          fisTipi: parseInt(String(row.fisTipi), 10) || 1,
           komisyonOrani: parseFloat(String(row.komisyonOrani)) || 0,
           bmvOrani: parseFloat(String(row.bmvOrani)) || 0,
           kmvOrani: parseFloat(String(row.kmvOrani)) || 0,
@@ -258,17 +258,13 @@ export const StatisticDefinitionsPage: React.FC = () => {
         {
           header: "Fiş Tipi",
           render: (item) =>
-            item.fisTipi === 0
-              ? "0 - Tahsilat"
-              : item.fisTipi === 1
-              ? "1 - Tediye"
+            item.fisTipi === 1
+              ? "1 - ALIŞ"
               : item.fisTipi === 2
-              ? "2 - Giriş"
+              ? "2 - SATIŞ"
               : item.fisTipi === 3
-              ? "3 - Çıkış"
-              : item.fisTipi === 4
-              ? "4 - Virman"
-              : "5 - Açılış",
+              ? "3 - ALIŞ-SATIŞ"
+              : `${item.fisTipi}`,
           width: "20%",
         },
         {
@@ -450,6 +446,32 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
+                      width: "75px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Çıktı Satır
+                  </th>
+                  <th
+                    style={{
+                      width: "65px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    F1 Tuşu
+                  </th>
+                  <th
+                    style={{
                       width: "80px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
@@ -500,32 +522,6 @@ export const StatisticDefinitionsPage: React.FC = () => {
                     title="Komisyon Yetkisi Aktif"
                   >
                     Kom. Yetkisi
-                  </th>
-                  <th
-                    style={{
-                      width: "75px",
-                      padding: "3px 6px",
-                      borderRight: "1px solid #8ab8ee",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Çıktı Satır
-                  </th>
-                  <th
-                    style={{
-                      width: "65px",
-                      padding: "3px 6px",
-                      borderRight: "1px solid #8ab8ee",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    F1 Tuşu
                   </th>
                   <th
                     style={{
@@ -728,12 +724,9 @@ export const StatisticDefinitionsPage: React.FC = () => {
                             cursor: "pointer",
                           }}
                         >
-                          <option value={0}>0 - Tahsilat</option>
-                          <option value={1}>1 - Tediye</option>
-                          <option value={2}>2 - Giriş</option>
-                          <option value={3}>3 - Çıkış</option>
-                          <option value={4}>4 - Virman</option>
-                          <option value={5}>5 - Açılış</option>
+                          <option value={1}>1 - ALIŞ</option>
+                          <option value={2}>2 - SATIŞ</option>
+                          <option value={3}>3 - ALIŞ-SATIŞ</option>
                         </select>
                       </td>
 
@@ -766,9 +759,10 @@ export const StatisticDefinitionsPage: React.FC = () => {
                             cursor: "pointer",
                           }}
                         >
-                          <option value={0}>0 - Standart</option>
-                          <option value={1}>1 - Özel 1</option>
-                          <option value={2}>2 - Özel 2</option>
+                          <option value={0}>0</option>
+                          <option value={1}>1</option>
+                          <option value={2}>2</option>
+                          <option value={3}>3</option>
                         </select>
                       </td>
 
@@ -802,10 +796,73 @@ export const StatisticDefinitionsPage: React.FC = () => {
                             cursor: "pointer",
                           }}
                         >
-                          <option value={0}>0 - Otomatik Artan</option>
-                          <option value={1}>1 - Manuel Giriş</option>
-                          <option value={2}>2 - Şablondan Üret</option>
+                          <option value={0}>0 - Manuel</option>
+                          <option value={1}>1 - Otomatik</option>
                         </select>
+                      </td>
+
+                      {/* Çıktı Satır Sayısı */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={row.ciktiSatirSayisi}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "ciktiSatirSayisi", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "ciktiSatirSayisi" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "ciktiSatirSayisi"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* F1 Kısayol Tuşu */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          value={row.f1Tusu}
+                          onChange={(e) => handleFieldChange(row.clientId, "f1Tusu", e.target.value)}
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "f1Tusu" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "f1Tusu"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
                       </td>
 
                       {/* Komisyon % */}
@@ -931,70 +988,6 @@ export const StatisticDefinitionsPage: React.FC = () => {
                             accentColor: "#0f172a",
                           }}
                           title="Komisyon Yetkisi Aktif"
-                        />
-                      </td>
-
-                      {/* Çıktı Satır Sayısı */}
-                      <td
-                        style={{
-                          padding: 0,
-                          borderRight: "1px solid #e0e0e0",
-                        }}
-                      >
-                        <input
-                          type="number"
-                          min={1}
-                          max={100}
-                          value={row.ciktiSatirSayisi}
-                          onChange={(e) =>
-                            handleFieldChange(row.clientId, "ciktiSatirSayisi", e.target.value)
-                          }
-                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "ciktiSatirSayisi" })}
-                          onBlur={() => setActiveCell(null)}
-                          style={{
-                            width: "100%",
-                            height: "23px",
-                            border:
-                              activeCell?.clientId === row.clientId && activeCell?.col === "ciktiSatirSayisi"
-                                ? "1px dotted #000000"
-                                : "none",
-                            outline: "none",
-                            backgroundColor: "transparent",
-                            padding: "0 6px",
-                            fontSize: "13px",
-                            textAlign: "right",
-                            color: "#000000",
-                          }}
-                        />
-                      </td>
-
-                      {/* F1 Kısayol Tuşu */}
-                      <td
-                        style={{
-                          padding: 0,
-                          borderRight: "1px solid #e0e0e0",
-                        }}
-                      >
-                        <input
-                          type="number"
-                          value={row.f1Tusu}
-                          onChange={(e) => handleFieldChange(row.clientId, "f1Tusu", e.target.value)}
-                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "f1Tusu" })}
-                          onBlur={() => setActiveCell(null)}
-                          style={{
-                            width: "100%",
-                            height: "23px",
-                            border:
-                              activeCell?.clientId === row.clientId && activeCell?.col === "f1Tusu"
-                                ? "1px dotted #000000"
-                                : "none",
-                            outline: "none",
-                            backgroundColor: "transparent",
-                            padding: "0 6px",
-                            fontSize: "13px",
-                            textAlign: "right",
-                            color: "#000000",
-                          }}
                         />
                       </td>
 
