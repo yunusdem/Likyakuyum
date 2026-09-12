@@ -130,6 +130,7 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "C- Stok & Envanter Raporu", link: "raporlar/stok-envanter" },
       { id: uuid(), name: "D- Cari Bakiye Raporu", link: "raporlar/cari-bakiye" },
       { id: uuid(), name: "E- Satış & Ciro Raporu", link: "raporlar/satis-ciro" },
+      { id: uuid(), name: "F- Belge / Fiş PDF", link: "raporlar/belge" },
     ],
   },
 

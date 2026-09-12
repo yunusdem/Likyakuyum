@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Form, Modal, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import { EbelgeKaynakDetay, EbelgeKaynakHazir, EbelgeKaynakSatiri, ebelgeService, ebelgeTutar, ebelgeGidenDurumRozet } from "../../services/ebelgeService";
+import { BelgeService } from "../../services/belgeService";
 import './ebelgeKaynak.css';
 
 const bugun = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -47,7 +48,13 @@ export default function EBelgeKaynakPage() {
   };
   const pdfAc = async (k: EbelgeKaynakSatiri) => {
     setBusy(true); setHata('');
-    try { setPdf({ url: await ebelgeService.kaynakPdf(k), no: k.belgeNo }); }
+    try {
+      // e-Döviz fişi: Belge modülünün GİB düzenindeki PDF'i (ETTN'li ve gönderilmişse ICE resmî PDF'i). Bkz. docs/belgeverapor.md
+      const url = k.kaynak === 'DOVIZ'
+        ? (await BelgeService.pdfBlobUrl({ fisId: k.belgeId, belgeNo: k.belgeNo })).url
+        : await ebelgeService.kaynakPdf(k);
+      setPdf({ url, no: k.belgeNo });
+    }
     catch (e: any) { setHata(e.message || 'PDF önizlemesi açılamadı.'); }
     finally { setBusy(false); }
   };

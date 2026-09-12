@@ -1,0 +1,82 @@
+{
+  "kod": "STFIS1",
+  "ad": "Satış Fişi (e-Döviz SATIM belgesi düzeni)",
+  "kagit": "A4",
+  "kenar": 28,
+  "yaziBoyutu": 8,
+  "ogeler": [
+    { "tip": "filigran", "kosul": "{{onizleme}}", "metin": "ÖNİZLEME – GİB'e gönderilmemiştir" },
+    { "tip": "filigran", "kosul": "{{iptal}}", "metin": "İPTAL EDİLMİŞ FİŞ", "renk": "#b00020" },
+
+    { "tip": "metin", "x": 0, "y": 0, "g": 260, "metin": "DÜZENLEYEN YETKİLİ", "kalin": true, "boyut": 9, "altCizgi": true },
+    { "tip": "satirlar", "x": 0, "y": 16, "g": 260, "aralik": 2.5, "satirlar": [
+      "{{firma.unvan}}",
+      "{{firma.adres}}",
+      "{{firma.ilce}}/ {{firma.sehir}}",
+      "**Tel:** {{firma.telefon}}",
+      "**Fax:**",
+      "**Web Sitesi:**",
+      "**E-Posta:** {{firma.eposta}}",
+      "**Vergi Dairesi:** {{firma.vergiDairesi}}",
+      "**{{firma.kimlikEtiketi}}**: {{firma.vkn}}",
+      "?**TICARETSICILNO**: {{firma.ticaretSicilNo}}"
+    ] },
+
+    { "tip": "resim", "dosya": "logo-gib.png", "x": 389, "y": 0, "g": 60, "h": 58 },
+    { "tip": "metin", "x": 300, "y": 62, "g": 239, "metin": "e-DÖVİZ ve KIYMETLİ MADEN {{tipAdi}} BELGESİ", "kalin": true, "boyut": 8, "hiza": "center" },
+    { "tip": "qr", "x": 349, "y": 76, "boyut": 140, "icerik": "{{qrBuyuk}}" },
+
+    { "tip": "cizgi", "x1": 0, "y1": 226, "x2": 539, "y2": 226 },
+
+    { "tip": "metin", "x": 0, "y": 232, "g": 260, "metin": "ALAN KİŞİ/KURULUŞ", "kalin": true, "boyut": 9, "altCizgi": true },
+    { "tip": "satirlar", "x": 0, "y": 248, "g": 260, "aralik": 2.5, "satirlar": [
+      "{{musteri.unvan}}",
+      "?{{musteri.adSoyad}}",
+      "{{musteri.adres}}",
+      "{{musteri.ilce}}/ {{musteri.sehir}}",
+      "E-Posta: {{musteri.eposta}}",
+      "Tel: {{musteri.telefon}}  Fax:",
+      "Vergi Dairesi: {{musteri.vergiDairesi}}",
+      "?{{musteri.kimlikEtiketi}}: {{musteri.kimlikNo}}",
+      "?Pasaport No: {{musteri.pasaportNo}}",
+      "?MUSTERITURU: {{musteri.musteriTuru}}"
+    ] },
+
+    { "tip": "metin", "x": 300, "y": 232, "g": 239, "metin": "BELGE BİLGİLERİ", "kalin": true, "boyut": 9, "altCizgi": true },
+    { "tip": "tablo", "x": 300, "y": 246, "g": 239, "etiketG": 105, "satirH": 15, "satirlar": [
+      ["Belge No", "{{belgeNo}}"],
+      ["Oluşturma Tarihi", "{{tarih}}"],
+      ["Oluşturma Zamanı", "{{saat}}"],
+      ["Dosya/Şube", "{{dosyaNo}}"],
+      ["İstatistik No", "{{istatistikNo}}"],
+      ["Senaryo:", "{{senaryo}}"],
+      ["Tip:", "{{tipAdi}}"]
+    ] },
+
+    { "tip": "cizgi", "x1": 0, "y1": 360, "x2": 539, "y2": 360 },
+    { "tip": "metin", "x": 0, "y": 366, "g": 539, "metin": "**ETTN:** {{ettn}}", "boyut": 8.5 },
+
+    { "tip": "metin", "x": 0, "y": 388, "g": 539, "metin": "{{islemEtiketi}} DÖVİZE/KIYMETLİ MADENE AİT BİLGİLER", "kalin": true, "boyut": 10, "hiza": "center" },
+    { "tip": "tablo", "x": 0, "y": 406, "g": 539, "etiketG": 320, "satirH": 16, "hizaDeger": "right", "satirlar": [
+      ["{{urunEtiketi}}", ""],
+      ["Döviz/Kıymetli Maden Miktarı", "{{tutar.miktar|sayi}}"],
+      ["Döviz/Kıymetli Maden Cinsi", "{{tutar.kod}}"],
+      ["Uygulanan Kur", "{{tutar.kur|kur}}"],
+      ["ABD Doları Karşılığı", "{{tutar.usdKarsiligi|sayi}} USD"],
+      ["TL Karşılığı", "{{tutar.tl|sayi}} TL"],
+      ["BSMV", "{{tutar.bsmv|sayi}}TL"],
+      ["NET TUTAR", "{{tutar.net|sayi}}TL", true]
+    ] },
+
+    { "tip": "kutu", "x": 0, "y": 542, "g": 539, "h": 54 },
+    { "tip": "satirlar", "x": 6, "y": 548, "g": 527, "aralik": 4, "satirlar": [
+      "Yalnız : {{tutar.yaziyla}}",
+      "VEZNE : {{vezne}}",
+      "Uyruk : {{musteri.ulke}}"
+    ] },
+
+    { "tip": "qr", "x": 0, "y": 606, "boyut": 120, "icerik": "{{qrKucuk}}", "kosul": "{{qrKucuk}}" },
+    { "tip": "metin", "x": 140, "y": 650, "g": 300, "boyut": 8.5, "renk": "#333", "kosul": "{{erisimAdresi}}",
+      "metin": "e-Döviz ve Kıymetli Maden belgesine {{erisimAdresi}} adresinden erişebilirsiniz." }
+  ]
+}
