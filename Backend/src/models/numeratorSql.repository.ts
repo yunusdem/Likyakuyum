@@ -169,8 +169,7 @@ export class NumeratorSqlRepository {
   }
 
   /**
-   * Saves (inserts or updates) a numerator definition using atomic upsert.
-   * If a record for the specified TUR already exists, it updates it seamlessly without key conflicts.
+   * Saves (inserts or updates) a numerator definition using the SODVZ_NUMERATOR_KAYDET stored procedure.
    */
   public static async saveViaProcedure(
     data: NumeratorInputDto,
@@ -178,7 +177,6 @@ export class NumeratorSqlRepository {
   ): Promise<NumeratorModel> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-      const request = pool.request();
 
       const MAX_SQL_INT = 2147483647;
       const tur = Math.min(255, Math.max(0, toInt(data.tur, 0)));
@@ -195,43 +193,36 @@ export class NumeratorSqlRepository {
       const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
       const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
       const onuneSifirKoy = data.onuneSifirKoy !== false;
+      const yaziciOrtakAlan = cleanYaziciId === null ? 1 : 0;
 
-      logger.info(
-        `[Numerator Save] Kaydediliyor: TUR=${tur}, YAZICI_ID=${cleanYaziciId}, ONEK='${onek}', BASLANGIC=${baslangic}, BITIS=${bitis}, UZUNLUK=${uzunluk}, ONUNE_SIFIR_KOY=${onuneSifirKoy ? 1 : 0}`
-      );
+      // 1. Yazıcı değişikliği yapılmışsa, veritabanındaki eski uyumsuz kaydı temizle
+      const cleanupReq = pool.request();
+      cleanupReq.input("TUR", sql.TinyInt, tur);
+      if (cleanYaziciId !== null) {
+        cleanupReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
+        await cleanupReq.query(`
+          DELETE FROM [dbo].[TODVZ_NUMERATOR] 
+          WHERE [TUR] = @TUR AND ISNULL([YAZICI_ID], 0) <> @YAZICI_ID;
+        `);
+      } else {
+        await cleanupReq.query(`
+          DELETE FROM [dbo].[TODVZ_NUMERATOR] 
+          WHERE [TUR] = @TUR AND [YAZICI_ID] IS NOT NULL;
+        `);
+      }
 
-      request.input("YAZICI_ID", sql.Int, cleanYaziciId);
-      request.input("TUR", sql.TinyInt, tur);
-      request.input("ONEK", sql.VarChar(50), onek);
-      request.input("BASLANGIC", sql.Int, baslangic);
-      request.input("BITIS", sql.Int, bitis);
-      request.input("UZUNLUK", sql.Int, uzunluk);
-      request.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
+      // 2. Doğrudan SODVZ_NUMERATOR_KAYDET Stored Procedure'ünü çalıştır
+      const procReq = pool.request();
+      procReq.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
+      procReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
+      procReq.input("TUR", sql.TinyInt, tur);
+      procReq.input("ONEK", sql.VarChar(50), onek);
+      procReq.input("BASLANGIC", sql.Int, baslangic);
+      procReq.input("BITIS", sql.Int, bitis);
+      procReq.input("UZUNLUK", sql.Int, uzunluk);
+      procReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
 
-      const upsertQuery = `
-        DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;
-
-        INSERT INTO [dbo].[TODVZ_NUMERATOR] (
-          [YAZICI_ID],
-          [TUR],
-          [ONEK],
-          [BASLANGIC],
-          [BITIS],
-          [UZUNLUK],
-          [ONUNE_SIFIR_KOY]
-        )
-        VALUES (
-          @YAZICI_ID,
-          @TUR,
-          @ONEK,
-          @BASLANGIC,
-          @BITIS,
-          @UZUNLUK,
-          @ONUNE_SIFIR_KOY
-        );
-      `;
-
-      await request.query(upsertQuery);
+      await procReq.execute("SODVZ_NUMERATOR_KAYDET");
 
       const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, cleanYaziciId, dbContext);
       if (!saved) {

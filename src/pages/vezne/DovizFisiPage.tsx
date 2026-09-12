@@ -2562,18 +2562,6 @@ export const DovizFisiPage: React.FC = () => {
         onPrint={() => setShowPrintModal(true)}
         onRefresh={loadLookupsAndList}
         rightContent={
-          <>
-          {/* A4 PDF belge (GİB e-Döviz düzeni) — Belge sayfasında açılır; bkz. docs/belgeverapor.md */}
-          <Button
-            variant="outline-danger"
-            size="sm"
-            className="d-flex align-items-center gap-1 me-2"
-            disabled={!fisId}
-            title={fisId ? "Kayıtlı fişin A4 PDF belgesini yeni sekmede aç" : "Önce fişi kaydedin veya bir fiş seçin"}
-            onClick={() => window.open(`/raporlar/belge?fisId=${fisId}`, "_blank", "noopener")}
-          >
-            PDF Belge
-          </Button>
           <div className="d-flex align-items-center gap-2 px-2.5 py-0.5 bg-white rounded border shadow-2xs small" style={{ fontSize: "12px" }}>
             <span className="fw-bold text-dark">
               TL : {topBalances.tl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2587,7 +2575,6 @@ export const DovizFisiPage: React.FC = () => {
               EUR : {topBalances.eur.toLocaleString("tr-TR")}
             </span>
           </div>
-          </>
         }
       />
 

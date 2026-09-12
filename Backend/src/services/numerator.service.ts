@@ -77,11 +77,6 @@ export class NumeratorService {
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<boolean> {
     const { tur, yaziciId } = parseNumeratorId(id);
-    const existing = await NumeratorSqlRepository.findByTurAndYazici(tur, yaziciId, dbContext);
-    if (!existing) {
-      throw ApiError.notFound(`Silinecek numaratör tanımı bulunamadı.`);
-    }
-
     return NumeratorSqlRepository.delete(tur, yaziciId, dbContext);
   }
 }

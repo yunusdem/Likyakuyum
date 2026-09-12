@@ -13,7 +13,11 @@ function parseMssqlError(err: any): string | null {
 
   // 1. Duplicate key / Unique constraint
   if (msg.includes("Violation of UNIQUE KEY constraint") || msg.includes("Cannot insert duplicate key")) {
-    return "⚠️ Benzersiz Kayıt Çakışması: Bu kod ile kayıtlı bir tanım zaten mevcut. Lütfen farklı bir kod giriniz.";
+    const dupMatch = msg.match(/duplicate key value is \(([^)]+)\)/i);
+    if (dupMatch && dupMatch[1]) {
+      return `⚠️ Benzersizlik Çakışması: '${dupMatch[1]}' değeri başka bir tanımda zaten kullanılıyor. Lütfen her numaratör için farklı bir önek veya kod giriniz.`;
+    }
+    return "⚠️ Benzersizlik Çakışması: Girilen önek veya kod başka bir tanımda zaten kullanılıyor. Lütfen farklı bir önek belirleyiniz.";
   }
 
   // 2. Foreign key conflict
