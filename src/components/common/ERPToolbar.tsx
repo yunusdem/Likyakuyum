@@ -133,7 +133,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     location.pathname.includes("/kayit") ||
     ((location.pathname.includes("doviz-fisi") || location.pathname.includes("doviz-fis")) && !location.pathname.includes("duzeltme")) ||
     ((location.pathname.includes("emanet") || location.pathname.includes("emanet-dekont")) && !location.pathname.includes("duzeltme")) ||
-    (location.pathname.includes("kart") && !location.pathname.includes("duzeltme") && !location.pathname.includes("liste"));
+    (location.pathname.includes("kart") && !location.pathname.includes("duzeltme") && !location.pathname.includes("liste") && !location.pathname.includes("banka"));
 
   const shouldShowSearch = hideSearch !== undefined ? !hideSearch : (!isKayitPage && Boolean(onSearch));
   const shouldShowDelete = hideDelete !== undefined ? !hideDelete : (!isKayitPage && Boolean(onDelete));

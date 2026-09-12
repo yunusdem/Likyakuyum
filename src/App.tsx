@@ -27,6 +27,8 @@ import DovizFisiPage from "./pages/vezne/DovizFisiPage";
 import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
 import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
+import BankaHesapKartiPage from "./pages/banka/BankaHesapKartiPage";
+import BankaHareketiPage from "./pages/banka/BankaHareketiPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -185,6 +187,10 @@ export default function App() {
             <Route path="masak" element={<MasakListsPage />} />
             <Route path="raporlar/belge" element={<BelgePage />} />
             <Route path="raporlar/:yol" element={<RaporPage />} />
+            <Route path="banka/hesap-kartlari" element={<BankaHesapKartiPage />} />
+            <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />
+            <Route path="banka/hareketler" element={<BankaHareketiPage />} />
+            <Route path="banka/hesap-hareketleri" element={<BankaHareketiPage />} />
             <Route path=":section/*" element={<ModulePage />} />
 
 

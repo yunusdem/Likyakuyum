@@ -23,6 +23,7 @@ import raporRoutes from "./rapor.routes.js";
 import vezneTransferiRoutes from "./vezneTransferi.routes.js";
 import vezneIzlemeRoutes from "./vezneIzleme.routes.js";
 import sarrafFisRoutes from "./sarrafFis.routes.js";
+import bankaRoutes from "./banka.routes.js";
 
 const apiRouter = Router();
 
@@ -30,6 +31,7 @@ apiRouter.use("/health", healthRoutes);
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
+apiRouter.use("/banka", bankaRoutes);
 apiRouter.use("/vezne/izleme", vezneIzlemeRoutes);
 apiRouter.use("/vezne-izleme", vezneIzlemeRoutes);
 apiRouter.use("/vezne", vezneRoutes);
