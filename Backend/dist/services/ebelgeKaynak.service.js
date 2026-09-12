@@ -5,7 +5,7 @@ import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { EbelgeService } from "./ebelge.service.js";
 import { hesapla } from "./ice/ubl/invoiceBuilder.js";
 import { ApiError } from "../utils/ApiError.js";
-import { kaynakFisPdf } from './ebelgeKaynakPdf.js';
+import { kaynakFisPdf, eDovizBelgePdf } from './ebelgeKaynakPdf.js';
 const temiz = (v) => String(v ?? "").trim();
 export const kaynakParmakizi = (kaynak) => createHash("sha256").update(JSON.stringify(kaynak)).digest("hex");
 /** Uses the ERP's invoice-line view; never derives gold tax bases from raw gram/currency rows. */
@@ -67,7 +67,27 @@ export class EbelgeKaynakService {
         };
     }
     static async pdf(k, ctx) {
-        return kaynakFisPdf(await this.detay(k, ctx));
+        if (!dovizMi(k))
+            return kaynakFisPdf(await this.detay(k, ctx));
+        // e-Döviz: ICE'nin resmî çıktısıyla aynı düzen ve ICE'ye giden girdiyle aynı veri.
+        // Fiş henüz gönderilebilir durumda değilse (kimlik/istatistik/dosya no eksik)
+        // ayrıntılı belge kurulamaz; sade önizlemeye düşülür, kullanıcı yine bir çıktı görür.
+        const kaynak = await EbelgeKaynakRepository.dovizDetay(k, ctx);
+        const [ayar, firma] = await Promise.all([EbelgeSqlRepository.getAyar(ctx), EbelgeSqlRepository.getFirmaBilgisi(ctx)]);
+        let girdi;
+        try {
+            girdi = dovizGirdisi(kaynak, { vknTckn: ayar?.firmaVkn, dosyaNo: firma.dosyaNo });
+        }
+        catch (e) {
+            if (e instanceof ApiError)
+                return kaynakFisPdf(await this.detay(k, ctx));
+            throw e;
+        }
+        const giden = await EbelgeSqlRepository.getGiden(girdi.uuid, ctx).catch(() => null);
+        return eDovizBelgePdf(girdi, {
+            hesapVkn: temiz(ayar?.firmaVkn) || girdi.yetkiliMuessese.vknTckn,
+            onizleme: String(giden?.gonderimDurumu || "") !== "GONDERILDI",
+        });
     }
     static async dovizIceKontrol(girdi, kaynak, ctx) {
         const config = await EbelgeSqlRepository.getConnectionConfig(ctx);
