@@ -1,7 +1,8 @@
 import {
   MasakSqlRepository,
   MasakListeKod,
-  MASAK_LISTE_KODLARI,
+  masakListeKodGecerliMi,
+  masakStandartListeMi,
   MasakListeDurumModel,
   MasakGuncellemeLogModel,
   MasakKayitModel,
@@ -22,7 +23,12 @@ import { logger } from "../utils/logger.js";
 export interface MasakKaynakGirdi {
   listeKod: MasakListeKod;
   url?: string | null;
+  /** Kullanıcı tanımlı listeler için ekranda girilen liste adı / açıklaması */
+  listeAdi?: string | null;
 }
+
+const LISTE_KOD_HATA =
+  "Geçersiz liste kodu. Büyük harf ve rakamla en fazla 10 karakter olmalıdır (ör. A, B, C, 3AB, D).";
 
 export interface MasakListeSonucu {
   listeKod: MasakListeKod;
@@ -61,21 +67,48 @@ export class MasakService {
   }
 
   private static listeKodGecerliMi(kod: unknown): kod is MasakListeKod {
-    return typeof kod === "string" && (MASAK_LISTE_KODLARI as string[]).includes(kod);
+    return masakListeKodGecerliMi(kod);
   }
 
   /**
-   * Liste bazında kayıt sayısı, son güncelleme ve son kullanılan adres.
-   * Adres yoksa varsayılan adres döndürülür — adres giriş ekranı her zaman dolu açılır.
+   * Liste bazında kayıt sayısı, son güncelleme ve son girilen adres.
+   * Standart listelerde adres yoksa varsayılan adres döndürülür — adres giriş ekranı
+   * her zaman dolu açılır. Kullanıcı tanımlı listeler (standart dördün dışındakiler)
+   * `ozel: true` ile işaretlenir.
    */
   public static async getDurum(dbContext?: DbContext): Promise<MasakListeDurumModel[]> {
     const durum = await MasakSqlRepository.getDurum(dbContext);
     return durum.map((d) => ({
       ...d,
-      listeAdi: d.listeAdi || MASAK_KAYNAKLAR[d.listeKod as MasakListeKod]?.listeAdi || null,
-      kaynakUrl:
-        d.kaynakUrl || MASAK_KAYNAKLAR[d.listeKod as MasakListeKod]?.varsayilanUrl || null,
+      ozel: !masakStandartListeMi(d.listeKod),
+      listeAdi: d.listeAdi || MASAK_KAYNAKLAR[d.listeKod]?.listeAdi || null,
+      kaynakUrl: d.kaynakUrl || MASAK_KAYNAKLAR[d.listeKod]?.varsayilanUrl || null,
     }));
+  }
+
+  /**
+   * Kullanıcı tanımlı bir listeyi (verisi + geçmişi) kaldırır.
+   * Standart listeler silinemez; yalnızca adresi değiştirilir.
+   */
+  public static async sil(
+    listeKod: unknown,
+    dbContext?: DbContext
+  ): Promise<{ silinenKayit: number; silinenGecmis: number }> {
+    if (!MasakService.listeKodGecerliMi(listeKod)) {
+      throw ApiError.badRequest(LISTE_KOD_HATA);
+    }
+    if (masakStandartListeMi(listeKod)) {
+      throw ApiError.badRequest(
+        `${listeKod} standart bir MASAK listesidir, silinemez. Gerekirse seçimini kaldırarak güncelleme dışında bırakabilirsiniz.`
+      );
+    }
+    const kilit = MasakService.kilitAnahtari(dbContext);
+    if (MasakService.calisanGuncellemeler.has(kilit)) {
+      throw ApiError.badRequest(
+        "Şu anda bir MASAK güncellemesi sürüyor. Lütfen tamamlanmasını bekleyiniz."
+      );
+    }
+    return MasakSqlRepository.deleteListe(listeKod, dbContext);
   }
 
   /**
@@ -93,7 +126,7 @@ export class MasakService {
     dbContext?: DbContext
   ): Promise<MasakListeSayfasi> {
     if (params.listeKod && !MasakService.listeKodGecerliMi(params.listeKod)) {
-      throw ApiError.badRequest("Geçersiz liste kodu. Geçerli değerler: A, B, C, 3AB");
+      throw ApiError.badRequest(LISTE_KOD_HATA);
     }
 
     return MasakSqlRepository.listele(
@@ -168,7 +201,7 @@ export class MasakService {
     dbContext?: DbContext
   ): Promise<MasakGuncellemeLogModel[]> {
     if (params.listeKod && !MasakService.listeKodGecerliMi(params.listeKod)) {
-      throw ApiError.badRequest("Geçersiz liste kodu. Geçerli değerler: A, B, C, 3AB");
+      throw ApiError.badRequest(LISTE_KOD_HATA);
     }
     return MasakSqlRepository.getGecmis(params, dbContext);
   }
@@ -193,32 +226,50 @@ export class MasakService {
       );
     }
 
-    // Girdi yoksa dört listenin tamamı güncellenir
+    // Son girilen adresler (ekran boş bıraktıysa veya hiç girdi yoksa buradan tamamlanır)
+    const mevcutDurum = await MasakService.getDurum(dbContext);
+
+    // Girdi yoksa: standart dört liste + adresi bilinen kullanıcı tanımlı listeler,
+    // hepsi son girilen adresleriyle ("Sorgulama" ekranındaki tek tuşla güncelleme)
     const istenen: MasakKaynakGirdi[] =
       Array.isArray(kaynaklar) && kaynaklar.length > 0
         ? kaynaklar
-        : MASAK_LISTE_KODLARI.map((listeKod) => ({ listeKod }));
+        : mevcutDurum
+            .filter((d) => masakStandartListeMi(d.listeKod) || !!d.kaynakUrl)
+            .map((d) => ({ listeKod: d.listeKod }));
 
+    const gorulen = new Set<string>();
     for (const k of istenen) {
       if (!MasakService.listeKodGecerliMi(k?.listeKod)) {
-        throw ApiError.badRequest(
-          `Geçersiz liste kodu: ${String(k?.listeKod)}. Geçerli değerler: A, B, C, 3AB`
-        );
+        throw ApiError.badRequest(`Geçersiz liste kodu: "${String(k?.listeKod)}". ${LISTE_KOD_HATA}`);
       }
+      if (gorulen.has(k.listeKod)) {
+        throw ApiError.badRequest(`${k.listeKod} liste kodu birden fazla kez gönderildi.`);
+      }
+      gorulen.add(k.listeKod);
       if (k.url && !adresGecerliMi(k.url)) {
         throw ApiError.badRequest(
           `${k.listeKod} listesi için geçersiz adres. Yalnızca https://ms.hmb.gov.tr/ ile başlayan .xlsx adresleri kabul edilir.`
         );
+      }
+      if (!masakStandartListeMi(k.listeKod) && !(k.url && k.url.trim())) {
+        // Yeni tanımlanan listenin adresi başka yerden bilinemez; geçmişte denenmişse oradan alınır
+        if (!mevcutDurum.some((d) => d.listeKod === k.listeKod && d.kaynakUrl)) {
+          throw ApiError.badRequest(`${k.listeKod} listesi için adres girilmelidir.`);
+        }
       }
     }
 
     MasakService.calisanGuncellemeler.add(kilit);
 
     try {
-      // Adres girilmemişse: son başarılı adres → yoksa varsayılan adres
-      const mevcutDurum = await MasakService.getDurum(dbContext);
+      // Adres girilmemişse: son girilen adres → yoksa varsayılan adres
       const sonAdresler = new Map<string, string | null>();
-      mevcutDurum.forEach((d) => sonAdresler.set(d.listeKod, d.kaynakUrl));
+      const sonAdlar = new Map<string, string | null>();
+      mevcutDurum.forEach((d) => {
+        sonAdresler.set(d.listeKod, d.kaynakUrl);
+        sonAdlar.set(d.listeKod, d.listeAdi);
+      });
 
       const sonuclar: MasakListeSonucu[] = [];
 
@@ -228,7 +279,14 @@ export class MasakService {
         const url =
           (girdi.url && girdi.url.trim()) ||
           sonAdresler.get(listeKod) ||
-          tanim.varsayilanUrl;
+          tanim?.varsayilanUrl ||
+          "";
+        // Ad: ekrandan gelen → daha önce kaydedilen → standart tanım → kodun kendisi
+        const listeAdi =
+          (girdi.listeAdi && girdi.listeAdi.trim().slice(0, 200)) ||
+          sonAdlar.get(listeKod) ||
+          tanim?.listeAdi ||
+          listeKod;
 
         const baslama = new Date();
         const t0 = Date.now();
@@ -238,12 +296,12 @@ export class MasakService {
           oncekiSayi = await MasakSqlRepository.getKayitSayisi(listeKod, dbContext);
 
           const dosya = await indirDosya(url);
-          const ayristirma = await parseMasakExcel(dosya.buffer, listeKod, tanim.listeAdi);
+          const ayristirma = await parseMasakExcel(dosya.buffer, listeKod, listeAdi);
 
           const yazilan = await MasakSqlRepository.replaceListe(
             listeKod,
             ayristirma.kayitlar,
-            { listeAdi: tanim.listeAdi, kaynakUrl: url, kaynakHash: dosya.hash },
+            { listeAdi, kaynakUrl: url, kaynakHash: dosya.hash },
             dbContext
           );
 
@@ -275,7 +333,7 @@ export class MasakService {
 
           sonuclar.push({
             listeKod,
-            listeAdi: tanim.listeAdi,
+            listeAdi,
             durum: "basarili",
             kayitSayisi: yazilan,
             oncekiKayitSayisi: oncekiSayi,
@@ -307,7 +365,7 @@ export class MasakService {
 
           sonuclar.push({
             listeKod,
-            listeAdi: tanim.listeAdi,
+            listeAdi,
             durum: "hata",
             kayitSayisi: 0,
             oncekiKayitSayisi: oncekiSayi,

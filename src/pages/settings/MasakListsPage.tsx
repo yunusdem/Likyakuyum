@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, Button, Form, InputGroup, Modal, Spinner, Alert, Badge } from "react-bootstrap";
 import {
   IconShieldCheck,
@@ -10,6 +10,8 @@ import {
   IconChevronRight,
   IconChevronLeft,
   IconExternalLink,
+  IconCheck,
+  IconSettings,
 } from "@tabler/icons-react";
 import ERPToolbar from "components/common/ERPToolbar";
 import { MASAK_LISTS } from "data/masakData";
@@ -17,22 +19,20 @@ import MasakModal from "../../components/masak/MasakModal";
 import {
   MasakService,
   masakBayatMi,
+  masakKodEtiketi,
   masakSayi,
   masakTarihSaat,
+  type MasakGuncellemeRaporu,
   type MasakKayit,
+  type MasakListeDurumu,
 } from "../../services/masakService";
 
 const SAYFA_BOYUTU = 50;
 
-const LISTE_SEKMELERI: { deger: string; etiket: string }[] = [
-  { deger: "", etiket: "Tümü" },
-  ...MASAK_LISTS.map((l) => ({ deger: l.listeKod, etiket: l.code })),
-];
-
 const listeEtiketi = (listeKod?: string | null): string => {
   if (!listeKod) return "-";
   const bulunan = MASAK_LISTS.find((l) => l.listeKod === listeKod);
-  return bulunan ? bulunan.code : listeKod;
+  return bulunan ? bulunan.code : masakKodEtiketi(listeKod);
 };
 
 export const MasakListsPage: React.FC = () => {
@@ -48,19 +48,35 @@ export const MasakListsPage: React.FC = () => {
 
   const [toplamKayit, setToplamKayit] = useState<number>(0);
   const [sonGuncelleme, setSonGuncelleme] = useState<string | null>(null);
+  const [listeler, setListeler] = useState<MasakListeDurumu[]>([]);
 
   const [detay, setDetay] = useState<MasakKayit | null>(null);
   const [guncellemeAcik, setGuncellemeAcik] = useState<boolean>(false);
+
+  // Tek tuşla güncelleme (son girilen adreslerle, adres ekranı açılmadan)
+  const [hizliGuncelleniyor, setHizliGuncelleniyor] = useState<boolean>(false);
+  const [hizliRapor, setHizliRapor] = useState<MasakGuncellemeRaporu | null>(null);
+  const [hizliHata, setHizliHata] = useState<string | null>(null);
 
   const durumYukle = useCallback(async () => {
     try {
       const durum = await MasakService.getDurum();
       setToplamKayit(durum.toplamKayit);
       setSonGuncelleme(durum.sonGuncelleme);
+      setListeler(durum.listeler);
     } catch {
       /* durum okunamazsa üst bant boş kalır, liste yine denenecek */
     }
   }, []);
+
+  /** Liste sekmeleri: standart dört liste + sunucuda tanımlı kullanıcı listeleri */
+  const listeSekmeleri = useMemo<{ deger: string; etiket: string }[]>(() => {
+    const standart = MASAK_LISTS.map((l) => ({ deger: l.listeKod, etiket: l.code }));
+    const ozel = listeler
+      .filter((l) => !MASAK_LISTS.some((m) => m.listeKod === l.listeKod))
+      .map((l) => ({ deger: l.listeKod, etiket: masakKodEtiketi(l.listeKod) }));
+    return [{ deger: "", etiket: "Tümü" }, ...standart, ...ozel];
+  }, [listeler]);
 
   const listeYukle = useCallback(
     async (istenenSayfa: number = page, filtre?: { listeKod?: string; ad?: string; kimlikNo?: string }) => {
@@ -97,6 +113,28 @@ export const MasakListsPage: React.FC = () => {
 
   const listele = () => listeYukle(1);
 
+  /**
+   * Adres ekranı açılmadan, sunucuda kayıtlı son girilen adreslerle tüm listeleri günceller.
+   * Adres değiştirmek gerekiyorsa "Adresleri Düzenle" ile MasakModal açılır.
+   */
+  const hizliGuncelle = async () => {
+    setHizliGuncelleniyor(true);
+    setHizliHata(null);
+    setHizliRapor(null);
+    try {
+      const sonuc = await MasakService.guncelle();
+      setHizliRapor(sonuc);
+      setToplamKayit(sonuc.toplamKayit);
+      setSonGuncelleme(sonuc.guncellemeZamani);
+      setListeler(sonuc.durum);
+      await listeYukle(1);
+    } catch (err: any) {
+      setHizliHata(err?.message || "Güncelleme yapılamadı.");
+    } finally {
+      setHizliGuncelleniyor(false);
+    }
+  };
+
   const sekmeSec = (deger: string) => {
     setListeKod(deger);
     setPage(1);
@@ -127,19 +165,88 @@ export const MasakListsPage: React.FC = () => {
         }}
         onClear={temizle}
         onPrint={() => window.print()}
-        disabled={yukleniyor}
+        disabled={yukleniyor || hizliGuncelleniyor}
         rightContent={
-          <Button
-            variant="primary"
-            size="sm"
-            className="d-flex align-items-center gap-1"
-            onClick={() => setGuncellemeAcik(true)}
-          >
-            <IconRefresh size={15} />
-            MASAK Listelerini Güncelle
-          </Button>
+          <div className="d-flex align-items-center gap-2">
+            <span className="text-muted text-nowrap d-none d-md-inline" style={{ fontSize: "0.78rem" }}>
+              Son güncelleme: <strong className={bayat ? "text-danger" : ""}>{masakTarihSaat(sonGuncelleme)}</strong>
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              className="d-flex align-items-center gap-1"
+              onClick={hizliGuncelle}
+              disabled={hizliGuncelleniyor || guncellemeAcik}
+              title="Sunucuda kayıtlı son adreslerle tüm listeleri indirir"
+            >
+              {hizliGuncelleniyor ? (
+                <>
+                  <Spinner as="span" animation="border" size="sm" /> Güncelleniyor...
+                </>
+              ) : (
+                <>
+                  <IconRefresh size={15} /> MASAK Listelerini Güncelle
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline-primary"
+              size="sm"
+              className="d-flex align-items-center gap-1"
+              onClick={() => setGuncellemeAcik(true)}
+              disabled={hizliGuncelleniyor}
+              title="Liste adreslerini görüntüle / değiştir, yeni liste ekle"
+            >
+              <IconSettings size={15} /> Adresleri Düzenle
+            </Button>
+          </div>
         }
       />
+
+      {/* Tek tuşla güncelleme sonucu */}
+      {hizliHata && (
+        <Alert
+          variant="danger"
+          className="py-2 px-3 mb-3"
+          style={{ fontSize: "0.82rem" }}
+          dismissible
+          onClose={() => setHizliHata(null)}
+        >
+          {hizliHata}
+        </Alert>
+      )}
+      {hizliRapor && (
+        <Alert
+          variant={hizliRapor.sonuclar.some((s) => s.durum === "hata") ? "warning" : "success"}
+          className="py-2 px-3 mb-3"
+          style={{ fontSize: "0.82rem" }}
+          dismissible
+          onClose={() => setHizliRapor(null)}
+        >
+          <div className="fw-semibold mb-1">
+            Güncelleme tamamlandı · {masakTarihSaat(hizliRapor.guncellemeZamani)}
+          </div>
+          <div className="d-flex flex-wrap gap-3">
+            {hizliRapor.sonuclar.map((s) => (
+              <span key={s.listeKod} className="d-flex align-items-center gap-1">
+                {s.durum === "basarili" ? (
+                  <IconCheck size={14} className="text-success" />
+                ) : (
+                  <IconAlertTriangle size={14} className="text-danger" />
+                )}
+                <strong>{masakKodEtiketi(s.listeKod)}</strong>
+                {s.durum === "basarili" ? (
+                  <span>{masakSayi(s.kayitSayisi)} kayıt</span>
+                ) : (
+                  <span className="text-danger" title={s.hata}>
+                    {(s.hata || "hata").slice(0, 70)}
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
+        </Alert>
+      )}
 
       {/* Durum bandı */}
       <div
@@ -210,7 +317,7 @@ export const MasakListsPage: React.FC = () => {
             </Button>
 
             <div className="d-flex align-items-center gap-1 ms-auto">
-              {LISTE_SEKMELERI.map((sekme) => (
+              {listeSekmeleri.map((sekme) => (
                 <Button
                   key={sekme.deger || "tumu"}
                   variant={listeKod === sekme.deger ? "primary" : "outline-secondary"}
