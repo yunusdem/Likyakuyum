@@ -92,10 +92,11 @@ export async function raporPdf(g) {
                 let b = 8, t = g.firma.ad || "";
                 while (N().fontSize(b).widthOfString(t) > g35 && b > 6)
                     b -= 0.5;
-                while (t.length > 1 && N().fontSize(b).widthOfString(t + "…") > g35)
-                    t = t.slice(0, -1) + (t.endsWith("…") ? "" : "");
-                if (N().fontSize(b).widthOfString(t) > g35)
-                    t = t.slice(0, -1) + "…";
+                if (N().fontSize(b).widthOfString(t) > g35) {
+                    while (t.length > 1 && N().widthOfString(t + "…") > g35)
+                        t = t.slice(0, -1);
+                    t += "…";
+                }
                 N().fontSize(b).fillColor("#333").text(t, sol + genislik * 0.65, y + 2, { width: g35, align: "right", lineBreak: false });
             }
             N().fontSize(7).fillColor("#888").text(g.firma.vkn ? `VKN/TCKN ${g.firma.vkn}` : "", sol + genislik * 0.65, y + 14, { width: genislik * 0.35, align: "right" });
