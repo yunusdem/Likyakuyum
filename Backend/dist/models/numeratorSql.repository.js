@@ -145,22 +145,10 @@ export class NumeratorSqlRepository {
             const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
             const onuneSifirKoy = data.onuneSifirKoy !== false;
             const yaziciOrtakAlan = cleanYaziciId === null ? 1 : 0;
-            // 1. Yazıcı değişikliği yapılmışsa, veritabanındaki eski uyumsuz kaydı temizle
+            // 1. Bu TUR'a ait TÜM kayıtları sil — SP her zaman temiz INSERT yapacak, asla duplicate key olmayacak
             const cleanupReq = pool.request();
             cleanupReq.input("TUR", sql.TinyInt, tur);
-            if (cleanYaziciId !== null) {
-                cleanupReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
-                await cleanupReq.query(`
-          DELETE FROM [dbo].[TODVZ_NUMERATOR] 
-          WHERE [TUR] = @TUR AND ISNULL([YAZICI_ID], 0) <> @YAZICI_ID;
-        `);
-            }
-            else {
-                await cleanupReq.query(`
-          DELETE FROM [dbo].[TODVZ_NUMERATOR] 
-          WHERE [TUR] = @TUR AND [YAZICI_ID] IS NOT NULL;
-        `);
-            }
+            await cleanupReq.query(`DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;`);
             // 2. Doğrudan SODVZ_NUMERATOR_KAYDET Stored Procedure'ünü çalıştır
             const procReq = pool.request();
             procReq.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
