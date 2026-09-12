@@ -125,38 +125,67 @@ export class NumeratorSqlRepository {
         }
     }
     /**
-     * Saves a numerator by calling SODVZ_NUMERATOR_KAYDET stored procedure directly.
-     * The SP handles UPDATE (if exists) or INSERT (if not) internally.
+     * Saves a numerator using NULL-safe upsert on (YAZICI_ID, TUR):
+     * - UKOHOM_NUMERATOR unique constraint: (YAZICI_ID, TUR)
+     * - EXISTS check handles both NULL and non-null YAZICI_ID correctly
      */
     static async saveViaProcedure(data, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         try {
             const MAX_SQL_INT = 2147483647;
             const tur = Math.min(255, Math.max(0, toInt(data.tur, 0)));
-            const rawYaziciId = data.yaziciId !== undefined &&
+            const yaziciId = data.yaziciId !== undefined &&
                 data.yaziciId !== null &&
                 String(data.yaziciId) !== "" &&
-                !isNaN(parseInt(String(data.yaziciId), 10))
+                !isNaN(parseInt(String(data.yaziciId), 10)) &&
+                parseInt(String(data.yaziciId), 10) > 0
                 ? parseInt(String(data.yaziciId), 10)
                 : null;
-            const cleanYaziciId = rawYaziciId !== null && rawYaziciId > 0 ? rawYaziciId : null;
             const onek = data.onek ? data.onek.trim().slice(0, 50) : "";
             const baslangic = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.baslangic, 0)));
             const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
             const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
             const onuneSifirKoy = data.onuneSifirKoy !== false;
-            const yaziciOrtakAlan = cleanYaziciId === null ? 1 : 0;
-            const request = pool.request();
-            request.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
-            request.input("YAZICI_ID", sql.Int, cleanYaziciId);
-            request.input("TUR", sql.TinyInt, tur);
-            request.input("ONEK", sql.VarChar(20), onek);
-            request.input("BASLANGIC", sql.Int, baslangic);
-            request.input("BITIS", sql.Int, bitis);
-            request.input("UZUNLUK", sql.Int, uzunluk);
-            request.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
-            await request.execute("SODVZ_NUMERATOR_KAYDET");
-            const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, cleanYaziciId, dbContext);
+            const yaziciOrtakAlan = yaziciId === null ? 1 : 0;
+            const req = pool.request();
+            req.input("YAZICI_ID", sql.Int, yaziciId);
+            req.input("TUR", sql.TinyInt, tur);
+            req.input("ONEK", sql.VarChar(50), onek);
+            req.input("BASLANGIC", sql.Int, baslangic);
+            req.input("BITIS", sql.Int, bitis);
+            req.input("UZUNLUK", sql.Int, uzunluk);
+            req.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
+            req.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
+            await req.query(`
+        IF EXISTS (
+          SELECT 1 FROM [dbo].[TODVZ_NUMERATOR]
+          WHERE ((@YAZICI_ID IS NULL AND [YAZICI_ID] IS NULL) OR [YAZICI_ID] = @YAZICI_ID)
+            AND [TUR] = @TUR
+        )
+        BEGIN
+          UPDATE [dbo].[TODVZ_NUMERATOR]
+          SET [ONEK]            = @ONEK,
+              [BASLANGIC]       = @BASLANGIC,
+              [BITIS]           = @BITIS,
+              [UZUNLUK]         = @UZUNLUK,
+              [ONUNE_SIFIR_KOY] = @ONUNE_SIFIR_KOY
+          WHERE ((@YAZICI_ID IS NULL AND [YAZICI_ID] IS NULL) OR [YAZICI_ID] = @YAZICI_ID)
+            AND [TUR] = @TUR;
+        END
+        ELSE
+        BEGIN
+          EXEC [dbo].[SODVZ_NUMERATOR_KAYDET]
+            @YAZICI_ORTAK_ALAN,
+            @YAZICI_ID,
+            @TUR,
+            @ONEK,
+            @BASLANGIC,
+            @BITIS,
+            @UZUNLUK,
+            @ONUNE_SIFIR_KOY;
+        END
+      `);
+            const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, yaziciId, dbContext);
             if (!saved) {
                 throw ApiError.internal("Numaratör kaydedildi fakat güncel veri okunamadı.");
             }
