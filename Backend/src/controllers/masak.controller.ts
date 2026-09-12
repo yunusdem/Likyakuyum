@@ -27,7 +27,15 @@ export class MasakController {
     const dbContext = MasakController.getDbContext(req);
     const kullanici = MasakController.getKullanici(req);
 
-    const rapor = await MasakService.guncelle(req.body?.kaynaklar, kullanici, dbContext);
+    // Liste kodları büyük harfe çevrilir; ekrandan "d" gelirse "D" olarak işlenir
+    const kaynaklar = Array.isArray(req.body?.kaynaklar)
+      ? req.body.kaynaklar.map((k: any) => ({
+          ...k,
+          listeKod: String(k?.listeKod ?? "").trim().toUpperCase(),
+        }))
+      : undefined;
+
+    const rapor = await MasakService.guncelle(kaynaklar, kullanici, dbContext);
 
     const basarili = rapor.sonuclar.filter((s) => s.durum === "basarili").length;
     const hatali = rapor.sonuclar.length - basarili;
@@ -36,6 +44,17 @@ export class MasakController {
       : "MASAK listeleri başarıyla güncellendi.";
 
     return ApiResponse.ok(res, mesaj, rapor);
+  });
+
+  /**
+   * DELETE /api/v1/masak/liste/:listeKod
+   * Kullanıcı tanımlı bir listeyi verisi ve geçmişiyle birlikte kaldırır.
+   */
+  public static sil = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = MasakController.getDbContext(req);
+    const listeKod = String(req.params.listeKod || "").trim().toUpperCase();
+    const sonuc = await MasakService.sil(listeKod, dbContext);
+    return ApiResponse.ok(res, `${listeKod} listesi kaldırıldı.`, sonuc);
   });
 
   /**

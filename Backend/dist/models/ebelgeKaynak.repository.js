@@ -121,7 +121,7 @@ export class EbelgeKaynakRepository {
         const res = await pool.request().input("id", sql.Int, k.belgeId).input("tip", sql.Int, k.belgeTuru)
             .input("no", sql.VarChar(40), k.belgeNo?.trim() || null).query(`
       -- ICE, Ek_Bilgiler.Istatistik_No'yu belge türüyle doğrular; kod fişin istatistik tanımından gelir.
-      SELECT TOP 2 D.*, RTRIM(I.KOD) AS ISTATISTIK_KOD
+      SELECT TOP 2 D.*, RTRIM(I.KOD) AS ISTATISTIK_KOD, I.FIS_TIPI AS ISTATISTIK_FIS_TIPI
       FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
       LEFT JOIN dbo.TODVZ_FIS F ON F.FIS_ID=D.BELGE_ID
       LEFT JOIN dbo.TODVZ_ISTATISTIK I ON I.ISTATISTIK_ID=F.ISTATISTIK_ID

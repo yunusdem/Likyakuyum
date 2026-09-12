@@ -14,5 +14,7 @@ router.get("/sorgu", MasakController.sorgula);
 router.get("/gecmis", MasakController.getGecmis);
 router.get("/kayit/:id", MasakController.getKayit);
 router.post("/guncelle", MasakController.guncelle);
+// Yalnızca kullanıcı tanımlı listeler silinebilir; standart A/B/C/3AB servis tarafından reddedilir.
+router.delete("/liste/:listeKod", MasakController.sil);
 
 export default router;

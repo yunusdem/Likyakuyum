@@ -1,6 +1,10 @@
 import crypto from "crypto";
 import ExcelJS from "exceljs";
-import { MasakKayitDto, MasakListeKod } from "../models/masakSql.repository.js";
+import {
+  MasakKayitDto,
+  MasakListeKod,
+  MasakStandartListeKod,
+} from "../models/masakSql.repository.js";
 import { ApiError } from "./ApiError.js";
 import { logger } from "./logger.js";
 
@@ -22,10 +26,13 @@ export interface MasakKaynakTanimi {
 }
 
 /**
- * Varsayılan kaynak adresleri. Kullanıcı ekrandan yeni adres girerse o kullanılır;
- * girilen adres TODVZ_MASAK_LISTE.KAYNAK_URL'de kalıcı olur (bkz. yol haritası 8.4).
+ * Standart listelerin varsayılan kaynak adresleri. Kullanıcı ekrandan yeni adres girerse o
+ * kullanılır; girilen adres güncelleme geçmişinde saklanır ve bir sonraki açılışta ekrana
+ * dolu gelir. Kullanıcı tanımlı listelerin (ör. "D") burada karşılığı yoktur — adresi ve adı
+ * ekrandan gelir. Bu yüzden erişimde `MASAK_KAYNAKLAR[kod]` undefined olabilir.
  */
-export const MASAK_KAYNAKLAR: Record<MasakListeKod, MasakKaynakTanimi> = {
+export const MASAK_KAYNAKLAR: Partial<Record<MasakListeKod, MasakKaynakTanimi>> &
+  Record<MasakStandartListeKod, MasakKaynakTanimi> = {
   A: {
     listeKod: "A",
     listeAdi: "BMGK Kararına İstinaden Malvarlıkları Dondurulanlar (6415 S.K. m.5)",

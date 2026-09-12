@@ -7,6 +7,8 @@ import {
   IconAlertTriangle,
   IconHistory,
   IconListDetails,
+  IconPlus,
+  IconTrash,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import { MASAK_LISTS } from "data/masakData";
@@ -14,10 +16,14 @@ import {
   MasakService,
   masakAdresGecerliMi,
   masakBayatMi,
+  masakKodEtiketi,
+  masakListeKodGecerliMi,
   masakSayi,
+  masakStandartListeMi,
   masakTarihSaat,
   type MasakGecmisKaydi,
   type MasakGuncellemeRaporu,
+  type MasakListeDurumu,
   type MasakListeKod,
 } from "../../services/masakService";
 
@@ -27,16 +33,75 @@ interface MasakModalProps {
 }
 
 interface KaynakSatiri {
+  /** Satırı ayırt eden anahtar; yeni eklenen satırlarda kod değişse de sabit kalır */
+  anahtar: string;
   listeKod: MasakListeKod;
-  code: string;
   baslik: string;
   url: string;
   secili: boolean;
   kayitSayisi: number;
   sonGuncelleme: string | null;
+  /** Kullanıcı tanımlı liste (standart A/B/C/3AB dışı) */
+  ozel: boolean;
+  /** Ekranda yeni eklendi, henüz hiç güncellenmedi (sunucuda kaydı yok) */
+  yeni: boolean;
 }
 
 type Sekme = "adresler" | "gecmis";
+
+/** Standart listelerin ekran başlığı ve yedek adresi (sunucu adres döndürmezse) */
+const standartTanim = (listeKod: string) => MASAK_LISTS.find((l) => l.listeKod === listeKod);
+
+/**
+ * Sunucudan gelen liste durumunu ekran satırlarına çevirir.
+ * Adres alanı son girilen adresle dolu gelir; standart listede o da yoksa varsayılan adres kullanılır.
+ * `onceki` verilirse seçim durumu ve henüz kaydedilmemiş yeni satırlar korunur.
+ */
+const satirlariOlustur = (listeler: MasakListeDurumu[], onceki: KaynakSatiri[] = []): KaynakSatiri[] => {
+  const oncekiMap = new Map(onceki.map((s) => [s.listeKod, s]));
+
+  const sunucudan: KaynakSatiri[] = listeler.map((d) => {
+    const tanim = standartTanim(d.listeKod);
+    const eski = oncekiMap.get(d.listeKod);
+    return {
+      anahtar: d.listeKod,
+      listeKod: d.listeKod,
+      baslik: tanim?.shortTitle || d.listeAdi || d.listeKod,
+      // Kullanıcının ekranda yazdığı adres korunur; yoksa sunucudaki son girilen adres
+      url: eski?.url || d.kaynakUrl || tanim?.url || "",
+      secili: eski ? eski.secili : true,
+      kayitSayisi: d.kayitSayisi,
+      sonGuncelleme: d.sonGuncelleme,
+      ozel: d.ozel ?? !masakStandartListeMi(d.listeKod),
+      yeni: false,
+    };
+  });
+
+  // Sunucu yanıtı gelmediyse bile standart dört liste her zaman görünür
+  for (const tanim of MASAK_LISTS) {
+    if (!sunucudan.some((s) => s.listeKod === tanim.listeKod)) {
+      const eski = oncekiMap.get(tanim.listeKod);
+      sunucudan.push({
+        anahtar: tanim.listeKod,
+        listeKod: tanim.listeKod,
+        baslik: tanim.shortTitle,
+        url: eski?.url || tanim.url,
+        secili: eski ? eski.secili : true,
+        kayitSayisi: 0,
+        sonGuncelleme: null,
+        ozel: false,
+        yeni: false,
+      });
+    }
+  }
+
+  // Ekranda eklenmiş ama sunucuda hâlâ olmayan satırlar (ör. seçimi kaldırılıp güncellenmemiş)
+  const kaydedilmemis = onceki.filter((s) => s.yeni && !sunucudan.some((x) => x.listeKod === s.listeKod));
+
+  return [...sunucudan, ...kaydedilmemis];
+};
+
+let yeniSatirSayaci = 0;
 
 export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
   const navigate = useNavigate();
@@ -47,23 +112,11 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
   const [sonGuncelleme, setSonGuncelleme] = useState<string | null>(null);
   const [durumYukleniyor, setDurumYukleniyor] = useState<boolean>(false);
   const [guncelleniyor, setGuncelleniyor] = useState<boolean>(false);
+  const [silinenKod, setSilinenKod] = useState<string | null>(null);
   const [rapor, setRapor] = useState<MasakGuncellemeRaporu | null>(null);
   const [hata, setHata] = useState<string | null>(null);
   const [gecmis, setGecmis] = useState<MasakGecmisKaydi[]>([]);
   const [gecmisYukleniyor, setGecmisYukleniyor] = useState<boolean>(false);
-
-  /** Her açılışta adresler boş; kayıt sayıları backend'den okunur. */
-  const varsayilanSatirlar = useCallback((): KaynakSatiri[] => {
-    return MASAK_LISTS.map((item) => ({
-      listeKod: item.listeKod,
-      code: item.code,
-      baslik: item.shortTitle,
-      url: '',
-      secili: true,
-      kayitSayisi: 0,
-      sonGuncelleme: null,
-    }));
-  }, []);
 
   const durumYukle = useCallback(async () => {
     setDurumYukleniyor(true);
@@ -72,25 +125,14 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
       const durum = await MasakService.getDurum();
       setToplamKayit(durum.toplamKayit);
       setSonGuncelleme(durum.sonGuncelleme);
-      setSatirlar(
-        varsayilanSatirlar().map((satir) => {
-          const d = durum.listeler.find((l) => l.listeKod === satir.listeKod);
-          return d
-            ? {
-                ...satir,
-                kayitSayisi: d.kayitSayisi,
-                sonGuncelleme: d.sonGuncelleme,
-              }
-            : satir;
-        })
-      );
+      setSatirlar((onceki) => satirlariOlustur(durum.listeler, onceki));
     } catch (err: any) {
-      setSatirlar(varsayilanSatirlar());
+      setSatirlar((onceki) => satirlariOlustur([], onceki));
       setHata(err?.message || "MASAK liste durumu okunamadı.");
     } finally {
       setDurumYukleniyor(false);
     }
-  }, [varsayilanSatirlar]);
+  }, []);
 
   const gecmisYukle = useCallback(async () => {
     setGecmisYukleniyor(true);
@@ -107,7 +149,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
     if (!show) return;
     setSekme("adresler");
     setRapor(null);
-    setSatirlar(varsayilanSatirlar());
+    setSatirlar([]);
     durumYukle();
   }, [show, durumYukle]);
 
@@ -115,15 +157,75 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
     if (show && sekme === "gecmis") gecmisYukle();
   }, [show, sekme, gecmisYukle]);
 
-  const satirGuncelle = (listeKod: MasakListeKod, degisiklik: Partial<KaynakSatiri>) => {
-    setSatirlar((onceki) =>
-      onceki.map((s) => (s.listeKod === listeKod ? { ...s, ...degisiklik } : s))
+  const satirGuncelle = (anahtar: string, degisiklik: Partial<KaynakSatiri>) => {
+    setSatirlar((onceki) => onceki.map((s) => (s.anahtar === anahtar ? { ...s, ...degisiklik } : s)));
+  };
+
+  const yeniSatirEkle = () => {
+    yeniSatirSayaci += 1;
+    setSatirlar((onceki) => [
+      ...onceki,
+      {
+        anahtar: `yeni-${yeniSatirSayaci}`,
+        listeKod: "",
+        baslik: "",
+        url: "",
+        secili: true,
+        kayitSayisi: 0,
+        sonGuncelleme: null,
+        ozel: true,
+        yeni: true,
+      },
+    ]);
+  };
+
+  const satirSil = async (satir: KaynakSatiri) => {
+    if (satir.yeni) {
+      setSatirlar((onceki) => onceki.filter((s) => s.anahtar !== satir.anahtar));
+      return;
+    }
+    const onay = window.confirm(
+      `${masakKodEtiketi(satir.listeKod)} listesi ve ${masakSayi(satir.kayitSayisi)} kaydı ile güncelleme geçmişi silinecek. Devam edilsin mi?`
     );
+    if (!onay) return;
+
+    setSilinenKod(satir.listeKod);
+    setHata(null);
+    try {
+      await MasakService.sil(satir.listeKod);
+      setSatirlar((onceki) => onceki.filter((s) => s.anahtar !== satir.anahtar));
+      await durumYukle();
+    } catch (err: any) {
+      setHata(err?.message || "Liste silinemedi.");
+    } finally {
+      setSilinenKod(null);
+    }
+  };
+
+  /** Satır bazlı doğrulama; seçili olmayan satırlar güncellemeyi engellemez */
+  const satirHatasi = (satir: KaynakSatiri): string | null => {
+    if (!satir.secili) return null;
+    if (satir.ozel) {
+      const kod = satir.listeKod.trim();
+      if (!masakListeKodGecerliMi(kod)) {
+        return "Liste kodu büyük harf ve rakamdan oluşmalı, en fazla 10 karakter olmalıdır (ör. D).";
+      }
+      if (satirlar.some((s) => s.anahtar !== satir.anahtar && s.listeKod.trim() === kod)) {
+        return `${kod} kodu zaten kullanılıyor.`;
+      }
+      if (!satir.baslik.trim()) return "Listenin açıklamasını giriniz.";
+    }
+    if (!satir.url.trim()) return "Adres giriniz.";
+    if (!masakAdresGecerliMi(satir.url)) {
+      return "Adres https://ms.hmb.gov.tr/ ile başlamalı ve .xlsx ile bitmelidir.";
+    }
+    return null;
   };
 
   const secililer = satirlar.filter((s) => s.secili);
-  const gecersizAdresVar = secililer.some((s) => !masakAdresGecerliMi(s.url));
-  const baslatilabilir = !durumYukleniyor && !guncelleniyor && secililer.length > 0 && !gecersizAdresVar;
+  const hataliSatirVar = secililer.some((s) => satirHatasi(s) !== null);
+  const mesgul = guncelleniyor || !!silinenKod;
+  const baslatilabilir = !durumYukleniyor && !mesgul && secililer.length > 0 && !hataliSatirVar;
 
   const guncellemeyiBaslat = async () => {
     setGuncelleniyor(true);
@@ -131,23 +233,21 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
     setRapor(null);
     try {
       const sonuc = await MasakService.guncelle(
-        secililer.map((s) => ({ listeKod: s.listeKod, url: s.url.trim() }))
+        secililer.map((s) => ({
+          listeKod: s.listeKod.trim().toUpperCase(),
+          url: s.url.trim(),
+          listeAdi: s.ozel ? s.baslik.trim() : undefined,
+        }))
       );
       setRapor(sonuc);
       setToplamKayit(sonuc.toplamKayit);
       setSonGuncelleme(sonuc.guncellemeZamani);
+      // Adresler silinmez: sunucu son girilen adresi döndürür, ekran onunla yenilenir.
       setSatirlar((onceki) =>
-        onceki.map((satir) => {
-          const d = sonuc.durum.find((l) => l.listeKod === satir.listeKod);
-          return d
-            ? {
-                ...satir,
-                url: sonuc.sonuclar.some(s => s.listeKod === satir.listeKod && s.durum === 'basarili') ? '' : satir.url,
-                kayitSayisi: d.kayitSayisi,
-                sonGuncelleme: d.sonGuncelleme,
-              }
-            : satir;
-        })
+        satirlariOlustur(
+          sonuc.durum,
+          onceki.map((s) => ({ ...s, listeKod: s.listeKod.trim().toUpperCase() }))
+        )
       );
     } catch (err: any) {
       setHata(err?.message || "Güncelleme yapılamadı.");
@@ -159,8 +259,8 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
   const bayat = masakBayatMi(sonGuncelleme);
 
   return (
-    <Modal show={show} onHide={onHide} size="lg" centered backdrop={guncelleniyor ? "static" : true}>
-      <Modal.Header closeButton={!guncelleniyor}>
+    <Modal show={show} onHide={onHide} size="lg" centered backdrop={mesgul ? "static" : true}>
+      <Modal.Header closeButton={!mesgul}>
         <Modal.Title as="h6" className="d-flex align-items-center gap-2 fw-bold mb-0">
           <IconShieldCheck size={20} className="text-danger" />
           MASAK Malvarlıkları Dondurulanlar
@@ -206,7 +306,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
             size="sm"
             className="d-flex align-items-center gap-1"
             onClick={() => setSekme("gecmis")}
-            disabled={guncelleniyor}
+            disabled={mesgul}
           >
             <IconHistory size={15} /> Geçmiş
           </Button>
@@ -228,32 +328,99 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
             ) : (
               <div className="d-flex flex-column gap-2">
                 {satirlar.map((satir) => {
-                  const adresGecerli = masakAdresGecerliMi(satir.url);
+                  const satirHata = satirHatasi(satir);
+                  const dokunuldu = satir.ozel ? true : !!satir.url.trim();
+                  const siliniyor = silinenKod === satir.listeKod;
                   return (
-                    <div key={satir.listeKod} className="border rounded p-2 bg-white">
+                    <div
+                      key={satir.anahtar}
+                      className={`border rounded p-2 ${satir.yeni ? "bg-warning-subtle" : "bg-white"}`}
+                    >
                       <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
-                        <Form.Check
-                          type="checkbox"
-                          id={`masak-secim-${satir.listeKod}`}
-                          checked={satir.secili}
-                          disabled={guncelleniyor}
-                          onChange={(e) =>
-                            satirGuncelle(satir.listeKod, { secili: e.target.checked })
-                          }
-                          label={
-                            <span className="d-flex align-items-center gap-2">
-                              <Badge bg="secondary" style={{ minWidth: "42px" }}>
-                                {satir.code}
-                              </Badge>
-                              <span className="fw-semibold" style={{ fontSize: "0.85rem" }}>
-                                {satir.baslik}
+                        <div className="d-flex align-items-center gap-2">
+                          <Form.Check
+                            type="checkbox"
+                            id={`masak-secim-${satir.anahtar}`}
+                            checked={satir.secili}
+                            disabled={mesgul}
+                            onChange={(e) => satirGuncelle(satir.anahtar, { secili: e.target.checked })}
+                            aria-label={satir.ozel ? "Listeyi güncellemeye dahil et" : undefined}
+                            label={
+                              satir.ozel ? undefined : (
+                                <span className="d-flex align-items-center gap-2">
+                                  <Badge bg="secondary" style={{ minWidth: "42px" }}>
+                                    {masakKodEtiketi(satir.listeKod)}
+                                  </Badge>
+                                  <span className="fw-semibold" style={{ fontSize: "0.85rem" }}>
+                                    {satir.baslik}
+                                  </span>
+                                </span>
+                              )
+                            }
+                          />
+                          {satir.ozel && (
+                              <span className="d-flex align-items-center gap-2">
+                                <Form.Control
+                                  size="sm"
+                                  type="text"
+                                  value={satir.listeKod}
+                                  disabled={mesgul || !satir.yeni}
+                                  maxLength={10}
+                                  placeholder="Kod"
+                                  aria-label="Yeni liste kodu"
+                                  autoComplete="off"
+                                  onChange={(e) =>
+                                    satirGuncelle(satir.anahtar, {
+                                      listeKod: e.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z0-9._-]/g, ""),
+                                    })
+                                  }
+                                  className="font-monospace fw-bold text-center"
+                                  style={{ width: "72px", fontSize: "0.78rem" }}
+                                />
+                                <Form.Control
+                                  size="sm"
+                                  type="text"
+                                  value={satir.baslik}
+                                  disabled={mesgul}
+                                  maxLength={200}
+                                  placeholder="Listenin açıklaması (ör. Yeni MASAK listesi)"
+                                  aria-label="Liste açıklaması"
+                                  autoComplete="off"
+                                  onChange={(e) => satirGuncelle(satir.anahtar, { baslik: e.target.value })}
+                                  style={{ width: "300px", fontSize: "0.8rem" }}
+                                />
+                                {satir.yeni && (
+                                  <Badge bg="warning" text="dark">
+                                    Yeni
+                                  </Badge>
+                                )}
                               </span>
-                            </span>
-                          }
-                        />
-                        <span className="text-muted text-nowrap" style={{ fontSize: "0.78rem" }}>
-                          {masakSayi(satir.kayitSayisi)} kayıt
-                          {satir.sonGuncelleme ? ` · ${masakTarihSaat(satir.sonGuncelleme)}` : ""}
+                          )}
+                        </div>
+                        <span className="d-flex align-items-center gap-2 text-nowrap">
+                          <span className="text-muted" style={{ fontSize: "0.78rem" }}>
+                            {satir.yeni
+                              ? "Henüz indirilmedi"
+                              : `${masakSayi(satir.kayitSayisi)} kayıt${
+                                  satir.sonGuncelleme ? ` · ${masakTarihSaat(satir.sonGuncelleme)}` : ""
+                                }`}
+                          </span>
+                          {satir.ozel && (
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              className="py-0 px-1"
+                              disabled={mesgul}
+                              onClick={() => satirSil(satir)}
+                              title={satir.yeni ? "Satırı kaldır" : "Listeyi ve kayıtlarını sil"}
+                            >
+                              {siliniyor ? (
+                                <Spinner as="span" animation="border" size="sm" />
+                              ) : (
+                                <IconTrash size={14} />
+                              )}
+                            </Button>
+                          )}
                         </span>
                       </div>
 
@@ -262,28 +429,46 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
                           size="sm"
                           type="text"
                           value={satir.url}
-                          disabled={guncelleniyor}
-                          aria-label={`${satir.code} liste adresi`}
+                          disabled={mesgul}
+                          aria-label={`${masakKodEtiketi(satir.listeKod) || "Yeni"} liste adresi`}
                           autoComplete="off"
-                          isInvalid={satir.secili && !!satir.url.trim() && !adresGecerli}
-                          onChange={(e) => satirGuncelle(satir.listeKod, { url: e.target.value })}
+                          isInvalid={dokunuldu && satirHata !== null && !!satir.url.trim()}
+                          onChange={(e) => satirGuncelle(satir.anahtar, { url: e.target.value })}
                           placeholder="https://ms.hmb.gov.tr/uploads/... .xlsx"
                           className="font-monospace"
                           style={{ fontSize: "0.74rem" }}
                         />
                       </div>
 
-                      {satir.secili && !!satir.url.trim() && !adresGecerli && (
+                      {satirHata && (satir.url.trim() || (satir.ozel && satir.listeKod.trim())) && (
                         <div className="text-danger mt-1" style={{ fontSize: "0.74rem" }}>
-                          Adres https://ms.hmb.gov.tr/ ile başlamalı ve .xlsx ile bitmelidir.
+                          {satirHata}
                         </div>
                       )}
                     </div>
                   );
                 })}
 
+                <div className="d-flex align-items-center gap-2">
+                  <Button
+                    variant="outline-success"
+                    size="sm"
+                    className="d-flex align-items-center gap-1"
+                    onClick={yeniSatirEkle}
+                    disabled={mesgul}
+                  >
+                    <IconPlus size={15} /> Yeni Liste Ekle
+                  </Button>
+                  <span className="text-muted" style={{ fontSize: "0.76rem" }}>
+                    Adresler son girilen bağlantıyla dolu gelir; değiştirip güncellediğinizde yeni adres hatırlanır.
+                  </span>
+                </div>
+
                 <div className="text-muted" style={{ fontSize: "0.76rem" }}>
-                  Güncellemek istediğiniz listelerin güncel adreslerini girin; diğer listelerin seçimini kaldırın.
+                  <strong>Yeni Liste Ekle:</strong> MASAK sitesinde yeni bir liste yayımlanırsa (ör. <strong>D</strong>) buradan
+                  kısa bir kod, açıklama ve listenin Excel adresini girerek ekleyebilirsiniz. Güncelle tuşuna basıldığında
+                  liste indirilip kaydedilir; kod, açıklama ve adres sonraki açılışlarda hatırlanır. Güncellemek
+                  istemediğiniz listelerin seçimini kaldırmanız yeterlidir.
                 </div>
               </div>
             )}
@@ -310,7 +495,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
                             )}
                           </td>
                           <td style={{ width: "70px" }} className="fw-semibold">
-                            {s.listeKod === "3AB" ? "3.A-B" : s.listeKod}
+                            {masakKodEtiketi(s.listeKod)}
                           </td>
                           <td>
                             {s.durum === "basarili" ? (
@@ -378,7 +563,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
                     gecmis.map((g, idx) => (
                       <tr key={g.guncellemeId} style={{ backgroundColor: idx % 2 === 1 ? "#f9fbfd" : "#ffffff" }}>
                         <td className="py-1 px-2 text-nowrap">{masakTarihSaat(g.baslamaZamani)}</td>
-                        <td className="py-1 px-2">{g.listeKod === "3AB" ? "3.A-B" : g.listeKod}</td>
+                        <td className="py-1 px-2">{masakKodEtiketi(g.listeKod)}</td>
                         <td className="py-1 px-2">
                           {g.durum === "BASARILI" ? (
                             <span className="text-success">Başarılı</span>
@@ -404,7 +589,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
         <Button
           variant="outline-primary"
           size="sm"
-          disabled={guncelleniyor}
+          disabled={mesgul}
           onClick={() => {
             onHide();
             navigate("/ayarlar/masak-dondurulanlar");
@@ -414,7 +599,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
         </Button>
 
         <div className="d-flex align-items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={onHide} disabled={guncelleniyor}>
+          <Button variant="secondary" size="sm" onClick={onHide} disabled={mesgul}>
             Kapat
           </Button>
           <Button

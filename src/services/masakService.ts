@@ -5,15 +5,34 @@ import { apiClient } from "./apiClient";
  * Backend: /api/v1/masak — veriler TODVZ_MASAK_LISTE tablosundan okunur.
  */
 
-export type MasakListeKod = "A" | "B" | "C" | "3AB";
+/**
+ * Liste kodu. Standart dört liste (A, B, C, 3AB) sabittir; kullanıcı ekrandan yeni liste
+ * (ör. "D") ekleyebildiği için serbest metindir. Kurallar: büyük harf/rakam, 1-10 karakter.
+ */
+export type MasakListeKod = string;
+
+export type MasakStandartListeKod = "A" | "B" | "C" | "3AB";
+
+export const MASAK_STANDART_KODLAR: MasakStandartListeKod[] = ["A", "B", "C", "3AB"];
+
+export const MASAK_LISTE_KOD_DESENI = /^[A-Z0-9][A-Z0-9._-]{0,9}$/;
+
+export const masakListeKodGecerliMi = (kod?: string | null): boolean =>
+  !!kod && MASAK_LISTE_KOD_DESENI.test(kod);
+
+export const masakStandartListeMi = (kod?: string | null): boolean =>
+  !!kod && (MASAK_STANDART_KODLAR as string[]).includes(kod);
 
 export interface MasakListeDurumu {
   listeKod: MasakListeKod;
   listeAdi: string | null;
   kayitSayisi: number;
   sonGuncelleme: string | null;
+  /** Son girilen (denenen) adres; standart listede hiç denenmemişse varsayılan adres */
   kaynakUrl: string | null;
   kaynakHash: string | null;
+  /** true: kullanıcı tanımlı liste; ekrandan silinebilir */
+  ozel?: boolean;
 }
 
 export interface MasakDurumSonucu {
@@ -25,6 +44,8 @@ export interface MasakDurumSonucu {
 export interface MasakKaynakGirdi {
   listeKod: MasakListeKod;
   url?: string | null;
+  /** Kullanıcı tanımlı listelerde ekranda girilen ad / açıklama */
+  listeAdi?: string | null;
 }
 
 export interface MasakListeSonucu {
@@ -126,12 +147,23 @@ export class MasakService {
     return res.data;
   }
 
-  /** Seçilen listeleri indirip tabloya yazar */
+  /**
+   * Seçilen listeleri indirip tabloya yazar.
+   * `kaynaklar` verilmezse tüm listeler son girilen adresleriyle güncellenir.
+   */
   public static async guncelle(kaynaklar?: MasakKaynakGirdi[]): Promise<MasakGuncellemeRaporu> {
     const res = await apiClient.post<MasakGuncellemeRaporu>(
       "/masak/guncelle",
       { kaynaklar },
       { timeoutMs: GUNCELLEME_TIMEOUT_MS }
+    );
+    return res.data;
+  }
+
+  /** Kullanıcı tanımlı bir listeyi verisi ve geçmişiyle kaldırır (standart listeler reddedilir) */
+  public static async sil(listeKod: MasakListeKod): Promise<{ silinenKayit: number; silinenGecmis: number }> {
+    const res = await apiClient.delete<{ silinenKayit: number; silinenGecmis: number }>(
+      `/masak/liste/${encodeURIComponent(listeKod)}`
     );
     return res.data;
   }
@@ -191,6 +223,10 @@ export const masakTarihSaat = (iso?: string | null): string => {
     minute: "2-digit",
   });
 };
+
+/** Ekranda gösterilen kısa kod: "3AB" → "3.A-B", diğerleri olduğu gibi */
+export const masakKodEtiketi = (kod?: string | null): string =>
+  !kod ? "-" : kod === "3AB" ? "3.A-B" : kod;
 
 /** 2307 → "2.307" */
 export const masakSayi = (n?: number | null): string =>
