@@ -196,21 +196,20 @@ export class NumeratorSqlRepository {
       const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
       const onuneSifirKoy = data.onuneSifirKoy !== false;
 
-      logger.info(
-        `[Numerator Save] Kaydediliyor: TUR=${tur}, YAZICI_ID=${cleanYaziciId}, ONEK='${onek}', BASLANGIC=${baslangic}, BITIS=${bitis}, UZUNLUK=${uzunluk}, ONUNE_SIFIR_KOY=${onuneSifirKoy ? 1 : 0}`
-      );
+      const delReq = pool.request();
+      delReq.input("TUR", sql.TinyInt, tur);
+      await delReq.query(`DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;`);
 
-      request.input("YAZICI_ID", sql.Int, cleanYaziciId);
-      request.input("TUR", sql.TinyInt, tur);
-      request.input("ONEK", sql.VarChar(50), onek);
-      request.input("BASLANGIC", sql.Int, baslangic);
-      request.input("BITIS", sql.Int, bitis);
-      request.input("UZUNLUK", sql.Int, uzunluk);
-      request.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
+      const insertReq = pool.request();
+      insertReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
+      insertReq.input("TUR", sql.TinyInt, tur);
+      insertReq.input("ONEK", sql.VarChar(50), onek || "");
+      insertReq.input("BASLANGIC", sql.Int, baslangic);
+      insertReq.input("BITIS", sql.Int, bitis);
+      insertReq.input("UZUNLUK", sql.Int, uzunluk);
+      insertReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
 
-      const upsertQuery = `
-        DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;
-
+      const insertQuery = `
         INSERT INTO [dbo].[TODVZ_NUMERATOR] (
           [YAZICI_ID],
           [TUR],
@@ -231,7 +230,7 @@ export class NumeratorSqlRepository {
         );
       `;
 
-      await request.query(upsertQuery);
+      await insertReq.query(insertQuery);
 
       const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, cleanYaziciId, dbContext);
       if (!saved) {

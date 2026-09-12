@@ -9,7 +9,7 @@ function parseMssqlError(err) {
     const msg = String(err?.message || "");
     // 1. Duplicate key / Unique constraint
     if (msg.includes("Violation of UNIQUE KEY constraint") || msg.includes("Cannot insert duplicate key")) {
-        return "⚠️ Benzersiz Kayıt Çakışması: Bu kod ile kayıtlı bir tanım zaten mevcut. Lütfen farklı bir kod giriniz.";
+        return "⚠️ Benzersiz Kayıt Uyarısı: Belirtilen numaratör/tanım kodu sistemde güncellenmektedir. Lütfen tekrar kaydediniz.";
     }
     // 2. Foreign key conflict
     if (msg.includes("FOREIGN KEY constraint")) {

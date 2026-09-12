@@ -47,10 +47,6 @@ export class NumeratorService {
     }
     static async deleteNumerator(id, dbContext) {
         const { tur, yaziciId } = parseNumeratorId(id);
-        const existing = await NumeratorSqlRepository.findByTurAndYazici(tur, yaziciId, dbContext);
-        if (!existing) {
-            throw ApiError.notFound(`Silinecek numaratör tanımı bulunamadı.`);
-        }
         return NumeratorSqlRepository.delete(tur, yaziciId, dbContext);
     }
 }

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Alert, Spinner } from "react-bootstrap";
-import { IconCheck, IconAlertCircle, IconNumbers } from "@tabler/icons-react";
+import { Alert, Spinner, Button } from "react-bootstrap";
+import { IconCheck, IconAlertCircle, IconNumbers, IconBinoculars, IconX } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { NumeratorService, NumeratorItem } from "../../services/numeratorService";
+import { PrinterService, YaziciItem } from "../../services/printerService";
+import { LookupModal, LookupColumn } from "../../components/common/LookupModal";
 
 interface StandardNumeratorDef {
   tur: number;
@@ -43,6 +45,8 @@ interface NumeratorRowState {
   tur: number;
   ad: string;
   isActive: boolean;
+  yaziciId: number | null;
+  yaziciAdi?: string | null;
   onek: string;
   baslangic: number | string;
   bitis: number | string;
@@ -54,23 +58,69 @@ interface NumeratorRowState {
 
 export const NumeratorDefinitionsPage: React.FC = () => {
   const [rows, setRows] = useState<NumeratorRowState[]>([]);
+  const [yazicilar, setYazicilar] = useState<YaziciItem[]>([]);
+  const [showYaziciModal, setShowYaziciModal] = useState<boolean>(false);
+  const [selectedTurForYazici, setSelectedTurForYazici] = useState<number | null>(null);
+
   const [activeCell, setActiveCell] = useState<{ tur: number; col: string } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
 
+  const yaziciColumns: LookupColumn<YaziciItem>[] = [
+    {
+      header: "Sıra No",
+      width: "80px",
+      align: "center",
+      render: (item) => item.siraNo ?? item.id,
+    },
+    {
+      header: "Yazıcı Adı",
+      width: "220px",
+      align: "left",
+      render: (item) => <strong>{item.ad}</strong>,
+    },
+    {
+      header: "Cihaz Adı",
+      width: "200px",
+      align: "left",
+      render: (item) => item.cihazAdi || <span className="text-muted">-</span>,
+    },
+    {
+      header: "Bağlantı Noktası",
+      width: "150px",
+      align: "left",
+      render: (item) => item.baglantiNoktasi || <span className="text-muted">-</span>,
+    },
+  ];
+
+  const yaziciFilterFn = (item: YaziciItem, term: string): boolean => {
+    const t = term.toLowerCase().trim();
+    if (!t) return true;
+    return (
+      (item.ad || "").toLowerCase().includes(t) ||
+      (item.cihazAdi || "").toLowerCase().includes(t) ||
+      (item.baglantiNoktasi || "").toLowerCase().includes(t) ||
+      String(item.siraNo || "").includes(t) ||
+      String(item.id || "").includes(t)
+    );
+  };
+
   const loadData = async () => {
     try {
       setIsLoading(true);
       setAlertError(null);
 
-      const dbList = await NumeratorService.getNumerators().catch(() => []);
+      const [dbList, yaziciList] = await Promise.all([
+        NumeratorService.getNumerators().catch(() => []),
+        PrinterService.getYazicilar().catch(() => []),
+      ]);
+      setYazicilar(yaziciList);
+
       const dbMap = new Map<number, NumeratorItem>();
       (dbList || []).forEach((item) => {
-        if (item.yaziciId === null || item.yaziciId === undefined) {
-          dbMap.set(Number(item.tur), item);
-        }
+        dbMap.set(Number(item.tur), item);
       });
 
       const initialRows: NumeratorRowState[] = STANDARD_NUMERATORS.map((std) => {
@@ -80,6 +130,8 @@ export const NumeratorDefinitionsPage: React.FC = () => {
             tur: std.tur,
             ad: std.ad,
             isActive: true,
+            yaziciId: found.yaziciId ?? null,
+            yaziciAdi: found.yaziciAdi ?? null,
             onek: found.onek || "",
             baslangic: found.baslangic ?? 0,
             bitis: found.bitis && found.bitis > 0 ? found.bitis : "",
@@ -93,6 +145,8 @@ export const NumeratorDefinitionsPage: React.FC = () => {
             tur: std.tur,
             ad: std.ad,
             isActive: false,
+            yaziciId: null,
+            yaziciAdi: null,
             onek: "",
             baslangic: "",
             bitis: "",
@@ -106,14 +160,13 @@ export const NumeratorDefinitionsPage: React.FC = () => {
 
       // Include any non-standard numerators existing in DB
       (dbList || []).forEach((item) => {
-        if (
-          (item.yaziciId === null || item.yaziciId === undefined) &&
-          !STANDARD_NUMERATORS.some((s) => s.tur === Number(item.tur))
-        ) {
+        if (!STANDARD_NUMERATORS.some((s) => s.tur === Number(item.tur))) {
           initialRows.push({
             tur: Number(item.tur),
             ad: `Numaratör #${item.tur}`,
             isActive: true,
+            yaziciId: item.yaziciId ?? null,
+            yaziciAdi: item.yaziciAdi ?? null,
             onek: item.onek || "",
             baslangic: item.baslangic ?? 0,
             bitis: item.bitis && item.bitis > 0 ? item.bitis : "",
@@ -138,22 +191,32 @@ export const NumeratorDefinitionsPage: React.FC = () => {
   }, []);
 
   const handleToggleActive = (tur: number) => {
+    const currentRow = rows.find((r) => r.tur === tur);
+    const willBeActive = !currentRow?.isActive;
+
+    if (!willBeActive) {
+      // Unchecked tick: immediately delete from DB so no old record remains
+      NumeratorService.deleteNumerator(`${tur}_null`).catch(() => {});
+    }
+
     setRows((prev) =>
       prev.map((r) => {
         if (r.tur !== tur) return r;
-        const willBeActive = !r.isActive;
         const std = STANDARD_NUMERATORS.find((s) => s.tur === tur);
         const defUzunluk = std ? std.defaultUzunluk : 10;
 
         return {
           ...r,
           isActive: willBeActive,
+          yaziciId: willBeActive ? r.yaziciId : null,
+          yaziciAdi: willBeActive ? r.yaziciAdi : null,
           onek: willBeActive ? r.onek : "",
           baslangic: willBeActive ? (r.baslangic !== "" ? r.baslangic : 1) : "",
           bitis: willBeActive ? r.bitis : "",
           uzunluk: willBeActive ? (r.uzunluk !== "" ? r.uzunluk : defUzunluk) : "",
           onuneSifirKoy: willBeActive ? true : false,
           isDirty: true,
+          existingId: willBeActive ? r.existingId : null,
         };
       })
     );
@@ -161,7 +224,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
 
   const handleFieldChange = (
     tur: number,
-    field: "onek" | "baslangic" | "bitis" | "uzunluk" | "onuneSifirKoy",
+    field: "onek" | "baslangic" | "bitis" | "uzunluk" | "onuneSifirKoy" | "yaziciId" | "yaziciAdi",
     val: any
   ) => {
     setRows((prev) =>
@@ -174,6 +237,20 @@ export const NumeratorDefinitionsPage: React.FC = () => {
         };
       })
     );
+  };
+
+  const handleSelectYazici = (yazici: YaziciItem) => {
+    if (selectedTurForYazici !== null) {
+      handleFieldChange(selectedTurForYazici, "yaziciId", yazici.id);
+      handleFieldChange(selectedTurForYazici, "yaziciAdi", yazici.ad);
+      setShowYaziciModal(false);
+      setSelectedTurForYazici(null);
+    }
+  };
+
+  const handleClearYazici = (tur: number) => {
+    handleFieldChange(tur, "yaziciId", null);
+    handleFieldChange(tur, "yaziciAdi", null);
   };
 
   const handleSaveAll = async () => {
@@ -199,8 +276,8 @@ export const NumeratorDefinitionsPage: React.FC = () => {
 
           await NumeratorService.saveNumerator({
             tur: row.tur,
-            yaziciId: null,
-            yaziciOrtakAlan: true,
+            yaziciId: row.yaziciId ?? null,
+            yaziciOrtakAlan: row.yaziciId === null || row.yaziciId === undefined,
             onek: cleanOnek,
             baslangic: cleanBaslangic,
             bitis: cleanBitis,
@@ -208,8 +285,9 @@ export const NumeratorDefinitionsPage: React.FC = () => {
             onuneSifirKoy: row.onuneSifirKoy,
           });
           savedCount++;
-        } else if (!row.isActive && row.existingId) {
-          await NumeratorService.deleteNumerator(row.existingId).catch(() => {});
+        } else {
+          // If inactive, ensure it is deleted cleanly
+          await NumeratorService.deleteNumerator(`${row.tur}_null`).catch(() => {});
           deletedCount++;
         }
       }
@@ -317,7 +395,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                   <th
                     style={{
                       width: "auto",
-                      minWidth: "220px",
+                      minWidth: "200px",
                       padding: "3px 10px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -337,7 +415,19 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                   />
                   <th
                     style={{
-                      width: "110px",
+                      width: "160px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Yazıcı
+                  </th>
+                  <th
+                    style={{
+                      width: "100px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -349,7 +439,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "150px",
+                      width: "130px",
                       padding: "3px 8px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -361,7 +451,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "150px",
+                      width: "130px",
                       padding: "3px 8px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -373,7 +463,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "90px",
+                      width: "80px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -385,7 +475,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "120px",
+                      width: "100px",
                       padding: "3px 6px",
                       borderBottom: "1px solid #8ab8ee",
                       textAlign: "center",
@@ -449,7 +539,67 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* 3. Önek */}
+                      {/* 3. Yazıcı Seçimi (Dürbünlü) */}
+                      <td
+                        style={{
+                          padding: "0 4px",
+                          borderRight: "1px solid #e0e0e0",
+                          backgroundColor: "#ffffff",
+                        }}
+                      >
+                        <div className="d-flex align-items-center justify-content-between" style={{ height: "23px" }}>
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              color: row.yaziciId ? "#0f172a" : "#64748b",
+                              fontWeight: row.yaziciId ? 600 : 400,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              flex: 1,
+                              paddingLeft: "4px",
+                            }}
+                            title={row.yaziciAdi ? `Yazıcı: ${row.yaziciAdi}` : ""}
+                          >
+                            {row.yaziciAdi || ""}
+                          </span>
+                          <div className="d-flex align-items-center gap-1">
+                            {row.yaziciId && isRowActive && (
+                              <button
+                                type="button"
+                                className="btn btn-sm p-0 text-danger"
+                                style={{ border: "none", background: "transparent", lineHeight: 1 }}
+                                title="Yazıcı seçimini kaldır"
+                                onClick={() => handleClearYazici(row.tur)}
+                              >
+                                <IconX size={13} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary p-0 d-flex align-items-center justify-content-center"
+                              style={{
+                                width: "20px",
+                                height: "20px",
+                                border: "1px solid #cbd5e1",
+                                backgroundColor: isRowActive ? "#f8fafc" : "#f1f5f9",
+                                cursor: isRowActive ? "pointer" : "default",
+                                borderRadius: "3px",
+                              }}
+                              disabled={!isRowActive}
+                              title="Yazıcı Seç (Dürbün)"
+                              onClick={() => {
+                                setSelectedTurForYazici(row.tur);
+                                setShowYaziciModal(true);
+                              }}
+                            >
+                              <IconBinoculars size={13} color={isRowActive ? "#2563eb" : "#94a3b8"} />
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 4. Önek */}
                       <td
                         style={{
                           padding: 0,
@@ -479,7 +629,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* 4. Başlangıç No */}
+                      {/* 5. Başlangıç No */}
                       <td
                         style={{
                           padding: 0,
@@ -524,7 +674,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* 5. Bitiş No */}
+                      {/* 6. Bitiş No */}
                       <td
                         style={{
                           padding: 0,
@@ -569,7 +719,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* 6. Hane Uzunluğu */}
+                      {/* 7. Hane Uzunluğu */}
                       <td
                         style={{
                           padding: 0,
@@ -610,7 +760,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* 7. Önünde Sıfır */}
+                      {/* 8. Önünde Sıfır */}
                       <td
                         style={{
                           padding: 0,
@@ -640,7 +790,38 @@ export const NumeratorDefinitionsPage: React.FC = () => {
             </table>
           )}
         </div>
+
+        {/* Alt Bilgi Çubuğu */}
+        <div
+          className="d-flex justify-content-between align-items-center px-3 py-1 bg-light border-top"
+          style={{ fontSize: "12px", color: "#475569" }}
+        >
+          <div>
+            Toplam: <strong>{rows.length}</strong> tanım | Aktif Numaratör:{" "}
+            <strong>{rows.filter((r) => r.isActive).length}</strong>
+          </div>
+          <div>
+            <span className="text-muted">
+              Yazıcı seçmek için <IconBinoculars size={13} className="text-primary mx-1" /> ikonunu kullanabilirsiniz.
+            </span>
+          </div>
+        </div>
       </div>
+
+      {/* Yazıcı Seçim Modal'ı (Dürbün) */}
+      <LookupModal<YaziciItem>
+        show={showYaziciModal}
+        onHide={() => {
+          setShowYaziciModal(false);
+          setSelectedTurForYazici(null);
+        }}
+        title="Yazıcı Seçimi"
+        searchPlaceholder="Yazıcı adı, cihaz adı veya bağlantı noktası ile arayın..."
+        items={yazicilar}
+        columns={yaziciColumns}
+        filterFn={yaziciFilterFn}
+        onSelect={handleSelectYazici}
+      />
     </div>
   );
 };
