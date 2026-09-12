@@ -68,10 +68,12 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
     const N = () => doc.font(font.normal), K = () => doc.font(font.kalin);
     const sol = kenar, genislik = doc.page.width - 2 * kenar;
     const altSinir = doc.page.height - kenar - 22; // altlık payı
-    const kolonlar = g.tanim.kolonlar;
+    // PDF'te yalnızca pdf !== false kolonlar; ayrıntı kolonları ekran ve Excel'de kalır (kısa-öz çıktı)
+    const kolonlar = g.tanim.kolonlar.filter(k => k.pdf !== false);
     const toplamG = kolonlar.reduce((t, k) => t + (k.g || 1), 0);
     const kolonG = kolonlar.map(k => ((k.g || 1) / toplamG) * genislik);
-    const satirH = 14, boyut = 7.5;
+    const satirH = 17, boyut = 8;
+    let zebra = 0;
     const ustSayfa = () => kenar;
 
     /** Metni hücre genişliğine sığdırır: yazı boyutunu 5.5'e kadar küçültür, yine sığmazsa kırpar. Satır kaymasını önler. */
@@ -88,26 +90,33 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
 
     const sayfaBasligi = () => {
       y = ustSayfa();
-      K().fontSize(11).fillColor("#000").text(g.firma.ad || "", sol, y, { width: genislik * 0.6 });
-      N().fontSize(7.5).fillColor("#444").text(g.firma.vkn ? `VKN/TCKN: ${g.firma.vkn}` : "", sol, y + 14, { width: genislik * 0.6 });
-      K().fontSize(12).fillColor("#000").text(g.tanim.ad, sol, y, { width: genislik, align: "right" });
-      N().fontSize(7.5).fillColor("#444").text(g.filtreOzeti || "", sol, y + 15, { width: genislik, align: "right" });
-      y += 30;
-      doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(0.8).strokeColor("#000").stroke();
-      y += 4;
+      // Sade başlık: solda rapor adı + filtre özeti, sağda firma (küçük)
+      K().fontSize(14).fillColor("#111").text(g.tanim.ad, sol, y, { width: genislik * 0.65 });
+      N().fontSize(8).fillColor("#666").text(g.filtreOzeti || "", sol, y + 18, { width: genislik * 0.65 });
+      // Firma adı tek satır: sığmazsa küçülür, yine sığmazsa kırpılır (alt satıra taşıp VKN'ye binmesin)
+      { const g35 = genislik * 0.35; let b = 8, t = g.firma.ad || "";
+        while (N().fontSize(b).widthOfString(t) > g35 && b > 6) b -= 0.5;
+        while (t.length > 1 && N().fontSize(b).widthOfString(t + "…") > g35) t = t.slice(0, -1) + (t.endsWith("…") ? "" : "");
+        if (N().fontSize(b).widthOfString(t) > g35) t = t.slice(0, -1) + "…";
+        N().fontSize(b).fillColor("#333").text(t, sol + genislik * 0.65, y + 2, { width: g35, align: "right", lineBreak: false }); }
+      N().fontSize(7).fillColor("#888").text(g.firma.vkn ? `VKN/TCKN ${g.firma.vkn}` : "", sol + genislik * 0.65, y + 14, { width: genislik * 0.35, align: "right" });
+      y += 34;
+      doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(1).strokeColor("#222").stroke();
+      y += 6;
+      zebra = 0;
       kolonBasliklari();
     };
 
     const kolonBasliklari = () => {
-      doc.rect(sol, y, genislik, satirH).fillColor("#e9ecef").fill();
       let x = sol;
-      K().fontSize(boyut).fillColor("#000");
+      doc.fillColor("#333");
       kolonlar.forEach((k, i) => {
-        hucre(k.baslik, x, y, kolonG[i], k.hiza || (sayisal(k.bicim) ? "right" : "left"), true);
+        hucre(k.baslik, x, y, kolonG[i], k.hiza || (sayisal(k.bicim) ? "right" : "left"), true, boyut - 0.5);
         x += kolonG[i];
       });
       y += satirH;
-      doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(0.5).strokeColor("#666").stroke();
+      doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(0.6).strokeColor("#555").stroke();
+      y += 2;
     };
 
     const yeniSayfaGerekliyse = (ihtiyac = satirH) => {
@@ -116,15 +125,16 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
 
     const satirYaz = (satir: Record<string, any>, kalin = false, arka?: string) => {
       yeniSayfaGerekliyse();
-      if (arka) { doc.rect(sol, y, genislik, satirH).fillColor(arka).fill(); }
+      // Çizgi yerine her ikinci satırda çok açık zemin: göz yormaz, sayfa sade kalır
+      const zemin = arka || (zebra++ % 2 === 1 ? "#f6f7f9" : undefined);
+      if (zemin) { doc.rect(sol, y, genislik, satirH).fillColor(zemin).fill(); }
       let x = sol;
-      (kalin ? K() : N()).fontSize(boyut).fillColor("#000");
+      doc.fillColor("#111");
       kolonlar.forEach((k, i) => {
         hucre(bicimle(satir[k.anahtar], k.bicim), x, y, kolonG[i], k.hiza || (sayisal(k.bicim) ? "right" : "left"), kalin);
         x += kolonG[i];
       });
       y += satirH;
-      doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(0.25).strokeColor("#ccc").stroke();
     };
 
     const toplamSatiri = (satirlar: Record<string, any>[], etiket: string, arka: string) => {
@@ -160,17 +170,18 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
         const anahtar = g.satirlar[i][grup.anahtar];
         const uyeler: Record<string, any>[] = [];
         while (i < g.satirlar.length && g.satirlar[i][grup.anahtar] === anahtar) uyeler.push(g.satirlar[i++]);
-        yeniSayfaGerekliyse(satirH * 2);
-        doc.rect(sol, y, genislik, satirH).fillColor("#f3f4f6").fill();
-        doc.fillColor("#000"); hucre(doldur(grup.baslik, uyeler[0]), sol, y, genislik, "left", true, boyut + 0.5);
+        yeniSayfaGerekliyse(satirH * 3);
+        y += 6; zebra = 0;
+        doc.fillColor("#111"); hucre(doldur(grup.baslik, uyeler[0]), sol, y, genislik, "left", true, boyut + 1);
         y += satirH;
+        doc.moveTo(sol, y - 2).lineTo(sol + genislik, y - 2).lineWidth(0.4).strokeColor("#999").stroke();
         for (const s of uyeler) satirYaz(s);
-        if (grup.altToplam !== false && kolonlar.some(k => k.toplam)) toplamSatiri(uyeler, `Ara toplam (${uyeler.length})`, "#f8f9fa");
+        if (grup.altToplam !== false && kolonlar.some(k => k.toplam)) toplamSatiri(uyeler, "Ara toplam", "#eef0f3");
       }
-      if (kolonlar.some(k => k.toplam)) toplamSatiri(g.satirlar, `GENEL TOPLAM (${g.satirlar.length} kayıt)`, "#e2e6ea");
+      if (kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
     } else {
       for (const s of g.satirlar) satirYaz(s);
-      if (kolonlar.some(k => k.toplam)) toplamSatiri(g.satirlar, `GENEL TOPLAM (${g.satirlar.length} kayıt)`, "#e2e6ea");
+      if (kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
     }
 
     const dipnot = [g.tanim.dipnot, g.ekDipnot].filter(Boolean).join("\n");

@@ -40,13 +40,15 @@
       "baslik": "Fiş",
       "g": 0.9,
       "bicim": "tam",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "miktar",
       "baslik": "Miktar",
       "g": 2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "tutar",

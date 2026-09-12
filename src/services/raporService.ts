@@ -8,7 +8,7 @@ import { apiClient, getEffectiveApiUrl } from "./apiClient";
 export type RaporParametreTipi = "tarih" | "tarihAralik" | "saatAralik" | "vezne" | "para" | "cari" | "fisTipi" | "kurSecimi" | "kmt" | "metin";
 export interface RaporParametre { ad: string; etiket: string; tip: RaporParametreTipi; zorunlu?: boolean; varsayilan?: string | number | null }
 export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam";
-export interface RaporKolon { anahtar: string; baslik: string; g: number; hiza?: "left" | "right" | "center"; bicim?: RaporBicim; toplam?: boolean }
+export interface RaporKolon { anahtar: string; baslik: string; g: number; hiza?: "left" | "right" | "center"; bicim?: RaporBicim; toplam?: boolean; pdf?: boolean }
 export interface RaporTanim {
   kod: string; ad: string; aciklama?: string; kagit: "A4" | "A4-yatay";
   parametreler: RaporParametre[]; kolonlar: RaporKolon[];

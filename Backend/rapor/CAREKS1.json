@@ -39,7 +39,8 @@
       "anahtar": "vezneKod",
       "baslik": "Vezne",
       "g": 1,
-      "hiza": "center"
+      "hiza": "center",
+      "pdf": false
     },
     {
       "anahtar": "borc",

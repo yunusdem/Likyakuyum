@@ -34,7 +34,8 @@
     {
       "anahtar": "pasaportNo",
       "baslik": "Pasaport",
-      "g": 1.4
+      "g": 1.4,
+      "pdf": false
     },
     {
       "anahtar": "telefon",
@@ -44,7 +45,8 @@
     {
       "anahtar": "eposta",
       "baslik": "E-posta",
-      "g": 2.4
+      "g": 2.4,
+      "pdf": false
     },
     {
       "anahtar": "adres",

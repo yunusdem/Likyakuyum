@@ -32,7 +32,8 @@
     {
       "anahtar": "paraAd",
       "baslik": "Para adı",
-      "g": 2.2
+      "g": 2.2,
+      "pdf": false
     },
     {
       "anahtar": "alisMiktar",
@@ -65,7 +66,8 @@
       "baslik": "Satış maliyeti",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "brutKar",
@@ -99,13 +101,15 @@
       "anahtar": "ortMaliyet",
       "baslik": "Ort. maliyet",
       "g": 1.5,
-      "bicim": "kur"
+      "bicim": "kur",
+      "pdf": false
     },
     {
       "anahtar": "kalanMiktar",
       "baslik": "Kalan",
       "g": 1.6,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     }
   ],
   "dipnot": "Yöntem: ağırlıklı ortalama maliyet. Her alış, ilgili dövizin stokuna alış tutarıyla eklenir; her satışta o andaki ortalama maliyet (toplam maliyet ÷ stok miktarı) ile satış maliyeti hesaplanır. Brüt kâr = satış TL − satış maliyeti. Net kâr = brüt kâr + komisyon − (BSMV + KMV + KDV). Ortalama maliyet kayıtların başından itibaren yürütülür; dönem dışındaki hareketler yalnızca maliyeti etkiler, kâra yazılmaz. Stok sıfırken yapılan satışlarda maliyet olarak satış kuru alınır (kâr 0). İptal fişler kapsam dışıdır."

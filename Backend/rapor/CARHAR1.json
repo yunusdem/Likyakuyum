@@ -37,7 +37,8 @@
     {
       "anahtar": "cariKod",
       "baslik": "Kod",
-      "g": 1.4
+      "g": 1.4,
+      "pdf": false
     },
     {
       "anahtar": "cariAd",
@@ -64,7 +65,8 @@
       "anahtar": "vezneKod",
       "baslik": "Vezne",
       "g": 1,
-      "hiza": "center"
+      "hiza": "center",
+      "pdf": false
     },
     {
       "anahtar": "borc",

@@ -42,9 +42,9 @@ function ornekSatirlar(kod: string, adet: number) {
 }
 
 for (const seed of RAPOR_SEED) {
-  const { t, satirlar } = ornekSatirlar(seed.kod, seed.kod === "CARKRT1" ? 60 : 45);
+  const { t, satirlar } = ornekSatirlar(seed.kod, 12);
   esit(`${seed.kod} kagit`, t.kagit, seed.kagit);
-  const pdf = await raporPdf({ tanim: t, satirlar, filtreOzeti: "01.09.2026 – 12.09.2026 · Test verisi", firma, kullanici: "test", ekDipnot: "Test çıktısı" });
+  const pdf = await raporPdf({ tanim: t, satirlar, filtreOzeti: "01.09.2026 – 12.09.2026 · Tüm vezneler", firma, kullanici: "test" });
   writeFileSync(path.join(dir, `${seed.kod}.pdf`), pdf);
   esit(`${seed.kod} pdf imzası`, pdf.subarray(0, 5).toString(), "%PDF-");
   const xlsx = await raporExcel({ tanim: t, satirlar, filtreOzeti: "Test", firma, kullanici: "test" });

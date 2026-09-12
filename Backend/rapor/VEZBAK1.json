@@ -37,7 +37,8 @@
     {
       "anahtar": "paraAd",
       "baslik": "Para adı",
-      "g": 3
+      "g": 3,
+      "pdf": false
     },
     {
       "anahtar": "miktar",

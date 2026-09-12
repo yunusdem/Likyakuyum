@@ -34,6 +34,8 @@ export interface RaporKolon {
   hiza?: "left" | "right" | "center";
   bicim?: RaporBicim;
   toplam?: boolean;           // genel toplam ve grup alt toplamında toplanır
+  /** false → PDF'te basılmaz (ekran grid'i ve Excel'de kalır). PDF kısa ve öz tutulur (yönetici isteği 12.09.2026). */
+  pdf?: boolean;
 }
 
 export interface RaporTanim {

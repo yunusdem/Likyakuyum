@@ -67,7 +67,8 @@
       "anahtar": "hasOrani",
       "baslik": "Has oranı",
       "g": 1.4,
-      "bicim": "sayi4"
+      "bicim": "sayi4",
+      "pdf": false
     },
     {
       "anahtar": "hasKarsiligi",
