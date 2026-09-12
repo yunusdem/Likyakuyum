@@ -169,15 +169,14 @@ export class NumeratorSqlRepository {
   }
 
   /**
-   * Saves a numerator using explicit transaction: DELETE all for TUR, then INSERT fresh.
-   * Transaction ensures atomicity — no duplicate key possible under any circumstance.
+   * Saves a numerator by calling SODVZ_NUMERATOR_KAYDET stored procedure directly.
+   * The SP handles UPDATE (if exists) or INSERT (if not) internally.
    */
   public static async saveViaProcedure(
     data: NumeratorInputDto,
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<NumeratorModel> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-    const transaction = new sql.Transaction(pool);
 
     try {
       const MAX_SQL_INT = 2147483647;
@@ -195,31 +194,19 @@ export class NumeratorSqlRepository {
       const bitis = Math.min(MAX_SQL_INT, Math.max(0, toInt(data.bitis, 0)));
       const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
       const onuneSifirKoy = data.onuneSifirKoy !== false;
+      const yaziciOrtakAlan = cleanYaziciId === null ? 1 : 0;
 
-      await transaction.begin();
+      const request = pool.request();
+      request.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
+      request.input("YAZICI_ID", sql.Int, cleanYaziciId);
+      request.input("TUR", sql.TinyInt, tur);
+      request.input("ONEK", sql.VarChar(20), onek);
+      request.input("BASLANGIC", sql.Int, baslangic);
+      request.input("BITIS", sql.Int, bitis);
+      request.input("UZUNLUK", sql.Int, uzunluk);
+      request.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
 
-      // 1. Bu TUR'a ait tüm satırları sil
-      const delReq = new sql.Request(transaction);
-      delReq.input("TUR", sql.TinyInt, tur);
-      await delReq.query(`DELETE FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR;`);
-
-      // 2. Temiz INSERT — transaction içinde olduğu için araya başka kayıt giremez
-      const insReq = new sql.Request(transaction);
-      insReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
-      insReq.input("TUR", sql.TinyInt, tur);
-      insReq.input("ONEK", sql.VarChar(50), onek);
-      insReq.input("BASLANGIC", sql.Int, baslangic);
-      insReq.input("BITIS", sql.Int, bitis);
-      insReq.input("UZUNLUK", sql.Int, uzunluk);
-      insReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
-      await insReq.query(`
-        INSERT INTO [dbo].[TODVZ_NUMERATOR]
-          ([YAZICI_ID], [TUR], [ONEK], [BASLANGIC], [BITIS], [UZUNLUK], [ONUNE_SIFIR_KOY])
-        VALUES
-          (@YAZICI_ID, @TUR, @ONEK, @BASLANGIC, @BITIS, @UZUNLUK, @ONUNE_SIFIR_KOY);
-      `);
-
-      await transaction.commit();
+      await request.execute("SODVZ_NUMERATOR_KAYDET");
 
       const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, cleanYaziciId, dbContext);
       if (!saved) {
@@ -227,7 +214,6 @@ export class NumeratorSqlRepository {
       }
       return saved;
     } catch (error: any) {
-      try { await transaction.rollback(); } catch (_) {}
       logger.error("NumeratorSqlRepository.saveViaProcedure error:", error);
       const msg = error?.message || "Numaratör kaydedilemedi.";
       throw ApiError.internal(msg);
