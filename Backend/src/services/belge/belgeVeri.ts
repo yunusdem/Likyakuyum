@@ -87,8 +87,9 @@ export function fisBelgeVerisi(b: Record<string, any>, kod: string, s: BelgeVeri
   const miktar = sayi(b.MIKTAR);
   const kur = sayi(b.TL_KARSILIK_KURU ?? b.KUR);
   const usdKuru = sayi(b.DOLAR_KARSILIK_KURU ?? b.DOLAR_KURU ?? b.PricingExchangeRate);
-  const net = sayi(b.TaxInclusiveAmount ?? b.PayableAmount);
-  const tl = sayi(b.LineExtensionAmount ?? b.PayableAmount ?? net);
+  // XSLT görünümü yoksa fişin kendi tutarlarına düşülür (FIS_* kolonları fisDetay'dan gelir).
+  const net = sayi(b.TaxInclusiveAmount ?? b.PayableAmount ?? b.FIS_ODEME_TUTARI ?? b.FIS_TOPLAM_TUTAR);
+  const tl = sayi(b.LineExtensionAmount ?? b.PayableAmount ?? b.FIS_TOPLAM_TUTAR ?? net);
   const bsmv = sayi(b.TaxAmount ?? b.BMV);
   const tutar = {
     miktar, kod: temiz(b.PARA_KODU || b.CurrencyCode), kur, usdKuru,
@@ -114,7 +115,7 @@ export function fisBelgeVerisi(b: Record<string, any>, kod: string, s: BelgeVeri
     urunEtiketi: satim ? "Satılan Ürün" : "Satın Alınan Ürün",
     tarih: tarihYaz(tarihKaynak), saat: saatYaz(b.IssueTime || b.TARIH),
     dosyaNo: temiz(s.dosyaNo), istatistikNo: temiz(b.ISTATISTIK_NO || b.ISTATISTIK_KOD),
-    senaryo: temiz(b.ProfileId) || "EDOVIZBELGE", vezne: temiz(b.VEZNE_KODU),
+    senaryo: temiz(b.ProfileId) || "EDOVIZBELGE", vezne: temiz(b.VEZNE_KODU || b.FIS_VEZNE_KODU),
     firma, musteri, tutar,
     onizleme: s.onizleme, iptal: Number(b.IPTAL || 0) !== 0, hesapVkn, erisimAdresi,
     qrBuyuk, qrKucuk: erisimAdresi,
