@@ -8,6 +8,7 @@ const istekSema = z.object({
     fisId: z.coerce.number().int().positive().optional(),
     belgeNo: belgeNoSema.optional(),
     kod: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{1,20}$/).optional(),
+    bicim: z.enum(["a4", "80"]).optional(),
 }).refine(v => v.fisId || v.belgeNo, { message: "fisId veya belgeNo verilmelidir." });
 const listeSema = z.object({
     tip: z.coerce.number().int().min(0).max(1).optional(),
@@ -39,19 +40,21 @@ export class BelgeController {
             throw ApiError.badRequest("Başlangıç tarihi bitişten sonra olamaz.");
         return ApiResponse.ok(res, "Fişler listelendi.", await BelgeService.fisler(p.data, BelgeController.getDbContext(req)));
     });
-    /** GET /api/v1/belge/pdf?fisId=123 | ?belgeNo=DIA2026000000004 [&kod=ALFIS1] [&indir=1] */
+    /** GET /api/v1/belge/pdf?fisId=123 | ?belgeNo=DIA2026000000004 [&kod=ALFIS1] [&bicim=a4|80] [&indir=1] — indir=1 varsayılan bicim=80 */
     static pdf = asyncHandler(async (req, res) => {
         const p = istekSema.safeParse(req.query);
         if (!p.success)
             throw ApiError.badRequest(p.error.issues[0]?.message || "Belge isteği geçersiz.");
-        const s = await BelgeService.pdf(p.data, BelgeController.kullanici(req), BelgeController.getDbContext(req));
         const indir = ["1", "true", "evet"].includes(String(req.query.indir || "").toLowerCase());
+        const istek = { ...p.data, bicim: p.data.bicim || (indir ? "80" : "a4") };
+        const s = await BelgeService.pdf(istek, BelgeController.kullanici(req), BelgeController.getDbContext(req));
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `${indir ? "attachment" : "inline"}; filename="${s.belgeNo || "belge"}.pdf"`);
         res.setHeader("Content-Length", String(s.pdf.length));
         res.setHeader("Cache-Control", "no-store");
         res.setHeader("X-Belge-Kaynak", s.kaynak);
         res.setHeader("X-Belge-Onizleme", s.onizleme ? "1" : "0");
+        res.setHeader("X-Belge-Bicim", istek.bicim);
         return res.status(200).end(s.pdf);
     });
     /** POST /api/v1/belge/arsivle  { fisId | belgeNo, kod? } */

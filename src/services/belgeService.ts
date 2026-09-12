@@ -19,7 +19,8 @@ export interface BelgeFis {
 
 export interface BelgeFisListesi { toplam: number; sayfa: number; boyut: number; kayitlar: BelgeFis[] }
 
-export interface BelgeIstek { fisId?: number | null; belgeNo?: string | null; kod?: string | null }
+/** bicim: "a4" ekran önizlemesi · "80" yazdır/indir için 80 mm dikey düzen. */
+export interface BelgeIstek { fisId?: number | null; belgeNo?: string | null; kod?: string | null; bicim?: "a4" | "80" }
 
 export interface BelgeArsivSonucu { belgeNo: string; sablon: string; kaynak: "ICE" | "SABLON"; onizleme: boolean; yol: string; boyut: number }
 
@@ -31,6 +32,7 @@ const sorgu = (i: BelgeIstek, ek: Record<string, string> = {}) => {
   if (i.fisId) p.set("fisId", String(i.fisId));
   if (i.belgeNo) p.set("belgeNo", i.belgeNo.trim().toUpperCase());
   if (i.kod) p.set("kod", i.kod);
+  if (i.bicim) p.set("bicim", i.bicim);
   return p.toString();
 };
 
@@ -86,9 +88,9 @@ export const BelgeService = {
     return { url: URL.createObjectURL(p.blob), kaynak: p.kaynak, onizleme: p.onizleme };
   },
 
-  /** PDF'i kullanıcının bilgisayarına indirir (yönetici kararı 4). */
+  /** PDF'i kullanıcının bilgisayarına indirir (yönetici kararı 4) — 80 mm dikey düzen. */
   async indir(i: BelgeIstek, dosyaAdi: string): Promise<void> {
-    const p = await pdfGetir(`/belge/pdf?${sorgu(i, { indir: "1" })}`);
+    const p = await pdfGetir(`/belge/pdf?${sorgu({ ...i, bicim: i.bicim || "80" }, { indir: "1" })}`);
     const url = URL.createObjectURL(p.blob);
     try {
       const a = document.createElement("a");

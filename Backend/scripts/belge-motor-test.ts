@@ -55,7 +55,7 @@ esit("arsiv yolu", yol.replace(/\\/g, "/"), "D:/arsiv/R2016_dvz/2026/09/DIS20260
 
 // 4) PDF üretimi
 const dir = path.resolve("../tmp/belge-test"); mkdirSync(dir, { recursive: true });
-for (const [kod, veri] of [["STFIS1", v], ["ALFIS1", va]] as const) {
+for (const [kod, veri] of [["STFIS1", v], ["ALFIS1", va], ["STFIS1_80", v], ["ALFIS1_80", va]] as const) {
   const sablon = sablonOku(`belge/${kod}.json`);
   const pdf = await belgeCiz(sablon, veri, `${veri.belgeNo} test`);
   writeFileSync(path.join(dir, `${kod}.pdf`), pdf);

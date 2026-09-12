@@ -71,7 +71,7 @@ const kosulGecti = (kosul, veri) => {
 };
 /**
  * Şablonu veriyle çizer, PDF baytlarını döner.
- * Sayfa: A4 (595×842) veya A5; kenar boşluğu şablondan.
+ * Sayfa: A4 (595×842), A5 veya [g,h] punto (80 mm fiş için 227 pt genişlik); kenar boşluğu şablondan.
  */
 export async function belgeCiz(sablon, veri, baslik) {
     const font = yaziTipleri();

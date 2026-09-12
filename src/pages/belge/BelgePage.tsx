@@ -9,7 +9,7 @@ import {
 } from "../../services/belgeService";
 
 /**
- * Belge / Fiş PDF sayfası (G- Raporlar → F- Belge / Fiş PDF)
+ * Belge / Fiş PDF sayfası (sol menü H- Belge / Fiş PDF)
  * Alış ve satış fişlerini listeler; seçilen fişin GİB e-Döviz düzenindeki A4 PDF'ini
  * önizler, indirir veya sunucu arşivine yazar. Fiş ekranından `?fisId=` ile doğrudan açılır.
  * Bkz. docs/belgeverapor.md.
@@ -77,7 +77,7 @@ export const BelgePage: React.FC = () => {
   const onizle = useCallback(async (istek: BelgeIstek, belgeNo: string) => {
     setPdfYukleniyor(true); setHata(null); setBilgi(null);
     try {
-      const p = await BelgeService.pdfBlobUrl({ ...istek, kod: sablonKod || undefined });
+      const p = await BelgeService.pdfBlobUrl({ ...istek, kod: sablonKod || undefined, bicim: "a4" });
       setOnizleme(o => { if (o) URL.revokeObjectURL(o.url); return { url: p.url, belgeNo, kaynak: p.kaynak, onizleme: p.onizleme, istek }; });
     } catch (e: any) { setHata(e?.message || "PDF önizlemesi açılamadı."); }
     finally { setPdfYukleniyor(false); }
@@ -111,9 +111,22 @@ export const BelgePage: React.FC = () => {
     finally { setPdfYukleniyor(false); }
   };
 
-  const yazdir = () => {
-    const w = iframeRef.current?.contentWindow;
-    if (w) { w.focus(); w.print(); }
+  /** Yazdırma 80 mm dikey düzenle yapılır (yönetici kararı); ekrandaki A4 önizleme değişmez. */
+  const yazdir = async () => {
+    if (!onizleme) return;
+    setPdfYukleniyor(true); setHata(null);
+    try {
+      const p = await BelgeService.pdfBlobUrl({ ...onizleme.istek, kod: sablonKod || undefined, bicim: "80" });
+      const f = document.createElement("iframe");
+      f.style.position = "fixed"; f.style.right = "0"; f.style.bottom = "0"; f.style.width = "0"; f.style.height = "0"; f.style.border = "0";
+      f.src = p.url;
+      f.onload = () => {
+        try { f.contentWindow?.focus(); f.contentWindow?.print(); } catch { window.open(p.url, "_blank", "noopener"); }
+        setTimeout(() => { URL.revokeObjectURL(p.url); f.remove(); }, 60000);
+      };
+      document.body.appendChild(f);
+    } catch (e: any) { setHata(e?.message || "Yazdırma çıktısı alınamadı."); }
+    finally { setPdfYukleniyor(false); }
   };
 
   const temizle = () => {
@@ -137,7 +150,7 @@ export const BelgePage: React.FC = () => {
         disabled={yukleniyor || pdfYukleniyor}
         rightContent={
           <span className="text-muted text-nowrap d-none d-md-inline" style={{ fontSize: "0.78rem" }}>
-            e-Döviz belgesi düzeni · A4 · {toplam} fiş
+            Önizleme A4 · Yazdır/İndir 80 mm · {toplam} fiş
           </span>
         }
       />
@@ -261,8 +274,8 @@ export const BelgePage: React.FC = () => {
                   ? <Badge bg="success">ICE resmî PDF</Badge>
                   : <Badge bg={onizleme.onizleme ? "warning" : "secondary"} text="dark">{onizleme.onizleme ? "Önizleme — GİB'e gönderilmemiş" : "Şablon çıktısı"}</Badge>}
                 <div className="ms-auto d-flex gap-1">
-                  <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={pdfYukleniyor} title="Yazdır"><IconPrinter size={15} /> Yazdır</Button>
-                  <Button size="sm" variant="outline-primary" onClick={indir} disabled={pdfYukleniyor} title="Bilgisayarına indir"><IconDownload size={15} /> İndir</Button>
+                  <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={pdfYukleniyor} title="80 mm dikey düzende yazdır"><IconPrinter size={15} /> Yazdır</Button>
+                  <Button size="sm" variant="outline-primary" onClick={indir} disabled={pdfYukleniyor} title="80 mm dikey düzende bilgisayarına indir"><IconDownload size={15} /> İndir</Button>
                   <Button size="sm" variant="primary" onClick={arsivle} disabled={pdfYukleniyor} title="Sunucu arşivine yaz (varsa üzerine yazar)"><IconArchive size={15} /> Arşivle</Button>
                   <Button size="sm" variant="light" onClick={() => setOnizleme(null)} title="Kapat"><IconX size={15} /></Button>
                 </div>

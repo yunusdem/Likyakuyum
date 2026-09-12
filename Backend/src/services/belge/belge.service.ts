@@ -1,13 +1,23 @@
 import { BelgeSqlRepository, type BelgeSablonModel, type DbContext } from "../../models/belgeSql.repository.js";
 import { EbelgeSqlRepository } from "../../models/ebelgeSql.repository.js";
 import { EbelgeKaynakService } from "../ebelgeKaynak.service.js";
-import { belgeCiz, sablonOku } from "./belgeMotor.js";
+import { belgeCiz, sablonOku, BACKEND_KOK } from "./belgeMotor.js";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { fisBelgeVerisi } from "./belgeVeri.js";
 import { arsivYolu, arsivle } from "./belgeArsiv.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
 
-export interface BelgeIstek { fisId?: number; belgeNo?: string; kod?: string }
+/** bicim: "a4" ekran önizlemesi (varsayılan) · "80" yazdır/indir için 80 mm dikey düzen (yönetici kararı 12.09.2026). */
+export interface BelgeIstek { fisId?: number; belgeNo?: string; kod?: string; bicim?: "a4" | "80" }
+
+/** 80 mm düzeni: `<kod>_80.json` varsa o, yoksa A4 şablonu. */
+function duzenDosyasi(sablon: BelgeSablonModel, bicim?: "a4" | "80"): string {
+  if (bicim !== "80") return sablon.duzenDosyasi;
+  const aday = sablon.duzenDosyasi.replace(/\.json$/i, "_80.json");
+  return existsSync(path.join(BACKEND_KOK, aday)) ? aday : sablon.duzenDosyasi;
+}
 export interface BelgeSonuc { pdf: Buffer; belgeNo: string; sablon: BelgeSablonModel; kaynak: "ICE" | "SABLON"; onizleme: boolean; tarih: string }
 
 export class BelgeService {
@@ -16,7 +26,8 @@ export class BelgeService {
 
   /**
    * Fişin belge PDF'i.
-   * - Fiş ICE'ye gönderilip kabul edilmişse (ETTN + GONDERILDI) resmî PDF ICE'den alınır (karar G2).
+   * - Fiş ICE'ye gönderilip kabul edilmişse (ETTN + GONDERILDI) resmî PDF ICE'den alınır (karar G2) — yalnızca A4 önizlemede;
+   *   80 mm çıktı ICE PDF'inden türetilemediği için gönderilmiş fişte de şablonla (filigransız) üretilir.
    * - Aksi hâlde şablonla üretilir; "ÖNİZLEME" filigranı basılır.
    * `kod` verilmezse fiş tipine göre varsayılan şablon (ALFIS1 / STFIS1) seçilir.
    */
@@ -34,7 +45,7 @@ export class BelgeService {
 
     const giden = ettn ? await EbelgeSqlRepository.getGiden(ettn, ctx).catch(() => null) : null;
     const gonderildi = String(giden?.gonderimDurumu || "") === "GONDERILDI";
-    if (gonderildi) {
+    if (gonderildi && istek.bicim !== "80") {
       try {
         const pdf = await EbelgeKaynakService.dovizPdf(ettn, kullanici, ctx);
         return { pdf, belgeNo, sablon, kaynak: "ICE", onizleme: false, tarih };
@@ -48,7 +59,7 @@ export class BelgeService {
       EbelgeSqlRepository.getFirmaBilgisi(ctx).catch(() => ({ dosyaNo: "" } as any)),
     ]);
     const veri = fisBelgeVerisi(b, sablon.kod, { hesapVkn: ayar?.firmaVkn, dosyaNo: firma?.dosyaNo, onizleme: !gonderildi });
-    const pdf = await belgeCiz(sablonOku(sablon.duzenDosyasi), veri, `${belgeNo} - ${sablon.ad}`);
+    const pdf = await belgeCiz(sablonOku(duzenDosyasi(sablon, istek.bicim)), veri, `${belgeNo} - ${sablon.ad}`);
     return { pdf, belgeNo, sablon, kaynak: "SABLON", onizleme: !gonderildi, tarih };
   }
 

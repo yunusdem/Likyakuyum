@@ -9,6 +9,7 @@ import {
   IconCreditCard,
   IconReportAnalytics,
   IconBarcode,
+  IconFileTypePdf,
   IconBuildingStore,
   IconSettings,
 } from "@tabler/icons-react";
@@ -130,14 +131,21 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "C- Stok & Envanter Raporu", link: "raporlar/stok-envanter" },
       { id: uuid(), name: "D- Cari Bakiye Raporu", link: "raporlar/cari-bakiye" },
       { id: uuid(), name: "E- Satış & Ciro Raporu", link: "raporlar/satis-ciro" },
-      { id: uuid(), name: "F- Belge / Fiş PDF", link: "raporlar/belge" },
     ],
   },
 
-  // H- Etiket İşlemleri
+  // H- Belge / Fiş PDF (alış-satış fişi belgesi; docs/belgeverapor.md)
   {
     id: uuid(),
-    title: "H- Etiket İşlemleri",
+    title: "H- Belge / Fiş PDF",
+    icon: <IconFileTypePdf size={18} />,
+    link: "raporlar/belge",
+  },
+
+  // I- Etiket İşlemleri
+  {
+    id: uuid(),
+    title: "I- Etiket İşlemleri",
     icon: <IconBarcode size={18} />,
     children: [
       { id: uuid(), name: "A- Barkod & Etiket Basımı", link: "etiket/barkod-basimi" },
@@ -148,10 +156,10 @@ export const DashboardMenu: MenuItemType[] = [
     ],
   },
 
-  // I- Perakende İşlemleri
+  // J- Perakende İşlemleri
   {
     id: uuid(),
-    title: "I- Perakende İşlemleri",
+    title: "J- Perakende İşlemleri",
     icon: <IconBuildingStore size={18} />,
     children: [
       { id: uuid(), name: "A- Perakende Satış", link: "perakende/satis" },
@@ -162,10 +170,10 @@ export const DashboardMenu: MenuItemType[] = [
     ],
   },
 
-  // J- Ayarlar
+  // K- Ayarlar
   {
     id: uuid(),
-    title: "J- Ayarlar",
+    title: "K- Ayarlar",
     icon: <IconSettings size={18} />,
     children: [
       { id: uuid(), name: "A- Ürün Tanımları", link: "ayarlar/urun-tanimlari" },
