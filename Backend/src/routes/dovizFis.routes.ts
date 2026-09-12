@@ -9,6 +9,8 @@ router.get("/debug-info", DovizFisController.getDebugInfo);
 router.use(authenticate);
 
 router.get("/", DovizFisController.getFisList);
+router.get("/istatistikler", DovizFisController.getIstatistikler);
+router.get("/kayitsiz-musteriler", DovizFisController.getKayitsizMusteriler);
 router.get("/vezne-bakiye/:vezneId", DovizFisController.getVezneBakiye);
 router.get("/:id", DovizFisController.getFisById);
 router.post("/kaydet", DovizFisController.saveFis);

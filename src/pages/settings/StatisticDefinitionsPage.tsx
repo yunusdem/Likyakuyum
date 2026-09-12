@@ -1,32 +1,13 @@
 import React, { useState, useEffect } from "react";
-import {
-  Card,
-  Row,
-  Col,
-  Form,
-  Button,
-  Badge,
-  Alert,
-  Spinner,
-  Modal,
-  InputGroup,
-} from "react-bootstrap";
+import { Alert, Spinner, Modal, Button } from "react-bootstrap";
 import {
   IconChartBar,
-  IconSearch,
   IconCheck,
   IconAlertCircle,
   IconTrash,
-  IconAdjustments,
-  IconChevronUp,
-  IconChevronDown,
-  IconReceipt2,
-  IconReportMoney,
-  IconCreditCard,
+  IconPlus,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
-import CodeLookupInput from "../../components/common/CodeLookupInput";
-import LookupModal from "../../components/common/LookupModal";
 import { printReportTable } from "../../utils/printReport";
 import {
   StatisticService,
@@ -34,66 +15,73 @@ import {
   StatisticFormData,
 } from "../../services/statisticService";
 
-const initialFormState: StatisticFormData = {
-  kod: "",
-  aciklama: "",
-  fisTipi: 0,
-  komisyonOrani: "" as any,
-  bmvOrani: "" as any,
-  fisDizaynTipi: 0,
-  belgeNoUretmeSekli: 0,
-  ciktiSatirSayisi: "" as any,
-  f1Tusu: "" as any,
-  odemeSekliVar: false,
-  odemeSekli: null,
-  muhHesapId: null,
-  efektifDepoHesapId: null,
-  efektifVaziyetHesapId: null,
-  kmvOrani: "" as any,
-  komisyonYetkisi: true,
-};
+interface StatisticRowState {
+  clientId: string;
+  id?: number;
+  kod: string;
+  aciklama: string;
+  fisTipi: number;
+  komisyonOrani: number | string;
+  bmvOrani: number | string;
+  kmvOrani: number | string;
+  komisyonYetkisi: boolean;
+  fisDizaynTipi: number;
+  belgeNoUretmeSekli: number;
+  ciktiSatirSayisi: number | string;
+  f1Tusu: number | string;
+  odemeSekliVar: boolean;
+  odemeSekli: number | null;
+  muhHesapId: number | string | null;
+  efektifDepoHesapId: number | string | null;
+  efektifVaziyetHesapId: number | string | null;
+  isNew?: boolean;
+  isDirty?: boolean;
+}
 
 export const StatisticDefinitionsPage: React.FC = () => {
-  const activeDb = localStorage.getItem("kuyumcu_erp_active_db") || "R2016_dvz";
-  const activeServer = localStorage.getItem("kuyumcu_erp_active_server") || "localhost";
+  const [rows, setRows] = useState<StatisticRowState[]>([]);
+  const [activeCell, setActiveCell] = useState<{ clientId: string; col: string } | null>(null);
 
-  // Data states
-  const [statistics, setStatistics] = useState<StatisticItem[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState<number>(0);
-  const [selectedStatistic, setSelectedStatistic] = useState<StatisticItem | null>(null);
-  const [formData, setFormData] = useState<StatisticFormData>(initialFormState);
-  const [isNewRecord, setIsNewRecord] = useState<boolean>(false);
-
-  // UI / Status states
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [searchTerm, setSearchTerm] = useState<string>("");
-  const [selectedFisTipiFilter, setSelectedFisTipiFilter] = useState<string>("all");
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
-  const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
 
-  // Load all statistics
-  const loadData = async (targetIndex?: number) => {
+  const [deleteTarget, setDeleteTarget] = useState<StatisticRowState | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+
+  const loadData = async () => {
     try {
       setIsLoading(true);
       setAlertError(null);
 
       const list = await StatisticService.getStatistics();
-      setStatistics(list || []);
+      const mapped: StatisticRowState[] = (list || []).map((s) => ({
+        clientId: `db_${s.id}`,
+        id: s.id,
+        kod: s.kod || "",
+        aciklama: s.aciklama || "",
+        fisTipi: s.fisTipi ?? 0,
+        komisyonOrani: s.komisyonOrani ?? 0,
+        bmvOrani: s.bmvOrani ?? 0,
+        kmvOrani: s.kmvOrani ?? 0,
+        komisyonYetkisi: s.komisyonYetkisi !== false,
+        fisDizaynTipi: s.fisDizaynTipi ?? 0,
+        belgeNoUretmeSekli: s.belgeNoUretmeSekli ?? 0,
+        ciktiSatirSayisi: s.ciktiSatirSayisi ?? 1,
+        f1Tusu: s.f1Tusu ?? 0,
+        odemeSekliVar: s.odemeSekliVar === true,
+        odemeSekli: s.odemeSekli ?? null,
+        muhHesapId: s.muhHesapId ?? "",
+        efektifDepoHesapId: s.efektifDepoHesapId ?? "",
+        efektifVaziyetHesapId: s.efektifVaziyetHesapId ?? "",
+        isNew: false,
+        isDirty: false,
+      }));
 
-      if (list && list.length > 0 && targetIndex !== undefined) {
-        const idx = targetIndex >= 0 && targetIndex < list.length
-          ? targetIndex
-          : 0;
-        setSelectedIndex(idx);
-        handleSelectStatistic(list[idx], idx);
-      } else {
-        handleClear(false);
-      }
+      setRows(mapped);
     } catch (err: any) {
-      setAlertError(err.message || "İstatistik tanımları yüklenirken bir hata oluştu.");
+      setAlertError(err?.message || "İstatistik tanımları yüklenirken bir hata oluştu.");
     } finally {
       setIsLoading(false);
     }
@@ -103,576 +91,1186 @@ export const StatisticDefinitionsPage: React.FC = () => {
     loadData();
   }, []);
 
-  const handleSelectStatistic = (item: StatisticItem, idx?: number) => {
-    setSelectedStatistic(item);
-    if (idx !== undefined) {
-      setSelectedIndex(idx);
-    } else {
-      const foundIdx = statistics.findIndex((s) => s.id === item.id);
-      if (foundIdx !== -1) setSelectedIndex(foundIdx);
-    }
-    setIsNewRecord(false);
-    setFormData({
-      kod: item.kod,
-      aciklama: item.aciklama,
-      fisTipi: item.fisTipi,
-      komisyonOrani: item.komisyonOrani,
-      bmvOrani: item.bmvOrani,
-      fisDizaynTipi: item.fisDizaynTipi,
-      belgeNoUretmeSekli: item.belgeNoUretmeSekli,
-      ciktiSatirSayisi: item.ciktiSatirSayisi,
-      f1Tusu: item.f1Tusu,
-      odemeSekliVar: item.odemeSekliVar,
-      odemeSekli: item.odemeSekli,
-      muhHesapId: item.muhHesapId,
-      efektifDepoHesapId: item.efektifDepoHesapId,
-      efektifVaziyetHesapId: item.efektifVaziyetHesapId,
-      kmvOrani: item.kmvOrani,
-      komisyonYetkisi: item.komisyonYetkisi,
-    });
-    setAlertError(null);
-  };
-
-  const handleClear = (showAlert: boolean = true) => {
-    setSelectedStatistic(null);
-    setIsNewRecord(true);
-    setFormData({
-      ...initialFormState,
+  const handleAddNewRow = () => {
+    const newRow: StatisticRowState = {
+      clientId: `new_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       kod: "",
       aciklama: "",
-    });
-    if (showAlert) {
-      setAlertSuccess("Form alanları temizlendi. Yeni bilgileri girip sol üstteki 'Kaydet' (💾) butonuna basınız.");
-      setTimeout(() => setAlertSuccess(null), 3500);
-    }
-    setAlertError(null);
-  };
-
-  const handleNewStatistic = () => {
-    handleClear();
-  };
-
-  const handleNavigate = (direction: "first" | "prev" | "next" | "last") => {
-    if (statistics.length === 0) return;
-    let newIdx = selectedIndex;
-    if (direction === "first") newIdx = 0;
-    else if (direction === "prev") newIdx = Math.max(0, selectedIndex - 1);
-    else if (direction === "next") newIdx = Math.min(statistics.length - 1, selectedIndex + 1);
-    else if (direction === "last") newIdx = statistics.length - 1;
-
-    setSelectedIndex(newIdx);
-    handleSelectStatistic(statistics[newIdx], newIdx);
-  };
-
-  const handleInputChange = (field: keyof StatisticFormData, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  // Unified save handler for creating new and updating existing records
-  const handleSave = async () => {
-    setAlertError(null);
-
-    // 1. Türkçe Zorunlu Alan Doğrulamaları
-    if (!formData.kod || !formData.kod.trim()) {
-      setAlertError("⚠️ Zorunlu Alan Eksik: Lütfen İstatistik Kodunu giriniz (Maksimum 20 karakter).");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    if (formData.kod.trim().length > 20) {
-      setAlertError("⚠️ Geçersiz Giriş: İstatistik kodu en fazla 20 karakter olabilir.");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    if (!formData.aciklama || !formData.aciklama.trim()) {
-      setAlertError("⚠️ Zorunlu Alan Eksik: Lütfen İstatistik Açıklamasını giriniz.");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    const payload: StatisticFormData = {
-      ...formData,
-      kod: formData.kod.trim(),
-      aciklama: formData.aciklama.trim(),
-      fisTipi: parseInt(String(formData.fisTipi), 10) || 0,
-      komisyonOrani: parseFloat(String(formData.komisyonOrani)) || 0,
-      bmvOrani: parseFloat(String(formData.bmvOrani)) || 0,
-      fisDizaynTipi: parseInt(String(formData.fisDizaynTipi), 10) || 0,
-      belgeNoUretmeSekli: parseInt(String(formData.belgeNoUretmeSekli), 10) || 0,
-      ciktiSatirSayisi: Math.max(1, parseInt(String(formData.ciktiSatirSayisi), 10) || 1),
-      f1Tusu: parseInt(String(formData.f1Tusu), 10) || 0,
-      odemeSekliVar: !!formData.odemeSekliVar,
-      odemeSekli: formData.odemeSekliVar && formData.odemeSekli !== null ? parseInt(String(formData.odemeSekli), 10) : null,
-      muhHesapId: formData.muhHesapId !== null && formData.muhHesapId !== undefined && String(formData.muhHesapId) !== "" ? parseInt(String(formData.muhHesapId), 10) : null,
-      efektifDepoHesapId: formData.efektifDepoHesapId !== null && formData.efektifDepoHesapId !== undefined && String(formData.efektifDepoHesapId) !== "" ? parseInt(String(formData.efektifDepoHesapId), 10) : null,
-      efektifVaziyetHesapId: formData.efektifVaziyetHesapId !== null && formData.efektifVaziyetHesapId !== undefined && String(formData.efektifVaziyetHesapId) !== "" ? parseInt(String(formData.efektifVaziyetHesapId), 10) : null,
-      kmvOrani: parseFloat(String(formData.kmvOrani)) || 0,
-      komisyonYetkisi: formData.komisyonYetkisi !== false,
+      fisTipi: 0,
+      komisyonOrani: 0,
+      bmvOrani: 0,
+      kmvOrani: 0,
+      komisyonYetkisi: true,
+      fisDizaynTipi: 0,
+      belgeNoUretmeSekli: 0,
+      ciktiSatirSayisi: 1,
+      f1Tusu: 0,
+      odemeSekliVar: false,
+      odemeSekli: null,
+      muhHesapId: "",
+      efektifDepoHesapId: "",
+      efektifVaziyetHesapId: "",
+      isNew: true,
+      isDirty: true,
     };
+    setRows((prev) => [...prev, newRow]);
+  };
+
+  const handleFieldChange = (clientId: string, field: keyof StatisticRowState, val: any) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.clientId !== clientId) return r;
+        return {
+          ...r,
+          [field]: val,
+          isDirty: true,
+        };
+      })
+    );
+  };
+
+  const handleDeleteClick = (row: StatisticRowState) => {
+    if (row.isNew) {
+      setRows((prev) => prev.filter((r) => r.clientId !== row.clientId));
+      return;
+    }
+    setDeleteTarget(row);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !deleteTarget.id) return;
+    try {
+      setIsSaving(true);
+      await StatisticService.deleteStatistic(deleteTarget.id);
+      setRows((prev) => prev.filter((r) => r.clientId !== deleteTarget.clientId));
+      setShowDeleteModal(false);
+      setAlertSuccess(`"${deleteTarget.aciklama || deleteTarget.kod}" istatistik tanımı başarıyla silindi.`);
+      setDeleteTarget(null);
+      setTimeout(() => setAlertSuccess(null), 3500);
+    } catch (err: any) {
+      setAlertError(`Silme hatası: ${err?.message || "İstatistik tanımı silinemedi."}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAll = async () => {
+    setAlertError(null);
+    setAlertSuccess(null);
+
+    // Validation
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const rowNum = i + 1;
+      const cleanKod = (r.kod || "").trim();
+      const cleanAciklama = (r.aciklama || "").trim();
+
+      if (!cleanKod) {
+        setAlertError(`⚠️ Satır #${rowNum}: İstatistik kodu boş bırakılamaz.`);
+        return;
+      }
+      if (cleanKod.length > 20) {
+        setAlertError(`⚠️ Satır #${rowNum}: İstatistik kodu en fazla 20 karakter olabilir (${cleanKod}).`);
+        return;
+      }
+      if (!cleanAciklama) {
+        setAlertError(`⚠️ Satır #${rowNum}: İstatistik açıklaması boş bırakılamaz.`);
+        return;
+      }
+    }
+
+    const dirtyRows = rows.filter((r) => r.isDirty);
+    if (dirtyRows.length === 0) {
+      setAlertSuccess("Herhangi bir değişiklik bulunmamaktadır.");
+      setTimeout(() => setAlertSuccess(null), 2500);
+      return;
+    }
 
     try {
       setIsSaving(true);
-      setAlertError(null);
+      let createdCount = 0;
+      let updatedCount = 0;
 
-      if (isNewRecord || !selectedStatistic) {
-        const created = await StatisticService.createStatistic(payload);
-        setAlertSuccess(`✅ "${created.aciklama}" [${created.kod}] istatistik tanımı başarıyla eklendi.`);
-        await loadData(statistics.length);
-        setIsNewRecord(false);
-      } else {
-        const updated = await StatisticService.updateStatistic(selectedStatistic.id, payload);
-        setAlertSuccess(`✅ "${updated.aciklama}" [${updated.kod}] istatistik bilgileri başarıyla güncellendi.`);
-        await loadData(selectedIndex);
+      for (const row of dirtyRows) {
+        const payload: StatisticFormData = {
+          kod: (row.kod || "").trim().slice(0, 20),
+          aciklama: (row.aciklama || "").trim(),
+          fisTipi: parseInt(String(row.fisTipi), 10) || 0,
+          komisyonOrani: parseFloat(String(row.komisyonOrani)) || 0,
+          bmvOrani: parseFloat(String(row.bmvOrani)) || 0,
+          kmvOrani: parseFloat(String(row.kmvOrani)) || 0,
+          komisyonYetkisi: row.komisyonYetkisi !== false,
+          fisDizaynTipi: parseInt(String(row.fisDizaynTipi), 10) || 0,
+          belgeNoUretmeSekli: parseInt(String(row.belgeNoUretmeSekli), 10) || 0,
+          ciktiSatirSayisi: Math.max(1, parseInt(String(row.ciktiSatirSayisi), 10) || 1),
+          f1Tusu: parseInt(String(row.f1Tusu), 10) || 0,
+          odemeSekliVar: !!row.odemeSekliVar,
+          odemeSekli:
+            row.odemeSekliVar && row.odemeSekli !== null && row.odemeSekli !== undefined && String(row.odemeSekli) !== ""
+              ? parseInt(String(row.odemeSekli), 10)
+              : null,
+          muhHesapId:
+            row.muhHesapId !== null && row.muhHesapId !== undefined && String(row.muhHesapId).trim() !== ""
+              ? parseInt(String(row.muhHesapId), 10)
+              : null,
+          efektifDepoHesapId:
+            row.efektifDepoHesapId !== null &&
+            row.efektifDepoHesapId !== undefined &&
+            String(row.efektifDepoHesapId).trim() !== ""
+              ? parseInt(String(row.efektifDepoHesapId), 10)
+              : null,
+          efektifVaziyetHesapId:
+            row.efektifVaziyetHesapId !== null &&
+            row.efektifVaziyetHesapId !== undefined &&
+            String(row.efektifVaziyetHesapId).trim() !== ""
+              ? parseInt(String(row.efektifVaziyetHesapId), 10)
+              : null,
+        };
+
+        if (row.isNew || !row.id) {
+          await StatisticService.createStatistic(payload);
+          createdCount++;
+        } else {
+          await StatisticService.updateStatistic(row.id, payload);
+          updatedCount++;
+        }
       }
 
-      setTimeout(() => setAlertSuccess(null), 4500);
-    } catch (err: any) {
-      setAlertError(`❌ Kaydetme Başarısız: ${err.message || "İşlem sırasında bir hata oluştu."}`);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!selectedStatistic || isNewRecord) return;
-    try {
-      setIsSaving(true);
-      setShowDeleteModal(false);
-      await StatisticService.deleteStatistic(selectedStatistic.id);
-      setAlertSuccess(`✅ "${selectedStatistic.aciklama}" [${selectedStatistic.kod}] istatistik tanımı başarıyla silindi.`);
-      await loadData(Math.max(0, selectedIndex - 1));
+      setAlertSuccess(`✅ İstatistik tanımları başarıyla kaydedildi (${createdCount} yeni, ${updatedCount} güncellendi).`);
+      await loadData();
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
-      setAlertError(`❌ Silme Başarısız: ${err.message || "İstatistik tanımı silinirken bir hata oluştu."}`);
+      setAlertError(`❌ Kaydetme hatası: ${err?.message || "İstatistik tanımları kaydedilemedi."}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Filtered statistics list
-  const filteredStatistics = statistics.filter((s) => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch =
-      s.kod.toLowerCase().includes(term) ||
-      s.aciklama.toLowerCase().includes(term);
-
-    if (!matchesSearch) return false;
-    if (selectedFisTipiFilter === "all") return true;
-    return s.fisTipi === parseInt(selectedFisTipiFilter, 10);
-  });
-
   const handlePrint = () => {
-    printReportTable<StatisticItem>({
+    printReportTable<StatisticRowState>({
       title: "İstatistik Tanımları Listesi Raporu",
-      subtitle: `Aktif İstatistik ve İşlem Kodları Dökümü (${filteredStatistics.length} Kayıt)`,
-      data: filteredStatistics,
+      subtitle: `Aktif İstatistik ve İşlem Kodları Dökümü (${rows.length} Kayıt)`,
+      data: rows,
       columns: [
         { header: "İstatistik Kodu", key: "kod", width: "16%" },
         { header: "Açıklama", key: "aciklama", width: "34%" },
         {
           header: "Fiş Tipi",
-          render: (item) => (item.fisTipi === 1 ? "1 - Sarraf Fişi" : item.fisTipi === 2 ? "2 - Perakende Fişi" : "0 - Genel"),
+          render: (item) =>
+            item.fisTipi === 0
+              ? "0 - Tahsilat"
+              : item.fisTipi === 1
+              ? "1 - Tediye"
+              : item.fisTipi === 2
+              ? "2 - Giriş"
+              : item.fisTipi === 3
+              ? "3 - Çıkış"
+              : item.fisTipi === 4
+              ? "4 - Virman"
+              : "5 - Açılış",
           width: "20%",
         },
         {
           header: "Komisyon",
           render: (item) => (item.komisyonOrani ? `%${item.komisyonOrani}` : "-"),
-          width: "20%",
+          width: "15%",
           align: "right",
         },
       ],
-      summaryInfo: `Toplam İstatistik Tanımı Sayısı: ${filteredStatistics.length}`,
+      summaryInfo: `Toplam İstatistik Tanımı Sayısı: ${rows.length}`,
     });
   };
 
+  const dirtyCount = rows.filter((r) => r.isDirty).length;
 
   return (
-    <div className="p-2 p-md-3">
-      {/* 1. Sol Üst Klasik ERP Toolbar */}
+    <div className="p-1 p-md-2" style={{ fontFamily: "Tahoma, 'Segoe UI', Arial, sans-serif" }}>
+      {/* 1. Üst ERP Toolbar */}
       <ERPToolbar
         pageTitle="İstatistik Tanımları"
         pageIcon={<IconChartBar size={20} />}
-        onNew={handleNewStatistic}
-        onSave={handleSave}
-        onSearch={() => setShowLookupModal(true)}
-        onDelete={() => {
-          if (selectedStatistic && !isNewRecord) {
-            setShowDeleteModal(true);
-          }
-        }}
-        onFirst={() => handleNavigate("first")}
-        onPrev={() => handleNavigate("prev")}
-        onNext={() => handleNavigate("next")}
-        onLast={() => handleNavigate("last")}
+        onNew={handleAddNewRow}
+        onSave={handleSaveAll}
+        onRefresh={loadData}
         onPrint={handlePrint}
-        onRefresh={() => loadData(selectedIndex)}
-        onClear={handleClear}
         disabled={isLoading || isSaving}
       />
 
-      {/* Notifications */}
+      {/* Bildirim Alanı */}
       {alertSuccess && (
-        <Alert variant="success" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0" dismissible onClose={() => setAlertSuccess(null)}>
-          <IconCheck size={18} />
+        <Alert
+          variant="success"
+          className="d-flex align-items-center gap-2 py-1.5 px-3 mb-2 small shadow-2xs border-0"
+          dismissible
+          onClose={() => setAlertSuccess(null)}
+        >
+          <IconCheck size={16} />
           <span>{alertSuccess}</span>
         </Alert>
       )}
 
       {alertError && (
-        <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0" dismissible onClose={() => setAlertError(null)}>
-          <IconAlertCircle size={18} />
+        <Alert
+          variant="danger"
+          className="d-flex align-items-center gap-2 py-1.5 px-3 mb-2 small shadow-2xs border-0"
+          dismissible
+          onClose={() => setAlertError(null)}
+        >
+          <IconAlertCircle size={16} />
           <span>{alertError}</span>
         </Alert>
       )}
 
-      {/* 2. Main Container Card (Tam Genişlik, Liste Kaldırıldı, Yatay Inputlar) */}
-      <Card className="border-0 shadow-sm rounded-3 mb-4 bg-white">
-        <Card.Body className="p-3 p-md-4">
-          <div className="mb-3 pb-2 border-bottom d-flex align-items-center justify-content-end flex-wrap gap-2">
-            <Badge bg={isNewRecord ? "warning" : "primary"} className="px-2.5 py-1.5 fs-7">
-              {isNewRecord ? "Yeni Kayıt Modu" : `Düzenleme: [${formData.kod}] ${formData.aciklama}`}
-            </Badge>
-          </div>
-
-          <div style={{ maxWidth: "850px" }}>
-            <Form onSubmit={handleSave}>
-              {/* 1. Temel Tanımlar */}
-              <div className="mb-4 pb-3 border-bottom">
-                <h6 className="fw-bold text-primary mb-3 d-flex align-items-center gap-1.5 small text-uppercase">
-                  <IconAdjustments size={16} /> Temel Bilgiler
-                </h6>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    İstatistik Kodu <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Col sm={9}>
-                    <CodeLookupInput
-                      value={formData.kod}
-                      onChange={(e) => handleInputChange("kod", e.target.value.toUpperCase())}
-                      onLookupClick={() => setShowLookupModal(true)}
-                      required
-                      lookupTitle="İstatistik Tanımı Seç (Oklu Dürbün)"
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Açıklama <span className="text-danger">*</span>
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="text"
-                      value={formData.aciklama}
-                      onChange={(e) => handleInputChange("aciklama", e.target.value)}
-                      required
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Fiş Tipi
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Select
-                      value={formData.fisTipi}
-                      onChange={(e) => handleInputChange("fisTipi", parseInt(e.target.value, 10))}
-                    >
-                      <option value={0}>0 - Tahsilat Fişi</option>
-                      <option value={1}>1 - Tediye Fişi</option>
-                      <option value={2}>2 - Giriş Fişi</option>
-                      <option value={3}>3 - Çıkış Fişi</option>
-                      <option value={4}>4 - Virman Fişi</option>
-                      <option value={5}>5 - Açılış Fişi</option>
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Fiş Dizayn Tipi
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Select
-                      value={formData.fisDizaynTipi}
-                      onChange={(e) => handleInputChange("fisDizaynTipi", parseInt(e.target.value, 10))}
-                    >
-                      <option value={0}>0 - Standart Dizayn</option>
-                      <option value={1}>1 - Özel Dizayn 1</option>
-                      <option value={2}>2 - Özel Dizayn 2</option>
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Belge No Üretme Şekli
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Select
-                      value={formData.belgeNoUretmeSekli}
-                      onChange={(e) => handleInputChange("belgeNoUretmeSekli", parseInt(e.target.value, 10))}
-                    >
-                      <option value={0}>0 - Otomatik Artan</option>
-                      <option value={1}>1 - Manuel Giriş</option>
-                      <option value={2}>2 - Şablondan Üret</option>
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Çıktı Satır Sayısı
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      value={formData.ciktiSatirSayisi || ""}
-                      onChange={(e) => handleInputChange("ciktiSatirSayisi", parseInt(e.target.value, 10) || 1)}
-                      min={1}
-                      max={100}
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    F1 Kısayol Tuşu
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      value={formData.f1Tusu}
-                      onChange={(e) => handleInputChange("f1Tusu", parseInt(e.target.value, 10) || 0)}
-                    />
-                  </Col>
-                </Form.Group>
-              </div>
-
-              {/* 2. Finansal & Vergisel Parametreler */}
-              <div className="mb-4 pb-3 border-bottom">
-                <h6 className="fw-bold text-primary mb-3 d-flex align-items-center gap-1.5 small text-uppercase">
-                  <IconReportMoney size={16} /> Finansal & Vergisel Parametreler
-                </h6>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Komisyon Oranı (%)
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      step="any"
-                      value={formData.komisyonOrani || ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("komisyonOrani", e.target.value)}
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    BMV Oranı (%)
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      step="any"
-                      value={formData.bmvOrani || ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("bmvOrani", e.target.value)}
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    KMV Oranı (%)
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      step="any"
-                      value={formData.kmvOrani || ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("kmvOrani", e.target.value)}
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Komisyon Yetkisi
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Check
-                      type="switch"
-                      id="komisyon-yetkisi-switch"
-                      label="Komisyon yetkisi aktif"
-                      checked={formData.komisyonYetkisi}
-                      onChange={(e) => handleInputChange("komisyonYetkisi", e.target.checked)}
-                    />
-                  </Col>
-                </Form.Group>
-              </div>
-
-              {/* 3. Ödeme & Muhasebe Yapılandırması */}
-              <div className="mb-4">
-                <h6 className="fw-bold text-primary mb-3 d-flex align-items-center gap-1.5 small text-uppercase">
-                  <IconCreditCard size={16} /> Ödeme Şekli & Muhasebe Bağlantıları
-                </h6>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Ödeme Şekli Tanımlı
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Check
-                      type="switch"
-                      id="odeme-sekli-var-switch"
-                      label="Ödeme Şekli Tanımlı"
-                      checked={formData.odemeSekliVar}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        handleInputChange("odemeSekliVar", checked);
-                        if (!checked) handleInputChange("odemeSekli", null);
-                        else if (formData.odemeSekli === null) handleInputChange("odemeSekli", 0);
-                      }}
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Ödeme Şekli
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Select
-                      value={formData.odemeSekli ?? ""}
-                      onChange={(e) => handleInputChange("odemeSekli", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                      disabled={!formData.odemeSekliVar}
-                    >
-                      <option value="">Seçilmedi</option>
-                      <option value={0}>0 - Nakit</option>
-                      <option value={1}>1 - Kredi Kartı / POS</option>
-                      <option value={2}>2 - Havale / EFT</option>
-                      <option value={3}>3 - Çek / Senet</option>
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Muhasebe Hesap ID
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      value={formData.muhHesapId ?? ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("muhHesapId", e.target.value ? parseInt(e.target.value, 10) : null)}
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Efektif Depo Hesap ID
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      value={formData.efektifDepoHesapId ?? ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("efektifDepoHesapId", e.target.value ? parseInt(e.target.value, 10) : null)}
-                    />
-                  </Col>
-                </Form.Group>
-
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                    Efektif Vaziyet Hesap ID
-                  </Form.Label>
-                  <Col sm={9}>
-                    <Form.Control
-                      type="number"
-                      value={formData.efektifVaziyetHesapId ?? ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("efektifVaziyetHesapId", e.target.value ? parseInt(e.target.value, 10) : null)}
-                    />
-                  </Col>
-                </Form.Group>
-              </div>
-
-              {/* Form Alt Butonları */}
-              <div className="d-flex justify-content-end gap-2 pt-3 border-top">
-                <Button variant="primary" size="sm" type="submit" disabled={isSaving}>
-                  {isSaving ? "Kaydediliyor..." : isNewRecord ? "Yeni Tanım Kaydet" : "Değişiklikleri Güncelle"}
-                </Button>
-              </div>
-            </Form>
-          </div>
-        </Card.Body>
-      </Card>
-
-      {/* Oklu Dürbün - Arama & Seçim Modalı */}
-      <LookupModal<StatisticItem>
-        show={showLookupModal}
-        onHide={() => setShowLookupModal(false)}
-        title="İstatistik Tanımı Seç"
-        items={statistics}
-        searchPlaceholder="İstatistik kodu veya açıklama ile ara..."
-        filterFn={(item, term) =>
-          item.kod.toLowerCase().includes(term.toLowerCase()) ||
-          item.aciklama.toLowerCase().includes(term.toLowerCase())
-        }
-        columns={[
-          {
-            header: "İstatistik Kodu",
-            render: (item) => <strong className="text-primary font-monospace">{item.kod}</strong>,
-          },
-          {
-            header: "Açıklama",
-            render: (item) => item.aciklama,
-          },
-          {
-            header: "Fiş Tipi",
-            render: (item) => <Badge bg="light" className="text-dark border">{item.fisTipi}</Badge>,
-          },
-        ]}
-        onSelect={(item) => {
-          handleSelectStatistic(item);
+      {/* 2. Masaüstü ERP Grid Tablosu */}
+      <div
+        className="w-100 bg-white shadow-2xs overflow-hidden"
+        style={{
+          border: "1px solid #8ab8ee",
+          borderRadius: "4px",
         }}
-      />
+      >
+        <div
+          style={{
+            maxHeight: "calc(100vh - 120px)",
+            minHeight: "480px",
+            overflowX: "auto",
+            overflowY: "auto",
+            backgroundColor: "#ffffff",
+          }}
+        >
+          {isLoading ? (
+            <div className="d-flex align-items-center justify-content-center p-5 text-secondary">
+              <Spinner animation="border" size="sm" className="me-2" />
+              <span style={{ fontSize: "13px" }}>İstatistik tanımları yükleniyor...</span>
+            </div>
+          ) : (
+            <table
+              className="w-100"
+              style={{
+                borderCollapse: "collapse",
+                tableLayout: "auto",
+                fontSize: "13px",
+                color: "#000000",
+                minWidth: "1680px",
+              }}
+            >
+              <thead>
+                <tr
+                  style={{
+                    backgroundColor: "#b8d7fe",
+                    height: "28px",
+                    color: "#0f3e74",
+                    fontWeight: 600,
+                    textAlign: "center",
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 2,
+                    boxShadow: "0 1px 0 #8ab8ee",
+                  }}
+                >
+                  <th
+                    style={{
+                      width: "36px",
+                      padding: "3px 4px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    #
+                  </th>
+                  <th
+                    style={{
+                      width: "95px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    İstatistik Kodu
+                  </th>
+                  <th
+                    style={{
+                      width: "220px",
+                      minWidth: "160px",
+                      padding: "3px 8px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Açıklama
+                  </th>
+                  <th
+                    style={{
+                      width: "135px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Fiş Tipi
+                  </th>
+                  <th
+                    style={{
+                      width: "125px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Fiş Dizayn
+                  </th>
+                  <th
+                    style={{
+                      width: "135px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Belge No Üretme
+                  </th>
+                  <th
+                    style={{
+                      width: "80px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Komisyon %
+                  </th>
+                  <th
+                    style={{
+                      width: "75px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    BMV %
+                  </th>
+                  <th
+                    style={{
+                      width: "75px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    KMV %
+                  </th>
+                  <th
+                    style={{
+                      width: "75px",
+                      padding: "3px 4px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                    title="Komisyon Yetkisi Aktif"
+                  >
+                    Kom. Yetkisi
+                  </th>
+                  <th
+                    style={{
+                      width: "75px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Çıktı Satır
+                  </th>
+                  <th
+                    style={{
+                      width: "65px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    F1 Tuşu
+                  </th>
+                  <th
+                    style={{
+                      width: "80px",
+                      padding: "3px 4px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                    title="Ödeme Şekli Tanımlı"
+                  >
+                    Ödeme Şekli?
+                  </th>
+                  <th
+                    style={{
+                      width: "135px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Ödeme Şekli
+                  </th>
+                  <th
+                    style={{
+                      width: "90px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Muh. Hesap
+                  </th>
+                  <th
+                    style={{
+                      width: "90px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Depo Hesap
+                  </th>
+                  <th
+                    style={{
+                      width: "90px",
+                      padding: "3px 6px",
+                      borderRight: "1px solid #8ab8ee",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Vaziyet Hesap
+                  </th>
+                  <th
+                    style={{
+                      width: "42px",
+                      padding: "3px 4px",
+                      borderBottom: "1px solid #8ab8ee",
+                      textAlign: "center",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Sil
+                  </th>
+                </tr>
+              </thead>
 
-      {/* Delete Confirmation Modal */}
-      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="fs-5 text-danger d-flex align-items-center gap-2">
-            <IconTrash size={20} /> İstatistik Tanımı Silme Onayı
+              <tbody>
+                {rows.map((row, idx) => {
+                  const isDirty = row.isDirty;
+                  return (
+                    <tr
+                      key={row.clientId}
+                      style={{
+                        height: "26px",
+                        backgroundColor: isDirty ? "#fffde7" : idx % 2 === 1 ? "#fafcff" : "#ffffff",
+                        borderBottom: "1px solid #e0e0e0",
+                      }}
+                    >
+                      {/* Sıra No */}
+                      <td
+                        style={{
+                          padding: "2px 4px",
+                          textAlign: "center",
+                          borderRight: "1px solid #e0e0e0",
+                          color: "#64748b",
+                          fontSize: "11px",
+                          userSelect: "none",
+                        }}
+                      >
+                        {idx + 1}
+                      </td>
+
+                      {/* İstatistik Kodu */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="text"
+                          maxLength={20}
+                          value={row.kod}
+                          placeholder="KOD"
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "kod", e.target.value.toUpperCase())
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "kod" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "kod"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            textAlign: "center",
+                            color: "#0f3e74",
+                          }}
+                        />
+                      </td>
+
+                      {/* Açıklama */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="text"
+                          value={row.aciklama}
+                          placeholder="İstatistik Açıklaması giriniz..."
+                          onChange={(e) => handleFieldChange(row.clientId, "aciklama", e.target.value)}
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "aciklama" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "aciklama"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 8px",
+                            fontSize: "13px",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* Fiş Tipi */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <select
+                          value={row.fisTipi}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "fisTipi", parseInt(e.target.value, 10))
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "fisTipi" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "fisTipi"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 4px",
+                            fontSize: "12px",
+                            color: "#000000",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <option value={0}>0 - Tahsilat</option>
+                          <option value={1}>1 - Tediye</option>
+                          <option value={2}>2 - Giriş</option>
+                          <option value={3}>3 - Çıkış</option>
+                          <option value={4}>4 - Virman</option>
+                          <option value={5}>5 - Açılış</option>
+                        </select>
+                      </td>
+
+                      {/* Fiş Dizayn Tipi */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <select
+                          value={row.fisDizaynTipi}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "fisDizaynTipi", parseInt(e.target.value, 10))
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "fisDizaynTipi" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "fisDizaynTipi"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 4px",
+                            fontSize: "12px",
+                            color: "#000000",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <option value={0}>0 - Standart</option>
+                          <option value={1}>1 - Özel 1</option>
+                          <option value={2}>2 - Özel 2</option>
+                        </select>
+                      </td>
+
+                      {/* Belge No Üretme Şekli */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <select
+                          value={row.belgeNoUretmeSekli}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "belgeNoUretmeSekli", parseInt(e.target.value, 10))
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "belgeNoUretmeSekli" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId &&
+                              activeCell?.col === "belgeNoUretmeSekli"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 4px",
+                            fontSize: "12px",
+                            color: "#000000",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <option value={0}>0 - Otomatik Artan</option>
+                          <option value={1}>1 - Manuel Giriş</option>
+                          <option value={2}>2 - Şablondan Üret</option>
+                        </select>
+                      </td>
+
+                      {/* Komisyon % */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.komisyonOrani}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "komisyonOrani", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "komisyonOrani" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "komisyonOrani"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* BMV % */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.bmvOrani}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "bmvOrani", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "bmvOrani" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "bmvOrani"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* KMV % */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          step="any"
+                          value={row.kmvOrani}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "kmvOrani", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "kmvOrani" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "kmvOrani"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* Komisyon Yetkisi Checkbox */}
+                      <td
+                        style={{
+                          padding: 0,
+                          textAlign: "center",
+                          verticalAlign: "middle",
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={row.komisyonYetkisi}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "komisyonYetkisi", e.target.checked)
+                          }
+                          style={{
+                            cursor: "pointer",
+                            width: "14px",
+                            height: "14px",
+                            margin: "0 auto",
+                            display: "block",
+                            accentColor: "#0f172a",
+                          }}
+                          title="Komisyon Yetkisi Aktif"
+                        />
+                      </td>
+
+                      {/* Çıktı Satır Sayısı */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={row.ciktiSatirSayisi}
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "ciktiSatirSayisi", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "ciktiSatirSayisi" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "ciktiSatirSayisi"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* F1 Kısayol Tuşu */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          value={row.f1Tusu}
+                          onChange={(e) => handleFieldChange(row.clientId, "f1Tusu", e.target.value)}
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "f1Tusu" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "f1Tusu"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* Ödeme Şekli Var Checkbox */}
+                      <td
+                        style={{
+                          padding: 0,
+                          textAlign: "center",
+                          verticalAlign: "middle",
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={row.odemeSekliVar}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            handleFieldChange(row.clientId, "odemeSekliVar", checked);
+                            if (!checked) {
+                              handleFieldChange(row.clientId, "odemeSekli", null);
+                            } else if (row.odemeSekli === null) {
+                              handleFieldChange(row.clientId, "odemeSekli", 0);
+                            }
+                          }}
+                          style={{
+                            cursor: "pointer",
+                            width: "14px",
+                            height: "14px",
+                            margin: "0 auto",
+                            display: "block",
+                            accentColor: "#0f172a",
+                          }}
+                          title="Ödeme Şekli Tanımlı"
+                        />
+                      </td>
+
+                      {/* Ödeme Şekli Select */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <select
+                          value={row.odemeSekli ?? ""}
+                          disabled={!row.odemeSekliVar}
+                          onChange={(e) =>
+                            handleFieldChange(
+                              row.clientId,
+                              "odemeSekli",
+                              e.target.value !== "" ? parseInt(e.target.value, 10) : null
+                            )
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "odemeSekli" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "odemeSekli"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 4px",
+                            fontSize: "12px",
+                            color: row.odemeSekliVar ? "#000000" : "#94a3b8",
+                            cursor: row.odemeSekliVar ? "pointer" : "not-allowed",
+                          }}
+                        >
+                          <option value="">(Seçilmedi)</option>
+                          <option value={0}>0 - Nakit</option>
+                          <option value={1}>1 - Kredi Kartı / POS</option>
+                          <option value={2}>2 - Havale / EFT</option>
+                          <option value={3}>3 - Çek / Senet</option>
+                        </select>
+                      </td>
+
+                      {/* Muhasebe Hesap ID */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          value={row.muhHesapId ?? ""}
+                          placeholder="Hesap ID"
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "muhHesapId", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "muhHesapId" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId && activeCell?.col === "muhHesapId"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* Depo Hesap ID */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          value={row.efektifDepoHesapId ?? ""}
+                          placeholder="Depo ID"
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "efektifDepoHesapId", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "efektifDepoHesapId" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId &&
+                              activeCell?.col === "efektifDepoHesapId"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* Vaziyet Hesap ID */}
+                      <td
+                        style={{
+                          padding: 0,
+                          borderRight: "1px solid #e0e0e0",
+                        }}
+                      >
+                        <input
+                          type="number"
+                          value={row.efektifVaziyetHesapId ?? ""}
+                          placeholder="Vaziyet ID"
+                          onChange={(e) =>
+                            handleFieldChange(row.clientId, "efektifVaziyetHesapId", e.target.value)
+                          }
+                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "efektifVaziyetHesapId" })}
+                          onBlur={() => setActiveCell(null)}
+                          style={{
+                            width: "100%",
+                            height: "23px",
+                            border:
+                              activeCell?.clientId === row.clientId &&
+                              activeCell?.col === "efektifVaziyetHesapId"
+                                ? "1px dotted #000000"
+                                : "none",
+                            outline: "none",
+                            backgroundColor: "transparent",
+                            padding: "0 6px",
+                            fontSize: "13px",
+                            textAlign: "right",
+                            color: "#000000",
+                          }}
+                        />
+                      </td>
+
+                      {/* Sil Butonu */}
+                      <td
+                        style={{
+                          padding: 0,
+                          textAlign: "center",
+                          verticalAlign: "middle",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClick(row)}
+                          title="Bu istatistik tanımını sil"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            color: "#dc2626",
+                            cursor: "pointer",
+                            padding: "2px 4px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <IconTrash size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={18}
+                      className="text-center py-4 text-muted"
+                      style={{ fontSize: "13px" }}
+                    >
+                      Henüz tanımlanmış bir istatistik kaydı bulunmuyor. Aşağıdaki butondan yeni bir istatistik tanımı ekleyebilirsiniz.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Tablo Alt Bilgi & Hızlı Ekleme Çubuğu */}
+        <div
+          className="d-flex align-items-center justify-content-between px-3 py-1.5 bg-light"
+          style={{
+            borderTop: "1px solid #8ab8ee",
+            fontSize: "12px",
+          }}
+        >
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary d-flex align-items-center gap-1 py-0.5 px-2"
+              onClick={handleAddNewRow}
+              style={{ fontSize: "12px", fontWeight: 600 }}
+              disabled={isLoading || isSaving}
+            >
+              <IconPlus size={14} /> Yeni İstatistik Ekle (+)
+            </button>
+
+            {dirtyCount > 0 && (
+              <span className="badge bg-warning text-dark px-2 py-1">
+                {dirtyCount} satırda kaydedilmemiş değişiklik var
+              </span>
+            )}
+          </div>
+
+          <div className="text-secondary fw-semibold">
+            Toplam İstatistik: <span className="text-dark">{rows.length}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Silme Onay Modalı */}
+      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered size="sm">
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="fs-6 text-danger d-flex align-items-center gap-1.5">
+            <IconTrash size={18} /> İstatistik Silme Onayı
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
-          <p className="mb-2">
-            <strong>[{selectedStatistic?.kod}] {selectedStatistic?.aciklama}</strong> istatistik tanımını veritabanından kalıcı olarak silmek istediğinize emin misiniz?
+        <Modal.Body className="py-3">
+          <p className="mb-2" style={{ fontSize: "13px" }}>
+            <strong>[{deleteTarget?.kod}] {deleteTarget?.aciklama}</strong> istatistik tanımını kalıcı olarak silmek istediğinize emin misiniz?
           </p>
-          <p className="small text-danger mb-0">
-            ⚠️ Bu işlem geri alınamaz.
-          </p>
+          <small className="text-danger">⚠️ Bu işlem geri alınamaz.</small>
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="py-1.5">
           <Button variant="secondary" size="sm" onClick={() => setShowDeleteModal(false)}>
-            İptal
+            Vazgeç
           </Button>
-          <Button variant="danger" size="sm" onClick={handleDelete} disabled={isSaving}>
-            {isSaving ? "Siliniyor..." : "Evet, Tanımı Sil"}
+          <Button variant="danger" size="sm" onClick={handleConfirmDelete} disabled={isSaving}>
+            {isSaving ? "Siliniyor..." : "Evet, Sil"}
           </Button>
         </Modal.Footer>
       </Modal>
