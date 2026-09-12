@@ -126,7 +126,6 @@ export class NumeratorSqlRepository {
     }
     /**
      * Saves (inserts or updates) a numerator definition using the SODVZ_NUMERATOR_KAYDET stored procedure.
-     * Cleans up mismatched records for the same TUR first to prevent duplicate key constraint violations.
      */
     static async saveViaProcedure(data, dbContext) {
         try {
@@ -146,14 +145,14 @@ export class NumeratorSqlRepository {
             const uzunluk = Math.min(50, Math.max(1, toInt(data.uzunluk, 10)));
             const onuneSifirKoy = data.onuneSifirKoy !== false;
             const yaziciOrtakAlan = cleanYaziciId === null ? 1 : 0;
-            // 1. Yazıcı değişikliği veya yeniden oluşturma durumlarında çakışan eski kaydı temizle
+            // 1. Yazıcı değişikliği yapılmışsa, veritabanındaki eski uyumsuz kaydı temizle
             const cleanupReq = pool.request();
             cleanupReq.input("TUR", sql.TinyInt, tur);
             if (cleanYaziciId !== null) {
                 cleanupReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
                 await cleanupReq.query(`
           DELETE FROM [dbo].[TODVZ_NUMERATOR] 
-          WHERE [TUR] = @TUR AND ([YAZICI_ID] IS NULL OR [YAZICI_ID] <> @YAZICI_ID);
+          WHERE [TUR] = @TUR AND ISNULL([YAZICI_ID], 0) <> @YAZICI_ID;
         `);
             }
             else {
@@ -162,53 +161,17 @@ export class NumeratorSqlRepository {
           WHERE [TUR] = @TUR AND [YAZICI_ID] IS NOT NULL;
         `);
             }
-            // 2. SODVZ_NUMERATOR_KAYDET Stored Procedure çağrısı
-            try {
-                const procReq = pool.request();
-                procReq.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
-                procReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
-                procReq.input("TUR", sql.TinyInt, tur);
-                procReq.input("ONEK", sql.VarChar(50), onek);
-                procReq.input("BASLANGIC", sql.Int, baslangic);
-                procReq.input("BITIS", sql.Int, bitis);
-                procReq.input("UZUNLUK", sql.Int, uzunluk);
-                procReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
-                await procReq.execute("SODVZ_NUMERATOR_KAYDET");
-            }
-            catch (procErr) {
-                logger.warn(`SODVZ_NUMERATOR_KAYDET SP hatası, direkt sorgu ile tamamlanıyor: ${procErr?.message}`);
-                // Fallback: Prosedürde beklenmeyen bir durum olursa doğrudan atomik upsert yap
-                const fallbackReq = pool.request();
-                fallbackReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
-                fallbackReq.input("TUR", sql.TinyInt, tur);
-                fallbackReq.input("ONEK", sql.VarChar(50), onek);
-                fallbackReq.input("BASLANGIC", sql.Int, baslangic);
-                fallbackReq.input("BITIS", sql.Int, bitis);
-                fallbackReq.input("UZUNLUK", sql.Int, uzunluk);
-                fallbackReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
-                await fallbackReq.query(`
-          IF EXISTS (SELECT 1 FROM [dbo].[TODVZ_NUMERATOR] WHERE [TUR] = @TUR)
-          BEGIN
-            UPDATE [dbo].[TODVZ_NUMERATOR]
-            SET [YAZICI_ID] = @YAZICI_ID,
-                [ONEK] = @ONEK,
-                [BASLANGIC] = @BASLANGIC,
-                [BITIS] = @BITIS,
-                [UZUNLUK] = @UZUNLUK,
-                [ONUNE_SIFIR_KOY] = @ONUNE_SIFIR_KOY
-            WHERE [TUR] = @TUR;
-          END
-          ELSE
-          BEGIN
-            INSERT INTO [dbo].[TODVZ_NUMERATOR] (
-              [YAZICI_ID], [TUR], [ONEK], [BASLANGIC], [BITIS], [UZUNLUK], [ONUNE_SIFIR_KOY]
-            )
-            VALUES (
-              @YAZICI_ID, @TUR, @ONEK, @BASLANGIC, @BITIS, @UZUNLUK, @ONUNE_SIFIR_KOY
-            );
-          END
-        `);
-            }
+            // 2. Doğrudan SODVZ_NUMERATOR_KAYDET Stored Procedure'ünü çalıştır
+            const procReq = pool.request();
+            procReq.input("YAZICI_ORTAK_ALAN", sql.Bit, yaziciOrtakAlan);
+            procReq.input("YAZICI_ID", sql.Int, cleanYaziciId);
+            procReq.input("TUR", sql.TinyInt, tur);
+            procReq.input("ONEK", sql.VarChar(50), onek);
+            procReq.input("BASLANGIC", sql.Int, baslangic);
+            procReq.input("BITIS", sql.Int, bitis);
+            procReq.input("UZUNLUK", sql.Int, uzunluk);
+            procReq.input("ONUNE_SIFIR_KOY", sql.Bit, onuneSifirKoy ? 1 : 0);
+            await procReq.execute("SODVZ_NUMERATOR_KAYDET");
             const saved = await NumeratorSqlRepository.findByTurAndYazici(tur, cleanYaziciId, dbContext);
             if (!saved) {
                 throw ApiError.internal("Numaratör kaydedildi fakat güncel veri okunamadı.");
