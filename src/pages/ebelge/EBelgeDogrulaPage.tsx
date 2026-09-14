@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import {
   IconFileCheck,
@@ -56,7 +57,9 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [paraBirimi, setParaBirimi] = useState<string>("TRY");
   const [not, setNot] = useState<string>("");
 
-  const [aliciVkn, setAliciVkn] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  // Ana sayfadaki VKN pop-up'ından gelen numara (yönetici isteği 14.09.2026): numara dolu gelir, otomatik sorgu türü seçer
+  const [aliciVkn, setAliciVkn] = useState<string>(() => (searchParams.get("vkn") || "").replace(/\D/g, "").slice(0, 11));
   const [aliciUnvan, setAliciUnvan] = useState<string>("");
   const [aliciAd, setAliciAd] = useState<string>("");
   const [aliciSoyad, setAliciSoyad] = useState<string>("");

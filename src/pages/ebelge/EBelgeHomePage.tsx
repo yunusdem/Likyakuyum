@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Badge, Card, Col, Row, Spinner } from "react-bootstrap";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import {
   IconFileCertificate,
@@ -89,8 +89,65 @@ const KARTLAR: ModulKarti[] = [
   },
 ];
 
+/**
+ * e-Fatura / e-Arşiv Oluştur kartı (yönetici isteği 14.09.2026): sayfaya gitmeden önce pop-up'ta TCKN/VKN alınır,
+ * numara tamamlanınca mükellef sorgusu kendiliğinden çalışır ve sonuca göre form (e-Fatura ya da e-Arşiv) ilgili
+ * senaryoyla otomatik açılır. Sorgu başarısızsa kullanıcı yine de forma geçebilir; tür orada belirlenir.
+ */
+const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHide }) => {
+  const navigate = useNavigate();
+  const [vkn, setVkn] = useState("");
+  const [sorgulaniyor, setSorgulaniyor] = useState(false);
+  const [sonuc, setSonuc] = useState<{ mukellefMi: boolean; mesaj: string } | null>(null);
+  const [hata, setHata] = useState<string | null>(null);
+  const sira = useRef(0);
+  const yonlendir = (m: boolean, no: string) => { onHide(); navigate(`/e-belge/dogrula?vkn=${encodeURIComponent(no)}&senaryo=${m ? "TICARIFATURA" : "EARSIVFATURA"}`); };
+  useEffect(() => { if (show) { setVkn(""); setSonuc(null); setHata(null); setSorgulaniyor(false); } }, [show]);
+  useEffect(() => {
+    if (!/^\d{10,11}$/.test(vkn)) { setSonuc(null); setHata(null); return; }
+    const no = vkn, s = ++sira.current;
+    const zaman = setTimeout(async () => {
+      setSorgulaniyor(true); setHata(null); setSonuc(null);
+      try {
+        const cevap = await ebelgeService.mukellefSorgula(no);
+        if (s !== sira.current) return;
+        setSonuc({ mukellefMi: cevap.mukellefMi, mesaj: cevap.mesaj });
+        // Sonuç görülsün diye kısa bekleme, sonra otomatik yönlendirme
+        setTimeout(() => { if (s === sira.current) yonlendir(cevap.mukellefMi, no); }, 900);
+      } catch (e: any) {
+        if (s !== sira.current) return;
+        setHata((e?.message || "Mükellef sorgulanamadı.") + " Numarayı kontrol edin ya da türü formda seçmek için Forma geç'e basın.");
+      } finally { if (s === sira.current) setSorgulaniyor(false); }
+    }, 500);
+    return () => clearTimeout(zaman);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vkn]);
+  return (
+    <Modal show={show} onHide={onHide} centered>
+      <Modal.Header closeButton className="py-2"><Modal.Title className="fs-6 fw-semibold">e-Fatura / e-Arşiv — Alıcı TCKN / VKN</Modal.Title></Modal.Header>
+      <Modal.Body>
+        <Form.Label className="small fw-semibold text-secondary">Alıcı TCKN (11) veya VKN (10)</Form.Label>
+        <Form.Control autoFocus size="lg" className="font-monospace" inputMode="numeric" maxLength={11} value={vkn} placeholder="Numara tamamlanınca sorgu kendiliğinden yapılır"
+          onChange={e => setVkn(e.target.value.replace(/\D/g, ""))} />
+        <div className="mt-3" style={{ minHeight: 48 }}>
+          {sorgulaniyor && <div className="text-muted small"><Spinner size="sm" animation="border" className="me-2" />GİB mükellef listesi sorgulanıyor…</div>}
+          {sonuc && <Alert variant={sonuc.mukellefMi ? "primary" : "success"} className="py-2 mb-0 small">
+            {sonuc.mukellefMi ? "Alıcı e-Fatura mükellefi → e-Fatura formu açılıyor…" : "Alıcı e-Fatura mükellefi değil → e-Arşiv formu açılıyor…"}
+          </Alert>}
+          {hata && <Alert variant="danger" className="py-2 mb-0 small">{hata}</Alert>}
+        </div>
+      </Modal.Body>
+      <Modal.Footer className="py-2">
+        <Button variant="secondary" size="sm" onClick={onHide}>Vazgeç</Button>
+        <Button variant="outline-primary" size="sm" disabled={sorgulaniyor} onClick={() => { onHide(); navigate(vkn ? `/e-belge/dogrula?vkn=${encodeURIComponent(vkn)}` : "/e-belge/dogrula"); }}>Forma geç</Button>
+      </Modal.Footer>
+    </Modal>
+  );
+};
+
 const EBelgeHomePage: React.FC = () => {
   const navigate = useNavigate();
+  const [vknPopup, setVknPopup] = useState(false);
   const [ayar, setAyar] = useState<EbelgeAyar | null>(null);
   const [yukleniyor, setYukleniyor] = useState<boolean>(true);
 
@@ -157,7 +214,7 @@ const EBelgeHomePage: React.FC = () => {
             <Card
               className="shadow-sm border border-secondary-subtle rounded-3 h-100"
               role={kart.hazir ? "button" : undefined}
-              onClick={kart.hazir ? () => navigate(kart.yol) : undefined}
+              onClick={kart.hazir ? () => (kart.yol === "/e-belge/dogrula" ? setVknPopup(true) : navigate(kart.yol)) : undefined}
               style={kart.hazir ? undefined : { opacity: 0.65 }}
             >
               <Card.Body className="p-3 bg-body d-flex flex-column">
@@ -178,6 +235,7 @@ const EBelgeHomePage: React.FC = () => {
           </Col>
         ))}
       </Row>
+      <VknPopup show={vknPopup} onHide={() => setVknPopup(false)} />
     </div>
   );
 };

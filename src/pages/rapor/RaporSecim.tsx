@@ -45,6 +45,8 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
     if (coklu) { setIsaretli(o => { const n = new Set(o); const k = anahtar(x); if (n.has(k)) n.delete(k); else n.add(k); return n; }); setImlec(anahtar(x)); }
     else { onSec([x]); onHide(); }
   };
+  /** Satıra tıklama (yönetici isteği 14.09.2026): ilk tık yalnızca üzerine gelir, aynı satıra ikinci tık seçer / işaretler. */
+  const tikla = (x: T) => { const k = anahtar(x); if (k === imlec) sec(x); else setImlec(k); };
   const onayla = () => {
     if (coklu) { onSec(items.filter(x => isaretli.has(anahtar(x)))); onHide(); return; }
     const hedef = (imlec && suzulmus.find(x => anahtar(x) === imlec)) || suzulmus[0];
@@ -73,7 +75,7 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
           {arama && <Button variant="outline-secondary" className="bg-white" onClick={() => { setArama(""); aramaRef.current?.focus(); }}><IconX size={14} /></Button>}
         </InputGroup>
         <div className="d-flex justify-content-between align-items-center mb-2 small text-muted px-1">
-          <span>{coklu ? "Satıra tıklayarak işaretleyin; birden fazla seçilebilir." : "Çift tıklama veya Enter ile seçilir; ↑↓ ile gezilir."}</span>
+          <span>{coklu ? "İlk tık satırın üzerine gelir, ikinci tık işaretler; birden fazla seçilebilir." : "İlk tık satırın üzerine gelir, ikinci tık seçer; ↑↓ ve Enter de kullanılabilir."}</span>
           {coklu ? <Badge bg="primary">{isaretli.size} seçili</Badge> : null}
         </div>
         <style>{`.rapor-secim-imlec > td { background-color: #e0f2fe !important; } .rapor-secim-isaretli > td { background-color: #dcfce7 !important; }`}</style>
@@ -89,7 +91,7 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
               <tbody>
                 {suzulmus.map((x, i) => { const k = anahtar(x); const im = k === imlec, isr = isaretli.has(k);
                   return <tr key={k} style={{ cursor: "pointer", userSelect: "none" }} className={im ? "rapor-secim-imlec" : isr ? "rapor-secim-isaretli" : ""}
-                    onClick={() => coklu ? sec(x) : setImlec(k)} onDoubleClick={() => sec(x)}>
+                    onClick={() => tikla(x)} onDoubleClick={() => sec(x)}>
                     <td className="text-center small text-secondary">{coklu ? <Form.Check type="checkbox" checked={isr} readOnly tabIndex={-1} /> : im ? <IconCheck size={15} className="text-primary" /> : i + 1}</td>
                     {kolonlar.map((c, ci) => <td key={ci} className={c.hiza === "center" ? "text-center" : c.hiza === "right" ? "text-end" : ""}>{c.deger(x)}</td>)}
                     {!coklu && <td className="text-center"><Button size="sm" variant={im ? "primary" : "outline-secondary"} className="py-0 px-2" onClick={e => { e.stopPropagation(); sec(x); }}>Seç</Button></td>}

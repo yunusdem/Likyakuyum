@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Button, Card, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
 import { useParams } from "react-router-dom";
-import { IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconHistory, IconPrinter, IconReportAnalytics, IconSearch, IconTrash, IconX } from "@tabler/icons-react";
-import ERPToolbar from "components/common/ERPToolbar";
+import { IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconHistory, IconPrinter, IconReportAnalytics, IconRefresh, IconSearch, IconTrash, IconX } from "@tabler/icons-react";
 import { CashDeskService, type VezneItem } from "../../services/cashDeskService";
 import { ProductDefinitionService, type ProductItem } from "../../services/productDefinitionService";
 import { CariService, type CariKartItem } from "../../services/cariService";
@@ -28,6 +27,7 @@ const varsayilanDeger = (v?: string | number | null): string => {
   if (typeof v === "string" && /^-\d+g$/.test(v)) return gun(-Number(v.slice(1, -1)));
   return v === null || v === undefined ? "" : String(v);
 };
+const TARIH_TIPLERI = new Set(["tarih", "tarihAralik", "saatAralik"]);
 const HAREKET_TIPLERI: { kod: string; ad: string }[] = [
   { kod: "0", ad: "Nakit" }, { kod: "1", ad: "Banka / Havale" }, { kod: "2", ad: "POS / Kredi Kartı" }, { kod: "3", ad: "Dekont" }, { kod: "4", ad: "Virman" }, { kod: "5", ad: "Devir" },
 ];
@@ -147,10 +147,9 @@ export const RaporPage: React.FC = () => {
       if (id !== istekNo.current) return;
       setVeri(v);
       RaporService.aramaKaydet(kod, d, v.filtreOzeti).then(() => RaporService.aramalar(kod).then(setAramalar)).catch(() => undefined);
-      if (v.sinirAsildi) { setPdfUrl(null); setHata(`Rapor ${v.toplamKayit.toLocaleString("tr-TR")} satır üretiyor; üst sınır ${(v.tanim.ustSinir || 5000).toLocaleString("tr-TR")}. Parametreleri daraltın.`); return; }
-      const url = await RaporService.pdfBlobUrl(kod, d);
-      if (id !== istekNo.current) { URL.revokeObjectURL(url); return; }
-      setPdfUrl(o => { if (o) URL.revokeObjectURL(o); return url; });
+      setPdfUrl(null);
+      if (v.sinirAsildi) { setHata(`Rapor ${v.toplamKayit.toLocaleString("tr-TR")} satır üretiyor; üst sınır ${(v.tanim.ustSinir || 5000).toLocaleString("tr-TR")}. Parametreleri daraltın.`); return; }
+      // PDF otomatik açılmaz; kullanıcı "PDF" düğmesiyle pop-up olarak görür (yönetici kararı 14.09.2026)
     } catch (e: any) { if (id === istekNo.current) { setVeri(null); setHata(e?.message || "Rapor oluşturulamadı."); } }
     finally { if (id === istekNo.current) setYukleniyor(false); }
   }, [kod, tanim, degerler, zorunluEksik]);
@@ -195,29 +194,29 @@ export const RaporPage: React.FC = () => {
   const alan = (p: RaporParametre) => {
     const etiket = etiketOlustur(p);
     switch (p.tip) {
-      case "tarih": return <Col md={2} key={p.ad}>{etiket}<Form.Control size="sm" type="date" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} /></Col>;
+      case "tarih": return <Col md={3} key={p.ad}>{etiket}<Form.Control size="sm" type="date" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} /></Col>;
       case "tarihAralik": return <React.Fragment key={p.ad}>
-        <Col md={2}>{etiket}<Form.Control size="sm" type="date" value={String(degerler.baslangic ?? "")} onChange={e => set("baslangic", e.target.value)} /></Col>
-        <Col md={2}>{altEtiket("Bitiş")}<Form.Control size="sm" type="date" value={String(degerler.bitis ?? "")} onChange={e => set("bitis", e.target.value)} /></Col>
+        <Col md={3}>{etiket}<Form.Control size="sm" type="date" value={String(degerler.baslangic ?? "")} onChange={e => set("baslangic", e.target.value)} /></Col>
+        <Col md={3}>{altEtiket("Bitiş")}<Form.Control size="sm" type="date" value={String(degerler.bitis ?? "")} onChange={e => set("bitis", e.target.value)} /></Col>
       </React.Fragment>;
       case "saatAralik": return <React.Fragment key={p.ad}>
-        <Col md={1}>{etiket}<Form.Control size="sm" type="time" value={String(degerler.baslangicSaat ?? "00:00")} onChange={e => set("baslangicSaat", e.target.value)} /></Col>
-        <Col md={1}>{altEtiket("Bitiş saat")}<Form.Control size="sm" type="time" value={String(degerler.bitisSaat ?? "23:59")} onChange={e => set("bitisSaat", e.target.value)} /></Col>
+        <Col md={2}>{etiket}<Form.Control size="sm" type="time" value={String(degerler.baslangicSaat ?? "00:00")} onChange={e => set("baslangicSaat", e.target.value)} /></Col>
+        <Col md={2}>{altEtiket("Bitiş saat")}<Form.Control size="sm" type="time" value={String(degerler.bitisSaat ?? "23:59")} onChange={e => set("bitisSaat", e.target.value)} /></Col>
       </React.Fragment>;
       // Tek seçimler: dürbünle (kutu salt gösterim, seçim pencereden; boş = tümü)
-      case "vezne": return <Col md={3} key={p.ad}>{etiket}
+      case "vezne": return <Col md={4} key={p.ad}>{etiket}
         <DurbunAlan<VezneItem> value={vezneAd(degerler[p.ad]) || ""} saltOkunur onChange={() => undefined} placeholder="Tüm vezneler" title="Vezne seçimi" items={vezneler} yukleniyor={listeYukleniyor}
           kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} aramaYerTutucu="Vezne kodu veya adıyla arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />
         {degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Tümü</Button> : null}</Col>;
-      case "para": return <Col md={3} key={p.ad}>{etiket}
+      case "para": return <Col md={4} key={p.ad}>{etiket}
         <DurbunAlan<ProductItem> value={paraAd(degerler[p.ad]) || ""} saltOkunur onChange={() => undefined} placeholder="Tüm paralar" title="Para birimi / kıymet seçimi" items={paralar} yukleniyor={listeYukleniyor}
           kolonlar={paraKolonlar} aramaAlanlari={paraArama} anahtar={v => String(v.id)} aramaYerTutucu="Para kodu veya adıyla arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />
         {degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Tümü</Button> : null}</Col>;
-      case "cari": return <Col md={3} key={p.ad}>{etiket}
+      case "cari": return <Col md={4} key={p.ad}>{etiket}
         <DurbunAlan<CariKartItem> value={cariAd(degerler[p.ad]) || ""} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? "Cari seçin…" : "Tüm cariler"} title="Cari kart seçimi" items={cariler} yukleniyor={listeYukleniyor}
           kolonlar={cariKolonlar} aramaAlanlari={cariArama} anahtar={v => String(v.id)} aramaYerTutucu="Cari kodu, ünvan, telefon veya vergi no ile arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />
         {degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Temizle</Button> : null}</Col>;
-      case "fisTipi": return <Col md={1} key={p.ad}>{etiket}<Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
+      case "fisTipi": return <Col md={2} key={p.ad}>{etiket}<Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
         <option value="">Tümü</option><option value="0">Alış</option><option value="1">Satış</option></Form.Select></Col>;
       case "hareketTipi": return <Col md={2} key={p.ad}>{etiket}<Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
         <option value="">Tümü</option>{HAREKET_TIPLERI.map(h => <option key={h.kod} value={h.kod}>{h.ad}</option>)}</Form.Select></Col>;
@@ -226,7 +225,7 @@ export const RaporPage: React.FC = () => {
           <option value={0}>Anlık gişe kuru</option><option value={2}>Saklanan kur (tarihli)</option></Form.Select></Col>
         {Number(degerler.kurTuru) === 2 && <Col md={2}>{altEtiket("Kur tarihi")}
           <Form.Control size="sm" type="date" value={String(degerler.kurTarihi ?? "")} onChange={e => set("kurTarihi", e.target.value)} /></Col>}
-        <Col md={1}>{altEtiket("Alan")}<Form.Select size="sm" value={String(degerler.kurAlani ?? "alis")} onChange={e => set("kurAlani", e.target.value)}>
+        <Col md={2}>{altEtiket("Alan")}<Form.Select size="sm" value={String(degerler.kurAlani ?? "alis")} onChange={e => set("kurAlani", e.target.value)}>
           <option value="alis">Alış</option><option value="satis">Satış</option></Form.Select></Col>
       </React.Fragment>;
       // Aralıklar: kod yazılabilir ya da dürbünden seçilir
@@ -249,7 +248,7 @@ export const RaporPage: React.FC = () => {
       case "paraCoklu": {
         const secili = String(degerler.paraIdler ?? "").split(",").filter(Boolean);
         const metin = secili.map(id => paralar.find(v => String(v.id) === id)?.kod || id).join(", ");
-        return <Col md={3} key={p.ad}>{etiket}
+        return <Col md={4} key={p.ad}>{etiket}
           <DurbunAlan<ProductItem> value={metin} saltOkunur onChange={() => undefined} placeholder="Tüm paralar (dürbünden seçin)" title="Para seçimi (birden fazla)" items={paralar} yukleniyor={listeYukleniyor}
             kolonlar={paraKolonlar} aramaAlanlari={paraArama} anahtar={v => String(v.id)} aramaYerTutucu="Para kodu veya adıyla arayın; satıra tıklayarak işaretleyin…" disabled={meslek}
             coklu secili={secili} onSelect={() => undefined} onCokluSec={s => set("paraIdler", s.map(x => String(x.id)).join(","))} />
@@ -258,7 +257,7 @@ export const RaporPage: React.FC = () => {
       case "cariCoklu": {
         const secili = String(degerler.cariIdler ?? "").split(",").filter(Boolean);
         const metin = secili.map(id => cariler.find(v => String(v.id) === id)?.kod || id).join(", ");
-        return <Col md={3} key={p.ad}>{etiket}
+        return <Col md={4} key={p.ad}>{etiket}
           <DurbunAlan<CariKartItem> value={metin} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? "Dürbünden cari seçin…" : "Tüm cariler (dürbünden seçin)"} title="Cari seçimi (birden fazla)" items={cariler} yukleniyor={listeYukleniyor}
             kolonlar={cariKolonlar} aramaAlanlari={cariArama} anahtar={v => String(v.id)} aramaYerTutucu="Cari kodu, ünvan, telefon veya vergi no ile arayın; satıra tıklayarak işaretleyin…" disabled={meslek}
             coklu secili={secili} onSelect={() => undefined} onCokluSec={s => set("cariIdler", s.map(x => String(x.id)).join(","))} />
@@ -267,7 +266,7 @@ export const RaporPage: React.FC = () => {
       case "vezneCoklu": {
         const secili = String(degerler.vezneIdler ?? "").split(",").filter(Boolean);
         const metin = secili.map(id => vezneler.find(v => String(v.id) === id)?.kod || id).join(", ");
-        return <Col md={3} key={p.ad}>{etiket}
+        return <Col md={4} key={p.ad}>{etiket}
           <DurbunAlan<VezneItem> value={metin} saltOkunur onChange={() => undefined} placeholder="Tüm vezneler (dürbünden seçin)" title="Vezne seçimi (birden fazla)" items={vezneler} yukleniyor={listeYukleniyor}
             kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} aramaYerTutucu="Vezne kodu veya adıyla arayın; satıra tıklayarak işaretleyin…" disabled={meslek}
             coklu secili={secili} onSelect={() => undefined} onCokluSec={s => set("vezneIdler", s.map(x => String(x.id)).join(","))} />
@@ -307,38 +306,28 @@ export const RaporPage: React.FC = () => {
 
   return (
     <div className="container-fluid py-2 px-3">
-      <ERPToolbar
-        pageTitle={menu.ad}
-        pageIcon={<IconReportAnalytics size={20} />}
-        onSearch={() => uygula()}
-        onRefresh={() => uygula()}
-        onClear={temizle}
-        onPrint={veri && !veri.sinirAsildi ? yazdir : undefined}
-        hideDelete
-        disabled={meslek || !tanim}
-        rightContent={<span className="text-muted text-nowrap d-none d-md-inline" style={{ fontSize: "0.78rem" }}>
-          {tanim ? `${tanim.kagit === "A4-yatay" ? "A4 yatay" : "A4 dikey"} · ${veri ? `${veri.toplamKayit.toLocaleString("tr-TR")} kayıt` : "—"}` : "Tanım yükleniyor…"}
-        </span>}
-      />
-
       {hata && <Alert variant={veri?.sinirAsildi ? "warning" : "danger"} dismissible onClose={() => setHata(null)} className="py-2 mt-2">{hata}</Alert>}
-      {tanim?.aciklama && <div className="text-muted small mt-2">{tanim.aciklama}</div>}
 
       <Card className="shadow-sm border-0 my-2">
+        <Card.Header className="d-flex align-items-center gap-2 py-2 bg-white">
+          <IconReportAnalytics size={18} className="text-primary" /><strong>{menu.ad}</strong>
+          <span className="text-muted small ms-auto">{tanim ? `${tanim.kagit === "A4-yatay" ? "A4 yatay" : "A4 dikey"}${veri ? ` · ${veri.toplamKayit.toLocaleString("tr-TR")} kayıt` : ""}` : "Tanım yükleniyor…"}</span>
+          <Button size="sm" variant="light" onClick={temizle} disabled={meslek || !tanim} title="Parametreleri sıfırla"><IconRefresh size={15} /></Button>
+        </Card.Header>
         <Card.Body className="p-3">
           {!tanim ? <Spinner size="sm" animation="border" /> : (
             <Form onSubmit={e => { e.preventDefault(); void uygula(); }}>
               <fieldset disabled={meslek}>
-                <Row className="g-2 align-items-end">
-                  {tanim.parametreler.map(alan)}
-                  <Col md="auto" className="d-flex gap-1 ms-auto">
-                    <Button type="submit" size="sm" variant="primary" title="Seçilen parametrelerle raporu oluştur"><IconSearch size={15} /> Uygula</Button>
-                    {veri && !pdfUrl && <Button size="sm" variant="outline-danger" onClick={pdfOnizle} disabled={veri.sinirAsildi} title="A4 PDF önizleme"><IconFileTypePdf size={15} /> PDF</Button>}
-                    <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={!veri || veri.sinirAsildi} title="PDF indir"><IconDownload size={15} /></Button>
-                    <Button size="sm" variant="outline-success" onClick={excelIndir} disabled={!veri || veri.sinirAsildi} title="Excel indir"><IconFileSpreadsheet size={15} /> Excel</Button>
-                    <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={!veri || veri.sinirAsildi} title="Yazdır"><IconPrinter size={15} /></Button>
-                  </Col>
-                </Row>
+                {/* Üst satır: tarih / saat; alt satır: cari · vezne · para ve diğer seçimler (yönetici kararı 14.09.2026: ferah düzen) */}
+                <Row className="g-3 align-items-end">{tanim.parametreler.filter(p => TARIH_TIPLERI.has(p.tip)).map(alan)}</Row>
+                {tanim.parametreler.some(p => !TARIH_TIPLERI.has(p.tip)) && <Row className="g-3 align-items-start mt-1">{tanim.parametreler.filter(p => !TARIH_TIPLERI.has(p.tip)).map(alan)}</Row>}
+                <div className="d-flex flex-wrap gap-2 mt-3 pt-2 border-top">
+                  <Button type="submit" size="sm" variant="primary" title="Seçilen parametrelerle raporu oluştur"><IconSearch size={15} /> Uygula</Button>
+                  <Button size="sm" variant="outline-danger" onClick={pdfOnizle} disabled={!veri || veri.sinirAsildi} title="A4 PDF önizlemesini pencerede aç"><IconFileTypePdf size={15} /> PDF</Button>
+                  <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={!veri || veri.sinirAsildi} title="PDF indir"><IconDownload size={15} /> İndir</Button>
+                  <Button size="sm" variant="outline-success" onClick={excelIndir} disabled={!veri || veri.sinirAsildi} title="Excel indir"><IconFileSpreadsheet size={15} /> Excel</Button>
+                  <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={!veri || veri.sinirAsildi} title="Yazdır"><IconPrinter size={15} /> Yazdır</Button>
+                </div>
               </fieldset>
             </Form>
           )}
@@ -362,7 +351,7 @@ export const RaporPage: React.FC = () => {
       </Card>
 
       <Row className="g-3">
-        <Col xl={pdfUrl ? 6 : 12}>
+        <Col xs={12}>
           <Card className="shadow-sm border-0">
             <Card.Body className="p-0">
               {veri?.filtreOzeti && <div className="px-3 py-2 small text-muted border-bottom">{veri.filtreOzeti}</div>}
@@ -394,18 +383,20 @@ export const RaporPage: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
-        {pdfUrl && (
-          <Col xl={6}>
-            <Card className="shadow-sm border-0 h-100">
-              <Card.Header className="d-flex align-items-center gap-2 py-2 bg-white">
-                <IconFileTypePdf size={18} className="text-danger" /><strong>{menu.ad}</strong><Badge bg="light" text="dark">A4 önizleme</Badge>
-                <Button size="sm" variant="light" className="ms-auto" onClick={() => setPdfUrl(null)}><IconX size={15} /></Button>
-              </Card.Header>
-              <Card.Body className="p-0"><iframe title="Rapor PDF" src={pdfUrl} style={{ width: "100%", height: "74vh", border: 0 }} /></Card.Body>
-            </Card>
-          </Col>
-        )}
       </Row>
+
+      {/* PDF önizleme pop-up (yönetici kararı 14.09.2026: Uygula'da otomatik açılmaz) */}
+      <Modal show={!!pdfUrl} onHide={() => setPdfUrl(null)} size="xl" centered>
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="fs-6 d-flex align-items-center gap-2"><IconFileTypePdf size={18} className="text-danger" />{menu.ad} — A4 önizleme</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-0">{pdfUrl && <iframe title="Rapor PDF" src={pdfUrl} style={{ width: "100%", height: "80vh", border: 0 }} />}</Modal.Body>
+        <Modal.Footer className="py-2">
+          <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={dosyaIsi}><IconDownload size={15} /> İndir</Button>
+          <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={dosyaIsi}><IconPrinter size={15} /> Yazdır</Button>
+          <Button size="sm" variant="secondary" onClick={() => setPdfUrl(null)}><IconX size={15} /> Kapat</Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };
