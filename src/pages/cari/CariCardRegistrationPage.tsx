@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import React, { useState, useEffect, useMemo } from "react";
+import { useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import {
   Card,
   Row,
@@ -12,6 +12,7 @@ import {
   Modal,
   Tab,
   Nav,
+  InputGroup,
 } from "react-bootstrap";
 import {
   IconUsers,
@@ -33,6 +34,7 @@ import {
   IconRefresh,
   IconPrinter,
   IconSearch,
+  IconDownload,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
@@ -44,6 +46,9 @@ import {
   CariKartFormData,
   CariLookups,
 } from "../../services/cariService";
+import { ebelgeService } from "../../services/ebelgeService";
+import { Country, State, City } from "country-state-city";
+import CountryStateCitySelect, { GeoLocationValue } from "../../components/common/CountryStateCitySelect";
 
 const initialFormState: CariKartFormData = {
   kod: "",
@@ -105,11 +110,25 @@ const KISILIK_TIPI_OPTIONS: Record<number, string> = {
   4: "4 - Yabancı Tüzel Kişi",
 };
 
+const labelColStyle: React.CSSProperties = {
+  width: "155px",
+  flex: "0 0 155px",
+  maxWidth: "155px",
+};
+
+const normalizeTr = (str: string): string => {
+  return (str || "")
+    .toLocaleLowerCase("tr-TR")
+    .replace(/[\s\-_]/g, "")
+    .trim();
+};
+
 export const CariCardRegistrationPage: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEditPage = location.pathname.includes("kart-duzeltme");
-  const pageTitle = isEditPage ? "B- Cari Kart Düzeltme" : "A- Cari Kart Kayıt";
+  const pageTitleText = isEditPage ? "B- Cari Kart Düzeltme" : "A- Cari Kart Kayıt";
 
   // Data states
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
@@ -141,6 +160,218 @@ export const CariCardRegistrationPage: React.FC = () => {
   const [alertError, setAlertError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
+  const [isGibSorgulaniyor, setIsGibSorgulaniyor] = useState<boolean>(false);
+  const [postaKoduInput, setPostaKoduInput] = useState<string>("");
+
+  // Dinamik İl & İlçe Eşleme Durumları
+  const [selectedStateCode, setSelectedStateCode] = useState<string>("");
+  const [selectedProvinceName, setSelectedProvinceName] = useState<string>("");
+  const [selectedDistrictName, setSelectedDistrictName] = useState<string>("");
+
+  // Posta Kodu alanı ID değil, doğrudan yazılan posta kodu metnine göre çalışır;
+  // seçili kaydın gerçek POSTA_KODU_ID'sine karşılık gelen metni burada senkronlar.
+  useEffect(() => {
+    if (!formData.postaKoduId) {
+      setPostaKoduInput("");
+      return;
+    }
+    const match = lookups.postaKoduList.find((pk) => pk.id === formData.postaKoduId);
+    setPostaKoduInput(match ? String(match.kod || match.ad || "") : "");
+  }, [formData.postaKoduId, lookups.postaKoduList]);
+
+  // Seçili Ülkenin ISO kodu (TR, US, DE vb. - country-state-city kütüphanesi için)
+  const selectedCountryIso = useMemo(() => {
+    if (!formData.ulkeId) return "TR";
+    const selectedUlke = lookups.ulkeList.find((u) => u.id === formData.ulkeId);
+    if (!selectedUlke) return "TR";
+    if (selectedUlke.kod && selectedUlke.kod.trim().length === 2) {
+      return selectedUlke.kod.trim().toUpperCase();
+    }
+    const norm = normalizeTr(selectedUlke.ad);
+    if (norm.includes("turk") || norm === "tr") return "TR";
+    const match = Country.getAllCountries().find(
+      (c) => normalizeTr(c.name) === norm
+    );
+    return match ? match.isoCode : "TR";
+  }, [formData.ulkeId, lookups.ulkeList]);
+
+  // Seçili ülkeye ait tüm il / eyalet listesi (country-state-city kütüphanesinden dinamik)
+  const availableStates = useMemo(() => {
+    return State.getStatesOfCountry(selectedCountryIso);
+  }, [selectedCountryIso]);
+
+  // İl ve İlçe adlarını formData veya lookup değiştikçe senkronize et
+  useEffect(() => {
+    if (!formData.ilId) {
+      setSelectedStateCode("");
+      setSelectedProvinceName("");
+      return;
+    }
+    const foundIl = lookups.ilList.find((x) => x.id === formData.ilId);
+    if (foundIl) {
+      const match = availableStates.find((s) => normalizeTr(s.name) === normalizeTr(foundIl.ad));
+      if (match) {
+        setSelectedStateCode(match.isoCode);
+        setSelectedProvinceName(match.name);
+      } else {
+        setSelectedStateCode(String(foundIl.id).padStart(2, "0"));
+        setSelectedProvinceName(foundIl.ad);
+      }
+    } else {
+      const match = availableStates.find((s) => parseInt(s.isoCode, 10) === formData.ilId);
+      if (match) {
+        setSelectedStateCode(match.isoCode);
+        setSelectedProvinceName(match.name);
+      }
+    }
+  }, [formData.ilId, lookups.ilList, availableStates]);
+
+  useEffect(() => {
+    if (!formData.ilceId) {
+      setSelectedDistrictName("");
+      return;
+    }
+    const foundIlce = lookups.ilceList.find((x) => x.id === formData.ilceId);
+    if (foundIlce) {
+      setSelectedDistrictName(foundIlce.ad);
+    }
+  }, [formData.ilceId, lookups.ilceList]);
+
+  // Aktif seçili eyalet / il nesnesi
+  const activeStateObj = useMemo(() => {
+    if (!selectedProvinceName) return null;
+    return (
+      availableStates.find(
+        (s) =>
+          normalizeTr(s.name) === normalizeTr(selectedProvinceName) ||
+          s.isoCode === selectedProvinceName
+      ) || null
+    );
+  }, [selectedProvinceName, availableStates]);
+
+  // Tüm ülkelerin alfabetik listesi (Türkiye en başta)
+  const allCountries = useMemo(() => {
+    const all = Country.getAllCountries();
+    const tr = all.find((c) => c.isoCode === "TR");
+    const others = all.filter((c) => c.isoCode !== "TR").sort((a, b) => a.name.localeCompare(b.name));
+    return tr ? [tr, ...others] : all;
+  }, []);
+
+  // Seçili Uyruğun ISO Kodu (Ülke ile senkronize başlar, istendiğinde bağımsız değiştirilebilir)
+  const selectedUyrukIso = useMemo(() => {
+    if (!formData.uyrukId) return selectedCountryIso;
+    const selectedUlke = lookups.ulkeList.find((u) => u.id === formData.uyrukId);
+    if (!selectedUlke) return selectedCountryIso;
+    if (selectedUlke.kod && selectedUlke.kod.trim().length === 2) {
+      return selectedUlke.kod.trim().toUpperCase();
+    }
+    const norm = normalizeTr(selectedUlke.ad);
+    if (norm.includes("turk") || norm === "tr") return "TR";
+    const match = Country.getAllCountries().find(
+      (c) => normalizeTr(c.name) === norm
+    );
+    return match ? match.isoCode : selectedCountryIso;
+  }, [formData.uyrukId, lookups.ulkeList, selectedCountryIso]);
+
+  // country-state-city kütüphanesinden gelen cascading seçim yönetimi
+  const handleLocationChange = (loc: GeoLocationValue) => {
+    console.log("[CariCardRegistrationPage] handleLocationChange tetiklendi:", loc);
+
+    // 1. Ülke Değişikliği (Ülke değişince otomatik uyruk gelir, il ve ilçe sıfırlanır)
+    if (loc.countryCode !== selectedCountryIso) {
+      const match = lookups.ulkeList.find((u) => {
+        if (u.kod && u.kod.trim().toUpperCase() === loc.countryCode) return true;
+        const n1 = normalizeTr(u.ad);
+        const n2 = normalizeTr(loc.countryName);
+        return n1 === n2 || (loc.countryCode === "TR" && n1.includes("turk"));
+      });
+      const resolvedUlkeId = match ? match.id : (loc.countryCode === "TR" ? 218 : null);
+      handleInputChange("ulkeId", resolvedUlkeId);
+      // Ülke seçilince otomatik uyruk gelecek
+      handleInputChange("uyrukId", resolvedUlkeId);
+      setSelectedStateCode("");
+      setSelectedProvinceName("");
+      setSelectedDistrictName("");
+      handleInputChange("ilId", null);
+      handleInputChange("ilceId", null);
+      return;
+    }
+
+    // 2. İl Değişikliği (İl değişince ilçe sıfırlanır)
+    if (loc.stateCode !== selectedStateCode || loc.stateName !== selectedProvinceName) {
+      setSelectedStateCode(loc.stateCode);
+      setSelectedProvinceName(loc.stateName);
+      setSelectedDistrictName("");
+      handleInputChange("ilceId", null);
+
+      if (!loc.stateCode && !loc.stateName) {
+        handleInputChange("ilId", null);
+      } else {
+        const matchIl = lookups.ilList.find(
+          (il) =>
+            normalizeTr(il.ad) === normalizeTr(loc.stateName) ||
+            il.id === parseInt(loc.stateCode, 10)
+        );
+        if (matchIl) {
+          handleInputChange("ilId", matchIl.id);
+        } else if (loc.stateCode && !isNaN(parseInt(loc.stateCode, 10))) {
+          handleInputChange("ilId", parseInt(loc.stateCode, 10));
+        } else {
+          handleInputChange("ilId", null);
+        }
+      }
+    }
+
+    // 3. İlçe Değişikliği
+    if (loc.cityName !== selectedDistrictName) {
+      setSelectedDistrictName(loc.cityName);
+      if (!loc.cityName) {
+        handleInputChange("ilceId", null);
+      } else {
+        const matchIlce = lookups.ilceList.find(
+          (ilc) => normalizeTr(ilc.ad) === normalizeTr(loc.cityName)
+        );
+        if (matchIlce) {
+          handleInputChange("ilceId", matchIlce.id);
+        } else {
+          handleInputChange("ilceId", null);
+        }
+      }
+    }
+  };
+
+  // Bildirimler belli bir süre sonra kendiliğinden kapanır (sayfada yer kaplamaz, sabit/taşan bildirim)
+  useEffect(() => {
+    if (!alertSuccess) return;
+    const t = setTimeout(() => setAlertSuccess(null), 4500);
+    return () => clearTimeout(t);
+  }, [alertSuccess]);
+
+  useEffect(() => {
+    if (!alertError) return;
+    const t = setTimeout(() => setAlertError(null), 6000);
+    return () => clearTimeout(t);
+  }, [alertError]);
+
+  // Yeni kayıtta Varsayılan Alış/Satış İstatistiği alanlarını FIS_TIPI'ye göre otomatik doldur
+  // (FIS_TIPI = 1 => Satış, diğer her şey Alış; TODVZ_BELGE_SABLON'daki aynı kural).
+  useEffect(() => {
+    if (!isNewRecord) return;
+    const list = lookups.istatistikList || [];
+    if (list.length === 0) return;
+    setFormData((prev) => {
+      let next = prev;
+      if (next.alisIstatistikId === null) {
+        const alis = list.find((i) => Number(i.fisTipi) !== 1);
+        if (alis) next = { ...next, alisIstatistikId: alis.id };
+      }
+      if (next.satisIstatistikId === null) {
+        const satis = list.find((i) => Number(i.fisTipi) === 1);
+        if (satis) next = { ...next, satisIstatistikId: satis.id };
+      }
+      return next;
+    });
+  }, [lookups.istatistikList, isNewRecord]);
 
   // Load all cari cards and lookups
   const loadData = async (targetIndex?: number, explicitTargetId?: number | string) => {
@@ -173,8 +404,8 @@ export const CariCardRegistrationPage: React.FC = () => {
         explicitTargetId !== undefined && explicitTargetId !== null
           ? String(explicitTargetId)
           : searchParams.get("id") ||
-            (location.state as any)?.id ||
-            (location.state as any)?.item?.id;
+          (location.state as any)?.id ||
+          (location.state as any)?.item?.id;
 
       if (items.length > 0) {
         if (queryId) {
@@ -275,6 +506,18 @@ export const CariCardRegistrationPage: React.FC = () => {
     setAlertError(null);
   };
 
+  const handleNavigate = (direction: "first" | "prev" | "next" | "last") => {
+    if (cariList.length === 0) return;
+    let nextIdx = selectedIndex;
+    if (direction === "first") nextIdx = 0;
+    else if (direction === "prev") nextIdx = Math.max(0, selectedIndex - 1);
+    else if (direction === "next") nextIdx = Math.min(cariList.length - 1, selectedIndex + 1);
+    else if (direction === "last") nextIdx = cariList.length - 1;
+
+    setSelectedIndex(nextIdx);
+    handleSelectCari(cariList[nextIdx], nextIdx);
+  };
+
   const handleClear = () => {
     setSelectedCari(null);
     setIsNewRecord(true);
@@ -282,18 +525,26 @@ export const CariCardRegistrationPage: React.FC = () => {
       ...initialFormState,
       kod: "",
     });
+    setSelectedStateCode("");
+    setSelectedProvinceName("");
+    setSelectedDistrictName("");
     setFieldErrors({});
     setAlertError(null);
   };
 
   const handleNewCari = () => {
+    // Düzeltme sayfasındayken "Yeni Kayıt" tıklanınca ayrı Cari Kart Kayıt sayfasına geçilir.
+    if (isEditPage) {
+      navigate("/cari/kart-kayit");
+      return;
+    }
     handleClear();
   };
 
   const validateField = (field: string, value: any): string => {
     if (field === "kod") {
-      if (!value || String(value).trim() === "") return "Cari Kodu zorunludur.";
-      if (String(value).trim().length > 20) return "Cari Kodu en fazla 20 karakter olabilir.";
+      // Boş bırakılırsa SODVZ_CARI_KART_KAYDET prosedürü numaratörden otomatik kod üretir (NULL gider).
+      if (value && String(value).trim().length > 20) return "Cari Kodu en fazla 20 karakter olabilir.";
     }
     if (field === "ad") {
       if (!value || String(value).trim() === "") return "Cari Ünvan / Adı zorunludur.";
@@ -347,16 +598,33 @@ export const CariCardRegistrationPage: React.FC = () => {
     });
   };
 
-  const handleNavigate = (direction: "first" | "prev" | "next" | "last") => {
-    if (cariList.length === 0) return;
-    let newIndex = selectedIndex;
-    if (direction === "first") newIndex = 0;
-    else if (direction === "prev") newIndex = Math.max(0, selectedIndex - 1);
-    else if (direction === "next") newIndex = Math.min(cariList.length - 1, selectedIndex + 1);
-    else if (direction === "last") newIndex = cariList.length - 1;
-
-    setSelectedIndex(newIndex);
-    handleSelectCari(cariList[newIndex], newIndex);
+  const handleGibtenGetir = async () => {
+    // Alanda boşluk/tire gibi biçimlendirme karakterleri kalmış olsa bile önce rakam dışını temizle.
+    const vkn = (formData.vergiKimlikNo || "").replace(/\D/g, "");
+    if (vkn.length !== 10 && vkn.length !== 11) {
+      setAlertError("GİB'ten posta kutusu getirmek için önce geçerli bir 10 haneli VKN veya 11 haneli TCKN giriniz.");
+      return;
+    }
+    try {
+      setIsGibSorgulaniyor(true);
+      setAlertError(null);
+      const sonuc = await ebelgeService.mukellefSorgula(vkn);
+      if (!sonuc.mukellefMi || !sonuc.kullanicilar || sonuc.kullanicilar.length === 0) {
+        setAlertError("Bu VKN/TCKN için GİB'de kayıtlı bir e-Fatura posta kutusu bulunamadı (mükellef değil).");
+        return;
+      }
+      const alias = sonuc.kullanicilar[0].Alias || sonuc.kullanicilar[0].Identifier || "";
+      setFormData((prev) => ({
+        ...prev,
+        eFaturaPostaKutusu: alias,
+        eIrsaliyePostaKutusu: alias,
+      }));
+      setAlertSuccess(`✅ GİB posta kutusu bulundu ve dolduruldu: ${alias}`);
+    } catch (err: any) {
+      setAlertError(`❌ GİB sorgusu başarısız: ${err.message || "Bilinmeyen hata"}`);
+    } finally {
+      setIsGibSorgulaniyor(false);
+    }
   };
 
   const handleSave = async (e?: React.FormEvent) => {
@@ -390,8 +658,8 @@ export const CariCardRegistrationPage: React.FC = () => {
       yetkiliKisi: formData.yetkiliKisi ? formData.yetkiliKisi.trim() : null,
       vergiDairesiId:
         formData.vergiDairesiId !== null &&
-        formData.vergiDairesiId !== undefined &&
-        String(formData.vergiDairesiId) !== ""
+          formData.vergiDairesiId !== undefined &&
+          String(formData.vergiDairesiId) !== ""
           ? parseInt(String(formData.vergiDairesiId), 10)
           : null,
       vergiKimlikNo: formData.vergiKimlikNo ? formData.vergiKimlikNo.trim() : null,
@@ -399,46 +667,48 @@ export const CariCardRegistrationPage: React.FC = () => {
       adres: formData.adres ? formData.adres.trim() : null,
       postaKoduId:
         formData.postaKoduId !== null &&
-        formData.postaKoduId !== undefined &&
-        String(formData.postaKoduId) !== ""
+          formData.postaKoduId !== undefined &&
+          String(formData.postaKoduId) !== ""
           ? parseInt(String(formData.postaKoduId), 10)
           : null,
       ilceId:
         formData.ilceId !== null &&
-        formData.ilceId !== undefined &&
-        String(formData.ilceId) !== ""
+          formData.ilceId !== undefined &&
+          String(formData.ilceId) !== ""
           ? parseInt(String(formData.ilceId), 10)
           : null,
+      ilceAdi: selectedDistrictName || (lookups.ilceList.find((x) => x.id === formData.ilceId)?.ad) || null,
       ilId:
         formData.ilId !== null &&
-        formData.ilId !== undefined &&
-        String(formData.ilId) !== ""
+          formData.ilId !== undefined &&
+          String(formData.ilId) !== ""
           ? parseInt(String(formData.ilId), 10)
           : null,
+      ilAdi: selectedProvinceName || (lookups.ilList.find((x) => x.id === formData.ilId)?.ad) || null,
       telefon: formData.telefon ? formData.telefon.trim() : null,
       uyrukId:
         formData.uyrukId !== null &&
-        formData.uyrukId !== undefined &&
-        String(formData.uyrukId) !== ""
+          formData.uyrukId !== undefined &&
+          String(formData.uyrukId) !== ""
           ? parseInt(String(formData.uyrukId), 10)
           : 218,
       ulkeId:
         formData.ulkeId !== null &&
-        formData.ulkeId !== undefined &&
-        String(formData.ulkeId) !== ""
+          formData.ulkeId !== undefined &&
+          String(formData.ulkeId) !== ""
           ? parseInt(String(formData.ulkeId), 10)
           : 218,
       hukukiYapiId:
         formData.hukukiYapiId !== null &&
-        formData.hukukiYapiId !== undefined &&
-        String(formData.hukukiYapiId) !== ""
+          formData.hukukiYapiId !== undefined &&
+          String(formData.hukukiYapiId) !== ""
           ? parseInt(String(formData.hukukiYapiId), 10)
           : null,
       vekilTuru: parseInt(String(formData.vekilTuru), 10) || 0,
       vekilKisilikTipi:
         formData.vekilKisilikTipi !== null &&
-        formData.vekilKisilikTipi !== undefined &&
-        String(formData.vekilKisilikTipi) !== ""
+          formData.vekilKisilikTipi !== undefined &&
+          String(formData.vekilKisilikTipi) !== ""
           ? parseInt(String(formData.vekilKisilikTipi), 10)
           : null,
       vekilAdi: formData.vekilAdi ? formData.vekilAdi.trim() : null,
@@ -446,33 +716,33 @@ export const CariCardRegistrationPage: React.FC = () => {
       pasaportNo: formData.pasaportNo ? formData.pasaportNo.trim() : null,
       alisIstatistikId:
         formData.alisIstatistikId !== null &&
-        formData.alisIstatistikId !== undefined &&
-        String(formData.alisIstatistikId) !== ""
+          formData.alisIstatistikId !== undefined &&
+          String(formData.alisIstatistikId) !== ""
           ? parseInt(String(formData.alisIstatistikId), 10)
           : null,
       satisIstatistikId:
         formData.satisIstatistikId !== null &&
-        formData.satisIstatistikId !== undefined &&
-        String(formData.satisIstatistikId) !== ""
+          formData.satisIstatistikId !== undefined &&
+          String(formData.satisIstatistikId) !== ""
           ? parseInt(String(formData.satisIstatistikId), 10)
           : null,
       arbitrajAlisIstatistikId:
         formData.arbitrajAlisIstatistikId !== null &&
-        formData.arbitrajAlisIstatistikId !== undefined &&
-        String(formData.arbitrajAlisIstatistikId) !== ""
+          formData.arbitrajAlisIstatistikId !== undefined &&
+          String(formData.arbitrajAlisIstatistikId) !== ""
           ? parseInt(String(formData.arbitrajAlisIstatistikId), 10)
           : null,
       arbitrajSatisIstatistikId:
         formData.arbitrajSatisIstatistikId !== null &&
-        formData.arbitrajSatisIstatistikId !== undefined &&
-        String(formData.arbitrajSatisIstatistikId) !== ""
+          formData.arbitrajSatisIstatistikId !== undefined &&
+          String(formData.arbitrajSatisIstatistikId) !== ""
           ? parseInt(String(formData.arbitrajSatisIstatistikId), 10)
           : null,
       eposta: formData.eposta ? formData.eposta.trim() : null,
       bankaHesabiId:
         formData.bankaHesabiId !== null &&
-        formData.bankaHesabiId !== undefined &&
-        String(formData.bankaHesabiId) !== ""
+          formData.bankaHesabiId !== undefined &&
+          String(formData.bankaHesabiId) !== ""
           ? parseInt(String(formData.bankaHesabiId), 10)
           : null,
       anneAdi: formData.anneAdi ? formData.anneAdi.trim() : null,
@@ -482,14 +752,14 @@ export const CariCardRegistrationPage: React.FC = () => {
       karaListede: !!formData.karaListede,
       sektorId:
         formData.sektorId !== null &&
-        formData.sektorId !== undefined &&
-        String(formData.sektorId) !== ""
+          formData.sektorId !== undefined &&
+          String(formData.sektorId) !== ""
           ? parseInt(String(formData.sektorId), 10)
           : null,
       meslekId:
         formData.meslekId !== null &&
-        formData.meslekId !== undefined &&
-        String(formData.meslekId) !== ""
+          formData.meslekId !== undefined &&
+          String(formData.meslekId) !== ""
           ? parseInt(String(formData.meslekId), 10)
           : null,
       kimlikGecerlilikTarihi: formData.kimlikGecerlilikTarihi || null,
@@ -502,33 +772,33 @@ export const CariCardRegistrationPage: React.FC = () => {
       filtre: formData.filtre ? formData.filtre.trim() : null,
       cariBakiyeSiniri:
         formData.cariBakiyeSiniri !== null &&
-        formData.cariBakiyeSiniri !== undefined &&
-        String(formData.cariBakiyeSiniri) !== ""
+          formData.cariBakiyeSiniri !== undefined &&
+          String(formData.cariBakiyeSiniri) !== ""
           ? parseFloat(String(formData.cariBakiyeSiniri))
           : null,
       sirketTuru:
         formData.sirketTuru !== null &&
-        formData.sirketTuru !== undefined &&
-        String(formData.sirketTuru) !== ""
+          formData.sirketTuru !== undefined &&
+          String(formData.sirketTuru) !== ""
           ? parseInt(String(formData.sirketTuru), 10)
           : null,
       kimlikBelgeTuru:
         formData.kimlikBelgeTuru !== null &&
-        formData.kimlikBelgeTuru !== undefined &&
-        String(formData.kimlikBelgeTuru) !== ""
+          formData.kimlikBelgeTuru !== undefined &&
+          String(formData.kimlikBelgeTuru) !== ""
           ? parseInt(String(formData.kimlikBelgeTuru), 10)
           : null,
       dernekAmaci: formData.dernekAmaci ? formData.dernekAmaci.trim() : null,
       yetkiliKisiId:
         formData.yetkiliKisiId !== null &&
-        formData.yetkiliKisiId !== undefined &&
-        String(formData.yetkiliKisiId) !== ""
+          formData.yetkiliKisiId !== undefined &&
+          String(formData.yetkiliKisiId) !== ""
           ? parseInt(String(formData.yetkiliKisiId), 10)
           : null,
       favoriParaId:
         formData.favoriParaId !== null &&
-        formData.favoriParaId !== undefined &&
-        String(formData.favoriParaId) !== ""
+          formData.favoriParaId !== undefined &&
+          String(formData.favoriParaId) !== ""
           ? parseInt(String(formData.favoriParaId), 10)
           : null,
       whatsappAdi: formData.whatsappAdi ? formData.whatsappAdi.trim() : null,
@@ -549,8 +819,6 @@ export const CariCardRegistrationPage: React.FC = () => {
         setAlertSuccess(`✅ "${updated.ad}" [${updated.kod}] cari kart bilgileri başarıyla güncellendi.`);
         await loadData(selectedIndex);
       }
-
-      setTimeout(() => setAlertSuccess(null), 4500);
     } catch (err: any) {
       const rawMsg = err.message || "İşlem sırasında bir hata oluştu.";
       setAlertError(`❌ Kayıt Başarısız: ${rawMsg}`);
@@ -568,7 +836,6 @@ export const CariCardRegistrationPage: React.FC = () => {
       await CariService.deleteCariKart(selectedCari.id);
       setAlertSuccess(`✅ "${selectedCari.ad}" [${selectedCari.kod}] cari kartı başarıyla silindi.`);
       await loadData(Math.max(0, selectedIndex - 1));
-      setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
       setAlertError(`❌ Silme Başarısız: ${err.message || "Cari kart silinirken bir hata oluştu."}`);
     } finally {
@@ -607,71 +874,83 @@ export const CariCardRegistrationPage: React.FC = () => {
     <div className="p-2 p-md-3">
       {/* 1. Sol Üst Klasik ERP Toolbar */}
       <ERPToolbar
-        pageTitle={pageTitle}
+        pageTitle={
+          <span className="d-flex align-items-center gap-2 flex-wrap">
+            <span>{pageTitleText}</span>
+            {!isNewRecord && (
+              <Badge bg="primary" className="px-2.5 py-1.5 fs-7">
+                {`Düzenleme: [${formData.kod}] ${formData.ad}`}
+              </Badge>
+            )}
+            {formData.karaListede && (
+              <Badge bg="danger" className="d-flex align-items-center gap-1">
+                <IconAlertCircle size={12} /> Kara Listede
+              </Badge>
+            )}
+          </span>
+        }
         pageIcon={<IconUsers size={20} />}
         onNew={handleNewCari}
         onSave={handleSave}
         onSearch={
           isEditPage
             ? () => {
-                setShowLookupModal(true);
-              }
+              setShowLookupModal(true);
+            }
             : undefined
         }
         onDelete={
           isEditPage && selectedCari && !isNewRecord
             ? () => {
-                setShowDeleteModal(true);
-              }
+              setShowDeleteModal(true);
+            }
             : undefined
         }
         hideSearch={!isEditPage}
         hideDelete={!isEditPage}
-        onFirst={() => isEditPage && handleNavigate("first")}
-        onPrev={() => isEditPage && handleNavigate("prev")}
-        onNext={() => isEditPage && handleNavigate("next")}
-        onLast={() => isEditPage && handleNavigate("last")}
+        onFirst={() => handleNavigate("first")}
+        onPrev={() => handleNavigate("prev")}
+        onNext={() => handleNavigate("next")}
+        onLast={() => handleNavigate("last")}
+        hideNavigation={!isEditPage}
+        hidePrint={!isEditPage}
         onPrint={handlePrint}
-        onRefresh={() => loadData(isEditPage ? selectedIndex : undefined)}
+        onRefresh={isEditPage ? () => loadData(selectedIndex) : undefined}
         onClear={handleClear}
         disabled={isLoading || isSaving}
       />
 
-      {/* Notifications */}
-      {alertSuccess && (
-        <Alert variant="success" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0" dismissible onClose={() => setAlertSuccess(null)}>
-          <IconCheck size={18} />
-          <span>{alertSuccess}</span>
-        </Alert>
-      )}
+      {/* Bildirimler: sayfa dışı, sabit konumlu, yer kaplamaz; çarpıya basınca veya bir süre sonra kapanır */}
+      {(alertSuccess || alertError) && (
+        <div
+          className="d-flex flex-column gap-2"
+          style={{ position: "fixed", bottom: 16, right: 16, zIndex: 1080, maxWidth: 420, width: "calc(100% - 32px)" }}
+        >
+          {alertSuccess && (
+            <Alert variant="success" className="d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertSuccess(null)}>
+              <IconCheck size={18} />
+              <span>{alertSuccess}</span>
+            </Alert>
+          )}
 
-      {alertError && (
-        <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0" dismissible onClose={() => setAlertError(null)}>
-          <IconAlertCircle size={18} />
-          <span>{alertError}</span>
-        </Alert>
+          {alertError && (
+            <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
+              <IconAlertCircle size={18} />
+              <span>{alertError}</span>
+            </Alert>
+          )}
+        </div>
       )}
 
       {/* 2. Main Container Card (Tam Genişlik, Liste Kaldırıldı, Yatay Inputlar) */}
       <Card className="border-0 shadow-sm rounded-3 mb-4 bg-white">
         <Card.Body className="p-3 p-md-4">
-          <div className="mb-3 pb-2 border-bottom d-flex align-items-center justify-content-end flex-wrap gap-2">
-            <Badge bg={isNewRecord ? "warning" : "primary"} className="px-2.5 py-1.5 fs-7">
-              {isNewRecord ? "Yeni Kayıt Modu" : `Düzenleme: [${formData.kod}] ${formData.ad}`}
-            </Badge>
-            {formData.karaListede && (
-              <Badge bg="danger" className="d-flex align-items-center gap-1">
-                <IconAlertCircle size={12} /> Kara Listede
-              </Badge>
-            )}
-          </div>
-
-          <div style={{ maxWidth: "850px" }}>
+          <div style={{ maxWidth: "760px" }}>
             <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || "general")}>
               <Nav variant="pills" className="mb-4 gap-1 bg-light p-1.5 rounded-3 border">
                 <Nav.Item>
                   <Nav.Link eventKey="general" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconBuildingStore size={15} /> 1. Temel & Kimlik
+                    <IconBuildingStore size={15} /> Temel
                     {(fieldErrors.kod || fieldErrors.ad || fieldErrors.vergiKimlikNo || fieldErrors.cariBakiyeSiniri) && (
                       <span className="badge bg-danger ms-1 p-1">!</span>
                     )}
@@ -679,7 +958,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                 </Nav.Item>
                 <Nav.Item>
                   <Nav.Link eventKey="contact" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconMapPin size={15} /> 2. İletişim & Adres
+                    <IconMapPin size={15} /> İletişim
                     {(fieldErrors.telefon || fieldErrors.eposta) && (
                       <span className="badge bg-danger ms-1 p-1">!</span>
                     )}
@@ -687,18 +966,18 @@ export const CariCardRegistrationPage: React.FC = () => {
                 </Nav.Item>
                 <Nav.Item>
                   <Nav.Link eventKey="personal" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconIdBadge2 size={15} /> 3. Nüfus & Şahıs
+                    <IconIdBadge2 size={15} /> Nüfus
                   </Nav.Link>
                 </Nav.Item>
                 <Nav.Item>
                   <Nav.Link eventKey="corporate" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconFileCertificate size={15} /> 4. E-Dönüşüm & MASAK
+                    <IconFileCertificate size={15} /> E-MASAK
                     {fieldErrors.yetkiliKimlikNo && <span className="badge bg-danger ms-1 p-1">!</span>}
                   </Nav.Link>
                 </Nav.Item>
                 <Nav.Item>
                   <Nav.Link eventKey="settings" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconReceipt2 size={15} /> 5. Fiş & İstatistik
+                    <IconReceipt2 size={15} /> Fiş
                     {fieldErrors.vekilKimlikNo && <span className="badge bg-danger ms-1 p-1">!</span>}
                   </Nav.Link>
                 </Nav.Item>
@@ -708,11 +987,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                 <Tab.Content>
                   {/* TAB 1: Temel & Kimlik */}
                   <Tab.Pane eventKey="general">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Cari Kodu <span className="text-danger">*</span>
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                        Cari Kodu
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <CodeLookupInput
                           value={formData.kod}
                           maxLength={20}
@@ -725,8 +1004,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                             }
                           }}
                           canLookup={isEditPage}
-                          required
-                          lookupTitle={isEditPage ? "Cari Kart Seç (Oklu Dürbün)" : "Yeni Kayıt Modu"}
+                          lookupTitle={isEditPage ? "Cari Kart Seç (Oklu Dürbün)" : "Yeni Kayıt"}
                         />
                         {fieldErrors.kod && (
                           <div className="text-danger small mt-1">{fieldErrors.kod}</div>
@@ -734,11 +1012,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Cari Ünvan / Ad <span className="text-danger">*</span>
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -755,11 +1033,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Kişilik Tipi
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.kisilikTipi}
                           onChange={(e) => handleInputChange("kisilikTipi", parseInt(e.target.value, 10))}
@@ -774,18 +1052,19 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         VKN / TCKN
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
-                          maxLength={20}
+                          inputMode="numeric"
+                          maxLength={11}
                           value={formData.vergiKimlikNo || ""}
                           isInvalid={!!fieldErrors.vergiKimlikNo}
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("vergiKimlikNo", e.target.value)}
+                          onChange={(e) => handleInputChange("vergiKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
                           className="font-monospace"
                         />
                         {fieldErrors.vergiKimlikNo && (
@@ -794,11 +1073,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Vergi Dairesi
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.vergiDairesiId ?? ""}
                           onChange={(e) => handleInputChange("vergiDairesiId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
@@ -813,11 +1092,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Yetkili Kişi
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -828,11 +1107,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Hukuki Yapı
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.hukukiYapiId ?? ""}
                           onChange={(e) => handleInputChange("hukukiYapiId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
@@ -847,18 +1126,21 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Cari Bakiye Sınırı
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.cariBakiyeSiniri ?? ""}
+                          type="text"
+                          inputMode="decimal"
+                          value={formData.cariBakiyeSiniri !== null && formData.cariBakiyeSiniri !== undefined ? formData.cariBakiyeSiniri : ""}
                           isInvalid={!!fieldErrors.cariBakiyeSiniri}
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("cariBakiyeSiniri", e.target.value ? parseFloat(e.target.value) : null)}
+                          onChange={(e) => {
+                            const cleaned = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                            handleInputChange("cariBakiyeSiniri", cleaned === "" ? null : parseFloat(cleaned) || 0);
+                          }}
                         />
                         {fieldErrors.cariBakiyeSiniri && (
                           <div className="text-danger small mt-1">{fieldErrors.cariBakiyeSiniri}</div>
@@ -866,11 +1148,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Özel Filtre
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -881,11 +1163,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Kara Liste
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Check
                           type="switch"
                           id="kara-listede-switch"
@@ -899,18 +1181,108 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 2: İletişim & Adres */}
                   <Tab.Pane eventKey="contact">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        <IconPhone size={14} className="me-1" /> Telefon
+                    {/* Cascading Ülke -> İl -> İlçe Seçimi (country-state-city kütüphanesi) & Otomatik Uyruk */}
+                    <CountryStateCitySelect
+                      countryCode={selectedCountryIso}
+                      stateCode={selectedStateCode || (activeStateObj ? activeStateObj.isoCode : selectedProvinceName)}
+                      cityName={selectedDistrictName}
+                      labelColStyle={labelColStyle}
+                      onLocationChange={handleLocationChange}
+                      renderAfterCountry={
+                        <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                          <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                            Uyruk
+                          </Form.Label>
+                          <Col>
+                            <Form.Select
+                              value={selectedUyrukIso}
+                              onChange={(e) => {
+                                const chosenIso = e.target.value;
+                                const chosenCountry = Country.getCountryByCode(chosenIso);
+                                const match = lookups.ulkeList.find((u) => {
+                                  if (u.kod && u.kod.trim().toUpperCase() === chosenIso) return true;
+                                  const n1 = normalizeTr(u.ad);
+                                  const n2 = normalizeTr(chosenCountry?.name || "");
+                                  return n1 === n2 || (chosenIso === "TR" && n1.includes("turk"));
+                                });
+                                handleInputChange("uyrukId", match ? match.id : (chosenIso === "TR" ? 218 : null));
+                              }}
+                            >
+                              <option value="">Uyruk Seçiniz</option>
+                              {allCountries.map((c) => (
+                                <option key={c.isoCode} value={c.isoCode}>
+                                  {c.flag} {c.name} ({c.isoCode})
+                                </option>
+                              ))}
+                            </Form.Select>
+                          </Col>
+                        </Form.Group>
+                      }
+                    />
+
+                    {/* 5. Posta Kodu */}
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                        Posta Kodu
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
-                          maxLength={20}
+                          inputMode="numeric"
+                          maxLength={10}
+                          list="posta-kodu-onerileri"
+                          value={postaKoduInput}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const typed = e.target.value;
+                            setPostaKoduInput(typed);
+                            const match = lookups.postaKoduList.find(
+                              (pk) => String(pk.kod ?? "").trim() === typed.trim()
+                            );
+                            handleInputChange("postaKoduId", match ? match.id : null);
+                          }}
+                        />
+                        <datalist id="posta-kodu-onerileri">
+                          {lookups.postaKoduList.map((pk) => (
+                            <option key={pk.id} value={pk.kod ?? ""}>
+                              {pk.ad}
+                            </option>
+                          ))}
+                        </datalist>
+                      </Col>
+                    </Form.Group>
+
+                    {/* 6. Açık Adres */}
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                        Açık Adres
+                      </Form.Label>
+                      <Col>
+                        <Form.Control
+                          as="textarea"
+                          rows={2}
+                          maxLength={100}
+                          value={formData.adres || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => handleInputChange("adres", e.target.value)}
+                        />
+                      </Col>
+                    </Form.Group>
+
+                    {/* 7. Telefon */}
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                        <IconPhone size={14} className="me-1" /> Telefon
+                      </Form.Label>
+                      <Col>
+                        <Form.Control
+                          type="text"
+                          inputMode="tel"
+                          maxLength={15}
                           value={formData.telefon || ""}
                           isInvalid={!!fieldErrors.telefon}
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("telefon", e.target.value)}
+                          onChange={(e) => handleInputChange("telefon", e.target.value.replace(/\D/g, "").slice(0, 15))}
                         />
                         {fieldErrors.telefon && (
                           <div className="text-danger small mt-1">{fieldErrors.telefon}</div>
@@ -918,11 +1290,12 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    {/* 8. WhatsApp Adı */}
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         <IconBrandWhatsapp size={14} className="text-success me-1" /> WhatsApp Adı
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={100}
@@ -933,11 +1306,12 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    {/* 9. E-Posta */}
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         <IconMail size={14} className="me-1" /> E-Posta
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="email"
                           maxLength={100}
@@ -951,119 +1325,15 @@ export const CariCardRegistrationPage: React.FC = () => {
                         )}
                       </Col>
                     </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Açık Adres
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          as="textarea"
-                          rows={2}
-                          maxLength={100}
-                          value={formData.adres || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("adres", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        İl
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Select
-                          value={formData.ilId ?? ""}
-                          onChange={(e) => handleInputChange("ilId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {lookups.ilList.map((il) => (
-                            <option key={il.id} value={il.id}>
-                              {il.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        İlçe
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Select
-                          value={formData.ilceId ?? ""}
-                          onChange={(e) => handleInputChange("ilceId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {lookups.ilceList.map((ilc) => (
-                            <option key={ilc.id} value={ilc.id}>
-                              {ilc.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Posta Kodu ID
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          value={formData.postaKoduId ?? ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("postaKoduId", e.target.value ? parseInt(e.target.value, 10) : null)}
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Ülke
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Select
-                          value={formData.ulkeId ?? 218}
-                          onChange={(e) => handleInputChange("ulkeId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          {lookups.ulkeList.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Uyruk
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Select
-                          value={formData.uyrukId ?? 218}
-                          onChange={(e) => handleInputChange("uyrukId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          {lookups.ulkeList.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      </Col>
-                    </Form.Group>
                   </Tab.Pane>
 
                   {/* TAB 3: Nüfus & Şahıs */}
                   <Tab.Pane eventKey="personal">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Baba Adı
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -1074,11 +1344,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Anne Adı
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -1089,11 +1359,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Doğum Yeri
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={100}
@@ -1104,11 +1374,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Doğum Tarihi
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="date"
                           value={formData.dogumTarihi || ""}
@@ -1117,11 +1387,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Kimlik Seri No
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={20}
@@ -1132,11 +1402,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Pasaport No
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={20}
@@ -1147,11 +1417,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Meslek
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.meslekId ?? ""}
                           onChange={(e) => handleInputChange("meslekId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
@@ -1166,11 +1436,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Sektör
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.sektorId ?? ""}
                           onChange={(e) => handleInputChange("sektorId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
@@ -1185,11 +1455,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Kimlik Geçerlilik Tarihi
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="date"
                           value={formData.kimlikGecerlilikTarihi || ""}
@@ -1198,25 +1468,28 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Kimlik Belge Türü
                       </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
+                      <Col>
+                        <Form.Select
                           value={formData.kimlikBelgeTuru ?? ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("kimlikBelgeTuru", e.target.value ? parseInt(e.target.value, 10) : null)}
-                        />
+                          onChange={(e) => handleInputChange("kimlikBelgeTuru", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
+                        >
+                          <option value="">Seçilmedi</option>
+                          <option value={0}>T.C. Kimlik</option>
+                          <option value={1}>Pasaport</option>
+                          <option value={2}>Ehliyet</option>
+                        </Form.Select>
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Dernek / Vakıf Amacı
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -1230,27 +1503,42 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 4: E-Dönüşüm & MASAK */}
                   <Tab.Pane eventKey="corporate">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         E-Fatura Posta Kutusu
                       </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={200}
-                          value={formData.eFaturaPostaKutusu || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("eFaturaPostaKutusu", e.target.value)}
-                          className="font-monospace"
-                        />
+                      <Col>
+                        <InputGroup>
+                          <Form.Control
+                            type="text"
+                            maxLength={200}
+                            value={formData.eFaturaPostaKutusu || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("eFaturaPostaKutusu", e.target.value)}
+                            className="font-monospace"
+                          />
+                          <Button
+                            variant="outline-primary"
+                            onClick={handleGibtenGetir}
+                            disabled={isGibSorgulaniyor}
+                            title="VKN/TCKN üzerinden GİB'den e-Fatura posta kutusunu getir"
+                          >
+                            {isGibSorgulaniyor ? (
+                              <Spinner size="sm" animation="border" />
+                            ) : (
+                              <IconDownload size={16} />
+                            )}
+                            <span className="ms-1">GİB'ten Getir</span>
+                          </Button>
+                        </InputGroup>
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         E-İrsaliye Posta Kutusu
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -1262,32 +1550,40 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Şirket Türü
                       </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
+                      <Col>
+                        <Form.Select
                           value={formData.sirketTuru ?? ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("sirketTuru", e.target.value ? parseInt(e.target.value, 10) : null)}
-                        />
+                          onChange={(e) => handleInputChange("sirketTuru", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
+                        >
+                          <option value="">Seçilmedi</option>
+                          <option value={1}>1 - Şahıs</option>
+                          <option value={2}>2 - Limited Şirket</option>
+                          <option value={3}>3 - Anonim Şirket</option>
+                          <option value={4}>4 - Kolektif Şirket</option>
+                          <option value={5}>5 - Komandit Şirket</option>
+                          <option value={6}>6 - Kooperatif</option>
+                          <option value={7}>7 - Diğer</option>
+                        </Form.Select>
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Yetkili Kimlik No
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
-                          maxLength={20}
+                          inputMode="numeric"
+                          maxLength={11}
                           value={formData.yetkiliKimlikNo || ""}
                           isInvalid={!!fieldErrors.yetkiliKimlikNo}
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("yetkiliKimlikNo", e.target.value)}
+                          onChange={(e) => handleInputChange("yetkiliKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
                           className="font-monospace"
                         />
                         {fieldErrors.yetkiliKimlikNo && (
@@ -1296,11 +1592,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Yetkili Kimlik Geçerlilik
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="date"
                           value={formData.yetkiliKmlkGecerlikTarih || ""}
@@ -1309,11 +1605,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Faaliyet Belgesi
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Check
                           type="switch"
                           id="faaliyet-belgesi-switch"
@@ -1324,11 +1620,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Vergi Levhası
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Check
                           type="switch"
                           id="vergi-levhasi-switch"
@@ -1339,11 +1635,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         İmza Sirküleri
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Check
                           type="switch"
                           id="imza-sirkuleri-switch"
@@ -1354,11 +1650,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         İmza Sirküleri Geçerlilik
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="date"
                           value={formData.imzaSirkuGecerlilikTarihi || ""}
@@ -1370,17 +1666,17 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 5: Fiş & İstatistik & Vekil Eşleştirmeleri */}
                   <Tab.Pane eventKey="settings">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Varsayılan Alış İstatistiği
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.alisIstatistikId ?? ""}
                           onChange={(e) => handleInputChange("alisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) !== 1).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>
@@ -1389,17 +1685,17 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Varsayılan Satış İstatistiği
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.satisIstatistikId ?? ""}
                           onChange={(e) => handleInputChange("satisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 1).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>
@@ -1408,17 +1704,17 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Arbitraj Alış İstatistiği
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.arbitrajAlisIstatistikId ?? ""}
                           onChange={(e) => handleInputChange("arbitrajAlisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) !== 1).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>
@@ -1427,17 +1723,17 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Arbitraj Satış İstatistiği
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.arbitrajSatisIstatistikId ?? ""}
                           onChange={(e) => handleInputChange("arbitrajSatisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 1).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>
@@ -1446,11 +1742,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Favori Para Birimi
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.favoriParaId ?? ""}
                           onChange={(e) => handleInputChange("favoriParaId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
@@ -1465,11 +1761,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Bağlı Banka Hesabı Cari ID
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.bankaHesabiId ?? ""}
                           onChange={(e) => handleInputChange("bankaHesabiId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
@@ -1484,11 +1780,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Yetkili Kişi Cari ID
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Select
                           value={formData.yetkiliKisiId ?? ""}
                           onChange={(e) => handleInputChange("yetkiliKisiId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
@@ -1503,11 +1799,11 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Vekil Adı
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
                           maxLength={200}
@@ -1518,51 +1814,24 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
                         Vekil Kimlik No
                       </Form.Label>
-                      <Col sm={9}>
+                      <Col>
                         <Form.Control
                           type="text"
-                          maxLength={20}
+                          inputMode="numeric"
+                          maxLength={11}
                           value={formData.vekilKimlikNo || ""}
                           isInvalid={!!fieldErrors.vekilKimlikNo}
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("vekilKimlikNo", e.target.value)}
+                          onChange={(e) => handleInputChange("vekilKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
                           className="font-monospace"
                         />
                         {fieldErrors.vekilKimlikNo && (
                           <div className="text-danger small mt-1">{fieldErrors.vekilKimlikNo}</div>
                         )}
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Vekil Türü
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          value={formData.vekilTuru ?? 0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("vekilTuru", e.target.value ? parseInt(e.target.value, 10) : 0)}
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Vekil Kişilik Tipi
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          value={formData.vekilKisilikTipi ?? ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("vekilKisilikTipi", e.target.value ? parseInt(e.target.value, 10) : null)}
-                        />
                       </Col>
                     </Form.Group>
                   </Tab.Pane>

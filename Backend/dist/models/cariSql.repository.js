@@ -185,97 +185,21 @@ export class CariSqlRepository {
                 pool.request().query("SELECT ISTATISTIK_ID as id, KOD as kod, ACIKLAMA as ad, FIS_TIPI as fisTipi FROM [dbo].[TODVZ_ISTATISTIK] ORDER BY KOD ASC"),
             ]);
             const items = tabloMaddeleri.recordset || [];
+            // TUR eşlemesi 11.09.2026 tarihinde canlı veritabanında
+            // (SELECT TUR, COUNT(*), MIN(AD), MAX(AD) ... GROUP BY TUR) doğrulandı:
+            // 0=Vergi Dairesi ("...VERGİ DAİRESİ"), 2=İlçe ("ACIPAYAM".."ZARA"),
+            // 3=İl ("ADANA".."YOZGAT"), 5=Hukuki Yapı ("01-Gerçek Kişi T.C.".."Yerel Yönetimlerin..."),
+            // 8=Sektör ("BANKA".."TURİZM"), 9=Meslek ("...TURİZMCİ".."ZİRAATCI").
+            // TUR=4 (Posta Kodu için ayrılmış aralık) o sorguda hiç satır döndürmedi; yani bu
+            // veritabanında posta kodu referans verisi şu an gerçekten boş — uydurma satır eklenmedi.
             // 1. İller (TODVZ_TABLO_MADDESI TUR = 3)
             const ilList = items.filter((x) => x.tur === 3);
-            // 2. İlçeler (TODVZ_TABLO_MADDESI TUR = 1)
-            let ilceList = items.filter((x) => x.tur === 1);
-            if (!ilceList || ilceList.length === 0) {
-                ilceList = [
-                    { id: 1001, tur: 1, kod: "FAT", ad: "Fatih", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1002, tur: 1, kod: "KAD", ad: "Kadıköy", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1003, tur: 1, kod: "SIS", ad: "Şişli", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1004, tur: 1, kod: "BES", ad: "Beşiktaş", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1005, tur: 1, kod: "BAK", ad: "Bakırköy", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1006, tur: 1, kod: "BEY", ad: "Beyoğlu", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1007, tur: 1, kod: "USK", ad: "Üsküdar", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1008, tur: 1, kod: "MAL", ad: "Maltepe", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1009, tur: 1, kod: "ATA", ad: "Ataşehir", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1010, tur: 1, kod: "PEN", ad: "Pendik", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1011, tur: 1, kod: "KART", ad: "Kartal", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1012, tur: 1, kod: "UMR", ad: "Ümraniye", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1013, tur: 1, kod: "SAR", ad: "Sarıyer", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1014, tur: 1, kod: "EYU", ad: "Eyüpsultan", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1015, tur: 1, kod: "ZEY", ad: "Zeytinburnu", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1016, tur: 1, kod: "BAH", ad: "Bahçelievler", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1017, tur: 1, kod: "BAGC", ad: "Bağcılar", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1018, tur: 1, kod: "KUC", ad: "Küçükçekmece", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1019, tur: 1, kod: "BUY", ad: "Büyükçekmece", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1020, tur: 1, kod: "BAS", ad: "Başakşehir", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1021, tur: 1, kod: "ESY", ad: "Esenyurt", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 1022, tur: 1, kod: "BEYL", ad: "Beylikdüzü", ilAdi: "İstanbul", ustId: 34 },
-                    { id: 2001, tur: 1, kod: "CAN", ad: "Çankaya", ilAdi: "Ankara", ustId: 6 },
-                    { id: 2002, tur: 1, kod: "ALT", ad: "Altındağ", ilAdi: "Ankara", ustId: 6 },
-                    { id: 2003, tur: 1, kod: "YEN", ad: "Yenimahalle", ilAdi: "Ankara", ustId: 6 },
-                    { id: 2004, tur: 1, kod: "KEC", ad: "Keçiören", ilAdi: "Ankara", ustId: 6 },
-                    { id: 2005, tur: 1, kod: "MAM", ad: "Mamak", ilAdi: "Ankara", ustId: 6 },
-                    { id: 2006, tur: 1, kod: "ETI", ad: "Etimesgut", ilAdi: "Ankara", ustId: 6 },
-                    { id: 2007, tur: 1, kod: "SIN", ad: "Sincan", ilAdi: "Ankara", ustId: 6 },
-                    { id: 3001, tur: 1, kod: "KON", ad: "Konak", ilAdi: "İzmir", ustId: 35 },
-                    { id: 3002, tur: 1, kod: "BOR", ad: "Bornova", ilAdi: "İzmir", ustId: 35 },
-                    { id: 3003, tur: 1, kod: "KSY", ad: "Karşıyaka", ilAdi: "İzmir", ustId: 35 },
-                    { id: 3004, tur: 1, kod: "BUC", ad: "Buca", ilAdi: "İzmir", ustId: 35 },
-                    { id: 3005, tur: 1, kod: "BAY", ad: "Bayraklı", ilAdi: "İzmir", ustId: 35 },
-                    { id: 3006, tur: 1, kod: "CIG", ad: "Çiğli", ilAdi: "İzmir", ustId: 35 },
-                    { id: 3007, tur: 1, kod: "CES", ad: "Çeşme", ilAdi: "İzmir", ustId: 35 },
-                    { id: 4001, tur: 1, kod: "OSM", ad: "Osmangazi", ilAdi: "Bursa", ustId: 16 },
-                    { id: 4002, tur: 1, kod: "NIL", ad: "Nilüfer", ilAdi: "Bursa", ustId: 16 },
-                    { id: 4003, tur: 1, kod: "YIL", ad: "Yıldırım", ilAdi: "Bursa", ustId: 16 },
-                    { id: 5001, tur: 1, kod: "MUR", ad: "Muratpaşa", ilAdi: "Antalya", ustId: 7 },
-                    { id: 5002, tur: 1, kod: "KNY", ad: "Konyaaltı", ilAdi: "Antalya", ustId: 7 },
-                    { id: 5003, tur: 1, kod: "KRP", ad: "Kepez", ilAdi: "Antalya", ustId: 7 },
-                    { id: 5004, tur: 1, kod: "ALN", ad: "Alanya", ilAdi: "Antalya", ustId: 7 },
-                    { id: 6001, tur: 1, kod: "SEY", ad: "Seyhan", ilAdi: "Adana", ustId: 1 },
-                    { id: 6002, tur: 1, kod: "CUR", ad: "Çukurova", ilAdi: "Adana", ustId: 1 },
-                    { id: 6003, tur: 1, kod: "YUR", ad: "Yüreğir", ilAdi: "Adana", ustId: 1 },
-                    { id: 7001, tur: 1, kod: "SHB", ad: "Şahinbey", ilAdi: "Gaziantep", ustId: 27 },
-                    { id: 7002, tur: 1, kod: "SKM", ad: "Şehitkamil", ilAdi: "Gaziantep", ustId: 27 },
-                    { id: 8001, tur: 1, kod: "SLC", ad: "Selçuklu", ilAdi: "Konya", ustId: 42 },
-                    { id: 8002, tur: 1, kod: "MRL", ad: "Meram", ilAdi: "Konya", ustId: 42 },
-                    { id: 8003, tur: 1, kod: "KRT", ad: "Karatay", ilAdi: "Konya", ustId: 42 },
-                    { id: 9001, tur: 1, kod: "BOD", ad: "Bodrum", ilAdi: "Muğla", ustId: 48 },
-                    { id: 9002, tur: 1, kod: "FET", ad: "Fethiye", ilAdi: "Muğla", ustId: 48 },
-                    { id: 9003, tur: 1, kod: "MAR", ad: "Marmaris", ilAdi: "Muğla", ustId: 48 },
-                    { id: 9004, tur: 1, kod: "MEN", ad: "Menteşe", ilAdi: "Muğla", ustId: 48 },
-                    { id: 10001, tur: 1, kod: "ORT", ad: "Ortahisar", ilAdi: "Trabzon", ustId: 61 },
-                    { id: 10002, tur: 1, kod: "AKC", ad: "Akçaabat", ilAdi: "Trabzon", ustId: 61 },
-                ];
-            }
-            // 3. Posta Kodları (Standart Türkiye İl ve İlçe Posta Kodları Listesi)
-            const postaKoduList = [
-                { id: 34110, kod: "34110", ad: "Kapalıçarşı / Fatih", il: "İstanbul", ilce: "Fatih" },
-                { id: 34000, kod: "34000", ad: "Merkez / Eminönü", il: "İstanbul", ilce: "Fatih" },
-                { id: 34380, kod: "34380", ad: "Mecidiyeköy / Şişli", il: "İstanbul", ilce: "Şişli" },
-                { id: 34710, kod: "34710", ad: "Moda / Kadıköy", il: "İstanbul", ilce: "Kadıköy" },
-                { id: 34149, kod: "34149", ad: "Yeşilköy / Bakırköy", il: "İstanbul", ilce: "Bakırköy" },
-                { id: 34330, kod: "34330", ad: "Levent / Beşiktaş", il: "İstanbul", ilce: "Beşiktaş" },
-                { id: 6000, kod: "06000", ad: "Ulus / Altındağ", il: "Ankara", ilce: "Altındağ" },
-                { id: 6680, kod: "06680", ad: "Kızılay / Çankaya", il: "Ankara", ilce: "Çankaya" },
-                { id: 6370, kod: "06370", ad: "Ostim / Yenimahalle", il: "Ankara", ilce: "Yenimahalle" },
-                { id: 35000, kod: "35000", ad: "Alsancak / Konak", il: "İzmir", ilce: "Konak" },
-                { id: 35100, kod: "35100", ad: "Bornova Merkez", il: "İzmir", ilce: "Bornova" },
-                { id: 35530, kod: "35530", ad: "Karşıyaka Çarşı", il: "İzmir", ilce: "Karşıyaka" },
-                { id: 7000, kod: "07000", ad: "Kaleiçi / Muratpaşa", il: "Antalya", ilce: "Muratpaşa" },
-                { id: 7100, kod: "07100", ad: "Konyaaltı Sahil", il: "Antalya", ilce: "Konyaaltı" },
-                { id: 16010, kod: "16010", ad: "Heykel / Osmangazi", il: "Bursa", ilce: "Osmangazi" },
-                { id: 16130, kod: "16130", ad: "Nilüfer Merkez", il: "Bursa", ilce: "Nilüfer" },
-                { id: 1000, kod: "01000", ad: "Seyhan Merkez", il: "Adana", ilce: "Seyhan" },
-                { id: 27000, kod: "27000", ad: "Şahinbey Merkez", il: "Gaziantep", ilce: "Şahinbey" },
-                { id: 42000, kod: "42000", ad: "Selçuklu Merkez", il: "Konya", ilce: "Selçuklu" },
-                { id: 48000, kod: "48000", ad: "Menteşe / Muğla", il: "Muğla", ilce: "Menteşe" },
-                { id: 48400, kod: "48400", ad: "Bodrum Merkez", il: "Muğla", ilce: "Bodrum" },
-                { id: 48300, kod: "48300", ad: "Fethiye Merkez", il: "Muğla", ilce: "Fethiye" },
-                { id: 61000, kod: "61000", ad: "Ortahisar Merkez", il: "Trabzon", ilce: "Ortahisar" },
-            ];
+            // 2. İlçeler (TODVZ_TABLO_MADDESI TUR = 2) — gerçek TABLO_MADDESI_ID üzerinden;
+            // uydurma liste kullanılmaz (sahte ID gerçek tabloda bulunamadığı için kayıtta sessizce NULL'a düşerdi).
+            const ilceList = items.filter((x) => x.tur === 2);
+            // 3. Posta Kodları (TODVZ_TABLO_MADDESI TUR = 4) — gerçek TABLO_MADDESI_ID üzerinden,
+            // uydurma/sabit kod değil; POSTA_KODU_ID yabancı anahtarı bu tablodaki gerçek ID'yi bekler.
+            const postaKoduList = items.filter((x) => x.tur === 4);
             // 4. Vergi Daireleri (TODVZ_TABLO_MADDESI TUR = 0)
             const vergiDairesiList = items.filter((x) => x.tur === 0);
             // 5. Meslekler (TODVZ_TABLO_MADDESI TUR = 9)
@@ -302,7 +226,7 @@ export class CariSqlRepository {
                 ilceList,
                 postaKoduList,
                 hukukiYapiList: items.filter((x) => x.tur === 5),
-                sektorList: items.filter((x) => x.tur === 2),
+                sektorList: items.filter((x) => x.tur === 8),
                 meslekList,
                 bankaList,
                 ulkeList: ulkeler.recordset || [],
@@ -327,8 +251,49 @@ export class CariSqlRepository {
             };
         }
     }
+    static async ensureTabloMaddesi(tur, ad, kod = null, pool) {
+        if (!ad || !ad.trim())
+            return null;
+        const cleanAd = ad.trim().toLocaleUpperCase("tr-TR");
+        try {
+            const findRes = await pool
+                .request()
+                .input("tur", sql.Int, tur)
+                .input("ad", sql.VarChar(100), cleanAd)
+                .query(`SELECT TOP 1 TABLO_MADDESI_ID FROM [dbo].[TODVZ_TABLO_MADDESI] WHERE TUR = @tur AND UPPER(LTRIM(RTRIM(AD))) = @ad`);
+            if (findRes.recordset.length > 0) {
+                return findRes.recordset[0].TABLO_MADDESI_ID;
+            }
+            const insRes = await pool
+                .request()
+                .input("tur", sql.Int, tur)
+                .input("kod", sql.VarChar(20), kod ? kod.trim() : null)
+                .input("ad", sql.VarChar(100), cleanAd)
+                .query(`
+          INSERT INTO [dbo].[TODVZ_TABLO_MADDESI] (TUR, KOD, AD)
+          VALUES (@tur, @kod, @ad);
+          SELECT SCOPE_IDENTITY() AS newId;
+        `);
+            return insRes.recordset[0]?.newId || null;
+        }
+        catch (err) {
+            logger.warn(`[ensureTabloMaddesi] Error for TUR=${tur}, AD=${cleanAd}: ${err.message}`);
+            return null;
+        }
+    }
     static async sanitizeFkIds(data, pool) {
         const copy = { ...data };
+        // 0. Auto-resolve or create İl and İlçe if provided by name
+        if (copy.ilAdi && (!copy.ilId || isNaN(Number(copy.ilId)))) {
+            const resolvedIlId = await this.ensureTabloMaddesi(3, copy.ilAdi, null, pool);
+            if (resolvedIlId)
+                copy.ilId = resolvedIlId;
+        }
+        if (copy.ilceAdi && (!copy.ilceId || isNaN(Number(copy.ilceId)))) {
+            const resolvedIlceId = await this.ensureTabloMaddesi(2, copy.ilceAdi, null, pool);
+            if (resolvedIlceId)
+                copy.ilceId = resolvedIlceId;
+        }
         // 1. Check TABLO_MADDESI ids
         const tmIdsToCheck = [
             copy.vergiDairesiId,
@@ -338,7 +303,7 @@ export class CariSqlRepository {
             copy.hukukiYapiId,
             copy.sektorId,
             copy.meslekId,
-        ].filter((id) => id !== null && id !== undefined);
+        ].filter((id) => id !== null && id !== undefined && !isNaN(Number(id)));
         if (tmIdsToCheck.length > 0) {
             const res = await pool.request().query(`
         SELECT [TABLO_MADDESI_ID] FROM [dbo].[TODVZ_TABLO_MADDESI] WHERE [TABLO_MADDESI_ID] IN (${tmIdsToCheck.join(",")})
