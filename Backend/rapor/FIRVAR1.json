@@ -1,7 +1,7 @@
 {
   "kod": "FIRVAR1",
   "ad": "Firma Varlıkları Raporu",
-  "aciklama": "Vezne bakiyeleri ve cari alacak/borçların seçilen kurla TL toplamı (banka hesapları hariç).",
+  "aciklama": "Vezne bakiyeleri ve cari alacak/borçların seçilen kurla TL toplamı (banka hesapları hariç); vezne ve para filtresi.",
   "kagit": "A4",
   "parametreler": [
     {
@@ -10,6 +10,16 @@
       "tip": "tarih",
       "zorunlu": true,
       "varsayilan": "bugun"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
     },
     {
       "ad": "kurTuru",

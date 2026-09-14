@@ -9,17 +9,22 @@
       "etiket": "Tarih aralığı",
       "tip": "tarihAralik",
       "zorunlu": true,
-      "varsayilan": "-30g"
+      "varsayilan": "bugun"
     },
     {
       "ad": "paraIdler",
-      "etiket": "Para (birden fazla seçilebilir)",
+      "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
     },
     {
-      "ad": "vezneBaslangic",
-      "etiket": "Vezne aralığı (koddan koda)",
-      "tip": "vezneAralik"
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "kmt",
+      "etiket": "Gösterim (KMT)",
+      "tip": "kmt"
     }
   ],
   "kolonlar": [
@@ -39,27 +44,31 @@
       "anahtar": "alisMiktar",
       "baslik": "Alış miktar",
       "g": 1.8,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "kmt": "M"
     },
     {
       "anahtar": "alisTutar",
       "baslik": "Alış TL",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kmt": "T"
     },
     {
       "anahtar": "satisMiktar",
       "baslik": "Satış miktar",
       "g": 1.8,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "kmt": "M"
     },
     {
       "anahtar": "satisTutar",
       "baslik": "Satış TL",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kmt": "T"
     },
     {
       "anahtar": "satisMaliyeti",
@@ -67,50 +76,73 @@
       "g": 2,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kmt": "T"
     },
     {
       "anahtar": "brutKar",
       "baslik": "Brüt kâr",
       "g": 1.9,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kmt": "T"
     },
     {
       "anahtar": "komisyon",
       "baslik": "Komisyon (+)",
       "g": 1.7,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kmt": "T"
     },
     {
       "anahtar": "vergiler",
       "baslik": "Vergiler (−)",
       "g": 1.7,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kmt": "T"
     },
     {
       "anahtar": "netKar",
       "baslik": "Net kâr",
       "g": 1.9,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kmt": "T"
     },
     {
       "anahtar": "ortMaliyet",
       "baslik": "Ort. maliyet",
       "g": 1.5,
       "bicim": "kur",
-      "pdf": false
+      "pdf": false,
+      "kmt": "K"
     },
     {
       "anahtar": "kalanMiktar",
       "baslik": "Kalan",
       "g": 1.6,
       "bicim": "sayi",
+      "pdf": false,
+      "kmt": "M"
+    },
+    {
+      "anahtar": "ortAlisKuru",
+      "baslik": "Ort. alış kuru",
+      "g": 1.5,
+      "bicim": "kur",
+      "kmt": "K",
+      "pdf": false
+    },
+    {
+      "anahtar": "ortSatisKuru",
+      "baslik": "Ort. satış kuru",
+      "g": 1.5,
+      "bicim": "kur",
+      "kmt": "K",
       "pdf": false
     }
   ],
-  "dipnot": "Yöntem: ağırlıklı ortalama maliyet. Her alış, ilgili dövizin stokuna alış tutarıyla eklenir; her satışta o andaki ortalama maliyet (toplam maliyet ÷ stok miktarı) ile satış maliyeti hesaplanır. Brüt kâr = satış TL − satış maliyeti. Net kâr = brüt kâr + komisyon − (BSMV + KMV + KDV). Ortalama maliyet kayıtların başından itibaren yürütülür; dönem dışındaki hareketler yalnızca maliyeti etkiler, kâra yazılmaz. Stok sıfırken yapılan satışlarda maliyet olarak satış kuru alınır (kâr 0). İptal fişler kapsam dışıdır."
+  "dipnot": "Yöntem: ağırlıklı ortalama maliyet. Her alış, ilgili dövizin stokuna alış tutarıyla eklenir; her satışta o andaki ortalama maliyet (toplam maliyet ÷ stok miktarı) ile satış maliyeti hesaplanır. Brüt kâr = satış TL − satış maliyeti. Net kâr = brüt kâr + komisyon − (BSMV + KMV + KDV). Ortalama maliyet kayıtların başından itibaren yürütülür; dönem dışındaki hareketler yalnızca maliyeti etkiler, kâra yazılmaz. Stok sıfırken yapılan satışlarda maliyet olarak satış kuru alınır (kâr 0). İptal fişler kapsam dışıdır. KMT gösterimi: K yalnızca kur kolonlarını (ortalama alış/satış/maliyet kuru), M yalnızca miktarları, T yalnızca TL tutarlarını gösterir; boş bırakılırsa hepsi."
 }

@@ -1,13 +1,13 @@
 {
   "kod": "CAREKS1",
   "ad": "Cari Ekstre",
-  "aciklama": "Tek carinin tarih aralığındaki hareketleri; devir ve yürüyen bakiye (para bazında).",
+  "aciklama": "Cari aralığındaki carilerin tarih aralığındaki hareketleri; cari × para grubu, cari bilgisi, devir, yürüyen bakiye, fiş no ve has karşılığı.",
   "kagit": "A4",
   "parametreler": [
     {
-      "ad": "cariBaslangic",
-      "etiket": "Cari aralığı (koddan koda)",
-      "tip": "cariAralik",
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu",
       "zorunlu": true
     },
     {
@@ -15,30 +15,36 @@
       "etiket": "Tarih aralığı",
       "tip": "tarihAralik",
       "zorunlu": true,
-      "varsayilan": "-30g"
+      "varsayilan": "bugun"
     },
     {
-      "ad": "paraId",
-      "etiket": "Para",
-      "tip": "para"
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "tarih",
       "baslik": "Tarih",
-      "g": 1.6,
+      "g": 1.5,
       "bicim": "tarih"
+    },
+    {
+      "anahtar": "fisNo",
+      "baslik": "Fiş no",
+      "g": 1.0,
+      "hiza": "center"
     },
     {
       "anahtar": "hareketTipi",
       "baslik": "Hareket",
-      "g": 1.8
+      "g": 1.6
     },
     {
       "anahtar": "aciklama",
       "baslik": "Açıklama",
-      "g": 4
+      "g": 3.6
     },
     {
       "anahtar": "vezneKod",
@@ -72,12 +78,19 @@
       "baslik": "B/A",
       "g": 0.7,
       "hiza": "center"
+    },
+    {
+      "anahtar": "hasKarsiligi",
+      "baslik": "Has karşılığı",
+      "g": 1.8,
+      "bicim": "sayi4"
     }
   ],
   "grup": {
     "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",
+    "altBaslik": "{{grupAltBaslik}}",
     "altToplam": true
   },
-  "dipnot": "Her para birimi ayrı gruplanır; ilk satır başlangıç tarihinden önceki devirdir. B/A: B = cari borçlu, A = cari alacaklı."
+  "dipnot": "Her cari ve para birimi ayrı gruplanır; grup başlığında carinin adresi, telefonu ve VKN/TCKN'si yer alır. İlk satır başlangıç tarihinden önceki devirdir. B/A: B = cari borçlu, A = cari alacaklı. Has karşılığı = yürüyen bakiye × has oranı."
 }

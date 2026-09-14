@@ -1,25 +1,25 @@
 {
   "kod": "CARBAK1",
   "ad": "Cari Bakiye Raporu",
-  "aciklama": "Seçilen tarihe kadar cari bakiyeleri; para ve has bazında, sıfır bakiyeliler dahil.",
+  "aciklama": "Tarih aralığındaki borç/alacak hareketleri ve bitiş tarihi itibarıyla cari bakiyeleri; para ve has bazında, sıfır bakiyeliler dahil.",
   "kagit": "A4",
   "parametreler": [
     {
-      "ad": "tarih",
-      "etiket": "Tarih (dahil)",
-      "tip": "tarih",
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
       "zorunlu": true,
       "varsayilan": "bugun"
     },
     {
-      "ad": "cariBaslangic",
-      "etiket": "Cari aralığı (koddan koda)",
-      "tip": "cariAralik"
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu"
     },
     {
-      "ad": "paraId",
-      "etiket": "Para",
-      "tip": "para"
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
     }
   ],
   "kolonlar": [

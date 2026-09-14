@@ -5,15 +5,17 @@ import { apiClient, getEffectiveApiUrl } from "./apiClient";
  * Rapor tanımı (parametreler + kolonlar) sunucudan gelir; ekran filtre şeridini ve grid'i buna göre kurar.
  */
 
-export type RaporParametreTipi = "tarih" | "tarihAralik" | "saatAralik" | "vezne" | "para" | "cari" | "fisTipi" | "kurSecimi" | "kmt" | "cariAralik" | "vezneAralik" | "paraCoklu" | "metin";
+export type RaporParametreTipi = "tarih" | "tarihAralik" | "saatAralik" | "vezne" | "para" | "cari" | "fisTipi" | "kurSecimi" | "kmt" | "cariAralik" | "vezneAralik" | "paraCoklu" | "cariCoklu" | "vezneCoklu" | "hareketTipi" | "metin";
 export interface RaporParametre { ad: string; etiket: string; tip: RaporParametreTipi; zorunlu?: boolean; varsayilan?: string | number | null }
 export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam";
-export interface RaporKolon { anahtar: string; baslik: string; g: number; hiza?: "left" | "right" | "center"; bicim?: RaporBicim; toplam?: boolean; pdf?: boolean }
+export interface RaporKolon { anahtar: string; baslik: string; g: number; hiza?: "left" | "right" | "center"; bicim?: RaporBicim; toplam?: boolean; pdf?: boolean; kmt?: "K" | "M" | "T" }
 export interface RaporTanim {
   kod: string; ad: string; aciklama?: string; kagit: "A4" | "A4-yatay";
   parametreler: RaporParametre[]; kolonlar: RaporKolon[];
-  grup?: { anahtar: string; baslik: string; altToplam?: boolean }; dipnot?: string; ustSinir?: number;
+  grup?: { anahtar: string; baslik: string; altToplam?: boolean; altBaslik?: string }; dipnot?: string; ustSinir?: number;
 }
+/** Kayıtlı arama (sunucuda, kullanıcı × rapor; yönetici kararı 14.09.2026) */
+export interface RaporArama { aramaId: number; raporKod: string; ozet: string; parametreler: Record<string, string | number | null>; zaman: string }
 export interface RaporSablon { kod: string; ad: string; kagit: string; aciklama: string; parametreler: RaporParametre[] }
 export interface RaporVeri { satirlar: Record<string, any>[]; filtreOzeti: string; ekDipnot?: string; sinirAsildi: boolean; toplamKayit: number; tanim: RaporTanim }
 
@@ -66,6 +68,14 @@ export const RaporService = {
     return URL.createObjectURL(await dosyaGetir(`/rapor/${encodeURIComponent(kod)}/pdf?${sorgu(p)}`, "application/pdf"));
   },
   async pdfIndir(kod: string, p: RaporParametreDegerleri, ad: string) { indirBlob(await dosyaGetir(`/rapor/${encodeURIComponent(kod)}/pdf?${sorgu({ ...p, indir: "1" })}`, "application/pdf"), `${ad}.pdf`); },
+  async aramalar(kod: string): Promise<RaporArama[]> { return (await apiClient.get<RaporArama[]>(`/rapor/${encodeURIComponent(kod)}/aramalar`)).data || []; },
+  async aramaKaydet(kod: string, p: RaporParametreDegerleri, ozet: string): Promise<RaporArama> {
+    const parametreler: Record<string, string | number> = {}; for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== null && v !== "") parametreler[k] = v;
+    return (await apiClient.post<RaporArama>(`/rapor/${encodeURIComponent(kod)}/aramalar`, { parametreler, ozet })).data;
+  },
+  async aramaSil(kod: string, aramaId?: number): Promise<void> {
+    await apiClient.delete(`/rapor/${encodeURIComponent(kod)}/aramalar${aramaId ? "/" + aramaId : ""}`);
+  },
   async excelIndir(kod: string, p: RaporParametreDegerleri, ad: string) {
     indirBlob(await dosyaGetir(`/rapor/${encodeURIComponent(kod)}/excel?${sorgu(p)}`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), `${ad}.xlsx`);
   },

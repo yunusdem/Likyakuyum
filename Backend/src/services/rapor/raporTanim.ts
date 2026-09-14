@@ -17,6 +17,9 @@ export type RaporParametreTipi =
   | "cariAralik"     // cariBaslangic + cariBitis (cari KODU aralığı: Ahmet -> Mehmet)
   | "vezneAralik"    // vezneBaslangic + vezneBitis (vezne KODU aralığı)
   | "paraCoklu"      // paraIdler: virgülle ayrılmış PARA_ID listesi (boş = tümü)
+  | "cariCoklu"      // cariIdler: seçilen CARI_KART_ID listesi (boş = tümü) — aralık yerine seçim (yönetici kararı 14.09.2026)
+  | "vezneCoklu"     // vezneIdler: seçilen VEZNE_ID listesi (boş = tümü)
+  | "hareketTipi"    // cari hareket tipi (0 nakit … 5 devir / tümü)
   | "metin";         // serbest arama
 
 export interface RaporParametre {
@@ -39,6 +42,8 @@ export interface RaporKolon {
   toplam?: boolean;           // genel toplam ve grup alt toplamında toplanır
   /** false → PDF'te basılmaz (ekran grid'i ve Excel'de kalır). PDF kısa ve öz tutulur (yönetici isteği 12.09.2026). */
   pdf?: boolean;
+  /** KMT gösterimi (kâr-zarar): K = kur, M = miktar, T = TL kolonu. `kmt` parametresi seçilince yalnızca o gruptaki ve etiketsiz kolonlar kalır. */
+  kmt?: "K" | "M" | "T";
 }
 
 export interface RaporTanim {
@@ -49,7 +54,9 @@ export interface RaporTanim {
   parametreler: RaporParametre[];
   kolonlar: RaporKolon[];
   /** Grup anahtarı (satır alanı) ve grup başlığı biçimi: "{{vezneAd}} ({{vezneKod}})" */
-  grup?: { anahtar: string; baslik: string; altToplam?: boolean };
+  grup?: { anahtar: string; baslik: string; altToplam?: boolean;
+    /** Grup başlığının altında ikinci satır (Cari Ekstre: adres · telefon · VKN) — {{alan}} yer tutucuları */
+    altBaslik?: string };
   /** PDF altına basılan yöntem/uyarı notu (kâr-zarar: ağırlıklı ortalama açıklaması) */
   dipnot?: string;
   /** Satır üst sınırı (varsayılan 5000) */

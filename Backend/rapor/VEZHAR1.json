@@ -1,7 +1,7 @@
 {
   "kod": "VEZHAR1",
   "ad": "Vezne Hareket Listesi",
-  "aciklama": "Tarih ve saat aralığındaki alış/satış fişleri; vezne, para ve tip filtresi.",
+  "aciklama": "Tarih ve saat aralığındaki alış/satış fişleri; vezne, para ve tip filtresi; seçilen kurla TL karşılığı.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -17,19 +17,24 @@
       "tip": "saatAralik"
     },
     {
-      "ad": "vezneBaslangic",
-      "etiket": "Vezne aralığı (koddan koda)",
-      "tip": "vezneAralik"
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
     },
     {
       "ad": "paraIdler",
-      "etiket": "Para (birden fazla seçilebilir)",
+      "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
     },
     {
       "ad": "fisTipi",
       "etiket": "Tip",
       "tip": "fisTipi"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
     }
   ],
   "kolonlar": [
@@ -95,6 +100,20 @@
       "bicim": "sayi",
       "toplam": true,
       "pdf": false
+    },
+    {
+      "anahtar": "secilenKur",
+      "baslik": "Seçilen kur",
+      "g": 1.4,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "secilenTl",
+      "baslik": "Seçilen kurla TL",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
     }
   ],
   "grup": {

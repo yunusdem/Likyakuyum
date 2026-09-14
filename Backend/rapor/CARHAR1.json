@@ -1,7 +1,7 @@
 {
   "kod": "CARHAR1",
   "ad": "Cari Hareket Listesi",
-  "aciklama": "Tarih aralığındaki tüm cari hareketleri; cari, vezne ve para filtresi.",
+  "aciklama": "Tarih aralığındaki tüm cari hareketleri; cari, vezne, para ve hareket tipi filtresi.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -9,22 +9,27 @@
       "etiket": "Tarih aralığı",
       "tip": "tarihAralik",
       "zorunlu": true,
-      "varsayilan": "-30g"
+      "varsayilan": "bugun"
     },
     {
-      "ad": "cariBaslangic",
-      "etiket": "Cari aralığı (koddan koda)",
-      "tip": "cariAralik"
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu"
     },
     {
-      "ad": "vezneBaslangic",
-      "etiket": "Vezne aralığı (koddan koda)",
-      "tip": "vezneAralik"
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
     },
     {
-      "ad": "paraId",
-      "etiket": "Para",
-      "tip": "para"
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "hareketTipi",
+      "etiket": "Hareket tipi",
+      "tip": "hareketTipi"
     }
   ],
   "kolonlar": [
@@ -33,6 +38,12 @@
       "baslik": "Tarih",
       "g": 1.6,
       "bicim": "tarih"
+    },
+    {
+      "anahtar": "fisNo",
+      "baslik": "Fiş no",
+      "g": 1.0,
+      "hiza": "center"
     },
     {
       "anahtar": "cariKod",
