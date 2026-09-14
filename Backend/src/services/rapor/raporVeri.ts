@@ -13,8 +13,9 @@ export interface RaporParametreler {
   vezneId?: number; paraId?: number; cariKartId?: number; fisTipi?: number;
   /** Aralık ve çoklu seçim (yönetici kararı 12.09.2026): cari/vezne KOD aralığı, para listesi */
   cariBaslangic?: string; cariBitis?: string; vezneBaslangic?: string; vezneBitis?: string; paraIdler?: number[];
-  /** Seçim listeleri (aralık yerine; yönetici kararı 14.09.2026): boş = tümü */
+  /** Seçim listeleri (yönetici kararı 14.09.2026): boş = tümü. "İlk kod" listesi; "Son kod" seçilmişse ilk listedeki ilk kayıttan son kayda KOD aralığı */
   cariIdler?: number[]; vezneIdler?: number[];
+  cariSonId?: number; vezneSonId?: number; paraSonId?: number;
   kurTuru?: number; kurTarihi?: string; kurAlani?: "alis" | "satis";
   arama?: string; kmt?: string;
   /** Cari hareket tipi filtresi (0 nakit, 1 banka, 2 POS, 3 dekont, 4 virman, 5 devir) */
@@ -66,29 +67,54 @@ function filtreler(req: sql.Request, p: RaporParametreler, alias: { cari?: strin
     req.input("cbas", sql.VarChar(50), p.cariBaslangic?.trim() || null).input("cbit", sql.VarChar(50), p.cariBitis?.trim() || null).input("cari", sql.Int, p.cariKartId || null);
     parcalar.push(`(@cari IS NULL OR ${alias.cari}.CARI_KART_ID=@cari)`, `(@cbas IS NULL OR RTRIM(${alias.cari}.KOD)>=@cbas)`, `(@cbit IS NULL OR RTRIM(${alias.cari}.KOD)<=@cbit)`);
     const cids = (p.cariIdler || []).filter(n => Number.isInteger(n) && n > 0);
-    cids.forEach((id, i) => req.input(`cl${i}`, sql.Int, id));
-    if (cids.length) parcalar.push(`${alias.cari}.CARI_KART_ID IN (${cids.map((_, i) => `@cl${i}`).join(",")})`);
+    if (cids.length && p.cariSonId) {
+      // İlk kod (listenin ilki) → Son kod aralığı
+      req.input("cilk", sql.Int, cids[0]).input("cson", sql.Int, p.cariSonId);
+      parcalar.push(`RTRIM(${alias.cari}.KOD) BETWEEN (SELECT RTRIM(KOD) FROM dbo.TODVZ_CARI_KART WHERE CARI_KART_ID=@cilk) AND (SELECT RTRIM(KOD) FROM dbo.TODVZ_CARI_KART WHERE CARI_KART_ID=@cson)`);
+    } else {
+      cids.forEach((id, i) => req.input(`cl${i}`, sql.Int, id));
+      if (cids.length) parcalar.push(`${alias.cari}.CARI_KART_ID IN (${cids.map((_, i) => `@cl${i}`).join(",")})`);
+    }
   }
   if (alias.vezne) {
     req.input("vbas", sql.VarChar(50), p.vezneBaslangic?.trim() || null).input("vbit", sql.VarChar(50), p.vezneBitis?.trim() || null).input("v", sql.Int, p.vezneId || null);
     parcalar.push(`(@v IS NULL OR ${alias.vezne}.VEZNE_ID=@v)`, `(@vbas IS NULL OR RTRIM(${alias.vezne}.KOD)>=@vbas)`, `(@vbit IS NULL OR RTRIM(${alias.vezne}.KOD)<=@vbit)`);
     const vids = (p.vezneIdler || []).filter(n => Number.isInteger(n) && n > 0);
-    vids.forEach((id, i) => req.input(`vl${i}`, sql.Int, id));
-    if (vids.length) parcalar.push(`${alias.vezne}.VEZNE_ID IN (${vids.map((_, i) => `@vl${i}`).join(",")})`);
+    if (vids.length && p.vezneSonId) {
+      req.input("vilk", sql.Int, vids[0]).input("vson", sql.Int, p.vezneSonId);
+      parcalar.push(`RTRIM(${alias.vezne}.KOD) BETWEEN (SELECT RTRIM(KOD) FROM dbo.TODVZ_VEZNE WHERE VEZNE_ID=@vilk) AND (SELECT RTRIM(KOD) FROM dbo.TODVZ_VEZNE WHERE VEZNE_ID=@vson)`);
+    } else {
+      vids.forEach((id, i) => req.input(`vl${i}`, sql.Int, id));
+      if (vids.length) parcalar.push(`${alias.vezne}.VEZNE_ID IN (${vids.map((_, i) => `@vl${i}`).join(",")})`);
+    }
   }
   if (alias.para) {
     req.input("para", sql.Int, p.paraId || null);
     const ids = (p.paraIdler || []).filter(n => Number.isInteger(n) && n > 0);
-    ids.forEach((id, i) => req.input(`pl${i}`, sql.Int, id));
     parcalar.push(`(@para IS NULL OR ${alias.para}=@para)`);
-    if (ids.length) parcalar.push(`${alias.para} IN (${ids.map((_, i) => `@pl${i}`).join(",")})`);
+    if (ids.length && p.paraSonId) {
+      req.input("pilk", sql.Int, ids[0]).input("pson", sql.Int, p.paraSonId);
+      parcalar.push(`${alias.para} IN (SELECT PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(KOD) BETWEEN (SELECT RTRIM(KOD) FROM dbo.TODVZ_PARA WHERE PARA_ID=@pilk) AND (SELECT RTRIM(KOD) FROM dbo.TODVZ_PARA WHERE PARA_ID=@pson))`);
+    } else {
+      ids.forEach((id, i) => req.input(`pl${i}`, sql.Int, id));
+      if (ids.length) parcalar.push(`${alias.para} IN (${ids.map((_, i) => `@pl${i}`).join(",")})`);
+    }
   }
   return parcalar.length ? " AND " + parcalar.join(" AND ") : "";
 }
+/** Para seçimi kümesi (paraIdler; paraSonId varsa ilk → son KOD aralığı). null = tümü. FIRVAR1/VEZBAK1 JS süzmesi için. */
+async function paraKumesi(pool: sql.ConnectionPool, p: RaporParametreler): Promise<Set<number> | null> {
+  const ids = (p.paraIdler || []).filter(n => Number.isInteger(n) && n > 0);
+  if (!ids.length) return null;
+  if (!p.paraSonId) return new Set(ids);
+  const r = await pool.request().input("pilk", sql.Int, ids[0]).input("pson", sql.Int, p.paraSonId).query(
+    `SELECT PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(KOD) BETWEEN (SELECT RTRIM(KOD) FROM dbo.TODVZ_PARA WHERE PARA_ID=@pilk) AND (SELECT RTRIM(KOD) FROM dbo.TODVZ_PARA WHERE PARA_ID=@pson)`);
+  return new Set(r.recordset.map((x: any) => Number(x.PARA_ID)));
+}
 const ozetEk = (p: RaporParametreler) => [
-  p.cariKartId ? "Seçili cari" : p.cariIdler?.length ? `${p.cariIdler.length} cari` : p.cariBaslangic || p.cariBitis ? `Cari ${p.cariBaslangic || "…"} → ${p.cariBitis || "…"}` : "",
-  p.vezneId ? "Seçili vezne" : p.vezneIdler?.length ? `${p.vezneIdler.length} vezne` : p.vezneBaslangic || p.vezneBitis ? `Vezne ${p.vezneBaslangic || "…"} → ${p.vezneBitis || "…"}` : "",
-  p.paraId ? "Seçili para" : p.paraIdler?.length ? `${p.paraIdler.length} para` : "",
+  p.cariKartId ? "Seçili cari" : p.cariIdler?.length ? (p.cariSonId ? "Cari aralığı" : `${p.cariIdler.length} cari`) : p.cariBaslangic || p.cariBitis ? `Cari ${p.cariBaslangic || "…"} → ${p.cariBitis || "…"}` : "",
+  p.vezneId ? "Seçili vezne" : p.vezneIdler?.length ? (p.vezneSonId ? "Vezne aralığı" : `${p.vezneIdler.length} vezne`) : p.vezneBaslangic || p.vezneBitis ? `Vezne ${p.vezneBaslangic || "…"} → ${p.vezneBitis || "…"}` : "",
+  p.paraId ? "Seçili para" : p.paraIdler?.length ? (p.paraSonId ? "Para aralığı" : `${p.paraIdler.length} para`) : "",
 ].filter(Boolean).map(x => " · " + x).join("");
 
 /** Vezne bakiyeleri (tarih dahil) — fiş + nakit cari hareket. Bkz. docs/raporlar.md karar E7. */
@@ -234,8 +260,8 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     if (!p.tarih) throw ApiError.badRequest("Tarih zorunludur.");
     const kur = await kurCoz(pool, p);
     const vezneler = await vezneBakiyeleri(pool, p.tarih, p);
-    const paraSet = new Set((p.paraIdler || []).map(Number));
-    const paraUygun = (id: number) => (!p.paraId || id === p.paraId) && (!paraSet.size || paraSet.has(id));
+    const paraSet = await paraKumesi(pool, p);
+    const paraUygun = (id: number) => (!p.paraId || id === p.paraId) && (!paraSet || paraSet.has(id));
     const satirlar: any[] = vezneler.filter(v => Math.abs(v.miktar) > 0.000001 && paraUygun(Number(v.paraId))).map(v => ({
       kaynak: `Vezne ${v.vezneKod} — ${v.vezneAd}`, grup: "1-Vezneler", paraKod: v.paraKod, miktar: Number(v.miktar), kur: kur.kurlar.get(v.paraId) ?? 0,
       tlKarsiligi: Number(v.miktar) * (kur.kurlar.get(v.paraId) ?? 0) }));
@@ -316,8 +342,8 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     if (!p.tarih) throw ApiError.badRequest("Tarih zorunludur.");
     const kur = await kurCoz(pool, p);
     const rows = await vezneBakiyeleri(pool, p.tarih, p);
-    const paraSet = new Set((p.paraIdler || []).map(Number));
-    const satirlar = rows.filter(r => (!p.paraId || r.paraId === p.paraId) && (!paraSet.size || paraSet.has(Number(r.paraId)))).map(r => ({ ...r, miktar: Number(r.miktar), kur: kur.kurlar.get(r.paraId) ?? 0,
+    const paraSet = await paraKumesi(pool, p);
+    const satirlar = rows.filter(r => (!p.paraId || r.paraId === p.paraId) && (!paraSet || paraSet.has(Number(r.paraId)))).map(r => ({ ...r, miktar: Number(r.miktar), kur: kur.kurlar.get(r.paraId) ?? 0,
       tlKarsiligi: Number(r.miktar) * (kur.kurlar.get(r.paraId) ?? 0), vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }));
     return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p) || " · Tüm vezneler"} · ${kur.aciklama}`, VEZNE_BAKIYE_DIPNOT);
   },

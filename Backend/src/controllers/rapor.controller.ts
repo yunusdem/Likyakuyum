@@ -21,7 +21,7 @@ const parametreSema = z.object({
   // Aralık ve çoklu seçim
   cariBaslangic: z.string().trim().max(50).optional(), cariBitis: z.string().trim().max(50).optional(),
   vezneBaslangic: z.string().trim().max(50).optional(), vezneBitis: z.string().trim().max(50).optional(),
-  cariIdler: idListe, vezneIdler: idListe,
+  cariIdler: idListe, vezneIdler: idListe, cariSonId: idOpt, vezneSonId: idOpt, paraSonId: idOpt,
   paraIdler: z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)),
     z.array(z.number().int().positive()).max(50).optional()),
 });
