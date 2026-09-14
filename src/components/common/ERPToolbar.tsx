@@ -84,6 +84,10 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kur/pano-tanimi": { title: "D- Pano Tanımı", icon: <IconDeviceTv size={20} /> },
   "/ayarlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
   "/tanimlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
+  "/vezne/genel-sarraf-fisi": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/sarraf-fisi": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/sarraf-fisi-kayit": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
+  "/vezne/sarraf-fisi-duzeltme": { title: "A- Genel Sarraf Fişi Düzeltme", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fisi": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fis": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fisi-kayit": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
@@ -129,7 +133,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     location.pathname.includes("/kayit") ||
     ((location.pathname.includes("doviz-fisi") || location.pathname.includes("doviz-fis")) && !location.pathname.includes("duzeltme")) ||
     ((location.pathname.includes("emanet") || location.pathname.includes("emanet-dekont")) && !location.pathname.includes("duzeltme")) ||
-    (location.pathname.includes("kart") && !location.pathname.includes("duzeltme") && !location.pathname.includes("liste"));
+    (location.pathname.includes("kart") && !location.pathname.includes("duzeltme") && !location.pathname.includes("liste") && !location.pathname.includes("banka"));
 
   const shouldShowSearch = hideSearch !== undefined ? !hideSearch : (!isKayitPage && Boolean(onSearch));
   const shouldShowDelete = hideDelete !== undefined ? !hideDelete : (!isKayitPage && Boolean(onDelete));
