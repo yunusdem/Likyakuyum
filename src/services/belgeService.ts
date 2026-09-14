@@ -11,10 +11,24 @@ export interface BelgeSablon {
   duzenDosyasi: string; kagit: string; varsayilan: boolean; aktif: boolean; arsivDizini: string | null;
 }
 
+export type BelgeKaynak = "DOVIZ" | "FATURA" | "IRSALIYE" | "GIDER";
+export const BELGE_KAYNAKLARI: { kod: BelgeKaynak; ad: string }[] = [
+  { kod: "DOVIZ", ad: "e-Döviz fişi" }, { kod: "FATURA", ad: "Fatura (e-Fatura / e-Arşiv)" }, { kod: "IRSALIYE", ad: "e-İrsaliye" }, { kod: "GIDER", ad: "e-Gider pusulası" },
+];
+export const BELGE_DURUMLARI: { kod: string; ad: string }[] = [
+  { kod: "GONDERILMEDI", ad: "Gönderilmedi" }, { kod: "GONDERILDI", ad: "GİB'e gönderildi" }, { kod: "HATA", ad: "Hatalı" },
+  { kod: "GONDERILIYOR", ad: "Gönderiliyor" }, { kod: "TASLAK", ad: "Taslak" }, { kod: "IPTAL", ad: "İptal" }, { kod: "KONTROL_GEREKLI", ad: "Kontrol gerekli" },
+];
+
+/**
+ * Belge listesi satırı (tüm kaynaklar). DOVIZ: fisId = TODVZ_FIS.FIS_ID, fisTipi 0 alış / 1 satış, PDF belge motorundan.
+ * Diğerleri: fisId = kaynak görünümündeki BELGE_ID, fisTipi = BELGE_TURU; PDF e-Belge kaynak ucundan (evrakTuru/belgeId/belgeTuru).
+ */
 export interface BelgeFis {
+  kaynak: BelgeKaynak; evrakTuru: number; belgeTuru: number;
   fisId: number; fisTipi: number; tipAdi: string; belgeNo: string; tarih: string; unvan: string;
-  miktar: number; paraKodu: string; tutar: number; vezne: string; ettn: string; iptal: boolean;
-  gonderimDurumu: string | null;
+  miktar: number | null; paraKodu: string; tutar: number; vezne: string; ettn: string; iptal: boolean;
+  durum: string; hata: string | null; gonderimDurumu: string | null;
 }
 
 export interface BelgeFisListesi { toplam: number; sayfa: number; boyut: number; kayitlar: BelgeFis[] }
@@ -72,8 +86,10 @@ export const BelgeService = {
     return r.data || [];
   },
 
-  async fisler(f: { tip?: number | ""; baslangic?: string; bitis?: string; arama?: string; sayfa?: number; boyut?: number }): Promise<BelgeFisListesi> {
+  async fisler(f: { kaynak?: BelgeKaynak | ""; tip?: number | ""; durum?: string; baslangic?: string; bitis?: string; arama?: string; sayfa?: number; boyut?: number }): Promise<BelgeFisListesi> {
     const params: Record<string, any> = { sayfa: f.sayfa || 1, boyut: f.boyut || 50 };
+    if (f.kaynak) params.kaynak = f.kaynak;
+    if (f.durum) params.durum = f.durum;
     if (f.tip !== undefined && f.tip !== "") params.tip = f.tip;
     if (f.baslangic) params.baslangic = f.baslangic;
     if (f.bitis) params.bitis = f.bitis;
@@ -118,13 +134,15 @@ export const belgeTarih = (iso: string) => {
 export const belgeSayi = (n: number, basamak = 2) =>
   Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: basamak, maximumFractionDigits: basamak });
 
-export const belgeDurumRozet = (f: BelgeFis): { bg: string; text?: string; etiket: string } => {
-  if (f.iptal) return { bg: "danger", etiket: "İptal" };
-  switch (f.gonderimDurumu) {
+export const belgeDurumRozet = (f: Pick<BelgeFis, "durum" | "iptal">): { bg: string; text?: string; etiket: string } => {
+  if (f.iptal || f.durum === "IPTAL") return { bg: "danger", etiket: "İptal" };
+  switch (f.durum) {
     case "GONDERILDI": return { bg: "success", etiket: "GİB'e gönderildi" };
     case "HATA": return { bg: "danger", etiket: "Hatalı" };
     case "GONDERILIYOR": return { bg: "info", text: "dark", etiket: "Gönderiliyor" };
-    case null: case undefined: case "": return { bg: "secondary", etiket: "Gönderilmedi" };
-    default: return { bg: "warning", text: "dark", etiket: f.gonderimDurumu };
+    case "TASLAK": return { bg: "primary", etiket: "Taslak" };
+    case "KONTROL_GEREKLI": return { bg: "warning", text: "dark", etiket: "Kontrol gerekli" };
+    case null: case undefined: case "": case "GONDERILMEDI": return { bg: "secondary", etiket: "Gönderilmedi" };
+    default: return { bg: "warning", text: "dark", etiket: f.durum };
   }
 };

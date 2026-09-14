@@ -144,7 +144,7 @@ export const DashboardMenu: MenuItemType[] = [
     id: uuid(),
     title: "H- Belge / Fiş PDF",
     icon: <IconFileTypePdf size={18} />,
-    link: "raporlar/belge",
+    link: "belge",
   },
 
   // I- Etiket İşlemleri

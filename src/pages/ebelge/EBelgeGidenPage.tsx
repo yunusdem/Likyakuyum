@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
-import { IconSend, IconTrash, IconAlertTriangle, IconMail } from "@tabler/icons-react";
+import { IconSend, IconAlertTriangle, IconMail } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import EBelgeArsivPanel from "./EBelgeArsivPanel";
@@ -58,9 +58,7 @@ const EBelgeGidenPage: React.FC = () => {
   const [seciliUuid, setSeciliUuid] = useState<string | null>(null);
   const [arsivAcik, setArsivAcik] = useState(false);
 
-  // İptal — iki adımlı onay
-  const [iptalEdilecek, setIptalEdilecek] = useState<EbelgeGidenSatiri | null>(null);
-  const [iptalEdiliyor, setIptalEdiliyor] = useState<boolean>(false);
+  // İptal (çöp kovası) butonu yönetici isteğiyle kaldırıldı (14.09.2026); iptal bildirimi bu ekrandan yapılmaz.
 
   // Taslak onayı (GİB'e gönderim) — iki adımlı onay
   const [onaylanacak, setOnaylanacak] = useState<EbelgeGidenSatiri | null>(null);
@@ -180,40 +178,6 @@ const EBelgeGidenPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const iptalEt = async () => {
-    if (!iptalEdilecek) return;
-    setIptalEdiliyor(true);
-    setAlertInfo(null);
-    try {
-      if (iptalEdilecek.belgeTuru === "EDoviz") {
-        await ebelgeService.dovizIptal(iptalEdilecek.uuid);
-        setAlertInfo({ type: "success", message: `${iptalEdilecek.belgeNo} e-Döviz belgesi iptal edildi.` });
-      } else if (iptalEdilecek.belgeTuru === "EMustahsil") {
-        await ebelgeService.mustahsilIptal(iptalEdilecek.uuid);
-        setAlertInfo({ type: "success", message: `${iptalEdilecek.belgeNo} e-Müstahsil makbuzu iptal edildi.` });
-      } else if (iptalEdilecek.belgeTuru === "EArsiv") {
-        // e-Arşiv: belge silinmez, GİB'e iptal BİLDİRİMİ gider
-        await ebelgeService.earsivIptal(iptalEdilecek.uuid);
-        setAlertInfo({
-          type: "success",
-          message: `${iptalEdilecek.belgeNo} için e-Arşiv iptal bildirimi gönderildi.`,
-        });
-      } else {
-        await ebelgeService.taslakIptal(iptalEdilecek.uuid);
-        setAlertInfo({
-          type: "success",
-          message: `${iptalEdilecek.belgeNo} numaralı taslak iptal edildi.`,
-        });
-      }
-      setIptalEdilecek(null);
-      await listeYukle(sayfa);
-    } catch (err: any) {
-      setAlertInfo({ type: "danger", message: err?.message || "Taslak iptal edilemedi." });
-    } finally {
-      setIptalEdiliyor(false);
-    }
-  };
-
   const sonSayfa = Math.max(Math.ceil(toplam / SAYFA_BOYUTU), 1);
 
   return (
@@ -324,46 +288,6 @@ const EBelgeGidenPage: React.FC = () => {
         </Card>
       )}
 
-      {iptalEdilecek && (
-        <Card className="shadow-sm border rounded-3 overflow-hidden mb-3" style={{ borderColor: "#dc2626" }}>
-          <Card.Body className="p-3 bg-body">
-            <Alert
-              variant={["EArsiv", "EDoviz", "EMustahsil"].includes(iptalEdilecek.belgeTuru) ? "danger" : "warning"}
-              className="py-2 px-3 mb-2 border rounded shadow-2xs small"
-            >
-              <IconAlertTriangle size={15} className="me-1" />
-              {["EArsiv", "EDoviz", "EMustahsil"].includes(iptalEdilecek.belgeTuru) ? (
-                <>
-                  <strong>{iptalEdilecek.belgeNo}</strong> için GİB'e{" "}
-                  <strong>iptal bildirimi</strong> gönderilecek. Belge silinmez, iptal edildiği
-                  raporlanır ve bu işlem <strong>geri alınamaz</strong>. Devam edilsin mi?
-                </>
-              ) : (
-                <>
-                  <strong>{iptalEdilecek.belgeNo}</strong> numaralı taslak entegratörden silinecek.
-                  Fatura numarası tekrar kullanılamaz. Devam edilsin mi?
-                </>
-              )}
-            </Alert>
-            <div className="d-flex gap-2">
-              <Button size="sm" variant="danger" onClick={iptalEt} disabled={iptalEdiliyor}>
-                {iptalEdiliyor ? <Spinner animation="border" size="sm" className="me-1" /> : null}
-                {["EArsiv", "EDoviz", "EMustahsil"].includes(iptalEdilecek.belgeTuru)
-                  ? "Evet, iptal bildirimi gönder"
-                  : "Evet, taslağı iptal et"}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setIptalEdilecek(null)}
-                disabled={iptalEdiliyor}
-              >
-                Vazgeç
-              </Button>
-            </div>
-          </Card.Body>
-        </Card>
-      )}
       <Button size="sm" variant="outline-secondary" className="mb-3" onClick={() => setArsivAcik(!arsivAcik)}>
         {arsivAcik ? "ICE arşivini gizle" : "ICE arşivini aç"}
       </Button>
@@ -570,27 +494,6 @@ const EBelgeGidenPage: React.FC = () => {
                               }}
                             >
                               <IconSend size={16} />
-                            </Button>
-                          )}
-                          {(satir.gonderimDurumu === "TASLAK" ||
-                            (["EArsiv", "EDoviz", "EMustahsil"].includes(satir.belgeTuru) &&
-                              satir.gonderimDurumu === "GONDERILDI")) && (
-                            <Button
-                              size="sm"
-                              variant="link"
-                              className="p-0"
-                              style={{ color: "#dc2626" }}
-                              title={
-                                ["EArsiv", "EDoviz", "EMustahsil"].includes(satir.belgeTuru)
-                                  ? "İptal bildirimi gönder"
-                                  : "Taslağı iptal et"
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIptalEdilecek(satir);
-                              }}
-                            >
-                              <IconTrash size={16} />
                             </Button>
                           )}
                         </td>
