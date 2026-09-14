@@ -16,10 +16,10 @@ export interface RaporParametreler {
   /** Seçim listeleri (yönetici kararı 14.09.2026): boş = tümü. "İlk kod" listesi; "Son kod" seçilmişse ilk listedeki ilk kayıttan son kayda KOD aralığı */
   cariIdler?: number[]; vezneIdler?: number[];
   cariSonId?: number; vezneSonId?: number; paraSonId?: number;
-  kurTuru?: number; kurTarihi?: string; kurAlani?: "alis" | "satis";
+  kurTuru?: number; kurTarihi?: string; kurAlani?: "alis" | "satis" | "ikisi";
   arama?: string; kmt?: string;
-  /** Cari hareket tipi filtresi (0 nakit, 1 banka, 2 POS, 3 dekont, 4 virman, 5 devir) */
-  hareketTipi?: number;
+  /** Cari hareket tipi filtresi (0 nakit, 1 banka, 2 POS, 3 dekont, 4 virman, 5 devir); hareketTipleri: çoklu seçim (boş = tümü) */
+  hareketTipi?: number; hareketTipleri?: number[];
 }
 
 const tarihTr = (v?: string) => (v ? v.split("-").reverse().join(".") : "");
@@ -32,6 +32,7 @@ const TL_PARA_SQL = `ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRI
 /** Kur tablosu: kurTuru 0 = anlık gişe (en son), 2 = saklanan (kurTarihi'ne eşit/önceki en yakın gün). */
 async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler) {
   const tur = p.kurTuru === 2 ? 2 : 0;
+  const ikisi = p.kurAlani === "ikisi";
   const alan = p.kurAlani === "satis" ? "DOVIZ_SATIS" : "DOVIZ_ALIS";
   const req = pool.request().input("tur", sql.TinyInt, tur).input("t", sql.Date, p.kurTarihi || p.tarih || null);
   const res = await req.query(`
@@ -39,17 +40,18 @@ async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler) {
     WHERE T.TUR=@tur AND (@tur=0 OR @t IS NULL OR CAST(T.TARIH AS date)<=@t)
     ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC;`);
   const tablo = res.recordset[0];
-  const kurlar = new Map<number, number>();
+  const kurlar = new Map<number, number>(), satisKurlari = new Map<number, number>();
   if (tablo) {
-    const k = await pool.request().input("id", sql.Int, tablo.id).query(`SELECT PARA_ID, ${alan} kur, PARITE FROM dbo.TODVZ_KUR WHERE KUR_TABLOSU_ID=@id`);
-    for (const r of k.recordset) kurlar.set(Number(r.PARA_ID), Number(r.kur) || 0);
+    const k = await pool.request().input("id", sql.Int, tablo.id).query(`SELECT PARA_ID, ${alan} kur, DOVIZ_SATIS satis, PARITE FROM dbo.TODVZ_KUR WHERE KUR_TABLOSU_ID=@id`);
+    for (const r of k.recordset) { kurlar.set(Number(r.PARA_ID), Number(r.kur) || 0); satisKurlari.set(Number(r.PARA_ID), Number(r.satis) || 0); }
   }
   const tlId = Number((await pool.request().query(`SELECT ${TL_PARA_SQL} id`)).recordset[0]?.id || 1);
-  kurlar.set(tlId, 1);
+  kurlar.set(tlId, 1); satisKurlari.set(tlId, 1);
   const aciklama = tablo
-    ? `Kur: ${tur === 0 ? "anlık gişe kuru" : "saklanan kur"} (${alan === "DOVIZ_ALIS" ? "döviz alış" : "döviz satış"}, tablo tarihi ${new Date(tablo.tarih).toLocaleDateString("tr-TR")})`
+    ? `Kur: ${tur === 0 ? "anlık gişe kuru" : "saklanan kur"} (${ikisi ? "döviz alış + satış" : alan === "DOVIZ_ALIS" ? "döviz alış" : "döviz satış"}, tablo tarihi ${new Date(tablo.tarih).toLocaleDateString("tr-TR")})`
     : "Kur tablosu bulunamadı; TL karşılıkları 0 gösterildi.";
-  return { kurlar, tlId, aciklama };
+  /** kurlar: seçilen alan (ikisi → alış); satisKurlari: satış kuru (ikisi seçilince ek kolonlar) */
+  return { kurlar, satisKurlari, ikisi, tlId, aciklama };
 }
 
 function sinirla(satirlar: any[], tanim: RaporTanim, filtreOzeti: string, ekDipnot?: string): RaporSonucVeri {
@@ -67,10 +69,12 @@ function filtreler(req: sql.Request, p: RaporParametreler, alias: { cari?: strin
     req.input("cbas", sql.VarChar(50), p.cariBaslangic?.trim() || null).input("cbit", sql.VarChar(50), p.cariBitis?.trim() || null).input("cari", sql.Int, p.cariKartId || null);
     parcalar.push(`(@cari IS NULL OR ${alias.cari}.CARI_KART_ID=@cari)`, `(@cbas IS NULL OR RTRIM(${alias.cari}.KOD)>=@cbas)`, `(@cbit IS NULL OR RTRIM(${alias.cari}.KOD)<=@cbit)`);
     const cids = (p.cariIdler || []).filter(n => Number.isInteger(n) && n > 0);
-    if (cids.length && p.cariSonId) {
-      // İlk kod (listenin ilki) → Son kod aralığı
-      req.input("cilk", sql.Int, cids[0]).input("cson", sql.Int, p.cariSonId);
-      parcalar.push(`RTRIM(${alias.cari}.KOD) BETWEEN (SELECT RTRIM(KOD) FROM dbo.TODVZ_CARI_KART WHERE CARI_KART_ID=@cilk) AND (SELECT RTRIM(KOD) FROM dbo.TODVZ_CARI_KART WHERE CARI_KART_ID=@cson)`);
+    if (p.cariSonId) {
+      // Son kod seçili: ilk koddaki seçimin en küçük kodundan son koda kadar aralık; ilk kod boşsa baştan son koda kadar
+      req.input("cson", sql.Int, p.cariSonId);
+      cids.forEach((id, i) => req.input(`ci${i}`, sql.Int, id));
+      const ilkKod = cids.length ? `(SELECT MIN(RTRIM(KOD)) FROM dbo.TODVZ_CARI_KART WHERE CARI_KART_ID IN (${cids.map((_, i) => `@ci${i}`).join(",")}))` : "''";
+      parcalar.push(`RTRIM(${alias.cari}.KOD) BETWEEN ${ilkKod} AND (SELECT RTRIM(KOD) FROM dbo.TODVZ_CARI_KART WHERE CARI_KART_ID=@cson)`);
     } else {
       cids.forEach((id, i) => req.input(`cl${i}`, sql.Int, id));
       if (cids.length) parcalar.push(`${alias.cari}.CARI_KART_ID IN (${cids.map((_, i) => `@cl${i}`).join(",")})`);
@@ -179,7 +183,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
 
   /** R2 Cari ekstre — cari aralığı (Ahmet -> Mehmet), tarih aralığı, para (çoklu); cari × para grubu, cari başlık bilgisi, devir + yürüyen bakiye, fiş no, has karşılığı */
   async CAREKS1(pool, p, t) {
-    if (!p.cariKartId && !p.cariIdler?.length && !p.cariBaslangic && !p.cariBitis) throw ApiError.badRequest("En az bir cari seçilmelidir.");
+    if (!p.cariKartId && !p.cariIdler?.length && !p.cariSonId && !p.cariBaslangic && !p.cariBitis) throw ApiError.badRequest("En az bir cari seçilmelidir.");
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
     const f = filtreler(req, p, { cari: "C", para: "S.PARA_ID" });
@@ -229,7 +233,9 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
       .input("ht", sql.Int, Number.isInteger(p.hareketTipi) ? p.hareketTipi : null);
-    const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" });
+    const htler = (p.hareketTipleri || []).filter(n => Number.isInteger(n) && n >= 0 && n <= 5);
+    htler.forEach((h, i) => req.input(`htl${i}`, sql.Int, h));
+    const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" }) + (htler.length ? ` AND H.HAREKET_TIPI IN (${htler.map((_, i) => `@htl${i}`).join(",")})` : "");
     const res = await req.query(`
       SELECT H.CARI_HAREKET_ID fisNo, H.TARIH tarih, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, H.HAREKET_TIPI hareketTipiKod, H.TIP tipKod,
         RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, RTRIM(P.KOD) paraKod, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
@@ -239,7 +245,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
       ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
     const satirlar = res.recordset.map((r: any) => ({ ...r, fisNo: String(r.fisNo ?? ""), meblag: Number(r.meblag), hareketTipi: HAREKET_TIPI[Number(r.hareketTipiKod)] || "Diğer",
       tip: Number(r.tipKod) === 1 ? "Alacak" : "Borç", borc: Number(r.tipKod) === 0 ? Number(r.meblag) : 0, alacak: Number(r.tipKod) === 1 ? Number(r.meblag) : 0 }));
-    return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p)}${Number.isInteger(p.hareketTipi) ? ` · ${HAREKET_TIPI[p.hareketTipi!] || "Diğer"}` : ""}`);
+    return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p)}${Number.isInteger(p.hareketTipi) ? ` · ${HAREKET_TIPI[p.hareketTipi!] || "Diğer"}` : htler.length ? ` · ${htler.map(h => HAREKET_TIPI[h]).join(", ")}` : ""}`);
   },
 
   /** R4 Cari kart listesi */
@@ -264,7 +270,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     const paraUygun = (id: number) => (!p.paraId || id === p.paraId) && (!paraSet || paraSet.has(id));
     const satirlar: any[] = vezneler.filter(v => Math.abs(v.miktar) > 0.000001 && paraUygun(Number(v.paraId))).map(v => ({
       kaynak: `Vezne ${v.vezneKod} — ${v.vezneAd}`, grup: "1-Vezneler", paraKod: v.paraKod, miktar: Number(v.miktar), kur: kur.kurlar.get(v.paraId) ?? 0,
-      tlKarsiligi: Number(v.miktar) * (kur.kurlar.get(v.paraId) ?? 0) }));
+      tlKarsiligi: Number(v.miktar) * (kur.kurlar.get(v.paraId) ?? 0), kurSatis: kur.satisKurlari.get(v.paraId) ?? 0, tlSatis: Number(v.miktar) * (kur.satisKurlari.get(v.paraId) ?? 0) }));
     const cari = await pool.request().input("t", sql.Date, p.tarih).query(`
       SELECT S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
         SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE 0 END) borc, SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE 0 END) alacak
@@ -272,9 +278,9 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
       WHERE CAST(H.TARIH AS date)<=@t GROUP BY S.PARA_ID, P.KOD, P.SIRA_NO ORDER BY ISNULL(P.SIRA_NO,99), P.KOD;`);
     for (const r of cari.recordset) {
       if (!paraUygun(Number(r.paraId))) continue;
-      const k = kur.kurlar.get(Number(r.paraId)) ?? 0;
-      if (Number(r.borc)) satirlar.push({ kaynak: "Cari alacaklarımız (carilerin bize borcu)", grup: "2-Cari alacaklar", paraKod: r.paraKod, miktar: Number(r.borc), kur: k, tlKarsiligi: Number(r.borc) * k });
-      if (Number(r.alacak)) satirlar.push({ kaynak: "Cari borçlarımız (carilerin bizden alacağı)", grup: "3-Cari borçlar", paraKod: r.paraKod, miktar: -Number(r.alacak), kur: k, tlKarsiligi: -Number(r.alacak) * k });
+      const k = kur.kurlar.get(Number(r.paraId)) ?? 0, ks = kur.satisKurlari.get(Number(r.paraId)) ?? 0;
+      if (Number(r.borc)) satirlar.push({ kaynak: "Cari alacaklarımız (carilerin bize borcu)", grup: "2-Cari alacaklar", paraKod: r.paraKod, miktar: Number(r.borc), kur: k, tlKarsiligi: Number(r.borc) * k, kurSatis: ks, tlSatis: Number(r.borc) * ks });
+      if (Number(r.alacak)) satirlar.push({ kaynak: "Cari borçlarımız (carilerin bizden alacağı)", grup: "3-Cari borçlar", paraKod: r.paraKod, miktar: -Number(r.alacak), kur: k, tlKarsiligi: -Number(r.alacak) * k, kurSatis: ks, tlSatis: -Number(r.alacak) * ks });
     }
     return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p)} · ${kur.aciklama}`,
       `${VEZNE_BAKIYE_DIPNOT} Cari borçlarımız eksi işaretle düşülür; banka hesapları kapsam dışıdır (yönetici kararı). ${kur.aciklama}.`);
@@ -344,7 +350,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     const rows = await vezneBakiyeleri(pool, p.tarih, p);
     const paraSet = await paraKumesi(pool, p);
     const satirlar = rows.filter(r => (!p.paraId || r.paraId === p.paraId) && (!paraSet || paraSet.has(Number(r.paraId)))).map(r => ({ ...r, miktar: Number(r.miktar), kur: kur.kurlar.get(r.paraId) ?? 0,
-      tlKarsiligi: Number(r.miktar) * (kur.kurlar.get(r.paraId) ?? 0), vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }));
+      tlKarsiligi: Number(r.miktar) * (kur.kurlar.get(r.paraId) ?? 0), kurSatis: kur.satisKurlari.get(r.paraId) ?? 0, tlSatis: Number(r.miktar) * (kur.satisKurlari.get(r.paraId) ?? 0), vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }));
     return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p) || " · Tüm vezneler"} · ${kur.aciklama}`, VEZNE_BAKIYE_DIPNOT);
   },
 
@@ -365,8 +371,8 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
         AND CAST(ISNULL(F.ZAMAN,F.TARIH) AS time) BETWEEN CAST(@sbas AS time) AND CAST(@sbit AS time)
         AND (@tip IS NULL OR F.TIP=@tip) ${f}
       ORDER BY V.KOD, ISNULL(F.ZAMAN,F.TARIH), F.FIS_ID, S.SATIR_NO;`);
-    const satirlar = res.recordset.map((r: any) => { const secilenKur = kur.kurlar.get(Number(r.paraId)) ?? 0; return { ...r, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", miktar: Number(r.miktar), kur: Number(r.kur), tutar: Number(r.tutar), komisyon: Number(r.komisyon), bmv: Number(r.bmv),
-      secilenKur, secilenTl: Number(r.miktar) * secilenKur, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }; });
+    const satirlar = res.recordset.map((r: any) => { const secilenKur = kur.kurlar.get(Number(r.paraId)) ?? 0, ks = kur.satisKurlari.get(Number(r.paraId)) ?? 0; return { ...r, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", miktar: Number(r.miktar), kur: Number(r.kur), tutar: Number(r.tutar), komisyon: Number(r.komisyon), bmv: Number(r.bmv),
+      secilenKur, secilenTl: Number(r.miktar) * secilenKur, kurSatis: ks, tlSatis: Number(r.miktar) * ks, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }; });
     return sinirla(satirlar, t, `${aralikOzeti(p)} · ${(p.baslangicSaat || "00:00").slice(0, 5)}–${(p.bitisSaat || "23:59").slice(0, 5)}${ozetEk(p) || " · Tüm vezneler"}${p.fisTipi === 0 ? " · Alış" : p.fisTipi === 1 ? " · Satış" : ""} · ${kur.aciklama}`,
       `İptal edilmiş fişler listelenmez. "Seçilen kur / TL" kolonları fiş kurundan bağımsız, parametrede seçilen kurla hesaplanır (${kur.aciklama}).`);
   },

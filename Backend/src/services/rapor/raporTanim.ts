@@ -44,6 +44,8 @@ export interface RaporKolon {
   pdf?: boolean;
   /** KMT gösterimi (kâr-zarar): K = kur, M = miktar, T = TL kolonu. `kmt` parametresi seçilince yalnızca o gruptaki ve etiketsiz kolonlar kalır. */
   kmt?: "K" | "M" | "T";
+  /** "kurIkisi": kolon yalnızca Kur alanı = Alış + Satış seçilince listelenir (satış kuru / TL kolonları) */
+  kosul?: "kurIkisi";
 }
 
 export interface RaporTanim {

@@ -41,9 +41,9 @@ function baslangicDegerleri(parametreler: RaporParametre[]): RaporParametreDeger
       case "kurSecimi": d.kurTuru = 0; d.kurTarihi = gun(0); d.kurAlani = "alis"; break;
       case "cariAralik": d.cariBaslangic = ""; d.cariBitis = ""; break;
       case "vezneAralik": d.vezneBaslangic = ""; d.vezneBitis = ""; break;
-      case "paraCoklu": d.paraIdler = ""; d.paraSonId = ""; break;
+      case "paraCoklu": d.paraIdler = ""; break;
       case "cariCoklu": d.cariIdler = ""; d.cariSonId = ""; break;
-      case "vezneCoklu": d.vezneIdler = ""; d.vezneSonId = ""; break;
+      case "vezneCoklu": d.vezneIdler = ""; break;
       case "tarih": d[p.ad] = varsayilanDeger(p.varsayilan ?? "bugun"); break;
       default: d[p.ad] = varsayilanDeger(p.varsayilan);
     }
@@ -118,7 +118,7 @@ export const RaporPage: React.FC = () => {
       if (p.tip === "cariAralik" && !degerler.cariBaslangic && !degerler.cariBitis) return "Cari aralığı için başlangıç veya bitiş cari seçin.";
       if (p.tip === "vezneAralik" && !degerler.vezneBaslangic && !degerler.vezneBitis) return "Vezne aralığı için başlangıç veya bitiş vezne seçin.";
       if (p.tip === "paraCoklu" && !degerler.paraIdler) return "En az bir para seçin.";
-      if (p.tip === "cariCoklu" && !degerler.cariIdler) return "En az bir cari seçin.";
+      if (p.tip === "cariCoklu" && !degerler.cariIdler && !degerler.cariSonId) return "En az bir cari seçin.";
       if (p.tip === "vezneCoklu" && !degerler.vezneIdler) return "En az bir vezne seçin.";
       if (!["tarihAralik", "saatAralik", "kurSecimi", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu"].includes(p.tip) && !degerler[p.ad]) return `${p.etiket} zorunludur.`;
     }
@@ -205,22 +205,36 @@ export const RaporPage: React.FC = () => {
   const secimler = (ad: string) => String(degerler[ad] ?? "").split(",").filter(Boolean);
 
   /** İlk kod (çoklu dürbün) + Son kod (tek dürbün): yalnızca ilk seçiliyse seçilenler; son da seçiliyse ilk→son kod aralığı */
+  /** Çoklu seçim satırı (vezne, para): dürbünden istenen kayıtlar işaretlenir; boş = tümü */
+  const coklu = <T extends { id: number; kod: string }>(p: RaporParametre, tur: string, ad: string, items: T[], kolonlar: SecimKolon<T>[], arama: (x: T) => (string | number | null | undefined)[], yerTutucu: string) => {
+    const secili = secimler(ad);
+    const kodu = (id: string | number | undefined) => items.find(v => String(v.id) === String(id ?? ""))?.kod || (id ? String(id) : "");
+    return satir(ad, <>{tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)}{zorunluIsareti(p)}</>,
+      <DurbunAlan<T> value={secili.map(kodu).join(", ")} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `Dürbünden ${tur} seçin…` : `Tüm ${tur}ler (dürbünden seçin)`} title={`${tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)} seçimi — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
+        kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek} coklu secili={secili} onSelect={() => undefined}
+        onCokluSec={sec => set(ad, sec.map(x => String(x.id)).join(","))} />,
+      secili.length ? <>{secili.length} {tur} seçili (yalnızca bunlar) · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(ad, "")}>Tümü</Button></>
+        : p.zorunlu ? `En az bir ${tur} seçin` : `Hiçbiri seçilmezse tüm ${tur}ler`);
+  };
+  /** Cari: İlk kod (çoklu) + Son kod (tek). Son boşsa yalnızca seçilenler; son seçiliyse ilk seçimin en küçük kodundan son koda aralık; yalnız son seçiliyse baştan son koda kadar */
   const ilkSon = <T extends { id: number; kod: string }>(p: RaporParametre, tur: string, ilkAd: string, sonAd: string, items: T[], kolonlar: SecimKolon<T>[], arama: (x: T) => (string | number | null | undefined)[], yerTutucu: string) => {
     const secili = secimler(ilkAd);
     const kodu = (id: string | number | undefined) => items.find(v => String(v.id) === String(id ?? ""))?.kod || (id ? String(id) : "");
-    const ilkMetin = secili.map(kodu).join(", ");
     const son = degerler[sonAd];
+    const ilkKod = secili.map(kodu).filter(Boolean).sort()[0] || "";
+    const aciklama = son
+      ? `${ilkKod || "(baştan)"} → ${kodu(son)} aralığındaki ${tur}ler`
+      : secili.length ? `${secili.length} ${tur} seçili (yalnızca bunlar)` : p.zorunlu ? `En az bir ${tur} seçin` : `Hiçbiri seçilmezse tüm ${tur}ler`;
     return [
       satir(ilkAd, <>İlk {tur} kodu{zorunluIsareti(p)}</>,
-        <DurbunAlan<T> value={ilkMetin} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `Dürbünden ${tur} seçin…` : `Tüm ${tur}ler (dürbünden seçin)`} title={`İlk ${tur} kodu — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
+        <DurbunAlan<T> value={secili.map(kodu).join(", ")} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `Dürbünden ${tur} seçin…` : `Tüm ${tur}ler (dürbünden seçin)`} title={`İlk ${tur} kodu — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
           kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek} coklu secili={secili} onSelect={() => undefined}
           onCokluSec={sec => set(ilkAd, sec.map(x => String(x.id)).join(","))} />,
-        secili.length ? <>{son ? `${kodu(secili[0])} → ${kodu(son)} aralığı` : `${secili.length} ${tur} seçili (yalnızca bunlar)`} · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => { set(ilkAd, ""); set(sonAd, ""); }}>Temizle</Button></>
-          : p.zorunlu ? `En az bir ${tur} seçin` : `Hiçbiri seçilmezse tüm ${tur}ler`),
+        <>{aciklama}{(secili.length || son) ? <> · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => { set(ilkAd, ""); set(sonAd, ""); }}>Temizle</Button></> : null}</>),
       satir(sonAd, <>Son {tur} kodu</>,
-        <DurbunAlan<T> value={kodu(son)} saltOkunur onChange={() => undefined} placeholder={secili.length ? "Boş bırakılırsa yalnızca ilk kodda seçilenler" : "Önce ilk kodu seçin"} title={`Son ${tur} kodu`} items={items} yukleniyor={listeYukleniyor}
-          kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek || !secili.length} onSelect={v => set(sonAd, v.id)} />,
-        son ? <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(sonAd, "")}>Son kodu kaldır</Button> : null),
+        <DurbunAlan<T> value={kodu(son)} saltOkunur onChange={() => undefined} placeholder="Boş bırakılırsa yalnızca ilk kodda seçilenler" title={`Son ${tur} kodu`} items={items} yukleniyor={listeYukleniyor}
+          kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek} onSelect={v => set(sonAd, v.id)} />,
+        son ? <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(sonAd, "")}>Son kodu kaldır</Button> : "Seçilirse ilk koddan bu koda kadar aralık gelir"),
     ];
   };
 
@@ -241,14 +255,19 @@ export const RaporPage: React.FC = () => {
         degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Temizle</Button> : null);
       case "fisTipi": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
         <option value="">Tümü</option><option value="0">Alış</option><option value="1">Satış</option></Form.Select>);
-      case "hareketTipi": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
-        <option value="">Tümü</option>{HAREKET_TIPLERI.map(h => <option key={h.kod} value={h.kod}>{h.ad}</option>)}</Form.Select>);
+      case "hareketTipi": {
+        const secili = secimler(p.ad);
+        const degistir = (k: string, ac: boolean) => set(p.ad, (ac ? [...secili, k] : secili.filter(x => x !== k)).join(","));
+        return satir(p.ad, etiket, <div className="d-flex flex-wrap gap-3 pt-1">
+          {HAREKET_TIPLERI.map(h => <Form.Check key={h.kod} inline type="checkbox" id={`${p.ad}-${h.kod}`} className="small me-0" label={h.ad} checked={secili.includes(h.kod)} onChange={e => degistir(h.kod, e.target.checked)} />)}
+        </div>, secili.length ? <>{secili.length} tip seçili · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(p.ad, "")}>Tümü</Button></> : "Hiçbiri seçilmezse tüm hareket tipleri");
+      }
       case "kurSecimi": return [
         satir("kurTuru", etiket, <Form.Select size="sm" value={String(degerler.kurTuru ?? 0)} onChange={e => set("kurTuru", Number(e.target.value))}>
           <option value={0}>Anlık gişe kuru</option><option value={2}>Saklanan kur (tarihli)</option></Form.Select>),
         ...(Number(degerler.kurTuru) === 2 ? [satir("kurTarihi", "Kur tarihi", tarihKutu("kurTarihi"))] : []),
         satir("kurAlani", "Kur alanı", <Form.Select size="sm" value={String(degerler.kurAlani ?? "alis")} onChange={e => set("kurAlani", e.target.value)}>
-          <option value="alis">Alış</option><option value="satis">Satış</option></Form.Select>),
+          <option value="alis">Alış</option><option value="satis">Satış</option><option value="ikisi">Alış + Satış (iki kurla TL)</option></Form.Select>),
       ];
       // Eski aralık tipleri (tanımlarda artık yok; geriye uyumluluk)
       case "cariAralik": return [
@@ -262,8 +281,8 @@ export const RaporPage: React.FC = () => {
         satir("vezneBitis", "Bitiş vezne", <DurbunAlan<VezneItem> value={String(degerler.vezneBitis ?? "")} onChange={v => set("vezneBitis", v.toUpperCase())} placeholder="Bitiş vezne" title="Bitiş vezne" items={vezneler} yukleniyor={listeYukleniyor}
           kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} disabled={meslek} onSelect={v => set("vezneBitis", v.kod)} />)];
       case "cariCoklu": return ilkSon<CariKartItem>(p, "cari", "cariIdler", "cariSonId", cariler, cariKolonlar, cariArama, "Cari kodu, ünvan, telefon veya vergi no ile arayın…");
-      case "vezneCoklu": return ilkSon<VezneItem>(p, "vezne", "vezneIdler", "vezneSonId", vezneler, vezneKolonlar, vezneArama, "Vezne kodu veya adıyla arayın…");
-      case "paraCoklu": return ilkSon<ProductItem>(p, "para", "paraIdler", "paraSonId", paralar, paraKolonlar, paraArama, "Para kodu veya adıyla arayın…");
+      case "vezneCoklu": return coklu<VezneItem>(p, "vezne", "vezneIdler", vezneler, vezneKolonlar, vezneArama, "Vezne kodu veya adıyla arayın…");
+      case "paraCoklu": return coklu<ProductItem>(p, "para", "paraIdler", paralar, paraKolonlar, paraArama, "Para kodu veya adıyla arayın…");
       case "kmt": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} title="Kur / Miktar / TL gösterimi: yalnızca seçilen gruptaki kolonlar listelenir">
         <option value="">Kur + Miktar + TL</option><option value="K">Kur</option><option value="M">Miktar</option><option value="T">TL</option></Form.Select>);
       default: return satir(p.ad, etiket, <Form.Control size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />);

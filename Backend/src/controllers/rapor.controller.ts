@@ -15,8 +15,10 @@ const parametreSema = z.object({
   vezneId: idOpt, paraId: idOpt, cariKartId: idOpt,
   fisTipi: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(1).optional()),
   kurTuru: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().optional()),
-  kurTarihi: tarih, kurAlani: z.enum(["alis", "satis"]).optional(),
+  kurTarihi: tarih, kurAlani: z.enum(["alis", "satis", "ikisi"]).optional(),
   arama: z.string().trim().max(100).optional(), kmt: z.string().trim().max(10).optional(),
+  hareketTipleri: z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n >= 0 && n <= 5)),
+    z.array(z.number().int().min(0).max(5)).max(6).optional()),
   hareketTipi: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(5).optional()),
   // Aralık ve çoklu seçim
   cariBaslangic: z.string().trim().max(50).optional(), cariBitis: z.string().trim().max(50).optional(),
