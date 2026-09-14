@@ -15,9 +15,9 @@ export type BelgeKaynak = "DOVIZ" | "FATURA" | "IRSALIYE" | "GIDER";
 export const BELGE_KAYNAKLARI: { kod: BelgeKaynak; ad: string }[] = [
   { kod: "DOVIZ", ad: "e-Döviz fişi" }, { kod: "FATURA", ad: "Fatura (e-Fatura / e-Arşiv)" }, { kod: "IRSALIYE", ad: "e-İrsaliye" }, { kod: "GIDER", ad: "e-Gider pusulası" },
 ];
+/** Durum filtresi seçenekleri (yönetici kararı 14.09.2026: yalnızca bu üçü; rozetler diğer durumları göstermeye devam eder) */
 export const BELGE_DURUMLARI: { kod: string; ad: string }[] = [
   { kod: "GONDERILMEDI", ad: "Gönderilmedi" }, { kod: "GONDERILDI", ad: "GİB'e gönderildi" }, { kod: "HATA", ad: "Hatalı" },
-  { kod: "GONDERILIYOR", ad: "Gönderiliyor" }, { kod: "TASLAK", ad: "Taslak" }, { kod: "IPTAL", ad: "İptal" }, { kod: "KONTROL_GEREKLI", ad: "Kontrol gerekli" },
 ];
 
 /**

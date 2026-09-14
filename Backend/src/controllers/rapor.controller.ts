@@ -8,6 +8,8 @@ import { ApiError } from "../utils/ApiError.js";
 const tarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG olmalı").optional();
 const saat = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Saat SS:DD olmalı").transform(s => (s.length === 5 ? s + ":00" : s)).optional();
 const idOpt = z.preprocess(v => (v === "" || v === undefined || v === null ? undefined : v), z.coerce.number().int().positive().optional());
+const idListe = z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)),
+  z.array(z.number().int().positive()).max(200).optional());
 const parametreSema = z.object({
   tarih, baslangic: tarih, bitis: tarih, baslangicSaat: saat, bitisSaat: saat,
   vezneId: idOpt, paraId: idOpt, cariKartId: idOpt,
@@ -19,6 +21,7 @@ const parametreSema = z.object({
   // Aralık ve çoklu seçim
   cariBaslangic: z.string().trim().max(50).optional(), cariBitis: z.string().trim().max(50).optional(),
   vezneBaslangic: z.string().trim().max(50).optional(), vezneBitis: z.string().trim().max(50).optional(),
+  cariIdler: idListe, vezneIdler: idListe,
   paraIdler: z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)),
     z.array(z.number().int().positive()).max(50).optional()),
 });

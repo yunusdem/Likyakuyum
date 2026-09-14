@@ -12,14 +12,14 @@
       "varsayilan": "bugun"
     },
     {
-      "ad": "cariBaslangic",
-      "etiket": "Cari aralığı (koddan koda)",
-      "tip": "cariAralik"
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu"
     },
     {
-      "ad": "paraId",
-      "etiket": "Para",
-      "tip": "para"
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
     }
   ],
   "kolonlar": [

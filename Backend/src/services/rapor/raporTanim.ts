@@ -17,6 +17,8 @@ export type RaporParametreTipi =
   | "cariAralik"     // cariBaslangic + cariBitis (cari KODU aralığı: Ahmet -> Mehmet)
   | "vezneAralik"    // vezneBaslangic + vezneBitis (vezne KODU aralığı)
   | "paraCoklu"      // paraIdler: virgülle ayrılmış PARA_ID listesi (boş = tümü)
+  | "cariCoklu"      // cariIdler: seçilen CARI_KART_ID listesi (boş = tümü) — aralık yerine seçim (yönetici kararı 14.09.2026)
+  | "vezneCoklu"     // vezneIdler: seçilen VEZNE_ID listesi (boş = tümü)
   | "hareketTipi"    // cari hareket tipi (0 nakit … 5 devir / tümü)
   | "metin";         // serbest arama
 

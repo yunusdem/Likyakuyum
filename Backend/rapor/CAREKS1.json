@@ -5,9 +5,9 @@
   "kagit": "A4",
   "parametreler": [
     {
-      "ad": "cariBaslangic",
-      "etiket": "Cari aralığı (koddan koda)",
-      "tip": "cariAralik",
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu",
       "zorunlu": true
     },
     {
@@ -19,7 +19,7 @@
     },
     {
       "ad": "paraIdler",
-      "etiket": "Para (birden fazla seçilebilir)",
+      "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
     }
   ],

@@ -12,13 +12,13 @@
       "varsayilan": "bugun"
     },
     {
-      "ad": "vezneBaslangic",
-      "etiket": "Vezne aralığı (koddan koda)",
-      "tip": "vezneAralik"
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
     },
     {
       "ad": "paraIdler",
-      "etiket": "Para (birden fazla seçilebilir)",
+      "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
     },
     {

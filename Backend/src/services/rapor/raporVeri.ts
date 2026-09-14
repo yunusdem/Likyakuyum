@@ -13,6 +13,8 @@ export interface RaporParametreler {
   vezneId?: number; paraId?: number; cariKartId?: number; fisTipi?: number;
   /** Aralık ve çoklu seçim (yönetici kararı 12.09.2026): cari/vezne KOD aralığı, para listesi */
   cariBaslangic?: string; cariBitis?: string; vezneBaslangic?: string; vezneBitis?: string; paraIdler?: number[];
+  /** Seçim listeleri (aralık yerine; yönetici kararı 14.09.2026): boş = tümü */
+  cariIdler?: number[]; vezneIdler?: number[];
   kurTuru?: number; kurTarihi?: string; kurAlani?: "alis" | "satis";
   arama?: string; kmt?: string;
   /** Cari hareket tipi filtresi (0 nakit, 1 banka, 2 POS, 3 dekont, 4 virman, 5 devir) */
@@ -63,10 +65,16 @@ function filtreler(req: sql.Request, p: RaporParametreler, alias: { cari?: strin
   if (alias.cari) {
     req.input("cbas", sql.VarChar(50), p.cariBaslangic?.trim() || null).input("cbit", sql.VarChar(50), p.cariBitis?.trim() || null).input("cari", sql.Int, p.cariKartId || null);
     parcalar.push(`(@cari IS NULL OR ${alias.cari}.CARI_KART_ID=@cari)`, `(@cbas IS NULL OR RTRIM(${alias.cari}.KOD)>=@cbas)`, `(@cbit IS NULL OR RTRIM(${alias.cari}.KOD)<=@cbit)`);
+    const cids = (p.cariIdler || []).filter(n => Number.isInteger(n) && n > 0);
+    cids.forEach((id, i) => req.input(`cl${i}`, sql.Int, id));
+    if (cids.length) parcalar.push(`${alias.cari}.CARI_KART_ID IN (${cids.map((_, i) => `@cl${i}`).join(",")})`);
   }
   if (alias.vezne) {
     req.input("vbas", sql.VarChar(50), p.vezneBaslangic?.trim() || null).input("vbit", sql.VarChar(50), p.vezneBitis?.trim() || null).input("v", sql.Int, p.vezneId || null);
     parcalar.push(`(@v IS NULL OR ${alias.vezne}.VEZNE_ID=@v)`, `(@vbas IS NULL OR RTRIM(${alias.vezne}.KOD)>=@vbas)`, `(@vbit IS NULL OR RTRIM(${alias.vezne}.KOD)<=@vbit)`);
+    const vids = (p.vezneIdler || []).filter(n => Number.isInteger(n) && n > 0);
+    vids.forEach((id, i) => req.input(`vl${i}`, sql.Int, id));
+    if (vids.length) parcalar.push(`${alias.vezne}.VEZNE_ID IN (${vids.map((_, i) => `@vl${i}`).join(",")})`);
   }
   if (alias.para) {
     req.input("para", sql.Int, p.paraId || null);
@@ -78,8 +86,8 @@ function filtreler(req: sql.Request, p: RaporParametreler, alias: { cari?: strin
   return parcalar.length ? " AND " + parcalar.join(" AND ") : "";
 }
 const ozetEk = (p: RaporParametreler) => [
-  p.cariKartId ? "Seçili cari" : p.cariBaslangic || p.cariBitis ? `Cari ${p.cariBaslangic || "…"} → ${p.cariBitis || "…"}` : "",
-  p.vezneId ? "Seçili vezne" : p.vezneBaslangic || p.vezneBitis ? `Vezne ${p.vezneBaslangic || "…"} → ${p.vezneBitis || "…"}` : "",
+  p.cariKartId ? "Seçili cari" : p.cariIdler?.length ? `${p.cariIdler.length} cari` : p.cariBaslangic || p.cariBitis ? `Cari ${p.cariBaslangic || "…"} → ${p.cariBitis || "…"}` : "",
+  p.vezneId ? "Seçili vezne" : p.vezneIdler?.length ? `${p.vezneIdler.length} vezne` : p.vezneBaslangic || p.vezneBitis ? `Vezne ${p.vezneBaslangic || "…"} → ${p.vezneBitis || "…"}` : "",
   p.paraId ? "Seçili para" : p.paraIdler?.length ? `${p.paraIdler.length} para` : "",
 ].filter(Boolean).map(x => " · " + x).join("");
 
@@ -142,7 +150,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
 
   /** R2 Cari ekstre — cari aralığı (Ahmet -> Mehmet), tarih aralığı, para (çoklu); cari × para grubu, cari başlık bilgisi, devir + yürüyen bakiye, fiş no, has karşılığı */
   async CAREKS1(pool, p, t) {
-    if (!p.cariKartId && !p.cariBaslangic && !p.cariBitis) throw ApiError.badRequest("Cari aralığı (başlangıç ve/veya bitiş) seçilmelidir.");
+    if (!p.cariKartId && !p.cariIdler?.length && !p.cariBaslangic && !p.cariBitis) throw ApiError.badRequest("En az bir cari seçilmelidir.");
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
     const f = filtreler(req, p, { cari: "C", para: "S.PARA_ID" });

@@ -5,7 +5,7 @@ import { apiClient, getEffectiveApiUrl } from "./apiClient";
  * Rapor tanımı (parametreler + kolonlar) sunucudan gelir; ekran filtre şeridini ve grid'i buna göre kurar.
  */
 
-export type RaporParametreTipi = "tarih" | "tarihAralik" | "saatAralik" | "vezne" | "para" | "cari" | "fisTipi" | "kurSecimi" | "kmt" | "cariAralik" | "vezneAralik" | "paraCoklu" | "hareketTipi" | "metin";
+export type RaporParametreTipi = "tarih" | "tarihAralik" | "saatAralik" | "vezne" | "para" | "cari" | "fisTipi" | "kurSecimi" | "kmt" | "cariAralik" | "vezneAralik" | "paraCoklu" | "cariCoklu" | "vezneCoklu" | "hareketTipi" | "metin";
 export interface RaporParametre { ad: string; etiket: string; tip: RaporParametreTipi; zorunlu?: boolean; varsayilan?: string | number | null }
 export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam";
 export interface RaporKolon { anahtar: string; baslik: string; g: number; hiza?: "left" | "right" | "center"; bicim?: RaporBicim; toplam?: boolean; pdf?: boolean; kmt?: "K" | "M" | "T" }
