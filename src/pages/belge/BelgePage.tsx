@@ -218,8 +218,8 @@ export const BelgePage: React.FC = () => {
                       <Form.Select size="sm" value={tip} disabled={!tipAktif} title={tipAktif ? "Döviz fişi tipi" : "Tip yalnızca döviz fişleri için"}
                         onChange={e => { const v = e.target.value === "" ? "" : Number(e.target.value); setTip(v); void listele(1, { tip: v }); }}>
                         <option value="">Alış + Satış</option>
-                        <option value={0}>Alış (DIA)</option>
-                        <option value={1}>Satış (DIS)</option>
+                        <option value={0}>Alış</option>
+                        <option value={1}>Satış</option>
                       </Form.Select>
                     </Col>
                     <Col md={onizleme ? 6 : 2}>
