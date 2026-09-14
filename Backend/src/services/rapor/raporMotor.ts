@@ -169,10 +169,12 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
         const anahtar = g.satirlar[i][grup.anahtar];
         const uyeler: Record<string, any>[] = [];
         while (i < g.satirlar.length && g.satirlar[i][grup.anahtar] === anahtar) uyeler.push(g.satirlar[i++]);
-        yeniSayfaGerekliyse(satirH * 3);
+        const altBaslik = grup.altBaslik ? doldur(grup.altBaslik, uyeler[0]).trim() : "";
+        yeniSayfaGerekliyse(satirH * (altBaslik ? 4 : 3));
         y += 6; zebra = 0;
         doc.fillColor("#111"); hucre(doldur(grup.baslik, uyeler[0]), sol, y, genislik, "left", true, boyut + 1);
         y += satirH;
+        if (altBaslik) { doc.fillColor("#555"); hucre(altBaslik, sol, y - 4, genislik, "left", false, boyut - 0.5); y += satirH - 4; }
         doc.moveTo(sol, y - 2).lineTo(sol + genislik, y - 2).lineWidth(0.4).strokeColor("#999").stroke();
         for (const s of uyeler) satirYaz(s);
         if (grup.altToplam !== false && kolonlar.some(k => k.toplam)) toplamSatiri(uyeler, "Ara toplam", "#eef0f3");

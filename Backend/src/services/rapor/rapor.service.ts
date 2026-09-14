@@ -23,8 +23,15 @@ export class RaporService {
     const tanim = this.tanim(kod);
     const pool = await RaporSqlRepository.pool(ctx);
     const sonuc = await RAPOR_SORGULARI[tanim.kod](pool, p, tanim);
-    return { ...sonuc, tanim };
+    return { ...sonuc, tanim: kmtUygula(tanim, p.kmt) };
   }
+
+  /** Kayıtlı aramalar (kullanıcı × rapor) */
+  static aramalar(kullanici: string, kod: string, ctx?: DbContext) { return RaporSqlRepository.aramalar(kullanici, this.tanim(kod).kod, ctx); }
+  static aramaKaydet(kullanici: string, kod: string, parametreler: Record<string, any>, ozet: string, ctx?: DbContext) {
+    return RaporSqlRepository.aramaKaydet(kullanici, this.tanim(kod).kod, parametreler, ozet, ctx);
+  }
+  static aramaSil(kullanici: string, kod: string, aramaId: number | undefined, ctx?: DbContext) { return RaporSqlRepository.aramaSil(kullanici, this.tanim(kod).kod, aramaId, ctx); }
 
   private static async firma(ctx?: DbContext): Promise<RaporFirma> {
     const f = await EbelgeSqlRepository.getFirmaBilgisi(ctx).catch(() => ({ vkn: "", unvan: "" } as any));
@@ -47,3 +54,10 @@ export class RaporService {
 }
 
 function guvenliTanim(kod: string): RaporTanim | null { try { return raporTanimOku(kod); } catch { return null; } }
+
+/** KMT (Kur / Miktar / TL) gösterimi: seçilince yalnızca o gruba ait ve etiketsiz kolonlar kalır (kâr-zarar, .rpt parametresi). */
+function kmtUygula(tanim: RaporTanim, kmt?: string): RaporTanim {
+  const secim = (kmt || "").toUpperCase();
+  if (!["K", "M", "T"].includes(secim) || !tanim.kolonlar.some(k => k.kmt)) return tanim;
+  return { ...tanim, kolonlar: tanim.kolonlar.filter(k => !k.kmt || k.kmt === secim) };
+}

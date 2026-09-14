@@ -1,7 +1,7 @@
 {
   "kod": "CARHAR1",
   "ad": "Cari Hareket Listesi",
-  "aciklama": "Tarih aralığındaki tüm cari hareketleri; cari, vezne ve para filtresi.",
+  "aciklama": "Tarih aralığındaki tüm cari hareketleri; cari, vezne, para ve hareket tipi filtresi.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -9,7 +9,7 @@
       "etiket": "Tarih aralığı",
       "tip": "tarihAralik",
       "zorunlu": true,
-      "varsayilan": "-30g"
+      "varsayilan": "bugun"
     },
     {
       "ad": "cariBaslangic",
@@ -25,6 +25,11 @@
       "ad": "paraId",
       "etiket": "Para",
       "tip": "para"
+    },
+    {
+      "ad": "hareketTipi",
+      "etiket": "Hareket tipi",
+      "tip": "hareketTipi"
     }
   ],
   "kolonlar": [
@@ -33,6 +38,12 @@
       "baslik": "Tarih",
       "g": 1.6,
       "bicim": "tarih"
+    },
+    {
+      "anahtar": "fisNo",
+      "baslik": "Fiş no",
+      "g": 1.0,
+      "hiza": "center"
     },
     {
       "anahtar": "cariKod",

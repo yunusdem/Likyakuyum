@@ -15,6 +15,7 @@ const parametreSema = z.object({
   kurTuru: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().optional()),
   kurTarihi: tarih, kurAlani: z.enum(["alis", "satis"]).optional(),
   arama: z.string().trim().max(100).optional(), kmt: z.string().trim().max(10).optional(),
+  hareketTipi: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(5).optional()),
   // Aralık ve çoklu seçim
   cariBaslangic: z.string().trim().max(50).optional(), cariBitis: z.string().trim().max(50).optional(),
   vezneBaslangic: z.string().trim().max(50).optional(), vezneBitis: z.string().trim().max(50).optional(),
@@ -22,6 +23,10 @@ const parametreSema = z.object({
     z.array(z.number().int().positive()).max(50).optional()),
 });
 const kodSema = z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{1,20}$/);
+const aramaKayitSema = z.object({
+  parametreler: z.record(z.string(), z.union([z.string().max(500), z.number(), z.null()])).refine(o => Object.keys(o).length <= 40, "Çok fazla parametre."),
+  ozet: z.string().trim().max(400).optional(),
+});
 
 export class RaporController {
   private static getDbContext(req: Request) {
@@ -69,6 +74,26 @@ export class RaporController {
     res.setHeader("Content-Length", String(pdf.length));
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).end(pdf);
+  });
+
+  /** GET /api/v1/rapor/:kod/aramalar — kullanıcının bu rapordaki kayıtlı aramaları (son 10) */
+  public static aramalar = asyncHandler(async (req: Request, res: Response) =>
+    ApiResponse.ok(res, "Kayıtlı aramalar.", await RaporService.aramalar(RaporController.kullanici(req), RaporController.kod(req), RaporController.getDbContext(req))));
+
+  /** POST /api/v1/rapor/:kod/aramalar { parametreler, ozet? } — aynı parametreler varsa zamanı yenilenir */
+  public static aramaKaydet = asyncHandler(async (req: Request, res: Response) => {
+    const p = aramaKayitSema.safeParse(req.body || {});
+    if (!p.success) throw ApiError.badRequest("Arama kaydı geçersiz.", p.error.format());
+    const kayit = await RaporService.aramaKaydet(RaporController.kullanici(req), RaporController.kod(req), p.data.parametreler, p.data.ozet || "", RaporController.getDbContext(req));
+    return ApiResponse.ok(res, "Arama kaydedildi.", kayit);
+  });
+
+  /** DELETE /api/v1/rapor/:kod/aramalar[/:id] — id yoksa kullanıcının bu rapordaki tüm aramaları */
+  public static aramaSil = asyncHandler(async (req: Request, res: Response) => {
+    const id = req.params.id === undefined ? undefined : Number(req.params.id);
+    if (id !== undefined && (!Number.isInteger(id) || id <= 0)) throw ApiError.badRequest("Arama kimliği geçersiz.");
+    const adet = await RaporService.aramaSil(RaporController.kullanici(req), RaporController.kod(req), id, RaporController.getDbContext(req));
+    return ApiResponse.ok(res, adet ? "Arama silindi." : "Silinecek arama bulunamadı.", { adet });
   });
 
   /** GET /api/v1/rapor/:kod/excel?... */
