@@ -41,6 +41,7 @@ export interface ERPToolbarProps {
   pageTitle?: React.ReactNode;
   pageIcon?: React.ReactNode;
   rightContent?: React.ReactNode;
+  modeText?: React.ReactNode;
   hideSearch?: boolean;
   hideDelete?: boolean;
   hideNavigation?: boolean;
@@ -120,9 +121,10 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   pageTitle,
   pageIcon,
   rightContent,
+  modeText,
   hideSearch,
   hideDelete,
-  hideNavigation = false,
+  hideNavigation,
   hidePrint = false,
   disableShortcuts = false,
 }) => {
@@ -131,16 +133,58 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   const finalTitle = pageTitle || routeMatch?.title || "";
   const finalIcon = pageIcon || routeMatch?.icon || <IconFileText size={20} />;
 
-  // Kayıt sayfası tespiti (kayıt sayfalarında arama ve silme butonları gelmez)
-  const isKayitPage =
-    location.pathname.includes("-kayit") ||
-    location.pathname.includes("/kayit") ||
-    ((location.pathname.includes("doviz-fisi") || location.pathname.includes("doviz-fis")) && !location.pathname.includes("duzeltme")) ||
-    ((location.pathname.includes("emanet") || location.pathname.includes("emanet-dekont")) && !location.pathname.includes("duzeltme")) ||
-    (location.pathname.includes("kart") && !location.pathname.includes("duzeltme") && !location.pathname.includes("liste") && !location.pathname.includes("banka"));
+  // Sayfa türü tespitleri
+  const isDuzeltmePage =
+    location.pathname.includes("-duzeltme") ||
+    location.pathname.includes("/duzeltme") ||
+    location.pathname.includes("duzeltme");
 
-  const shouldShowSearch = hideSearch !== undefined ? !hideSearch : (!isKayitPage && Boolean(onSearch));
-  const shouldShowDelete = hideDelete !== undefined ? !hideDelete : (!isKayitPage && Boolean(onDelete));
+  // Hem Kayıt hem de Düzeltme olarak 2 AYRI sayfası bulunan modüllerin KAYIT sayfaları
+  const isDualKayitPage =
+    // Cari Kart (Kayıt: /cari/kart-kayit, /cari/kayit vs Düzeltme: /cari/kart-duzeltme)
+    (location.pathname.includes("/cari/kart-kayit") || location.pathname.includes("/cari/kayit") || location.pathname === "/cari/cari-kart-kayit") ||
+    // Cari Hareket (Kayıt: /cari/hareket-kayit vs Düzeltme: /cari/hareket-duzeltme)
+    location.pathname.includes("/cari/hareket-kayit") ||
+    // Cari Emanet Dekont (Kayıt: /cari/emanet-dekont, /cari/emanet-kayit vs Düzeltme: /cari/emanet-duzeltme)
+    (location.pathname.includes("/cari/emanet") && !location.pathname.includes("duzeltme")) ||
+    // Döviz Fişi (Kayıt: /vezne/doviz-fisi vs Düzeltme: /vezne/doviz-fisi-duzeltme)
+    (location.pathname.includes("doviz-fisi") && !location.pathname.includes("duzeltme")) ||
+    (location.pathname.includes("doviz-fis") && !location.pathname.includes("duzeltme")) ||
+    // Sarraf Fişi (Kayıt: /vezne/genel-sarraf-fisi, /vezne/sarraf-fisi vs Düzeltme: /vezne/sarraf-fisi-duzeltme)
+    (location.pathname.includes("sarraf-fisi") && !location.pathname.includes("duzeltme")) ||
+    // Vezne Transferi (Kayıt: /vezne/transfer-kayit vs Düzeltme: /vezne/transfer-duzeltme)
+    (location.pathname.includes("transfer") && !location.pathname.includes("duzeltme")) ||
+    // Kasa Hesap (Kayıt: /kasa/hesap-kayit vs Düzeltme: /kasa/hesap-duzeltme)
+    location.pathname.includes("/kasa/hesap-kayit") ||
+    // Kasa Hareket (Kayıt: /kasa/hareket-kayit vs Düzeltme: /kasa/hareket-duzeltme)
+    location.pathname.includes("/kasa/hareket-kayit");
+
+  // Dürbün (Arama): Dual kayıt sayfalarında ASLA gözükmez.
+  // Tekil sayfalarda (örneğin Yazıcı Tanımları, Ürün Tanımları) veya Düzeltme sayfalarında ise onSearch varsa gözükür.
+  const shouldShowSearch = hideSearch !== undefined
+    ? !hideSearch
+    : (!isDualKayitPage && Boolean(onSearch));
+
+  // Sil Butonu: Dual kayıt sayfalarında ASLA gözükmez.
+  // Tekil sayfalarda veya Düzeltme sayfalarında onDelete varsa gözükür.
+  const shouldShowDelete = hideDelete !== undefined
+    ? !hideDelete
+    : (!isDualKayitPage && Boolean(onDelete));
+
+  // Gezinme Butonları (İlk, Önceki, Sonraki, Son): Dual kayıt sayfalarında ASLA gözükmez.
+  // Tekil sayfalarda veya Düzeltme sayfalarında yön handler'ları varsa gözükür.
+  const shouldShowNavigation = hideNavigation !== undefined
+    ? !hideNavigation
+    : (!isDualKayitPage && Boolean(onFirst || onPrev || onNext || onLast));
+
+  const displayModeText =
+    modeText !== undefined
+      ? modeText
+      : isDualKayitPage
+      ? "Yeni Kayıt Modu"
+      : isDuzeltmePage
+      ? "Düzeltme Modu"
+      : null;
 
   // Global ERP keyboard shortcuts handler
   useEffect(() => {
@@ -279,7 +323,30 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           </svg>
         </button>
 
-        {/* 3. Ara / Bul (F4) */}
+        {/* 3. Sil (F2) - Kaydetin hemen sağında */}
+        {shouldShowDelete && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onDelete || (() => defaultHandler("Sil"))}
+            className="erp-tb-btn"
+            title="Sil (F2)"
+            aria-label="Sil"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              {/* Trash Lid */}
+              <path d="M3 6H21" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
+              <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6" stroke="#dc2626" strokeWidth="1.8" strokeLinecap="round" />
+              {/* Trash Can Body (Red Fill) */}
+              <path d="M19 6L18 20C18 20.5523 17.5523 21 17 21H7C6.44772 21 6 20.5523 6 20L5 6" fill="#fee2e2" stroke="#dc2626" strokeWidth="1.8" />
+              {/* Vertical Inner Lines */}
+              <line x1="10" y1="10" x2="10" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="14" y1="10" x2="14" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
+
+        {/* 4. Ara / Bul (Dürbün - F4/F3) */}
         {shouldShowSearch && (
           <button
             type="button"
@@ -297,7 +364,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
               })
             }
             className="erp-tb-btn"
-            title="Ara / Bul (F4)"
+            title="Ara / Bul (Dürbün - F4)"
             aria-label="Ara / Bul"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -324,30 +391,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           </button>
         )}
 
-        {/* 4. Sil (F2) */}
-        {shouldShowDelete && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={onDelete || (() => defaultHandler("Sil"))}
-            className="erp-tb-btn"
-            title="Sil (F2)"
-            aria-label="Sil"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              {/* Trash Lid */}
-              <path d="M3 6H21" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
-              <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6" stroke="#dc2626" strokeWidth="1.8" strokeLinecap="round" />
-              {/* Trash Can Body (Red Fill) */}
-              <path d="M19 6L18 20C18 20.5523 17.5523 21 17 21H7C6.44772 21 6 20.5523 6 20L5 6" fill="#fee2e2" stroke="#dc2626" strokeWidth="1.8" />
-              {/* Vertical Inner Lines */}
-              <line x1="10" y1="10" x2="10" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="14" y1="10" x2="14" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
-        )}
-
-        {!hideNavigation && (
+        {shouldShowNavigation && (
           <>
             <span className="erp-tb-divider" />
 
@@ -448,6 +492,14 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           <span className="fw-bold text-dark fs-6" style={{ letterSpacing: "-0.2px" }}>
             {finalTitle}
           </span>
+          {displayModeText && (
+            <span
+              className="badge px-2.5 py-1 ms-1 fw-semibold text-secondary border bg-light shadow-2xs"
+              style={{ fontSize: "11px", letterSpacing: "0.2px" }}
+            >
+              {displayModeText}
+            </span>
+          )}
         </div>
       )}
 

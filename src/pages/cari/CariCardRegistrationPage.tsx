@@ -874,20 +874,18 @@ export const CariCardRegistrationPage: React.FC = () => {
     <div className="p-2 p-md-3">
       {/* 1. Sol Üst Klasik ERP Toolbar */}
       <ERPToolbar
-        pageTitle={
-          <span className="d-flex align-items-center gap-2 flex-wrap">
-            <span>{pageTitleText}</span>
-            {!isNewRecord && (
-              <Badge bg="primary" className="px-2.5 py-1.5 fs-7">
-                {`Düzenleme: [${formData.kod}] ${formData.ad}`}
-              </Badge>
-            )}
-            {formData.karaListede && (
-              <Badge bg="danger" className="d-flex align-items-center gap-1">
-                <IconAlertCircle size={12} /> Kara Listede
-              </Badge>
-            )}
-          </span>
+        pageTitle={pageTitleText}
+        modeText={
+          !isNewRecord ? (
+            <span className="d-flex align-items-center gap-1">
+              <span>{`Düzenleme: [${formData.kod}] ${formData.ad}`}</span>
+              {formData.karaListede && (
+                <span className="badge bg-danger ms-1 text-white">Kara Listede</span>
+              )}
+            </span>
+          ) : (
+            "Yeni Kayıt Modu"
+          )
         }
         pageIcon={<IconUsers size={20} />}
         onNew={handleNewCari}
@@ -920,21 +918,18 @@ export const CariCardRegistrationPage: React.FC = () => {
         disabled={isLoading || isSaving}
       />
 
-      {/* Bildirimler: sayfa dışı, sabit konumlu, yer kaplamaz; çarpıya basınca veya bir süre sonra kapanır */}
+      {/* Bildirimler: sayfa dışı, sağ altta sabit konumlu, yer kaplamaz; çarpıya basınca veya bir süre sonra kapanır */}
       {(alertSuccess || alertError) && (
-        <div
-          className="d-flex flex-column gap-2"
-          style={{ position: "fixed", bottom: 16, right: 16, zIndex: 1080, maxWidth: 420, width: "calc(100% - 32px)" }}
-        >
+        <div className="erp-toast-container">
           {alertSuccess && (
-            <Alert variant="success" className="d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertSuccess(null)}>
+            <Alert variant="success" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertSuccess(null)}>
               <IconCheck size={18} />
               <span>{alertSuccess}</span>
             </Alert>
           )}
 
           {alertError && (
-            <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
+            <Alert variant="danger" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
               <IconAlertCircle size={18} />
               <span>{alertError}</span>
             </Alert>
@@ -1234,7 +1229,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           value={postaKoduInput}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => {
-                            const typed = e.target.value;
+                            const typed = e.target.value.replace(/\D/g, "").slice(0, 10);
                             setPostaKoduInput(typed);
                             const match = lookups.postaKoduList.find(
                               (pk) => String(pk.kod ?? "").trim() === typed.trim()

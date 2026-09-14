@@ -93,6 +93,43 @@ export const CashDeskDefinitionsPage: React.FC = () => {
     loadData();
   }, []);
 
+  // Sağ tık menüsü eylemleri (Satırı Sil & Yeni Satır Ekle)
+  useEffect(() => {
+    const handleGridDelete = (e: any) => {
+      const rowId = e.detail?.rowId;
+      if (rowId) {
+        const found = rows.find((r) => String(r.id) === String(rowId) || r.clientId === rowId);
+        if (found) {
+          handleDeleteClick(found);
+        }
+      }
+    };
+    const handleGridAdd = () => {
+      handleAddNewRow();
+    };
+    window.addEventListener("erp-grid-row-delete", handleGridDelete);
+    window.addEventListener("erp-grid-row-add", handleGridAdd);
+    return () => {
+      window.removeEventListener("erp-grid-row-delete", handleGridDelete);
+      window.removeEventListener("erp-grid-row-add", handleGridAdd);
+    };
+  }, [rows]);
+
+  // Bildirimlerin 3.5 sn sonra otomatik kapanması
+  useEffect(() => {
+    if (alertSuccess) {
+      const timer = setTimeout(() => setAlertSuccess(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [alertSuccess]);
+
+  useEffect(() => {
+    if (alertError) {
+      const timer = setTimeout(() => setAlertError(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [alertError]);
+
   const handleAddNewRow = () => {
     const defaultCurrencyId = currencies.length > 0 ? currencies[0].id : null;
     const newRow: CashDeskRowState = {
@@ -273,29 +310,33 @@ export const CashDeskDefinitionsPage: React.FC = () => {
         disabled={isLoading || isSaving}
       />
 
-      {/* Bildirim Alanı */}
-      {alertSuccess && (
-        <Alert
-          variant="success"
-          className="d-flex align-items-center gap-2 py-1.5 px-3 mb-2 small shadow-2xs border-0"
-          dismissible
-          onClose={() => setAlertSuccess(null)}
-        >
-          <IconCheck size={16} />
-          <span>{alertSuccess}</span>
-        </Alert>
-      )}
+      {/* Bildirim Alanı: Sağ altta toast */}
+      {(alertSuccess || alertError) && (
+        <div className="erp-toast-container">
+          {alertSuccess && (
+            <Alert
+              variant="success"
+              className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 border-0 shadow small"
+              dismissible
+              onClose={() => setAlertSuccess(null)}
+            >
+              <IconCheck size={16} />
+              <span>{alertSuccess}</span>
+            </Alert>
+          )}
 
-      {alertError && (
-        <Alert
-          variant="danger"
-          className="d-flex align-items-center gap-2 py-1.5 px-3 mb-2 small shadow-2xs border-0"
-          dismissible
-          onClose={() => setAlertError(null)}
-        >
-          <IconAlertCircle size={16} />
-          <span>{alertError}</span>
-        </Alert>
+          {alertError && (
+            <Alert
+              variant="danger"
+              className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 border-0 shadow small"
+              dismissible
+              onClose={() => setAlertError(null)}
+            >
+              <IconAlertCircle size={16} />
+              <span>{alertError}</span>
+            </Alert>
+          )}
+        </div>
       )}
 
       {/* 2. Masaüstü ERP Grid Tablosu */}
@@ -525,6 +566,7 @@ export const CashDeskDefinitionsPage: React.FC = () => {
                   return (
                     <tr
                       key={row.clientId}
+                      data-row-id={row.clientId}
                       style={{
                         height: "26px",
                         backgroundColor: isDirty ? "#fffde7" : idx % 2 === 1 ? "#fafcff" : "#ffffff",
@@ -960,33 +1002,6 @@ export const CashDeskDefinitionsPage: React.FC = () => {
                           ))}
                         </select>
                       </td>
-
-                      {/* Sil Butonu */}
-                      <td
-                        style={{
-                          padding: 0,
-                          textAlign: "center",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteClick(row)}
-                          title="Bu vezne tanımını sil"
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            color: "#dc2626",
-                            cursor: "pointer",
-                            padding: "2px 4px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <IconTrash size={15} />
-                        </button>
-                      </td>
                     </tr>
                   );
                 })}
@@ -994,7 +1009,7 @@ export const CashDeskDefinitionsPage: React.FC = () => {
                 {rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={13}
+                      colSpan={12}
                       className="text-center py-4 text-muted"
                       style={{ fontSize: "13px" }}
                     >

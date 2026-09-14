@@ -78,6 +78,15 @@ export async function raporExcel(p) {
             row.getCell(1).value = grup.baslik.replace(/\{\{\s*([\w.]+)\s*(?:\|\w+)?\s*\}\}/g, (_m, yol) => String(uyeler[0][yol] ?? ""));
             row.getCell(1).font = { bold: true };
             row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+            if (grup.altBaslik) {
+                const alt = grup.altBaslik.replace(/\{\{\s*([\w.]+)\s*(?:\|\w+)?\s*\}\}/g, (_m, yol) => String(uyeler[0][yol] ?? "")).trim();
+                if (alt) {
+                    const r2 = ws.getRow(r++);
+                    ws.mergeCells(r2.number, 1, r2.number, kolonlar.length);
+                    r2.getCell(1).value = alt;
+                    r2.getCell(1).font = { italic: true, size: 9, color: { argb: "FF555555" } };
+                }
+            }
             for (const s of uyeler)
                 yaz(s);
             if (grup.altToplam !== false && kolonlar.some(k => k.toplam))

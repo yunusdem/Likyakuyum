@@ -272,33 +272,32 @@ export const PrinterDefinitionsPage: React.FC = () => {
         onRefresh={() => loadData(selectedIndex)}
         onClear={handleClear}
         disabled={isLoading || isSaving}
+        modeText={isNewRecord ? "Yeni Kayıt Modu" : `Düzenleme: [${formData.siraNo}] ${formData.ad}`}
       />
 
 
-      {/* Notifications */}
-      {alertSuccess && (
-        <Alert variant="success" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0" dismissible onClose={() => setAlertSuccess(null)}>
-          <IconCheck size={18} />
-          <span>{alertSuccess}</span>
-        </Alert>
-      )}
+      {/* Notifications: Sağ altta beliren ve otomatik kaybolan toast */}
+      {(alertSuccess || alertError) && (
+        <div className="erp-toast-container">
+          {alertSuccess && (
+            <Alert variant="success" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertSuccess(null)}>
+              <IconCheck size={18} />
+              <span>{alertSuccess}</span>
+            </Alert>
+          )}
 
-      {alertError && (
-        <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0" dismissible onClose={() => setAlertError(null)}>
-          <IconAlertCircle size={18} />
-          <span>{alertError}</span>
-        </Alert>
+          {alertError && (
+            <Alert variant="danger" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
+              <IconAlertCircle size={18} />
+              <span>{alertError}</span>
+            </Alert>
+          )}
+        </div>
       )}
 
       {/* 2. Main Container Card (Tam Genişlik, Liste Kaldırıldı, Yatay Inputlar) */}
       <Card className="border-0 shadow-sm rounded-3 mb-4 bg-white">
         <Card.Body className="p-3 p-md-4">
-          <div className="mb-3 pb-2 border-bottom d-flex align-items-center justify-content-end flex-wrap gap-2">
-            <Badge bg={isNewRecord ? "warning" : "primary"} className="px-2.5 py-1.5 fs-7">
-              {isNewRecord ? "Yeni Kayıt Modu" : `Düzenleme: [${formData.siraNo}] ${formData.ad}`}
-            </Badge>
-          </div>
-
           <div className="mx-auto" style={{ maxWidth: "850px" }}>
             <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
               <div className="border rounded-3 p-3 p-md-4 bg-white shadow-2xs mb-3">

@@ -17,6 +17,7 @@ import {
   BankaHesapItem,
 } from "../../services/bankaService";
 import { CariService } from "../../services/cariService";
+import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 
 // Varsayılan Standart Bankalar (DovizFisiPage eşleniği)
 const DEFAULT_BANKALAR = [
@@ -38,11 +39,9 @@ const DEFAULT_BANKALAR = [
 ];
 
 const ISLEM_TIPLERI = [
-  { value: 0, label: "0- Gelen Havale / EFT (Giriş)" },
-  { value: 1, label: "1- Giden Havale / EFT (Çıkış)" },
-  { value: 2, label: "2- Kasadan Bankaya Nakit Yatırma" },
-  { value: 3, label: "3- Bankadan Kasaya Nakit Çekme" },
-  { value: 4, label: "4- Banka Virmanı (Hesaplar Arası)" },
+  { value: 0, label: "0- Havale Alma" },
+  { value: 1, label: "1- Havale / EFT Gönderme" },
+  { value: 4, label: "4- Virman" },
 ];
 
 export const BankaHareketiPage: React.FC = () => {
@@ -482,13 +481,9 @@ export const BankaHareketiPage: React.FC = () => {
         onPrev={handlePrev}
         onNext={handleNext}
         onLast={handleLast}
+        modeText={hareketId ? `Düzenleme: #${hareketId}` : "Yeni Kayıt Modu"}
         rightContent={
           <div className="d-flex align-items-center gap-2">
-            {hareketId && (
-              <Badge bg="primary" className="px-2 py-1 fs-7">
-                Kayıt #{hareketId}
-              </Badge>
-            )}
             <div className="d-flex align-items-center text-muted small bg-light px-2 py-1 rounded border font-monospace">
               <IconClock size={14} className="me-1 text-primary" />
               <span>{currentDateTime}</span>
@@ -497,20 +492,23 @@ export const BankaHareketiPage: React.FC = () => {
         }
       />
 
+      {/* Bildirim: Sağ altta toast */}
       {notification && (
-        <Alert
-          variant={notification.type}
-          dismissible
-          onClose={() => setNotification(null)}
-          className="d-flex align-items-center mb-3 shadow-sm py-2"
-        >
-          {notification.type === "success" ? (
-            <IconCheck size={18} className="me-2 text-success" />
-          ) : (
-            <IconAlertTriangle size={18} className="me-2 text-danger" />
-          )}
-          <span>{notification.message}</span>
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert
+            variant={notification.type}
+            dismissible
+            onClose={() => setNotification(null)}
+            className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0"
+          >
+            {notification.type === "success" ? (
+              <IconCheck size={18} className="me-2 text-success flex-shrink-0" />
+            ) : (
+              <IconAlertTriangle size={18} className="me-2 text-danger flex-shrink-0" />
+            )}
+            <span style={{ fontSize: "13px" }}>{notification.message}</span>
+          </Alert>
+        </div>
       )}
 
       {/* ─── 2. HAREKET GİRİŞ FORMU (Banka Hesap Kartları UI Düzeninde) ──────── */}
@@ -561,7 +559,7 @@ export const BankaHareketiPage: React.FC = () => {
                       type="text"
                       size="sm"
                       value={hesapNo}
-                      onChange={(e) => setHesapNo(e.target.value)}
+                      onChange={(e) => setHesapNo(e.target.value.replace(/\D/g, ""))}
                       onKeyDown={(e) => {
                         if (e.key === "F4") {
                           e.preventDefault();
@@ -685,11 +683,16 @@ export const BankaHareketiPage: React.FC = () => {
                     <Form.Control
                       ref={meblagRef}
                       type="number"
+                      inputMode="decimal"
+                      data-decimal="true"
                       step="0.01"
                       size="sm"
                       value={meblag}
-                      onChange={(e) => setMeblag(e.target.value)}
-                      onKeyDown={(e) => handleInputKeyDown(e, aciklamaRef, tarihRef)}
+                      onChange={(e) => setMeblag(onlyDecimal(e.target.value))}
+                      onKeyDown={(e) => {
+                        blockNonNumericKeys(e, true);
+                        handleInputKeyDown(e, aciklamaRef, tarihRef);
+                      }}
                       className="text-end fw-bold font-monospace shadow-none"
                     />
                     <InputGroup.Text className="small">TL</InputGroup.Text>

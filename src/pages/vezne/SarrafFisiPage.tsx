@@ -15,6 +15,7 @@ import { CashDeskService } from "../../services/cashDeskService";
 import { MusteriSecimModal, SelectedCustomerResult } from "./MusteriSecimModal";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { DovizFisService, KayitsizMusteriItem } from "../../services/dovizFisService";
+import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface VezneItem { id: number; kod: string; ad: string; }
@@ -611,8 +612,9 @@ export const SarrafFisiPage: React.FC = () => {
 
   // Has Kuru change
   const handleAltinHasKuruChange = useCallback((val: string) => {
-    setAltinHasKuru(val);
-    const newKur = Number(val) || 0;
+    const cleanVal = onlyDecimal(val);
+    setAltinHasKuru(cleanVal);
+    const newKur = Number(cleanVal) || 0;
     if (newKur > 0) {
       setLines((prev) => prev.map((r) => {
         const updated = { ...r, kur: newKur };
@@ -623,22 +625,49 @@ export const SarrafFisiPage: React.FC = () => {
 
   // Row update
   const updateRow = useCallback((rowId: string, field: keyof GridRow, value: any) => {
+    let sanitizedValue = value;
+    if (field === "adet") {
+      sanitizedValue = onlyDigits(String(value));
+    } else if (
+      field === "miktar" ||
+      field === "milyem" ||
+      field === "hasGram" ||
+      field === "iscilikiMiktari" ||
+      field === "iscilikHasGram" ||
+      field === "kur" ||
+      field === "tutar" ||
+      field === "karat"
+    ) {
+      sanitizedValue = onlyDecimal(String(value));
+    }
+
     const curHasKuru = Number(altinHasKuru) || 0;
     setLines((prev) => prev.map((r) => {
       if (r.id !== rowId) return r;
-      const updated = { ...r, [field]: value };
+      const updated = { ...r, [field]: sanitizedValue };
       return recomputeRow(updated, curHasKuru);
     }));
   }, [altinHasKuru]);
 
   const updateOdemeRow = useCallback((rowId: string, field: keyof OdemeRow, value: any) => {
+    let sanitizedValue = value;
+    if (
+      field === "miktar" ||
+      field === "milyem" ||
+      field === "hasGram" ||
+      field === "kur" ||
+      field === "tutar"
+    ) {
+      sanitizedValue = onlyDecimal(String(value));
+    }
+
     setOdemeRows((prev) => prev.map((r) => {
       if (r.id !== rowId) return r;
-      const u = { ...r, [field]: value };
+      const u = { ...r, [field]: sanitizedValue };
       const curHasKuru = Number(altinHasKuru) || 0;
       if (field === "miktar" || field === "kur") {
-        const mik = Number(field === "miktar" ? value : r.miktar) || 0;
-        const kur = Number(field === "kur" ? value : r.kur) || 1;
+        const mik = Number(field === "miktar" ? sanitizedValue : r.miktar) || 0;
+        const kur = Number(field === "kur" ? sanitizedValue : r.kur) || 1;
         u.tutar = parseFloat((mik * kur).toFixed(2));
         if (curHasKuru > 0) {
           u.hasGram = parseFloat((u.tutar / curHasKuru).toFixed(4));
@@ -667,6 +696,47 @@ export const SarrafFisiPage: React.FC = () => {
       return filtered.map((r, idx) => ({ ...r, satirNo: idx + 1 }));
     });
   }, []);
+
+  // Sağ tık menüsü eylemleri (Satırı Sil & Yeni Satır Ekle - Her iki tablo için duyarlı)
+  useEffect(() => {
+    const handleGridDelete = (e: any) => {
+      const rowId = e.detail?.rowId;
+      const tableType = e.detail?.tableType;
+      if (!rowId) return;
+
+      if (tableType === "odeme" || odemeRows.some((o) => o.id === rowId)) {
+        handleDeleteOdemeRow(rowId);
+      } else {
+        handleDeleteLine(rowId);
+      }
+    };
+
+    const handleGridAdd = (e: any) => {
+      const tableType = e.detail?.tableType;
+      const rowId = e.detail?.rowId;
+
+      if (tableType === "odeme" || (rowId && odemeRows.some((o) => o.id === rowId))) {
+        setOdemeRows((prev) => [...prev, createEmptyOdemeRow(prev.length + 1)]);
+      } else {
+        setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+      }
+    };
+
+    window.addEventListener("erp-grid-row-delete", handleGridDelete);
+    window.addEventListener("erp-grid-row-add", handleGridAdd);
+    return () => {
+      window.removeEventListener("erp-grid-row-delete", handleGridDelete);
+      window.removeEventListener("erp-grid-row-add", handleGridAdd);
+    };
+  }, [handleDeleteLine, handleDeleteOdemeRow, odemeRows]);
+
+  // Bildirimlerin belli süre sonra otomatik kaybolması
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   // Open product modal with eager data fetch if empty
   const openUrunModal = useCallback(async (rowId: string) => {
@@ -1023,10 +1093,13 @@ export const SarrafFisiPage: React.FC = () => {
         onPrint={() => window.print()}
       />
 
+      {/* Sağ altta beliren ve 3.5 sn sonra yok olan bildirim */}
       {notification && (
-        <Alert variant={notification.type} className="py-1 px-3 mb-2 small" dismissible onClose={() => setNotification(null)}>
-          {notification.message}
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert variant={notification.type} className="erp-toast-item py-2 px-3 mb-0 border-0 shadow small" dismissible onClose={() => setNotification(null)}>
+            {notification.message}
+          </Alert>
+        </div>
       )}
 
       {/* ─── Top Vezne + Bakiye Summary ────────────────────────────────────────── */}
@@ -1195,12 +1268,11 @@ export const SarrafFisiPage: React.FC = () => {
                   <th style={{ width: 85 }}>İşçilik (Has)</th>
                   <th style={{ width: 105 }}>Kur</th>
                   <th style={{ width: 105 }}>Tutar</th>
-                  <th style={{ width: 25 }}></th>
                 </tr>
               </thead>
               <tbody>
                 {lines.map((row, rowIndex) => (
-                  <tr key={row.id} style={rowIndex === activeRowIndex ? { background: "#edf5ff" } : {}}>
+                  <tr key={row.id} data-row-id={row.id} data-table-type="kalemler" style={rowIndex === activeRowIndex ? { background: "#edf5ff" } : {}}>
                     <td className="text-muted text-center" style={{ padding: "2px", fontSize: "10px", verticalAlign: "middle" }}>
                       {rowIndex + 1}
                     </td>
@@ -1276,7 +1348,8 @@ export const SarrafFisiPage: React.FC = () => {
                     <td>
                       <Form.Control
                         ref={(el) => { rowInputRefs.current[`${row.id}_milyem`] = el; }}
-                        inputMode="numeric"
+                        inputMode="decimal"
+                        data-decimal="true"
                         size="sm"
                         value={row.milyem}
                         onChange={(e) => updateRow(row.id, "milyem", e.target.value)}
@@ -1291,6 +1364,7 @@ export const SarrafFisiPage: React.FC = () => {
                       <Form.Control
                         ref={(el) => { rowInputRefs.current[`${row.id}_hasGram`] = el; }}
                         inputMode="decimal"
+                        data-decimal="true"
                         size="sm"
                         value={row.hasGram}
                         onChange={(e) => updateRow(row.id, "hasGram", e.target.value)}
@@ -1321,7 +1395,8 @@ export const SarrafFisiPage: React.FC = () => {
                     <td>
                       <Form.Control
                         ref={(el) => { rowInputRefs.current[`${row.id}_iscilikiMiktari`] = el; }}
-                        inputMode="numeric"
+                        inputMode="decimal"
+                        data-decimal="true"
                         size="sm"
                         value={row.iscilikiMiktari}
                         onChange={(e) => updateRow(row.id, "iscilikiMiktari", e.target.value)}
@@ -1372,18 +1447,6 @@ export const SarrafFisiPage: React.FC = () => {
                         style={{ fontSize: "11px", padding: "1px 4px" }}
                       />
                     </td>
-
-                    <td className="text-center" style={{ padding: "1px 2px", verticalAlign: "middle" }}>
-                      <Button
-                        variant="link"
-                        className="text-danger p-0 text-decoration-none fw-bold"
-                        style={{ fontSize: "14px", lineHeight: 1, cursor: "pointer" }}
-                        title="Satırı Sil"
-                        onClick={() => handleDeleteLine(row.id)}
-                      >
-                        ×
-                      </Button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1401,7 +1464,6 @@ export const SarrafFisiPage: React.FC = () => {
                   <td style={{ textAlign: "right" }}>
                     {totalTutar ? totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) + " TL" : ""}
                   </td>
-                  <td></td>
                 </tr>
               </tfoot>
             </Table>
@@ -1491,12 +1553,11 @@ export const SarrafFisiPage: React.FC = () => {
                       <th>Has Gr</th>
                       <th>Kur</th>
                       <th>Tutar</th>
-                      <th style={{ width: 20 }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {odemeRows.map((oRow) => (
-                      <tr key={oRow.id}>
+                      <tr key={oRow.id} data-row-id={oRow.id} data-table-type="odeme">
                         <td className="text-muted text-center" style={{ fontSize: "10px", padding: "1px" }}>V</td>
                         <td>
                           <Form.Control
@@ -1545,17 +1606,6 @@ export const SarrafFisiPage: React.FC = () => {
                         <td className="text-end fw-semibold" style={{ padding: "2px 4px" }}>
                           {Number(oRow.tutar) ? Number(oRow.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : ""}
                         </td>
-                        <td className="text-center" style={{ padding: "1px 2px", verticalAlign: "middle" }}>
-                          <Button
-                            variant="link"
-                            className="text-danger p-0 text-decoration-none fw-bold"
-                            style={{ fontSize: "14px", lineHeight: 1, cursor: "pointer" }}
-                            title="Ödeme Satırını Sil"
-                            onClick={() => handleDeleteOdemeRow(oRow.id)}
-                          >
-                            ×
-                          </Button>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1565,7 +1615,6 @@ export const SarrafFisiPage: React.FC = () => {
                       <td className="text-end fw-bold" style={{ padding: "2px 4px" }}>
                         {totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
                       </td>
-                      <td></td>
                     </tr>
                   </tfoot>
                 </Table>
@@ -1763,7 +1812,7 @@ export const SarrafFisiPage: React.FC = () => {
                   ref={(el) => { detayRefs.current["vergiKimlikNo"] = el; }}
                   size="sm"
                   value={detayVergiKimlikNo}
-                  onChange={(e) => setDetayVergiKimlikNo(e.target.value)}
+                  onChange={(e) => setDetayVergiKimlikNo(e.target.value.replace(/\D/g, ""))}
                   onKeyDown={(e) => handleDetayKeyDown(e, "vergiKimlikNo")}
                   maxLength={20}
                   style={{ flex: 1 }}
@@ -1867,7 +1916,7 @@ export const SarrafFisiPage: React.FC = () => {
                   ref={(el) => { detayRefs.current["telefonNo"] = el; }}
                   size="sm"
                   value={detayTelefonNo}
-                  onChange={(e) => setDetayTelefonNo(e.target.value)}
+                  onChange={(e) => setDetayTelefonNo(e.target.value.replace(/\D/g, ""))}
                   onKeyDown={(e) => handleDetayKeyDown(e, "telefonNo")}
                   style={{ flex: 1 }}
                 />

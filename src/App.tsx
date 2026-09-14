@@ -43,6 +43,8 @@ import LoginPage from "./pages/auth/LoginPage";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
+import { ToastProvider } from "./context/ToastContext";
+import { ERPContextMenu } from "./components/common/ERPContextMenu";
 import { UserThemeApplier } from "./components/theme/UserThemeApplier";
 import useMenu from "hooks/useMenu";
 import useEnterNavigation from "./hooks/useEnterNavigation";
@@ -97,8 +99,10 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <UserThemeApplier />
-      <Routes>
+      <ToastProvider>
+        <UserThemeApplier />
+        <ERPContextMenu />
+        <Routes>
 
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
@@ -208,6 +212,7 @@ export default function App() {
         {/* Catch-all redirect to /dashboard (which will route to /login if unauthenticated) */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </ToastProvider>
     </AuthProvider>
   );
 }

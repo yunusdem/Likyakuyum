@@ -190,6 +190,20 @@ export const NumeratorDefinitionsPage: React.FC = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (alertSuccess) {
+      const timer = setTimeout(() => setAlertSuccess(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [alertSuccess]);
+
+  useEffect(() => {
+    if (alertError) {
+      const timer = setTimeout(() => setAlertError(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [alertError]);
+
   const handleToggleActive = (tur: number) => {
     const currentRow = rows.find((r) => r.tur === tur);
     const willBeActive = !currentRow?.isActive;
@@ -321,29 +335,33 @@ export const NumeratorDefinitionsPage: React.FC = () => {
         disabled={isLoading || isSaving}
       />
 
-      {/* Bildirim Alanı */}
-      {alertSuccess && (
-        <Alert
-          variant="success"
-          className="d-flex align-items-center gap-2 py-1.5 px-3 mb-2 small shadow-2xs border-0"
-          dismissible
-          onClose={() => setAlertSuccess(null)}
-        >
-          <IconCheck size={16} />
-          <span>{alertSuccess}</span>
-        </Alert>
-      )}
+      {/* Bildirim Alanı: Sağ altta toast */}
+      {(alertSuccess || alertError) && (
+        <div className="erp-toast-container">
+          {alertSuccess && (
+            <Alert
+              variant="success"
+              className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 border-0 shadow small"
+              dismissible
+              onClose={() => setAlertSuccess(null)}
+            >
+              <IconCheck size={16} />
+              <span>{alertSuccess}</span>
+            </Alert>
+          )}
 
-      {alertError && (
-        <Alert
-          variant="danger"
-          className="d-flex align-items-center gap-2 py-1.5 px-3 mb-2 small shadow-2xs border-0"
-          dismissible
-          onClose={() => setAlertError(null)}
-        >
-          <IconAlertCircle size={16} />
-          <span>{alertError}</span>
-        </Alert>
+          {alertError && (
+            <Alert
+              variant="danger"
+              className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 border-0 shadow small"
+              dismissible
+              onClose={() => setAlertError(null)}
+            >
+              <IconAlertCircle size={16} />
+              <span>{alertError}</span>
+            </Alert>
+          )}
+        </div>
       )}
 
       {/* 2. Sayfaya Oturan Birebir Numaratörler Tablosu */}

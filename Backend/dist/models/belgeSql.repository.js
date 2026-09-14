@@ -2,6 +2,9 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+export const BELGE_DURUMLARI = ["GONDERILMEDI", "GONDERILDI", "HATA", "GONDERILIYOR", "TASLAK", "IPTAL", "KONTROL_GEREKLI"];
+const DOVIZ_EVRAK_TURU = 99;
+const FATURA_TUR_ADI = { 0: "Fatura", 1: "Fatura", 2: "e-İrsaliye", 3: "e-Gider" };
 /**
  * Belge modülü veri erişimi.
  * - `TODVZ_BELGE_SABLON`: şablon meta'sı (yoksa oluşturulur, ALFIS1/STFIS1 eklenir).
@@ -120,35 +123,89 @@ export class BelgeSqlRepository {
         }
         return { ...detay, ...baslik };
     }
+    /**
+     * Belge listesi — tüm kaynaklar tek listede (yönetici kararı 14.09.2026):
+     * e-Döviz fişleri (`VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI`, iptaller dahil) + fatura / e-İrsaliye / e-Gider
+     * (`VODVZ_GONDERIME_HAZIR_E_BELGE`, EVRAK_TURU=0, BELGE_TURU 0–3). Durum, e-Belge Kaynak ekranıyla aynı
+     * mantıkla birleşir: giden kutusu (TODVZ_EBELGE_GIDEN) → kaynak işlem kaydı (TODVZ_EBELGE_KAYNAK) → görünümdeki eski durum.
+     * `kaynak` boşsa hepsi; `tip` (0 alış / 1 satış) yalnızca döviz fişlerine uygulanır ve seçilince diğer kaynaklar elenir.
+     */
     static async fisler(f, ctx) {
         const pool = await this.pool(ctx);
         const boyut = Math.min(Math.max(f.boyut || 50, 1), 200), sayfa = Math.max(f.sayfa || 1, 1);
+        const nesneler = await pool.request().query(`
+      SELECT OBJECT_ID('dbo.VODVZ_GONDERIME_HAZIR_E_BELGE','V') belgeGorunumu, OBJECT_ID('dbo.TODVZ_EBELGE_KAYNAK','U') kaynakTablosu, OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN','U') gidenTablosu`);
+        const n = nesneler.recordset[0] || {};
+        const faturaVar = !!n.belgeGorunumu, kaynakVar = !!n.kaynakTablosu, gidenVar = !!n.gidenTablosu;
+        const durumFiltre = f.durum && BELGE_DURUMLARI.includes(f.durum) ? f.durum : null;
+        const faturaSql = faturaVar ? `
+        UNION ALL
+        SELECT 0, V.BELGE_ID, V.BELGE_TURU, 'FATURA', RTRIM(V.BELGE_NO), V.TARIH, RTRIM(V.UNVAN),
+          NULL, RTRIM(V.PARA_KODU), V.MIKTAR, '', RTRIM(ISNULL(V.ETTN,'')), 0, V.E_BELGE_DURUMU, V.E_BELGE_HATA_ACIKLAMASI
+        FROM dbo.VODVZ_GONDERIME_HAZIR_E_BELGE V
+        WHERE V.EVRAK_TURU=0 AND V.BELGE_TURU IN (0,1,2,3)` : "";
+        const kaynakApply = kaynakVar ? `
+      OUTER APPLY (SELECT TOP 1 R.DURUM, R.HATA FROM dbo.TODVZ_EBELGE_KAYNAK R
+        WHERE R.ANAHTAR=CONCAT(K.evrakTuru,':',K.belgeId,':',K.belgeTuru)
+          OR (K.kaynak='DOVIZ' AND R.ANAHTAR=CONCAT(K.evrakTuru,':',K.belgeId,':',K.belgeTuru,':',K.belgeNo))
+        ORDER BY CASE WHEN R.DURUM='HATA' THEN 1 ELSE 0 END, R.TARIH DESC) R` : `
+      CROSS APPLY (SELECT CAST(NULL AS varchar(30)) DURUM, CAST(NULL AS nvarchar(2000)) HATA) R`;
+        const gidenApply = gidenVar ? `
+      OUTER APPLY (SELECT TOP 1 G.GONDERIM_DURUMU, G.ICE_RESPONSE_MESAJ FROM dbo.TODVZ_EBELGE_GIDEN G
+        WHERE G.BELGE_NO=K.belgeNo OR G.UUID=NULLIF(K.ettn,'') ORDER BY G.OLUSTURMA_TARIHI DESC) G` : `
+      CROSS APPLY (SELECT CAST(NULL AS varchar(30)) GONDERIM_DURUMU, CAST(NULL AS nvarchar(2000)) ICE_RESPONSE_MESAJ) G`;
         const res = await pool.request()
+            .input("kaynak", sql.VarChar(10), f.kaynak || null)
             .input("tip", sql.Int, f.tip ?? null)
+            .input("durum", sql.VarChar(30), durumFiltre)
             .input("bas", sql.Date, f.baslangic || null).input("bit", sql.Date, f.bitis || null)
             .input("arama", sql.NVarChar(100), f.arama?.trim() ? `%${f.arama.trim()}%` : null)
             .input("atla", sql.Int, (sayfa - 1) * boyut).input("al", sql.Int, boyut).query(`
-      -- Görünümde yalnızca BELGE_ID, FIS_TIPI, BELGE_NO, TARIH, UNVAN, MIKTAR, PARA_KODU, ETTN, IPTAL, E_BELGE_DURUMU
-      -- kolonları garanti (ebelgeKaynak listesiyle aynı). Tutar ve vezne TODVZ_FIS / TODVZ_VEZNE'den okunur.
-      SELECT D.BELGE_ID fisId, D.FIS_TIPI fisTipi, RTRIM(D.BELGE_NO) belgeNo, D.TARIH tarih, RTRIM(D.UNVAN) unvan,
-        D.MIKTAR miktar, RTRIM(D.PARA_KODU) paraKodu, ISNULL(F.ODEME_TUTARI, F.TOPLAM_TUTAR) tutar, RTRIM(ISNULL(V.KOD,'')) vezne,
-        RTRIM(ISNULL(D.ETTN,'')) ettn, ISNULL(D.IPTAL,0) iptal, G.GONDERIM_DURUMU gonderimDurumu
+      ;WITH K AS (
+        -- Görünümde yalnızca BELGE_ID, FIS_TIPI, BELGE_NO, TARIH, UNVAN, MIKTAR, PARA_KODU, ETTN, IPTAL, E_BELGE_DURUMU
+        -- kolonları garanti (ebelgeKaynak listesiyle aynı). Tutar ve vezne TODVZ_FIS / TODVZ_VEZNE'den okunur.
+        SELECT ${DOVIZ_EVRAK_TURU} evrakTuru, D.BELGE_ID belgeId, D.FIS_TIPI belgeTuru, 'DOVIZ' kaynak, RTRIM(D.BELGE_NO) belgeNo, D.TARIH tarih, RTRIM(D.UNVAN) unvan,
+          D.MIKTAR miktar, RTRIM(D.PARA_KODU) paraKodu, ISNULL(F.ODEME_TUTARI, F.TOPLAM_TUTAR) tutar, RTRIM(ISNULL(V.KOD,'')) vezne,
+          RTRIM(ISNULL(D.ETTN,'')) ettn, ISNULL(D.IPTAL,0) iptal, D.E_BELGE_DURUMU eskiDurum, D.E_BELGE_HATA_ACIKLAMASI eskiHata
+        FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
+        LEFT JOIN dbo.TODVZ_FIS F ON F.FIS_ID=D.BELGE_ID
+        LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID${faturaSql}
+      )
+      SELECT K.*, G.GONDERIM_DURUMU gonderimDurumu,
+        CASE WHEN K.iptal=1 THEN 'IPTAL' ELSE COALESCE(G.GONDERIM_DURUMU, R.DURUM,
+          CASE WHEN NULLIF(RTRIM(K.eskiHata),'') IS NOT NULL THEN 'HATA'
+               WHEN ISNULL(K.eskiDurum,0)=0 AND (K.kaynak='DOVIZ' OR NULLIF(K.ettn,'') IS NULL) THEN 'GONDERILMEDI'
+               ELSE 'KONTROL_GEREKLI' END) END durum,
+        COALESCE(G.ICE_RESPONSE_MESAJ, R.HATA, K.eskiHata) hata
       INTO #F
-      FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
-      LEFT JOIN dbo.TODVZ_FIS F ON F.FIS_ID=D.BELGE_ID
-      LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
-      OUTER APPLY (SELECT TOP 1 G.GONDERIM_DURUMU FROM dbo.TODVZ_EBELGE_GIDEN G
-        WHERE G.BELGE_NO=RTRIM(D.BELGE_NO) OR G.UUID=NULLIF(RTRIM(D.ETTN),'') ORDER BY G.OLUSTURMA_TARIHI DESC) G
-      WHERE (@tip IS NULL OR D.FIS_TIPI=@tip)
-        AND (@bas IS NULL OR CAST(D.TARIH AS date)>=@bas) AND (@bit IS NULL OR CAST(D.TARIH AS date)<=@bit)
-        AND (@arama IS NULL OR D.BELGE_NO LIKE @arama OR D.UNVAN LIKE @arama OR D.ETTN LIKE @arama);
-      SELECT COUNT(*) toplam FROM #F;
-      SELECT * FROM #F ORDER BY tarih DESC, fisId DESC OFFSET @atla ROWS FETCH NEXT @al ROWS ONLY;
+      FROM K${kaynakApply}${gidenApply}
+      WHERE (@kaynak IS NULL OR (@kaynak='DOVIZ' AND K.kaynak='DOVIZ')
+          OR (@kaynak='FATURA' AND K.kaynak='FATURA' AND K.belgeTuru IN (0,1))
+          OR (@kaynak='IRSALIYE' AND K.kaynak='FATURA' AND K.belgeTuru=2)
+          OR (@kaynak='GIDER' AND K.kaynak='FATURA' AND K.belgeTuru=3))
+        AND (@tip IS NULL OR (K.kaynak='DOVIZ' AND K.belgeTuru=@tip))
+        AND (@bas IS NULL OR CAST(K.tarih AS date)>=@bas) AND (@bit IS NULL OR CAST(K.tarih AS date)<=@bit)
+        AND (@arama IS NULL OR K.belgeNo LIKE @arama OR K.unvan LIKE @arama OR K.ettn LIKE @arama);
+      SELECT COUNT(*) toplam FROM #F WHERE @durum IS NULL OR durum=@durum;
+      SELECT * FROM #F WHERE @durum IS NULL OR durum=@durum ORDER BY tarih DESC, belgeId DESC OFFSET @atla ROWS FETCH NEXT @al ROWS ONLY;
       DROP TABLE #F;
     `);
         const sets = res.recordsets;
-        const kayitlar = sets[1].map((r) => ({ ...r, tipAdi: Number(r.fisTipi) === 1 ? "Satış" : "Alış",
-            tarih: r.tarih ? new Date(r.tarih).toISOString() : "", miktar: Number(r.miktar || 0), tutar: Number(r.tutar || 0), iptal: !!r.iptal }));
+        const kayitlar = sets[1].map((r) => {
+            const doviz = r.kaynak === "DOVIZ";
+            const belgeTuru = Number(r.belgeTuru);
+            const kaynak = doviz ? "DOVIZ" : belgeTuru === 2 ? "IRSALIYE" : belgeTuru === 3 ? "GIDER" : "FATURA";
+            return {
+                kaynak, evrakTuru: Number(r.evrakTuru), belgeTuru,
+                fisId: Number(r.belgeId), fisTipi: belgeTuru,
+                tipAdi: doviz ? (belgeTuru === 1 ? "Satış" : "Alış") : (FATURA_TUR_ADI[belgeTuru] || `Tür ${belgeTuru}`),
+                belgeNo: String(r.belgeNo || "").trim(), tarih: r.tarih ? new Date(r.tarih).toISOString() : "", unvan: String(r.unvan || "").trim(),
+                miktar: doviz ? Number(r.miktar || 0) : null, paraKodu: String(r.paraKodu || "").trim(), tutar: Number(r.tutar || 0),
+                vezne: String(r.vezne || "").trim(), ettn: String(r.ettn || "").trim(), iptal: !!r.iptal,
+                durum: String(r.durum || "GONDERILMEDI"), hata: r.hata ? String(r.hata).trim() || null : null,
+                gonderimDurumu: r.gonderimDurumu ?? null,
+            };
+        });
         return { toplam: Number(sets[0][0]?.toplam || 0), sayfa, boyut, kayitlar };
     }
     /** Firma tanımındaki belge dizini (arşiv kökü için ikinci öncelik). */

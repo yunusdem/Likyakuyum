@@ -13,6 +13,9 @@ import "swiper/css/scrollbar";
 
 // Import main theme scss
 import "styles/theme.scss";
+import { initGlobalNumericInputInterceptor } from "./utils/numericInput";
+
+initGlobalNumericInputInterceptor();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

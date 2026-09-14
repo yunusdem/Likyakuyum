@@ -53,6 +53,7 @@ import LookupModal from "../../components/common/LookupModal";
 import { useAuth } from "../../context/AuthContext";
 import { AuthService } from "../../services/authService";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
+import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 
 
 export type UserProfile = UserProfileDto;
@@ -811,37 +812,33 @@ const UserDefinitionsPage: React.FC = () => {
       <ERPToolbar
         onNew={handleNewUser}
         onSave={handleSave}
-        onSearch={() => {
-          const searchInput = document.querySelector<HTMLInputElement>("input[placeholder*='ara' i]");
-          if (searchInput) {
-            searchInput.focus();
-            searchInput.select();
-          }
-        }}
-        onDelete={handleDelete}
-        onFirst={() => handleNavigate("first")}
-        onPrev={() => handleNavigate("prev")}
-        onNext={() => handleNavigate("next")}
-        onLast={() => handleNavigate("last")}
         onPrint={handlePrint}
         onRefresh={handleRefresh}
         onEDocument={() => setShowEDocumentModal(true)}
         onConsolidatedDB={() => setShowConsolidatedModal(true)}
+        hideSearch={true}
+        hideDelete={true}
+        hideNavigation={true}
       />
 
 
-      {alertSuccess && (
-        <Alert variant="success" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0">
-          <IconCheck size={18} />
-          <span>{alertSuccess}</span>
-        </Alert>
-      )}
+      {/* Bildirimler: Sağ altta beliren ve otomatik kaybolan toast */}
+      {(alertSuccess || alertError) && (
+        <div className="erp-toast-container">
+          {alertSuccess && (
+            <Alert variant="success" className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 shadow border-0" dismissible onClose={() => setAlertSuccess(null)}>
+              <IconCheck size={18} />
+              <span>{alertSuccess}</span>
+            </Alert>
+          )}
 
-      {alertError && (
-        <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 mb-3 shadow-sm border-0">
-          <IconAlertCircle size={18} />
-          <span>{alertError}</span>
-        </Alert>
+          {alertError && (
+            <Alert variant="danger" className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
+              <IconAlertCircle size={18} />
+              <span>{alertError}</span>
+            </Alert>
+          )}
+        </div>
       )}
 
       <Card className="border-0 shadow-sm rounded-3 mb-4 bg-white">
@@ -1004,13 +1001,15 @@ const UserDefinitionsPage: React.FC = () => {
                           </span>
                           <Form.Control
                             type="text"
+                            inputMode="numeric"
+                            data-numeric="true"
                             size="sm"
                             style={{ width: "80px" }}
                             value={currentUser.displayDays || ""}
                             onFocus={(e) => handleInputFocusOrClick(e, "displayDays")}
                             onClick={(e) => handleInputFocusOrClick(e, "displayDays")}
                             onChange={(e) =>
-                              updateField("displayDays", e.target.value)
+                              updateField("displayDays", onlyDigits(e.target.value))
                             }
                             className="text-center bg-light border fw-bold"
                           />
@@ -1136,10 +1135,12 @@ const UserDefinitionsPage: React.FC = () => {
                             <InputGroup size="sm">
                               <Form.Control
                                 type="text"
+                                inputMode="numeric"
+                                data-numeric="true"
                                 value={currentUser.printerId || ""}
                                 onFocus={(e) => handleInputFocusOrClick(e, "printerId")}
                                 onClick={(e) => handleInputFocusOrClick(e, "printerId")}
-                                onChange={(e) => updateField("printerId", e.target.value)}
+                                onChange={(e) => updateField("printerId", onlyDigits(e.target.value))}
                                 className="bg-light border fw-bold text-center"
                               />
                               <Button
@@ -1164,12 +1165,14 @@ const UserDefinitionsPage: React.FC = () => {
                             <Col sm={7}>
                               <Form.Control
                                 type="text"
+                                inputMode="numeric"
+                                data-numeric="true"
                                 size="sm"
                                 value={currentUser.horizontalZoom || ""}
                                 onFocus={(e) => handleInputFocusOrClick(e, "horizontalZoom")}
                                 onClick={(e) => handleInputFocusOrClick(e, "horizontalZoom")}
                                 onChange={(e) =>
-                                  updateField("horizontalZoom", e.target.value)
+                                  updateField("horizontalZoom", onlyDigits(e.target.value))
                                 }
                                 className="bg-light border text-center"
                               />
@@ -1180,12 +1183,14 @@ const UserDefinitionsPage: React.FC = () => {
                             <Col sm={7}>
                               <Form.Control
                                 type="text"
+                                inputMode="numeric"
+                                data-numeric="true"
                                 size="sm"
                                 value={currentUser.verticalZoom || ""}
                                 onFocus={(e) => handleInputFocusOrClick(e, "verticalZoom")}
                                 onClick={(e) => handleInputFocusOrClick(e, "verticalZoom")}
                                 onChange={(e) =>
-                                  updateField("verticalZoom", e.target.value)
+                                  updateField("verticalZoom", onlyDigits(e.target.value))
                                 }
                                 className="bg-light border text-center"
                               />
@@ -1209,12 +1214,14 @@ const UserDefinitionsPage: React.FC = () => {
                           <InputGroup size="sm" style={{ width: "110px" }}>
                             <Form.Control
                               type="text"
+                              inputMode="decimal"
+                              data-decimal="true"
                               disabled={!currentUser.hasCommissionRate}
                               value={currentUser.commissionRate || ""}
                               onFocus={(e) => handleInputFocusOrClick(e, "commissionRate")}
                               onClick={(e) => handleInputFocusOrClick(e, "commissionRate")}
                               onChange={(e) =>
-                                updateField("commissionRate", e.target.value)
+                                updateField("commissionRate", onlyDecimal(e.target.value))
                               }
                               className="bg-light border text-end"
                             />
@@ -1244,12 +1251,14 @@ const UserDefinitionsPage: React.FC = () => {
                               </Form.Select>
                               <Form.Control
                                 type="text"
+                                inputMode="decimal"
+                                data-decimal="true"
                                 size="sm"
                                 value={currentUser.ratePermValue || ""}
                                 onFocus={(e) => handleInputFocusOrClick(e, "ratePermValue")}
                                 onClick={(e) => handleInputFocusOrClick(e, "ratePermValue")}
                                 onChange={(e) =>
-                                  updateField("ratePermValue", e.target.value)
+                                  updateField("ratePermValue", onlyDecimal(e.target.value))
                                 }
                                 className="bg-light border text-end"
                               />

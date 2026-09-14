@@ -302,11 +302,24 @@ export const RaporPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [veri, tanim, kolonlar]);
 
+  useEffect(() => {
+    if (hata) {
+      const timer = setTimeout(() => setHata(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [hata]);
+
   if (!menu) return <div className="container-fluid py-3"><Alert variant="warning">Rapor bulunamadı: {yol}</Alert></div>;
 
   return (
     <div className="container-fluid py-2 px-3">
-      {hata && <Alert variant={veri?.sinirAsildi ? "warning" : "danger"} dismissible onClose={() => setHata(null)} className="py-2 mt-2">{hata}</Alert>}
+      {hata && (
+        <div className="erp-toast-container">
+          <Alert variant={veri?.sinirAsildi ? "warning" : "danger"} dismissible onClose={() => setHata(null)} className="erp-toast-item py-2 px-3 mb-0 shadow border-0">
+            {hata}
+          </Alert>
+        </div>
+      )}
 
       <Card className="shadow-sm border-0 my-2">
         <Card.Header className="d-flex align-items-center gap-2 py-2 bg-white">

@@ -35,6 +35,7 @@ import {
 import { KurService } from "../../services/kurService";
 import { useAuth } from "../../context/AuthContext";
 import { printReportTable } from "../../utils/printReport";
+import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
 interface VezneItem {
   id: number;
@@ -769,7 +770,11 @@ export const CariEmanetDekontPage: React.FC = () => {
     setter((prevRows) => {
       const rows = [...prevRows];
       const currentRow = rows[index] || createEmptyRow(index + 1);
-      const updatedRow = { ...currentRow, [field]: value };
+      let sanitizedValue = value;
+      if (field === "meblag" || field === "hasOrani" || field === "kur" || field === "giseKuru") {
+        sanitizedValue = onlyDecimal(value);
+      }
+      const updatedRow = { ...currentRow, [field]: sanitizedValue };
       rows[index] = updatedRow;
 
       // Kullanıcı klavyeden SMB kodu yazdıysa ve paraList içinde eşleştiyse parite kurunu getir
@@ -835,6 +840,46 @@ export const CariEmanetDekontPage: React.FC = () => {
     }
   };
 
+  // Sağ tık menüsü eylemleri (Satırı Sil & Yeni Satır Ekle)
+  useEffect(() => {
+    const handleGridDelete = (e: any) => {
+      const rowId = e.detail?.rowId;
+      if (!rowId) return;
+      const solIdx = solSatirlar.findIndex((r) => r.id === rowId);
+      if (solIdx !== -1) {
+        handleDeleteRow("sol", solIdx);
+        return;
+      }
+      const sagIdx = sagSatirlar.findIndex((r) => r.id === rowId);
+      if (sagIdx !== -1) {
+        handleDeleteRow("sag", sagIdx);
+      }
+    };
+
+    const handleGridAdd = () => {
+      if (activeSide === "sol") {
+        setSolSatirlar((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+      } else {
+        setSagSatirlar((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+      }
+    };
+
+    window.addEventListener("erp-grid-row-delete", handleGridDelete);
+    window.addEventListener("erp-grid-row-add", handleGridAdd);
+    return () => {
+      window.removeEventListener("erp-grid-row-delete", handleGridDelete);
+      window.removeEventListener("erp-grid-row-add", handleGridAdd);
+    };
+  }, [solSatirlar, sagSatirlar, activeSide]);
+
+  // Bildirimlerin 3.5 sn sonra otomatik kapanması
+  useEffect(() => {
+    if (alertInfo) {
+      const timer = setTimeout(() => setAlertInfo(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [alertInfo]);
+
   // F9 - Tablolar Arası Geçiş (Doğrudan hücreye odaklanır)
   const handleF9Switch = useCallback(() => {
     const nextSide = activeSide === "sol" ? "sag" : "sol";
@@ -870,6 +915,10 @@ export const CariEmanetDekontPage: React.FC = () => {
     rowIndex: number,
     field: "smb" | "meblag" | "kur"
   ) => {
+    if (field === "meblag" || field === "kur") {
+      blockNonNumericKeys(e, true);
+    }
+
     const el = e.currentTarget;
     const isLeft = side === "sol";
     const rows = isLeft ? solSatirlar : sagSatirlar;
@@ -1399,29 +1448,31 @@ export const CariEmanetDekontPage: React.FC = () => {
         }
       />
 
-      {/* Alert Bildirimi - Çarpı kapatma butonu alanın içine tam oturacak şekilde flex hizalı */}
+      {/* Alert Bildirimi - Sağ altta beliren ve 3.5 sn sonra yok olan toast */}
       {alertInfo && (
-        <div
-          className={`alert alert-${alertInfo.type} py-1.5 px-3 mb-2 small shadow-2xs border-0 d-flex align-items-center justify-content-between`}
-          role="alert"
-          style={{ minHeight: "36px" }}
-        >
-          <div className="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
-            <span>{alertInfo.message}</span>
+        <div className="erp-toast-container">
+          <div
+            className={`alert alert-${alertInfo.type} erp-toast-item py-2 px-3 mb-0 shadow border-0 d-flex align-items-center justify-content-between`}
+            role="alert"
+            style={{ minHeight: "36px" }}
+          >
+            <div className="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
+              <span style={{ fontSize: "13px" }}>{alertInfo.message}</span>
+            </div>
+            <button
+              type="button"
+              className="btn-close flex-shrink-0 ms-2"
+              aria-label="Kapat"
+              onClick={() => setAlertInfo(null)}
+              style={{
+                position: "static",
+                fontSize: "0.65rem",
+                padding: "0.25rem",
+                margin: 0,
+                boxShadow: "none",
+              }}
+            />
           </div>
-          <button
-            type="button"
-            className="btn-close flex-shrink-0 ms-2"
-            aria-label="Kapat"
-            onClick={() => setAlertInfo(null)}
-            style={{
-              position: "static",
-              fontSize: "0.65rem",
-              padding: "0.25rem",
-              margin: 0,
-              boxShadow: "none",
-            }}
-          />
         </div>
       )}
 
@@ -1965,13 +2016,13 @@ export const CariEmanetDekontPage: React.FC = () => {
                         <th style={{ width: "100px", padding: "1px 4px", borderRight: "1px solid #8ab8ee" }}>SMB</th>
                         <th style={{ width: "150px", padding: "1px 6px", borderRight: "1px solid #8ab8ee" }}>Miktar</th>
                         <th style={{ padding: "1px 6px" }}>{col3Header}</th>
-                        <th style={{ width: "26px", padding: 0 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {solSatirlar.map((row, idx) => (
                         <tr
                           key={row.id}
+                          data-row-id={row.id}
                           style={{
                             height: "24px",
                             borderBottom: "1px solid #e0e0e0",
@@ -2112,18 +2163,6 @@ export const CariEmanetDekontPage: React.FC = () => {
                                 backgroundColor: "transparent",
                               }}
                             />
-                          </td>
-
-                          {/* Sil Butonu */}
-                          <td style={{ padding: 0, textAlign: "center" }}>
-                            <Button
-                              variant="link"
-                              className="p-0 text-danger text-decoration-none"
-                              onClick={() => handleDeleteRow("sol", idx)}
-                              title="Satırı Sil"
-                            >
-                              <IconTrash size={12} />
-                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -2292,13 +2331,13 @@ export const CariEmanetDekontPage: React.FC = () => {
                         <th style={{ width: "100px", padding: "1px 4px", borderRight: "1px solid #8ab8ee" }}>SMB</th>
                         <th style={{ width: "150px", padding: "1px 6px", borderRight: "1px solid #8ab8ee" }}>Miktar</th>
                         <th style={{ padding: "1px 6px" }}>{col3Header}</th>
-                        <th style={{ width: "26px", padding: 0 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {sagSatirlar.map((row, idx) => (
                         <tr
                           key={row.id}
+                          data-row-id={row.id}
                           style={{
                             height: "24px",
                             borderBottom: "1px solid #e0e0e0",
@@ -2439,18 +2478,6 @@ export const CariEmanetDekontPage: React.FC = () => {
                                 backgroundColor: "transparent",
                               }}
                             />
-                          </td>
-
-                          {/* Sil Butonu */}
-                          <td style={{ padding: 0, textAlign: "center" }}>
-                            <Button
-                              variant="link"
-                              className="p-0 text-danger text-decoration-none"
-                              onClick={() => handleDeleteRow("sag", idx)}
-                              title="Satırı Sil"
-                            >
-                              <IconTrash size={12} />
-                            </Button>
                           </td>
                         </tr>
                       ))}

@@ -113,10 +113,9 @@ export const DashboardMenu: MenuItemType[] = [
     children: [
       { id: uuid(), name: "A- Banka Hesap Kartları", link: "banka/hesap-kartlari" },
       { id: uuid(), name: "B- POS Cihazı Tanımları", link: "banka/pos-tanimlari" },
-      { id: uuid(), name: "C- Havale / EFT İşlemleri", link: "banka/havale-eft" },
-      { id: uuid(), name: "D- Banka Hesap Hareketleri", link: "banka/hareketler" },
-      { id: uuid(), name: "E- Kredi Kartı Tahsilatları", link: "banka/kredi-karti-tahsilat" },
-      { id: uuid(), name: "F- POS Gün Sonu İşlemleri", link: "banka/pos-gun-sonu" },
+      { id: uuid(), name: "C- Banka Hesap Hareketleri", link: "banka/hareketler" },
+      { id: uuid(), name: "D- Kredi Kartı Tahsilatları", link: "banka/kredi-karti-tahsilat" },
+      { id: uuid(), name: "E- POS Gün Sonu İşlemleri", link: "banka/pos-gun-sonu" },
     ],
   },
 

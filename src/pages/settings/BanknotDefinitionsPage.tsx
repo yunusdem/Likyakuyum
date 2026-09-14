@@ -25,6 +25,7 @@ import LookupModal from "../../components/common/LookupModal";
 import BanknotService, { BanknotItem, BanknotCurrencyItem } from "../../services/banknotService";
 import { useAuth } from "../../context/AuthContext";
 import { getContrastColor } from "../../components/theme/UserThemeApplier";
+import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
 export const BanknotDefinitionsPage: React.FC = () => {
   const { user } = useAuth();
@@ -48,6 +49,13 @@ export const BanknotDefinitionsPage: React.FC = () => {
   const [loadingBanknotlar, setLoadingBanknotlar] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [alertInfo, setAlertInfo] = useState<{ type: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
+
+  useEffect(() => {
+    if (alertInfo) {
+      const timer = setTimeout(() => setAlertInfo(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [alertInfo]);
 
   // Dürbün (Lookup) modal state
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
@@ -155,9 +163,10 @@ export const BanknotDefinitionsPage: React.FC = () => {
 
   // Row manipulation helpers
   const handleAmountChange = (index: number, val: string) => {
+    const cleanVal = onlyDecimal(val);
     setRows((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], miktar: val };
+      copy[index] = { ...copy[index], miktar: cleanVal };
       return copy;
     });
   };
@@ -523,16 +532,18 @@ export const BanknotDefinitionsPage: React.FC = () => {
         disabled={loadingCurrencies || loadingBanknotlar || saving}
       />
 
-      {/* Alert Notifications */}
+      {/* Alert Notifications: Sağ altta beliren ve 3.5 sn sonra yok olan toast */}
       {alertInfo && (
-        <Alert
-          variant={alertInfo.type}
-          dismissible
-          onClose={() => setAlertInfo(null)}
-          className="py-2 px-3 mb-3 border rounded shadow-2xs small fw-medium"
-        >
-          {alertInfo.message}
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert
+            variant={alertInfo.type}
+            dismissible
+            onClose={() => setAlertInfo(null)}
+            className="erp-toast-item py-2 px-3 mb-0 border-0 shadow small fw-medium"
+          >
+            {alertInfo.message}
+          </Alert>
+        </div>
       )}
 
       {/* Embedded CSS: Banknot satırları normal, hover ve seçili durumları */}
@@ -824,6 +835,8 @@ export const BanknotDefinitionsPage: React.FC = () => {
                                     inputRefs.current[index] = el;
                                   }}
                                   type="text"
+                                  inputMode="decimal"
+                                  data-decimal="true"
                                   size="sm"
                                   value={row.miktar}
                                   onFocus={() => {
@@ -836,7 +849,10 @@ export const BanknotDefinitionsPage: React.FC = () => {
                                   }}
                                   onChange={(e) => handleAmountChange(index, e.target.value)}
                                   onBlur={() => handleAmountBlur(index)}
-                                  onKeyDown={(e: any) => handleKeyDown(e, index)}
+                                  onKeyDown={(e: any) => {
+                                    blockNonNumericKeys(e, true);
+                                    handleKeyDown(e, index);
+                                  }}
                                   placeholder="0.00"
                                   className="banknot-amount-input text-end fw-bold font-monospace shadow-none"
                                   style={{

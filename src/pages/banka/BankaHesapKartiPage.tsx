@@ -319,6 +319,7 @@ export const BankaHesapKartiPage: React.FC = () => {
         onPrev={handlePrev}
         onNext={handleNext}
         onLast={handleLast}
+        modeText={bankaId ? `Düzenleme: #${bankaId} ${hesapAdi}` : "Yeni Kayıt Modu"}
         rightContent={
           <div className="d-flex align-items-center gap-2">
             {bankaId && (
@@ -335,20 +336,23 @@ export const BankaHesapKartiPage: React.FC = () => {
         }
       />
 
+      {/* 1. Bildirim Paneli: Sağ altta beliren ve 4 sn sonra kaybolan toast */}
       {notification && (
-        <Alert
-          variant={notification.type}
-          dismissible
-          onClose={() => setNotification(null)}
-          className="d-flex align-items-center mb-3 shadow-sm py-2"
-        >
-          {notification.type === "success" ? (
-            <IconCheck size={18} className="me-2 text-success" />
-          ) : (
-            <IconAlertTriangle size={18} className="me-2 text-danger" />
-          )}
-          <span>{notification.message}</span>
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert
+            variant={notification.type}
+            dismissible
+            onClose={() => setNotification(null)}
+            className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0"
+          >
+            {notification.type === "success" ? (
+              <IconCheck size={18} className="me-2 text-success flex-shrink-0" />
+            ) : (
+              <IconAlertTriangle size={18} className="me-2 text-danger flex-shrink-0" />
+            )}
+            <span style={{ fontSize: "13px" }}>{notification.message}</span>
+          </Alert>
+        </div>
       )}
 
       {/* 2. Kart Giriş Formu (Solda Label, Sağda Input - Masaüstü ERP Düzeni) */}
@@ -357,16 +361,6 @@ export const BankaHesapKartiPage: React.FC = () => {
           <div className="d-flex align-items-center gap-2">
             <IconBuildingBank size={18} className="text-primary" />
             <span className="fw-bold text-dark">Banka Hesap Kartı Tanımı</span>
-            {bankaId && (
-              <Badge bg="primary" className="ms-1 font-monospace">
-                #{bankaId}
-              </Badge>
-            )}
-            {bankaId && (
-              <span className="small text-muted ms-2 d-none d-md-inline">
-                (Seçili: <strong>{hesapAdi}</strong> - {hesapNo})
-              </span>
-            )}
           </div>
 
           {/* Kaydet yanında Dürbün (Seçim) ve Sil Butonları */}
@@ -433,7 +427,7 @@ export const BankaHesapKartiPage: React.FC = () => {
                     type="text"
                     size="sm"
                     value={hesapNo}
-                    onChange={(e) => setHesapNo(e.target.value)}
+                    onChange={(e) => setHesapNo(e.target.value.replace(/\D/g, ""))}
                     onKeyDown={(e) => handleInputKeyDown(e, hesapAdiRef, undefined)}
                     className="fw-bold text-primary font-monospace"
                   />

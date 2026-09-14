@@ -37,6 +37,7 @@ import { PanoService, PanoModel, PanoSatiriModel, SavePanoPayload } from "../../
 import { ProductDefinitionService, ProductItem } from "../../services/productDefinitionService";
 import { FontSelectDropdown } from "../settings/UserDefinitionsPage";
 import { useAuth } from "../../context/AuthContext";
+import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
 interface StyleProperties {
   fontFamily: string;
@@ -458,8 +459,12 @@ export const PanoTanimiPage: React.FC = () => {
   };
 
   const handleUpdateLine = (index: number, key: keyof PanoSatiriModel, value: any) => {
+    let sanitizedValue = value;
+    if (key === "carpan") {
+      sanitizedValue = Number(onlyDecimal(String(value))) || 1.0;
+    }
     const updated = [...form.satirlar];
-    updated[index] = { ...updated[index], [key]: value };
+    updated[index] = { ...updated[index], [key]: sanitizedValue };
     setForm({ ...form, satirlar: updated });
   };
 
@@ -544,6 +549,7 @@ export const PanoTanimiPage: React.FC = () => {
         onClear={handleNew}
         onPrint={() => window.print()}
         disabled={saving || loading}
+        modeText={panos.length > 0 ? (currentIndex === 0 ? "İlk kayıt" : currentIndex === panos.length - 1 ? "Son kayıt" : `Kayıt ${currentIndex + 1} / ${panos.length}`) : "Yeni Kayıt Modu"}
         rightContent={
           <Button
             variant="success"
@@ -1070,10 +1076,13 @@ export const PanoTanimiPage: React.FC = () => {
                             <td className="text-center">
                               <Form.Control
                                 type="number"
+                                inputMode="decimal"
+                                data-decimal="true"
                                 size="sm"
                                 step="0.0001"
                                 value={line.carpan}
-                                onChange={(e) => handleUpdateLine(idx, "carpan", Number(e.target.value) || 1.0)}
+                                onChange={(e) => handleUpdateLine(idx, "carpan", e.target.value)}
+                                onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                 className="py-0.5 px-1 small text-center font-monospace border-secondary-subtle"
                                 style={{ width: "65px" }}
                               />

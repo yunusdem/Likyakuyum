@@ -19,8 +19,14 @@ export class RaporService {
         const tanim = this.tanim(kod);
         const pool = await RaporSqlRepository.pool(ctx);
         const sonuc = await RAPOR_SORGULARI[tanim.kod](pool, p, tanim);
-        return { ...sonuc, tanim };
+        return { ...sonuc, tanim: kmtUygula(tanim, p.kmt) };
     }
+    /** Kayıtlı aramalar (kullanıcı × rapor) */
+    static aramalar(kullanici, kod, ctx) { return RaporSqlRepository.aramalar(kullanici, this.tanim(kod).kod, ctx); }
+    static aramaKaydet(kullanici, kod, parametreler, ozet, ctx) {
+        return RaporSqlRepository.aramaKaydet(kullanici, this.tanim(kod).kod, parametreler, ozet, ctx);
+    }
+    static aramaSil(kullanici, kod, aramaId, ctx) { return RaporSqlRepository.aramaSil(kullanici, this.tanim(kod).kod, aramaId, ctx); }
     static async firma(ctx) {
         const f = await EbelgeSqlRepository.getFirmaBilgisi(ctx).catch(() => ({ vkn: "", unvan: "" }));
         return { ad: f?.unvan || "", vkn: f?.vkn || "" };
@@ -46,3 +52,10 @@ function guvenliTanim(kod) { try {
 catch {
     return null;
 } }
+/** KMT (Kur / Miktar / TL) gösterimi: seçilince yalnızca o gruba ait ve etiketsiz kolonlar kalır (kâr-zarar, .rpt parametresi). */
+function kmtUygula(tanim, kmt) {
+    const secim = (kmt || "").toUpperCase();
+    if (!["K", "M", "T"].includes(secim) || !tanim.kolonlar.some(k => k.kmt))
+        return tanim;
+    return { ...tanim, kolonlar: tanim.kolonlar.filter(k => !k.kmt || k.kmt === secim) };
+}

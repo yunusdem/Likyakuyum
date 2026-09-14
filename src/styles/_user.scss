@@ -592,3 +592,148 @@ tr.lookup-selected-row:hover > td {
     color: #BA8021 !important;
   }
 }
+
+// ----------------------------------------------------
+// 1. All Form Labels Strictly Left-Aligned Across All Pages
+// ----------------------------------------------------
+label,
+.form-label,
+.col-form-label,
+[class*="form-label"],
+label.text-end,
+label.text-sm-end,
+label.text-md-end,
+label.text-lg-end,
+.col-form-label.text-end,
+.col-form-label.text-sm-end,
+.col-form-label.text-md-end,
+.col-form-label.text-lg-end,
+.form-label.text-end,
+.form-label.text-sm-end,
+.form-label.text-md-end,
+.form-label.text-lg-end {
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
+
+@media (min-width: 0px) {
+  label,
+  .form-label,
+  .col-form-label,
+  [class*="form-label"] {
+    &.text-end,
+    &.text-sm-end,
+    &.text-md-end,
+    &.text-lg-end {
+      text-align: left !important;
+      justify-content: flex-start !important;
+    }
+  }
+}
+
+// ----------------------------------------------------
+// 2. ERP Floating Toast Notifications (Bottom-Right)
+// ----------------------------------------------------
+.erp-toast-container {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  max-width: 420px !important;
+  width: calc(100% - 48px) !important;
+  pointer-events: none;
+
+  .erp-toast-item {
+    pointer-events: auto;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+    border-radius: 8px !important;
+    animation: erpToastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+}
+
+@keyframes erpToastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+// ----------------------------------------------------
+// 3. ERP Context Menu (Sağ Tık Menüsü)
+// ----------------------------------------------------
+.erp-context-menu {
+  position: fixed;
+  z-index: 100000;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  min-width: 180px;
+  padding: 4px 0;
+  animation: erpMenuPop 0.12s ease-out;
+  user-select: none;
+
+  .erp-context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e293b;
+    background: transparent;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s ease, color 0.1s ease;
+
+    &:hover {
+      background-color: #f1f5f9;
+      color: #0f172a;
+    }
+
+    &.text-danger:hover {
+      background-color: #fee2e2;
+      color: #dc2626 !important;
+    }
+
+    svg {
+      flex-shrink: 0;
+    }
+  }
+
+  .erp-context-menu-divider {
+    height: 1px;
+    background-color: #e2e8f0;
+    margin: 4px 0;
+  }
+
+  .erp-context-menu-header {
+    padding: 4px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+  }
+}
+
+@keyframes erpMenuPop {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

@@ -42,6 +42,7 @@ import {
 import { CariService, CariKartItem, CariLookups } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
 interface VezneItem {
   id: number;
@@ -522,9 +523,10 @@ export const CariHareketPage: React.FC = () => {
   };
 
   const handleLineMeblagChange = (index: number, val: string) => {
+    const cleanVal = onlyDecimal(val);
     setLines((prev) => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], meblag: val };
+      updated[index] = { ...updated[index], meblag: cleanVal };
       return updated;
     });
   };
@@ -661,6 +663,8 @@ export const CariHareketPage: React.FC = () => {
   };
 
   const handleMiktarKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
+    blockNonNumericKeys(e, true);
+
     if (e.key === "Enter") {
       e.preventDefault();
       const currentMeblag = String(lines[idx].meblag).trim();
@@ -756,6 +760,20 @@ export const CariHareketPage: React.FC = () => {
     });
   };
 
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (successMsg) {
+      const timer = setTimeout(() => setSuccessMsg(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [successMsg]);
+
   const pageTitle = isEditMode
     ? `D- Cari Hareket Düzeltme ${currentHareketId ? `(#${currentHareketId})` : ""}`
     : `C- Cari Hareket Kayıt ${currentHareketId ? `(#${currentHareketId})` : ""}`;
@@ -771,6 +789,7 @@ export const CariHareketPage: React.FC = () => {
         onDelete={isEditMode && currentHareketId ? () => setShowDeleteModal(true) : undefined}
         hideSearch={!isEditMode}
         hideDelete={!isEditMode}
+        hideNavigation={!isEditMode}
         onFirst={navInfo.firstId ? handleNavFirst : undefined}
         onPrev={navInfo.prevId ? handleNavPrev : undefined}
         onNext={navInfo.nextId ? handleNavNext : undefined}
@@ -784,23 +803,27 @@ export const CariHareketPage: React.FC = () => {
         disabled={isSaving}
       />
 
-      {/* 2. Feedback Alerts */}
-      {error && (
-        <Alert variant="danger" dismissible onClose={() => setError(null)} className="py-2 px-3 mb-3 shadow-sm">
-          <div className="d-flex align-items-center gap-2">
-            <IconAlertCircle size={18} className="text-danger flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        </Alert>
-      )}
+      {/* 2. Feedback Alerts (Sağ altta beliren ve otomatik kaybolan toast) */}
+      {(error || successMsg) && (
+        <div className="erp-toast-container">
+          {error && (
+            <Alert variant="danger" dismissible onClose={() => setError(null)} className="erp-toast-item py-2 px-3 mb-0 border-0 shadow">
+              <div className="d-flex align-items-center gap-2">
+                <IconAlertCircle size={18} className="text-danger flex-shrink-0" />
+                <span style={{ fontSize: "13px" }}>{error}</span>
+              </div>
+            </Alert>
+          )}
 
-      {successMsg && (
-        <Alert variant="success" dismissible onClose={() => setSuccessMsg(null)} className="py-2 px-3 mb-3 shadow-sm">
-          <div className="d-flex align-items-center gap-2">
-            <IconCheck size={18} className="text-success flex-shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        </Alert>
+          {successMsg && (
+            <Alert variant="success" dismissible onClose={() => setSuccessMsg(null)} className="erp-toast-item py-2 px-3 mb-0 border-0 shadow">
+              <div className="d-flex align-items-center gap-2">
+                <IconCheck size={18} className="text-success flex-shrink-0" />
+                <span style={{ fontSize: "13px" }}>{successMsg}</span>
+              </div>
+            </Alert>
+          )}
+        </div>
       )}
 
       {/* 3. Main Form & Balance Dual Panel */}

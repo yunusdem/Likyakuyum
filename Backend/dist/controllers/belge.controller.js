@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BelgeService } from "../services/belge/belge.service.js";
+import { BELGE_DURUMLARI } from "../models/belgeSql.repository.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -11,7 +12,9 @@ const istekSema = z.object({
     bicim: z.enum(["a4", "80"]).optional(),
 }).refine(v => v.fisId || v.belgeNo, { message: "fisId veya belgeNo verilmelidir." });
 const listeSema = z.object({
-    tip: z.coerce.number().int().min(0).max(1).optional(),
+    kaynak: z.enum(["DOVIZ", "FATURA", "IRSALIYE", "GIDER"]).optional(),
+    tip: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(1).optional()),
+    durum: z.enum(BELGE_DURUMLARI).optional(),
     baslangic: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     bitis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     arama: z.string().trim().max(100).optional(),
@@ -31,7 +34,7 @@ export class BelgeController {
         const tur = req.query.tur === "RAPOR" ? "RAPOR" : req.query.tur === "BELGE" ? "BELGE" : undefined;
         return ApiResponse.ok(res, "Şablonlar listelendi.", await BelgeService.sablonlar(tur, BelgeController.getDbContext(req)));
     });
-    /** GET /api/v1/belge/fisler?tip=0|1&baslangic&bitis&arama&sayfa&boyut */
+    /** GET /api/v1/belge/fisler?kaynak=DOVIZ|FATURA|IRSALIYE|GIDER&tip=0|1&durum&baslangic&bitis&arama&sayfa&boyut — kaynak boşsa hepsi */
     static fisler = asyncHandler(async (req, res) => {
         const p = listeSema.safeParse(req.query);
         if (!p.success)

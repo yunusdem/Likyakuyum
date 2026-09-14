@@ -37,6 +37,7 @@ import {
   StoredKurDateItem,
 } from "../../services/kurService";
 import { printReportTable } from "../../utils/printReport";
+import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
 export type KurPageType = "anlik" | "saklanan";
 
@@ -308,12 +309,13 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
   // Handle cell input change
   const handleCellChange = (rowIndex: number, col: EditableCol, val: string) => {
+    const cleanVal = onlyDecimal(val);
     const key = getCellKey(rowIndex, col);
-    setRawInputs((prev) => ({ ...prev, [key]: val }));
+    setRawInputs((prev) => ({ ...prev, [key]: cleanVal }));
     setIsDirty(true);
 
-    const cleanVal = val.replace(",", ".");
-    const numVal = cleanVal === "" ? null : parseFloat(cleanVal);
+    const dotVal = cleanVal.replace(",", ".");
+    const numVal = dotVal === "" ? null : parseFloat(dotVal);
 
     setRows((prev) => {
       const updated = [...prev];
@@ -405,6 +407,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     col: EditableCol
   ) => {
     const colIndex = EDITABLE_COLS.indexOf(col);
+    blockNonNumericKeys(e, true);
 
     if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
@@ -1217,6 +1220,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                                   inputRefs.current[cellKey] = el;
                                 }}
                                 type="text"
+                                inputMode="decimal"
+                                data-decimal="true"
                                 data-custom-enter="true"
                                 className="form-control form-control-sm border-0 rounded-0 text-end font-monospace py-1 px-2"
                                 style={{

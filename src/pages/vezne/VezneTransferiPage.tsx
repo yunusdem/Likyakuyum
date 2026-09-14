@@ -32,6 +32,7 @@ import {
 } from "../../services/vezneTransferiService";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
 import { useAuth } from "../../context/AuthContext";
+import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
 interface TransferGridRow {
   id: string;
@@ -331,7 +332,7 @@ export const VezneTransferiPage: React.FC = () => {
       }
 
       if (field === "miktar") {
-        target.miktar = String(value).replace(/,/g, ".");
+        target.miktar = onlyDecimal(value);
       }
 
       next[index] = target;
@@ -458,11 +459,40 @@ export const VezneTransferiPage: React.FC = () => {
       setLines([createEmptyRow(1)]);
       return;
     }
-    setLines((prev) => {
-      const filtered = prev.filter((_, i) => i !== index);
-      return filtered.map((r, i) => ({ ...r, satirNo: i + 1 }));
-    });
+    setLines((prev) => prev.filter((_, i) => i !== index));
   };
+
+  // Sağ tık menüsü eylemleri (Satırı Sil & Yeni Satır Ekle)
+  useEffect(() => {
+    const handleGridDelete = (e: any) => {
+      const rowId = e.detail?.rowId;
+      if (rowId !== undefined) {
+        const foundIdx = lines.findIndex((l) => l.id === rowId);
+        if (foundIdx !== -1) {
+          handleRemoveLine(foundIdx);
+        } else if (!isNaN(Number(rowId))) {
+          handleRemoveLine(Number(rowId));
+        }
+      }
+    };
+    const handleGridAdd = () => {
+      setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+    };
+    window.addEventListener("erp-grid-row-delete", handleGridDelete);
+    window.addEventListener("erp-grid-row-add", handleGridAdd);
+    return () => {
+      window.removeEventListener("erp-grid-row-delete", handleGridDelete);
+      window.removeEventListener("erp-grid-row-add", handleGridAdd);
+    };
+  }, [lines]);
+
+  // Bildirimlerin 3.5 saniye sonra otomatik kapanması
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   // Toplu Transfer (F5): Fetches source vezne balances and populates grid
   const handleTopluTransfer = useCallback(async () => {
@@ -804,16 +834,18 @@ export const VezneTransferiPage: React.FC = () => {
         }
       />
 
-      {/* Notification banner */}
+      {/* Notification banner: Sağ altta beliren ve 3.5 sn sonra yok olan toast */}
       {notification && (
-        <Alert
-          variant={notification.type}
-          dismissible
-          onClose={() => setNotification(null)}
-          className="mb-1 py-1 px-2.5 d-flex align-items-center justify-content-between shadow-2xs small"
-        >
-          <span>{notification.message}</span>
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert
+            variant={notification.type}
+            dismissible
+            onClose={() => setNotification(null)}
+            className="erp-toast-item py-2 px-3 mb-0 border-0 shadow d-flex align-items-center justify-content-between small"
+          >
+            <span>{notification.message}</span>
+          </Alert>
+        </div>
       )}
 
       {/* Main Window Frame matching Desktop Screenshot */}
@@ -998,7 +1030,6 @@ export const VezneTransferiPage: React.FC = () => {
                 <th style={{ width: "220px", padding: "4px 8px" }} className="text-end">
                   Miktar
                 </th>
-                <th style={{ width: "35px", padding: "4px 4px" }} className="text-center"></th>
               </tr>
             </thead>
             <tbody>
@@ -1046,18 +1077,20 @@ export const VezneTransferiPage: React.FC = () => {
                   {/* Miktar */}
                   <td style={{ padding: "3px 4px" }}>
                     <Form.Control
-                      type="text"
-                      inputMode="decimal"
-                      size="sm"
-                      value={line.miktar}
-                      onChange={(e) => handleLineChange(idx, "miktar", e.target.value)}
-                      placeholder=""
-                      className="text-end fw-bold p-1"
-                      style={{ height: "26px", fontSize: "12.5px" }}
                       ref={(el) => {
                         rowInputRefs.current[`miktar-${idx}`] = el;
                       }}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "miktar")}
+                      type="text"
+                      inputMode="decimal"
+                      data-decimal="true"
+                      className="text-end fw-bold p-1"
+                      style={{ height: "26px", fontSize: "13px" }}
+                      value={line.miktar}
+                      onChange={(e) => handleLineChange(idx, "miktar", e.target.value)}
+                      onKeyDown={(e) => {
+                        blockNonNumericKeys(e, true);
+                        handleGridKeyDown(e, idx, "miktar");
+                      }}
                     />
                   </td>
 

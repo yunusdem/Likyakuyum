@@ -203,31 +203,33 @@ export const MasakListsPage: React.FC = () => {
         }
       />
 
-      {/* Tek tuşla güncelleme sonucu */}
-      {hizliHata && (
-        <Alert
-          variant="danger"
-          className="py-2 px-3 mb-3"
-          style={{ fontSize: "0.82rem" }}
-          dismissible
-          onClose={() => setHizliHata(null)}
-        >
-          {hizliHata}
-        </Alert>
-      )}
-      {hizliRapor && (
-        <Alert
-          variant={hizliRapor.sonuclar.some((s) => s.durum === "hata") ? "warning" : "success"}
-          className="py-2 px-3 mb-3"
-          style={{ fontSize: "0.82rem" }}
-          dismissible
-          onClose={() => setHizliRapor(null)}
-        >
-          <div className="fw-semibold mb-1">
-            Güncelleme tamamlandı · {masakTarihSaat(hizliRapor.guncellemeZamani)}
-          </div>
-          <div className="d-flex flex-wrap gap-3">
-            {hizliRapor.sonuclar.map((s) => (
+      {/* Tek tuşla güncelleme sonucu: Sağ altta toast */}
+      {(hizliHata || hizliRapor) && (
+        <div className="erp-toast-container">
+          {hizliHata && (
+            <Alert
+              variant="danger"
+              className="erp-toast-item py-2 px-3 mb-0 border-0 shadow"
+              style={{ fontSize: "0.82rem" }}
+              dismissible
+              onClose={() => setHizliHata(null)}
+            >
+              {hizliHata}
+            </Alert>
+          )}
+          {hizliRapor && (
+            <Alert
+              variant={hizliRapor.sonuclar.some((s) => s.durum === "hata") ? "warning" : "success"}
+              className="erp-toast-item py-2 px-3 mb-0 border-0 shadow"
+              style={{ fontSize: "0.82rem" }}
+              dismissible
+              onClose={() => setHizliRapor(null)}
+            >
+              <div className="fw-semibold mb-1">
+                Güncelleme tamamlandı · {masakTarihSaat(hizliRapor.guncellemeZamani)}
+              </div>
+              <div className="d-flex flex-wrap gap-3">
+                {hizliRapor.sonuclar.map((s) => (
               <span key={s.listeKod} className="d-flex align-items-center gap-1">
                 {s.durum === "basarili" ? (
                   <IconCheck size={14} className="text-success" />
@@ -246,6 +248,8 @@ export const MasakListsPage: React.FC = () => {
             ))}
           </div>
         </Alert>
+          )}
+        </div>
       )}
 
       {/* Durum bandı */}

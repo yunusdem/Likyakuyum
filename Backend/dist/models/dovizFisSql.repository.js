@@ -132,6 +132,576 @@ export class DovizFisSqlRepository {
           )
         END
       `);
+            // 3. Stored Procedure: SODVZ_FIS_KAYDET (Otomatik Seri No & Belge No desteğiyle)
+            try {
+                await pool.request().query(`
+          CREATE OR ALTER PROCEDURE [dbo].[SODVZ_FIS_KAYDET]
+            @FIS_ID INT OUTPUT,
+            @VEZNE_ID INT,
+            @TIP TINYINT,
+            @TARIH DATETIME,
+            @ZAMAN DATETIME,
+            @SERI_NO VARCHAR(20) OUTPUT,
+            @BELGE_NO VARCHAR(50) OUTPUT,
+            @GELIS_NEDENI VARCHAR(100) = NULL,
+            @KUR_TURU TINYINT = 0,
+            @ISTATISTIK_ID INT = NULL,
+            @CARI_KART_ID INT = NULL,
+            @UNVAN VARCHAR(100) = NULL,
+            @KISILIK_TIPI TINYINT = 0,
+            @UYRUK_ID INT = NULL,
+            @ULKE_ID INT = NULL,
+            @PASAPORT_NO VARCHAR(30) = NULL,
+            @HUKUKI_YAPI_ID INT = NULL,
+            @VERGI_DAIRESI_ID INT = NULL,
+            @VERGI_KIMLIK_NO VARCHAR(20) = NULL,
+            @BABA_ADI VARCHAR(50) = NULL,
+            @ADRES VARCHAR(250) = NULL,
+            @ILCE_ID INT = NULL,
+            @POSTA_KODU_ID INT = NULL,
+            @IL_ID INT = NULL,
+            @VEKIL_TURU TINYINT = 0,
+            @VEKIL_KISILIK_TIPI TINYINT = 0,
+            @VEKIL_ADI VARCHAR(50) = NULL,
+            @VEKIL_KIMLIK_NO VARCHAR(20) = NULL,
+            @TOPLAM_TUTAR DECIMAL(18,4) = 0,
+            @YUVARLAMA DECIMAL(18,4) = 0,
+            @ODEME_TUTARI DECIMAL(18,4) = 0,
+            @BANKA_HESABI_ID INT = NULL,
+            @KMV_UYGULAMA_SEKLI TINYINT = 0,
+            @EPOSTA VARCHAR(100) = NULL,
+            @MERKEZ_USD_KURU DECIMAL(18,6) = 1,
+            @GISE_USD_KURU DECIMAL(18,6) = 1,
+            @GM_BEYANNAME_TARIH DATETIME = NULL,
+            @GM_BEYANNAME_NO VARCHAR(30) = NULL,
+            @GM_DOVIZ_TARIH DATETIME = NULL,
+            @GM_DOVIZ_SAYI VARCHAR(30) = NULL,
+            @GM_TEYIT_TARIH DATETIME = NULL,
+            @GM_TEYIT_SAYI VARCHAR(30) = NULL,
+            @GM_FATURA_NO VARCHAR(30) = NULL,
+            @ARBITRAJ_ID INT = NULL,
+            @TELEFON_NO VARCHAR(30) = NULL,
+            @MESLEK_ID INT = NULL,
+            @DOGUM_TARIHI DATETIME = NULL,
+            @DOGUM_YERI VARCHAR(100) = NULL,
+            @KIMLIK_SERI_NO VARCHAR(30) = NULL,
+            @ANNE_ADI VARCHAR(50) = NULL,
+            @IPTAL BIT = 0,
+            @IPTAL_TARIHI DATETIME = NULL,
+            @MASAK_LISTESINDE_VAR BIT = 0,
+            @SUPHELI_ISLEMLER_YETKILI_ID INT = NULL,
+            @YUVARLAMA_ARALIGI DECIMAL(18,4) = 0,
+            @YUVARLAMA_ESIGI DECIMAL(18,4) = 0,
+            @E_FATURA_POSTA_KUTUSU VARCHAR(100) = NULL,
+            @BELGE_TURU TINYINT = 0,
+            @KIMLIK_GECERLILIK_TARIHI DATETIME = NULL,
+            @KIMLIK_BELGE_TURU TINYINT = 0,
+            @KULLANICI_ID INT = 1,
+            @YAZICI_ID INT = NULL,
+            @GUID UNIQUEIDENTIFIER = NULL,
+            @DEGISIKLIK_TAKIP_VAR BIT = 0,
+            @YENI_KAYIT BIT OUTPUT
+          AS
+          BEGIN
+            SET NOCOUNT ON;
+            DECLARE @HATA_MESAJI VARCHAR(250);
+            DECLARE @DONUS_KODU INT;
+            DECLARE @SIMDIKI_ZAMAN DATETIME;
+            DECLARE @DONEM_ONAY_TARIHI DATETIME;
+            DECLARE @E_DOVIZ_FIS_BASLANGIC_TARIHI DATETIME;
+            DECLARE @ONCEKI_E_DOVIZ_FIS_BASLANGIC_TARIHI DATETIME;
+            DECLARE @KONTROL_EDILECEK_TARIH DATETIME;
+            DECLARE @ONCEKI_TARIH DATETIME;
+            DECLARE @KAYITSIZ_MUSTERI_ID INT;
+            DECLARE @DONUS_DEGERI INT;
+
+            IF @CARI_KART_ID < 0
+            BEGIN
+              SET @KAYITSIZ_MUSTERI_ID = ABS(@CARI_KART_ID);
+              SET @CARI_KART_ID = NULL;
+            END
+            ELSE IF @CARI_KART_ID = 0 SET @CARI_KART_ID = NULL;
+
+            SET @SIMDIKI_ZAMAN = GETDATE();
+            DECLARE @NUMERATOR_TURU TINYINT;
+            DECLARE @FIS_DIZAYN_TIPI TINYINT = 0;
+            DECLARE @SATIR_SAYISI INT;
+            DECLARE @CIKTI_SATIR_SAYISI INT = 1;
+            DECLARE @SAYFA_SAYISI INT;
+            DECLARE @ONEK VARCHAR(20);
+            DECLARE @ONUNE_SIFIR_KOY BIT = 1;
+            DECLARE @SATIR_NO INT;
+            DECLARE @SAYAC BIGINT;
+            DECLARE @NO VARCHAR(50);
+            DECLARE @ISTATISTIK_KODU VARCHAR(50);
+            DECLARE @ONCEKI_IPTAL BIT;
+            DECLARE @GONDERILDI BIT;
+            DECLARE @ONCEKI_GONDERILDI BIT;
+
+            IF @GUID IS NOT NULL SELECT @FIS_ID = FIS_ID FROM TODVZ_FIS WHERE GUID = @GUID;
+            IF (@FIS_ID IS NULL) SET @YENI_KAYIT = 1;
+            ELSE SET @YENI_KAYIT = 0;
+
+            UPDATE #TODVZ_ISKELE_FIS_SATIRI SET ETTN = NEWID() WHERE ETTN IS NULL;
+            UPDATE #TODVZ_ISKELE_FIS_SATIRI SET E_BELGE_DURUMU = 0, E_BELGE_HATA_ACIKLAMASI = NULL WHERE E_BELGE_DURUMU = 2;
+
+            IF OBJECT_ID('TODVZ_ISTATISTIK') IS NOT NULL AND @ISTATISTIK_ID IS NOT NULL
+            BEGIN
+              SELECT 
+                @DONEM_ONAY_TARIHI = T.DONEM_ONAY_TARIHI, 
+                @ISTATISTIK_KODU = IST.KOD, 
+                @FIS_DIZAYN_TIPI = ISNULL(IST.FIS_DIZAYN_TIPI, 0), 
+                @CIKTI_SATIR_SAYISI = ISNULL(IST.CIKTI_SATIR_SAYISI, 1),
+                @E_DOVIZ_FIS_BASLANGIC_TARIHI = CASE ISNULL(IST.FIS_DIZAYN_TIPI, 0) + 1
+                  WHEN 1 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_1
+                  WHEN 2 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_2
+                  WHEN 3 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_3
+                  WHEN 4 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_4
+                END
+              FROM TODVZ_TANIM T, TODVZ_ISTATISTIK IST
+              WHERE IST.ISTATISTIK_ID = @ISTATISTIK_ID;
+            END;
+
+            IF @E_DOVIZ_FIS_BASLANGIC_TARIHI IS NOT NULL AND @TARIH >= @E_DOVIZ_FIS_BASLANGIC_TARIHI 
+              SET @DEGISIKLIK_TAKIP_VAR = 1;
+            SET @KONTROL_EDILECEK_TARIH = @TARIH;
+
+            IF @FIS_ID IS NOT NULL
+            BEGIN
+              SELECT 
+                @ONCEKI_IPTAL = IPTAL, 
+                @KONTROL_EDILECEK_TARIH = TARIH,
+                @ONCEKI_E_DOVIZ_FIS_BASLANGIC_TARIHI = CASE ISNULL(IST.FIS_DIZAYN_TIPI, 0) + 1
+                  WHEN 1 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_1
+                  WHEN 2 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_2
+                  WHEN 3 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_3
+                  WHEN 4 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_4
+                END
+              FROM TODVZ_FIS F
+              INNER JOIN TODVZ_ISTATISTIK IST ON IST.ISTATISTIK_ID = F.ISTATISTIK_ID, TODVZ_TANIM T
+              WHERE F.FIS_ID = @FIS_ID;
+            END;
+
+            IF @DONEM_ONAY_TARIHI IS NOT NULL AND @KONTROL_EDILECEK_TARIH <= @DONEM_ONAY_TARIHI
+            BEGIN
+              SET @HATA_MESAJI = 'Onaylanmış hesap dönemine ait işlem yapılamaz';
+              GOTO UNDO;
+            END;
+
+            IF @ISTATISTIK_ID IS NOT NULL /*Ofis.Doviz programı*/
+            BEGIN
+              SELECT @SATIR_SAYISI = COUNT(*) FROM #TODVZ_ISKELE_FIS_SATIRI;
+              IF ISNULL(@SATIR_SAYISI, 0) = 0 SET @SATIR_SAYISI = 1;
+              IF ISNULL(@CIKTI_SATIR_SAYISI, 0) = 0 SET @CIKTI_SATIR_SAYISI = 1;
+              SET @SAYFA_SAYISI = @SATIR_SAYISI / @CIKTI_SATIR_SAYISI;
+              IF @SATIR_SAYISI % @CIKTI_SATIR_SAYISI <> 0 SET @SAYFA_SAYISI = @SAYFA_SAYISI + 1;
+
+              -- SERI NO ÜRETİMİ (Boş ise numeratörden veya son kayıttan otomatik ata)
+              IF (@SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@SERI_NO))) = 0)
+              BEGIN
+                SET @NUMERATOR_TURU = @TIP * 4 + ISNULL(@FIS_DIZAYN_TIPI, 0);
+                DECLARE @NUM_YAZICI_ID_SERI INT = @YAZICI_ID;
+                IF @NUM_YAZICI_ID_SERI IS NULL AND OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+                BEGIN
+                  SELECT TOP 1 @NUM_YAZICI_ID_SERI = YAZICI_ID
+                  FROM TODVZ_NUMERATOR
+                  WHERE TUR = @NUMERATOR_TURU AND YAZICI_ID IS NOT NULL;
+                END;
+
+                IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+                BEGIN
+                  BEGIN TRY
+                    EXEC @DONUS_KODU = SODVZ_NUMERATOR_URET @NUMERATOR_TURU, @SERI_NO OUTPUT, @NUM_YAZICI_ID_SERI, @SAYFA_SAYISI, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                  END TRY
+                  BEGIN CATCH
+                  END CATCH;
+
+                  IF (@SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@SERI_NO))) = 0) AND @NUM_YAZICI_ID_SERI IS NOT NULL
+                  BEGIN
+                    BEGIN TRY
+                      EXEC @DONUS_KODU = SODVZ_NUMERATOR_URET @NUMERATOR_TURU, @SERI_NO OUTPUT, NULL, @SAYFA_SAYISI, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                    END TRY
+                    BEGIN CATCH
+                    END CATCH;
+                  END;
+                END;
+
+                IF @DONUS_KODU = 1
+                BEGIN
+                  SET @HATA_MESAJI = 'Numeratör bitiş sayısını geçmiş';
+                  GOTO UNDO;
+                END;
+
+                -- Numaratör tablosunda tanımlı değilse son seri nodan türet
+                IF @SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@SERI_NO))) = 0
+                BEGIN
+                  DECLARE @SON_KAYITLI_SERI VARCHAR(20) = NULL;
+                  SELECT TOP 1 @SON_KAYITLI_SERI = SERI_NO 
+                  FROM TODVZ_FIS 
+                  WHERE TIP = @TIP AND SERI_NO IS NOT NULL AND LEN(SERI_NO) > 0 
+                  ORDER BY FIS_ID DESC;
+
+                  IF @SON_KAYITLI_SERI IS NOT NULL AND ISNUMERIC(RIGHT(RTRIM(@SON_KAYITLI_SERI), 6)) = 1
+                  BEGIN
+                    SET @SERI_NO = LEFT(RTRIM(@SON_KAYITLI_SERI), LEN(RTRIM(@SON_KAYITLI_SERI)) - 6) + RIGHT('000000' + CAST(CAST(RIGHT(RTRIM(@SON_KAYITLI_SERI), 6) AS INT) + 1 AS VARCHAR(10)), 6);
+                  END
+                  ELSE
+                  BEGIN
+                    SET @SERI_NO = CASE @TIP WHEN 0 THEN 'A' ELSE 'S' END + RIGHT('000000000' + CAST(ISNULL((SELECT MAX(FIS_ID) FROM TODVZ_FIS), 0) + 1 AS VARCHAR(10)), 9);
+                  END;
+                END;
+
+                IF @SERI_NO IS NOT NULL
+                BEGIN
+                  SET @SATIR_NO = 0;
+                  SET @SAYAC = CAST(RIGHT(RTRIM(@SERI_NO), LEN(@SERI_NO) - LEN(ISNULL(@ONEK,''))) AS BIGINT);
+                  SET @NO = @SERI_NO;
+                  WHILE @SATIR_NO < @SATIR_SAYISI
+                  BEGIN
+                    UPDATE #TODVZ_ISKELE_FIS_SATIRI SET SERI_NO = @NO WHERE SATIR_NO = @SATIR_NO;
+                    SET @SATIR_NO = @SATIR_NO + 1;
+                    IF @SATIR_NO % @CIKTI_SATIR_SAYISI = 0
+                    BEGIN
+                      SET @SAYAC = @SAYAC + 1;
+                      SET @NO = STR(@SAYAC, LEN(@SERI_NO) - LEN(ISNULL(@ONEK,'')));
+                      IF @ONUNE_SIFIR_KOY = 1 SET @NO = REPLACE(RTRIM(@NO), ' ' , '0');
+                      ELSE SET @NO = LTRIM(@NO);
+                      SET @NO = ISNULL(@ONEK, '') + @NO;
+                    END;
+                  END;
+                END;
+              END;
+
+              -- BELGE NO ÜRETİMİ
+              IF (@BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@BELGE_NO))) = 0)
+              BEGIN
+                IF @E_DOVIZ_FIS_BASLANGIC_TARIHI IS NOT NULL AND @TARIH >= @E_DOVIZ_FIS_BASLANGIC_TARIHI
+                BEGIN
+                  SET @NUMERATOR_TURU = 14 + @TIP * 4 + ISNULL(@FIS_DIZAYN_TIPI, 0);
+                  SET @YAZICI_ID = NULL;
+                END
+                ELSE SET @NUMERATOR_TURU = CASE @TIP WHEN 0 THEN 8 ELSE 9 END;
+
+                IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+                BEGIN
+                  BEGIN TRY
+                    EXEC @DONUS_KODU = SODVZ_NUMERATOR_URET @NUMERATOR_TURU, @BELGE_NO OUTPUT, @YAZICI_ID, @SAYFA_SAYISI, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                  END TRY
+                  BEGIN CATCH
+                  END CATCH;
+                END;
+
+                IF @DONUS_KODU = 1
+                BEGIN
+                  SET @HATA_MESAJI = 'Numeratör bitiş sayısını geçmiş';
+                  GOTO UNDO;
+                END;
+
+                IF @BELGE_NO IS NOT NULL
+                BEGIN
+                  SET @SATIR_NO = 0;
+                  SET @SAYAC = CAST(RIGHT(RTRIM(@BELGE_NO), LEN(@BELGE_NO) - LEN(ISNULL(@ONEK,''))) AS BIGINT);
+                  SET @NO = @BELGE_NO;
+                  WHILE @SATIR_NO < @SATIR_SAYISI
+                  BEGIN
+                    UPDATE #TODVZ_ISKELE_FIS_SATIRI SET BELGE_NO = @NO WHERE SATIR_NO = @SATIR_NO;
+                    SET @SATIR_NO = @SATIR_NO + 1;
+                    IF @SATIR_NO % @CIKTI_SATIR_SAYISI = 0
+                    BEGIN
+                      SET @SAYAC = @SAYAC + 1;
+                      SET @NO = STR(@SAYAC, LEN(@BELGE_NO) - LEN(ISNULL(@ONEK,'')));
+                      IF @ONUNE_SIFIR_KOY = 1 SET @NO = REPLACE(RTRIM(@NO), ' ' , '0');
+                      ELSE SET @NO = LTRIM(@NO);
+                      SET @NO = ISNULL(@ONEK, '') + @NO;
+                    END;
+                  END;
+                END;
+              END;
+
+              IF @E_DOVIZ_FIS_BASLANGIC_TARIHI IS NOT NULL AND @TARIH >= @E_DOVIZ_FIS_BASLANGIC_TARIHI
+              BEGIN
+                SELECT @HATA_MESAJI = LTRIM(STR(SATIR_NO + 1)) +
+                  CASE WHEN @FIS_ID IS NOT NULL
+                    THEN '. Satırın e-belge numarası üretilemiyor. Çünkü fiş daha önce girilmiş ve e-belge numaraları verilmiş.'
+                    ELSE '. Satırın e-belge numarası üretilemiyor. Çünkü ilgili numeratörler tanımlanmamış.'
+                  END
+                FROM #TODVZ_ISKELE_FIS_SATIRI
+                WHERE BELGE_NO IS NULL;
+                IF @HATA_MESAJI IS NOT NULL GOTO UNDO;
+              END;
+
+              IF @SERI_NO IS NULL
+              BEGIN
+                SET @HATA_MESAJI = 'Seri noyu boş geçemezsiniz';
+                GOTO UNDO;
+              END
+              ELSE IF @YENI_KAYIT = 1 AND EXISTS(SELECT 1 FROM TODVZ_FIS WHERE SERI_NO = @SERI_NO)
+              BEGIN
+                SET @HATA_MESAJI = RTRIM(@SERI_NO) + ' bu seri no daha önce kaydedilmiş';
+                GOTO UNDO;
+              END
+              ELSE IF @YENI_KAYIT = 0 AND EXISTS(SELECT 1 FROM TODVZ_FIS WHERE FIS_ID <> @FIS_ID AND SERI_NO = @SERI_NO)
+              BEGIN
+                SET @HATA_MESAJI = RTRIM(@SERI_NO) + ' bu seri no daha önce kaydedilmiş';
+                GOTO UNDO;
+              END;
+            END
+            ELSE 
+            BEGIN /*Ofis.Sarrafiye programı*/
+              DECLARE @E_BELGE_AKTIF BIT = 0;
+              IF EXISTS(SELECT 1 FROM TODVZ_TANIM WHERE E_BELGE_BASLANGIC_TARIHI <= @TARIH) SET @E_BELGE_AKTIF = 1;
+              
+              IF @E_BELGE_AKTIF = 1
+              BEGIN
+                IF @TIP = 0
+                BEGIN
+                  IF @BELGE_TURU = 0 SET @NUMERATOR_TURU = 22;
+                  ELSE IF @BELGE_TURU = 1 SET @NUMERATOR_TURU = 26;
+                END
+                ELSE BEGIN
+                  IF @BELGE_TURU = 0 SET @NUMERATOR_TURU = 23;
+                  ELSE IF @BELGE_TURU = 1 SET @NUMERATOR_TURU = 25;
+                  ELSE SET @NUMERATOR_TURU = 24;
+                END;
+              END
+              ELSE SET @NUMERATOR_TURU = CASE @TIP WHEN 0 THEN 22 ELSE 23 END;
+
+              IF @NUMERATOR_TURU IS NOT NULL AND ISNULL(@BELGE_NO,'') = ''
+              BEGIN
+                IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+                BEGIN
+                  BEGIN TRY
+                    EXEC @DONUS_KODU = SODVZ_NUMERATOR_URET @NUMERATOR_TURU, @BELGE_NO OUTPUT, NULL, 1, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                  END TRY
+                  BEGIN CATCH
+                  END CATCH;
+                END;
+                IF @DONUS_KODU = 1
+                BEGIN
+                  SET @HATA_MESAJI = 'Numeratör bitiş sayısını geçmiş';
+                  GOTO UNDO;
+                END;
+              END;
+
+              IF (@SERI_NO IS NULL OR LEN(ISNULL(@SERI_NO,'')) = 0)
+              BEGIN
+                DECLARE @SARRAF_NUM_TUR INT = CASE @TIP WHEN 0 THEN 0 ELSE 4 END;
+                DECLARE @SARRAF_YAZICI_ID INT = NULL;
+                IF OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+                BEGIN
+                  SELECT TOP 1 @SARRAF_YAZICI_ID = YAZICI_ID 
+                  FROM TODVZ_NUMERATOR 
+                  WHERE TUR = @SARRAF_NUM_TUR 
+                  ORDER BY CASE WHEN YAZICI_ID IS NOT NULL THEN 0 ELSE 1 END;
+                END;
+
+                IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+                BEGIN
+                  BEGIN TRY
+                    EXEC SODVZ_NUMERATOR_URET @SARRAF_NUM_TUR, @SERI_NO OUTPUT, @SARRAF_YAZICI_ID, 1, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                  END TRY
+                  BEGIN CATCH
+                  END CATCH;
+                END;
+
+                IF @SERI_NO IS NULL
+                BEGIN
+                  SET @SERI_NO = CASE @TIP WHEN 0 THEN 'A' ELSE 'S' END + RIGHT('000000000' + CAST(ISNULL((SELECT MAX(FIS_ID) FROM TODVZ_FIS), 0) + 1 AS VARCHAR(10)), 9);
+                END;
+                UPDATE #TODVZ_ISKELE_FIS_SATIRI SET SERI_NO = @SERI_NO WHERE SERI_NO IS NULL OR LEN(RTRIM(SERI_NO)) = 0;
+
+                IF (@BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@BELGE_NO))) = 0)
+                BEGIN
+                  DECLARE @SARRAF_BELGE_NUM_TUR INT = CASE @TIP WHEN 0 THEN 8 ELSE 9 END;
+                  IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+                  BEGIN
+                    BEGIN TRY
+                      EXEC SODVZ_NUMERATOR_URET @SARRAF_BELGE_NUM_TUR, @BELGE_NO OUTPUT, @SARRAF_YAZICI_ID, 1, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                    END TRY
+                    BEGIN CATCH
+                    END CATCH;
+                    IF @BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@BELGE_NO))) = 0
+                    BEGIN
+                      BEGIN TRY
+                        EXEC SODVZ_NUMERATOR_URET @SARRAF_BELGE_NUM_TUR, @BELGE_NO OUTPUT, NULL, 1, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                      END TRY
+                      BEGIN CATCH
+                      END CATCH;
+                    END;
+                  END;
+                  IF @BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@BELGE_NO))) = 0
+                  BEGIN
+                    SET @BELGE_NO = CASE @TIP WHEN 0 THEN 'B-A' ELSE 'B-S' END + RIGHT('000000000' + CAST(ISNULL((SELECT MAX(FIS_ID) FROM TODVZ_FIS), 0) + 1 AS VARCHAR(10)), 9);
+                  END;
+                  UPDATE #TODVZ_ISKELE_FIS_SATIRI SET BELGE_NO = @BELGE_NO WHERE BELGE_NO IS NULL OR LEN(RTRIM(BELGE_NO)) = 0;
+                END;
+              END;
+            END;
+
+            DECLARE @SINIR_TABLO_TURU TINYINT = CASE WHEN LEFT(ISNULL(@ISTATISTIK_KODU,' '), 1) IN ('A', 'T') THEN 1 ELSE 0 END;
+            IF EXISTS(SELECT 1 FROM sys.tables WHERE name = 'TODVZ_TANIM_VERGI_SINIRI') 
+               AND EXISTS(SELECT 1 FROM TODVZ_TANIM_VERGI_SINIRI WHERE TUR = @SINIR_TABLO_TURU) 
+               AND @FIS_DIZAYN_TIPI <> 1
+            BEGIN
+              IF OBJECT_ID('SODVZ_FIS_VERGI_SINIR_DEGERLERINI_KONTROL_ET') IS NOT NULL
+              BEGIN
+                EXEC SODVZ_FIS_VERGI_SINIR_DEGERLERINI_KONTROL_ET
+                  @HATA_MESAJI OUTPUT, @SINIR_TABLO_TURU, @TARIH, @TOPLAM_TUTAR, @CARI_KART_ID,
+                  @UNVAN, @GELIS_NEDENI, @KISILIK_TIPI, @UYRUK_ID, @ULKE_ID, @PASAPORT_NO,
+                  @HUKUKI_YAPI_ID, @VERGI_DAIRESI_ID, @VERGI_KIMLIK_NO, @EPOSTA, @BABA_ADI,
+                  @ADRES, @TELEFON_NO, @MESLEK_ID, @DOGUM_TARIHI, @DOGUM_YERI, @KIMLIK_SERI_NO,
+                  @ANNE_ADI, @IL_ID, @ILCE_ID;
+                IF LEN(@HATA_MESAJI) > 0 GOTO UNDO;
+              END;
+            END;
+
+            BEGIN TRAN;
+            IF (@FIS_ID IS NULL)
+            BEGIN
+              INSERT INTO TODVZ_FIS (
+                VEZNE_ID, TIP, TARIH, ZAMAN, SERI_NO, BELGE_NO, GELIS_NEDENI, KUR_TURU,
+                ISTATISTIK_ID, CARI_KART_ID, KAYITSIZ_MUSTERI_ID, UNVAN, KISILIK_TIPI,
+                UYRUK_ID, ULKE_ID, PASAPORT_NO, HUKUKI_YAPI_ID, VERGI_DAIRESI_ID, VERGI_KIMLIK_NO,
+                BABA_ADI, ADRES, ILCE_ID, POSTA_KODU_ID, IL_ID, VEKIL_TURU, VEKIL_KISILIK_TIPI,
+                VEKIL_ADI, VEKIL_KIMLIK_NO, TOPLAM_TUTAR, YUVARLAMA, ODEME_TUTARI, BANKA_HESABI_ID,
+                KMV_UYGULAMA_SEKLI, EPOSTA, MERKEZ_USD_KURU, GISE_USD_KURU, GM_BEYANNAME_TARIH,
+                GM_BEYANNAME_NO, GM_DOVIZ_TARIH, GM_DOVIZ_SAYI, GM_TEYIT_TARIH, GM_TEYIT_SAYI,
+                GM_FATURA_NO, ARBITRAJ_ID, TELEFON_NO, MESLEK_ID, DOGUM_TARIHI, DOGUM_YERI,
+                KIMLIK_SERI_NO, ANNE_ADI, IPTAL, IPTAL_TARIHI, MASAK_LISTESINDE_VAR,
+                SUPHELI_ISLEMLER_YETKILI_ID, YUVARLAMA_ARALIGI, YUVARLAMA_ESIGI, E_FATURA_POSTA_KUTUSU,
+                BELGE_TURU, E_FATURA_ETTN, KIMLIK_GECERLILIK_TARIHI, KIMLIK_BELGE_TURU,
+                EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI, GUID
+              )
+              VALUES (
+                @VEZNE_ID, @TIP, @TARIH, @ZAMAN, @SERI_NO, @BELGE_NO, @GELIS_NEDENI, @KUR_TURU,
+                @ISTATISTIK_ID, @CARI_KART_ID, @KAYITSIZ_MUSTERI_ID, @UNVAN, @KISILIK_TIPI,
+                @UYRUK_ID, @ULKE_ID, @PASAPORT_NO, @HUKUKI_YAPI_ID, @VERGI_DAIRESI_ID, @VERGI_KIMLIK_NO,
+                @BABA_ADI, @ADRES, @ILCE_ID, @POSTA_KODU_ID, @IL_ID, @VEKIL_TURU, @VEKIL_KISILIK_TIPI,
+                @VEKIL_ADI, @VEKIL_KIMLIK_NO, @TOPLAM_TUTAR, @YUVARLAMA, @ODEME_TUTARI, @BANKA_HESABI_ID,
+                @KMV_UYGULAMA_SEKLI, @EPOSTA, @MERKEZ_USD_KURU, @GISE_USD_KURU, @GM_BEYANNAME_TARIH,
+                @GM_BEYANNAME_NO, @GM_DOVIZ_TARIH, @GM_DOVIZ_SAYI, @GM_TEYIT_TARIH, @GM_TEYIT_SAYI,
+                @GM_FATURA_NO, @ARBITRAJ_ID, @TELEFON_NO, @MESLEK_ID, @DOGUM_TARIHI, @DOGUM_YERI,
+                @KIMLIK_SERI_NO, @ANNE_ADI, @IPTAL, @IPTAL_TARIHI, @MASAK_LISTESINDE_VAR,
+                @SUPHELI_ISLEMLER_YETKILI_ID, @YUVARLAMA_ARALIGI, @YUVARLAMA_ESIGI, @E_FATURA_POSTA_KUTUSU,
+                @BELGE_TURU, NEWID(), @KIMLIK_GECERLILIK_TARIHI, @KIMLIK_BELGE_TURU,
+                @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN,
+                CASE WHEN @GUID IS NOT NULL THEN @GUID ELSE NEWID() END
+              );
+              IF @@ERROR <> 0
+              BEGIN
+                SET @HATA_MESAJI = 'Fiş kaydedilemedi';
+                GOTO UNDO;
+              END;
+              SET @FIS_ID = SCOPE_IDENTITY();
+            END
+            ELSE BEGIN
+              IF @GUID IS NULL AND EXISTS(SELECT 1 FROM TODVZ_FIS_SATIRI WHERE FIS_ID = @FIS_ID AND ISNULL(E_BELGE_DURUMU,0) = 1)
+              BEGIN
+                SET @HATA_MESAJI = 'GİB e gönderilen fişleri değiştiremezsiniz.';
+                GOTO UNDO;
+              END;
+
+              UPDATE TODVZ_FIS SET 
+                VEZNE_ID = @VEZNE_ID, TIP = @TIP, TARIH = @TARIH, ZAMAN = @ZAMAN,
+                SERI_NO = @SERI_NO, BELGE_NO = @BELGE_NO, GELIS_NEDENI = @GELIS_NEDENI,
+                KUR_TURU = @KUR_TURU, ISTATISTIK_ID = @ISTATISTIK_ID, CARI_KART_ID = @CARI_KART_ID,
+                KAYITSIZ_MUSTERI_ID = @KAYITSIZ_MUSTERI_ID, UNVAN = @UNVAN, KISILIK_TIPI = @KISILIK_TIPI,
+                UYRUK_ID = @UYRUK_ID, ULKE_ID = @ULKE_ID, PASAPORT_NO = @PASAPORT_NO,
+                HUKUKI_YAPI_ID = @HUKUKI_YAPI_ID, VERGI_DAIRESI_ID = @VERGI_DAIRESI_ID,
+                VERGI_KIMLIK_NO = @VERGI_KIMLIK_NO, BABA_ADI = @BABA_ADI, ADRES = @ADRES,
+                ILCE_ID = @ILCE_ID, POSTA_KODU_ID = @POSTA_KODU_ID, IL_ID = @IL_ID,
+                VEKIL_TURU = @VEKIL_TURU, VEKIL_KISILIK_TIPI = @VEKIL_KISILIK_TIPI,
+                VEKIL_ADI = @VEKIL_ADI, VEKIL_KIMLIK_NO = @VEKIL_KIMLIK_NO,
+                TOPLAM_TUTAR = @TOPLAM_TUTAR, YUVARLAMA = @YUVARLAMA, ODEME_TUTARI = @ODEME_TUTARI,
+                BANKA_HESABI_ID = @BANKA_HESABI_ID, KMV_UYGULAMA_SEKLI = @KMV_UYGULAMA_SEKLI,
+                EPOSTA = @EPOSTA, MERKEZ_USD_KURU = @MERKEZ_USD_KURU, GISE_USD_KURU = @GISE_USD_KURU,
+                GM_BEYANNAME_TARIH = @GM_BEYANNAME_TARIH, GM_BEYANNAME_NO = @GM_BEYANNAME_NO,
+                GM_DOVIZ_TARIH = @GM_DOVIZ_TARIH, GM_DOVIZ_SAYI = @GM_DOVIZ_SAYI,
+                GM_TEYIT_TARIH = @GM_TEYIT_TARIH, GM_TEYIT_SAYI = @GM_TEYIT_SAYI,
+                GM_FATURA_NO = @GM_FATURA_NO, ARBITRAJ_ID = @ARBITRAJ_ID, TELEFON_NO = @TELEFON_NO,
+                MESLEK_ID = @MESLEK_ID, DOGUM_TARIHI = @DOGUM_TARIHI, DOGUM_YERI = @DOGUM_YERI,
+                KIMLIK_SERI_NO = @KIMLIK_SERI_NO, ANNE_ADI = @ANNE_ADI, IPTAL = @IPTAL,
+                IPTAL_TARIHI = @IPTAL_TARIHI, MASAK_LISTESINDE_VAR = @MASAK_LISTESINDE_VAR,
+                YUVARLAMA_ARALIGI = @YUVARLAMA_ARALIGI, YUVARLAMA_ESIGI = @YUVARLAMA_ESIGI,
+                E_FATURA_POSTA_KUTUSU = @E_FATURA_POSTA_KUTUSU, BELGE_TURU = @BELGE_TURU,
+                KIMLIK_GECERLILIK_TARIHI = @KIMLIK_GECERLILIK_TARIHI, KIMLIK_BELGE_TURU = @KIMLIK_BELGE_TURU,
+                GUNCELLEYEN_ID = @KULLANICI_ID, GUNCELLEME_ZAMANI = @SIMDIKI_ZAMAN
+              WHERE FIS_ID = @FIS_ID;
+
+              IF @@ERROR <> 0
+              BEGIN
+                SET @HATA_MESAJI = 'Fiş kaydedilemedi';
+                GOTO UNDO;
+              END;
+
+              DELETE FROM TODVZ_FIS_SATIRI WHERE FIS_ID = @FIS_ID;
+            END;
+
+            INSERT INTO TODVZ_FIS_SATIRI (
+              FIS_ID, SATIR_NO, MIKTAR, PARA_ID, KUR, ISCILIK, GISE_KURU, TUTAR,
+              KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, KMV_ORANI, KMV, KDV_ORANI, KDV,
+              BANKA_HESABI_ID, SERI_NO, BELGE_NO, ETTN, E_BELGE_DURUMU, E_BELGE_HATA_ACIKLAMASI
+            )
+            SELECT 
+              @FIS_ID, SATIR_NO, MIKTAR, PARA_ID, KUR, ISCILIK, GISE_KURU, TUTAR,
+              KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, KMV_ORANI, KMV, KDV_ORANI, KDV,
+              BANKA_HESABI_ID, SERI_NO, BELGE_NO, ETTN, E_BELGE_DURUMU, E_BELGE_HATA_ACIKLAMASI
+            FROM #TODVZ_ISKELE_FIS_SATIRI;
+
+            IF @@ERROR <> 0
+            BEGIN
+              SET @HATA_MESAJI = 'Fiş satırları kaydedilemedi';
+              GOTO UNDO;
+            END;
+
+            IF @IPTAL = 0
+            BEGIN
+              DECLARE C_EKLENEN CURSOR LOCAL FOR
+                SELECT PARA_ID, MIKTAR FROM #TODVZ_ISKELE_FIS_SATIRI WHERE BANKA_HESABI_ID IS NULL;
+              DECLARE @C_PARA_ID INT;
+              DECLARE @C_MIKTAR DECIMAL(18,4);
+              OPEN C_EKLENEN;
+              FETCH NEXT FROM C_EKLENEN INTO @C_PARA_ID, @C_MIKTAR;
+              WHILE @@FETCH_STATUS = 0
+              BEGIN
+                UPDATE TODVZ_VEZNE_BAKIYE
+                  SET MIKTAR = MIKTAR + CASE @TIP WHEN 0 THEN @C_MIKTAR ELSE -@C_MIKTAR END
+                  WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @C_PARA_ID;
+                IF @@ROWCOUNT = 0
+                  INSERT INTO TODVZ_VEZNE_BAKIYE(VEZNE_ID, PARA_ID, MIKTAR)
+                    VALUES(@VEZNE_ID, @C_PARA_ID, CASE @TIP WHEN 0 THEN @C_MIKTAR ELSE -@C_MIKTAR END);
+                FETCH NEXT FROM C_EKLENEN INTO @C_PARA_ID, @C_MIKTAR;
+              END;
+              CLOSE C_EKLENEN;
+              DEALLOCATE C_EKLENEN;
+
+              IF @BANKA_HESABI_ID IS NULL
+              BEGIN
+                UPDATE TODVZ_VEZNE_BAKIYE
+                  SET MIKTAR = MIKTAR + CASE @TIP WHEN 1 THEN @ODEME_TUTARI ELSE -@ODEME_TUTARI END
+                  WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = 1;
+                IF @@ROWCOUNT = 0
+                  INSERT INTO TODVZ_VEZNE_BAKIYE(VEZNE_ID, PARA_ID, MIKTAR)
+                    VALUES(@VEZNE_ID, 1, CASE @TIP WHEN 1 THEN @ODEME_TUTARI ELSE -@ODEME_TUTARI END);
+              END;
+            END;
+
+            COMMIT TRAN;
+            DELETE #TODVZ_ISKELE_FIS_SATIRI;
+            RETURN 0;
+
+          UNDO:
+            IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+            DELETE #TODVZ_ISKELE_FIS_SATIRI;
+            RAISERROR (@HATA_MESAJI, 16, 1);
+            RETURN 1;
+          END
+        `);
+                logger.info("[DovizFisSqlRepository] SODVZ_FIS_KAYDET prosedürü güncellendi (Otomatik Seri No desteği aktif).");
+            }
+            catch (spErr) {
+                logger.warn("[DovizFisSqlRepository] SODVZ_FIS_KAYDET güncellenemedi, batch pre-assign devrede:", spErr);
+            }
         }
         catch (err) {
             logger.warn("DovizFisSqlRepository.ensureTablesAndProceduresExist warning:", err);
@@ -211,22 +781,9 @@ export class DovizFisSqlRepository {
         const parsedTarih = parseDate(dto.tarih);
         const parsedZaman = parseDate(dto.zaman || dto.tarih);
         const currentYear = parsedTarih.getFullYear();
-        // Default sequential numbers if not provided
+        // User provided sequential numbers or leave empty for stored procedure auto-generation
         let seriNo = (dto.seriNo || "").trim();
         let belgeNo = (dto.belgeNo || "").trim();
-        if (!seriNo || !belgeNo) {
-            const seqRes = await pool.request().query(`
-        SELECT COUNT(*) AS CNT FROM [dbo].[TODVZ_FIS] WITH (NOLOCK) WHERE [TIP] = ${tip}
-      `);
-            const nextNum = (Number(seqRes.recordset[0]?.CNT || 0) + 1).toString().padStart(7, "0");
-            const nextBelgeNum = (Number(seqRes.recordset[0]?.CNT || 0) + 1).toString().padStart(10, "0");
-            if (!seriNo) {
-                seriNo = tip === 1 ? `YSS${nextNum}` : `YAB${nextNum}`;
-            }
-            if (!belgeNo) {
-                belgeNo = tip === 1 ? `DIS${currentYear}${nextBelgeNum}` : `DIA${currentYear}${nextBelgeNum}`;
-            }
-        }
         // Pre-fetch para map from DB to ensure any missing or code-only paraId is accurately resolved
         const paraMap = new Map();
         try {
@@ -344,8 +901,8 @@ export class DovizFisSqlRepository {
             const userRawGelisNedeni = (dto.gelisNedeni && dto.gelisNedeni.trim()) ? dto.gelisNedeni.trim().slice(0, 100) : null;
             const userRawVkn = (dto.vergiKimlikNo && dto.vergiKimlikNo.trim()) ? dto.vergiKimlikNo.trim().slice(0, 20) : null;
             const userRawAdres = (dto.adres && dto.adres.trim()) ? dto.adres.trim().slice(0, 100) : null;
-            const cleanSeriNo = userRawSeriNo || (seriNo ? seriNo.slice(0, 20) : null);
-            const cleanBelgeNo = userRawBelgeNo || (belgeNo ? belgeNo.slice(0, 20) : null);
+            const cleanSeriNo = userRawSeriNo;
+            const cleanBelgeNo = userRawBelgeNo;
             const cleanUnvan = unvan.slice(0, 200);
             const cleanGelisNedeni = userRawGelisNedeni;
             const cleanVkn = userRawVkn || "11111111111";
@@ -692,6 +1249,239 @@ export class DovizFisSqlRepository {
           END
         END
 
+        -- 12.1. Fiş Seri No Otomatik Atama:
+        -- Belge no prosedürden otomatik eklendiği gibi, eğer seri no boş ise ilgili prosedürden (SODVZ_NUMERATOR_URET) üretip ata
+        IF (@P_SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@P_SERI_NO))) = 0)
+        BEGIN
+          DECLARE @CALC_FIS_DIZAYN_TIPI INT = 0;
+          IF @EFF_ISTATISTIK_ID IS NOT NULL
+          BEGIN
+            SELECT @CALC_FIS_DIZAYN_TIPI = ISNULL(FIS_DIZAYN_TIPI, 0)
+            FROM TODVZ_ISTATISTIK
+            WHERE ISTATISTIK_ID = @EFF_ISTATISTIK_ID;
+          END;
+
+          DECLARE @CALC_NUM_TUR INT = @TIP * 4 + ISNULL(@CALC_FIS_DIZAYN_TIPI, 0);
+          DECLARE @CALC_YAZICI_ID INT = NULL;
+
+          -- TODVZ_NUMERATOR tablosundan bu türe ait yazıcı ID'sini bul (varsa atanmış yazıcıyı önceliklendir)
+          IF OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+          BEGIN
+            SELECT TOP 1 @CALC_YAZICI_ID = YAZICI_ID
+            FROM TODVZ_NUMERATOR
+            WHERE TUR = @CALC_NUM_TUR
+            ORDER BY 
+              CASE 
+                WHEN @EFF_YAZICI_ID IS NOT NULL AND YAZICI_ID = @EFF_YAZICI_ID THEN 0
+                WHEN YAZICI_ID IS NOT NULL AND YAZICI_ID > 0 THEN 1
+                ELSE 2
+              END;
+          END;
+
+          DECLARE @GEN_SERI_NO VARCHAR(20) = NULL;
+          DECLARE @GEN_ONEK VARCHAR(10) = NULL;
+          DECLARE @GEN_SIFIR BIT = 1;
+          DECLARE @GEN_RET INT = 0;
+
+          IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+          BEGIN
+            -- 1. Hedef yazıcı ID ile SODVZ_NUMERATOR_URET çağrısı
+            BEGIN TRY
+              EXEC @GEN_RET = SODVZ_NUMERATOR_URET @CALC_NUM_TUR, @GEN_SERI_NO OUTPUT, @CALC_YAZICI_ID, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+            END TRY
+            BEGIN CATCH
+            END CATCH;
+
+            -- 2. Eğer üretilemediyse ve @CALC_YAZICI_ID NULL değildiyse, NULL yazıcı ile dene
+            IF (@GEN_SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_SERI_NO))) = 0) AND @CALC_YAZICI_ID IS NOT NULL
+            BEGIN
+              BEGIN TRY
+                EXEC @GEN_RET = SODVZ_NUMERATOR_URET @CALC_NUM_TUR, @GEN_SERI_NO OUTPUT, NULL, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+
+            -- 3. Eğer hala üretilemediyse ve @CALC_NUM_TUR <> (@TIP * 4), temel TUR ile dene
+            IF (@GEN_SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_SERI_NO))) = 0) AND @CALC_NUM_TUR <> (@TIP * 4)
+            BEGIN
+              DECLARE @BASE_TUR INT = @TIP * 4;
+              DECLARE @BASE_YAZICI_ID INT = NULL;
+              SELECT TOP 1 @BASE_YAZICI_ID = YAZICI_ID FROM TODVZ_NUMERATOR WHERE TUR = @BASE_TUR ORDER BY CASE WHEN YAZICI_ID IS NOT NULL THEN 0 ELSE 1 END;
+              BEGIN TRY
+                EXEC @GEN_RET = SODVZ_NUMERATOR_URET @BASE_TUR, @GEN_SERI_NO OUTPUT, @BASE_YAZICI_ID, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+          END;
+
+          -- 4. Eğer prosedürden başarıyla seri no üretildiyse ata
+          IF @GEN_SERI_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@GEN_SERI_NO))) > 0
+          BEGIN
+            SET @P_SERI_NO = LTRIM(RTRIM(@GEN_SERI_NO));
+          END
+          ELSE
+          BEGIN
+            -- 5. Numaratör tablosunda bu tür hiç tanımlı değilse, TODVZ_FIS tablosundaki son seri nodan devam et
+            DECLARE @SON_SERI VARCHAR(20) = NULL;
+            SELECT TOP 1 @SON_SERI = SERI_NO 
+            FROM TODVZ_FIS 
+            WHERE TIP = @TIP AND SERI_NO IS NOT NULL AND LEN(SERI_NO) > 0
+            ORDER BY FIS_ID DESC;
+
+            DECLARE @FALLBACK_ONEK VARCHAR(10) = CASE WHEN @TIP = 0 THEN 'A' ELSE 'S' END;
+            DECLARE @SON_NUM BIGINT = 0;
+            IF @SON_SERI IS NOT NULL
+            BEGIN
+              DECLARE @DIGITS VARCHAR(30) = '';
+              DECLARE @SERI_PREFIX VARCHAR(30) = '';
+              DECLARE @POS INT = 1;
+              WHILE @POS <= LEN(@SON_SERI)
+              BEGIN
+                DECLARE @CH_S CHAR(1) = SUBSTRING(@SON_SERI, @POS, 1);
+                IF @CH_S LIKE '[0-9]'
+                  SET @DIGITS = @DIGITS + @CH_S;
+                ELSE IF LEN(@DIGITS) = 0
+                  SET @SERI_PREFIX = @SERI_PREFIX + @CH_S;
+                SET @POS = @POS + 1;
+              END;
+              IF LEN(@DIGITS) > 0
+              BEGIN
+                SET @SON_NUM = CAST(@DIGITS AS BIGINT);
+                DECLARE @NEXT_SERI_STR VARCHAR(30) = CAST((@SON_NUM + 1) AS VARCHAR(30));
+                IF LEN(@NEXT_SERI_STR) < LEN(@DIGITS)
+                  SET @NEXT_SERI_STR = REPLICATE('0', LEN(@DIGITS) - LEN(@NEXT_SERI_STR)) + @NEXT_SERI_STR;
+                SET @P_SERI_NO = @SERI_PREFIX + @NEXT_SERI_STR;
+              END
+              ELSE
+              BEGIN
+                SET @P_SERI_NO = @FALLBACK_ONEK + '000000001';
+              END;
+            END
+            ELSE
+            BEGIN
+              SET @P_SERI_NO = @FALLBACK_ONEK + '000000001';
+            END;
+          END;
+
+          -- Geçici tablodaki satırların SERI_NO alanını da güncelle
+          UPDATE #TODVZ_ISKELE_FIS_SATIRI 
+          SET SERI_NO = @P_SERI_NO 
+          WHERE SERI_NO IS NULL OR LEN(LTRIM(RTRIM(SERI_NO))) = 0;
+        END;
+
+        -- 12.2. Belge No Otomatik Atama:
+        -- Eğer belge no boş ise prosedürden (SODVZ_NUMERATOR_URET) çek veya dolu ise girilmiş olan numarayı koru
+        IF (@P_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@P_BELGE_NO))) = 0)
+        BEGIN
+          DECLARE @CALC_BELGE_TUR INT = CASE WHEN @TIP = 0 THEN 8 ELSE 9 END;
+          DECLARE @CALC_BELGE_YAZICI_ID INT = NULL;
+
+          IF OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+          BEGIN
+            SELECT TOP 1 @CALC_BELGE_YAZICI_ID = YAZICI_ID
+            FROM TODVZ_NUMERATOR
+            WHERE TUR = @CALC_BELGE_TUR
+            ORDER BY 
+              CASE 
+                WHEN @EFF_YAZICI_ID IS NOT NULL AND YAZICI_ID = @EFF_YAZICI_ID THEN 0
+                WHEN YAZICI_ID IS NOT NULL AND YAZICI_ID > 0 THEN 1
+                ELSE 2
+              END;
+          END;
+
+          DECLARE @GEN_BELGE_NO VARCHAR(20) = NULL;
+          DECLARE @GEN_BELGE_ONEK VARCHAR(10) = NULL;
+          DECLARE @GEN_BELGE_SIFIR BIT = 1;
+          DECLARE @GEN_BELGE_RET INT = 0;
+
+          IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+          BEGIN
+            -- 1. Hedef yazıcı ID ile SODVZ_NUMERATOR_URET çağrısı
+            BEGIN TRY
+              EXEC @GEN_BELGE_RET = SODVZ_NUMERATOR_URET @CALC_BELGE_TUR, @GEN_BELGE_NO OUTPUT, @CALC_BELGE_YAZICI_ID, 1, @GEN_BELGE_ONEK OUTPUT, @GEN_BELGE_SIFIR OUTPUT;
+            END TRY
+            BEGIN CATCH
+            END CATCH;
+
+            -- 2. Eğer üretilemediyse ve @CALC_BELGE_YAZICI_ID NULL değildiyse, NULL yazıcı ile dene
+            IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0) AND @CALC_BELGE_YAZICI_ID IS NOT NULL
+            BEGIN
+              BEGIN TRY
+                EXEC @GEN_BELGE_RET = SODVZ_NUMERATOR_URET @CALC_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_BELGE_ONEK OUTPUT, @GEN_BELGE_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+
+            -- 3. Alternatif TUR'lar ile dene (22/23 Sarrafiye / E-Döviz türleri)
+            IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0)
+            BEGIN
+              DECLARE @ALT_BELGE_TUR INT = CASE WHEN @TIP = 0 THEN 22 ELSE 23 END;
+              BEGIN TRY
+                EXEC @GEN_BELGE_RET = SODVZ_NUMERATOR_URET @ALT_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_BELGE_ONEK OUTPUT, @GEN_BELGE_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+          END;
+
+          -- 4. Eğer prosedürden başarıyla belge no üretildiyse ata
+          IF @GEN_BELGE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) > 0
+          BEGIN
+            SET @P_BELGE_NO = LTRIM(RTRIM(@GEN_BELGE_NO));
+          END
+          ELSE
+          BEGIN
+            -- 5. Numaratör tablosunda bu tür hiç tanımlı değilse, TODVZ_FIS tablosundaki son belge nodan devam et
+            DECLARE @SON_BELGE VARCHAR(20) = NULL;
+            SELECT TOP 1 @SON_BELGE = BELGE_NO 
+            FROM TODVZ_FIS 
+            WHERE TIP = @TIP AND BELGE_NO IS NOT NULL AND LEN(BELGE_NO) > 0
+            ORDER BY FIS_ID DESC;
+
+            DECLARE @FALLBACK_BELGE_ONEK VARCHAR(10) = CASE WHEN @TIP = 0 THEN 'B-A' ELSE 'B-S' END;
+            DECLARE @SON_BELGE_NUM BIGINT = 0;
+            IF @SON_BELGE IS NOT NULL
+            BEGIN
+              DECLARE @BELGE_DIGITS VARCHAR(30) = '';
+              DECLARE @BELGE_PREFIX VARCHAR(30) = '';
+              DECLARE @BELGE_POS INT = 1;
+              WHILE @BELGE_POS <= LEN(@SON_BELGE)
+              BEGIN
+                DECLARE @CH CHAR(1) = SUBSTRING(@SON_BELGE, @BELGE_POS, 1);
+                IF @CH LIKE '[0-9]'
+                  SET @BELGE_DIGITS = @BELGE_DIGITS + @CH;
+                ELSE IF LEN(@BELGE_DIGITS) = 0
+                  SET @BELGE_PREFIX = @BELGE_PREFIX + @CH;
+                SET @BELGE_POS = @BELGE_POS + 1;
+              END;
+              IF LEN(@BELGE_DIGITS) > 0
+              BEGIN
+                SET @SON_BELGE_NUM = CAST(@BELGE_DIGITS AS BIGINT);
+                DECLARE @NEXT_BELGE_STR VARCHAR(30) = CAST((@SON_BELGE_NUM + 1) AS VARCHAR(30));
+                IF LEN(@NEXT_BELGE_STR) < LEN(@BELGE_DIGITS)
+                  SET @NEXT_BELGE_STR = REPLICATE('0', LEN(@BELGE_DIGITS) - LEN(@NEXT_BELGE_STR)) + @NEXT_BELGE_STR;
+                SET @P_BELGE_NO = @BELGE_PREFIX + @NEXT_BELGE_STR;
+              END
+              ELSE
+              BEGIN
+                SET @P_BELGE_NO = @FALLBACK_BELGE_ONEK + '000000001';
+              END;
+            END
+            ELSE
+            BEGIN
+              SET @P_BELGE_NO = @FALLBACK_BELGE_ONEK + '000000001';
+            END;
+          END;
+
+          -- Geçici tablodaki satırların BELGE_NO alanını da güncelle
+          UPDATE #TODVZ_ISKELE_FIS_SATIRI 
+          SET BELGE_NO = @P_BELGE_NO 
+          WHERE BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(BELGE_NO))) = 0;
+        END;
+
         -- 13. Geçici Tablodaki Satırların Para ID ve Banka ID Kontrolü
         IF OBJECT_ID('TODVZ_PARA') IS NOT NULL
         BEGIN
@@ -800,8 +1590,8 @@ export class DovizFisSqlRepository {
           UPDATE [dbo].[TODVZ_FIS]
           SET 
             UNVAN = @UNVAN,
-            SERI_NO = @USER_RAW_SERI_NO,
-            BELGE_NO = @USER_RAW_BELGE_NO,
+            SERI_NO = COALESCE(NULLIF(LTRIM(RTRIM(@USER_RAW_SERI_NO)), ''), @P_SERI_NO, SERI_NO),
+            BELGE_NO = COALESCE(NULLIF(LTRIM(RTRIM(@USER_RAW_BELGE_NO)), ''), @P_BELGE_NO, BELGE_NO),
             GELIS_NEDENI = @USER_RAW_GELIS_NEDENI,
             VERGI_KIMLIK_NO = @USER_RAW_VKN,
             ADRES = @USER_RAW_ADRES,
@@ -820,22 +1610,9 @@ export class DovizFisSqlRepository {
             GM_TEYIT_SAYI = @GM_TEYIT_SAYI,
             GM_TEYIT_TARIH = @GM_TEYIT_TARIH,
             GM_FATURA_NO = @GM_FATURA_NO,
-            TIP = @TIP
+            TIP = @TIP,
+            GUNCELLEME_ZAMANI = GETDATE()
           WHERE FIS_ID = @P_FIS_ID;
-
-          IF @USER_RAW_SERI_NO IS NULL
-          BEGIN
-            UPDATE [dbo].[TODVZ_FIS_SATIRI]
-            SET SERI_NO = NULL
-            WHERE FIS_ID = @P_FIS_ID;
-          END
-
-          IF @USER_RAW_BELGE_NO IS NULL
-          BEGIN
-            UPDATE [dbo].[TODVZ_FIS_SATIRI]
-            SET BELGE_NO = NULL
-            WHERE FIS_ID = @P_FIS_ID;
-          END
         END
 
         IF OBJECT_ID('tempdb..#TODVZ_ISKELE_FIS_SATIRI') IS NOT NULL
@@ -1167,7 +1944,7 @@ export class DovizFisSqlRepository {
             query += ` AND (F.SERI_NO LIKE @SEARCH OR F.BELGE_NO LIKE @SEARCH OR F.UNVAN LIKE @SEARCH OR F.VERGI_KIMLIK_NO LIKE @SEARCH)`;
             req.input("SEARCH", sql.VarChar(100), term);
         }
-        query += ` ORDER BY F.FIS_ID DESC`;
+        query += ` ORDER BY COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) ASC, F.FIS_ID ASC`;
         const result = await req.query(query);
         return result.recordset || [];
     }

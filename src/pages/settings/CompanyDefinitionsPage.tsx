@@ -37,6 +37,7 @@ import { printReportTable } from "../../utils/printReport";
 import { CompanyService, TodvzTanimDto, defaultCompanyTanim } from "../../services/companyService";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { CariService, CariLookups, LookupItem, CariKartItem } from "../../services/cariService";
+import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 
 export const CompanyDefinitionsPage: React.FC = () => {
   const activeDb = localStorage.getItem("kuyumcu_erp_active_db") || "R2016_dvz";
@@ -500,32 +501,39 @@ const emptyCompanyData: TodvzTanimDto = {
         onRefresh={() => loadDefinitions()}
         onPrint={handlePrint}
         disabled={isLoading || isSaving}
+        hideNavigation={true}
+        hideSearch={true}
+        hideDelete={true}
       />
 
 
-      {/* Alert Messages */}
-      {alertSuccess && (
-        <Alert
-          variant="success"
-          dismissible
-          onClose={() => setAlertSuccess(null)}
-          className="d-flex align-items-center gap-2 py-2 shadow-sm rounded-3 mb-3"
-        >
-          <IconCheck size={20} className="text-success" />
-          <span className="fw-medium">{alertSuccess}</span>
-        </Alert>
-      )}
+      {/* Alert Messages: Sağ altta toast */}
+      {(alertSuccess || alertError) && (
+        <div className="erp-toast-container">
+          {alertSuccess && (
+            <Alert
+              variant="success"
+              dismissible
+              onClose={() => setAlertSuccess(null)}
+              className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 shadow border-0"
+            >
+              <IconCheck size={20} className="text-success flex-shrink-0" />
+              <span className="fw-medium" style={{ fontSize: "13px" }}>{alertSuccess}</span>
+            </Alert>
+          )}
 
-      {alertError && (
-        <Alert
-          variant="danger"
-          dismissible
-          onClose={() => setAlertError(null)}
-          className="d-flex align-items-center gap-2 py-2 shadow-sm rounded-3 mb-3"
-        >
-          <IconAlertCircle size={20} className="text-danger" />
-          <span className="fw-medium">{alertError}</span>
-        </Alert>
+          {alertError && (
+            <Alert
+              variant="danger"
+              dismissible
+              onClose={() => setAlertError(null)}
+              className="erp-toast-item d-flex align-items-center gap-2 py-2 px-3 mb-0 shadow border-0"
+            >
+              <IconAlertCircle size={20} className="text-danger flex-shrink-0" />
+              <span className="fw-medium" style={{ fontSize: "13px" }}>{alertError}</span>
+            </Alert>
+          )}
+        </div>
       )}
 
 
@@ -534,55 +542,49 @@ const emptyCompanyData: TodvzTanimDto = {
       <Tab.Container defaultActiveKey="genel">
         <Card className="border shadow-sm rounded-3 bg-white overflow-hidden">
           <Card.Header className="bg-light-subtle p-2.5 border-bottom">
-            <div className="d-flex flex-column gap-2">
-              {/* 1. Satır: Tab 1, 2, 3, 4 */}
-              <Nav variant="pills" className="d-flex flex-wrap gap-2 border-0">
-                <Nav.Item>
-                  <Nav.Link eventKey="genel" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
-                    <IconBuildingStore size={17} className="text-primary me-1" />
-                    <span>1. Genel & Firma Bilgileri</span>
-                  </Nav.Link>
-                </Nav.Item>
+            <Nav variant="pills" className="d-flex flex-wrap gap-2 border-0">
+              <Nav.Item>
+                <Nav.Link eventKey="genel" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
+                  <IconBuildingStore size={17} className="text-primary me-1" />
+                  <span>Generl</span>
+                </Nav.Link>
+              </Nav.Item>
 
-                <Nav.Item>
-                  <Nav.Link eventKey="para" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
-                    <IconCoin size={17} className="text-warning me-1" />
-                    <span>2. Para & Kuruş & Oranlar</span>
-                  </Nav.Link>
-                </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="para" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
+                  <IconCoin size={17} className="text-warning me-1" />
+                  <span>Para</span>
+                </Nav.Link>
+              </Nav.Item>
 
-                <Nav.Item>
-                  <Nav.Link eventKey="muhasebe" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
-                    <IconReceipt2 size={17} className="text-success me-1" />
-                    <span>3. Muhasebe & Hesap Planı</span>
-                  </Nav.Link>
-                </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="muhasebe" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
+                  <IconReceipt2 size={17} className="text-success me-1" />
+                  <span>Muhasebe</span>
+                </Nav.Link>
+              </Nav.Item>
 
-                <Nav.Item>
-                  <Nav.Link eventKey="limitler" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
-                    <IconScale size={17} className="text-info me-1" />
-                    <span>4. Limitler & Vergi & Tolerans</span>
-                  </Nav.Link>
-                </Nav.Item>
-              </Nav>
+              <Nav.Item>
+                <Nav.Link eventKey="limitler" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
+                  <IconScale size={17} className="text-info me-1" />
+                  <span>Limit</span>
+                </Nav.Link>
+              </Nav.Item>
 
-              {/* 2. Satır (Alt Satır): Tab 5, 6 - Yana kaymaz */}
-              <Nav variant="pills" className="d-flex flex-wrap gap-2 border-0">
-                <Nav.Item>
-                  <Nav.Link eventKey="ebelge" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
-                    <IconFileCertificate size={17} className="text-danger me-1" />
-                    <span>5. E-Belge, E-Fatura & Server</span>
-                  </Nav.Link>
-                </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="ebelge" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
+                  <IconFileCertificate size={17} className="text-danger me-1" />
+                  <span>E-Server</span>
+                </Nav.Link>
+              </Nav.Item>
 
-                <Nav.Item>
-                  <Nav.Link eventKey="sistem" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
-                    <IconAdjustments size={17} className="text-secondary me-1" />
-                    <span>6. Fiş, Cari & Sistem</span>
-                  </Nav.Link>
-                </Nav.Item>
-              </Nav>
-            </div>
+              <Nav.Item>
+                <Nav.Link eventKey="sistem" className="d-flex align-items-center gap-1.5 py-2 px-3 fw-semibold rounded-2 border bg-white shadow-xs">
+                  <IconAdjustments size={17} className="text-secondary me-1" />
+                  <span>Sistem</span>
+                </Nav.Link>
+              </Nav.Item>
+            </Nav>
           </Card.Header>
 
           <Card.Body className="p-3 p-md-4">
@@ -683,8 +685,11 @@ const emptyCompanyData: TodvzTanimDto = {
   <Col sm={8}>
     <Form.Control
                           type="text"
+                          inputMode="numeric"
+                          data-numeric="true"
+                          maxLength={11}
                           value={formData.VERGI_KIMLIK_NO || ""}
-                          onChange={(e) => handleChange("VERGI_KIMLIK_NO", e.target.value)}
+                          onChange={(e) => handleChange("VERGI_KIMLIK_NO", onlyDigits(e.target.value, 11))}
                           className="bg-light border font-monospace"
                         />
   </Col>
@@ -711,8 +716,11 @@ const emptyCompanyData: TodvzTanimDto = {
   <Col sm={8}>
     <Form.Control
                           type="text"
+                          inputMode="numeric"
+                          data-numeric="true"
+                          maxLength={16}
                           value={formData.MERSIS_NO || ""}
-                          onChange={(e) => handleChange("MERSIS_NO", e.target.value)}
+                          onChange={(e) => handleChange("MERSIS_NO", onlyDigits(e.target.value, 16))}
                           className="bg-light border font-monospace"
                         />
   </Col>

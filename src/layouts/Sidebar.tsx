@@ -213,12 +213,22 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     navigate("/login", { replace: true });
   };
 
+  const handleLinkClick = (e: React.MouseEvent, to: string) => {
+    const normCurrent = location.pathname.startsWith("/") ? location.pathname : `/${location.pathname}`;
+    const normTarget = to.startsWith("/") ? to : `/${to}`;
+    if (normCurrent === normTarget) {
+      e.preventDefault();
+      window.location.reload();
+    }
+  };
+
   //Generate Link
   const generateLink = (item: MenuItemType) => {
     const to = item.link?.startsWith("/") ? item.link : `/${item.link}`;
     return (
       <Link
         to={to}
+        onClick={(e) => handleLinkClick(e, to)}
         className={`nav-link ${currentPath === to ? "active" : ""}`}>
         <span className="text">{item.name || item.title}</span>
         {item.badge && (
@@ -355,6 +365,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                           >
                                             <Link
                                               to={to2}
+                                              onClick={(e) => handleLinkClick(e, to2)}
                                               className={`nav-link sidebar-sub-link py-1 px-3 ${currentPath === to2 ? "active" : ""
                                                 }`}
                                             >
@@ -382,6 +393,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                               >
                                 <Link
                                   to={to1}
+                                  onClick={(e) => handleLinkClick(e, to1)}
                                   className={`nav-link sidebar-sub-link py-1 px-3 ${currentPath === to1 ? "active" : ""
                                     }`}
                                 >
@@ -403,6 +415,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                   <Nav.Item as="li" key={index}>
                     <Link
                       to={to}
+                      onClick={(e) => handleLinkClick(e, to)}
                       className={`nav-link ${currentPath === to ? "active" : ""
                         }`}
                     >
