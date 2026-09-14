@@ -65,7 +65,9 @@ export interface CariKartFormData {
   adres: string | null;
   postaKoduId: number | null;
   ilceId: number | null;
+  ilceAdi?: string | null;
   ilId: number | null;
+  ilAdi?: string | null;
   telefon: string | null;
   uyrukId: number | null;
   ulkeId: number | null;

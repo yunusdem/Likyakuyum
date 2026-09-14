@@ -37,7 +37,7 @@ export class TanimlarController {
     });
     /**
      * GET /api/v1/tanimlar/ilceler?ilId=
-     * TODVZ_TABLO_MADDESI (TUR = 1)
+     * TODVZ_TABLO_MADDESI (TUR = 2) — canlı veritabanında doğrulandı (11.09.2026).
      */
     static getIlceler = asyncHandler(async (req, res) => {
         const dbContext = TanimlarController.getDbContext(req);
@@ -51,7 +51,8 @@ export class TanimlarController {
     });
     /**
      * GET /api/v1/tanimlar/posta-kodlari
-     * TODVZ_TABLO_MADDESI (TUR = 8)
+     * TODVZ_TABLO_MADDESI (TUR = 4) — canlı veritabanında doğrulandı (11.09.2026);
+     * bu TUR şu an bu veritabanında boş (referans satırı girilmemiş).
      */
     static getPostaKodlari = asyncHandler(async (req, res) => {
         const dbContext = TanimlarController.getDbContext(req);

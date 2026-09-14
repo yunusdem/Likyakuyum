@@ -43,6 +43,8 @@ export interface ERPToolbarProps {
   rightContent?: React.ReactNode;
   hideSearch?: boolean;
   hideDelete?: boolean;
+  hideNavigation?: boolean;
+  hidePrint?: boolean;
   disableShortcuts?: boolean;
 }
 
@@ -120,6 +122,8 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   rightContent,
   hideSearch,
   hideDelete,
+  hideNavigation = false,
+  hidePrint = false,
   disableShortcuts = false,
 }) => {
   const location = useLocation();
@@ -173,7 +177,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           onRefresh();
         }
       } else if (e.key === "F10") {
-        if (onPrint) {
+        if (!hidePrint && onPrint) {
           e.preventDefault();
           onPrint();
         }
@@ -182,7 +186,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete]);
+  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, hidePrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete]);
 
   const defaultHandler = (actionName: string) => {
     if (actionName === "Ara/Bul") {
@@ -343,85 +347,93 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           </button>
         )}
 
-        <span className="erp-tb-divider" />
+        {!hideNavigation && (
+          <>
+            <span className="erp-tb-divider" />
 
-        {/* 5. İlk Kayıt (|◀) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onFirst || (() => defaultHandler("İlk Kayıt"))}
-          className="erp-tb-btn"
-          title="İlk Kayıt"
-          aria-label="İlk Kayıt"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
-            <rect x="4" y="4" width="3" height="16" rx="0.5" />
-            <polygon points="20,4 20,20 8,12" />
-          </svg>
-        </button>
+            {/* 5. İlk Kayıt (|◀) */}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onFirst || (() => defaultHandler("İlk Kayıt"))}
+              className="erp-tb-btn"
+              title="İlk Kayıt"
+              aria-label="İlk Kayıt"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
+                <rect x="4" y="4" width="3" height="16" rx="0.5" />
+                <polygon points="20,4 20,20 8,12" />
+              </svg>
+            </button>
 
-        {/* 6. Önceki Kayıt (◀) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onPrev || (() => defaultHandler("Önceki Kayıt"))}
-          className="erp-tb-btn"
-          title="Önceki Kayıt"
-          aria-label="Önceki Kayıt"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
-            <polygon points="18,4 18,20 6,12" />
-          </svg>
-        </button>
+            {/* 6. Önceki Kayıt (◀) */}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onPrev || (() => defaultHandler("Önceki Kayıt"))}
+              className="erp-tb-btn"
+              title="Önceki Kayıt"
+              aria-label="Önceki Kayıt"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
+                <polygon points="18,4 18,20 6,12" />
+              </svg>
+            </button>
 
-        {/* Sonraki Kayıt (▶) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onNext || (() => defaultHandler("Sonraki Kayıt"))}
-          className="erp-tb-btn"
-          title="Sonraki Kayıt"
-          aria-label="Sonraki Kayıt"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
-            <polygon points="6,4 6,20 18,12" />
-          </svg>
-        </button>
+            {/* Sonraki Kayıt (▶) */}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onNext || (() => defaultHandler("Sonraki Kayıt"))}
+              className="erp-tb-btn"
+              title="Sonraki Kayıt"
+              aria-label="Sonraki Kayıt"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
+                <polygon points="6,4 6,20 18,12" />
+              </svg>
+            </button>
 
-        {/* 7. Son Kayıt (▶|) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onLast || (() => defaultHandler("Son Kayıt"))}
-          className="erp-tb-btn"
-          title="Son Kayıt"
-          aria-label="Son Kayıt"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
-            <polygon points="4,4 4,20 16,12" />
-            <rect x="17" y="4" width="3" height="16" rx="0.5" />
-          </svg>
-        </button>
+            {/* 7. Son Kayıt (▶|) */}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onLast || (() => defaultHandler("Son Kayıt"))}
+              className="erp-tb-btn"
+              title="Son Kayıt"
+              aria-label="Son Kayıt"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
+                <polygon points="4,4 4,20 16,12" />
+                <rect x="17" y="4" width="3" height="16" rx="0.5" />
+              </svg>
+            </button>
+          </>
+        )}
 
-        <span className="erp-tb-divider" />
+        {!hidePrint && (
+          <>
+            <span className="erp-tb-divider" />
 
-        {/* 8. Yazdır (F10) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onPrint || (() => window.print())}
-          className="erp-tb-btn"
-          title="Yazdır (F10)"
-          aria-label="Yazdır"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 9V3h12v6" />
-            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-            <rect x="6" y="14" width="12" height="8" rx="0.5" fill="#f8fafc" stroke="#000000" strokeWidth="1.8" />
-            <line x1="9" y1="17" x2="15" y2="17" />
-            <line x1="9" y1="19.5" x2="13" y2="19.5" />
-          </svg>
-        </button>
+            {/* 8. Yazdır (F10) */}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onPrint || (() => window.print())}
+              className="erp-tb-btn"
+              title="Yazdır (F10)"
+              aria-label="Yazdır"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9V3h12v6" />
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                <rect x="6" y="14" width="12" height="8" rx="0.5" fill="#f8fafc" stroke="#000000" strokeWidth="1.8" />
+                <line x1="9" y1="17" x2="15" y2="17" />
+                <line x1="9" y1="19.5" x2="13" y2="19.5" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Ortadaki Sayfa İkonu ve Başlığı (Print'in sağında, Refresh'in solunda) */}
