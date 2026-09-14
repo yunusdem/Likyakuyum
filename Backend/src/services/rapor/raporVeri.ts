@@ -120,19 +120,22 @@ const VEZNE_BAKIYE_DIPNOT = "Bakiye hesabı: iptal edilmemiş alış fişleri d�
 
 export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: RaporParametreler, t: RaporTanim) => Promise<RaporSonucVeri>> = {
 
-  /** R1 Cari bakiye raporu — para ve has bazında, sıfır bakiyeli cariler dahil */
+  /** R1 Cari bakiye raporu — tarih aralığı (yönetici 14.09.2026): borç/alacak aralıktaki hareketler, bakiye bitiş tarihi itibarıyla; para ve has bazında, sıfır bakiyeli cariler dahil */
   async CARBAK1(pool, p, t) {
-    if (!p.tarih) throw ApiError.badRequest("Tarih zorunludur.");
-    const req = pool.request().input("t", sql.Date, p.tarih);
+    const bas = p.baslangic || p.tarih, bit = p.bitis || p.tarih;
+    if (!bas || !bit) throw ApiError.badRequest("Tarih aralığı zorunludur.");
+    const req = pool.request().input("bas", sql.Date, bas).input("t", sql.Date, bit);
     const f = filtreler(req, p, { cari: "C", para: "B.PARA_ID" });
     const res = await req.query(`
       ;WITH B AS (
-        SELECT H.CARI_KART_ID, S.PARA_ID, SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE 0 END) BORC, SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE 0 END) ALACAK
+        SELECT H.CARI_KART_ID, S.PARA_ID,
+          SUM(CASE WHEN H.TIP=0 AND CAST(H.TARIH AS date)>=@bas THEN S.MEBLAG ELSE 0 END) BORC, SUM(CASE WHEN H.TIP=1 AND CAST(H.TARIH AS date)>=@bas THEN S.MEBLAG ELSE 0 END) ALACAK,
+          SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE -S.MEBLAG END) BAKIYE
         FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
         WHERE CAST(H.TARIH AS date)<=@t GROUP BY H.CARI_KART_ID, S.PARA_ID)
       SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd,
         ISNULL(RTRIM(P.KOD),'-') paraKod, ISNULL(B.BORC,0) borc, ISNULL(B.ALACAK,0) alacak,
-        ISNULL(B.ALACAK,0)-ISNULL(B.BORC,0) bakiye, ISNULL(P.HAS_ORANI,0) hasOrani
+        ISNULL(B.BAKIYE,0) bakiye, ISNULL(P.HAS_ORANI,0) hasOrani
       FROM dbo.TODVZ_CARI_KART C
       LEFT JOIN B ON B.CARI_KART_ID=C.CARI_KART_ID
       LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=B.PARA_ID
@@ -144,8 +147,8 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
         yon: bakiye > 0 ? "Alacak" : bakiye < 0 ? "Borç" : "-",
         hasKarsiligi: Math.abs(bakiye) * (Number(r.hasOrani) || 0), cariBaslik: `${r.cariKod} — ${r.cariAd}` };
     });
-    return sinirla(satirlar, t, `${tarihTr(p.tarih)} tarihine kadar${ozetEk(p) || " · Tüm cariler"}`,
-      "Yön: Alacak = carinin bizden alacağı, Borç = carinin bize borcu. Has karşılığı = bakiye × para tanımındaki has oranı. Sıfır bakiyeli cariler de listelenir.");
+    return sinirla(satirlar, t, `${tarihTr(bas)} – ${tarihTr(bit)}${ozetEk(p) || " · Tüm cariler"}`,
+      "Borç ve alacak seçilen tarih aralığındaki hareketlerin toplamıdır; bakiye bitiş tarihi itibarıyla tüm hareketlerden hesaplanır. Yön: Alacak = carinin bizden alacağı, Borç = carinin bize borcu. Has karşılığı = bakiye × para tanımındaki has oranı. Sıfır bakiyeli cariler de listelenir.");
   },
 
   /** R2 Cari ekstre — cari aralığı (Ahmet -> Mehmet), tarih aralığı, para (çoklu); cari × para grubu, cari başlık bilgisi, devir + yürüyen bakiye, fiş no, has karşılığı */

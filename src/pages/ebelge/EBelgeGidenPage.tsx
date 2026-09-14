@@ -338,10 +338,6 @@ const EBelgeGidenPage: React.FC = () => {
                 <option value="GONDERILDI">Gönderildi</option>
                 <option value="IPTAL">İptal</option>
                 <option value="HATA">Hatalı</option>
-                <option value="GONDERILIYOR">Gönderim sürüyor / kontrol gerekli</option>
-                <option value="BELIRSIZ">Gönderim sonucu belirsiz</option>
-                <option value="IPTAL_EDILIYOR">İptal sürüyor / kontrol gerekli</option>
-                <option value="IPTAL_BELIRSIZ">İptal sonucu belirsiz</option>
               </Form.Select>
             </Col>
             <Col xs={6} md={3} lg={2}>
