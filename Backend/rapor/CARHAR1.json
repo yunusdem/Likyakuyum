@@ -27,8 +27,8 @@
       "tip": "paraCoklu"
     },
     {
-      "ad": "hareketTipi",
-      "etiket": "Hareket tipi",
+      "ad": "hareketTipleri",
+      "etiket": "Hareket tipi (seçilmezse tümü)",
       "tip": "hareketTipi"
     }
   ],

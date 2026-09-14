@@ -57,6 +57,21 @@
       "g": 2.6,
       "bicim": "sayi",
       "toplam": true
+    },
+    {
+      "anahtar": "kurSatis",
+      "baslik": "Satış kuru",
+      "g": 1.8,
+      "bicim": "kur",
+      "kosul": "kurIkisi"
+    },
+    {
+      "anahtar": "tlSatis",
+      "baslik": "TL (satış kuru)",
+      "g": 2.6,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi"
     }
   ],
   "grup": {
