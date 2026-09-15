@@ -14,6 +14,7 @@ import {
   IconBuildingBank,
   IconArrowsExchange,
   IconFileCertificate,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { Container, ListGroup, Button } from "react-bootstrap";
 
@@ -189,6 +190,19 @@ const Header: React.FC = () => {
               {/* Theme Quick Selector Dropdown & Modal */}
               <ListGroup.Item as="li" className="me-1">
                 <HeaderThemeSelector />
+              </ListGroup.Item>
+
+              {/* Sayfa Yenileme Butonu */}
+              <ListGroup.Item as="li">
+                <Button
+                  variant="ghost"
+                  className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-0"
+                  onClick={() => window.location.reload()}
+                  title="Sayfayı Yenile (F5)"
+                  style={{ width: "32px", height: "32px" }}
+                >
+                  <IconRefresh size={18} strokeWidth={1.75} />
+                </Button>
               </ListGroup.Item>
 
               {/* Fullscreen Toggle Button */}

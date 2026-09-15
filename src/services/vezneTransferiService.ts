@@ -131,6 +131,7 @@ export class VezneTransferiService {
     const res = await apiClient.get<{ paraId: number; paraKodu: string; paraAdi: string; miktar: number }[]>(
       `/vezne-transferi/bakiye/${vezneId}`
     );
-    return res.data || [];
+    const data = (res.data as any)?.data ?? res.data;
+    return Array.isArray(data) ? data : [];
   }
 }

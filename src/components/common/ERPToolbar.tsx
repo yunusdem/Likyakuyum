@@ -14,6 +14,8 @@ import {
   IconChartLine,
   IconDeviceTv,
   IconReceipt,
+  IconBarcode,
+  IconDiamond,
 } from "@tabler/icons-react";
 
 export interface ERPToolbarProps {
@@ -103,6 +105,17 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/vezne/vezne-transferi": { title: "Vezne Transferi", icon: <IconCash size={20} /> },
   "/vezne/izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
   "/vezne/vezne-izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
+  "/kasa/hesap-kayit": { title: "A- Hesap Kayıt", icon: <IconBuilding size={20} /> },
+  "/kasa/hesap-duzeltme": { title: "B- Hesap Düzeltme", icon: <IconBuilding size={20} /> },
+  "/kasa/hareket-kayit": { title: "C- Kasa Hareket Kayıt", icon: <IconCash size={20} /> },
+  "/kasa/hareket-duzeltme": { title: "D- Kasa Hareket Düzeltme", icon: <IconCash size={20} /> },
+  "/etiket/barkod-basimi": { title: "A- Barkod & Etiket Basımı", icon: <IconPrinter size={20} /> },
+  "/etiket/altin-urun-tanimlama": { title: "B- Barkodlu Altın Ürün Tanımlama", icon: <IconBarcode size={20} /> },
+  "/etiket/ozel-urun-tanimlama": { title: "C- Barkodlu Özel Ürün Tanımlama", icon: <IconDiamond size={20} /> },
+  "/etiket/tasarim": { title: "D- Ürün Etiket Tasarımı", icon: <IconPrinter size={20} /> },
+  "/etiket/toplu-yazdirma": { title: "E- Toplu Etiket Yazdırma", icon: <IconPrinter size={20} /> },
+  "/etiket/kuyumcu-etiketi": { title: "F- Kuyumcu Yüzük / Bilezik Etiketi", icon: <IconPrinter size={20} /> },
+  "/etiket/fiyat-etiketi": { title: "G- Fiyat & Ayar Etiketleri", icon: <IconPrinter size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({
@@ -506,21 +519,19 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
       {/* Sağ Toolbar Grubu: Custom RightContent + Yenile */}
       <div className="d-flex align-items-center gap-2 ms-auto">
         {rightContent}
-        {onRefresh && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={onRefresh}
-            className="erp-tb-btn erp-tb-btn-secondary"
-            title="Yenile (F5)"
-            aria-label="Yenile"
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 11A8.1 8.1 0 0 0 4.5 9M4 5v4h4" />
-              <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-            </svg>
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onRefresh || (() => window.location.reload())}
+          className="erp-tb-btn erp-tb-btn-secondary"
+          title="Yenile (F5)"
+          aria-label="Yenile"
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 11A8.1 8.1 0 0 0 4.5 9M4 5v4h4" />
+            <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+          </svg>
+        </button>
       </div>
     </div>
   );

@@ -29,6 +29,15 @@ import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
 import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
 import BankaHesapKartiPage from "./pages/banka/BankaHesapKartiPage";
 import BankaHareketiPage from "./pages/banka/BankaHareketiPage";
+import KasaHesapKayitPage from "./pages/kasa/KasaHesapKayitPage";
+import KasaHareketPage from "./pages/kasa/KasaHareketPage";
+import BarkodEtiketBasimiPage from "./pages/etiket/BarkodEtiketBasimiPage";
+import AltinUrunTanimlamaPage from "./pages/etiket/AltinUrunTanimlamaPage";
+import OzelUrunTanimlamaPage from "./pages/etiket/OzelUrunTanimlamaPage";
+import UrunEtiketTasarimiPage from "./pages/etiket/UrunEtiketTasarimiPage";
+import TopluEtiketYazdirmaPage from "./pages/etiket/TopluEtiketYazdirmaPage";
+import YuzukBilezikEtiketiPage from "./pages/etiket/YuzukBilezikEtiketiPage";
+import FiyatAyarEtiketleriPage from "./pages/etiket/FiyatAyarEtiketleriPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -196,6 +205,21 @@ export default function App() {
             <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />
             <Route path="banka/hareketler" element={<BankaHareketiPage />} />
             <Route path="banka/hesap-hareketleri" element={<BankaHareketiPage />} />
+            <Route path="kasa/hesap-kayit" element={<KasaHesapKayitPage />} />
+            <Route path="kasa/hesap-duzeltme" element={<KasaHesapKayitPage />} />
+            <Route path="kasa/hareket-kayit" element={<KasaHareketPage />} />
+            <Route path="kasa/hareket-duzeltme" element={<KasaHareketPage />} />
+            <Route path="kasa/kasa-hareket-kayit" element={<KasaHareketPage />} />
+            <Route path="kasa/kasa-hareket-duzeltme" element={<KasaHareketPage />} />
+            <Route path="kasa/hareket" element={<KasaHareketPage />} />
+            <Route path="kasa/kasa-hareket" element={<KasaHareketPage />} />
+            <Route path="etiket/barkod-basimi" element={<BarkodEtiketBasimiPage />} />
+            <Route path="etiket/altin-urun-tanimlama" element={<AltinUrunTanimlamaPage />} />
+            <Route path="etiket/ozel-urun-tanimlama" element={<OzelUrunTanimlamaPage />} />
+            <Route path="etiket/tasarim" element={<UrunEtiketTasarimiPage />} />
+            <Route path="etiket/toplu-yazdirma" element={<TopluEtiketYazdirmaPage />} />
+            <Route path="etiket/kuyumcu-etiketi" element={<YuzukBilezikEtiketiPage />} />
+            <Route path="etiket/fiyat-etiketi" element={<FiyatAyarEtiketleriPage />} />
             <Route path=":section/*" element={<ModulePage />} />
 
 

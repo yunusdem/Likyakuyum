@@ -19,7 +19,7 @@ export class RaporService {
         const tanim = this.tanim(kod);
         const pool = await RaporSqlRepository.pool(ctx);
         const sonuc = await RAPOR_SORGULARI[tanim.kod](pool, p, tanim);
-        return { ...sonuc, tanim: kmtUygula(tanim, p.kmt) };
+        return { ...sonuc, tanim: kosulUygula(kmtUygula(tanim, p.kmt), p) };
     }
     /** Kayıtlı aramalar (kullanıcı × rapor) */
     static aramalar(kullanici, kod, ctx) { return RaporSqlRepository.aramalar(kullanici, this.tanim(kod).kod, ctx); }
@@ -52,6 +52,12 @@ function guvenliTanim(kod) { try {
 catch {
     return null;
 } }
+/** Koşullu kolonlar: kurIkisi → yalnızca Kur alanı "Alış + Satış" iken */
+function kosulUygula(tanim, p) {
+    if (!tanim.kolonlar.some(k => k.kosul))
+        return tanim;
+    return { ...tanim, kolonlar: tanim.kolonlar.filter(k => !k.kosul || (k.kosul === "kurIkisi" && p.kurAlani === "ikisi")) };
+}
 /** KMT (Kur / Miktar / TL) gösterimi: seçilince yalnızca o gruba ait ve etiketsiz kolonlar kalır (kâr-zarar, .rpt parametresi). */
 function kmtUygula(tanim, kmt) {
     const secim = (kmt || "").toUpperCase();

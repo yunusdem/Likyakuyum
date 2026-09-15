@@ -36,16 +36,19 @@ export function LookupModal<T extends Record<string, any>>({
   const [selectedItem, setSelectedItem] = useState<T | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const getItemId = (it: any) => {
+  const getItemId = (it: any): string => {
     if (!it) return "";
+    if (it.hesapHareketiId !== undefined && it.hesapHareketiId !== null) return `hareket-${it.hesapHareketiId}`;
+    if (it.hesapId !== undefined && it.hesapId !== null) return `hesap-${it.hesapId}`;
     if (it.fisId !== undefined && it.fisId !== null) return `fis-${it.fisId}`;
-    if (it.id !== undefined && it.id !== null) return String(it.id);
-    if (it.ID !== undefined && it.ID !== null) return String(it.ID);
-    if (it.panoId !== undefined && it.panoId !== null) return String(it.panoId);
-    if (it.paraId !== undefined && it.paraId !== null) return String(it.paraId);
+    if (it.cariKartId !== undefined && it.cariKartId !== null) return `cari-${it.cariKartId}`;
+    if (it.vezneId !== undefined && it.vezneId !== null) return `vezne-${it.vezneId}`;
+    if (it.panoId !== undefined && it.panoId !== null) return `pano-${it.panoId}`;
+    if (it.paraId !== undefined && it.paraId !== null) return `para-${it.paraId}`;
+    if (it.id !== undefined && it.id !== null) return `id-${it.id}`;
+    if (it.ID !== undefined && it.ID !== null) return `ID-${it.ID}`;
     if (it.kod !== undefined && it.kod !== null) return `kod-${it.kod}`;
     if (it.code !== undefined && it.code !== null) return `code-${it.code}`;
-    if (it.cariKartId !== undefined && it.cariKartId !== null) return `cari-${it.cariKartId}`;
     return "";
   };
 
@@ -245,7 +248,7 @@ export function LookupModal<T extends Record<string, any>>({
 
                   return (
                     <tr
-                      key={itemId || index}
+                      key={`lookup-row-${index}-${itemId || "item"}`}
                       onClick={() => handleRowClick(item)}
                       onDoubleClick={() => handleRowDoubleClick(item)}
                       className={isSelected ? "lookup-selected-row table-primary fw-semibold" : ""}
