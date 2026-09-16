@@ -1002,7 +1002,7 @@ const EBelgeDogrulaPage: React.FC = () => {
             {!earsivMi && (
               <Button
                 size="sm"
-                variant="primary"
+                variant="secondary"
                 onClick={() => void hazirlaVeOnayla("taslak")}
                 disabled={dogrulaniyor || taslakGonderiliyor}
                 className="d-flex align-items-center gap-1"
@@ -1014,7 +1014,7 @@ const EBelgeDogrulaPage: React.FC = () => {
             )}
             <Button
               size="sm"
-              variant="danger"
+              variant="success"
               onClick={() => void hazirlaVeOnayla(earsivMi ? "earsiv" : "gonder")}
               disabled={dogrulaniyor || taslakGonderiliyor}
               className="d-flex align-items-center gap-1"
