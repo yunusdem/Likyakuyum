@@ -78,7 +78,7 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
           <span>{coklu ? "İlk tık satırın üzerine gelir, ikinci tık işaretler; birden fazla seçilebilir." : "İlk tık satırın üzerine gelir, ikinci tık seçer; ↑↓ ve Enter de kullanılabilir."}</span>
           {coklu ? <Badge bg="primary">{isaretli.size} seçili</Badge> : null}
         </div>
-        <style>{`.rapor-secim-imlec > td { background-color: #e0f2fe !important; } .rapor-secim-isaretli > td { background-color: #dcfce7 !important; }`}</style>
+        <style>{`.rapor-secim-imlec > td { background-color: #dbeafe !important; box-shadow: inset 0 0 0 2px #2563eb; } .rapor-secim-isaretli > td { background-color: #dcfce7 !important; } .rapor-secim-isaretli.rapor-secim-imlec > td { background-color: #dcfce7 !important; box-shadow: inset 0 0 0 2px #2563eb; }`}</style>
         <div className="border rounded" style={{ maxHeight: 380, overflowY: "auto" }}>
           {yukleniyor ? <div className="p-4 text-center text-muted"><Spinner size="sm" animation="border" className="me-2" />Yükleniyor…</div>
             : !suzulmus.length ? <div className="p-4 text-center text-muted">{items.length ? "Arama ölçütüne uygun kayıt yok." : "Kayıt bulunamadı."}</div>
@@ -90,7 +90,7 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
               </tr></thead>
               <tbody>
                 {suzulmus.map((x, i) => { const k = anahtar(x); const im = k === imlec, isr = isaretli.has(k);
-                  return <tr key={k} style={{ cursor: "pointer", userSelect: "none" }} className={im ? "rapor-secim-imlec" : isr ? "rapor-secim-isaretli" : ""}
+                  return <tr key={k} style={{ cursor: "pointer", userSelect: "none" }} className={[isr ? "rapor-secim-isaretli" : "", im ? "rapor-secim-imlec" : ""].filter(Boolean).join(" ")}
                     onClick={() => tikla(x)} onDoubleClick={() => sec(x)}>
                     <td className="text-center small text-secondary">{coklu ? <Form.Check type="checkbox" checked={isr} readOnly tabIndex={-1} /> : im ? <IconCheck size={15} className="text-primary" /> : i + 1}</td>
                     {kolonlar.map((c, ci) => <td key={ci} className={c.hiza === "center" ? "text-center" : c.hiza === "right" ? "text-end" : ""}>{c.deger(x)}</td>)}

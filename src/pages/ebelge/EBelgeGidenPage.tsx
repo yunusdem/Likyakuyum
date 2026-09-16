@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import { IconSend, IconAlertTriangle, IconMail } from "@tabler/icons-react";
 
@@ -33,7 +34,12 @@ const EBelgeGidenPage: React.FC = () => {
   const [yukleniyor, setYukleniyor] = useState<boolean>(true);
   const [alertInfo, setAlertInfo] = useState<AlertInfo>(null);
   const [arama, setArama] = useState<string>("");
-  const [durum, setDurum] = useState<string>("TUMU");
+  // Belge sayfasındaki "Taslaklara Git" ?durum=TASLAK ile gelir (yönetici isteği 16.09.2026)
+  const [searchParams] = useSearchParams();
+  const [durum, setDurum] = useState<string>(() => {
+    const d = (searchParams.get("durum") || "").toUpperCase();
+    return ["TASLAK", "GONDERILDI", "IPTAL", "HATALI"].includes(d) ? d : "TUMU";
+  });
   const [belgeTuru, setBelgeTuru] = useState("");
   const [baslangicTarihi, setBaslangicTarihi] = useState("");
   const [bitisTarihi, setBitisTarihi] = useState("");

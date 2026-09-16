@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import {
   IconFileCheck,
@@ -11,6 +11,8 @@ import {
   IconFileDots,
   IconAlertTriangle,
   IconSend,
+  IconFolder,
+  IconDeviceFloppy,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -60,6 +62,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [not, setNot] = useState<string>("");
 
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   // Ana sayfadaki VKN pop-up'ından gelen numara (yönetici isteği 14.09.2026): numara dolu gelir, otomatik sorgu türü seçer
   const [aliciVkn, setAliciVkn] = useState<string>(() => (searchParams.get("vkn") || "").replace(/\D/g, "").slice(0, 11));
   const [aliciUnvan, setAliciUnvan] = useState<string>("");
@@ -208,7 +211,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [taslakSonuc, setTaslakSonuc] = useState<EbelgeTaslakSonucu | null>(null);
   const [dogrulananGirdi, setDogrulananGirdi] = useState("");
   const girdiAnahtari = JSON.stringify([belgeNo, tarih, senaryo, faturaTipi, paraBirimi, not,
-    aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciIl, aliciIlce, satirlar]);
+    aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciIl, aliciIlce, aliciEposta, satirlar]);
   const dogrulamaGuncel = dogrulananGirdi === girdiAnahtari;
 
   const tcknMi = aliciVkn.trim().length === 11;
@@ -245,74 +248,75 @@ const EBelgeDogrulaPage: React.FC = () => {
     setSatirlar((onceki) => onceki.map((s, idx) => (idx === i ? { ...s, [alan]: deger } : s)));
   };
 
-  const dogrula = async () => {
-    if (dogrulaniyor || taslakGonderiliyor) return;
+  /** Belgeyi ICE'de doğrular; şema + schematron geçtiyse true döner (gönderim/taslak bu sonuca göre açılır). */
+  const dogrula = async (): Promise<boolean> => {
+    if (dogrulaniyor || taslakGonderiliyor) return false;
     setAlertInfo(null);
     setSonuc(null);
 
     if (!belgeNo.trim()) {
       setAlertInfo({ type: "danger", message: "Fatura numarası zorunludur." });
-      return;
+      return false;
     }
     if (!aliciVkn.trim()) {
       setAlertInfo({ type: "danger", message: "Alıcı VKN/TCKN zorunludur." });
-      return;
+      return false;
     }
     if (!aliciUnvan.trim() && !(aliciAd.trim() && aliciSoyad.trim())) {
       setAlertInfo({ type: "danger", message: "Alıcı için unvan ya da ad+soyad giriniz." });
-      return;
+      return false;
     }
     if (satirlar.some((s) => !s.ad.trim())) {
       setAlertInfo({ type: "danger", message: "Her satırda mal/hizmet adı bulunmalıdır." });
-      return;
+      return false;
     }
     if (satirlar.some((s) => s.kdvOrani === 0 && !s.istisnaKodu?.trim())) {
       setAlertInfo({
         type: "danger",
         message: "KDV oranı 0 olan satırlarda GİB istisna kodu zorunludur.",
       });
-      return;
+      return false;
     }
     if (satirlar.some((s) => s.istisnaKodu?.trim() === "555" && s.kdvOrani === 0)) {
       setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu KDV 0 ile kullanılamaz." });
-      return;
+      return false;
     }
     if (satirlar.some((s) => s.istisnaKodu?.trim() === "555") && ["YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
       setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu özel senaryolu faturada kullanılamaz." });
-      return;
+      return false;
     }
     if (satirlar.some((s) => ["308", "339"].includes(s.istisnaKodu?.trim() || "")) && senaryo !== "YATIRIMTESVIK") {
       setAlertInfo({ type: "danger", message: "308 ve 339 kodları yalnızca Yatırım Teşvik profilinde kullanılabilir." });
-      return;
+      return false;
     }
     if (iadeMi && !["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
       setAlertInfo({ type: "danger", message: `İade faturası ${senaryo} profilinde kullanılamaz.` });
-      return;
+      return false;
     }
     if (faturaTipi === "TEKNOLOJIDESTEK" && senaryo !== "EARSIVFATURA") {
       setAlertInfo({ type: "danger", message: "Teknoloji Destek faturası yalnızca e-Arşiv Fatura profilinde kullanılabilir." });
-      return;
+      return false;
     }
     if (tevkifatliMi && !satirlar.some((s) => s.tevkifatKodu?.trim())) {
       setAlertInfo({
         type: "danger",
         message: "Tevkifatlı faturada en az bir satırda tevkifat kodu ve oranı olmalıdır.",
       });
-      return;
+      return false;
     }
     if (iadeMi && (!iadeFaturalar.length || iadeFaturalar.some((r) => !r.belgeNo.trim() || !r.tarih))) {
       setAlertInfo({
         type: "danger",
         message: "İade faturasında iade edilen fatura numarası ve tarihi zorunludur.",
       });
-      return;
+      return false;
     }
     if (dovizliMi && !(Number(dovizKuru) > 0)) {
       setAlertInfo({
         type: "danger",
         message: `${paraBirimi} cinsinden belgede TL karşılığı kur zorunludur.`,
       });
-      return;
+      return false;
     }
 
     setDogrulaniyor(true);
@@ -344,16 +348,34 @@ const EBelgeDogrulaPage: React.FC = () => {
       setDogrulananGirdi(girdiAnahtari);
       setTaslakSonuc(null);
       setTaslakOnayAcik(false);
+      const gecti = cevap.semaGecerli && cevap.schematronGecerli;
       setAlertInfo(
-        cevap.semaGecerli && cevap.schematronGecerli
-          ? { type: "success", message: "Belge şema ve schematron doğrulamasından geçti. Hiçbir belge gönderilmedi." }
+        gecti
+          ? { type: "success", message: "Belge şema ve schematron doğrulamasından geçti. Aşağıdan onaylayın." }
           : { type: "warning", message: cevap.mesaj || "Belge doğrulamadan geçemedi." }
       );
+      return gecti;
     } catch (err: any) {
       setAlertInfo({ type: "danger", message: err?.message || "Doğrulama yapılamadı." });
+      return false;
     } finally {
       setDogrulaniyor(false);
     }
+  };
+
+  /**
+   * Tek tık akışı (yönetici isteği 16.09.2026): "Taslaklara Kaydet" / "Gönder" önce belgeyi doğrular,
+   * geçtiyse ilgili onay paneli kendiliğinden açılır; kullanıcı tek onayla işlemi bitirir.
+   * Gerçek fatura geri alınamadığı için onay adımı bilinçli olarak korunmuştur.
+   */
+  const hazirlaVeOnayla = async (tur: "taslak" | "gonder" | "earsiv") => {
+    if (turBelirsiz || mukellefSorgulaniyor) {
+      setAlertInfo({ type: "warning", message: "Mükellef sorgusu tamamlanmadan işlem yapılamaz." });
+      return;
+    }
+    setIslem(tur);
+    const gecti = await dogrula();
+    if (gecti) setTaslakOnayAcik(true);
   };
 
   /**
@@ -421,7 +443,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       setTaslakOnayAcik(false);
       setAlertInfo({
         type: "success",
-        message: `Taslak oluşturuldu (${cevap.belgeNo}). Belge GİB'e gönderilmedi; giden kutusundan iptal edebilirsiniz.`,
+        message: `Taslaklara kaydedildi (${cevap.belgeNo}). Belge GİB'e gönderilmedi; "Taslaklara Git" ile gönderebilir veya iptal edebilirsiniz.`,
       });
     } catch (err: any) {
       setAlertInfo({ type: "danger", message: err?.message || "Taslak oluşturulamadı." });
@@ -505,7 +527,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       <ERPToolbar
         pageTitle="E- Belge Doğrulama"
         pageIcon={<IconFileCheck size={22} className="text-primary" />}
-        onSave={dogrula}
+        onSave={() => void hazirlaVeOnayla(earsivMi ? "earsiv" : "taslak")}
         onNew={() => {
           setBelgeNo("");
           setSatirlar([{ ...BOS_SATIR }]);
@@ -975,16 +997,41 @@ const EBelgeDogrulaPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="d-flex align-items-center gap-2 mt-3">
+          {/* Doğrula düğmesi kaldırıldı (yönetici isteği 16.09.2026): kaydet/gönder doğrulamayı içeride yapar */}
+          <div className="d-flex align-items-center flex-wrap gap-2 mt-3">
+            {!earsivMi && (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => void hazirlaVeOnayla("taslak")}
+                disabled={dogrulaniyor || taslakGonderiliyor}
+                className="d-flex align-items-center gap-1"
+                title="Belgeyi doğrular ve entegratörde taslak olarak kaydeder (GİB'e gitmez)"
+              >
+                {dogrulaniyor && islem === "taslak" ? <Spinner animation="border" size="sm" /> : <IconDeviceFloppy size={16} />}
+                Taslaklara Kaydet
+              </Button>
+            )}
             <Button
               size="sm"
-              variant="primary"
-              onClick={dogrula}
-              disabled={dogrulaniyor}
+              variant="danger"
+              onClick={() => void hazirlaVeOnayla(earsivMi ? "earsiv" : "gonder")}
+              disabled={dogrulaniyor || taslakGonderiliyor}
               className="d-flex align-items-center gap-1"
+              title={earsivMi ? "Belgeyi doğrular ve e-Arşiv faturası olarak gönderir" : "Belgeyi doğrular ve GİB'e gönderir"}
             >
-              {dogrulaniyor ? <Spinner animation="border" size="sm" /> : <IconFileCheck size={16} />}
-              Doğrula (gönderme yok)
+              {dogrulaniyor && islem !== "taslak" ? <Spinner animation="border" size="sm" /> : <IconSend size={16} />}
+              {earsivMi ? "e-Arşiv Gönder" : "Gönder"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => navigate("/e-belge/giden?durum=TASLAK")}
+              className="d-flex align-items-center gap-1 ms-auto"
+              title="Kaydedilen taslaklar: giden kutusunda Taslak süzgeciyle listelenir, oradan gönderilir veya iptal edilir"
+            >
+              <IconFolder size={16} />
+              Taslaklara Git
             </Button>
           </div>
         </Card.Body>
@@ -1080,7 +1127,7 @@ const EBelgeDogrulaPage: React.FC = () => {
                             className="d-flex align-items-center gap-1"
                           >
                             <IconFileDots size={15} />
-                            Taslak Oluştur
+                            Taslaklara Kaydet
                           </Button>
                           <Button
                             size="sm"
@@ -1147,7 +1194,7 @@ const EBelgeDogrulaPage: React.FC = () => {
                           ? "Evet, e-Arşiv faturasını gönder"
                           : islem === "gonder"
                             ? "Evet, faturayı GİB'e gönder"
-                            : "Evet, taslak oluştur"}
+                            : "Evet, taslaklara kaydet"}
                       </Button>
                       <Button
                         size="sm"
@@ -1165,12 +1212,17 @@ const EBelgeDogrulaPage: React.FC = () => {
 
             {taslakSonuc && (
               <Alert variant="success" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
-                {earsivMi ? "e-Arşiv faturası gönderildi" : "Taslak oluşturuldu"} —{" "}
+                {earsivMi ? "e-Arşiv faturası gönderildi" : islem === "gonder" ? "Fatura GİB'e gönderildi" : "Taslaklara kaydedildi"} —{" "}
                 <strong>{taslakSonuc.belgeNo}</strong>
                 {taslakSonuc.ettn ? ` · ETTN: ${taslakSonuc.ettn}` : ""}.
                 {earsivMi
                   ? " Giden kutusundan raporlanma durumunu izleyebilirsiniz."
-                  : " Belge GİB'e gönderilmedi; giden kutusundan iptal edebilirsiniz."}
+                  : islem === "gonder"
+                    ? " Giden kutusundan durumunu izleyebilirsiniz."
+                    : " Belge GİB'e gönderilmedi; Taslaklara Git ile gönderebilir veya iptal edebilirsiniz."}
+                {!earsivMi && islem !== "gonder" && (
+                  <Button size="sm" variant="link" className="p-0 ms-2 align-baseline" onClick={() => navigate("/e-belge/giden?durum=TASLAK")}>Taslaklara Git</Button>
+                )}
               </Alert>
             )}
 
