@@ -95,11 +95,13 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
               </tr></thead>
               <tbody>
                 {suzulmus.map((x, i) => { const k = anahtar(x); const im = k === imlec, isr = isaretli.has(k);
+                  // Renk hücre stilinde verilir: Bootstrap'in hover gölgesi (inset box-shadow) ve tablo değişkenleri satır rengini ezemez.
+                  const hucre: React.CSSProperties | undefined = im ? { backgroundColor: "#bfdbfe", boxShadow: "none" } : isr ? { backgroundColor: "#dcfce7", boxShadow: "none" } : undefined;
                   return <tr key={k} style={{ cursor: "pointer", userSelect: "none" }} className={[isr ? "rapor-secim-isaretli" : "", im ? "rapor-secim-imlec" : ""].filter(Boolean).join(" ")}
                     onClick={() => tikla(x)} onDoubleClick={() => sec(x)}>
-                    <td className="text-center small text-secondary">{coklu ? <Form.Check type="checkbox" checked={isr} readOnly tabIndex={-1} /> : im ? <IconCheck size={15} className="text-primary" /> : i + 1}</td>
-                    {kolonlar.map((c, ci) => <td key={ci} className={c.hiza === "center" ? "text-center" : c.hiza === "right" ? "text-end" : ""}>{c.deger(x)}</td>)}
-                    {!coklu && <td className="text-center"><Button size="sm" variant={im ? "primary" : "outline-secondary"} className="py-0 px-2" onClick={e => { e.stopPropagation(); sec(x); }}>Seç</Button></td>}
+                    <td className="text-center small text-secondary" style={hucre}>{coklu ? <Form.Check type="checkbox" checked={isr} readOnly tabIndex={-1} /> : im ? <IconCheck size={15} className="text-primary" /> : i + 1}</td>
+                    {kolonlar.map((c, ci) => <td key={ci} style={hucre} className={c.hiza === "center" ? "text-center" : c.hiza === "right" ? "text-end" : ""}>{c.deger(x)}</td>)}
+                    {!coklu && <td className="text-center" style={hucre}><Button size="sm" variant={im ? "primary" : "outline-secondary"} className="py-0 px-2" onClick={e => { e.stopPropagation(); sec(x); }}>Seç</Button></td>}
                   </tr>; })}
               </tbody>
             </Table>}
