@@ -105,33 +105,33 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
 
   const printItems: EtiketYazdirItem[] = bulunan
     ? [
-        bulunan.tip === "altin"
-          ? {
-              id: bulunan.urun.altinUrunId,
-              barkod: bulunan.urun.barkod || `${bulunan.urun.grupKodu}${bulunan.urun.urunNo}`,
-              fields: {
-                grupUrunNo: `${bulunan.urun.grupKodu}-${bulunan.urun.urunNo}`,
-                ayar: bulunan.urun.ayar || "-",
-                has: String(bulunan.urun.hasGram || 0),
-                gram: String(bulunan.urun.miktar || 0),
-                fiyat: `${bulunan.urun.satisFiyati} ${bulunan.urun.satisParaKodu}`,
-              },
-            }
-          : {
-              id: (bulunan.urun as OzelUrunItem).ozelUrunId,
-              barkod: bulunan.urun.barkod || `${bulunan.urun.grupKodu}${bulunan.urun.urunNo}`,
-              fields: {
-                grupUrunNo: `${bulunan.urun.grupKodu}-${bulunan.urun.urunNo}`,
-                montur: (bulunan.urun as OzelUrunItem).ayar || "-",
-                tasCinsi: (bulunan.urun as OzelUrunItem).tasCinsi || "-",
-                fiyat: `${bulunan.urun.satisFiyati} ${bulunan.urun.satisParaKodu}`,
-              },
-            },
-      ]
+      bulunan.tip === "altin"
+        ? {
+          id: bulunan.urun.altinUrunId,
+          barkod: bulunan.urun.barkod || `${bulunan.urun.grupKodu}${bulunan.urun.urunNo}`,
+          fields: {
+            grupUrunNo: `${bulunan.urun.grupKodu}-${bulunan.urun.urunNo}`,
+            ayar: bulunan.urun.ayar || "-",
+            has: String(bulunan.urun.hasGram || 0),
+            gram: String(bulunan.urun.miktar || 0),
+            fiyat: `${bulunan.urun.satisFiyati} ${bulunan.urun.satisParaKodu}`,
+          },
+        }
+        : {
+          id: (bulunan.urun as OzelUrunItem).ozelUrunId,
+          barkod: bulunan.urun.barkod || `${bulunan.urun.grupKodu}${bulunan.urun.urunNo}`,
+          fields: {
+            grupUrunNo: `${bulunan.urun.grupKodu}-${bulunan.urun.urunNo}`,
+            montur: (bulunan.urun as OzelUrunItem).ayar || "-",
+            tasCinsi: (bulunan.urun as OzelUrunItem).tasCinsi || "-",
+            fiyat: `${bulunan.urun.satisFiyati} ${bulunan.urun.satisParaKodu}`,
+          },
+        },
+    ]
     : [];
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4">
+    <div className="barkod-etiket-basimi-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="A- Barkod & Etiket Basımı"
         pageIcon={<IconBarcode size={20} />}
@@ -274,7 +274,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
           }
         }}
       />
-    </Container>
+    </div>
   );
 };
 

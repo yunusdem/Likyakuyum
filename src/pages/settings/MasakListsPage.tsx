@@ -154,7 +154,7 @@ export const MasakListsPage: React.FC = () => {
   };
 
   return (
-    <div className="container-fluid py-2 px-3">
+    <div className="w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="MASAK Malvarlıkları Dondurulanlar"
         pageIcon={<IconShieldCheck size={20} />}

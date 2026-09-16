@@ -18,6 +18,7 @@ import {
 } from "../../services/bankaService";
 import { CariService } from "../../services/cariService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
+import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 // Varsayılan Standart Bankalar (DovizFisiPage eşleniği)
 const DEFAULT_BANKALAR = [
@@ -91,6 +92,8 @@ export const BankaHareketiPage: React.FC = () => {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useERPAutoFocus({ dependencies: [queryId] });
 
   // Modals
   const [showHareketLookup, setShowHareketLookup] = useState(false);
@@ -462,7 +465,7 @@ export const BankaHareketiPage: React.FC = () => {
   ];
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4 banka-hareketi-page">
+    <div className="banka-hareketi-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* ─── 1. ÜST ERP AKSİYON ŞERİDİ (Banka Hesap Kartları İle Birebir Aynı) ── */}
       <ERPToolbar
         pageTitle="D- Banka Hesap Hareketleri"
@@ -512,143 +515,144 @@ export const BankaHareketiPage: React.FC = () => {
       )}
 
       {/* ─── 2. HAREKET GİRİŞ FORMU (Banka Hesap Kartları UI Düzeninde) ──────── */}
-      <Card className="shadow-sm border-0 mb-3">
-        <Card.Header className="bg-light py-2 px-3 border-bottom d-flex align-items-center justify-content-between">
-          <div className="d-flex align-items-center gap-2">
-            <IconBuildingBank size={18} className="text-primary" />
-            <span className="fw-bold text-dark">Banka Hareketi Bilgileri</span>
-          </div>
-        </Card.Header>
-
+      <Card className="border shadow-sm mb-3 w-100 bg-white">
         <Card.Body className="p-3">
-          <Row className="gx-4 gy-2">
+          <Row className="g-3">
             {/* ─── SOL SÜTUN ──────────────────────────────────────────────── */}
             <Col lg={6} md={12}>
               {/* İşlem Tipi */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   İşlem Tipi <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
-                  <Form.Select
-                    ref={islemTipiRef}
-                    size="sm"
-                    value={islemTipi}
-                    onChange={(e) => setIslemTipi(Number(e.target.value))}
-                    onKeyDown={(e) => handleInputKeyDown(e, hesapNoRef, undefined)}
-                    className="fw-semibold bg-white text-dark shadow-none"
-                  >
-                    {ISLEM_TIPLERI.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </Form.Select>
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <Form.Select
+                      ref={islemTipiRef}
+                      size="sm"
+                      value={islemTipi}
+                      onChange={(e) => setIslemTipi(Number(e.target.value))}
+                      onKeyDown={(e) => handleInputKeyDown(e, hesapNoRef, undefined)}
+                      className="fw-semibold bg-white text-dark shadow-none"
+                    >
+                      {ISLEM_TIPLERI.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Hesap No */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Hesap No <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      ref={hesapNoRef}
-                      type="text"
-                      size="sm"
-                      value={hesapNo}
-                      onChange={(e) => setHesapNo(e.target.value.replace(/\D/g, ""))}
-                      onKeyDown={(e) => {
-                        if (e.key === "F4") {
-                          e.preventDefault();
-                          setShowBankaLookup(true);
-                        } else {
-                          handleInputKeyDown(e, hesapAdiRef, islemTipiRef);
-                        }
-                      }}
-                      className="fw-bold text-primary font-monospace shadow-none"
-                    />
-                    <Button
-                      variant="outline-primary"
-                      onClick={() => setShowBankaLookup(true)}
-                      title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
-                    >
-                      <IconBinoculars size={15} />
-                    </Button>
-                  </InputGroup>
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <InputGroup size="sm">
+                      <Form.Control
+                        ref={hesapNoRef}
+                        type="text"
+                        size="sm"
+                        value={hesapNo}
+                        onChange={(e) => setHesapNo(e.target.value.replace(/\D/g, ""))}
+                        onKeyDown={(e) => {
+                          if (e.key === "F4") {
+                            e.preventDefault();
+                            setShowBankaLookup(true);
+                          } else {
+                            handleInputKeyDown(e, hesapAdiRef, islemTipiRef);
+                          }
+                        }}
+                        className="fw-bold text-primary font-monospace shadow-none"
+                      />
+                      <Button
+                        variant="outline-primary"
+                        onClick={() => setShowBankaLookup(true)}
+                        title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
+                      >
+                        <IconBinoculars size={15} />
+                      </Button>
+                    </InputGroup>
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Hesap Adı */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Hesap Adı <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      ref={hesapAdiRef}
-                      type="text"
-                      size="sm"
-                      value={hesapAdi}
-                      onChange={(e) => setHesapAdi(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "F4") {
-                          e.preventDefault();
-                          setShowBankaLookup(true);
-                        } else {
-                          handleInputKeyDown(e, cariAdiRef, hesapNoRef);
-                        }
-                      }}
-                      className="fw-semibold shadow-none"
-                    />
-                    <Button
-                      variant="outline-primary"
-                      onClick={() => setShowBankaLookup(true)}
-                      title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
-                    >
-                      <IconBinoculars size={15} />
-                    </Button>
-                  </InputGroup>
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <InputGroup size="sm">
+                      <Form.Control
+                        ref={hesapAdiRef}
+                        type="text"
+                        size="sm"
+                        value={hesapAdi}
+                        onChange={(e) => setHesapAdi(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "F4") {
+                            e.preventDefault();
+                            setShowBankaLookup(true);
+                          } else {
+                            handleInputKeyDown(e, cariAdiRef, hesapNoRef);
+                          }
+                        }}
+                        className="fw-semibold shadow-none"
+                      />
+                      <Button
+                        variant="outline-primary"
+                        onClick={() => setShowBankaLookup(true)}
+                        title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
+                      >
+                        <IconBinoculars size={15} />
+                      </Button>
+                    </InputGroup>
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Cari Adı */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Cari Adı :
                 </Form.Label>
-                <Col sm={8}>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      ref={cariAdiRef}
-                      type="text"
-                      size="sm"
-                      value={cariAdi}
-                      onChange={(e) => {
-                        setCariAdi(e.target.value);
-                        if (!e.target.value.trim()) setCariKartId(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "F4") {
-                          e.preventDefault();
-                          setShowCariLookup(true);
-                        } else {
-                          handleInputKeyDown(e, tarihRef, hesapAdiRef);
-                        }
-                      }}
-                      className="fw-semibold shadow-none"
-                    />
-                    <Button
-                      variant="outline-primary"
-                      onClick={() => setShowCariLookup(true)}
-                      title="Cari Kart Seçimi (TODVZ_CARI_KART) (F4)"
-                    >
-                      <IconBinoculars size={15} />
-                    </Button>
-                  </InputGroup>
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <InputGroup size="sm">
+                      <Form.Control
+                        ref={cariAdiRef}
+                        type="text"
+                        size="sm"
+                        value={cariAdi}
+                        onChange={(e) => {
+                          setCariAdi(e.target.value);
+                          if (!e.target.value.trim()) setCariKartId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "F4") {
+                            e.preventDefault();
+                            setShowCariLookup(true);
+                          } else {
+                            handleInputKeyDown(e, tarihRef, hesapAdiRef);
+                          }
+                        }}
+                        className="fw-semibold shadow-none"
+                      />
+                      <Button
+                        variant="outline-primary"
+                        onClick={() => setShowCariLookup(true)}
+                        title="Cari Kart Seçimi (TODVZ_CARI_KART) (F4)"
+                      >
+                        <IconBinoculars size={15} />
+                      </Button>
+                    </InputGroup>
+                  </div>
                 </Col>
               </Form.Group>
             </Col>
@@ -656,73 +660,79 @@ export const BankaHareketiPage: React.FC = () => {
             {/* ─── SAĞ SÜTUN ──────────────────────────────────────────────── */}
             <Col lg={6} md={12}>
               {/* Tarih */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Tarih <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
-                  <Form.Control
-                    ref={tarihRef}
-                    type="date"
-                    size="sm"
-                    value={tarih}
-                    onChange={(e) => setTarih(e.target.value)}
-                    onKeyDown={(e) => handleInputKeyDown(e, meblagRef, cariAdiRef)}
-                    className="font-monospace shadow-none"
-                  />
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <Form.Control
+                      ref={tarihRef}
+                      type="date"
+                      size="sm"
+                      value={tarih}
+                      onChange={(e) => setTarih(e.target.value)}
+                      onKeyDown={(e) => handleInputKeyDown(e, meblagRef, cariAdiRef)}
+                      className="font-monospace shadow-none"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Meblağ */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Meblağ <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      ref={meblagRef}
-                      type="number"
-                      inputMode="decimal"
-                      data-decimal="true"
-                      step="0.01"
-                      size="sm"
-                      value={meblag}
-                      onChange={(e) => setMeblag(onlyDecimal(e.target.value))}
-                      onKeyDown={(e) => {
-                        blockNonNumericKeys(e, true);
-                        handleInputKeyDown(e, aciklamaRef, tarihRef);
-                      }}
-                      className="text-end fw-bold font-monospace shadow-none"
-                    />
-                    <InputGroup.Text className="small">TL</InputGroup.Text>
-                  </InputGroup>
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <InputGroup size="sm">
+                      <Form.Control
+                        ref={meblagRef}
+                        type="number"
+                        inputMode="decimal"
+                        data-decimal="true"
+                        step="0.01"
+                        size="sm"
+                        value={meblag}
+                        onChange={(e) => setMeblag(onlyDecimal(e.target.value))}
+                        onKeyDown={(e) => {
+                          blockNonNumericKeys(e, true);
+                          handleInputKeyDown(e, aciklamaRef, tarihRef);
+                        }}
+                        className="text-end fw-bold font-monospace shadow-none"
+                      />
+                      <InputGroup.Text className="small">TL</InputGroup.Text>
+                    </InputGroup>
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Açıklama */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Açıklama :
                 </Form.Label>
-                <Col sm={8}>
-                  <Form.Control
-                    ref={aciklamaRef}
-                    type="text"
-                    size="sm"
-                    value={aciklama}
-                    onChange={(e) => setAciklama(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleSave();
-                      } else if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        meblagRef.current?.focus();
-                      }
-                    }}
-                    className="shadow-none"
-                  />
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <Form.Control
+                      ref={aciklamaRef}
+                      type="text"
+                      size="sm"
+                      value={aciklama}
+                      onChange={(e) => setAciklama(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleSave();
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          meblagRef.current?.focus();
+                        }
+                      }}
+                      className="shadow-none"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
             </Col>
@@ -826,7 +836,7 @@ export const BankaHareketiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

@@ -336,7 +336,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
   const dirtyCount = rows.filter((r) => r.isDirty).length;
 
   return (
-    <div className="p-1 p-md-2" style={{ fontFamily: "Tahoma, 'Segoe UI', Arial, sans-serif" }}>
+    <div className="w-100 pb-3" style={{ fontFamily: "Tahoma, 'Segoe UI', Arial, sans-serif", overflowX: "hidden" }}>
       {/* 1. Üst ERP Toolbar */}
       <ERPToolbar
         pageTitle="İstatistik Tanımları"

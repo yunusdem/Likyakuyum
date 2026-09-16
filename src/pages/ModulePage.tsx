@@ -16,7 +16,7 @@ const ModulePage: React.FC = () => {
   const isKayit = location.pathname.includes("kayit");
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4">
+    <div className="w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. Üst ERP Aksiyon Şeridi (Ribbon Toolbar) */}
       <ERPToolbar
         pageTitle={pageTitle}
@@ -54,7 +54,7 @@ const ModulePage: React.FC = () => {
 
       {/* Document Listing & Filtering View */}
       <DocumentListingView pageTitle={pageTitle} />
-    </Container>
+    </div>
   );
 };
 

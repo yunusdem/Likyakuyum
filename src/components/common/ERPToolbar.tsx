@@ -89,20 +89,28 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kur/pano-tanimi": { title: "D- Pano Tanımı", icon: <IconDeviceTv size={20} /> },
   "/ayarlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
   "/tanimlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
+  // A- Vezne İşlemleri (Tüm 12 Sayfa)
   "/vezne/genel-sarraf-fisi": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/sarraf-fisi": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/sarraf-fisi-kayit": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/sarraf-fisi-duzeltme": { title: "A- Genel Sarraf Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/perakende-fisi": { title: "B- Perakende Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fisi": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fis": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fisi-kayit": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fisi-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
   "/vezne/doviz-fis-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
   "/vezne/transfer-kayit": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
-  "/vezne/transfer-duzeltme": { title: "F- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
   "/vezne/vezne-transferi-kayit": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/transfer-duzeltme": { title: "F- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
   "/vezne/vezne-transferi-duzeltme": { title: "F- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
-  "/vezne/vezne-transferi": { title: "Vezne Transferi", icon: <IconCash size={20} /> },
+  "/vezne/vezne-transferi": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/transfer": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/hareket-listesi": { title: "G- Vezne Hareket Listesi", icon: <IconFileText size={20} /> },
+  "/vezne/bakiye-raporu": { title: "H- Vezne Bakiye Raporu", icon: <IconChartBar size={20} /> },
+  "/vezne/fiyat-kontrolu": { title: "I- Fiyat Kontrolü", icon: <IconChartLine size={20} /> },
+  "/vezne/bakiye-raporu-tarih-bazli": { title: "J- Vezne Bakiye Raporu Tarih Bazlı", icon: <IconChartBar size={20} /> },
+  "/vezne/para-say": { title: "K- Vezne Para Say", icon: <IconCash size={20} /> },
   "/vezne/izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
   "/vezne/vezne-izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
   "/kasa/hesap-kayit": { title: "A- Hesap Kayıt", icon: <IconBuilding size={20} /> },
@@ -505,14 +513,6 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           <span className="fw-bold text-dark fs-6" style={{ letterSpacing: "-0.2px" }}>
             {finalTitle}
           </span>
-          {displayModeText && (
-            <span
-              className="badge px-2.5 py-1 ms-1 fw-semibold text-secondary border bg-light shadow-2xs"
-              style={{ fontSize: "11px", letterSpacing: "0.2px" }}
-            >
-              {displayModeText}
-            </span>
-          )}
         </div>
       )}
 

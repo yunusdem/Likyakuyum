@@ -2594,14 +2594,14 @@ export const DovizFisiPage: React.FC = () => {
   ];
 
   return (
-    <div className="container-fluid p-2" style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
+    <div className="w-100 pb-3" style={{ backgroundColor: "#f8fafc", minHeight: "100vh", overflowX: "hidden" }}>
       {/* Top ERP Toolbar with Refresh Icon on right and Dynamic Balances */}
       <ERPToolbar
         disableShortcuts={true}
         pageTitle={
           <div className="d-flex align-items-center gap-2">
             <span style={{ fontSize: "14px", fontWeight: 700 }}>
-              {isDuzeltmeMode ? "Döviz Fişi Düzeltme" : "Döviz Fişi"}
+              {isDuzeltmeMode ? "D- Döviz Fişi Düzeltme" : "C- Döviz Fişi"}
             </span>
             <span
               className="badge px-2 py-0.5 fw-bold text-white shadow-2xs"

@@ -511,7 +511,7 @@ export const BanknotDefinitionsPage: React.FC = () => {
 
 
   return (
-    <div className="banknot-tanimlari-container container-fluid px-2 py-2">
+    <div className="banknot-tanimlari-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. ERP Action Toolbar */}
       <ERPToolbar
         pageTitle="B- Banknot Tanımları"

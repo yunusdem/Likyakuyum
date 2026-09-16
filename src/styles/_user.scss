@@ -254,11 +254,28 @@ html, body {
   backdrop-filter: blur(8px) !important;
 }
 
-main.custom-container {
+main.custom-container,
+.custom-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0.85rem !important;
+  padding-right: 0.85rem !important;
   padding-top: 0.25rem !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+}
+
+#content {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .erp-action-toolbar-wrapper {
+  width: 100% !important;
   margin-top: 0 !important;
 }
 
@@ -594,41 +611,84 @@ tr.lookup-selected-row:hover > td {
 }
 
 // ----------------------------------------------------
-// 1. All Form Labels Strictly Left-Aligned Across All Pages
+// 1. ERP Kompakt Form Düzeni & Tam Ekran Hizalama
 // ----------------------------------------------------
-label,
-.form-label,
-.col-form-label,
-[class*="form-label"],
-label.text-end,
-label.text-sm-end,
-label.text-md-end,
-label.text-lg-end,
-.col-form-label.text-end,
-.col-form-label.text-sm-end,
-.col-form-label.text-md-end,
-.col-form-label.text-lg-end,
-.form-label.text-end,
-.form-label.text-sm-end,
-.form-label.text-md-end,
-.form-label.text-lg-end {
-  text-align: left !important;
-  justify-content: flex-start !important;
-}
+body:not(.login-page-active) {
+  // Kompakt satır aralıkları ve taşmayı önleyen sıfır negatif margin
+  .row.align-items-center,
+  .form-group.row,
+  .row.g-2.align-items-center,
+  .row.g-3.align-items-center,
+  .mb-2.row,
+  .mb-2\.5.row,
+  .mb-3.row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-bottom: 0.35rem !important;
 
-@media (min-width: 0px) {
-  label,
-  .form-label,
-  .col-form-label,
-  [class*="form-label"] {
-    &.text-end,
-    &.text-sm-end,
-    &.text-md-end,
-    &.text-lg-end {
+    // En solda kalan labellar sayfanın en solundan başlasın
+    > label,
+    > .col-form-label,
+    > [class*="col-"] > label,
+    > [class*="col-"] > .col-form-label {
       text-align: left !important;
+      display: flex !important;
+      align-items: center !important;
       justify-content: flex-start !important;
+      padding-right: 8px !important;
+      padding-left: 0 !important;
+      white-space: nowrap !important;
+    }
+
+    > div[class*="col-sm-"],
+    > div[class*="col-md-"],
+    > div[class*="col-lg-"],
+    > div[class*="col-8"],
+    > div[class*="col-9"],
+    > div[class*="col-10"] {
+      padding-left: 0 !important;
     }
   }
+
+  // Tüm ERP kartları tam genişlikte ve eşit hizada olsun
+  .card {
+    width: 100% !important;
+  }
+
+  // Tablo içi inputlar tablonun kendi hücre genişliğine uysun
+  table .form-control,
+  table .form-select,
+  table .input-group,
+  .modal-body .allow-full-width,
+  textarea.form-control {
+    max-width: 100% !important;
+  }
+}
+
+// Login sayfası orijinal haline döndürülüyor (inputlar tam genişlik, etiketler sola hizalı)
+.login-page-wrapper {
+  .form-control,
+  .form-select,
+  .input-group {
+    max-width: 100% !important;
+  }
+  label,
+  .col-form-label {
+    text-align: left !important;
+    justify-content: flex-start !important;
+  }
+}
+
+// Kur Fiyat Listesi Zebra Striping (Kullanıcı İsteği: 1'er arayla mavi satır)
+.kuyumcu-kur-table tbody tr.row-blue td,
+.kuyumcu-kur-table tbody tr:nth-child(even) td {
+  background-color: #ebf4fc !important;
+}
+
+.kuyumcu-kur-table tbody tr:hover td,
+.kuyumcu-kur-table tbody tr.row-blue:hover td,
+.kuyumcu-kur-table tbody tr:nth-child(even):hover td {
+  background-color: #dbeafe !important;
 }
 
 // ----------------------------------------------------

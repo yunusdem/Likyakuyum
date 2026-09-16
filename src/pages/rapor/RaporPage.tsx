@@ -314,10 +314,10 @@ export const RaporPage: React.FC = () => {
     }
   }, [hata]);
 
-  if (!menu) return <div className="container-fluid py-3"><Alert variant="warning">Rapor bulunamadı: {yol}</Alert></div>;
+  if (!menu) return <div className="w-100 pb-3"><Alert variant="warning">Rapor bulunamadı: {yol}</Alert></div>;
 
   return (
-    <div className="container-fluid py-2 px-3">
+    <div className="w-100 pb-3">
       {hata && (
         <div className="erp-toast-container">
           <Alert variant={veri?.sinirAsildi ? "warning" : "danger"} dismissible onClose={() => setHata(null)} className="erp-toast-item py-2 px-3 mb-0 shadow border-0">
@@ -326,7 +326,7 @@ export const RaporPage: React.FC = () => {
         </div>
       )}
 
-      <Card className="shadow-sm border-0 my-2">
+      <Card className="border shadow-sm my-2 w-100 bg-white">
         {/* Parametreler açıkken başlık kutunun sağında (alan kazanmak için); kapalıyken tek satır şerit (yönetici isteği 16.09.2026) */}
         {!parametreAcik && (
           <Card.Header className="d-flex align-items-center gap-2 py-2 bg-white">
@@ -372,7 +372,7 @@ export const RaporPage: React.FC = () => {
 
       <Row className="g-3">
         <Col xs={12}>
-          <Card className="shadow-sm border-0">
+          <Card className="border shadow-sm w-100 bg-white">
             <Card.Body className="p-0">
               {veri?.filtreOzeti && <div className="px-3 py-2 small text-muted border-bottom text-center">{veri.filtreOzeti}</div>}
               <div className="table-responsive" style={{ maxHeight: "68vh" }}>

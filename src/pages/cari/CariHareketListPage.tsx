@@ -213,7 +213,7 @@ export const CariHareketListPage: React.FC = () => {
   }, [hareketList]);
 
   return (
-    <div className="cari-hareket-list-container pb-5">
+    <div className="cari-hareket-list-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* ERP Toolbar */}
       <ERPToolbar
         pageTitle="E- Cari Hareket Listesi"

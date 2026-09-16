@@ -25,6 +25,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
 import LookupModal from "../../components/common/LookupModal";
+import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { printReportTable } from "../../utils/printReport";
 import {
   PrinterService,
@@ -53,6 +54,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [selectedYazici, setSelectedYazici] = useState<YaziciItem | null>(null);
   const [formData, setFormData] = useState<YaziciFormData>(initialFormState);
   const [isNewRecord, setIsNewRecord] = useState<boolean>(false);
+
+  useERPAutoFocus({ dependencies: [isNewRecord, selectedIndex] });
 
   // UI / Status states
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -251,7 +254,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-2 p-md-3">
+    <div className="w-100 pb-3">
       {/* 1. Sol Üst Klasik ERP Toolbar */}
       <ERPToolbar
         pageTitle="Yazıcı Tanımları"
@@ -298,191 +301,197 @@ export const PrinterDefinitionsPage: React.FC = () => {
       {/* 2. Main Container Card (Tam Genişlik, Liste Kaldırıldı, Yatay Inputlar) */}
       <Card className="border-0 shadow-sm rounded-3 mb-4 bg-white">
         <Card.Body className="p-3 p-md-4">
-          <div className="mx-auto" style={{ maxWidth: "850px" }}>
-            <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-              <div className="border rounded-3 p-3 p-md-4 bg-white shadow-2xs mb-3">
-                {/* Sıra No */}
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={4} md={3} className="text-secondary fw-semibold text-sm-end pe-3 mb-0">
-                    Sıra No <span className="text-danger">*</span> :
-                  </Form.Label>
-                  <Col sm={8} md={9}>
-                    <InputGroup>
-                      <Form.Control
-                        type="text"
-                        inputMode="numeric"
-                        value={formData.siraNo || ""}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, "");
-                          handleInputChange("siraNo", val === "" ? "" : parseInt(val, 10));
-                        }}
-                        onBlur={() => {
-                          const parsed = parseInt(String(formData.siraNo), 10);
-                          handleInputChange("siraNo", isNaN(parsed) || parsed < 1 ? 1 : parsed);
-                        }}
-                        className="fw-bold font-monospace"
-                        required
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        className="px-2.5"
-                        onClick={() => {
-                          const current = parseInt(String(formData.siraNo), 10) || 1;
-                          handleInputChange("siraNo", Math.max(1, current - 1));
-                        }}
-                        type="button"
-                      >
-                        <IconChevronDown size={15} />
-                      </Button>
-                      <Button
-                        variant="outline-secondary"
-                        className="px-2.5"
-                        onClick={() => {
-                          const current = parseInt(String(formData.siraNo), 10) || 0;
-                          handleInputChange("siraNo", current + 1);
-                        }}
-                        type="button"
-                      >
-                        <IconChevronUp size={15} />
-                      </Button>
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
+          <div className="w-100">
+            {(() => {
+              const labelColStyle = { width: "155px", flex: "0 0 155px", maxWidth: "155px" };
+              return (
+                <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+                  <div className="border rounded-3 p-3 p-md-4 bg-white shadow-2xs mb-3" style={{ maxWidth: "560px" }}>
+                    {/* Sıra No */}
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                        Sıra No <span className="text-danger">*</span> :
+                      </Form.Label>
+                      <Col>
+                        <InputGroup>
+                          <Form.Control
+                            autoFocus
+                            type="text"
+                            inputMode="numeric"
+                            value={formData.siraNo || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9]/g, "");
+                              handleInputChange("siraNo", val === "" ? "" : parseInt(val, 10));
+                            }}
+                            onBlur={() => {
+                              const parsed = parseInt(String(formData.siraNo), 10);
+                              handleInputChange("siraNo", isNaN(parsed) || parsed < 1 ? 1 : parsed);
+                            }}
+                            className="fw-bold font-monospace"
+                            required
+                          />
+                          <Button
+                            variant="outline-secondary"
+                            className="px-2.5"
+                            onClick={() => {
+                              const current = parseInt(String(formData.siraNo), 10) || 1;
+                              handleInputChange("siraNo", Math.max(1, current - 1));
+                            }}
+                            type="button"
+                          >
+                            <IconChevronDown size={15} />
+                          </Button>
+                          <Button
+                            variant="outline-secondary"
+                            className="px-2.5"
+                            onClick={() => {
+                              const current = parseInt(String(formData.siraNo), 10) || 0;
+                              handleInputChange("siraNo", current + 1);
+                            }}
+                            type="button"
+                          >
+                            <IconChevronUp size={15} />
+                          </Button>
+                        </InputGroup>
+                      </Col>
+                    </Form.Group>
 
-                {/* Yazıcı Tanım / Paylaşım Adı - Oklu Dürbünlü Kod/Kayıt Seçici */}
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={4} md={3} className="text-secondary fw-semibold text-sm-end pe-3 mb-0">
-                    Yazıcı Tanımı / Adı <span className="text-danger">*</span> :
-                  </Form.Label>
-                  <Col sm={8} md={9}>
-                    <CodeLookupInput
-                      value={formData.ad}
-                      maxLength={200}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("ad", e.target.value)}
-                      required
-                      onLookupClick={() => setShowLookupModal(true)}
-                      lookupTitle="Tanımlı Yazıcılardan Seç (Oklu Dürbün)"
-                    />
-                  </Col>
-                </Form.Group>
+                    {/* Yazıcı Tanım / Paylaşım Adı - Oklu Dürbünlü Kod/Kayıt Seçici */}
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                        Yazıcı Tanımı / Adı <span className="text-danger">*</span> :
+                      </Form.Label>
+                      <Col>
+                        <CodeLookupInput
+                          value={formData.ad}
+                          maxLength={200}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => handleInputChange("ad", e.target.value)}
+                          required
+                          onLookupClick={() => setShowLookupModal(true)}
+                          lookupTitle="Tanımlı Yazıcılardan Seç (Oklu Dürbün)"
+                        />
+                      </Col>
+                    </Form.Group>
 
-                {/* Cihaz / Aygıt Adı */}
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={4} md={3} className="text-secondary fw-semibold text-sm-end pe-3 mb-0">
-                    Cihaz / Aygıt Adı :
-                  </Form.Label>
-                  <Col sm={8} md={9}>
-                    <Form.Control
-                      type="text"
-                      maxLength={200}
-                      value={formData.cihazAdi || ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("cihazAdi", e.target.value)}
-                    />
-                  </Col>
-                </Form.Group>
+                    {/* Cihaz / Aygıt Adı */}
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                        Cihaz / Aygıt Adı :
+                      </Form.Label>
+                      <Col>
+                        <Form.Control
+                          type="text"
+                          maxLength={200}
+                          value={formData.cihazAdi || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => handleInputChange("cihazAdi", e.target.value)}
+                        />
+                      </Col>
+                    </Form.Group>
 
-                {/* Bağlantı Noktası */}
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={4} md={3} className="text-secondary fw-semibold text-sm-end pe-3 mb-0">
-                    Bağlantı Noktası :
-                  </Form.Label>
-                  <Col sm={8} md={9}>
-                    <Form.Control
-                      type="text"
-                      maxLength={200}
-                      value={formData.baglantiNoktasi || ""}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => handleInputChange("baglantiNoktasi", e.target.value)}
-                    />
-                  </Col>
-                </Form.Group>
+                    {/* Bağlantı Noktası */}
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                        Bağlantı Noktası :
+                      </Form.Label>
+                      <Col>
+                        <Form.Control
+                          type="text"
+                          maxLength={200}
+                          value={formData.baglantiNoktasi || ""}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => handleInputChange("baglantiNoktasi", e.target.value)}
+                        />
+                      </Col>
+                    </Form.Group>
 
-                {/* Belge Yazıcı Modu */}
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={4} md={3} className="text-secondary fw-semibold text-sm-end pe-3 mb-0">
-                    Yazıcı Modu <span className="text-danger">*</span> :
-                  </Form.Label>
-                  <Col sm={8} md={9}>
-                    <Form.Select
-                      value={formData.belgeYaziciModu}
-                      onChange={(e) => handleInputChange("belgeYaziciModu", parseInt(e.target.value, 10))}
-                      className="fw-bold text-primary"
-                    >
-                      <option value={0}>0 - Standart Windows Sürücüsü (A4 / A5 Fatura)</option>
-                      <option value={1}>1 - ESC/POS Direkt Termal (USB/Seri Port)</option>
-                      <option value={2}>2 - Ağ Paylaşımı / Raw (IP / LAN Fiş Yazıcısı)</option>
-                      <option value={3}>3 - Dosyaya Yazdır / Arşiv (Klasöre Kaydetme)</option>
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
+                    {/* Belge Yazıcı Modu */}
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                        Yazıcı Modu <span className="text-danger">*</span> :
+                      </Form.Label>
+                      <Col>
+                        <Form.Select
+                          value={formData.belgeYaziciModu}
+                          onChange={(e) => handleInputChange("belgeYaziciModu", parseInt(e.target.value, 10))}
+                          className="fw-bold text-primary"
+                        >
+                          <option value={0}>0 - Standart Windows Sürücüsü (A4 / A5 Fatura)</option>
+                          <option value={1}>1 - ESC/POS Direkt Termal (USB/Seri Port)</option>
+                          <option value={2}>2 - Ağ Paylaşımı / Raw (IP / LAN Fiş Yazıcısı)</option>
+                          <option value={3}>3 - Dosyaya Yazdır / Arşiv (Klasöre Kaydetme)</option>
+                        </Form.Select>
+                      </Col>
+                    </Form.Group>
 
-                {/* Varsayılan Kopya Sayısı */}
-                <Form.Group as={Row} className="mb-3 align-items-center">
-                  <Form.Label column sm={4} md={3} className="text-secondary fw-semibold text-sm-end pe-3 mb-0">
-                    Kopya Sayısı :
-                  </Form.Label>
-                  <Col sm={8} md={9}>
-                    <InputGroup>
-                      <Form.Control
-                        type="text"
-                        inputMode="numeric"
-                        value={formData.kopyaSayisi || ""}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, "");
-                          handleInputChange("kopyaSayisi", val === "" ? "" : parseInt(val, 10));
-                        }}
-                        onBlur={() => {
-                          const parsed = parseInt(String(formData.kopyaSayisi), 10);
-                          handleInputChange("kopyaSayisi", isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99));
-                        }}
-                        className="fw-bold font-monospace"
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        className="px-2.5"
-                        onClick={() => {
-                          const current = parseInt(String(formData.kopyaSayisi), 10) || 1;
-                          handleInputChange("kopyaSayisi", Math.max(1, current - 1));
-                        }}
-                        type="button"
-                      >
-                        <IconChevronDown size={15} />
-                      </Button>
-                      <Button
-                        variant="outline-secondary"
-                        className="px-2.5"
-                        onClick={() => {
-                          const current = parseInt(String(formData.kopyaSayisi), 10) || 0;
-                          handleInputChange("kopyaSayisi", Math.min(99, current + 1));
-                        }}
-                        type="button"
-                      >
-                        <IconChevronUp size={15} />
-                      </Button>
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
+                    {/* Varsayılan Kopya Sayısı */}
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                        Kopya Sayısı :
+                      </Form.Label>
+                      <Col>
+                        <InputGroup>
+                          <Form.Control
+                            type="text"
+                            inputMode="numeric"
+                            value={formData.kopyaSayisi || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9]/g, "");
+                              handleInputChange("kopyaSayisi", val === "" ? "" : parseInt(val, 10));
+                            }}
+                            onBlur={() => {
+                              const parsed = parseInt(String(formData.kopyaSayisi), 10);
+                              handleInputChange("kopyaSayisi", isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99));
+                            }}
+                            className="fw-bold font-monospace"
+                          />
+                          <Button
+                            variant="outline-secondary"
+                            className="px-2.5"
+                            onClick={() => {
+                              const current = parseInt(String(formData.kopyaSayisi), 10) || 1;
+                              handleInputChange("kopyaSayisi", Math.max(1, current - 1));
+                            }}
+                            type="button"
+                          >
+                            <IconChevronDown size={15} />
+                          </Button>
+                          <Button
+                            variant="outline-secondary"
+                            className="px-2.5"
+                            onClick={() => {
+                              const current = parseInt(String(formData.kopyaSayisi), 10) || 0;
+                              handleInputChange("kopyaSayisi", Math.min(99, current + 1));
+                            }}
+                            type="button"
+                          >
+                            <IconChevronUp size={15} />
+                          </Button>
+                        </InputGroup>
+                      </Col>
+                    </Form.Group>
 
-                {/* Belge Yazıcı Dizini */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} md={3} className="text-secondary fw-semibold text-sm-end pe-3 mb-0">
-                    Çıktı / Arşiv Dizini :
-                  </Form.Label>
-                  <Col sm={8} md={9}>
-                    <Form.Control
-                      type="text"
-                      maxLength={100}
-                      value={formData.belgeYaziciDizini || ""}
-                      onChange={(e) => handleInputChange("belgeYaziciDizini", e.target.value)}
-                    />
-                  </Col>
-                </Form.Group>
-              </div>
-            </Form>
+                    {/* Belge Yazıcı Dizini */}
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                        Çıktı / Arşiv Dizini :
+                      </Form.Label>
+                      <Col>
+                        <Form.Control
+                          type="text"
+                          maxLength={100}
+                          value={formData.belgeYaziciDizini || ""}
+                          onChange={(e) => handleInputChange("belgeYaziciDizini", e.target.value)}
+                        />
+                      </Col>
+                    </Form.Group>
+                  </div>
+                </Form>
+              );
+            })()}
           </div>
         </Card.Body>
       </Card>

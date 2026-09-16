@@ -532,7 +532,7 @@ export const PanoTanimiPage: React.FC = () => {
   }, [panos, searchQuery]);
 
   return (
-    <div className="pano-tanimi-page-container container-fluid px-2 py-2">
+    <div className="pano-tanimi-page-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. ERP Top Action Toolbar */}
       <ERPToolbar
         pageTitle="D- Pano Tanımı"
@@ -576,7 +576,7 @@ export const PanoTanimiPage: React.FC = () => {
       )}
 
       {/* Main Screen Windows Form Container */}
-      <Card className="shadow-sm border border-secondary-subtle rounded-3">
+      <Card className="shadow-sm border border-secondary-subtle rounded-3 w-100 overflow-hidden">
         <Card.Body className="p-3 bg-body">
           <Row className="g-3">
             {/* Left Pane: Form Parameters matching Procedure Parameters & Desktop Screenshot */}

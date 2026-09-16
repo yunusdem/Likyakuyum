@@ -194,7 +194,7 @@ export const TopluEtiketYazdirmaPage: React.FC = () => {
   });
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4">
+    <div className="toplu-etiket-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="C- Toplu Etiket Yazdırma"
         pageIcon={<IconStack2 size={20} />}
@@ -403,7 +403,7 @@ export const TopluEtiketYazdirmaPage: React.FC = () => {
         yazicilar={yazicilar}
         onAfterPrint={() => handleMarkYazdirildi(true)}
       />
-    </Container>
+    </div>
   );
 };
 

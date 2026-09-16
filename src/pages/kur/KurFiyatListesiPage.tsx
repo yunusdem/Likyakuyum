@@ -974,7 +974,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
 
   return (
-    <div className="container-fluid py-2 px-3 kuyumcu-kur-container">
+    <div className="kuyumcu-kur-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. Sol Üst Standart ERP Toolbar (Diğer Sayfalar Gibi) */}
       <ERPToolbar
         onSave={handleSave}
@@ -1174,8 +1174,9 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                     return (
                       <tr
                         key={row.paraId}
+                        className={idx % 2 === 1 ? "row-blue" : ""}
                         style={{
-                          backgroundColor: idx % 2 === 1 ? "#f9fbfd" : "#ffffff",
+                          backgroundColor: idx % 2 === 1 ? "#ebf4fc" : "#ffffff",
                         }}
                       >
                         {/* # Row Number */}

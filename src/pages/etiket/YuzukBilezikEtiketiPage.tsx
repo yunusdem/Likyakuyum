@@ -283,7 +283,7 @@ export const YuzukBilezikEtiketiPage: React.FC = () => {
   ];
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4">
+    <div className="yuzuk-bilezik-etiketi-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="D- Kuyumcu Yüzük / Bilezik Etiketi"
         pageIcon={<IconRings size={20} />}
@@ -648,7 +648,7 @@ export const YuzukBilezikEtiketiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

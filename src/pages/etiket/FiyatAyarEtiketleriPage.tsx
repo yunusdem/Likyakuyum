@@ -112,6 +112,7 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
 
   useEffect(() => {
     loadAll();
+    grupKoduRef.current?.focus();
   }, [loadAll]);
 
   const firmaLookupColumns: LookupColumn<CariKartItem>[] = [
@@ -300,7 +301,7 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
   ];
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4">
+    <div className="fiyat-ayar-etiketleri-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="E- Fiyat & Ayar Etiketleri"
         pageIcon={<IconDiamond size={20} />}
@@ -345,11 +346,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
         <Card.Body className="p-3">
           <Row className="gx-4 gy-2">
             <Col lg={6} md={12}>
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Grup Kodu <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <InputGroup size="sm">
                     <Form.Control
                       ref={grupKoduRef}
@@ -368,11 +369,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Ürün No :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Control
                     ref={urunNoRef}
                     type="number"
@@ -385,11 +386,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Barkod :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Control
                     ref={barkodRef}
                     type="text"
@@ -402,11 +403,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Mamul Tipi :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Control
                     ref={mamulTipiRef}
                     type="text"
@@ -418,11 +419,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Montür Ayarı :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Select
                     ref={ayarRef}
                     size="sm"
@@ -437,11 +438,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Üretici Firma :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <InputGroup size="sm">
                     <Form.Control
                       ref={ureticiFirmaRef}
@@ -466,11 +467,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
             <Col lg={6} md={12}>
               <div className="bg-light p-2 rounded border mb-2">
                 <div className="fw-bold small text-secondary mb-2">Taş Detayları</div>
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Taş Cinsi :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Select
                       ref={tasCinsiRef}
                       size="sm"
@@ -487,11 +488,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                   </Col>
                 </Form.Group>
 
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Karat (Ct) :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Control
                       ref={tasMiktarRef}
                       type="number"
@@ -505,11 +506,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                   </Col>
                 </Form.Group>
 
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Adet :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Control
                       ref={tasAdetRef}
                       type="number"
@@ -524,11 +525,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
 
                 <Row className="g-2">
                   <Col sm={6}>
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "70px", flex: "0 0 70px", maxWidth: "70px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         Renk :
                       </Form.Label>
-                      <Col sm={8}>
+                      <Col>
                         <Form.Select
                           ref={tasRenkRef}
                           size="sm"
@@ -546,11 +547,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                     </Form.Group>
                   </Col>
                   <Col sm={6}>
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "70px", flex: "0 0 70px", maxWidth: "70px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         Berraklık :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Select
                           ref={tasSaflikRef}
                           size="sm"
@@ -585,11 +586,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                 </Form.Group>
 
                 {sabitle ? (
-                  <Form.Group as={Row} className="mb-2 align-items-center">
-                    <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                  <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                    <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                       Sabit Fiyat :
                     </Form.Label>
-                    <Col sm={8}>
+                    <Col>
                       <InputGroup size="sm">
                         <Form.Control
                           ref={satisFiyatiRef}
@@ -617,11 +618,11 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
                   </Form.Group>
                 ) : (
                   <div>
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "110px", flex: "0 0 110px", maxWidth: "110px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         HAS Çarpanı :
                       </Form.Label>
-                      <Col sm={8}>
+                      <Col>
                         <Form.Control
                           ref={hasKuruCarpaniRef}
                           type="number"
@@ -728,7 +729,7 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

@@ -169,7 +169,7 @@ const EBelgeHomePage: React.FC = () => {
   const baglantiHazir = Boolean(ayar?.aktif && ayar?.sifreTanimli && ayar?.kullaniciAdi);
 
   return (
-    <div className="ebelge-home-container container-fluid px-2 py-2">
+    <div className="ebelge-home-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="E- Belge"
         pageIcon={<IconFileCertificate size={22} className="text-primary" />}

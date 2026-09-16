@@ -537,7 +537,7 @@ export const VezneIzlemePage: React.FC = () => {
   };
 
   return (
-    <div className="d-flex flex-column h-100 bg-light" style={{ minHeight: "calc(100vh - 56px)" }}>
+    <div className="w-100 pb-3 d-flex flex-column h-100" style={{ minHeight: "calc(100vh - 56px)" }}>
       {/* Top ERP Toolbar */}
       <ERPToolbar
         onRefresh={() => fetchData(false)}
@@ -568,14 +568,14 @@ export const VezneIzlemePage: React.FC = () => {
           variant={notification.type}
           dismissible
           onClose={() => setNotification(null)}
-          className="m-2 py-1 px-2.5 d-flex align-items-center justify-content-between shadow-2xs small"
+          className="py-1 px-2.5 mb-2 d-flex align-items-center justify-content-between shadow-2xs small"
         >
           <span>{notification.message}</span>
         </Alert>
       )}
 
       {/* Main Monitoring Grid Table */}
-      <div className="flex-grow-1 bg-white border mx-2 mt-1 mb-2 rounded shadow-2xs overflow-hidden d-flex flex-column">
+      <div className="flex-grow-1 bg-white border mt-1 mb-2 rounded shadow-2xs overflow-hidden d-flex flex-column">
         {isLoading ? (
           <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1 py-5">
             <Spinner animation="border" variant="primary" />

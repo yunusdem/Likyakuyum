@@ -103,6 +103,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const [showCameraModal, setShowCameraModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const grupKoduRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    grupKoduRef.current?.focus();
+  }, []);
 
   const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
     setNotification({ type, message: msg });
@@ -597,7 +602,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   ];
 
   return (
-    <Container fluid className="py-2 px-3 px-lg-4 altin-urun-tanimlama-page">
+    <div className="altin-urun-tanimlama-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. Üst ERP Aksiyon Şeridi */}
       <ERPToolbar
         pageTitle="B- Barkodlu Altın Ürün Tanımlama"
@@ -646,10 +651,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
             <Row className="g-2 align-items-center">
               <Col md={3} sm={6}>
                 <Form.Group as={Row} className="g-1 align-items-center mb-0">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                  <Form.Label column style={{ width: "55px", flex: "0 0 55px", maxWidth: "55px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Tarih :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Control
                       type="date"
                       size="sm"
@@ -663,12 +668,13 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
               <Col md={5} sm={12}>
                 <Form.Group as={Row} className="g-1 align-items-center mb-0">
-                  <Form.Label column sm={3} className="small fw-bold text-secondary text-sm-end text-start">
+                  <Form.Label column style={{ width: "95px", flex: "0 0 95px", maxWidth: "95px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Grup / No <span className="text-danger">*</span> :
                   </Form.Label>
-                  <Col sm={9}>
+                  <Col>
                     <InputGroup size="sm">
                       <Form.Control
+                        ref={grupKoduRef}
                         type="text"
                         value={grupKodu}
                         onChange={(e) => setGrupKodu(e.target.value.toUpperCase())}
@@ -696,10 +702,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
               <Col md={4} sm={12}>
                 <Form.Group as={Row} className="g-1 align-items-center mb-0">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                  <Form.Label column style={{ width: "95px", flex: "0 0 95px", maxWidth: "95px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Barkod Kodu :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Control
                       type="text"
                       size="sm"
@@ -723,11 +729,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 </div>
 
                 {/* Ayar */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Ayar :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Select size="sm" value={ayar} onChange={(e) => handleAyarChange(e.target.value)} className="fw-bold">
                       <option value="22 FANTAZI">22 FANTAZI (916)</option>
                       <option value="24">24 Ayar (1000)</option>
@@ -740,11 +746,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 </Form.Group>
 
                 {/* Üretici Firma */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Üretici Firma :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <InputGroup size="sm">
                       <Form.Control
                         type="text"
@@ -778,11 +784,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 </Form.Group>
 
                 {/* Orjinal Kod */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Orjinal Kod :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Control
                       type="text"
                       size="sm"
@@ -794,21 +800,21 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 </Form.Group>
 
                 {/* Model */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Model :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Control type="text" size="sm" value={model} onChange={(e) => setModel(e.target.value)} />
                   </Col>
                 </Form.Group>
 
                 {/* Banko */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Banko :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <Form.Select size="sm" value={banko} onChange={(e) => setBanko(e.target.value)}>
                       <option value="Banko 1">Banko 1</option>
                       <option value="Banko 2">Banko 2</option>
@@ -825,11 +831,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 </div>
 
                 {/* Maliyet */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Maliyet :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <InputGroup size="sm">
                       <Form.Control
                         type="text"
@@ -856,11 +862,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 </Form.Group>
 
                 {/* Satış Fiyatı */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Satış Fiyatı :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <InputGroup size="sm">
                       <Form.Control
                         type="text"
@@ -888,11 +894,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 </Form.Group>
 
                 {/* Satış Kârı % */}
-                <Form.Group as={Row} className="mb-2 align-items-center">
-                  <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+                <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                     Satış Kârı % :
                   </Form.Label>
-                  <Col sm={8}>
+                  <Col>
                     <InputGroup size="sm">
                       <Form.Control
                         type="text"
@@ -922,11 +928,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 <Row className="gx-2">
                   <Col sm={8}>
                     {/* Miktar (Gram) */}
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         Miktar (Gram) <span className="text-danger">*</span> :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -940,11 +946,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </Form.Group>
 
                     {/* Has Karşılığı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         Has Karşılığı :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -958,11 +964,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </Form.Group>
 
                     {/* Maliyet İşçilik */}
-                    <Form.Group as={Row} className="mb-1.5 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-1.5 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         Maliyet İşçilik :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -976,11 +982,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </Form.Group>
 
                     {/* Maliyet İşçilik Birim & Para (Bir alt satırda) */}
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-semibold text-muted text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-semibold text-muted text-start text-nowrap">
                         İşçilik Türü / Brm :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <div className="d-flex gap-1.5">
                           <Form.Select
                             size="sm"
@@ -1006,11 +1012,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </Form.Group>
 
                     {/* Maliyet İşçilik Tutarı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         İşçilik Tutarı :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -1024,11 +1030,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </Form.Group>
 
                     {/* Satış İşçilik */}
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         Satış İşçilik :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -1042,11 +1048,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </Form.Group>
 
                     {/* Satış İşçilik Tutarı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         Satış İşç. Tutarı :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -1060,11 +1066,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </Form.Group>
 
                     {/* İşçilik Kârı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center">
-                      <Form.Label column sm={5} className="small fw-bold text-secondary text-sm-end text-start">
+                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                         İşçilik Kârı :
                       </Form.Label>
-                      <Col sm={7}>
+                      <Col>
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -1303,7 +1309,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

@@ -525,7 +525,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   );
 
   return (
-    <div className="ebelge-dogrula-container container-fluid px-2 py-2">
+    <div className="ebelge-dogrula-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="E- Belge Doğrulama"
         pageIcon={<IconFileCheck size={22} className="text-primary" />}

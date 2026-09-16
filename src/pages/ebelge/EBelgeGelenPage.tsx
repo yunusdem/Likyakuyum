@@ -97,7 +97,7 @@ const EBelgeGelenPage: React.FC = () => {
   const sonSayfa = Math.max(Math.ceil(toplam / SAYFA_BOYUTU), 1);
 
   return (
-    <div className="ebelge-gelen-container container-fluid px-2 py-2">
+    <div className="ebelge-gelen-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="E- Belge Gelen Kutusu"
         pageIcon={<IconInbox size={22} className="text-primary" />}

@@ -29,7 +29,7 @@ export default function EBelgeGiderPage() {
     catch (e: any) { setHata(`${e.message || "Gönderim tamamlanamadı."} Giden kutusunda belge numarasıyla sonucu kontrol edin.`); }
     finally { setBusy(false); }
   };
-  return <div className="container-fluid py-3">
+  return <div className="w-100 pb-3">
     <div className="d-flex justify-content-between mb-3"><h5>e-Gider Pusulası Oluştur</h5><Link to="/e-belge/giden">Giden Kutusu</Link></div>
     {hata && <Alert variant="danger">{hata}</Alert>}
     {sonuc && <Alert variant="success">{sonuc.belgeNo}: Gönderildi. {sonuc.mesaj}

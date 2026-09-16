@@ -29,6 +29,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
 import LookupModal from "../../components/common/LookupModal";
+import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { printReportTable } from "../../utils/printReport";
 import {
   ProductDefinitionService,
@@ -79,6 +80,11 @@ export const ProductDefinitionsPage: React.FC = () => {
   // UI / Status states
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  useERPAutoFocus({ dependencies: [isNewRecord, selectedIndex] });
+  const labelColStyle = { width: "165px", flex: "0 0 165px", maxWidth: "165px" };
+  const labelColStyleTab1 = { width: "125px", flex: "0 0 125px", maxWidth: "125px" };
+  const labelColStyleTab2 = { width: "135px", flex: "0 0 135px", maxWidth: "135px" };
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>("all");
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
@@ -327,7 +333,7 @@ export const ProductDefinitionsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-2 p-md-3">
+    <div className="w-100 pb-3">
       {/* 1. Sol Üst Klasik ERP Toolbar */}
       <ERPToolbar
         pageTitle="Ürün Tanımları"
@@ -373,7 +379,7 @@ export const ProductDefinitionsPage: React.FC = () => {
       {/* 2. Main Container Card (Tam Genişlik, Liste Kaldırıldı, Yatay Inputlar) */}
       <Card className="border-0 shadow-sm rounded-3 mb-4 bg-white">
         <Card.Body className="p-3 p-md-4">
-          <div style={{ maxWidth: "850px" }}>
+          <div className="w-100">
             {/* Form Tabs */}
             <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || "general")}>
               <Nav variant="pills" className="mb-4 p-1 bg-light rounded-3 gap-1">
@@ -400,461 +406,464 @@ export const ProductDefinitionsPage: React.FC = () => {
               </Nav>
 
               <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-                <Tab.Content>
-                  {/* Tab 1: General Info */}
-                  <Tab.Pane eventKey="general">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Ürün Kodu <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Col sm={9}>
-                        <CodeLookupInput
-                          value={formData.kod}
-                          maxLength={5}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("kod", e.target.value.toUpperCase())}
-                          onLookupClick={() => setShowLookupModal(true)}
-                          required
-                          lookupTitle="Ürün Tanımı Seç (Oklu Dürbün)"
-                        />
-                      </Col>
-                    </Form.Group>
+                <div style={{ maxWidth: "420px" }}>
+                  <Tab.Content>
+                    {/* Tab 1: General Info */}
+                    <Tab.Pane eventKey="general">
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Ürün Kodu <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Col>
+                          <CodeLookupInput
+                            autoFocus
+                            value={formData.kod}
+                            maxLength={5}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("kod", e.target.value.toUpperCase())}
+                            onLookupClick={() => setShowLookupModal(true)}
+                            required
+                            lookupTitle="Ürün Tanımı Seç (Oklu Dürbün)"
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Ürün / Para Adı <span className="text-danger">*</span>
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={200}
-                          value={formData.ad}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("ad", e.target.value)}
-                          required
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Sıra No
-                      </Form.Label>
-                      <Col sm={9}>
-                        <InputGroup>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Ürün / Para Adı <span className="text-danger">*</span>
+                        </Form.Label>
+                        <Col>
                           <Form.Control
                             type="text"
-                            inputMode="numeric"
-                            value={formData.siraNo || ""}
+                            maxLength={200}
+                            value={formData.ad}
                             onFocus={(e) => e.target.select()}
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/[^0-9]/g, "");
-                              handleInputChange("siraNo", val === "" ? "" : parseInt(val, 10));
-                            }}
-                            onBlur={() => {
-                              const parsed = parseInt(String(formData.siraNo), 10);
-                              handleInputChange("siraNo", isNaN(parsed) ? 0 : parsed);
-                            }}
-                            className="fw-bold"
+                            onChange={(e) => handleInputChange("ad", e.target.value)}
+                            required
                           />
-                          <Button
-                            variant="outline-secondary"
-                            className="px-2"
-                            onClick={() => {
-                              const current = parseInt(String(formData.siraNo), 10) || 0;
-                              handleInputChange("siraNo", Math.max(0, current - 1));
-                            }}
-                            type="button"
+                        </Col>
+                      </Form.Group>
+
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Sıra No
+                        </Form.Label>
+                        <Col>
+                          <InputGroup>
+                            <Form.Control
+                              type="text"
+                              inputMode="numeric"
+                              value={formData.siraNo || ""}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9]/g, "");
+                                handleInputChange("siraNo", val === "" ? "" : parseInt(val, 10));
+                              }}
+                              onBlur={() => {
+                                const parsed = parseInt(String(formData.siraNo), 10);
+                                handleInputChange("siraNo", isNaN(parsed) ? 0 : parsed);
+                              }}
+                              className="fw-bold"
+                            />
+                            <Button
+                              variant="outline-secondary"
+                              className="px-2"
+                              onClick={() => {
+                                const current = parseInt(String(formData.siraNo), 10) || 0;
+                                handleInputChange("siraNo", Math.max(0, current - 1));
+                              }}
+                              type="button"
+                            >
+                              <IconChevronDown size={15} />
+                            </Button>
+                            <Button
+                              variant="outline-secondary"
+                              className="px-2"
+                              onClick={() => {
+                                const current = parseInt(String(formData.siraNo), 10) || 0;
+                                handleInputChange("siraNo", current + 1);
+                              }}
+                              type="button"
+                            >
+                              <IconChevronUp size={15} />
+                            </Button>
+                          </InputGroup>
+                        </Col>
+                      </Form.Group>
+
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Ürün Tipi
+                        </Form.Label>
+                        <Col>
+                          <Form.Select
+                            value={formData.urunTipi}
+                            onChange={(e) => handleInputChange("urunTipi", parseInt(e.target.value, 10))}
+                            className="fw-bold text-primary"
                           >
-                            <IconChevronDown size={15} />
-                          </Button>
-                          <Button
-                            variant="outline-secondary"
-                            className="px-2"
-                            onClick={() => {
-                              const current = parseInt(String(formData.siraNo), 10) || 0;
-                              handleInputChange("siraNo", current + 1);
-                            }}
-                            type="button"
+                            <option value={0}>0 - Döviz / Efektif / Nakit</option>
+                            <option value={1}>1 - Altın / Sarrafiye / Mamul</option>
+                            <option value={2}>2 - Ziynet / Takı / Mücevher</option>
+                            <option value={3}>3 - Hurda Altın / Diğer</option>
+                          </Form.Select>
+                        </Col>
+                      </Form.Group>
+
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Birim
+                        </Form.Label>
+                        <Col>
+                          <Form.Select
+                            value={formData.urunTipi === 0 ? "0" : formData.birim}
+                            onChange={(e) => handleInputChange("birim", parseInt(e.target.value, 10))}
+                            disabled={formData.urunTipi === 0 || formData.urunTipi === 3}
                           >
-                            <IconChevronUp size={15} />
-                          </Button>
-                        </InputGroup>
-                      </Col>
-                    </Form.Group>
+                            {formData.urunTipi === 0 ? (
+                              <option value={0}>Döviz / Nakit (Birim Yok)</option>
+                            ) : formData.urunTipi === 3 ? (
+                              <option value={0}>0 - Adet (Hurda)</option>
+                            ) : (
+                              <>
+                                <option value={0}>0 - Adet</option>
+                                <option value={1}>1 - Gram</option>
+                              </>
+                            )}
+                          </Form.Select>
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Ürün Tipi
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Select
-                          value={formData.urunTipi}
-                          onChange={(e) => handleInputChange("urunTipi", parseInt(e.target.value, 10))}
-                          className="fw-bold text-primary"
-                        >
-                          <option value={0}>0 - Döviz / Efektif / Nakit</option>
-                          <option value={1}>1 - Altın / Sarrafiye / Mamul</option>
-                          <option value={2}>2 - Ziynet / Takı / Mücevher</option>
-                          <option value={3}>3 - Hurda Altın / Diğer</option>
-                        </Form.Select>
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Bağlı Para Kodu
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={5}
+                            value={formData.bagliParaKodu || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("bagliParaKodu", e.target.value.toUpperCase())}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Birim
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Select
-                          value={formData.urunTipi === 0 ? "0" : formData.birim}
-                          onChange={(e) => handleInputChange("birim", parseInt(e.target.value, 10))}
-                          disabled={formData.urunTipi === 0 || formData.urunTipi === 3}
-                        >
-                          {formData.urunTipi === 0 ? (
-                            <option value={0}>Döviz / Nakit (Birim Yok)</option>
-                          ) : formData.urunTipi === 3 ? (
-                            <option value={0}>0 - Adet (Hurda)</option>
-                          ) : (
-                            <>
-                              <option value={0}>0 - Adet</option>
-                              <option value={1}>1 - Gram</option>
-                            </>
-                          )}
-                        </Form.Select>
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Parite İşlemi
+                        </Form.Label>
+                        <Col>
+                          <Form.Select
+                            value={formData.pariteIslemi}
+                            onChange={(e) => handleInputChange("pariteIslemi", parseInt(e.target.value, 10))}
+                          >
+                            <option value={0}>0 - Çarpma İşlemi (Standart)</option>
+                            <option value={1}>1 - Bölme İşlemi (Örn: EUR/USD Parite)</option>
+                          </Form.Select>
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Bağlı Para Kodu
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={5}
-                          value={formData.bagliParaKodu || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("bagliParaKodu", e.target.value.toUpperCase())}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab1} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          XML Kodu
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.xmlParaKodu || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("xmlParaKodu", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
+                    </Tab.Pane>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Parite İşlemi
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Select
-                          value={formData.pariteIslemi}
-                          onChange={(e) => handleInputChange("pariteIslemi", parseInt(e.target.value, 10))}
-                        >
-                          <option value={0}>0 - Çarpma İşlemi (Standart)</option>
-                          <option value={1}>1 - Bölme İşlemi (Örn: EUR/USD Parite)</option>
-                        </Form.Select>
-                      </Col>
-                    </Form.Group>
+                    {/* Tab 2: Gold & Has Parameters */}
+                    <Tab.Pane eventKey="gold">
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Gramaj
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.gramaj || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("gramaj", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        XML / Entegrasyon Kodu
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.xmlParaKodu || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("xmlParaKodu", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
-                  </Tab.Pane>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Has Oranı / Milyem
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.hasOrani || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("hasOrani", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                  {/* Tab 2: Gold & Has Parameters */}
-                  <Tab.Pane eventKey="gold">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Gramaj
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.gramaj || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("gramaj", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          İşçilik
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.iscilik || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("iscilik", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Has Oranı / Milyem
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.hasOrani || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("hasOrani", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Has Alış Katsayısı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.hasAlisKatsayisi || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("hasAlisKatsayisi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        İşçilik
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.iscilik || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("iscilik", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Has Satış Katsayısı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.hasSatisKatsayisi || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("hasSatisKatsayisi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Has Alış Katsayısı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.hasAlisKatsayisi || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("hasAlisKatsayisi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Alım Satım Kur Farkı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.alimSatimKurFarki || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("alimSatimKurFarki", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
+                    </Tab.Pane>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Has Satış Katsayısı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.hasSatisKatsayisi || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("hasSatisKatsayisi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                    {/* Tab 3: Rates & Cell Ratios */}
+                    <Tab.Pane eventKey="rates">
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Döviz Alış Hücre Oranı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.dovizAlisHucreOrani || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("dovizAlisHucreOrani", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Alım Satım Kur Farkı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.alimSatimKurFarki || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("alimSatimKurFarki", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
-                  </Tab.Pane>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Döviz Satış Hücre Oranı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.dovizSatisHucreOrani || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("dovizSatisHucreOrani", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                  {/* Tab 3: Rates & Cell Ratios */}
-                  <Tab.Pane eventKey="rates">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Döviz Alış Hücre Oranı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.dovizAlisHucreOrani || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("dovizAlisHucreOrani", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Efektif Alış Hücre Oranı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.efektifAlisHucreOrani || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("efektifAlisHucreOrani", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Döviz Satış Hücre Oranı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.dovizSatisHucreOrani || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("dovizSatisHucreOrani", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Efektif Satış Hücre Oranı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.efektifSatisHucreOrani || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("efektifSatisHucreOrani", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
+                    </Tab.Pane>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Efektif Alış Hücre Oranı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.efektifAlisHucreOrani || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("efektifAlisHucreOrani", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                    {/* Tab 4: Accounting Codes */}
+                    <Tab.Pane eventKey="accounting">
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Efektif Alım Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.efektifAlimHesabi || ""}
+                            onChange={(e) => handleInputChange("efektifAlimHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Efektif Satış Hücre Oranı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          step="any"
-                          value={formData.efektifSatisHucreOrani || ""}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("efektifSatisHucreOrani", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
-                  </Tab.Pane>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Efektif Satım Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.efektifSatimHesabi || ""}
+                            onChange={(e) => handleInputChange("efektifSatimHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                  {/* Tab 4: Accounting Codes */}
-                  <Tab.Pane eventKey="accounting">
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Efektif Alım Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.efektifAlimHesabi || ""}
-                          onChange={(e) => handleInputChange("efektifAlimHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Efektif Depo Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.efektifDepoHesabi || ""}
+                            onChange={(e) => handleInputChange("efektifDepoHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Efektif Satım Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.efektifSatimHesabi || ""}
-                          onChange={(e) => handleInputChange("efektifSatimHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Efektif Vaziyet Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.efektifVaziyetHesabi || ""}
+                            onChange={(e) => handleInputChange("efektifVaziyetHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Efektif Depo Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.efektifDepoHesabi || ""}
-                          onChange={(e) => handleInputChange("efektifDepoHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Döviz Alım Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.dovizAlimHesabi || ""}
+                            onChange={(e) => handleInputChange("dovizAlimHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Efektif Vaziyet Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.efektifVaziyetHesabi || ""}
-                          onChange={(e) => handleInputChange("efektifVaziyetHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Döviz Satım Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.dovizSatimHesabi || ""}
+                            onChange={(e) => handleInputChange("dovizSatimHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Döviz Alım Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.dovizAlimHesabi || ""}
-                          onChange={(e) => handleInputChange("dovizAlimHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Döviz Depo Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.dovizDepoHesabi || ""}
+                            onChange={(e) => handleInputChange("dovizDepoHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Döviz Satım Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.dovizSatimHesabi || ""}
-                          onChange={(e) => handleInputChange("dovizSatimHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Döviz Vaziyet Hesabı
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="text"
+                            maxLength={20}
+                            value={formData.dovizVaziyetHesabi || ""}
+                            onChange={(e) => handleInputChange("dovizVaziyetHesabi", e.target.value)}
+                          />
+                        </Col>
+                      </Form.Group>
 
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Döviz Depo Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.dovizDepoHesabi || ""}
-                          onChange={(e) => handleInputChange("dovizDepoHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Döviz Vaziyet Hesabı
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="text"
-                          maxLength={20}
-                          value={formData.dovizVaziyetHesabi || ""}
-                          onChange={(e) => handleInputChange("dovizVaziyetHesabi", e.target.value)}
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    <Form.Group as={Row} className="mb-3 align-items-center">
-                      <Form.Label column sm={3} className="small fw-semibold text-secondary text-sm-end">
-                        Muhasebe Sıra No
-                      </Form.Label>
-                      <Col sm={9}>
-                        <Form.Control
-                          type="number"
-                          value={formData.muhasebeSiraNo ?? ""}
-                          onChange={(e) => handleInputChange("muhasebeSiraNo", e.target.value ? parseInt(e.target.value, 10) : null)}
-                        />
-                      </Col>
-                    </Form.Group>
-                  </Tab.Pane>
-                </Tab.Content>
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Muhasebe Sıra No
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            value={formData.muhasebeSiraNo ?? ""}
+                            onChange={(e) => handleInputChange("muhasebeSiraNo", e.target.value ? parseInt(e.target.value, 10) : null)}
+                          />
+                        </Col>
+                      </Form.Group>
+                    </Tab.Pane>
+                  </Tab.Content>
+                </div>
 
                 {/* Form Alt Butonları */}
                 <div className="d-flex justify-content-end gap-2 pt-3 border-top mt-4">
@@ -897,17 +906,17 @@ export const ProductDefinitionsPage: React.FC = () => {
                   item.urunTipi === 1
                     ? "warning"
                     : item.urunTipi === 0
-                    ? "info"
-                    : "secondary"
+                      ? "info"
+                      : "secondary"
                 }
               >
                 {item.urunTipi === 0
                   ? "Döviz"
                   : item.urunTipi === 1
-                  ? "Altın"
-                  : item.urunTipi === 2
-                  ? "Ziynet"
-                  : "Hurda"}
+                    ? "Altın"
+                    : item.urunTipi === 2
+                      ? "Ziynet"
+                      : "Hurda"}
               </Badge>
             ),
           },

@@ -348,7 +348,7 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
   ];
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4">
+    <div className="urun-etiket-tasarimi-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="D- Ürün Etiket Tasarımı"
         pageIcon={<IconLayoutGrid size={20} />}
@@ -388,11 +388,11 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
           {/* Parametre Alanları */}
           <Card className="shadow-sm border-0 mb-3" style={{ border: "1px solid #c9d8ea" }}>
             <Card.Body className="p-3">
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Şablon Adı <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Control
                     ref={adRef}
                     type="text"
@@ -404,11 +404,11 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Etiket Tipi :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Select
                     ref={etiketTipiRef}
                     size="sm"
@@ -423,9 +423,9 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Row className="mb-2">
-                <Col sm={4} />
-                <Col sm={8}>
+              <div className="d-flex align-items-center mb-2 g-2">
+                <div style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} />
+                <div className="flex-grow-1">
                   <Row className="g-2">
                     <Col>
                       <Form.Label className="small text-muted mb-0">Etiket Eni mm</Form.Label>
@@ -461,14 +461,14 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
                       />
                     </Col>
                   </Row>
-                </Col>
-              </Row>
+                </div>
+              </div>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Logo Konumu :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Select
                     ref={logoKonumuRef}
                     size="sm"
@@ -483,11 +483,11 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Barkod Tipi :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <div className="d-flex gap-3">
                     <Form.Check
                       ref={barkodTipiCode128Ref}
@@ -511,11 +511,11 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              <Form.Group as={Row} className="mb-0 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-0 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Varsayılan Şablon :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Check
                     ref={varsayilanRef}
                     type="switch"
@@ -873,7 +873,7 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

@@ -36,6 +36,7 @@ import { KurService } from "../../services/kurService";
 import { useAuth } from "../../context/AuthContext";
 import { printReportTable } from "../../utils/printReport";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 interface VezneItem {
   id: number;
@@ -110,6 +111,8 @@ export const CariEmanetDekontPage: React.FC = () => {
   const [showOncekiLookupModal, setShowOncekiLookupModal] = useState<boolean>(false);
   const [teslimEden, setTeslimEden] = useState<string>("");
   const [teslimAlan, setTeslimAlan] = useState<string>("");
+
+  useERPAutoFocus({ dependencies: [cariDekontId] });
 
   // Vezne (Ana Kasa)
   const [vezneId, setVezneId] = useState<number>(1);
@@ -1412,7 +1415,7 @@ export const CariEmanetDekontPage: React.FC = () => {
   }, [tip, vezneKod, vezneAd, cariKod, cariAd, cari2Kod, cari2Ad]);
 
   return (
-    <div className="p-1 p-md-2" style={{ fontFamily: "Tahoma, 'Segoe UI', Arial, sans-serif" }}>
+    <div className="w-100 pb-3" style={{ fontFamily: "Tahoma, 'Segoe UI', Arial, sans-serif", overflowX: "hidden" }}>
       {/* 1. ERP Toolbar */}
       <ERPToolbar
         pageTitle={isDuzeltmeMode ? "F- Cari Emanet Dekont Düzeltme" : "E- Cari Emanet Dekont Kayıt"}
@@ -1434,17 +1437,13 @@ export const CariEmanetDekontPage: React.FC = () => {
         onPrint={() => window.print()}
         disabled={isSaving}
         rightContent={
-          <div className="d-flex align-items-center gap-2">
-            {cariDekontId ? (
-              <Badge bg="success" className="px-2 py-1 font-monospace">
-                {isDuzeltmeMode ? "Düzeltme: " : "Kayıtlı: "} {dekontNo || `ID: ${cariDekontId}`}
+          cariDekontId ? (
+            <div className="d-flex align-items-center gap-2">
+              <Badge bg="secondary" className="px-2 py-1 font-monospace">
+                {dekontNo || `ID: ${cariDekontId}`}
               </Badge>
-            ) : (
-              <Badge bg="warning" text="dark" className="px-2 py-1">
-                {isDuzeltmeMode ? "Dekont Seçilmedi" : "Yeni Dekont"}
-              </Badge>
-            )}
-          </div>
+            </div>
+          ) : undefined
         }
       />
 

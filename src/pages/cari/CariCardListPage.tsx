@@ -22,7 +22,7 @@ import {
   IconId,
   IconUsers,
 } from "@tabler/icons-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { printReportTable } from "../../utils/printReport";
@@ -38,6 +38,7 @@ const KISILIK_TIPI_LABELS: Record<number, string> = {
 
 export const CariCardListPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -123,9 +124,11 @@ export const CariCardListPage: React.FC = () => {
   };
 
   return (
-    <div className="cari-card-list-page pb-5">
+    <div className="cari-card-list-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. ERP Aksiyon Toolbar */}
       <ERPToolbar
+        pageTitle={location.pathname.includes("detayli") ? "I- Detaylı Cari Kart Listesi" : "H- Cari Kart Listesi"}
+        pageIcon={<IconUsers size={20} className="text-primary" />}
         onRefresh={loadData}
         onPrint={handlePrint}
         onFirst={() => handleNavigate("first")}
@@ -234,7 +237,7 @@ export const CariCardListPage: React.FC = () => {
             </div>
           ) : (
             <div className="table-responsive">
-              <Table hover className="align-middle mb-0 text-nowrap" style={{ fontSize: "0.85rem" }}>
+              <Table hover className="align-middle mb-0 text-nowrap w-100" style={{ fontSize: "0.85rem", width: "100%" }}>
                 <thead className="table-light text-secondary border-bottom">
                   <tr>
                     <th style={{ width: "50px" }} className="text-center">#</th>

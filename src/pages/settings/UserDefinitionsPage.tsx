@@ -808,7 +808,7 @@ const UserDefinitionsPage: React.FC = () => {
 
 
   return (
-    <div className="p-2 p-md-3">
+    <div className="w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         onNew={handleNewUser}
         onSave={handleSave}
@@ -1127,31 +1127,31 @@ const UserDefinitionsPage: React.FC = () => {
 
                       {/* Yazıcı */}
                       <div className="p-2 bg-white rounded border">
-                        <Form.Group as={Row} className="align-items-center mb-0">
-                          <Form.Label column sm={4} className="small text-secondary fw-semibold text-sm-end pe-2 mb-0 d-flex align-items-center gap-1">
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
                             <IconPrinter size={16} /> Yazıcı:
-                          </Form.Label>
-                          <Col sm={8}>
-                            <InputGroup size="sm">
-                              <Form.Control
-                                type="text"
-                                inputMode="numeric"
-                                data-numeric="true"
-                                value={currentUser.printerId || ""}
-                                onFocus={(e) => handleInputFocusOrClick(e, "printerId")}
-                                onClick={(e) => handleInputFocusOrClick(e, "printerId")}
-                                onChange={(e) => updateField("printerId", onlyDigits(e.target.value))}
-                                className="bg-light border fw-bold text-center"
-                              />
-                              <Button
-                                variant="outline-secondary"
-                                onClick={() => alert("Sistem yazıcıları")}
-                              >
-                                <IconSearch size={15} />
-                              </Button>
-                            </InputGroup>
-                          </Col>
-                        </Form.Group>
+                          </span>
+                          <InputGroup size="sm" className="flex-grow-1" style={{ minWidth: 0 }}>
+                            <Form.Control
+                              type="text"
+                              inputMode="numeric"
+                              data-numeric="true"
+                              value={currentUser.printerId || ""}
+                              onFocus={(e) => handleInputFocusOrClick(e, "printerId")}
+                              onClick={(e) => handleInputFocusOrClick(e, "printerId")}
+                              onChange={(e) => updateField("printerId", onlyDigits(e.target.value))}
+                              className="bg-light border fw-bold text-center"
+                              style={{ minWidth: 0 }}
+                            />
+                            <Button
+                              variant="outline-secondary"
+                              onClick={() => alert("Sistem yazıcıları")}
+                              className="flex-shrink-0"
+                            >
+                              <IconSearch size={15} />
+                            </Button>
+                          </InputGroup>
+                        </div>
                       </div>
 
                       {/* Zoom Ayarları */}
@@ -1232,39 +1232,36 @@ const UserDefinitionsPage: React.FC = () => {
 
                       {/* Kur Yetkisi */}
                       <div className="p-2 bg-white rounded border">
-                        <Form.Group as={Row} className="align-items-center mb-0">
-                          <Form.Label column sm={4} className="small text-secondary fw-semibold text-sm-end pe-2 mb-0 d-flex align-items-center gap-1">
+                        <div className="d-flex align-items-center gap-1 flex-wrap">
+                          <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0 me-1">
                             <IconExchange size={16} /> Kur yetkisi:
-                          </Form.Label>
-                          <Col sm={8}>
-                            <div className="d-flex align-items-center gap-2">
-                              <Form.Select
-                                size="sm"
-                                value={currentUser.ratePermType || "Var"}
-                                onChange={(e) => updateField("ratePermType", e.target.value)}
-                                style={{ width: "90px" }}
-                                className="bg-light border fw-medium"
-                              >
-                                <option value="Var">Var</option>
-                                <option value="Yok">Yok</option>
-                                <option value="Limitli">Limitli</option>
-                              </Form.Select>
-                              <Form.Control
-                                type="text"
-                                inputMode="decimal"
-                                data-decimal="true"
-                                size="sm"
-                                value={currentUser.ratePermValue || ""}
-                                onFocus={(e) => handleInputFocusOrClick(e, "ratePermValue")}
-                                onClick={(e) => handleInputFocusOrClick(e, "ratePermValue")}
-                                onChange={(e) =>
-                                  updateField("ratePermValue", onlyDecimal(e.target.value))
-                                }
-                                className="bg-light border text-end"
-                              />
-                            </div>
-                          </Col>
-                        </Form.Group>
+                          </span>
+                          <Form.Select
+                            size="sm"
+                            value={currentUser.ratePermType || "Var"}
+                            onChange={(e) => updateField("ratePermType", e.target.value)}
+                            style={{ width: "78px", minWidth: "78px" }}
+                            className="bg-light border fw-medium flex-shrink-0"
+                          >
+                            <option value="Var">Var</option>
+                            <option value="Yok">Yok</option>
+                            <option value="Limitli">Limitli</option>
+                          </Form.Select>
+                          <Form.Control
+                            type="text"
+                            inputMode="decimal"
+                            data-decimal="true"
+                            size="sm"
+                            value={currentUser.ratePermValue || ""}
+                            onFocus={(e) => handleInputFocusOrClick(e, "ratePermValue")}
+                            onClick={(e) => handleInputFocusOrClick(e, "ratePermValue")}
+                            onChange={(e) =>
+                              updateField("ratePermValue", onlyDecimal(e.target.value))
+                            }
+                            className="bg-light border text-end flex-grow-1"
+                            style={{ minWidth: "50px" }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </Col>

@@ -18,6 +18,7 @@ import {
   HesapItem,
   SaveHesapPayload,
 } from "../../services/kasaService";
+import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 export const KasaHesapKayitPage: React.FC = () => {
   const location = useLocation();
@@ -62,6 +63,8 @@ export const KasaHesapKayitPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useERPAutoFocus({ preferredSelector: "#hesapKoduInput", dependencies: [location.pathname, hesapId] });
+
   const kodRef = useRef<HTMLInputElement | null>(null);
   const adRef = useRef<HTMLInputElement | null>(null);
   const kdvRef = useRef<HTMLInputElement | null>(null);
@@ -86,35 +89,6 @@ export const KasaHesapKayitPage: React.FC = () => {
     return String(nextNum).padStart(3, "0");
   }, []);
 
-  // ─── Veri Yükleme ────────────────────────────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    try {
-      const hesaplar = await KasaService.getHesaplar();
-      setHesapList(hesaplar);
-
-      if (!isEditPage && !hesapId) {
-        // Yeni kayıt modunda otomatik sonraki kodu hazırla
-        setKod((prev) => prev || generateNextKod(hesaplar));
-      }
-    } catch (err: any) {
-      showNotif("danger", err?.message || "Hesap verileri yüklenemedi.");
-    }
-  }, [isEditPage, hesapId, generateNextKod]);
-
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
-
-  // Düzeltme sayfasında ilk açılışta otomatik olarak son kayıt gösterilsin
-  useEffect(() => {
-    if (isEditPage && !hasAutoSelectedRef.current && hesapList.length > 0) {
-      hasAutoSelectedRef.current = true;
-      const sonKayit = hesapList.reduce((max, h) => (h.hesapId > max.hesapId ? h : max));
-      handleSelectHesap(sonKayit);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditPage, hesapList]);
-
   // ─── Hesap Kartı Seçimi ──────────────────────────────────────────────────────
   const handleSelectHesap = useCallback((h: HesapItem) => {
     setHesapId(h.hesapId);
@@ -127,13 +101,16 @@ export const KasaHesapKayitPage: React.FC = () => {
     setBakiye(h.bakiye || 0);
     setEklemeZamani(h.eklemeZamani || null);
     setGuncellemeZamani(h.guncellemeZamani || null);
-    showNotif("success", `Hesap kartı yüklendi: ${h.ad}`);
+    setTimeout(() => {
+      kodRef.current?.focus();
+      kodRef.current?.select();
+    }, 50);
   }, []);
 
   // ─── Yeni Hesap Açma ─────────────────────────────────────────────────────────
   const handleNew = useCallback(() => {
     setHesapId(null);
-    setKod(generateNextKod(hesapList));
+    setKod("");
     setAd("");
     setKdvOrani(0);
     setAktif(true);
@@ -142,11 +119,59 @@ export const KasaHesapKayitPage: React.FC = () => {
     setBakiye(0);
     setEklemeZamani(null);
     setGuncellemeZamani(null);
-    setTimeout(() => adRef.current?.focus(), 50);
-  }, [hesapList, generateNextKod]);
+    setTimeout(() => {
+      kodRef.current?.focus();
+      kodRef.current?.select();
+    }, 50);
+  }, []);
+
+  // ─── Veri Yükleme ────────────────────────────────────────────────────────────
+  const loadAll = useCallback(async () => {
+    try {
+      const hesaplar = await KasaService.getHesaplar();
+      setHesapList(hesaplar);
+
+      if (isEditPage) {
+        if (hesaplar.length > 0) {
+          const sonKayit = hesaplar.reduce((max, h) => (h.hesapId > max.hesapId ? h : max));
+          handleSelectHesap(sonKayit);
+        } else {
+          handleNew();
+        }
+      } else {
+        // A- Hesap Kayıt: Tüm input alanları boş, KDV oranı 0
+        setHesapId(null);
+        setKod("");
+        setAd("");
+        setKdvOrani(0);
+        setAktif(true);
+        setToplamGiris(0);
+        setToplamCikis(0);
+        setBakiye(0);
+        setEklemeZamani(null);
+        setGuncellemeZamani(null);
+      }
+
+      setTimeout(() => {
+        kodRef.current?.focus();
+        kodRef.current?.select();
+      }, 100);
+    } catch (err: any) {
+      showNotif("danger", err?.message || "Hesap verileri yüklenemedi.");
+    }
+  }, [isEditPage, handleSelectHesap, handleNew]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll, location.pathname]);
 
   // ─── Kaydet Aksiyonu (F1) ────────────────────────────────────────────────────
   const handleSave = useCallback(async (): Promise<HesapItem | null> => {
+    if (!kod.trim()) {
+      showNotif("warning", "Lütfen hesap kodu giriniz.");
+      kodRef.current?.focus();
+      return null;
+    }
     if (!ad.trim()) {
       showNotif("warning", "Lütfen hesap adı giriniz.");
       adRef.current?.focus();
@@ -154,7 +179,7 @@ export const KasaHesapKayitPage: React.FC = () => {
     }
     setIsSaving(true);
     try {
-      const finalKod = kod.trim() || generateNextKod(hesapList);
+      const finalKod = kod.trim();
       const payload: SaveHesapPayload = {
         hesapId,
         kod: finalKod,
@@ -163,8 +188,6 @@ export const KasaHesapKayitPage: React.FC = () => {
       };
       const saved = await KasaService.saveHesap(payload);
       showNotif("success", `Hesap kartı ${hesapId ? "güncellendi" : "kaydedildi"}: ${saved.ad}`);
-      setHesapId(saved.hesapId);
-      setKod(saved.kod);
       const updatedList = await KasaService.getHesaplar();
       setHesapList(updatedList);
       if (!isEditPage) {
@@ -182,7 +205,7 @@ export const KasaHesapKayitPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [hesapId, kod, ad, kdvOrani, isEditPage, handleNew, handleSelectHesap, hesapList, generateNextKod]);
+  }, [hesapId, kod, ad, kdvOrani, isEditPage, handleNew, handleSelectHesap]);
 
   // ─── Sil Aksiyonu (F2) ──────────────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
@@ -231,7 +254,7 @@ export const KasaHesapKayitPage: React.FC = () => {
   ];
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4 kasa-hesap-kayit-page">
+    <div className="kasa-hesap-kayit-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. Üst ERP Aksiyon Şeridi (Tek kontrol noktası) */}
       <ERPToolbar
         pageTitle={isEditPage ? "B- Hesap Düzeltme" : "A- Hesap Kayıt"}
@@ -289,95 +312,103 @@ export const KasaHesapKayitPage: React.FC = () => {
       )}
 
       {/* 2. Hesap Kartı Formu */}
-      <Card className="shadow-sm border-0 mb-3">
+      <Card className="border shadow-sm mb-3 w-100 bg-white">
         <Card.Body className="p-3">
-          <Row className="gx-4 gy-2">
+          <Row>
             <Col lg={6} md={12}>
               {/* Hesap Kodu */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-1">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Hesap Kodu <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
-                  <Form.Control
-                    ref={kodRef}
-                    type="text"
-                    size="sm"
-                    value={kod}
-                    onChange={(e) => setKod(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        adRef.current?.focus();
-                      }
-                    }}
-                    className="fw-bold text-primary font-monospace"
-                  />
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <Form.Control
+                      id="hesapKoduInput"
+                      data-autofocus="true"
+                      ref={kodRef}
+                      type="text"
+                      size="sm"
+                      value={kod}
+                      onChange={(e) => setKod(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          adRef.current?.focus();
+                        }
+                      }}
+                      className="fw-bold text-primary font-monospace"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Hesap Adı */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-1">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Hesap Adı <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
-                  <Form.Control
-                    ref={adRef}
-                    type="text"
-                    size="sm"
-                    value={ad}
-                    onChange={(e) => setAd(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        kdvRef.current?.focus();
-                      }
-                    }}
-                    className="fw-semibold"
-                  />
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <Form.Control
+                      ref={adRef}
+                      type="text"
+                      size="sm"
+                      value={ad}
+                      onChange={(e) => setAd(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          kdvRef.current?.focus();
+                        }
+                      }}
+                      className="fw-semibold"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
-            </Col>
 
-            <Col lg={6} md={12}>
               {/* KDV Oranı */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-1">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   KDV Oranı (%) :
                 </Form.Label>
-                <Col sm={8}>
-                  <Form.Control
-                    ref={kdvRef}
-                    type="number"
-                    size="sm"
-                    value={kdvOrani}
-                    onChange={(e) => setKdvOrani(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleSave();
-                      }
-                    }}
-                    className="font-monospace"
-                  />
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <Form.Control
+                      ref={kdvRef}
+                      type="number"
+                      size="sm"
+                      value={kdvOrani}
+                      onChange={(e) => setKdvOrani(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleSave();
+                        }
+                      }}
+                      className="font-monospace"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Hesap Durumu */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-1">
+                <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
                   Hesap Durumu :
                 </Form.Label>
-                <Col sm={8}>
-                  <Form.Check
-                    type="switch"
-                    id="hesapAktif"
-                    label={aktif ? "Aktif" : "Pasif"}
-                    checked={aktif}
-                    onChange={(e) => setAktif(e.target.checked)}
-                    className="small fw-semibold text-success"
-                  />
+                <Col>
+                  <div style={{ maxWidth: "260px" }}>
+                    <Form.Check
+                      type="switch"
+                      id="hesapAktif"
+                      label={aktif ? "Aktif" : "Pasif"}
+                      checked={aktif}
+                      onChange={(e) => setAktif(e.target.checked)}
+                      className="small fw-semibold text-success"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
             </Col>
@@ -428,7 +459,7 @@ export const KasaHesapKayitPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

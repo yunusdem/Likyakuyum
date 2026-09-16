@@ -235,7 +235,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
   const gonderilebilir = Boolean(sonuc?.semaGecerli && sonuc?.schematronGecerli && !gonderildi);
 
   return (
-    <div className="ebelge-irsaliye-container container-fluid px-2 py-2">
+    <div className="ebelge-irsaliye-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="E- İrsaliye"
         pageIcon={<IconTruckDelivery size={22} className="text-primary" />}

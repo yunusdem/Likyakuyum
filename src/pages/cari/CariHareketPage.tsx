@@ -31,6 +31,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
 import LookupModal from "../../components/common/LookupModal";
+import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { printReportTable } from "../../utils/printReport";
 import {
   CariHareketService,
@@ -778,8 +779,14 @@ export const CariHareketPage: React.FC = () => {
     ? `D- Cari Hareket Düzeltme ${currentHareketId ? `(#${currentHareketId})` : ""}`
     : `C- Cari Hareket Kayıt ${currentHareketId ? `(#${currentHareketId})` : ""}`;
 
+  // Point 3: Vezne dolu olduğu için kod bölümüne fokuslu gelecek
+  useERPAutoFocus({
+    preferredSelector: "#cariKodInput",
+    dependencies: [isLoadingLookups, currentHareketId],
+  });
+
   return (
-    <div className="cari-hareket-container pb-5">
+    <div className="cari-hareket-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. ERP Toolbar */}
       <ERPToolbar
         pageTitle={pageTitle}
@@ -831,25 +838,15 @@ export const CariHareketPage: React.FC = () => {
         {/* SOL PANEL: Form & Satır Gridi */}
         <Col xs={12} lg={7} xl={7}>
           <Card className="border shadow-sm h-100 bg-white">
-            <Card.Header className="bg-light py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
-              <span className="fw-bold text-dark d-flex align-items-center gap-2 fs-6">
-                <IconCash size={18} className="text-primary" />
-                Cari Hareket Bilgileri
-              </span>
-              {currentHareketId && (
-                <Badge bg="primary" className="font-monospace fs-7">
-                  Fiş No: #{currentHareketId}
-                </Badge>
-              )}
-            </Card.Header>
-
             <Card.Body className="p-3">
               {/* Row 1: Vezne */}
-              <div className="mb-2.5 row g-2 align-items-center">
-                <label className="col-sm-3 col-form-label fw-semibold text-secondary small">Vezne</label>
-                <div className="col-sm-9">
-                  <div className="d-flex gap-2">
-                    <div style={{ width: "170px", minWidth: "150px", flexShrink: 0 }}>
+              <Form.Group as={Row} className="mb-2.5 align-items-center g-1">
+                <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
+                  Vezne
+                </Form.Label>
+                <Col>
+                  <div className="d-flex gap-1" style={{ maxWidth: "280px" }}>
+                    <div style={{ width: "90px", flexShrink: 0 }}>
                       <Form.Control
                         type="text"
                         readOnly
@@ -867,15 +864,18 @@ export const CariHareketPage: React.FC = () => {
                       className="bg-light text-muted small"
                     />
                   </div>
-                </div>
-              </div>
+                </Col>
+              </Form.Group>
 
               {/* Row 2: Cari Kod */}
-              <div className="mb-2.5 row g-2 align-items-center">
-                <label className="col-sm-3 col-form-label fw-semibold text-secondary small">Kod</label>
-                <div className="col-sm-9">
-                  <div style={{ maxWidth: "260px", position: "relative" }}>
+              <Form.Group as={Row} className="mb-2.5 align-items-center g-1">
+                <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
+                  Kod
+                </Form.Label>
+                <Col>
+                  <div style={{ maxWidth: "280px", position: "relative" }}>
                     <CodeLookupInput
+                      id="cariKodInput"
                       value={cariKod}
                       onChange={(e) => handleCariKodChange(e.target.value)}
                       onKeyDown={handleCariKodKeyDown}
@@ -951,14 +951,16 @@ export const CariHareketPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
+                </Col>
+              </Form.Group>
 
               {/* Row 3: Cari Ad */}
-              <div className="mb-2.5 row g-2 align-items-center">
-                <label className="col-sm-3 col-form-label fw-semibold text-secondary small">Ad</label>
-                <div className="col-sm-9">
-                  <div className="input-group">
+              <Form.Group as={Row} className="mb-2.5 align-items-center g-1">
+                <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
+                  Ad
+                </Form.Label>
+                <Col>
+                  <div className="input-group" style={{ maxWidth: "280px" }}>
                     <Form.Control
                       type="text"
                       value={cariAd}
@@ -976,14 +978,16 @@ export const CariHareketPage: React.FC = () => {
                       <IconBinoculars size={17} />
                     </Button>
                   </div>
-                </div>
-              </div>
+                </Col>
+              </Form.Group>
 
               {/* Row 4: Tarih */}
-              <div className="mb-2.5 row g-2 align-items-center">
-                <label className="col-sm-3 col-form-label fw-semibold text-secondary small">Tarih</label>
-                <div className="col-sm-9">
-                  <div style={{ maxWidth: "220px" }}>
+              <Form.Group as={Row} className="mb-2.5 align-items-center g-1">
+                <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
+                  Tarih
+                </Form.Label>
+                <Col>
+                  <div style={{ maxWidth: "280px" }}>
                     <Form.Control
                       type="date"
                       value={tarih}
@@ -991,14 +995,16 @@ export const CariHareketPage: React.FC = () => {
                       className="small"
                     />
                   </div>
-                </div>
-              </div>
+                </Col>
+              </Form.Group>
 
               {/* Row 5: Hareket Tipi */}
-              <div className="mb-2.5 row g-2 align-items-center">
-                <label className="col-sm-3 col-form-label fw-semibold text-secondary small">Hareket tipi</label>
-                <div className="col-sm-9">
-                  <div style={{ maxWidth: "220px" }}>
+              <Form.Group as={Row} className="mb-2.5 align-items-center g-1">
+                <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
+                  Hareket tipi
+                </Form.Label>
+                <Col>
+                  <div style={{ maxWidth: "280px" }}>
                     <Form.Select
                       value={hareketTipi}
                       onChange={(e) => setHareketTipi(Number(e.target.value))}
@@ -1011,31 +1017,35 @@ export const CariHareketPage: React.FC = () => {
                       ))}
                     </Form.Select>
                   </div>
-                </div>
-              </div>
+                </Col>
+              </Form.Group>
 
               {/* Row 6: Açıklama */}
-              <div className="mb-3 row g-2 align-items-center">
-                <label className="col-sm-3 col-form-label fw-semibold text-secondary small">Açıklama</label>
-                <div className="col-sm-9">
-                  <Form.Control
-                    type="text"
-                    value={aciklama}
-                    onChange={(e) => setAciklama(e.target.value)}
-                    maxLength={100}
-                  />
-                </div>
-              </div>
+              <Form.Group as={Row} className="mb-3 align-items-center g-1">
+                <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
+                  Açıklama
+                </Form.Label>
+                <Col>
+                  <div style={{ maxWidth: "280px" }}>
+                    <Form.Control
+                      type="text"
+                      value={aciklama}
+                      onChange={(e) => setAciklama(e.target.value)}
+                      maxLength={100}
+                    />
+                  </div>
+                </Col>
+              </Form.Group>
 
               <hr className="my-3 text-secondary opacity-25" />
 
               {/* Row 7: Sub-Grid (Satırlar Gridi) */}
-              <div className="mb-3 row g-2 align-items-start">
-                <div className="col-sm-3"></div>
-                <div className="col-sm-9">
+              <div className="mb-3 row g-1 align-items-start">
+                <div style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }}></div>
+                <Col>
                   <div
                     style={{
-                      maxWidth: "340px",
+                      maxWidth: "280px",
                       border: "1px solid #99b4d1",
                       backgroundColor: "#ffffff",
                       boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
@@ -1322,14 +1332,16 @@ export const CariHareketPage: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </Col>
               </div>
 
               {/* Row 8: Cari Tipi (Borç / Alacak) */}
-              <div className="mb-4 row g-2 align-items-center">
-                <label className="col-sm-3 col-form-label fw-semibold text-secondary small">Cari tipi</label>
-                <div className="col-sm-9">
-                  <ButtonGroup className="w-100" style={{ maxWidth: "260px" }}>
+              <Form.Group as={Row} className="mb-4 align-items-center g-2">
+                <Form.Label column style={{ width: "115px", flex: "0 0 115px", maxWidth: "115px" }} className="small fw-semibold text-secondary text-start text-nowrap">
+                  Cari tipi
+                </Form.Label>
+                <Col>
+                  <ButtonGroup className="w-100" style={{ maxWidth: "340px" }}>
                     <Button
                       type="button"
                       variant={cariTipi === 0 ? "danger" : "outline-secondary"}
@@ -1347,8 +1359,8 @@ export const CariHareketPage: React.FC = () => {
                       Alacak
                     </Button>
                   </ButtonGroup>
-                </div>
-              </div>
+                </Col>
+              </Form.Group>
             </Card.Body>
           </Card>
         </Col>

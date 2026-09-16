@@ -24,6 +24,7 @@ import {
 } from "../../services/kasaService";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { VezneTransferiService } from "../../services/vezneTransferiService";
+import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 export const KasaHareketPage: React.FC = () => {
   const location = useLocation();
@@ -95,6 +96,8 @@ export const KasaHareketPage: React.FC = () => {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useERPAutoFocus({ dependencies: [hesapHareketiId] });
 
   const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
     setNotification({ type, message: msg });
@@ -256,7 +259,6 @@ export const KasaHareketPage: React.FC = () => {
     if (h.vezneId) {
       fetchVezneBakiyeler(h.vezneId);
     }
-    showNotif("success", `Hareket yüklendi: #${h.hesapHareketiId} ${h.hesapAd || ""}`);
   }, [hesapList, fetchVezneBakiyeler]);
 
   // ─── Hesap Seçimi ────────────────────────────────────────────────────────────
@@ -493,7 +495,7 @@ export const KasaHareketPage: React.FC = () => {
   ];
 
   return (
-    <Container fluid className="py-3 px-3 px-lg-4 kasa-hareket-page">
+    <div className="kasa-hareket-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <style>{`
         .kasa-hareket-page table tbody tr:hover > td,
         .kasa-hareket-page table tbody tr:hover > th,
@@ -570,17 +572,17 @@ export const KasaHareketPage: React.FC = () => {
       )}
 
       {/* 2. Kasa Hareketi Formu */}
-      <Card className="shadow-sm border-0 mb-3">
+      <Card className="border shadow-sm mb-3 w-100 bg-white">
         <Card.Body className="p-3">
-          <Row className="gx-4 gy-2">
+          <Row className="g-3">
             {/* ─── SOL SÜTUN: Temel Bilgiler ─── */}
             <Col lg={6} md={12}>
               {/* İşlem Tarihi */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   İşlem Tarihi <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Control
                     type="date"
                     size="sm"
@@ -592,11 +594,11 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* İşlem Türü (Giriş / Çıkış) */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   İşlem Türü <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Select
                     size="sm"
                     value={tip}
@@ -610,11 +612,11 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* Hesap Seçimi */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   Hesap Seçimi <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <InputGroup size="sm">
                     <Form.Control
                       type="text"
@@ -635,11 +637,11 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* Açıklama */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   Açıklama :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Control
                     type="text"
                     size="sm"
@@ -653,11 +655,11 @@ export const KasaHareketPage: React.FC = () => {
             {/* ─── SAĞ SÜTUN: Finansal Bilgiler & Vezne ─── */}
             <Col lg={6} md={12}>
               {/* Vezne Seçimi */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   Vezne <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <InputGroup size="sm">
                     <Form.Control
                       type="text"
@@ -678,20 +680,21 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* Gramaj / Meblağ & Para Birimi Seçici */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   Gramaj / Meblağ <span className="text-danger">*</span> :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <InputGroup size="sm">
                     <Form.Control
                       type="number"
                       step="any"
                       value={meblag}
                       onChange={(e) => handleMeblagChange(e.target.value)}
-                      className="fw-bold font-monospace text-primary text-end"
+                      className="fw-bold font-monospace text-primary text-end allow-full-width"
+                      style={{ minWidth: "120px", flex: "1 1 auto" }}
                     />
-                    {/* Açılır Para Birimi Kutusu (Dropdown) */}
+                    {/* Açılır Para Birimi Kutusu (Kısa ve aşağı oku kaldırılmış) */}
                     <Form.Select
                       size="sm"
                       value={paraId ?? ""}
@@ -709,8 +712,19 @@ export const KasaHareketPage: React.FC = () => {
                           }
                         }
                       }}
-                      style={{ maxWidth: "115px", fontWeight: "bold" }}
-                      className="bg-light font-monospace"
+                      style={{
+                        width: "56px",
+                        maxWidth: "56px",
+                        minWidth: "56px",
+                        fontWeight: "bold",
+                        backgroundImage: "none",
+                        appearance: "none",
+                        WebkitAppearance: "none",
+                        textAlign: "center",
+                        paddingLeft: "4px",
+                        paddingRight: "4px",
+                      }}
+                      className="bg-light font-monospace text-center flex-shrink-0"
                     >
                       {lookups.paralar.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -730,41 +744,40 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* KDV Oranı (%) & KDV Tutarı */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   KDV Oranı (%) :
                 </Form.Label>
-                <Col sm={3}>
-                  <Form.Control
-                    type="number"
-                    step="any"
-                    size="sm"
-                    value={kdvOrani}
-                    onChange={(e) => handleKdvOraniChange(e.target.value)}
-                    className="font-monospace text-end"
-                  />
-                </Col>
-                <Form.Label column sm={2} className="small fw-bold text-secondary text-sm-end text-start pe-1">
-                  KDV Tutarı:
-                </Form.Label>
-                <Col sm={3}>
-                  <Form.Control
-                    type="number"
-                    step="any"
-                    size="sm"
-                    value={kdvTutari}
-                    onChange={(e) => handleKdvTutariChange(e.target.value)}
-                    className="font-monospace text-end bg-light fw-semibold"
-                  />
+                <Col>
+                  <div className="d-flex align-items-center gap-2">
+                    <Form.Control
+                      type="number"
+                      step="any"
+                      size="sm"
+                      value={kdvOrani}
+                      onChange={(e) => handleKdvOraniChange(e.target.value)}
+                      className="font-monospace text-end"
+                      style={{ maxWidth: "80px" }}
+                    />
+                    <span className="small fw-bold text-secondary flex-shrink-0">Tutar:</span>
+                    <Form.Control
+                      type="number"
+                      step="any"
+                      size="sm"
+                      value={kdvTutari}
+                      onChange={(e) => handleKdvTutariChange(e.target.value)}
+                      className="font-monospace text-end bg-light fw-semibold"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
 
               {/* Genel Toplam (Meblağ + KDV) */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   Toplam Tutar :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Control
                     type="text"
                     size="sm"
@@ -776,11 +789,11 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* Değişiklik Takip Switch */}
-              <Form.Group as={Row} className="mb-2 align-items-center">
-                <Form.Label column sm={4} className="small fw-bold text-secondary text-sm-end text-start">
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
                   Değişiklik Takibi :
                 </Form.Label>
-                <Col sm={8}>
+                <Col>
                   <Form.Check
                     type="switch"
                     id="logTakip"
@@ -900,7 +913,7 @@ export const KasaHareketPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

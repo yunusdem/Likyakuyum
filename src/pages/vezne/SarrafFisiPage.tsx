@@ -119,8 +119,15 @@ const getUserVezne = (list: VezneItem[], cashierCode?: string): VezneItem | unde
   return list[0];
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-export const SarrafFisiPage: React.FC = () => {
+export interface SarrafFisiPageProps {
+  isPerakende?: boolean;
+  isDuzeltme?: boolean;
+}
+
+export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
+  isPerakende = false,
+  isDuzeltme = false,
+}) => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const queryId = searchParams.get("id") || searchParams.get("sarrafFisiId");
@@ -226,6 +233,14 @@ export const SarrafFisiPage: React.FC = () => {
   const odemeHas = hasKuruNum > 0 ? totalOdemeTutar / hasKuruNum : (totalOdemeTutar === totalTutar ? alisHas : 0);
   const farkTL = totalTutar - totalOdemeTutar;
   const farkHas = alisHas - odemeHas;
+
+  // Sayfa ilk açılınca otomatik inputa / işleme odaklan
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      islemRef.current?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Auto-sync single payment row to totalTutar and alisHas so Fark = 0
   useEffect(() => {
@@ -1072,13 +1087,19 @@ export const SarrafFisiPage: React.FC = () => {
   const belgeLabel = belgeTuru === 0 ? "Kağıt fatura" : belgeTuru === 1 ? "e-Fatura" : "e-İrsaliye";
 
   // ─── Render ──────────────────────────────────────────────────────────────────
+  const displayTitle = isPerakende
+    ? "B- Perakende Fişi"
+    : isDuzeltme
+    ? "A- Genel Sarraf Fişi Düzeltme"
+    : "A- Genel Sarraf Fişi";
+
   return (
-    <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px" }}>
+    <div className="sarraf-fisi-page w-100 pb-3" style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px" }}>
       <ERPToolbar
         disableShortcuts
         pageTitle={
           <span style={{ fontWeight: 700, fontSize: "14px" }}>
-            Genel Sarraf Fişi{" "}
+            {displayTitle}{" "}
             <Badge bg={tip === 0 ? "primary" : "success"} style={{ fontSize: "11px" }}>
               {tip === 0 ? "ALIŞ" : "SATIŞ"}
             </Badge>

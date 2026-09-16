@@ -165,7 +165,7 @@ export const BelgePage: React.FC = () => {
     : (onizleme.istek?.fisId === f.fisId && f.kaynak === "DOVIZ") || onizleme.istek?.belgeNo === f.belgeNo);
 
   return (
-    <div className="container-fluid py-2 px-3">
+    <div className="w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="Belge / Fiş PDF"
         pageIcon={<IconFileTypePdf size={20} />}

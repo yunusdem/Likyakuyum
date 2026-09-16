@@ -80,7 +80,7 @@ export default function EBelgeKaynakPage() {
     await yukle(sayfa);
   };
   const secilebilir = kayitlar.filter(k => k.secilebilir);
-  return <div className="container-fluid py-3 ebelge-kaynak">
+  return <div className="w-100 pb-3 ebelge-kaynak">
     {hata && <Alert variant="danger">{hata}</Alert>}
     <Card className="mb-3"><Card.Body className="p-3"><Form onSubmit={e => { e.preventDefault(); void yukle(); }}><fieldset disabled={busy} className="kaynak-filtre">
       <Form.Group controlId="kaynak-arama"><Form.Label>Belge no / ünvan</Form.Label><Form.Control size="sm" value={arama} onChange={e => setArama(e.target.value)} /></Form.Group>
