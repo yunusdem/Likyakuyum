@@ -78,7 +78,12 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
           <span>{coklu ? "İlk tık satırın üzerine gelir, ikinci tık işaretler; birden fazla seçilebilir." : "İlk tık satırın üzerine gelir, ikinci tık seçer; ↑↓ ve Enter de kullanılabilir."}</span>
           {coklu ? <Badge bg="primary">{isaretli.size} seçili</Badge> : null}
         </div>
-        <style>{`.rapor-secim-imlec > td { background-color: #dbeafe !important; box-shadow: inset 0 0 0 2px #2563eb; } .rapor-secim-isaretli > td { background-color: #dcfce7 !important; } .rapor-secim-isaretli.rapor-secim-imlec > td { background-color: #dcfce7 !important; box-shadow: inset 0 0 0 2px #2563eb; }`}</style>
+        <style>{`
+          /* İşaretli satır yeşil dolgu; imleç (ilk tık) satırı düz mavi dolgu — fare üzerindeyken de değişmez (yönetici isteği 16.09.2026) */
+          .rapor-secim-isaretli > td, .table-hover > tbody > .rapor-secim-isaretli:hover > td { --bs-table-accent-bg: #dcfce7; background-color: #dcfce7 !important; }
+          .rapor-secim-imlec > td, .table-hover > tbody > .rapor-secim-imlec:hover > td,
+          .rapor-secim-isaretli.rapor-secim-imlec > td, .table-hover > tbody > .rapor-secim-isaretli.rapor-secim-imlec:hover > td { --bs-table-accent-bg: #bfdbfe; background-color: #bfdbfe !important; box-shadow: none; }
+        `}</style>
         <div className="border rounded" style={{ maxHeight: 380, overflowY: "auto" }}>
           {yukleniyor ? <div className="p-4 text-center text-muted"><Spinner size="sm" animation="border" className="me-2" />Yükleniyor…</div>
             : !suzulmus.length ? <div className="p-4 text-center text-muted">{items.length ? "Arama ölçütüne uygun kayıt yok." : "Kayıt bulunamadı."}</div>
