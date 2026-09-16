@@ -113,27 +113,27 @@ const KISILIK_TIPI_OPTIONS: Record<number, string> = {
 };
 
 const labelColStyle: React.CSSProperties = {
-  width: "100px",
-  flex: "0 0 100px",
-  maxWidth: "100px",
+  width: "135px",
+  flex: "0 0 135px",
+  maxWidth: "135px",
 };
 
 const labelColStylePersonal: React.CSSProperties = {
-  width: "185px",
-  flex: "0 0 185px",
-  maxWidth: "185px",
+  width: "155px",
+  flex: "0 0 155px",
+  maxWidth: "155px",
 };
 
 const labelColStyleCorporate: React.CSSProperties = {
-  width: "195px",
-  flex: "0 0 195px",
-  maxWidth: "195px",
+  width: "160px",
+  flex: "0 0 160px",
+  maxWidth: "160px",
 };
 
 const labelColStyleSettings: React.CSSProperties = {
-  width: "215px",
-  flex: "0 0 215px",
-  maxWidth: "215px",
+  width: "175px",
+  flex: "0 0 175px",
+  maxWidth: "175px",
 };
 
 const normalizeTr = (str: string): string => {
@@ -1021,9 +1021,9 @@ export const CariCardRegistrationPage: React.FC = () => {
                 <Tab.Content>
                   {/* TAB 1: Temel & Kimlik */}
                   <Tab.Pane eventKey="general">
-                    <div style={{ maxWidth: "420px" }}>
+                    <div style={{ maxWidth: "460px" }}>
                       <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                           Cari Kodu
                         </Form.Label>
                         <Col>
@@ -1048,7 +1048,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                       </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Cari Ünvan / Ad <span className="text-danger">*</span>
                       </Form.Label>
                       <Col>
@@ -1069,7 +1069,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Kişilik Tipi
                       </Form.Label>
                       <Col>
@@ -1088,7 +1088,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         VKN / TCKN
                       </Form.Label>
                       <Col>
@@ -1109,7 +1109,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Vergi Dairesi
                       </Form.Label>
                       <Col>
@@ -1128,7 +1128,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Yetkili Kişi
                       </Form.Label>
                       <Col>
@@ -1143,7 +1143,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Hukuki Yapı
                       </Form.Label>
                       <Col>
@@ -1162,7 +1162,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Cari Bakiye Sınırı
                       </Form.Label>
                       <Col>
@@ -1184,7 +1184,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Özel Filtre
                       </Form.Label>
                       <Col>
@@ -1199,7 +1199,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Kara Liste
                       </Form.Label>
                       <Col>
@@ -1217,7 +1217,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 2: İletişim & Adres */}
                   <Tab.Pane eventKey="contact">
-                    <div style={{ maxWidth: "420px" }}>
+                    <div style={{ maxWidth: "460px" }}>
                     {/* Cascading Ülke -> İl -> İlçe Seçimi (country-state-city kütüphanesi) & Otomatik Uyruk */}
                     <CountryStateCitySelect
                       countryCode={selectedCountryIso}
@@ -1227,7 +1227,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                       onLocationChange={handleLocationChange}
                       renderAfterCountry={
                         <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                          <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                          <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                             Uyruk
                           </Form.Label>
                           <Col>
@@ -1259,7 +1259,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                     {/* 5. Posta Kodu */}
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Posta Kodu
                       </Form.Label>
                       <Col>
@@ -1291,7 +1291,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                     {/* 6. Açık Adres */}
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         Açık Adres
                       </Form.Label>
                       <Col>
@@ -1308,7 +1308,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                     {/* 7. Telefon */}
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         <IconPhone size={14} className="me-1" /> Telefon
                       </Form.Label>
                       <Col>
@@ -1329,7 +1329,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                     {/* 8. WhatsApp Adı */}
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         <IconBrandWhatsapp size={14} className="text-success me-1" /> WhatsApp Adı
                       </Form.Label>
                       <Col>
@@ -1345,7 +1345,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                     {/* 9. E-Posta */}
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                         <IconMail size={14} className="me-1" /> E-Posta
                       </Form.Label>
                       <Col>
@@ -1367,9 +1367,9 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 3: Nüfus & Şahıs */}
                   <Tab.Pane eventKey="personal">
-                    <div style={{ maxWidth: "600px" }}>
+                    <div style={{ maxWidth: "480px" }}>
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Baba Adı
                       </Form.Label>
                       <Col>
@@ -1384,7 +1384,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Anne Adı
                       </Form.Label>
                       <Col>
@@ -1399,7 +1399,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Doğum Yeri
                       </Form.Label>
                       <Col>
@@ -1414,7 +1414,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Doğum Tarihi
                       </Form.Label>
                       <Col>
@@ -1427,7 +1427,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Kimlik Seri No
                       </Form.Label>
                       <Col>
@@ -1442,7 +1442,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Pasaport No
                       </Form.Label>
                       <Col>
@@ -1457,7 +1457,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Meslek
                       </Form.Label>
                       <Col>
@@ -1476,7 +1476,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Sektör
                       </Form.Label>
                       <Col>
@@ -1495,7 +1495,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Kimlik Geçerlilik Tarihi
                       </Form.Label>
                       <Col>
@@ -1508,7 +1508,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Kimlik Belge Türü
                       </Form.Label>
                       <Col>
@@ -1525,7 +1525,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Dernek / Vakıf Amacı
                       </Form.Label>
                       <Col>
@@ -1543,9 +1543,9 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 4: E-Dönüşüm & MASAK */}
                   <Tab.Pane eventKey="corporate">
-                    <div style={{ maxWidth: "650px" }}>
+                    <div style={{ maxWidth: "560px" }}>
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         E-Fatura Posta Kutusu
                       </Form.Label>
                       <Col>
@@ -1576,7 +1576,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         E-İrsaliye Posta Kutusu
                       </Form.Label>
                       <Col>
@@ -1592,7 +1592,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         Şirket Türü
                       </Form.Label>
                       <Col>
@@ -1613,7 +1613,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         Yetkili Kimlik No
                       </Form.Label>
                       <Col>
@@ -1634,7 +1634,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         Yetkili Kimlik Geçerlilik
                       </Form.Label>
                       <Col>
@@ -1647,7 +1647,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         Faaliyet Belgesi
                       </Form.Label>
                       <Col>
@@ -1662,7 +1662,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         Vergi Levhası
                       </Form.Label>
                       <Col>
@@ -1677,7 +1677,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         İmza Sirküleri
                       </Form.Label>
                       <Col>
@@ -1692,7 +1692,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         İmza Sirküleri Geçerlilik
                       </Form.Label>
                       <Col>
@@ -1708,9 +1708,9 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 5: Fiş & İstatistik & Vekil Eşleştirmeleri */}
                   <Tab.Pane eventKey="settings">
-                    <div style={{ maxWidth: "680px" }}>
+                    <div style={{ maxWidth: "560px" }}>
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Varsayılan Alış İstatistiği
                       </Form.Label>
                       <Col>
@@ -1729,7 +1729,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Varsayılan Satış İstatistiği
                       </Form.Label>
                       <Col>
@@ -1748,7 +1748,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Arbitraj Alış İstatistiği
                       </Form.Label>
                       <Col>
@@ -1767,7 +1767,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Arbitraj Satış İstatistiği
                       </Form.Label>
                       <Col>
@@ -1786,7 +1786,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Favori Para Birimi
                       </Form.Label>
                       <Col>
@@ -1805,7 +1805,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Bağlı Banka Hesabı Cari ID
                       </Form.Label>
                       <Col>
@@ -1824,7 +1824,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Yetkili Kişi Cari ID
                       </Form.Label>
                       <Col>
@@ -1843,7 +1843,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Vekil Adı
                       </Form.Label>
                       <Col>
@@ -1858,7 +1858,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                     </Form.Group>
 
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start">
+                      <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Vekil Kimlik No
                       </Form.Label>
                       <Col>

@@ -172,6 +172,7 @@ export const CariHareketPage: React.FC = () => {
   // Focus navigation refs
   const smbInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
   const miktarInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+  const tarihInputRef = useRef<HTMLInputElement | null>(null);
 
   // Balance status
   const [bakiyeSummary, setBakiyeSummary] = useState<CariBakiyeSummary | null>(null);
@@ -237,13 +238,31 @@ export const CariHareketPage: React.FC = () => {
     fetchInitialLookups();
   }, []); // Run once on mount!
 
-  // Load record if queryId present or edit mode
+  // Load record if queryId present or edit mode (Kayıt sayfasında daima boş, Düzeltme sayfasında son kayıt)
   useEffect(() => {
     if (queryId) {
       loadRecordById(Number(queryId));
     } else if (isEditMode) {
-      // In edit mode without id, load last record or open navigation
+      // In edit mode without id, load last record
       loadLastRecord();
+    } else {
+      // In kayit mode (/cari/hareket-kayit), ensure clean empty form with zero previous record data
+      setCurrentHareketId(null);
+      setCariKartId(null);
+      setCariKod("");
+      setCariAd("");
+      setTarih(new Date().toISOString().split("T")[0]);
+      setHareketTipi(0);
+      setAciklama("");
+      setCariTipi(0);
+      setBakiyeSummary(null);
+      setError(null);
+      setSuccessMsg(null);
+      setLines([{ id: `line-${Date.now()}`, paraId: 0, paraKodu: "", meblag: "" }]);
+      setActiveGridRowIdx(0);
+      if (vezneList.length > 0) {
+        applyUserVezne(vezneList);
+      }
     }
   }, [queryId, isEditMode]);
 
@@ -561,6 +580,9 @@ export const CariHareketPage: React.FC = () => {
     loadCariBakiye(c.id);
     setShowCariSuggest(false);
     setCariSuggestItems([]);
+    setTimeout(() => {
+      tarihInputRef.current?.focus();
+    }, 50);
   };
 
   const handleCariKodKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -568,18 +590,41 @@ export const CariHareketPage: React.FC = () => {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedCariSuggestIdx((prev) => Math.min(cariSuggestItems.length - 1, prev + 1));
+        return;
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedCariSuggestIdx((prev) => Math.max(0, prev - 1));
+        return;
       } else if (e.key === "Enter") {
         e.preventDefault();
         const item = cariSuggestItems[selectedCariSuggestIdx] || cariSuggestItems[0];
         if (item) {
           handleSelectCariSuggest(item);
         }
+        setShowCariSuggest(false);
+        setTimeout(() => {
+          tarihInputRef.current?.focus();
+        }, 50);
+        return;
       } else if (e.key === "Escape") {
         setShowCariSuggest(false);
+        return;
       }
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = cariKod.trim().toLowerCase();
+      if (val) {
+        const matched = cariList.find((c) => c.kod.toLowerCase() === val || c.kod.toLowerCase().startsWith(val));
+        if (matched) {
+          handleSelectCari(matched);
+        }
+      }
+      setShowCariSuggest(false);
+      setTimeout(() => {
+        tarihInputRef.current?.focus();
+      }, 50);
     }
   };
 
@@ -590,6 +635,10 @@ export const CariHareketPage: React.FC = () => {
     setCariAd(c.ad);
     loadCariBakiye(c.id);
     setShowCariSuggest(false);
+    setShowCariModal(false);
+    setTimeout(() => {
+      tarihInputRef.current?.focus();
+    }, 50);
   };
 
   const handleSelectParaForLine = (p: ParaItem) => {
@@ -882,7 +931,7 @@ export const CariHareketPage: React.FC = () => {
                       onBlur={() => setTimeout(() => setShowCariSuggest(false), 250)}
                       onLookupClick={() => setShowCariModal(true)}
                       placeholder=""
-                      data-custom-enter={showCariSuggest && cariSuggestItems.length > 0 ? "true" : undefined}
+                      data-custom-enter="true"
                     />
 
                     {/* Cari Kod Autocomplete Dropdown */}
@@ -964,9 +1013,11 @@ export const CariHareketPage: React.FC = () => {
                     <Form.Control
                       type="text"
                       value={cariAd}
-                      onChange={(e) => {
-                        setCariAd(e.target.value);
-                      }}
+                      readOnly
+                      disabled
+                      tabIndex={-1}
+                      placeholder="Cari seçilince otomatik gelir"
+                      className="bg-light text-muted small"
                     />
                     <Button
                       variant="outline-secondary"
@@ -989,6 +1040,8 @@ export const CariHareketPage: React.FC = () => {
                 <Col>
                   <div style={{ maxWidth: "280px" }}>
                     <Form.Control
+                      ref={tarihInputRef}
+                      id="tarihInput"
                       type="date"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}

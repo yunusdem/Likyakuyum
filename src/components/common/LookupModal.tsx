@@ -75,6 +75,35 @@ export function LookupModal<T extends Record<string, any>>({
     onHide();
   };
 
+  // Track last clicked button for instant double-click on "Seç"
+  const lastClickedSecRef = useRef<{ id: string; time: number } | null>(null);
+
+  // Click on "Seç" button: 1st click highlights/selects the row, 2nd click confirms and takes the record
+  const handleSecButtonClick = (e: React.MouseEvent, item: T) => {
+    e.stopPropagation();
+    const itemId = getItemId(item) || JSON.stringify(item);
+    const selectedId = getItemId(selectedItem) || (selectedItem ? JSON.stringify(selectedItem) : "");
+    const now = Date.now();
+
+    const isAlreadySelected = Boolean(
+      selectedItem && (itemId && selectedId ? itemId === selectedId : item === selectedItem)
+    );
+
+    const isRapidDoubleClick =
+      lastClickedSecRef.current &&
+      lastClickedSecRef.current.id === itemId &&
+      now - lastClickedSecRef.current.time < 500;
+
+    if (isAlreadySelected || isRapidDoubleClick) {
+      lastClickedSecRef.current = null;
+      onSelect(item);
+      onHide();
+    } else {
+      lastClickedSecRef.current = { id: itemId, time: now };
+      setSelectedItem(item);
+    }
+  };
+
   // Confirm currently selected item
   const handleConfirm = () => {
     if (selectedItem) {
@@ -187,24 +216,25 @@ export function LookupModal<T extends Record<string, any>>({
           )}
         </div>
 
-        {/* Scoped selection style to override Bootstrap table inset shadow */}
+        {/* Scoped selection style to override Bootstrap table inset shadow and hover */}
         <style>{`
-          .lookup-selected-row,
-          .lookup-selected-row > td,
-          .lookup-selected-row > th {
+          .lookup-table tbody tr.lookup-selected-row,
+          .lookup-table tbody tr.lookup-selected-row > td,
+          .lookup-table tbody tr.lookup-selected-row > th,
+          .lookup-table tbody tr.lookup-selected-row:hover,
+          .lookup-table tbody tr.lookup-selected-row:hover > td,
+          .lookup-table tbody tr.lookup-selected-row:hover > th {
             background-color: #bae6fd !important;
             --bs-table-bg: #bae6fd !important;
             --bs-table-accent-bg: #bae6fd !important;
             box-shadow: inset 0 0 0 9999px #bae6fd !important;
-            color: #0369a1 !important;
+            color: #0c4a6e !important;
           }
-          .lookup-selected-row:hover,
-          .lookup-selected-row:hover > td,
-          .lookup-selected-row:hover > th {
-            background-color: #7dd3fc !important;
-            --bs-table-bg: #7dd3fc !important;
-            --bs-table-accent-bg: #7dd3fc !important;
-            box-shadow: inset 0 0 0 9999px #7dd3fc !important;
+          .lookup-table tbody tr:not(.lookup-selected-row):hover > td,
+          .lookup-table tbody tr:not(.lookup-selected-row):hover > th {
+            background-color: #f1f5f9 !important;
+            --bs-table-bg: #f1f5f9 !important;
+            --bs-table-accent-bg: #f1f5f9 !important;
           }
         `}</style>
 
@@ -220,7 +250,7 @@ export function LookupModal<T extends Record<string, any>>({
               {items.length === 0 ? "Kayıtlı veri bulunamadı." : "Arama kriterine uygun kayıt bulunamadı."}
             </div>
           ) : (
-            <Table hover responsive size="sm" className="mb-0 align-middle">
+            <Table responsive size="sm" className="mb-0 align-middle lookup-table">
               <thead className="table-light sticky-top" style={{ top: 0, zIndex: 1 }}>
                 <tr>
                   <th style={{ width: "40px" }} className="text-center">#</th>
@@ -244,26 +274,21 @@ export function LookupModal<T extends Record<string, any>>({
                     selectedItem &&
                       (itemId && selectedId ? itemId === selectedId : item === selectedItem)
                   );
-                  const selectedBgColor = "#bae6fd"; // Belirgin açık mavi renk (Sky-200)
 
                   return (
                     <tr
                       key={`lookup-row-${index}-${itemId || "item"}`}
                       onClick={() => handleRowClick(item)}
                       onDoubleClick={() => handleRowDoubleClick(item)}
-                      className={isSelected ? "lookup-selected-row table-primary fw-semibold" : ""}
+                      className={isSelected ? "lookup-selected-row fw-semibold" : ""}
                       style={{
                         cursor: "pointer",
                         userSelect: "none",
-                        backgroundColor: isSelected ? selectedBgColor : undefined,
-                        boxShadow: isSelected ? `inset 0 0 0 9999px ${selectedBgColor}` : undefined,
                       }}
                     >
                       <td
                         className="text-center small"
                         style={{
-                          backgroundColor: isSelected ? selectedBgColor : undefined,
-                          boxShadow: isSelected ? `inset 0 0 0 9999px ${selectedBgColor}` : undefined,
                           color: isSelected ? "#0369a1" : "#64748b",
                         }}
                       >
@@ -274,31 +299,19 @@ export function LookupModal<T extends Record<string, any>>({
                           key={colIdx}
                           className={col.align === "center" ? "text-center" : col.align === "right" ? "text-end" : "text-start"}
                           style={{
-                            backgroundColor: isSelected ? selectedBgColor : undefined,
-                            boxShadow: isSelected ? `inset 0 0 0 9999px ${selectedBgColor}` : undefined,
                             color: isSelected ? "#0c4a6e" : undefined,
                           }}
                         >
                           {col.render(item)}
                         </td>
                       ))}
-                      <td
-                        className="text-center"
-                        style={{
-                          backgroundColor: isSelected ? selectedBgColor : undefined,
-                          boxShadow: isSelected ? `inset 0 0 0 9999px ${selectedBgColor}` : undefined,
-                        }}
-                      >
+                      <td className="text-center">
                         <Button
                           size="sm"
                           variant={isSelected ? "primary" : "outline-secondary"}
-                          className="py-0 px-2 fs-7"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelect(item);
-                            onHide();
-                          }}
-                          title="Çift tıklama veya bu buton ile doğrudan seçin"
+                          className={`py-0 px-2 fs-7 ${isSelected ? "fw-bold shadow-sm" : ""}`}
+                          onClick={(e) => handleSecButtonClick(e, item)}
+                          title={isSelected ? "Kaydı almak için tekrar tıklayın" : "Seçmek için tıklayın, almak için iki kez tıklayın"}
                         >
                           Seç
                         </Button>

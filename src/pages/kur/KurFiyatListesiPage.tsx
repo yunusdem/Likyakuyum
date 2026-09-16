@@ -36,6 +36,7 @@ import {
   KurRowItem,
   StoredKurDateItem,
 } from "../../services/kurService";
+import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { printReportTable } from "../../utils/printReport";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
@@ -136,6 +137,36 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [lastSavedZaman, setLastSavedZaman] = useState<string>("");
+
+  // Firma Tanımları ve Basamak Sayıları
+  const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(0);
+
+  // Firma Tanımlarından Kur Kuruş / Ondalık Basamak Sayısını Yükleme
+  useEffect(() => {
+    CompanyService.getDefinitions()
+      .then((res) => {
+        if (res) setCompanyDefinitions(res);
+      })
+      .catch((err) => console.error("Firma tanımları yüklenemedi:", err));
+  }, []);
+
+  const kurDecimals =
+    companyDefinitions?.KUR_KURUS_SAYISI !== undefined &&
+    companyDefinitions?.KUR_KURUS_SAYISI !== null
+      ? Number(companyDefinitions.KUR_KURUS_SAYISI)
+      : 6;
+
+  const formatKurNumber = useCallback(
+    (val: number | null | undefined): string => {
+      if (val === null || val === undefined || isNaN(val) || val === 0) return "";
+      return new Intl.NumberFormat("tr-TR", {
+        minimumFractionDigits: kurDecimals,
+        maximumFractionDigits: kurDecimals,
+      }).format(val);
+    },
+    [kurDecimals]
+  );
 
   // Navigation for Saklanan & Günlük
   const [storedDates, setStoredDates] = useState<StoredKurDateItem[]>([]);
@@ -847,8 +878,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     const summary = rows
       .map(
         (r) =>
-          `${r.kod}: Alış=${r.efektifAlis || r.dovizAlis || "-"} Satış=${
-            r.efektifSatis || r.dovizSatis || "-"
+          `${r.kod}: Alış=${formatKurNumber(r.efektifAlis || r.dovizAlis) || "-"} Satış=${
+            formatKurNumber(r.efektifSatis || r.dovizSatis) || "-"
           }`
       )
       .join("\n");
@@ -869,27 +900,27 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         { header: "Ad", key: "ad", width: "160px", align: "left" },
         {
           header: "Döviz Alış",
-          render: (item) => formatDisplayNumber(item.dovizAlis, 4),
+          render: (item) => formatKurNumber(item.dovizAlis),
           align: "right",
         },
         {
           header: "Döviz Satış",
-          render: (item) => formatDisplayNumber(item.dovizSatis, 4),
+          render: (item) => formatKurNumber(item.dovizSatis),
           align: "right",
         },
         {
           header: "Efektif Alış",
-          render: (item) => formatDisplayNumber(item.efektifAlis, 4),
+          render: (item) => formatKurNumber(item.efektifAlis),
           align: "right",
         },
         {
           header: "Efektif Satış",
-          render: (item) => formatDisplayNumber(item.efektifSatis, 4),
+          render: (item) => formatKurNumber(item.efektifSatis),
           align: "right",
         },
         {
           header: "Parite",
-          render: (item) => formatDisplayNumber(item.parite, 6),
+          render: (item) => formatKurNumber(item.parite),
           align: "right",
         },
       ],
@@ -928,26 +959,20 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     loadTabloData({ id: last.id, tarih: last.tarih });
   };
 
-  // Global Keyboard shortcuts listener (F1 - F10)
+  // Global Keyboard shortcuts listener (F1 - F10 & Arrow keys)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (showSearchModal || showCopyDateModal) return;
 
-      if (e.key === "F1") {
+      if (e.key === "ArrowDown") {
         e.preventDefault();
-        handleSave();
-      } else if (e.key === "F2") {
+        setSelectedRowIndex((prev) => (prev === null ? 0 : Math.min(prev + 1, rows.length - 1)));
+      } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        handleDelete();
-      } else if (e.key === "F3") {
-        e.preventDefault();
-        handleFocusCell();
+        setSelectedRowIndex((prev) => (prev === null ? 0 : Math.max(prev - 1, 0)));
       } else if (e.key === "F4") {
         e.preventDefault();
         setShowSearchModal(true);
-      } else if (e.key === "F5") {
-        e.preventDefault();
-        handleJumpEfektif();
       } else if (e.key === "F7") {
         e.preventDefault();
         if (effectivePageType === "anlik") {
@@ -969,21 +994,17 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  });
-
-
+  }, [rows.length, showSearchModal, showCopyDateModal, effectivePageType]);
 
   return (
     <div className="kuyumcu-kur-container w-100 pb-3" style={{ overflowX: "hidden" }}>
-      {/* 1. Sol Üst Standart ERP Toolbar (Diğer Sayfalar Gibi) */}
+      {/* 1. Sol Üst Standart ERP Toolbar (Sil, Kaydet, Yön ve Yeni Kayıt Butonları Kaldırıldı) */}
       <ERPToolbar
-        onSave={handleSave}
-        onDelete={handleDelete}
+        hideNew={true}
+        hideSave={true}
+        hideDelete={true}
+        hideNavigation={true}
         onSearch={() => setShowSearchModal(true)}
-        onFirst={handleFirstDate}
-        onPrev={handlePrevDate}
-        onNext={handleNextDate}
-        onLast={handleLastDate}
         onPrint={handlePrint}
         onRefresh={() => loadTabloData({ id: tabloId, tarih })}
         disabled={isLoading || isSaving}
@@ -1087,22 +1108,45 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         className="shadow-sm border-secondary border-opacity-25"
         style={{ borderRadius: "6px", overflow: "hidden" }}
       >
-        {/* Data Grid Table Container */}
-        <div
-          className="table-responsive"
-          style={{
-            maxHeight: "calc(100vh - 280px)",
-            minHeight: "440px",
-            backgroundColor: "#fff",
-          }}
-        >
+        {/* Scoped selection and hover styles for Kur table */}
+        <style>{`
+          .kuyumcu-kur-table tbody tr.kur-row-selected,
+          .kuyumcu-kur-table tbody tr.kur-row-selected > td,
+          .kuyumcu-kur-table tbody tr.kur-row-selected > th,
+          .kuyumcu-kur-table tbody tr.kur-row-selected:hover,
+          .kuyumcu-kur-table tbody tr.kur-row-selected:hover > td,
+          .kuyumcu-kur-table tbody tr.kur-row-selected:hover > th {
+            background-color: #bae6fd !important;
+            --bs-table-bg: #bae6fd !important;
+            --bs-table-accent-bg: #bae6fd !important;
+            box-shadow: inset 0 0 0 9999px #bae6fd !important;
+            color: #0c4a6e !important;
+          }
+          .kuyumcu-kur-table tbody tr.kur-row-selected td.kur-row-num,
+          .kuyumcu-kur-table tbody tr.kur-row-selected:hover td.kur-row-num {
+            background-color: #7dd3fc !important;
+            --bs-table-bg: #7dd3fc !important;
+            --bs-table-accent-bg: #7dd3fc !important;
+            box-shadow: inset 0 0 0 9999px #7dd3fc !important;
+            color: #0369a1 !important;
+          }
+          .kuyumcu-kur-table tbody tr:not(.kur-row-selected):hover > td,
+          .kuyumcu-kur-table tbody tr:not(.kur-row-selected):hover > th {
+            background-color: #f1f5f9 !important;
+            --bs-table-bg: #f1f5f9 !important;
+            --bs-table-accent-bg: #f1f5f9 !important;
+          }
+        `}</style>
+
+        {/* Table Content */}
+        <div className="flex-grow-1 overflow-auto bg-white">
           {isLoading ? (
             <div className="d-flex flex-column align-items-center justify-content-center py-5 text-muted">
               <Spinner animation="border" variant="primary" className="mb-2" />
               <span>Kurlar yükleniyor...</span>
             </div>
           ) : (
-            <table className="table table-sm table-bordered table-hover mb-0 align-middle kuyumcu-kur-table">
+            <table className="table table-sm table-bordered mb-0 align-middle kuyumcu-kur-table">
               <thead
                 className="sticky-top"
                 style={{
@@ -1168,93 +1212,140 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                   </tr>
                 ) : (
                   rows.map((row, idx) => {
-                    const isUsd = row.kod.trim().toUpperCase() === "USD";
-                    const isEur = row.kod.trim().toUpperCase() === "EUR";
+                    const isRowSelected = selectedRowIndex === idx;
+                    const baseRowBg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+                    const isLastRow = idx === rows.length - 1;
+                    const cellBg = isRowSelected ? "#bae6fd" : baseRowBg;
 
                     return (
                       <tr
                         key={row.paraId}
-                        className={idx % 2 === 1 ? "row-blue" : ""}
+                        onClick={() => setSelectedRowIndex(idx)}
+                        className={isRowSelected ? "kur-row-selected" : ""}
                         style={{
-                          backgroundColor: idx % 2 === 1 ? "#ebf4fc" : "#ffffff",
+                          backgroundColor: cellBg,
+                          cursor: "pointer",
                         }}
                       >
                         {/* # Row Number */}
                         <td
-                          className="text-center text-muted font-monospace py-1"
-                          style={{ fontSize: "0.82rem", width: "45px" }}
+                          className={`text-center font-monospace py-1 ${isRowSelected ? "kur-row-num" : ""}`}
+                          style={{
+                            fontSize: "0.82rem",
+                            width: "45px",
+                            backgroundColor: isRowSelected ? "#7dd3fc" : baseRowBg,
+                            boxShadow: isRowSelected ? "inset 0 0 0 9999px #7dd3fc" : "none",
+                            color: isRowSelected ? "#0369a1" : "#64748b",
+                            fontWeight: isRowSelected ? 700 : 400,
+                            borderLeft: isRowSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                            borderRight: isRowSelected ? "2px solid #0284c7" : "1px solid #b8cee6",
+                            borderTop: isRowSelected ? "1px solid #7dd3fc" : "1px solid #cbd5e1",
+                            borderBottom: isRowSelected
+                              ? isLastRow
+                                ? "2px solid #0284c7"
+                                : "1px solid #7dd3fc"
+                              : "1px solid #cbd5e1",
+                            userSelect: "none",
+                          }}
                         >
                           {idx + 1}
                         </td>
 
                         {/* Kod */}
-                        <td className="py-1 px-2 fw-bold text-dark font-monospace" style={{ width: "75px" }}>
+                        <td
+                          className="py-1 px-2 font-monospace"
+                          style={{
+                            width: "75px",
+                            backgroundColor: cellBg,
+                            boxShadow: isRowSelected ? "inset 0 0 0 9999px #bae6fd" : "none",
+                            fontWeight: isRowSelected ? 700 : 600,
+                            color: isRowSelected ? "#0c4a6e" : "#0f172a",
+                            borderRight: isRowSelected ? "2px solid #0284c7" : "1px solid #b8cee6",
+                            borderTop: isRowSelected ? "1px solid #7dd3fc" : "1px solid #cbd5e1",
+                            borderBottom: isRowSelected
+                              ? isLastRow
+                                ? "2px solid #0284c7"
+                                : "1px solid #7dd3fc"
+                              : "1px solid #cbd5e1",
+                            userSelect: "none",
+                          }}
+                        >
                           {row.kod}
                         </td>
 
                         {/* Ad */}
                         <td
-                          className="py-1 px-2 text-secondary text-truncate"
-                          style={{ maxWidth: "220px", fontSize: "0.85rem" }}
+                          className="py-1 px-2 text-truncate"
+                          style={{
+                            maxWidth: "220px",
+                            fontSize: "0.85rem",
+                            backgroundColor: cellBg,
+                            boxShadow: isRowSelected ? "inset 0 0 0 9999px #bae6fd" : "none",
+                            fontWeight: isRowSelected ? 700 : 400,
+                            color: isRowSelected ? "#0c4a6e" : "#475569",
+                            borderRight: isRowSelected ? "2px solid #0284c7" : "1px solid #b8cee6",
+                            borderTop: isRowSelected ? "1px solid #7dd3fc" : "1px solid #cbd5e1",
+                            borderBottom: isRowSelected
+                              ? isLastRow
+                                ? "2px solid #0284c7"
+                                : "1px solid #7dd3fc"
+                              : "1px solid #cbd5e1",
+                            userSelect: "none",
+                          }}
                           title={row.ad}
                         >
                           {row.ad}
                         </td>
 
-                        {/* Editable Columns: Döviz alış, Döviz satış, Efektif alış, Efektif satış, Parite */}
-                        {EDITABLE_COLS.map((col) => {
-                          const cellKey = getCellKey(idx, col);
-                          const isCellFocused =
-                            activeCell?.row === idx && activeCell?.col === col;
+                        {/* Read-only Columns: Döviz alış, Döviz satış, Efektif alış, Efektif satış, Parite */}
+                        {EDITABLE_COLS.map((col, cIdx) => {
+                          const val = row[col];
+                          const formattedVal = formatKurNumber(val);
+                          const isLastCol = cIdx === EDITABLE_COLS.length - 1;
 
                           return (
                             <td
                               key={col}
-                              className="p-0"
+                              className="font-monospace text-end p-0"
                               style={{
                                 width: "135px",
-                                backgroundColor: isCellFocused ? "#e8f0fe" : undefined,
+                                backgroundColor: cellBg,
+                                boxShadow: isRowSelected ? `inset 0 0 0 9999px #bae6fd` : "none",
+                                borderLeft: isRowSelected ? "1px solid #7dd3fc" : "1px solid #cbd5e1",
+                                borderRight: isRowSelected
+                                  ? isLastCol
+                                    ? "2px solid #0284c7"
+                                    : "1px solid #7dd3fc"
+                                  : isLastCol
+                                  ? "none"
+                                  : "1px solid #b8cee6",
+                                borderTop: isRowSelected ? "1px solid #7dd3fc" : "1px solid #cbd5e1",
+                                borderBottom: isRowSelected
+                                  ? isLastRow
+                                    ? "2px solid #0284c7"
+                                    : "1px solid #7dd3fc"
+                                  : "1px solid #cbd5e1",
+                                cursor: "pointer",
+                                userSelect: "none",
+                                transition: "background-color 0.15s ease",
                               }}
                             >
-                              <input
-                                ref={(el) => {
-                                  inputRefs.current[cellKey] = el;
-                                }}
-                                type="text"
-                                inputMode="decimal"
-                                data-decimal="true"
-                                data-custom-enter="true"
-                                className="form-control form-control-sm border-0 rounded-0 text-end font-monospace py-1 px-2"
+                              <div
+                                className="px-2 py-1 text-truncate text-end font-monospace"
                                 style={{
-                                  boxShadow: isCellFocused
-                                    ? "inset 0 0 0 1.5px #1a73e8"
-                                    : "none",
-                                  backgroundColor: "transparent",
+                                  minHeight: "26px",
+                                  lineHeight: "24px",
                                   fontSize: "0.88rem",
-                                  fontWeight: isUsd || isEur ? 600 : 400,
+                                  fontWeight: isRowSelected ? 700 : val && val !== 0 ? 600 : 400,
+                                  color: isRowSelected
+                                    ? "#0c4a6e"
+                                    : val && val !== 0
+                                    ? "#0f172a"
+                                    : "#94a3b8",
                                 }}
-                                value={
-                                  rawInputs[cellKey] !== undefined
-                                    ? rawInputs[cellKey]
-                                    : row[col] !== null && row[col] !== undefined && !isNaN(row[col]!) && row[col] !== 0
-                                    ? row[col]!.toFixed(6)
-                                    : ""
-                                }
-                                onChange={(e) => handleCellChange(idx, col, e.target.value)}
-                                onFocus={(e) => {
-                                  setActiveCell({ row: idx, col });
-                                  e.target.select();
-                                }}
-                                onBlur={() => {
-                                  const num = row[col];
-                                  if (num !== null && num !== undefined && !isNaN(num) && num !== 0) {
-                                    setRawInputs((p) => ({ ...p, [cellKey]: num.toFixed(6) }));
-                                  } else {
-                                    setRawInputs((p) => ({ ...p, [cellKey]: "" }));
-                                  }
-                                }}
-                                onKeyDown={(e) => handleCellKeyDown(e, idx, col)}
-                              />
+                              >
+                                {formattedVal}
+                              </div>
                             </td>
                           );
                         })}
@@ -1267,7 +1358,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           )}
         </div>
 
-        {/* Desktop ERP Function Keys Status Bar (Image 2 Style) */}
+        {/* Desktop ERP Function Keys Status Bar */}
         <div
           className="d-flex flex-wrap align-items-center justify-content-between px-3 py-2 border-top bg-light text-dark"
           style={{
@@ -1287,39 +1378,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             </span>
           </div>
 
-          {/* Hotkey Buttons on Right (Matching Image 2 F1-F10 buttons) */}
+          {/* Hotkey Buttons on Right */}
           <div className="d-flex flex-wrap align-items-center gap-1">
-            <Button
-              variant="light"
-              size="sm"
-              className="px-2 py-0 border text-dark bg-white shadow-xs fw-semibold small"
-              onClick={handleSave}
-              disabled={isSaving}
-              title="F1: Kur tablosunu veritabanına kaydeder"
-            >
-              F1)Kaydet
-            </Button>
-
-            <Button
-              variant="light"
-              size="sm"
-              className="px-2 py-0 border text-dark bg-white shadow-xs fw-semibold small"
-              onClick={handleDelete}
-              title="F2: Kaydı siler veya sıfırlar"
-            >
-              F2)Sil
-            </Button>
-
-            <Button
-              variant="light"
-              size="sm"
-              className="px-2 py-0 border text-dark bg-white shadow-xs fw-semibold small d-none d-md-inline-block"
-              onClick={handleFocusCell}
-              title="F3: Hücreye odaklanır"
-            >
-              F3)Hücre
-            </Button>
-
             <Button
               variant="light"
               size="sm"
@@ -1328,16 +1388,6 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               title="F4: Genel arama ve filtreleme penceresi"
             >
               F4)Genel
-            </Button>
-
-            <Button
-              variant="light"
-              size="sm"
-              className="px-2 py-0 border text-dark bg-white shadow-xs fw-semibold small d-none d-md-inline-block"
-              onClick={handleJumpEfektif}
-              title="F5: Efektif kolonuna geç"
-            >
-              F5)Kolon
             </Button>
 
             {/* F7: Ekrana göre Kapanış Oluştur veya Kopyala */}

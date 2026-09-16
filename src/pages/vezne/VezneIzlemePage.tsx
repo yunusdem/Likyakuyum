@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Table,
   Button,
@@ -32,11 +32,13 @@ import {
 } from "../../services/vezneIzlemeService";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { KurService, KurRowItem } from "../../services/kurService";
+import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 
 export const VezneIzlemePage: React.FC = () => {
   // Data state
   const [columns, setColumns] = useState<VezneIzlemeColumn[]>([]);
   const [rows, setRows] = useState<VezneIzlemeRow[]>([]);
+  const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
   const [settings, setSettings] = useState<VezneIzlemeSettings>({
     tazelemeSuresi: 5,
     ekrandakiVezneSayisi: 8,
@@ -44,16 +46,15 @@ export const VezneIzlemePage: React.FC = () => {
     firmaDurumuRaporu: false,
   });
 
-  // UI / Navigation state
+  // UI / Selection state (Read-only monitoring, clicking selects the kasa/vezne)
+  const [selectedVezneId, setSelectedVezneId] = useState<number | null>(null);
+  const [selectedParaId, setSelectedParaId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [notification, setNotification] = useState<{
     type: "success" | "danger" | "warning" | "info";
     message: string;
   } | null>(null);
-
-  // Pagination / Page index for vezneler (F12 Vezne Gerisi)
-  const [pageOffset, setPageOffset] = useState<number>(0);
 
   // Live date & time state for top-right header
   const [currentDateTime, setCurrentDateTime] = useState<string>(() => {
@@ -72,10 +73,6 @@ export const VezneIzlemePage: React.FC = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  // Selected cell / row for details
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number>(0);
-  const [selectedColIndex, setSelectedColIndex] = useState<number>(0);
 
   // Modals
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
@@ -109,6 +106,57 @@ export const VezneIzlemePage: React.FC = () => {
     showVezneBakiyeModal ||
     showFirmaDurumuModal;
 
+  // Load company definitions for decimal formatting
+  useEffect(() => {
+    CompanyService.getDefinitions()
+      .then((res) => {
+        if (res) setCompanyDefinitions(res);
+      })
+      .catch((err) => console.error("Firma tanımları yüklenemedi:", err));
+  }, []);
+
+  // Decimal formatting according to Firma Tanımları basamak sayıları
+  const getDecimalsForPara = useCallback(
+    (paraKodu: string): number => {
+      const code = (paraKodu || "").trim().toUpperCase();
+      if (code === "TL" || code === "TRY") {
+        return companyDefinitions?.TL_KURUS_SAYISI !== undefined && companyDefinitions?.TL_KURUS_SAYISI !== null
+          ? Number(companyDefinitions.TL_KURUS_SAYISI)
+          : 2;
+      }
+      if (
+        code === "HAS" ||
+        code === "GAU" ||
+        code === "GR" ||
+        code === "GLD" ||
+        code === "KULCE" ||
+        code.includes("ALTIN") ||
+        code.includes("AYAR")
+      ) {
+        return companyDefinitions?.GRAM_ONDALIK_SAYISI !== undefined && companyDefinitions?.GRAM_ONDALIK_SAYISI !== null
+          ? Number(companyDefinitions.GRAM_ONDALIK_SAYISI)
+          : 2;
+      }
+      // Döviz Kuruş / Ondalık Basamak Sayısı
+      return companyDefinitions?.DOVIZ_KURUS_SAYISI !== undefined && companyDefinitions?.DOVIZ_KURUS_SAYISI !== null
+        ? Number(companyDefinitions.DOVIZ_KURUS_SAYISI)
+        : 2;
+    },
+    [companyDefinitions]
+  );
+
+  const formatNumber = useCallback(
+    (num: number, paraKodu?: string): string => {
+      if (num === 0 || isNaN(num) || num === undefined || num === null) return "";
+      const decimals = paraKodu ? getDecimalsForPara(paraKodu) : (num % 1 !== 0 ? 2 : 0);
+      return new Intl.NumberFormat("tr-TR", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      }).format(num);
+    },
+    [getDecimalsForPara]
+  );
+
   // Fetch izleme data from backend
   const fetchData = useCallback(async (silent: boolean = false) => {
     if (!silent) setIsLoading(true);
@@ -119,6 +167,14 @@ export const VezneIzlemePage: React.FC = () => {
         setColumns(data.columns);
         setRows(data.rows);
         setLastRefreshed(new Date());
+
+        // Select first vezne and first row if not already selected
+        if (data.columns && data.columns.length > 0) {
+          setSelectedVezneId((prev) => (prev !== null && data.columns.some((c) => c.vezneId === prev) ? prev : data.columns[0].vezneId));
+        }
+        if (data.rows && data.rows.length > 0) {
+          setSelectedParaId((prev) => (prev !== null && data.rows.some((r) => r.paraId === prev) ? prev : data.rows[0].paraId));
+        }
       }
     } catch (err: any) {
       console.error("Vezne izleme verisi yükleme hatası:", err);
@@ -144,7 +200,6 @@ export const VezneIzlemePage: React.FC = () => {
     if (sec <= 0) return;
 
     const interval = setInterval(() => {
-      // Do not auto-refresh if a modal is open to avoid interrupting the user
       if (!isAnyModalOpen) {
         fetchData(true);
       }
@@ -175,14 +230,8 @@ export const VezneIzlemePage: React.FC = () => {
     }
   };
 
-  // Open settings modal
-  const handleOpenSettings = () => {
-    setEditSettings({ ...settings });
-    setShowSettingsModal(true);
-  };
-
   // F4) Open Kur Modal
-  const handleOpenKur = async () => {
+  const handleOpenKur = useCallback(async () => {
     setShowKurModal(true);
     setIsLoadingKur(true);
     try {
@@ -195,259 +244,76 @@ export const VezneIzlemePage: React.FC = () => {
     } finally {
       setIsLoadingKur(false);
     }
-  };
-
-  // F5) Open Detay Modal
-  const handleOpenDetay = () => {
-    setShowDetayModal(true);
-  };
-
-  // F8) Open Vezne Bakiye Modal
-  const handleOpenVezneBakiye = () => {
-    setShowVezneBakiyeModal(true);
-  };
-
-  // F9) Open Firma Durumu Modal
-  const handleOpenFirmaDurumu = () => {
-    setShowFirmaDurumuModal(true);
-  };
-
-  // F12) Vezne Gerisi / Pagination across vezne columns
-  const visibleVezneCount = Math.max(1, settings.ekrandakiVezneSayisi || 8);
-  const totalVezneler = columns.length;
-
-  const handleNextVezneBatch = useCallback(() => {
-    if (totalVezneler <= visibleVezneCount) {
-      setNotification({
-        type: "info",
-        message: "Tüm vezneler ekranda görüntülenmektedir.",
-      });
-      return;
-    }
-    setPageOffset((prev) => {
-      const next = prev + visibleVezneCount;
-      if (next >= totalVezneler) {
-        return 0; // wrap around to beginning
-      }
-      return next;
-    });
-  }, [totalVezneler, visibleVezneCount]);
-
-  // Sliced columns to display based on pageOffset and ekrandakiVezneSayisi
-  const displayedVezneCols = columns.slice(pageOffset, pageOffset + visibleVezneCount);
-
-  // Filler empty columns to complete ekrandakiVezneSayisi (matches screenshot layout)
-  const fillerCount = Math.max(0, visibleVezneCount - displayedVezneCols.length);
-  const fillerColumns = Array.from({ length: fillerCount }, (_, i) => i);
-
-  const visibleColumns = displayedVezneCols;
-
-  // Ref for auto-scrolling active row into view
-  const selectedRowRef = useRef<HTMLTableRowElement | null>(null);
-
-  // Cell input refs for direct keyboard entry across grid
-  const cellInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  // Synchronous state refs to prevent any closure staleness during saves
-  const rowsRef = useRef<VezneIzlemeRow[]>(rows);
-  useEffect(() => {
-    rowsRef.current = rows;
-  }, [rows]);
-
-  const columnsRef = useRef<VezneIzlemeColumn[]>(columns);
-  useEffect(() => {
-    columnsRef.current = columns;
-  }, [columns]);
-
-  const [isSavingTable, setIsSavingTable] = useState<boolean>(false);
-
-  // Active editing state for smooth number entry
-  const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState<string>("");
-
-  useEffect(() => {
-    if (selectedRowRef.current) {
-      selectedRowRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-  }, [selectedRowIndex]);
-
-  // Helper to focus specific cell input
-  const focusCell = useCallback((rIdx: number, cIdx: number) => {
-    const targetR = Math.max(0, Math.min(rows.length - 1, rIdx));
-    const targetC = Math.max(0, Math.min(visibleColumns.length - 1, cIdx));
-    setSelectedRowIndex(targetR);
-    setSelectedColIndex(targetC);
-    setTimeout(() => {
-      const input = cellInputRefs.current[`${targetR}-${targetC}`];
-      if (input) {
-        input.focus();
-        input.select();
-      }
-    }, 15);
-  }, [rows.length, visibleColumns.length]);
-
-  // Save current table state to database without opening any modal
-  const handleSaveTable = useCallback(async () => {
-    try {
-      setIsSavingTable(true);
-      const currentRows = rowsRef.current;
-      const currentColumns = columnsRef.current;
-      const items: { vezneId: number; paraId: number; miktar: number }[] = [];
-
-      for (const r of currentRows) {
-        for (const col of currentColumns) {
-          const m = r.bakiyeler[col.vezneId] ?? 0;
-          items.push({
-            vezneId: col.vezneId,
-            paraId: r.paraId,
-            miktar: m,
-          });
-        }
-      }
-
-      await VezneIzlemeService.saveAllBakiyeler(items);
-      setNotification({
-        type: "success",
-        message: "Tablo verileri başarıyla kaydedildi.",
-      });
-    } catch (err: any) {
-      console.error("Tablo kaydetme hatası:", err);
-      setNotification({
-        type: "danger",
-        message: err?.message || "Tablo verileri kaydedilemedi.",
-      });
-    } finally {
-      setIsSavingTable(false);
-    }
   }, []);
 
-  // Commit updated value to local state and backend (auto-save on entry)
-  const handleCommitValue = useCallback((rIdx: number, cIdx: number, rawVal: string) => {
-    const row = rowsRef.current[rIdx];
-    const col = visibleColumns[cIdx];
-    if (!row || !col) return;
+  // F5) Open Detay Modal
+  const handleOpenDetay = useCallback(() => {
+    setShowDetayModal(true);
+  }, []);
 
-    const cleanStr = rawVal.trim().replace(/,/g, ".");
-    const numVal = cleanStr === "" ? 0 : parseFloat(cleanStr) || 0;
-    const oldVal = row.bakiyeler[col.vezneId] || 0;
+  // F8) Open Vezne Bakiye Modal
+  const handleOpenVezneBakiye = useCallback(() => {
+    setShowVezneBakiyeModal(true);
+  }, []);
 
-    if (numVal === oldVal) return;
+  // F9) Open Firma Durumu Modal
+  const handleOpenFirmaDurumu = useCallback(() => {
+    setShowFirmaDurumuModal(true);
+  }, []);
 
-    // Update local rows immediately
-    const next = [...rowsRef.current];
-    const targetRow = { ...next[rIdx] };
-    const nextBakiyeler = { ...targetRow.bakiyeler, [col.vezneId]: numVal };
-    targetRow.bakiyeler = nextBakiyeler;
-    targetRow.toplam = Object.values(nextBakiyeler).reduce((sum, v) => sum + (Number(v) || 0), 0);
-    next[rIdx] = targetRow;
-    rowsRef.current = next;
-    setRows(next);
-
-    // Auto-save to database immediately on data entry
-    VezneIzlemeService.updateBakiye(col.vezneId, row.paraId, numVal).catch((err) => {
-      console.error("Otomatik bakiye kayıt hatası:", err);
-    });
-  }, [visibleColumns]);
-
-  // Keyboard navigation inside cell inputs
-  const handleCellKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    rIdx: number,
-    cIdx: number
-  ) => {
-    const el = e.currentTarget;
-    const len = el.value.length;
-    const selStart = el.selectionStart ?? 0;
-    const selEnd = el.selectionEnd ?? 0;
-    const isAtStart = selStart === 0 && selEnd === 0;
-    const isAtEnd = selStart === len && selEnd === len;
-
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      setEditingCellKey(null);
-
-      if (e.shiftKey) {
-        focusCell(rIdx > 0 ? rIdx - 1 : rows.length - 1, cIdx);
-      } else {
-        focusCell(rIdx < rows.length - 1 ? rIdx + 1 : 0, cIdx);
-      }
-    } else if (e.key === "F1") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      setEditingCellKey(null);
-      handleSaveTable();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      setEditingCellKey(null);
-      focusCell(Math.min(rows.length - 1, rIdx + 1), cIdx);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      setEditingCellKey(null);
-      focusCell(Math.max(0, rIdx - 1), cIdx);
-    } else if (e.key === "ArrowRight") {
-      if (isAtEnd) {
-        e.preventDefault();
-        handleCommitValue(rIdx, cIdx, el.value);
-        setEditingCellKey(null);
-        focusCell(rIdx, Math.min(visibleColumns.length - 1, cIdx + 1));
-      }
-    } else if (e.key === "ArrowLeft") {
-      if (isAtStart) {
-        e.preventDefault();
-        handleCommitValue(rIdx, cIdx, el.value);
-        setEditingCellKey(null);
-        focusCell(rIdx, Math.max(0, cIdx - 1));
-      }
-    } else if (e.key === "F2") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      setEditingCellKey(null);
-      fetchData(false);
-    } else if (e.key === "F4") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      handleOpenKur();
-    } else if (e.key === "F5") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      handleOpenDetay();
-    } else if (e.key === "F8") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      handleOpenVezneBakiye();
-    } else if (e.key === "F9") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      handleOpenFirmaDurumu();
-    } else if (e.key === "F12") {
-      e.preventDefault();
-      handleCommitValue(rIdx, cIdx, el.value);
-      handleNextVezneBatch();
+  // 8'li bloklara bölme (Her tabloda tam 8 vezne sütunu, 8'den fazlası alt alta yeni tabloda gösterilir, yatay kaydırma olmaz)
+  const CHUNK_SIZE = 8;
+  const vezneChunks = useMemo(() => {
+    if (!columns || columns.length === 0) return [];
+    const chunks: VezneIzlemeColumn[][] = [];
+    for (let i = 0; i < columns.length; i += CHUNK_SIZE) {
+      chunks.push(columns.slice(i, i + CHUNK_SIZE));
     }
-  };
+    return chunks;
+  }, [columns]);
 
-  // Global Keyboard shortcuts: F1, ENTER, F4, F5, F8, F9, F12, Arrows (when outside input)
+  // Active selected vezne object
+  const activeCol = useMemo(() => {
+    if (selectedVezneId !== null) {
+      const found = columns.find((c) => c.vezneId === selectedVezneId);
+      if (found) return found;
+    }
+    return columns[0] || {
+      vezneId: 0,
+      kod: "01",
+      ad: "Ana kasa",
+      isAnaKasa: true,
+    };
+  }, [columns, selectedVezneId]);
+
+  const activeVezneBakiyeler = useMemo(() => {
+    return rows
+      .filter((r) => (r.bakiyeler[activeCol.vezneId] || 0) !== 0)
+      .map((r) => ({
+        paraId: r.paraId,
+        kod: r.paraKodu,
+        ad: r.paraAdi,
+        paraKodu: r.paraKodu,
+        paraAdi: r.paraAdi,
+        miktar: r.bakiyeler[activeCol.vezneId] || 0,
+      }));
+  }, [rows, activeCol.vezneId]);
+
+  // Selected row for Detay modal
+  const selectedRow = useMemo(() => {
+    if (selectedParaId !== null) {
+      const found = rows.find((r) => r.paraId === selectedParaId);
+      if (found) return found;
+    }
+    return rows[0] || null;
+  }, [rows, selectedParaId]);
+
+  // Global Keyboard listener for F-keys and Arrow navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isAnyModalOpen) return;
-      if (document.activeElement?.tagName === "INPUT") return;
 
-      if (e.key === "F1") {
-        e.preventDefault();
-        handleSaveTable();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        if (e.ctrlKey || e.altKey) {
-          fetchData(false);
-        } else if (e.shiftKey) {
-          focusCell(selectedRowIndex > 0 ? selectedRowIndex - 1 : rows.length - 1, selectedColIndex);
-        } else {
-          focusCell(selectedRowIndex < rows.length - 1 ? selectedRowIndex + 1 : 0, selectedColIndex);
-        }
-      } else if (e.key === "F2") {
+      if (e.key === "Enter" || e.key === "F2") {
         e.preventDefault();
         fetchData(false);
       } else if (e.key === "F4") {
@@ -462,21 +328,42 @@ export const VezneIzlemePage: React.FC = () => {
       } else if (e.key === "F9") {
         e.preventDefault();
         handleOpenFirmaDurumu();
-      } else if (e.key === "F12") {
-        e.preventDefault();
-        handleNextVezneBatch();
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        focusCell(Math.min(rows.length - 1, selectedRowIndex + 1), selectedColIndex);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        focusCell(Math.max(0, selectedRowIndex - 1), selectedColIndex);
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        focusCell(selectedRowIndex, Math.min(visibleColumns.length - 1, selectedColIndex + 1));
+        if (columns.length > 0) {
+          const currIdx = columns.findIndex((c) => c.vezneId === selectedVezneId);
+          if (currIdx >= 0 && currIdx < columns.length - 1) {
+            setSelectedVezneId(columns[currIdx + 1].vezneId);
+          } else if (currIdx === -1) {
+            setSelectedVezneId(columns[0].vezneId);
+          }
+        }
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        focusCell(selectedRowIndex, Math.max(0, selectedColIndex - 1));
+        if (columns.length > 0) {
+          const currIdx = columns.findIndex((c) => c.vezneId === selectedVezneId);
+          if (currIdx > 0) {
+            setSelectedVezneId(columns[currIdx - 1].vezneId);
+          }
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (rows.length > 0) {
+          const currIdx = rows.findIndex((r) => r.paraId === selectedParaId);
+          if (currIdx >= 0 && currIdx < rows.length - 1) {
+            setSelectedParaId(rows[currIdx + 1].paraId);
+          } else if (currIdx === -1) {
+            setSelectedParaId(rows[0].paraId);
+          }
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (rows.length > 0) {
+          const currIdx = rows.findIndex((r) => r.paraId === selectedParaId);
+          if (currIdx > 0) {
+            setSelectedParaId(rows[currIdx - 1].paraId);
+          }
+        }
       }
     };
 
@@ -485,54 +372,23 @@ export const VezneIzlemePage: React.FC = () => {
   }, [
     isAnyModalOpen,
     fetchData,
-    handleSaveTable,
-    handleNextVezneBatch,
-    rows.length,
-    visibleColumns.length,
-    selectedRowIndex,
-    selectedColIndex,
-    focusCell,
+    columns,
+    rows,
+    selectedVezneId,
+    selectedParaId,
+    handleOpenKur,
+    handleOpenDetay,
+    handleOpenVezneBakiye,
+    handleOpenFirmaDurumu,
   ]);
 
-
-  // Determine active vezne for Vezne Bakiye Modal
-  const activeCol = visibleColumns[selectedColIndex] || columns[0] || {
-    vezneId: 0,
-    kod: "01",
-    ad: "Ana kasa",
-    isAnaKasa: true,
-  };
-
-  const activeVezneBakiyeler = rows
-    .filter((r) => (r.bakiyeler[activeCol.vezneId] || 0) !== 0)
-    .map((r) => ({
-      paraId: r.paraId,
-      kod: r.paraKodu,
-      ad: r.paraAdi,
-      paraKodu: r.paraKodu,
-      paraAdi: r.paraAdi,
-      miktar: r.bakiyeler[activeCol.vezneId] || 0,
-    }));
-
-  // Selected row for Detay modal
-  const selectedRow = rows[selectedRowIndex] || rows[0];
-
-  // Number formatting helper
-  const formatNumber = (num: number): string => {
-    if (num === 0 || isNaN(num)) return "";
-    return new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: num % 1 !== 0 ? 2 : 0,
-      maximumFractionDigits: 4,
-    }).format(num);
-  };
-
-  // Format Toplam column: always shows currency unit at the end (e.g. "2,506,034.32 TL", "81,366 USD", "JPY")
+  // Format Toplam column: always shows currency unit at the end
   const renderToplam = (row: VezneIzlemeRow): string => {
     const total = row.toplam;
     if (total === 0 || isNaN(total)) {
       return row.paraKodu;
     }
-    const formattedVal = formatNumber(total);
+    const formattedVal = formatNumber(total, row.paraKodu);
     return `${formattedVal} ${row.paraKodu}`;
   };
 
@@ -541,11 +397,11 @@ export const VezneIzlemePage: React.FC = () => {
       {/* Top ERP Toolbar */}
       <ERPToolbar
         onRefresh={() => fetchData(false)}
-        onSave={handleSaveTable}
         onPrint={() => window.print()}
         pageTitle="L- Vezne İzleme"
         hideDelete
         hideSearch
+        hideNavigation
         rightContent={
           <div
             className="d-flex align-items-center gap-2 px-2.5 py-1 rounded border shadow-2xs font-monospace text-nowrap"
@@ -574,7 +430,7 @@ export const VezneIzlemePage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Main Monitoring Grid Table */}
+      {/* Main Monitoring Content - 8'li Tablolar Alt Alta (Sağa kaydırmasız) */}
       <div className="flex-grow-1 bg-white border mt-1 mb-2 rounded shadow-2xs overflow-hidden d-flex flex-column">
         {isLoading ? (
           <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1 py-5">
@@ -582,373 +438,392 @@ export const VezneIzlemePage: React.FC = () => {
             <span className="text-muted small mt-2">Vezne bakiyeleri yükleniyor...</span>
           </div>
         ) : (
-          <div className="table-responsive flex-grow-1 overflow-auto" style={{ maxHeight: "calc(100vh - 170px)" }}>
-            <Table bordered hover size="sm" className="mb-0 text-nowrap" style={{ fontSize: "12.5px" }}>
-              {/* Table Header matching screenshot light blue */}
-              <thead
-                style={{
-                  backgroundColor: "#bfdbfe",
-                  color: "#1e3a8a",
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 3,
-                  userSelect: "none",
-                }}
-              >
-                <tr>
-                  {/* First corner cell */}
-                  <th
-                    style={{
-                      width: "65px",
-                      minWidth: "65px",
-                      backgroundColor: "#bfdbfe",
-                      borderColor: "#93c5fd",
-                      padding: "5px 8px",
-                      textAlign: "center",
-                    }}
-                  ></th>
+          <div className="flex-grow-1 p-2" style={{ overflowY: "auto", overflowX: "hidden" }}>
+            {vezneChunks.map((chunk, chunkIdx) => {
+              const fillerCount = Math.max(0, 8 - chunk.length);
+              const fillerArray = Array.from({ length: fillerCount }, (_, i) => i);
+              const isMultiChunk = vezneChunks.length > 1;
 
-                  {/* Cash Desk Headers */}
-                  {displayedVezneCols.map((col, idx) => (
-                    <th
-                      key={col.vezneId}
-                      onClick={() => setSelectedColIndex(idx)}
+              return (
+                <div key={`vezne-chunk-${chunkIdx}`} className="mb-3">
+                  {/* Çoklu Tablo Varsa Bölüm Başlığı */}
+                  {isMultiChunk && (
+                    <div className="d-flex align-items-center justify-content-between bg-light px-2.5 py-1 border rounded-top border-bottom-0">
+                      <span className="small fw-bold text-primary">
+                        📊 Vezneler ({chunkIdx * 8 + 1} - {chunkIdx * 8 + chunk.length})
+                      </span>
+                      <span className="badge bg-secondary-subtle text-secondary small">
+                        Toplam {columns.length} Vezne
+                      </span>
+                    </div>
+                  )}
+
+                  <div className={`table-responsive border ${isMultiChunk ? "rounded-bottom" : "rounded"}`}>
+                    <Table
+                      bordered
+                      hover
+                      size="sm"
+                      className="mb-0 text-nowrap align-middle"
                       style={{
-                        minWidth: col.isAnaKasa ? "130px" : "110px",
-                        backgroundColor: "#bfdbfe",
-                        borderColor: "#93c5fd",
-                        padding: "5px 10px",
-                        textAlign: "center",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                      title={`${col.kod} - ${col.ad}`}
-                    >
-                      {col.isAnaKasa ? (col.ad || "Ana kasa") : (col.kod || col.ad)}
-                    </th>
-                  ))}
-
-                  {/* Empty Filler Column Headers */}
-                  {fillerColumns.map((fi) => (
-                    <th
-                      key={`filler-head-${fi}`}
-                      style={{
-                        minWidth: "110px",
-                        backgroundColor: "#bfdbfe",
-                        borderColor: "#93c5fd",
-                        padding: "5px 8px",
-                      }}
-                    ></th>
-                  ))}
-
-                  {/* Toplam Column Header */}
-                  <th
-                    style={{
-                      minWidth: "155px",
-                      backgroundColor: "#bfdbfe",
-                      borderColor: "#93c5fd",
-                      padding: "5px 10px",
-                      textAlign: "center",
-                      fontWeight: 700,
-                      position: "sticky",
-                      right: 0,
-                      zIndex: 4,
-                    }}
-                  >
-                    Toplam
-                  </th>
-                </tr>
-              </thead>
-
-              {/* Table Body */}
-              <tbody>
-                {rows.map((row, rIdx) => {
-                  const isRowSelected = rIdx === selectedRowIndex;
-
-                  return (
-                    <tr
-                      key={row.paraId}
-                      ref={isRowSelected ? selectedRowRef : undefined}
-                      onClick={() => setSelectedRowIndex(rIdx)}
-                      style={{
-                        outline: isRowSelected ? "1.5px dotted #1d4ed8" : undefined,
-                        outlineOffset: "-1px",
-                        backgroundColor: isRowSelected ? "#eff6ff" : undefined,
-                        cursor: "pointer",
+                        fontSize: "12px",
+                        tableLayout: "fixed",
+                        width: "100%",
                       }}
                     >
-                      {/* Currency Code Cell */}
-                      <td
+                      {/* Header (8 Vezne Kolonu + Kod + Toplam) */}
+                      <thead
                         style={{
-                          backgroundColor: "#f8fafc",
-                          fontWeight: 700,
-                          textAlign: "center",
-                          color: "#1e293b",
-                          padding: "3px 8px",
-                          borderColor: "#cbd5e1",
+                          backgroundColor: "#bfdbfe",
+                          color: "#1e3a8a",
+                          userSelect: "none",
                         }}
                       >
-                        {row.paraKodu}
-                      </td>
-
-                      {/* Cash Desk Balance Cells with Direct Value Entry */}
-                      {displayedVezneCols.map((col, cIdx) => {
-                        const miktar = row.bakiyeler[col.vezneId];
-                        const isCellSelected = isRowSelected && cIdx === selectedColIndex;
-                        const cellKey = `${row.paraId}-${col.vezneId}`;
-                        const isEditing = editingCellKey === cellKey;
-
-                        return (
-                          <td
-                            key={cellKey}
-                            onClick={() => {
-                              setSelectedRowIndex(rIdx);
-                              setSelectedColIndex(cIdx);
-                              focusCell(rIdx, cIdx);
-                            }}
-                            className="p-0 font-monospace text-end position-relative"
+                        <tr>
+                          {/* Para Kodu Sütun Başlığı */}
+                          <th
                             style={{
-                              backgroundColor: isCellSelected
-                                ? "#dbeafe"
-                                : col.isAnaKasa
-                                ? "#f1f5f9"
-                                : "#ffffff",
-                              borderColor: "#cbd5e1",
+                              width: "70px",
+                              backgroundColor: "#bfdbfe",
+                              borderColor: "#93c5fd",
+                              padding: "6px 8px",
+                              textAlign: "center",
+                              fontWeight: 700,
                             }}
                           >
-                            <input
-                              ref={(el) => {
-                                cellInputRefs.current[`${rIdx}-${cIdx}`] = el;
-                              }}
-                              type="text"
-                              inputMode="decimal"
-                              value={
-                                isEditing
-                                  ? editingValue
-                                  : miktar !== undefined && miktar !== 0
-                                  ? formatNumber(miktar)
-                                  : ""
-                              }
-                              onFocus={(e) => {
-                                setSelectedRowIndex(rIdx);
-                                setSelectedColIndex(cIdx);
-                                setEditingCellKey(cellKey);
-                                setEditingValue(
-                                  miktar !== undefined && miktar !== 0 ? String(miktar) : ""
-                                );
-                                e.target.select();
-                              }}
-                              onBlur={() => {
-                                if (editingCellKey === cellKey) {
-                                  handleCommitValue(rIdx, cIdx, editingValue);
-                                  setEditingCellKey(null);
-                                }
-                              }}
-                              onChange={(e) => {
-                                setEditingValue(e.target.value.replace(/,/g, "."));
-                              }}
-                              onKeyDown={(e) => handleCellKeyDown(e, rIdx, cIdx)}
-                              className="form-control form-control-sm border-0 bg-transparent text-end font-monospace shadow-none px-2 py-0"
+                            SMB
+                          </th>
+
+                          {/* 8 Vezne Kolon Başlıkları */}
+                          {chunk.map((col) => {
+                            const isSelected = selectedVezneId !== null && Number(col.vezneId) === Number(selectedVezneId);
+
+                            return (
+                              <th
+                                key={col.vezneId}
+                                onClick={() => setSelectedVezneId(Number(col.vezneId))}
+                                style={{
+                                  backgroundColor: isSelected ? "#38bdf8" : "#e2e8f0",
+                                  boxShadow: isSelected
+                                    ? "inset 0 0 0 9999px #38bdf8"
+                                    : "inset 0 0 0 9999px #e2e8f0",
+                                  color: isSelected ? "#082f49" : "#334155",
+                                  borderLeft: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                                  borderRight: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                                  borderTop: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                                  borderBottom: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                                  padding: "6px 6px",
+                                  textAlign: "center",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                }}
+                                title={`${col.kod} - ${col.ad} (Seçmek için tıklayın)`}
+                              >
+                                <div className="d-flex align-items-center justify-content-center gap-1 text-truncate">
+                                  <span>{col.isAnaKasa ? (col.ad || "Ana Kasa") : (col.kod || col.ad)}</span>
+                                  {isSelected && (
+                                    <span
+                                      className="badge bg-primary text-white px-1 py-0 rounded"
+                                      style={{ fontSize: "9px" }}
+                                    >
+                                      ✓
+                                    </span>
+                                  )}
+                                </div>
+                              </th>
+                            );
+                          })}
+
+                          {/* Eksik Kolonları Dolduran Boş Hücreler (Toplam 8'e tamamlama) */}
+                          {fillerArray.map((fi) => (
+                            <th
+                              key={`filler-head-${fi}`}
                               style={{
-                                height: "26px",
-                                fontSize: "12.5px",
-                                fontWeight: miktar && miktar !== 0 ? 600 : 400,
-                                color: "#0f172a",
-                                outline: isCellSelected ? "1.5px dotted #1d4ed8" : "none",
-                                outlineOffset: "-1px",
+                                backgroundColor: "#e2e8f0",
+                                boxShadow: "inset 0 0 0 9999px #e2e8f0",
+                                borderColor: "#cbd5e1",
+                                padding: "6px 8px",
                               }}
-                            />
-                          </td>
-                        );
-                      })}
+                            ></th>
+                          ))}
 
-                      {/* Empty Filler Cells */}
-                      {fillerColumns.map((fi) => (
-                        <td
-                          key={`filler-${row.paraId}-${fi}`}
-                          style={{
-                            padding: "3px 8px",
-                            borderColor: "#cbd5e1",
-                            backgroundColor: "#ffffff",
-                          }}
-                        ></td>
-                      ))}
+                          {/* Toplam Sütun Başlığı */}
+                          <th
+                            style={{
+                              width: "140px",
+                              backgroundColor: "#e2e8f0",
+                              boxShadow: "inset 0 0 0 9999px #e2e8f0",
+                              borderColor: "#cbd5e1",
+                              color: "#334155",
+                              padding: "6px 8px",
+                              textAlign: "center",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Toplam
+                          </th>
+                        </tr>
+                      </thead>
 
-                      {/* Toplam Cell (Light blue background matching screenshot) */}
-                      <td
-                        className="font-monospace text-end"
-                        style={{
-                          backgroundColor: isRowSelected ? "#bfdbfe" : "#dbeafe",
-                          padding: "3px 10px",
-                          borderColor: "#93c5fd",
-                          fontWeight: 600,
-                          color: "#1e3a8a",
-                          position: "sticky",
-                          right: 0,
-                          zIndex: 2,
-                        }}
-                      >
-                        {renderToplam(row)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
+                      {/* Body (Read-only values, Click selects Kasa) */}
+                      <tbody>
+                        {rows.map((row, rIdx) => {
+                          const isRowActive = row.paraId === selectedParaId;
+                          const baseRowBg = rIdx % 2 === 0 ? "#ffffff" : "#f8fafc";
+                          const isLastRow = rIdx === rows.length - 1;
+
+                          return (
+                            <tr
+                              key={row.paraId}
+                              onClick={() => setSelectedParaId(row.paraId)}
+                              style={{
+                                backgroundColor: baseRowBg,
+                              }}
+                            >
+                              {/* Para Kodu */}
+                              <td
+                                style={{
+                                  backgroundColor: isRowActive
+                                    ? "#e0f2fe"
+                                    : rIdx % 2 === 0
+                                    ? "#f1f5f9"
+                                    : "#e2e8f0",
+                                  boxShadow: isRowActive
+                                    ? "inset 0 0 0 9999px #e0f2fe"
+                                    : undefined,
+                                  fontWeight: 700,
+                                  textAlign: "center",
+                                  color: isRowActive ? "#0369a1" : "#1e293b",
+                                  padding: "4px 6px",
+                                  borderColor: "#cbd5e1",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {row.paraKodu}
+                              </td>
+
+                              {/* 8 Vezne Değerleri (Salt Okunur / Input Yok) */}
+                              {chunk.map((col) => {
+                                const miktar = row.bakiyeler[col.vezneId];
+                                const isColSelected = selectedVezneId !== null && Number(col.vezneId) === Number(selectedVezneId);
+                                const isIntersect = isColSelected && isRowActive;
+                                const formattedVal = formatNumber(miktar, row.paraKodu);
+
+                                const cellBg = isIntersect ? "#7dd3fc" : isColSelected ? "#bae6fd" : baseRowBg;
+
+                                return (
+                                  <td
+                                    key={`${row.paraId}-${col.vezneId}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedVezneId(Number(col.vezneId));
+                                      setSelectedParaId(row.paraId);
+                                    }}
+                                    className="font-monospace text-end p-0"
+                                    style={{
+                                      backgroundColor: cellBg,
+                                      boxShadow: `inset 0 0 0 9999px ${cellBg}`,
+                                      borderLeft: isColSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                                      borderRight: isColSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                                      borderTop: isColSelected ? "1px solid #7dd3fc" : "1px solid #cbd5e1",
+                                      borderBottom: isColSelected
+                                        ? isLastRow
+                                          ? "2px solid #0284c7"
+                                          : "1px solid #7dd3fc"
+                                        : "1px solid #cbd5e1",
+                                      cursor: "pointer",
+                                      userSelect: "none",
+                                      transition: "background-color 0.15s ease",
+                                    }}
+                                    title={`Vezne: ${col.kod} (${col.ad}) | ${row.paraKodu}: ${formattedVal || "0"}`}
+                                  >
+                                    <div
+                                      className="px-2 py-1 text-truncate text-end"
+                                      style={{
+                                        minHeight: "26px",
+                                        lineHeight: "24px",
+                                        fontWeight: isColSelected ? 700 : miktar && miktar !== 0 ? 600 : 400,
+                                        color: isColSelected ? "#0c4a6e" : miktar && miktar !== 0 ? "#0f172a" : "#94a3b8",
+                                      }}
+                                    >
+                                      {formattedVal}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+
+                              {/* Boş Tamamlama Hücreleri */}
+                              {fillerArray.map((fi) => (
+                                <td
+                                  key={`filler-cell-${row.paraId}-${fi}`}
+                                  style={{
+                                    borderColor: "#cbd5e1",
+                                    backgroundColor: baseRowBg,
+                                    boxShadow: `inset 0 0 0 9999px ${baseRowBg}`,
+                                    padding: "4px 8px",
+                                  }}
+                                ></td>
+                              ))}
+
+                              {/* Toplam Hücresi */}
+                              <td
+                                className="font-monospace text-end px-2 py-1"
+                                style={{
+                                  backgroundColor: isRowActive ? "#e0f2fe" : rIdx % 2 === 0 ? "#f8fafc" : "#f1f5f9",
+                                  boxShadow: isRowActive ? "inset 0 0 0 9999px #e0f2fe" : undefined,
+                                  borderColor: "#cbd5e1",
+                                  fontWeight: 700,
+                                  color: "#1e293b",
+                                }}
+                              >
+                                {renderToplam(row)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </Table>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* Bottom Action Bar with Green Checkmark Buttons (Matches screenshot exactly) */}
         <div
-          className="d-flex align-items-center justify-content-start flex-wrap gap-2 px-3 py-1.5"
+          className="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-1.5"
           style={{
             userSelect: "none",
             backgroundColor: "#ebebeb",
             borderTop: "1px solid #c8c8c8",
           }}
         >
-          {/* ENTER)Yeni değerler */}
-          <button
-            type="button"
-            onClick={() => fetchData(false)}
-            className="btn btn-sm d-inline-flex align-items-center"
-            style={{
-              backgroundColor: "#f4f4f4",
-              border: "1px solid #a8a8a8",
-              borderRadius: "2px",
-              padding: "2px 12px",
-              height: "28px",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#000000",
-              boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
-            }}
-            title="Verileri Yenile (Enter / Ctrl+Enter / F2)"
-          >
-            <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
-            <span>ENTER)Yeni değerler</span>
-          </button>
+          <div className="d-flex align-items-center flex-wrap gap-2">
+            {/* ENTER)Yeni değerler */}
+            <button
+              type="button"
+              onClick={() => fetchData(false)}
+              className="btn btn-sm d-inline-flex align-items-center"
+              style={{
+                backgroundColor: "#f4f4f4",
+                border: "1px solid #a8a8a8",
+                borderRadius: "2px",
+                padding: "2px 12px",
+                height: "28px",
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#000000",
+                boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+              }}
+              title="Verileri Yenile (Enter / F2)"
+            >
+              <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
+              <span>ENTER)Yeni değerler</span>
+            </button>
 
-          {/* F4) Kur */}
-          <button
-            type="button"
-            onClick={handleOpenKur}
-            className="btn btn-sm d-inline-flex align-items-center"
-            style={{
-              backgroundColor: "#f4f4f4",
-              border: "1px solid #a8a8a8",
-              borderRadius: "2px",
-              padding: "2px 12px",
-              height: "28px",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#000000",
-              boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
-            }}
-            title="Anlık Kurları Görüntüle (F4)"
-          >
-            <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
-            <span>F4) Kur</span>
-          </button>
+            {/* F4) Kur */}
+            <button
+              type="button"
+              onClick={handleOpenKur}
+              className="btn btn-sm d-inline-flex align-items-center"
+              style={{
+                backgroundColor: "#f4f4f4",
+                border: "1px solid #a8a8a8",
+                borderRadius: "2px",
+                padding: "2px 12px",
+                height: "28px",
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#000000",
+                boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+              }}
+              title="Anlık Kurları Görüntüle (F4)"
+            >
+              <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
+              <span>F4) Kur</span>
+            </button>
 
-          {/* F5) Detay */}
-          <button
-            type="button"
-            onClick={handleOpenDetay}
-            className="btn btn-sm d-inline-flex align-items-center"
-            style={{
-              backgroundColor: "#f4f4f4",
-              border: "1px solid #a8a8a8",
-              borderRadius: "2px",
-              padding: "2px 12px",
-              height: "28px",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#000000",
-              boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
-            }}
-            title="Seçili Para / Vezne Detayını Görüntüle (F5)"
-          >
-            <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
-            <span>F5) Detay</span>
-          </button>
+            {/* F5) Detay */}
+            <button
+              type="button"
+              onClick={handleOpenDetay}
+              className="btn btn-sm d-inline-flex align-items-center"
+              style={{
+                backgroundColor: "#f4f4f4",
+                border: "1px solid #a8a8a8",
+                borderRadius: "2px",
+                padding: "2px 12px",
+                height: "28px",
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#000000",
+                boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+              }}
+              title="Seçili Para / Vezne Detayını Görüntüle (F5)"
+            >
+              <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
+              <span>F5) Detay</span>
+            </button>
 
-          {/* F8) Vezne bakiye */}
-          <button
-            type="button"
-            onClick={handleOpenVezneBakiye}
-            className="btn btn-sm d-inline-flex align-items-center"
-            style={{
-              backgroundColor: "#f4f4f4",
-              border: "1px solid #a8a8a8",
-              borderRadius: "2px",
-              padding: "2px 12px",
-              height: "28px",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#000000",
-              boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
-            }}
-            title="Vezne Bakiye Döküm Penceresini Aç (F8)"
-          >
-            <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
-            <span>F8) Vezne bakiye</span>
-          </button>
+            {/* F8) Vezne bakiye */}
+            <button
+              type="button"
+              onClick={handleOpenVezneBakiye}
+              className="btn btn-sm d-inline-flex align-items-center"
+              style={{
+                backgroundColor: "#f4f4f4",
+                border: "1px solid #a8a8a8",
+                borderRadius: "2px",
+                padding: "2px 12px",
+                height: "28px",
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#000000",
+                boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+              }}
+              title="Seçili Veznenin Bakiye Döküm Penceresini Aç (F8)"
+            >
+              <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
+              <span>F8) Vezne bakiye</span>
+            </button>
 
-          {/* F9) Firma durumu */}
-          <button
-            type="button"
-            onClick={handleOpenFirmaDurumu}
-            className="btn btn-sm d-inline-flex align-items-center"
-            style={{
-              backgroundColor: "#f4f4f4",
-              border: "1px solid #a8a8a8",
-              borderRadius: "2px",
-              padding: "2px 12px",
-              height: "28px",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#000000",
-              boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
-            }}
-            title="Firma Durumu Özetini Görüntüle (F9)"
-          >
-            <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
-            <span>F9) Firma durumu</span>
-          </button>
+            {/* F9) Firma durumu */}
+            <button
+              type="button"
+              onClick={handleOpenFirmaDurumu}
+              className="btn btn-sm d-inline-flex align-items-center"
+              style={{
+                backgroundColor: "#f4f4f4",
+                border: "1px solid #a8a8a8",
+                borderRadius: "2px",
+                padding: "2px 12px",
+                height: "28px",
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#000000",
+                boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+              }}
+              title="Firma Durumu Özetini Görüntüle (F9)"
+            >
+              <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
+              <span>F9) Firma durumu</span>
+            </button>
+          </div>
 
-          {/* F12)Vezne gerisi */}
-          <button
-            type="button"
-            onClick={handleNextVezneBatch}
-            className="btn btn-sm d-inline-flex align-items-center"
-            style={{
-              backgroundColor: "#f4f4f4",
-              border: "1px solid #a8a8a8",
-              borderRadius: "2px",
-              padding: "2px 12px",
-              height: "28px",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#000000",
-              boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
-            }}
-            title="Sonraki Vezne Kolon Grubunu Göster (F12)"
-          >
-            <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
-            <span>F12)Vezne gerisi</span>
-          </button>
-
-          {/* Page indicator info */}
-          {totalVezneler > visibleVezneCount && (
-            <span className="ms-auto small text-muted font-monospace">
-              Vezneler: {pageOffset + 1} - {Math.min(pageOffset + visibleVezneCount, totalVezneler)} / {totalVezneler}
-            </span>
+          {/* Aktif Seçili Kasa Göstergesi */}
+          {activeCol && (
+            <div className="d-flex align-items-center gap-1.5 font-monospace text-nowrap">
+              <span className="small text-muted">Aktif Kasa:</span>
+              <span className="badge bg-primary px-2.5 py-1 fw-bold fs-7 shadow-2xs">
+                [{activeCol.kod}] {activeCol.ad}
+              </span>
+            </div>
           )}
         </div>
       </div>
 
-      {/* ─── MODAL 1: Vezne İzleme Tanımı (SODVZ_VEZNE_IZLEME_TANIMI_KAYDET) ─── */}
+      {/* ─── MODAL 1: Vezne İzleme Tanımı ─── */}
       <Modal
         show={showSettingsModal}
         onHide={() => setShowSettingsModal(false)}
@@ -1164,12 +1039,22 @@ export const VezneIzlemePage: React.FC = () => {
                 <tbody>
                   {columns.map((col) => {
                     const bakiye = selectedRow.bakiyeler[col.vezneId] || 0;
+                    const isSelectedCol = col.vezneId === selectedVezneId;
+
                     return (
-                      <tr key={col.vezneId} style={{ backgroundColor: bakiye > 0 ? "#f0fdf4" : undefined }}>
-                        <td className="fw-semibold">{col.kod}</td>
+                      <tr
+                        key={col.vezneId}
+                        style={{
+                          backgroundColor: isSelectedCol ? "#bae6fd" : bakiye > 0 ? "#f0fdf4" : undefined,
+                          fontWeight: isSelectedCol ? 700 : undefined,
+                        }}
+                      >
+                        <td className="fw-semibold">
+                          {col.kod} {isSelectedCol && <span className="badge bg-primary ms-1">Seçili</span>}
+                        </td>
                         <td>{col.ad}</td>
                         <td className="text-end font-monospace fw-bold text-primary">
-                          {formatNumber(bakiye) || "0"}
+                          {formatNumber(bakiye, selectedRow.paraKodu) || "0"}
                         </td>
                       </tr>
                     );
@@ -1179,7 +1064,7 @@ export const VezneIzlemePage: React.FC = () => {
                       Genel Toplam:
                     </td>
                     <td className="text-end font-monospace fw-bold text-primary">
-                      {formatNumber(selectedRow.toplam) || "0"} {selectedRow.paraKodu}
+                      {formatNumber(selectedRow.toplam, selectedRow.paraKodu) || "0"} {selectedRow.paraKodu}
                     </td>
                   </tr>
                 </tbody>
@@ -1236,7 +1121,7 @@ export const VezneIzlemePage: React.FC = () => {
                       <td className="fw-bold">{r.paraKodu}</td>
                       <td>{r.paraAdi}</td>
                       <td className="text-end font-monospace fw-bold text-primary">
-                        {formatNumber(r.toplam)} {r.paraKodu}
+                        {formatNumber(r.toplam, r.paraKodu)} {r.paraKodu}
                       </td>
                     </tr>
                   ))}

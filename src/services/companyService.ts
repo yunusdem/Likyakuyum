@@ -128,6 +128,8 @@ export interface TodvzTanimDto {
   SARRAFIYE_FAVORI_BELGE_TURU?: number | null;
   KMV_UYGULAMA_SEKLI?: number | null;
   HAS_GUMUS_PARA_ID?: number | null;
+  URETIM_HESABI_ID?: number | null;
+  URETIM_HESABI?: string | null;
 }
 
 export const defaultCompanyTanim: TodvzTanimDto = {
@@ -143,6 +145,8 @@ export const defaultCompanyTanim: TodvzTanimDto = {
   IL_ID: null,
   ULKE_ID: null,
   TELEFON: "",
+  URETIM_HESABI_ID: null,
+  URETIM_HESABI: "",
   USD_PARA_ID: 2,
   EUR_PARA_ID: 3,
   RAPOR_PARA_ID: 2,

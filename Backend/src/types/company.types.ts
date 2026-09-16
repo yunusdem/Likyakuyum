@@ -129,4 +129,6 @@ export interface TodvzTanimEntity {
   SARRAFIYE_FAVORI_BELGE_TURU: number | null; // tinyint
   KMV_UYGULAMA_SEKLI: number | null; // tinyint
   HAS_GUMUS_PARA_ID: number | null; // int
+  URETIM_HESABI_ID?: number | null; // int (TODVZ_HESAP HESAP_ID)
+  URETIM_HESABI?: string | null;
 }

@@ -22,6 +22,7 @@ import {
   IconUser,
   IconClock,
   IconCalendar,
+  IconCash,
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
@@ -470,40 +471,44 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             />
           </div>
 
-          {/* Ortalı ve Büyük Yazılar */}
-          <div className="d-flex flex-column align-items-center justify-content-center text-center flex-grow-1 px-2 overflow-hidden">
-            {/* Kullanıcı Adı */}
+          {/* Ortalı Kullanıcı Bilgileri (1. Satır: İsim, 2. Satır: Tarih & Saat, 3. Satır: Vezne) */}
+          <div className="d-flex flex-column align-items-center justify-content-center text-center flex-grow-1 px-1 overflow-hidden">
+            {/* 1. Satır: Kullanıcı Adı */}
             <h6
               className="mb-1 text-truncate fw-bold text-dark w-100"
-              style={{ fontSize: "0.92rem", letterSpacing: "0.2px" }}
+              style={{ fontSize: "0.90rem", letterSpacing: "0.2px" }}
             >
               {displayName}
             </h6>
 
-            {/* Tarih Satırı */}
+            {/* 2. Satır: Tarih ve Saat Yan Yana */}
             <div
               className="d-flex align-items-center justify-content-center gap-1.5 w-100 text-secondary"
-              style={{ fontSize: "0.80rem", lineHeight: "1.25" }}
+              style={{ fontSize: "0.76rem", lineHeight: "1.2" }}
             >
-              <IconCalendar size={13} className="text-primary flex-shrink-0" />
-              <span className="fw-semibold text-dark text-truncate">{currentDate}</span>
+              <span className="d-inline-flex align-items-center gap-1 text-dark fw-semibold text-nowrap">
+                <IconCalendar size={12} className="text-primary flex-shrink-0" />
+                {currentDate}
+              </span>
+              <span className="text-muted opacity-50">•</span>
+              <span className="d-inline-flex align-items-center gap-1 text-nowrap font-monospace fw-bold text-secondary">
+                <IconClock size={12} className="text-secondary flex-shrink-0" />
+                {currentTime}
+              </span>
             </div>
 
-            {/* Saat Satırı (Estetik Mini Rozet) */}
+            {/* 3. Satır: Vezne Numarası */}
             <div
-              className="d-flex align-items-center justify-content-center gap-1.5 w-100 text-muted"
-              style={{ fontSize: "0.78rem", lineHeight: "1.25", marginTop: "2px" }}
+              className="d-flex align-items-center justify-content-center gap-1 w-100 mt-1"
+              style={{ fontSize: "0.76rem" }}
             >
-              <IconClock size={13} className="text-secondary flex-shrink-0" />
               <span
-                className="fw-bold font-monospace px-1.5 py-0.5 rounded"
-                style={{
-                  color: "#334155",
-                  backgroundColor: "rgba(255, 255, 255, 0.75)",
-                  border: "1px solid #e2e8f0",
-                }}
+                className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-0.5 rounded-pill fw-semibold font-monospace d-inline-flex align-items-center gap-1 text-nowrap"
+                style={{ letterSpacing: "0.3px", fontSize: "0.73rem" }}
+                title={`Kullanıcı Vezne Numarası: ${user?.cashierCode || "01"}`}
               >
-                {currentTime}
+                <IconCash size={13} className="text-primary flex-shrink-0" />
+                <span>Vezne: {user?.cashierCode || "01"}</span>
               </span>
             </div>
           </div>

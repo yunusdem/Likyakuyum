@@ -44,6 +44,8 @@ export interface ERPToolbarProps {
   pageIcon?: React.ReactNode;
   rightContent?: React.ReactNode;
   modeText?: React.ReactNode;
+  hideNew?: boolean;
+  hideSave?: boolean;
   hideSearch?: boolean;
   hideDelete?: boolean;
   hideNavigation?: boolean;
@@ -143,6 +145,8 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   pageIcon,
   rightContent,
   modeText,
+  hideNew,
+  hideSave,
   hideSearch,
   hideDelete,
   hideNavigation,
@@ -180,6 +184,12 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     // Kasa Hareket (Kayıt: /kasa/hareket-kayit vs Düzeltme: /kasa/hareket-duzeltme)
     location.pathname.includes("/kasa/hareket-kayit");
 
+  // Yeni Kayıt Butonu
+  const shouldShowNew = hideNew !== undefined ? !hideNew : true;
+
+  // Kaydet Butonu
+  const shouldShowSave = hideSave !== undefined ? !hideSave : true;
+
   // Dürbün (Arama): Dual kayıt sayfalarında ASLA gözükmez.
   // Tekil sayfalarda (örneğin Yazıcı Tanımları, Ürün Tanımları) veya Düzeltme sayfalarında ise onSearch varsa gözükür.
   const shouldShowSearch = hideSearch !== undefined
@@ -213,8 +223,10 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
       if (disabled || disableShortcuts) return;
 
       if (e.key === "F1") {
-        e.preventDefault();
-        if (onSave) onSave();
+        if (shouldShowSave && onSave) {
+          e.preventDefault();
+          onSave();
+        }
       } else if (e.key === "F2") {
         if (shouldShowDelete && onDelete) {
           e.preventDefault();
@@ -229,10 +241,10 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
         if (shouldShowSearch && onSearch) {
           e.preventDefault();
           onSearch();
-        } else if (onNew) {
+        } else if (shouldShowNew && onNew) {
           e.preventDefault();
           onNew();
-        } else if (onClear) {
+        } else if (shouldShowNew && onClear) {
           e.preventDefault();
           onClear();
         }
@@ -251,7 +263,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, hidePrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete]);
+  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, hidePrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete, shouldShowNew, shouldShowSave]);
 
   const defaultHandler = (actionName: string) => {
     if (actionName === "Ara/Bul") {
@@ -275,74 +287,78 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
       {/* Sol Toolbar Buton Grubu - Sıfır Sayfa Titremesi / Sıfır Kayma */}
       <div className="d-flex align-items-center flex-wrap erp-toolbar-strip gap-1">
         {/* 1. Yeni Kayıt (F4) - Boş Belge & Üst Köşesinde Artı (+) İkonu */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onNew || onClear || (() => defaultHandler("Yeni Kayıt"))}
-          className="erp-tb-btn"
-          title="Yeni Kayıt (F4)"
-          aria-label="Yeni Kayıt"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            {/* Boş Beyaz Belge Gövdesi */}
-            <path
-              d="M4 4.5C4 3.67 4.67 3 5.5 3H12.5L17.5 8V20.5C17.5 21.33 16.83 22 16 22H5.5C4.67 22 4 21.33 4 20.5V4.5Z"
-              fill="#ffffff"
-              stroke="#475569"
-              strokeWidth="1.6"
-              strokeLinejoin="round"
-            />
-            {/* Belge Katlanmış Köşesi */}
-            <path
-              d="M12.5 3V8H17.5"
-              fill="#e2e8f0"
-              stroke="#475569"
-              strokeWidth="1.6"
-              strokeLinejoin="round"
-            />
-            {/* Üst Kenar / Köşedeki Yeşil Kare Artı (+) Rozeti */}
-            <rect
-              x="12.5"
-              y="1.5"
-              width="10"
-              height="10"
-              rx="2.5"
-              fill="#22c55e"
-              stroke="#ffffff"
-              strokeWidth="1.4"
-            />
-            {/* Kalın Beyaz Artı (+) */}
-            <line x1="17.5" y1="3.8" x2="17.5" y2="9.2" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" />
-            <line x1="14.8" y1="6.5" x2="20.2" y2="6.5" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
-        </button>
+        {shouldShowNew && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onNew || onClear || (() => defaultHandler("Yeni Kayıt"))}
+            className="erp-tb-btn"
+            title="Yeni Kayıt (F4)"
+            aria-label="Yeni Kayıt"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              {/* Boş Beyaz Belge Gövdesi */}
+              <path
+                d="M4 4.5C4 3.67 4.67 3 5.5 3H12.5L17.5 8V20.5C17.5 21.33 16.83 22 16 22H5.5C4.67 22 4 21.33 4 20.5V4.5Z"
+                fill="#ffffff"
+                stroke="#475569"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              {/* Belge Katlanmış Köşesi */}
+              <path
+                d="M12.5 3V8H17.5"
+                fill="#e2e8f0"
+                stroke="#475569"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              {/* Üst Kenar / Köşedeki Yeşil Kare Artı (+) Rozeti */}
+              <rect
+                x="12.5"
+                y="1.5"
+                width="10"
+                height="10"
+                rx="2.5"
+                fill="#22c55e"
+                stroke="#ffffff"
+                strokeWidth="1.4"
+              />
+              {/* Kalın Beyaz Artı (+) */}
+              <line x1="17.5" y1="3.8" x2="17.5" y2="9.2" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="14.8" y1="6.5" x2="20.2" y2="6.5" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
 
         {/* 2. Kaydet (F1) */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onSave || (() => defaultHandler("Kaydet"))}
-          className="erp-tb-btn"
-          title="Kaydet (F1)"
-          aria-label="Kaydet"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            {/* Floppy Body (Blue) */}
-            <path
-              d="M4 3H17L20 6V20C20 20.55 19.55 21 19 21H5C4.45 21 4 20.55 4 20V3Z"
-              fill="#2563eb"
-              stroke="#1d4ed8"
-              strokeWidth="1.2"
-            />
-            {/* Top White Metal Shutter */}
-            <rect x="7" y="3.5" width="9" height="7" rx="0.5" fill="#f8fafc" stroke="#94a3b8" strokeWidth="0.8" />
-            <rect x="12" y="5" width="2.5" height="4" rx="0.3" fill="#2563eb" />
-            {/* Bottom White Label */}
-            <rect x="6.5" y="13" width="11" height="7.5" rx="0.5" fill="#ffffff" stroke="#cbd5e1" strokeWidth="0.8" />
-            <line x1="8" y1="15.5" x2="16" y2="15.5" stroke="#94a3b8" strokeWidth="1" strokeLinecap="round" />
-            <line x1="8" y1="18" x2="14" y2="18" stroke="#94a3b8" strokeWidth="1" strokeLinecap="round" />
-          </svg>
-        </button>
+        {shouldShowSave && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onSave || (() => defaultHandler("Kaydet"))}
+            className="erp-tb-btn"
+            title="Kaydet (F1)"
+            aria-label="Kaydet"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              {/* Floppy Body (Blue) */}
+              <path
+                d="M4 3H17L20 6V20C20 20.55 19.55 21 19 21H5C4.45 21 4 20.55 4 20V3Z"
+                fill="#2563eb"
+                stroke="#1d4ed8"
+                strokeWidth="1.2"
+              />
+              {/* Top White Metal Shutter */}
+              <rect x="7" y="3.5" width="9" height="7" rx="0.5" fill="#f8fafc" stroke="#94a3b8" strokeWidth="0.8" />
+              <rect x="12" y="5" width="2.5" height="4" rx="0.3" fill="#2563eb" />
+              {/* Bottom White Label */}
+              <rect x="6.5" y="13" width="11" height="7.5" rx="0.5" fill="#ffffff" stroke="#cbd5e1" strokeWidth="0.8" />
+              <line x1="8" y1="15.5" x2="16" y2="15.5" stroke="#94a3b8" strokeWidth="1" strokeLinecap="round" />
+              <line x1="8" y1="18" x2="14" y2="18" stroke="#94a3b8" strokeWidth="1" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
 
         {/* 3. Sil (F2) - Kaydetin hemen sağında */}
         {shouldShowDelete && (

@@ -24,6 +24,7 @@ import {
 } from "../../services/kasaService";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { VezneTransferiService } from "../../services/vezneTransferiService";
+import { CompanyService } from "../../services/companyService";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 export const KasaHareketPage: React.FC = () => {
@@ -159,6 +160,46 @@ export const KasaHareketPage: React.FC = () => {
     (b) => Number(b.paraId) === Number(paraId) || (b.paraKodu && b.paraKodu.toUpperCase() === (paraKod || "").toUpperCase())
   )?.miktar ?? 0;
 
+  // ─── Hesap Seçimi ────────────────────────────────────────────────────────────
+  const handleSelectHesap = useCallback((h: HesapItem) => {
+    setHesapId(h.hesapId);
+    setHesapKod(h.kod || "");
+    setHesapAd(h.ad || "");
+    setHesapBakiye(h.bakiye || 0);
+    const oran = h.kdvOrani ?? 0;
+    setKdvOrani(oran);
+
+    const mNum = parseFloat(String(meblag)) || 0;
+    if (mNum > 0 && oran > 0) {
+      setKdvTutari(parseFloat(((mNum * oran) / 100).toFixed(4)));
+    } else {
+      setKdvTutari(0);
+    }
+
+    const hesapMetni = `${h.kod || ""} ${h.ad || ""}`.toLocaleUpperCase("tr-TR");
+    const isGoldOrProduction =
+      hesapMetni.includes("URETIM") ||
+      hesapMetni.includes("ÜRETİM") ||
+      hesapMetni.includes("İMALAT") ||
+      hesapMetni.includes("IMALAT") ||
+      hesapMetni.includes("ALTIN");
+
+    if (isGoldOrProduction && lookups.paralar.length > 0) {
+      const hasPara =
+        lookups.paralar.find((p) => (p.kod || "").toUpperCase() === "HAS") ||
+        lookups.paralar.find((p) => (p.ad || "").toUpperCase().includes("HAS")) ||
+        lookups.paralar[0];
+
+      if (hasPara) {
+        setParaId(hasPara.id);
+        setParaKod(hasPara.kod);
+        setParaAd(hasPara.ad);
+      }
+    }
+
+    setTimeout(() => meblagRef.current?.focus(), 50);
+  }, [lookups.paralar, meblag]);
+
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
@@ -198,13 +239,41 @@ export const KasaHareketPage: React.FC = () => {
         }
       }
 
+      // Otomatik Üretim Hesabı Ön-seçimi (Kayıt modunda ve henüz hesap seçilmemişse)
+      if (!isEditPage && !hesapId && hesaplar.length > 0) {
+        let uretimIdStr = localStorage.getItem("kuyumcu_erp_uretim_hesabi_id");
+        let targetAccount = uretimIdStr ? hesaplar.find((h) => String(h.hesapId) === uretimIdStr) : null;
+
+        if (!targetAccount) {
+          try {
+            const defs = await CompanyService.getDefinitions();
+            if (defs?.URETIM_HESABI_ID) {
+              targetAccount = hesaplar.find((h) => h.hesapId === defs.URETIM_HESABI_ID) || null;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (!targetAccount) {
+          targetAccount = hesaplar.find((h) => {
+            const txt = `${h.kod || ""} ${h.ad || ""}`.toLocaleUpperCase("tr-TR");
+            return txt.includes("URETIM") || txt.includes("ÜRETİM") || txt.includes("İMALAT") || txt.includes("IMALAT");
+          }) || null;
+        }
+
+        if (targetAccount) {
+          handleSelectHesap(targetAccount);
+        }
+      }
+
       if (defaultVezneId) {
         fetchVezneBakiyeler(defaultVezneId);
       }
     } catch (err: any) {
       showNotif("danger", err?.message || "Kasa hareket verileri yüklenemedi.");
     }
-  }, [paraId, vezneId, fetchVezneBakiyeler]);
+  }, [paraId, vezneId, isEditPage, hesapId, handleSelectHesap, fetchVezneBakiyeler]);
 
   useEffect(() => {
     loadAll();
@@ -261,73 +330,41 @@ export const KasaHareketPage: React.FC = () => {
     }
   }, [hesapList, fetchVezneBakiyeler]);
 
-  // ─── Hesap Seçimi ────────────────────────────────────────────────────────────
-  const handleSelectHesap = useCallback((h: HesapItem) => {
-    setHesapId(h.hesapId);
-    setHesapKod(h.kod || "");
-    setHesapAd(h.ad || "");
-    setHesapBakiye(h.bakiye || 0);
-    const oran = h.kdvOrani ?? 0;
-    setKdvOrani(oran);
-
-    const mNum = parseFloat(String(meblag)) || 0;
-    if (mNum > 0 && oran > 0) {
-      setKdvTutari(parseFloat(((mNum * oran) / 100).toFixed(4)));
-    } else {
-      setKdvTutari(0);
-    }
-
-    const hesapMetni = `${h.kod || ""} ${h.ad || ""}`.toLocaleUpperCase("tr-TR");
-    const isGoldOrProduction =
-      hesapMetni.includes("URETIM") ||
-      hesapMetni.includes("ÜRETİM") ||
-      hesapMetni.includes("İMALAT") ||
-      hesapMetni.includes("IMALAT") ||
-      hesapMetni.includes("ALTIN");
-
-    if (isGoldOrProduction && lookups.paralar.length > 0) {
-      const hasPara =
-        lookups.paralar.find((p) => (p.kod || "").toUpperCase() === "HAS") ||
-        lookups.paralar.find((p) => (p.ad || "").toUpperCase().includes("HAS")) ||
-        lookups.paralar[0];
-
-      if (hasPara) {
-        setParaId(hasPara.id);
-        setParaKod(hasPara.kod);
-        setParaAd(hasPara.ad);
-        showNotif(
-          "warning",
-          `Seçilen hesap (${h.ad}) üretim/imalat/altın içerdiğinden para birimi otomatik olarak "HAS" (Has Altın) seçildi.`
-        );
-      } else {
-        showNotif("success", `Hesap seçildi: ${h.ad}`);
-      }
-    } else {
-      showNotif("success", `Hesap seçildi: ${h.ad}`);
-    }
-
-    setTimeout(() => meblagRef.current?.focus(), 50);
-  }, [lookups.paralar, meblag]);
-
-  // ─── Yeni Kayıt Modu (F4) - Tamamen Temizle ──────────────────────────────────
+  // ─── Yeni Kayıt Modu (F4) - Üretim Hesabı Otomatik Seçilir ──────────────────
   const handleNew = useCallback(() => {
     setHesapHareketiId(null);
     setTarih(new Date().toISOString().slice(0, 10));
     setAciklama("");
     setTip(1);
-    setHesapId(null);
-    setHesapKod("");
-    setHesapAd("");
-    setHesapBakiye(0);
+
+    // Otomatik Üretim Hesabı Seçimi
+    let uretimIdStr = localStorage.getItem("kuyumcu_erp_uretim_hesabi_id");
+    let targetAccount = uretimIdStr ? hesapList.find((h) => String(h.hesapId) === uretimIdStr) : null;
+    if (!targetAccount) {
+      targetAccount = hesapList.find((h) => {
+        const txt = `${h.kod || ""} ${h.ad || ""}`.toLocaleUpperCase("tr-TR");
+        return txt.includes("URETIM") || txt.includes("ÜRETİM") || txt.includes("İMALAT") || txt.includes("IMALAT");
+      }) || null;
+    }
+
+    if (targetAccount) {
+      handleSelectHesap(targetAccount);
+    } else {
+      setHesapId(null);
+      setHesapKod("");
+      setHesapAd("");
+      setHesapBakiye(0);
+      setKdvOrani(0);
+      setKdvTutari(0);
+    }
+
     setMeblag("");
-    setKdvOrani(0);
-    setKdvTutari(0);
     setEklemeZamani(null);
     setGuncellemeZamani(null);
     if (vezneId) {
       fetchVezneBakiyeler(vezneId);
     }
-  }, [vezneId, fetchVezneBakiyeler]);
+  }, [hesapList, handleSelectHesap, vezneId, fetchVezneBakiyeler]);
 
   // ─── Kaydet Aksiyonu (F1) ────────────────────────────────────────────────────
   const handleSave = useCallback(async (): Promise<HesapHareketiItem | null> => {

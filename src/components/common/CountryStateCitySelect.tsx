@@ -263,7 +263,7 @@ export const CountryStateCitySelect: React.FC<CountryStateCitySelectProps> = ({
     <>
       {/* 1. Ülke Dropdown */}
       <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
           Ülke
         </Form.Label>
         <Col>
@@ -287,7 +287,7 @@ export const CountryStateCitySelect: React.FC<CountryStateCitySelectProps> = ({
 
       {/* 2. İl (State) Dropdown */}
       <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
           İl
         </Form.Label>
         <Col>
@@ -336,7 +336,7 @@ export const CountryStateCitySelect: React.FC<CountryStateCitySelectProps> = ({
 
       {/* 3. İlçe (City) Dropdown */}
       <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
-        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start">
+        <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
           İlçe
         </Form.Label>
         <Col>
