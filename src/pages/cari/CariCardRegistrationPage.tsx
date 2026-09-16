@@ -38,6 +38,7 @@ import {
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
+import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
 import LookupModal from "../../components/common/LookupModal";
 import { printReportTable } from "../../utils/printReport";
 import {
@@ -161,6 +162,8 @@ export const CariCardRegistrationPage: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
   const [isGibSorgulaniyor, setIsGibSorgulaniyor] = useState<boolean>(false);
+  /** GİB birden fazla posta kutusu döndürdüğünde kullanıcıya seçtirilecek liste. */
+  const [gibSecimListesi, setGibSecimListesi] = useState<GibKullanici[]>([]);
   const [postaKoduInput, setPostaKoduInput] = useState<string>("");
 
   // Dinamik İl & İlçe Eşleme Durumları
@@ -598,6 +601,24 @@ export const CariCardRegistrationPage: React.FC = () => {
     });
   };
 
+  /** Seçilen GİB kaydını forma işler: posta kutuları + (boşsa) unvan ve e-posta. */
+  const gibKaydiniUygula = (k: GibKullanici) => {
+    const alias = k.Alias || k.Identifier || "";
+    const eposta = gibAliasToEposta(alias);
+    const unvan = (k.Title || "").trim();
+    const doldurulan: string[] = [`posta kutusu: ${alias}`];
+    setFormData((prev) => {
+      const sonraki = { ...prev, eFaturaPostaKutusu: alias, eIrsaliyePostaKutusu: alias };
+      if (unvan && !(prev.ad || "").trim()) { sonraki.ad = unvan; doldurulan.push(`unvan: ${unvan}`); }
+      if (eposta && !(prev.eposta || "").trim()) { sonraki.eposta = eposta; doldurulan.push(`e-posta: ${eposta}`); }
+      return sonraki;
+    });
+    setGibSecimListesi([]);
+    // GİB e-posta alanı döndürmez; posta kutusu etiketi e-posta biçiminde değilse açıkça "yok" denir.
+    const epostaNotu = eposta ? "" : " · GİB kaydında e-posta yok";
+    setAlertSuccess(`✅ GİB bilgileri dolduruldu — ${doldurulan.join(" · ")}${epostaNotu}`);
+  };
+
   const handleGibtenGetir = async () => {
     // Alanda boşluk/tire gibi biçimlendirme karakterleri kalmış olsa bile önce rakam dışını temizle.
     const vkn = (formData.vergiKimlikNo || "").replace(/\D/g, "");
@@ -613,13 +634,10 @@ export const CariCardRegistrationPage: React.FC = () => {
         setAlertError("Bu VKN/TCKN için GİB'de kayıtlı bir e-Fatura posta kutusu bulunamadı (mükellef değil).");
         return;
       }
-      const alias = sonuc.kullanicilar[0].Alias || sonuc.kullanicilar[0].Identifier || "";
-      setFormData((prev) => ({
-        ...prev,
-        eFaturaPostaKutusu: alias,
-        eIrsaliyePostaKutusu: alias,
-      }));
-      setAlertSuccess(`✅ GİB posta kutusu bulundu ve dolduruldu: ${alias}`);
+      const liste = gibKullanicilariTekillestir(sonuc.kullanicilar);
+      // Tek kayıt: doğrudan doldur. Birden fazla posta kutusu: kullanıcı seçsin.
+      if (liste.length === 1) gibKaydiniUygula(liste[0]);
+      else setGibSecimListesi(liste);
     } catch (err: any) {
       setAlertError(`❌ GİB sorgusu başarısız: ${err.message || "Bilinmeyen hata"}`);
     } finally {
@@ -1881,6 +1899,36 @@ export const CariCardRegistrationPage: React.FC = () => {
       />
 
       {/* Delete Confirmation Modal */}
+      {/* GİB birden fazla posta kutusu döndürdüyse seçim */}
+      <Modal show={gibSecimListesi.length > 0} onHide={() => setGibSecimListesi([])} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="fs-6 fw-semibold d-flex align-items-center gap-2">
+            <IconDownload size={18} /> GİB'de birden fazla posta kutusu bulundu
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-2">
+          <div className="small text-secondary mb-2 px-1">Karta işlenecek posta kutusunu seçin; unvan ve e-posta boşsa seçilen kayıttan doldurulur.</div>
+          <div className="list-group">
+            {gibSecimListesi.map((k, i) => {
+              const alias = k.Alias || k.Identifier || "";
+              const eposta = gibAliasToEposta(alias);
+              return (
+                <button type="button" key={`${alias}-${i}`} className="list-group-item list-group-item-action py-2"
+                  onClick={() => gibKaydiniUygula(k)}>
+                  <div className="font-monospace small">{alias}</div>
+                  <div className="small text-secondary">
+                    {k.Title || "—"}{eposta ? ` · ${eposta}` : ""}{k.Type ? ` · ${k.Type}` : ""}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Modal.Body>
+        <Modal.Footer className="py-2">
+          <Button variant="secondary" size="sm" onClick={() => setGibSecimListesi([])}>Vazgeç</Button>
+        </Modal.Footer>
+      </Modal>
+
       <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="fs-5 text-danger d-flex align-items-center gap-2">

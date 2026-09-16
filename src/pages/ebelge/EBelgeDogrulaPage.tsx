@@ -15,6 +15,8 @@ import {
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import EBelgeCariSec from "./EBelgeCariSec";
+import { CariService } from "../../services/cariService";
+import { gibAliasToEposta, gibTitleToAdSoyad } from "../../utils/gibKullanici";
 import {
   EBELGE_BIRIMLER,
   EbelgeDogrulamaSonucu,
@@ -66,6 +68,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [aliciVd, setAliciVd] = useState<string>("");
   const [aliciIl, setAliciIl] = useState<string>("");
   const [aliciIlce, setAliciIlce] = useState<string>("");
+  const [aliciEposta, setAliciEposta] = useState<string>("");
 
   const [satirlar, setSatirlar] = useState<EbelgeSatir[]>([{ ...BOS_SATIR }]);
 
@@ -83,6 +86,67 @@ const EBelgeDogrulaPage: React.FC = () => {
   /** Geç dönen eski sorgunun yeni sonucu ezmesini engeller. */
   const sorguSirasi = useRef(0);
 
+  /**
+   * GİB mükellef listesinden gelen unvan / posta kutusunu boş alıcı alanlarına yazar.
+   * Kullanıcının elle girdiği değer ezilmez. Doldurulan alan adlarını döndürür.
+   */
+  const aliciBilgileriniDoldur = (vkn: string, kullanicilar: { Alias?: string; Identifier?: string; Title?: string }[]): string[] => {
+    const ilk = kullanicilar[0];
+    if (!ilk) return [];
+    const doldurulan: string[] = [];
+    const unvan = (ilk.Title || "").trim();
+    const eposta = gibAliasToEposta(ilk.Alias || ilk.Identifier);
+    if (unvan) {
+      if (vkn.length === 11) {
+        const { ad, soyad } = gibTitleToAdSoyad(unvan);
+        if (!aliciAd.trim() && !aliciSoyad.trim()) { setAliciAd(ad); setAliciSoyad(soyad); doldurulan.push("ad soyad"); }
+      } else if (!aliciUnvan.trim()) { setAliciUnvan(unvan); doldurulan.push("unvan"); }
+    }
+    if (eposta && !aliciEposta.trim()) { setAliciEposta(eposta); doldurulan.push("e-posta"); }
+    else if (!eposta) doldurulan.push("e-posta yok");
+    return doldurulan;
+  };
+
+  /**
+   * Aynı VKN/TCKN ile kayıtlı yerel cari varsa ad soyad, e-posta, vergi dairesi ve il/ilçeyi
+   * boş alanlara yazar (cari modülü yalnızca okunur, dokunulmaz).
+   */
+  const yerelCaridenDoldur = async (vkn: string, sira: number) => {
+    try {
+      const [cariler, sozluk] = await Promise.all([CariService.getCariKartlar(), CariService.getLookups()]);
+      if (sira !== sorguSirasi.current) return;
+      const cari = cariler.find((c) => (c.vergiKimlikNo || "").replace(/\D/g, "") === vkn);
+      if (!cari) return;
+      const doldurulan: string[] = [];
+      const ad = (cari.ad || "").trim();
+      if (ad) {
+        if (vkn.length === 11) {
+          const { ad: a, soyad } = gibTitleToAdSoyad(ad);
+          setAliciAd((o) => { if (o.trim()) return o; doldurulan.push("ad soyad"); return a; });
+          setAliciSoyad((o) => (o.trim() ? o : soyad));
+        } else {
+          setAliciUnvan((o) => { if (o.trim()) return o; doldurulan.push("unvan"); return ad; });
+        }
+      }
+      const eposta = (cari.eposta || "").trim();
+      if (eposta) setAliciEposta((o) => { if (o.trim()) return o; doldurulan.push("e-posta"); return eposta; });
+      const vd = sozluk.vergiDairesiList.find((x) => x.id === cari.vergiDairesiId)?.ad || "";
+      const il = sozluk.ilList.find((x) => x.id === cari.ilId)?.ad || "";
+      const ilce = sozluk.ilceList.find((x) => x.id === cari.ilceId)?.ad || "";
+      if (vd) setAliciVd((o) => { if (o.trim()) return o; doldurulan.push("vergi dairesi"); return vd; });
+      if (il) setAliciIl((o) => { if (o.trim()) return o; doldurulan.push("il"); return il; });
+      if (ilce) setAliciIlce((o) => { if (o.trim()) return o; doldurulan.push("ilçe"); return ilce; });
+      // State güncellemeleri toplu işlendiği için bilgi mesajı bir sonraki döngüde verilir.
+      setTimeout(() => {
+        if (sira !== sorguSirasi.current || !doldurulan.length) return;
+        setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
+          message: `${o?.message || ""} Cari kartından dolduruldu (${cari.kod}): ${doldurulan.join(", ")}.`.trim() }));
+      }, 0);
+    } catch {
+      /* Yerel cari bulunamaması hata değildir; sessiz geç. */
+    }
+  };
+
   const mukellefSorgula = async (vknParam?: string, otomatik = false) => {
     const vkn = (vknParam ?? aliciVkn).trim();
     if (!/^\d{10,11}$/.test(vkn)) {
@@ -99,9 +163,12 @@ const EBelgeDogrulaPage: React.FC = () => {
       if (sira !== sorguSirasi.current) return;
       setSorgulananVkn(vkn);
       setSenaryo(cevap.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA");
-      setAlertInfo({ type: "success", message: cevap.mukellefMi
+      const doldurulan = aliciBilgileriniDoldur(vkn, cevap.kullanicilar || []);
+      setAlertInfo({ type: "success", message: (cevap.mukellefMi
         ? "Alıcı e-Fatura mükellefi. e-Fatura seçildi; belgeyi doğrulayarak devam edin."
-        : "Alıcı e-Fatura mükellefi değil. e-Arşiv seçildi; belgeyi doğrulayarak devam edin." });
+        : "Alıcı e-Fatura mükellefi değil. e-Arşiv seçildi; belgeyi doğrulayarak devam edin.")
+        + (doldurulan.length ? ` GİB: ${doldurulan.join(", ")}.` : "") });
+      void yerelCaridenDoldur(vkn, sira);
     } catch (err: any) {
       if (sira !== sorguSirasi.current) return;
       // Sorgu hatası "mükellef değil" demek değildir; tür seçimi belirsiz bırakılır.
@@ -265,6 +332,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           vergiDairesi: aliciVd.trim() || undefined,
           il: aliciIl.trim() || undefined,
           ilce: aliciIlce.trim() || undefined,
+          eposta: aliciEposta.trim() || undefined,
         },
         satirlar,
         iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
@@ -313,6 +381,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       vergiDairesi: aliciVd.trim() || undefined,
       il: aliciIl.trim() || undefined,
       ilce: aliciIlce.trim() || undefined,
+      eposta: aliciEposta.trim() || undefined,
     },
     satirlar,
     iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
@@ -341,6 +410,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           vergiDairesi: aliciVd.trim() || undefined,
           il: aliciIl.trim() || undefined,
           ilce: aliciIlce.trim() || undefined,
+          eposta: aliciEposta.trim() || undefined,
         },
         satirlar,
         iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
@@ -405,6 +475,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           vergiDairesi: aliciVd.trim() || undefined,
           il: aliciIl.trim() || undefined,
           ilce: aliciIlce.trim() || undefined,
+          eposta: aliciEposta.trim() || undefined,
         },
         satirlar,
         iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
@@ -655,6 +726,7 @@ const EBelgeDogrulaPage: React.FC = () => {
             setAliciIl(lookups.ilList.find(x => x.id === cari.ilId)?.ad || "");
             setAliciIlce(lookups.ilceList.find(x => x.id === cari.ilceId)?.ad || "");
             setAliciVd(lookups.vergiDairesiList.find(x => x.id === cari.vergiDairesiId)?.ad || "");
+            setAliciEposta((cari.eposta || "").trim());
             setSonuc(null); setDogrulananGirdi(""); setTaslakOnayAcik(false);
             setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
           }} />
@@ -701,6 +773,11 @@ const EBelgeDogrulaPage: React.FC = () => {
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">İlçe <span className="text-danger">*</span></Form.Label>
               <Form.Control size="sm" value={aliciIlce} onChange={(e) => setAliciIlce(e.target.value)} />
+            </Col>
+            <Col xs={12} md={6} lg={4}>
+              <Form.Label className="small mb-1">E-posta</Form.Label>
+              <Form.Control size="sm" type="email" value={aliciEposta} onChange={(e) => setAliciEposta(e.target.value)}
+                placeholder="GİB / cari kartından bulunursa kendiliğinden dolar" />
             </Col>
           </Row>
         </Card.Body>

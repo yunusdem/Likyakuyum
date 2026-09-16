@@ -50,6 +50,12 @@ interface KaynakSatiri {
 type Sekme = "adresler" | "gecmis";
 
 /** Standart listelerin ekran başlığı ve yedek adresi (sunucu adres döndürmezse) */
+/**
+ * Pop-up'ta yalnızca "MASAK Sayfasına Git", "Kapat" ve "MASAK Listelerini Güncelle" görünür (yönetici isteği 16.09.2026).
+ * Durum bandı, sekmeler, liste adresleri ve geçmiş gizlenir; kod kaldırılmadı, gerekirse true yapılır.
+ */
+const MASAK_AYRINTI_GORUNUR = false;
+
 const standartTanim = (listeKod: string) => MASAK_LISTS.find((l) => l.listeKod === listeKod);
 
 /**
@@ -267,7 +273,20 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
         </Modal.Title>
       </Modal.Header>
 
-      <Modal.Body className="p-3">
+      <Modal.Body className={MASAK_AYRINTI_GORUNUR ? "p-3" : "p-3 py-2"}>
+        {!MASAK_AYRINTI_GORUNUR && (
+          <div className="text-muted" style={{ fontSize: "0.82rem" }}>
+            Toplam kayıt: <strong>{masakSayi(toplamKayit)}</strong> · Son güncelleme: <strong>{masakTarihSaat(sonGuncelleme)}</strong>
+            {bayat && <span className="text-danger fw-semibold ms-2">MASAK listelerini güncelleyiniz.</span>}
+            {guncelleniyor && <span className="ms-2"><Spinner as="span" animation="border" size="sm" /> Listeler indiriliyor...</span>}
+          </div>
+        )}
+        {hata && !MASAK_AYRINTI_GORUNUR && (
+          <Alert variant="danger" className="py-2 px-3 mt-2 mb-0" style={{ fontSize: "0.82rem" }}>
+            {hata}
+          </Alert>
+        )}
+        {MASAK_AYRINTI_GORUNUR && (<>
         {/* Durum bandı */}
         <div
           className={`d-flex flex-wrap align-items-center justify-content-between gap-2 border rounded px-3 py-2 mb-3 ${
@@ -583,6 +602,7 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
             )}
           </div>
         )}
+        </>)}
       </Modal.Body>
 
       <Modal.Footer className="d-flex justify-content-between">
