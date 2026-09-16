@@ -72,6 +72,8 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [aliciIl, setAliciIl] = useState<string>("");
   const [aliciIlce, setAliciIlce] = useState<string>("");
   const [aliciEposta, setAliciEposta] = useState<string>("");
+  /** Sorgu sonucu alıcı bilgileri dolduysa cari seçimi gizlenir; kullanıcı isterse yeniden açar (yönetici isteği 16.09.2026). */
+  const [cariSecimAcik, setCariSecimAcik] = useState<boolean>(false);
 
   const [satirlar, setSatirlar] = useState<EbelgeSatir[]>([{ ...BOS_SATIR }]);
 
@@ -739,7 +741,16 @@ const EBelgeDogrulaPage: React.FC = () => {
           <div className="fw-semibold mt-3 mb-2" style={{ fontSize: "13px" }}>
             Alıcı
           </div>
+          {(() => {
+            const aliciDolu = aliciVkn.trim() === sorgulananVkn && sorgulananVkn !== "" && Boolean(aliciUnvan.trim() || (aliciAd.trim() && aliciSoyad.trim()));
+            return aliciDolu && !cariSecimAcik ? (
+              <div className="small text-muted mb-2">
+                Alıcı bilgileri sorgudan doldu.{" "}
+                <Button size="sm" variant="link" className="p-0 align-baseline" onClick={() => setCariSecimAcik(true)}>Başka cari seç</Button>
+              </div>
+            ) : (
           <EBelgeCariDurbun onSelect={(cari, lookups) => {
+            setCariSecimAcik(false);
             setAliciVkn(cari.vergiKimlikNo?.trim() || "");
             setAliciUnvan(cari.ad);
             const adlar = cari.ad.trim().split(/\s+/);
@@ -752,6 +763,8 @@ const EBelgeDogrulaPage: React.FC = () => {
             setSonuc(null); setDogrulananGirdi(""); setTaslakOnayAcik(false);
             setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
           }} />
+            );
+          })()}
           <Row className="g-2">
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">VKN / TCKN</Form.Label>
