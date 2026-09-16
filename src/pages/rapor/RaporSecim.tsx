@@ -79,15 +79,18 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
           {coklu ? <Badge bg="primary">{isaretli.size} seçili</Badge> : null}
         </div>
         <style>{`
-          /* İşaretli satır yeşil dolgu; imleç (ilk tık) satırı düz mavi dolgu — fare üzerindeyken de değişmez (yönetici isteği 16.09.2026) */
-          .rapor-secim-isaretli > td, .table-hover > tbody > .rapor-secim-isaretli:hover > td { --bs-table-accent-bg: #dcfce7; background-color: #dcfce7 !important; }
-          .rapor-secim-imlec > td, .table-hover > tbody > .rapor-secim-imlec:hover > td,
-          .rapor-secim-isaretli.rapor-secim-imlec > td, .table-hover > tbody > .rapor-secim-isaretli.rapor-secim-imlec:hover > td { --bs-table-accent-bg: #bfdbfe; background-color: #bfdbfe !important; box-shadow: none; }
+          /* _user.scss'teki genel "tbody tr:hover > td" kuralı !important ile gri boyar; burada daha yüksek özgüllükle eziliyor.
+             İmleç (ilk tık) satırı düz mavi, işaretli (ikinci tık) satır yeşil — fare üzerinde olsun olmasın aynı (yönetici isteği 16.09.2026). */
+          table.rapor-secim-tablo tbody tr.rapor-secim-isaretli > td, table.rapor-secim-tablo tbody tr.rapor-secim-isaretli:hover > td {
+            background: #dcfce7 !important; background-color: #dcfce7 !important; box-shadow: inset 0 0 0 9999px #dcfce7 !important; --bs-table-accent-bg: #dcfce7 !important; --bs-table-bg-state: #dcfce7 !important; color: #14532d !important; }
+          table.rapor-secim-tablo tbody tr.rapor-secim-imlec > td, table.rapor-secim-tablo tbody tr.rapor-secim-imlec:hover > td,
+          table.rapor-secim-tablo tbody tr.rapor-secim-isaretli.rapor-secim-imlec > td, table.rapor-secim-tablo tbody tr.rapor-secim-isaretli.rapor-secim-imlec:hover > td {
+            background: #bfdbfe !important; background-color: #bfdbfe !important; box-shadow: inset 0 0 0 9999px #bfdbfe !important; --bs-table-accent-bg: #bfdbfe !important; --bs-table-bg-state: #bfdbfe !important; color: #1e3a8a !important; }
         `}</style>
         <div className="border rounded" style={{ maxHeight: 380, overflowY: "auto" }}>
           {yukleniyor ? <div className="p-4 text-center text-muted"><Spinner size="sm" animation="border" className="me-2" />Yükleniyor…</div>
             : !suzulmus.length ? <div className="p-4 text-center text-muted">{items.length ? "Arama ölçütüne uygun kayıt yok." : "Kayıt bulunamadı."}</div>
-            : <Table hover size="sm" className="mb-0 align-middle">
+            : <Table hover size="sm" className="mb-0 align-middle rapor-secim-tablo">
               <thead className="table-light sticky-top"><tr>
                 <th style={{ width: 36 }} className="text-center">{coklu ? "✓" : "#"}</th>
                 {kolonlar.map((k, i) => <th key={i} style={k.genislik ? { width: k.genislik } : undefined} className={k.hiza === "center" ? "text-center" : k.hiza === "right" ? "text-end" : ""}>{k.baslik}</th>)}
