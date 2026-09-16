@@ -16,7 +16,7 @@ import {
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
-import EBelgeCariSec from "./EBelgeCariSec";
+import EBelgeCariDurbun from "./EBelgeCariDurbun";
 import { CariService } from "../../services/cariService";
 import { gibAliasToEposta, gibTitleToAdSoyad } from "../../utils/gibKullanici";
 import {
@@ -739,7 +739,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           <div className="fw-semibold mt-3 mb-2" style={{ fontSize: "13px" }}>
             Alıcı
           </div>
-          <EBelgeCariSec onSelect={(cari, lookups) => {
+          <EBelgeCariDurbun onSelect={(cari, lookups) => {
             setAliciVkn(cari.vergiKimlikNo?.trim() || "");
             setAliciUnvan(cari.ad);
             const adlar = cari.ad.trim().split(/\s+/);
