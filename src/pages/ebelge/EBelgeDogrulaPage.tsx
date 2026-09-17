@@ -184,25 +184,19 @@ const EBelgeDogrulaPage: React.FC = () => {
       const adresler = await ebelgeService.aliciAdresleri(vkn);
       if (sira !== sorguSirasi.current) return;
       setIceAdresler(adresler);
-      if (!adresler.length) {
-        ekMesaj("ICE'de bu alıcı için kayıtlı cari adresi yok; adres, il ve ilçeyi elle girin.");
-        return;
-      }
+      if (!adresler.length) return;
       if (adresler.length > 1) {
-        setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
-          message: `${o?.message || ""} ICE'de ${adresler.length} kayıtlı adres var; Kayıtlı Adres listesinden seçin.`.trim() }));
+        ekMesaj(`ICE'de ${adresler.length} kayıtlı adres var; Kayıtlı Adres listesinden seçin.`);
         return;
       }
       const doldurulan = iceAdresiUygula(adresler[0], false);
       setTimeout(() => {
         if (sira !== sorguSirasi.current || !doldurulan.length) return;
         setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
-          message: `${o?.message || ""} ICE kayıtlı carisinden dolduruldu: ${doldurulan.join(", ")}.`.trim() }));
+          message: `${o?.message || ""} ICE'den dolduruldu (${adresler[0].adresAdi || "kayıtlı cari"}): ${doldurulan.join(", ")}.`.trim() }));
       }, 0);
-    } catch (err: any) {
-      // Belge kesmeye engel değildir; ama nedeni görünsün ki adres neden gelmedi anlaşılsın.
-      if (sira !== sorguSirasi.current) return;
-      ekMesaj(`ICE kayıtlı adres sorgusu yapılamadı: ${err?.message || "bilinmeyen hata"}`);
+    } catch {
+      /* Adres bulunamaması belge kesmeye engel değildir; neden e-belge loguna (AliciAdresSorgu) yazılır, ekran sessiz kalır. */
     }
   };
 
@@ -874,7 +868,7 @@ const EBelgeDogrulaPage: React.FC = () => {
             <Col xs={12} md={6} lg={4}>
               <Form.Label className="small mb-1">Adres</Form.Label>
               <Form.Control size="sm" value={aliciAdres} maxLength={300} onChange={(e) => setAliciAdres(e.target.value)}
-                placeholder="ICE'de kayıtlı cari varsa kendiliğinden dolar" />
+                placeholder="Cari kartından ya da ICE'deki önceki faturadan dolar" />
             </Col>
             {iceAdresler.length > 1 && (
               <Col xs={12} md={6} lg={4}>
