@@ -1,3 +1,6 @@
 
 # Belge modülü: sunucu arşiv çıktıları (docs/belgeverapor.md)
 Backend/belge-arsiv/
+
+# Yerel çalışma notları: depoya gönderilmez
+docs/*.md
