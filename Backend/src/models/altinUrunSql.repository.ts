@@ -413,13 +413,21 @@ export class AltinUrunSqlRepository {
         const ids = items.map((x) => x.altinUrunId).filter(Boolean);
         if (ids.length > 0) {
           const resimRes = await pool.request().query(
-            `SELECT ISLEM_ID, DOSYA_YOLU FROM TODVZ_URUN_RESIM WHERE TIP = 0 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`
+            `SELECT ISLEM_ID, DOSYA_YOLU, RESIM_DATA FROM TODVZ_URUN_RESIM WHERE TIP = 0 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`
           );
           const resimMap = new Map<number, string[]>();
           for (const row of resimRes.recordset || []) {
             const list = resimMap.get(row.ISLEM_ID) || [];
-            list.push(row.DOSYA_YOLU);
-            resimMap.set(row.ISLEM_ID, list);
+            let imgStr: string | null = null;
+            if (row.RESIM_DATA && Buffer.isBuffer(row.RESIM_DATA)) {
+              imgStr = `data:image/jpeg;base64,${row.RESIM_DATA.toString("base64")}`;
+            } else if (row.DOSYA_YOLU) {
+              imgStr = row.DOSYA_YOLU;
+            }
+            if (imgStr) {
+              list.push(imgStr);
+              resimMap.set(row.ISLEM_ID, list);
+            }
           }
           for (const item of items) {
             const imgs = resimMap.get(item.altinUrunId);

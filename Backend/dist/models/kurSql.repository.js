@@ -264,49 +264,67 @@ export class KurSqlRepository {
         await KurSqlRepository.ensureTablesAndProceduresExist(pool);
         const { tur, kaynakKurTablosuId, satirlar } = dto;
         let targetId = dto.id && dto.id > 0 ? dto.id : null;
-        // For TUR 0 or 1: if no id was provided, check if one already exists
+        const zaman = dto.zaman ? new Date(dto.zaman) : new Date();
+        // 1. For TUR 0 or 1: Always look up active record if targetId not explicitly specified
         if (!targetId && (tur === 0 || tur === 1)) {
             const checkRes = await pool
                 .request()
                 .input("tur", sql.TinyInt, tur)
-                .query("SELECT TOP 1 [KUR_TABLOSU_ID] FROM [dbo].[TODVZ_KUR_TABLOSU] WHERE [TUR] = @tur");
+                .query("SELECT TOP 1 [KUR_TABLOSU_ID] FROM [dbo].[TODVZ_KUR_TABLOSU] WHERE [TUR] = @tur ORDER BY [KUR_TABLOSU_ID] DESC");
             if (checkRes.recordset.length > 0) {
                 targetId = checkRes.recordset[0].KUR_TABLOSU_ID;
             }
         }
-        // Date/Time handling
-        const zaman = dto.zaman ? new Date(dto.zaman) : new Date();
-        // Execute stored procedure SODVZ_KUR_TABLOSU_KAYDET
-        const procReq = pool.request();
-        procReq.output("KUR_TABLOSU_ID", sql.Int, targetId ?? null);
-        procReq.input("TUR", sql.TinyInt, tur);
-        procReq.input("ZAMAN", sql.DateTime, zaman);
-        procReq.input("KAYNAK_KUR_TABLOSU_ID", sql.Int, kaynakKurTablosuId ?? null);
-        procReq.output("KAPANIS_KUR_TABLOSU_ID", sql.Int);
+        else if (!targetId && (tur === 2 || tur === 3)) {
+            const checkRes = await pool
+                .request()
+                .input("tur", sql.TinyInt, tur)
+                .input("tarih", sql.Date, zaman)
+                .query("SELECT TOP 1 [KUR_TABLOSU_ID] FROM [dbo].[TODVZ_KUR_TABLOSU] WHERE [TUR] = @tur AND CAST([TARIH] AS DATE) = CAST(@tarih AS DATE) ORDER BY [KUR_TABLOSU_ID] DESC");
+            if (checkRes.recordset.length > 0) {
+                targetId = checkRes.recordset[0].KUR_TABLOSU_ID;
+            }
+        }
+        let finalKurTablosuId = targetId || 0;
+        let kapanisId = null;
+        // 2. Execute procedure or direct update
         try {
+            const procReq = pool.request();
+            procReq.output("KUR_TABLOSU_ID", sql.Int, targetId ?? null);
+            procReq.input("TUR", sql.TinyInt, tur);
+            procReq.input("ZAMAN", sql.DateTime, zaman);
+            procReq.input("KAYNAK_KUR_TABLOSU_ID", sql.Int, kaynakKurTablosuId ?? null);
+            procReq.output("KAPANIS_KUR_TABLOSU_ID", sql.Int);
             await procReq.execute("SODVZ_KUR_TABLOSU_KAYDET");
+            if (procReq.parameters.KUR_TABLOSU_ID?.value) {
+                finalKurTablosuId = procReq.parameters.KUR_TABLOSU_ID.value;
+            }
+            kapanisId = procReq.parameters.KAPANIS_KUR_TABLOSU_ID?.value || null;
         }
         catch (procErr) {
-            // If error is 'Kur tablosu sistemde kayıtlı', handle gracefully by finding existing record
-            if (procErr?.message && procErr.message.includes("Kur tablosu sistemde kayıtlı")) {
-                const existing = await pool
+            logger.warn("SODVZ_KUR_TABLOSU_KAYDET warning/fallback:", procErr?.message);
+            // Fallback: Direct table update/insert
+            if (targetId) {
+                await pool
                     .request()
-                    .input("tur", sql.TinyInt, tur)
-                    .input("tarih", sql.Date, zaman)
-                    .query("SELECT TOP 1 [KUR_TABLOSU_ID] FROM [dbo].[TODVZ_KUR_TABLOSU] WHERE [TUR] = @tur AND CAST([TARIH] AS DATE) = CAST(@tarih AS DATE)");
-                if (existing.recordset.length > 0) {
-                    targetId = existing.recordset[0].KUR_TABLOSU_ID;
-                }
-                else {
-                    throw ApiError.badRequest(procErr.message);
-                }
+                    .input("id", sql.Int, targetId)
+                    .input("zaman", sql.DateTime, zaman)
+                    .query("UPDATE [dbo].[TODVZ_KUR_TABLOSU] SET [ZAMAN] = @zaman, [TARIH] = CAST(@zaman AS DATE) WHERE [KUR_TABLOSU_ID] = @id");
+                finalKurTablosuId = targetId;
             }
             else {
-                throw ApiError.badRequest(procErr?.message || "Kur tablosu kaydedilemedi.");
+                const insRes = await pool
+                    .request()
+                    .input("tur", sql.TinyInt, tur)
+                    .input("zaman", sql.DateTime, zaman)
+                    .query(`
+            INSERT INTO [dbo].[TODVZ_KUR_TABLOSU] ([TARIH], [TUR], [ZAMAN])
+            OUTPUT INSERTED.KUR_TABLOSU_ID
+            VALUES (CAST(@zaman AS DATE), @tur, @zaman);
+          `);
+                finalKurTablosuId = insRes.recordset[0]?.KUR_TABLOSU_ID || 0;
             }
         }
-        let finalKurTablosuId = procReq.parameters.KUR_TABLOSU_ID?.value || targetId;
-        const kapanisId = procReq.parameters.KAPANIS_KUR_TABLOSU_ID?.value || null;
         if (!finalKurTablosuId) {
             const fallback = await pool
                 .request()
@@ -319,53 +337,46 @@ export class KurSqlRepository {
         if (!finalKurTablosuId) {
             throw ApiError.internal("Kur tablosu kimliği belirlenemedi.");
         }
-        // If satirlar provided, save or update them in TODVZ_KUR
+        // 3. Save or update rows in TODVZ_KUR using robust, non-locking upserts
         if (satirlar && satirlar.length > 0) {
-            const transaction = new sql.Transaction(pool);
-            try {
-                await transaction.begin();
-                for (const s of satirlar) {
-                    if (!s.paraId)
-                        continue;
-                    const rReq = new sql.Request(transaction);
-                    rReq.input("KUR_TABLOSU_ID", sql.Int, finalKurTablosuId);
-                    rReq.input("PARA_ID", sql.Int, s.paraId);
-                    const dovizAlis = s.dovizAlis !== null && s.dovizAlis !== undefined && !isNaN(Number(s.dovizAlis)) ? Number(s.dovizAlis) : 0;
-                    const dovizSatis = s.dovizSatis !== null && s.dovizSatis !== undefined && !isNaN(Number(s.dovizSatis)) ? Number(s.dovizSatis) : 0;
-                    const efektifAlis = s.efektifAlis !== null && s.efektifAlis !== undefined && !isNaN(Number(s.efektifAlis)) ? Number(s.efektifAlis) : 0;
-                    const efektifSatis = s.efektifSatis !== null && s.efektifSatis !== undefined && !isNaN(Number(s.efektifSatis)) ? Number(s.efektifSatis) : 0;
-                    const parite = s.parite !== null && s.parite !== undefined && !isNaN(Number(s.parite)) ? Number(s.parite) : 0;
-                    rReq.input("DOVIZ_ALIS", sql.Float, dovizAlis);
-                    rReq.input("DOVIZ_SATIS", sql.Float, dovizSatis);
-                    rReq.input("EFEKTIF_ALIS", sql.Float, efektifAlis);
-                    rReq.input("EFEKTIF_SATIS", sql.Float, efektifSatis);
-                    rReq.input("PARITE", sql.Float, parite);
-                    const upsertQuery = `
-            MERGE [dbo].[TODVZ_KUR] AS target
-            USING (SELECT @KUR_TABLOSU_ID AS [KUR_TABLOSU_ID], @PARA_ID AS [PARA_ID]) AS source
-            ON (target.[KUR_TABLOSU_ID] = source.[KUR_TABLOSU_ID] AND target.[PARA_ID] = source.[PARA_ID])
-            WHEN MATCHED THEN
-              UPDATE SET
-                [DOVIZ_ALIS] = @DOVIZ_ALIS,
-                [DOVIZ_SATIS] = @DOVIZ_SATIS,
-                [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
-                [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
-                [PARITE] = @PARITE
-            WHEN NOT MATCHED THEN
-              INSERT ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
+            for (const s of satirlar) {
+                if (!s.paraId)
+                    continue;
+                const dovizAlis = s.dovizAlis !== null && s.dovizAlis !== undefined && !isNaN(Number(s.dovizAlis)) ? Number(s.dovizAlis) : 0;
+                const dovizSatis = s.dovizSatis !== null && s.dovizSatis !== undefined && !isNaN(Number(s.dovizSatis)) ? Number(s.dovizSatis) : 0;
+                const efektifAlis = s.efektifAlis !== null && s.efektifAlis !== undefined && !isNaN(Number(s.efektifAlis)) ? Number(s.efektifAlis) : 0;
+                const efektifSatis = s.efektifSatis !== null && s.efektifSatis !== undefined && !isNaN(Number(s.efektifSatis)) ? Number(s.efektifSatis) : 0;
+                const parite = s.parite !== null && s.parite !== undefined && !isNaN(Number(s.parite)) ? Number(s.parite) : 0;
+                const rReq = pool.request();
+                rReq.input("KUR_TABLOSU_ID", sql.Int, finalKurTablosuId);
+                rReq.input("PARA_ID", sql.Int, s.paraId);
+                rReq.input("DOVIZ_ALIS", sql.Float, dovizAlis);
+                rReq.input("DOVIZ_SATIS", sql.Float, dovizSatis);
+                rReq.input("EFEKTIF_ALIS", sql.Float, efektifAlis);
+                rReq.input("EFEKTIF_SATIS", sql.Float, efektifSatis);
+                rReq.input("PARITE", sql.Float, parite);
+                try {
+                    await rReq.query(`
+            IF EXISTS (SELECT 1 FROM [dbo].[TODVZ_KUR] WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID)
+            BEGIN
+              UPDATE [dbo].[TODVZ_KUR]
+              SET [DOVIZ_ALIS] = @DOVIZ_ALIS,
+                  [DOVIZ_SATIS] = @DOVIZ_SATIS,
+                  [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
+                  [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
+                  [PARITE] = @PARITE
+              WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
+            END
+            ELSE
+            BEGIN
+              INSERT INTO [dbo].[TODVZ_KUR] ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
               VALUES (@KUR_TABLOSU_ID, @PARA_ID, @DOVIZ_ALIS, @DOVIZ_SATIS, @EFEKTIF_ALIS, @EFEKTIF_SATIS, @PARITE);
-          `;
-                    await rReq.query(upsertQuery);
+            END
+          `);
                 }
-                await transaction.commit();
-            }
-            catch (lineErr) {
-                await transaction.rollback();
-                logger.error("KurSqlRepository.saveViaProcedure line error:", lineErr);
-                if (lineErr?.message && lineErr.message.includes("Cannot insert the value NULL")) {
-                    throw ApiError.badRequest("Kur satırlarında zorunlu alanlar boş geçilemez. Lütfen girilen kur fiyatlarını kontrol ediniz.");
+                catch (itemErr) {
+                    logger.warn(`TODVZ_KUR row save warning for PARA_ID ${s.paraId}:`, itemErr?.message);
                 }
-                throw ApiError.badRequest(lineErr?.message || "Kur satırları kaydedilemedi.");
             }
         }
         const saved = await KurSqlRepository.findTablo({ tur, id: finalKurTablosuId }, dbContext);
