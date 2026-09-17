@@ -4,7 +4,7 @@ import { IconPrinter, IconX } from "@tabler/icons-react";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { EtiketSablonItem, EtiketSablonAlan } from "../../services/etiketService";
-import { YaziciItem } from "../../services/printerService";
+import { PrinterService, YaziciItem } from "../../services/printerService";
 
 export interface EtiketYazdirItem {
   id: number | string;
@@ -24,9 +24,12 @@ export interface EtiketYazdirModalProps {
 
 const DEFAULT_ALANLAR: EtiketSablonAlan[] = [
   { key: "grupUrunNo", ad: "Ürün No", aktif: true, sira: 1 },
-  { key: "ayar", ad: "Ayar/Milyem", aktif: true, sira: 2 },
-  { key: "has", ad: "Has (gr)", aktif: true, sira: 3 },
-  { key: "fiyat", ad: "Fiyat", aktif: true, sira: 4 },
+  { key: "mamulTipi", ad: "Mamul", aktif: true, sira: 2 },
+  { key: "ayar", ad: "Ayar/Milyem", aktif: true, sira: 3 },
+  { key: "has", ad: "Has", aktif: true, sira: 4 },
+  { key: "gram", ad: "Gr", aktif: true, sira: 5 },
+  { key: "tas", ad: "Taş/Karat", aktif: true, sira: 6 },
+  { key: "fiyat", ad: "Fiyat", aktif: true, sira: 7 },
 ];
 
 const BarcodeSvg: React.FC<{ value: string; tip: string }> = ({ value, tip }) => {
@@ -67,18 +70,33 @@ export const EtiketYazdirModal: React.FC<EtiketYazdirModalProps> = ({
   title,
   sablon,
   items,
-  yazicilar = [],
+  yazicilar: propYazicilar = [],
   onAfterPrint,
 }) => {
   const [kopyaSayisi, setKopyaSayisi] = useState(1);
+  const [yazicilar, setYazicilar] = useState<YaziciItem[]>(propYazicilar);
   const [yaziciId, setYaziciId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (propYazicilar && propYazicilar.length > 0) {
+      setYazicilar(propYazicilar);
+      if (!yaziciId) setYaziciId(propYazicilar[0].id);
+    } else if (show) {
+      PrinterService.getYazicilar()
+        .then((list) => {
+          if (list && list.length > 0) {
+            setYazicilar(list);
+            if (!yaziciId) setYaziciId(list[0].id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [propYazicilar, show]);
 
   useEffect(() => {
     if (show) {
       setKopyaSayisi(1);
-      if (yazicilar.length > 0 && !yaziciId) setYaziciId(yazicilar[0].id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show]);
 
   const genislik = sablon?.genislikMm || 40;

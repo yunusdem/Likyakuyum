@@ -36,6 +36,7 @@ import {
 import { AyarService, AyarItem } from "../../services/ayarService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { KurService, KurRowItem } from "../../services/kurService";
+import { PrinterService, YaziciItem } from "../../services/printerService";
 import { envConfig } from "../../config/env.config";
 
 const AYAR_MILYEM_MAP: Record<string, number> = {
@@ -143,6 +144,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
   const [sablonlar, setSablonlar] = useState<EtiketSablonItem[]>([]);
   const [kurRows, setKurRows] = useState<KurRowItem[]>([]);
+  const [yaziciList, setYaziciList] = useState<YaziciItem[]>([]);
 
   const [isSaving, setIsSaving] = useState(false);
   const [modalNotif, setModalNotif] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
@@ -531,7 +533,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
-      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar, ayarlar] = await Promise.all([
+      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar, ayarlar, yazicilar] = await Promise.all([
         EtiketService.getAltinUrunler({ limit: 500 }),
         EtiketService.getGruplar(0).catch(() => []),
         EtiketService.getUreticiFirmalar().catch(() => []),
@@ -540,6 +542,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         KurService.getKurTablosu({ tur: 0 }).then((t) => t?.satirlar || []).catch(() => []),
         EtiketService.getBankolar().catch(() => []),
         AyarService.getAyarlar(false).catch(() => []),
+        PrinterService.getYazicilar().catch(() => []),
       ]);
 
       setAltinList(urunler);
@@ -550,6 +553,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setSablonlar(sabl);
       setKurRows(kurlar);
       setAyarList(ayarlar);
+      setYaziciList(yazicilar);
 
       // Kurları otomatik doldur (HAS & USD) - Öncelik Efektif Alış / Efektif Satış
       if (kurlar.length > 0) {
@@ -2376,7 +2380,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         title="Barkod Etiketi Basımı"
         sablon={varsayilanSablon}
         items={printItems}
-        yazicilar={[]}
+        yazicilar={yaziciList}
         onAfterPrint={async () => {
           if (altinUrunId) {
             await EtiketService.markAltinUrunYazdirildi([altinUrunId], true);
