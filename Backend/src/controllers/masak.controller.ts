@@ -87,16 +87,34 @@ export class MasakController {
   public static getListe = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = MasakController.getDbContext(req);
 
-    const sayfa = await MasakService.listele(
-      {
-        listeKod: req.query.listeKod as string | undefined,
-        q: req.query.q as string | undefined,
-        kimlikNo: req.query.kimlikNo as string | undefined,
-        page: req.query.page ? Number(req.query.page) : undefined,
-        pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
-      },
-      dbContext
-    );
+    // MASAK ekranındaki ad / kimlik no araması da bir kara liste sorgusudur → KNSK loguna yazılır.
+    // Yalnızca arama ölçütü varken ve ilk sayfada (sayfa çevirmek yeni sorgu sayılmaz). Yanıtı bekletmez, hata fırlatmaz.
+    const q = String(req.query.q || "").trim(), kimlikNo = String(req.query.kimlikNo || "").replace(/\s/g, "");
+    const aramaVar = (!!q || !!kimlikNo) && (!req.query.page || Number(req.query.page) === 1);
+    const knskLog = (basarili: boolean, kayitlar: { listeAdi?: string | null; listeKod?: string | null }[], aciklama: string) => {
+      const listeler = [...new Set(kayitlar.map(k => String(k.listeAdi || k.listeKod || "").trim()).filter(Boolean))].join(", ");
+      void MasakSqlRepository.knskLogYaz({ kullaniciId: Number(req.user?.userId) || null, sorgulananAd: q || kimlikNo, dogumTarihi: null,
+        kisilikTuru: kimlikNo.length === 10 ? 1 : 0, basarili, karaListede: kayitlar.length > 0, karaListeAdi: listeler, aciklama }, dbContext);
+    };
+
+    let sayfa: Awaited<ReturnType<typeof MasakService.listele>>;
+    try {
+      sayfa = await MasakService.listele(
+        {
+          listeKod: req.query.listeKod as string | undefined,
+          q: req.query.q as string | undefined,
+          kimlikNo: req.query.kimlikNo as string | undefined,
+          page: req.query.page ? Number(req.query.page) : undefined,
+          pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+        },
+        dbContext
+      );
+    } catch (e: any) {
+      if (aramaVar) knskLog(false, [], `Liste araması tamamlanamadı: ${e?.message || e}`);
+      throw e;
+    }
+    if (aramaVar) knskLog(true, sayfa.kayitlar as any[], ["MASAK liste ekranı araması", kimlikNo ? `Kimlik no: ${kimlikNo}` : "",
+      req.query.listeKod ? `Liste: ${String(req.query.listeKod)}` : "", sayfa.toplam ? `${sayfa.toplam} kayıt bulundu` : "Kayıt bulunamadı"].filter(Boolean).join(" · "));
 
     return ApiResponse.ok(res, "MASAK kayıtları listelendi.", sayfa);
   });
