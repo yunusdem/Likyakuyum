@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
-import { IconSend, IconAlertTriangle, IconMail } from "@tabler/icons-react";
+import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
+import { IconSend, IconAlertTriangle, IconMail, IconPrinter } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import EBelgeArsivPanel from "./EBelgeArsivPanel";
@@ -130,6 +130,21 @@ const EBelgeGidenPage: React.FC = () => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   /** ICE görüntüyü HTML döndürdüyse çerçeve sandbox'lı kurulur (PDF sandbox'ta açılmaz) */
   const [goruntuHtml, setGoruntuHtml] = useState<string | null>(null);
+  const [goruntuBaslik, setGoruntuBaslik] = useState("");
+  const goruntuCerceve = useRef<HTMLIFrameElement>(null);
+
+  const goruntuKapat = () => { setPdfUrl(null); setGoruntuHtml(null); };
+
+  /**
+   * PDF aynı kökenli blob olduğu için çerçeve doğrudan yazdırılır. HTML çerçevesi sandbox'lıdır
+   * (allow-same-origin yok), dışarıdan print() çağrılamaz; içine eklenen dinleyiciye mesaj atılır.
+   */
+  const goruntuYazdir = () => {
+    const pencere = goruntuCerceve.current?.contentWindow;
+    if (!pencere) return;
+    if (goruntuHtml) pencere.postMessage("yazdir", "*");
+    else { pencere.focus(); pencere.print(); }
+  };
   useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
 
   /** Fatura numarasına tıklanınca belge görüntüsünü açar */
@@ -148,9 +163,11 @@ const EBelgeGidenPage: React.FC = () => {
       const g = satir.belgeTuru === "EArsiv"
         ? await ebelgeService.getEarsivGoruntu(satir.uuid)
         : await ebelgeService.getEfaturaGoruntu(satir.uuid);
-      setGoruntuHtml(g.html);
+      setGoruntuBaslik(satir.belgeNo);
+      // Yazdır düğmesi için: sandbox içindeki belge "yazdir" mesajında kendi print()'ini çağırır.
+      setGoruntuHtml(g.html === null ? null
+        : `${g.html}<script>addEventListener("message",function(e){if(e.data==="yazdir")print()})</script>`);
       setPdfUrl(g.html ? null : g.url);
-      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       setAlertInfo({ type: "danger", message: err?.message || "Belge görüntüsü alınamadı." });
     } finally { setDetayYukleniyor(false); }
@@ -170,7 +187,7 @@ const EBelgeGidenPage: React.FC = () => {
   const dovizGoruntule = async (satir: EbelgeGidenSatiri, pdf: boolean) => {
     setDetayYukleniyor(true); setPdfUrl(null);
     try {
-      if (pdf) { setGoruntuHtml(null); setPdfUrl(await ebelgeService.getDovizPdfBlobUrl(satir.uuid)); }
+      if (pdf) { setGoruntuHtml(null); setGoruntuBaslik(satir.belgeNo); setPdfUrl(await ebelgeService.getDovizPdfBlobUrl(satir.uuid)); }
       else {
         const d = await ebelgeService.dovizDurum(satir.uuid);
         setAlertInfo({ type: "success", message: `${satir.belgeNo}: ${d?.STATUS_DESCRIPTION || d?.STATUS || "ICE durum kaydı alındı."}` });
@@ -338,13 +355,20 @@ const EBelgeGidenPage: React.FC = () => {
         {detay.mail.length === 0 && <p>E-posta durum kaydı dönmedi.</p>}
         {detay.mail.map((m, i) => <p key={i}>{m.email || "-"}{" · "}{m.statu || "-"}{" · "}{m.message || ""}</p>)}
       </Card.Body></Card>}
-      {(pdfUrl || goruntuHtml) && <Card className="mb-3"><Card.Body>
-        <Button size="sm" variant="secondary" className="mb-2" onClick={() => { setPdfUrl(null); setGoruntuHtml(null); }}>Görüntüyü kapat</Button>
-        {/* ICE'nin ürettiği HTML: allow-same-origin YOK; karekod için yalnızca betik izni verilir */}
-        {goruntuHtml
-          ? <iframe title="Belge görüntüsü" srcDoc={goruntuHtml} sandbox="allow-scripts" referrerPolicy="no-referrer" style={{ width: "100%", height: "65vh", border: 0, background: "#fff" }} />
-          : <iframe title="Belge görüntüsü" src={pdfUrl || undefined} style={{ width: "100%", height: "65vh", border: 0 }} />}
-      </Card.Body></Card>}
+      <Modal show={Boolean(pdfUrl || goruntuHtml)} onHide={goruntuKapat} size="xl" centered scrollable={false}>
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="fs-6 fw-semibold font-monospace">{goruntuBaslik}</Modal.Title>
+          <Button size="sm" variant="primary" className="ms-auto me-2 d-flex align-items-center gap-1" onClick={goruntuYazdir}>
+            <IconPrinter size={16} /> Yazdır
+          </Button>
+        </Modal.Header>
+        <Modal.Body className="p-0">
+          {/* ICE'nin ürettiği HTML: allow-same-origin YOK; karekod için betik, yazdırma için modal izni verilir */}
+          {goruntuHtml
+            ? <iframe ref={goruntuCerceve} title="Belge görüntüsü" srcDoc={goruntuHtml} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{ width: "100%", height: "78vh", border: 0, background: "#fff", display: "block" }} />
+            : <iframe ref={goruntuCerceve} title="Belge görüntüsü" src={pdfUrl || undefined} style={{ width: "100%", height: "78vh", border: 0, display: "block" }} />}
+        </Modal.Body>
+      </Modal>
 
       <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
         <Card.Body className="p-3 bg-body">
