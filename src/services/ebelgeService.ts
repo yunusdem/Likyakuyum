@@ -384,7 +384,17 @@ export const ICE_TEST_URL = "https://integrationtest.iceteknoloji.com.tr/integra
  * gitmediği için 401 alınır. Bu yüzden PDF kimlik başlıklarıyla `fetch` edilir.
  * Dönen adres kullanıldıktan sonra `URL.revokeObjectURL` ile bırakılmalıdır.
  */
-const ebelgePdfBlobUrl = async (yol: string): Promise<string> => {
+/** Belge görüntüsü: ICE bazı uçlarda PDF yerine HTML döndürür; çerçeve türe göre kurulur. */
+export interface EbelgeGoruntu {
+  /** PDF için blob adresi; HTML'de boş */
+  url: string;
+  /** HTML geldiyse metni — sandbox'lı iframe'e srcDoc olarak verilir */
+  html: string | null;
+}
+
+const ebelgePdfBlobUrl = async (yol: string): Promise<string> => (await ebelgeGoruntuBlob(yol)).url;
+
+const ebelgeGoruntuBlob = async (yol: string): Promise<EbelgeGoruntu> => {
   const token = localStorage.getItem("kuyumcu_erp_access_token");
   const dbServer =
     localStorage.getItem("kuyumcu_erp_last_server") || localStorage.getItem("kuyumcu_erp_active_server");
@@ -396,7 +406,7 @@ const ebelgePdfBlobUrl = async (yol: string): Promise<string> => {
   const res = await fetch(`${getEffectiveApiUrl()}${yol}`, {
     method: "GET",
     headers: {
-      Accept: "application/pdf",
+      Accept: "application/pdf, text/html",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(dbServer ? { "x-db-server": dbServer } : {}),
       ...(dbName ? { "x-db-name": dbName } : {}),
@@ -416,7 +426,9 @@ const ebelgePdfBlobUrl = async (yol: string): Promise<string> => {
     throw new Error(mesaj);
   }
 
-  return URL.createObjectURL(await res.blob());
+  const blob = await res.blob();
+  if (blob.type.includes("html")) return { url: "", html: await blob.text() };
+  return { url: URL.createObjectURL(blob), html: null };
 };
 
 export const ebelgeService = {
@@ -754,6 +766,16 @@ export const ebelgeService = {
    */
   async getEarsivPdfBlobUrl(uuid: string): Promise<string> {
     return this.getGelenPdfBlobUrl(uuid, true);
+  },
+
+  /** Kesilmiş e-Arşiv faturasının görüntüsü (PDF ya da HTML) */
+  async getEarsivGoruntu(uuid: string): Promise<EbelgeGoruntu> {
+    return ebelgeGoruntuBlob(`/e-belge/earsiv/${encodeURIComponent(uuid)}/pdf`);
+  },
+
+  /** e-Fatura (taslak dahil) görüntüsü — ICE'deki belgenin PDF'i */
+  async getEfaturaGoruntu(uuid: string): Promise<EbelgeGoruntu> {
+    return ebelgeGoruntuBlob(`/e-belge/gelen/${encodeURIComponent(uuid)}/goruntu?format=pdf`);
   },
 
   async getGelenPdfBlobUrl(uuid: string, earsiv = false): Promise<string> {

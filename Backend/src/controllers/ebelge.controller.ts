@@ -564,16 +564,18 @@ export class EbelgeController {
     const uuid = String(req.params.uuid || "").trim();
     if (!uuid) throw ApiError.badRequest("Belge UUID bilgisi zorunludur.");
 
-    const pdf = await EbelgeService.earsivPdf(
+    const goruntu = await EbelgeService.earsivPdf(
       uuid,
       EbelgeController.getKullanici(req),
       EbelgeController.getDbContext(req)
     );
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${uuid}.pdf"`);
-    res.setHeader("Content-Length", String(pdf.length));
-    return res.status(200).end(pdf);
+    // ICE bu uçtan PDF yerine HTML de döndürebiliyor; istemci türe göre gösterir.
+    const html = goruntu.tur === "html";
+    res.setHeader("Content-Type", html ? "text/html; charset=utf-8" : "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${uuid}.${html ? "html" : "pdf"}"`);
+    res.setHeader("Content-Length", String(goruntu.veri.length));
+    return res.status(200).end(goruntu.veri);
   });
 
   /* ======================================================================

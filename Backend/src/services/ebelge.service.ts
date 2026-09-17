@@ -65,6 +65,7 @@ import {
   sendEarsiv,
   sendEarsivIptal,
   type EmailBelgeTuru,
+  type IceGoruntu,
 } from "./ice/ice.earsiv.js";
 import {
   UblFaturaGirdi,
@@ -491,11 +492,25 @@ export class EbelgeService {
       );
     }
 
+    const unvan = verilen?.unvan || firma.unvan || undefined;
+
+    // Şahıs firması (11 haneli TCKN): UBL-TR ad ve soyadı ayrı ister. Firma tablosunda
+    // yalnızca unvan var; verilmemişse unvanın son kelimesi soyad, öncesi ad sayılır.
+    let ad = verilen?.ad?.trim() || undefined;
+    let soyad = verilen?.soyad?.trim() || undefined;
+    if (vknTckn.length === 11 && !(ad && soyad)) {
+      const parcalar = (unvan || "").trim().split(/\s+/).filter(Boolean);
+      if (parcalar.length > 1) {
+        soyad = parcalar.pop();
+        ad = parcalar.join(" ");
+      }
+    }
+
     return {
       vknTckn,
-      unvan: verilen?.unvan || firma.unvan || undefined,
-      ad: verilen?.ad,
-      soyad: verilen?.soyad,
+      unvan,
+      ad,
+      soyad,
       vergiDairesi: verilen?.vergiDairesi,
       adres: verilen?.adres || firma.adres || undefined,
       // UBL-TR adreste il/ilçe zorunlu; firma tablosunda bu kolonlar yok, bu yüzden
@@ -2385,12 +2400,12 @@ export class EbelgeService {
     };
   }
 
-  /** Kesilmiş e-Arşiv faturasının PDF görüntüsü */
+  /** Kesilmiş e-Arşiv faturasının görüntüsü (ICE PDF ya da HTML döndürebilir) */
   public static async earsivPdf(
     uuid: string,
     kullanici: string,
     dbContext?: DbContext
-  ): Promise<Buffer> {
+  ): Promise<IceGoruntu> {
     const kayit = await EbelgeSqlRepository.getGiden(uuid, dbContext);
     if (!kayit) throw ApiError.notFound("Giden belge kaydı bulunamadı.");
 
@@ -2398,7 +2413,7 @@ export class EbelgeService {
       throw ApiError.badRequest("PDF yalnızca gönderimi kesinleşmiş e-Arşiv belgelerinde alınabilir.");
     }
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
-    const pdf = await previewInvoice(config, {
+    const goruntu = await previewInvoice(config, {
       vknTckn: kayit.ALICI_VKN || kayit.aliciVkn || "",
       faturaNo: kayit.belgeNo,
       duzenlenmeTarihi: kayit.DUZENLEME_TARIHI ? new Date(kayit.DUZENLEME_TARIHI) : new Date(),
@@ -2409,16 +2424,16 @@ export class EbelgeService {
       {
         metod: "preview_invoice",
         yon: "GIDEN",
-        basarili: pdf.length > 0,
+        basarili: goruntu.veri.length > 0,
         kullanici,
         ilgiliUuid: uuid,
-        cevapOzet: `${pdf.length} bayt`,
+        cevapOzet: `${goruntu.tur} · ${goruntu.veri.length} bayt`,
       },
       dbContext
     );
 
-    if (!pdf.length) throw ApiError.notFound("Belgenin PDF çıktısı alınamadı.");
-    return pdf;
+    if (!goruntu.veri.length) throw ApiError.notFound("Belgenin görüntüsü alınamadı.");
+    return goruntu;
   }
 
   /**
