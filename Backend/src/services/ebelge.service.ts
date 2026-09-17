@@ -11,12 +11,14 @@ import {
 import {
   GelenFaturaFiltre,
   IceBelgeStatu,
+  IceCariAdres,
   getInvoiceCount,
   getInvoiceHtml,
   getInvoicePdf,
   getInvoiceStatusDetail,
   getInvoices,
   getMusteriCariAdresleri,
+  getOncekiBelgeAdresi,
   getSonBelgeId,
   getUserListEFatura,
   gonderimSatirlari,
@@ -613,23 +615,49 @@ export class EbelgeService {
     }
 
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
-    const sonuc = await getMusteriCariAdresleri(config, vkn);
 
+    // İki kaynak birbirinden bağımsızdır; birinin hatası diğerini engellemez.
+    const ham: IceCariAdres[] = [];
+    const ozet: string[] = [];
+    let hataSayisi = 0;
+
+    try {
+      const cari = await getMusteriCariAdresleri(config, vkn);
+      ham.push(...cari.adresler);
+      ozet.push(cari.basarili
+        ? `cari: dönen=${cari.donenCari}, eşleşen=${cari.eslesenCari}, adres=${cari.adresler.length}`
+        : `cari: ${cari.mesaj}`);
+      if (!cari.basarili) hataSayisi++;
+    } catch (err: any) {
+      hataSayisi++;
+      ozet.push(`cari: ${err?.message || err}`);
+    }
+
+    if (!ham.length) {
+      try {
+        const onceki = await getOncekiBelgeAdresi(config, vkn);
+        if (onceki.adres) ham.push(onceki.adres);
+        ozet.push(`önceki belge: bakılan=${onceki.bakilan}, adres=${onceki.adres ? 1 : 0}`);
+      } catch (err: any) {
+        hataSayisi++;
+        ozet.push(`önceki belge: ${err?.message || err}`);
+      }
+    }
+
+    const sonuc = { adresler: ham };
     await EbelgeSqlRepository.writeLog(
       {
-        metod: "Get_Musteri_Cari_List",
+        metod: "AliciAdresSorgu",
         yon: "GIDEN",
-        basarili: sonuc.basarili,
+        basarili: ham.length > 0 || hataSayisi < 2,
         kullanici,
         istekOzet: `vkn=${vkn}`,
-        cevapOzet: sonuc.basarili
-          ? `dönen cari=${sonuc.donenCari}, eşleşen=${sonuc.eslesenCari}, adres=${sonuc.adresler.length}`
-          : sonuc.mesaj.slice(0, 200),
+        cevapOzet: ozet.join(" | ").slice(0, 400),
       },
       dbContext
     );
-    if (!sonuc.basarili) {
-      throw ApiError.unprocessable(sonuc.mesaj || "ICE cari adres sorgusu başarısız.");
+    if (!ham.length && hataSayisi === 2) {
+      throw ApiError.unprocessable(`Alıcı adresi ICE'den sorgulanamadı (${ozet.join(" | ").slice(0, 300)}).`);
     }
 
     const m = (v: unknown) => String(v ?? "").trim();

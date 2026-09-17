@@ -4,6 +4,8 @@ import {
   optionalField,
   toIceDateTime,
 } from "./ice.client.js";
+import { XMLParser } from "fast-xml-parser";
+import { inflateRawSync } from "zlib";
 import { callWithSession } from "./ice.session.js";
 import { IceConnectionConfig } from "./ice.types.js";
 
@@ -309,63 +311,144 @@ export const getMusteriCariAdresleri = async (
   config: IceConnectionConfig,
   vknTckn: string
 ): Promise<{ basarili: boolean; mesaj: string; adresler: IceCariAdres[]; donenCari: number; eslesenCari: number }> => {
-  const sor = async (vkn: string, limit: number): Promise<any> => {
-    const { data } = await callWithSession<any>(config, {
-      method: "Get_Musteri_Cari_List",
-      buildInnerXml: (loginHeaderXml) =>
-        `<Request>` +
-        loginHeaderXml +
-        `<VKNTCKN>${escapeXml(vkn)}</VKNTCKN>` +
-        // Boş da olsa gönderilir; sıra şemadaki sequence ile aynı.
-        `<Unvan></Unvan><Adi></Adi><Soyadi></Soyadi>` +
-        `<OFFSET>0</OFFSET>` +
-        `<LIMIT>${limit}</LIMIT>` +
-        `</Request>`,
-      timeoutMs: READ_TIMEOUT_MS,
-      authHatasindaTekrarla: true,
-    });
-    return data;
-  };
-  const basariliMi = (d: any) => String(d?.Success).toLowerCase() === "true";
-
-  const data = await sor(vknTckn, 10);
-
-  // Metot ICE dokümanında yok. Kayıt bulunamayınca açıklamasız `Success=false` dönüyor olabilir;
-  // bunu "servis çalışmıyor"dan ayırmak için bir kez de filtresiz sorulur.
-  if (!basariliMi(data) && !data?.ResponseMessage) {
-    const genel = await sor("", 1);
-    if (basariliMi(genel)) {
-      return { basarili: true, mesaj: "", adresler: [], donenCari: 0, eslesenCari: 0 };
-    }
-    return {
-      basarili: false,
-      mesaj:
-        genel?.ResponseMessage
-          ? String(genel.ResponseMessage)
-          : "ICE kayıtlı cari servisi (Get_Musteri_Cari_List) filtresiz sorguda da açıklamasız başarısız döndü; " +
-            `servis bu hesapta kapalı olabilir. Ham cevap: ${JSON.stringify(genel ?? null).slice(0, 200)}`,
-      adresler: [],
-      donenCari: 0,
-      eslesenCari: 0,
-    };
-  }
+  const { data } = await callWithSession<any>(config, {
+    method: "Get_Musteri_Cari_List",
+    buildInnerXml: (loginHeaderXml) =>
+      `<Request>` +
+      loginHeaderXml +
+      `<VKNTCKN>${escapeXml(vknTckn)}</VKNTCKN>` +
+      // Boş da olsa gönderilir; sıra şemadaki sequence ile aynı.
+      `<Unvan></Unvan><Adi></Adi><Soyadi></Soyadi>` +
+      `<OFFSET>0</OFFSET>` +
+      `<LIMIT>10</LIMIT>` +
+      `</Request>`,
+    timeoutMs: READ_TIMEOUT_MS,
+    authHatasindaTekrarla: true,
+  });
 
   // VKNTCKN filtresi ICE tarafında "içerir" gibi davranabilir; tam eşleşeni süz.
-  // XML ayrıştırıcı numarayı sayıya çevirip baştaki sıfırı düşürebilir; sıfırsız karşılaştır.
-  const sade = (v: unknown) => String(v ?? "").replace(/\D/g, "").replace(/^0+/, "");
   // Numara kayda göre VKNTCKN ya da Identifier alanında durabiliyor; ikisine de bakılır.
   const donen = toArray<any>(data?.Musteri_Cari_List?.Musteri_Cari);
   const cariler = donen.filter(
-    (c) => sade(c?.VKNTCKN) === sade(vknTckn) || sade(c?.Identifier) === sade(vknTckn)
+    (c) => sadeNumara(c?.VKNTCKN) === sadeNumara(vknTckn) || sadeNumara(c?.Identifier) === sadeNumara(vknTckn)
   );
 
+  const basarili = String(data?.Success).toLowerCase() === "true";
   return {
-    basarili: basariliMi(data),
-    mesaj: data?.ResponseMessage ? String(data.ResponseMessage) : "",
+    basarili,
+    // Metot ICE dokümanında yok; 17.09.2026'da canlı hesapta filtresiz sorguda bile
+    // açıklamasız `Success=false` döndü (servis hesapta kapalı). Bu yüzden tek kaynak değildir.
+    mesaj: data?.ResponseMessage ? String(data.ResponseMessage) : basarili ? "" : "ICE açıklamasız başarısız döndü",
     adresler: cariler.flatMap((c) => toArray<IceCariAdres>(c?.Adres_List?.Musteri_Cari_Adres)),
     donenCari: donen.length,
     eslesenCari: cariler.length,
   };
+};
+
+/** Baştaki sıfır ve rakam dışı karakterlerden arındırılmış numara (VKN/TCKN karşılaştırması için) */
+const sadeNumara = (v: unknown): string => String(v ?? "").replace(/\D/g, "").replace(/^0+/, "");
+
+const ublParser = new XMLParser({
+  ignoreAttributes: true,
+  removeNSPrefix: true,
+  processEntities: false,
+  trimValues: true,
+  parseTagValue: false,
+});
+
+/** Base64 CONTENT → UBL metni. ICE içeriği zip'li de gönderebilir; ilk dosya açılır. */
+export const contentToXml = (base64: string): string => {
+  const buf = Buffer.from(base64, "base64");
+  if (buf.length > 30 && buf.readUInt32LE(0) === 0x04034b50) {
+    const yontem = buf.readUInt16LE(8);
+    const adUzunluk = buf.readUInt16LE(26);
+    const ekUzunluk = buf.readUInt16LE(28);
+    const veri = buf.subarray(30 + adUzunluk + ekUzunluk);
+    // Boyut alanları veri tanımlayıcıda olabilir; inflateRaw akışın sonunda kendisi durur.
+    return (yontem === 8 ? inflateRawSync(veri) : veri).toString("utf8");
+  }
+  return buf.toString("utf8");
+};
+
+/** UBL'deki taraflardan numarası eşleşenin adresini çıkarır; eşleşme yoksa null. */
+export const ublTarafAdresi = (xml: string, vknTckn: string, etiket: string): IceCariAdres | null => {
+  const kok = ublParser.parse(xml);
+  const belge = kok?.Invoice ?? kok?.DespatchAdvice ?? kok?.CreditNote;
+  if (!belge) return null;
+
+  const metin = (v: unknown) => (v === undefined || v === null || typeof v === "object" ? "" : String(v).trim());
+  for (const dugum of ["AccountingCustomerParty", "AccountingSupplierParty", "DeliveryCustomerParty", "DespatchSupplierParty"]) {
+    const party = belge?.[dugum]?.Party;
+    if (!party) continue;
+    const eslesti = toArray<any>(party.PartyIdentification).some((k) => sadeNumara(k?.ID) === sadeNumara(vknTckn));
+    if (!eslesti) continue;
+
+    const adres = party.PostalAddress || {};
+    const sonuc: IceCariAdres = {
+      AdresAdi: etiket,
+      MahalleCadde: [metin(adres.StreetName), metin(adres.BuildingName)].filter(Boolean).join(" "),
+      BinaNo: metin(adres.BuildingNumber),
+      DaireNo: metin(adres.Room),
+      Ilce: metin(adres.CitySubdivisionName),
+      Sehir: metin(adres.CityName),
+      PostaKodu: metin(adres.PostalZone),
+      Ulke: metin(adres.Country?.Name),
+      Eposta: metin(party.Contact?.ElectronicMail),
+      Telefon: metin(party.Contact?.Telephone),
+    };
+    return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde ? sonuc : null;
+  }
+  return null;
+};
+
+/**
+ * Alıcının adresini ICE'deki ÖNCEKİ e-Faturalardan bulur: önce ona kestiğimiz (OUT),
+ * yoksa ondan gelen (IN) son belgeye bakılır. `GetInvoice` her hesapta açık olduğu için
+ * kayıtlı cari servisine bağımlı değildir.
+ *
+ * SENDER/RECEIVER filtresi ICE tarafında yok sayılırsa başka firmanın belgesi dönebilir;
+ * bu yüzden adres yalnızca UBL içindeki taraf numarası eşleşirse kullanılır.
+ */
+export const getOncekiBelgeAdresi = async (
+  config: IceConnectionConfig,
+  vknTckn: string,
+  gunSayisi = 730
+): Promise<{ adres: IceCariAdres | null; bakilan: number }> => {
+  const bitis = new Date();
+  const baslangic = new Date(bitis.getTime() - gunSayisi * 24 * 60 * 60 * 1000);
+  let bakilan = 0;
+
+  for (const yon of ["OUT", "IN"] as const) {
+    const ortak: GelenFaturaFiltre = {
+      limit: 50,
+      baslangicTarihi: baslangic,
+      bitisTarihi: bitis,
+      okunmuslarDahil: true,
+      islenmislerDahil: true,
+      yon,
+      ...(yon === "OUT" ? { receiver: vknTckn } : { sender: vknTckn }),
+    };
+    const { faturalar } = await getInvoices(config, ortak, true);
+    bakilan += faturalar.length;
+
+    const karsiTaraf = (f: IceInvoice) => (yon === "OUT" ? f.HEADER?.RECEIVER : f.HEADER?.SENDER);
+    const aday = faturalar
+      .filter((f) => f.UUID && sadeNumara(karsiTaraf(f)) === sadeNumara(vknTckn))
+      .sort((a, b) => String(b.HEADER?.ISSUE_DATE || "").localeCompare(String(a.HEADER?.ISSUE_DATE || "")))[0];
+    if (!aday) continue;
+
+    const { faturalar: dolu } = await getInvoices(config, { uuid: String(aday.UUID), yon, limit: 1 }, false);
+    const icerik = dolu[0]?.CONTENT;
+    if (!icerik) continue;
+
+    const adres = ublTarafAdresi(
+      contentToXml(String(icerik)),
+      vknTckn,
+      `${yon === "OUT" ? "Önceki faturamız" : "Gelen faturası"} ${aday.ID ? String(aday.ID) : ""}`.trim()
+    );
+    if (adres) return { adres, bakilan };
+  }
+  return { adres: null, bakilan };
 };
 
 /* ==========================================================================
