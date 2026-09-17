@@ -1,3 +1,4 @@
+import { inflateRawSync } from "zlib";
 import { escapeXml, optionalField, toIceDateTime } from "./ice.client.js";
 import { callWithSession } from "./ice.session.js";
 import { IceConnectionConfig } from "./ice.types.js";
@@ -129,7 +130,7 @@ export interface IcePreviewSonucu {
 export const previewInvoice = async (
   config: IceConnectionConfig,
   girdi: { vknTckn: string; faturaNo: string; duzenlenmeTarihi: Date; odenecekTutar: number }
-): Promise<Buffer> => {
+): Promise<IceGoruntu> => {
   const { data } = await callWithSession<IcePreviewSonucu>(config, {
     method: "preview_invoice",
     buildInnerXml: (loginHeaderXml) =>
@@ -152,11 +153,36 @@ export const previewInvoice = async (
   if (!temiz || temiz.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(temiz)) {
     throw ApiError.unprocessable("ICE geçerli bir PDF verisi döndürmedi.");
   }
-  const pdf = Buffer.from(temiz, "base64");
-  if (pdf.subarray(0, 5).toString("ascii") !== "%PDF-") {
-    throw ApiError.unprocessable("ICE cevabı PDF biçiminde değil.");
+  return goruntuCoz(Buffer.from(temiz, "base64"));
+};
+
+/** ICE belge görüntüsü: PDF ya da (önizleme uçlarında) HTML */
+export interface IceGoruntu {
+  tur: "pdf" | "html";
+  veri: Buffer;
+}
+
+/**
+ * ICE görüntü cevabının biçimini içeriğinden anlar. `preview_invoice` şemada yalnızca
+ * "base64Binary" der; canlıda PDF yerine HTML ya da zip'li içerik dönebildiği görüldü (18.09.2026).
+ */
+export const goruntuCoz = (ham: Buffer): IceGoruntu => {
+  let veri = ham;
+  // Zip: ilk dosya açılır (boyut alanları veri tanımlayıcıda olabilir; inflateRaw akış sonunda durur)
+  if (veri.length > 30 && veri.readUInt32LE(0) === 0x04034b50) {
+    const yontem = veri.readUInt16LE(8);
+    const govde = veri.subarray(30 + veri.readUInt16LE(26) + veri.readUInt16LE(28));
+    veri = yontem === 8 ? inflateRawSync(govde) : govde;
   }
-  return pdf;
+  if (veri.subarray(0, 5).toString("ascii") === "%PDF-") return { tur: "pdf", veri };
+
+  const bas = veri.subarray(0, 400).toString("utf8").replace(/^﻿/, "").trimStart().toLowerCase();
+  if (bas.startsWith("<!doctype") || bas.startsWith("<html") || bas.startsWith("<?xml") || bas.includes("<html")) {
+    return { tur: "html", veri };
+  }
+  throw ApiError.unprocessable(
+    `ICE belge görüntüsü tanınmayan biçimde döndü (ilk baytlar: ${veri.subarray(0, 8).toString("hex")}).`
+  );
 };
 
 /* ==========================================================================

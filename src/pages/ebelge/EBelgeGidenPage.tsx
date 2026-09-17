@@ -128,14 +128,40 @@ const EBelgeGidenPage: React.FC = () => {
   const [detayYukleniyor, setDetayYukleniyor] = useState(false);
   const [detay, setDetay] = useState<{ belgeNo: string; rapor: any[]; mail: any[]; hatalar: string[] } | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  /** ICE görüntüyü HTML döndürdüyse çerçeve sandbox'lı kurulur (PDF sandbox'ta açılmaz) */
+  const [goruntuHtml, setGoruntuHtml] = useState<string | null>(null);
   useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
+
+  /** Fatura numarasına tıklanınca belge görüntüsünü açar */
+  const goruntulenebilir = (satir: EbelgeGidenSatiri) =>
+    (satir.belgeTuru === "EArsiv" && ["GONDERILDI", "IPTAL"].includes(satir.gonderimDurumu)) ||
+    (satir.belgeTuru === "EDoviz" && ["GONDERILDI", "IPTAL"].includes(satir.gonderimDurumu)) ||
+    (satir.belgeTuru === "EFatura" && ["TASLAK", "GONDERILDI", "IPTAL"].includes(satir.gonderimDurumu));
+
+  const belgeGoruntule = async (satir: EbelgeGidenSatiri) => {
+    if (satir.belgeTuru === "EDoviz") return dovizGoruntule(satir, true);
+    setDetayYukleniyor(true);
+    setDetay(null);
+    setPdfUrl(null);
+    setGoruntuHtml(null);
+    try {
+      const g = satir.belgeTuru === "EArsiv"
+        ? await ebelgeService.getEarsivGoruntu(satir.uuid)
+        : await ebelgeService.getEfaturaGoruntu(satir.uuid);
+      setGoruntuHtml(g.html);
+      setPdfUrl(g.html ? null : g.url);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err: any) {
+      setAlertInfo({ type: "danger", message: err?.message || "Belge görüntüsü alınamadı." });
+    } finally { setDetayYukleniyor(false); }
+  };
 
   const earsivGoruntule = async (satir: EbelgeGidenSatiri, pdf: boolean) => {
     setDetayYukleniyor(true);
     setDetay(null);
     setPdfUrl(null);
     try {
-      if (pdf) setPdfUrl(await ebelgeService.getEarsivPdfBlobUrl(satir.uuid));
+      if (pdf) return void (await belgeGoruntule(satir));
       else setDetay({ belgeNo: satir.belgeNo, ...await ebelgeService.earsivDurum([satir.uuid]) });
     } catch (err: any) {
       setAlertInfo({ type: "danger", message: err?.message || "Belge bilgisi alınamadı." });
@@ -144,7 +170,7 @@ const EBelgeGidenPage: React.FC = () => {
   const dovizGoruntule = async (satir: EbelgeGidenSatiri, pdf: boolean) => {
     setDetayYukleniyor(true); setPdfUrl(null);
     try {
-      if (pdf) setPdfUrl(await ebelgeService.getDovizPdfBlobUrl(satir.uuid));
+      if (pdf) { setGoruntuHtml(null); setPdfUrl(await ebelgeService.getDovizPdfBlobUrl(satir.uuid)); }
       else {
         const d = await ebelgeService.dovizDurum(satir.uuid);
         setAlertInfo({ type: "success", message: `${satir.belgeNo}: ${d?.STATUS_DESCRIPTION || d?.STATUS || "ICE durum kaydı alındı."}` });
@@ -312,9 +338,12 @@ const EBelgeGidenPage: React.FC = () => {
         {detay.mail.length === 0 && <p>E-posta durum kaydı dönmedi.</p>}
         {detay.mail.map((m, i) => <p key={i}>{m.email || "-"}{" · "}{m.statu || "-"}{" · "}{m.message || ""}</p>)}
       </Card.Body></Card>}
-      {pdfUrl && <Card className="mb-3"><Card.Body>
-        <Button size="sm" variant="secondary" className="mb-2" onClick={() => setPdfUrl(null)}>PDF'i kapat</Button>
-        <iframe title="e-Arşiv PDF" src={pdfUrl} style={{ width: "100%", height: "65vh", border: 0 }} />
+      {(pdfUrl || goruntuHtml) && <Card className="mb-3"><Card.Body>
+        <Button size="sm" variant="secondary" className="mb-2" onClick={() => { setPdfUrl(null); setGoruntuHtml(null); }}>Görüntüyü kapat</Button>
+        {/* ICE'nin ürettiği HTML: allow-same-origin YOK; karekod için yalnızca betik izni verilir */}
+        {goruntuHtml
+          ? <iframe title="Belge görüntüsü" srcDoc={goruntuHtml} sandbox="allow-scripts" referrerPolicy="no-referrer" style={{ width: "100%", height: "65vh", border: 0, background: "#fff" }} />
+          : <iframe title="Belge görüntüsü" src={pdfUrl || undefined} style={{ width: "100%", height: "65vh", border: 0 }} />}
       </Card.Body></Card>}
 
       <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
@@ -431,7 +460,11 @@ const EBelgeGidenPage: React.FC = () => {
                         <td><Form.Check aria-label={`${satir.belgeNo} seç`} checked={secimler.includes(satir.uuid)} disabled={topluBusy}
                           onChange={e => setSecimler(o => e.target.checked ? [...o, satir.uuid] : o.filter(id => id !== satir.uuid))} /></td>
                         <td>{ebelgeTarihSaat(satir.duzenlemeTarihi || satir.olusturmaTarihi).slice(0, 10)}</td>
-                        <td className="font-monospace">{satir.belgeNo}<small className="d-block text-secondary" style={{ overflowWrap: "anywhere" }}>{satir.uuid}</small></td>
+                        <td className="font-monospace">
+                          {goruntulenebilir(satir)
+                            ? <Button variant="link" size="sm" className="p-0 font-monospace align-baseline" disabled={detayYukleniyor}
+                                title="Belge görüntüsünü aç" onClick={() => void belgeGoruntule(satir)}>{satir.belgeNo}</Button>
+                            : satir.belgeNo}<small className="d-block text-secondary" style={{ overflowWrap: "anywhere" }}>{satir.uuid}</small></td>
                         <td className="text-truncate" style={{ maxWidth: "300px" }} title={satir.aliciUnvan || ""}>
                           {satir.aliciUnvan || satir.aliciVkn || "-"}
                         </td>

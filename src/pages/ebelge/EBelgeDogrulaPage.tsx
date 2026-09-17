@@ -1,14 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import {
   IconFileCheck,
   IconPlus,
   IconTrash,
-  IconCircleCheck,
-  IconCircleX,
   IconShieldCheck,
-  IconFileDots,
   IconAlertTriangle,
   IconSend,
   IconFolder,
@@ -26,7 +23,6 @@ import {
   EbelgeFaturaTipi,
   EbelgeSatir,
   EbelgeSenaryo,
-  EbelgeTaslakSonucu,
   ebelgeService,
   ebelgeTutar,
 } from "../../services/ebelgeService";
@@ -34,9 +30,9 @@ import {
 /**
  * E-Belge — Belge Doğrulama (Faz 5)
  *
- * Bu ekran **belge göndermez**. Girilen bilgilerden UBL-TR faturayı üretir ve
- * ICE'nin `invoice_check_validate` ucuna doğrulatır: şema + schematron sonucu ve
- * HTML önizleme döner. Canlı hesapla mali sonuç doğurmadan test etmenin yolu budur.
+ * Girilen bilgilerden UBL-TR faturayı üretir. Gönder / Taslaklara Kaydet düğmeleri belgeyi önce
+ * ICE'nin `invoice_check_validate` ucunda doğrular (şema + schematron), geçtiyse ARA ONAY OLMADAN
+ * işlemi yapar; gerçek gönderimden sonra giden kutusuna geçilir (yönetici isteği 18.09.2026).
  *
  * Arayüz kuralları: docs/ice-baglanti.md §15
  */
@@ -85,7 +81,6 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [iadeFaturalar, setIadeFaturalar] = useState<{ belgeNo: string; tarih: string }[]>([]);
   const [dovizKuru, setDovizKuru] = useState<string>("");
   const [dogrulaniyor, setDogrulaniyor] = useState<boolean>(false);
-  const [sonuc, setSonuc] = useState<EbelgeDogrulamaSonucu | null>(null);
   const [alertInfo, setAlertInfo] = useState<AlertInfo>(null);
   const [mukellefSorgulaniyor, setMukellefSorgulaniyor] = useState(false);
   /** Sonucu ekranda duran numara. Numara değişince tür seçimi geçersizleşir. */
@@ -208,9 +203,6 @@ const EBelgeDogrulaPage: React.FC = () => {
     }
     const sira = ++sorguSirasi.current;
     setMukellefSorgulaniyor(true);
-    setSonuc(null);
-    setTaslakOnayAcik(false);
-    setDogrulananGirdi("");
     setIceAdresler([]);
     try {
       const cevap = await ebelgeService.mukellefSorgula(vkn);
@@ -255,16 +247,11 @@ const EBelgeDogrulaPage: React.FC = () => {
   /** Numara değişti ve sorgu sonucu yok → tür seçimi güvenilmez. */
   const turBelirsiz = /^\d{10,11}$/.test(aliciVkn.trim()) && aliciVkn.trim() !== sorgulananVkn;
 
-  // Taslak — iki adımlı onay
-  const [taslakOnayAcik, setTaslakOnayAcik] = useState<boolean>(false);
-  /** Onay panelinde hangi işlem onaylanıyor */
+  /** Yürüyen işlem (düğmedeki dönen simge için) */
   const [islem, setIslem] = useState<"taslak" | "gonder" | "earsiv">("taslak");
   const [taslakGonderiliyor, setTaslakGonderiliyor] = useState<boolean>(false);
-  const [taslakSonuc, setTaslakSonuc] = useState<EbelgeTaslakSonucu | null>(null);
-  const [dogrulananGirdi, setDogrulananGirdi] = useState("");
-  const girdiAnahtari = JSON.stringify([belgeNo, tarih, senaryo, faturaTipi, paraBirimi, not,
-    aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciAdres, aliciIl, aliciIlce, aliciEposta, satirlar]);
-  const dogrulamaGuncel = dogrulananGirdi === girdiAnahtari;
+  /** Çift tıkla çift fatura kesilmesini önler; state güncellemesini beklemeden kilitler. */
+  const islemde = useRef(false);
 
   const tcknMi = aliciVkn.trim().length === 11;
   const iadeMi = faturaTipi === "IADE";
@@ -300,75 +287,73 @@ const EBelgeDogrulaPage: React.FC = () => {
     setSatirlar((onceki) => onceki.map((s, idx) => (idx === i ? { ...s, [alan]: deger } : s)));
   };
 
-  /** Belgeyi ICE'de doğrular; şema + schematron geçtiyse true döner (gönderim/taslak bu sonuca göre açılır). */
-  const dogrula = async (): Promise<boolean> => {
-    if (dogrulaniyor || taslakGonderiliyor) return false;
+  /** Belgeyi ICE'de doğrular; şema + schematron geçtiyse doğrulama cevabını, geçmediyse null döner. */
+  const dogrula = async (): Promise<EbelgeDogrulamaSonucu | null> => {
     setAlertInfo(null);
-    setSonuc(null);
 
     if (!belgeNo.trim()) {
       setAlertInfo({ type: "danger", message: "Fatura numarası zorunludur." });
-      return false;
+      return null;
     }
     if (!aliciVkn.trim()) {
       setAlertInfo({ type: "danger", message: "Alıcı VKN/TCKN zorunludur." });
-      return false;
+      return null;
     }
     if (!aliciUnvan.trim() && !(aliciAd.trim() && aliciSoyad.trim())) {
       setAlertInfo({ type: "danger", message: "Alıcı için unvan ya da ad+soyad giriniz." });
-      return false;
+      return null;
     }
     if (satirlar.some((s) => !s.ad.trim())) {
       setAlertInfo({ type: "danger", message: "Her satırda mal/hizmet adı bulunmalıdır." });
-      return false;
+      return null;
     }
     if (satirlar.some((s) => s.kdvOrani === 0 && !s.istisnaKodu?.trim())) {
       setAlertInfo({
         type: "danger",
         message: "KDV oranı 0 olan satırlarda GİB istisna kodu zorunludur.",
       });
-      return false;
+      return null;
     }
     if (satirlar.some((s) => s.istisnaKodu?.trim() === "555" && s.kdvOrani === 0)) {
       setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu KDV 0 ile kullanılamaz." });
-      return false;
+      return null;
     }
     if (satirlar.some((s) => s.istisnaKodu?.trim() === "555") && ["YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
       setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu özel senaryolu faturada kullanılamaz." });
-      return false;
+      return null;
     }
     if (satirlar.some((s) => ["308", "339"].includes(s.istisnaKodu?.trim() || "")) && senaryo !== "YATIRIMTESVIK") {
       setAlertInfo({ type: "danger", message: "308 ve 339 kodları yalnızca Yatırım Teşvik profilinde kullanılabilir." });
-      return false;
+      return null;
     }
     if (iadeMi && !["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
       setAlertInfo({ type: "danger", message: `İade faturası ${senaryo} profilinde kullanılamaz.` });
-      return false;
+      return null;
     }
     if (faturaTipi === "TEKNOLOJIDESTEK" && senaryo !== "EARSIVFATURA") {
       setAlertInfo({ type: "danger", message: "Teknoloji Destek faturası yalnızca e-Arşiv Fatura profilinde kullanılabilir." });
-      return false;
+      return null;
     }
     if (tevkifatliMi && !satirlar.some((s) => s.tevkifatKodu?.trim())) {
       setAlertInfo({
         type: "danger",
         message: "Tevkifatlı faturada en az bir satırda tevkifat kodu ve oranı olmalıdır.",
       });
-      return false;
+      return null;
     }
     if (iadeMi && (!iadeFaturalar.length || iadeFaturalar.some((r) => !r.belgeNo.trim() || !r.tarih))) {
       setAlertInfo({
         type: "danger",
         message: "İade faturasında iade edilen fatura numarası ve tarihi zorunludur.",
       });
-      return false;
+      return null;
     }
     if (dovizliMi && !(Number(dovizKuru) > 0)) {
       setAlertInfo({
         type: "danger",
         message: `${paraBirimi} cinsinden belgede TL karşılığı kur zorunludur.`,
       });
-      return false;
+      return null;
     }
 
     setDogrulaniyor(true);
@@ -394,87 +379,49 @@ const EBelgeDogrulaPage: React.FC = () => {
         satirlar,
         iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
         dovizKuru: dovizliMi && dovizKuru ? { kur: Number(dovizKuru), tarih } : undefined,
-        onizleme: true,
+        onizleme: false,
       });
 
-      setSonuc(cevap);
-      setDogrulananGirdi(girdiAnahtari);
-      setTaslakSonuc(null);
-      setTaslakOnayAcik(false);
-      const gecti = cevap.semaGecerli && cevap.schematronGecerli;
-      setAlertInfo(
-        gecti
-          ? { type: "success", message: "Belge şema ve schematron doğrulamasından geçti. Aşağıdan onaylayın." }
-          : { type: "warning", message: cevap.mesaj || "Belge doğrulamadan geçemedi." }
-      );
-      return gecti;
+      if (cevap.semaGecerli && cevap.schematronGecerli) return cevap;
+      setAlertInfo({ type: "danger", message: `Belge gönderilmedi: ${cevap.mesaj || "ICE doğrulamasından geçemedi."}` });
+      return null;
     } catch (err: any) {
       setAlertInfo({ type: "danger", message: err?.message || "Doğrulama yapılamadı." });
-      return false;
+      return null;
     } finally {
       setDogrulaniyor(false);
     }
   };
 
+  const earsivMi = senaryo === "EARSIVFATURA";
+
   /**
-   * Tek tık akışı (yönetici isteği 16.09.2026): "Taslaklara Kaydet" / "Gönder" önce belgeyi doğrular,
-   * geçtiyse ilgili onay paneli kendiliğinden açılır; kullanıcı tek onayla işlemi bitirir.
-   * Gerçek fatura geri alınamadığı için onay adımı bilinçli olarak korunmuştur.
+   * Tek adımlı akış (yönetici isteği 18.09.2026): düğme belgeyi ICE'de doğrular ve geçtiyse
+   * ARA ONAY OLMADAN işlemi yapar. Doğrulama paneli, önizleme ve "Evet, gönder" adımı kaldırıldı.
+   * Doğrulamada üretilen UUID ve saat gönderime taşınır ki doğrulanan ile gönderilen belge aynı olsun.
    */
-  const hazirlaVeOnayla = async (tur: "taslak" | "gonder" | "earsiv") => {
+  const islemYap = async (tur: "taslak" | "gonder" | "earsiv") => {
+    if (islemde.current) return;
     if (turBelirsiz || mukellefSorgulaniyor) {
       setAlertInfo({ type: "warning", message: "Mükellef sorgusu tamamlanmadan işlem yapılamaz." });
       return;
     }
+    islemde.current = true;
     setIslem(tur);
-    const gecti = await dogrula();
-    if (gecti) setTaslakOnayAcik(true);
-  };
-
-  /**
-   * Gönderim isteklerinin ortak gövdesi.
-   * Önizlemede üretilen UUID ve saat gönderime taşınır ki doğrulanan belge ile
-   * gönderilen belge birebir aynı olsun.
-   */
-  const istekGovdesi = () => ({
-    uuid: sonuc!.uuid,
-    saat:
-      new DOMParser()
-        .parseFromString(sonuc!.xml, "application/xml")
-        .getElementsByTagName("cbc:IssueTime")[0]?.textContent || undefined,
-    belgeNo: belgeNo.trim().toUpperCase(),
-    tarih,
-    senaryo,
-    faturaTipi,
-    paraBirimi,
-    notlar: not.trim() ? [not.trim()] : undefined,
-    alici: {
-      vknTckn: aliciVkn.trim(),
-      unvan: aliciUnvan.trim() || undefined,
-      ad: aliciAd.trim() || undefined,
-      soyad: aliciSoyad.trim() || undefined,
-      vergiDairesi: aliciVd.trim() || undefined,
-      adres: aliciAdres.trim() || undefined,
-      il: aliciIl.trim() || undefined,
-      ilce: aliciIlce.trim() || undefined,
-      eposta: aliciEposta.trim() || undefined,
-    },
-    satirlar,
-    iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
-    dovizKuru: dovizliMi && dovizKuru ? { kur: Number(dovizKuru), tarih } : undefined,
-  });
-
-  const taslakOlustur = async () => {
-    if (!taslakVerilebilir || taslakGonderiliyor) return;
-    setAlertInfo(null);
-    setTaslakGonderiliyor(true);
     try {
-      const cevap = await ebelgeService.taslakGonder({
-        uuid: sonuc!.uuid,
-        saat: new DOMParser().parseFromString(sonuc!.xml, "application/xml").getElementsByTagName("cbc:IssueTime")[0]?.textContent || undefined,
+      const dogrulama = await dogrula();
+      if (!dogrulama) return;
+
+      setTaslakGonderiliyor(true);
+      const govde = {
+        uuid: dogrulama.uuid,
+        saat:
+          new DOMParser()
+            .parseFromString(dogrulama.xml, "application/xml")
+            .getElementsByTagName("cbc:IssueTime")[0]?.textContent || undefined,
         belgeNo: belgeNo.trim().toUpperCase(),
         tarih,
-        senaryo,
+        senaryo: tur === "earsiv" ? ("EARSIVFATURA" as EbelgeSenaryo) : senaryo,
         faturaTipi,
         paraBirimi,
         notlar: not.trim() ? [not.trim()] : undefined,
@@ -492,102 +439,40 @@ const EBelgeDogrulaPage: React.FC = () => {
         satirlar,
         iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
         dovizKuru: dovizliMi && dovizKuru ? { kur: Number(dovizKuru), tarih } : undefined,
-      });
+      };
 
-      setTaslakSonuc(cevap);
-      setTaslakOnayAcik(false);
-      setAlertInfo({
-        type: "success",
-        message: `Taslaklara kaydedildi (${cevap.belgeNo}). Belge GİB'e gönderilmedi; "Taslaklara Git" ile gönderebilir veya iptal edebilirsiniz.`,
-      });
+      if (tur === "taslak") {
+        const cevap = await ebelgeService.taslakGonder(govde);
+        // Numara kullanıldı; aynı belgenin ikinci kez kaydedilmemesi için alan boşaltılır.
+        setBelgeNo("");
+        setAlertInfo({
+          type: "success",
+          message: `Taslaklara kaydedildi (${cevap.belgeNo}). Belge GİB'e gönderilmedi; "Taslaklara Git" ile gönderebilir veya iptal edebilirsiniz.`,
+        });
+        return;
+      }
+
+      if (tur === "earsiv") await ebelgeService.earsivGonder(govde);
+      else await ebelgeService.faturaGonder(govde);
+      // Kesilen fatura giden kutusunda en üstte görünür.
+      navigate("/e-belge/giden");
     } catch (err: any) {
-      setAlertInfo({ type: "danger", message: err?.message || "Taslak oluşturulamadı." });
+      setAlertInfo({ type: "danger", message: err?.message || "Belge gönderilemedi." });
     } finally {
+      islemde.current = false;
       setTaslakGonderiliyor(false);
     }
   };
-
-  const earsivMi = senaryo === "EARSIVFATURA";
-
-  /** Faturayı doğrudan GİB'e gönderir — GERİ ALINAMAZ */
-  const faturaGonder = async () => {
-    setAlertInfo(null);
-    setTaslakGonderiliyor(true);
-    try {
-      const cevap = await ebelgeService.faturaGonder(istekGovdesi());
-      setTaslakSonuc(cevap as any);
-      setTaslakOnayAcik(false);
-      setAlertInfo({
-        type: "success",
-        message:
-          `e-Fatura GİB'e gönderildi (${cevap.belgeNo}).` +
-          (cevap.kontorUyari ? ` ${cevap.kontorUyari}` : ""),
-      });
-    } catch (err: any) {
-      setAlertInfo({ type: "danger", message: err?.message || "Fatura gönderilemedi." });
-    } finally {
-      setTaslakGonderiliyor(false);
-    }
-  };
-
-  const earsivGonder = async () => {
-    if (!taslakVerilebilir || taslakGonderiliyor) return;
-    setAlertInfo(null);
-    setTaslakGonderiliyor(true);
-    try {
-      const cevap = await ebelgeService.earsivGonder({
-        uuid: sonuc!.uuid,
-        saat: new DOMParser().parseFromString(sonuc!.xml, "application/xml").getElementsByTagName("cbc:IssueTime")[0]?.textContent || undefined,
-        belgeNo: belgeNo.trim().toUpperCase(),
-        tarih,
-        senaryo: "EARSIVFATURA",
-        faturaTipi,
-        paraBirimi,
-        notlar: not.trim() ? [not.trim()] : undefined,
-        alici: {
-          vknTckn: aliciVkn.trim(),
-          unvan: aliciUnvan.trim() || undefined,
-          ad: aliciAd.trim() || undefined,
-          soyad: aliciSoyad.trim() || undefined,
-          vergiDairesi: aliciVd.trim() || undefined,
-          adres: aliciAdres.trim() || undefined,
-          il: aliciIl.trim() || undefined,
-          ilce: aliciIlce.trim() || undefined,
-          eposta: aliciEposta.trim() || undefined,
-        },
-        satirlar,
-        iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
-        dovizKuru: dovizliMi && dovizKuru ? { kur: Number(dovizKuru), tarih } : undefined,
-      });
-
-      setTaslakSonuc(cevap);
-      setTaslakOnayAcik(false);
-      setAlertInfo({
-        type: "success",
-        message: `e-Arsiv faturasi gonderildi (${cevap.belgeNo}). Giden kutusundan durumunu izleyebilirsiniz.`,
-      });
-    } catch (err: any) {
-      setAlertInfo({ type: "danger", message: err?.message || "e-Arsiv gonderilemedi." });
-    } finally {
-      setTaslakGonderiliyor(false);
-    }
-  };
-
-  const taslakVerilebilir = Boolean(
-    sonuc && dogrulamaGuncel && sonuc.semaGecerli && sonuc.schematronGecerli && !taslakSonuc && !dogrulaniyor
-      && !turBelirsiz && !mukellefSorgulaniyor
-  );
 
   return (
     <div className="ebelge-dogrula-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle="E- Belge Doğrulama"
         pageIcon={<IconFileCheck size={22} className="text-primary" />}
-        onSave={() => void hazirlaVeOnayla(earsivMi ? "earsiv" : "taslak")}
+        onSave={() => void islemYap(earsivMi ? "earsiv" : "taslak")}
         onNew={() => {
           setBelgeNo("");
           setSatirlar([{ ...BOS_SATIR }]);
-          setSonuc(null);
           setAlertInfo(null);
         }}
         onPrint={() => window.print()}
@@ -604,9 +489,9 @@ const EBelgeDogrulaPage: React.FC = () => {
 
       <Alert variant="info" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
         <IconShieldCheck size={15} className="me-1" />
-        <strong>Doğrula</strong> işlemi belge göndermez. Sonraki onay adımında e-Fatura taslağı
-        oluşturulabilir veya <strong>gerçek e-Arşiv faturası gönderilebilir</strong>.
-        e-Arşiv gönderimi şu anda TRY cinsinden, pozitif KDV oranlı SATIS belgeleriyle sınırlıdır.
+        <strong>Gönder</strong> düğmesi ara onay sormadan <strong>gerçek faturayı keser</strong>; fatura geri alınamaz.
+        Taslaklara Kaydet GİB'e göndermez. e-Arşiv gönderimi şu anda TRY cinsinden, pozitif KDV oranlı
+        SATIS belgeleriyle sınırlıdır.
       </Alert>
 
       {alertInfo && (
@@ -816,7 +701,6 @@ const EBelgeDogrulaPage: React.FC = () => {
             setAliciEposta((cari.eposta || "").trim());
             setAliciAdres((cari.adres || "").trim());
             setIceAdresler([]);
-            setSonuc(null); setDogrulananGirdi(""); setTaslakOnayAcik(false);
             setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
           }} />
             );
@@ -1093,24 +977,24 @@ const EBelgeDogrulaPage: React.FC = () => {
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => void hazirlaVeOnayla("taslak")}
+                onClick={() => void islemYap("taslak")}
                 disabled={dogrulaniyor || taslakGonderiliyor}
                 className="d-flex align-items-center gap-1"
                 title="Belgeyi doğrular ve entegratörde taslak olarak kaydeder (GİB'e gitmez)"
               >
-                {dogrulaniyor && islem === "taslak" ? <Spinner animation="border" size="sm" /> : <IconDeviceFloppy size={16} />}
+                {(dogrulaniyor || taslakGonderiliyor) && islem === "taslak" ? <Spinner animation="border" size="sm" /> : <IconDeviceFloppy size={16} />}
                 Taslaklara Kaydet
               </Button>
             )}
             <Button
               size="sm"
               variant="success"
-              onClick={() => void hazirlaVeOnayla(earsivMi ? "earsiv" : "gonder")}
+              onClick={() => void islemYap(earsivMi ? "earsiv" : "gonder")}
               disabled={dogrulaniyor || taslakGonderiliyor}
               className="d-flex align-items-center gap-1"
               title={earsivMi ? "Belgeyi doğrular ve e-Arşiv faturası olarak gönderir" : "Belgeyi doğrular ve GİB'e gönderir"}
             >
-              {dogrulaniyor && islem !== "taslak" ? <Spinner animation="border" size="sm" /> : <IconSend size={16} />}
+              {(dogrulaniyor || taslakGonderiliyor) && islem !== "taslak" ? <Spinner animation="border" size="sm" /> : <IconSend size={16} />}
               {earsivMi ? "e-Arşiv Gönder" : "Gönder"}
             </Button>
             <Button
@@ -1139,202 +1023,6 @@ const EBelgeDogrulaPage: React.FC = () => {
           Bu numara için mükellef sorgusu sonuçlanmadı; <strong>e-Fatura mı e-Arşiv mi olduğu belirlenmedi</strong>.
           Sorgu tamamlanmadan gönderim yapılamaz — <strong>Mükellef Sorgula</strong> ile tekrar deneyin.
         </Alert>
-      )}
-      {sonuc && !dogrulamaGuncel && <Alert variant="warning">Belge bilgileri değişti. Göndermeden önce yeniden doğrulayınız.</Alert>}
-      {sonuc && dogrulamaGuncel && (
-        <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden">
-          <Card.Body className="p-3 bg-body">
-            <div className="fw-semibold mb-2" style={{ fontSize: "13px" }}>
-              Doğrulama Sonucu
-            </div>
-
-            <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
-              <span className="d-flex align-items-center gap-1 small">
-                {sonuc.semaGecerli ? (
-                  <IconCircleCheck size={17} style={{ color: "#22c55e" }} />
-                ) : (
-                  <IconCircleX size={17} style={{ color: "#dc2626" }} />
-                )}
-                Şema (XSD)
-              </span>
-              <span className="d-flex align-items-center gap-1 small">
-                {sonuc.schematronGecerli ? (
-                  <IconCircleCheck size={17} style={{ color: "#22c55e" }} />
-                ) : (
-                  <IconCircleX size={17} style={{ color: "#dc2626" }} />
-                )}
-                Schematron (GİB kuralları)
-              </span>
-              <Badge bg="secondary-subtle" text="secondary" className="font-monospace">
-                ETTN: {sonuc.uuid.slice(0, 8)}…
-              </Badge>
-              <span className="ms-auto fw-semibold small">
-                Ödenecek: {ebelgeTutar(sonuc.ozet.odenecekTutar, paraBirimi)}
-              </span>
-            </div>
-
-            {sonuc.mesaj && (
-              <Alert
-                variant={sonuc.semaGecerli && sonuc.schematronGecerli ? "info" : "danger"}
-                className="py-2 px-3 mb-3 border rounded shadow-2xs small"
-              >
-                {sonuc.mesaj}
-              </Alert>
-            )}
-
-            {taslakVerilebilir && (
-              <div className="border rounded-2 p-3 mb-3 shadow-2xs">
-                {!taslakOnayAcik ? (
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <span className="small text-secondary">
-                      {earsivMi
-                        ? "Belge doğrulamadan geçti. e-Arşiv faturası olarak gönderebilirsiniz."
-                        : "Belge doğrulamadan geçti. Taslak oluşturabilir (GİB'e gitmez, iptal edilebilir) ya da doğrudan GİB'e gönderebilirsiniz."}
-                    </span>
-                    <div className="d-flex gap-2">
-                      {earsivMi ? (
-                        <Button
-                          size="sm"
-                          variant="outline-danger"
-                          onClick={() => {
-                            setIslem("earsiv");
-                            setTaslakOnayAcik(true);
-                          }}
-                          className="d-flex align-items-center gap-1"
-                        >
-                          <IconFileDots size={15} />
-                          e-Arşiv Gönder
-                        </Button>
-                      ) : (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline-primary"
-                            onClick={() => {
-                              setIslem("taslak");
-                              setTaslakOnayAcik(true);
-                            }}
-                            className="d-flex align-items-center gap-1"
-                          >
-                            <IconFileDots size={15} />
-                            Taslaklara Kaydet
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline-danger"
-                            onClick={() => {
-                              setIslem("gonder");
-                              setTaslakOnayAcik(true);
-                            }}
-                            className="d-flex align-items-center gap-1"
-                          >
-                            <IconSend size={15} />
-                            GİB'e Gönder
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <Alert
-                      variant={islem === "taslak" ? "warning" : "danger"}
-                      className="py-2 px-3 mb-2 border rounded shadow-2xs small"
-                    >
-                      <IconAlertTriangle size={15} className="me-1" />
-                      {islem === "taslak" ? (
-                        <>
-                          Belge entegratörde <strong>taslak</strong> olarak oluşturulacak.
-                          <strong> GİB'e gönderilmeyecek.</strong> Bu adımda fatura numarası (
-                          {belgeNo.toUpperCase()}) kullanılmış sayılır ve aynı numara ikinci kez
-                          kullanılamaz.
-                        </>
-                      ) : (
-                        <>
-                          <strong>
-                            {islem === "earsiv" ? "e-Arşiv faturası kesilecek." : "Fatura GİB'e gönderilecek."}
-                          </strong>{" "}
-                          Bu gerçek bir faturadır ve <strong>geri alınamaz</strong>
-                          {islem === "earsiv"
-                            ? " — yalnızca iptal bildirimi gönderilebilir."
-                            : " — düzeltme için alıcının red cevabı ya da iade faturası gerekir."}
-                          <br />
-                          Alıcı: <strong>{aliciUnvan || `${aliciAd} ${aliciSoyad}`.trim()}</strong> (
-                          {aliciVkn}) · Belge No: <strong>{belgeNo.toUpperCase()}</strong> · Tutar:{" "}
-                          <strong>{ebelgeTutar(sonuc.ozet.odenecekTutar, paraBirimi)}</strong>
-                        </>
-                      )}
-                    </Alert>
-                    <div className="d-flex gap-2">
-                      <Button
-                        size="sm"
-                        variant={islem === "taslak" ? "primary" : "danger"}
-                        onClick={
-                          islem === "earsiv"
-                            ? earsivGonder
-                            : islem === "gonder"
-                              ? faturaGonder
-                              : taslakOlustur
-                        }
-                        disabled={taslakGonderiliyor}
-                        className="d-flex align-items-center gap-1"
-                      >
-                        {taslakGonderiliyor ? <Spinner animation="border" size="sm" /> : null}
-                        {islem === "earsiv"
-                          ? "Evet, e-Arşiv faturasını gönder"
-                          : islem === "gonder"
-                            ? "Evet, faturayı GİB'e gönder"
-                            : "Evet, taslaklara kaydet"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setTaslakOnayAcik(false)}
-                        disabled={taslakGonderiliyor}
-                      >
-                        Vazgeç
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {taslakSonuc && (
-              <Alert variant="success" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
-                {earsivMi ? "e-Arşiv faturası gönderildi" : islem === "gonder" ? "Fatura GİB'e gönderildi" : "Taslaklara kaydedildi"} —{" "}
-                <strong>{taslakSonuc.belgeNo}</strong>
-                {taslakSonuc.ettn ? ` · ETTN: ${taslakSonuc.ettn}` : ""}.
-                {earsivMi
-                  ? " Giden kutusundan raporlanma durumunu izleyebilirsiniz."
-                  : islem === "gonder"
-                    ? " Giden kutusundan durumunu izleyebilirsiniz."
-                    : " Belge GİB'e gönderilmedi; Taslaklara Git ile gönderebilir veya iptal edebilirsiniz."}
-                {!earsivMi && islem !== "gonder" && (
-                  <Button size="sm" variant="link" className="p-0 ms-2 align-baseline" onClick={() => navigate("/e-belge/giden?durum=TASLAK")}>Taslaklara Git</Button>
-                )}
-              </Alert>
-            )}
-
-            {sonuc.html && (
-              <>
-                <div className="fw-semibold mb-2" style={{ fontSize: "13px" }}>
-                  Önizleme
-                </div>
-                <div className="border rounded-2 overflow-hidden" style={{ height: "55vh" }}>
-                  {/* Üçüncü tarafın ürettiği HTML — sandbox boş, allow-same-origin yok (§11.1 S5) */}
-                  <iframe
-                    title="Belge önizleme"
-                    srcDoc={sonuc.html}
-                    sandbox=""
-                    referrerPolicy="no-referrer"
-                    style={{ width: "100%", height: "100%", border: "none" }}
-                  />
-                </div>
-              </>
-            )}
-          </Card.Body>
-        </Card>
       )}
     </div>
   );

@@ -65,6 +65,7 @@ import {
   sendEarsiv,
   sendEarsivIptal,
   type EmailBelgeTuru,
+  type IceGoruntu,
 } from "./ice/ice.earsiv.js";
 import {
   UblFaturaGirdi,
@@ -2399,12 +2400,12 @@ export class EbelgeService {
     };
   }
 
-  /** Kesilmiş e-Arşiv faturasının PDF görüntüsü */
+  /** Kesilmiş e-Arşiv faturasının görüntüsü (ICE PDF ya da HTML döndürebilir) */
   public static async earsivPdf(
     uuid: string,
     kullanici: string,
     dbContext?: DbContext
-  ): Promise<Buffer> {
+  ): Promise<IceGoruntu> {
     const kayit = await EbelgeSqlRepository.getGiden(uuid, dbContext);
     if (!kayit) throw ApiError.notFound("Giden belge kaydı bulunamadı.");
 
@@ -2412,7 +2413,7 @@ export class EbelgeService {
       throw ApiError.badRequest("PDF yalnızca gönderimi kesinleşmiş e-Arşiv belgelerinde alınabilir.");
     }
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
-    const pdf = await previewInvoice(config, {
+    const goruntu = await previewInvoice(config, {
       vknTckn: kayit.ALICI_VKN || kayit.aliciVkn || "",
       faturaNo: kayit.belgeNo,
       duzenlenmeTarihi: kayit.DUZENLEME_TARIHI ? new Date(kayit.DUZENLEME_TARIHI) : new Date(),
@@ -2423,16 +2424,16 @@ export class EbelgeService {
       {
         metod: "preview_invoice",
         yon: "GIDEN",
-        basarili: pdf.length > 0,
+        basarili: goruntu.veri.length > 0,
         kullanici,
         ilgiliUuid: uuid,
-        cevapOzet: `${pdf.length} bayt`,
+        cevapOzet: `${goruntu.tur} · ${goruntu.veri.length} bayt`,
       },
       dbContext
     );
 
-    if (!pdf.length) throw ApiError.notFound("Belgenin PDF çıktısı alınamadı.");
-    return pdf;
+    if (!goruntu.veri.length) throw ApiError.notFound("Belgenin görüntüsü alınamadı.");
+    return goruntu;
   }
 
   /**
