@@ -43,8 +43,10 @@ const AYAR_MILYEM_MAP: Record<string, number> = {
   "24 AYAR": 1000,
   "22": 916,
   "22 AYAR": 916,
-  "22 FANTAZI": 916,
-  "22 FANTAZİ": 916,
+  "22 FANTAZI": 956,
+  "22 FANTAZİ": 956,
+  "22 AYAR FANTAZI": 956,
+  "22 AYAR FANTAZİ": 956,
   "18": 750,
   "18 AYAR": 750,
   "14": 585,
@@ -242,24 +244,37 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
   const getMilyemFromAyar = useCallback((ayarStr: string): number => {
     if (!ayarStr || !ayarStr.trim()) return 916;
-    const normalized = (ayarStr || "").trim().toUpperCase();
+    const raw = ayarStr.toUpperCase().trim();
+    const normalized = raw
+      .replace(/İ/g, "I")
+      .replace(/Ş/g, "S")
+      .replace(/Ğ/g, "G")
+      .replace(/Ü/g, "U")
+      .replace(/Ö/g, "O")
+      .replace(/Ç/g, "C");
 
-    // 1. Check database loaded Ayar list (TODVZ_AYAR)
+    // 1. "22 FANTAZI" / "FANTAZI" milyem = 0.95600 (Standart 22 ayar 0.91600)
+    if (normalized.includes("FANTAZI") || raw.includes("FANTAZİ")) {
+      return 956;
+    }
+
+    // 2. Static map check
+    if (AYAR_MILYEM_MAP[raw] || AYAR_MILYEM_MAP[normalized]) {
+      return AYAR_MILYEM_MAP[raw] || AYAR_MILYEM_MAP[normalized];
+    }
+
+    // 3. Database loaded Ayar list (TODVZ_AYAR)
     const foundInDb = ayarList.find(
       (a) =>
-        a.ayarKodu.toUpperCase().trim() === normalized ||
-        a.ayarAdi.toUpperCase().trim() === normalized ||
-        `${a.ayarKodu} AYAR`.toUpperCase().trim() === normalized ||
-        `${a.standartAyar} AYAR`.toUpperCase().trim() === normalized
+        a.ayarKodu.toUpperCase().trim() === raw ||
+        a.ayarAdi.toUpperCase().trim() === raw ||
+        `${a.ayarKodu} AYAR`.toUpperCase().trim() === raw ||
+        `${a.standartAyar} AYAR`.toUpperCase().trim() === raw
     );
     if (foundInDb && foundInDb.milyem > 0) {
       return Math.round(foundInDb.milyem * 1000);
     }
 
-    // 2. Static map fallback
-    if (AYAR_MILYEM_MAP[normalized]) {
-      return AYAR_MILYEM_MAP[normalized];
-    }
     const parsed = parseFloat(normalized.replace(/,/g, "."));
     if (!isNaN(parsed) && parsed > 0) {
       if (parsed <= 24) {
@@ -358,16 +373,16 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       curMaliyetBirim: string,
       curSatisIscilik: number | string,
       curKurRef: "alis" | "satis",
+      curSatisKariYuzde?: number | string,
       overrides?: RateOverrides
     ) => {
       const activeMaliyetPara = overrides?.maliyetPara || maliyetParaKodu;
       const activeSatisPara = overrides?.satisPara || satisParaKodu;
       const mMiktar = parseNum(curMiktar);
       const mMaliyetIscilik = parseNum(curMaliyetIscilik);
-      const mSatisIscilik = parseNum(curSatisIscilik);
       const milyem = getMilyemFromAyar(curAyar);
 
-      // 1. Miktar Has Karşılığı (Ürün Has) = Miktar * (Ayar Milyemi) (Tam 5 Hane)
+      // 1. Miktar Has Karşılığı (Ürün Has) = Miktar * (Ayar Milyemi) (Tam 5 Hane, kilitli)
       const calcHasNum = mMiktar > 0 ? mMiktar * (milyem / 1000) : 0;
       setHasGram(calcHasNum > 0 ? format5(calcHasNum) : "");
 
@@ -382,23 +397,12 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       const calcMaliyetIscilikHas = convertToHas(rawMaliyetIscilikNum, curMaliyetIscilikPara, curKurRef, overrides);
       setMaliyetIscilikTutari(calcMaliyetIscilikHas > 0 ? format5(calcMaliyetIscilikHas) : "");
 
-      // 3. Satış İşçilik Has Karşılığı (Gram ise Miktar * İşçilik, Adet ise İşçilik)
-      const rawSatisIscilikNum =
-        mSatisIscilik > 0
-          ? curMaliyetBirim === "Gram"
-            ? mSatisIscilik * (mMiktar > 0 ? mMiktar : 1)
-            : mSatisIscilik
-          : 0;
-
-      const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, curMaliyetIscilikPara, curKurRef, overrides);
-      setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : "");
-
-      // 4. Toplam Has (Maliyet) = Miktar Has Karşılığı + Maliyet İşçilik Has Karşılığı (Tam 5 hane)
+      // 3. Toplam Has (Maliyet) = Miktar Has Karşılığı + Maliyet İşçilik Has Karşılığı (Tam 5 hane, kilitli)
       const calcToplamHasNum = calcHasNum + calcMaliyetIscilikHas;
       const formattedToplamHas = calcToplamHasNum > 0 ? format5(calcToplamHasNum) : "";
       setToplamHas(formattedToplamHas);
 
-      // 5. Sol Blok - Maliyet
+      // 4. Sol Blok - Maliyet (HAS & USD/Döviz) (kilitli)
       if (calcToplamHasNum > 0) {
         setMaliyet(formattedToplamHas);
         setMaliyetDoviz(format2(convertFromHas(calcToplamHasNum, activeMaliyetPara, curKurRef, overrides)));
@@ -407,77 +411,121 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         setMaliyetDoviz("");
       }
 
-      // 6. Sol Blok - Satış Fiyatı = Miktar Has Karşılığı + Satış İşçilik Has Karşılığı
-      const calcSatisHasNum = calcHasNum + calcSatisIscilikHas;
-      if (calcSatisHasNum > 0) {
+      // 5. Sol Blok - Satış Kârı % ve Satış Fiyatı (HAS)
+      const effectiveKarYuzde = curSatisKariYuzde !== undefined ? curSatisKariYuzde : satisKariYuzde;
+      const mKarYuzde = parseNum(effectiveKarYuzde);
+
+      if (calcToplamHasNum > 0) {
+        // Satış Fiyatı (HAS) = Maliyet HAS * (1 + (Satış Kârı % / 100))
+        const calcSatisHasNum = calcToplamHasNum * (1 + (mKarYuzde / 100));
         setSatisFiyati(format5(calcSatisHasNum));
         setSatisDoviz(format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)));
 
-        // 7. Satış Kârı % (Salt okunur bilgi): ((Satış Fiyatı HAS - Maliyet HAS) / Maliyet HAS) * 100
-        if (calcToplamHasNum > 0) {
-          const derivedKar = ((calcSatisHasNum - calcToplamHasNum) / calcToplamHasNum) * 100;
-          setSatisKariYuzde(derivedKar.toFixed(2));
-        } else {
-          setSatisKariYuzde("");
-        }
+        // Satış İşçilik Tutarı (Sağ Blok) = Satış Fiyatı HAS - Miktar Has Karşılığı
+        const calcSatisIscilikHas = Math.max(0, calcSatisHasNum - calcHasNum);
+        setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : "");
+
+        // Birim Satış İşçilik
+        const unitSatisIscilik =
+          curMaliyetBirim === "Gram" && mMiktar > 0
+            ? convertFromHas(calcSatisIscilikHas, curMaliyetIscilikPara, curKurRef, overrides) / mMiktar
+            : convertFromHas(calcSatisIscilikHas, curMaliyetIscilikPara, curKurRef, overrides);
+        setSatisIscilik(unitSatisIscilik > 0 ? format2(unitSatisIscilik) : "");
       } else {
         setSatisFiyati("");
         setSatisDoviz("");
-        setSatisKariYuzde("");
+        setSatisIscilikTutari("");
+        setSatisIscilik("");
       }
     },
-    [convertToHas, convertFromHas, getMilyemFromAyar, maliyetParaKodu, satisParaKodu]
+    [convertToHas, convertFromHas, getMilyemFromAyar, maliyetParaKodu, satisParaKodu, satisKariYuzde]
   );
 
   const handleAyarChange = (newAyar: string) => {
     setAyar(newAyar);
-    recalculateAll(miktar, newAyar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
+    recalculateAll(miktar, newAyar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde);
   };
 
   const handleMiktarChange = (val: string) => {
     setMiktar(val);
-    recalculateAll(val, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
+    recalculateAll(val, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde);
   };
 
   const handleMaliyetIscilikChange = (val: string) => {
     setMaliyetIscilik(val);
-    recalculateAll(miktar, ayar, val, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
+    recalculateAll(miktar, ayar, val, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde);
+  };
+
+  const handleSatisKariYuzdeChange = (val: string) => {
+    setSatisKariYuzde(val);
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, val);
   };
 
   const handleSatisIscilikChange = (val: string) => {
     setSatisIscilik(val);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, val, kurRef);
+    const mVal = parseNum(val);
+    const mMiktar = parseNum(miktar);
+    const milyem = getMilyemFromAyar(ayar);
+    const calcHasNum = mMiktar > 0 ? mMiktar * (milyem / 1000) : 0;
+    const mMaliyetIscilik = parseNum(maliyetIscilik);
+    const rawMaliyetIscilikNum =
+      mMaliyetIscilik > 0
+        ? maliyetIscilikBirim === "Gram"
+          ? mMaliyetIscilik * (mMiktar > 0 ? mMiktar : 1)
+          : mMaliyetIscilik
+        : 0;
+    const calcMaliyetIscilikHas = convertToHas(rawMaliyetIscilikNum, maliyetIscilikParaKodu, kurRef);
+    const calcToplamHasNum = calcHasNum + calcMaliyetIscilikHas;
+
+    const rawSatisIscilikNum =
+      mVal > 0
+        ? maliyetIscilikBirim === "Gram"
+          ? mVal * (mMiktar > 0 ? mMiktar : 1)
+          : mVal
+        : 0;
+    const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, maliyetIscilikParaKodu, kurRef);
+    setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : "");
+
+    const calcSatisHasNum = calcHasNum + calcSatisIscilikHas;
+    if (calcSatisHasNum > 0) {
+      setSatisFiyati(format5(calcSatisHasNum));
+      setSatisDoviz(format2(convertFromHas(calcSatisHasNum, satisParaKodu, kurRef)));
+      if (calcToplamHasNum > 0) {
+        const derivedKar = ((calcSatisHasNum - calcToplamHasNum) / calcToplamHasNum) * 100;
+        setSatisKariYuzde(derivedKar.toFixed(2));
+      }
+    }
   };
 
   const handleMaliyetBirimChange = (newBirim: string) => {
     setMaliyetIscilikBirim(newBirim);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, newBirim, satisIscilik, kurRef);
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, newBirim, satisIscilik, kurRef, satisKariYuzde);
   };
 
   // ─── Kur Referansı & Alt Bant Handlers ─────────────────────────────────────
   const handleKurRefChange = (newRef: "alis" | "satis") => {
     setKurRef(newRef);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, newRef);
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, newRef, satisKariYuzde);
   };
 
   const handleHasKuru1Change = (val: string) => {
     setHasKuru1(val);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru1: val });
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { hasKuru1: val });
   };
 
   const handleHasKuru2Change = (val: string) => {
     setHasKuru2(val);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru2: val });
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { hasKuru2: val });
   };
 
   const handleUsdKuru1Change = (val: string) => {
     setUsdKuru1(val);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru1: val });
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { usdKuru1: val });
   };
 
   const handleUsdKuru2Change = (val: string) => {
     setUsdKuru2(val);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru2: val });
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { usdKuru2: val });
   };
 
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
@@ -550,27 +598,27 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [isDuzeltmeMode, altinList, location.pathname, location.search]);
 
-  // ─── F1 / F2 / F3 Klavye Kısayolları ──────────────────────────────────────────────
+  // ─── F1 Klavye Kısayolu ──────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "F1") {
         e.preventDefault();
         handleSave();
-      } else if (e.key === "F2") {
+      } else if (isDuzeltmeMode && e.key === "F2") {
         e.preventDefault();
         if (altinUrunId) {
           setShowDeleteConfirm(true);
         } else {
           showNotif("warning", "Silinecek kayıt bulunmamaktadır.");
         }
-      } else if (e.key === "F3" || e.key === "F4") {
+      } else if (isDuzeltmeMode && (e.key === "F3" || e.key === "F4")) {
         e.preventDefault();
         setShowLookup(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [altinUrunId, grupKodu, urunNo, ayar, miktar, maliyet, satisFiyati]);
+  }, [altinUrunId, grupKodu, urunNo, ayar, miktar, maliyet, satisFiyati, isDuzeltmeMode]);
 
   // ─── Grup Seçimi & Sıradaki Numarayı Alma (3 Haneli) ─────────────────────────
   const handleGrupSec = async (secilenKod: string) => {
@@ -633,7 +681,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     setSatisFiyati("");
     setSatisDoviz("");
     setSatisParaKodu("USD");
-    setSatisKariYuzde("");
+    setSatisKariYuzde(100);
     setResim(null);
     setResimler([]);
     setSeciliResimIndex(0);
@@ -908,11 +956,21 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       // Listeyi tazele
       const updated = await EtiketService.getAltinUrunler({ limit: 500 });
       setAltinList(updated);
+      return saved;
     } catch (err: any) {
       const errorMsg = extractApiErrorMessage(err, "Altın ürün kaydedilirken bir hata oluştu.");
       showNotif("danger", errorMsg);
+      return null;
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // ─── Kaydet ve Yazdır ───────────────────────────────────────────────────────
+  const handleSaveAndPrint = async () => {
+    const saved = await handleSave();
+    if (saved) {
+      setShowPrintModal(true);
     }
   };
 
@@ -1458,10 +1516,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                       <InputGroup size="sm" style={{ maxWidth: "135px" }}>
                         <Form.Control
                           type="text"
-                          readOnly
+                          inputMode="decimal"
                           value={satisKariYuzde !== "" ? `${satisKariYuzde}` : ""}
-                          className="font-monospace text-end fw-bold text-success bg-light"
-                          title="Satış Kârı % = ((Satış Fiyatı HAS - Maliyet HAS) / Maliyet HAS) * 100"
+                          onChange={(e) => handleSatisKariYuzdeChange(cleanInputStr(e.target.value))}
+                          className="font-monospace text-end fw-bold text-success bg-white"
+                          title="Satış Kârı %: Kâr oranını serbestçe girebilirsiniz (Örn: 20, 35, 50). Satış fiyatı otomatik güncellenir."
                         />
                         <InputGroup.Text className="bg-light">%</InputGroup.Text>
                       </InputGroup>
@@ -1860,25 +1919,38 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Sağ Kısım: Bilgi amaçlı F1 / F2 ve Vazgeç Butonu */}
-            <div className="d-flex align-items-center gap-3">
-              <div className="d-flex align-items-center gap-2 text-muted" style={{ fontSize: "11px" }}>
-                <span className="badge bg-light text-secondary border font-monospace">F1</span>
-                <span className="fw-semibold">Kaydet</span>
-                <span className="text-muted opacity-50">|</span>
-                <span className="badge bg-light text-secondary border font-monospace">F2</span>
-                <span className="fw-semibold">Sil</span>
-                <span className="text-muted opacity-50">|</span>
-                <span className="badge bg-light text-secondary border font-monospace">F3</span>
-                <span className="fw-semibold">Kayıt Ara</span>
-              </div>
+            {/* Sağ Kısım: [F1 Kaydet], [Kaydet / Yazdır], [Vazgeç] Butonları */}
+            <div className="d-flex align-items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                className="px-3 py-1 fw-bold d-flex align-items-center gap-1.5 shadow-sm"
+                onClick={handleSave}
+                disabled={isSaving}
+                title="Ürünü Kaydet (F1)"
+              >
+                <span className="badge bg-white text-primary font-monospace" style={{ fontSize: "10px" }}>F1</span>
+                <span>Kaydet</span>
+              </Button>
+
+              <Button
+                variant="success"
+                size="sm"
+                className="px-3 py-1 fw-bold d-flex align-items-center gap-1.5 shadow-sm"
+                onClick={handleSaveAndPrint}
+                disabled={isSaving}
+                title="Ürünü Kaydet ve Barkod Etiketi Yazdır"
+              >
+                <IconPrinter size={15} />
+                <span>Kaydet / Yazdır</span>
+              </Button>
 
               <Button
                 variant="outline-secondary"
                 size="sm"
-                className="px-2.5 py-0.5"
-                style={{ fontSize: "12px" }}
+                className="px-3 py-1 fw-semibold"
                 onClick={handleNew}
+                disabled={isSaving}
               >
                 Vazgeç
               </Button>
@@ -2242,34 +2314,34 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
               ? it.efektifAlis
               : (it.dovizAlis || it.efektifSatis || it.dovizSatis || 0);
             setHasKuru1(chosen);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru1: chosen });
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { hasKuru1: chosen });
           } else if (showKurLookup === "hasSatis") {
             const chosen = (it.efektifSatis !== undefined && it.efektifSatis !== null && Number(it.efektifSatis) > 0)
               ? it.efektifSatis
               : (it.dovizSatis || it.efektifAlis || it.dovizAlis || 0);
             setHasKuru2(chosen);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru2: chosen });
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { hasKuru2: chosen });
           } else if (showKurLookup === "usdAlis") {
             const chosen = (it.efektifAlis !== undefined && it.efektifAlis !== null && Number(it.efektifAlis) > 0)
               ? it.efektifAlis
               : (it.dovizAlis || it.efektifSatis || it.dovizSatis || 0);
             setUsdKuru1(chosen);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru1: chosen });
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { usdKuru1: chosen });
           } else if (showKurLookup === "usdSatis") {
             const chosen = (it.efektifSatis !== undefined && it.efektifSatis !== null && Number(it.efektifSatis) > 0)
               ? it.efektifSatis
               : (it.dovizSatis || it.efektifAlis || it.dovizAlis || 0);
             setUsdKuru2(chosen);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru2: chosen });
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { usdKuru2: chosen });
           } else if (showKurLookup === "maliyet") {
             setMaliyetParaKodu(kod);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { maliyetPara: kod });
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { maliyetPara: kod });
           } else if (showKurLookup === "satis") {
             setSatisParaKodu(kod);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { satisPara: kod });
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde, { satisPara: kod });
           } else if (showKurLookup === "iscilik") {
             setMaliyetIscilikParaKodu(kod);
-            recalculateAll(miktar, ayar, maliyetIscilik, kod, maliyetIscilikBirim, satisIscilik, kurRef);
+            recalculateAll(miktar, ayar, maliyetIscilik, kod, maliyetIscilikBirim, satisIscilik, kurRef, satisKariYuzde);
           }
           setShowKurLookup(null);
         }}
