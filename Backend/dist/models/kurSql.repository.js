@@ -377,24 +377,40 @@ export class KurSqlRepository {
                 rReq.input("PARITE", sql.Float, parite);
                 try {
                     await rReq.query(`
-            MERGE [dbo].[TODVZ_KUR] AS target
-            USING (SELECT @KUR_TABLOSU_ID AS KUR_TABLOSU_ID, @PARA_ID AS PARA_ID) AS source
-            ON (target.[KUR_TABLOSU_ID] = source.[KUR_TABLOSU_ID] AND target.[PARA_ID] = source.[PARA_ID])
-            WHEN MATCHED THEN
-                UPDATE SET 
-                    [DOVIZ_ALIS] = @DOVIZ_ALIS,
-                    [DOVIZ_SATIS] = @DOVIZ_SATIS,
-                    [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
-                    [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
-                    [PARITE] = @PARITE
-            WHEN NOT MATCHED THEN
-                INSERT ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
+            UPDATE [dbo].[TODVZ_KUR]
+            SET 
+                [DOVIZ_ALIS] = @DOVIZ_ALIS,
+                [DOVIZ_SATIS] = @DOVIZ_SATIS,
+                [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
+                [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
+                [PARITE] = @PARITE
+            WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
+
+            IF @@ROWCOUNT = 0
+            BEGIN
+                INSERT INTO [dbo].[TODVZ_KUR] ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
                 VALUES (@KUR_TABLOSU_ID, @PARA_ID, @DOVIZ_ALIS, @DOVIZ_SATIS, @EFEKTIF_ALIS, @EFEKTIF_SATIS, @PARITE);
+            END
           `);
                 }
                 catch (itemErr) {
-                    console.error(`KUR SATIR DETAYLI HATA (PARA_ID: ${s.paraId}):`, itemErr?.message || itemErr, itemErr);
-                    logger.error(`TODVZ_KUR row save error for PARA_ID ${s.paraId}:`, itemErr?.message || itemErr);
+                    // If insert fails due to trigger/duplicate key, fallback to direct UPDATE
+                    try {
+                        await rReq.query(`
+              UPDATE [dbo].[TODVZ_KUR]
+              SET 
+                  [DOVIZ_ALIS] = @DOVIZ_ALIS,
+                  [DOVIZ_SATIS] = @DOVIZ_SATIS,
+                  [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
+                  [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
+                  [PARITE] = @PARITE
+              WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
+            `);
+                    }
+                    catch (fallbackErr) {
+                        console.error(`KUR SATIR DETAYLI HATA (PARA_ID: ${s.paraId}):`, fallbackErr?.message || fallbackErr);
+                        logger.error(`TODVZ_KUR row save error for PARA_ID ${s.paraId}:`, fallbackErr?.message || fallbackErr);
+                    }
                 }
             }
         }
