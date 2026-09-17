@@ -103,22 +103,21 @@ export const raporBicimle = (v: any, bicim?: RaporBicim): string => {
 export const raporSayisalMi = (b?: RaporBicim) => b === "sayi" || b === "sayi4" || b === "kur" || b === "tam";
 
 /**
- * Menü ve route için rapor kodu ↔ URL parçası eşlemesi. Menü iki kademeli (yönetici kararı 17.09.2026):
- * G- Raporlar → A- Cari, B- Kasa … → A-, B-, C- raporlar. Harfler sıradan üretilir (DashboardRoute). Bkz. docs/raporlar-faz2.md.
+ * Rapor kodu ↔ URL parçası eşlemesi ve menüdeki yeri. Menü yeri eski programın rapor klasörleriyle aynıdır (yönetici kararı 17.09.2026):
+ *  - cari / kasa / vezne / yonetici klasörlerindeki raporlar kendi işlem menülerinde (D- Cari, B- Kasa, A- Vezne, E- Yönetici) durur;
+ *    o menüde aynı adlı madde zaten varsa madde bu rapora bağlanır (src/routes/DashboardRoute.tsx).
+ *  - G- Raporlar altında yalnızca "raporlar" klasöründekiler + açılır "MASAK" grubu bulunur.
+ *  - "gizli": menüde gösterilmez (aynı işi yapan ekran menüde zaten var); adresle açılır.
  */
-export type RaporGrubu = "cari" | "kasa" | "vezne" | "fis" | "masak" | "yonetici";
-export const RAPOR_GRUPLARI: { grup: RaporGrubu; ad: string }[] = [
-  { grup: "cari", ad: "Cari Raporları" }, { grup: "kasa", ad: "Kasa Raporları" }, { grup: "vezne", ad: "Vezne Raporları" },
-  { grup: "fis", ad: "Fiş Raporları" }, { grup: "masak", ad: "MASAK Raporları" }, { grup: "yonetici", ad: "Yönetici Raporları" },
-];
+export type RaporGrubu = "cari" | "kasa" | "vezne" | "yonetici" | "raporlar" | "masak" | "gizli";
 export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrubu }[] = [
   { kod: "CARBAK1", yol: "cari-bakiye", ad: "Cari Bakiye Raporu", grup: "cari" },
   { kod: "CAREKS1", yol: "cari-ekstre", ad: "Cari Ekstre", grup: "cari" },
-  { kod: "CARHAR1", yol: "cari-hareket-listesi", ad: "Cari Hareket Listesi", grup: "cari" },
-  { kod: "CARKRT1", yol: "cari-kart-listesi", ad: "Cari Kart Listesi", grup: "cari" },
+  { kod: "CARHAR1", yol: "cari-hareket-listesi", ad: "Cari Hareket Listesi", grup: "gizli" },
+  { kod: "CARKRT1", yol: "cari-kart-listesi", ad: "Cari Kart Listesi", grup: "gizli" },
   { kod: "VEZBAK1", yol: "vezne-bakiye", ad: "Vezne Bakiye Raporu (Tarih Bazlı)", grup: "vezne" },
   { kod: "VEZHAR1", yol: "vezne-hareket-listesi", ad: "Vezne Hareket Listesi", grup: "vezne" },
-  { kod: "VERKOM1", yol: "vergiler-komisyon", ad: "Vergiler ve Komisyon", grup: "fis" },
+  { kod: "VERKOM1", yol: "vergiler-komisyon", ad: "Vergiler ve Komisyon", grup: "raporlar" },
   { kod: "KARZAR1", yol: "kar-zarar", ad: "Kâr / Zarar Faaliyet Analizi", grup: "yonetici" },
   { kod: "FIRVAR1", yol: "firma-varliklari", ad: "Firma Varlıkları Raporu", grup: "yonetici" },
   { kod: "KASDEF1", yol: "kasa-defteri", ad: "Kasa Defteri", grup: "kasa" },
@@ -129,14 +128,14 @@ export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrub
   { kod: "KURKON1", yol: "kur-sapma", ad: "Kur Sapma Raporu", grup: "vezne" },
   { kod: "POSEKS1", yol: "pos-ekstre", ad: "POS Ekstre", grup: "cari" },
   { kod: "VADISL1", yol: "vadeli-islem-listesi", ad: "Vadeli İşlem Listesi", grup: "cari" },
-  { kod: "FISLIS1", yol: "fis-listeleme", ad: "Fiş Listeleme", grup: "fis" },
-  { kod: "GUNFIS1", yol: "gunluk-fis-detay", ad: "Günlük Fiş Detay Raporu", grup: "fis" },
-  { kod: "ISTRAP1", yol: "istatistik-raporu", ad: "İstatistik Raporu", grup: "fis" },
-  { kod: "ISTKMV1", yol: "istatistik-kmv", ad: "İstatistik Bazında KMV Raporu", grup: "fis" },
-  { kod: "VERNUM1", yol: "vergi-numarasi-raporu", ad: "Vergi Numarası Raporu", grup: "fis" },
-  { kod: "KARLIL1", yol: "karlilik", ad: "Kârlılık Raporu", grup: "yonetici" },
-  { kod: "ALTISC1", yol: "altin-iscilik", ad: "Altın İşçilik Raporu", grup: "fis" },
-  { kod: "PERDEG1", yol: "personel-degerlendirme", ad: "Personel Değerlendirme Raporu", grup: "yonetici" },
+  { kod: "FISLIS1", yol: "fis-listeleme", ad: "Fiş Listeleme", grup: "raporlar" },
+  { kod: "GUNFIS1", yol: "gunluk-fis-detay", ad: "Günlük Fiş Detay Raporu", grup: "raporlar" },
+  { kod: "ISTRAP1", yol: "istatistik-raporu", ad: "İstatistik Raporu", grup: "raporlar" },
+  { kod: "ISTKMV1", yol: "istatistik-kmv", ad: "İstatistik Bazında KMV Raporu", grup: "raporlar" },
+  { kod: "VERNUM1", yol: "vergi-numarasi-raporu", ad: "Vergi Numarası Raporu", grup: "raporlar" },
+  { kod: "KARLIL1", yol: "karlilik", ad: "Kârlılık Raporu", grup: "raporlar" },
+  { kod: "ALTISC1", yol: "altin-iscilik", ad: "Altın İşçilik Raporu", grup: "raporlar" },
+  { kod: "PERDEG1", yol: "personel-degerlendirme", ad: "Personel Değerlendirme Raporu", grup: "raporlar" },
   { kod: "MSKMES1", yol: "masak-meslek", ad: "Meslek Bazında İşlem Listesi", grup: "masak" },
   { kod: "MSKSEK1", yol: "masak-sektor", ad: "Sektör Bazında İşlem Listesi", grup: "masak" },
   { kod: "MSKYAS1", yol: "masak-yas", ad: "Yaş Bazında İşlem Listesi", grup: "masak" },
@@ -149,7 +148,12 @@ export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrub
   { kod: "KURKON2", yol: "kur-kontrolu", ad: "Kur Kontrolü", grup: "vezne" },
 ];
 const HARF = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-/** Sol menü için iki kademeli yapı: boş gruplar atlanır, harfler görünen sıraya göre verilir */
-export const raporMenuAgaci = () => RAPOR_GRUPLARI
-  .map(g => ({ ...g, raporlar: RAPOR_MENU.filter(m => m.grup === g.grup) })).filter(g => g.raporlar.length)
-  .map((g, gi) => ({ baslik: `${HARF[gi]}- ${g.ad}`, raporlar: g.raporlar.map((m, mi) => ({ ad: `${HARF[mi]}- ${m.ad}`, link: `raporlar/${m.yol}` })) }));
+/** Bir rapor kodunun menü linki ("raporlar/<yol>") */
+export const raporLinki = (kod: string) => `raporlar/${RAPOR_MENU.find(m => m.kod === kod)?.yol ?? ""}`;
+/** G- Raporlar menüsü: "raporlar" klasöründekiler ada göre harflenir, sonda açılır MASAK grubu */
+export const raporlarMenusu = () => {
+  const sirala = (grup: RaporGrubu) => RAPOR_MENU.filter(m => m.grup === grup).sort((a, b) => a.ad.localeCompare(b.ad, "tr"));
+  const duz = sirala("raporlar").map((m, i) => ({ ad: `${HARF[i]}- ${m.ad}`, link: `raporlar/${m.yol}` }));
+  const masak = sirala("masak").map((m, i) => ({ ad: `${HARF[i]}- ${m.ad}`, link: `raporlar/${m.yol}` }));
+  return { raporlar: duz, masakBaslik: `${HARF[duz.length]}- MASAK`, masak };
+};
