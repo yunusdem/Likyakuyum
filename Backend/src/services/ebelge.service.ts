@@ -16,6 +16,7 @@ import {
   getInvoicePdf,
   getInvoiceStatusDetail,
   getInvoices,
+  getMusteriCariAdresleri,
   getSonBelgeId,
   getUserListEFatura,
   gonderimSatirlari,
@@ -85,6 +86,18 @@ import {
 } from "./ice/ice.types.js";
 
 registerSessionShutdown();
+
+/** ICE'de kayıtlı cariden gelen, ekranda seçtirilen alıcı adresi */
+export interface EbelgeAliciAdres {
+  adresAdi: string;
+  adres: string;
+  il: string;
+  ilce: string;
+  ulke: string;
+  postaKodu: string;
+  eposta: string;
+  telefon: string;
+}
 
 /**
  * Süreç içi kilit: aynı belgeye eşzamanlı kabul/red isteklerini engeller.
@@ -583,6 +596,60 @@ export class EbelgeService {
       kullanicilar: sonuc.kullanicilar,
       mesaj: sonuc.mesaj,
     };
+  }
+
+  /**
+   * Alıcının ICE portalında kayıtlı adreslerini döndürür (doğrulama ekranında seçtirilir).
+   * Mükellef sorgusundan AYRI tutulur: adres bulunamaması belge türü kararını etkilemez.
+   */
+  public static async aliciAdresleri(
+    vknTckn: string,
+    kullanici: string,
+    dbContext?: DbContext
+  ): Promise<{ adresler: EbelgeAliciAdres[] }> {
+    const vkn = vknTckn.trim();
+    if (!/^\d{10}$|^\d{11}$/.test(vkn)) {
+      throw ApiError.badRequest("VKN 10, TCKN 11 haneli rakam olmalıdır.");
+    }
+
+    const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+    const sonuc = await getMusteriCariAdresleri(config, vkn);
+
+    await EbelgeSqlRepository.writeLog(
+      {
+        metod: "Get_Musteri_Cari_List",
+        yon: "GIDEN",
+        basarili: sonuc.basarili,
+        kullanici,
+        istekOzet: `vkn=${vkn}`,
+        cevapOzet: sonuc.basarili ? `${sonuc.adresler.length} adres` : sonuc.mesaj.slice(0, 200),
+      },
+      dbContext
+    );
+    if (!sonuc.basarili) {
+      throw ApiError.unprocessable(sonuc.mesaj || "ICE cari adres sorgusu başarısız.");
+    }
+
+    const m = (v: unknown) => String(v ?? "").trim();
+    const adresler = sonuc.adresler
+      .map((a) => ({
+        adresAdi: m(a.AdresAdi),
+        adres: [
+          m(a.MahalleCadde),
+          m(a.BinaAdi),
+          m(a.BinaNo) && `No:${m(a.BinaNo)}`,
+          m(a.DaireNo) && `D:${m(a.DaireNo)}`,
+        ].filter(Boolean).join(" "),
+        il: m(a.Sehir),
+        ilce: m(a.Ilce),
+        ulke: m(a.Ulke),
+        postaKodu: m(a.PostaKodu),
+        eposta: m(a.Eposta),
+        telefon: m(a.Telefon),
+      }))
+      .filter((a) => a.adres || a.il || a.ilce);
+
+    return { adresler };
   }
 
   /**

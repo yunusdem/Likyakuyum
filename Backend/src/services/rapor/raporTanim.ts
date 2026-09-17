@@ -20,7 +20,12 @@ export type RaporParametreTipi =
   | "cariCoklu"      // cariIdler: seçilen CARI_KART_ID listesi (boş = tümü) — aralık yerine seçim (yönetici kararı 14.09.2026)
   | "vezneCoklu"     // vezneIdler: seçilen VEZNE_ID listesi (boş = tümü)
   | "hareketTipi"    // cari hareket tipi (0 nakit … 5 devir / tümü)
+  | "secim"          // tek seçim; seçenekler tanımdaki `secenekler` listesinden (sıralama, durum …) — .rpt'lerdeki "Ad / Para adı" sıralama parametresi
+  | "sayi"           // sayısal değer (eşik, sapma %, adet)
+  | "listeCoklu"     // dürbünden çoklu seçim; liste `kaynak` ile /rapor/secim/:kaynak ucundan gelir (hesap, istatistik, meslek, sektor, kullanici, banka)
   | "metin";         // serbest arama
+
+export type RaporSecimKaynagi = "hesap" | "istatistik" | "meslek" | "sektor" | "kullanici" | "banka";
 
 export interface RaporParametre {
   ad: string;                 // sorgu parametresi adı (ör. "vezneId")
@@ -29,6 +34,12 @@ export interface RaporParametre {
   zorunlu?: boolean;
   /** Varsayılan: "bugun", "-30g" (30 gün önce), sabit değer */
   varsayilan?: string | number | null;
+  /** tip "secim": seçenek listesi (ilk seçenek boş değerliyse "tümü" anlamına gelir) */
+  secenekler?: { deger: string; ad: string }[];
+  /** tip "listeCoklu": liste kaynağı ve dürbün başlığında kullanılan tekil ad ("hesap", "istatistik") */
+  kaynak?: RaporSecimKaynagi;
+  /** Alan altındaki kısa açıklama */
+  not?: string;
 }
 
 export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam";
@@ -58,7 +69,11 @@ export interface RaporTanim {
   /** Grup anahtarı (satır alanı) ve grup başlığı biçimi: "{{vezneAd}} ({{vezneKod}})" */
   grup?: { anahtar: string; baslik: string; altToplam?: boolean;
     /** Grup başlığının altında ikinci satır (Cari Ekstre: adres · telefon · VKN) — {{alan}} yer tutucuları */
-    altBaslik?: string };
+    altBaslik?: string;
+    /** false → genel toplam basılmaz (gruplar farklı para birimlerindeyse toplamın anlamı yoktur: kasa defteri, hesap ekstresi) */
+    genelToplam?: boolean };
+  /** Rapor sonunda ikinci küçük tablo (Crystal alt raporlarının karşılığı: "GENEL TOPLAM — para bazında", meslek özeti). Satırlar veriyle (`ozetSatirlar`) gelir. */
+  ozet?: { baslik: string; kolonlar: RaporKolon[] };
   /** PDF altına basılan yöntem/uyarı notu (kâr-zarar: ağırlıklı ortalama açıklaması) */
   dipnot?: string;
   /** Satır üst sınırı (varsayılan 5000) */
@@ -69,6 +84,8 @@ export interface RaporFirma { ad: string; vkn: string }
 
 export interface RaporSonucVeri {
   satirlar: Record<string, any>[];
+  /** `tanim.ozet` bölümünün satırları (yoksa bölüm basılmaz) */
+  ozetSatirlar?: Record<string, any>[];
   /** Filtre özeti (PDF başlığı altına): "01.09.2026 – 12.09.2026 · Vezne: 01 · Para: USD" */
   filtreOzeti: string;
   /** Sorguya göre eklenen ek dipnot (ör. kullanılan kur tablosu) */

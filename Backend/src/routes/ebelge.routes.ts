@@ -56,6 +56,7 @@ router.post("/gelen/:uuid/statu", EbelgeController.gelenStatuIsle);
 router.post("/giden/dogrula", EbelgeController.dogrulaGidenBelge);
 router.get("/giden/son-belge-no", EbelgeController.getSonBelgeNo);
 router.get("/mukellef", EbelgeController.mukellefSorgula);
+router.get("/alici-adres", EbelgeController.aliciAdresleri);
 router.get("/giden", EbelgeController.listGiden);
 
 // Taslak oluşturma / iptal — ICE'de kayıt oluşturur ama GİB'e GİTMEZ.

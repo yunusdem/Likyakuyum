@@ -7,7 +7,7 @@ import { ProductDefinitionService, type ProductItem } from "../../services/produ
 import { CariService, type CariKartItem } from "../../services/cariService";
 import {
   RAPOR_MENU, RaporService, raporBicimle, raporSayisalMi,
-  type RaporParametre, type RaporParametreDegerleri, type RaporTanim, type RaporVeri,
+  type RaporParametre, type RaporParametreDegerleri, type RaporSecimKaydi, type RaporSecimKaynagi, type RaporTanim, type RaporVeri,
 } from "../../services/raporService";
 import { DurbunAlan, type SecimKolon } from "./RaporSecim";
 
@@ -31,12 +31,25 @@ const HAREKET_TIPLERI: { kod: string; ad: string }[] = [
   { kod: "0", ad: "Nakit" }, { kod: "1", ad: "Banka / Havale" }, { kod: "2", ad: "POS / Kredi Kartı" }, { kod: "3", ad: "Dekont" }, { kod: "4", ad: "Virman" }, { kod: "5", ad: "Devir" },
 ];
 
+/** Tarih aralığı anahtarları: ad "baslangic" → baslangic/bitis (ana aralık); başka ad (ör. "vade") → vadeBaslangic/vadeBitis (ikinci aralık) */
+const aralikAnahtarlari = (p: RaporParametre): [string, string] => p.ad === "baslangic" ? ["baslangic", "bitis"] : [`${p.ad}Baslangic`, `${p.ad}Bitis`];
+const KAYNAK_ADI: Record<RaporSecimKaynagi, string> = { hesap: "hesap", istatistik: "istatistik", meslek: "meslek", sektor: "sektör", kullanici: "personel", banka: "banka hesabı" };
+const secimKolonlar: SecimKolon<RaporSecimKaydi>[] = [
+  { baslik: "Kod", genislik: "140px", deger: k => <span className="font-monospace fw-bold">{k.kod}</span> },
+  { baslik: "Ad / açıklama", deger: k => k.ad },
+];
+const secimArama = (k: RaporSecimKaydi) => [k.kod, k.ad];
+
 /** Tanımdaki parametrelerden başlangıç değerleri (tarihAralik → baslangic+bitis, saatAralik → baslangicSaat+bitisSaat, kurSecimi → kurTuru+kurTarihi+kurAlani) */
 function baslangicDegerleri(parametreler: RaporParametre[]): RaporParametreDegerleri {
   const d: RaporParametreDegerleri = {};
   for (const p of parametreler) {
     switch (p.tip) {
-      case "tarihAralik": d.baslangic = varsayilanDeger(p.varsayilan ?? "bugun"); d.bitis = gun(0); break;
+      case "tarihAralik": { const [b, s] = aralikAnahtarlari(p);
+        // varsayilan "" → aralık boş başlar (isteğe bağlı ikinci aralık: vade)
+        d[b] = p.varsayilan === "" ? "" : varsayilanDeger(p.varsayilan ?? "bugun"); d[s] = p.varsayilan === "" ? "" : gun(0); break; }
+      case "listeCoklu": d[p.ad] = ""; break;
+      case "secim": d[p.ad] = varsayilanDeger(p.varsayilan ?? p.secenekler?.[0]?.deger ?? ""); break;
       case "saatAralik": d.baslangicSaat = "00:00"; d.bitisSaat = "23:59"; break;
       case "kurSecimi": d.kurTuru = 0; d.kurTarihi = gun(0); d.kurAlani = "alis"; break;
       case "cariAralik": d.cariBaslangic = ""; d.cariBitis = ""; break;
@@ -85,6 +98,8 @@ export const RaporPage: React.FC = () => {
   const [vezneler, setVezneler] = useState<VezneItem[]>([]);
   const [paralar, setParalar] = useState<ProductItem[]>([]);
   const [cariler, setCariler] = useState<CariKartItem[]>([]);
+  /** listeCoklu parametrelerinin dürbün listeleri (kaynak → kayıtlar); rapor API'sinden gelir */
+  const [listeler, setListeler] = useState<Partial<Record<RaporSecimKaynagi, RaporSecimKaydi[]>>>({});
   const [listeYukleniyor, setListeYukleniyor] = useState(false);
   /** Uygula'dan sonra parametre alanı arkada (kapalı) kalır, rapor tam genişlikte gelir (yönetici isteği 14.09.2026) */
   const [parametreAcik, setParametreAcik] = useState(true);
@@ -104,6 +119,8 @@ export const RaporPage: React.FC = () => {
       if (tipler.has("vezne") || tipler.has("vezneAralik") || tipler.has("vezneCoklu")) isler.push(CashDeskService.getVezneler().then(v => setVezneler([...v].sort((a, b) => a.kod.localeCompare(b.kod)))).catch(() => setVezneler([])));
       if (tipler.has("para") || tipler.has("paraCoklu")) isler.push(ProductDefinitionService.getProducts().then(p => setParalar([...p].sort((a, b) => (a.siraNo ?? 99) - (b.siraNo ?? 99) || a.kod.localeCompare(b.kod)))).catch(() => setParalar([])));
       if (tipler.has("cari") || tipler.has("cariAralik") || tipler.has("cariCoklu")) isler.push(CariService.getCariKartlar().then(c => setCariler([...c].sort((a, b) => a.kod.localeCompare(b.kod)))).catch(() => setCariler([])));
+      for (const kaynak of new Set(t.parametreler.filter(p => p.tip === "listeCoklu" && p.kaynak).map(p => p.kaynak!)))
+        isler.push(RaporService.secimListesi(kaynak).then(l => setListeler(o => ({ ...o, [kaynak]: l }))).catch(() => setListeler(o => ({ ...o, [kaynak]: [] }))));
       Promise.all(isler).finally(() => setListeYukleniyor(false));
     }).catch(e => setHata(e?.message || "Rapor tanımı alınamadı."));
   }, [kod]);
@@ -112,15 +129,17 @@ export const RaporPage: React.FC = () => {
     if (!tanim) return null;
     for (const p of tanim.parametreler) {
       if (!p.zorunlu) continue;
-      if (p.tip === "tarihAralik" && (!degerler.baslangic || !degerler.bitis)) return "Tarih aralığı zorunludur.";
+      if (p.tip === "tarihAralik") { const [b, s] = aralikAnahtarlari(p); if (!degerler[b] || !degerler[s]) return `${p.ad === "baslangic" ? "Tarih aralığı" : p.etiket} zorunludur.`; continue; }
       if (p.tip === "cariAralik" && !degerler.cariBaslangic && !degerler.cariBitis) return "Cari aralığı için başlangıç veya bitiş cari seçin.";
       if (p.tip === "vezneAralik" && !degerler.vezneBaslangic && !degerler.vezneBitis) return "Vezne aralığı için başlangıç veya bitiş vezne seçin.";
       if (p.tip === "paraCoklu" && !degerler.paraIdler) return "En az bir para seçin.";
       if (p.tip === "cariCoklu" && !degerler.cariIdler && !degerler.cariSonId) return "En az bir cari seçin.";
       if (p.tip === "vezneCoklu" && !degerler.vezneIdler) return "En az bir vezne seçin.";
-      if (!["tarihAralik", "saatAralik", "kurSecimi", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu"].includes(p.tip) && !degerler[p.ad]) return `${p.etiket} zorunludur.`;
+      if (!["saatAralik", "kurSecimi", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu"].includes(p.tip) && !degerler[p.ad]) return `${p.etiket} zorunludur.`;
     }
-    if (degerler.baslangic && degerler.bitis && String(degerler.baslangic) > String(degerler.bitis)) return "Başlangıç tarihi bitişten sonra olamaz.";
+    for (const p of tanim.parametreler) if (p.tip === "tarihAralik") { const [b, s] = aralikAnahtarlari(p);
+      if (degerler[b] && degerler[s] && String(degerler[b]) > String(degerler[s])) return "Başlangıç tarihi bitişten sonra olamaz.";
+      if (!p.zorunlu && (!!degerler[b]) !== (!!degerler[s])) return `${p.etiket}: ilk ve son tarih birlikte girilmelidir.`; }
     if (degerler.cariBaslangic && degerler.cariBitis && String(degerler.cariBaslangic) > String(degerler.cariBitis)) return "Başlangıç cari kodu bitişten büyük olamaz.";
     if (degerler.vezneBaslangic && degerler.vezneBitis && String(degerler.vezneBaslangic) > String(degerler.vezneBitis)) return "Başlangıç vezne kodu bitişten büyük olamaz.";
     return null;
@@ -236,7 +255,14 @@ export const RaporPage: React.FC = () => {
     const etiket = <>{p.etiket}{zorunluIsareti(p)}</>;
     switch (p.tip) {
       case "tarih": return satir(p.ad, etiket, tarihKutu(p.ad));
-      case "tarihAralik": return ciftSatir("tarihAralik", [<>İlk tarih{zorunluIsareti(p)}</>, tarihKutu("baslangic")], ["Son tarih", tarihKutu("bitis")]);
+      case "tarihAralik": { const [b, s] = aralikAnahtarlari(p); const ana = p.ad === "baslangic" && p.etiket === "Tarih aralığı";
+        return ciftSatir(`tarihAralik-${p.ad}`, [<>{ana ? "İlk tarih" : `${p.etiket} — ilk`}{zorunluIsareti(p)}</>, tarihKutu(b), p.not], [ana ? "Son tarih" : `${p.etiket} — son`, tarihKutu(s)]); }
+      case "secim": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
+        {(p.secenekler || []).map(o => <option key={o.deger} value={o.deger}>{o.ad}</option>)}</Form.Select>, p.not);
+      case "sayi": return satir(p.ad, etiket, <Form.Control size="sm" type="number" min={0} step="any" inputMode="decimal" style={{ maxWidth: 200 }} value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not);
+      case "listeCoklu": return p.kaynak
+        ? coklu<RaporSecimKaydi>(p, KAYNAK_ADI[p.kaynak], p.ad, listeler[p.kaynak] || [], secimKolonlar, secimArama, "Kod veya adla arayın…")
+        : null;
       case "saatAralik": return [satir("baslangicSaat", "İlk saat", saatKutu("baslangicSaat", "00:00")), satir("bitisSaat", "Son saat", saatKutu("bitisSaat", "23:59"))];
       case "vezne": return satir(p.ad, etiket, <DurbunAlan<VezneItem> value={vezneAd(degerler[p.ad]) || ""} saltOkunur onChange={() => undefined} placeholder="Tüm vezneler" title="Vezne seçimi" items={vezneler} yukleniyor={listeYukleniyor}
           kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} aramaYerTutucu="Vezne kodu veya adıyla arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />,
@@ -279,7 +305,7 @@ export const RaporPage: React.FC = () => {
       case "paraCoklu": return coklu<ProductItem>(p, "para", "paraIdler", paralar, paraKolonlar, paraArama, "Para kodu veya adıyla arayın…");
       case "kmt": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} title="Kur / Miktar / TL gösterimi: yalnızca seçilen gruptaki kolonlar listelenir">
         <option value="">Kur + Miktar + TL</option><option value="K">Kur</option><option value="M">Miktar</option><option value="T">TL</option></Form.Select>);
-      default: return satir(p.ad, etiket, <Form.Control size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />);
+      default: return satir(p.ad, etiket, <Form.Control size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not);
     }
   };
 
@@ -302,7 +328,7 @@ export const RaporPage: React.FC = () => {
         if (g.altToplam !== false && toplamli) cikti.push({ tur: "araToplam", satir: toplam(uyeler), etiket: `Ara toplam (${uyeler.length})` });
       }
     } else for (const s of veri.satirlar) cikti.push({ tur: "satir", satir: s });
-    if (toplamli && veri.satirlar.length) cikti.push({ tur: "toplam", satir: toplam(veri.satirlar), etiket: `GENEL TOPLAM (${veri.satirlar.length})` });
+    if (toplamli && veri.satirlar.length && tanim.grup?.genelToplam !== false) cikti.push({ tur: "toplam", satir: toplam(veri.satirlar), etiket: `GENEL TOPLAM (${veri.satirlar.length})` });
     return cikti;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [veri, tanim, kolonlar]);
@@ -399,6 +425,20 @@ export const RaporPage: React.FC = () => {
                   </tbody>
                 </Table>
               </div>
+              {/* Özet bölümü: alt rapor karşılığı ikinci tablo (PDF ve Excel'de de basılır) */}
+              {veri?.tanim.ozet && !!veri.ozetSatirlar?.length && (() => { const oz = veri.tanim.ozet!; const ozS = veri.ozetSatirlar!;
+                const hizala = (k: typeof oz.kolonlar[number]) => k.hiza === "center" ? "text-center" : raporSayisalMi(k.bicim) || k.hiza === "right" ? "text-end text-nowrap" : "";
+                return <div className="border-top">
+                  <div className="px-3 py-2 fw-bold small bg-light">{oz.baslik}</div>
+                  <div className="table-responsive"><Table size="sm" className="mb-0 align-middle" style={{ fontSize: "0.82rem" }}>
+                    <thead className="table-light"><tr>{oz.kolonlar.map(k => <th key={k.anahtar} className={hizala(k)}>{k.baslik}</th>)}</tr></thead>
+                    <tbody>
+                      {ozS.map((s, i) => <tr key={i}>{oz.kolonlar.map(k => <td key={k.anahtar} className={hizala(k)}>{raporBicimle(s[k.anahtar], k.bicim)}</td>)}</tr>)}
+                      {oz.kolonlar.some(k => k.toplam) && <tr className="table-primary fw-bold">{oz.kolonlar.map((k, ki) => <td key={k.anahtar} className={hizala(k)}>
+                        {k.toplam ? raporBicimle(ozS.reduce((a, r) => a + (Number(r[k.anahtar]) || 0), 0), k.bicim) : ki === 0 ? "TOPLAM" : ""}</td>)}</tr>}
+                    </tbody>
+                  </Table></div>
+                </div>; })()}
               {(tanim?.dipnot || veri?.ekDipnot) && <div className="px-3 py-2 small text-muted border-top" style={{ whiteSpace: "pre-wrap" }}>{[tanim?.dipnot, veri?.ekDipnot].filter(Boolean).join("\n")}</div>}
             </Card.Body>
           </Card>

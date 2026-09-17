@@ -2,6 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { BelgeSqlRepository, type DbContext } from "./belgeSql.repository.js";
+import type { RaporSecimKaynagi } from "../services/rapor/raporTanim.js";
 
 /**
  * Rapor modülü veri erişimi. Şablon meta'sı `TODVZ_BELGE_SABLON` (TUR='RAPOR') tablosunda;
@@ -17,6 +18,32 @@ export const RAPOR_SEED: { kod: string; ad: string; kagit: string }[] = [
   { kod: "VERKOM1", ad: "Vergiler ve Komisyon", kagit: "A4-yatay" },
   { kod: "KARZAR1", ad: "Kâr / Zarar Faaliyet Analizi", kagit: "A4-yatay" },
   { kod: "FIRVAR1", ad: "Firma Varlıkları Raporu", kagit: "A4" },
+  { kod: "KASDEF1", ad: "Kasa Defteri", kagit: "A4" },
+  { kod: "KASHAR1", ad: "Kasa Hareket Listesi", kagit: "A4-yatay" },
+  { kod: "HESEKS1", ad: "Hesap Ekstresi", kagit: "A4" },
+  { kod: "HESBAK1", ad: "Hesap Bakiye Raporu", kagit: "A4" },
+  { kod: "VEZANL1", ad: "Vezne Bakiye Raporu (Anlık)", kagit: "A4" },
+  { kod: "KURKON1", ad: "Kur Sapma Raporu", kagit: "A4-yatay" },
+  { kod: "POSEKS1", ad: "POS Ekstre", kagit: "A4-yatay" },
+  { kod: "VADISL1", ad: "Vadeli İşlem Listesi", kagit: "A4-yatay" },
+  { kod: "FISLIS1", ad: "Fiş Listeleme", kagit: "A4-yatay" },
+  { kod: "GUNFIS1", ad: "Günlük Fiş Detay Raporu", kagit: "A4-yatay" },
+  { kod: "ISTRAP1", ad: "İstatistik Raporu", kagit: "A4-yatay" },
+  { kod: "ISTKMV1", ad: "İstatistik Bazında KMV Raporu", kagit: "A4" },
+  { kod: "VERNUM1", ad: "Vergi Numarası Raporu", kagit: "A4-yatay" },
+  { kod: "KARLIL1", ad: "Kârlılık Raporu", kagit: "A4-yatay" },
+  { kod: "ALTISC1", ad: "Altın İşçilik Raporu", kagit: "A4-yatay" },
+  { kod: "PERDEG1", ad: "Personel Değerlendirme Raporu", kagit: "A4-yatay" },
+  { kod: "MSKMES1", ad: "Meslek Bazında İşlem Listesi", kagit: "A4-yatay" },
+  { kod: "MSKSEK1", ad: "Sektör Bazında İşlem Listesi", kagit: "A4-yatay" },
+  { kod: "MSKYAS1", ad: "Yaş Bazında İşlem Listesi", kagit: "A4-yatay" },
+  { kod: "MSKYUK1", ad: "Yüksek Tutarda İşlem Listesi", kagit: "A4-yatay" },
+  { kod: "MSKSUP1", ad: "Şüpheli İşlem Listesi", kagit: "A4-yatay" },
+  { kod: "MSKKON1", ad: "Şüpheli İşlemler Fiş Kontrol Listesi", kagit: "A4-yatay" },
+  { kod: "FIRSON1", ad: "Firma Son Durum Raporu", kagit: "A4-yatay" },
+  { kod: "LONSHO1", ad: "Long / Short Denge Analizi", kagit: "A4-yatay" },
+  { kod: "KNSKLOG1", ad: "KNSK Sorgulama Log Listesi", kagit: "A4-yatay" },
+  { kod: "KURKON2", ad: "Kur Kontrolü", kagit: "A4-yatay" },
 ];
 
 export interface RaporArama { aramaId: number; raporKod: string; ozet: string; parametreler: Record<string, any>; zaman: string }
@@ -103,6 +130,24 @@ export class RaporSqlRepository {
     const res = await pool.request().input("k", sql.NVarChar(100), kullanici).input("r", sql.VarChar(20), raporKod).input("id", sql.Int, aramaId ?? null)
       .query(`DELETE FROM dbo.TODVZ_RAPOR_ARAMA WHERE KULLANICI=@k AND RAPOR_KOD=@r AND (@id IS NULL OR ARAMA_ID=@id); SELECT @@ROWCOUNT adet;`);
     return Number(res.recordset[0]?.adet || 0);
+  }
+
+  /**
+   * Dürbün seçim listeleri — rapor modülü başka modüllerin servislerine bağlanmasın diye kendi SELECT'ini yapar.
+   * meslek / sektör: TODVZ_TABLO_MADDESI TUR 9 / 8 (bkz. cariSql.repository). Dönüş: { id, kod, ad }.
+   */
+  static async secimListesi(kaynak: RaporSecimKaynagi, ctx?: DbContext): Promise<{ id: number; kod: string; ad: string }[]> {
+    const pool = await this.pool(ctx);
+    const SORGU: Record<RaporSecimKaynagi, string> = {
+      hesap: `SELECT HESAP_ID id, RTRIM(ISNULL(KOD,'')) kod, RTRIM(ISNULL(AD,'')) ad FROM dbo.TODVZ_HESAP ORDER BY KOD`,
+      istatistik: `SELECT ISTATISTIK_ID id, RTRIM(ISNULL(KOD,'')) kod, RTRIM(ISNULL(ACIKLAMA,'')) ad FROM dbo.TODVZ_ISTATISTIK ORDER BY KOD`,
+      meslek: `SELECT TABLO_MADDESI_ID id, RTRIM(ISNULL(KOD,'')) kod, RTRIM(ISNULL(AD,'')) ad FROM dbo.TODVZ_TABLO_MADDESI WHERE TUR=9 ORDER BY AD`,
+      sektor: `SELECT TABLO_MADDESI_ID id, RTRIM(ISNULL(KOD,'')) kod, RTRIM(ISNULL(AD,'')) ad FROM dbo.TODVZ_TABLO_MADDESI WHERE TUR=8 ORDER BY AD`,
+      kullanici: `SELECT KULLANICI_ID id, CAST(KULLANICI_ID AS varchar(12)) kod, RTRIM(ISNULL(AD,'')) ad FROM dbo.TODVZ_KULLANICI ORDER BY AD`,
+      banka: `SELECT BANKA_ID id, RTRIM(ISNULL(HESAP_NO,'')) kod, RTRIM(ISNULL(HESAP_ADI,'')) ad FROM dbo.TODVZ_BANKA ORDER BY HESAP_ADI`,
+    };
+    const res = await pool.request().query(SORGU[kaynak]);
+    return res.recordset.map((r: any) => ({ id: Number(r.id), kod: String(r.kod ?? "").trim(), ad: String(r.ad ?? "").trim() }));
   }
 
   static async sablonlar(ctx?: DbContext) {

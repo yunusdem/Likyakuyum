@@ -1,0 +1,135 @@
+{
+  "kod": "ALTISC1",
+  "ad": "Altın İşçilik Raporu",
+  "aciklama": "Genel sarraf fişlerindeki işçilik: ürün bazında adet, gram, işçilik has gramı ve TL karşılığı.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Ürün (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.5,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Fiş no",
+      "g": 1.6
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 2.8,
+      "pdf": false
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "adet",
+      "baslik": "Adet",
+      "g": 0.9,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar (gr)",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "milyem",
+      "baslik": "Milyem",
+      "g": 1,
+      "bicim": "tam",
+      "pdf": false
+    },
+    {
+      "anahtar": "hasGram",
+      "baslik": "Has gram",
+      "g": 1.6,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "sekil",
+      "baslik": "İşçilik şekli",
+      "g": 1.5
+    },
+    {
+      "anahtar": "iscilikMiktari",
+      "baslik": "İşçilik (milyem)",
+      "g": 1.4,
+      "bicim": "tam"
+    },
+    {
+      "anahtar": "iscilikHasGram",
+      "baslik": "İşçilik has gr",
+      "g": 1.6,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "hasKuru",
+      "baslik": "Has kuru",
+      "g": 1.5,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "iscilikTutari",
+      "baslik": "İşçilik (TL)",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Satır tutarı",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "paraBaslik",
+    "baslik": "{{paraBaslik}}",
+    "altToplam": true
+  }
+}

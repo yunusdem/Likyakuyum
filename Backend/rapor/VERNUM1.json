@@ -1,0 +1,130 @@
+{
+  "kod": "VERNUM1",
+  "ad": "Vergi Numarası Raporu",
+  "aciklama": "Müşteri kimlik numarası (VKN / TCKN / pasaport) bazında işlem toplamları; para bazında miktar, TL tutarı ve USD karşılığı.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "arama",
+      "etiket": "Kimlik no / ünvan",
+      "tip": "metin",
+      "not": "Numaranın veya ünvanın bir parçası yazılabilir"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "kimlik",
+          "ad": "Kimlik numarası"
+        },
+        {
+          "deger": "unvan",
+          "ad": "Ünvan"
+        },
+        {
+          "deger": "tutar",
+          "ad": "Toplam tutar (büyükten küçüğe)"
+        }
+      ],
+      "varsayilan": "kimlik"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "adet",
+      "baslik": "Fiş adedi",
+      "g": 1.2,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "ortKur",
+      "baslik": "Ort. kur",
+      "g": 1.6,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "usdKarsiligi",
+      "baslik": "USD karşılığı",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "bmv",
+      "baslik": "BSMV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "grupAnahtar",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true
+  }
+}

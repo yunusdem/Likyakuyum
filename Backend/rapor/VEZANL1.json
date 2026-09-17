@@ -1,0 +1,90 @@
+{
+  "kod": "VEZANL1",
+  "ad": "Vezne Bakiye Raporu (Anlık)",
+  "aciklama": "Veznelerin şu anki para bazında bakiyesi (anlık bakiye tablosu); seçilen kurla TL karşılığı.",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "sira",
+          "ad": "Para sırası"
+        },
+        {
+          "deger": "ad",
+          "ad": "Para adı"
+        }
+      ],
+      "varsayilan": "sira"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1.2
+    },
+    {
+      "anahtar": "paraAd",
+      "baslik": "Para adı",
+      "g": 3.2
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.6,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tlKarsiligi",
+      "baslik": "TL karşılığı",
+      "g": 2.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kurSatis",
+      "baslik": "Satış kuru",
+      "g": 1.6,
+      "bicim": "kur",
+      "kosul": "kurIkisi"
+    },
+    {
+      "anahtar": "tlSatis",
+      "baslik": "TL (satış kuru)",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi"
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneBaslik",
+    "baslik": "{{vezneBaslik}}",
+    "altToplam": true
+  }
+}

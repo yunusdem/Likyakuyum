@@ -1,0 +1,144 @@
+{
+  "kod": "FISLIS1",
+  "ad": "Fiş Listeleme",
+  "aciklama": "Alış / satış fişleri, fiş başına tek satır; vezne bazında gruplu, komisyon ve vergi toplamlarıyla.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "istatistikIdler",
+      "etiket": "İstatistik kodu (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "istatistik"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 2.1,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 1.8
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 3.4
+    },
+    {
+      "anahtar": "kimlikNo",
+      "baslik": "VKN / TCKN",
+      "g": 1.6,
+      "pdf": false
+    },
+    {
+      "anahtar": "cariKod",
+      "baslik": "Cari",
+      "g": 1.1,
+      "pdf": false
+    },
+    {
+      "anahtar": "istatistikKod",
+      "baslik": "İst.",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paralar",
+      "baslik": "Paralar",
+      "g": 1.6
+    },
+    {
+      "anahtar": "satirSayisi",
+      "baslik": "Satır",
+      "g": 0.7,
+      "bicim": "tam",
+      "pdf": false
+    },
+    {
+      "anahtar": "toplamTutar",
+      "baslik": "Toplam tutar",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bmv",
+      "baslik": "BSMV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "odemeTutari",
+      "baslik": "Ödeme tutarı",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneBaslik",
+    "baslik": "{{vezneBaslik}}",
+    "altToplam": true
+  }
+}

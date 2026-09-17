@@ -1,0 +1,91 @@
+{
+  "kod": "HESBAK1",
+  "ad": "Hesap Bakiye Raporu",
+  "aciklama": "Kasa hesaplarının para bazında giriş, çıkış ve bakiyesi; seçilen kurla TL karşılığı.",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "hesapIdler",
+      "etiket": "Hesap (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "hesap"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "giris",
+      "baslik": "Giriş",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "cikis",
+      "baslik": "Çıkış",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "bakiye",
+      "baslik": "Bakiye",
+      "g": 2.1,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.5,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "tlKarsiligi",
+      "baslik": "TL karşılığı",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kurSatis",
+      "baslik": "Satış kuru",
+      "g": 1.6,
+      "bicim": "kur",
+      "kosul": "kurIkisi"
+    },
+    {
+      "anahtar": "tlSatis",
+      "baslik": "TL (satış kuru)",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi"
+    }
+  ],
+  "grup": {
+    "anahtar": "hesapBaslik",
+    "baslik": "{{hesapBaslik}}",
+    "altToplam": true
+  }
+}

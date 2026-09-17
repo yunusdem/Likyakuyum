@@ -283,6 +283,59 @@ export const getUserListEFatura = async (
   };
 };
 
+/** ICE portalındaki kayıtlı carinin adres satırı (Musteri_Cari_Adres) */
+export interface IceCariAdres {
+  AdresID?: number | string;
+  AdresAdi?: string;
+  Ulke?: string;
+  Sehir?: string;
+  Ilce?: string;
+  MahalleCadde?: string;
+  BinaAdi?: string;
+  BinaNo?: string;
+  DaireNo?: string;
+  PostaKodu?: string;
+  Eposta?: string;
+  Telefon?: string;
+}
+
+/**
+ * `Get_Musteri_Cari_List` — mükellefin ICE'de KAYITLI carilerini adresleriyle döndürür.
+ *
+ * GİB mükellef listesinde adres yoktur; adres yalnızca cari ICE portalında
+ * kayıtlıysa buradan gelir. Kayıt yoksa liste boş döner (hata değildir).
+ */
+export const getMusteriCariAdresleri = async (
+  config: IceConnectionConfig,
+  vknTckn: string
+): Promise<{ basarili: boolean; mesaj: string; adresler: IceCariAdres[] }> => {
+  const { data } = await callWithSession<any>(config, {
+    method: "Get_Musteri_Cari_List",
+    buildInnerXml: (loginHeaderXml) =>
+      `<Request>` +
+      loginHeaderXml +
+      `<VKNTCKN>${escapeXml(vknTckn)}</VKNTCKN>` +
+      `<OFFSET>0</OFFSET>` +
+      `<LIMIT>10</LIMIT>` +
+      `</Request>`,
+    timeoutMs: READ_TIMEOUT_MS,
+    authHatasindaTekrarla: true,
+  });
+
+  // VKNTCKN filtresi ICE tarafında "içerir" gibi davranabilir; tam eşleşeni süz.
+  // XML ayrıştırıcı numarayı sayıya çevirip baştaki sıfırı düşürebilir; sıfırsız karşılaştır.
+  const sade = (v: unknown) => String(v ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  const cariler = toArray<any>(data?.Musteri_Cari_List?.Musteri_Cari).filter(
+    (c) => sade(c?.VKNTCKN) === sade(vknTckn)
+  );
+
+  return {
+    basarili: String(data?.Success).toLowerCase() === "true",
+    mesaj: data?.ResponseMessage ? String(data.ResponseMessage) : "",
+    adresler: cariler.flatMap((c) => toArray<IceCariAdres>(c?.Adres_List?.Musteri_Cari_Adres)),
+  };
+};
+
 /* ==========================================================================
    Taslak gönderimi (Faz 6) — GİB'e GİTMEZ
    ========================================================================== */

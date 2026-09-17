@@ -1,0 +1,153 @@
+{
+  "kod": "KASHAR1",
+  "ad": "Kasa Hareket Listesi",
+  "aciklama": "Kasa hesap hareketleri; hesap, vezne, para ve giriş/çıkış filtresi; tarih, hesap veya paraya göre sıralı.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "hesapIdler",
+      "etiket": "Hesap (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "hesap"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "kasaTipi",
+      "etiket": "Hareket yönü",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "",
+          "ad": "Tümü"
+        },
+        {
+          "deger": "0",
+          "ad": "Giriş"
+        },
+        {
+          "deger": "1",
+          "ad": "Çıkış"
+        }
+      ],
+      "varsayilan": ""
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama / gruplama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "tarih",
+          "ad": "Tarih"
+        },
+        {
+          "deger": "hesap",
+          "ad": "Hesap"
+        },
+        {
+          "deger": "para",
+          "ad": "Para"
+        }
+      ],
+      "varsayilan": "tarih"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.5,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "hesapKod",
+      "baslik": "Hesap",
+      "g": 1.2
+    },
+    {
+      "anahtar": "hesapAd",
+      "baslik": "Hesap adı",
+      "g": 2.6
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 3.8
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Yön",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "giris",
+      "baslik": "Giriş",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "cikis",
+      "baslik": "Çıkış",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kdvOrani",
+      "baslik": "KDV %",
+      "g": 0.9,
+      "bicim": "sayi",
+      "pdf": false
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV (TL)",
+      "g": 1.3,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "kaydeden",
+      "baslik": "Kaydeden",
+      "g": 1.4,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "grupAnahtar",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true
+  }
+}

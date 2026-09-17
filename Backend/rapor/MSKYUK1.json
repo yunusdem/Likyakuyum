@@ -1,0 +1,122 @@
+{
+  "kod": "MSKYUK1",
+  "ad": "Yüksek Tutarda İşlem Listesi",
+  "aciklama": "Eşik tutarını aşan işlemler; fiş bazında veya aynı kimliğin günlük toplamı üzerinden.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "esik",
+      "etiket": "Eşik tutarı (TL)",
+      "tip": "sayi",
+      "not": "Boş bırakılırsa firma tanımındaki TL vergi sınırı kullanılır"
+    },
+    {
+      "ad": "birlestir",
+      "etiket": "Değerlendirme",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "fis",
+          "ad": "Fiş bazında"
+        },
+        {
+          "deger": "gunluk",
+          "ad": "Aynı kimliğin günlük toplamı"
+        }
+      ],
+      "varsayilan": "fis"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 2.1,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 1.8
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 3.4
+    },
+    {
+      "anahtar": "kimlikNo",
+      "baslik": "Kimlik no",
+      "g": 1.7
+    },
+    {
+      "anahtar": "meslek",
+      "baslik": "Meslek",
+      "g": 2,
+      "pdf": false
+    },
+    {
+      "anahtar": "paralar",
+      "baslik": "Paralar",
+      "g": 1.5
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "fisAdedi",
+      "baslik": "Fiş adedi",
+      "g": 1,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "usdKarsiligi",
+      "baslik": "USD karşılığı",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kaydeden",
+      "baslik": "Kaydeden",
+      "g": 1.5,
+      "pdf": false
+    }
+  ],
+  "dipnot": "Tutar fişin TL toplamıdır; USD karşılığı fişin kayıt anındaki gişe USD kuruyla hesaplanır. Kimlik no = vergi / TC kimlik numarası, yoksa pasaport numarası. İptal fişler hariçtir."
+}

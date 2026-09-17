@@ -243,6 +243,18 @@ export interface EbelgeMukellefSonucu {
   mesaj: string;
 }
 
+/** Alıcının ICE portalında kayıtlı adresi */
+export interface EbelgeAliciAdres {
+  adresAdi: string;
+  adres: string;
+  il: string;
+  ilce: string;
+  ulke: string;
+  postaKodu: string;
+  eposta: string;
+  telefon: string;
+}
+
 export interface EbelgeTaslakSonucu {
   uuid: string;
   belgeNo: string;
@@ -526,6 +538,12 @@ export const ebelgeService = {
   async mukellefSorgula(vkn: string): Promise<EbelgeMukellefSonucu> {
     const res = await apiClient.get<EbelgeMukellefSonucu>("/e-belge/mukellef", { vkn });
     return res.data;
+  },
+
+  /** Alıcının ICE'de kayıtlı adresleri; kayıt yoksa boş liste döner. */
+  async aliciAdresleri(vkn: string): Promise<EbelgeAliciAdres[]> {
+    const res = await apiClient.get<{ adresler: EbelgeAliciAdres[] }>("/e-belge/alici-adres", { vkn });
+    return res.data?.adresler || [];
   },
 
   /**

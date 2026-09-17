@@ -1,0 +1,102 @@
+{
+  "kod": "KASDEF1",
+  "ad": "Kasa Defteri",
+  "aciklama": "Kasadan geçen nakit: para bazında kronolojik defter; devir, giriş, çıkış ve yürüyen bakiye.",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "hesapIdler",
+      "etiket": "Hesap (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "hesap"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.5,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "hesapKod",
+      "baslik": "Hesap",
+      "g": 1.2,
+      "pdf": false
+    },
+    {
+      "anahtar": "hesapAd",
+      "baslik": "Hesap adı",
+      "g": 2.6
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 3.6
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "giris",
+      "baslik": "Giriş",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "cikis",
+      "baslik": "Çıkış",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bakiye",
+      "baslik": "Bakiye",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV (TL)",
+      "g": 1.3,
+      "bicim": "sayi",
+      "pdf": false
+    },
+    {
+      "anahtar": "kaydeden",
+      "baslik": "Kaydeden",
+      "g": 1.4,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "paraKod",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true,
+    "genelToplam": false
+  },
+  "dipnot": "Her para birimi ayrı defterdir; ilk satır başlangıç tarihinden önceki devirdir (devir tutarı ara toplama dahildir). Bakiye = devir + girişler − çıkışlar."
+}

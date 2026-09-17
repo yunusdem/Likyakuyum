@@ -21,6 +21,7 @@ import { CariService } from "../../services/cariService";
 import { gibAliasToEposta, gibTitleToAdSoyad } from "../../utils/gibKullanici";
 import {
   EBELGE_BIRIMLER,
+  EbelgeAliciAdres,
   EbelgeDogrulamaSonucu,
   EbelgeFaturaTipi,
   EbelgeSatir,
@@ -71,6 +72,9 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [aliciVd, setAliciVd] = useState<string>("");
   const [aliciIl, setAliciIl] = useState<string>("");
   const [aliciIlce, setAliciIlce] = useState<string>("");
+  const [aliciAdres, setAliciAdres] = useState<string>("");
+  /** Alıcının ICE portalında kayıtlı adresleri; birden çoksa kullanıcı seçer */
+  const [iceAdresler, setIceAdresler] = useState<EbelgeAliciAdres[]>([]);
   const [aliciEposta, setAliciEposta] = useState<string>("");
   /** Sorgu sonucu alıcı bilgileri dolduysa cari seçimi gizlenir; kullanıcı isterse yeniden açar (yönetici isteği 16.09.2026). */
   const [cariSecimAcik, setCariSecimAcik] = useState<boolean>(false);
@@ -139,6 +143,8 @@ const EBelgeDogrulaPage: React.FC = () => {
       const il = sozluk.ilList.find((x) => x.id === cari.ilId)?.ad || "";
       const ilce = sozluk.ilceList.find((x) => x.id === cari.ilceId)?.ad || "";
       if (vd) setAliciVd((o) => { if (o.trim()) return o; doldurulan.push("vergi dairesi"); return vd; });
+      const adres = (cari.adres || "").trim();
+      if (adres) setAliciAdres((o) => { if (o.trim()) return o; doldurulan.push("adres"); return adres; });
       if (il) setAliciIl((o) => { if (o.trim()) return o; doldurulan.push("il"); return il; });
       if (ilce) setAliciIlce((o) => { if (o.trim()) return o; doldurulan.push("ilçe"); return ilce; });
       // State güncellemeleri toplu işlendiği için bilgi mesajı bir sonraki döngüde verilir.
@@ -149,6 +155,47 @@ const EBelgeDogrulaPage: React.FC = () => {
       }, 0);
     } catch {
       /* Yerel cari bulunamaması hata değildir; sessiz geç. */
+    }
+  };
+
+  /**
+   * ICE adresini alıcı alanlarına yazar. `uzerineYaz` yalnızca kullanıcı listeden
+   * kendisi seçtiğinde true olur; kendiliğinden doldurmada dolu alanlara dokunulmaz
+   * (yerel cari kartı önceliklidir).
+   */
+  const iceAdresiUygula = (a: EbelgeAliciAdres, uzerineYaz: boolean): string[] => {
+    const doldurulan: string[] = [];
+    const yaz = (deger: string, etiket: string, set: React.Dispatch<React.SetStateAction<string>>) => {
+      if (!deger) return;
+      set((o) => { if (!uzerineYaz && o.trim()) return o; doldurulan.push(etiket); return deger; });
+    };
+    yaz(a.adres, "adres", setAliciAdres);
+    yaz(a.il, "il", setAliciIl);
+    yaz(a.ilce, "ilçe", setAliciIlce);
+    if (a.eposta) setAliciEposta((o) => { if (o.trim()) return o; doldurulan.push("e-posta"); return a.eposta; });
+    return doldurulan;
+  };
+
+  /** Alıcı ICE'de kayıtlıysa adreslerini getirir: tek adres boş alanlara yazılır, birden çoğu seçtirilir. */
+  const iceAdresleriGetir = async (vkn: string, sira: number) => {
+    try {
+      const adresler = await ebelgeService.aliciAdresleri(vkn);
+      if (sira !== sorguSirasi.current) return;
+      setIceAdresler(adresler);
+      if (!adresler.length) return;
+      if (adresler.length > 1) {
+        setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
+          message: `${o?.message || ""} ICE'de ${adresler.length} kayıtlı adres var; Kayıtlı Adres listesinden seçin.`.trim() }));
+        return;
+      }
+      const doldurulan = iceAdresiUygula(adresler[0], false);
+      setTimeout(() => {
+        if (sira !== sorguSirasi.current || !doldurulan.length) return;
+        setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
+          message: `${o?.message || ""} ICE kayıtlı carisinden dolduruldu: ${doldurulan.join(", ")}.`.trim() }));
+      }, 0);
+    } catch {
+      /* ICE'de kayıtlı cari/adres bulunamaması belge kesmeye engel değildir; sessiz geç. */
     }
   };
 
@@ -163,6 +210,7 @@ const EBelgeDogrulaPage: React.FC = () => {
     setSonuc(null);
     setTaslakOnayAcik(false);
     setDogrulananGirdi("");
+    setIceAdresler([]);
     try {
       const cevap = await ebelgeService.mukellefSorgula(vkn);
       if (sira !== sorguSirasi.current) return;
@@ -173,7 +221,8 @@ const EBelgeDogrulaPage: React.FC = () => {
         ? "Alıcı e-Fatura mükellefi. e-Fatura seçildi; belgeyi doğrulayarak devam edin."
         : "Alıcı e-Fatura mükellefi değil. e-Arşiv seçildi; belgeyi doğrulayarak devam edin.")
         + (doldurulan.length ? ` GİB: ${doldurulan.join(", ")}.` : "") });
-      void yerelCaridenDoldur(vkn, sira);
+      // Yerel cari önceliklidir: ICE adresi ondan SONRA, yalnızca boş kalan alanlara yazılır.
+      void yerelCaridenDoldur(vkn, sira).then(() => iceAdresleriGetir(vkn, sira));
     } catch (err: any) {
       if (sira !== sorguSirasi.current) return;
       // Sorgu hatası "mükellef değil" demek değildir; tür seçimi belirsiz bırakılır.
@@ -213,7 +262,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [taslakSonuc, setTaslakSonuc] = useState<EbelgeTaslakSonucu | null>(null);
   const [dogrulananGirdi, setDogrulananGirdi] = useState("");
   const girdiAnahtari = JSON.stringify([belgeNo, tarih, senaryo, faturaTipi, paraBirimi, not,
-    aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciIl, aliciIlce, aliciEposta, satirlar]);
+    aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciAdres, aliciIl, aliciIlce, aliciEposta, satirlar]);
   const dogrulamaGuncel = dogrulananGirdi === girdiAnahtari;
 
   const tcknMi = aliciVkn.trim().length === 11;
@@ -336,6 +385,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           ad: aliciAd.trim() || undefined,
           soyad: aliciSoyad.trim() || undefined,
           vergiDairesi: aliciVd.trim() || undefined,
+          adres: aliciAdres.trim() || undefined,
           il: aliciIl.trim() || undefined,
           ilce: aliciIlce.trim() || undefined,
           eposta: aliciEposta.trim() || undefined,
@@ -403,6 +453,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       ad: aliciAd.trim() || undefined,
       soyad: aliciSoyad.trim() || undefined,
       vergiDairesi: aliciVd.trim() || undefined,
+      adres: aliciAdres.trim() || undefined,
       il: aliciIl.trim() || undefined,
       ilce: aliciIlce.trim() || undefined,
       eposta: aliciEposta.trim() || undefined,
@@ -432,6 +483,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           ad: aliciAd.trim() || undefined,
           soyad: aliciSoyad.trim() || undefined,
           vergiDairesi: aliciVd.trim() || undefined,
+          adres: aliciAdres.trim() || undefined,
           il: aliciIl.trim() || undefined,
           ilce: aliciIlce.trim() || undefined,
           eposta: aliciEposta.trim() || undefined,
@@ -497,6 +549,7 @@ const EBelgeDogrulaPage: React.FC = () => {
           ad: aliciAd.trim() || undefined,
           soyad: aliciSoyad.trim() || undefined,
           vergiDairesi: aliciVd.trim() || undefined,
+          adres: aliciAdres.trim() || undefined,
           il: aliciIl.trim() || undefined,
           ilce: aliciIlce.trim() || undefined,
           eposta: aliciEposta.trim() || undefined,
@@ -760,6 +813,8 @@ const EBelgeDogrulaPage: React.FC = () => {
             setAliciIlce(lookups.ilceList.find(x => x.id === cari.ilceId)?.ad || "");
             setAliciVd(lookups.vergiDairesiList.find(x => x.id === cari.vergiDairesiId)?.ad || "");
             setAliciEposta((cari.eposta || "").trim());
+            setAliciAdres((cari.adres || "").trim());
+            setIceAdresler([]);
             setSonuc(null); setDogrulananGirdi(""); setTaslakOnayAcik(false);
             setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
           }} />
@@ -809,6 +864,27 @@ const EBelgeDogrulaPage: React.FC = () => {
               <Form.Label className="small mb-1">İlçe <span className="text-danger">*</span></Form.Label>
               <Form.Control size="sm" value={aliciIlce} onChange={(e) => setAliciIlce(e.target.value)} />
             </Col>
+            <Col xs={12} md={6} lg={4}>
+              <Form.Label className="small mb-1">Adres</Form.Label>
+              <Form.Control size="sm" value={aliciAdres} maxLength={300} onChange={(e) => setAliciAdres(e.target.value)}
+                placeholder="ICE'de kayıtlı cari varsa kendiliğinden dolar" />
+            </Col>
+            {iceAdresler.length > 1 && (
+              <Col xs={12} md={6} lg={4}>
+                <Form.Label className="small mb-1">Kayıtlı Adres (ICE)</Form.Label>
+                <Form.Select size="sm" value="" onChange={(e) => {
+                  const secilen = iceAdresler[Number(e.target.value)];
+                  if (secilen) iceAdresiUygula(secilen, true);
+                }}>
+                  <option value="">Adres seçin…</option>
+                  {iceAdresler.map((a, i) => (
+                    <option key={i} value={i}>
+                      {[a.adresAdi, a.adres, [a.ilce, a.il].filter(Boolean).join(" / ")].filter(Boolean).join(" — ")}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Col>
+            )}
             <Col xs={12} md={6} lg={4}>
               <Form.Label className="small mb-1">E-posta</Form.Label>
               <Form.Control size="sm" type="email" value={aliciEposta} onChange={(e) => setAliciEposta(e.target.value)}

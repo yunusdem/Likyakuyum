@@ -1,0 +1,154 @@
+{
+  "kod": "VADISL1",
+  "ad": "Vadeli İşlem Listesi",
+  "aciklama": "Vadesi girilmiş cari dekontlar; vade ve işlem tarihi aralığı, cari, para ve vade durumuna göre; para bazında gruplu.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "durum",
+      "etiket": "Vade durumu",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "acik",
+          "ad": "Açık (vadesi gelmemiş)"
+        },
+        {
+          "deger": "gecmis",
+          "ad": "Vadesi geçmiş"
+        },
+        {
+          "deger": "tumu",
+          "ad": "Tümü"
+        }
+      ],
+      "varsayilan": "acik"
+    },
+    {
+      "ad": "vade",
+      "etiket": "Vade tarihi",
+      "tip": "tarihAralik",
+      "varsayilan": "",
+      "not": "Boş bırakılırsa tüm vadeler"
+    },
+    {
+      "ad": "baslangic",
+      "etiket": "İşlem tarihi",
+      "tip": "tarihAralik",
+      "varsayilan": "",
+      "not": "Boş bırakılırsa tüm işlem tarihleri"
+    },
+    {
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "vade",
+          "ad": "Vade tarihi"
+        },
+        {
+          "deger": "ad",
+          "ad": "Cari adı"
+        },
+        {
+          "deger": "kod",
+          "ad": "Cari kodu"
+        }
+      ],
+      "varsayilan": "vade"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "İşlem tarihi",
+      "g": 1.5,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "vade",
+      "baslik": "Vade",
+      "g": 1.5,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "kalanGun",
+      "baslik": "Kalan gün",
+      "g": 1.1,
+      "bicim": "tam"
+    },
+    {
+      "anahtar": "dekontNo",
+      "baslik": "Dekont no",
+      "g": 1.1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tür",
+      "g": 1.6,
+      "pdf": false
+    },
+    {
+      "anahtar": "borclu",
+      "baslik": "Borçlu",
+      "g": 3
+    },
+    {
+      "anahtar": "alacakli",
+      "baslik": "Alacaklı",
+      "g": 3
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 3,
+      "pdf": false
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "meblag",
+      "baslik": "Meblağ",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.4,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "hasKarsiligi",
+      "baslik": "Has karşılığı",
+      "g": 1.8,
+      "bicim": "sayi4",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "paraKod",
+    "baslik": "Para birimi: {{paraKod}}",
+    "altToplam": true,
+    "genelToplam": false
+  }
+}

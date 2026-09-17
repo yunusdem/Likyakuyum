@@ -1,0 +1,181 @@
+{
+  "kod": "ISTRAP1",
+  "ad": "İstatistik Raporu",
+  "aciklama": "İstatistik koduna göre alış / satış toplamları; para ve tip bazında adet, miktar, ortalama kur, tutar ve vergiler.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "istatistikIdler",
+      "etiket": "İstatistik kodu (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "istatistik"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "adet",
+      "baslik": "Fiş adedi",
+      "g": 1.2,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "ortKur",
+      "baslik": "Ort. kur",
+      "g": 1.6,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bmv",
+      "baslik": "BSMV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "istatistikBaslik",
+    "baslik": "{{istatistikBaslik}}",
+    "altToplam": true
+  },
+  "ozet": {
+    "baslik": "GENEL TOPLAM — para bazında",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1.2
+      },
+      {
+        "anahtar": "tip",
+        "baslik": "Tip",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Fiş adedi",
+        "g": 1.2,
+        "bicim": "tam",
+        "toplam": true
+      },
+      {
+        "anahtar": "miktar",
+        "baslik": "Miktar",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "ortKur",
+        "baslik": "Ort. kur",
+        "g": 1.6,
+        "bicim": "kur"
+      },
+      {
+        "anahtar": "tutar",
+        "baslik": "Tutar (TL)",
+        "g": 2.4,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "komisyon",
+        "baslik": "Komisyon",
+        "g": 1.8,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "bmv",
+        "baslik": "BSMV",
+        "g": 1.6,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "kmv",
+        "baslik": "KMV",
+        "g": 1.6,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "kdv",
+        "baslik": "KDV",
+        "g": 1.6,
+        "bicim": "sayi",
+        "toplam": true,
+        "pdf": false
+      }
+    ]
+  }
+}

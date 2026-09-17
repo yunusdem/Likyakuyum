@@ -16,6 +16,11 @@ import {
 
 //import custom type
 import { MenuItemType } from "types/menuTypes";
+import { raporLinki, raporlarMenusu } from "../services/raporService";
+
+// Rapor maddeleri eski programın rapor klasörlerindeki yerlerinde durur (vezne / kasa / cari / yonetici / raporlar + MASAK);
+// bu maddeler tek rapor sayfasını açar: /raporlar/<yol> (src/services/raporService.ts RAPOR_MENU).
+const raporMenu = raporlarMenusu();
 
 export const DashboardMenu: MenuItemType[] = [
   // A- Vezne İşlemleri
@@ -30,12 +35,14 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "D- Döviz Fişi Düzeltme", link: "vezne/doviz-fisi-duzeltme" },
       { id: uuid(), name: "E- Vezne Transferi Kayıt", link: "vezne/transfer-kayit" },
       { id: uuid(), name: "F- Vezne Transferi Düzeltme", link: "vezne/transfer-duzeltme" },
-      { id: uuid(), name: "G- Vezne Hareket Listesi", link: "vezne/hareket-listesi" },
-      { id: uuid(), name: "H- Vezne Bakiye Raporu", link: "vezne/bakiye-raporu" },
+      { id: uuid(), name: "G- Vezne Hareket Listesi", link: raporLinki("VEZHAR1") },
+      { id: uuid(), name: "H- Vezne Bakiye Raporu", link: raporLinki("VEZANL1") },
       { id: uuid(), name: "I- Fiyat Kontrolü", link: "vezne/fiyat-kontrolu" },
-      { id: uuid(), name: "J- Vezne Bakiye Raporu Tarih Bazlı", link: "vezne/bakiye-raporu-tarih-bazli" },
+      { id: uuid(), name: "J- Vezne Bakiye Raporu Tarih Bazlı", link: raporLinki("VEZBAK1") },
       { id: uuid(), name: "K- Vezne Para Say", link: "vezne/para-say" },
       { id: uuid(), name: "L- Vezne İzleme", link: "vezne/izleme" },
+      { id: uuid(), name: "M- Kur Kontrolü", link: raporLinki("KURKON2") },
+      { id: uuid(), name: "N- Kur Sapma Raporu", link: raporLinki("KURKON1") },
     ],
   },
 
@@ -49,10 +56,10 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "B- Hesap Düzeltme", link: "kasa/hesap-duzeltme" },
       { id: uuid(), name: "C- Kasa Hareket Kayıt", link: "kasa/hareket-kayit" },
       { id: uuid(), name: "D- Kasa Hareket Düzeltme", link: "kasa/hareket-duzeltme" },
-      { id: uuid(), name: "E- Kasa Defteri", link: "kasa/defteri" },
-      { id: uuid(), name: "F- Kasa Hareket Listesi", link: "kasa/hareket-listesi" },
-      { id: uuid(), name: "G- Hesap Ekstre", link: "kasa/hesap-ekstre" },
-      { id: uuid(), name: "H- Hesap Bakiye Raporu", link: "kasa/hesap-bakiye-raporu" },
+      { id: uuid(), name: "E- Kasa Defteri", link: raporLinki("KASDEF1") },
+      { id: uuid(), name: "F- Kasa Hareket Listesi", link: raporLinki("KASHAR1") },
+      { id: uuid(), name: "G- Hesap Ekstre", link: raporLinki("HESEKS1") },
+      { id: uuid(), name: "H- Hesap Bakiye Raporu", link: raporLinki("HESBAK1") },
       { id: uuid(), name: "I- Hesap Ad Listesi", link: "kasa/hesap-ad-listesi" },
     ],
   },
@@ -85,9 +92,10 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "G- Cari Hareket Listesi", link: "cari/hareket-listesi" },
       { id: uuid(), name: "H- Cari Kart Listesi", link: "cari/kart-listesi" },
       { id: uuid(), name: "I- Detaylı Cari Kart Listesi", link: "cari/detayli-kart-listesi" },
-      { id: uuid(), name: "J- Cari Ekstre", link: "cari/ekstre" },
-      { id: uuid(), name: "K- Cari Bakiye Raporu", link: "cari/bakiye-raporu" },
-      { id: uuid(), name: "L- POS Ekstre", link: "cari/pos-ekstre" },
+      { id: uuid(), name: "J- Cari Ekstre", link: raporLinki("CAREKS1") },
+      { id: uuid(), name: "K- Cari Bakiye Raporu", link: raporLinki("CARBAK1") },
+      { id: uuid(), name: "L- POS Ekstre", link: raporLinki("POSEKS1") },
+      { id: uuid(), name: "M- Vadeli İşlem Listesi", link: raporLinki("VADISL1") },
     ],
   },
 
@@ -102,6 +110,10 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "C- Fiyat / Marj Belirleme", link: "yonetici/fiyat-belirleme" },
       { id: uuid(), name: "D- Sistem Günlükleri (Loglar)", link: "yonetici/loglar" },
       { id: uuid(), name: "E- Onay Bekleyen İşlemler", link: "yonetici/onaylar" },
+      { id: uuid(), name: "F- Firma Son Durum Raporu", link: raporLinki("FIRSON1") },
+      { id: uuid(), name: "G- Firma Varlıkları Raporu", link: raporLinki("FIRVAR1") },
+      { id: uuid(), name: "H- Kâr / Zarar Faaliyet Analizi", link: raporLinki("KARZAR1") },
+      { id: uuid(), name: "I- Long / Short Denge Analizi", link: raporLinki("LONSHO1") },
     ],
   },
 
@@ -124,17 +136,10 @@ export const DashboardMenu: MenuItemType[] = [
     id: uuid(),
     title: "G- Raporlar",
     icon: <IconReportAnalytics size={18} />,
-    // 9 gerçek rapor (docs/raporlar.md); kodlar src/services/raporService.ts RAPOR_MENU ile eşleşir
+    // "raporlar" klasöründeki raporlar + açılır MASAK grubu; diğer klasörlerin raporları kendi işlem menülerinde (docs/raporlar-faz2.md)
     children: [
-      { id: uuid(), name: "A- Cari Bakiye Raporu", link: "raporlar/cari-bakiye" },
-      { id: uuid(), name: "B- Cari Ekstre", link: "raporlar/cari-ekstre" },
-      { id: uuid(), name: "C- Cari Hareket Listesi", link: "raporlar/cari-hareket-listesi" },
-      { id: uuid(), name: "D- Cari Kart Listesi", link: "raporlar/cari-kart-listesi" },
-      { id: uuid(), name: "E- Vezne Bakiye Raporu", link: "raporlar/vezne-bakiye" },
-      { id: uuid(), name: "F- Vezne Hareket Listesi", link: "raporlar/vezne-hareket-listesi" },
-      { id: uuid(), name: "G- Vergiler ve Komisyon", link: "raporlar/vergiler-komisyon" },
-      { id: uuid(), name: "H- Kâr / Zarar Faaliyet Analizi", link: "raporlar/kar-zarar" },
-      { id: uuid(), name: "I- Firma Varlıkları Raporu", link: "raporlar/firma-varliklari" },
+      ...raporMenu.raporlar.map(r => ({ id: uuid(), name: r.ad, link: r.link })),
+      { id: uuid(), title: raporMenu.masakBaslik, children: raporMenu.masak.map(r => ({ id: uuid(), name: r.ad, link: r.link })) },
     ],
   },
 
