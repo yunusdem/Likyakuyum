@@ -294,6 +294,9 @@ export class KurSqlRepository {
       FROM [dbo].[TODVZ_PARA] P
       LEFT JOIN [dbo].[TODVZ_KUR] K 
         ON P.[PARA_ID] = K.[PARA_ID] AND K.[KUR_TABLOSU_ID] = @kurTablosuId
+      WHERE UPPER(LTRIM(RTRIM(ISNULL(P.[KOD], '')))) NOT IN ('TL', 'TRY', 'YTL', 'TRL')
+        AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TÜRK LİRA%'
+        AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TURK LIRA%'
       ORDER BY P.[PARA_ID] ASC;
     `;
 

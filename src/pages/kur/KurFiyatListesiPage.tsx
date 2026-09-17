@@ -81,8 +81,10 @@ export const isTlCurrency = (code?: string, name?: string) => {
 
 export const sortKurRows = (items?: KurRowItem[]): KurRowItem[] => {
   if (!items) return [];
-  // SQL tablosundaki identity / kayıt sırasına göre (PARA_ID ASC - Tüm paralar eksiksiz listelenir)
-  return [...items].sort((a, b) => (Number(a.paraId) || 0) - (Number(b.paraId) || 0));
+  // TL / TRY para birimi kur listelerinde (Anlık ve Saklanan Fiyat Listesi) kesinlikle gözükmez
+  return [...items]
+    .filter((r) => !isTlCurrency(r.kod, r.ad))
+    .sort((a, b) => (Number(a.paraId) || 0) - (Number(b.paraId) || 0));
 };
 
 export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
