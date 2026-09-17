@@ -491,11 +491,25 @@ export class EbelgeService {
       );
     }
 
+    const unvan = verilen?.unvan || firma.unvan || undefined;
+
+    // Şahıs firması (11 haneli TCKN): UBL-TR ad ve soyadı ayrı ister. Firma tablosunda
+    // yalnızca unvan var; verilmemişse unvanın son kelimesi soyad, öncesi ad sayılır.
+    let ad = verilen?.ad?.trim() || undefined;
+    let soyad = verilen?.soyad?.trim() || undefined;
+    if (vknTckn.length === 11 && !(ad && soyad)) {
+      const parcalar = (unvan || "").trim().split(/\s+/).filter(Boolean);
+      if (parcalar.length > 1) {
+        soyad = parcalar.pop();
+        ad = parcalar.join(" ");
+      }
+    }
+
     return {
       vknTckn,
-      unvan: verilen?.unvan || firma.unvan || undefined,
-      ad: verilen?.ad,
-      soyad: verilen?.soyad,
+      unvan,
+      ad,
+      soyad,
       vergiDairesi: verilen?.vergiDairesi,
       adres: verilen?.adres || firma.adres || undefined,
       // UBL-TR adreste il/ilçe zorunlu; firma tablosunda bu kolonlar yok, bu yüzden
