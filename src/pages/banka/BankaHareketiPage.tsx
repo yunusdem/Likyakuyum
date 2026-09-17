@@ -208,8 +208,6 @@ export const BankaHareketiPage: React.FC = () => {
 
     const tutar = Number(h.toplamMeblag || h.satirlar?.[0]?.meblag || 0);
     setMeblag(tutar > 0 ? String(tutar) : "");
-
-    showNotif("success", `Banka hareketi yüklendi: #${h.bankaHareketId}`);
   }, []);
 
   // ─── Formu Tamamen Temizle (F4 / Yeni Butonu) ──────────────────────────────

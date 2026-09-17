@@ -533,13 +533,6 @@ export const CariEmanetDekontPage: React.FC = () => {
           setSolSatirlar([createEmptyRow(1)]);
           setSagSatirlar([createEmptyRow(1)]);
         }
-
-        if (showAlert) {
-          setAlertInfo({
-            type: "info",
-            message: `${data.dekontNo} numaralı dekont kaydı yüklendi.`,
-          });
-        }
       } catch (err: any) {
         setAlertInfo({
           type: "danger",

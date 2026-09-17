@@ -61,25 +61,52 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <ToastContext.Provider value={{ showToast, showSuccess, showError, showWarning, showInfo }}>
       {children}
 
-      {/* Ekranın Sağ Alt Köşesindeki Sabit Toast Kapsayıcısı */}
+      {/* Ekranın Tam Ortasında Beliren Estetik Popup Bildirim Kapsayıcısı */}
       {toasts.length > 0 && (
         <div className="erp-toast-container">
           {toasts.map((toast) => {
             const variant = toast.type === "danger" ? "danger" : toast.type;
+            const titleMap = {
+              success: "İşlem Başarılı",
+              danger: "Hata",
+              warning: "Dikkat / Uyarı",
+              info: "Bilgilendirme",
+            };
             return (
               <Alert
                 key={toast.id}
                 variant={variant}
-                className="erp-toast-item d-flex align-items-center justify-content-between py-2.5 px-3 mb-0 border-0"
+                className={`erp-toast-item alert-${variant} d-flex align-items-start gap-3 mb-0`}
                 dismissible
                 onClose={() => removeToast(toast.id)}
               >
-                <div className="d-flex align-items-center gap-2 me-3">
-                  {toast.type === "success" && <IconCheck size={18} className="text-success flex-shrink-0" />}
-                  {toast.type === "danger" && <IconAlertCircle size={18} className="text-danger flex-shrink-0" />}
-                  {toast.type === "warning" && <IconAlertTriangle size={18} className="text-warning flex-shrink-0" />}
-                  {toast.type === "info" && <IconInfoCircle size={18} className="text-info flex-shrink-0" />}
-                  <span style={{ fontSize: "13px", fontWeight: 500 }}>{toast.message}</span>
+                <div
+                  className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 mt-0.5"
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    backgroundColor:
+                      toast.type === "success"
+                        ? "#dcfce7"
+                        : toast.type === "danger"
+                        ? "#fee2e2"
+                        : toast.type === "warning"
+                        ? "#fef3c7"
+                        : "#e0f2fe",
+                  }}
+                >
+                  {toast.type === "success" && <IconCheck size={20} className="text-success" />}
+                  {toast.type === "danger" && <IconAlertCircle size={20} className="text-danger" />}
+                  {toast.type === "warning" && <IconAlertTriangle size={20} className="text-warning" />}
+                  {toast.type === "info" && <IconInfoCircle size={20} className="text-info" />}
+                </div>
+                <div className="flex-grow-1 pe-3">
+                  <div className="fw-bold text-dark mb-1" style={{ fontSize: "14px" }}>
+                    {titleMap[toast.type] || "Bildirim"}
+                  </div>
+                  <div style={{ fontSize: "13px", color: "#475569", lineHeight: "1.4" }}>
+                    {toast.message}
+                  </div>
                 </div>
               </Alert>
             );

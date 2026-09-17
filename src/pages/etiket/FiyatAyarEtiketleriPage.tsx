@@ -165,7 +165,6 @@ export const FiyatAyarEtiketleriPage: React.FC = () => {
     setSabitle(Boolean(it.sabitle));
     setSatisFiyati(it.satisFiyati);
     setSatisParaKodu(it.satisParaKodu || "USD");
-    showNotif("success", `Ürün yüklendi: ${it.grupKodu}-${it.urunNo}`);
   }, []);
 
   const handleUretNo = useCallback(async () => {

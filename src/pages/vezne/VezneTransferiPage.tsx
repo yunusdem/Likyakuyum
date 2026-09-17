@@ -214,10 +214,6 @@ export const VezneTransferiPage: React.FC = () => {
         } else {
           setLines([createEmptyRow(1)]);
         }
-        setNotification({
-          type: "info",
-          message: `${data.refNo || `#${data.id}`} numaralı vezne transfer kaydı yüklendi.`,
-        });
       }
     } catch (err: any) {
       setNotification({

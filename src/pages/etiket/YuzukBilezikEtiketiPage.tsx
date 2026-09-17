@@ -155,7 +155,6 @@ export const YuzukBilezikEtiketiPage: React.FC = () => {
     setModel(rest.join(" - ") || it.model || "");
     setSatisFiyati(it.satisFiyati);
     setSatisParaKodu(it.satisParaKodu || "HAS");
-    showNotif("success", `Ürün yüklendi: ${it.grupKodu}-${it.urunNo}`);
   }, []);
 
   const handleUretNo = useCallback(async () => {

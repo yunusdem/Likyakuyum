@@ -482,6 +482,48 @@ export const CompanyDefinitionsPage: React.FC = () => {
     }
   };
 
+  const sanitizeData = (data: any): any => {
+    if (!data) return data;
+    const cleaned = { ...data };
+    for (const key of Object.keys(cleaned)) {
+      if (typeof cleaned[key] === "string") {
+        cleaned[key] = cleaned[key].trim();
+      }
+    }
+    return cleaned;
+  };
+
+  const placeCursorAtEnd = (el: HTMLInputElement | HTMLTextAreaElement) => {
+    if (!el) return;
+    // Kullanıcı metin seçimi (drag selection) yapıyorsa seçimi bozma
+    try {
+      if (el.selectionStart !== null && el.selectionEnd !== null && el.selectionStart !== el.selectionEnd) {
+        return;
+      }
+    } catch {
+      // type="number" may throw on selectionStart in some environments
+    }
+
+    const val = el.value ?? "";
+    const len = typeof val === "string" ? val.length : String(val).length;
+
+    if (el instanceof HTMLInputElement && el.type === "number") {
+      try {
+        (el as any).type = "text";
+        el.setSelectionRange(len, len);
+        (el as any).type = "number";
+      } catch {
+        // fallback
+      }
+    } else if (typeof el.setSelectionRange === "function") {
+      try {
+        el.setSelectionRange(len, len);
+      } catch {
+        // fallback
+      }
+    }
+  };
+
   // Load Company Definitions from Active MSSQL DB
   const loadDefinitions = async (forceLoad: boolean = true) => {
     try {
@@ -490,12 +532,13 @@ export const CompanyDefinitionsPage: React.FC = () => {
       if (forceLoad) {
         const data = await CompanyService.getDefinitions();
         if (data) {
+          const sanitized = sanitizeData(data);
           const storedUretim = localStorage.getItem("kuyumcu_erp_uretim_hesabi_id");
-          if (storedUretim && !data.URETIM_HESABI_ID) {
-            data.URETIM_HESABI_ID = Number(storedUretim);
+          if (storedUretim && !sanitized.URETIM_HESABI_ID) {
+            sanitized.URETIM_HESABI_ID = Number(storedUretim);
           }
+          setFormData(sanitized || emptyCompanyData);
         }
-        setFormData(data || emptyCompanyData);
       } else {
         setFormData(emptyCompanyData);
       }
@@ -509,6 +552,39 @@ export const CompanyDefinitionsPage: React.FC = () => {
   useEffect(() => {
     loadDefinitions(true);
     loadLookups();
+
+    // Inputa tıklanınca veya odaklanınca imleci en sağa / verinin sonuna taşı
+    const handleInputClickOrFocus = (e: MouseEvent | FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement
+      ) {
+        if (
+          target.type === "checkbox" ||
+          target.type === "radio" ||
+          target.type === "button" ||
+          target.type === "submit" ||
+          target.type === "file" ||
+          target.readOnly ||
+          target.disabled
+        ) {
+          return;
+        }
+
+        setTimeout(() => {
+          placeCursorAtEnd(target);
+        }, 0);
+      }
+    };
+
+    document.addEventListener("mouseup", handleInputClickOrFocus);
+    document.addEventListener("focusin", handleInputClickOrFocus);
+
+    return () => {
+      document.removeEventListener("mouseup", handleInputClickOrFocus);
+      document.removeEventListener("focusin", handleInputClickOrFocus);
+    };
   }, []);
 
   const handleChange = (field: keyof TodvzTanimDto, value: any) => {
@@ -516,6 +592,23 @@ export const CompanyDefinitionsPage: React.FC = () => {
       ...prev,
       [field]: value,
     }));
+  };
+
+  // Sayısal alanlar için: silinince 0 olmasın, null (boş) kalsın ve harf/geçersiz karakter engellensin
+  const handleNumericInput = (field: keyof TodvzTanimDto, value: string) => {
+    if (value === "" || value === undefined || value === null) {
+      handleChange(field, null);
+      return;
+    }
+    const parsed = Number(value);
+    handleChange(field, isNaN(parsed) ? null : parsed);
+  };
+
+  const blockNonNumericKeys = (e: React.KeyboardEvent<any>, allowDecimal = false) => {
+    const blocked = allowDecimal ? ["e", "E", "+"] : ["e", "E", "+", "-", "."];
+    if (blocked.includes(e.key)) {
+      e.preventDefault();
+    }
   };
 
   const handleSave = async (e?: React.FormEvent) => {
@@ -528,8 +621,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
       } else {
         localStorage.removeItem("kuyumcu_erp_uretim_hesabi_id");
       }
-      const updated = await CompanyService.updateDefinitions(formData);
-      setFormData(updated || formData);
+      const cleanData = sanitizeData(formData);
+      const updated = await CompanyService.updateDefinitions(cleanData);
+      setFormData(sanitizeData(updated) || cleanData);
       setAlertSuccess("Firma tanımları ve genel parametreler başarıyla kaydedildi.");
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
@@ -727,7 +821,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                     <Form.Control
                                       type="number"
                                       value={formData.VERGI_DAIRESI_ID ?? ""}
-                                      onChange={(e) => handleChange("VERGI_DAIRESI_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                      onChange={(e) => handleNumericInput("VERGI_DAIRESI_ID", e.target.value)}
+                                      onKeyDown={(e) => blockNonNumericKeys(e)}
                                       className="bg-white border font-monospace"
                                       style={{ maxWidth: "75px", flex: "0 0 75px" }}
                                       placeholder="ID"
@@ -869,7 +964,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                     <Form.Control
                                       type="number"
                                       value={formData.POSTA_KODU_ID ?? ""}
-                                      onChange={(e) => handleChange("POSTA_KODU_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                      onChange={(e) => handleNumericInput("POSTA_KODU_ID", e.target.value)}
+                                      onKeyDown={(e) => blockNonNumericKeys(e)}
                                       className="bg-white border font-monospace"
                                       style={{ maxWidth: "75px", minWidth: "75px", flex: "0 0 75px" }}
                                       placeholder="ID"
@@ -908,7 +1004,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                     <Form.Control
                                       type="number"
                                       value={formData.ILCE_ID ?? ""}
-                                      onChange={(e) => handleChange("ILCE_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                      onChange={(e) => handleNumericInput("ILCE_ID", e.target.value)}
+                                      onKeyDown={(e) => blockNonNumericKeys(e)}
                                       className="bg-white border font-monospace"
                                       style={{ maxWidth: "75px", flex: "0 0 75px" }}
                                       placeholder="ID"
@@ -947,7 +1044,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                     <Form.Control
                                       type="number"
                                       value={formData.IL_ID ?? ""}
-                                      onChange={(e) => handleChange("IL_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                      onChange={(e) => handleNumericInput("IL_ID", e.target.value)}
+                                      onKeyDown={(e) => blockNonNumericKeys(e)}
                                       className="bg-white border font-monospace"
                                       style={{ maxWidth: "75px", flex: "0 0 75px" }}
                                       placeholder="Plaka"
@@ -986,7 +1084,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                     <Form.Control
                                       type="number"
                                       value={formData.ULKE_ID ?? ""}
-                                      onChange={(e) => handleChange("ULKE_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                      onChange={(e) => handleNumericInput("ULKE_ID", e.target.value)}
+                                      onKeyDown={(e) => blockNonNumericKeys(e)}
                                       className="bg-white border font-monospace"
                                       style={{ maxWidth: "75px", flex: "0 0 75px" }}
                                       placeholder="ID"
@@ -1081,8 +1180,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.USD_PARA_ID ?? 2}
-                                    onChange={(e) => handleChange("USD_PARA_ID", Number(e.target.value))}
+                                    value={formData.USD_PARA_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("USD_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1109,8 +1209,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.EUR_PARA_ID ?? 3}
-                                    onChange={(e) => handleChange("EUR_PARA_ID", Number(e.target.value))}
+                                    value={formData.EUR_PARA_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("EUR_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1137,8 +1238,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.RAPOR_PARA_ID ?? 2}
-                                    onChange={(e) => handleChange("RAPOR_PARA_ID", Number(e.target.value))}
+                                    value={formData.RAPOR_PARA_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("RAPOR_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1165,8 +1267,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.FAVORI_PARA_ID ?? 2}
-                                    onChange={(e) => handleChange("FAVORI_PARA_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                    value={formData.FAVORI_PARA_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("FAVORI_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1194,7 +1297,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                   <Form.Control
                                     type="number"
                                     value={formData.HAS_ALTIN_PARA_ID ?? ""}
-                                    onChange={(e) => handleChange("HAS_ALTIN_PARA_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                    onChange={(e) => handleNumericInput("HAS_ALTIN_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1222,7 +1326,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                   <Form.Control
                                     type="number"
                                     value={formData.HAS_GUMUS_PARA_ID ?? ""}
-                                    onChange={(e) => handleChange("HAS_GUMUS_PARA_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                    onChange={(e) => handleNumericInput("HAS_GUMUS_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1258,8 +1363,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.TL_KURUS_SAYISI ?? 2}
-                                  onChange={(e) => handleChange("TL_KURUS_SAYISI", Number(e.target.value))}
+                                  value={formData.TL_KURUS_SAYISI ?? ""}
+                                  onChange={(e) => handleNumericInput("TL_KURUS_SAYISI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1271,8 +1377,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.DOVIZ_KURUS_SAYISI ?? 0}
-                                  onChange={(e) => handleChange("DOVIZ_KURUS_SAYISI", Number(e.target.value))}
+                                  value={formData.DOVIZ_KURUS_SAYISI ?? ""}
+                                  onChange={(e) => handleNumericInput("DOVIZ_KURUS_SAYISI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1284,8 +1391,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.KUR_KURUS_SAYISI ?? 6}
-                                  onChange={(e) => handleChange("KUR_KURUS_SAYISI", Number(e.target.value))}
+                                  value={formData.KUR_KURUS_SAYISI ?? ""}
+                                  onChange={(e) => handleNumericInput("KUR_KURUS_SAYISI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1297,8 +1405,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.GRAM_ONDALIK_SAYISI ?? 2}
-                                  onChange={(e) => handleChange("GRAM_ONDALIK_SAYISI", Number(e.target.value))}
+                                  value={formData.GRAM_ONDALIK_SAYISI ?? ""}
+                                  onChange={(e) => handleNumericInput("GRAM_ONDALIK_SAYISI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1320,8 +1429,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   step="0.0001"
-                                  value={formData.DOVIZ_ALIS_DVZ_SATIS_ORANI ?? 1}
-                                  onChange={(e) => handleChange("DOVIZ_ALIS_DVZ_SATIS_ORANI", Number(e.target.value))}
+                                  value={formData.DOVIZ_ALIS_DVZ_SATIS_ORANI ?? ""}
+                                  onChange={(e) => handleNumericInput("DOVIZ_ALIS_DVZ_SATIS_ORANI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1334,8 +1444,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   step="0.0001"
-                                  value={formData.EFEKTIF_ALIS_DVZ_SATIS_ORANI ?? 1}
-                                  onChange={(e) => handleChange("EFEKTIF_ALIS_DVZ_SATIS_ORANI", Number(e.target.value))}
+                                  value={formData.EFEKTIF_ALIS_DVZ_SATIS_ORANI ?? ""}
+                                  onChange={(e) => handleNumericInput("EFEKTIF_ALIS_DVZ_SATIS_ORANI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1348,8 +1459,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   step="0.0001"
-                                  value={formData.EFEKTIF_SATIS_DVZ_SATIS_ORANI ?? 1}
-                                  onChange={(e) => handleChange("EFEKTIF_SATIS_DVZ_SATIS_ORANI", Number(e.target.value))}
+                                  value={formData.EFEKTIF_SATIS_DVZ_SATIS_ORANI ?? ""}
+                                  onChange={(e) => handleNumericInput("EFEKTIF_SATIS_DVZ_SATIS_ORANI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1370,8 +1482,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.ALIS_ISTATISTIK_ID ?? 2}
-                                    onChange={(e) => handleChange("ALIS_ISTATISTIK_ID", Number(e.target.value))}
+                                    value={formData.ALIS_ISTATISTIK_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("ALIS_ISTATISTIK_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1399,8 +1512,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.SATIS_ISTATISTIK_ID ?? 3}
-                                    onChange={(e) => handleChange("SATIS_ISTATISTIK_ID", Number(e.target.value))}
+                                    value={formData.SATIS_ISTATISTIK_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("SATIS_ISTATISTIK_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1428,8 +1542,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.ARBITRAJ_ALIS_ISTATISTIK_ID ?? 2}
-                                    onChange={(e) => handleChange("ARBITRAJ_ALIS_ISTATISTIK_ID", Number(e.target.value))}
+                                    value={formData.ARBITRAJ_ALIS_ISTATISTIK_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("ARBITRAJ_ALIS_ISTATISTIK_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1457,8 +1572,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.ARBITRAJ_SATIS_ISTATISTIK_ID ?? 3}
-                                    onChange={(e) => handleChange("ARBITRAJ_SATIS_ISTATISTIK_ID", Number(e.target.value))}
+                                    value={formData.ARBITRAJ_SATIS_ISTATISTIK_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("ARBITRAJ_SATIS_ISTATISTIK_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1539,7 +1655,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   value={formData.FOREKS_KUR_VEZNE_ID ?? ""}
-                                  onChange={(e) => handleChange("FOREKS_KUR_VEZNE_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                  onChange={(e) => handleNumericInput("FOREKS_KUR_VEZNE_ID", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1553,7 +1670,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   value={formData.FOREKS_KUR_YENILEME_SURESI ?? ""}
-                                  onChange={(e) => handleChange("FOREKS_KUR_YENILEME_SURESI", e.target.value === "" ? null : Number(e.target.value))}
+                                  onChange={(e) => handleNumericInput("FOREKS_KUR_YENILEME_SURESI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1669,7 +1787,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                   <Form.Control
                                     type="number"
                                     value={formData.SERMAYE_HESABI_ID ?? ""}
-                                    onChange={(e) => handleChange("SERMAYE_HESABI_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                    onChange={(e) => handleNumericInput("SERMAYE_HESABI_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -1710,13 +1829,14 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                     value={formData.URETIM_HESABI_ID ?? ""}
                                     onChange={(e) => {
                                       const val = e.target.value === "" ? null : Number(e.target.value);
-                                      handleChange("URETIM_HESABI_ID", val);
+                                      handleChange("URETIM_HESABI_ID", isNaN(val as number) ? null : val);
                                       if (val) {
                                         localStorage.setItem("kuyumcu_erp_uretim_hesabi_id", String(val));
                                       } else {
                                         localStorage.removeItem("kuyumcu_erp_uretim_hesabi_id");
                                       }
                                     }}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace flex-shrink-0"
                                     style={{ maxWidth: "75px", flex: "0 0 75px" }}
                                     placeholder="ID"
@@ -1855,8 +1975,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.HESAP_YILI ?? 2026}
-                                  onChange={(e) => handleChange("HESAP_YILI", Number(e.target.value))}
+                                  value={formData.HESAP_YILI ?? ""}
+                                  onChange={(e) => handleNumericInput("HESAP_YILI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1917,8 +2038,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.TL_VERGI_SINIRI ?? 185000}
-                                  onChange={(e) => handleChange("TL_VERGI_SINIRI", Number(e.target.value))}
+                                  value={formData.TL_VERGI_SINIRI ?? ""}
+                                  onChange={(e) => handleNumericInput("TL_VERGI_SINIRI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1931,8 +2053,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.DOVIZ_VERGI_SINIRI ?? 5000}
-                                  onChange={(e) => handleChange("DOVIZ_VERGI_SINIRI", Number(e.target.value))}
+                                  value={formData.DOVIZ_VERGI_SINIRI ?? ""}
+                                  onChange={(e) => handleNumericInput("DOVIZ_VERGI_SINIRI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1945,8 +2068,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.ALTIN_VERGI_SINIRI ?? 5000}
-                                  onChange={(e) => handleChange("ALTIN_VERGI_SINIRI", Number(e.target.value))}
+                                  value={formData.ALTIN_VERGI_SINIRI ?? ""}
+                                  onChange={(e) => handleNumericInput("ALTIN_VERGI_SINIRI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1959,8 +2083,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.SAR_KIMLIK_KONTROL_SINIRI ?? 0}
-                                  onChange={(e) => handleChange("SAR_KIMLIK_KONTROL_SINIRI", Number(e.target.value))}
+                                  value={formData.SAR_KIMLIK_KONTROL_SINIRI ?? ""}
+                                  onChange={(e) => handleNumericInput("SAR_KIMLIK_KONTROL_SINIRI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -1974,8 +2099,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.DOVIZ_VERGI_SINIRI_PARA_ID ?? 2}
-                                    onChange={(e) => handleChange("DOVIZ_VERGI_SINIRI_PARA_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                    value={formData.DOVIZ_VERGI_SINIRI_PARA_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("DOVIZ_VERGI_SINIRI_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -2003,8 +2129,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm">
                                   <Form.Control
                                     type="number"
-                                    value={formData.ALTIN_VERGI_SINIRI_PARA_ID ?? 2}
-                                    onChange={(e) => handleChange("ALTIN_VERGI_SINIRI_PARA_ID", e.target.value === "" ? null : Number(e.target.value))}
+                                    value={formData.ALTIN_VERGI_SINIRI_PARA_ID ?? ""}
+                                    onChange={(e) => handleNumericInput("ALTIN_VERGI_SINIRI_PARA_ID", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
                                     className="bg-white border font-monospace"
                                     style={{ maxWidth: "75px" }}
                                     placeholder="ID"
@@ -2049,8 +2176,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   step="0.01"
-                                  value={formData.CARI_TL_TOLERANSI ?? 0}
-                                  onChange={(e) => handleChange("CARI_TL_TOLERANSI", Number(e.target.value))}
+                                  value={formData.CARI_TL_TOLERANSI ?? ""}
+                                  onChange={(e) => handleNumericInput("CARI_TL_TOLERANSI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2064,8 +2192,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   step="0.01"
-                                  value={formData.CARI_USD_TOLERANSI ?? 0}
-                                  onChange={(e) => handleChange("CARI_USD_TOLERANSI", Number(e.target.value))}
+                                  value={formData.CARI_USD_TOLERANSI ?? ""}
+                                  onChange={(e) => handleNumericInput("CARI_USD_TOLERANSI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2079,8 +2208,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   step="0.01"
-                                  value={formData.TL_YUVARLAMA_ARALIGI ?? 0}
-                                  onChange={(e) => handleChange("TL_YUVARLAMA_ARALIGI", Number(e.target.value))}
+                                  value={formData.TL_YUVARLAMA_ARALIGI ?? ""}
+                                  onChange={(e) => handleNumericInput("TL_YUVARLAMA_ARALIGI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2094,8 +2224,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   step="0.01"
-                                  value={formData.TL_YUVARLAMA_ESIGI ?? 0}
-                                  onChange={(e) => handleChange("TL_YUVARLAMA_ESIGI", Number(e.target.value))}
+                                  value={formData.TL_YUVARLAMA_ESIGI ?? ""}
+                                  onChange={(e) => handleNumericInput("TL_YUVARLAMA_ESIGI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2123,7 +2254,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <Form.Control
                                   type="number"
                                   value={formData.VERGI_NO_SORGULAMA_YONTEMI ?? ""}
-                                  onChange={(e) => handleChange("VERGI_NO_SORGULAMA_YONTEMI", e.target.value === "" ? null : Number(e.target.value))}
+                                  onChange={(e) => handleNumericInput("VERGI_NO_SORGULAMA_YONTEMI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2176,8 +2308,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.E_BELGE_SERVER_PORTU ?? 53462}
-                                  onChange={(e) => handleChange("E_BELGE_SERVER_PORTU", Number(e.target.value))}
+                                  value={formData.E_BELGE_SERVER_PORTU ?? ""}
+                                  onChange={(e) => handleNumericInput("E_BELGE_SERVER_PORTU", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2190,8 +2323,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.ENTEGRATOR_YANIT_VERME_SURESI ?? 30}
-                                  onChange={(e) => handleChange("ENTEGRATOR_YANIT_VERME_SURESI", Number(e.target.value))}
+                                  value={formData.ENTEGRATOR_YANIT_VERME_SURESI ?? ""}
+                                  onChange={(e) => handleNumericInput("ENTEGRATOR_YANIT_VERME_SURESI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2368,8 +2502,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.EKRANDAKI_VEZNE_SAYISI ?? 0}
-                                  onChange={(e) => handleChange("EKRANDAKI_VEZNE_SAYISI", Number(e.target.value))}
+                                  value={formData.EKRANDAKI_VEZNE_SAYISI ?? ""}
+                                  onChange={(e) => handleNumericInput("EKRANDAKI_VEZNE_SAYISI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2382,8 +2517,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.TAZELEME_SURESI ?? 5}
-                                  onChange={(e) => handleChange("TAZELEME_SURESI", Number(e.target.value))}
+                                  value={formData.TAZELEME_SURESI ?? ""}
+                                  onChange={(e) => handleNumericInput("TAZELEME_SURESI", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>
@@ -2396,8 +2532,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Col>
                                 <Form.Control
                                   type="number"
-                                  value={formData.BELGE_YAZICI_MODU ?? 2}
-                                  onChange={(e) => handleChange("BELGE_YAZICI_MODU", e.target.value === "" ? null : Number(e.target.value))}
+                                  value={formData.BELGE_YAZICI_MODU ?? ""}
+                                  onChange={(e) => handleNumericInput("BELGE_YAZICI_MODU", e.target.value)}
+                                  onKeyDown={(e) => blockNonNumericKeys(e)}
                                   className="bg-white border font-monospace"
                                 />
                               </Col>

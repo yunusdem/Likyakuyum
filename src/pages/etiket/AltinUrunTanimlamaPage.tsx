@@ -403,8 +403,6 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     setHasKuru2(it.hasKuru2 ?? "");
     setAltinKuru(it.altinKuru ?? "");
     setResim(it.resim || null);
-
-    showNotif("success", `Ürün yüklendi: #${it.altinUrunId} (${it.grupKodu}-${it.urunNo})`);
   };
 
   // ─── Yeni Ürün Hazırla (YENİ / F4) ──────────────────────────────────────────

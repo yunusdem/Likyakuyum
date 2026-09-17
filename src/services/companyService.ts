@@ -270,7 +270,15 @@ export class CompanyService {
    */
   public static async getDefinitions(): Promise<TodvzTanimDto> {
     const response = await apiClient.get<TodvzTanimDto>("/company/definitions");
-    return response.data || defaultCompanyTanim;
+    const data = response.data || defaultCompanyTanim;
+    if (data && typeof data === "object") {
+      for (const [k, v] of Object.entries(data)) {
+        if (typeof v === "string") {
+          (data as any)[k] = v.trim();
+        }
+      }
+    }
+    return data;
   }
 
   /**

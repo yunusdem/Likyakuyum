@@ -411,7 +411,6 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     }
 
     setResim(it.resim || null);
-    showNotif("success", `Özel ürün yüklendi: #${it.ozelUrunId} (${it.grupKodu}-${it.urunNo})`);
   };
 
   // ─── Yeni Ürün Hazırla (YENİ / F4) ──────────────────────────────────────────

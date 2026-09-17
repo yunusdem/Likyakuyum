@@ -159,7 +159,6 @@ export const BankaHesapKartiPage: React.FC = () => {
     setMuhHesapKodlari(b.muhHesapKodlari || "");
     setDevir(b.devir !== undefined && b.devir !== null ? b.devir : "");
     setAktif(b.aktif !== undefined ? Boolean(b.aktif) : true);
-    showNotif("success", `Banka hesabı yüklendi: ${b.hesapAdi}`);
   }, []);
 
   const handleSave = useCallback(async () => {

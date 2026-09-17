@@ -238,7 +238,6 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
     setActiveRowIndex(null);
     setDraggedKey(null);
     setDragOverKey(null);
-    showNotif("success", `Şablon yüklendi: ${s.ad}`);
   }, []);
 
   // Etiket tipi değiştiğinde alan listesini yenile
