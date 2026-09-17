@@ -315,6 +315,9 @@ export const getMusteriCariAdresleri = async (
       `<Request>` +
       loginHeaderXml +
       `<VKNTCKN>${escapeXml(vknTckn)}</VKNTCKN>` +
+      // Boş da olsa gönderilir: ICE eksik opsiyonel alanda mesajsız Success=false dönebiliyor
+      // (e-Döviz'deki null referans davranışının aynısı). Sıra şemadaki sequence ile aynı.
+      `<Unvan></Unvan><Adi></Adi><Soyadi></Soyadi>` +
       `<OFFSET>0</OFFSET>` +
       `<LIMIT>10</LIMIT>` +
       `</Request>`,
@@ -331,9 +334,15 @@ export const getMusteriCariAdresleri = async (
     (c) => sade(c?.VKNTCKN) === sade(vknTckn) || sade(c?.Identifier) === sade(vknTckn)
   );
 
+  const basarili = String(data?.Success).toLowerCase() === "true";
+  // ICE başarısızlıkta açıklama yazmayabiliyor; o durumda ham cevap tanı için mesaja konur.
+  const mesaj = data?.ResponseMessage
+    ? String(data.ResponseMessage)
+    : basarili ? "" : `ICE açıklamasız başarısız döndü. Ham cevap: ${JSON.stringify(data ?? null).slice(0, 300)}`;
+
   return {
-    basarili: String(data?.Success).toLowerCase() === "true",
-    mesaj: data?.ResponseMessage ? String(data.ResponseMessage) : "",
+    basarili,
+    mesaj,
     adresler: cariler.flatMap((c) => toArray<IceCariAdres>(c?.Adres_List?.Musteri_Cari_Adres)),
     donenCari: donen.length,
     eslesenCari: cariler.length,
