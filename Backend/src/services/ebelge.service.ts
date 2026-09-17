@@ -622,7 +622,9 @@ export class EbelgeService {
         basarili: sonuc.basarili,
         kullanici,
         istekOzet: `vkn=${vkn}`,
-        cevapOzet: sonuc.basarili ? `${sonuc.adresler.length} adres` : sonuc.mesaj.slice(0, 200),
+        cevapOzet: sonuc.basarili
+          ? `dönen cari=${sonuc.donenCari}, eşleşen=${sonuc.eslesenCari}, adres=${sonuc.adresler.length}`
+          : sonuc.mesaj.slice(0, 200),
       },
       dbContext
     );

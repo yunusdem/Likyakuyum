@@ -308,31 +308,63 @@ export interface IceCariAdres {
 export const getMusteriCariAdresleri = async (
   config: IceConnectionConfig,
   vknTckn: string
-): Promise<{ basarili: boolean; mesaj: string; adresler: IceCariAdres[] }> => {
-  const { data } = await callWithSession<any>(config, {
-    method: "Get_Musteri_Cari_List",
-    buildInnerXml: (loginHeaderXml) =>
-      `<Request>` +
-      loginHeaderXml +
-      `<VKNTCKN>${escapeXml(vknTckn)}</VKNTCKN>` +
-      `<OFFSET>0</OFFSET>` +
-      `<LIMIT>10</LIMIT>` +
-      `</Request>`,
-    timeoutMs: READ_TIMEOUT_MS,
-    authHatasindaTekrarla: true,
-  });
+): Promise<{ basarili: boolean; mesaj: string; adresler: IceCariAdres[]; donenCari: number; eslesenCari: number }> => {
+  const sor = async (vkn: string, limit: number): Promise<any> => {
+    const { data } = await callWithSession<any>(config, {
+      method: "Get_Musteri_Cari_List",
+      buildInnerXml: (loginHeaderXml) =>
+        `<Request>` +
+        loginHeaderXml +
+        `<VKNTCKN>${escapeXml(vkn)}</VKNTCKN>` +
+        // Boş da olsa gönderilir; sıra şemadaki sequence ile aynı.
+        `<Unvan></Unvan><Adi></Adi><Soyadi></Soyadi>` +
+        `<OFFSET>0</OFFSET>` +
+        `<LIMIT>${limit}</LIMIT>` +
+        `</Request>`,
+      timeoutMs: READ_TIMEOUT_MS,
+      authHatasindaTekrarla: true,
+    });
+    return data;
+  };
+  const basariliMi = (d: any) => String(d?.Success).toLowerCase() === "true";
+
+  const data = await sor(vknTckn, 10);
+
+  // Metot ICE dokümanında yok. Kayıt bulunamayınca açıklamasız `Success=false` dönüyor olabilir;
+  // bunu "servis çalışmıyor"dan ayırmak için bir kez de filtresiz sorulur.
+  if (!basariliMi(data) && !data?.ResponseMessage) {
+    const genel = await sor("", 1);
+    if (basariliMi(genel)) {
+      return { basarili: true, mesaj: "", adresler: [], donenCari: 0, eslesenCari: 0 };
+    }
+    return {
+      basarili: false,
+      mesaj:
+        genel?.ResponseMessage
+          ? String(genel.ResponseMessage)
+          : "ICE kayıtlı cari servisi (Get_Musteri_Cari_List) filtresiz sorguda da açıklamasız başarısız döndü; " +
+            `servis bu hesapta kapalı olabilir. Ham cevap: ${JSON.stringify(genel ?? null).slice(0, 200)}`,
+      adresler: [],
+      donenCari: 0,
+      eslesenCari: 0,
+    };
+  }
 
   // VKNTCKN filtresi ICE tarafında "içerir" gibi davranabilir; tam eşleşeni süz.
   // XML ayrıştırıcı numarayı sayıya çevirip baştaki sıfırı düşürebilir; sıfırsız karşılaştır.
   const sade = (v: unknown) => String(v ?? "").replace(/\D/g, "").replace(/^0+/, "");
-  const cariler = toArray<any>(data?.Musteri_Cari_List?.Musteri_Cari).filter(
-    (c) => sade(c?.VKNTCKN) === sade(vknTckn)
+  // Numara kayda göre VKNTCKN ya da Identifier alanında durabiliyor; ikisine de bakılır.
+  const donen = toArray<any>(data?.Musteri_Cari_List?.Musteri_Cari);
+  const cariler = donen.filter(
+    (c) => sade(c?.VKNTCKN) === sade(vknTckn) || sade(c?.Identifier) === sade(vknTckn)
   );
 
   return {
-    basarili: String(data?.Success).toLowerCase() === "true",
+    basarili: basariliMi(data),
     mesaj: data?.ResponseMessage ? String(data.ResponseMessage) : "",
     adresler: cariler.flatMap((c) => toArray<IceCariAdres>(c?.Adres_List?.Musteri_Cari_Adres)),
+    donenCari: donen.length,
+    eslesenCari: cariler.length,
   };
 };
 

@@ -178,11 +178,16 @@ const EBelgeDogrulaPage: React.FC = () => {
 
   /** Alıcı ICE'de kayıtlıysa adreslerini getirir: tek adres boş alanlara yazılır, birden çoğu seçtirilir. */
   const iceAdresleriGetir = async (vkn: string, sira: number) => {
+    const ekMesaj = (metin: string) => setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
+      message: `${o?.message || ""} ${metin}`.trim() }));
     try {
       const adresler = await ebelgeService.aliciAdresleri(vkn);
       if (sira !== sorguSirasi.current) return;
       setIceAdresler(adresler);
-      if (!adresler.length) return;
+      if (!adresler.length) {
+        ekMesaj("ICE'de bu alıcı için kayıtlı cari adresi yok; adres, il ve ilçeyi elle girin.");
+        return;
+      }
       if (adresler.length > 1) {
         setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
           message: `${o?.message || ""} ICE'de ${adresler.length} kayıtlı adres var; Kayıtlı Adres listesinden seçin.`.trim() }));
@@ -194,8 +199,10 @@ const EBelgeDogrulaPage: React.FC = () => {
         setAlertInfo((o) => ({ type: o?.type === "danger" ? "danger" : "success",
           message: `${o?.message || ""} ICE kayıtlı carisinden dolduruldu: ${doldurulan.join(", ")}.`.trim() }));
       }, 0);
-    } catch {
-      /* ICE'de kayıtlı cari/adres bulunamaması belge kesmeye engel değildir; sessiz geç. */
+    } catch (err: any) {
+      // Belge kesmeye engel değildir; ama nedeni görünsün ki adres neden gelmedi anlaşılsın.
+      if (sira !== sorguSirasi.current) return;
+      ekMesaj(`ICE kayıtlı adres sorgusu yapılamadı: ${err?.message || "bilinmeyen hata"}`);
     }
   };
 
