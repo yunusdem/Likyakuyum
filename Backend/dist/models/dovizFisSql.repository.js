@@ -389,6 +389,17 @@ export class DovizFisSqlRepository {
                   END TRY
                   BEGIN CATCH
                   END CATCH;
+
+                  -- Eğer e-belge numeratöründen numara üretilemediyse standart belge numeratöründen (TUR 8 veya 9) üret
+                  IF (@BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@BELGE_NO))) = 0) AND @NUMERATOR_TURU NOT IN (8, 9)
+                  BEGIN
+                    DECLARE @STD_FALLBACK_TUR INT = CASE @TIP WHEN 0 THEN 8 ELSE 9 END;
+                    BEGIN TRY
+                      EXEC @DONUS_KODU = SODVZ_NUMERATOR_URET @STD_FALLBACK_TUR, @BELGE_NO OUTPUT, @YAZICI_ID, @SAYFA_SAYISI, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                    END TRY
+                    BEGIN CATCH
+                    END CATCH;
+                  END;
                 END;
 
                 IF @DONUS_KODU = 1
@@ -1371,112 +1382,10 @@ export class DovizFisSqlRepository {
           WHERE SERI_NO IS NULL OR LEN(LTRIM(RTRIM(SERI_NO))) = 0;
         END;
 
-        -- 12.2. Belge No Otomatik Atama:
-        -- Eğer belge no boş ise prosedürden (SODVZ_NUMERATOR_URET) çek veya dolu ise girilmiş olan numarayı koru
-        IF (@P_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@P_BELGE_NO))) = 0)
+        -- 12.2. Belge No:
+        -- Kullanıcı tarafından girilmişse onu koru, boş ise SODVZ_FIS_KAYDET stored procedure içindeki SODVZ_NUMERATOR_URET'ten otomatik üretilecek
+        IF @P_BELGE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@P_BELGE_NO))) > 0
         BEGIN
-          DECLARE @CALC_BELGE_TUR INT = CASE WHEN @TIP = 0 THEN 8 ELSE 9 END;
-          DECLARE @CALC_BELGE_YAZICI_ID INT = NULL;
-
-          IF OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
-          BEGIN
-            SELECT TOP 1 @CALC_BELGE_YAZICI_ID = YAZICI_ID
-            FROM TODVZ_NUMERATOR
-            WHERE TUR = @CALC_BELGE_TUR
-            ORDER BY 
-              CASE 
-                WHEN @EFF_YAZICI_ID IS NOT NULL AND YAZICI_ID = @EFF_YAZICI_ID THEN 0
-                WHEN YAZICI_ID IS NOT NULL AND YAZICI_ID > 0 THEN 1
-                ELSE 2
-              END;
-          END;
-
-          DECLARE @GEN_BELGE_NO VARCHAR(20) = NULL;
-          DECLARE @GEN_BELGE_ONEK VARCHAR(10) = NULL;
-          DECLARE @GEN_BELGE_SIFIR BIT = 1;
-          DECLARE @GEN_BELGE_RET INT = 0;
-
-          IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
-          BEGIN
-            -- 1. Hedef yazıcı ID ile SODVZ_NUMERATOR_URET çağrısı
-            BEGIN TRY
-              EXEC @GEN_BELGE_RET = SODVZ_NUMERATOR_URET @CALC_BELGE_TUR, @GEN_BELGE_NO OUTPUT, @CALC_BELGE_YAZICI_ID, 1, @GEN_BELGE_ONEK OUTPUT, @GEN_BELGE_SIFIR OUTPUT;
-            END TRY
-            BEGIN CATCH
-            END CATCH;
-
-            -- 2. Eğer üretilemediyse ve @CALC_BELGE_YAZICI_ID NULL değildiyse, NULL yazıcı ile dene
-            IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0) AND @CALC_BELGE_YAZICI_ID IS NOT NULL
-            BEGIN
-              BEGIN TRY
-                EXEC @GEN_BELGE_RET = SODVZ_NUMERATOR_URET @CALC_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_BELGE_ONEK OUTPUT, @GEN_BELGE_SIFIR OUTPUT;
-              END TRY
-              BEGIN CATCH
-              END CATCH;
-            END;
-
-            -- 3. Alternatif TUR'lar ile dene (22/23 Sarrafiye / E-Döviz türleri)
-            IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0)
-            BEGIN
-              DECLARE @ALT_BELGE_TUR INT = CASE WHEN @TIP = 0 THEN 22 ELSE 23 END;
-              BEGIN TRY
-                EXEC @GEN_BELGE_RET = SODVZ_NUMERATOR_URET @ALT_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_BELGE_ONEK OUTPUT, @GEN_BELGE_SIFIR OUTPUT;
-              END TRY
-              BEGIN CATCH
-              END CATCH;
-            END;
-          END;
-
-          -- 4. Eğer prosedürden başarıyla belge no üretildiyse ata
-          IF @GEN_BELGE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) > 0
-          BEGIN
-            SET @P_BELGE_NO = LTRIM(RTRIM(@GEN_BELGE_NO));
-          END
-          ELSE
-          BEGIN
-            -- 5. Numaratör tablosunda bu tür hiç tanımlı değilse, TODVZ_FIS tablosundaki son belge nodan devam et
-            DECLARE @SON_BELGE VARCHAR(20) = NULL;
-            SELECT TOP 1 @SON_BELGE = BELGE_NO 
-            FROM TODVZ_FIS 
-            WHERE TIP = @TIP AND BELGE_NO IS NOT NULL AND LEN(BELGE_NO) > 0
-            ORDER BY FIS_ID DESC;
-
-            DECLARE @FALLBACK_BELGE_ONEK VARCHAR(10) = CASE WHEN @TIP = 0 THEN 'B-A' ELSE 'B-S' END;
-            DECLARE @SON_BELGE_NUM BIGINT = 0;
-            IF @SON_BELGE IS NOT NULL
-            BEGIN
-              DECLARE @BELGE_DIGITS VARCHAR(30) = '';
-              DECLARE @BELGE_PREFIX VARCHAR(30) = '';
-              DECLARE @BELGE_POS INT = 1;
-              WHILE @BELGE_POS <= LEN(@SON_BELGE)
-              BEGIN
-                DECLARE @CH CHAR(1) = SUBSTRING(@SON_BELGE, @BELGE_POS, 1);
-                IF @CH LIKE '[0-9]'
-                  SET @BELGE_DIGITS = @BELGE_DIGITS + @CH;
-                ELSE IF LEN(@BELGE_DIGITS) = 0
-                  SET @BELGE_PREFIX = @BELGE_PREFIX + @CH;
-                SET @BELGE_POS = @BELGE_POS + 1;
-              END;
-              IF LEN(@BELGE_DIGITS) > 0
-              BEGIN
-                SET @SON_BELGE_NUM = CAST(@BELGE_DIGITS AS BIGINT);
-                DECLARE @NEXT_BELGE_STR VARCHAR(30) = CAST((@SON_BELGE_NUM + 1) AS VARCHAR(30));
-                IF LEN(@NEXT_BELGE_STR) < LEN(@BELGE_DIGITS)
-                  SET @NEXT_BELGE_STR = REPLICATE('0', LEN(@BELGE_DIGITS) - LEN(@NEXT_BELGE_STR)) + @NEXT_BELGE_STR;
-                SET @P_BELGE_NO = @BELGE_PREFIX + @NEXT_BELGE_STR;
-              END
-              ELSE
-              BEGIN
-                SET @P_BELGE_NO = @FALLBACK_BELGE_ONEK + '000000001';
-              END;
-            END
-            ELSE
-            BEGIN
-              SET @P_BELGE_NO = @FALLBACK_BELGE_ONEK + '000000001';
-            END;
-          END;
-
-          -- Geçici tablodaki satırların BELGE_NO alanını da güncelle
           UPDATE #TODVZ_ISKELE_FIS_SATIRI 
           SET BELGE_NO = @P_BELGE_NO 
           WHERE BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(BELGE_NO))) = 0;

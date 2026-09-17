@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Container, Row, Col, Card, Form, Button, Alert, Modal, Badge, Table, ButtonGroup } from "react-bootstrap";
 import {
   IconLayoutGrid,
@@ -137,9 +138,19 @@ const PreviewBarcodeSvg: React.FC<{ value: string; tip: "CODE128" | "QR"; scale?
 };
 
 export const UrunEtiketTasarimiPage: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isOzel = location.pathname.includes("ozel");
+  const isAltin = location.pathname.includes("altin");
+  const pageTitle = isOzel
+    ? "G- Özel Ürün Etiket Tasarımı"
+    : isAltin
+    ? "F- Altın Etiket Tasarımı"
+    : "D- Ürün Etiket Tasarımı";
+
   const [etiketSablonId, setEtiketSablonId] = useState<number | null>(null);
   const [ad, setAd] = useState("");
-  const [etiketTipi, setEtiketTipi] = useState(0);
+  const [etiketTipi, setEtiketTipi] = useState(isOzel ? 1 : 0);
   const [genislikMm, setGenislikMm] = useState<number | string>(40);
   const [yukseklikMm, setYukseklikMm] = useState<number | string>(25);
   const [kuyrukPayiMm, setKuyrukPayiMm] = useState<number | string>(0);
@@ -349,7 +360,7 @@ export const UrunEtiketTasarimiPage: React.FC = () => {
   return (
     <div className="urun-etiket-tasarimi-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="D- Ürün Etiket Tasarımı"
+        pageTitle={pageTitle}
         pageIcon={<IconLayoutGrid size={20} />}
         disabled={isSaving}
         onSave={handleSave}

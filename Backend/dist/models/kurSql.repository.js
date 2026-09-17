@@ -217,7 +217,7 @@ export class KurSqlRepository {
         P.[PARA_ID],
         LTRIM(RTRIM(ISNULL(P.[KOD], ''))) AS [PARA_KOD],
         LTRIM(RTRIM(ISNULL(P.[AD], ''))) AS [PARA_AD],
-        ISNULL(P.[SIRA_NO], 9999999) AS [SIRA_NO],
+        ISNULL(P.[SIRA_NO], 0) AS [SIRA_NO],
         K.[DOVIZ_ALIS],
         K.[DOVIZ_SATIS],
         K.[EFEKTIF_ALIS],
@@ -226,14 +226,7 @@ export class KurSqlRepository {
       FROM [dbo].[TODVZ_PARA] P
       LEFT JOIN [dbo].[TODVZ_KUR] K 
         ON P.[PARA_ID] = K.[PARA_ID] AND K.[KUR_TABLOSU_ID] = @kurTablosuId
-      WHERE UPPER(LTRIM(RTRIM(ISNULL(P.[KOD], '')))) NOT IN ('TL', 'TRY', 'TL.', 'YTL', 'TRL')
-        AND UPPER(LTRIM(RTRIM(ISNULL(P.[KOD], '')))) NOT LIKE 'TL%'
-        AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TÜRK LİRASI%'
-        AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TURK LIRASI%'
-        AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TÜRK LIRA%'
-        AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TURK LIRA%'
-        AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%YEREL%'
-      ORDER BY CASE WHEN ISNULL(P.[SIRA_NO], 0) <= 0 THEN 9999999 ELSE P.[SIRA_NO] END ASC, P.[PARA_ID] ASC;
+      ORDER BY P.[PARA_ID] ASC;
     `;
         const ratesRes = await pool
             .request()
@@ -384,30 +377,19 @@ export class KurSqlRepository {
                 rReq.input("PARITE", sql.Float, parite);
                 try {
                     await rReq.query(`
-            UPDATE [dbo].[TODVZ_KUR]
-            SET [DOVIZ_ALIS] = @DOVIZ_ALIS,
-                [DOVIZ_SATIS] = @DOVIZ_SATIS,
-                [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
-                [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
-                [PARITE] = @PARITE
-            WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
-
-            IF @@ROWCOUNT = 0
-            BEGIN
-              BEGIN TRY
-                INSERT INTO [dbo].[TODVZ_KUR] ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
-                VALUES (@KUR_TABLOSU_ID, @PARA_ID, @DOVIZ_ALIS, @DOVIZ_SATIS, @EFEKTIF_ALIS, @EFEKTIF_SATIS, @PARITE);
-              END TRY
-              BEGIN CATCH
-                UPDATE [dbo].[TODVZ_KUR]
-                SET [DOVIZ_ALIS] = @DOVIZ_ALIS,
+            MERGE [dbo].[TODVZ_KUR] AS target
+            USING (SELECT @KUR_TABLOSU_ID AS KUR_TABLOSU_ID, @PARA_ID AS PARA_ID) AS source
+            ON (target.[KUR_TABLOSU_ID] = source.[KUR_TABLOSU_ID] AND target.[PARA_ID] = source.[PARA_ID])
+            WHEN MATCHED THEN
+                UPDATE SET 
+                    [DOVIZ_ALIS] = @DOVIZ_ALIS,
                     [DOVIZ_SATIS] = @DOVIZ_SATIS,
                     [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
                     [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
                     [PARITE] = @PARITE
-                WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
-              END CATCH
-            END
+            WHEN NOT MATCHED THEN
+                INSERT ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
+                VALUES (@KUR_TABLOSU_ID, @PARA_ID, @DOVIZ_ALIS, @DOVIZ_SATIS, @EFEKTIF_ALIS, @EFEKTIF_SATIS, @PARITE);
           `);
                 }
                 catch (itemErr) {

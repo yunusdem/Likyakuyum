@@ -328,10 +328,6 @@ export const PanoTanimiPage: React.FC = () => {
       kurAlaniGenisligi: 40,
       satirlar: [],
     });
-    setAlertInfo({
-      type: "warning",
-      message: "Yeni kayıt modu: Tüm alanlar temizlendi. Pano No ve bilgileri girip sol üstteki 'Kaydet' butonuna basarak kaydedebilirsiniz.",
-    });
   };
 
   // Save via stored procedure SODVZ_PANO_TANIMI_KAYDET

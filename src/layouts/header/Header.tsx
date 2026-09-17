@@ -36,7 +36,7 @@ const quickActions = [
     icon: <IconChartLine size={18} strokeWidth={2} className="text-primary" />,
   },
   {
-    title: "Vezne",
+    title: "Vezne İzleme",
     to: "/vezne/izleme",
     icon: <IconEye size={18} strokeWidth={2} style={{ color: "#0891b2" }} />,
   },

@@ -1055,7 +1055,7 @@ export class BankaSqlRepository {
       const pRes = await pool.request().query(`
         SELECT PARA_ID as id, KOD as kod, AD as ad, DOVIZ_ALIS_HUCRE_ORANI as alisKuru, DOVIZ_SATIS_HUCRE_ORANI as satisKuru
         FROM TODVZ_PARA
-        ORDER BY SIRA_NO ASC, KOD ASC
+        ORDER BY PARA_ID ASC
       `);
       paralar = pRes.recordset || [];
     } catch {

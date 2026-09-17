@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Row, Col, Card, Form, Button, Alert, InputGroup, Modal, Dropdown, Table, Badge } from "react-bootstrap";
 import {
   IconCheck,
@@ -19,6 +20,7 @@ import {
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import { AyarSecimModal } from "../../components/common/AyarSecimModal";
 import EtiketYazdirModal, { EtiketYazdirItem } from "./EtiketYazdirModal";
 import {
   EtiketService,
@@ -28,6 +30,7 @@ import {
   EtiketGrupItem,
   BankoItem,
 } from "../../services/etiketService";
+import { AyarService, AyarItem } from "../../services/ayarService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { envConfig } from "../../config/env.config";
@@ -136,6 +139,10 @@ const format3Digits = (val: number | string | undefined | null): string => {
 const TOTAL_GRID_COLS = 9;
 
 export const OzelUrunTanimlamaPage: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isDuzeltmeMode = location.pathname.includes("duzeltme");
+
   // ─── Form State (TODVZ_OZEL_URUN) ───────────────────────────────────────────
   const [ozelUrunId, setOzelUrunId] = useState<number | null>(null);
   const [tarih, setTarih] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -153,6 +160,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   // ─── Montür (Altın / Gövde) Özellikleri (Ayar başlangıçta boş) ──────────────
   const [monturGram, setMonturGram] = useState<number | string>("");
   const [ayar, setAyar] = useState<string>("");
+  const [ayarList, setAyarList] = useState<AyarItem[]>([]);
+  const [showAyarModal, setShowAyarModal] = useState<boolean>(false);
   const [monturHas, setMonturHas] = useState<number | string>("");
   const [monturIscilik, setMonturIscilik] = useState<number | string>("");
   const [monturIscilikBirim, setMonturIscilikBirim] = useState<string>("Gram");
@@ -273,9 +282,24 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     grupKoduRef.current?.focus();
   }, []);
 
+  const extractApiErrorMessage = (err: any, defaultMsg: string): string => {
+    if (!err) return defaultMsg;
+    if (typeof err === "string") return err;
+    const respMsg = err.response?.data?.message || err.response?.data?.error || err.response?.data?.hata;
+    if (respMsg && typeof respMsg === "string" && respMsg.trim()) {
+      return respMsg.trim();
+    }
+    if (err.message && typeof err.message === "string" && err.message.trim()) {
+      const msg = err.message.trim();
+      if (msg.startsWith("Error: ")) return msg.replace(/^Error:\s*/, "");
+      return msg;
+    }
+    return defaultMsg;
+  };
+
   const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
     setNotification({ type, message: msg });
-    setTimeout(() => setNotification(null), 4000);
+    setTimeout(() => setNotification(null), type === "danger" ? 7000 : 4000);
   };
 
   const cleanInputStr = (val: string): string => {
@@ -308,9 +332,23 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     return Number(num.toFixed(maxDecimals)).toString();
   };
 
-  const getMilyemFromAyar = (ayarStr: string): number => {
+  const getMilyemFromAyar = useCallback((ayarStr: string): number => {
     if (!ayarStr || !ayarStr.trim()) return 0;
     const normalized = (ayarStr || "").trim().toUpperCase();
+
+    // 1. Check database loaded Ayar list (TODVZ_AYAR)
+    const foundInDb = ayarList.find(
+      (a) =>
+        a.ayarKodu.toUpperCase().trim() === normalized ||
+        a.ayarAdi.toUpperCase().trim() === normalized ||
+        `${a.ayarKodu} AYAR`.toUpperCase().trim() === normalized ||
+        `${a.standartAyar} AYAR`.toUpperCase().trim() === normalized
+    );
+    if (foundInDb && foundInDb.milyem > 0) {
+      return Math.round(foundInDb.milyem * 1000);
+    }
+
+    // 2. Static map fallback
     if (AYAR_MILYEM_MAP[normalized]) {
       return AYAR_MILYEM_MAP[normalized];
     }
@@ -327,7 +365,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       if (parsed <= 1000) return parsed;
     }
     return 0;
-  };
+  }, [ayarList]);
 
   const kurRef = {
     hasAlis: parseNum(hasAlis),
@@ -347,7 +385,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       // Kurlar tablosunda ara
       const row = kurRows.find((k) => (k.kod || "").toUpperCase() === c);
       if (row) {
-        const rate = row.dovizSatis || row.dovizAlis;
+        const rate = row.efektifSatis || row.efektifAlis || row.dovizSatis || row.dovizAlis;
         if (rate && rate > 0) return rate;
       }
       return 1;
@@ -729,7 +767,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
-      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar] = await Promise.all([
+      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar, ayarlar] = await Promise.all([
         EtiketService.getOzelUrunler({ limit: 500 }),
         EtiketService.getGruplar(1).catch(() => []),
         EtiketService.getUreticiFirmalar().catch(() => []),
@@ -737,6 +775,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         EtiketService.getSablonlar(1).catch(() => []),
         KurService.getKurTablosu({ tur: 0 }).then((t) => t?.satirlar || []).catch(() => []),
         EtiketService.getBankolar().catch(() => []),
+        AyarService.getAyarlar(false).catch(() => []),
       ]);
 
       setOzelList(urunler);
@@ -746,28 +785,58 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       setCariList(cariler);
       setSablonlar(sabl);
       setKurRows(kurlar);
+      setAyarList(ayarlar);
 
       if (kurlar.length > 0) {
         const hasKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
         if (hasKur) {
-          if (hasKur.dovizAlis !== undefined && hasKur.dovizAlis !== null) setHasAlis(hasKur.dovizAlis);
-          if (hasKur.dovizSatis !== undefined && hasKur.dovizSatis !== null) setHasSatis(hasKur.dovizSatis);
+          const hAlis = (hasKur.efektifAlis !== undefined && hasKur.efektifAlis !== null && Number(hasKur.efektifAlis) > 0) ? hasKur.efektifAlis : hasKur.dovizAlis;
+          const hSatis = (hasKur.efektifSatis !== undefined && hasKur.efektifSatis !== null && Number(hasKur.efektifSatis) > 0) ? hasKur.efektifSatis : hasKur.dovizSatis;
+          if (hAlis !== undefined && hAlis !== null) setHasAlis(hAlis);
+          if (hSatis !== undefined && hSatis !== null) setHasSatis(hSatis);
         }
 
         const usdKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "USD");
-        if (usdKur && usdKur.dovizSatis) setUsdKuru(usdKur.dovizSatis);
+        if (usdKur) {
+          const uSatis = (usdKur.efektifSatis !== undefined && usdKur.efektifSatis !== null && Number(usdKur.efektifSatis) > 0) ? usdKur.efektifSatis : (usdKur.efektifAlis || usdKur.dovizSatis || usdKur.dovizAlis);
+          if (uSatis) setUsdKuru(uSatis);
+        }
 
         const eurKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "EUR");
-        if (eurKur && eurKur.dovizSatis) setEurKuru(eurKur.dovizSatis);
+        if (eurKur) {
+          const eSatis = (eurKur.efektifSatis !== undefined && eurKur.efektifSatis !== null && Number(eurKur.efektifSatis) > 0) ? eurKur.efektifSatis : (eurKur.efektifAlis || eurKur.dovizSatis || eurKur.dovizAlis);
+          if (eSatis) setEurKuru(eSatis);
+        }
       }
     } catch (err: any) {
-      showNotif("danger", err?.message || "Veriler yüklenirken hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Özel ürün ve etiket tanımlama verileri yüklenirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     }
   }, []);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (isDuzeltmeMode && ozelList.length > 0 && !ozelUrunId) {
+      const queryParams = new URLSearchParams(location.search);
+      const queryId = queryParams.get("id");
+      if (queryId) {
+        const match = ozelList.find((u) => u.ozelUrunId === parseInt(queryId, 10));
+        if (match) handleSelectRecord(match);
+        else handleSelectRecord(ozelList[ozelList.length - 1]);
+      } else {
+        handleSelectRecord(ozelList[ozelList.length - 1]);
+      }
+    } else if (!isDuzeltmeMode && ozelUrunId) {
+      handleNew();
+    }
+    const timer = setTimeout(() => {
+      grupKoduRef.current?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [isDuzeltmeMode, ozelList, location.pathname, location.search]);
 
   // ─── Klavye Kısayolları (F1, F2, F3) ────────────────────────────────────────
   useEffect(() => {
@@ -865,7 +934,6 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setResim(null);
     setResimler([]);
     setSeciliResimIndex(0);
-    showNotif("warning", "Yeni kayıt modu. Özel ürün bilgilerini girip 'Kaydet' butonuna basınız.");
   };
 
   // ─── Kayıt Seçme ─────────────────────────────────────────────────────────────
@@ -944,6 +1012,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       showNotif("warning", "Lütfen geçerli bir Ürün No giriniz.");
       return;
     }
+    if (!ayar.trim()) {
+      showNotif("warning", "Lütfen Montür Ayarını seçiniz.");
+      return;
+    }
+    if (parseNum(monturGram) <= 0) {
+      showNotif("warning", "Lütfen Montür Gramajını (0'dan büyük) giriniz.");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -1018,7 +1094,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       const updated = await EtiketService.getOzelUrunler({ limit: 500 });
       setOzelList(updated);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Kayıt sırasında hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Özel ürün kaydedilirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -1036,7 +1113,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       const updated = await EtiketService.getOzelUrunler({ limit: 500 });
       setOzelList(updated);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Silme işlemi sırasında hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Özel ürün silinirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -1091,7 +1169,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       setBankoList(updatedBankolar);
       setBanko(saved.bankoAdi);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Banko eklenirken hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Banko eklenirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     }
   };
 
@@ -1216,20 +1295,23 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
       {/* ─── ERP Toolbar ─── */}
       <ERPToolbar
-        pageTitle="C- Barkodlu Özel Ürün Tanımlama"
+        pageTitle={isDuzeltmeMode ? "E- Özel Ürün Düzeltme" : "D- Özel Ürün Barkodlama"}
         pageIcon={<IconDiamond size={20} />}
         onNew={handleNew}
         onSave={handleSave}
-        onDelete={() => setShowDeleteConfirm(true)}
-        onSearch={() => setShowLookup(true)}
-        onFirst={() => handleNavigate("first")}
-        onPrev={() => handleNavigate("prev")}
-        onNext={() => handleNavigate("next")}
-        onLast={() => handleNavigate("last")}
+        onDelete={isDuzeltmeMode ? () => setShowDeleteConfirm(true) : undefined}
+        onSearch={isDuzeltmeMode ? () => setShowLookup(true) : undefined}
+        onFirst={isDuzeltmeMode ? () => handleNavigate("first") : undefined}
+        onPrev={isDuzeltmeMode ? () => handleNavigate("prev") : undefined}
+        onNext={isDuzeltmeMode ? () => handleNavigate("next") : undefined}
+        onLast={isDuzeltmeMode ? () => handleNavigate("last") : undefined}
+        hideDelete={!isDuzeltmeMode}
+        hideSearch={!isDuzeltmeMode}
+        hideNavigation={!isDuzeltmeMode}
         onRefresh={loadAll}
         onPrint={() => (ozelUrunId ? setShowPrintModal(true) : showNotif("warning", "Önce bir ürün seçiniz."))}
         disabled={isSaving}
-        modeText={ozelUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${ozelList.length})` : "Yeni Kayıt Modu"}
+        modeText={ozelUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${ozelList.length})` : (isDuzeltmeMode ? "Düzeltme Modu" : "Yeni Kayıt Modu")}
       />
 
       {/* ─── Sayfa Ortası Toast Bildirim ─── */}
@@ -1517,15 +1599,25 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         onChange={(e) => handleMonturGramChange(cleanInputStr(e.target.value))}
                         className="fw-bold font-monospace text-end bg-white"
                         style={{ maxWidth: "110px" }}
+                        placeholder="0.00"
                       />
-                      <Form.Control
-                        type="text"
-                        size="sm"
-                        list="ayarListesi"
-                        value={ayar}
-                        onChange={(e) => handleAyarChange(e.target.value)}
-                        className="bg-white fw-bold font-monospace flex-grow-1"
-                      />
+                      <InputGroup size="sm" className="flex-grow-1">
+                        <Form.Control
+                          type="text"
+                          list="ayarListesi"
+                          value={ayar}
+                          onChange={(e) => handleAyarChange(e.target.value)}
+                          className="bg-white fw-bold font-monospace"
+                          placeholder="Ayar seçin / yazın"
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          onClick={() => setShowAyarModal(true)}
+                          title="Ayar Tanımları & Seçim (Dürbün)"
+                        >
+                          <IconBinoculars size={15} />
+                        </Button>
+                      </InputGroup>
                     </div>
                   </div>
 
@@ -2538,8 +2630,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         columns={[
           { header: "Döviz / Para Kodu", width: "120px", render: (it) => <span className="font-monospace fw-bold text-primary">{it.kod}</span> },
           { header: "Açıklama / Para Adı", render: (it) => it.ad || "-" },
-          { header: "Döviz Alış", width: "120px", render: (it) => it.dovizAlis ?? "-" },
-          { header: "Döviz Satış", width: "120px", render: (it) => it.dovizSatis ?? "-" },
+          { header: "Efektif Alış", width: "110px", render: (it) => it.efektifAlis ?? it.dovizAlis ?? "-" },
+          { header: "Efektif Satış", width: "110px", render: (it) => it.efektifSatis ?? it.dovizSatis ?? "-" },
+          { header: "Döviz Alış", width: "110px", render: (it) => it.dovizAlis ?? "-" },
+          { header: "Döviz Satış", width: "110px", render: (it) => it.dovizSatis ?? "-" },
         ]}
         items={kurRows}
         filterFn={(it, term) => {
@@ -2548,16 +2642,52 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         }}
         onSelect={(it) => {
           const kod = (it.kod || "").toUpperCase();
-          if (showKurLookup === "hasAlis") setHasAlis(it.dovizAlis || it.dovizSatis || 0);
-          else if (showKurLookup === "hasSatis") setHasSatis(it.dovizSatis || it.dovizAlis || 0);
-          else if (showKurLookup === "usd") setUsdKuru(it.dovizSatis || it.dovizAlis || 0);
-          else if (showKurLookup === "eur") setEurKuru(it.dovizSatis || it.dovizAlis || 0);
-          else if (showKurLookup === "maliyet") {
+          if (showKurLookup === "hasAlis") {
+            const chosen = (it.efektifAlis !== undefined && it.efektifAlis !== null && Number(it.efektifAlis) > 0)
+              ? it.efektifAlis
+              : (it.dovizAlis || it.efektifSatis || it.dovizSatis || 0);
+            setHasAlis(chosen);
+          } else if (showKurLookup === "hasSatis") {
+            const chosen = (it.efektifSatis !== undefined && it.efektifSatis !== null && Number(it.efektifSatis) > 0)
+              ? it.efektifSatis
+              : (it.dovizSatis || it.efektifAlis || it.dovizAlis || 0);
+            setHasSatis(chosen);
+          } else if (showKurLookup === "usd") {
+            const chosen = (it.efektifSatis !== undefined && it.efektifSatis !== null && Number(it.efektifSatis) > 0)
+              ? it.efektifSatis
+              : (it.efektifAlis || it.dovizSatis || it.dovizAlis || 0);
+            setUsdKuru(chosen);
+          } else if (showKurLookup === "eur") {
+            const chosen = (it.efektifSatis !== undefined && it.efektifSatis !== null && Number(it.efektifSatis) > 0)
+              ? it.efektifSatis
+              : (it.efektifAlis || it.dovizSatis || it.dovizAlis || 0);
+            setEurKuru(chosen);
+          } else if (showKurLookup === "maliyet") {
+            const oldPara = maliyetParaKodu;
             setMaliyetParaKodu(kod);
-            recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, kod, satisParaKodu, satisKariYuzde, kurRef);
+            const mNum = parseNum(maliyet);
+            if (mNum > 0) {
+              const oldRate = getKurVal(oldPara, kurRef);
+              const newRate = getKurVal(kod, kurRef);
+              const convertedMaliyet = newRate > 0 ? (mNum * oldRate) / newRate : mNum;
+              setMaliyet(formatNumber(convertedMaliyet, 2));
+            }
+            if (parseNum(monturGram) > 0 || (taslar && taslar.length > 0)) {
+              recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, kod, satisParaKodu, satisKariYuzde, kurRef);
+            }
           } else if (showKurLookup === "satis") {
+            const oldPara = satisParaKodu;
             setSatisParaKodu(kod);
-            recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, kod, satisKariYuzde, kurRef);
+            const sNum = parseNum(satisFiyati);
+            if (sNum > 0) {
+              const oldRate = getKurVal(oldPara, kurRef);
+              const newRate = getKurVal(kod, kurRef);
+              const convertedSatis = newRate > 0 ? (sNum * oldRate) / newRate : sNum;
+              setSatisFiyati(formatNumber(convertedSatis, 2));
+            }
+            if (parseNum(monturGram) > 0 || (taslar && taslar.length > 0)) {
+              recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, kod, satisKariYuzde, kurRef);
+            }
           } else if (showKurLookup === "monturIscilik") {
             setMonturIscilikParaKodu(kod);
             recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, kod, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, kurRef);
@@ -2787,6 +2917,16 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           )}
         </div>
       </Modal>
+      {/* Ayar Seçim & Tanımlama Modalı (TODVZ_AYAR) */}
+      <AyarSecimModal
+        show={showAyarModal}
+        onHide={() => setShowAyarModal(false)}
+        onSelect={(selected) => {
+          handleAyarChange(selected.ayarKodu);
+          setShowAyarModal(false);
+        }}
+        selectedAyarKodu={ayar}
+      />
     </div>
   );
 };
