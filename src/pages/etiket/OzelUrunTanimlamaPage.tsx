@@ -13,6 +13,9 @@ import {
   IconScale,
   IconSparkles,
   IconX,
+  IconMaximize,
+  IconChevronLeft,
+  IconChevronRight,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -226,6 +229,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const [selectedTasIdForKur, setSelectedTasIdForKur] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showFotoModal, setShowFotoModal] = useState(false);
 
   // Yeni Grup Ekleme Form State (Özel Ürün: tip = 1)
   const [yeniGrupKodu, setYeniGrupKodu] = useState("");
@@ -1978,12 +1982,17 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
             <div className="d-flex align-items-center gap-3">
               {/* Ana Fotoğraf Önizleme Kutusu */}
               <div
-                className="rounded-3 border d-flex flex-column align-items-center justify-content-center bg-white position-relative overflow-hidden flex-shrink-0"
+                className="rounded-3 border d-flex flex-column align-items-center justify-content-center bg-white position-relative overflow-hidden flex-shrink-0 group"
                 style={{
                   width: "140px",
                   height: "110px",
                   boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
+                  cursor: (resimler.length > 0 || resim) ? "zoom-in" : "default",
                 }}
+                onClick={() => {
+                  if (resimler.length > 0 || resim) setShowFotoModal(true);
+                }}
+                title={(resimler.length > 0 || resim) ? "Büyütmek için tıklayın" : ""}
               >
                 {resimler.length > 0 && resimler[seciliResimIndex] ? (
                   <img
@@ -2013,6 +2022,23 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <span className="small fw-semibold text-secondary" style={{ fontSize: "11px" }}>Fotoğraf Yok</span>
                   </div>
                 )}
+
+                {/* Büyütme Butonu */}
+                {(resimler.length > 0 || resim) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowFotoModal(true);
+                    }}
+                    className="btn btn-sm btn-light border position-absolute end-0 top-0 m-1 rounded-circle d-flex align-items-center justify-content-center shadow-xs"
+                    style={{ width: "24px", height: "24px", zIndex: 6, opacity: 0.85, padding: 0 }}
+                    title="Fotoğrafı Büyüt"
+                  >
+                    <IconMaximize size={13} className="text-dark" />
+                  </button>
+                )}
+
                 {resimler.length > 1 && (
                   <span
                     className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5 rounded-top-start small font-monospace"
@@ -2643,6 +2669,124 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           }
         }}
       />
+
+      {/* ─── Fotoğraf Büyütme Lightbox Modalı ─── */}
+      <Modal
+        show={showFotoModal}
+        onHide={() => setShowFotoModal(false)}
+        centered
+        size="lg"
+        contentClassName="bg-transparent border-0 shadow-none"
+      >
+        <div
+          className="position-relative bg-dark bg-opacity-95 rounded-4 p-3 d-flex flex-column align-items-center shadow-lg border border-secondary border-opacity-50"
+          style={{ backdropFilter: "blur(8px)" }}
+        >
+          {/* Üst Bar: Başlık ve Kapat Butonu */}
+          <div className="d-flex align-items-center justify-content-between w-100 mb-2 px-2 text-white">
+            <div className="d-flex align-items-center gap-2">
+              <span className="fw-bold font-monospace fs-6">
+                {grupKodu}-{urunNo}
+              </span>
+              <span className="text-secondary small">{mamulTipi || "Özel Ürün"}</span>
+              {resimler.length > 1 && (
+                <span className="badge bg-secondary font-monospace">
+                  {seciliResimIndex + 1} / {resimler.length}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFotoModal(false)}
+              className="btn btn-sm btn-outline-light rounded-circle d-flex align-items-center justify-content-center"
+              style={{ width: "34px", height: "34px" }}
+              title="Kapat"
+            >
+              <IconX size={20} />
+            </button>
+          </div>
+
+          {/* Büyük Görsel Alanı */}
+          <div
+            className="position-relative w-100 d-flex align-items-center justify-content-center bg-black bg-opacity-40 rounded-3 overflow-hidden p-2"
+            style={{ maxHeight: "75vh", minHeight: "350px" }}
+          >
+            {(resimler.length > 0 && resimler[seciliResimIndex]) ? (
+              <img
+                src={resolveImageUrl(resimler[seciliResimIndex])}
+                alt="Büyük Özel Ürün Fotoğrafı"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  borderRadius: "6px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                }}
+              />
+            ) : resim ? (
+              <img
+                src={resolveImageUrl(resim)}
+                alt="Büyük Özel Ürün Fotoğrafı"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  borderRadius: "6px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                }}
+              />
+            ) : null}
+
+            {/* Sol / Sağ Oklar */}
+            {resimler.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSeciliResimIndex((prev) => (prev > 0 ? prev - 1 : resimler.length - 1))}
+                  className="btn btn-dark position-absolute start-0 top-50 translate-middle-y ms-3 rounded-circle d-flex align-items-center justify-content-center opacity-85 shadow-lg border border-secondary"
+                  style={{ width: "44px", height: "44px", zIndex: 10 }}
+                  title="Önceki Fotoğraf"
+                >
+                  <IconChevronLeft size={24} className="text-white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSeciliResimIndex((prev) => (prev < resimler.length - 1 ? prev + 1 : 0))}
+                  className="btn btn-dark position-absolute end-0 top-50 translate-middle-y me-3 rounded-circle d-flex align-items-center justify-content-center opacity-85 shadow-lg border border-secondary"
+                  style={{ width: "44px", height: "44px", zIndex: 10 }}
+                  title="Sonraki Fotoğraf"
+                >
+                  <IconChevronRight size={24} className="text-white" />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Alt Küçük Resim Şeridi */}
+          {resimler.length > 1 && (
+            <div className="d-flex align-items-center gap-2 mt-3 overflow-auto py-1 px-2">
+              {resimler.map((imgUrl, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => setSeciliResimIndex(idx)}
+                  className={`rounded border p-0.5 cursor-pointer transition-all ${
+                    idx === seciliResimIndex
+                      ? "border-warning border-2 scale-110 shadow"
+                      : "border-secondary opacity-60 hover-opacity-100"
+                  }`}
+                  style={{ width: "50px", height: "50px", background: "#fff", cursor: "pointer" }}
+                >
+                  <img
+                    src={resolveImageUrl(imgUrl)}
+                    alt={`thumb-${idx}`}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "3px" }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };
