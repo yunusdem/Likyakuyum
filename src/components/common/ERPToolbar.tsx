@@ -123,9 +123,7 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/etiket/altin-urun-tanimlama": { title: "B- Barkodlu Altın Ürün Tanımlama", icon: <IconBarcode size={20} /> },
   "/etiket/ozel-urun-tanimlama": { title: "C- Barkodlu Özel Ürün Tanımlama", icon: <IconDiamond size={20} /> },
   "/etiket/tasarim": { title: "D- Ürün Etiket Tasarımı", icon: <IconPrinter size={20} /> },
-  "/etiket/toplu-yazdirma": { title: "E- Toplu Etiket Yazdırma", icon: <IconPrinter size={20} /> },
-  "/etiket/kuyumcu-etiketi": { title: "F- Kuyumcu Yüzük / Bilezik Etiketi", icon: <IconPrinter size={20} /> },
-  "/etiket/fiyat-etiketi": { title: "G- Fiyat & Ayar Etiketleri", icon: <IconPrinter size={20} /> },
+  "/etiket/fiyat-etiketi": { title: "E- Fiyat & Ayar Etiketleri", icon: <IconPrinter size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({

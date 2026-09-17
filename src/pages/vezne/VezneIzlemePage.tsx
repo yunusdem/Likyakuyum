@@ -22,6 +22,7 @@ import {
   IconX,
   IconClock,
   IconCalendar,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import {
@@ -418,16 +419,23 @@ export const VezneIzlemePage: React.FC = () => {
         }
       />
 
-      {/* Notifications */}
+      {/* Sayfa Ortası Popup Bildirimler (ERP Toast) */}
       {notification && (
-        <Alert
-          variant={notification.type}
-          dismissible
-          onClose={() => setNotification(null)}
-          className="py-1 px-2.5 mb-2 d-flex align-items-center justify-content-between shadow-2xs small"
-        >
-          <span>{notification.message}</span>
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert
+            variant={notification.type}
+            dismissible
+            onClose={() => setNotification(null)}
+            className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0"
+          >
+            {notification.type === "success" ? (
+              <IconCheck size={18} className="me-2 text-success flex-shrink-0" />
+            ) : (
+              <IconAlertCircle size={18} className="me-2 text-danger flex-shrink-0" />
+            )}
+            <span style={{ fontSize: "13px" }}>{notification.message}</span>
+          </Alert>
+        </div>
       )}
 
       {/* Main Monitoring Content - 8'li Tablolar Alt Alta (Sağa kaydırmasız) */}

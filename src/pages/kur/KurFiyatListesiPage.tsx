@@ -84,6 +84,16 @@ export const filterOutTl = (items?: KurRowItem[]): KurRowItem[] => {
   return items.filter((r) => !isTlCurrency(r.kod, r.ad));
 };
 
+export const sortKurRows = (items?: KurRowItem[]): KurRowItem[] => {
+  if (!items) return [];
+  const nonTl = filterOutTl(items);
+  return [...nonTl].sort((a, b) => {
+    const seqA = Number(a.siraNo) || Number(a.paraId) || 0;
+    const seqB = Number(b.siraNo) || Number(b.paraId) || 0;
+    return seqA - seqB;
+  });
+};
+
 export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   pageType: propPageType,
 }) => {
@@ -230,12 +240,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             // Tarih ve saat otomatik olarak şu anki tarih ve saat olacak
             setTarih(getCurrentDateStr());
             setSaat(getCurrentTimeStr());
-            const filteredRows = filterOutTl(tablo.satirlar);
-            setRows(filteredRows);
+            const sortedRows = sortKurRows(tablo.satirlar);
+            setRows(sortedRows);
 
             // Verisi bulunmayan satırlar / hücreler boş olarak gelecek
             const initialInputs: Record<string, string> = {};
-            filteredRows.forEach((r, idx) => {
+            sortedRows.forEach((r, idx) => {
               EDITABLE_COLS.forEach((col) => {
                 const num = r[col];
                 initialInputs[getCellKey(idx, col)] =
@@ -309,11 +319,11 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             setSaat(
               `${String(zDt.getHours()).padStart(2, "0")}:${String(zDt.getMinutes()).padStart(2, "0")}`
             );
-            const filteredRows = filterOutTl(tablo.satirlar);
-            setRows(filteredRows);
+            const sortedRows = sortKurRows(tablo.satirlar);
+            setRows(sortedRows);
 
             const initialInputs: Record<string, string> = {};
-            filteredRows.forEach((r, idx) => {
+            sortedRows.forEach((r, idx) => {
               EDITABLE_COLS.forEach((col) => {
                 const num = r[col];
                 initialInputs[getCellKey(idx, col)] =
@@ -998,12 +1008,13 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
   return (
     <div className="kuyumcu-kur-container w-100 pb-3" style={{ overflowX: "hidden" }}>
-      {/* 1. Sol Üst Standart ERP Toolbar (Sil, Kaydet, Yön ve Yeni Kayıt Butonları Kaldırıldı) */}
+      {/* 1. Sol Üst Standart ERP Toolbar (Anlık Fiyat Listesi'nde Kaydetme Butonu Aktif) */}
       <ERPToolbar
         hideNew={true}
-        hideSave={true}
+        hideSave={effectivePageType !== "anlik"}
         hideDelete={true}
         hideNavigation={true}
+        onSave={handleSave}
         onSearch={() => setShowSearchModal(true)}
         onPrint={handlePrint}
         onRefresh={() => loadTabloData({ id: tabloId, tarih })}
@@ -1046,23 +1057,32 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         }
       />
 
-      {/* Alert Notifications */}
-      {alertSuccess && (
-        <Alert variant="success" className="d-flex align-items-center py-2 px-3 mb-2 shadow-sm">
-          <IconCheck size={18} className="me-2 flex-shrink-0 text-success" />
-          <span>{alertSuccess}</span>
-        </Alert>
-      )}
-      {alertError && (
-        <Alert
-          variant="danger"
-          dismissible
-          onClose={() => setAlertError(null)}
-          className="d-flex align-items-start py-2 px-3 mb-2 shadow-sm"
-        >
-          <IconAlertCircle size={20} className="me-2 mt-1 flex-shrink-0 text-danger" />
-          <div style={{ whiteSpace: "pre-line", lineHeight: "1.5" }}>{alertError}</div>
-        </Alert>
+      {/* Sayfa Ortası Popup Bildirimler (ERP Toast) */}
+      {(alertSuccess || alertError) && (
+        <div className="erp-toast-container">
+          {alertSuccess && (
+            <Alert
+              variant="success"
+              dismissible
+              onClose={() => setAlertSuccess(null)}
+              className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0"
+            >
+              <IconCheck size={18} className="me-2 text-success flex-shrink-0" />
+              <span style={{ fontSize: "13px" }}>{alertSuccess}</span>
+            </Alert>
+          )}
+          {alertError && (
+            <Alert
+              variant="danger"
+              dismissible
+              onClose={() => setAlertError(null)}
+              className="erp-toast-item d-flex align-items-start mb-0 shadow py-2 px-3 border-0"
+            >
+              <IconAlertCircle size={18} className="me-2 mt-0.5 text-danger flex-shrink-0" />
+              <span style={{ fontSize: "13px", whiteSpace: "pre-line" }}>{alertError}</span>
+            </Alert>
+          )}
+        </div>
       )}
 
       {/* Saklanan Fiyat Listesi Eylemleri: Anlık Listeye Aktar & Başka Güne Kopyala */}
@@ -1297,11 +1317,13 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                           {row.ad}
                         </td>
 
-                        {/* Read-only Columns: Döviz alış, Döviz satış, Efektif alış, Efektif satış, Parite */}
+                        {/* Columns: Döviz alış, Döviz satış, Efektif alış, Efektif satış, Parite */}
                         {EDITABLE_COLS.map((col, cIdx) => {
                           const val = row[col];
                           const formattedVal = formatKurNumber(val);
                           const isLastCol = cIdx === EDITABLE_COLS.length - 1;
+                          const cellKey = getCellKey(idx, col);
+                          const isCellActive = activeCell?.row === idx && activeCell?.col === col;
 
                           return (
                             <td
@@ -1326,26 +1348,63 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                                     : "1px solid #7dd3fc"
                                   : "1px solid #cbd5e1",
                                 cursor: "pointer",
-                                userSelect: "none",
                                 transition: "background-color 0.15s ease",
                               }}
                             >
-                              <div
-                                className="px-2 py-1 text-truncate text-end font-monospace"
-                                style={{
-                                  minHeight: "26px",
-                                  lineHeight: "24px",
-                                  fontSize: "0.88rem",
-                                  fontWeight: isRowSelected ? 700 : val && val !== 0 ? 600 : 400,
-                                  color: isRowSelected
-                                    ? "#0c4a6e"
-                                    : val && val !== 0
-                                    ? "#0f172a"
-                                    : "#94a3b8",
-                                }}
-                              >
-                                {formattedVal}
-                              </div>
+                              {effectivePageType === "anlik" ? (
+                                <input
+                                  ref={(el) => {
+                                    inputRefs.current[cellKey] = el;
+                                  }}
+                                  type="text"
+                                  inputMode="decimal"
+                                  data-decimal="true"
+                                  className="w-100 text-end font-monospace border-0 bg-transparent px-2 py-1"
+                                  style={{
+                                    outline: "none",
+                                    height: "28px",
+                                    fontSize: "0.88rem",
+                                    fontWeight: isRowSelected ? 700 : val && val !== 0 ? 600 : 400,
+                                    color: isRowSelected ? "#0c4a6e" : val && val !== 0 ? "#0f172a" : "#64748b",
+                                    boxShadow: isCellActive ? "inset 0 0 0 2px #0284c7" : "none",
+                                    backgroundColor: "transparent",
+                                  }}
+                                  value={
+                                    isCellActive
+                                      ? rawInputs[cellKey] ?? (val !== null && val !== undefined ? String(val) : "")
+                                      : formattedVal
+                                  }
+                                  onFocus={() => {
+                                    setActiveCell({ row: idx, col });
+                                    setSelectedRowIndex(idx);
+                                  }}
+                                  onBlur={() => {
+                                    if (activeCell?.row === idx && activeCell?.col === col) {
+                                      setActiveCell(null);
+                                    }
+                                  }}
+                                  onChange={(e) => handleCellChange(idx, col, e.target.value)}
+                                  onKeyDown={(e) => handleCellKeyDown(e, idx, col)}
+                                />
+                              ) : (
+                                <div
+                                  className="px-2 py-1 text-truncate text-end font-monospace"
+                                  style={{
+                                    minHeight: "26px",
+                                    lineHeight: "24px",
+                                    fontSize: "0.88rem",
+                                    fontWeight: isRowSelected ? 700 : val && val !== 0 ? 600 : 400,
+                                    color: isRowSelected
+                                      ? "#0c4a6e"
+                                      : val && val !== 0
+                                      ? "#0f172a"
+                                      : "#94a3b8",
+                                    userSelect: "none",
+                                  }}
+                                >
+                                  {formattedVal}
+                                </div>
+                              )}
                             </td>
                           );
                         })}

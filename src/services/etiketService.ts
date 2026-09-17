@@ -30,6 +30,7 @@ export interface AltinUrunItem {
   hasKuru2?: number | null;
   altinKuru?: number | null;
   resim?: string | null;
+  resimler?: string[];
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -66,6 +67,7 @@ export interface SaveAltinUrunPayload {
   hasKuru2?: number | null;
   altinKuru?: number | null;
   resim?: string | null;
+  resimler?: string[];
   satildi?: boolean;
 }
 
@@ -101,6 +103,7 @@ export interface OzelUrunItem {
   tasTutar?: number | null;
   tasTutarBirimi: string;
   resim?: string | null;
+  resimler?: string[];
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -139,6 +142,7 @@ export interface SaveOzelUrunPayload {
   tasTutar?: number | null;
   tasTutarBirimi?: string;
   resim?: string | null;
+  resimler?: string[];
   satildi?: boolean;
 }
 
@@ -181,6 +185,34 @@ export interface EtiketGrupNoResult {
   sonNo: number;
   barkod: string;
   yeniGrup: boolean;
+}
+
+// ─── Banko Tanımları (TODVZ_BANKO) ──────────────────────────────────────────
+export interface BankoItem {
+  bankoId: number;
+  bankoKodu: string;
+  bankoAdi: string;
+  vezneId?: number | null;
+  aciklama?: string | null;
+  aktif: boolean;
+  eklemeZamani?: string | null;
+}
+
+export interface SaveBankoPayload {
+  bankoId?: number | null;
+  bankoKodu?: string | null;
+  bankoAdi: string;
+  vezneId?: number | null;
+  aciklama?: string | null;
+  aktif?: boolean;
+}
+
+export interface EtiketGrupItem {
+  tip: number;
+  grupKodu: string;
+  sonNo: number;
+  aciklama?: string | null;
+  guncellemeZamani?: string;
 }
 
 export const EtiketService = {
@@ -242,7 +274,23 @@ export const EtiketService = {
     return (res.data as any)?.data ?? res.data;
   },
 
-  // ─── Ortak Lookup'lar ──────────────────────────────────────────────────────
+  // ─── Grup Yönetimi & Lookup'lar ──────────────────────────────────────────
+  async getGruplar(tip?: number): Promise<EtiketGrupItem[]> {
+    const res = await apiClient.get<EtiketGrupItem[]>("/etiket/gruplar", tip !== undefined ? { tip } : undefined);
+    const data = (res.data as any)?.data ?? res.data;
+    return Array.isArray(data) ? data : [];
+  },
+  async saveGrup(payload: { tip: number; grupKodu: string; aciklama?: string | null; baslangicNo?: number }): Promise<EtiketGrupItem> {
+    const res = await apiClient.post<EtiketGrupItem>("/etiket/gruplar", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+  async deleteGrup(tip: number, grupKodu: string): Promise<void> {
+    await apiClient.delete("/etiket/gruplar", { params: { tip, grupKodu } });
+  },
+  async uploadFoto(payload: { base64: string; dosyaAdi?: string; tip?: number; islemId?: number }): Promise<{ resimId: number; url: string; dosyaYolu: string }> {
+    const res = await apiClient.post<{ resimId: number; url: string; dosyaYolu: string }>("/etiket/foto-yukle", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
   async getGrupKodlari(): Promise<string[]> {
     const res = await apiClient.get<string[]>("/etiket/grup-kodlari");
     const data = (res.data as any)?.data ?? res.data;
@@ -252,6 +300,20 @@ export const EtiketService = {
     const res = await apiClient.get<string[]>("/etiket/uretici-firmalar");
     const data = (res.data as any)?.data ?? res.data;
     return Array.isArray(data) ? data : [];
+  },
+
+  // ─── Banko Yönetimi (TODVZ_BANKO) ──────────────────────────────────────────
+  async getBankolar(filter?: { search?: string; aktif?: boolean }): Promise<BankoItem[]> {
+    const res = await apiClient.get<BankoItem[]>("/etiket/bankolar", filter);
+    const data = (res.data as any)?.data ?? res.data;
+    return Array.isArray(data) ? data : [];
+  },
+  async saveBanko(payload: SaveBankoPayload): Promise<BankoItem> {
+    const res = await apiClient.post<BankoItem>("/etiket/bankolar", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+  async deleteBanko(id: number): Promise<void> {
+    await apiClient.delete(`/etiket/bankolar/${id}`);
   },
 
   // ─── Etiket Şablonları ─────────────────────────────────────────────────────

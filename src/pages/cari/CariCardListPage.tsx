@@ -144,17 +144,19 @@ export const CariCardListPage: React.FC = () => {
         disabled={isLoading}
       />
 
-      {/* 2. Alert Messages */}
+      {/* Sayfa Ortası Popup Bildirimler (ERP Toast) */}
       {error && (
-        <Alert
-          variant="danger"
-          dismissible
-          onClose={() => setError(null)}
-          className="d-flex align-items-center gap-2 py-2 mb-3 shadow-xs"
-        >
-          <IconAlertCircle size={18} className="text-danger flex-shrink-0" />
-          <span className="small fw-medium">{error}</span>
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert
+            variant="danger"
+            dismissible
+            onClose={() => setError(null)}
+            className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0"
+          >
+            <IconAlertCircle size={18} className="text-danger flex-shrink-0 me-2" />
+            <span style={{ fontSize: "13px" }}>{error}</span>
+          </Alert>
+        </div>
       )}
 
       {/* 3. Ana Liste Kartı */}

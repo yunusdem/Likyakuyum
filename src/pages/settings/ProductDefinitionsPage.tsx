@@ -25,6 +25,8 @@ import {
   IconReceipt2,
   IconReportMoney,
   IconCalculator,
+  IconBinoculars,
+  IconX,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
@@ -36,6 +38,7 @@ import {
   ProductItem,
   ProductFormData,
 } from "../../services/productDefinitionService";
+import { CariService, LookupItem } from "../../services/cariService";
 
 
 const initialFormState: ProductFormData = {
@@ -91,6 +94,20 @@ export const ProductDefinitionsPage: React.FC = () => {
   const [alertError, setAlertError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
+  const [showParaLookupModal, setShowParaLookupModal] = useState<boolean>(false);
+  const [paraList, setParaList] = useState<LookupItem[]>([]);
+
+  // Load para list
+  const loadParaList = async () => {
+    try {
+      const lookups = await CariService.getLookups();
+      if (lookups?.paraList && lookups.paraList.length > 0) {
+        setParaList(lookups.paraList);
+      }
+    } catch (err) {
+      console.error("Para listesi yüklenirken hata:", err);
+    }
+  };
 
   // Load all products
   const loadData = async (targetIndex?: number) => {
@@ -119,6 +136,7 @@ export const ProductDefinitionsPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    loadParaList();
   }, []);
 
   const handleSelectProduct = (item: ProductItem, idx?: number) => {
@@ -162,14 +180,21 @@ export const ProductDefinitionsPage: React.FC = () => {
     setAlertError(null);
   };
 
+  const getMaxSiraNo = (currentList: ProductItem[] = products) => {
+    if (!currentList || currentList.length === 0) return 1;
+    const maxVal = Math.max(...currentList.map((p) => p.siraNo || 0));
+    return maxVal > 0 ? maxVal + 1 : currentList.length + 1;
+  };
+
   const handleClear = (showAlert: boolean = true) => {
     setSelectedProduct(null);
     setIsNewRecord(true);
+    const nextSiraNo = getMaxSiraNo();
     setFormData({
       ...initialFormState,
       kod: "",
       ad: "",
-      siraNo: "" as any,
+      siraNo: nextSiraNo as any,
     });
     if (showAlert) {
       setAlertSuccess("Form alanları temizlendi. Yeni bilgileri girip sol üstteki 'Kaydet' (💾) butonuna basınız.");
@@ -224,7 +249,13 @@ export const ProductDefinitionsPage: React.FC = () => {
       return;
     }
 
-    const cleanSiraNo = parseInt(String(formData.siraNo), 10) || 0;
+    let cleanSiraNo = parseInt(String(formData.siraNo), 10) || 0;
+    if (isNewRecord || !selectedProduct) {
+      if (cleanSiraNo <= 0) {
+        cleanSiraNo = getMaxSiraNo();
+      }
+    }
+
     const cleanMuhasebeSiraNo = formData.muhasebeSiraNo !== null && formData.muhasebeSiraNo !== undefined && String(formData.muhasebeSiraNo) !== ""
       ? parseInt(String(formData.muhasebeSiraNo), 10)
       : null;
@@ -254,7 +285,13 @@ export const ProductDefinitionsPage: React.FC = () => {
       if (isNewRecord || !selectedProduct) {
         const created = await ProductDefinitionService.createProduct(payload);
         setAlertSuccess(`✅ "${created.ad}" [${created.kod}] veritabanına başarıyla eklendi.`);
-        await loadData(products.length);
+        const updatedList = await ProductDefinitionService.getProducts();
+        setProducts(updatedList || []);
+        const targetIdx = updatedList && updatedList.length > 0 ? updatedList.length - 1 : 0;
+        setSelectedIndex(targetIdx);
+        if (updatedList && updatedList[targetIdx]) {
+          handleSelectProduct(updatedList[targetIdx], targetIdx);
+        }
         setIsNewRecord(false);
       } else {
         const updated = await ProductDefinitionService.updateProduct(selectedProduct.id, payload);
@@ -390,17 +427,17 @@ export const ProductDefinitionsPage: React.FC = () => {
                 </Nav.Item>
                 <Nav.Item>
                   <Nav.Link eventKey="gold" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconReceipt2 size={16} /> Altın & Has Parametreleri
+                    <IconReceipt2 size={16} /> Altın / Has
                   </Nav.Link>
                 </Nav.Item>
                 <Nav.Item>
                   <Nav.Link eventKey="rates" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconCalculator size={16} /> Hücre & Parite Oranları
+                    <IconCalculator size={16} /> Hücre / Parite
                   </Nav.Link>
                 </Nav.Item>
                 <Nav.Item>
                   <Nav.Link eventKey="accounting" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconReportMoney size={16} /> Muhasebe Hesap Kodları
+                    <IconReportMoney size={16} /> Muhasebe Kodları
                   </Nav.Link>
                 </Nav.Item>
               </Nav>
@@ -538,13 +575,34 @@ export const ProductDefinitionsPage: React.FC = () => {
                           Bağlı Para Kodu
                         </Form.Label>
                         <Col>
-                          <Form.Control
-                            type="text"
-                            maxLength={5}
-                            value={formData.bagliParaKodu || ""}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleInputChange("bagliParaKodu", e.target.value.toUpperCase())}
-                          />
+                          <InputGroup size="sm" className="flex-nowrap">
+                            <Form.Control
+                              type="text"
+                              maxLength={10}
+                              value={formData.bagliParaKodu || ""}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleInputChange("bagliParaKodu", e.target.value.toUpperCase())}
+                              className="font-monospace"
+                            />
+                            <Button
+                              variant="outline-primary"
+                              onClick={() => setShowParaLookupModal(true)}
+                              title="Para Birimi Seç (Dürbün)"
+                              className="d-flex align-items-center px-2.5 flex-shrink-0"
+                            >
+                              <IconBinoculars size={16} />
+                            </Button>
+                            {formData.bagliParaKodu && (
+                              <Button
+                                variant="outline-secondary"
+                                onClick={() => handleInputChange("bagliParaKodu", "")}
+                                title="Temizle"
+                                className="px-2 flex-shrink-0"
+                              >
+                                <IconX size={14} />
+                              </Button>
+                            )}
+                          </InputGroup>
                         </Col>
                       </Form.Group>
 
@@ -864,13 +922,6 @@ export const ProductDefinitionsPage: React.FC = () => {
                     </Tab.Pane>
                   </Tab.Content>
                 </div>
-
-                {/* Form Alt Butonları */}
-                <div className="d-flex justify-content-end gap-2 pt-3 border-top mt-4">
-                  <Button variant="primary" size="sm" type="submit" disabled={isSaving}>
-                    {isSaving ? "Kaydediliyor..." : isNewRecord ? "Yeni Ürün Kaydet" : "Değişiklikleri Güncelle"}
-                  </Button>
-                </div>
               </Form>
             </Tab.Container>
           </div>
@@ -933,6 +984,51 @@ export const ProductDefinitionsPage: React.FC = () => {
         ]}
         onSelect={(item) => {
           handleSelectProduct(item);
+        }}
+      />
+
+      {/* Bağlı Para Kodu - Para Birimi Seçim Modalı */}
+      <LookupModal<LookupItem>
+        show={showParaLookupModal}
+        onHide={() => setShowParaLookupModal(false)}
+        title="Bağlı Para Birimi Seç (Dürbün)"
+        items={
+          paraList.length > 0
+            ? paraList
+            : products.map((p) => ({ id: p.id, kod: p.kod, ad: p.ad }))
+        }
+        searchPlaceholder="Para kodu veya tanımı ile ara..."
+        filterFn={(item, term) => {
+          const t = term.toLowerCase();
+          return (
+            (item.kod && item.kod.toLowerCase().includes(t)) ||
+            (item.ad && item.ad.toLowerCase().includes(t)) ||
+            String(item.id).includes(t)
+          );
+        }}
+        columns={[
+          {
+            header: "ID",
+            render: (item) => <span className="font-monospace fw-semibold">{item.id}</span>,
+            width: "80px",
+          },
+          {
+            header: "Para / Döviz Kodu",
+            render: (item) => (
+              <Badge bg="success" className="font-monospace px-2 py-1">
+                {item.kod}
+              </Badge>
+            ),
+            width: "140px",
+          },
+          {
+            header: "Para Tanımı / Açıklama",
+            render: (item) => <span className="fw-medium">{item.ad}</span>,
+          },
+        ]}
+        onSelect={(item) => {
+          handleInputChange("bagliParaKodu", item.kod);
+          setShowParaLookupModal(false);
         }}
       />
 

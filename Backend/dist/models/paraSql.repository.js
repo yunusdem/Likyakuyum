@@ -211,10 +211,15 @@ export class ParaSqlRepository {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             const request = pool.request();
+            let calculatedSiraNo = toInt(data.siraNo, 0);
+            if (calculatedSiraNo <= 0) {
+                const maxResult = await pool.request().query(`SELECT ISNULL(MAX([SIRA_NO]), 0) AS maxSira FROM [dbo].[TODVZ_PARA];`);
+                calculatedSiraNo = (maxResult.recordset[0]?.maxSira || 0) + 1;
+            }
             request.input("KOD", sql.VarChar(5), (data.kod || "").trim().slice(0, 5));
             request.input("AD", sql.VarChar(200), (data.ad || "").trim().slice(0, 200));
             request.input("PARITE_ISLEMI", sql.TinyInt, toInt(data.pariteIslemi, 0));
-            request.input("SIRA_NO", sql.Int, toInt(data.siraNo, 0));
+            request.input("SIRA_NO", sql.Int, calculatedSiraNo);
             request.input("BAGLI_PARA_KODU", sql.VarChar(5), toNullableString(data.bagliParaKodu, 5));
             request.input("GRAMAJ", sql.Float, toFloat(data.gramaj, 0));
             request.input("HAS_ORANI", sql.Float, toFloat(data.hasOrani, 0));

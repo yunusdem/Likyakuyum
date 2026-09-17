@@ -1,4 +1,5 @@
 import express from "express";
+import path from "path";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { env } from "./config/env.config.js";
@@ -14,9 +15,11 @@ export const createApp = () => {
     // 2. CORS Handling (Frontend origin & credentials)
     app.use(corsMiddleware);
     // 3. Request Parsers
-    app.use(express.json({ limit: "10mb" }));
-    app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+    app.use(express.json({ limit: "50mb" }));
+    app.use(express.urlencoded({ extended: true, limit: "50mb" }));
     app.use(cookieParser());
+    // Static uploads directory
+    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
     // 4. Rate Limiting & HTTP Logging
     app.use(globalRateLimiter);
     app.use(requestLoggerMiddleware);

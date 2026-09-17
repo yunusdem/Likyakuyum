@@ -138,17 +138,44 @@ export class EtiketController {
     return ApiResponse.ok(res, "Sıradaki özel ürün numarası üretildi.", data);
   });
 
-  // ─── Ortak Lookup'lar ──────────────────────────────────────────────────────
+  // ─── Ortak Lookup'lar & Grup Yönetimi ──────────────────────────────────────
   public static getGrupKodlari = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = EtiketController.getDbContext(req);
     const data = await EtiketService.getGrupKodlari(dbContext);
     return ApiResponse.ok(res, "Grup kodları listelendi.", data);
   });
 
+  public static listGruplar = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const { tip } = req.query;
+    const data = await EtiketService.listGruplar(tip !== undefined && tip !== "" ? Number(tip) : undefined, dbContext);
+    return ApiResponse.ok(res, "Gruplar listelendi.", data);
+  });
+
+  public static saveGrup = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const { tip, grupKodu, aciklama, baslangicNo } = req.body;
+    const data = await EtiketService.saveGrup(Number(tip) || 0, String(grupKodu || ""), aciklama, baslangicNo ? Number(baslangicNo) : undefined, dbContext);
+    return ApiResponse.ok(res, "Grup başarıyla kaydedildi.", data);
+  });
+
+  public static deleteGrup = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const { tip, grupKodu } = req.body || req.query;
+    await EtiketService.deleteGrup(Number(tip) || 0, String(grupKodu || ""), dbContext);
+    return ApiResponse.ok(res, "Grup silindi.");
+  });
+
   public static getUreticiFirmalar = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = EtiketController.getDbContext(req);
     const data = await EtiketService.getUreticiFirmalar(dbContext);
     return ApiResponse.ok(res, "Üretici firmalar listelendi.", data);
+  });
+
+  public static uploadFoto = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const data = await EtiketService.uploadFoto(req.body, dbContext);
+    return ApiResponse.ok(res, "Fotoğraf başarıyla yüklendi.", data);
   });
 
   // ─── Etiket Şablonları ─────────────────────────────────────────────────────
@@ -178,5 +205,35 @@ export class EtiketController {
     const dbContext = EtiketController.getDbContext(req);
     await EtiketService.removeSablon(Number(req.params.id), dbContext);
     return ApiResponse.ok(res, "Etiket şablonu silindi.");
+  });
+
+  // ─── Banko Yönetimi (TODVZ_BANKO) ──────────────────────────────────────────
+  public static listBankolar = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const { search, aktif } = req.query;
+    const filter = {
+      search: search ? String(search) : undefined,
+      aktif: aktif !== undefined ? aktif === "true" || aktif === "1" : undefined,
+    };
+    const data = await EtiketService.listBankolar(filter, dbContext);
+    return ApiResponse.ok(res, "Bankolar listelendi.", data);
+  });
+
+  public static getBankoById = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const data = await EtiketService.getBankoById(Number(req.params.id), dbContext);
+    return ApiResponse.ok(res, "Banko getirildi.", data);
+  });
+
+  public static saveBanko = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const data = await EtiketService.saveBanko(req.body, EtiketController.getKullaniciId(req), dbContext);
+    return ApiResponse.ok(res, "Banko başarıyla kaydedildi.", data);
+  });
+
+  public static deleteBanko = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    await EtiketService.deleteBanko(Number(req.params.id), dbContext);
+    return ApiResponse.ok(res, "Banko silindi.");
   });
 }

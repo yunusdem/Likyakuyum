@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Container, Row, Col, Card, Form, Button, Alert, InputGroup, Badge, Modal } from "react-bootstrap";
+import { Row, Col, Card, Form, Button, Alert, InputGroup, Modal, Dropdown } from "react-bootstrap";
 import {
   IconBarcode,
   IconCheck,
@@ -10,12 +10,12 @@ import {
   IconTrash,
   IconPlus,
   IconRefresh,
-  IconArrowLeft,
-  IconArrowRight,
-  IconX,
   IconScale,
   IconCoin,
   IconCalculator,
+  IconX,
+  IconPhoto,
+  IconFolder,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -25,9 +25,12 @@ import {
   AltinUrunItem,
   SaveAltinUrunPayload,
   EtiketSablonItem,
+  EtiketGrupItem,
+  BankoItem,
 } from "../../services/etiketService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { KurService, KurRowItem } from "../../services/kurService";
+import { envConfig } from "../../config/env.config";
 
 const AYAR_MILYEM_MAP: Record<string, number> = {
   "24": 1000,
@@ -44,6 +47,33 @@ const AYAR_MILYEM_MAP: Record<string, number> = {
   "8 AYAR": 333,
 };
 
+const resolveImageUrl = (imgStr: string | null | undefined): string => {
+  if (!imgStr) return "";
+  const trimmed = imgStr.trim();
+  if (
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://")
+  ) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("/") || trimmed.startsWith("uploads/")) {
+    return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  }
+  if (trimmed.length > 50 && !trimmed.includes("/") && !trimmed.includes(".")) {
+    return `data:image/jpeg;base64,${trimmed}`;
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+};
+
+const format3Digits = (val: number | string | undefined | null): string => {
+  if (val === undefined || val === null || val === "") return "";
+  const num = typeof val === "number" ? val : parseInt(String(val), 10);
+  if (isNaN(num)) return String(val);
+  return String(num).padStart(3, "0");
+};
+
 export const AltinUrunTanimlamaPage: React.FC = () => {
   // ─── Form State ─────────────────────────────────────────────────────────────
   const [altinUrunId, setAltinUrunId] = useState<number | null>(null);
@@ -51,7 +81,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const [grupKodu, setGrupKodu] = useState<string>("");
   const [urunNo, setUrunNo] = useState<number | string>("");
   const [barkod, setBarkod] = useState<string>("");
-  const [ayar, setAyar] = useState<string>("22 FANTAZI");
+  const [ayar, setAyar] = useState<string>("");
   const [ureticiFirma, setUreticiFirma] = useState<string>("");
   const [orjinalKod, setOrjinalKod] = useState<string>("");
   const [model, setModel] = useState<string>("");
@@ -68,1243 +98,2160 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const [satisIscilik, setSatisIscilik] = useState<number | string>("");
   const [satisIscilikTutari, setSatisIscilikTutari] = useState<number | string>("");
   const [iscilikKari, setIscilikKari] = useState<number | string>("");
+  const [toplamHas, setToplamHas] = useState<number | string>("");
 
-  // Maliyet, Satış & Kâr
-  const [maliyet, setMaliyet] = useState<number | string>("");
-  const [maliyetParaKodu, setMaliyetParaKodu] = useState<string>("HAS");
-  const [satisFiyati, setSatisFiyati] = useState<number | string>("");
-  const [satisParaKodu, setSatisParaKodu] = useState<string>("HAS");
-  const [satisKariYuzde, setSatisKariYuzde] = useState<number | string>("");
+  // Maliyet, Satış & Kâr & Kur Referansı
+  const [kurRef, setKurRef] = useState<"alis" | "satis">("alis");
+  const [maliyet, setMaliyet] = useState<number | string>(""); // HAS cinsinden
+  const [maliyetDoviz, setMaliyetDoviz] = useState<number | string>(""); // Döviz/TL cinsinden
+  const [maliyetParaKodu, setMaliyetParaKodu] = useState<string>("USD");
+  const [satisFiyati, setSatisFiyati] = useState<number | string>(""); // HAS cinsinden
+  const [satisDoviz, setSatisDoviz] = useState<number | string>(""); // Döviz/TL cinsinden
+  const [satisParaKodu, setSatisParaKodu] = useState<string>("USD");
+  const [satisKariYuzde, setSatisKariYuzde] = useState<number | string>(100);
 
-  // Anlık Kur Göstergeleri
+  // Anlık Kur Göstergeleri (HAS & USD)
   const [hasKuru1, setHasKuru1] = useState<number | string>("");
   const [hasKuru2, setHasKuru2] = useState<number | string>("");
-  const [altinKuru, setAltinKuru] = useState<number | string>("");
+  const [usdKuru1, setUsdKuru1] = useState<number | string>("");
+  const [usdKuru2, setUsdKuru2] = useState<number | string>("");
 
-  // Resim / Fotoğraf
+  // Resim / Fotoğraf Listesi
   const [resim, setResim] = useState<string | null>(null);
+  const [resimler, setResimler] = useState<string[]>([]);
+  const [seciliResimIndex, setSeciliResimIndex] = useState<number>(0);
 
   // ─── UI & Liste State ───────────────────────────────────────────────────────
   const [altinList, setAltinList] = useState<AltinUrunItem[]>([]);
-  const [grupList, setGrupList] = useState<string[]>([]);
+  const [grupList, setGrupList] = useState<EtiketGrupItem[]>([]);
+  const [bankoList, setBankoList] = useState<BankoItem[]>([]);
   const [ureticiList, setUreticiList] = useState<string[]>([]);
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
   const [sablonlar, setSablonlar] = useState<EtiketSablonItem[]>([]);
   const [kurRows, setKurRows] = useState<KurRowItem[]>([]);
 
   const [isSaving, setIsSaving] = useState(false);
-  const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
+  const [modalNotif, setModalNotif] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
 
+  // Modals
   const [showLookup, setShowLookup] = useState(false);
   const [showFirmaLookup, setShowFirmaLookup] = useState(false);
-  const [showKurLookup, setShowKurLookup] = useState<"has1" | "altin" | null>(null);
+  const [showGrupLookup, setShowGrupLookup] = useState(false);
+  const [selectedGrupItem, setSelectedGrupItem] = useState<EtiketGrupItem | null>(null);
+  const [showGrupEkleModal, setShowGrupEkleModal] = useState(false);
+  const [showBankoLookup, setShowBankoLookup] = useState(false);
+  const [selectedBankoItem, setSelectedBankoItem] = useState<BankoItem | null>(null);
+  const [showBankoEkleModal, setShowBankoEkleModal] = useState(false);
+  const [showKurLookup, setShowKurLookup] = useState<"hasAlis" | "hasSatis" | "usdAlis" | "usdSatis" | "maliyet" | "satis" | "iscilik" | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Yeni Grup Ekleme Form State
+  const [yeniGrupKodu, setYeniGrupKodu] = useState("");
+  const [yeniGrupAciklama, setYeniGrupAciklama] = useState("");
+  const [yeniGrupBaslangicNo, setYeniGrupBaslangicNo] = useState<number | string>(0);
+
+  // Yeni Banko Ekleme Form State
+  const [yeniBankoKodu, setYeniBankoKodu] = useState("");
+  const [yeniBankoAdi, setYeniBankoAdi] = useState("");
+  const [yeniBankoAciklama, setYeniBankoAciklama] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const grupKoduRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     grupKoduRef.current?.focus();
   }, []);
 
   const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
-    setNotification({ type, message: msg });
-    setTimeout(() => setNotification(null), 4000);
+    setModalNotif({ type, message: msg });
   };
 
-  // ─── Otomatik Hesaplama Motoru (İşçilik, Has, Maliyet, Satış, Kâr) ─────────
-  // ─── Yardımcı Sayı Temizleme Fonksiyonu ─────────────────────────────────────
-  const cleanNum = (val: string): string => {
-    let cleaned = val.replace(/,/g, ".").replace(/[^0-9.]/g, "");
-    const parts = cleaned.split(".");
-    if (parts.length > 2) {
-      cleaned = parts[0] + "." + parts.slice(1).join("");
-    }
-    return cleaned;
-  };
-
-  // ─── Hesaplama Motoru ────────────────────────────────────────────────────────
-  const recalculateAll = useCallback(
-    (
-      curMiktar: number,
-      curAyar: string,
-      curMaliyetIscilik: number,
-      curMaliyetBirim: string,
-      curSatisIscilik: number,
-      curMaliyetPara: string,
-      curSatisPara: string,
-      manualKarYuzde?: number
-    ) => {
-      const milyem = AYAR_MILYEM_MAP[curAyar.toUpperCase()] || 916;
-      // 1. Has Karşılığı
-      const calcHas = curMiktar > 0 ? Number((curMiktar * (milyem / 1000)).toFixed(3)) : "";
-      setHasGram(calcHas);
-
-      // 2. Maliyet İşçilik Tutarı
-      const calcMaliyetIscilikTutari =
-        curMaliyetIscilik > 0
-          ? curMaliyetBirim === "Gram"
-            ? Number((curMaliyetIscilik * (curMiktar || 1)).toFixed(3))
-            : Number(curMaliyetIscilik.toFixed(3))
-          : "";
-      setMaliyetIscilikTutari(calcMaliyetIscilikTutari);
-
-      // 3. Satış İşçilik Tutarı
-      const calcSatisIscilikTutari =
-        curSatisIscilik > 0
-          ? curMaliyetBirim === "Gram"
-            ? Number((curSatisIscilik * (curMiktar || 1)).toFixed(3))
-            : Number(curSatisIscilik.toFixed(3))
-          : "";
-      setSatisIscilikTutari(calcSatisIscilikTutari);
-
-      // 4. İşçilik Kârı
-      const cMaliyetIscilik = typeof calcMaliyetIscilikTutari === "number" ? calcMaliyetIscilikTutari : 0;
-      const cSatisIscilik = typeof calcSatisIscilikTutari === "number" ? calcSatisIscilikTutari : 0;
-      const calcIscilikKari = (cSatisIscilik > 0 || cMaliyetIscilik > 0) ? Number((cSatisIscilik - cMaliyetIscilik).toFixed(3)) : "";
-      setIscilikKari(calcIscilikKari);
-
-      // 5. Toplam Maliyet Tutarı
-      const cHas = typeof calcHas === "number" ? calcHas : 0;
-      const calcMaliyet = (cHas > 0 || cMaliyetIscilik > 0) ? Number((cHas + cMaliyetIscilik).toFixed(3)) : "";
-      setMaliyet(calcMaliyet);
-
-      // 6. Toplam Satış Tutarı
-      const calcSatis = (cHas > 0 || cSatisIscilik > 0) ? Number((cHas + cSatisIscilik).toFixed(3)) : "";
-      setSatisFiyati(calcSatis);
-
-      // 7. Satış Kârı % (Has bazlı kâr)
-      if (manualKarYuzde !== undefined && !isNaN(manualKarYuzde) && manualKarYuzde !== 0) {
-        setSatisKariYuzde(manualKarYuzde);
-      } else if (typeof calcMaliyet === "number" && calcMaliyet > 0 && typeof calcSatis === "number" && calcSatis > 0) {
-        const yuzde = Number((((calcSatis - calcMaliyet) / calcMaliyet) * 100).toFixed(2));
-        setSatisKariYuzde(yuzde);
+  const cleanInputStr = (val: string): string => {
+    let cleaned = val.replace(/[^0-9.,]/g, "");
+    let seenSep = false;
+    let result = "";
+    for (let i = 0; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (ch === "." || ch === ",") {
+        if (!seenSep) {
+          result += ch;
+          seenSep = true;
+        }
       } else {
-        setSatisKariYuzde("");
+        result += ch;
       }
+    }
+    return result;
+  };
+
+  const parseNum = (val: number | string | undefined | null): number => {
+    if (val === undefined || val === null || val === "") return 0;
+    const normalized = String(val).replace(/,/g, ".");
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  const format5 = (num: number): string => {
+    if (num === undefined || num === null || isNaN(num) || num <= 0) return "";
+    return num.toFixed(5);
+  };
+
+  const format2 = (num: number): string => {
+    if (num === undefined || num === null || isNaN(num) || num <= 0) return "";
+    return num.toFixed(2);
+  };
+
+  const getMilyemFromAyar = (ayarStr: string): number => {
+    const normalized = (ayarStr || "").trim().toUpperCase();
+    if (AYAR_MILYEM_MAP[normalized]) {
+      return AYAR_MILYEM_MAP[normalized];
+    }
+    const parsed = parseFloat(normalized.replace(/,/g, "."));
+    if (!isNaN(parsed) && parsed > 0) {
+      if (parsed <= 24) {
+        if (parsed === 24) return 1000;
+        if (parsed === 22) return 916;
+        if (parsed === 18) return 750;
+        if (parsed === 14) return 585;
+        if (parsed === 8) return 333;
+        return Math.round((parsed / 24) * 1000);
+      } else if (parsed > 100 && parsed <= 1000) {
+        return parsed;
+      }
+    }
+    return 916;
+  };
+
+  // ─── Kur Dönüşüm Fonksiyonları (HAS <-> Döviz / TL) ──────────────────────────
+  const convertToHas = useCallback(
+    (amount: number, paraKodu: string, ref: "alis" | "satis" = "alis"): number => {
+      if (!amount || isNaN(amount)) return 0;
+      const pKod = (paraKodu || "HAS").toUpperCase();
+      if (pKod === "HAS") return amount;
+
+      const hasRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "HAS");
+      const hasRate = ref === "alis" ? (hasRow?.dovizAlis || parseNum(hasKuru1) || 1) : (hasRow?.dovizSatis || parseNum(hasKuru2) || 1);
+
+      if (pKod === "TL" || pKod === "TRY") {
+        return hasRate > 0 ? amount / hasRate : 0;
+      }
+
+      const curRow = kurRows.find((k) => (k.kod || "").toUpperCase() === pKod);
+      const curRate = ref === "alis" ? (curRow?.dovizAlis || (pKod === "USD" ? parseNum(usdKuru1) : 1) || 1) : (curRow?.dovizSatis || (pKod === "USD" ? parseNum(usdKuru2) : 1) || 1);
+
+      return hasRate > 0 ? (amount * curRate) / hasRate : 0;
     },
-    []
+    [kurRows, hasKuru1, hasKuru2, usdKuru1, usdKuru2]
   );
 
-  // ─── Event Handlers ─────────────────────────────────────────────────────────
+  const convertFromHas = useCallback(
+    (hasAmount: number, targetParaKodu: string, ref: "alis" | "satis" = "alis"): number => {
+      if (!hasAmount || isNaN(hasAmount)) return 0;
+      const pKod = (targetParaKodu || "HAS").toUpperCase();
+      if (pKod === "HAS") return hasAmount;
+
+      const hasRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "HAS");
+      const hasRate = ref === "alis" ? (hasRow?.dovizAlis || parseNum(hasKuru1) || 1) : (hasRow?.dovizSatis || parseNum(hasKuru2) || 1);
+
+      if (pKod === "TL" || pKod === "TRY") {
+        return hasAmount * hasRate;
+      }
+
+      const curRow = kurRows.find((k) => (k.kod || "").toUpperCase() === pKod);
+      const curRate = ref === "alis" ? (curRow?.dovizAlis || (pKod === "USD" ? parseNum(usdKuru1) : 1) || 1) : (curRow?.dovizSatis || (pKod === "USD" ? parseNum(usdKuru2) : 1) || 1);
+
+      return curRate > 0 ? (hasAmount * hasRate) / curRate : 0;
+    },
+    [kurRows, hasKuru1, hasKuru2, usdKuru1, usdKuru2]
+  );
+
+  // ─── Otomatik Hesaplama Motoru (Sağ Blok -> Sol Blok Senkronizasyonu) ───────
+  const recalculateAll = useCallback(
+    (
+      curMiktar: number | string,
+      curAyar: string,
+      curMaliyetIscilik: number | string,
+      curMaliyetIscilikPara: string,
+      curMaliyetBirim: string,
+      curSatisIscilik: number | string,
+      curKurRef: "alis" | "satis"
+    ) => {
+      const mMiktar = parseNum(curMiktar);
+      const mMaliyetIscilik = parseNum(curMaliyetIscilik);
+      const mSatisIscilik = parseNum(curSatisIscilik);
+      const milyem = getMilyemFromAyar(curAyar);
+
+      // 1. Miktar Has Karşılığı (Miktar * Milyem / 1000) - 5 hane
+      const calcHasNum = mMiktar > 0 ? mMiktar * (milyem / 1000) : 0;
+      setHasGram(calcHasNum > 0 ? format5(calcHasNum) : "");
+
+      // 2. Maliyet İşçilik Has Karşılığı (Gram ise Miktar * İşçilik, Adet ise İşçilik)
+      const rawMaliyetIscilikNum =
+        mMaliyetIscilik > 0
+          ? curMaliyetBirim === "Gram"
+            ? mMaliyetIscilik * (mMiktar > 0 ? mMiktar : 1)
+            : mMaliyetIscilik
+          : 0;
+
+      const calcMaliyetIscilikHas = convertToHas(rawMaliyetIscilikNum, curMaliyetIscilikPara, curKurRef);
+      setMaliyetIscilikTutari(calcMaliyetIscilikHas > 0 ? format5(calcMaliyetIscilikHas) : "");
+
+      // 3. Satış İşçilik Tutarı (Gram ise Miktar * İşçilik, Adet ise İşçilik)
+      const calcSatisIscilikNum =
+        mSatisIscilik > 0
+          ? curMaliyetBirim === "Gram"
+            ? mSatisIscilik * (mMiktar > 0 ? mMiktar : 1)
+            : mSatisIscilik
+          : 0;
+      setSatisIscilikTutari(calcSatisIscilikNum > 0 ? format5(calcSatisIscilikNum) : "");
+
+      // 4. Toplam Has = Ürün Miktarı Has + Maliyet İşçilik Has (5 hane hassasiyet)
+      const calcToplamHasNum = calcHasNum + calcMaliyetIscilikHas;
+      const formattedToplamHas = calcToplamHasNum > 0 ? format5(calcToplamHasNum) : "";
+      setToplamHas(formattedToplamHas);
+
+      // 5. Sol Blok Senkronizasyonu: Maliyet (HAS) = Toplam Has
+      if (calcToplamHasNum > 0) {
+        setMaliyet(formattedToplamHas);
+        setMaliyetDoviz(format2(convertFromHas(calcToplamHasNum, maliyetParaKodu, curKurRef)));
+
+        const kYuzde = parseNum(satisKariYuzde);
+        const calcSatisHasNum = calcToplamHasNum * (1 + kYuzde / 100);
+        setSatisFiyati(format5(calcSatisHasNum));
+        setSatisDoviz(format2(convertFromHas(calcSatisHasNum, satisParaKodu, curKurRef)));
+      } else {
+        setMaliyet("");
+        setMaliyetDoviz("");
+        setSatisFiyati("");
+        setSatisDoviz("");
+      }
+    },
+    [convertToHas, convertFromHas, maliyetParaKodu, satisParaKodu, satisKariYuzde]
+  );
+
   const handleAyarChange = (newAyar: string) => {
     setAyar(newAyar);
-    recalculateAll(
-      Number(miktar) || 0,
-      newAyar,
-      Number(maliyetIscilik) || 0,
-      maliyetIscilikBirim,
-      Number(satisIscilik) || 0,
-      maliyetParaKodu,
-      satisParaKodu
-    );
+    recalculateAll(miktar, newAyar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
   };
 
   const handleMiktarChange = (val: string) => {
     setMiktar(val);
-    const num = parseFloat(val) || 0;
-    recalculateAll(
-      num,
-      ayar,
-      Number(maliyetIscilik) || 0,
-      maliyetIscilikBirim,
-      Number(satisIscilik) || 0,
-      maliyetParaKodu,
-      satisParaKodu
-    );
+    recalculateAll(val, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
   };
 
   const handleMaliyetIscilikChange = (val: string) => {
     setMaliyetIscilik(val);
-    const num = parseFloat(val) || 0;
-    recalculateAll(
-      Number(miktar) || 0,
-      ayar,
-      num,
-      maliyetIscilikBirim,
-      Number(satisIscilik) || 0,
-      maliyetParaKodu,
-      satisParaKodu
-    );
+    recalculateAll(miktar, ayar, val, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
   };
 
   const handleSatisIscilikChange = (val: string) => {
     setSatisIscilik(val);
-    const num = parseFloat(val) || 0;
-    recalculateAll(
-      Number(miktar) || 0,
-      ayar,
-      Number(maliyetIscilik) || 0,
-      maliyetIscilikBirim,
-      num,
-      maliyetParaKodu,
-      satisParaKodu
-    );
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, val, kurRef);
   };
 
   const handleMaliyetBirimChange = (newBirim: string) => {
     setMaliyetIscilikBirim(newBirim);
-    recalculateAll(
-      Number(miktar) || 0,
-      ayar,
-      Number(maliyetIscilik) || 0,
-      newBirim,
-      Number(satisIscilik) || 0,
-      maliyetParaKodu,
-      satisParaKodu
-    );
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, newBirim, satisIscilik, kurRef);
   };
 
-  const handleSatisFiyatiChange = (val: string) => {
+  // ─── Sol Fiyatlandırma Handlers (Maliyet, Satış & Kâr) ─────────────────────
+  const handleKurRefChange = (newRef: "alis" | "satis") => {
+    setKurRef(newRef);
+    const mHas = parseNum(maliyet);
+    if (mHas > 0) {
+      setMaliyetDoviz(format2(convertFromHas(mHas, maliyetParaKodu, newRef)));
+    }
+    const sHas = parseNum(satisFiyati);
+    if (sHas > 0) {
+      setSatisDoviz(format2(convertFromHas(sHas, satisParaKodu, newRef)));
+    }
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, newRef);
+  };
+
+  const handleMaliyetHasChange = (val: string) => {
+    setMaliyet(val);
+    const mNum = parseNum(val);
+    if (mNum > 0) {
+      setMaliyetDoviz(format2(convertFromHas(mNum, maliyetParaKodu, kurRef)));
+    } else {
+      setMaliyetDoviz("");
+    }
+  };
+
+  const handleMaliyetDovizChange = (val: string) => {
+    setMaliyetDoviz(val);
+    const dNum = parseNum(val);
+    if (dNum > 0) {
+      setMaliyet(format5(convertToHas(dNum, maliyetParaKodu, kurRef)));
+    } else {
+      setMaliyet("");
+    }
+  };
+
+  const handleSatisHasChange = (val: string) => {
     setSatisFiyati(val);
-    const num = parseFloat(val) || 0;
-    const curMaliyet = Number(maliyet) || 0;
-    if (curMaliyet > 0 && num > 0) {
-      const yuzde = Number((((num - curMaliyet) / curMaliyet) * 100).toFixed(2));
-      setSatisKariYuzde(yuzde);
-    } else if (!val) {
-      setSatisKariYuzde("");
+    const sNum = parseNum(val);
+    if (sNum > 0) {
+      setSatisDoviz(format2(convertFromHas(sNum, satisParaKodu, kurRef)));
+      const mNum = parseNum(maliyet);
+      if (mNum > 0) {
+        setSatisKariYuzde(Number((((sNum - mNum) / mNum) * 100).toFixed(2)));
+      }
+    } else {
+      setSatisDoviz("");
+    }
+  };
+
+  const handleSatisDovizChange = (val: string) => {
+    setSatisDoviz(val);
+    const dNum = parseNum(val);
+    if (dNum > 0) {
+      const sHas = convertToHas(dNum, satisParaKodu, kurRef);
+      setSatisFiyati(format5(sHas));
+      const mNum = parseNum(maliyet);
+      if (mNum > 0 && sHas > 0) {
+        setSatisKariYuzde(Number((((sHas - mNum) / mNum) * 100).toFixed(2)));
+      }
+    } else {
+      setSatisFiyati("");
+    }
+  };
+
+  const handleMaliyetKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const mNum = parseNum(maliyet);
+      const yNum = parseNum(satisKariYuzde) || 100;
+      if (mNum > 0) {
+        const newSatis = format5(mNum * (1 + yNum / 100));
+        setSatisFiyati(newSatis);
+        setSatisDoviz(format2(convertFromHas(parseNum(newSatis), satisParaKodu, kurRef)));
+      }
     }
   };
 
   const handleKarYuzdeChange = (val: string) => {
     setSatisKariYuzde(val);
-    const yuzde = parseFloat(val) || 0;
-    const curMaliyet = Number(maliyet) || 0;
-    if (curMaliyet > 0 && val !== "") {
-      const newSatis = Number((curMaliyet * (1 + yuzde / 100)).toFixed(3));
+    const yNum = parseNum(val);
+    const mNum = parseNum(maliyet);
+    if (mNum > 0 && yNum > 0) {
+      const newSatis = format5(mNum * (1 + yNum / 100));
       setSatisFiyati(newSatis);
-    }
-  };
-
-  const handleMaliyetChange = (val: string) => {
-    setMaliyet(val);
-    const num = parseFloat(val) || 0;
-    const curSatis = Number(satisFiyati) || 0;
-    if (num > 0 && curSatis > 0) {
-      const yuzde = Number((((curSatis - num) / num) * 100).toFixed(2));
-      setSatisKariYuzde(yuzde);
-    }
-  };
-
-  const handleHasGramChange = (val: string) => {
-    setHasGram(val);
-    const num = parseFloat(val) || 0;
-    const curMaliyetTutari = Number(maliyetIscilikTutari) || 0;
-    if (val !== "") {
-      const calcMaliyet = Number((num + curMaliyetTutari).toFixed(3));
-      setMaliyet(calcMaliyet);
-      const curSatisTutari = Number(satisIscilikTutari) || 0;
-      const calcSatis = Number((num + curSatisTutari).toFixed(3));
-      setSatisFiyati(calcSatis);
-    }
-  };
-
-  const handleMaliyetIscilikTutariChange = (val: string) => {
-    setMaliyetIscilikTutari(val);
-    const num = parseFloat(val) || 0;
-    const curHas = Number(hasGram) || 0;
-    if (val !== "" || curHas > 0) {
-      setMaliyet(Number((curHas + num).toFixed(3)));
-    }
-  };
-
-  const handleSatisIscilikTutariChange = (val: string) => {
-    setSatisIscilikTutari(val);
-    const num = parseFloat(val) || 0;
-    const curHas = Number(hasGram) || 0;
-    if (val !== "" || curHas > 0) {
-      setSatisFiyati(Number((curHas + num).toFixed(3)));
-    }
-  };
-
-  const handleIscilikKariChange = (val: string) => {
-    setIscilikKari(val);
-    const num = parseFloat(val) || 0;
-    const curMaliyetIscilik = Number(maliyetIscilikTutari) || 0;
-    if (val !== "" || curMaliyetIscilik > 0) {
-      setSatisIscilikTutari(Number((curMaliyetIscilik + num).toFixed(3)));
+      setSatisDoviz(format2(convertFromHas(parseNum(newSatis), satisParaKodu, kurRef)));
     }
   };
 
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
-      const [list, gruplar, ureticiler, sabl, cariler, kurTablosu] = await Promise.all([
+      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar] = await Promise.all([
         EtiketService.getAltinUrunler({ limit: 500 }),
-        EtiketService.getGrupKodlari().catch(() => []),
+        EtiketService.getGruplar(0).catch(() => []),
         EtiketService.getUreticiFirmalar().catch(() => []),
+        CariService.getCariKartlar().catch(() => []),
         EtiketService.getSablonlar(0).catch(() => []),
-        CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
-        KurService.getKurTablosu({ tur: 0 }).catch(() => null),
+        KurService.getKurTablosu({ tur: 0 }).then((t) => t?.satirlar || []).catch(() => []),
+        EtiketService.getBankolar().catch(() => []),
       ]);
-      setAltinList(list);
-      setGrupList(gruplar.length ? gruplar : ["ALYANS", "BILEZIK", "KOLYE", "KUPE", "YUZUK", "ZINCIR"]);
-      setUreticiList(ureticiler.length ? ureticiler : ["DOVIZ A-S", "ALTINBAS", "ATASAY", "FAVORİ"]);
-      setSablonlar(sabl);
-      setCariList(cariler.length ? cariler : ureticiler.map((u, idx) => ({ id: idx, kod: `FRM${idx + 1}`, ad: u, kisilikTipi: 1 } as any)));
 
-      if (kurTablosu?.satirlar && kurTablosu.satirlar.length > 0) {
-        setKurRows(kurTablosu.satirlar);
-        const hasRow = kurTablosu.satirlar.find((s) => (s.kod || "").toUpperCase() === "HAS");
-        if (hasRow && (hasRow.dovizSatis || hasRow.dovizAlis)) {
-          setHasKuru1((prev) => (prev ? prev : String(hasRow.dovizSatis || hasRow.dovizAlis)));
+      setAltinList(urunler);
+      setGrupList(gruplar);
+      setBankoList(bankolar);
+      setUreticiList(ureticiler);
+      setCariList(cariler);
+      setSablonlar(sabl);
+      setKurRows(kurlar);
+
+      // Kurları otomatik doldur (HAS & USD)
+      if (kurlar.length > 0) {
+        const hasKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
+        if (hasKur) {
+          if (hasKur.dovizAlis !== undefined && hasKur.dovizAlis !== null) setHasKuru1(hasKur.dovizAlis);
+          if (hasKur.dovizSatis !== undefined && hasKur.dovizSatis !== null) setHasKuru2(hasKur.dovizSatis);
         }
-        const altinRow = kurTablosu.satirlar.find((s) => {
-          const k = (s.kod || "").toUpperCase();
-          return k.includes("ALTIN") || k.includes("24") || k.includes("USD");
-        });
-        if (altinRow && (altinRow.dovizSatis || altinRow.dovizAlis)) {
-          setAltinKuru((prev) => (prev ? prev : String(altinRow.dovizSatis || altinRow.dovizAlis)));
+        const usdKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "USD");
+        if (usdKur) {
+          if (usdKur.dovizAlis !== undefined && usdKur.dovizAlis !== null) setUsdKuru1(usdKur.dovizAlis);
+          if (usdKur.dovizSatis !== undefined && usdKur.dovizSatis !== null) setUsdKuru2(usdKur.dovizSatis);
         }
       }
     } catch (err: any) {
-      showNotif("danger", err?.message || "Altın stok listesi yüklenemedi.");
+      showNotif("danger", err?.message || "Veriler yüklenirken hata oluştu.");
     }
   }, []);
 
   useEffect(() => {
     loadAll();
-  }, [loadAll]);
+  }, []);
 
-  // ─── Ürün Seçimi ─────────────────────────────────────────────────────────────
-  const handleSelectUrun = (it: AltinUrunItem) => {
+  // ─── F1 / F2 / F3 Klavye Kısayolları ──────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F1") {
+        e.preventDefault();
+        handleSave();
+      } else if (e.key === "F2") {
+        e.preventDefault();
+        if (altinUrunId) {
+          setShowDeleteConfirm(true);
+        } else {
+          showNotif("warning", "Silinecek kayıt bulunmamaktadır.");
+        }
+      } else if (e.key === "F3" || e.key === "F4") {
+        e.preventDefault();
+        setShowLookup(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [altinUrunId, grupKodu, urunNo, ayar, miktar, maliyet, satisFiyati]);
+
+  // ─── Grup Seçimi & Sıradaki Numarayı Alma (3 Haneli) ─────────────────────────
+  const handleGrupSec = async (secilenKod: string) => {
+    const kod = (secilenKod || "").trim().toUpperCase();
+    if (!kod) return;
+    setGrupKodu(kod);
+
+    // Daha önce kayıt edilmiş ise listeden en büyük no'yu bulup bir sonrakini belirle
+    let calculatedNextNo = 1;
+    if (altinList && altinList.length > 0) {
+      const matchItems = altinList.filter(
+        (x) => (x.grupKodu || "").trim().toUpperCase() === kod
+      );
+      if (matchItems.length > 0) {
+        const maxNo = Math.max(...matchItems.map((x) => Number(x.urunNo) || 0));
+        if (maxNo > 0) {
+          calculatedNextNo = maxNo + 1;
+        }
+      }
+    }
+
+    try {
+      const nextInfo = await EtiketService.getNextAltinUrunNo(kod, 3);
+      const sonNoNum = Math.max(Number(nextInfo.sonNo) || 1, calculatedNextNo);
+      const paddedNo = format3Digits(sonNoNum);
+      setUrunNo(paddedNo);
+      setBarkod(`${kod}${paddedNo}`);
+    } catch {
+      const paddedNo = format3Digits(calculatedNextNo);
+      setUrunNo(paddedNo);
+      setBarkod(`${kod}${paddedNo}`);
+    }
+  };
+
+  // ─── Yeni Kayıt Modu (Temizle) ──────────────────────────────────────────────
+  const handleNew = () => {
+    setAltinUrunId(null);
+    setTarih(new Date().toISOString().slice(0, 10));
+    setGrupKodu("");
+    setUrunNo("");
+    setBarkod("");
+    setAyar("");
+    setUreticiFirma("");
+    setOrjinalKod("");
+    setModel("");
+    setBanko("Banko 1");
+    setMiktar("");
+    setHasGram("");
+    setMaliyetIscilik("");
+    setMaliyetIscilikParaKodu("HAS");
+    setMaliyetIscilikBirim("Gram");
+    setMaliyetIscilikTutari("");
+    setSatisIscilik("");
+    setSatisIscilikTutari("");
+    setIscilikKari("");
+    setToplamHas("");
+    setMaliyet("");
+    setMaliyetDoviz("");
+    setMaliyetParaKodu("USD");
+    setSatisFiyati("");
+    setSatisDoviz("");
+    setSatisParaKodu("USD");
+    setSatisKariYuzde(100);
+    setResim(null);
+    setResimler([]);
+    setSeciliResimIndex(0);
+    showNotif("warning", "Yeni kayıt modu. Ürün bilgilerini girip 'Kaydet' butonuna basınız.");
+  };
+
+  // ─── Kayıt Seçme ─────────────────────────────────────────────────────────────
+  const handleSelectRecord = (it: AltinUrunItem) => {
     setAltinUrunId(it.altinUrunId);
     setTarih(it.tarih ? it.tarih.slice(0, 10) : new Date().toISOString().slice(0, 10));
-    setGrupKodu(it.grupKodu || "");
-    setUrunNo(it.urunNo || "");
-    setBarkod(it.barkod || (it.grupKodu && it.urunNo ? `${it.grupKodu}${it.urunNo}` : ""));
-    setAyar(it.ayar || "22 FANTAZI");
+    setGrupKodu(it.grupKodu);
+    const paddedNo = format3Digits(it.urunNo);
+    setUrunNo(paddedNo);
+    setBarkod(it.barkod || `${it.grupKodu}${paddedNo}`);
+    setAyar(it.ayar || "");
     setUreticiFirma(it.ureticiFirma || "");
     setOrjinalKod(it.orjinalKod || "");
     setModel(it.model || "");
     setBanko(it.banko || "Banko 1");
+    setMiktar(it.miktar || "");
+    const itMiktar = parseNum(it.miktar || "");
+    const itAyar = it.ayar || "";
+    const calcHasNum = itMiktar > 0 ? itMiktar * (getMilyemFromAyar(itAyar) / 1000) : 0;
+    const itHasGram = it.hasGram ? parseNum(it.hasGram) : calcHasNum;
+    setHasGram(itHasGram > 0 ? format5(itHasGram) : "");
 
-    setMiktar(it.miktar ?? "");
-    setHasGram(it.hasGram ?? "");
-    setMaliyetIscilik(it.maliyetIscilik ?? "");
-    setMaliyetIscilikParaKodu(it.maliyetIscilikParaKodu || "HAS");
-    setMaliyetIscilikBirim(it.maliyetIscilikBirim || "Gram");
-    setMaliyetIscilikTutari(it.maliyetIscilikTutari ?? "");
+    setMaliyetIscilik(it.maliyetIscilik || "");
+    const itIscilikPara = it.maliyetIscilikParaKodu || "HAS";
+    const itIscilikBirim = it.maliyetIscilikBirim || "Gram";
+    setMaliyetIscilikParaKodu(itIscilikPara);
+    setMaliyetIscilikBirim(itIscilikBirim);
 
-    setSatisIscilik(it.satisIscilik ?? "");
-    setSatisIscilikTutari(it.satisIscilikTutari ?? "");
-    setIscilikKari(it.iscilikKari ?? "");
+    const itIscilik = parseNum(it.maliyetIscilik || "");
+    const rawIscilikNum = itIscilik > 0 ? (itIscilikBirim === "Gram" ? itIscilik * (itMiktar > 0 ? itMiktar : 1) : itIscilik) : 0;
+    const calcMaliyetIscilikHas = convertToHas(rawIscilikNum, itIscilikPara, kurRef);
+    const itIscilikTutari = it.maliyetIscilikTutari ? parseNum(it.maliyetIscilikTutari) : calcMaliyetIscilikHas;
+    setMaliyetIscilikTutari(itIscilikTutari > 0 ? format5(itIscilikTutari) : "");
 
-    setMaliyet(it.maliyet ?? "");
-    setMaliyetParaKodu(it.maliyetParaKodu || "HAS");
-    setSatisFiyati(it.satisFiyati ?? "");
-    setSatisParaKodu(it.satisParaKodu || "HAS");
-    setSatisKariYuzde(it.satisKariYuzde ?? "");
+    setSatisIscilik(it.satisIscilik || "");
+    const itSatisIscilik = parseNum(it.satisIscilik || "");
+    const calcSatisIscilikNum = itSatisIscilik > 0 ? (itIscilikBirim === "Gram" ? itSatisIscilik * (itMiktar > 0 ? itMiktar : 1) : itSatisIscilik) : 0;
+    const itSatisTutari = it.satisIscilikTutari ? parseNum(it.satisIscilikTutari) : calcSatisIscilikNum;
+    setSatisIscilikTutari(itSatisTutari > 0 ? format5(itSatisTutari) : "");
+    setIscilikKari(it.iscilikKari || "");
 
+    const calcTot = (itHasGram > 0 ? itHasGram : calcHasNum) + (itIscilikTutari > 0 ? itIscilikTutari : calcMaliyetIscilikHas);
+    setToplamHas(calcTot > 0 ? format5(calcTot) : "");
+
+    const mHas = it.maliyet || "";
+    setMaliyet(mHas);
+    const mPKod = it.maliyetParaKodu || "USD";
+    setMaliyetParaKodu(mPKod);
+    if (mHas) {
+      setMaliyetDoviz(format2(convertFromHas(parseNum(mHas), mPKod, kurRef)));
+    } else {
+      setMaliyetDoviz("");
+    }
+
+    const sHas = it.satisFiyati || "";
+    setSatisFiyati(sHas);
+    const sPKod = it.satisParaKodu || "USD";
+    setSatisParaKodu(sPKod);
+    if (sHas) {
+      setSatisDoviz(format2(convertFromHas(parseNum(sHas), sPKod, kurRef)));
+    } else {
+      setSatisDoviz("");
+    }
+
+    setSatisKariYuzde(it.satisKariYuzde || "");
     setHasKuru1(it.hasKuru1 ?? "");
     setHasKuru2(it.hasKuru2 ?? "");
-    setAltinKuru(it.altinKuru ?? "");
-    setResim(it.resim || null);
+    const loadedImages = (it.resimler && it.resimler.length > 0) ? it.resimler : (it.resim ? [it.resim] : []);
+    setResimler(loadedImages);
+    setResim(loadedImages.length > 0 ? loadedImages[0] : null);
+    setSeciliResimIndex(0);
+    setShowLookup(false);
   };
 
-  // ─── Yeni Ürün Hazırla (YENİ / F4) ──────────────────────────────────────────
-  const handleNew = async () => {
-    setAltinUrunId(null);
-    setTarih(new Date().toISOString().slice(0, 10));
-    setResim(null);
+  // ─── Fotoğraf Yükleme ve Çoklu Yönetim ────────────────────────────────────────
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const targetGrup = (grupKodu.trim() || grupList[0] || "ALYANS").toUpperCase();
-    setGrupKodu(targetGrup);
+    const fileList = Array.from(files);
+    const readPromises = fileList.map((file) => {
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const base64 = event.target?.result as string;
+          if (!base64) {
+            resolve("");
+            return;
+          }
+          try {
+            await EtiketService.uploadFoto({
+              base64,
+              dosyaAdi: file.name,
+              tip: 0,
+              islemId: altinUrunId || undefined,
+            });
+          } catch (e) {
+            console.error("Fotoğraf yükleme hatası:", e);
+          }
+          // Doğrudan base64 verisi kullanılarak tarayıcıda anında ve net görüntüleme sağlanır
+          resolve(base64);
+        };
+        reader.readAsDataURL(file);
+      });
+    });
 
-    // Mevcut listedeki en büyük ürün numarasını bul
-    const maxExistingNo = altinList
-      .filter((x) => (x.grupKodu || "").trim().toUpperCase() === targetGrup)
-      .reduce((m, x) => (Number(x.urunNo) > m ? Number(x.urunNo) : m), 0);
+    const newUrls = (await Promise.all(readPromises)).filter(Boolean);
+    if (newUrls.length > 0) {
+      setResimler((prev) => {
+        const combined = [...prev, ...newUrls];
+        setResim(combined[combined.length - 1]);
+        setSeciliResimIndex(combined.length - 1);
+        return combined;
+      });
+      showNotif("success", `${newUrls.length} adet fotoğraf başarıyla eklendi.`);
+    }
 
-    // Alt taraftaki alanlar (ayar, üretici firma, işçilik, kurlar vb.) silinmez, korunur.
-    try {
-      const nextData = await EtiketService.getNextAltinUrunNo(targetGrup);
-      const calculatedNo = Math.max(Number(nextData.sonNo) || 1, maxExistingNo + 1);
-      setUrunNo(calculatedNo);
-      setBarkod(nextData.barkod && nextData.sonNo === calculatedNo ? nextData.barkod : `${targetGrup}${String(calculatedNo).padStart(5, "0")}`);
-      showNotif("success", `${targetGrup} grubu için sıradaki no: #${calculatedNo} otomatik atandı.`);
-    } catch {
-      const nextNo = maxExistingNo + 1;
-      setUrunNo(nextNo);
-      setBarkod(`${targetGrup}${String(nextNo).padStart(5, "0")}`);
-      showNotif("success", `${targetGrup} grubu için sıradaki no: #${nextNo} otomatik atandı.`);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+  };
+
+  const handleDeleteSelectedPhoto = () => {
+    if (resimler.length === 0) return;
+    const nextList = resimler.filter((_, idx) => idx !== seciliResimIndex);
+    setResimler(nextList);
+    if (nextList.length > 0) {
+      const nextIdx = Math.max(0, seciliResimIndex - 1);
+      setSeciliResimIndex(nextIdx);
+      setResim(nextList[nextIdx]);
+    } else {
+      setSeciliResimIndex(0);
+      setResim(null);
     }
   };
 
-  // ─── Kaydet / Güncelle (F1 - SODVZ_ALTIN_URUN_KAYDET) ────────────────────────
-  const handleSave = async (): Promise<AltinUrunItem | null> => {
+  // ─── Canlı Kamera (Webcam / Stream) Yönetimi ────────────────────────────────
+  const startCamera = async () => {
+    setCameraError(null);
+    setShowCameraModal(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err: any) {
+      setCameraError("Kamera erişimi sağlanamadı veya izin verilmedi. Lütfen tarayıcı kamera izinlerini kontrol ediniz.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setShowCameraModal(false);
+    setCameraError(null);
+  };
+
+  const capturePhoto = async () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current || document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const base64 = canvas.toDataURL("image/jpeg", 0.85);
+
+    stopCamera();
+
+    try {
+      await EtiketService.uploadFoto({
+        base64,
+        dosyaAdi: `kamera_${Date.now()}.jpg`,
+        tip: 0,
+        islemId: altinUrunId || undefined,
+      });
+    } catch (e) {
+      console.error("Fotoğraf yükleme hatası:", e);
+    }
+
+    setResimler((prev) => {
+      const combined = [...prev, base64];
+      setResim(base64);
+      setSeciliResimIndex(combined.length - 1);
+      return combined;
+    });
+    showNotif("success", "Fotoğraf kameradan başarıyla çekildi ve eklendi.");
+  };
+
+  // ─── Kaydet / Güncelle (F1) ──────────────────────────────────────────────────
+  const handleSave = async () => {
     if (!grupKodu.trim()) {
-      showNotif("warning", "Lütfen grup kodu giriniz.");
-      return null;
+      showNotif("warning", "Lütfen Grup Kodu seçiniz.");
+      return;
     }
     if (!urunNo || Number(urunNo) <= 0) {
-      showNotif("warning", "Lütfen geçerli bir ürün no giriniz.");
-      return null;
+      showNotif("warning", "Lütfen geçerli bir Ürün No giriniz.");
+      return;
     }
-    if (!miktar || Number(miktar) <= 0) {
-      showNotif("warning", "Lütfen ürün miktarını (gram) giriniz.");
-      return null;
+    if (!ayar.trim()) {
+      showNotif("warning", "Lütfen Ayar seçiniz.");
+      return;
     }
 
     setIsSaving(true);
     try {
-      const finalBarkod = barkod.trim() || `${grupKodu.trim()}${urunNo}`;
+      const finalUrunNo = Number(urunNo) || 1;
+      const paddedUrunNo = format3Digits(finalUrunNo);
+      const finalBarkod = barkod.trim() || `${grupKodu.trim().toUpperCase()}${paddedUrunNo}`;
+
       const payload: SaveAltinUrunPayload = {
-        altinUrunId,
+        altinUrunId: altinUrunId || undefined,
         tarih,
         grupKodu: grupKodu.trim().toUpperCase(),
-        urunNo: Number(urunNo),
+        urunNo: finalUrunNo,
         barkod: finalBarkod,
         ayar,
-        ureticiFirma: ureticiFirma.trim(),
-        orjinalKod: orjinalKod.trim(),
-        model: model.trim(),
-        banko,
-        miktar: Number(miktar) || 0,
-        hasGram: Number(hasGram) || 0,
-        maliyetIscilik: Number(maliyetIscilik) || 0,
+        ureticiFirma: ureticiFirma.trim() || null,
+        orjinalKod: orjinalKod.trim() || null,
+        model: model.trim() || null,
+        banko: banko.trim() || null,
+        miktar: parseNum(miktar),
+        hasGram: parseNum(hasGram),
+        maliyetIscilik: parseNum(maliyetIscilik),
         maliyetIscilikParaKodu,
         maliyetIscilikBirim,
-        maliyetIscilikTutari: Number(maliyetIscilikTutari) || 0,
-        satisIscilik: Number(satisIscilik) || 0,
-        satisIscilikTutari: Number(satisIscilikTutari) || 0,
-        iscilikKari: Number(iscilikKari) || 0,
-        maliyet: Number(maliyet) || 0,
+        maliyetIscilikTutari: parseNum(maliyetIscilikTutari),
+        satisIscilik: parseNum(satisIscilik),
+        satisIscilikTutari: parseNum(satisIscilikTutari),
+        iscilikKari: 0,
+        maliyet: parseNum(maliyet),
         maliyetParaKodu,
-        satisFiyati: Number(satisFiyati) || 0,
+        satisFiyati: parseNum(satisFiyati),
         satisParaKodu,
-        satisKariYuzde: Number(satisKariYuzde) || 0,
-        hasKuru1: Number(hasKuru1) || null,
-        hasKuru2: Number(hasKuru2) || null,
-        altinKuru: Number(altinKuru) || null,
-        resim: resim || null,
+        satisKariYuzde: parseNum(satisKariYuzde),
+        hasKuru1: hasKuru1 !== "" ? parseNum(hasKuru1) : null,
+        hasKuru2: hasKuru2 !== "" ? parseNum(hasKuru2) : null,
+        resim: resimler.length > 0 ? resimler[seciliResimIndex] || resimler[0] : (resim || null),
+        resimler: resimler.length > 0 ? resimler : (resim ? [resim] : []),
         satildi: false,
       };
 
       const saved = await EtiketService.saveAltinUrun(payload);
-      showNotif("success", `Altın ürün başarıyla ${altinUrunId ? "güncellendi" : "kaydedildi"}: #${saved.altinUrunId} (${saved.grupKodu}-${saved.urunNo})`);
       setAltinUrunId(saved.altinUrunId);
-      setBarkod(saved.barkod || finalBarkod);
+      setUrunNo(format3Digits(saved.urunNo));
+      setBarkod(saved.barkod || `${saved.grupKodu}${format3Digits(saved.urunNo)}`);
+      showNotif("success", `Altın Ürün [${saved.grupKodu}-${format3Digits(saved.urunNo)}] başarıyla kaydedildi.`);
 
-      const refreshed = await EtiketService.getAltinUrunler({ limit: 500 });
-      setAltinList(refreshed);
-      return saved;
+      // Listeyi tazele
+      const updated = await EtiketService.getAltinUrunler({ limit: 500 });
+      setAltinList(updated);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Altın ürün kaydedilirken hata oluştu.");
-      return null;
+      showNotif("danger", err?.message || "Kayıt sırasında hata oluştu.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  // ─── Sil (F2 - SODVZ_ALTIN_URUN_SIL) ─────────────────────────────────────────
+  // ─── Sil (F2) ────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
-    if (!altinUrunId) {
-      showNotif("warning", "Silinecek bir altın ürün seçiniz.");
-      return;
-    }
+    if (!altinUrunId) return;
     setIsSaving(true);
     try {
       await EtiketService.deleteAltinUrun(altinUrunId);
-      showNotif("success", `#${altinUrunId} numaralı altın ürün silindi.`);
+      showNotif("success", "Altın ürün kaydı başarıyla silindi.");
       setShowDeleteConfirm(false);
-
-      const refreshed = await EtiketService.getAltinUrunler({ limit: 500 });
-      setAltinList(refreshed);
-      if (refreshed.length > 0) {
-        handleSelectUrun(refreshed[0]);
-      } else {
-        handleNew();
-      }
+      handleNew();
+      const updated = await EtiketService.getAltinUrunler({ limit: 500 });
+      setAltinList(updated);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Altın ürün silinirken hata oluştu.");
+      showNotif("danger", err?.message || "Silme işlemi sırasında hata oluştu.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  // ─── Gezinme (İlk, Önceki, Sonraki, Son) ──────────────────────────────────────
-  const currentIndex = altinList.findIndex((x) => x.altinUrunId === altinUrunId);
-
-  const handleFirst = () => {
-    if (altinList.length > 0) handleSelectUrun(altinList[0]);
-  };
-  const handlePrev = () => {
-    if (currentIndex > 0) handleSelectUrun(altinList[currentIndex - 1]);
-  };
-  const handleNext = () => {
-    if (currentIndex >= 0 && currentIndex < altinList.length - 1) {
-      handleSelectUrun(altinList[currentIndex + 1]);
+  // ─── Yeni Grup Kaydetme ─────────────────────────────────────────────────────
+  const handleSaveYeniGrup = async () => {
+    if (!yeniGrupKodu.trim()) {
+      showNotif("warning", "Lütfen Grup Kodu giriniz.");
+      return;
     }
-  };
-  const handleLast = () => {
-    if (altinList.length > 0) handleSelectUrun(altinList[altinList.length - 1]);
-  };
+    try {
+      await EtiketService.saveGrup({
+        tip: 0,
+        grupKodu: yeniGrupKodu.trim().toUpperCase(),
+        aciklama: yeniGrupAciklama.trim() || null,
+        baslangicNo: Number(yeniGrupBaslangicNo) || 0,
+      });
+      showNotif("success", `"${yeniGrupKodu.toUpperCase()}" grubu başarıyla kaydedildi.`);
+      setShowGrupEkleModal(false);
+      setYeniGrupKodu("");
+      setYeniGrupAciklama("");
+      setYeniGrupBaslangicNo(0);
 
-  // ─── Fotoğraf / Kamera İşlemleri ────────────────────────────────────────────
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setResim(event.target?.result as string);
-        showNotif("success", "Ürün fotoğrafı yüklendi.");
-      };
-      reader.readAsDataURL(file);
+      // Grupları tazele ve bu grubu seç
+      const updatedGruplar = await EtiketService.getGruplar(0);
+      setGrupList(updatedGruplar);
+      handleGrupSec(yeniGrupKodu.trim().toUpperCase());
+    } catch (err: any) {
+      showNotif("danger", err?.message || "Grup eklenirken hata oluştu.");
     }
   };
 
-  // ─── Lookup Kolonları ────────────────────────────────────────────────────────
+  // ─── Yeni Banko Kaydetme ───────────────────────────────────────────────────
+  const handleSaveYeniBanko = async () => {
+    if (!yeniBankoAdi.trim()) {
+      showNotif("warning", "Lütfen Banko Adı giriniz.");
+      return;
+    }
+    try {
+      const saved = await EtiketService.saveBanko({
+        bankoKodu: yeniBankoKodu.trim().toUpperCase() || null,
+        bankoAdi: yeniBankoAdi.trim(),
+        aciklama: yeniBankoAciklama.trim() || null,
+        aktif: true,
+      });
+      showNotif("success", `"${saved.bankoAdi}" bankosu başarıyla kaydedildi.`);
+      setShowBankoEkleModal(false);
+      setYeniBankoKodu("");
+      setYeniBankoAdi("");
+      setYeniBankoAciklama("");
+
+      const updatedBankolar = await EtiketService.getBankolar();
+      setBankoList(updatedBankolar);
+      setBanko(saved.bankoAdi);
+    } catch (err: any) {
+      showNotif("danger", err?.message || "Banko eklenirken hata oluştu.");
+    }
+  };
+
+  // ─── Kayıt Gezinme ──────────────────────────────────────────────────────────
+  const currentIndex = altinList.findIndex((u) => u.altinUrunId === altinUrunId);
+  const handleNavigate = (dir: "first" | "prev" | "next" | "last") => {
+    if (altinList.length === 0) return;
+    let targetIdx = 0;
+    if (dir === "first") targetIdx = 0;
+    else if (dir === "prev") targetIdx = Math.max(0, currentIndex - 1);
+    else if (dir === "next") targetIdx = Math.min(altinList.length - 1, currentIndex + 1);
+    else if (dir === "last") targetIdx = altinList.length - 1;
+    handleSelectRecord(altinList[targetIdx]);
+  };
+
+  // ─── Tablo Sütunları ─────────────────────────────────────────────────────────
   const lookupColumns: LookupColumn<AltinUrunItem>[] = [
-    { header: "ID", width: "70px", render: (it) => <span className="font-monospace fw-bold text-primary">#{it.altinUrunId}</span> },
-    { header: "Grup-No", width: "110px", render: (it) => <span className="fw-bold">{it.grupKodu}-{it.urunNo}</span> },
-    { header: "Barkod", width: "120px", render: (it) => <span className="font-monospace text-secondary">{it.barkod || "-"}</span> },
-    { header: "Ayar", width: "90px", render: (it) => it.ayar || "-" },
-    { header: "Miktar (gr)", width: "100px", align: "right", render: (it) => <span className="fw-semibold font-monospace">{Number(it.miktar || 0).toFixed(2)} gr</span> },
-    { header: "Has (gr)", width: "90px", align: "right", render: (it) => <span className="text-warning-emphasis font-monospace fw-bold">{Number(it.hasGram || 0).toFixed(2)}</span> },
-    { header: "Model / Açıklama", render: (it) => it.model || it.orjinalKod || "-" },
-    { header: "Üretici", render: (it) => it.ureticiFirma || "-" },
-  ];
-
-  const firmaLookupColumns: LookupColumn<CariKartItem>[] = [
-    { header: "Cari Kodu", width: "120px", render: (it) => <span className="font-monospace fw-bold">{it.kod}</span> },
-    { header: "Firma / Ünvan", render: (it) => <span className="fw-semibold text-primary">{it.ad}</span> },
-    { header: "Yetkili", width: "150px", render: (it) => it.yetkiliKisi || "-" },
-    { header: "Telefon", width: "130px", render: (it) => it.telefon || "-" },
-  ];
-
-  const kurLookupColumns: LookupColumn<KurRowItem>[] = [
-    { header: "Kod", width: "90px", render: (it) => <span className="font-monospace fw-bold text-primary">{it.kod}</span> },
-    { header: "Para / Maden Adı", render: (it) => <span className="fw-semibold">{it.ad}</span> },
-    { header: "Döviz Satış", width: "120px", align: "right", render: (it) => <span className="font-monospace fw-bold text-success">{it.dovizSatis ? Number(it.dovizSatis).toFixed(2) : "-"}</span> },
-    { header: "Döviz Alış", width: "120px", align: "right", render: (it) => <span className="font-monospace">{it.dovizAlis ? Number(it.dovizAlis).toFixed(2) : "-"}</span> },
-    { header: "Efektif Satış", width: "120px", align: "right", render: (it) => <span className="font-monospace">{it.efektifSatis ? Number(it.efektifSatis).toFixed(2) : "-"}</span> },
+    { header: "Grup-No", width: "90px", render: (it) => <span className="fw-bold text-primary">{it.grupKodu}-{format3Digits(it.urunNo)}</span> },
+    { header: "Barkod", width: "110px", render: (it) => <span className="font-monospace">{it.barkod || "-"}</span> },
+    { header: "Ayar", width: "100px", render: (it) => it.ayar || "-" },
+    { header: "Model", render: (it) => it.model || "-" },
+    { header: "Miktar (gr)", width: "90px", render: (it) => <span className="fw-bold">{it.miktar}</span> },
+    { header: "Has (gr)", width: "80px", render: (it) => it.hasGram },
+    { header: "Satış Fiyatı", width: "110px", render: (it) => `${it.satisFiyati} ${it.satisParaKodu}` },
+    { header: "Üretici Firma", render: (it) => it.ureticiFirma || "-" },
   ];
 
   const printItems: EtiketYazdirItem[] = [
     {
       id: altinUrunId || 0,
-      barkod: barkod || `${grupKodu}${urunNo}`,
+      barkod: barkod || (grupKodu && urunNo ? `${grupKodu}${format3Digits(urunNo)}` : ""),
       fields: {
-        grupUrunNo: `${grupKodu}-${urunNo}`,
-        ayar: ayar || "-",
+        grupUrunNo: `${grupKodu}-${format3Digits(urunNo)}`,
+        ayar,
         has: String(hasGram || 0),
-        gram: `${miktar} gr`,
+        gram: String(miktar || 0),
         fiyat: `${satisFiyati} ${satisParaKodu}`,
-        model: model || "-",
       },
     },
   ];
 
+  const varsayilanSablon = sablonlar.find((s) => s.varsayilan) || sablonlar[0] || null;
+
   return (
     <div className="altin-urun-tanimlama-page w-100 pb-3" style={{ overflowX: "hidden" }}>
-      {/* 1. Üst ERP Aksiyon Şeridi */}
+      {/* ─── Gizli Dosya & Kamera Seçicileri ─── */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: "none" }}
+        accept="image/*"
+        multiple
+        onChange={handleFileChange}
+      />
+      <input
+        type="file"
+        ref={cameraInputRef}
+        style={{ display: "none" }}
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileChange}
+      />
+
+      {/* ─── ERP Toolbar ─── */}
       <ERPToolbar
         pageTitle="B- Barkodlu Altın Ürün Tanımlama"
         pageIcon={<IconBarcode size={20} />}
-        disabled={isSaving}
-        onSave={handleSave}
-        onDelete={() => {
-          if (altinUrunId) setShowDeleteConfirm(true);
-          else showNotif("warning", "Silinecek bir ürün seçiniz.");
-        }}
         onNew={handleNew}
-        onRefresh={() => window.location.reload()}
+        onSave={handleSave}
+        onDelete={() => setShowDeleteConfirm(true)}
         onSearch={() => setShowLookup(true)}
-        onPrint={() => setShowPrintModal(true)}
-        onFirst={handleFirst}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        onLast={handleLast}
-        modeText={altinUrunId ? `Düzenleme: #${altinUrunId} (${grupKodu}-${urunNo})` : "Yeni Kayıt Modu"}
+        onFirst={() => handleNavigate("first")}
+        onPrev={() => handleNavigate("prev")}
+        onNext={() => handleNavigate("next")}
+        onLast={() => handleNavigate("last")}
+        onRefresh={loadAll}
+        onPrint={() => (altinUrunId ? setShowPrintModal(true) : showNotif("warning", "Önce bir ürün seçiniz."))}
+        disabled={isSaving}
+        modeText={altinUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${altinList.length})` : "Yeni Kayıt Modu"}
       />
 
-      {/* Bildirim Paneli */}
-      {notification && (
-        <div className="erp-toast-container">
-          <Alert
-            variant={notification.type}
-            dismissible
-            onClose={() => setNotification(null)}
-            className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0"
-          >
-            {notification.type === "success" ? (
-              <IconCheck size={18} className="me-2 text-success flex-shrink-0" />
-            ) : (
-              <IconAlertTriangle size={18} className="me-2 text-danger flex-shrink-0" />
-            )}
-            <span style={{ fontSize: "13px" }}>{notification.message}</span>
-          </Alert>
-        </div>
-      )}
-
-      {/* 2. Ana Kart / Masaüstü Form Yerleşimi */}
-      <Card className="shadow-sm border-0 mb-3">
+      {/* ─── Ana Form Kartı ─── */}
+      <Card className="shadow-sm border-0 mb-3 bg-white">
         <Card.Body className="p-3">
-          {/* Üst Bilgiler & Grup / Ürün Kodu Şeridi */}
-          <div className="bg-light p-2.5 rounded border mb-3">
+          {/* ─── ÜST ŞERİT: Tarih, Grup/No, Barkod Kodu ─── */}
+          <div className="bg-light p-2.5 rounded-3 border mb-3">
             <Row className="g-2 align-items-center">
-              <Col md={3} sm={6}>
-                <Form.Group as={Row} className="g-1 align-items-center mb-0">
-                  <Form.Label column style={{ width: "55px", flex: "0 0 55px", maxWidth: "55px" }} className="small fw-bold text-secondary text-start text-nowrap">
+              {/* Tarih */}
+              <Col xs={12} sm={6} md={3} lg={3}>
+                <div className="d-flex align-items-center gap-2">
+                  <Form.Label className="small fw-bold text-secondary mb-0 text-nowrap" style={{ minWidth: "50px" }}>
                     Tarih :
                   </Form.Label>
-                  <Col>
+                  <Form.Control
+                    type="date"
+                    size="sm"
+                    value={tarih}
+                    onChange={(e) => setTarih(e.target.value)}
+                    className="font-monospace bg-white"
+                  />
+                </div>
+              </Col>
+
+              {/* Grup / No */}
+              <Col xs={12} sm={12} md={5} lg={5}>
+                <div className="d-flex align-items-center gap-2">
+                  <Form.Label className="small fw-bold text-secondary mb-0 text-nowrap" style={{ minWidth: "80px" }}>
+                    Grup / No<span className="text-danger">*</span> :
+                  </Form.Label>
+                  <InputGroup size="sm">
                     <Form.Control
-                      type="date"
-                      size="sm"
-                      value={tarih}
-                      onChange={(e) => setTarih(e.target.value)}
-                      className="font-monospace"
+                      ref={grupKoduRef}
+                      type="text"
+                      value={grupKodu}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        setGrupKodu(val);
+                      }}
+                      onBlur={() => {
+                        if (grupKodu) handleGrupSec(grupKodu);
+                      }}
+                      style={{ maxWidth: "85px" }}
+                      className="fw-bold text-primary font-monospace bg-white text-center"
                     />
-                  </Col>
-                </Form.Group>
-              </Col>
-
-              <Col md={5} sm={12}>
-                <Form.Group as={Row} className="g-1 align-items-center mb-0">
-                  <Form.Label column style={{ width: "95px", flex: "0 0 95px", maxWidth: "95px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Grup / No <span className="text-danger">*</span> :
-                  </Form.Label>
-                  <Col>
-                    <InputGroup size="sm">
-                      <Form.Control
-                        ref={grupKoduRef}
-                        type="text"
-                        value={grupKodu}
-                        onChange={(e) => setGrupKodu(e.target.value.toUpperCase())}
-                        style={{ maxWidth: "120px", fontWeight: "bold" }}
-                        className="text-primary font-monospace"
-                      />
-                      <Form.Control
-                        type="number"
-                        value={urunNo}
-                        onChange={(e) => setUrunNo(parseInt(e.target.value, 10) || 1)}
-                        style={{ maxWidth: "80px", fontWeight: "bold" }}
-                        className="text-center font-monospace"
-                      />
-                      <Button variant="outline-success" onClick={handleNew} title="Yeni Numara Al">
-                        <IconPlus size={15} className="me-1" />
-                        <span>Yeni</span>
-                      </Button>
-                      <Button variant="outline-primary" onClick={() => setShowLookup(true)} title="Kayıtlı Altın Ürünleri Listele (F3)">
-                        <IconBinoculars size={15} />
-                      </Button>
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
-              </Col>
-
-              <Col md={4} sm={12}>
-                <Form.Group as={Row} className="g-1 align-items-center mb-0">
-                  <Form.Label column style={{ width: "95px", flex: "0 0 95px", maxWidth: "95px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Barkod Kodu :
-                  </Form.Label>
-                  <Col>
                     <Form.Control
                       type="text"
-                      size="sm"
-                      value={barkod || `${grupKodu}${urunNo}`}
-                      onChange={(e) => setBarkod(e.target.value)}
-                      className="font-monospace fw-bold text-dark bg-white"
+                      value={urunNo}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setUrunNo(val);
+                        if (grupKodu && val) {
+                          const numVal = parseInt(val, 10);
+                          if (!isNaN(numVal)) {
+                            setBarkod(`${grupKodu}${format3Digits(numVal)}`);
+                          } else {
+                            setBarkod(`${grupKodu}${val}`);
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        if (urunNo !== "") {
+                          const padded = format3Digits(urunNo);
+                          setUrunNo(padded);
+                          if (grupKodu) {
+                            setBarkod(`${grupKodu}${padded}`);
+                          }
+                        }
+                      }}
+                      style={{ maxWidth: "65px" }}
+                      className="text-center font-monospace bg-white fw-bold"
                     />
-                  </Col>
-                </Form.Group>
+                    <Button
+                      variant="outline-primary"
+                      onClick={() => {
+                        setSelectedGrupItem(null);
+                        setShowGrupLookup(true);
+                      }}
+                      title="Kayıtlı Gruplardan Seç (Dürbün)"
+                      className="px-2"
+                    >
+                      <IconBinoculars size={16} />
+                    </Button>
+                  </InputGroup>
+                </div>
+              </Col>
+
+              {/* Barkod Kodu */}
+              <Col xs={12} sm={6} md={4} lg={4}>
+                <div className="d-flex align-items-center gap-2">
+                  <Form.Label className="small fw-bold text-secondary mb-0 text-nowrap" style={{ minWidth: "90px" }}>
+                    Barkod Kodu :
+                  </Form.Label>
+                  <Form.Control
+                    type="text"
+                    size="sm"
+                    value={barkod || (grupKodu && urunNo ? `${grupKodu}${format3Digits(urunNo)}` : "")}
+                    onChange={(e) => setBarkod(e.target.value)}
+                    className="font-monospace fw-bold text-dark bg-white"
+                  />
+                </div>
               </Col>
             </Row>
           </div>
 
-          <Row className="gx-4 gy-2">
-            {/* ─── SOL BLOK: Ürün Kimliği & Fiyatlandırma ─── */}
-            <Col lg={6} md={12}>
-              <div className="border rounded p-3 h-100 bg-white">
-                <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
-                  <IconScale size={16} />
-                  <span>Ürün Kimliği ve Özellikleri</span>
-                </div>
+          {/* ─── İKİ SÜTUNLU GÖVDE ─── */}
+          <Row className="g-3">
+            {/* ─── SOL BLOK: Ürün Kimliği & Maliyet Fiyatlandırması ─── */}
+            <Col xs={12} lg={6}>
+              <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column gap-3">
+                {/* Ürün Kimliği ve Özellikleri Başlığı */}
+                <div>
+                  <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
+                    <IconScale size={18} />
+                    <span>Ürün Özellikleri</span>
+                  </div>
 
-                {/* Ayar */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Ayar :
-                  </Form.Label>
-                  <Col>
-                    <Form.Select size="sm" value={ayar} onChange={(e) => handleAyarChange(e.target.value)} className="fw-bold">
-                      <option value="22 FANTAZI">22 FANTAZI (916)</option>
-                      <option value="24">24 Ayar (1000)</option>
-                      <option value="22">22 Ayar (916)</option>
-                      <option value="18">18 Ayar (750)</option>
-                      <option value="14">14 Ayar (585)</option>
-                      <option value="8">8 Ayar (333)</option>
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
-
-                {/* Üretici Firma */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Üretici Firma :
-                  </Form.Label>
-                  <Col>
-                    <InputGroup size="sm">
+                  {/* Ayar */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Ayar :
+                    </div>
+                    <div className="flex-grow-1">
                       <Form.Control
                         type="text"
-                        list="ureticiFirmalarList"
-                        value={ureticiFirma}
-                        onChange={(e) => setUreticiFirma(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "F4") {
-                            e.preventDefault();
-                            setShowFirmaLookup(true);
-                          }
-                        }}
-                        className="fw-semibold"
-                        placeholder="Firma seçiniz veya yazınız"
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        className="px-2 d-flex align-items-center"
-                        onClick={() => setShowFirmaLookup(true)}
-                        title="Firma Seç (Dürbün / F4)"
-                      >
-                        <IconBinoculars size={15} />
-                      </Button>
-                    </InputGroup>
-                    <datalist id="ureticiFirmalarList">
-                      {ureticiList.map((u, i) => (
-                        <option key={i} value={u} />
-                      ))}
-                    </datalist>
-                  </Col>
-                </Form.Group>
-
-                {/* Orjinal Kod */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Orjinal Kod :
-                  </Form.Label>
-                  <Col>
-                    <Form.Control
-                      type="text"
-                      size="sm"
-                      value={orjinalKod}
-                      onChange={(e) => setOrjinalKod(e.target.value)}
-                      className="font-monospace"
-                    />
-                  </Col>
-                </Form.Group>
-
-                {/* Model */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Model :
-                  </Form.Label>
-                  <Col>
-                    <Form.Control type="text" size="sm" value={model} onChange={(e) => setModel(e.target.value)} />
-                  </Col>
-                </Form.Group>
-
-                {/* Banko */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Banko :
-                  </Form.Label>
-                  <Col>
-                    <Form.Select size="sm" value={banko} onChange={(e) => setBanko(e.target.value)}>
-                      <option value="Banko 1">Banko 1</option>
-                      <option value="Banko 2">Banko 2</option>
-                      <option value="Vitrin">Vitrin</option>
-                      <option value="Kasa">Kasa</option>
-                      <option value="Depo">Depo</option>
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
-
-                <div className="fw-bold text-primary border-bottom pb-1.5 mt-3 mb-2.5 d-flex align-items-center gap-1.5">
-                  <IconCoin size={16} />
-                  <span>Maliyet, Satış ve Kâr Fiyatlandırması</span>
-                </div>
-
-                {/* Maliyet */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Maliyet :
-                  </Form.Label>
-                  <Col>
-                    <InputGroup size="sm">
-                      <Form.Control
-                        type="text"
-                        inputMode="decimal"
-                        value={maliyet === 0 || maliyet === "0" ? "" : (maliyet ?? "")}
-                        onChange={(e) => handleMaliyetChange(cleanNum(e.target.value))}
-                        className="fw-bold font-monospace text-end"
-                        placeholder=""
-                      />
-                      <Form.Select
                         size="sm"
-                        value={maliyetParaKodu}
-                        onChange={(e) => setMaliyetParaKodu(e.target.value)}
-                        style={{ maxWidth: "85px" }}
-                        className="font-monospace fw-bold"
-                      >
-                        <option value="HAS">HAS</option>
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                        <option value="TL">TL</option>
-                      </Form.Select>
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
+                        list="altinAyarListesi"
+                        value={ayar}
+                        onChange={(e) => handleAyarChange(e.target.value)}
+                        className="fw-bold bg-white"
+                      />
+                      <datalist id="altinAyarListesi">
+                        <option value="22 FANTAZI">22 FANTAZI (916)</option>
+                        <option value="24">24 Ayar (1000)</option>
+                        <option value="22">22 Ayar (916)</option>
+                        <option value="18">18 Ayar (750)</option>
+                        <option value="14">14 Ayar (585)</option>
+                        <option value="8">8 Ayar (333)</option>
+                        <option value="916">916 Milyem</option>
+                        <option value="585">585 Milyem</option>
+                        <option value="750">750 Milyem</option>
+                        <option value="1000">1000 Milyem</option>
+                      </datalist>
+                    </div>
+                  </div>
 
-                {/* Satış Fiyatı */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Satış Fiyatı :
-                  </Form.Label>
-                  <Col>
-                    <InputGroup size="sm">
+                  {/* Üretici Firma */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Üretici Firma :
+                    </div>
+                    <div className="flex-grow-1">
+                      <InputGroup size="sm">
+                        <Form.Control
+                          type="text"
+                          value={ureticiFirma}
+                          onChange={(e) => setUreticiFirma(e.target.value)}
+                          className="fw-semibold bg-white"
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          className="px-2"
+                          onClick={() => setShowFirmaLookup(true)}
+                          title="Kayıtlı Firmalardan Seç (Dürbün)"
+                        >
+                          <IconBinoculars size={15} />
+                        </Button>
+                      </InputGroup>
+                    </div>
+                  </div>
+
+                  {/* Orjinal Kod */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Orjinal Kod :
+                    </div>
+                    <div className="flex-grow-1">
                       <Form.Control
                         type="text"
-                        inputMode="decimal"
-                        value={satisFiyati === 0 || satisFiyati === "0" ? "" : (satisFiyati ?? "")}
-                        onChange={(e) => handleSatisFiyatiChange(cleanNum(e.target.value))}
-                        className="fw-bold font-monospace text-primary text-end"
-                        style={{ fontSize: "14px" }}
-                        placeholder=""
-                      />
-                      <Form.Select
                         size="sm"
-                        value={satisParaKodu}
-                        onChange={(e) => setSatisParaKodu(e.target.value)}
-                        style={{ maxWidth: "85px" }}
-                        className="font-monospace fw-bold text-primary"
-                      >
-                        <option value="HAS">HAS</option>
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                        <option value="TL">TL</option>
-                      </Form.Select>
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
+                        value={orjinalKod}
+                        onChange={(e) => setOrjinalKod(e.target.value)}
+                        className="font-monospace bg-white"
+                      />
+                    </div>
+                  </div>
 
-                {/* Satış Kârı % */}
-                <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                  <Form.Label column style={{ width: "105px", flex: "0 0 105px", maxWidth: "105px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                    Satış Kârı % :
-                  </Form.Label>
-                  <Col>
-                    <InputGroup size="sm">
+                  {/* Model */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Model :
+                    </div>
+                    <div className="flex-grow-1">
                       <Form.Control
                         type="text"
-                        inputMode="decimal"
-                        value={satisKariYuzde === 0 || satisKariYuzde === "0" ? "" : (satisKariYuzde ?? "")}
-                        onChange={(e) => handleKarYuzdeChange(cleanNum(e.target.value))}
-                        className="font-monospace text-end fw-bold text-success"
-                        placeholder=""
+                        size="sm"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        className="bg-white"
                       />
-                      <InputGroup.Text className="bg-light">%</InputGroup.Text>
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
-              </div>
-            </Col>
+                    </div>
+                  </div>
 
-            {/* ─── SAĞ BLOK: Miktar, İşçilik & Hesap Motoru + Resim ─── */}
-            <Col lg={6} md={12}>
-              <div className="border rounded p-3 h-100 bg-white">
-                <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center justify-content-between">
-                  <div className="d-flex align-items-center gap-1.5">
-                    <IconCalculator size={16} />
-                    <span>Miktar ve İşçilik Hesap Motoru</span>
+                  {/* Banko */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Banko :
+                    </div>
+                    <div className="flex-grow-1">
+                      <InputGroup size="sm">
+                        <Form.Control
+                          type="text"
+                          list="altinBankoListesi"
+                          value={banko}
+                          onChange={(e) => setBanko(e.target.value)}
+                          className="fw-semibold bg-white"
+                        />
+                        <datalist id="altinBankoListesi">
+                          {bankoList.map((b) => (
+                            <option key={b.bankoId} value={b.bankoAdi}>
+                              {b.bankoKodu} - {b.bankoAdi}
+                            </option>
+                          ))}
+                        </datalist>
+                        <Button
+                          variant="outline-success"
+                          onClick={() => setShowBankoEkleModal(true)}
+                          title="Yeni Banko Tanımla / Ekle"
+                          className="d-flex align-items-center px-2"
+                        >
+                          <IconPlus size={14} />
+                        </Button>
+                        <Button
+                          variant="outline-secondary"
+                          className="px-2"
+                          onClick={() => {
+                            setSelectedBankoItem(null);
+                            setShowBankoLookup(true);
+                          }}
+                          title="Kayıtlı Bankolardan Seç (Dürbün)"
+                        >
+                          <IconBinoculars size={15} />
+                        </Button>
+                      </InputGroup>
+                    </div>
                   </div>
                 </div>
 
-                <Row className="gx-2">
-                  <Col sm={8}>
-                    {/* Miktar (Gram) */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                        Miktar (Gram) <span className="text-danger">*</span> :
-                      </Form.Label>
-                      <Col>
+                {/* Maliyet, Satış ve Kâr Fiyatlandırması */}
+                <div className="pt-2 border-top">
+                  <div className="d-flex align-items-center justify-content-between border-bottom pb-1.5 mb-2.5">
+                    <div className="fw-bold text-primary d-flex align-items-center gap-1.5">
+                      <IconCoin size={18} />
+                      <span>Maliyet / Kâr</span>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="small fw-bold text-secondary" style={{ fontSize: "11px" }}>Kur Ref:</span>
+                      <Form.Check
+                        inline
+                        type="radio"
+                        id="kurRefAlis"
+                        name="kurRefRadio"
+                        label="Alış"
+                        checked={kurRef === "alis"}
+                        onChange={() => handleKurRefChange("alis")}
+                        className="small mb-0 text-secondary fw-semibold"
+                        style={{ fontSize: "12px" }}
+                      />
+                      <Form.Check
+                        inline
+                        type="radio"
+                        id="kurRefSatis"
+                        name="kurRefRadio"
+                        label="Satış"
+                        checked={kurRef === "satis"}
+                        onChange={() => handleKurRefChange("satis")}
+                        className="small mb-0 text-secondary fw-semibold"
+                        style={{ fontSize: "12px" }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Maliyet */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Maliyet :
+                    </div>
+                    <div className="flex-grow-1 d-flex align-items-center gap-2">
+                      {/* HAS Maliyet */}
+                      <InputGroup size="sm" style={{ maxWidth: "135px" }}>
+                        <Form.Control
+                          type="text"
+                          inputMode="decimal"
+                          value={maliyet ?? ""}
+                          onChange={(e) => handleMaliyetHasChange(cleanInputStr(e.target.value))}
+                          onKeyDown={handleMaliyetKeyDown}
+                          className="fw-bold font-monospace text-end bg-white"
+                          title="Maliyet Has Karşılığı"
+                        />
+                        <InputGroup.Text className="bg-light font-monospace small px-1.5 fw-semibold">HAS</InputGroup.Text>
+                      </InputGroup>
+
+                      {/* Döviz/TL Maliyet */}
+                      <InputGroup size="sm" className="flex-grow-1">
+                        <Form.Control
+                          type="text"
+                          inputMode="decimal"
+                          value={maliyetDoviz ?? ""}
+                          onChange={(e) => handleMaliyetDovizChange(cleanInputStr(e.target.value))}
+                          className="fw-bold font-monospace text-end bg-white"
+                          title={`Maliyet ${maliyetParaKodu} Karşılığı`}
+                        />
+                        <Form.Control
+                          type="text"
+                          readOnly
+                          value={maliyetParaKodu}
+                          className="bg-light font-monospace fw-bold text-center px-1"
+                          style={{ maxWidth: "52px" }}
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          className="px-1.5"
+                          onClick={() => setShowKurLookup("maliyet")}
+                          title="Para Tablosundan Seç (Dürbün)"
+                        >
+                          <IconBinoculars size={14} />
+                        </Button>
+                      </InputGroup>
+                    </div>
+                  </div>
+
+                  {/* Satış Fiyatı */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Satış Fiyatı :
+                    </div>
+                    <div className="flex-grow-1 d-flex align-items-center gap-2">
+                      {/* HAS Satış */}
+                      <InputGroup size="sm" style={{ maxWidth: "135px" }}>
+                        <Form.Control
+                          type="text"
+                          inputMode="decimal"
+                          value={satisFiyati ?? ""}
+                          onChange={(e) => handleSatisHasChange(cleanInputStr(e.target.value))}
+                          className="fw-bold font-monospace text-primary text-end bg-white fs-6"
+                          title="Satış Fiyatı Has Karşılığı"
+                        />
+                        <InputGroup.Text className="bg-light font-monospace small px-1.5 fw-semibold text-primary">HAS</InputGroup.Text>
+                      </InputGroup>
+
+                      {/* Döviz/TL Satış */}
+                      <InputGroup size="sm" className="flex-grow-1">
+                        <Form.Control
+                          type="text"
+                          inputMode="decimal"
+                          value={satisDoviz ?? ""}
+                          onChange={(e) => handleSatisDovizChange(cleanInputStr(e.target.value))}
+                          className="fw-bold font-monospace text-primary text-end bg-white fs-6"
+                          title={`Satış ${satisParaKodu} Karşılığı`}
+                        />
+                        <Form.Control
+                          type="text"
+                          readOnly
+                          value={satisParaKodu}
+                          className="bg-light font-monospace fw-bold text-primary text-center px-1"
+                          style={{ maxWidth: "52px" }}
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          className="px-1.5"
+                          onClick={() => setShowKurLookup("satis")}
+                          title="Para Tablosundan Seç (Dürbün)"
+                        >
+                          <IconBinoculars size={14} />
+                        </Button>
+                      </InputGroup>
+                    </div>
+                  </div>
+
+                  {/* Satış Kârı % */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Satış Kârı % :
+                    </div>
+                    <div className="flex-grow-1">
+                      <InputGroup size="sm" style={{ maxWidth: "135px" }}>
+                        <Form.Control
+                          type="text"
+                          inputMode="decimal"
+                          value={satisKariYuzde ?? ""}
+                          onChange={(e) => handleKarYuzdeChange(cleanInputStr(e.target.value))}
+                          className="font-monospace text-end fw-bold text-success bg-white"
+                        />
+                        <InputGroup.Text className="bg-light">%</InputGroup.Text>
+                      </InputGroup>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Col>
+
+            {/* ─── SAĞ BLOK: Miktar ve İşçilik + Fotoğraf Kutusu ─── */}
+            <Col xs={12} lg={6}>
+              <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column justify-content-between gap-3">
+                <div>
+                  <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
+                    <IconCalculator size={18} />
+                    <span>Miktar ve İşçilik</span>
+                  </div>
+
+                  {/* Miktar & İşçilik Inputları */}
+                  <div className="d-flex flex-column gap-2">
+                    {/* Miktar (Gram) + Has Karşılığı Text */}
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                        Miktar (Gram)<span className="text-danger">*</span> :
+                      </div>
+                      <div className="flex-grow-1 d-flex align-items-center gap-2">
                         <Form.Control
                           type="text"
                           inputMode="decimal"
                           size="sm"
-                          value={miktar === 0 || miktar === "0" ? "" : (miktar ?? "")}
-                          onChange={(e) => handleMiktarChange(cleanNum(e.target.value))}
-                          className="fw-bold font-monospace text-end"
-                          placeholder=""
+                          value={miktar ?? ""}
+                          onChange={(e) => handleMiktarChange(cleanInputStr(e.target.value))}
+                          className="fw-bold font-monospace text-end bg-white"
+                          style={{ maxWidth: "145px" }}
                         />
-                      </Col>
-                    </Form.Group>
+                        {hasGram && parseNum(hasGram) > 0 ? (
+                          <span className="small fw-bold text-primary font-monospace text-nowrap">
+                            {format5(parseNum(hasGram))} Has
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
 
-                    {/* Has Karşılığı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                        Has Karşılığı :
-                      </Form.Label>
-                      <Col>
-                        <Form.Control
-                          type="text"
-                          inputMode="decimal"
-                          size="sm"
-                          value={hasGram === 0 || hasGram === "0" ? "" : (hasGram ?? "")}
-                          onChange={(e) => handleHasGramChange(cleanNum(e.target.value))}
-                          className="fw-bold font-monospace text-end text-warning-emphasis"
-                          placeholder=""
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    {/* Maliyet İşçilik */}
-                    <Form.Group as={Row} className="mb-1.5 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                        Maliyet İşçilik :
-                      </Form.Label>
-                      <Col>
-                        <Form.Control
-                          type="text"
-                          inputMode="decimal"
-                          size="sm"
-                          value={maliyetIscilik === 0 || maliyetIscilik === "0" ? "" : (maliyetIscilik ?? "")}
-                          onChange={(e) => handleMaliyetIscilikChange(cleanNum(e.target.value))}
-                          className="font-monospace text-end"
-                          placeholder=""
-                        />
-                      </Col>
-                    </Form.Group>
-
-                    {/* Maliyet İşçilik Birim & Para (Bir alt satırda) */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-semibold text-muted text-start text-nowrap">
+                    {/* İşçilik Türü / Brm */}
+                    <div className="d-flex align-items-start gap-2">
+                      <div className="small fw-bold text-secondary text-nowrap flex-shrink-0 pt-1" style={{ width: "115px" }}>
                         İşçilik Türü / Brm :
-                      </Form.Label>
-                      <Col>
-                        <div className="d-flex gap-1.5">
-                          <Form.Select
-                            size="sm"
+                      </div>
+                      <div className="flex-grow-1 d-flex flex-column gap-1.5" style={{ maxWidth: "185px" }}>
+                        <InputGroup size="sm">
+                          <Form.Control
+                            type="text"
+                            readOnly
                             value={maliyetIscilikParaKodu}
-                            onChange={(e) => setMaliyetIscilikParaKodu(e.target.value)}
-                            className="font-monospace fw-semibold"
+                            className="bg-light font-monospace fw-bold text-center"
+                          />
+                          <Button
+                            variant="outline-secondary"
+                            className="px-1.5"
+                            onClick={() => setShowKurLookup("iscilik")}
+                            title="Para Tablosundan Seç (Dürbün)"
                           >
-                            <option value="HAS">HAS</option>
-                            <option value="TL">TL</option>
-                            <option value="USD">USD</option>
-                          </Form.Select>
-                          <Form.Select
-                            size="sm"
-                            value={maliyetIscilikBirim}
-                            onChange={(e) => handleMaliyetBirimChange(e.target.value)}
-                            className="font-monospace fw-semibold"
-                          >
-                            <option value="Gram">Gram</option>
-                            <option value="Adet">Adet</option>
-                          </Form.Select>
-                        </div>
-                      </Col>
-                    </Form.Group>
+                            <IconBinoculars size={14} />
+                          </Button>
+                        </InputGroup>
+                        <Form.Select
+                          size="sm"
+                          value={maliyetIscilikBirim}
+                          onChange={(e) => handleMaliyetBirimChange(e.target.value)}
+                          className="bg-white fw-semibold"
+                        >
+                          <option value="Gram">Gram</option>
+                          <option value="Adet">Adet</option>
+                        </Form.Select>
+                      </div>
+                    </div>
 
-                    {/* Maliyet İşçilik Tutarı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                        İşçilik Tutarı :
-                      </Form.Label>
-                      <Col>
+                    {/* Maliyet İşçilik + Has Karşılığı Text */}
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                        Maliyet İşçilik :
+                      </div>
+                      <div className="flex-grow-1 d-flex align-items-center gap-2">
                         <Form.Control
                           type="text"
                           inputMode="decimal"
                           size="sm"
-                          value={maliyetIscilikTutari === 0 || maliyetIscilikTutari === "0" ? "" : (maliyetIscilikTutari ?? "")}
-                          onChange={(e) => handleMaliyetIscilikTutariChange(cleanNum(e.target.value))}
-                          className="font-monospace text-end fw-semibold"
-                          placeholder=""
+                          value={maliyetIscilik ?? ""}
+                          onChange={(e) => handleMaliyetIscilikChange(cleanInputStr(e.target.value))}
+                          className="font-monospace text-end bg-white"
+                          style={{ maxWidth: "145px" }}
                         />
-                      </Col>
-                    </Form.Group>
+                        {maliyetIscilikTutari && parseNum(maliyetIscilikTutari) > 0 ? (
+                          <span className="small fw-bold text-secondary font-monospace text-nowrap">
+                            {format5(parseNum(maliyetIscilikTutari))} Has
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
 
-                    {/* Satış İşçilik */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
+                    {/* Satış İşçilik + Satış Tutarı Text */}
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                         Satış İşçilik :
-                      </Form.Label>
-                      <Col>
+                      </div>
+                      <div className="flex-grow-1 d-flex align-items-center gap-2">
                         <Form.Control
                           type="text"
                           inputMode="decimal"
                           size="sm"
-                          value={satisIscilik === 0 || satisIscilik === "0" ? "" : (satisIscilik ?? "")}
-                          onChange={(e) => handleSatisIscilikChange(cleanNum(e.target.value))}
-                          className="font-monospace text-end"
-                          placeholder=""
+                          value={satisIscilik ?? ""}
+                          onChange={(e) => handleSatisIscilikChange(cleanInputStr(e.target.value))}
+                          className="font-monospace text-end bg-white"
+                          style={{ maxWidth: "145px" }}
                         />
-                      </Col>
-                    </Form.Group>
+                        {satisIscilikTutari && parseNum(satisIscilikTutari) > 0 ? (
+                          <span className="small fw-bold text-secondary font-monospace text-nowrap">
+                            Tutar: {format5(parseNum(satisIscilikTutari))}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
 
-                    {/* Satış İşçilik Tutarı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                        Satış İşç. Tutarı :
-                      </Form.Label>
-                      <Col>
+                    {/* Toplam Has */}
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                        Toplam Has :
+                      </div>
+                      <div className="flex-grow-1">
                         <Form.Control
                           type="text"
-                          inputMode="decimal"
                           size="sm"
-                          value={satisIscilikTutari === 0 || satisIscilikTutari === "0" ? "" : (satisIscilikTutari ?? "")}
-                          onChange={(e) => handleSatisIscilikTutariChange(cleanNum(e.target.value))}
-                          className="font-monospace text-end fw-semibold"
-                          placeholder=""
+                          readOnly
+                          value={toplamHas || ""}
+                          title="Miktar Has + İşçilik Has Toplamı (5 Hane)"
+                          className="font-monospace text-end bg-light fw-bold text-success fs-6"
+                          style={{ maxWidth: "185px" }}
                         />
-                      </Col>
-                    </Form.Group>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                    {/* İşçilik Kârı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                        İşçilik Kârı :
-                      </Form.Label>
-                      <Col>
-                        <Form.Control
-                          type="text"
-                          inputMode="decimal"
-                          size="sm"
-                          value={iscilikKari === 0 || iscilikKari === "0" ? "" : (iscilikKari ?? "")}
-                          onChange={(e) => handleIscilikKariChange(cleanNum(e.target.value))}
-                          className="font-monospace text-end fw-bold text-success"
-                          placeholder=""
-                        />
-                      </Col>
-                    </Form.Group>
-                  </Col>
-
-                  {/* Kamera & Resim Önizleme */}
-                  <Col sm={4} className="d-flex flex-column align-items-center justify-content-center">
+                {/* Alt Bölüm: Çoklu Fotoğraf Kutusu + ÇEK & SİL Butonları */}
+                <div className="pt-2.5 border-top d-flex flex-column gap-2">
+                  <div className="d-flex align-items-center gap-3">
                     <div
-                      className="border rounded d-flex align-items-center justify-content-center bg-light w-100 mb-2 overflow-hidden position-relative"
-                      style={{ height: "150px" }}
+                      className="rounded-3 border d-flex flex-column align-items-center justify-content-center bg-light position-relative overflow-hidden flex-shrink-0"
+                      style={{
+                        width: "140px",
+                        height: "110px",
+                        boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
+                      }}
                     >
-                      {resim ? (
-                        <img src={resim} alt="Ürün" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                      {resimler.length > 0 && resimler[seciliResimIndex] ? (
+                        <img
+                          src={resolveImageUrl(resimler[seciliResimIndex])}
+                          alt={`Ürün Fotoğrafı ${seciliResimIndex + 1}`}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            padding: "4px",
+                          }}
+                        />
+                      ) : resim ? (
+                        <img
+                          src={resolveImageUrl(resim)}
+                          alt="Ürün Fotoğrafı"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            padding: "4px",
+                          }}
+                        />
                       ) : (
-                        <div className="text-center text-muted small">
-                          <IconCamera size={32} className="mb-1 opacity-50" />
-                          <div>Fotoğraf Yok</div>
+                        <div className="d-flex flex-column align-items-center text-muted p-2 text-center">
+                          <IconCamera size={28} className="text-secondary opacity-50 mb-1" />
+                          <span className="small fw-semibold text-secondary" style={{ fontSize: "11px" }}>Fotoğraf Yok</span>
                         </div>
                       )}
+                      {resimler.length > 1 && (
+                        <span
+                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5 rounded-top-start small font-monospace"
+                          style={{ fontSize: "10px" }}
+                        >
+                          {seciliResimIndex + 1}/{resimler.length}
+                        </span>
+                      )}
                     </div>
-                    <div className="d-flex gap-1.5 w-100">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        ref={fileInputRef}
-                        onChange={handleFileSelect}
-                        style={{ display: "none" }}
-                      />
-                      <Button
-                        variant="outline-primary"
-                        size="sm"
-                        className="flex-fill fw-bold"
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        ÇEK
-                      </Button>
+
+                    {/* YÜKLE (Kamera / Dosya) & SİL Butonları */}
+                    <div className="d-flex flex-column gap-2" style={{ width: "130px" }}>
+                      <Dropdown className="w-100">
+                        <Dropdown.Toggle
+                          variant="outline-success"
+                          size="sm"
+                          className="fw-bold w-100 d-flex align-items-center justify-content-center gap-1"
+                          id="dropdown-foto-yukle-secenek"
+                        >
+                          <IconCamera size={15} />
+                          <span>YÜKLE</span>
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: "150px" }}>
+                          <Dropdown.Item
+                            onClick={startCamera}
+                            className="d-flex align-items-center gap-2 small py-2"
+                          >
+                            <IconCamera size={16} className="text-success" />
+                            <span className="fw-semibold">Kameradan Çek</span>
+                          </Dropdown.Item>
+                          <Dropdown.Item
+                            onClick={() => fileInputRef.current?.click()}
+                            className="d-flex align-items-center gap-2 small py-2"
+                          >
+                            <IconFolder size={16} className="text-primary" />
+                            <span className="fw-semibold">Dosyadan Seç</span>
+                          </Dropdown.Item>
+                        </Dropdown.Menu>
+                      </Dropdown>
+
                       <Button
                         variant="outline-danger"
                         size="sm"
-                        className="flex-fill fw-bold"
-                        onClick={() => setResim(null)}
-                        disabled={!resim}
+                        className="fw-bold"
+                        onClick={handleDeleteSelectedPhoto}
+                        disabled={resimler.length === 0 && !resim}
+                        title="Seçili Fotoğrafı Kaldır"
                       >
                         SİL
                       </Button>
                     </div>
-                  </Col>
-                </Row>
+                  </div>
+
+                  {/* Çoklu Fotoğraf Önizleme Küçük Resim Listesi */}
+                  {resimler.length > 1 && (
+                    <div className="d-flex align-items-center gap-1.5 overflow-auto py-1" style={{ maxWidth: "100%" }}>
+                      {resimler.map((imgUrl, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setSeciliResimIndex(idx);
+                            setResim(imgUrl);
+                          }}
+                          className={`rounded border p-0.5 cursor-pointer ${
+                            idx === seciliResimIndex ? "border-primary border-2 shadow-sm" : "border-light opacity-75"
+                          }`}
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            flexShrink: 0,
+                            cursor: "pointer",
+                            background: "#fff",
+                          }}
+                        >
+                          <img
+                            src={resolveImageUrl(imgUrl)}
+                            alt={`thumb-${idx}`}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "2px" }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </Col>
           </Row>
 
-          {/* 3. Alt Anlık Kurlar Bandı & Aksiyon Butonları */}
-          <div className="mt-3 pt-3 border-top">
-            <Row className="g-2 align-items-center justify-content-between">
-              <Col lg={7} md={12}>
-                <div className="d-flex flex-wrap align-items-center gap-2">
-                  <div className="p-1.5 px-2.5 rounded bg-light border d-flex align-items-center gap-2">
-                    <span className="small text-muted fw-semibold">HAS Kuru 1:</span>
-                    <InputGroup size="sm" style={{ width: "135px" }}>
-                      <Form.Control
-                        type="text"
-                        inputMode="decimal"
-                        value={hasKuru1 === 0 || hasKuru1 === "0" ? "" : (hasKuru1 ?? "")}
-                        onChange={(e) => setHasKuru1(cleanNum(e.target.value))}
-                        className="font-monospace text-end py-0 px-1 fw-bold"
-                        placeholder=""
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        className="px-1.5 py-0 d-flex align-items-center"
-                        onClick={() => setShowKurLookup("has1")}
-                        title="HAS Kuru Seç (Dürbün)"
-                      >
-                        <IconBinoculars size={14} />
-                      </Button>
-                    </InputGroup>
-                  </div>
+          {/* ─── ALT ÇUBUK: HAS & USD Kurları + Eylem Butonları ─── */}
+          <div className="pt-3 mt-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-3">
+            {/* Sol Kısım: HAS Alış / Satış */}
+            <div className="d-flex align-items-center gap-3 flex-wrap">
+              {/* HAS Alış */}
+              <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
+                <span className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ minWidth: "60px" }}>
+                  HAS Alış:
+                </span>
+                <InputGroup size="sm" style={{ width: "125px" }}>
+                  <Form.Control
+                    type="text"
+                    readOnly
+                    value={hasKuru1 || ""}
+                    className="font-monospace text-end bg-light fw-bold text-dark"
+                  />
+                  <Button
+                    variant="outline-secondary"
+                    className="px-1.5"
+                    onClick={() => setShowKurLookup("hasAlis")}
+                    title="Anlık Fiyat Listesinden Seç (HAS Alış)"
+                  >
+                    <IconBinoculars size={14} />
+                  </Button>
+                </InputGroup>
+              </div>
 
-                  <div className="p-1.5 px-2.5 rounded bg-light border d-flex align-items-center gap-2">
-                    <span className="small text-muted fw-semibold">Altın Kuru:</span>
-                    <InputGroup size="sm" style={{ width: "135px" }}>
-                      <Form.Control
-                        type="text"
-                        inputMode="decimal"
-                        value={altinKuru === 0 || altinKuru === "0" ? "" : (altinKuru ?? "")}
-                        onChange={(e) => setAltinKuru(cleanNum(e.target.value))}
-                        className="font-monospace text-end py-0 px-1 fw-bold"
-                        placeholder=""
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        className="px-1.5 py-0 d-flex align-items-center"
-                        onClick={() => setShowKurLookup("altin")}
-                        title="Altın Kuru Seç (Dürbün)"
-                      >
-                        <IconBinoculars size={14} />
-                      </Button>
-                    </InputGroup>
-                  </div>
-                </div>
-              </Col>
+              {/* HAS Satış */}
+              <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
+                <span className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ minWidth: "65px" }}>
+                  HAS Satış:
+                </span>
+                <InputGroup size="sm" style={{ width: "125px" }}>
+                  <Form.Control
+                    type="text"
+                    readOnly
+                    value={hasKuru2 || ""}
+                    className="font-monospace text-end bg-light fw-bold text-primary"
+                  />
+                  <Button
+                    variant="outline-secondary"
+                    className="px-1.5"
+                    onClick={() => setShowKurLookup("hasSatis")}
+                    title="Anlık Fiyat Listesinden Seç (HAS Satış)"
+                  >
+                    <IconBinoculars size={14} />
+                  </Button>
+                </InputGroup>
+              </div>
+            </div>
 
-              <Col lg={5} md={12} className="text-lg-end text-start">
-                <div className="d-flex align-items-center justify-content-lg-end justify-content-start gap-2 flex-wrap">
-                  <Button variant="primary" size="sm" onClick={handleSave} disabled={isSaving} className="fw-bold px-3">
-                    Güncelle / Kaydet (F1)
-                  </Button>
-                  <Button variant="outline-secondary" size="sm" onClick={handleNew}>
-                    Vazgeç
-                  </Button>
-                  <Button variant="outline-dark" size="sm" onClick={() => fileInputRef.current?.click()}>
-                    Resim
-                  </Button>
-                  <Button variant="outline-primary" size="sm" onClick={() => setShowPrintModal(true)} className="fw-bold">
-                    Barkod
-                  </Button>
-                  {altinUrunId && (
-                    <Button variant="outline-danger" size="sm" onClick={() => setShowDeleteConfirm(true)}>
-                      Sil (F2)
-                    </Button>
-                  )}
-                </div>
-              </Col>
-            </Row>
+            {/* Sağ Kısım: Bilgi amaçlı F1 / F2 ve Vazgeç Butonu */}
+            <div className="d-flex align-items-center gap-3">
+              <div className="d-flex align-items-center gap-2 text-muted" style={{ fontSize: "11px" }}>
+                <span className="badge bg-light text-secondary border font-monospace">F1</span>
+                <span className="fw-semibold">Kaydet</span>
+                <span className="text-muted opacity-50">|</span>
+                <span className="badge bg-light text-secondary border font-monospace">F2</span>
+                <span className="fw-semibold">Sil</span>
+                <span className="text-muted opacity-50">|</span>
+                <span className="badge bg-light text-secondary border font-monospace">F3</span>
+                <span className="fw-semibold">Kayıt Ara</span>
+              </div>
+
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="px-2.5 py-0.5"
+                style={{ fontSize: "12px" }}
+                onClick={handleNew}
+              >
+                Vazgeç
+              </Button>
+            </div>
           </div>
         </Card.Body>
       </Card>
 
-      {/* ─── MODALLAR ────────────────────────────────────────────────────────── */}
-
-      {/* Altın Ürün Lookup Modalı (F3) */}
+      {/* ─── MODAL 1: Kayıtlı Altın Ürünleri Listeleme (Lookup) ─── */}
       <LookupModal<AltinUrunItem>
         show={showLookup}
-        title="Barkodlu Altın Ürün Listesi"
+        title="Kayıtlı Altın Ürünleri (Arama / Seçim)"
         columns={lookupColumns}
         items={altinList}
         filterFn={(it, term) => {
           const t = term.toLowerCase();
           return (
-            (it.grupKodu ? it.grupKodu.toLowerCase().includes(t) : false) ||
+            it.grupKodu.toLowerCase().includes(t) ||
+            String(it.urunNo).includes(t) ||
             (it.barkod ? it.barkod.toLowerCase().includes(t) : false) ||
             (it.model ? it.model.toLowerCase().includes(t) : false) ||
-            (it.orjinalKod ? it.orjinalKod.toLowerCase().includes(t) : false) ||
-            (it.ureticiFirma ? it.ureticiFirma.toLowerCase().includes(t) : false) ||
-            String(it.urunNo).includes(t)
+            (it.ureticiFirma ? it.ureticiFirma.toLowerCase().includes(t) : false)
           );
         }}
-        onSelect={(selected) => {
-          handleSelectUrun(selected);
-          setShowLookup(false);
-        }}
+        onSelect={handleSelectRecord}
         onHide={() => setShowLookup(false)}
       />
 
-      {/* Üretici Firma Lookup Modalı (F4) */}
+      {/* ─── MODAL 2: Kayıtlı Grupları Listeleme & Seçme Modalı ─── */}
+      <Modal show={showGrupLookup} onHide={() => setShowGrupLookup(false)} centered size="lg">
+        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconBinoculars size={18} className="text-primary" />
+            <span>Kayıtlı Ürün Grupları (Grup Seçimi)</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          <div className="d-flex justify-content-between align-items-center mb-2.5">
+            <span className="small text-muted">Seçmek istediğiniz satıra tıklayıp Seç'e basabilir veya satıra çift tıklayabilirsiniz.</span>
+            <Button
+              variant="success"
+              size="sm"
+              onClick={() => {
+                setShowGrupLookup(false);
+                setShowGrupEkleModal(true);
+              }}
+              className="d-flex align-items-center gap-1"
+            >
+              <IconPlus size={15} />
+              <span>+ Yeni Grup Tanımla</span>
+            </Button>
+          </div>
+
+          <div className="table-responsive border rounded bg-white" style={{ maxHeight: "320px" }}>
+            <table className="table table-hover table-sm mb-0 align-middle">
+              <thead className="table-light sticky-top">
+                <tr className="small text-muted">
+                  <th style={{ width: "120px" }}>Grup Kodu</th>
+                  <th>Açıklama</th>
+                  <th style={{ width: "110px" }} className="text-center">Son Numara</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grupList.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="text-center py-3 text-muted small">
+                      Henüz kayıtlı grup bulunmamaktadır.
+                    </td>
+                  </tr>
+                ) : (
+                  grupList.map((g, i) => {
+                    const isSelected = selectedGrupItem?.grupKodu === g.grupKodu;
+                    return (
+                      <tr
+                        key={i}
+                        className={isSelected ? "table-primary fw-semibold" : ""}
+                        style={{ cursor: "pointer", userSelect: "none" }}
+                        onClick={() => setSelectedGrupItem(g)}
+                        onDoubleClick={() => {
+                          handleGrupSec(g.grupKodu);
+                          setShowGrupLookup(false);
+                        }}
+                      >
+                        <td className="fw-bold font-monospace text-primary">{g.grupKodu}</td>
+                        <td>{g.aciklama || "-"}</td>
+                        <td className="text-center font-monospace fw-bold">{g.sonNo}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer className="bg-light py-2 px-3 border-top d-flex justify-content-end gap-2">
+          <Button variant="outline-secondary" size="sm" onClick={() => setShowGrupLookup(false)}>
+            Vazgeç
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!selectedGrupItem}
+            onClick={() => {
+              if (selectedGrupItem) {
+                handleGrupSec(selectedGrupItem.grupKodu);
+                setShowGrupLookup(false);
+              }
+            }}
+          >
+            Seç
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ─── MODAL 3: Yeni Grup Ekleme Modalı (+ Yeni) ─── */}
+      <Modal show={showGrupEkleModal} onHide={() => setShowGrupEkleModal(false)} centered>
+        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconPlus size={18} className="text-success" />
+            <span>Yeni Altın Ürün Grubu Tanımla</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          <Form onSubmit={(e) => { e.preventDefault(); handleSaveYeniGrup(); }}>
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold text-secondary">
+                Grup Kodu <span className="text-danger">*</span> (Örn: YZK, BLZ, KLY)
+              </Form.Label>
+              <Form.Control
+                type="text"
+                autoFocus
+                maxLength={10}
+                value={yeniGrupKodu}
+                onChange={(e) => setYeniGrupKodu(e.target.value.toUpperCase())}
+                className="font-monospace fw-bold"
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold text-secondary">Grup Açıklaması</Form.Label>
+              <Form.Control
+                type="text"
+                value={yeniGrupAciklama}
+                onChange={(e) => setYeniGrupAciklama(e.target.value)}
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold text-secondary">Başlangıç Numarası</Form.Label>
+              <Form.Control
+                type="number"
+                value={yeniGrupBaslangicNo}
+                onChange={(e) => setYeniGrupBaslangicNo(parseInt(e.target.value, 10) || 0)}
+                className="font-monospace"
+              />
+              <Form.Text className="text-muted small">0 bırakılırsa ilk ürün 1 numara ile başlar.</Form.Text>
+            </Form.Group>
+
+            <div className="d-flex justify-content-end gap-2 pt-2 border-top">
+              <Button variant="outline-secondary" onClick={() => setShowGrupEkleModal(false)}>
+                Vazgeç
+              </Button>
+              <Button variant="success" type="submit">
+                Grup Kaydet
+              </Button>
+            </div>
+          </Form>
+        </Modal.Body>
+      </Modal>
+
+      {/* ─── MODAL 4: Üretici Firma Lookup Modalı ─── */}
       <LookupModal<CariKartItem>
         show={showFirmaLookup}
-        title="Üretici Firma Seçiniz"
-        columns={firmaLookupColumns}
+        title="Üretici Firma Seç"
+        columns={[
+          { header: "Kod", width: "100px", render: (it) => <span className="font-monospace fw-bold">{it.kod}</span> },
+          { header: "Firma / Cari Adı", render: (it) => it.ad || it.kod || "-" },
+          { header: "Yetkili", width: "140px", render: (it) => it.yetkiliKisi || "-" },
+          { header: "Telefon", width: "120px", render: (it) => it.telefon || "-" },
+        ]}
         items={cariList}
         filterFn={(it, term) => {
           const t = term.toLowerCase();
           return (
             (it.kod ? it.kod.toLowerCase().includes(t) : false) ||
             (it.ad ? it.ad.toLowerCase().includes(t) : false) ||
-            (it.yetkiliKisi ? it.yetkiliKisi.toLowerCase().includes(t) : false) ||
-            (it.telefon ? it.telefon.toLowerCase().includes(t) : false)
+            (it.yetkiliKisi ? it.yetkiliKisi.toLowerCase().includes(t) : false)
           );
         }}
-        onSelect={(selected) => {
-          setUreticiFirma(selected.ad);
+        onSelect={(it) => {
+          setUreticiFirma(it.ad || it.kod || "");
           setShowFirmaLookup(false);
         }}
         onHide={() => setShowFirmaLookup(false)}
       />
 
-      {/* HAS / Altın Kuru Lookup Modalı */}
+      {/* ─── MODAL 4B: Kayıtlı Bankoları Listeleme & Seçme Modalı ─── */}
+      <Modal show={showBankoLookup} onHide={() => setShowBankoLookup(false)} centered size="lg">
+        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconBinoculars size={18} className="text-primary" />
+            <span>Kayıtlı Bankolar (Banko Seçimi)</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          <div className="d-flex justify-content-between align-items-center mb-2.5">
+            <span className="small text-muted">Seçmek istediğiniz satıra tıklayıp Seç'e basabilir veya satıra çift tıklayabilirsiniz.</span>
+            <Button
+              variant="success"
+              size="sm"
+              onClick={() => {
+                setShowBankoLookup(false);
+                setShowBankoEkleModal(true);
+              }}
+              className="d-flex align-items-center gap-1"
+            >
+              <IconPlus size={15} />
+              <span>+ Yeni Banko Tanımla</span>
+            </Button>
+          </div>
+
+          <div className="table-responsive border rounded bg-white" style={{ maxHeight: "320px" }}>
+            <table className="table table-hover table-sm mb-0 align-middle">
+              <thead className="table-light sticky-top">
+                <tr className="small text-muted">
+                  <th style={{ width: "120px" }}>Banko Kodu</th>
+                  <th>Banko Adı</th>
+                  <th>Açıklama</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bankoList.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="text-center py-3 text-muted small">
+                      Henüz kayıtlı banko bulunmamaktadır.
+                    </td>
+                  </tr>
+                ) : (
+                  bankoList.map((b) => {
+                    const isSelected = selectedBankoItem?.bankoId === b.bankoId;
+                    return (
+                      <tr
+                        key={b.bankoId}
+                        className={isSelected ? "table-primary fw-semibold" : ""}
+                        style={{ cursor: "pointer", userSelect: "none" }}
+                        onClick={() => setSelectedBankoItem(b)}
+                        onDoubleClick={() => {
+                          setBanko(b.bankoAdi);
+                          setShowBankoLookup(false);
+                        }}
+                      >
+                        <td className="fw-bold font-monospace text-primary">{b.bankoKodu}</td>
+                        <td className="fw-semibold text-dark">{b.bankoAdi}</td>
+                        <td className="text-muted small">{b.aciklama || "-"}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer className="bg-light py-2 px-3 border-top d-flex justify-content-end gap-2">
+          <Button variant="outline-secondary" size="sm" onClick={() => setShowBankoLookup(false)}>
+            Vazgeç
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!selectedBankoItem}
+            onClick={() => {
+              if (selectedBankoItem) {
+                setBanko(selectedBankoItem.bankoAdi);
+                setShowBankoLookup(false);
+              }
+            }}
+          >
+            Seç
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ─── MODAL 4C: Yeni Banko Tanımlama Modalı (+ Yeni Banko) ─── */}
+      <Modal show={showBankoEkleModal} onHide={() => setShowBankoEkleModal(false)} centered>
+        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconPlus size={18} className="text-success" />
+            <span>Yeni Banko / Vitrin Tanımla</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          <Form onSubmit={(e) => { e.preventDefault(); handleSaveYeniBanko(); }}>
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold text-secondary">
+                Banko Kodu (Boş bırakılırsa otomatik BNK-01 üretilir)
+              </Form.Label>
+              <Form.Control
+                type="text"
+                maxLength={20}
+                value={yeniBankoKodu}
+                onChange={(e) => setYeniBankoKodu(e.target.value.toUpperCase())}
+                className="font-monospace fw-bold"
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold text-secondary">
+                Banko Adı <span className="text-danger">*</span>
+              </Form.Label>
+              <Form.Control
+                type="text"
+                autoFocus
+                value={yeniBankoAdi}
+                onChange={(e) => setYeniBankoAdi(e.target.value)}
+                className="fw-bold"
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold text-secondary">Açıklama</Form.Label>
+              <Form.Control
+                type="text"
+                value={yeniBankoAciklama}
+                onChange={(e) => setYeniBankoAciklama(e.target.value)}
+              />
+            </Form.Group>
+
+            <div className="d-flex justify-content-end gap-2 pt-2 border-top">
+              <Button variant="outline-secondary" onClick={() => setShowBankoEkleModal(false)}>
+                Vazgeç
+              </Button>
+              <Button variant="success" type="submit">
+                Banko Kaydet
+              </Button>
+            </div>
+          </Form>
+        </Modal.Body>
+      </Modal>
+
+      {/* ─── MODAL 5: Kur Seçimi Modalı ─── */}
       <LookupModal<KurRowItem>
-        show={Boolean(showKurLookup)}
-        title={showKurLookup === "has1" ? "HAS Kuru Seçiniz" : "Altın Kuru Seçiniz"}
-        columns={kurLookupColumns}
+        show={showKurLookup !== null}
+        title="Para Tablosundan Para Birimi / Kur Seç"
+        columns={[
+          { header: "Döviz / Para Kodu", width: "120px", render: (it) => <span className="font-monospace fw-bold text-primary">{it.kod}</span> },
+          { header: "Açıklama / Para Adı", render: (it) => it.ad || "-" },
+          { header: "Döviz Alış", width: "120px", render: (it) => it.dovizAlis ?? "-" },
+          { header: "Döviz Satış", width: "120px", render: (it) => it.dovizSatis ?? "-" },
+        ]}
         items={kurRows}
         filterFn={(it, term) => {
           const t = term.toLowerCase();
-          return (
-            (it.kod ? it.kod.toLowerCase().includes(t) : false) ||
-            (it.ad ? it.ad.toLowerCase().includes(t) : false)
-          );
+          return it.kod.toLowerCase().includes(t) || it.ad.toLowerCase().includes(t);
         }}
-        onSelect={(selected) => {
-          const val = selected.dovizSatis || selected.efektifSatis || selected.dovizAlis || 0;
-          if (showKurLookup === "has1") {
-            setHasKuru1(val ? String(val) : "");
-          } else if (showKurLookup === "altin") {
-            setAltinKuru(val ? String(val) : "");
+        onSelect={(it) => {
+          const kod = (it.kod || "").toUpperCase();
+          if (showKurLookup === "hasAlis") {
+            setHasKuru1(it.dovizAlis || it.dovizSatis || 0);
+          } else if (showKurLookup === "hasSatis") {
+            setHasKuru2(it.dovizSatis || it.dovizAlis || 0);
+          } else if (showKurLookup === "usdAlis") {
+            setUsdKuru1(it.dovizAlis || it.dovizSatis || 0);
+          } else if (showKurLookup === "usdSatis") {
+            setUsdKuru2(it.dovizSatis || it.dovizAlis || 0);
+          } else if (showKurLookup === "maliyet") {
+            setMaliyetParaKodu(kod);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
+          } else if (showKurLookup === "satis") {
+            setSatisParaKodu(kod);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
+          } else if (showKurLookup === "iscilik") {
+            setMaliyetIscilikParaKodu(kod);
+            recalculateAll(miktar, ayar, maliyetIscilik, kod, maliyetIscilikBirim, satisIscilik, kurRef);
           }
           setShowKurLookup(null);
         }}
         onHide={() => setShowKurLookup(null)}
       />
 
-      {/* Etiket Yazdır Modalı */}
-      <EtiketYazdirModal
-        show={showPrintModal}
-        onHide={() => setShowPrintModal(false)}
-        title="Altın Ürün Barkod Etiketi Basımı"
-        sablon={sablonlar[0] || null}
-        items={printItems}
-      />
-
-      {/* Silme Onay Modalı */}
+      {/* ─── MODAL 6: Silme Onayı ─── */}
       <Modal show={showDeleteConfirm} onHide={() => setShowDeleteConfirm(false)} centered size="sm">
-        <Modal.Header closeButton className="py-2 bg-danger text-white">
-          <Modal.Title className="fs-6 fw-bold">Altın Ürün Kaydı Silme</Modal.Title>
+        <Modal.Header closeButton className="bg-danger text-white py-2 px-3">
+          <Modal.Title className="fs-6 fw-bold">Kayıt Silme Onayı</Modal.Title>
         </Modal.Header>
-        <Modal.Body className="p-3">
-          <p className="mb-0 text-secondary" style={{ fontSize: "13.5px" }}>
-            <strong>#{altinUrunId}</strong> numaralı (<strong>{grupKodu}-{urunNo}</strong>) altın ürün kaydını silmek istediğinize emin misiniz?
+        <Modal.Body className="p-3 text-center">
+          <IconAlertTriangle size={36} className="text-danger mb-2" />
+          <p className="mb-0">
+            <strong>{grupKodu}-{urunNo}</strong> numaralı altın ürün kaydını silmek istediğinize emin misiniz?
           </p>
         </Modal.Body>
-        <Modal.Footer className="py-1 px-3">
+        <Modal.Footer className="py-2 px-3 justify-content-center">
           <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(false)}>
             Vazgeç
           </Button>
           <Button variant="danger" size="sm" onClick={handleDelete} disabled={isSaving}>
             Evet, Sil
           </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ─── MODAL 7: Barkod Etiket Yazdırma ─── */}
+      <EtiketYazdirModal
+        show={showPrintModal}
+        onHide={() => setShowPrintModal(false)}
+        title="Barkod Etiketi Basımı"
+        sablon={varsayilanSablon}
+        items={printItems}
+        yazicilar={[]}
+        onAfterPrint={async () => {
+          if (altinUrunId) {
+            await EtiketService.markAltinUrunYazdirildi([altinUrunId], true);
+            showNotif("success", "Etiket yazdırıldı olarak işaretlendi.");
+          }
+        }}
+      />
+
+      {/* ─── MODAL 8: Sayfa Ortası Bildirim Pop-up (Modal) ─── */}
+      <Modal
+        show={Boolean(modalNotif)}
+        onHide={() => setModalNotif(null)}
+        centered
+        size="sm"
+        backdrop="static"
+      >
+        <Modal.Header
+          closeButton
+          className={`py-2 px-3 text-white ${
+            modalNotif?.type === "success"
+              ? "bg-success"
+              : modalNotif?.type === "danger"
+              ? "bg-danger"
+              : "bg-warning"
+          }`}
+        >
+          <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
+            {modalNotif?.type === "success" && <IconCheck size={18} />}
+            {modalNotif?.type === "danger" && <IconAlertTriangle size={18} />}
+            {modalNotif?.type === "warning" && <IconAlertTriangle size={18} />}
+            <span>
+              {modalNotif?.type === "success"
+                ? "İşlem Başarılı"
+                : modalNotif?.type === "danger"
+                ? "Hata"
+                : "Bilgi / Uyarı"}
+            </span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3 text-center">
+          <p className="mb-0 fw-medium text-dark" style={{ fontSize: "13px" }}>
+            {modalNotif?.message}
+          </p>
+        </Modal.Body>
+        <Modal.Footer className="py-2 px-3 justify-content-center bg-light border-top">
+          <Button
+            variant={
+              modalNotif?.type === "success"
+                ? "success"
+                : modalNotif?.type === "danger"
+                ? "danger"
+                : "primary"
+            }
+            size="sm"
+            className="px-4 fw-semibold"
+            onClick={() => setModalNotif(null)}
+          >
+            Tamam
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ─── MODAL 9: Canlı Kamera ile Fotoğraf Çekme Modalı ─── */}
+      <Modal
+        show={showCameraModal}
+        onHide={stopCamera}
+        centered
+        backdrop="static"
+        size="lg"
+      >
+        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconCamera size={18} className="text-success" />
+            <span>Kamera ile Ürün Fotoğrafı Çek</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3 text-center bg-dark">
+          {cameraError ? (
+            <div className="text-white p-4">
+              <IconAlertTriangle size={36} className="text-warning mb-2" />
+              <p className="mb-3 text-warning">{cameraError}</p>
+              <Button
+                variant="outline-light"
+                size="sm"
+                onClick={() => {
+                  stopCamera();
+                  cameraInputRef.current?.click();
+                }}
+              >
+                Cihaz Dosya/Kamera Seçicisini Kullan
+              </Button>
+            </div>
+          ) : (
+            <div className="position-relative d-inline-block rounded overflow-hidden" style={{ maxHeight: "420px", maxWidth: "100%" }}>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                style={{ width: "100%", maxHeight: "400px", objectFit: "contain", borderRadius: "8px" }}
+              />
+            </div>
+          )}
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+        </Modal.Body>
+        <Modal.Footer className="py-2 px-3 bg-light border-top d-flex justify-content-between">
+          <Button variant="outline-secondary" size="sm" onClick={stopCamera}>
+            Vazgeç
+          </Button>
+          {!cameraError && (
+            <Button
+              variant="success"
+              size="sm"
+              className="fw-bold px-4 d-flex align-items-center gap-2"
+              onClick={capturePhoto}
+            >
+              <IconCamera size={16} />
+              <span>Fotoğrafı Çek</span>
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </div>

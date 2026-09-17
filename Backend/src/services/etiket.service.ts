@@ -1,7 +1,9 @@
 import { AltinUrunSqlRepository, AltinUrunModel, SaveAltinUrunDto } from "../models/altinUrunSql.repository.js";
 import { OzelUrunSqlRepository, OzelUrunModel, SaveOzelUrunDto } from "../models/ozelUrunSql.repository.js";
 import { EtiketSablonSqlRepository, EtiketSablonModel, SaveEtiketSablonDto } from "../models/etiketSablonSql.repository.js";
-import { EtiketGrupNoResult } from "../models/etiketNumeratorSql.repository.js";
+import { EtiketNumeratorSqlRepository, EtiketGrupNoResult } from "../models/etiketNumeratorSql.repository.js";
+import { UrunResimSqlRepository } from "../models/urunResimSql.repository.js";
+import { BankoSqlRepository, BankoModel, SaveBankoDto } from "../models/bankoSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
 
 type DbCtx = { dbServer?: string; dbName?: string };
@@ -88,13 +90,27 @@ export class EtiketService {
     return OzelUrunSqlRepository.getNextUrunNo(grupKodu, uzunluk, dbContext);
   }
 
-  // ─── Ortak Lookup'lar ──────────────────────────────────────────────────────
+  // ─── Ortak Lookup'lar & Gruplar ───────────────────────────────────────────
+  public static listGruplar(tip?: number, dbContext?: DbCtx) {
+    return EtiketNumeratorSqlRepository.listGruplar(tip, dbContext);
+  }
+
+  public static saveGrup(tip: number, grupKodu: string, aciklama?: string | null, baslangicNo?: number, dbContext?: DbCtx) {
+    return EtiketNumeratorSqlRepository.saveGrup(tip, grupKodu, aciklama, baslangicNo, dbContext);
+  }
+
+  public static deleteGrup(tip: number, grupKodu: string, dbContext?: DbCtx) {
+    return EtiketNumeratorSqlRepository.deleteGrup(tip, grupKodu, dbContext);
+  }
+
   public static async getGrupKodlari(dbContext?: DbCtx): Promise<string[]> {
-    const [a, o] = await Promise.all([
+    const [a, o, g] = await Promise.all([
       AltinUrunSqlRepository.getDistinctGrupKodlari(dbContext),
       OzelUrunSqlRepository.getDistinctGrupKodlari(dbContext),
+      EtiketNumeratorSqlRepository.listGruplar(undefined, dbContext),
     ]);
-    return Array.from(new Set([...a, ...o])).sort();
+    const kodList = g.map((item) => item.grupKodu);
+    return Array.from(new Set([...a, ...o, ...kodList])).sort();
   }
 
   public static async getUreticiFirmalar(dbContext?: DbCtx): Promise<string[]> {
@@ -103,6 +119,21 @@ export class EtiketService {
       OzelUrunSqlRepository.getDistinctUreticiFirmalar(dbContext),
     ]);
     return Array.from(new Set([...a, ...o])).sort();
+  }
+
+  // ─── Fotoğraf Yönetimi ─────────────────────────────────────────────────────
+  public static async uploadFoto(
+    data: { base64: string; dosyaAdi?: string; tip?: number; islemId?: number },
+    dbContext?: DbCtx
+  ) {
+    if (!data.base64) throw ApiError.badRequest("Fotoğraf verisi (base64) zorunludur.");
+    return UrunResimSqlRepository.saveResimFile(
+      data.base64,
+      data.dosyaAdi || "urun.jpg",
+      data.tip ?? 0,
+      data.islemId || null,
+      dbContext
+    );
   }
 
   // ─── Etiket Şablonları ─────────────────────────────────────────────────────
@@ -125,5 +156,22 @@ export class EtiketService {
 
   public static removeSablon(id: number, dbContext?: DbCtx): Promise<boolean> {
     return EtiketSablonSqlRepository.remove(id, dbContext);
+  }
+
+  // ─── Banko Yönetimi (TODVZ_BANKO) ──────────────────────────────────────────
+  public static listBankolar(filter?: { search?: string; aktif?: boolean }, dbContext?: DbCtx): Promise<BankoModel[]> {
+    return BankoSqlRepository.list(filter, dbContext);
+  }
+
+  public static getBankoById(id: number, dbContext?: DbCtx): Promise<BankoModel | null> {
+    return BankoSqlRepository.getById(id, dbContext);
+  }
+
+  public static saveBanko(dto: SaveBankoDto, kullaniciId?: number, dbContext?: DbCtx): Promise<BankoModel> {
+    return BankoSqlRepository.save(dto, kullaniciId, dbContext);
+  }
+
+  public static deleteBanko(id: number, dbContext?: DbCtx): Promise<boolean> {
+    return BankoSqlRepository.remove(id, dbContext);
   }
 }

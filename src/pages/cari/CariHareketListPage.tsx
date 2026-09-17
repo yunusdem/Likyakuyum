@@ -25,6 +25,7 @@ import {
   IconChevronUp,
   IconFileText,
   IconReceipt2,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -361,11 +362,14 @@ export const CariHareketListPage: React.FC = () => {
         </Card.Body>
       </Card>
 
-      {/* Error Alert */}
+      {/* Sayfa Ortası Popup Bildirimler (ERP Toast) */}
       {error && (
-        <Alert variant="danger" dismissible onClose={() => setError(null)} className="py-2 px-3 mb-3">
-          {error}
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert variant="danger" dismissible onClose={() => setError(null)} className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0">
+            <IconAlertCircle size={18} className="text-danger flex-shrink-0 me-2" />
+            <span style={{ fontSize: "13px" }}>{error}</span>
+          </Alert>
+        </div>
       )}
 
       {/* Main Table Card */}

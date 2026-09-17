@@ -6,9 +6,19 @@ const router = Router();
 
 router.use(authenticate);
 
-// Ortak Lookup'lar
+// Ortak Lookup'lar & Grup Yönetimi
 router.get("/grup-kodlari", EtiketController.getGrupKodlari);
+router.get("/gruplar", EtiketController.listGruplar);
+router.post("/gruplar", EtiketController.saveGrup);
+router.delete("/gruplar", EtiketController.deleteGrup);
 router.get("/uretici-firmalar", EtiketController.getUreticiFirmalar);
+router.post("/foto-yukle", EtiketController.uploadFoto);
+
+// Banko Yönetimi (TODVZ_BANKO)
+router.get("/bankolar", EtiketController.listBankolar);
+router.get("/bankolar/:id", EtiketController.getBankoById);
+router.post("/bankolar", EtiketController.saveBanko);
+router.delete("/bankolar/:id", EtiketController.deleteBanko);
 
 // Altın Ürün (TODVZ_ALTIN_URUN)
 router.get("/altin-urun", EtiketController.listAltinUrun);

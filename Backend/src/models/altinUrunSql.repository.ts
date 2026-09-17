@@ -3,6 +3,7 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EtiketNumeratorSqlRepository } from "./etiketNumeratorSql.repository.js";
+import { UrunResimSqlRepository } from "./urunResimSql.repository.js";
 
 export interface AltinUrunModel {
   altinUrunId: number;
@@ -33,6 +34,7 @@ export interface AltinUrunModel {
   hasKuru2?: number | null;
   altinKuru?: number | null;
   resim?: string | null;
+  resimler?: string[];
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -71,6 +73,7 @@ export interface SaveAltinUrunDto {
   hasKuru2?: number | null;
   altinKuru?: number | null;
   resim?: string | null;
+  resimler?: string[];
   satildi?: boolean;
 }
 
@@ -404,7 +407,36 @@ export class AltinUrunSqlRepository {
     query += ` ORDER BY ALTIN_URUN_ID DESC`;
 
     const res = await req.query(query);
-    return (res.recordset || []).map((r) => this.mapRow(r));
+    const items = (res.recordset || []).map((r) => this.mapRow(r));
+    if (items.length > 0) {
+      try {
+        const ids = items.map((x) => x.altinUrunId).filter(Boolean);
+        if (ids.length > 0) {
+          const resimRes = await pool.request().query(
+            `SELECT ISLEM_ID, DOSYA_YOLU FROM TODVZ_URUN_RESIM WHERE TIP = 0 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`
+          );
+          const resimMap = new Map<number, string[]>();
+          for (const row of resimRes.recordset || []) {
+            const list = resimMap.get(row.ISLEM_ID) || [];
+            list.push(row.DOSYA_YOLU);
+            resimMap.set(row.ISLEM_ID, list);
+          }
+          for (const item of items) {
+            const imgs = resimMap.get(item.altinUrunId);
+            if (imgs && imgs.length > 0) {
+              item.resimler = imgs;
+            } else if (item.resim) {
+              item.resimler = [item.resim];
+            } else {
+              item.resimler = [];
+            }
+          }
+        }
+      } catch (err) {
+        // fallback
+      }
+    }
+    return items;
   }
 
   public static async getById(
@@ -421,7 +453,12 @@ export class AltinUrunSqlRepository {
       .query(`SELECT TOP 1 * FROM TODVZ_ALTIN_URUN WHERE ALTIN_URUN_ID = @ALTIN_URUN_ID`);
 
     if (!res.recordset || res.recordset.length === 0) return null;
-    return this.mapRow(res.recordset[0]);
+    const model = this.mapRow(res.recordset[0]);
+    model.resimler = await UrunResimSqlRepository.getResimlerByIslemId(0, altinUrunId, dbContext);
+    if ((!model.resimler || model.resimler.length === 0) && model.resim) {
+      model.resimler = [model.resim];
+    }
+    return model;
   }
 
   public static async getByBarkod(
@@ -438,7 +475,12 @@ export class AltinUrunSqlRepository {
       .query(`SELECT TOP 1 * FROM TODVZ_ALTIN_URUN WHERE BARKOD = @BARKOD`);
 
     if (!res.recordset || res.recordset.length === 0) return null;
-    return this.mapRow(res.recordset[0]);
+    const model = this.mapRow(res.recordset[0]);
+    model.resimler = await UrunResimSqlRepository.getResimlerByIslemId(0, model.altinUrunId, dbContext);
+    if ((!model.resimler || model.resimler.length === 0) && model.resim) {
+      model.resimler = [model.resim];
+    }
+    return model;
   }
 
   public static async save(
@@ -451,13 +493,14 @@ export class AltinUrunSqlRepository {
     await this.ensureProcedures(pool);
 
     let resimBuffer: Buffer | null = null;
-    if (dto.resim && typeof dto.resim === "string") {
-      const matches = dto.resim.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    const primaryResim = (dto.resimler && dto.resimler.length > 0) ? dto.resimler[0] : dto.resim;
+    if (primaryResim && typeof primaryResim === "string") {
+      const matches = primaryResim.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
       if (matches && matches[2]) {
         resimBuffer = Buffer.from(matches[2], "base64");
       } else {
         try {
-          resimBuffer = Buffer.from(dto.resim, "base64");
+          resimBuffer = Buffer.from(primaryResim, "base64");
         } catch {
           resimBuffer = null;
         }
@@ -519,6 +562,13 @@ export class AltinUrunSqlRepository {
     }
 
     if (!savedId) throw ApiError.internal("Altın ürün kaydedildi ancak kimlik bilgisi alınamadı.");
+
+    // Sync multi images if provided
+    if (dto.resimler && Array.isArray(dto.resimler)) {
+      await UrunResimSqlRepository.syncResimlerForIslem(0, savedId, dto.resimler, dbContext);
+    } else if (dto.resim) {
+      await UrunResimSqlRepository.syncResimlerForIslem(0, savedId, [dto.resim], dbContext);
+    }
 
     const saved = await this.getById(savedId, dbContext);
     if (!saved) throw ApiError.internal("Altın ürün kaydedildi ancak okunamadı.");

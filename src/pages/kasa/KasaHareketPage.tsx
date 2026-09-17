@@ -239,45 +239,41 @@ export const KasaHareketPage: React.FC = () => {
         }
       }
 
-      // Otomatik Üretim Hesabı Ön-seçimi (Kayıt modunda ve henüz hesap seçilmemişse)
-      if (!isEditPage && !hesapId && hesaplar.length > 0) {
-        let uretimIdStr = localStorage.getItem("kuyumcu_erp_uretim_hesabi_id");
-        let targetAccount = uretimIdStr ? hesaplar.find((h) => String(h.hesapId) === uretimIdStr) : null;
-
-        if (!targetAccount) {
-          try {
-            const defs = await CompanyService.getDefinitions();
-            if (defs?.URETIM_HESABI_ID) {
-              targetAccount = hesaplar.find((h) => h.hesapId === defs.URETIM_HESABI_ID) || null;
-            }
-          } catch {
-            // ignore
-          }
-        }
-
-        if (!targetAccount) {
-          targetAccount = hesaplar.find((h) => {
-            const txt = `${h.kod || ""} ${h.ad || ""}`.toLocaleUpperCase("tr-TR");
-            return txt.includes("URETIM") || txt.includes("ÜRETİM") || txt.includes("İMALAT") || txt.includes("IMALAT");
-          }) || null;
-        }
-
-        if (targetAccount) {
-          handleSelectHesap(targetAccount);
-        }
-      }
-
       if (defaultVezneId) {
         fetchVezneBakiyeler(defaultVezneId);
       }
     } catch (err: any) {
       showNotif("danger", err?.message || "Kasa hareket verileri yüklenemedi.");
     }
-  }, [paraId, vezneId, isEditPage, hesapId, handleSelectHesap, fetchVezneBakiyeler]);
+  }, [paraId, vezneId, fetchVezneBakiyeler]);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Sayfa modu veya URL değiştiğinde (Kayıt vs Düzeltme)
+  useEffect(() => {
+    if (!isEditPage) {
+      // Kayıt sayfasında form her zaman tamamen temiz ve boş gelir
+      setHesapHareketiId(null);
+      setTarih(new Date().toISOString().slice(0, 10));
+      setAciklama("");
+      setTip(1);
+      setHesapId(null);
+      setHesapKod("");
+      setHesapAd("");
+      setHesapBakiye(0);
+      setMeblag("");
+      setKdvOrani(0);
+      setKdvTutari(0);
+      setEklemeZamani(null);
+      setGuncellemeZamani(null);
+      hasAutoSelectedRef.current = false;
+    } else {
+      // Düzeltme sayfasında en son hareket seçilir
+      hasAutoSelectedRef.current = false;
+    }
+  }, [isEditPage, location.pathname]);
 
   // Düzeltme modunda ilk açılışta otomatik olarak en son hareketi seç
   useEffect(() => {
@@ -286,7 +282,6 @@ export const KasaHareketPage: React.FC = () => {
       const sonHareket = hareketList[0]; // En yeni tarihli hareket
       handleSelectHareket(sonHareket);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditPage, hareketList]);
 
   // Vezne seçildiğinde anlık bakiyeleri yükle
@@ -330,41 +325,25 @@ export const KasaHareketPage: React.FC = () => {
     }
   }, [hesapList, fetchVezneBakiyeler]);
 
-  // ─── Yeni Kayıt Modu (F4) - Üretim Hesabı Otomatik Seçilir ──────────────────
+  // ─── Yeni Kayıt Modu (F4 / Yeni) ───────────────────────────────────────────
   const handleNew = useCallback(() => {
     setHesapHareketiId(null);
     setTarih(new Date().toISOString().slice(0, 10));
     setAciklama("");
     setTip(1);
-
-    // Otomatik Üretim Hesabı Seçimi
-    let uretimIdStr = localStorage.getItem("kuyumcu_erp_uretim_hesabi_id");
-    let targetAccount = uretimIdStr ? hesapList.find((h) => String(h.hesapId) === uretimIdStr) : null;
-    if (!targetAccount) {
-      targetAccount = hesapList.find((h) => {
-        const txt = `${h.kod || ""} ${h.ad || ""}`.toLocaleUpperCase("tr-TR");
-        return txt.includes("URETIM") || txt.includes("ÜRETİM") || txt.includes("İMALAT") || txt.includes("IMALAT");
-      }) || null;
-    }
-
-    if (targetAccount) {
-      handleSelectHesap(targetAccount);
-    } else {
-      setHesapId(null);
-      setHesapKod("");
-      setHesapAd("");
-      setHesapBakiye(0);
-      setKdvOrani(0);
-      setKdvTutari(0);
-    }
-
+    setHesapId(null);
+    setHesapKod("");
+    setHesapAd("");
+    setHesapBakiye(0);
+    setKdvOrani(0);
+    setKdvTutari(0);
     setMeblag("");
     setEklemeZamani(null);
     setGuncellemeZamani(null);
     if (vezneId) {
       fetchVezneBakiyeler(vezneId);
     }
-  }, [hesapList, handleSelectHesap, vezneId, fetchVezneBakiyeler]);
+  }, [vezneId, fetchVezneBakiyeler]);
 
   // ─── Kaydet Aksiyonu (F1) ────────────────────────────────────────────────────
   const handleSave = useCallback(async (): Promise<HesapHareketiItem | null> => {
@@ -687,34 +666,6 @@ export const KasaHareketPage: React.FC = () => {
                   />
                 </Col>
               </Form.Group>
-            </Col>
-
-            {/* ─── SAĞ SÜTUN: Finansal Bilgiler & Vezne ─── */}
-            <Col lg={6} md={12}>
-              {/* Vezne Seçimi */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
-                  Vezne <span className="text-danger">*</span> :
-                </Form.Label>
-                <Col>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      type="text"
-                      readOnly
-                      placeholder=""
-                      value={vezneKod ? `${vezneKod} - ${vezneAd}` : vezneAd}
-                      className="fw-semibold bg-light"
-                    />
-                    <Button
-                      variant="outline-secondary"
-                      onClick={() => setShowVezneLookup(true)}
-                      title="Vezne Seç"
-                    >
-                      <IconBinoculars size={16} />
-                    </Button>
-                  </InputGroup>
-                </Col>
-              </Form.Group>
 
               {/* Gramaj / Meblağ & Para Birimi Seçici */}
               <Form.Group as={Row} className="mb-2 align-items-center g-2">
@@ -775,6 +726,34 @@ export const KasaHareketPage: React.FC = () => {
                       title="Para Birimi Ara"
                     >
                       <IconBinoculars size={15} />
+                    </Button>
+                  </InputGroup>
+                </Col>
+              </Form.Group>
+            </Col>
+
+            {/* ─── SAĞ SÜTUN: Finansal Bilgiler & Vezne ─── */}
+            <Col lg={6} md={12}>
+              {/* Vezne Seçimi */}
+              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+                  Vezne <span className="text-danger">*</span> :
+                </Form.Label>
+                <Col>
+                  <InputGroup size="sm">
+                    <Form.Control
+                      type="text"
+                      readOnly
+                      placeholder=""
+                      value={vezneKod ? `${vezneKod} - ${vezneAd}` : vezneAd}
+                      className="fw-semibold bg-light"
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      onClick={() => setShowVezneLookup(true)}
+                      title="Vezne Seç"
+                    >
+                      <IconBinoculars size={16} />
                     </Button>
                   </InputGroup>
                 </Col>

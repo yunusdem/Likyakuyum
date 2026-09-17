@@ -147,4 +147,67 @@ export class EtiketNumeratorSqlRepository {
         const barkod = `${kod}${String(sonNo).padStart(Math.max(uzunluk, String(sonNo).length), "0")}`;
         return { grupKodu: kod, sonNo, barkod, yeniGrup };
     }
+    static async listGruplar(tip, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        await this.ensureTables(pool);
+        const req = pool.request();
+        let query = `
+      SELECT [TIP], [GRUP_KODU], [SON_NO], [ACIKLAMA], [GUNCELLEME_ZAMANI]
+      FROM [dbo].[TODVZ_ETIKET_GRUP_NO]
+    `;
+        if (tip !== undefined && tip !== null) {
+            req.input("TIP", sql.TinyInt, tip);
+            query += ` WHERE [TIP] = @TIP`;
+        }
+        query += ` ORDER BY [GRUP_KODU] ASC;`;
+        const res = await req.query(query);
+        return (res.recordset || []).map((r) => ({
+            tip: r.TIP,
+            grupKodu: (r.GRUP_KODU || "").trim(),
+            sonNo: r.SON_NO ?? 0,
+            aciklama: r.ACIKLAMA ? r.ACIKLAMA.trim() : null,
+            guncellemeZamani: r.GUNCELLEME_ZAMANI,
+        }));
+    }
+    static async saveGrup(tip, grupKodu, aciklama, baslangicNo, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        await this.ensureTables(pool);
+        const kod = (grupKodu || "").trim().toUpperCase();
+        if (!kod)
+            throw ApiError.badRequest("Grup kodu zorunludur.");
+        const sonNo = baslangicNo !== undefined && baslangicNo !== null && !isNaN(Number(baslangicNo)) ? Number(baslangicNo) : 0;
+        const req = pool.request();
+        req.input("TIP", sql.TinyInt, tip);
+        req.input("GRUP_KODU", sql.VarChar(50), kod);
+        req.input("ACIKLAMA", sql.VarChar(100), aciklama ? aciklama.trim().slice(0, 100) : null);
+        req.input("SON_NO", sql.Int, sonNo);
+        await req.query(`
+      IF EXISTS (SELECT 1 FROM [dbo].[TODVZ_ETIKET_GRUP_NO] WHERE [TIP] = @TIP AND [GRUP_KODU] = @GRUP_KODU)
+      BEGIN
+        UPDATE [dbo].[TODVZ_ETIKET_GRUP_NO]
+        SET [ACIKLAMA] = @ACIKLAMA,
+            [GUNCELLEME_ZAMANI] = GETDATE()
+        WHERE [TIP] = @TIP AND [GRUP_KODU] = @GRUP_KODU;
+      END
+      ELSE
+      BEGIN
+        INSERT INTO [dbo].[TODVZ_ETIKET_GRUP_NO] ([TIP], [GRUP_KODU], [SON_NO], [ACIKLAMA], [GUNCELLEME_ZAMANI])
+        VALUES (@TIP, @GRUP_KODU, @SON_NO, @ACIKLAMA, GETDATE());
+      END;
+    `);
+        return { tip, grupKodu: kod, sonNo, aciklama: aciklama || null };
+    }
+    static async deleteGrup(tip, grupKodu, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        await this.ensureTables(pool);
+        const kod = (grupKodu || "").trim().toUpperCase();
+        const req = pool.request();
+        req.input("TIP", sql.TinyInt, tip);
+        req.input("GRUP_KODU", sql.VarChar(50), kod);
+        await req.query(`
+      DELETE FROM [dbo].[TODVZ_ETIKET_GRUP_NO]
+      WHERE [TIP] = @TIP AND [GRUP_KODU] = @GRUP_KODU;
+    `);
+        return true;
+    }
 }

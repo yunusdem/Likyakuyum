@@ -217,8 +217,6 @@ export default function App() {
             <Route path="etiket/altin-urun-tanimlama" element={<AltinUrunTanimlamaPage />} />
             <Route path="etiket/ozel-urun-tanimlama" element={<OzelUrunTanimlamaPage />} />
             <Route path="etiket/tasarim" element={<UrunEtiketTasarimiPage />} />
-            <Route path="etiket/toplu-yazdirma" element={<TopluEtiketYazdirmaPage />} />
-            <Route path="etiket/kuyumcu-etiketi" element={<YuzukBilezikEtiketiPage />} />
             <Route path="etiket/fiyat-etiketi" element={<FiyatAyarEtiketleriPage />} />
             <Route path=":section/*" element={<ModulePage />} />
 

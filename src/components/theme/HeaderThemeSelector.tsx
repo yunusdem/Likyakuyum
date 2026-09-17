@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Dropdown, Badge } from "react-bootstrap";
+import { Dropdown, Badge, Button } from "react-bootstrap";
 import {
   IconPalette,
   IconSparkles,
@@ -15,6 +15,24 @@ import {
 } from "../../services/themePresetService";
 import ThemeSettingsModal from "./ThemeSettingsModal";
 
+const ThemeToggle = React.forwardRef<HTMLButtonElement, { onClick: (e: React.MouseEvent) => void }>(
+  ({ onClick }, ref) => (
+    <Button
+      ref={ref}
+      variant="ghost"
+      className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-0"
+      onClick={(e) => {
+        e.preventDefault();
+        onClick(e);
+      }}
+      title="Tema ve Renk Seçimi"
+      style={{ width: "32px", height: "32px" }}
+    >
+      <IconPalette size={18} strokeWidth={1.75} />
+    </Button>
+  )
+);
+
 export const HeaderThemeSelector: React.FC = () => {
   const { user, refreshUser } = useAuth();
   const [showModal, setShowModal] = useState<boolean>(false);
@@ -29,30 +47,7 @@ export const HeaderThemeSelector: React.FC = () => {
   return (
     <>
       <Dropdown align="end" className="d-inline-block">
-        <Dropdown.Toggle
-          variant="light"
-          size="sm"
-          className="d-flex align-items-center gap-1.5 border rounded-2 px-2 py-1 bg-white shadow-none header-theme-btn"
-          id="header-theme-selector-dropdown"
-          title="Görünüm ve Tema Değiştir"
-          style={{ height: "32px" }}
-        >
-          <div
-            className="rounded-circle border d-flex align-items-center justify-content-center"
-            style={{
-              width: "16px",
-              height: "16px",
-              backgroundColor: activePreset.previewAccent || "#6366f1",
-            }}
-          />
-          <IconPalette size={16} className="text-secondary d-none d-sm-inline" />
-          <span
-            className="fw-semibold text-truncate d-none d-md-inline text-dark"
-            style={{ fontSize: "12px", maxWidth: "140px" }}
-          >
-            {activePreset.name.split(" (")[0]}
-          </span>
-        </Dropdown.Toggle>
+        <Dropdown.Toggle as={ThemeToggle} id="header-theme-selector-dropdown" />
 
         <Dropdown.Menu
           className="shadow-lg border rounded-3 p-1 dropdown-menu-end"

@@ -29,6 +29,7 @@ import {
   IconExternalLink,
   IconGripVertical,
   IconBinoculars,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -473,6 +474,23 @@ export const PanoTanimiPage: React.FC = () => {
     setForm({ ...form, satirlar: updated });
   };
 
+  // Sağ tık ERP context menüsünden satır silme desteği
+  useEffect(() => {
+    const handleGridDelete = (e: any) => {
+      const rowId = e.detail?.rowId;
+      if (rowId !== undefined && rowId !== null) {
+        const idx = Number(rowId);
+        if (!isNaN(idx) && idx >= 0 && idx < form.satirlar.length) {
+          handleRemoveLine(idx);
+        }
+      }
+    };
+    window.addEventListener("erp-grid-row-delete", handleGridDelete);
+    return () => {
+      window.removeEventListener("erp-grid-row-delete", handleGridDelete);
+    };
+  }, [form.satirlar]);
+
   const handleMoveLine = (index: number, direction: "up" | "down") => {
     if (direction === "up" && index === 0) return;
     if (direction === "down" && index === form.satirlar.length - 1) return;
@@ -563,16 +581,25 @@ export const PanoTanimiPage: React.FC = () => {
         }
       />
 
-      {/* Alert Notifications */}
+      {/* Sayfa Ortası Popup Bildirimler (ERP Toast) */}
       {alertInfo && (
-        <Alert
-          variant={alertInfo.type}
-          dismissible
-          onClose={() => setAlertInfo(null)}
-          className="py-2 px-3 mb-3 border rounded shadow-2xs small fw-medium"
-        >
-          {alertInfo.message}
-        </Alert>
+        <div className="erp-toast-container">
+          <Alert
+            variant={alertInfo.type}
+            dismissible
+            onClose={() => setAlertInfo(null)}
+            className="erp-toast-item d-flex align-items-center mb-0 shadow py-2 px-3 border-0"
+          >
+            {alertInfo.type === "success" ? (
+              <IconCheck size={18} className="me-2 text-success flex-shrink-0" />
+            ) : alertInfo.type === "danger" ? (
+              <IconX size={18} className="me-2 text-danger flex-shrink-0" />
+            ) : (
+              <IconAlertTriangle size={18} className="me-2 text-warning flex-shrink-0" />
+            )}
+            <span style={{ fontSize: "13px" }}>{alertInfo.message}</span>
+          </Alert>
+        </div>
       )}
 
       {/* Main Screen Windows Form Container */}
@@ -1000,7 +1027,7 @@ export const PanoTanimiPage: React.FC = () => {
 
               {/* Grid Table */}
               <div className="table-responsive border rounded bg-white shadow-2xs overflow-y-auto" style={{ maxHeight: "360px" }}>
-                <Table hover size="sm" className="mb-0 align-middle">
+                <Table hover size="sm" className="mb-0 align-middle" data-table-type="pano-satirlar">
                   <thead className="bg-light sticky-top border-bottom">
                     <tr className="small text-muted text-nowrap">
                       <th style={{ width: "32px" }} className="text-center"></th>
@@ -1010,14 +1037,12 @@ export const PanoTanimiPage: React.FC = () => {
                       <th>Görünecek Ad</th>
                       <th style={{ width: "75px" }} className="text-center">Çarpan</th>
                       <th style={{ width: "70px" }} className="text-center">Görünür</th>
-                      <th style={{ width: "80px" }} className="text-center">Sıralama</th>
-                      <th style={{ width: "40px" }} className="text-center">Sil</th>
                     </tr>
                   </thead>
                   <tbody>
                     {form.satirlar.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="text-center text-muted py-4 small">
+                        <td colSpan={7} className="text-center text-muted py-4 small">
                           Henüz panoda gösterilecek para birimi eklenmedi. 'Tüm Para Birimlerini Ekle' butonunu kullanabilirsiniz.
                         </td>
                       </tr>
@@ -1028,6 +1053,8 @@ export const PanoTanimiPage: React.FC = () => {
                         return (
                           <tr
                             key={`${line.paraId}-${idx}`}
+                            data-row-id={String(idx)}
+                            data-table-type="pano-satirlar"
                             draggable={true}
                             onDragStart={(e) => {
                               setDraggedIndex(idx);
@@ -1053,6 +1080,7 @@ export const PanoTanimiPage: React.FC = () => {
                               isDragging ? "opacity-25 bg-warning-subtle" : ""
                             } ${isDragOver ? "border-top border-3 border-primary bg-primary-subtle" : ""}`}
                             style={{ cursor: "grab" }}
+                            title="Sağ tık ile silebilir, basılı tutup sürükleyerek sıralayabilirsiniz"
                           >
                             <td
                               className="text-center text-muted align-middle py-1 px-1"
@@ -1094,41 +1122,6 @@ export const PanoTanimiPage: React.FC = () => {
                                 onChange={(e) => handleUpdateLine(idx, "gorunur", e.target.checked)}
                                 className="d-inline-block"
                               />
-                            </td>
-                            <td className="text-center">
-                              <div className="d-flex align-items-center justify-content-center gap-1">
-                                <Button
-                                  variant="light"
-                                  size="sm"
-                                  disabled={idx === 0}
-                                  onClick={() => handleMoveLine(idx, "up")}
-                                  className="p-0 border-0"
-                                  style={{ width: "20px", height: "20px" }}
-                                >
-                                  <IconArrowUp size={14} />
-                                </Button>
-                                <Button
-                                  variant="light"
-                                  size="sm"
-                                  disabled={idx === form.satirlar.length - 1}
-                                  onClick={() => handleMoveLine(idx, "down")}
-                                  className="p-0 border-0"
-                                  style={{ width: "20px", height: "20px" }}
-                                >
-                                  <IconArrowDown size={14} />
-                                </Button>
-                              </div>
-                            </td>
-                            <td className="text-center">
-                              <Button
-                                variant="link"
-                                size="sm"
-                                onClick={() => handleRemoveLine(idx)}
-                                className="text-danger p-0 border-0"
-                                title="Satırı Sil"
-                              >
-                                <IconTrash size={15} />
-                              </Button>
                             </td>
                           </tr>
                         );

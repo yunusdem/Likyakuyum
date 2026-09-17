@@ -3,6 +3,7 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EtiketNumeratorSqlRepository } from "./etiketNumeratorSql.repository.js";
+import { UrunResimSqlRepository } from "./urunResimSql.repository.js";
 
 export interface OzelUrunModel {
   ozelUrunId: number;
@@ -35,6 +36,7 @@ export interface OzelUrunModel {
   tasTutar?: number | null;
   tasTutarBirimi: string;
   resim?: string | null;
+  resimler?: string[];
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -75,6 +77,7 @@ export interface SaveOzelUrunDto {
   tasTutar?: number | null;
   tasTutarBirimi?: string;
   resim?: string | null;
+  resimler?: string[];
   satildi?: boolean;
 }
 
@@ -97,7 +100,7 @@ export class OzelUrunSqlRepository {
             [ORJINAL_KOD] VARCHAR(50) NULL,
             [AYAR] VARCHAR(20) NULL,
             [MODEL_OZELLIK_1] VARCHAR(100) NULL,
-            [MODEL_OZELLIK_2] VARCHAR(100) NULL,
+            [MODEL_OZELLIK_2] VARCHAR(MAX) NULL,
             [BANKO] VARCHAR(50) NULL,
             [MALIYET] FLOAT NOT NULL DEFAULT 0,
             [MALIYET_PARA_KODU] VARCHAR(10) NOT NULL DEFAULT 'USD',
@@ -132,6 +135,8 @@ export class OzelUrunSqlRepository {
             ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [YAZDIRILDI] BIT NOT NULL DEFAULT 0;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'YAZDIRILDI_ZAMANI')
             ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [YAZDIRILDI_ZAMANI] DATETIME NULL;
+          IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'MODEL_OZELLIK_2' AND CHARACTER_MAXIMUM_LENGTH <> -1)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [MODEL_OZELLIK_2] VARCHAR(MAX) NULL;
         END;
       `);
     } catch (err: any) {
@@ -155,7 +160,7 @@ export class OzelUrunSqlRepository {
             @ORJINAL_KOD        VARCHAR(50) = NULL,
             @AYAR               VARCHAR(20) = NULL,
             @MODEL_OZELLIK_1    VARCHAR(100) = NULL,
-            @MODEL_OZELLIK_2    VARCHAR(100) = NULL,
+            @MODEL_OZELLIK_2    VARCHAR(MAX) = NULL,
             @BANKO              VARCHAR(50) = NULL,
             @MALIYET            FLOAT = 0,
             @MALIYET_PARA_KODU  VARCHAR(10) = 'USD',
@@ -412,7 +417,36 @@ export class OzelUrunSqlRepository {
     query += ` ORDER BY OZEL_URUN_ID DESC`;
 
     const res = await req.query(query);
-    return (res.recordset || []).map((r: any) => this.mapRow(r));
+    const items = (res.recordset || []).map((r: any) => this.mapRow(r));
+    if (items.length > 0) {
+      try {
+        const ids = items.map((x) => x.ozelUrunId).filter(Boolean);
+        if (ids.length > 0) {
+          const resimRes = await pool.request().query(
+            `SELECT ISLEM_ID, DOSYA_YOLU FROM TODVZ_URUN_RESIM WHERE TIP = 1 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`
+          );
+          const resimMap = new Map<number, string[]>();
+          for (const row of resimRes.recordset || []) {
+            const list = resimMap.get(row.ISLEM_ID) || [];
+            list.push(row.DOSYA_YOLU);
+            resimMap.set(row.ISLEM_ID, list);
+          }
+          for (const item of items) {
+            const imgs = resimMap.get(item.ozelUrunId);
+            if (imgs && imgs.length > 0) {
+              item.resimler = imgs;
+            } else if (item.resim) {
+              item.resimler = [item.resim];
+            } else {
+              item.resimler = [];
+            }
+          }
+        }
+      } catch (err) {
+        // fallback
+      }
+    }
+    return items;
   }
 
   public static async getById(
@@ -429,7 +463,12 @@ export class OzelUrunSqlRepository {
       .query(`SELECT TOP 1 * FROM TODVZ_OZEL_URUN WHERE OZEL_URUN_ID = @OZEL_URUN_ID`);
 
     if (!res.recordset || res.recordset.length === 0) return null;
-    return this.mapRow(res.recordset[0]);
+    const model = this.mapRow(res.recordset[0]);
+    model.resimler = await UrunResimSqlRepository.getResimlerByIslemId(1, ozelUrunId, dbContext);
+    if ((!model.resimler || model.resimler.length === 0) && model.resim) {
+      model.resimler = [model.resim];
+    }
+    return model;
   }
 
   public static async getByBarkod(
@@ -446,7 +485,12 @@ export class OzelUrunSqlRepository {
       .query(`SELECT TOP 1 * FROM TODVZ_OZEL_URUN WHERE BARKOD = @BARKOD`);
 
     if (!res.recordset || res.recordset.length === 0) return null;
-    return this.mapRow(res.recordset[0]);
+    const model = this.mapRow(res.recordset[0]);
+    model.resimler = await UrunResimSqlRepository.getResimlerByIslemId(1, model.ozelUrunId, dbContext);
+    if ((!model.resimler || model.resimler.length === 0) && model.resim) {
+      model.resimler = [model.resim];
+    }
+    return model;
   }
 
   public static async save(
@@ -459,13 +503,14 @@ export class OzelUrunSqlRepository {
     await this.ensureProcedures(pool);
 
     let resimBuffer: Buffer | null = null;
-    if (dto.resim && typeof dto.resim === "string") {
-      const matches = dto.resim.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    const primaryResim = (dto.resimler && dto.resimler.length > 0) ? dto.resimler[0] : dto.resim;
+    if (primaryResim && typeof primaryResim === "string") {
+      const matches = primaryResim.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
       if (matches && matches[2]) {
         resimBuffer = Buffer.from(matches[2], "base64");
       } else {
         try {
-          resimBuffer = Buffer.from(dto.resim, "base64");
+          resimBuffer = Buffer.from(primaryResim, "base64");
         } catch {
           resimBuffer = null;
         }
@@ -486,7 +531,7 @@ export class OzelUrunSqlRepository {
     req.input("ORJINAL_KOD", sql.VarChar(50), dto.orjinalKod ? dto.orjinalKod.trim() : null);
     req.input("AYAR", sql.VarChar(20), dto.ayar ? dto.ayar.trim() : null);
     req.input("MODEL_OZELLIK_1", sql.VarChar(100), dto.modelOzellik1 ? dto.modelOzellik1.trim() : null);
-    req.input("MODEL_OZELLIK_2", sql.VarChar(100), dto.modelOzellik2 ? dto.modelOzellik2.trim() : null);
+    req.input("MODEL_OZELLIK_2", sql.VarChar(sql.MAX), dto.modelOzellik2 ? dto.modelOzellik2.trim() : null);
     req.input("BANKO", sql.VarChar(50), dto.banko ? dto.banko.trim() : null);
     req.input("MALIYET", sql.Float, Number(dto.maliyet) || 0);
     req.input("MALIYET_PARA_KODU", sql.VarChar(10), dto.maliyetParaKodu || "USD");
@@ -529,6 +574,13 @@ export class OzelUrunSqlRepository {
     }
 
     if (!savedId) throw ApiError.internal("Özel ürün kaydedildi ancak kimlik bilgisi alınamadı.");
+
+    // Sync multi images if provided
+    if (dto.resimler && Array.isArray(dto.resimler)) {
+      await UrunResimSqlRepository.syncResimlerForIslem(1, savedId, dto.resimler, dbContext);
+    } else if (dto.resim) {
+      await UrunResimSqlRepository.syncResimlerForIslem(1, savedId, [dto.resim], dbContext);
+    }
 
     const saved = await this.getById(savedId, dbContext);
     if (!saved) throw ApiError.internal("Özel ürün kaydedildi ancak okunamadı.");

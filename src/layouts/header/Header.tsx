@@ -15,6 +15,7 @@ import {
   IconArrowsExchange,
   IconFileCertificate,
   IconRefresh,
+  IconEye,
 } from "@tabler/icons-react";
 import { Container, ListGroup, Button } from "react-bootstrap";
 
@@ -35,8 +36,13 @@ const quickActions = [
     icon: <IconChartLine size={18} strokeWidth={2} className="text-primary" />,
   },
   {
+    title: "Vezne",
+    to: "/vezne/izleme",
+    icon: <IconEye size={18} strokeWidth={2} style={{ color: "#0891b2" }} />,
+  },
+  {
     title: "Fiyat",
-    to: "/vezne/fiyat-kontrolu",
+    to: "/etiket/barkod-basimi",
     icon: <IconScan size={18} strokeWidth={2} className="text-success" />,
   },
   {
