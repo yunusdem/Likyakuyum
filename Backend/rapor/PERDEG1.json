@@ -1,0 +1,109 @@
+{
+  "kod": "PERDEG1",
+  "ad": "Personel Değerlendirme Raporu",
+  "aciklama": "Fişi kaydeden kullanıcı bazında alış / satış adedi ve hacmi, komisyon, iptal ve kur sapması sayıları.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "kullaniciIdler",
+      "etiket": "Personel (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "kullanici"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "personel",
+      "baslik": "Personel",
+      "g": 2.6
+    },
+    {
+      "anahtar": "gunSayisi",
+      "baslik": "Çalışılan gün",
+      "g": 1.1,
+      "bicim": "tam",
+      "pdf": false
+    },
+    {
+      "anahtar": "alisAdet",
+      "baslik": "Alış adedi",
+      "g": 1.1,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "alisTutar",
+      "baslik": "Alış (TL)",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "satisAdet",
+      "baslik": "Satış adedi",
+      "g": 1.1,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "satisTutar",
+      "baslik": "Satış (TL)",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "toplamAdet",
+      "baslik": "Toplam işlem",
+      "g": 1.2,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "toplamTutar",
+      "baslik": "Toplam hacim (TL)",
+      "g": 2.3,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "ortIslem",
+      "baslik": "Ort. işlem (TL)",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.7,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "iptalAdet",
+      "baslik": "İptal",
+      "g": 0.9,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "sapmaAdet",
+      "baslik": "Kur sapması",
+      "g": 1.1,
+      "bicim": "tam",
+      "toplam": true
+    }
+  ]
+}

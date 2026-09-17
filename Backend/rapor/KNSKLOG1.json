@@ -1,0 +1,131 @@
+{
+  "kod": "KNSKLOG1",
+  "ad": "KNSK Sorgulama Log Listesi",
+  "aciklama": "Müşteri adı ve doğum tarihiyle yapılan kara liste (KNSK) sorgularının logu: kim, ne zaman, kimi sorguladı, sonuç ve kara liste eşleşmesi.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "durum",
+      "etiket": "Sonuç",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "tumu",
+          "ad": "Tümü"
+        },
+        {
+          "deger": "basarili",
+          "ad": "Başarılı sorgular"
+        },
+        {
+          "deger": "basarisiz",
+          "ad": "Başarısız sorgular"
+        },
+        {
+          "deger": "karaliste",
+          "ad": "Kara listede çıkanlar"
+        }
+      ],
+      "varsayilan": "tumu"
+    },
+    {
+      "ad": "arama",
+      "etiket": "Sorgulanan ad / liste adı",
+      "tip": "metin",
+      "not": "Adın bir parçası yazılabilir"
+    },
+    {
+      "ad": "kullaniciIdler",
+      "etiket": "Personel (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "kullanici"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 2.1,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "kullanici",
+      "baslik": "Kullanıcı",
+      "g": 1.7
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "sorgulananAd",
+      "baslik": "Sorgulanan ad / ünvan",
+      "g": 3.6
+    },
+    {
+      "anahtar": "dogumTarihi",
+      "baslik": "Doğum tarihi",
+      "g": 1.5,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "kisilik",
+      "baslik": "Kişilik",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "sonuc",
+      "baslik": "Sorgu",
+      "g": 1.3,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "karaListe",
+      "baslik": "Kara listede",
+      "g": 1.2,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "karaListeAdi",
+      "baslik": "Kara liste adı",
+      "g": 2.8
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 3.2
+    }
+  ],
+  "ozet": {
+    "baslik": "Sorgu özeti",
+    "kolonlar": [
+      {
+        "anahtar": "olcu",
+        "baslik": "Ölçü",
+        "g": 5
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Adet",
+        "g": 2,
+        "bicim": "tam"
+      }
+    ]
+  },
+  "dipnot": "Vezne, sorguyu yapan kullanıcının tanımlı veznesidir. Başarısız sorgu: kara liste servisine ulaşılamadığı veya sorgunun tamamlanamadığı kayıtlar; bu durumda müşteri kontrol edilmemiş sayılır."
+}

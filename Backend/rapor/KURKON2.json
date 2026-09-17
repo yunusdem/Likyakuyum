@@ -1,0 +1,114 @@
+{
+  "kod": "KURKON2",
+  "ad": "Kur Kontrolü",
+  "aciklama": "Gün ve para bazında alış / satış miktarı, tutarı ve ortalama kurları; vezne ve kullanıcı ayrıntısıyla.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "birlestir",
+      "etiket": "Ayrıntı",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "ayrinti",
+          "ad": "Vezne ve kullanıcı ayrıntılı"
+        },
+        {
+          "deger": "gun",
+          "ad": "Yalnız gün × para"
+        }
+      ],
+      "varsayilan": "ayrinti"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9
+    },
+    {
+      "anahtar": "paraAd",
+      "baslik": "Para adı",
+      "g": 2.4,
+      "pdf": false
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "kullanici",
+      "baslik": "Kullanıcı",
+      "g": 1.6
+    },
+    {
+      "anahtar": "alisMiktar",
+      "baslik": "Alış miktarı",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "alisTutar",
+      "baslik": "Alış tutarı (TL)",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "ortAlisKuru",
+      "baslik": "Ort. alış kuru",
+      "g": 1.5,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "satisMiktar",
+      "baslik": "Satış miktarı",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "satisTutar",
+      "baslik": "Satış tutarı (TL)",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "ortSatisKuru",
+      "baslik": "Ort. satış kuru",
+      "g": 1.5,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "makas",
+      "baslik": "Makas",
+      "g": 1.2,
+      "bicim": "kur"
+    }
+  ],
+  "grup": {
+    "anahtar": "gunBaslik",
+    "baslik": "{{gunBaslik}}",
+    "altToplam": true
+  }
+}

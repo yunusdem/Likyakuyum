@@ -20,6 +20,11 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
     }
   ],
   "kolonlar": [
@@ -76,6 +81,36 @@
       "g": 2.2,
       "bicim": "sayi4",
       "toplam": true
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.3,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "tlKarsiligi",
+      "baslik": "TL karşılığı",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kurSatis",
+      "baslik": "Satış kuru",
+      "g": 1.3,
+      "bicim": "kur",
+      "kosul": "kurIkisi",
+      "pdf": false
+    },
+    {
+      "anahtar": "tlSatis",
+      "baslik": "TL (satış kuru)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi"
     }
   ],
   "grup": {
@@ -83,5 +118,5 @@
     "baslik": "{{cariBaslik}}",
     "altToplam": false
   },
-  "dipnot": "Borç/alacak ve bakiye para biriminde; has karşılığı para tanımındaki has oranıyla hesaplanır ve yalnızca has karşılığı toplanır."
+  "dipnot": "Borç/alacak ve bakiye para biriminde. Has karşılığı = bakiye × para tanımındaki has oranı. TL karşılığı = bakiye × seçilen kur; firma açısından işaretlidir: carinin bize borcu (+), carinin bizden alacağı (−), toplamı net cari alacağımızdır."
 }

@@ -1,7 +1,7 @@
 {
-  "kod": "CARHAR1",
-  "ad": "Cari Hareket Listesi",
-  "aciklama": "Tarih aralığındaki tüm cari hareketleri; cari, vezne, para ve hareket tipi filtresi.",
+  "kod": "POSEKS1",
+  "ad": "POS Ekstre",
+  "aciklama": "POS / kredi kartı türündeki cari hareketler; POS cihazı ve para bazında gruplu.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -25,77 +25,47 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
-    },
-    {
-      "ad": "hareketTipleri",
-      "etiket": "Hareket tipi (seçilmezse tümü)",
-      "tip": "hareketTipi"
-    },
-    {
-      "ad": "siralama",
-      "etiket": "Sıralama",
-      "tip": "secim",
-      "secenekler": [
-        {
-          "deger": "tarih",
-          "ad": "Tarih"
-        },
-        {
-          "deger": "ad",
-          "ad": "Cari adı"
-        },
-        {
-          "deger": "kod",
-          "ad": "Cari kodu"
-        }
-      ],
-      "varsayilan": "tarih"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "tarih",
       "baslik": "Tarih",
-      "g": 1.6,
+      "g": 1.5,
       "bicim": "tarih"
     },
     {
       "anahtar": "fisNo",
       "baslik": "Fiş no",
-      "g": 1.0,
+      "g": 1,
       "hiza": "center"
     },
     {
       "anahtar": "cariKod",
-      "baslik": "Kod",
-      "g": 1.4,
-      "pdf": false
+      "baslik": "Cari kod",
+      "g": 1.4
     },
     {
       "anahtar": "cariAd",
       "baslik": "Cari adı",
-      "g": 4
-    },
-    {
-      "anahtar": "hareketTipi",
-      "baslik": "Hareket",
-      "g": 1.8
-    },
-    {
-      "anahtar": "tip",
-      "baslik": "B/A",
-      "g": 1,
-      "hiza": "center"
+      "g": 3.4
     },
     {
       "anahtar": "aciklama",
       "baslik": "Açıklama",
-      "g": 3.5
+      "g": 3.4
     },
     {
       "anahtar": "vezneKod",
       "baslik": "Vezne",
-      "g": 1,
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "posCihazi",
+      "baslik": "POS",
+      "g": 0.8,
       "hiza": "center",
       "pdf": false
     },
@@ -115,8 +85,9 @@
     }
   ],
   "grup": {
-    "anahtar": "paraKod",
-    "baslik": "Para birimi: {{paraKod}}",
-    "altToplam": true
+    "anahtar": "grupAnahtar",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true,
+    "genelToplam": false
   }
 }

@@ -1,0 +1,115 @@
+{
+  "kod": "KURKON1",
+  "ad": "Kur Sapma Raporu",
+  "aciklama": "Fişlerde uygulanan kurun kayıt anındaki gişe kurundan sapması; vezne, para ve sapma eşiğine göre.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "sapma",
+      "etiket": "En az sapma (%)",
+      "tip": "sayi",
+      "varsayilan": 0,
+      "not": "0 = kuru gişe kurundan farklı tüm satırlar"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 2.1,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 1.8
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 3,
+      "pdf": false
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Fiş kuru",
+      "g": 1.5,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "giseKuru",
+      "baslik": "Gişe kuru",
+      "g": 1.5,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "fark",
+      "baslik": "Fark",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "sapmaYuzde",
+      "baslik": "Sapma %",
+      "g": 1.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "tlEtkisi",
+      "baslik": "TL etkisi",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kaydeden",
+      "baslik": "Kaydeden",
+      "g": 1.5
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneBaslik",
+    "baslik": "{{vezneBaslik}}",
+    "altToplam": true
+  }
+}

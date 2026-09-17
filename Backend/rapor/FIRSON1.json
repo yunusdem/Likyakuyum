@@ -1,0 +1,101 @@
+{
+  "kod": "FIRSON1",
+  "ad": "Firma Son Durum Raporu",
+  "aciklama": "Para bazında firma net pozisyonu: vezne mevcudu, banka hesapları, cari alacak ve borçlar; seçilen kurla TL karşılığı.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "tarih",
+      "etiket": "Tarih",
+      "tip": "tarih",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1
+    },
+    {
+      "anahtar": "paraAd",
+      "baslik": "Para adı",
+      "g": 2.6,
+      "pdf": false
+    },
+    {
+      "anahtar": "vezne",
+      "baslik": "Vezne mevcudu",
+      "g": 2.1,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "banka",
+      "baslik": "Banka",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "cariAlacak",
+      "baslik": "Cari alacak",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "cariBorc",
+      "baslik": "Cari borç",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "net",
+      "baslik": "Net pozisyon",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.5,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tlKarsiligi",
+      "baslik": "TL karşılığı",
+      "g": 2.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kurSatis",
+      "baslik": "Satış kuru",
+      "g": 1.6,
+      "bicim": "kur",
+      "kosul": "kurIkisi"
+    },
+    {
+      "anahtar": "tlSatis",
+      "baslik": "TL (satış kuru)",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi"
+    }
+  ]
+}

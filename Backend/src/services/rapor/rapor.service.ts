@@ -5,7 +5,7 @@ import { ApiError } from "../../utils/ApiError.js";
 import { raporTanimOku, raporPdf } from "./raporMotor.js";
 import { raporExcel } from "./raporExcel.js";
 import { RAPOR_SORGULARI, type RaporParametreler } from "./raporVeri.js";
-import type { RaporTanim, RaporSonucVeri, RaporFirma } from "./raporTanim.js";
+import type { RaporTanim, RaporSonucVeri, RaporFirma, RaporSecimKaynagi } from "./raporTanim.js";
 
 export class RaporService {
   static async sablonlar(ctx?: DbContext) {
@@ -31,6 +31,8 @@ export class RaporService {
   static aramaKaydet(kullanici: string, kod: string, parametreler: Record<string, any>, ozet: string, ctx?: DbContext) {
     return RaporSqlRepository.aramaKaydet(kullanici, this.tanim(kod).kod, parametreler, ozet, ctx);
   }
+  /** Dürbün seçim listeleri (hesap, istatistik, meslek, sektör, kullanıcı, banka) — yalnızca SELECT */
+  static secimListesi(kaynak: RaporSecimKaynagi, ctx?: DbContext) { return RaporSqlRepository.secimListesi(kaynak, ctx); }
   static aramaSil(kullanici: string, kod: string, aramaId: number | undefined, ctx?: DbContext) { return RaporSqlRepository.aramaSil(kullanici, this.tanim(kod).kod, aramaId, ctx); }
 
   private static async firma(ctx?: DbContext): Promise<RaporFirma> {
@@ -42,14 +44,14 @@ export class RaporService {
     const v = await this.veri(kod, p, ctx);
     if (v.sinirAsildi) throw ApiError.badRequest(`Rapor ${v.toplamKayit} satır üretiyor; üst sınır ${v.tanim.ustSinir || 5000}. Tarih aralığını daraltın.`);
     const firma = await this.firma(ctx);
-    return { pdf: await raporPdf({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot }), tanim: v.tanim };
+    return { pdf: await raporPdf({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot, ozetSatirlar: v.ozetSatirlar }), tanim: v.tanim };
   }
 
   static async excel(kod: string, p: RaporParametreler, kullanici: string, ctx?: DbContext) {
     const v = await this.veri(kod, p, ctx);
     if (v.sinirAsildi) throw ApiError.badRequest(`Rapor ${v.toplamKayit} satır üretiyor; üst sınır ${v.tanim.ustSinir || 5000}. Tarih aralığını daraltın.`);
     const firma = await this.firma(ctx);
-    return { xlsx: await raporExcel({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot }), tanim: v.tanim };
+    return { xlsx: await raporExcel({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot, ozetSatirlar: v.ozetSatirlar }), tanim: v.tanim };
   }
 }
 

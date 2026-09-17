@@ -1,0 +1,179 @@
+{
+  "kod": "GUNFIS1",
+  "ad": "Günlük Fiş Detay Raporu",
+  "aciklama": "Seçilen günün fiş satırları; vezne ve fiş tipine göre gruplu, sonda para bazında genel toplam.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "tarih",
+      "etiket": "Tarih",
+      "tip": "tarih",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "zaman",
+      "baslik": "Saat",
+      "g": 1.9,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 1.8
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 3.4
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.5,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bmv",
+      "baslik": "BSMV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "grupAnahtar",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true
+  },
+  "ozet": {
+    "baslik": "GENEL TOPLAM — para bazında",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1.2
+      },
+      {
+        "anahtar": "tip",
+        "baslik": "Tip",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Fiş adedi",
+        "g": 1.2,
+        "bicim": "tam",
+        "toplam": true
+      },
+      {
+        "anahtar": "miktar",
+        "baslik": "Miktar",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "ortKur",
+        "baslik": "Ort. kur",
+        "g": 1.6,
+        "bicim": "kur"
+      },
+      {
+        "anahtar": "tutar",
+        "baslik": "Tutar (TL)",
+        "g": 2.4,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "komisyon",
+        "baslik": "Komisyon",
+        "g": 1.8,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "bmv",
+        "baslik": "BSMV",
+        "g": 1.6,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "kmv",
+        "baslik": "KMV",
+        "g": 1.6,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "kdv",
+        "baslik": "KDV",
+        "g": 1.6,
+        "bicim": "sayi",
+        "toplam": true,
+        "pdf": false
+      }
+    ]
+  }
+}

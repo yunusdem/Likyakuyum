@@ -774,6 +774,34 @@ export class MasakSqlRepository {
    * Eşleşme sorgusu (fiş / fatura / cari kontrolü).
    * Skor: 100 kimlik tam, 90 ad tam, 70 alias, 50 kelime bazlı.
    */
+  /**
+   * KNSK sorgulama logu — her kara liste sorgusunun izi (kim, ne zaman, kimi sorguladı, sonuç). "KNSK Sorgulama Log Listesi" raporu (KNSKLOG1) bunu okur.
+   * Tablo eski programın TODVZ_LOG_KNSK_SORGULAMA tablosudur (kolonlar canlıda doğrulandı 17.09.2026); yoksa aynı kolonlarla oluşturulur.
+   * Asla hata fırlatmaz: log yazılamazsa sorgu sonucu etkilenmez, yalnızca uyarı loglanır.
+   */
+  public static async knskLogYaz(
+    kayit: { kullaniciId: number | null; sorgulananAd: string; dogumTarihi: Date | null; kisilikTuru: number; basarili: boolean; karaListede: boolean; karaListeAdi: string; aciklama: string },
+    dbContext?: { dbServer?: string; dbName?: string }
+  ): Promise<void> {
+    try {
+      const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      await pool.request().query(`
+        IF OBJECT_ID('dbo.TODVZ_LOG_KNSK_SORGULAMA','U') IS NULL
+        BEGIN TRY
+          CREATE TABLE dbo.TODVZ_LOG_KNSK_SORGULAMA (
+            ZAMAN datetime NOT NULL, KULLANICI_ID int NULL, SORGULANAN_ADI varchar(200) NULL, SORGULANAN_DOGUM_TARIHI datetime NULL,
+            SORGULANAN_KISILIK_TURU tinyint NULL, SORGULAMA_BASARILI bit NOT NULL DEFAULT 0, KARA_LISTEDE bit NOT NULL DEFAULT 0,
+            KARA_LISTE_ADI varchar(200) NULL, ACIKLAMA varchar(200) NULL);
+        END TRY BEGIN CATCH IF ERROR_NUMBER() <> 2714 THROW; END CATCH;`);
+      await pool.request()
+        .input("kid", sql.Int, kayit.kullaniciId).input("ad", sql.VarChar(200), kayit.sorgulananAd.slice(0, 200)).input("dt", sql.DateTime, kayit.dogumTarihi)
+        .input("kt", sql.TinyInt, kayit.kisilikTuru).input("ok", sql.Bit, kayit.basarili).input("kl", sql.Bit, kayit.karaListede)
+        .input("kla", sql.VarChar(200), kayit.karaListeAdi.slice(0, 200)).input("ack", sql.VarChar(200), kayit.aciklama.slice(0, 200))
+        .query(`INSERT INTO dbo.TODVZ_LOG_KNSK_SORGULAMA (ZAMAN, KULLANICI_ID, SORGULANAN_ADI, SORGULANAN_DOGUM_TARIHI, SORGULANAN_KISILIK_TURU, SORGULAMA_BASARILI, KARA_LISTEDE, KARA_LISTE_ADI, ACIKLAMA)
+                VALUES (GETDATE(), @kid, @ad, @dt, @kt, @ok, @kl, @kla, @ack);`);
+    } catch (e) { logger.warn("MASAK: KNSK sorgulama logu yazılamadı (sorgu sonucu etkilenmedi):", e); }
+  }
+
   public static async sorgula(
     params: {
       kimlikNo?: string | null;

@@ -1,0 +1,77 @@
+{
+  "kod": "ISTKMV1",
+  "ad": "İstatistik Bazında KMV Raporu",
+  "aciklama": "Satış fişlerinde doğan kambiyo muameleleri vergisi; istatistik kodu, para ve KMV oranı bazında.",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "istatistikIdler",
+      "etiket": "İstatistik kodu (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "istatistik"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "adet",
+      "baslik": "Fiş adedi",
+      "g": 1.2,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 2.2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "matrah",
+      "baslik": "Matrah (TL)",
+      "g": 2.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kmvOrani",
+      "baslik": "KMV oranı",
+      "g": 1.4,
+      "bicim": "sayi4"
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    }
+  ],
+  "grup": {
+    "anahtar": "istatistikBaslik",
+    "baslik": "{{istatistikBaslik}}",
+    "altToplam": true
+  }
+}

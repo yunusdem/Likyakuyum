@@ -1,0 +1,121 @@
+{
+  "kod": "LONSHO1",
+  "ad": "Long / Short Denge Analizi",
+  "aciklama": "Döviz ve kıymetli maden pozisyonu: long, short, net, durum; vadeli dekontlar ve ortalama maliyete göre değerleme farkı.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "tarih",
+      "etiket": "Tarih",
+      "tip": "tarih",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 1
+    },
+    {
+      "anahtar": "paraAd",
+      "baslik": "Para adı",
+      "g": 2.6,
+      "pdf": false
+    },
+    {
+      "anahtar": "longMiktar",
+      "baslik": "Long",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "shortMiktar",
+      "baslik": "Short",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "net",
+      "baslik": "Net",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "durum",
+      "baslik": "Durum",
+      "g": 1.1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "vadeliNet",
+      "baslik": "Vadeli (net)",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "netVadeliDahil",
+      "baslik": "Net (vadeli dahil)",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tlKarsiligi",
+      "baslik": "Net TL",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "ortMaliyet",
+      "baslik": "Ort. maliyet kuru",
+      "g": 1.6,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "degerlemeFarki",
+      "baslik": "Değerleme farkı (TL)",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kurSatis",
+      "baslik": "Satış kuru",
+      "g": 1.6,
+      "bicim": "kur",
+      "kosul": "kurIkisi"
+    },
+    {
+      "anahtar": "tlSatis",
+      "baslik": "TL (satış kuru)",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi"
+    }
+  ]
+}

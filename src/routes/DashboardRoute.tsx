@@ -16,6 +16,7 @@ import {
 
 //import custom type
 import { MenuItemType } from "types/menuTypes";
+import { raporMenuAgaci } from "../services/raporService";
 
 export const DashboardMenu: MenuItemType[] = [
   // A- Vezne İşlemleri
@@ -124,18 +125,11 @@ export const DashboardMenu: MenuItemType[] = [
     id: uuid(),
     title: "G- Raporlar",
     icon: <IconReportAnalytics size={18} />,
-    // 9 gerçek rapor (docs/raporlar.md); kodlar src/services/raporService.ts RAPOR_MENU ile eşleşir
-    children: [
-      { id: uuid(), name: "A- Cari Bakiye Raporu", link: "raporlar/cari-bakiye" },
-      { id: uuid(), name: "B- Cari Ekstre", link: "raporlar/cari-ekstre" },
-      { id: uuid(), name: "C- Cari Hareket Listesi", link: "raporlar/cari-hareket-listesi" },
-      { id: uuid(), name: "D- Cari Kart Listesi", link: "raporlar/cari-kart-listesi" },
-      { id: uuid(), name: "E- Vezne Bakiye Raporu", link: "raporlar/vezne-bakiye" },
-      { id: uuid(), name: "F- Vezne Hareket Listesi", link: "raporlar/vezne-hareket-listesi" },
-      { id: uuid(), name: "G- Vergiler ve Komisyon", link: "raporlar/vergiler-komisyon" },
-      { id: uuid(), name: "H- Kâr / Zarar Faaliyet Analizi", link: "raporlar/kar-zarar" },
-      { id: uuid(), name: "I- Firma Varlıkları Raporu", link: "raporlar/firma-varliklari" },
-    ],
+    // İki kademeli: A- Cari, B- Kasa … altında A-, B-, C- raporlar; liste src/services/raporService.ts RAPOR_MENU'den üretilir (docs/raporlar-faz2.md)
+    children: raporMenuAgaci().map(g => ({
+      id: uuid(), title: g.baslik,
+      children: g.raporlar.map(r => ({ id: uuid(), name: r.ad, link: r.link })),
+    })),
   },
 
   // H- Belge / Fiş PDF (alış-satış fişi belgesi; docs/belgeverapor.md)

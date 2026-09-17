@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { MasakService } from "../services/masak.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { MasakSqlRepository } from "../models/masakSql.repository.js";
 
 export class MasakController {
   private static getDbContext(req: Request) {
@@ -116,15 +117,34 @@ export class MasakController {
   public static sorgula = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = MasakController.getDbContext(req);
 
-    const sonuc = await MasakService.sorgula(
-      {
-        ad: req.query.ad as string | undefined,
-        kimlikNo: req.query.kimlikNo as string | undefined,
-        dogumTarihi: req.query.dogumTarihi as string | undefined,
-        limit: req.query.limit ? Number(req.query.limit) : undefined,
-      },
-      dbContext
-    );
+    // KNSK sorgulama logu (rapor: KNSK Sorgulama Log Listesi). Yanıtı bekletmez ve asla hata fırlatmaz; sorgu davranışı değişmez.
+    const ad = String(req.query.ad || "").trim(), kimlikNo = String(req.query.kimlikNo || "").replace(/\s/g, "");
+    const dt = req.query.dogumTarihi ? new Date(String(req.query.dogumTarihi)) : null;
+    const knskLog = (basarili: boolean, kayitlar: { listeAdi?: string | null; listeKod?: string | null; skor?: number }[], aciklama: string) => {
+      const listeler = [...new Set(kayitlar.map(k => String(k.listeAdi || k.listeKod || "").trim()).filter(Boolean))].join(", ");
+      void MasakSqlRepository.knskLogYaz({
+        kullaniciId: Number(req.user?.userId) || null, sorgulananAd: ad || kimlikNo, dogumTarihi: dt && !Number.isNaN(dt.getTime()) ? dt : null,
+        kisilikTuru: req.query.kisilikTuru !== undefined ? (Number(req.query.kisilikTuru) === 1 ? 1 : 0) : kimlikNo.length === 10 ? 1 : 0,
+        basarili, karaListede: kayitlar.length > 0, karaListeAdi: listeler, aciklama,
+      }, dbContext);
+    };
+
+    let sonuc: Awaited<ReturnType<typeof MasakService.sorgula>>;
+    try {
+      sonuc = await MasakService.sorgula(
+        {
+          ad: req.query.ad as string | undefined,
+          kimlikNo: req.query.kimlikNo as string | undefined,
+          dogumTarihi: req.query.dogumTarihi as string | undefined,
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+        },
+        dbContext
+      );
+    } catch (e: any) {
+      if (ad || kimlikNo) knskLog(false, [], `Sorgu tamamlanamadı: ${e?.message || e}`);
+      throw e;
+    }
+    knskLog(true, sonuc.kayitlar as any[], [kimlikNo ? `Kimlik no: ${kimlikNo}` : "", sonuc.kayitlar.length ? `${sonuc.kayitlar.length} olası eşleşme, en yüksek skor ${sonuc.enYuksekSkor}` : "Eşleşme yok"].filter(Boolean).join(" · "));
 
     const mesaj = sonuc.eslesmeVar
       ? `MASAK listelerinde ${sonuc.kayitlar.length} olası eşleşme bulundu.`

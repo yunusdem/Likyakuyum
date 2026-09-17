@@ -1,0 +1,142 @@
+{
+  "kod": "KARLIL1",
+  "ad": "Kârlılık Raporu",
+  "aciklama": "Satış işlemlerinin ağırlıklı ortalama maliyete göre kârı; işlem bazında, para grubu ile.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "tarih",
+          "ad": "Tarih"
+        },
+        {
+          "deger": "kar",
+          "ad": "Net kâr (büyükten küçüğe)"
+        }
+      ],
+      "varsayilan": "tarih"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 2.1,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 1.7
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 2.8,
+      "pdf": false
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "satisKuru",
+      "baslik": "Satış kuru",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "maliyetKuru",
+      "baslik": "Maliyet kuru",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "satisTutari",
+      "baslik": "Satış (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "maliyetTutari",
+      "baslik": "Maliyet (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "brutKar",
+      "baslik": "Brüt kâr",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.5,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "vergiler",
+      "baslik": "Vergiler",
+      "g": 1.5,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "netKar",
+      "baslik": "Net kâr",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "karYuzde",
+      "baslik": "Kâr %",
+      "g": 1.1,
+      "bicim": "sayi"
+    }
+  ],
+  "grup": {
+    "anahtar": "paraBaslik",
+    "baslik": "{{paraBaslik}}",
+    "altToplam": true
+  },
+  "dipnot": "Yöntem: ağırlıklı ortalama maliyet (Kâr / Zarar Faaliyet Analizi ile aynı). Maliyet, kayıtların başından itibaren alışlarla yürütülür; stok yokken yapılan satışta son bilinen ortalama, o da yoksa satış kuru maliyet sayılır. Brüt kâr = satış − maliyet; net kâr = brüt + komisyon − (BSMV + KMV + KDV); kâr % = brüt kâr / maliyet. TL satırları ve iptal fişler hariçtir."
+}

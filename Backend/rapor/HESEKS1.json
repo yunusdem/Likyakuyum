@@ -1,0 +1,86 @@
+{
+  "kod": "HESEKS1",
+  "ad": "Hesap Ekstresi",
+  "aciklama": "Seçilen kasa hesaplarının tarih aralığındaki hareketleri; hesap × para grubu, devir ve yürüyen bakiye.",
+  "kagit": "A4",
+  "parametreler": [
+    {
+      "ad": "hesapIdler",
+      "etiket": "Hesap (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "hesap",
+      "zorunlu": true
+    },
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.5,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 4.4
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "giris",
+      "baslik": "Giriş",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "cikis",
+      "baslik": "Çıkış",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "bakiye",
+      "baslik": "Bakiye",
+      "g": 2.1,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV (TL)",
+      "g": 1.3,
+      "bicim": "sayi",
+      "pdf": false
+    },
+    {
+      "anahtar": "kaydeden",
+      "baslik": "Kaydeden",
+      "g": 1.4,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "grupAnahtar",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true,
+    "genelToplam": false
+  }
+}

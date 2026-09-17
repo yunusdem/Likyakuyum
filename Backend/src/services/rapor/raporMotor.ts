@@ -49,6 +49,8 @@ export interface RaporPdfGirdi {
   firma: RaporFirma;
   kullanici: string;
   ekDipnot?: string;
+  /** `tanim.ozet` bölümünün satırları */
+  ozetSatirlar?: Record<string, any>[];
 }
 
 const sayisal = (b?: RaporBicim) => b === "sayi" || b === "sayi4" || b === "kur" || b === "tam";
@@ -69,9 +71,10 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
     const sol = kenar, genislik = doc.page.width - 2 * kenar;
     const altSinir = doc.page.height - kenar - 22; // altlık payı
     // PDF'te yalnızca pdf !== false kolonlar; ayrıntı kolonları ekran ve Excel'de kalır (kısa-öz çıktı)
-    const kolonlar = g.tanim.kolonlar.filter(k => k.pdf !== false);
-    const toplamG = kolonlar.reduce((t, k) => t + (k.g || 1), 0);
-    const kolonG = kolonlar.map(k => ((k.g || 1) / toplamG) * genislik);
+    // (özet bölümüne geçilince kolon kümesi değişir; sayfa başlığı her zaman geçerli kümeyi basar)
+    let kolonlar = g.tanim.kolonlar.filter(k => k.pdf !== false);
+    const genislikler = (ks: RaporKolon[]) => { const tg = ks.reduce((t, k) => t + (k.g || 1), 0); return ks.map(k => ((k.g || 1) / tg) * genislik); };
+    let kolonG = genislikler(kolonlar);
     const satirH = 17, boyut = 8;
     let zebra = 0;
     const ustSayfa = () => kenar;
@@ -87,6 +90,7 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
     };
 
     let y = 0;
+    let ozetSayfasi = false; // özet bölümüne geçildi: yeni sayfalarda bölüm başlığı yinelenir
 
     const sayfaBasligi = () => {
       y = ustSayfa();
@@ -103,6 +107,7 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
       doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(1).strokeColor("#222").stroke();
       y += 6;
       zebra = 0;
+      if (ozetSayfasi && g.tanim.ozet) { doc.fillColor("#111"); hucre(g.tanim.ozet.baslik, sol, y, genislik, "left", true, boyut + 1.5); y += satirH; }
       kolonBasliklari();
     };
 
@@ -179,10 +184,21 @@ export async function raporPdf(g: RaporPdfGirdi): Promise<Buffer> {
         for (const s of uyeler) satirYaz(s);
         if (grup.altToplam !== false && kolonlar.some(k => k.toplam)) toplamSatiri(uyeler, "Ara toplam", "#eef0f3");
       }
-      if (kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
+      if (grup.genelToplam !== false && kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
     } else {
       for (const s of g.satirlar) satirYaz(s);
       if (kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
+    }
+
+    // Özet bölümü (Crystal alt raporu karşılığı): başlık + kendi kolonları + satırlar + toplam
+    if (g.tanim.ozet && g.ozetSatirlar?.length) {
+      const oz = g.tanim.ozet;
+      kolonlar = oz.kolonlar.filter(k => k.pdf !== false); kolonG = genislikler(kolonlar);
+      if (y + satirH * 5 > altSinir) { doc.addPage(); ozetSayfasi = true; sayfaBasligi(); }
+      else { y += 14; doc.fillColor("#111"); hucre(oz.baslik, sol, y, genislik, "left", true, boyut + 1.5); y += satirH; zebra = 0; kolonBasliklari(); }
+      ozetSayfasi = true;
+      for (const s of g.ozetSatirlar) satirYaz(s);
+      if (kolonlar.some(k => k.toplam)) toplamSatiri(g.ozetSatirlar, "Toplam", "#dfe3e8");
     }
 
     const dipnot = [g.tanim.dipnot, g.ekDipnot].filter(Boolean).join("\n");
