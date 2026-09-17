@@ -181,7 +181,7 @@ export class CariSqlRepository {
             const [tabloMaddeleri, ulkeler, paralar, istatistikler] = await Promise.all([
                 pool.request().query("SELECT TABLO_MADDESI_ID as id, TUR as tur, AD as ad, KOD as kod FROM [dbo].[TODVZ_TABLO_MADDESI] ORDER BY AD"),
                 pool.request().query("SELECT ULKE_ID as id, AD as ad, KOD as kod FROM [dbo].[TODVZ_ULKE] ORDER BY AD"),
-                pool.request().query("SELECT PARA_ID as id, KOD as kod, AD as ad FROM [dbo].[TODVZ_PARA] ORDER BY SIRA_NO ASC, KOD ASC"),
+                pool.request().query("SELECT PARA_ID as id, KOD as kod, AD as ad FROM [dbo].[TODVZ_PARA] ORDER BY PARA_ID ASC"),
                 pool.request().query("SELECT ISTATISTIK_ID as id, KOD as kod, ACIKLAMA as ad, FIS_TIPI as fisTipi FROM [dbo].[TODVZ_ISTATISTIK] ORDER BY KOD ASC"),
             ]);
             const items = tabloMaddeleri.recordset || [];

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Row, Col, Card, Form, Button, Alert, InputGroup, Modal, Dropdown } from "react-bootstrap";
 import {
   IconBarcode,
@@ -22,6 +23,7 @@ import {
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import { AyarSecimModal } from "../../components/common/AyarSecimModal";
 import EtiketYazdirModal, { EtiketYazdirItem } from "./EtiketYazdirModal";
 import {
   EtiketService,
@@ -31,6 +33,7 @@ import {
   EtiketGrupItem,
   BankoItem,
 } from "../../services/etiketService";
+import { AyarService, AyarItem } from "../../services/ayarService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { envConfig } from "../../config/env.config";
@@ -78,6 +81,10 @@ const format3Digits = (val: number | string | undefined | null): string => {
 };
 
 export const AltinUrunTanimlamaPage: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isDuzeltmeMode = location.pathname.includes("duzeltme");
+
   // ─── Form State ─────────────────────────────────────────────────────────────
   const [altinUrunId, setAltinUrunId] = useState<number | null>(null);
   const [tarih, setTarih] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -85,6 +92,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const [urunNo, setUrunNo] = useState<number | string>("");
   const [barkod, setBarkod] = useState<string>("");
   const [ayar, setAyar] = useState<string>("");
+  const [ayarList, setAyarList] = useState<AyarItem[]>([]);
+  const [showAyarModal, setShowAyarModal] = useState<boolean>(false);
   const [ureticiFirma, setUreticiFirma] = useState<string>("");
   const [orjinalKod, setOrjinalKod] = useState<string>("");
   const [model, setModel] = useState<string>("");
@@ -173,6 +182,21 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     grupKoduRef.current?.focus();
   }, []);
 
+  const extractApiErrorMessage = (err: any, defaultMsg: string): string => {
+    if (!err) return defaultMsg;
+    if (typeof err === "string") return err;
+    const respMsg = err.response?.data?.message || err.response?.data?.error || err.response?.data?.hata;
+    if (respMsg && typeof respMsg === "string" && respMsg.trim()) {
+      return respMsg.trim();
+    }
+    if (err.message && typeof err.message === "string" && err.message.trim()) {
+      const msg = err.message.trim();
+      if (msg.startsWith("Error: ")) return msg.replace(/^Error:\s*/, "");
+      return msg;
+    }
+    return defaultMsg;
+  };
+
   const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
     setModalNotif({ type, message: msg });
   };
@@ -202,18 +226,37 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  const format5 = (num: number): string => {
-    if (num === undefined || num === null || isNaN(num) || num <= 0) return "";
-    return num.toFixed(5);
+  const format5 = (num: number | string | undefined | null): string => {
+    if (num === undefined || num === null || num === "") return "";
+    const parsed = typeof num === "number" ? num : parseNum(num);
+    if (isNaN(parsed) || parsed <= 0) return "";
+    return parsed.toFixed(5);
   };
 
-  const format2 = (num: number): string => {
-    if (num === undefined || num === null || isNaN(num) || num <= 0) return "";
-    return num.toFixed(2);
+  const format2 = (num: number | string | undefined | null): string => {
+    if (num === undefined || num === null || num === "") return "";
+    const parsed = typeof num === "number" ? num : parseNum(num);
+    if (isNaN(parsed) || parsed <= 0) return "";
+    return parsed.toFixed(2);
   };
 
-  const getMilyemFromAyar = (ayarStr: string): number => {
+  const getMilyemFromAyar = useCallback((ayarStr: string): number => {
+    if (!ayarStr || !ayarStr.trim()) return 916;
     const normalized = (ayarStr || "").trim().toUpperCase();
+
+    // 1. Check database loaded Ayar list (TODVZ_AYAR)
+    const foundInDb = ayarList.find(
+      (a) =>
+        a.ayarKodu.toUpperCase().trim() === normalized ||
+        a.ayarAdi.toUpperCase().trim() === normalized ||
+        `${a.ayarKodu} AYAR`.toUpperCase().trim() === normalized ||
+        `${a.standartAyar} AYAR`.toUpperCase().trim() === normalized
+    );
+    if (foundInDb && foundInDb.milyem > 0) {
+      return Math.round(foundInDb.milyem * 1000);
+    }
+
+    // 2. Static map fallback
     if (AYAR_MILYEM_MAP[normalized]) {
       return AYAR_MILYEM_MAP[normalized];
     }
@@ -231,52 +274,81 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       }
     }
     return 916;
-  };
+  }, [ayarList]);
 
   // ─── Kur Dönüşüm Fonksiyonları (HAS <-> Döviz / TL) ──────────────────────────
+  interface RateOverrides {
+    hasKuru1?: string | number;
+    hasKuru2?: string | number;
+    usdKuru1?: string | number;
+    usdKuru2?: string | number;
+    maliyetPara?: string;
+    satisPara?: string;
+  }
+
+  // ─── Kur Dönüşüm Fonksiyonları (HAS <-> Döviz / TL) ──────────────────────────
+  // Alt banttaki HAS Alış/Satış ve USD Alış/Satış kurlarını doğrudan referans alır
+  const getRateForCurrency = useCallback(
+    (paraKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
+      const pKod = (paraKodu || "HAS").toUpperCase();
+      if (pKod === "HAS") return 1;
+
+      if (pKod === "TL" || pKod === "TRY") {
+        const activeH1 = overrides?.hasKuru1 !== undefined ? String(overrides.hasKuru1) : hasKuru1;
+        const activeH2 = overrides?.hasKuru2 !== undefined ? String(overrides.hasKuru2) : hasKuru2;
+        const val = ref === "alis" ? parseNum(activeH1) : parseNum(activeH2);
+        if (val > 0) return val;
+        const hasRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "HAS");
+        return ref === "alis"
+          ? (hasRow?.efektifAlis || hasRow?.dovizAlis || 1)
+          : (hasRow?.efektifSatis || hasRow?.dovizSatis || 1);
+      }
+
+      if (pKod === "USD" || pKod === "$") {
+        const activeU1 = overrides?.usdKuru1 !== undefined ? String(overrides.usdKuru1) : usdKuru1;
+        const activeU2 = overrides?.usdKuru2 !== undefined ? String(overrides.usdKuru2) : usdKuru2;
+        const val = ref === "alis" ? parseNum(activeU1) : parseNum(activeU2);
+        if (val > 0) return val;
+        const usdRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "USD");
+        return ref === "alis"
+          ? (usdRow?.efektifAlis || usdRow?.dovizAlis || 1)
+          : (usdRow?.efektifSatis || usdRow?.dovizSatis || 1);
+      }
+
+      const curRow = kurRows.find((k) => (k.kod || "").toUpperCase() === pKod);
+      if (curRow) {
+        return ref === "alis"
+          ? (curRow.efektifAlis || curRow.dovizAlis || 1)
+          : (curRow.efektifSatis || curRow.dovizSatis || 1);
+      }
+      return 1;
+    },
+    [hasKuru1, hasKuru2, usdKuru1, usdKuru2, kurRows]
+  );
+
   const convertToHas = useCallback(
-    (amount: number, paraKodu: string, ref: "alis" | "satis" = "alis"): number => {
+    (amount: number, paraKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
       if (!amount || isNaN(amount)) return 0;
       const pKod = (paraKodu || "HAS").toUpperCase();
       if (pKod === "HAS") return amount;
-
-      const hasRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "HAS");
-      const hasRate = ref === "alis" ? (hasRow?.dovizAlis || parseNum(hasKuru1) || 1) : (hasRow?.dovizSatis || parseNum(hasKuru2) || 1);
-
-      if (pKod === "TL" || pKod === "TRY") {
-        return hasRate > 0 ? amount / hasRate : 0;
-      }
-
-      const curRow = kurRows.find((k) => (k.kod || "").toUpperCase() === pKod);
-      const curRate = ref === "alis" ? (curRow?.dovizAlis || (pKod === "USD" ? parseNum(usdKuru1) : 1) || 1) : (curRow?.dovizSatis || (pKod === "USD" ? parseNum(usdKuru2) : 1) || 1);
-
-      return hasRate > 0 ? (amount * curRate) / hasRate : 0;
+      const rate = getRateForCurrency(pKod, ref, overrides);
+      return rate > 0 ? amount / rate : 0;
     },
-    [kurRows, hasKuru1, hasKuru2, usdKuru1, usdKuru2]
+    [getRateForCurrency]
   );
 
   const convertFromHas = useCallback(
-    (hasAmount: number, targetParaKodu: string, ref: "alis" | "satis" = "alis"): number => {
+    (hasAmount: number, targetParaKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
       if (!hasAmount || isNaN(hasAmount)) return 0;
       const pKod = (targetParaKodu || "HAS").toUpperCase();
       if (pKod === "HAS") return hasAmount;
-
-      const hasRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "HAS");
-      const hasRate = ref === "alis" ? (hasRow?.dovizAlis || parseNum(hasKuru1) || 1) : (hasRow?.dovizSatis || parseNum(hasKuru2) || 1);
-
-      if (pKod === "TL" || pKod === "TRY") {
-        return hasAmount * hasRate;
-      }
-
-      const curRow = kurRows.find((k) => (k.kod || "").toUpperCase() === pKod);
-      const curRate = ref === "alis" ? (curRow?.dovizAlis || (pKod === "USD" ? parseNum(usdKuru1) : 1) || 1) : (curRow?.dovizSatis || (pKod === "USD" ? parseNum(usdKuru2) : 1) || 1);
-
-      return curRate > 0 ? (hasAmount * hasRate) / curRate : 0;
+      const rate = getRateForCurrency(pKod, ref, overrides);
+      return hasAmount * rate;
     },
-    [kurRows, hasKuru1, hasKuru2, usdKuru1, usdKuru2]
+    [getRateForCurrency]
   );
 
-  // ─── Otomatik Hesaplama Motoru (Sağ Blok -> Sol Blok Senkronizasyonu) ───────
+  // ─── Otomatik Hesaplama Motoru (Kesin Kuyumculuk Formülleri) ──────────────────
   const recalculateAll = useCallback(
     (
       curMiktar: number | string,
@@ -285,14 +357,17 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       curMaliyetIscilikPara: string,
       curMaliyetBirim: string,
       curSatisIscilik: number | string,
-      curKurRef: "alis" | "satis"
+      curKurRef: "alis" | "satis",
+      overrides?: RateOverrides
     ) => {
+      const activeMaliyetPara = overrides?.maliyetPara || maliyetParaKodu;
+      const activeSatisPara = overrides?.satisPara || satisParaKodu;
       const mMiktar = parseNum(curMiktar);
       const mMaliyetIscilik = parseNum(curMaliyetIscilik);
       const mSatisIscilik = parseNum(curSatisIscilik);
       const milyem = getMilyemFromAyar(curAyar);
 
-      // 1. Miktar Has Karşılığı (Miktar * Milyem / 1000) - 5 hane
+      // 1. Miktar Has Karşılığı (Ürün Has) = Miktar * (Ayar Milyemi) (Tam 5 Hane)
       const calcHasNum = mMiktar > 0 ? mMiktar * (milyem / 1000) : 0;
       setHasGram(calcHasNum > 0 ? format5(calcHasNum) : "");
 
@@ -304,40 +379,54 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
             : mMaliyetIscilik
           : 0;
 
-      const calcMaliyetIscilikHas = convertToHas(rawMaliyetIscilikNum, curMaliyetIscilikPara, curKurRef);
+      const calcMaliyetIscilikHas = convertToHas(rawMaliyetIscilikNum, curMaliyetIscilikPara, curKurRef, overrides);
       setMaliyetIscilikTutari(calcMaliyetIscilikHas > 0 ? format5(calcMaliyetIscilikHas) : "");
 
-      // 3. Satış İşçilik Tutarı (Gram ise Miktar * İşçilik, Adet ise İşçilik)
-      const calcSatisIscilikNum =
+      // 3. Satış İşçilik Has Karşılığı (Gram ise Miktar * İşçilik, Adet ise İşçilik)
+      const rawSatisIscilikNum =
         mSatisIscilik > 0
           ? curMaliyetBirim === "Gram"
             ? mSatisIscilik * (mMiktar > 0 ? mMiktar : 1)
             : mSatisIscilik
           : 0;
-      setSatisIscilikTutari(calcSatisIscilikNum > 0 ? format5(calcSatisIscilikNum) : "");
 
-      // 4. Toplam Has = Ürün Miktarı Has + Maliyet İşçilik Has (5 hane hassasiyet)
+      const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, curMaliyetIscilikPara, curKurRef, overrides);
+      setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : "");
+
+      // 4. Toplam Has (Maliyet) = Miktar Has Karşılığı + Maliyet İşçilik Has Karşılığı (Tam 5 hane)
       const calcToplamHasNum = calcHasNum + calcMaliyetIscilikHas;
       const formattedToplamHas = calcToplamHasNum > 0 ? format5(calcToplamHasNum) : "";
       setToplamHas(formattedToplamHas);
 
-      // 5. Sol Blok Senkronizasyonu: Maliyet (HAS) = Toplam Has
+      // 5. Sol Blok - Maliyet
       if (calcToplamHasNum > 0) {
         setMaliyet(formattedToplamHas);
-        setMaliyetDoviz(format2(convertFromHas(calcToplamHasNum, maliyetParaKodu, curKurRef)));
-
-        const kYuzde = parseNum(satisKariYuzde);
-        const calcSatisHasNum = calcToplamHasNum * (1 + kYuzde / 100);
-        setSatisFiyati(format5(calcSatisHasNum));
-        setSatisDoviz(format2(convertFromHas(calcSatisHasNum, satisParaKodu, curKurRef)));
+        setMaliyetDoviz(format2(convertFromHas(calcToplamHasNum, activeMaliyetPara, curKurRef, overrides)));
       } else {
         setMaliyet("");
         setMaliyetDoviz("");
+      }
+
+      // 6. Sol Blok - Satış Fiyatı = Miktar Has Karşılığı + Satış İşçilik Has Karşılığı
+      const calcSatisHasNum = calcHasNum + calcSatisIscilikHas;
+      if (calcSatisHasNum > 0) {
+        setSatisFiyati(format5(calcSatisHasNum));
+        setSatisDoviz(format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)));
+
+        // 7. Satış Kârı % (Salt okunur bilgi): ((Satış Fiyatı HAS - Maliyet HAS) / Maliyet HAS) * 100
+        if (calcToplamHasNum > 0) {
+          const derivedKar = ((calcSatisHasNum - calcToplamHasNum) / calcToplamHasNum) * 100;
+          setSatisKariYuzde(derivedKar.toFixed(2));
+        } else {
+          setSatisKariYuzde("");
+        }
+      } else {
         setSatisFiyati("");
         setSatisDoviz("");
+        setSatisKariYuzde("");
       }
     },
-    [convertToHas, convertFromHas, maliyetParaKodu, satisParaKodu, satisKariYuzde]
+    [convertToHas, convertFromHas, getMilyemFromAyar, maliyetParaKodu, satisParaKodu]
   );
 
   const handleAyarChange = (newAyar: string) => {
@@ -365,97 +454,36 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, newBirim, satisIscilik, kurRef);
   };
 
-  // ─── Sol Fiyatlandırma Handlers (Maliyet, Satış & Kâr) ─────────────────────
+  // ─── Kur Referansı & Alt Bant Handlers ─────────────────────────────────────
   const handleKurRefChange = (newRef: "alis" | "satis") => {
     setKurRef(newRef);
-    const mHas = parseNum(maliyet);
-    if (mHas > 0) {
-      setMaliyetDoviz(format2(convertFromHas(mHas, maliyetParaKodu, newRef)));
-    }
-    const sHas = parseNum(satisFiyati);
-    if (sHas > 0) {
-      setSatisDoviz(format2(convertFromHas(sHas, satisParaKodu, newRef)));
-    }
     recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, newRef);
   };
 
-  const handleMaliyetHasChange = (val: string) => {
-    setMaliyet(val);
-    const mNum = parseNum(val);
-    if (mNum > 0) {
-      setMaliyetDoviz(format2(convertFromHas(mNum, maliyetParaKodu, kurRef)));
-    } else {
-      setMaliyetDoviz("");
-    }
+  const handleHasKuru1Change = (val: string) => {
+    setHasKuru1(val);
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru1: val });
   };
 
-  const handleMaliyetDovizChange = (val: string) => {
-    setMaliyetDoviz(val);
-    const dNum = parseNum(val);
-    if (dNum > 0) {
-      setMaliyet(format5(convertToHas(dNum, maliyetParaKodu, kurRef)));
-    } else {
-      setMaliyet("");
-    }
+  const handleHasKuru2Change = (val: string) => {
+    setHasKuru2(val);
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru2: val });
   };
 
-  const handleSatisHasChange = (val: string) => {
-    setSatisFiyati(val);
-    const sNum = parseNum(val);
-    if (sNum > 0) {
-      setSatisDoviz(format2(convertFromHas(sNum, satisParaKodu, kurRef)));
-      const mNum = parseNum(maliyet);
-      if (mNum > 0) {
-        setSatisKariYuzde(Number((((sNum - mNum) / mNum) * 100).toFixed(2)));
-      }
-    } else {
-      setSatisDoviz("");
-    }
+  const handleUsdKuru1Change = (val: string) => {
+    setUsdKuru1(val);
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru1: val });
   };
 
-  const handleSatisDovizChange = (val: string) => {
-    setSatisDoviz(val);
-    const dNum = parseNum(val);
-    if (dNum > 0) {
-      const sHas = convertToHas(dNum, satisParaKodu, kurRef);
-      setSatisFiyati(format5(sHas));
-      const mNum = parseNum(maliyet);
-      if (mNum > 0 && sHas > 0) {
-        setSatisKariYuzde(Number((((sHas - mNum) / mNum) * 100).toFixed(2)));
-      }
-    } else {
-      setSatisFiyati("");
-    }
-  };
-
-  const handleMaliyetKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const mNum = parseNum(maliyet);
-      const yNum = parseNum(satisKariYuzde) || 100;
-      if (mNum > 0) {
-        const newSatis = format5(mNum * (1 + yNum / 100));
-        setSatisFiyati(newSatis);
-        setSatisDoviz(format2(convertFromHas(parseNum(newSatis), satisParaKodu, kurRef)));
-      }
-    }
-  };
-
-  const handleKarYuzdeChange = (val: string) => {
-    setSatisKariYuzde(val);
-    const yNum = parseNum(val);
-    const mNum = parseNum(maliyet);
-    if (mNum > 0 && yNum > 0) {
-      const newSatis = format5(mNum * (1 + yNum / 100));
-      setSatisFiyati(newSatis);
-      setSatisDoviz(format2(convertFromHas(parseNum(newSatis), satisParaKodu, kurRef)));
-    }
+  const handleUsdKuru2Change = (val: string) => {
+    setUsdKuru2(val);
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru2: val });
   };
 
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
-      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar] = await Promise.all([
+      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar, ayarlar] = await Promise.all([
         EtiketService.getAltinUrunler({ limit: 500 }),
         EtiketService.getGruplar(0).catch(() => []),
         EtiketService.getUreticiFirmalar().catch(() => []),
@@ -463,6 +491,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         EtiketService.getSablonlar(0).catch(() => []),
         KurService.getKurTablosu({ tur: 0 }).then((t) => t?.satirlar || []).catch(() => []),
         EtiketService.getBankolar().catch(() => []),
+        AyarService.getAyarlar(false).catch(() => []),
       ]);
 
       setAltinList(urunler);
@@ -472,28 +501,54 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setCariList(cariler);
       setSablonlar(sabl);
       setKurRows(kurlar);
+      setAyarList(ayarlar);
 
-      // Kurları otomatik doldur (HAS & USD)
+      // Kurları otomatik doldur (HAS & USD) - Öncelik Efektif Alış / Efektif Satış
       if (kurlar.length > 0) {
         const hasKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
         if (hasKur) {
-          if (hasKur.dovizAlis !== undefined && hasKur.dovizAlis !== null) setHasKuru1(hasKur.dovizAlis);
-          if (hasKur.dovizSatis !== undefined && hasKur.dovizSatis !== null) setHasKuru2(hasKur.dovizSatis);
+          const hAlis = (hasKur.efektifAlis !== undefined && hasKur.efektifAlis !== null && Number(hasKur.efektifAlis) > 0) ? hasKur.efektifAlis : hasKur.dovizAlis;
+          const hSatis = (hasKur.efektifSatis !== undefined && hasKur.efektifSatis !== null && Number(hasKur.efektifSatis) > 0) ? hasKur.efektifSatis : hasKur.dovizSatis;
+          if (hAlis !== undefined && hAlis !== null) setHasKuru1(hAlis);
+          if (hSatis !== undefined && hSatis !== null) setHasKuru2(hSatis);
         }
         const usdKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "USD");
         if (usdKur) {
-          if (usdKur.dovizAlis !== undefined && usdKur.dovizAlis !== null) setUsdKuru1(usdKur.dovizAlis);
-          if (usdKur.dovizSatis !== undefined && usdKur.dovizSatis !== null) setUsdKuru2(usdKur.dovizSatis);
+          const uAlis = (usdKur.efektifAlis !== undefined && usdKur.efektifAlis !== null && Number(usdKur.efektifAlis) > 0) ? usdKur.efektifAlis : usdKur.dovizAlis;
+          const uSatis = (usdKur.efektifSatis !== undefined && usdKur.efektifSatis !== null && Number(usdKur.efektifSatis) > 0) ? usdKur.efektifSatis : usdKur.dovizSatis;
+          if (uAlis !== undefined && uAlis !== null) setUsdKuru1(uAlis);
+          if (uSatis !== undefined && uSatis !== null) setUsdKuru2(uSatis);
         }
       }
     } catch (err: any) {
-      showNotif("danger", err?.message || "Veriler yüklenirken hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Altın ürün ve etiket tanımlama verileri yüklenirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     }
   }, []);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
+
+  useEffect(() => {
+    if (isDuzeltmeMode && altinList.length > 0 && !altinUrunId) {
+      const queryParams = new URLSearchParams(location.search);
+      const queryId = queryParams.get("id");
+      if (queryId) {
+        const match = altinList.find((u) => u.altinUrunId === parseInt(queryId, 10));
+        if (match) handleSelectRecord(match);
+        else handleSelectRecord(altinList[altinList.length - 1]);
+      } else {
+        handleSelectRecord(altinList[altinList.length - 1]);
+      }
+    } else if (!isDuzeltmeMode && altinUrunId) {
+      handleNew();
+    }
+    const timer = setTimeout(() => {
+      grupKoduRef.current?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [isDuzeltmeMode, altinList, location.pathname, location.search]);
 
   // ─── F1 / F2 / F3 Klavye Kısayolları ──────────────────────────────────────────────
   useEffect(() => {
@@ -578,11 +633,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     setSatisFiyati("");
     setSatisDoviz("");
     setSatisParaKodu("USD");
-    setSatisKariYuzde(100);
+    setSatisKariYuzde("");
     setResim(null);
     setResimler([]);
     setSeciliResimIndex(0);
-    showNotif("warning", "Yeni kayıt modu. Ürün bilgilerini girip 'Kaydet' butonuna basınız.");
   };
 
   // ─── Kayıt Seçme ─────────────────────────────────────────────────────────────
@@ -598,14 +652,14 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     setOrjinalKod(it.orjinalKod || "");
     setModel(it.model || "");
     setBanko(it.banko || "Banko 1");
-    setMiktar(it.miktar || "");
+    setMiktar(it.miktar ? format5(it.miktar) : "");
     const itMiktar = parseNum(it.miktar || "");
     const itAyar = it.ayar || "";
     const calcHasNum = itMiktar > 0 ? itMiktar * (getMilyemFromAyar(itAyar) / 1000) : 0;
     const itHasGram = it.hasGram ? parseNum(it.hasGram) : calcHasNum;
     setHasGram(itHasGram > 0 ? format5(itHasGram) : "");
 
-    setMaliyetIscilik(it.maliyetIscilik || "");
+    setMaliyetIscilik(it.maliyetIscilik ? format5(it.maliyetIscilik) : "");
     const itIscilikPara = it.maliyetIscilikParaKodu || "HAS";
     const itIscilikBirim = it.maliyetIscilikBirim || "Gram";
     setMaliyetIscilikParaKodu(itIscilikPara);
@@ -617,18 +671,19 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     const itIscilikTutari = it.maliyetIscilikTutari ? parseNum(it.maliyetIscilikTutari) : calcMaliyetIscilikHas;
     setMaliyetIscilikTutari(itIscilikTutari > 0 ? format5(itIscilikTutari) : "");
 
-    setSatisIscilik(it.satisIscilik || "");
+    setSatisIscilik(it.satisIscilik ? format5(it.satisIscilik) : "");
     const itSatisIscilik = parseNum(it.satisIscilik || "");
-    const calcSatisIscilikNum = itSatisIscilik > 0 ? (itIscilikBirim === "Gram" ? itSatisIscilik * (itMiktar > 0 ? itMiktar : 1) : itSatisIscilik) : 0;
-    const itSatisTutari = it.satisIscilikTutari ? parseNum(it.satisIscilikTutari) : calcSatisIscilikNum;
+    const rawSatisIscilikNum = itSatisIscilik > 0 ? (itIscilikBirim === "Gram" ? itSatisIscilik * (itMiktar > 0 ? itMiktar : 1) : itSatisIscilik) : 0;
+    const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, itIscilikPara, kurRef);
+    const itSatisTutari = it.satisIscilikTutari ? parseNum(it.satisIscilikTutari) : calcSatisIscilikHas;
     setSatisIscilikTutari(itSatisTutari > 0 ? format5(itSatisTutari) : "");
     setIscilikKari(it.iscilikKari || "");
 
     const calcTot = (itHasGram > 0 ? itHasGram : calcHasNum) + (itIscilikTutari > 0 ? itIscilikTutari : calcMaliyetIscilikHas);
-    setToplamHas(calcTot > 0 ? format5(calcTot) : "");
-
-    const mHas = it.maliyet || "";
+    const mHas = it.maliyet ? format5(it.maliyet) : (calcTot > 0 ? format5(calcTot) : "");
+    setToplamHas(mHas);
     setMaliyet(mHas);
+
     const mPKod = it.maliyetParaKodu || "USD";
     setMaliyetParaKodu(mPKod);
     if (mHas) {
@@ -637,8 +692,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setMaliyetDoviz("");
     }
 
-    const sHas = it.satisFiyati || "";
+    const calcExpectedSatisHas = (itHasGram > 0 ? itHasGram : calcHasNum) + (itSatisTutari > 0 ? itSatisTutari : calcSatisIscilikHas);
+    const sHas = it.satisFiyati ? format5(it.satisFiyati) : (calcExpectedSatisHas > 0 ? format5(calcExpectedSatisHas) : "");
     setSatisFiyati(sHas);
+
     const sPKod = it.satisParaKodu || "USD";
     setSatisParaKodu(sPKod);
     if (sHas) {
@@ -647,7 +704,13 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setSatisDoviz("");
     }
 
-    setSatisKariYuzde(it.satisKariYuzde || "");
+    if (parseNum(sHas) > 0 && parseNum(mHas) > 0) {
+      const derivedKar = ((parseNum(sHas) - parseNum(mHas)) / parseNum(mHas)) * 100;
+      setSatisKariYuzde(derivedKar.toFixed(2));
+    } else {
+      setSatisKariYuzde(it.satisKariYuzde !== undefined && it.satisKariYuzde !== null ? String(it.satisKariYuzde) : "");
+    }
+
     setHasKuru1(it.hasKuru1 ?? "");
     setHasKuru2(it.hasKuru2 ?? "");
     const loadedImages = (it.resimler && it.resimler.length > 0) ? it.resimler : (it.resim ? [it.resim] : []);
@@ -793,6 +856,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       showNotif("warning", "Lütfen Ayar seçiniz.");
       return;
     }
+    if (parseNum(miktar) <= 0) {
+      showNotif("warning", "Lütfen ürün Miktar / Gramajını (0'dan büyük) giriniz.");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -842,7 +909,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       const updated = await EtiketService.getAltinUrunler({ limit: 500 });
       setAltinList(updated);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Kayıt sırasında hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Altın ürün kaydedilirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -860,7 +928,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       const updated = await EtiketService.getAltinUrunler({ limit: 500 });
       setAltinList(updated);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Silme işlemi sırasında hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Altın ürün silinirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -890,7 +959,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setGrupList(updatedGruplar);
       handleGrupSec(yeniGrupKodu.trim().toUpperCase());
     } catch (err: any) {
-      showNotif("danger", err?.message || "Grup eklenirken hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Grup eklenirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     }
   };
 
@@ -917,7 +987,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setBankoList(updatedBankolar);
       setBanko(saved.bankoAdi);
     } catch (err: any) {
-      showNotif("danger", err?.message || "Banko eklenirken hata oluştu.");
+      const errorMsg = extractApiErrorMessage(err, "Banko eklenirken bir hata oluştu.");
+      showNotif("danger", errorMsg);
     }
   };
 
@@ -983,20 +1054,23 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
       {/* ─── ERP Toolbar ─── */}
       <ERPToolbar
-        pageTitle="B- Barkodlu Altın Ürün Tanımlama"
+        pageTitle={isDuzeltmeMode ? "C- Altın Ürün Düzeltme" : "B- Altın Ürün Barkodlama"}
         pageIcon={<IconBarcode size={20} />}
         onNew={handleNew}
         onSave={handleSave}
-        onDelete={() => setShowDeleteConfirm(true)}
-        onSearch={() => setShowLookup(true)}
-        onFirst={() => handleNavigate("first")}
-        onPrev={() => handleNavigate("prev")}
-        onNext={() => handleNavigate("next")}
-        onLast={() => handleNavigate("last")}
+        onDelete={isDuzeltmeMode ? () => setShowDeleteConfirm(true) : undefined}
+        onSearch={isDuzeltmeMode ? () => setShowLookup(true) : undefined}
+        onFirst={isDuzeltmeMode ? () => handleNavigate("first") : undefined}
+        onPrev={isDuzeltmeMode ? () => handleNavigate("prev") : undefined}
+        onNext={isDuzeltmeMode ? () => handleNavigate("next") : undefined}
+        onLast={isDuzeltmeMode ? () => handleNavigate("last") : undefined}
+        hideDelete={!isDuzeltmeMode}
+        hideSearch={!isDuzeltmeMode}
+        hideNavigation={!isDuzeltmeMode}
         onRefresh={loadAll}
         onPrint={() => (altinUrunId ? setShowPrintModal(true) : showNotif("warning", "Önce bir ürün seçiniz."))}
         disabled={isSaving}
-        modeText={altinUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${altinList.length})` : "Yeni Kayıt Modu"}
+        modeText={altinUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${altinList.length})` : (isDuzeltmeMode ? "Düzeltme Modu" : "Yeni Kayıt Modu")}
       />
 
       {/* ─── Ana Form Kartı ─── */}
@@ -1120,25 +1194,29 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                       Ayar :
                     </div>
                     <div className="flex-grow-1">
-                      <Form.Control
-                        type="text"
-                        size="sm"
-                        list="altinAyarListesi"
-                        value={ayar}
-                        onChange={(e) => handleAyarChange(e.target.value)}
-                        className="fw-bold bg-white"
-                      />
+                      <InputGroup size="sm">
+                        <Form.Control
+                          type="text"
+                          list="altinAyarListesi"
+                          value={ayar}
+                          onChange={(e) => handleAyarChange(e.target.value)}
+                          className="fw-bold bg-white"
+                          placeholder="Ayar seçin veya yazın"
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          onClick={() => setShowAyarModal(true)}
+                          title="Ayar Tanımları & Seçim (Dürbün)"
+                        >
+                          <IconBinoculars size={15} />
+                        </Button>
+                      </InputGroup>
                       <datalist id="altinAyarListesi">
-                        <option value="22 FANTAZI">22 FANTAZI (916)</option>
-                        <option value="24">24 Ayar (1000)</option>
-                        <option value="22">22 Ayar (916)</option>
-                        <option value="18">18 Ayar (750)</option>
-                        <option value="14">14 Ayar (585)</option>
-                        <option value="8">8 Ayar (333)</option>
-                        <option value="916">916 Milyem</option>
-                        <option value="585">585 Milyem</option>
-                        <option value="750">750 Milyem</option>
-                        <option value="1000">1000 Milyem</option>
+                        {ayarList.map((a) => (
+                          <option key={a.ayarId} value={a.ayarKodu}>
+                            {a.ayarAdi} ({Math.round(a.milyem * 1000)})
+                          </option>
+                        ))}
                       </datalist>
                     </div>
                   </div>
@@ -1289,12 +1367,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                       <InputGroup size="sm" style={{ maxWidth: "135px" }}>
                         <Form.Control
                           type="text"
-                          inputMode="decimal"
-                          value={maliyet ?? ""}
-                          onChange={(e) => handleMaliyetHasChange(cleanInputStr(e.target.value))}
-                          onKeyDown={handleMaliyetKeyDown}
-                          className="fw-bold font-monospace text-end bg-white"
-                          title="Maliyet Has Karşılığı"
+                          readOnly
+                          value={maliyet || ""}
+                          className="fw-bold font-monospace text-end bg-light"
+                          title="Maliyet Has Karşılığı (Sağdaki Toplam Has Değeri)"
                         />
                         <InputGroup.Text className="bg-light font-monospace small px-1.5 fw-semibold">HAS</InputGroup.Text>
                       </InputGroup>
@@ -1303,11 +1379,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                       <InputGroup size="sm" className="flex-grow-1">
                         <Form.Control
                           type="text"
-                          inputMode="decimal"
-                          value={maliyetDoviz ?? ""}
-                          onChange={(e) => handleMaliyetDovizChange(cleanInputStr(e.target.value))}
-                          className="fw-bold font-monospace text-end bg-white"
-                          title={`Maliyet ${maliyetParaKodu} Karşılığı`}
+                          readOnly
+                          value={maliyetDoviz || ""}
+                          className="fw-bold font-monospace text-end bg-light"
+                          title={`Maliyet ${maliyetParaKodu} Karşılığı (Maliyet HAS * Seçilen Kur)`}
                         />
                         <Form.Control
                           type="text"
@@ -1338,11 +1413,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                       <InputGroup size="sm" style={{ maxWidth: "135px" }}>
                         <Form.Control
                           type="text"
-                          inputMode="decimal"
-                          value={satisFiyati ?? ""}
-                          onChange={(e) => handleSatisHasChange(cleanInputStr(e.target.value))}
-                          className="fw-bold font-monospace text-primary text-end bg-white fs-6"
-                          title="Satış Fiyatı Has Karşılığı"
+                          readOnly
+                          value={satisFiyati || ""}
+                          className="fw-bold font-monospace text-primary text-end bg-light fs-6"
+                          title="Satış Fiyatı Has Karşılığı (Miktar Has + Satış İşçilik Has)"
                         />
                         <InputGroup.Text className="bg-light font-monospace small px-1.5 fw-semibold text-primary">HAS</InputGroup.Text>
                       </InputGroup>
@@ -1351,11 +1425,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                       <InputGroup size="sm" className="flex-grow-1">
                         <Form.Control
                           type="text"
-                          inputMode="decimal"
-                          value={satisDoviz ?? ""}
-                          onChange={(e) => handleSatisDovizChange(cleanInputStr(e.target.value))}
-                          className="fw-bold font-monospace text-primary text-end bg-white fs-6"
-                          title={`Satış ${satisParaKodu} Karşılığı`}
+                          readOnly
+                          value={satisDoviz || ""}
+                          className="fw-bold font-monospace text-primary text-end bg-light fs-6"
+                          title={`Satış ${satisParaKodu} Karşılığı (Satış Fiyatı HAS * Seçilen Kur)`}
                         />
                         <Form.Control
                           type="text"
@@ -1385,10 +1458,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                       <InputGroup size="sm" style={{ maxWidth: "135px" }}>
                         <Form.Control
                           type="text"
-                          inputMode="decimal"
-                          value={satisKariYuzde ?? ""}
-                          onChange={(e) => handleKarYuzdeChange(cleanInputStr(e.target.value))}
-                          className="font-monospace text-end fw-bold text-success bg-white"
+                          readOnly
+                          value={satisKariYuzde !== "" ? `${satisKariYuzde}` : ""}
+                          className="font-monospace text-end fw-bold text-success bg-light"
+                          title="Satış Kârı % = ((Satış Fiyatı HAS - Maliyet HAS) / Maliyet HAS) * 100"
                         />
                         <InputGroup.Text className="bg-light">%</InputGroup.Text>
                       </InputGroup>
@@ -1421,6 +1494,9 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           size="sm"
                           value={miktar ?? ""}
                           onChange={(e) => handleMiktarChange(cleanInputStr(e.target.value))}
+                          onBlur={() => {
+                            if (miktar) setMiktar(format5(miktar));
+                          }}
                           className="fw-bold font-monospace text-end bg-white"
                           style={{ maxWidth: "145px" }}
                         />
@@ -1478,6 +1554,9 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           size="sm"
                           value={maliyetIscilik ?? ""}
                           onChange={(e) => handleMaliyetIscilikChange(cleanInputStr(e.target.value))}
+                          onBlur={() => {
+                            if (maliyetIscilik) setMaliyetIscilik(format5(maliyetIscilik));
+                          }}
                           className="font-monospace text-end bg-white"
                           style={{ maxWidth: "145px" }}
                         />
@@ -1501,12 +1580,15 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           size="sm"
                           value={satisIscilik ?? ""}
                           onChange={(e) => handleSatisIscilikChange(cleanInputStr(e.target.value))}
+                          onBlur={() => {
+                            if (satisIscilik) setSatisIscilik(format5(satisIscilik));
+                          }}
                           className="font-monospace text-end bg-white"
                           style={{ maxWidth: "145px" }}
                         />
                         {satisIscilikTutari && parseNum(satisIscilikTutari) > 0 ? (
                           <span className="small fw-bold text-secondary font-monospace text-nowrap">
-                            Tutar: {format5(parseNum(satisIscilikTutari))}
+                            {format5(parseNum(satisIscilikTutari))} Has
                           </span>
                         ) : null}
                       </div>
@@ -1523,7 +1605,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           size="sm"
                           readOnly
                           value={toplamHas || ""}
-                          title="Miktar Has + İşçilik Has Toplamı (5 Hane)"
+                          title="Miktar Has + Maliyet İşçilik Has Toplamı (Tam 5 Hane)"
                           className="font-monospace text-end bg-light fw-bold text-success fs-6"
                           style={{ maxWidth: "185px" }}
                         />
@@ -1683,7 +1765,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
           {/* ─── ALT ÇUBUK: HAS & USD Kurları + Eylem Butonları ─── */}
           <div className="pt-3 mt-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-3">
-            {/* Sol Kısım: HAS Alış / Satış */}
+            {/* Sol Kısım: HAS Alış/Satış & USD Alış/Satış */}
             <div className="d-flex align-items-center gap-3 flex-wrap">
               {/* HAS Alış */}
               <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
@@ -1693,9 +1775,9 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 <InputGroup size="sm" style={{ width: "125px" }}>
                   <Form.Control
                     type="text"
-                    readOnly
-                    value={hasKuru1 || ""}
-                    className="font-monospace text-end bg-light fw-bold text-dark"
+                    value={hasKuru1 ?? ""}
+                    onChange={(e) => handleHasKuru1Change(cleanInputStr(e.target.value))}
+                    className="font-monospace text-end bg-white fw-bold text-dark"
                   />
                   <Button
                     variant="outline-secondary"
@@ -1716,15 +1798,61 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 <InputGroup size="sm" style={{ width: "125px" }}>
                   <Form.Control
                     type="text"
-                    readOnly
-                    value={hasKuru2 || ""}
-                    className="font-monospace text-end bg-light fw-bold text-primary"
+                    value={hasKuru2 ?? ""}
+                    onChange={(e) => handleHasKuru2Change(cleanInputStr(e.target.value))}
+                    className="font-monospace text-end bg-white fw-bold text-primary"
                   />
                   <Button
                     variant="outline-secondary"
                     className="px-1.5"
                     onClick={() => setShowKurLookup("hasSatis")}
                     title="Anlık Fiyat Listesinden Seç (HAS Satış)"
+                  >
+                    <IconBinoculars size={14} />
+                  </Button>
+                </InputGroup>
+              </div>
+
+              {/* USD Alış */}
+              <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
+                <span className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ minWidth: "60px" }}>
+                  USD Alış:
+                </span>
+                <InputGroup size="sm" style={{ width: "125px" }}>
+                  <Form.Control
+                    type="text"
+                    value={usdKuru1 ?? ""}
+                    onChange={(e) => handleUsdKuru1Change(cleanInputStr(e.target.value))}
+                    className="font-monospace text-end bg-white fw-bold text-dark"
+                  />
+                  <Button
+                    variant="outline-secondary"
+                    className="px-1.5"
+                    onClick={() => setShowKurLookup("usdAlis")}
+                    title="Anlık Fiyat Listesinden Seç (USD Alış)"
+                  >
+                    <IconBinoculars size={14} />
+                  </Button>
+                </InputGroup>
+              </div>
+
+              {/* USD Satış */}
+              <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
+                <span className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ minWidth: "65px" }}>
+                  USD Satış:
+                </span>
+                <InputGroup size="sm" style={{ width: "125px" }}>
+                  <Form.Control
+                    type="text"
+                    value={usdKuru2 ?? ""}
+                    onChange={(e) => handleUsdKuru2Change(cleanInputStr(e.target.value))}
+                    className="font-monospace text-end bg-white fw-bold text-primary"
+                  />
+                  <Button
+                    variant="outline-secondary"
+                    className="px-1.5"
+                    onClick={() => setShowKurLookup("usdSatis")}
+                    title="Anlık Fiyat Listesinden Seç (USD Satış)"
                   >
                     <IconBinoculars size={14} />
                   </Button>
@@ -2097,8 +2225,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         columns={[
           { header: "Döviz / Para Kodu", width: "120px", render: (it) => <span className="font-monospace fw-bold text-primary">{it.kod}</span> },
           { header: "Açıklama / Para Adı", render: (it) => it.ad || "-" },
-          { header: "Döviz Alış", width: "120px", render: (it) => it.dovizAlis ?? "-" },
-          { header: "Döviz Satış", width: "120px", render: (it) => it.dovizSatis ?? "-" },
+          { header: "Efektif Alış", width: "110px", render: (it) => it.efektifAlis ?? it.dovizAlis ?? "-" },
+          { header: "Efektif Satış", width: "110px", render: (it) => it.efektifSatis ?? it.dovizSatis ?? "-" },
+          { header: "Döviz Alış", width: "110px", render: (it) => it.dovizAlis ?? "-" },
+          { header: "Döviz Satış", width: "110px", render: (it) => it.dovizSatis ?? "-" },
         ]}
         items={kurRows}
         filterFn={(it, term) => {
@@ -2108,19 +2238,35 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         onSelect={(it) => {
           const kod = (it.kod || "").toUpperCase();
           if (showKurLookup === "hasAlis") {
-            setHasKuru1(it.dovizAlis || it.dovizSatis || 0);
+            const chosen = (it.efektifAlis !== undefined && it.efektifAlis !== null && Number(it.efektifAlis) > 0)
+              ? it.efektifAlis
+              : (it.dovizAlis || it.efektifSatis || it.dovizSatis || 0);
+            setHasKuru1(chosen);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru1: chosen });
           } else if (showKurLookup === "hasSatis") {
-            setHasKuru2(it.dovizSatis || it.dovizAlis || 0);
+            const chosen = (it.efektifSatis !== undefined && it.efektifSatis !== null && Number(it.efektifSatis) > 0)
+              ? it.efektifSatis
+              : (it.dovizSatis || it.efektifAlis || it.dovizAlis || 0);
+            setHasKuru2(chosen);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { hasKuru2: chosen });
           } else if (showKurLookup === "usdAlis") {
-            setUsdKuru1(it.dovizAlis || it.dovizSatis || 0);
+            const chosen = (it.efektifAlis !== undefined && it.efektifAlis !== null && Number(it.efektifAlis) > 0)
+              ? it.efektifAlis
+              : (it.dovizAlis || it.efektifSatis || it.dovizSatis || 0);
+            setUsdKuru1(chosen);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru1: chosen });
           } else if (showKurLookup === "usdSatis") {
-            setUsdKuru2(it.dovizSatis || it.dovizAlis || 0);
+            const chosen = (it.efektifSatis !== undefined && it.efektifSatis !== null && Number(it.efektifSatis) > 0)
+              ? it.efektifSatis
+              : (it.dovizSatis || it.efektifAlis || it.dovizAlis || 0);
+            setUsdKuru2(chosen);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { usdKuru2: chosen });
           } else if (showKurLookup === "maliyet") {
             setMaliyetParaKodu(kod);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { maliyetPara: kod });
           } else if (showKurLookup === "satis") {
             setSatisParaKodu(kod);
-            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef);
+            recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, { satisPara: kod });
           } else if (showKurLookup === "iscilik") {
             setMaliyetIscilikParaKodu(kod);
             recalculateAll(miktar, ayar, maliyetIscilik, kod, maliyetIscilikBirim, satisIscilik, kurRef);
@@ -2398,6 +2544,16 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
           )}
         </div>
       </Modal>
+      {/* Ayar Seçim & Tanımlama Modalı (TODVZ_AYAR) */}
+      <AyarSecimModal
+        show={showAyarModal}
+        onHide={() => setShowAyarModal(false)}
+        onSelect={(selected) => {
+          handleAyarChange(selected.ayarKodu);
+          setShowAyarModal(false);
+        }}
+        selectedAyarKodu={ayar}
+      />
     </div>
   );
 };

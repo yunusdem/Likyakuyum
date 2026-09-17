@@ -205,7 +205,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
   return (
     <div className="barkod-etiket-basimi-page w-100 pb-4" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="A- Barkod & Etiket Basımı"
+        pageTitle="A- Barkod Fiyat"
         pageIcon={
           fotograflar.length > 0 ? (
             <div

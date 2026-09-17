@@ -257,7 +257,7 @@ export class VezneSqlRepository {
     static async getCurrencies(dbContext) {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-            const query = "SELECT [PARA_ID] as id, [KOD] as code, [AD] as name FROM [dbo].[TODVZ_PARA] ORDER BY [SIRA_NO], [PARA_ID]";
+            const query = "SELECT [PARA_ID] as id, [KOD] as code, [AD] as name FROM [dbo].[TODVZ_PARA] ORDER BY [PARA_ID] ASC";
             const result = await pool.request().query(query);
             return result.recordset.map((r) => ({
                 id: r.id,

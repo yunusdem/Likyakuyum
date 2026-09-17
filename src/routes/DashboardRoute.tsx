@@ -146,11 +146,13 @@ export const DashboardMenu: MenuItemType[] = [
     title: "I- Etiket İşlemleri",
     icon: <IconBarcode size={18} />,
     children: [
-      { id: uuid(), name: "A- Barkod / Etiket Basımı", link: "etiket/barkod-basimi" },
-      { id: uuid(), name: "B- Barkodlu Altın Ürün", link: "etiket/altin-urun-tanimlama" },
-      { id: uuid(), name: "C- Barkodlu Özel Ürün ", link: "etiket/ozel-urun-tanimlama" },
-      { id: uuid(), name: "D- Ürün Etiket Tasarımı", link: "etiket/tasarim" },
-      { id: uuid(), name: "E- Fiyat / Ayar Etiketleri", link: "etiket/fiyat-etiketi" },
+      { id: uuid(), name: "A- Barkod Fiyat", link: "etiket/barkod-fiyat" },
+      { id: uuid(), name: "B- Altın Ürün Barkodlama", link: "etiket/altin-urun-barkodlama" },
+      { id: uuid(), name: "C- Altın Ürün Düzeltme", link: "etiket/altin-urun-duzeltme" },
+      { id: uuid(), name: "D- Özel Ürün Barkodlama", link: "etiket/ozel-urun-barkodlama" },
+      { id: uuid(), name: "E- Özel Ürün Düzeltme", link: "etiket/ozel-urun-duzeltme" },
+      { id: uuid(), name: "F- Altın Etiket Tasarımı", link: "etiket/altin-etiket-tasarimi" },
+      { id: uuid(), name: "G- Özel Ürün Etiket Tasarımı", link: "etiket/ozel-urun-etiket-tasarimi" },
     ],
   },
 

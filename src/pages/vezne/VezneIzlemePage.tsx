@@ -37,14 +37,7 @@ import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 
 export const sortVezneRows = (rowsList?: VezneIzlemeRow[]): VezneIzlemeRow[] => {
   if (!rowsList || rowsList.length === 0) return [];
-  return [...rowsList].sort((a, b) => {
-    const seqA = Number(a.siraNo) > 0 ? Number(a.siraNo) : 9999999;
-    const seqB = Number(b.siraNo) > 0 ? Number(b.siraNo) : 9999999;
-    if (seqA !== seqB) {
-      return seqA - seqB;
-    }
-    return (Number(a.paraId) || 0) - (Number(b.paraId) || 0);
-  });
+  return [...rowsList].sort((a, b) => (Number(a.paraId) || 0) - (Number(b.paraId) || 0));
 };
 
 export const VezneIzlemePage: React.FC = () => {

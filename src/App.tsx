@@ -213,9 +213,16 @@ export default function App() {
             <Route path="kasa/kasa-hareket-duzeltme" element={<KasaHareketPage />} />
             <Route path="kasa/hareket" element={<KasaHareketPage />} />
             <Route path="kasa/kasa-hareket" element={<KasaHareketPage />} />
+            <Route path="etiket/barkod-fiyat" element={<BarkodEtiketBasimiPage />} />
             <Route path="etiket/barkod-basimi" element={<BarkodEtiketBasimiPage />} />
+            <Route path="etiket/altin-urun-barkodlama" element={<AltinUrunTanimlamaPage />} />
+            <Route path="etiket/altin-urun-duzeltme" element={<AltinUrunTanimlamaPage />} />
             <Route path="etiket/altin-urun-tanimlama" element={<AltinUrunTanimlamaPage />} />
+            <Route path="etiket/ozel-urun-barkodlama" element={<OzelUrunTanimlamaPage />} />
+            <Route path="etiket/ozel-urun-duzeltme" element={<OzelUrunTanimlamaPage />} />
             <Route path="etiket/ozel-urun-tanimlama" element={<OzelUrunTanimlamaPage />} />
+            <Route path="etiket/altin-etiket-tasarimi" element={<UrunEtiketTasarimiPage />} />
+            <Route path="etiket/ozel-urun-etiket-tasarimi" element={<UrunEtiketTasarimiPage />} />
             <Route path="etiket/tasarim" element={<UrunEtiketTasarimiPage />} />
             <Route path="etiket/fiyat-etiketi" element={<FiyatAyarEtiketleriPage />} />
             <Route path=":section/*" element={<ModulePage />} />

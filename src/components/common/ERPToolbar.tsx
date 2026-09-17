@@ -119,11 +119,18 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kasa/hesap-duzeltme": { title: "B- Hesap Düzeltme", icon: <IconBuilding size={20} /> },
   "/kasa/hareket-kayit": { title: "C- Kasa Hareket Kayıt", icon: <IconCash size={20} /> },
   "/kasa/hareket-duzeltme": { title: "D- Kasa Hareket Düzeltme", icon: <IconCash size={20} /> },
-  "/etiket/barkod-basimi": { title: "A- Barkod & Etiket Basımı", icon: <IconPrinter size={20} /> },
-  "/etiket/altin-urun-tanimlama": { title: "B- Barkodlu Altın Ürün Tanımlama", icon: <IconBarcode size={20} /> },
-  "/etiket/ozel-urun-tanimlama": { title: "C- Barkodlu Özel Ürün Tanımlama", icon: <IconDiamond size={20} /> },
-  "/etiket/tasarim": { title: "D- Ürün Etiket Tasarımı", icon: <IconPrinter size={20} /> },
-  "/etiket/fiyat-etiketi": { title: "E- Fiyat & Ayar Etiketleri", icon: <IconPrinter size={20} /> },
+  "/etiket/barkod-fiyat": { title: "A- Barkod Fiyat", icon: <IconPrinter size={20} /> },
+  "/etiket/barkod-basimi": { title: "A- Barkod Fiyat", icon: <IconPrinter size={20} /> },
+  "/etiket/altin-urun-barkodlama": { title: "B- Altın Ürün Barkodlama", icon: <IconBarcode size={20} /> },
+  "/etiket/altin-urun-tanimlama": { title: "B- Altın Ürün Barkodlama", icon: <IconBarcode size={20} /> },
+  "/etiket/altin-urun-duzeltme": { title: "C- Altın Ürün Düzeltme", icon: <IconBarcode size={20} /> },
+  "/etiket/ozel-urun-barkodlama": { title: "D- Özel Ürün Barkodlama", icon: <IconDiamond size={20} /> },
+  "/etiket/ozel-urun-tanimlama": { title: "D- Özel Ürün Barkodlama", icon: <IconDiamond size={20} /> },
+  "/etiket/ozel-urun-duzeltme": { title: "E- Özel Ürün Düzeltme", icon: <IconDiamond size={20} /> },
+  "/etiket/altin-etiket-tasarimi": { title: "F- Altın Etiket Tasarımı", icon: <IconPrinter size={20} /> },
+  "/etiket/ozel-urun-etiket-tasarimi": { title: "G- Özel Ürün Etiket Tasarımı", icon: <IconPrinter size={20} /> },
+  "/etiket/tasarim": { title: "F- Altın Etiket Tasarımı", icon: <IconPrinter size={20} /> },
+  "/etiket/fiyat-etiketi": { title: "A- Barkod Fiyat", icon: <IconPrinter size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({

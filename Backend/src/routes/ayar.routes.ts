@@ -1,0 +1,14 @@
+import { Router } from "express";
+import { AyarController } from "../controllers/ayar.controller.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
+
+const router = Router();
+
+router.use(authenticate);
+
+router.get("/", AyarController.listAyarlar);
+router.get("/:id", AyarController.getAyarById);
+router.post("/", AyarController.saveAyar);
+router.delete("/:id", AyarController.deleteAyar);
+
+export default router;

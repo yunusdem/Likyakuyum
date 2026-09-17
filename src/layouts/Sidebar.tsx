@@ -253,8 +253,14 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
         <div className="brand-logo d-flex align-items-center justify-content-between justify-content-xl-center px-3">
           <Link
             to="/dashboard"
+            onClick={() => {
+              setActiveMenuKey("");
+              setPending(null);
+              if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+            }}
             className="d-flex align-items-center text-decoration-none py-1 overflow-hidden"
-            style={{ minWidth: 0 }}
+            style={{ minWidth: 0, cursor: "pointer" }}
+            title="Ana Sayfa (Tüm Menüleri Kapat)"
           >
             <img
               src="/images/logo/logo.svg"

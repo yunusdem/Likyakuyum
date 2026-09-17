@@ -79,22 +79,10 @@ export const isTlCurrency = (code?: string, name?: string) => {
   );
 };
 
-export const filterOutTl = (items?: KurRowItem[]): KurRowItem[] => {
-  if (!items) return [];
-  return items.filter((r) => !isTlCurrency(r.kod, r.ad));
-};
-
 export const sortKurRows = (items?: KurRowItem[]): KurRowItem[] => {
   if (!items) return [];
-  const nonTl = filterOutTl(items);
-  return [...nonTl].sort((a, b) => {
-    const seqA = Number(a.siraNo) > 0 ? Number(a.siraNo) : 9999999;
-    const seqB = Number(b.siraNo) > 0 ? Number(b.siraNo) : 9999999;
-    if (seqA !== seqB) {
-      return seqA - seqB;
-    }
-    return (Number(a.paraId) || 0) - (Number(b.paraId) || 0);
-  });
+  // SQL tablosundaki identity / kayıt sırasına göre (PARA_ID ASC - Tüm paralar eksiksiz listelenir)
+  return [...items].sort((a, b) => (Number(a.paraId) || 0) - (Number(b.paraId) || 0));
 };
 
 export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
@@ -610,10 +598,23 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
       setTabloId(result.id);
       setKapanisKurTablosuId(result.kapanisKurTablosuId ?? null);
-      setRows(filterOutTl(result.satirlar));
+      const sortedResultRows = sortKurRows(result.satirlar);
+      setRows(sortedResultRows);
+
+      // Hücre girdilerini kaydedilen güncel değerlerle senkronize et
+      const updatedInputs: Record<string, string> = {};
+      sortedResultRows.forEach((r, idx) => {
+        EDITABLE_COLS.forEach((col) => {
+          const num = r[col];
+          updatedInputs[getCellKey(idx, col)] =
+            num !== null && num !== undefined && !isNaN(num) && num !== 0 ? num.toFixed(6) : "";
+        });
+      });
+      setRawInputs(updatedInputs);
+
       setLastSavedZaman(result.zaman);
       setIsDirty(false);
-      setStatusText("Son kayıt");
+      setStatusText(effectivePageType === "anlik" ? "Son kayıt" : `Saklanan Kayıt (ID: ${result.id})`);
       setAlertSuccess(
         effectivePageType === "anlik"
           ? `Gişede o an işlem gören canlı kurlar ve saati (${saat}) başarıyla kaydedildi.`
@@ -668,7 +669,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       });
 
       setTabloId(kapanisTablo.id);
-      setRows(filterOutTl(kapanisTablo.satirlar));
+      setRows(sortKurRows(kapanisTablo.satirlar));
       setAlertSuccess(
         `Günün resmi kapanış kur tablosu anlık kurlardan başarıyla oluşturuldu! (ID: ${kapanisTablo.id})`
       );

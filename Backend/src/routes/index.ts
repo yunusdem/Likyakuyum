@@ -26,6 +26,7 @@ import sarrafFisRoutes from "./sarrafFis.routes.js";
 import bankaRoutes from "./banka.routes.js";
 import kasaRoutes from "./kasa.routes.js";
 import etiketRoutes from "./etiket.routes.js";
+import ayarRoutes from "./ayar.routes.js";
 
 const apiRouter = Router();
 
@@ -33,6 +34,8 @@ apiRouter.use("/health", healthRoutes);
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
+apiRouter.use("/ayar", ayarRoutes);
+apiRouter.use("/ayarlar-tanim", ayarRoutes);
 apiRouter.use("/banka", bankaRoutes);
 apiRouter.use("/kasa", kasaRoutes);
 apiRouter.use("/etiket", etiketRoutes);

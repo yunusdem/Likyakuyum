@@ -193,6 +193,94 @@ const DEFAULT_BANKALAR = [
   { id: 102007, kod: "102.01.007", ad: "QNB Finansbank - Kurumsal Cari", unvan: "QNB Finansbank - Kurumsal Cari", bankaAdi: "QNB Finansbank", iban: "TR88 0011 1000 0007 8901 2345 67", hesapNo: "1110000-7" },
 ];
 
+const DEFAULT_ULKELER = [
+  { id: 1, kod: "TR", ad: "TÜRKİYE" },
+  { id: 2, kod: "DE", ad: "ALMANYA" },
+  { id: 3, kod: "US", ad: "AMERİKA BİRLEŞİK DEVLETLERİ" },
+  { id: 4, kod: "GB", ad: "BİRLEŞİK KRALLIK" },
+  { id: 5, kod: "FR", ad: "FRANSA" },
+  { id: 6, kod: "NL", ad: "HOLLANDA" },
+  { id: 7, kod: "RU", ad: "RUSYA FEDERASYONU" },
+  { id: 8, kod: "AZ", ad: "AZERBAYCAN" },
+  { id: 9, kod: "IR", ad: "İRAN" },
+  { id: 10, kod: "IQ", ad: "IRAK" },
+  { id: 11, kod: "SA", ad: "SUUDİ ARABİSTAN" },
+  { id: 12, kod: "AE", ad: "BİRLEŞİK ARAP EMİRLİKLERİ" },
+];
+
+const DEFAULT_HUKUKI_YAPILAR = [
+  { id: 1, kod: "01", ad: "01 - Gerçek Kişi" },
+  { id: 2, kod: "02", ad: "02 - Tüzel Kişi" },
+];
+
+const findTurkiyeItem = (list?: { id: number; kod?: string; ad: string }[]) => {
+  if (!list || !Array.isArray(list) || list.length === 0) return null;
+
+  // 1. Öncelik: Tanım / Açıklama (AD) birebir "TÜRKİYE" veya "TURKIYE" olan satır
+  const exactName = list.find((u) => {
+    const rawAd = (u.ad || "").toLocaleLowerCase("tr-TR").trim();
+    const rawAdEn = (u.ad || "").toLowerCase().trim();
+    return rawAd === "türkiye" || rawAdEn === "turkiye" || rawAdEn === "turkey";
+  });
+  if (exactName) return exactName;
+
+  // 2. Öncelik: Tanımı "TÜRKİYE" ile başlayan (örn. "TÜRKİYE CUMHURİYETİ") satır
+  const startsWithTurkiye = list.find((u) => {
+    const rawAd = (u.ad || "").toLocaleLowerCase("tr-TR").trim();
+    const rawAdEn = (u.ad || "").toLowerCase().trim();
+    return (
+      (rawAd.startsWith("türkiye") || rawAdEn.startsWith("turkiye")) &&
+      !rawAd.includes("türkmen") &&
+      !rawAd.includes("turkmen")
+    );
+  });
+  if (startsWithTurkiye) return startsWithTurkiye;
+
+  // 3. Öncelik: Tanımı içinde "TÜRKİYE" geçen satır
+  const containsTurkiye = list.find((u) => {
+    const rawAd = (u.ad || "").toLocaleLowerCase("tr-TR").trim();
+    const rawAdEn = (u.ad || "").toLowerCase().trim();
+    return (
+      (rawAd.includes("türkiye") || rawAdEn.includes("turkiye")) &&
+      !rawAd.includes("türkmen") &&
+      !rawAd.includes("turkmen")
+    );
+  });
+  if (containsTurkiye) return containsTurkiye;
+
+  // 4. Öncelik: Kodu TR veya TUR olup tanımı TÜRK ile başlayan satır (Trinidad vb. hariç)
+  const codeTrAndTurk = list.find((u) => {
+    const rawAd = (u.ad || "").toLocaleLowerCase("tr-TR").trim();
+    const rawKod = (u.kod || "").toUpperCase().trim();
+    return (
+      (rawKod === "TR" || rawKod === "TUR") &&
+      (rawAd.startsWith("türk") || rawAd.startsWith("turk")) &&
+      !rawAd.includes("türkmen") &&
+      !rawAd.includes("turkmen") &&
+      !rawAd.includes("trinidad") &&
+      !rawAd.includes("tobago") &&
+      !rawAd.includes("caicos")
+    );
+  });
+  if (codeTrAndTurk) return codeTrAndTurk;
+
+  return null;
+};
+
+// 9 Grid Nav Columns in sequential order
+const GRID_COLUMNS = [
+  "kod",
+  "miktar",
+  "kur",
+  "komisyonOrani",
+  "komisyon",
+  "bmvOrani",
+  "bmv",
+  "kmvOrani",
+  "kmv",
+] as const;
+type GridColumnKey = (typeof GRID_COLUMNS)[number];
+
 export const DovizFisiPage: React.FC = () => {
   const { user } = useAuth();
   const location = useLocation();
@@ -300,14 +388,14 @@ export const DovizFisiPage: React.FC = () => {
     hukukiYapiList: { id: number; kod?: string; ad: string }[];
     bankaList: { id: number; kod?: string; ad: string; iban?: string; hesapNo?: string; bankaAdi?: string; subeAdi?: string; unvan?: string }[];
   }>({
-    ulkeList: [],
-    uyrukList: [],
+    ulkeList: DEFAULT_ULKELER,
+    uyrukList: DEFAULT_ULKELER,
     ilList: [],
     ilceList: [],
     postaKoduList: DEFAULT_POSTA_KODLARI,
     vergiDairesiList: [],
     meslekList: [],
-    hukukiYapiList: [],
+    hukukiYapiList: DEFAULT_HUKUKI_YAPILAR,
     bankaList: DEFAULT_BANKALAR,
   });
 
@@ -342,18 +430,18 @@ export const DovizFisiPage: React.FC = () => {
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
 
-  // Detailed Customer Information (Detay Modal State) with IDs
+  // Detailed Customer Information (Detay Modal State) with IDs - Defaults to TÜRKİYE / 01 Gerçek Kişi
   const [detayCariTipi, setDetayCariTipi] = useState<string>("Şahıs");
   const [detayYetkiliKisi, setDetayYetkiliKisi] = useState<string>("");
   const [detayYetkiliKisiId, setDetayYetkiliKisiId] = useState<number | null>(null);
   const [detaySirketTuru, setDetaySirketTuru] = useState<string>("");
-  const [detayUlke, setDetayUlke] = useState<string>("");
-  const [detayUlkeId, setDetayUlkeId] = useState<number | null>(null);
-  const [detayUyruk, setDetayUyruk] = useState<string>("");
-  const [detayUyrukId, setDetayUyrukId] = useState<number | null>(null);
+  const [detayUlke, setDetayUlke] = useState<string>("TÜRKİYE");
+  const [detayUlkeId, setDetayUlkeId] = useState<number | null>(1);
+  const [detayUyruk, setDetayUyruk] = useState<string>("TÜRKİYE");
+  const [detayUyrukId, setDetayUyrukId] = useState<number | null>(1);
   const [detayPasaportNo, setDetayPasaportNo] = useState<string>("");
-  const [detayHukukiYapi, setDetayHukukiYapi] = useState<string>("");
-  const [detayHukukiYapiId, setDetayHukukiYapiId] = useState<number | null>(null);
+  const [detayHukukiYapi, setDetayHukukiYapi] = useState<string>("01 - Gerçek Kişi");
+  const [detayHukukiYapiId, setDetayHukukiYapiId] = useState<number | null>(1);
   const [detayGecerlilikTarihi, setDetayGecerlilikTarihi] = useState<string>("");
   const [detayDogumTarihi, setDetayDogumTarihi] = useState<string>("");
   const [gecerlilikFocused, setGecerlilikFocused] = useState<boolean>(false);
@@ -430,6 +518,92 @@ export const DovizFisiPage: React.FC = () => {
   const [showParaSaymaModal, setShowParaSaymaModal] = useState<boolean>(false);
   const [banknotSaymaCounts, setBanknotSaymaCounts] = useState<Record<string, Record<number, number>>>({});
 
+  // Helper to reliably focus grid cells and set proper cursor position
+  const focusCell = useCallback(
+    (
+      rowIdx: number,
+      field: GridColumnKey,
+      cursorPos: "start" | "end" | "select" = "select"
+    ) => {
+      let attempts = 0;
+      const tryFocus = () => {
+        const input = document.getElementById(`grid-input-${rowIdx}-${field}`) as HTMLInputElement | null;
+        if (input) {
+          input.focus();
+          if (cursorPos === "select") {
+            input.select();
+          } else if (cursorPos === "start") {
+            input.setSelectionRange(0, 0);
+          } else if (cursorPos === "end") {
+            const len = input.value ? input.value.length : 0;
+            input.setSelectionRange(len, len);
+          }
+          input.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        } else if (attempts < 25) {
+          attempts++;
+          setTimeout(tryFocus, 25);
+        }
+      };
+      tryFocus();
+    },
+    []
+  );
+
+  // Focus Geliş Nedeni input
+  const focusGelisNedeni = useCallback(() => {
+    let attempts = 0;
+    const tryFocus = () => {
+      const el = document.getElementById("header-input-gelis-nedeni") as HTMLInputElement | null;
+      if (el) {
+        el.focus();
+        el.select();
+      } else if (attempts < 25) {
+        attempts++;
+        setTimeout(tryFocus, 25);
+      }
+    };
+    tryFocus();
+  }, []);
+
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
+
+  // Auto-focus handler matching business requirements:
+  // - [C- Döviz Fişi]: Focus on Geliş Nedeni input
+  // - [D- Döviz Fişi Düzeltme]: Focus on first empty input (cell / field), if none is empty focus on Geliş Nedeni
+  const focusInitialInput = useCallback(() => {
+    if (!isDuzeltmeMode) {
+      // [C- Döviz Fişi]: Geliş nedeni inputuna odaklan
+      focusGelisNedeni();
+    } else {
+      // [D- Döviz Fişi Düzeltme]: Boş olan ilk inputa, eğer boş yoksa Geliş nedeni inputuna odaklan
+      const curLines = linesRef.current || lines;
+      let foundEmpty = false;
+      for (let i = 0; i < curLines.length; i++) {
+        const row = curLines[i];
+        if (!row.paraKodu || !row.paraKodu.trim()) {
+          focusCell(i, "kod", "select");
+          foundEmpty = true;
+          break;
+        }
+        if (row.miktar === undefined || row.miktar === null || row.miktar === "" || Number(row.miktar) === 0) {
+          focusCell(i, "miktar", "select");
+          foundEmpty = true;
+          break;
+        }
+        if (row.kur === undefined || row.kur === null || row.kur === "" || Number(row.kur) === 0) {
+          focusCell(i, "kur", "select");
+          foundEmpty = true;
+          break;
+        }
+      }
+
+      if (!foundEmpty) {
+        focusGelisNedeni();
+      }
+    }
+  }, [isDuzeltmeMode, focusGelisNedeni, focusCell, lines]);
+
   // Fetch dynamic balances for current vezne
   const fetchVezneBalances = useCallback(async (vId: number) => {
     try {
@@ -445,8 +619,177 @@ export const DovizFisiPage: React.FC = () => {
   const [draggedRowIndex, setDraggedRowIndex] = useState<number | null>(null);
   const [dragOverRowIndex, setDragOverRowIndex] = useState<number | null>(null);
 
+  const lookupDataRef = useRef(lookupData);
+  lookupDataRef.current = lookupData;
+  const companyDefinitionsRef = useRef(companyDefinitions);
+  companyDefinitionsRef.current = companyDefinitions;
+
+  // Set default values for Customer Detail (F8 Detay Modal):
+  // Ülke: "TÜRKİYE", Uyruk: "TÜRKİYE", Hukuki Yapı: "01 - Gerçek Kişi",
+  // Posta Kodu, İlçe, İl from Firma Tanımları (TODVZ_TANIM)
+  const applyDefaultF8Detay = useCallback(
+    (lookupsParam?: typeof lookupData, compDefParam?: TodvzTanimDto | null) => {
+      const lk = lookupsParam || lookupDataRef.current;
+      const def = compDefParam !== undefined ? compDefParam : companyDefinitionsRef.current;
+
+      // 1. Ülke: Türkiye
+      const ulkeList = (lk?.ulkeList && lk.ulkeList.length > 0) ? lk.ulkeList : DEFAULT_ULKELER;
+      const trUlke = findTurkiyeItem(ulkeList);
+      if (trUlke) {
+        setDetayUlke(trUlke.ad);
+        setDetayUlkeId(trUlke.id);
+      } else {
+        setDetayUlke("TÜRKİYE");
+        setDetayUlkeId(null);
+      }
+
+      // 2. Uyruk: Türkiye
+      const uyrukList = (lk?.uyrukList && lk.uyrukList.length > 0) ? lk.uyrukList : (lk?.ulkeList && lk.ulkeList.length > 0 ? lk.ulkeList : DEFAULT_ULKELER);
+      const trUyruk = findTurkiyeItem(uyrukList) || trUlke;
+      if (trUyruk) {
+        setDetayUyruk(trUyruk.ad);
+        setDetayUyrukId(trUyruk.id);
+      } else {
+        setDetayUyruk("TÜRKİYE");
+        setDetayUyrukId(null);
+      }
+
+      // 3. Hukuki Yapı: 01 Gerçek Kişi
+      const hyList = (lk?.hukukiYapiList && lk.hukukiYapiList.length > 0) ? lk.hukukiYapiList : DEFAULT_HUKUKI_YAPILAR;
+      const matchH = hyList.find(
+        (h) =>
+          String(h.kod || "").trim() === "01" ||
+          String(h.kod || "").trim() === "1" ||
+          (h.ad && h.ad.toLowerCase().includes("gerçek"))
+      );
+      if (matchH) {
+        setDetayHukukiYapi(matchH.ad || "01 - Gerçek Kişi");
+        setDetayHukukiYapiId(matchH.id);
+      } else {
+        setDetayHukukiYapi("01 - Gerçek Kişi");
+        setDetayHukukiYapiId(1);
+      }
+
+      // 4. Posta Kodu, İlçe, İl -> Firma Tanımları (TODVZ_TANIM)
+      if (def) {
+        // İl
+        if (def.IL_ID) {
+          setDetayIlId(def.IL_ID);
+          const matchIl = (lk?.ilList || []).find((i) => i.id === def.IL_ID || String(i.kod) === String(def.IL_ID));
+          setDetayIl(matchIl ? matchIl.ad : (def as any).IL || "");
+        } else if ((def as any).IL) {
+          setDetayIl((def as any).IL);
+          const matchIl = (lk?.ilList || []).find((i) => i.ad?.toLowerCase().trim() === (def as any).IL.toLowerCase().trim());
+          setDetayIlId(matchIl ? matchIl.id : null);
+        } else {
+          setDetayIl("");
+          setDetayIlId(null);
+        }
+
+        // İlçe
+        if (def.ILCE_ID) {
+          setDetayIlceId(def.ILCE_ID);
+          const ilceSource = lk?.ilceList && lk.ilceList.length > 0 ? lk.ilceList : DEFAULT_ILCELER;
+          const matchIlce = ilceSource.find((i) => i.id === def.ILCE_ID);
+          setDetayIlce(matchIlce ? matchIlce.ad : (def as any).ILCE || "");
+        } else if ((def as any).ILCE) {
+          setDetayIlce((def as any).ILCE);
+          const ilceSource = lk?.ilceList && lk.ilceList.length > 0 ? lk.ilceList : DEFAULT_ILCELER;
+          const matchIlce = ilceSource.find((i) => i.ad?.toLowerCase().trim() === (def as any).ILCE.toLowerCase().trim());
+          setDetayIlceId(matchIlce ? matchIlce.id : null);
+        } else {
+          setDetayIlce("");
+          setDetayIlceId(null);
+        }
+
+        // Posta Kodu
+        if (def.POSTA_KODU_ID) {
+          setDetayPostaKoduId(def.POSTA_KODU_ID);
+          const pList = lk?.postaKoduList && lk.postaKoduList.length > 0 ? lk.postaKoduList : DEFAULT_POSTA_KODLARI;
+          const matchPk = pList.find(
+            (p) => p.id === def.POSTA_KODU_ID || String(p.kod).trim() === String(def.POSTA_KODU_ID).trim()
+          );
+          setDetayPostaKodu(matchPk ? (matchPk.kod || matchPk.ad) : String(def.POSTA_KODU_ID));
+        } else if ((def as any).POSTA_KODU) {
+          setDetayPostaKodu(String((def as any).POSTA_KODU));
+          setDetayPostaKoduId(null);
+        } else {
+          setDetayPostaKodu("");
+          setDetayPostaKoduId(null);
+        }
+      } else {
+        setDetayIl("");
+        setDetayIlId(null);
+        setDetayIlce("");
+        setDetayIlceId(null);
+        setDetayPostaKodu("");
+        setDetayPostaKoduId(null);
+      }
+    },
+    []
+  );
+
+  // Function to open F8 Detay Modal with guaranteed defaults (Türkiye, 01 - Gerçek Kişi, Firma Tanımları)
+  const handleOpenDetayModal = useCallback(() => {
+    const lk = lookupDataRef.current || lookupData;
+    const def = companyDefinitionsRef.current || companyDefinitions;
+
+    const ulkeList = (lk?.ulkeList && lk.ulkeList.length > 0) ? lk.ulkeList : DEFAULT_ULKELER;
+    const trUlke = findTurkiyeItem(ulkeList);
+
+    if (!detayUlke || !detayUlke.trim()) {
+      setDetayUlke(trUlke?.ad || "TÜRKİYE");
+      setDetayUlkeId(trUlke ? trUlke.id : null);
+    } else if (trUlke && (!detayUlkeId || detayUlke.toLowerCase().trim() === "türkiye" || detayUlke.toLowerCase().trim() === "turkiye")) {
+      setDetayUlke(trUlke.ad);
+      setDetayUlkeId(trUlke.id);
+    }
+
+    const uyrukList = (lk?.uyrukList && lk.uyrukList.length > 0) ? lk.uyrukList : ulkeList;
+    const trUyruk = findTurkiyeItem(uyrukList) || trUlke;
+    if (!detayUyruk || !detayUyruk.trim()) {
+      setDetayUyruk(trUyruk?.ad || "TÜRKİYE");
+      setDetayUyrukId(trUyruk ? trUyruk.id : null);
+    } else if (trUyruk && (!detayUyrukId || detayUyruk.toLowerCase().trim() === "türkiye" || detayUyruk.toLowerCase().trim() === "turkiye")) {
+      setDetayUyruk(trUyruk.ad);
+      setDetayUyrukId(trUyruk.id);
+    }
+
+    if (!detayHukukiYapi || !detayHukukiYapi.trim()) {
+      const hyList = (lk?.hukukiYapiList && lk.hukukiYapiList.length > 0) ? lk.hukukiYapiList : DEFAULT_HUKUKI_YAPILAR;
+      const matchH = hyList.find(
+        (h) =>
+          String(h.kod || "").trim() === "01" ||
+          String(h.kod || "").trim() === "1" ||
+          (h.ad && h.ad.toLowerCase().includes("gerçek"))
+      );
+      setDetayHukukiYapi(matchH?.ad || "01 - Gerçek Kişi");
+      setDetayHukukiYapiId(matchH ? matchH.id : 1);
+    }
+    if (def) {
+      if (!detayIl && def.IL_ID) {
+        setDetayIlId(def.IL_ID);
+        const matchIl = (lk?.ilList || []).find((i) => i.id === def.IL_ID || String(i.kod) === String(def.IL_ID));
+        setDetayIl(matchIl ? matchIl.ad : (def as any).IL || "");
+      }
+      if (!detayIlce && def.ILCE_ID) {
+        setDetayIlceId(def.ILCE_ID);
+        const ilceSource = lk?.ilceList && lk.ilceList.length > 0 ? lk.ilceList : DEFAULT_ILCELER;
+        const matchIlce = ilceSource.find((i) => i.id === def.ILCE_ID);
+        setDetayIlce(matchIlce ? matchIlce.ad : (def as any).ILCE || "");
+      }
+      if (!detayPostaKodu && def.POSTA_KODU_ID) {
+        setDetayPostaKoduId(def.POSTA_KODU_ID);
+        const pList = lk?.postaKoduList && lk.postaKoduList.length > 0 ? lk.postaKoduList : DEFAULT_POSTA_KODLARI;
+        const matchPk = pList.find((p) => p.id === def.POSTA_KODU_ID || String(p.kod).trim() === String(def.POSTA_KODU_ID).trim());
+        setDetayPostaKodu(matchPk ? (matchPk.kod || matchPk.ad) : String(def.POSTA_KODU_ID));
+      }
+    }
+    setShowDetayModal(true);
+  }, [detayUlke, detayUyruk, detayHukukiYapi, detayIl, detayIlce, detayPostaKodu, lookupData, companyDefinitions]);
+
   // Clear form for fresh new entry (Registration mode)
-  const resetForm = useCallback(() => {
+  const resetForm = useCallback((lookupsParam?: typeof lookupData, compDefParam?: TodvzTanimDto | null) => {
     setFisId(null);
     setIsLocked(false);
     setIsGonderildi(false);
@@ -467,13 +810,7 @@ export const DovizFisiPage: React.FC = () => {
     setDetayYetkiliKisi("");
     setDetayYetkiliKisiId(null);
     setDetaySirketTuru("");
-    setDetayUlke("");
-    setDetayUlkeId(null);
-    setDetayUyruk("");
-    setDetayUyrukId(null);
     setDetayPasaportNo("");
-    setDetayHukukiYapi("");
-    setDetayHukukiYapiId(null);
     setDetayGecerlilikTarihi("");
     setDetayDogumTarihi("");
     setGecerlilikFocused(false);
@@ -486,12 +823,6 @@ export const DovizFisiPage: React.FC = () => {
     setDetayVergiDairesi("");
     setDetayVergiDairesiId(null);
     setDetayAdres("");
-    setDetayPostaKodu("");
-    setDetayPostaKoduId(null);
-    setDetayIlce("");
-    setDetayIlceId(null);
-    setDetayIl("");
-    setDetayIlId(null);
     setDetayEposta("");
     setDetayTelefon("");
     setDetayVekil("Yok");
@@ -523,7 +854,10 @@ export const DovizFisiPage: React.FC = () => {
     setShowVezneBakiyeModal(false);
     setShowTlHesabiModal(false);
     setCurrentIndex(-1);
-  }, []);
+
+    // Apply default F8 Detay values
+    applyDefaultF8Detay(lookupsParam, compDefParam);
+  }, [applyDefaultF8Detay]);
 
   // Load Lookups
   const loadLookupsAndList = useCallback(async () => {
@@ -549,24 +883,28 @@ export const DovizFisiPage: React.FC = () => {
         setCompanyDefinitions(compDef);
       }
 
+      const curLookups = {
+        ulkeList: cariLk?.ulkeList && cariLk.ulkeList.length > 0 ? cariLk.ulkeList : DEFAULT_ULKELER,
+        uyrukList: cariLk?.ulkeList && cariLk.ulkeList.length > 0 ? cariLk.ulkeList : DEFAULT_ULKELER,
+        ilList: cariLk?.ilList || [],
+        ilceList: cariLk?.ilceList && cariLk.ilceList.length > 0 ? (cariLk.ilceList as any) : DEFAULT_ILCELER,
+        postaKoduList:
+          cariLk?.postaKoduList && cariLk.postaKoduList.length > 0
+            ? (cariLk.postaKoduList as any)
+            : DEFAULT_POSTA_KODLARI,
+        vergiDairesiList: cariLk?.vergiDairesiList || [],
+        meslekList: cariLk?.meslekList || [],
+        hukukiYapiList: cariLk?.hukukiYapiList && cariLk.hukukiYapiList.length > 0 ? cariLk.hukukiYapiList : DEFAULT_HUKUKI_YAPILAR,
+        bankaList:
+          cariLk?.bankaList && cariLk.bankaList.length > 0
+            ? cariLk.bankaList
+            : DEFAULT_BANKALAR,
+      };
+
       if (cariLk) {
-        setLookupData({
-          ulkeList: cariLk.ulkeList || [],
-          uyrukList: cariLk.ulkeList || [],
-          ilList: cariLk.ilList || [],
-          ilceList: cariLk.ilceList && cariLk.ilceList.length > 0 ? (cariLk.ilceList as any) : DEFAULT_ILCELER,
-          postaKoduList:
-            cariLk.postaKoduList && cariLk.postaKoduList.length > 0
-              ? (cariLk.postaKoduList as any)
-              : DEFAULT_POSTA_KODLARI,
-          vergiDairesiList: cariLk.vergiDairesiList || [],
-          meslekList: cariLk.meslekList || [],
-          hukukiYapiList: cariLk.hukukiYapiList || [],
-          bankaList:
-            cariLk.bankaList && cariLk.bankaList.length > 0
-              ? cariLk.bankaList
-              : DEFAULT_BANKALAR,
-        });
+        setLookupData(curLookups);
+        lookupDataRef.current = curLookups;
+        applyDefaultF8Detay(curLookups, compDef);
       }
 
       const trimmedCariler = cariler.map((c) => ({
@@ -676,14 +1014,26 @@ export const DovizFisiPage: React.FC = () => {
         if (queryId) {
           await loadFisById(Number(queryId));
         } else {
-          // Düzeltme ekranı ilk açılışta boş yeni kayıt modunda açılır; kullanıcı üst arama butonundan istediği fişi seçer
-          resetForm();
-          applyDefaultIstatistik(tip, istatistikler, compDef, user);
+          // Düzeltme ekranında otomatik son kayıt getirilir
+          try {
+            const fisler = await DovizFisService.getFisList({ limit: 500 });
+            setSavedFisList(fisler);
+            if (fisler && fisler.length > 0) {
+              const latestFis = fisler[fisler.length - 1];
+              await loadFisById(latestFis.fisId);
+              setCurrentIndex(fisler.length - 1);
+            } else {
+              resetForm(curLookups, compDef);
+              applyDefaultIstatistik(tip, istatistikler, compDef, user);
+            }
+          } catch {
+            resetForm(curLookups, compDef);
+            applyDefaultIstatistik(tip, istatistikler, compDef, user);
+          }
         }
       } else {
-        resetForm();
-        // Yeni fiş modunda varsayılan istatistiği ata
-        // user: AuthContext'ten gelen güncel değer; istatistikler ve compDef: yerel değişkenler (stale yok)
+        // [C- Döviz Fişi] sayfasında hiçbir eski veri gözükmez, temiz yeni fiş modu açılır
+        resetForm(curLookups, compDef);
         applyDefaultIstatistik(tip, istatistikler, compDef, user);
       }
     } catch (err: any) {
@@ -694,11 +1044,21 @@ export const DovizFisiPage: React.FC = () => {
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [fetchVezneBalances, isDuzeltmeMode, queryId, resetForm]);
+  }, [fetchVezneBalances, isDuzeltmeMode, queryId]);
 
   useEffect(() => {
     loadLookupsAndList();
   }, [loadLookupsAndList]);
+
+  // Auto-focus first input on screen load / route navigation
+  useEffect(() => {
+    if (!isLoadingLookups) {
+      const timer = setTimeout(() => {
+        focusInitialInput();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoadingLookups, location.pathname, focusInitialInput]);
 
   // Load single Doviz Fis into form
   const loadFisById = async (id: number) => {
@@ -746,11 +1106,21 @@ export const DovizFisiPage: React.FC = () => {
         setDetayUlkeId(fis.ulkeId);
         const matchUlke = lookupData.ulkeList.find((u) => u.id === fis.ulkeId);
         if (matchUlke) setDetayUlke(matchUlke.ad);
+        else setDetayUlke(String(fis.ulkeId));
+      } else {
+        const trUlke = findTurkiyeItem(lookupData.ulkeList);
+        setDetayUlkeId(trUlke ? trUlke.id : null);
+        setDetayUlke(trUlke?.ad || "Türkiye");
       }
       if (fis.uyrukId) {
         setDetayUyrukId(fis.uyrukId);
         const matchUyruk = lookupData.uyrukList.find((u) => u.id === fis.uyrukId);
         if (matchUyruk) setDetayUyruk(matchUyruk.ad);
+        else setDetayUyruk(String(fis.uyrukId));
+      } else {
+        const trUyruk = findTurkiyeItem(lookupData.uyrukList);
+        setDetayUyrukId(trUyruk ? trUyruk.id : null);
+        setDetayUyruk(trUyruk?.ad || "Türkiye");
       }
       if ((fis as any).hukukiYapiId) {
         setDetayHukukiYapiId((fis as any).hukukiYapiId);
@@ -760,24 +1130,40 @@ export const DovizFisiPage: React.FC = () => {
         } else {
           setDetayHukukiYapi(String((fis as any).hukukiYapiId));
         }
+      } else {
+        const matchH = lookupData.hukukiYapiList.find(
+          (h) => String(h.kod || "").trim() === "01" || String(h.id) === "1" || (h.ad && h.ad.toLowerCase().includes("gerçek"))
+        );
+        setDetayHukukiYapiId(matchH ? matchH.id : 1);
+        setDetayHukukiYapi(matchH?.ad || "01 - Gerçek Kişi");
       }
       if (fis.vergiDairesiId) {
         setDetayVergiDairesiId(fis.vergiDairesiId);
         const matchVd = lookupData.vergiDairesiList.find((v) => v.id === fis.vergiDairesiId);
         if (matchVd) setDetayVergiDairesi(matchVd.ad);
+      } else {
+        setDetayVergiDairesiId(null);
+        setDetayVergiDairesi("");
       }
       if ((fis as any).ilId) {
         setDetayIlId((fis as any).ilId);
+      } else {
+        setDetayIlId(null);
       }
       if ((fis as any).il) {
         setDetayIl((fis as any).il);
       } else if ((fis as any).ilId) {
         const matchIl = lookupData.ilList.find((i) => i.id === (fis as any).ilId);
         if (matchIl) setDetayIl(matchIl.ad);
+        else setDetayIl("");
+      } else {
+        setDetayIl("");
       }
 
       if ((fis as any).ilceId) {
         setDetayIlceId((fis as any).ilceId);
+      } else {
+        setDetayIlceId(null);
       }
       if ((fis as any).ilce) {
         setDetayIlce((fis as any).ilce);
@@ -786,11 +1172,17 @@ export const DovizFisiPage: React.FC = () => {
         const matchIlce = ilceSource.find((i) => i.id === (fis as any).ilceId);
         if (matchIlce) {
           setDetayIlce(matchIlce.ad);
+        } else {
+          setDetayIlce("");
         }
+      } else {
+        setDetayIlce("");
       }
 
       if ((fis as any).postaKoduId) {
         setDetayPostaKoduId((fis as any).postaKoduId);
+      } else {
+        setDetayPostaKoduId(null);
       }
       if ((fis as any).postaKodu) {
         setDetayPostaKodu(String((fis as any).postaKodu));
@@ -802,6 +1194,8 @@ export const DovizFisiPage: React.FC = () => {
         } else {
           setDetayPostaKodu(String((fis as any).postaKoduId));
         }
+      } else {
+        setDetayPostaKodu("");
       }
       if ((fis as any).meslekId) {
         setDetayMeslekId((fis as any).meslekId);
@@ -893,6 +1287,11 @@ export const DovizFisiPage: React.FC = () => {
       }
 
       await fetchVezneBalances(fis.vezneId);
+
+      // Auto-focus initial field after loading receipt
+      setTimeout(() => {
+        focusInitialInput();
+      }, 80);
     } catch (err: any) {
       setNotification({
         type: "danger",
@@ -962,6 +1361,15 @@ export const DovizFisiPage: React.FC = () => {
     []
   );
 
+  // Satırın dolu olup olmadığını kontrol eder (Para seçilmiş, miktar > 0 ve kur > 0 olmalıdır)
+  const isRowFilled = useCallback((row?: GridLineItem): boolean => {
+    if (!row) return false;
+    const hasPara = Boolean(row.paraId || (row.paraKodu && row.paraKodu.trim() !== ""));
+    const miktarNum = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
+    const kurNum = typeof row.kur === "number" ? row.kur : parseFloat(String(row.kur).replace(/,/g, ".")) || 0;
+    return hasPara && miktarNum > 0 && kurNum > 0;
+  }, []);
+
   const calculateRowTutar = useCallback((miktar: number | string, kur: number | string): number => {
     const m = typeof miktar === "number" ? miktar : parseFloat(String(miktar).replace(/,/g, ".")) || 0;
     const k = typeof kur === "number" ? kur : parseFloat(String(kur).replace(/,/g, ".")) || 0;
@@ -970,7 +1378,26 @@ export const DovizFisiPage: React.FC = () => {
   }, [tlKurusSayisi]);
 
   const handleAddRow = () => {
+    if (isLocked) return;
+    const lastRow = lines[lines.length - 1];
+    if (!isRowFilled(lastRow)) {
+      if (lastRow) {
+        if (!lastRow.paraId && !lastRow.paraKodu) {
+          focusCell(lines.length - 1, "kod", "select");
+        } else if (!lastRow.miktar || Number(lastRow.miktar) <= 0) {
+          focusCell(lines.length - 1, "miktar", "select");
+        } else {
+          focusCell(lines.length - 1, "kur", "select");
+        }
+      }
+      return;
+    }
     setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+    const nextIdx = lines.length;
+    setActiveRowIndex(nextIdx);
+    setTimeout(() => {
+      focusCell(nextIdx, "kod", "select");
+    }, 50);
   };
 
   const handleRemoveLine = (id: string) => {
@@ -1236,6 +1663,34 @@ export const DovizFisiPage: React.FC = () => {
         if (mIlce) setDetayIlce(mIlce.ad);
       }
       if (raw.ilce) setDetayIlce(raw.ilce);
+
+      if (raw.ulkeId) {
+        setDetayUlkeId(Number(raw.ulkeId));
+        const mUlke = lookupData.ulkeList.find((u) => u.id === Number(raw.ulkeId));
+        if (mUlke) setDetayUlke(mUlke.ad);
+      } else if (raw.ulke) {
+        setDetayUlke(raw.ulke);
+        const mUlke = lookupData.ulkeList.find((u) => u.ad.toLowerCase() === String(raw.ulke).toLowerCase());
+        if (mUlke) setDetayUlkeId(mUlke.id);
+      } else if (!detayUlke || !detayUlke.trim()) {
+        const trUlke = findTurkiyeItem(lookupData.ulkeList);
+        setDetayUlke(trUlke?.ad || "Türkiye");
+        setDetayUlkeId(trUlke ? trUlke.id : null);
+      }
+
+      if (raw.uyrukId) {
+        setDetayUyrukId(Number(raw.uyrukId));
+        const mUyruk = lookupData.uyrukList.find((u) => u.id === Number(raw.uyrukId));
+        if (mUyruk) setDetayUyruk(mUyruk.ad);
+      } else if (raw.uyruk) {
+        setDetayUyruk(raw.uyruk);
+        const mUyruk = lookupData.uyrukList.find((u) => u.ad.toLowerCase() === String(raw.uyruk).toLowerCase());
+        if (mUyruk) setDetayUyrukId(mUyruk.id);
+      } else if (!detayUyruk || !detayUyruk.trim()) {
+        const trUyruk = findTurkiyeItem(lookupData.uyrukList);
+        setDetayUyruk(trUyruk?.ad || "Türkiye");
+        setDetayUyrukId(trUyruk ? trUyruk.id : null);
+      }
 
       const pkSource = (lookupData.postaKoduList && lookupData.postaKoduList.length > 0) ? lookupData.postaKoduList : DEFAULT_POSTA_KODLARI;
       if (raw.postaKoduId) {
@@ -1582,81 +2037,65 @@ export const DovizFisiPage: React.FC = () => {
     );
   };
 
-  // 9 Grid Nav Columns in sequential order
-  const GRID_COLUMNS = [
-    "kod",
-    "miktar",
-    "kur",
-    "komisyonOrani",
-    "komisyon",
-    "bmvOrani",
-    "bmv",
-    "kmvOrani",
-    "kmv",
-  ] as const;
-  type GridColumnKey = (typeof GRID_COLUMNS)[number];
-
-  // Helper to reliably focus grid cells and set proper cursor position
-  const focusCell = (
-    rowIdx: number,
-    field: GridColumnKey,
-    cursorPos: "start" | "end" | "select" = "select"
-  ) => {
-    let attempts = 0;
-    const tryFocus = () => {
-      const input = document.getElementById(`grid-input-${rowIdx}-${field}`) as HTMLInputElement | null;
-      if (input) {
-        input.focus();
-        if (cursorPos === "select") {
-          input.select();
-        } else if (cursorPos === "start") {
-          input.setSelectionRange(0, 0);
-        } else if (cursorPos === "end") {
-          const len = input.value ? input.value.length : 0;
-          input.setSelectionRange(len, len);
-        }
-        input.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      } else if (attempts < 20) {
-        attempts++;
-        setTimeout(tryFocus, 25);
-      }
-    };
-    tryFocus();
-  };
-
   // Keyboard navigation across all grid cells
   const handleCellKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
     rowIndex: number,
     field: GridColumnKey
   ) => {
-    // F3, F4, F5, F6, F9 Kısayolları grid inputu aktifken de doğrudan modalları açsın
-    if (e.key === "F3") {
+    // F1..F9 Kısayolları grid inputu aktifken de doğrudan modalları/işlemleri tetiklesin
+    if (e.key === "F1" || e.code === "F1" || e.keyCode === 112) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleToolbarSave();
+      return;
+    }
+    if (e.key === "F2" || e.code === "F2" || e.keyCode === 113) {
+      if (isDuzeltmeMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleToolbarDelete();
+      }
+      return;
+    }
+    if (e.key === "F3" || e.code === "F3" || e.keyCode === 114) {
       e.preventDefault();
       e.stopPropagation();
       setShowIstatistikModal(true);
       return;
     }
-    if (e.key === "F4") {
+    if (e.key === "F4" || e.code === "F4" || e.keyCode === 115) {
       e.preventDefault();
       e.stopPropagation();
       setShowKurListesiModal(true);
       return;
     }
-    if (e.key === "F5") {
+    if (e.key === "F5" || e.code === "F5" || e.keyCode === 116) {
       e.preventDefault();
       e.stopPropagation();
       fetchVezneBalances(vezneId);
       setShowVezneBakiyeModal(true);
       return;
     }
-    if (e.key === "F6") {
+    if (e.key === "F6" || e.code === "F6" || e.keyCode === 117) {
       e.preventDefault();
       e.stopPropagation();
       setShowTlHesabiModal(true);
       return;
     }
-    if (e.key === "F9") {
+    if (e.key === "F7" || e.code === "F7" || e.keyCode === 118) {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowGumrukModal(true);
+      return;
+    }
+    if (e.key === "F8" || e.key === "f8" || e.code === "F8" || e.keyCode === 119) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleOpenDetayModal();
+      return;
+    }
+    if (e.key === "F9" || e.code === "F9" || e.keyCode === 120) {
       e.preventDefault();
       e.stopPropagation();
       handleOpenBanknotSay();
@@ -1682,14 +2121,13 @@ export const DovizFisiPage: React.FC = () => {
     const currentVisIdx = visibleCols.indexOf(field);
     const isLastVisibleCol = currentVisIdx === visibleCols.length - 1;
 
-    // Ctrl+Enter veya Alt+Enter: Hangi hücrede olursa olsun satırı tamamlayıp bir alt satıra geç (veya yeni satır aç)
+    // Ctrl+Enter veya Alt+Enter: Hangi hücrede olursa olsun satırı tamamlayıp bir alt satıra geç (veya satır doluysa yeni satır aç)
     if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
       e.preventDefault();
       if (rowIndex >= lines.length - 1) {
-        const nextIdx = lines.length;
-        handleAddRow();
-        setActiveRowIndex(nextIdx);
-        focusCell(nextIdx, "kod", "select");
+        if (isRowFilled(lines[rowIndex])) {
+          handleAddRow();
+        }
       } else {
         setActiveRowIndex(rowIndex + 1);
         focusCell(rowIndex + 1, "kod", "select");
@@ -1697,7 +2135,7 @@ export const DovizFisiPage: React.FC = () => {
       return;
     }
 
-    // 1. Enter Tuşu: Bir sonraki alana geçiş, son görünür alanda ise altta YENİ SATIR açıp yeni satırın kod alanına geçiş
+    // 1. Enter Tuşu: Bir sonraki alana geçiş, son görünür alanda ise ancak satır DOLUYSA yeni satır açıp yeni satırın kod alanına geçiş
     if (e.key === "Enter") {
       e.preventDefault();
       if (field === "kod") {
@@ -1716,12 +2154,11 @@ export const DovizFisiPage: React.FC = () => {
 
       if (isLastVisibleCol) {
         // Satırın son alanında Enter'a basıldı:
-        // Eğer son satırsa KESİNLİKLE altta YENİ SATIR aç ve yeni satırın kod alanına geç!
         if (rowIndex >= lines.length - 1) {
-          const nextIdx = lines.length;
-          handleAddRow();
-          setActiveRowIndex(nextIdx);
-          focusCell(nextIdx, "kod", "select");
+          // Son satırsa ve DOLUYSA yeni satır aç
+          if (isRowFilled(lines[rowIndex])) {
+            handleAddRow();
+          }
         } else {
           // Altında zaten satır varsa bir alt satırın kod alanına geç
           setActiveRowIndex(rowIndex + 1);
@@ -1738,14 +2175,13 @@ export const DovizFisiPage: React.FC = () => {
       }
     }
 
-    // Tab Tuşu: Son görünür sütunda basıldığında yeni satır açıp kod hücresine geçsin
+    // Tab Tuşu: Son görünür sütunda basıldığında satır doluysa yeni satır açıp kod hücresine geçsin
     if (e.key === "Tab" && !e.shiftKey && isLastVisibleCol) {
       e.preventDefault();
       if (rowIndex >= lines.length - 1) {
-        const nextIdx = lines.length;
-        handleAddRow();
-        setActiveRowIndex(nextIdx);
-        focusCell(nextIdx, "kod", "select");
+        if (isRowFilled(lines[rowIndex])) {
+          handleAddRow();
+        }
       } else {
         setActiveRowIndex(rowIndex + 1);
         focusCell(rowIndex + 1, "kod", "select");
@@ -1767,13 +2203,14 @@ export const DovizFisiPage: React.FC = () => {
         if (nextCol) focusCell(rowIndex, nextCol, "start");
         return;
       } else {
-        // Satırın son sütunundayken sağa basınca bir sonraki satıra geçsin (yoksa yeni satır açsın)
-        const nextIdx = rowIndex + 1;
-        if (rowIndex >= maxRow) {
+        // Satırın son sütunundayken sağa basınca bir sonraki satıra geçsin (eğer satır doluysa ve son satırsa yeni satır açsın)
+        if (rowIndex < maxRow) {
+          const nextIdx = rowIndex + 1;
+          setActiveRowIndex(nextIdx);
+          focusCell(nextIdx, "kod", "start");
+        } else if (isRowFilled(lines[rowIndex])) {
           handleAddRow();
         }
-        setActiveRowIndex(nextIdx);
-        focusCell(nextIdx, "kod", "start");
         return;
       }
     }
@@ -1802,15 +2239,16 @@ export const DovizFisiPage: React.FC = () => {
       }
     }
 
-    // 4. Aşağı Yön Oku: Aynı sütunda alt satıra geçer, son satırdaysa yeni satır açar
+    // 4. Aşağı Yön Oku: Aynı sütunda alt satıra geçer, son satırdaysa ancak satır DOLUYSA yeni satır açar
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      const targetIdx = rowIndex + 1;
-      if (rowIndex >= maxRow) {
+      if (rowIndex < maxRow) {
+        const targetIdx = rowIndex + 1;
+        setActiveRowIndex(targetIdx);
+        focusCell(targetIdx, field, "select");
+      } else if (isRowFilled(lines[rowIndex])) {
         handleAddRow();
       }
-      setActiveRowIndex(targetIdx);
-      focusCell(targetIdx, field, "select");
       return;
     }
 
@@ -2287,8 +2725,88 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   // Keyboard shortcut listener (F1..F10, ESC)
+  // Keyboard shortcut listener (F1..F10, ESC)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key ? e.key.toUpperCase() : "";
+      const isEscape = key === "ESCAPE" || e.code === "Escape" || e.keyCode === 27;
+      const isF1 = key === "F1" || e.code === "F1" || e.keyCode === 112;
+      const isF2 = key === "F2" || e.code === "F2" || e.keyCode === 113;
+      const isF3 = key === "F3" || e.code === "F3" || e.keyCode === 114;
+      const isF4 = key === "F4" || e.code === "F4" || e.keyCode === 115;
+      const isF5 = key === "F5" || e.code === "F5" || e.keyCode === 116;
+      const isF6 = key === "F6" || e.code === "F6" || e.keyCode === 117;
+      const isF7 = key === "F7" || e.code === "F7" || e.keyCode === 118;
+      const isF8 = key === "F8" || e.code === "F8" || e.keyCode === 119;
+      const isF9 = key === "F9" || e.code === "F9" || e.keyCode === 120;
+
+      // F8 Detay Modalı açar
+      if (isF8) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleOpenDetayModal();
+        return;
+      }
+
+      if (isEscape) {
+        if (showDetayModal) {
+          e.preventDefault();
+          setShowDetayModal(false);
+          return;
+        }
+        if (activeLookupType !== null) {
+          e.preventDefault();
+          setActiveLookupType(null);
+          return;
+        }
+        if (showKurListesiModal) {
+          e.preventDefault();
+          setShowKurListesiModal(false);
+          return;
+        }
+        if (showVezneBakiyeModal) {
+          e.preventDefault();
+          setShowVezneBakiyeModal(false);
+          return;
+        }
+        if (showTlHesabiModal) {
+          e.preventDefault();
+          setShowTlHesabiModal(false);
+          return;
+        }
+        if (showParaSaymaModal) {
+          e.preventDefault();
+          setShowParaSaymaModal(false);
+          return;
+        }
+        if (showIstatistikModal) {
+          e.preventDefault();
+          setShowIstatistikModal(false);
+          return;
+        }
+        if (showGumrukModal) {
+          e.preventDefault();
+          setShowGumrukModal(false);
+          return;
+        }
+        if (showPrintModal) {
+          e.preventDefault();
+          setShowPrintModal(false);
+          return;
+        }
+        if (showCariModal) {
+          e.preventDefault();
+          setShowCariModal(false);
+          return;
+        }
+        if (showSearchModal) {
+          e.preventDefault();
+          setShowSearchModal(false);
+          return;
+        }
+        return;
+      }
+
       const isAnyModalOpen =
         showKurListesiModal ||
         showVezneBakiyeModal ||
@@ -2301,87 +2819,45 @@ export const DovizFisiPage: React.FC = () => {
         showVezneModal ||
         showParaModal ||
         showGumrukModal ||
-        showPrintModal;
+        showPrintModal ||
+        activeLookupType !== null;
 
       if (isAnyModalOpen) {
-        if (e.key === "Escape") {
-          if (showKurListesiModal) {
-            e.preventDefault();
-            setShowKurListesiModal(false);
-            return;
-          }
-          if (showVezneBakiyeModal) {
-            e.preventDefault();
-            setShowVezneBakiyeModal(false);
-            return;
-          }
-          if (showTlHesabiModal) {
-            e.preventDefault();
-            setShowTlHesabiModal(false);
-            return;
-          }
-          if (showDetayModal) {
-            e.preventDefault();
-            setShowDetayModal(false);
-            return;
-          }
-          if (showParaSaymaModal) {
-            e.preventDefault();
-            setShowParaSaymaModal(false);
-            return;
-          }
-          if (showIstatistikModal) {
-            e.preventDefault();
-            setShowIstatistikModal(false);
-            return;
-          }
-          if (showGumrukModal) {
-            e.preventDefault();
-            setShowGumrukModal(false);
-            return;
-          }
-          if (showPrintModal) {
-            e.preventDefault();
-            setShowPrintModal(false);
-            return;
-          }
-        }
-        // Modal açıkken sayfa toolbar kısayollarını (F1 Kaydet vb.) çalıştırma
         return;
       }
 
-      if (e.key === "F1") {
+      if (isF1) {
         e.preventDefault();
         e.stopPropagation();
         handleToolbarSave();
-      } else if (e.key === "F2") {
+      } else if (isF2) {
         if (isDuzeltmeMode) {
           e.preventDefault();
           e.stopPropagation();
           handleToolbarDelete();
         }
-      } else if (e.key === "F3") {
+      } else if (isF3) {
         e.preventDefault();
         e.stopPropagation();
         setShowIstatistikModal(true);
-      } else if (e.key === "F4") {
+      } else if (isF4) {
         e.preventDefault();
         e.stopPropagation();
         setShowKurListesiModal(true);
-      } else if (e.key === "F5") {
+      } else if (isF5) {
         e.preventDefault();
         e.stopPropagation();
         fetchVezneBalances(vezneId);
         setShowVezneBakiyeModal(true);
-      } else if (e.key === "F6") {
+      } else if (isF6) {
         e.preventDefault();
         e.stopPropagation();
         setShowTlHesabiModal(true);
-      } else if (e.key === "F8") {
+      } else if (isF7) {
         e.preventDefault();
         e.stopPropagation();
-        setShowDetayModal(true);
-      } else if (e.key === "F9") {
+        setShowGumrukModal(true);
+      } else if (isF9) {
         e.preventDefault();
         e.stopPropagation();
         handleOpenBanknotSay();
@@ -2407,6 +2883,7 @@ export const DovizFisiPage: React.FC = () => {
     showParaModal,
     showGumrukModal,
     showPrintModal,
+    activeLookupType,
     handleOpenBanknotSay,
   ]);
 
@@ -2723,6 +3200,7 @@ export const DovizFisiPage: React.FC = () => {
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       <Form.Control
+                        id="header-input-gelis-nedeni"
                         type="text"
                         size="sm"
                         autoComplete="off"
@@ -3372,19 +3850,30 @@ export const DovizFisiPage: React.FC = () => {
               {/* Orta Alt: Fonksiyon Tuşları Şeridi */}
               <Col md={6}>
                 <div
-                  className="p-2 rounded text-center small fw-bold border"
-                  style={{ backgroundColor: "#e0f2fe", color: "#0369a1", letterSpacing: "0.5px" }}
+                  className="p-1.5 rounded d-flex flex-wrap align-items-center justify-content-center gap-1.5 border shadow-2xs"
+                  style={{ backgroundColor: "#e0f2fe", color: "#0369a1" }}
                 >
-                  <span role="button" className="mx-2 hover-underline" onClick={() => setShowIstatistikModal(true)}>F3)İst.</span>
-                  <span role="button" className="mx-2 hover-underline" onClick={() => setShowKurListesiModal(true)}>F4)Kur</span>
-                  <span role="button" className="mx-2 hover-underline" onClick={() => { fetchVezneBalances(vezneId); setShowVezneBakiyeModal(true); }}>F5)Vezne</span>
-                  <span role="button" className="mx-2 hover-underline" onClick={() => setShowTlHesabiModal(true)}>F6)TL Hesabı</span>
-                  <span role="button" className="mx-2 hover-underline">F7)Arbitraj</span>
-                  <span role="button" className="mx-2 hover-underline text-primary" onClick={() => setShowDetayModal(true)}>
-                    F8)Detay
-                  </span>
-                  <span role="button" className="mx-2 hover-underline" onClick={handleOpenBanknotSay}>F9)Banknot Say</span>
-                  <span role="button" className="mx-2 hover-underline">F10)Kes</span>
+                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowIstatistikModal(true)}>
+                    F3) İst.
+                  </Button>
+                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowKurListesiModal(true)}>
+                    F4) Kur
+                  </Button>
+                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => { fetchVezneBalances(vezneId); setShowVezneBakiyeModal(true); }}>
+                    F5) Vezne
+                  </Button>
+                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowTlHesabiModal(true)}>
+                    F6) TL Hesabı
+                  </Button>
+                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowGumrukModal(true)}>
+                    F7) Gümrük
+                  </Button>
+                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenDetayModal}>
+                    F8) Detay
+                  </Button>
+                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenBanknotSay}>
+                    F9) Banknot Say
+                  </Button>
                 </div>
               </Col>
 
@@ -3541,7 +4030,7 @@ export const DovizFisiPage: React.FC = () => {
                   />
                   <Button
                     variant="outline-secondary"
-                    title="Ülke Seçimi (TODVZ_ULKE) (F4)"
+                    title="Ülke Seçimi (F4)"
                     onClick={() => setActiveLookupType("ulke")}
                   >
                     <IconBinoculars size={13} />
@@ -3574,7 +4063,7 @@ export const DovizFisiPage: React.FC = () => {
                   />
                   <Button
                     variant="outline-secondary"
-                    title="Uyruk Seçimi (TODVZ_TABLO_MADDESI) (F4)"
+                    title="Uyruk Seçimi (F4)"
                     onClick={() => setActiveLookupType("uyruk")}
                   >
                     <IconBinoculars size={13} />
@@ -3779,7 +4268,7 @@ export const DovizFisiPage: React.FC = () => {
                   />
                   <Button
                     variant="outline-secondary"
-                    title="Vergi Dairesi Seçimi (TODVZ_VERGI_DAIRESI) (F4)"
+                    title="Vergi Dairesi Seçimi (F4)"
                     onClick={() => setActiveLookupType("vergiDairesi")}
                   >
                     <IconBinoculars size={13} />
@@ -3809,15 +4298,20 @@ export const DovizFisiPage: React.FC = () => {
                     data-detay-idx={17}
                     onKeyDown={(e) => handleDetayFieldKeyDown(e, 17, "postaKodu")}
                     value={detayPostaKodu}
-                    maxLength={10}
+                    maxLength={20}
                     onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "").slice(0, 10);
+                      const v = e.target.value.slice(0, 20);
                       setDetayPostaKodu(v);
-                      if (!v) {
+                      if (!v.trim()) {
                         setDetayPostaKoduId(undefined);
                       } else {
                         const pList = (lookupData.postaKoduList && lookupData.postaKoduList.length > 0) ? lookupData.postaKoduList : DEFAULT_POSTA_KODLARI;
-                        const matchPk = pList.find((p) => String(p.kod).trim() === v.trim() || String(p.id) === v.trim());
+                        const matchPk = pList.find(
+                          (p) =>
+                            String(p.kod).trim().toLowerCase() === v.trim().toLowerCase() ||
+                            String(p.id).trim() === v.trim() ||
+                            (p.ad && p.ad.toLowerCase().trim() === v.toLowerCase().trim())
+                        );
                         setDetayPostaKoduId(matchPk ? matchPk.id : undefined);
                         if (matchPk) {
                           if (!detayIlce && matchPk.ilce) {
@@ -3834,10 +4328,11 @@ export const DovizFisiPage: React.FC = () => {
                         }
                       }
                     }}
+                    placeholder="Posta kodu"
                   />
                   <Button
                     variant="outline-secondary"
-                    title="Posta Kodu Seçimi (TODVZ_POSTA_KODU) (F4)"
+                    title="Posta Kodu Seçimi (F4)"
                     onClick={() => setActiveLookupType("postaKodu")}
                   >
                     <IconBinoculars size={13} />
@@ -3867,7 +4362,7 @@ export const DovizFisiPage: React.FC = () => {
                   />
                   <Button
                     variant="outline-secondary"
-                    title="İlçe Seçimi (TODVZ_ILCE) (F4)"
+                    title="İlçe Seçimi (F4)"
                     onClick={() => setActiveLookupType("ilce")}
                   >
                     <IconBinoculars size={13} />
@@ -3900,7 +4395,7 @@ export const DovizFisiPage: React.FC = () => {
                   />
                   <Button
                     variant="outline-secondary"
-                    title="İl Seçimi (TODVZ_IL) (F4)"
+                    title="İl / Şehir Seçimi (F4)"
                     onClick={() => setActiveLookupType("il")}
                   >
                     <IconBinoculars size={13} />
@@ -4008,7 +4503,7 @@ export const DovizFisiPage: React.FC = () => {
                   />
                   <Button
                     variant="outline-secondary"
-                    title="Meslek Seçimi (TODVZ_MESLEK) (F4)"
+                    title="Meslek Seçimi (F4)"
                     onClick={() => setActiveLookupType("meslek")}
                   >
                     <IconBinoculars size={13} />
@@ -4056,7 +4551,7 @@ export const DovizFisiPage: React.FC = () => {
                   />
                   <Button
                     variant="outline-secondary"
-                    title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
+                    title="Banka Hesabı Seçimi (F4)"
                     onClick={() => setActiveLookupType("bankaHesabi")}
                   >
                     <IconBinoculars size={13} />
@@ -4189,24 +4684,24 @@ export const DovizFisiPage: React.FC = () => {
         onHide={() => setActiveLookupType(null)}
         title={
           activeLookupType === "ulke"
-            ? "Ülke Seçimi (TODVZ_ULKE)"
+            ? "Ülke Seçimi"
             : activeLookupType === "uyruk"
-              ? "Uyruk Seçimi (TODVZ_TABLO_MADDESI)"
+              ? "Uyruk Seçimi"
               : activeLookupType === "hukukiYapi"
-                ? "Hukuki Yapı Seçimi (TODVZ_TABLO_MADDESI)"
+                ? "Hukuki Yapı Seçimi"
                 : activeLookupType === "yetkiliKisi"
                   ? "Yetkili Kişi Seçimi"
                   : activeLookupType === "il"
-                    ? "İl Seçimi (TODVZ_IL)"
+                    ? "İl / Şehir Seçimi"
                     : activeLookupType === "ilce"
-                      ? "İlçe Seçimi (TODVZ_ILCE)"
+                      ? "İlçe Seçimi"
                       : activeLookupType === "postaKodu"
-                        ? "Posta Kodu Seçimi (TODVZ_POSTA_KODU)"
+                        ? "Posta Kodu Seçimi"
                         : activeLookupType === "vergiDairesi"
-                          ? "Vergi Dairesi Seçimi (TODVZ_VERGI_DAIRESI)"
+                          ? "Vergi Dairesi Seçimi"
                           : activeLookupType === "meslek"
-                            ? "Meslek Seçimi (TODVZ_MESLEK)"
-                            : "Banka Hesabı Seçimi (TODVZ_BANKA_HESABI)"
+                            ? "Meslek Seçimi"
+                            : "Banka Hesabı Seçimi"
         }
         items={
           activeLookupType === "ulke"
