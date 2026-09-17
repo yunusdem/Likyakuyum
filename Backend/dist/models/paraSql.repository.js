@@ -101,7 +101,7 @@ export class ParaSqlRepository {
           [BIRIM],
           [URUN_TIPI]
         FROM [dbo].[TODVZ_PARA]
-        ORDER BY [SIRA_NO] ASC, [PARA_ID] ASC;
+        ORDER BY CASE WHEN ISNULL([SIRA_NO], 0) <= 0 THEN 9999999 ELSE [SIRA_NO] END ASC, [PARA_ID] ASC;
       `;
             const result = await pool.request().query(query);
             return result.recordset.map(ParaSqlRepository.mapEntityToModel);

@@ -88,9 +88,12 @@ export const sortKurRows = (items?: KurRowItem[]): KurRowItem[] => {
   if (!items) return [];
   const nonTl = filterOutTl(items);
   return [...nonTl].sort((a, b) => {
-    const seqA = Number(a.siraNo) || Number(a.paraId) || 0;
-    const seqB = Number(b.siraNo) || Number(b.paraId) || 0;
-    return seqA - seqB;
+    const seqA = Number(a.siraNo) > 0 ? Number(a.siraNo) : 9999999;
+    const seqB = Number(b.siraNo) > 0 ? Number(b.siraNo) : 9999999;
+    if (seqA !== seqB) {
+      return seqA - seqB;
+    }
+    return (Number(a.paraId) || 0) - (Number(b.paraId) || 0);
   });
 };
 

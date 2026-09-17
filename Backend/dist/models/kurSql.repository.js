@@ -94,6 +94,31 @@ export class KurSqlRepository {
           END
         ');
       END
+
+      IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[SODVZ_KUR_TANIMI_KAYDET]') AND type in (N'P', N'PC'))
+      BEGIN
+        EXEC('
+          CREATE PROCEDURE [dbo].[SODVZ_KUR_TANIMI_KAYDET]
+            @DOVIZ_ALIS_DVZ_SATIS_ORANI FLOAT = NULL,
+            @EFEKTIF_ALIS_DVZ_SATIS_ORANI FLOAT = NULL,
+            @EFEKTIF_SATIS_DVZ_SATIS_ORANI FLOAT = NULL,
+            @MERKEZ_BANKASI_KURUNU_AL BIT = NULL
+          AS
+          BEGIN
+            IF EXISTS (SELECT * FROM sys.tables WHERE name = ''TODVZ_TANIM'')
+            BEGIN
+              UPDATE [dbo].[TODVZ_TANIM]
+                SET DOVIZ_ALIS_DVZ_SATIS_ORANI = ISNULL(@DOVIZ_ALIS_DVZ_SATIS_ORANI, DOVIZ_ALIS_DVZ_SATIS_ORANI),
+                    EFEKTIF_ALIS_DVZ_SATIS_ORANI = ISNULL(@EFEKTIF_ALIS_DVZ_SATIS_ORANI, EFEKTIF_ALIS_DVZ_SATIS_ORANI),
+                    EFEKTIF_SATIS_DVZ_SATIS_ORANI = ISNULL(@EFEKTIF_SATIS_DVZ_SATIS_ORANI, EFEKTIF_SATIS_DVZ_SATIS_ORANI),
+                    MERKEZ_BANKASI_KURUNU_AL = ISNULL(@MERKEZ_BANKASI_KURUNU_AL, MERKEZ_BANKASI_KURUNU_AL);
+            END
+            IF @@ERROR = 0 RETURN 0
+            RAISERROR (''Tanımlar güncellenemedi'',16,1)
+            RETURN 1
+          END
+        ');
+      END
     `;
         try {
             await pool.request().query(checkQuery);
@@ -192,7 +217,7 @@ export class KurSqlRepository {
         P.[PARA_ID],
         LTRIM(RTRIM(ISNULL(P.[KOD], ''))) AS [PARA_KOD],
         LTRIM(RTRIM(ISNULL(P.[AD], ''))) AS [PARA_AD],
-        ISNULL(P.[SIRA_NO], 999) AS [SIRA_NO],
+        ISNULL(P.[SIRA_NO], 9999999) AS [SIRA_NO],
         K.[DOVIZ_ALIS],
         K.[DOVIZ_SATIS],
         K.[EFEKTIF_ALIS],
@@ -208,7 +233,7 @@ export class KurSqlRepository {
         AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TÜRK LIRA%'
         AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TURK LIRA%'
         AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%YEREL%'
-      ORDER BY P.[SIRA_NO] ASC, P.[PARA_ID] ASC;
+      ORDER BY CASE WHEN ISNULL(P.[SIRA_NO], 0) <= 0 THEN 9999999 ELSE P.[SIRA_NO] END ASC, P.[PARA_ID] ASC;
     `;
         const ratesRes = await pool
             .request()
@@ -375,7 +400,8 @@ export class KurSqlRepository {
           `);
                 }
                 catch (itemErr) {
-                    logger.warn(`TODVZ_KUR row save warning for PARA_ID ${s.paraId}:`, itemErr?.message);
+                    console.error(`KUR SATIR DETAYLI HATA (PARA_ID: ${s.paraId}):`, itemErr?.message || itemErr, itemErr);
+                    logger.error(`TODVZ_KUR row save error for PARA_ID ${s.paraId}:`, itemErr?.message || itemErr);
                 }
             }
         }
