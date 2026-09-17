@@ -454,7 +454,12 @@ export class KurSqlRepository {
 
     // 3. Save or update rows in TODVZ_KUR using robust, non-locking upserts
     if (satirlar && satirlar.length > 0) {
-      for (const s of satirlar) {
+      // Deduplicate rows by paraId in case payload contains multiples
+      const uniqueSatirlar = Array.from(
+        new Map(satirlar.filter((s) => s && s.paraId).map((s) => [s.paraId, s])).values()
+      );
+
+      for (const s of uniqueSatirlar) {
         if (!s.paraId) continue;
 
         const dovizAlis = s.dovizAlis !== null && s.dovizAlis !== undefined && !isNaN(Number(s.dovizAlis)) ? Number(s.dovizAlis) : 0;
@@ -474,20 +479,29 @@ export class KurSqlRepository {
 
         try {
           await rReq.query(`
-            IF EXISTS (SELECT 1 FROM [dbo].[TODVZ_KUR] WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID)
+            UPDATE [dbo].[TODVZ_KUR]
+            SET [DOVIZ_ALIS] = @DOVIZ_ALIS,
+                [DOVIZ_SATIS] = @DOVIZ_SATIS,
+                [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
+                [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
+                [PARITE] = @PARITE
+            WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
+
+            IF @@ROWCOUNT = 0
             BEGIN
-              UPDATE [dbo].[TODVZ_KUR]
-              SET [DOVIZ_ALIS] = @DOVIZ_ALIS,
-                  [DOVIZ_SATIS] = @DOVIZ_SATIS,
-                  [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
-                  [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
-                  [PARITE] = @PARITE
-              WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
-            END
-            ELSE
-            BEGIN
-              INSERT INTO [dbo].[TODVZ_KUR] ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
-              VALUES (@KUR_TABLOSU_ID, @PARA_ID, @DOVIZ_ALIS, @DOVIZ_SATIS, @EFEKTIF_ALIS, @EFEKTIF_SATIS, @PARITE);
+              BEGIN TRY
+                INSERT INTO [dbo].[TODVZ_KUR] ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
+                VALUES (@KUR_TABLOSU_ID, @PARA_ID, @DOVIZ_ALIS, @DOVIZ_SATIS, @EFEKTIF_ALIS, @EFEKTIF_SATIS, @PARITE);
+              END TRY
+              BEGIN CATCH
+                UPDATE [dbo].[TODVZ_KUR]
+                SET [DOVIZ_ALIS] = @DOVIZ_ALIS,
+                    [DOVIZ_SATIS] = @DOVIZ_SATIS,
+                    [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
+                    [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
+                    [PARITE] = @PARITE
+                WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
+              END CATCH
             END
           `);
         } catch (itemErr: any) {

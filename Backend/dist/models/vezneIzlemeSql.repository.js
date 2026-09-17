@@ -132,14 +132,15 @@ export class VezneIzlemeSqlRepository {
                 };
             });
             // 3. Paralar from TODVZ_PARA
+            // Sıralama kuralı: Belirtilen sıra no (SIRA_NO > 0), sırasızlar sonda (9999999) ve son eklenenler (PARA_ID ASC) en altta
             const paralarResult = await pool.request().query(`
         SELECT
           PARA_ID AS paraId,
           LTRIM(RTRIM(ISNULL(KOD, ''))) AS paraKodu,
           LTRIM(RTRIM(ISNULL(AD, ''))) AS paraAdi,
-          ISNULL(SIRA_NO, 999) AS siraNo
+          ISNULL(SIRA_NO, 9999999) AS siraNo
         FROM [dbo].[TODVZ_PARA] WITH (NOLOCK)
-        ORDER BY SIRA_NO ASC, KOD ASC
+        ORDER BY CASE WHEN ISNULL(SIRA_NO, 0) <= 0 THEN 9999999 ELSE SIRA_NO END ASC, PARA_ID ASC
       `);
             const paralar = (paralarResult.recordset || []).map((p) => ({
                 paraId: Number(p.paraId),

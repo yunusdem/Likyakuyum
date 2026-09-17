@@ -513,30 +513,81 @@ export class ParaSqlRepository {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       const parsedId = parseInt(String(id), 10);
 
-      // Check if product / currency is assigned to any Vezne (TODVZ_VEZNE)
-      const vezneCheck = await pool.request()
-        .input("paraId", sql.Int, parsedId)
-        .query<{ COUNT: number }>("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_VEZNE] WHERE [PARA_ID] = @paraId");
-
-      if (vezneCheck.recordset[0]?.COUNT > 0) {
-        throw ApiError.badRequest("Bu ürüne / para birimine bağlı vezne tanımları bulunmaktadır. Önce ilgili veznelerdeki para birimini değiştiriniz.");
+      // 1. Check if movement records exist in TODVZ_HESAP_HAREKETI
+      try {
+        const hareketCheck = await pool
+          .request()
+          .input("paraId", sql.Int, parsedId)
+          .query<{ COUNT: number }>("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE [PARA_ID] = @paraId");
+        if (hareketCheck.recordset[0]?.COUNT > 0) {
+          throw ApiError.badRequest("Bu ürüne / para birimine ait hesap veya kasa hareketleri bulunmaktadır. Geçmiş hareketleri olan tanımlar sistem bütünlüğü açısından silinemez.");
+        }
+      } catch (checkErr: any) {
+        if (checkErr instanceof ApiError) throw checkErr;
       }
 
-      // Check if banknot records exist
-      const banknotCheck = await pool.request()
-        .input("paraId", sql.Int, parsedId)
-        .query<{ COUNT: number }>("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
-
-      if (banknotCheck.recordset[0]?.COUNT > 0) {
-        throw ApiError.badRequest("Bu ürüne ait tanımlı banknotlar bulunmaktadır. Önce banknot tanımlarını siliniz.");
+      // 2. Check if product / currency is assigned to any Vezne (TODVZ_VEZNE)
+      try {
+        const vezneCheck = await pool
+          .request()
+          .input("paraId", sql.Int, parsedId)
+          .query<{ COUNT: number }>("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_VEZNE] WHERE [PARA_ID] = @paraId");
+        if (vezneCheck.recordset[0]?.COUNT > 0) {
+          throw ApiError.badRequest("Bu ürüne / para birimine bağlı vezne tanımları bulunmaktadır. Önce ilgili veznelerdeki para birimini değiştiriniz.");
+        }
+      } catch (checkErr: any) {
+        if (checkErr instanceof ApiError) throw checkErr;
       }
 
-      const request = pool.request();
-      request.input("PARA_ID", sql.Int, parsedId);
-      const result = await request.query("DELETE FROM [dbo].[TODVZ_PARA] WHERE [PARA_ID] = @PARA_ID");
-      return (result.rowsAffected[0] || 0) > 0;
-    } catch (error) {
+      // 3. Check if banknot records exist
+      try {
+        const banknotCheck = await pool
+          .request()
+          .input("paraId", sql.Int, parsedId)
+          .query<{ COUNT: number }>("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
+        if (banknotCheck.recordset[0]?.COUNT > 0) {
+          throw ApiError.badRequest("Bu ürüne ait tanımlı banknotlar bulunmaktadır. Önce banknot tanımlarını siliniz.");
+        }
+      } catch (checkErr: any) {
+        if (checkErr instanceof ApiError) throw checkErr;
+      }
+
+      // 4. Clean up auxiliary tables like TODVZ_KUR and delete from TODVZ_PARA
+      const transaction = new sql.Transaction(pool);
+      await transaction.begin();
+      try {
+        const req1 = new sql.Request(transaction);
+        req1.input("paraId", sql.Int, parsedId);
+        await req1.query("DELETE FROM [dbo].[TODVZ_KUR] WHERE [PARA_ID] = @paraId");
+
+        const req2 = new sql.Request(transaction);
+        req2.input("paraId", sql.Int, parsedId);
+        const result = await req2.query("DELETE FROM [dbo].[TODVZ_PARA] WHERE [PARA_ID] = @paraId");
+
+        await transaction.commit();
+        return (result.rowsAffected[0] || 0) > 0;
+      } catch (txErr: any) {
+        await transaction.rollback();
+        throw txErr;
+      }
+    } catch (error: any) {
       logger.error(`ParaSqlRepository.delete(${id}) error:`, error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      const msg = error?.message || "";
+      if (error?.number === 547 || msg.includes("REFERENCE constraint") || msg.includes("FOREIGN KEY")) {
+        if (msg.includes("TODVZ_HESAP_HAREKETI")) {
+          throw ApiError.badRequest("Bu ürüne / para birimine ait hesap veya kasa hareketleri bulunmaktadır. Geçmiş hareketleri olan ürünler silinemez.");
+        }
+        if (msg.includes("TODVZ_ALTIN_URUN") || msg.includes("TODVZ_OZEL_URUN")) {
+          throw ApiError.badRequest("Bu ürün tanımına bağlı barkodlu altın veya özel ürünler bulunmaktadır. Önce ilgili ürünleri siliniz.");
+        }
+        if (msg.includes("TODVZ_VEZNE")) {
+          throw ApiError.badRequest("Bu ürün tanımına bağlı vezneler bulunmaktadır. Önce vezne tanımlarını düzenleyiniz.");
+        }
+        throw ApiError.badRequest("Bu ürün tanımına bağlı ilişkili hareket veya belge kayıtları bulunduğu için silinemez.");
+      }
       throw error;
     }
   }

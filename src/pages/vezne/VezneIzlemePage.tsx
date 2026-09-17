@@ -35,6 +35,18 @@ import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 
+export const sortVezneRows = (rowsList?: VezneIzlemeRow[]): VezneIzlemeRow[] => {
+  if (!rowsList || rowsList.length === 0) return [];
+  return [...rowsList].sort((a, b) => {
+    const seqA = Number(a.siraNo) > 0 ? Number(a.siraNo) : 9999999;
+    const seqB = Number(b.siraNo) > 0 ? Number(b.siraNo) : 9999999;
+    if (seqA !== seqB) {
+      return seqA - seqB;
+    }
+    return (Number(a.paraId) || 0) - (Number(b.paraId) || 0);
+  });
+};
+
 export const VezneIzlemePage: React.FC = () => {
   // Data state
   const [columns, setColumns] = useState<VezneIzlemeColumn[]>([]);
@@ -164,17 +176,18 @@ export const VezneIzlemePage: React.FC = () => {
     try {
       const data = await VezneIzlemeService.getIzlemeData();
       if (data) {
+        const sortedRows = sortVezneRows(data.rows);
         setSettings(data.settings);
         setColumns(data.columns);
-        setRows(data.rows);
+        setRows(sortedRows);
         setLastRefreshed(new Date());
 
         // Select first vezne and first row if not already selected
         if (data.columns && data.columns.length > 0) {
           setSelectedVezneId((prev) => (prev !== null && data.columns.some((c) => c.vezneId === prev) ? prev : data.columns[0].vezneId));
         }
-        if (data.rows && data.rows.length > 0) {
-          setSelectedParaId((prev) => (prev !== null && data.rows.some((r) => r.paraId === prev) ? prev : data.rows[0].paraId));
+        if (sortedRows && sortedRows.length > 0) {
+          setSelectedParaId((prev) => (prev !== null && sortedRows.some((r) => r.paraId === prev) ? prev : sortedRows[0].paraId));
         }
       }
     } catch (err: any) {

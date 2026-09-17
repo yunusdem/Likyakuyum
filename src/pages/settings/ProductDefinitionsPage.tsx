@@ -125,7 +125,7 @@ export const ProductDefinitionsPage: React.FC = () => {
         setSelectedIndex(idx);
         handleSelectProduct(list[idx], idx);
       } else {
-        handleClear(false);
+        handleClear(false, list || []);
       }
     } catch (err: any) {
       setAlertError(err.message || "Ürün tanımları yüklenirken bir hata oluştu.");
@@ -181,15 +181,17 @@ export const ProductDefinitionsPage: React.FC = () => {
   };
 
   const getMaxSiraNo = (currentList: ProductItem[] = products) => {
-    if (!currentList || currentList.length === 0) return 1;
-    const maxVal = Math.max(...currentList.map((p) => p.siraNo || 0));
-    return maxVal > 0 ? maxVal + 1 : currentList.length + 1;
+    const listToUse = currentList && currentList.length > 0 ? currentList : products;
+    if (!listToUse || listToUse.length === 0) return 1;
+    const maxVal = Math.max(...listToUse.map((p) => p.siraNo || 0));
+    return maxVal > 0 ? maxVal + 1 : listToUse.length + 1;
   };
 
-  const handleClear = (showAlert: boolean = true) => {
+  const handleClear = (showAlert: boolean = true, currentList?: ProductItem[]) => {
     setSelectedProduct(null);
     setIsNewRecord(true);
-    const nextSiraNo = getMaxSiraNo();
+    const listToUse = currentList && currentList.length > 0 ? currentList : products;
+    const nextSiraNo = getMaxSiraNo(listToUse);
     setFormData({
       ...initialFormState,
       kod: "",
@@ -197,7 +199,7 @@ export const ProductDefinitionsPage: React.FC = () => {
       siraNo: nextSiraNo as any,
     });
     if (showAlert) {
-      setAlertSuccess("Form alanları temizlendi. Yeni bilgileri girip sol üstteki 'Kaydet' (💾) butonuna basınız.");
+      setAlertSuccess(`Yeni ürün formu hazırlandı. Sıra No otomatik olarak en sona (${nextSiraNo}) atandı.`);
       setTimeout(() => setAlertSuccess(null), 3500);
     }
     setAlertError(null);
