@@ -1729,6 +1729,14 @@ export const DovizFisiPage: React.FC = () => {
       if (raw.bankaHesabiId) setDetayBankaHesabiId(Number(raw.bankaHesabiId));
     }
     setShowCariModal(false);
+
+    // Müşteri seçildiğinde otomatik MASAK yaptırım / dondurulanlar kontrolü
+    const selectedCustomerName = (result.unvan || "").trim();
+    if (selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
+      handleSearchMasak(selectedCustomerName, result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || undefined);
+    } else {
+      setMasakResult({ matches: [], searched: false });
+    }
   };
 
   const handleSelectFromKurListesi = (para: ParaItem) => {
@@ -1921,6 +1929,9 @@ export const DovizFisiPage: React.FC = () => {
     return tlTotal >= 185000;
   }, [sonToplam, lines, paraList, tip, kurTuru, resolveCurrencyRate]);
 
+  // MASAK Malvarlığı Dondurulanlar Bloke Durumu
+  const isMasakBlocked = Boolean(masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
+
   // MASAK limiti aşıldığında popup/toast bildirim göster
   const prevMasakLimitRef = useRef(false);
   useEffect(() => {
@@ -1968,17 +1979,18 @@ export const DovizFisiPage: React.FC = () => {
         matches,
         searched: true,
       });
-      setMasakModalOpen(true);
 
       if (matches.length > 0) {
+        setMasakModalOpen(true);
         setNotification({
           type: "danger",
           message: `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`,
         });
       } else {
+        setMasakModalOpen(false);
         setNotification({
           type: "success",
-          message: `✅ MASAK Sorgulaması Temiz: "${cleanName || cleanId}" için listede kısıtlama veya bloke kaydı bulunamadı.`,
+          message: `✅ MASAK Sorgulaması Temiz: "${cleanName || cleanId}" için kısıtlama veya bloke kaydı bulunamadı.`,
         });
       }
     } catch (err: any) {
@@ -2419,6 +2431,16 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const handleToolbarSave = async () => {
+    // MASAK Malvarlığı Dondurulanlar Bloke Kontrolü (Kesinlikle Kayıt Yapılamaz!)
+    if (isMasakBlocked) {
+      setNotification({
+        type: "danger",
+        message: `⛔ İŞLEM ENGELLENDİ: "${masakResult.queriedName || unvan}" MASAK Malvarlığı Dondurulanlar listesindedir! Bu kişi/kuruluş için fiş kaydedilemez.`,
+      });
+      setMasakModalOpen(true);
+      return;
+    }
+
     if (isLocked && !isDuzeltmeMode) {
       setNotification({
         type: "warning",
@@ -3339,8 +3361,34 @@ export const DovizFisiPage: React.FC = () => {
         </div>
       )}
 
+      {/* MASAK Malvarlığı Dondurulanlar Kırmızı Bloke Uyarısı */}
+      {isMasakBlocked && (
+        <Alert variant="danger" className="d-flex align-items-center justify-content-between my-2 py-2.5 px-3 shadow border-2 border-danger bg-danger text-white">
+          <div className="d-flex align-items-center gap-2">
+            <IconShieldExclamation size={28} className="text-white flex-shrink-0" />
+            <div>
+              <div className="fw-bold fs-6">🚨 DİKKAT: BU KİŞİ / KURULUŞ MASAK MALVARLIĞI DONDURULANLAR LİSTESİNDEDİR!</div>
+              <div style={{ fontSize: "12px", opacity: 0.95 }}>
+                “{masakResult.queriedName}” için {masakResult.matches.length} adet yaptırım kaydı tespit edildi. Yasal mevzuat gereği <strong>KESİNLİKLE İŞLEM VE KAYIT YAPILAMAZ</strong>.
+              </div>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="light"
+            className="text-danger fw-bold py-1 px-3 flex-shrink-0 ms-2 shadow-sm"
+            onClick={() => setMasakModalOpen(true)}
+          >
+            Detayları Göster
+          </Button>
+        </Alert>
+      )}
+
       {/* Ana Form Kartı */}
-      <Card className="border-0 shadow-sm rounded-2 overflow-hidden mt-1">
+      <Card
+        className={`shadow-sm rounded-2 overflow-hidden mt-1 ${isMasakBlocked ? "border-2 border-danger" : "border-0"}`}
+        style={isMasakBlocked ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" } : {}}
+      >
         <Card.Body className="p-0">
           {/* En Üstteki 3 Alan (Ferah kenarlıklı, yazılara yapışmayan masaüstü ERP düzeni) */}
           <div className="py-2.5 px-3 bg-light border-bottom">

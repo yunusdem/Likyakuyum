@@ -116,7 +116,7 @@ const getUserVezne = (list: VezneItem[], cashierCode?: string): VezneItem | unde
   const t = String(cashierCode || "").trim();
   if (t) {
     const m = list.find((v) => String(v.id) === t || v.kod.trim() === t) ||
-              (!isNaN(Number(t)) ? list.find((v) => v.id === Number(t)) : undefined);
+      (!isNaN(Number(t)) ? list.find((v) => v.id === Number(t)) : undefined);
     if (m) return m;
   }
   return list[0];
@@ -135,8 +135,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [searchParams] = useSearchParams();
   const queryId = searchParams.get("id") || searchParams.get("sarrafFisiId");
 
-  const [notification, setNotification] = useState<{ type: "success"|"danger"|"warning"; message: string } | null>(null);
-  const showNotif = (type: "success"|"danger"|"warning", msg: string) => {
+  const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
+  const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
     setNotification({ type, message: msg });
     setTimeout(() => setNotification(null), 4500);
   };
@@ -158,15 +158,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   });
-  const [tip, setTip] = useState<0|1>(0);
+  const [tip, setTip] = useState<0 | 1>(0);
   const [belgeTuru, setBelgeTuru] = useState(0);
   const [unvan, setUnvan] = useState(DEFAULT_CUSTOMER_NAME);
-  const [cariKartId, setCariKartId] = useState<number|null>(null);
-  const [altinHasKuru, setAltinHasKuru] = useState<number|string>("");
-  const [alisKuru, setAlisKuru] = useState<number|string>("");
-  const [satisKuru, setSatisKuru] = useState<number|string>("");
-  const [gumusHasKuru, setGumusHasKuru] = useState<number|string>("");
-  const [kdvOrani, setKdvOrani] = useState<number|string>("");
+  const [cariKartId, setCariKartId] = useState<number | null>(null);
+  const [altinHasKuru, setAltinHasKuru] = useState<number | string>("");
+  const [alisKuru, setAlisKuru] = useState<number | string>("");
+  const [satisKuru, setSatisKuru] = useState<number | string>("");
+  const [gumusHasKuru, setGumusHasKuru] = useState<number | string>("");
+  const [kdvOrani, setKdvOrani] = useState<number | string>("");
   const [vezneId, setVezneId] = useState(0);
   const [vezneKod, setVezneKod] = useState("");
   const [vezneAd, setVezneAd] = useState("");
@@ -192,7 +192,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // Grid State
   const [lines, setLines] = useState<GridRow[]>([createEmptyRow(1)]);
   const [activeRowIndex, setActiveRowIndex] = useState(0);
-  const rowInputRefs = useRef<Record<string, HTMLInputElement|HTMLSelectElement|null>>({});
+  const rowInputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
   const [odemeRows, setOdemeRows] = useState<OdemeRow[]>([createEmptyOdemeRow(1)]);
 
   // Header Element Refs for Keyboard Navigation
@@ -215,20 +215,20 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [showFisModal, setShowFisModal] = useState(false);
   const [showVezneModal, setShowVezneModal] = useState(false);
   const [showUrunModal, setShowUrunModal] = useState(false);
-  const [activeRowIdForUrun, setActiveRowIdForUrun] = useState<string|null>(null);
+  const [activeRowIdForUrun, setActiveRowIdForUrun] = useState<string | null>(null);
   const [isUrunLoading, setIsUrunLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDetayModal, setShowDetayModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Totals
-  const totalAdet = lines.reduce((s, r) => s + (Number(r.adet)||0), 0);
-  const totalMiktar = lines.reduce((s, r) => s + (Number(r.miktar)||0), 0);
-  const totalHasGram = lines.reduce((s, r) => s + (Number(r.hasGram)||0), 0);
-  const totalIscilikMiktari = lines.reduce((s, r) => s + (Number(r.iscilikiMiktari)||0), 0);
-  const totalIscilikHasGram = lines.reduce((s, r) => s + (Number(r.iscilikHasGram)||0), 0);
-  const totalTutar = lines.reduce((s, r) => s + (Number(r.tutar)||0), 0);
-  const totalOdemeTutar = odemeRows.reduce((s, r) => s + (Number(r.tutar)||0), 0);
+  const totalAdet = lines.reduce((s, r) => s + (Number(r.adet) || 0), 0);
+  const totalMiktar = lines.reduce((s, r) => s + (Number(r.miktar) || 0), 0);
+  const totalHasGram = lines.reduce((s, r) => s + (Number(r.hasGram) || 0), 0);
+  const totalIscilikMiktari = lines.reduce((s, r) => s + (Number(r.iscilikiMiktari) || 0), 0);
+  const totalIscilikHasGram = lines.reduce((s, r) => s + (Number(r.iscilikHasGram) || 0), 0);
+  const totalTutar = lines.reduce((s, r) => s + (Number(r.tutar) || 0), 0);
+  const totalOdemeTutar = odemeRows.reduce((s, r) => s + (Number(r.tutar) || 0), 0);
   const hasKuruNum = Number(altinHasKuru) || 0;
   const alisHas = (totalHasGram + totalIscilikHasGram) > 0
     ? (totalHasGram + totalIscilikHasGram)
@@ -247,6 +247,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     matches: MasakEslesme[];
     searched: boolean;
   }>({ matches: [], searched: false });
+
+  // MASAK Malvarlığı Dondurulanlar Bloke Durumu
+  const isMasakBlocked = Boolean(masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
 
   // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
   const isMasakLimitExceeded = (
@@ -295,11 +298,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         matches,
         searched: true,
       });
-      setMasakModalOpen(true);
 
       if (matches.length > 0) {
+        setMasakModalOpen(true);
         showNotif("danger", `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`);
       } else {
+        setMasakModalOpen(false);
         showNotif("success", `✅ MASAK Sorgulaması Temiz: "${cleanName || cleanId}" için listede kısıtlama kaydı bulunamadı.`);
       }
     } catch (err: any) {
@@ -423,7 +427,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setFisId(data.sarrafFisiId); setFisNo(data.fisNo || "");
       setTarih(data.tarih || new Date().toISOString().split("T")[0]);
       if (data.saat) setSaat(new Date(data.saat).toTimeString().slice(0, 5));
-      setTip((data.tip as 0|1) || 0);
+      setTip((data.tip as 0 | 1) || 0);
       setBelgeTuru(data.belgeTuru || 0);
       setUnvan(data.unvan || DEFAULT_CUSTOMER_NAME);
       setCariKartId(data.cariKartId || null);
@@ -499,6 +503,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
   // Save
   const handleSave = useCallback(async () => {
+    // MASAK Malvarlığı Dondurulanlar Listesinde ise kesinlikle kayıt yapılamaz
+    if (isMasakBlocked) {
+      showNotif("danger", `🚨 İŞLEM ENGELLENDİ: Bu müşteri MASAK Malvarlığı Dondurulanlar / Yaptırım Listesindedir. Kesinlikle fiş ve işlem kaydı yapılamaz!`);
+      setMasakModalOpen(true);
+      return;
+    }
+
     if (!vezneId) { showNotif("warning", "Vezne seçiniz"); return; }
     const validLines = lines.filter((l) => l.urunId > 0 && Number(l.miktar) > 0);
     if (!validLines.length) { showNotif("warning", "En az bir geçerli satır giriniz"); return; }
@@ -506,9 +517,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     // 185.000 TL veya 5.000 USD MASAK Sınır ve Kimlik Bilgisi Kontrolü
     if (isMasakLimitExceeded) {
       const activeUnvan = (unvan || detayUnvan || "").trim();
+      const normUnvan = activeUnvan.toLocaleUpperCase('tr-TR');
       const isAnon = !activeUnvan ||
-        activeUnvan.toUpperCase() === "İSİM BEYAN EDİLMEMİŞTİR" ||
-        activeUnvan.toUpperCase() === "ISIM BEYAN EDILMEMISTIR";
+        normUnvan === "İSİM BEYAN EDİLMEMİŞTİR" ||
+        normUnvan === "ISIM BEYAN EDILMEMISTIR" ||
+        normUnvan.includes("BEYAN");
 
       const missingFields: string[] = [];
       if (isAnon) missingFields.push("İsim / Ünvan");
@@ -517,7 +530,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (detayKisilikTipi === undefined || detayKisilikTipi === null) missingFields.push("Hukuki Yapı / Kişilik Tipi");
 
       if (missingFields.length > 0) {
-        showNotif("warning", `⚠️ MASAK Yasal Sınırı Aşıldı (≥185.000 TL / 5.000 USD): Mevzuat gereği ${missingFields.join(", ")} zorunludur. Lütfen Detay penceresinden eksik bilgileri doldurunuz.`);
+        showNotif("warning", `⚠️ MASAK Yasal Sınırı Aşıldı (≥185.000 TL / 5.000 USD): Mevzuat gereği ${missingFields.join(", ")} zorunludur. Lütfen F8 Detay penceresinden eksik bilgileri doldurunuz.`);
         openDetayModal();
         return;
       }
@@ -541,7 +554,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           });
           if (matches.length > 0) {
             setMasakModalOpen(true);
-            showNotif("danger", `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`);
+            showNotif("danger", `🚨 DİKKAT: "${cleanName || cleanId}" MASAK Malvarlığı Dondurulanlar Listesinde bulundu! İşlem kesinlikle engellendi.`);
+            return;
           }
         }
       } catch (err) {
@@ -626,11 +640,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setIsSaving(false);
     }
   }, [vezneId, fisId, fisNo, tarih, saat, tip, belgeTuru, altinHasKuru, alisKuru, satisKuru,
-      gumusHasKuru, kdvOrani, unvan, detayUnvan, detayKisilikTipi, detayVergiKimlikNo,
-      detayBabaAdi, detayAnneAdi, detayAdres, detayEposta, detayTelefonNo, detayDogumTarihi,
-      detayDogumYeri, detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru,
-      detayKimlikGecerlilikTarihi, detayVekilAdi, detayVekilKimlikNo,
-      cariKartId, lines, odemeRows, user?.id, bakiyeler, fisList, resetForm]);
+    gumusHasKuru, kdvOrani, unvan, detayUnvan, detayKisilikTipi, detayVergiKimlikNo,
+    detayBabaAdi, detayAnneAdi, detayAdres, detayEposta, detayTelefonNo, detayDogumTarihi,
+    detayDogumYeri, detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru,
+    detayKimlikGecerlilikTarihi, detayVekilAdi, detayVekilKimlikNo,
+    cariKartId, lines, odemeRows, user?.id, bakiyeler, fisList, resetForm]);
 
   // Delete
   const handleDelete = useCallback(async () => {
@@ -698,7 +712,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }
 
     setShowCariModal(false);
-  }, []);
+
+    // Müşteri seçildiğinde otomatik MASAK yaptırım / dondurulanlar kontrolü
+    const selectedCustomerName = (result.unvan || "").trim();
+    if (selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
+      handleSearchMasak(selectedCustomerName, result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || undefined);
+    } else {
+      setMasakResult({ matches: [], searched: false });
+    }
+  }, [handleSearchMasak]);
 
   // Open F5 Detay Modal (syncing current Unvan if set)
   const openDetayModal = useCallback(() => {
@@ -744,9 +766,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       showNotif("danger", e?.message || "Detay kayıt hatası");
     }
   }, [fisId, detayUnvan, detayKisilikTipi, detayVergiKimlikNo, detayBabaAdi, detayAnneAdi,
-      detayAdres, detayEposta, detayTelefonNo, detayDogumTarihi, detayDogumYeri,
-      detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru, detayKimlikGecerlilikTarihi,
-      detayVekilAdi, detayVekilKimlikNo, user?.id]);
+    detayAdres, detayEposta, detayTelefonNo, detayDogumTarihi, detayDogumYeri,
+    detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru, detayKimlikGecerlilikTarihi,
+    detayVekilAdi, detayVekilKimlikNo, user?.id]);
 
   // Has Kuru change
   const handleAltinHasKuruChange = useCallback((val: string) => {
@@ -910,7 +932,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           isAtEnd: end === len,
         };
       }
-    } catch (err) {}
+    } catch (err) { }
     return { isAtStart: true, isAtEnd: true };
   };
 
@@ -932,7 +954,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             const len = el.value ? el.value.length : 0;
             el.setSelectionRange(len, len);
           }
-        } catch {}
+        } catch { }
       }
     }
   };
@@ -1165,19 +1187,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // ─── Global F-key shortcuts ──────────────────────────────────────────────────
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (["INPUT","TEXTAREA","SELECT"].includes((e.target as HTMLElement)?.tagName) &&
-          !["F1","F3","F4","F5","F8"].includes(e.key)) {
+      if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName) &&
+        !["F1", "F3", "F4", "F8"].includes(e.key)) {
         return;
       }
       if (e.key === "F1") { e.preventDefault(); handleSave(); }
       else if (e.key === "F3") { e.preventDefault(); setShowFisModal(true); }
       else if (e.key === "F4") { e.preventDefault(); resetForm(); }
-      else if (e.key === "F5") { e.preventDefault(); openDetayModal(); }
-      else if (e.key === "F8") { e.preventDefault(); if (fisId) setShowDeleteConfirm(true); }
+      else if (e.key === "F8") { e.preventDefault(); openDetayModal(); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [handleSave, resetForm, fisId, openDetayModal]);
+  }, [handleSave, resetForm, openDetayModal]);
 
   // LookupModal columns
   const fisColumns: LookupColumn<SarrafFisListItem>[] = [
@@ -1213,8 +1234,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const displayTitle = isPerakende
     ? "B- Perakende Fişi"
     : isDuzeltme
-    ? "A- Genel Sarraf Fişi Düzeltme"
-    : "A- Genel Sarraf Fişi";
+      ? "A- Genel Sarraf Fişi Düzeltme"
+      : "A- Genel Sarraf Fişi";
 
   return (
     <div className="sarraf-fisi-page w-100 pb-3" style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px" }}>
@@ -1279,7 +1300,33 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         </div>
       </div>
 
-      <Card className="shadow-sm mb-2">
+      {/* MASAK Malvarlığı Dondurulanlar Kırmızı Bloke Uyarısı */}
+      {isMasakBlocked && (
+        <Alert variant="danger" className="d-flex align-items-center justify-content-between my-2 py-2.5 px-3 shadow border-2 border-danger bg-danger text-white">
+          <div className="d-flex align-items-center gap-2">
+            <IconShieldExclamation size={28} className="text-white flex-shrink-0" />
+            <div>
+              <div className="fw-bold fs-6">🚨 DİKKAT: BU KİŞİ / KURULUŞ MASAK MALVARLIĞI DONDURULANLAR LİSTESİNDEDİR!</div>
+              <div style={{ fontSize: "12px", opacity: 0.95 }}>
+                “{masakResult.queriedName}” için {masakResult.matches.length} adet yaptırım kaydı tespit edildi. Yasal mevzuat gereği <strong>KESİNLİKLE İŞLEM VE KAYIT YAPILAMAZ</strong>.
+              </div>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="light"
+            className="text-danger fw-bold py-1 px-3 flex-shrink-0 ms-2 shadow-sm"
+            onClick={() => setMasakModalOpen(true)}
+          >
+            Detayları Göster
+          </Button>
+        </Alert>
+      )}
+
+      <Card
+        className={`shadow-sm mb-2 ${isMasakBlocked ? "border-2 border-danger" : ""}`}
+        style={isMasakBlocked ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" } : {}}
+      >
         <Card.Body className="p-2">
           {/* ─── Header Form: Labels on Left, Inputs on Right ───────────────────── */}
           <Row className="g-2 mb-2">
@@ -1293,7 +1340,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     ref={islemRef}
                     size="sm"
                     value={tip}
-                    onChange={(e) => setTip(Number(e.target.value) as 0|1)}
+                    onChange={(e) => setTip(Number(e.target.value) as 0 | 1)}
                     onKeyDown={(e) => handleHeaderKeyDown(e, "islem")}
                     style={{ flex: 1 }}
                   >
@@ -1340,8 +1387,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     onClick={() => {
                       setShowCariModal(true);
                       if (cariList.length === 0) {
-                        CariService.getCariKartlar().then((r) => setCariList(r || [])).catch(() => {});
-                        DovizFisService.getKayitsizMusteriler().then((r) => setKayitsizMusteriList(r || [])).catch(() => {});
+                        CariService.getCariKartlar().then((r) => setCariList(r || [])).catch(() => { });
+                        DovizFisService.getKayitsizMusteriler().then((r) => setKayitsizMusteriList(r || [])).catch(() => { });
                       }
                     }}
                     title="Cari / Müşteri Seç"
@@ -1357,7 +1404,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     title="İsim ve TC/VKN ile MASAK Listelerinde Sorgula"
                   >
                     {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={14} color="#dc2626" />}
-                    <span className="d-none d-sm-inline text-danger">MASAK</span>
+                    <span className="d-none d-sm-inline text-danger"></span>
                   </Button>
                 </InputGroup>
               </div>
@@ -1687,7 +1734,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                       type="number"
                       size="sm"
                       readOnly
-                      value={((Number(kdvOrani)||0) * (Number(altinHasKuru)||0) * totalIscilikHasGram / 100).toFixed(2)}
+                      value={((Number(kdvOrani) || 0) * (Number(altinHasKuru) || 0) * totalIscilikHasGram / 100).toFixed(2)}
                       style={{ flex: 1, background: "#f8f9fa", fontSize: "11.5px" }}
                     />
                   </div>
@@ -1777,20 +1824,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             </Col>
           </Row>
 
-          {/* ─── Shortcut Bar ─────────────────────────────────────────────────── */}
-          <div className="d-flex gap-3 flex-wrap mt-2 pt-2 border-top">
-            {[["F1","Kaydet"],["F3","Ara"],["F4","Yeni"],["F5","Detay"],["F8","Sil"],["F11","Yazdır"]].map(([k,l]) => (
-              <span
-                key={k}
-                className="d-inline-flex align-items-center gap-1"
-                style={{ fontSize: "11px", cursor: k === "F5" ? "pointer" : "default" }}
-                onClick={k === "F5" ? openDetayModal : undefined}
-                title={k === "F5" ? "Müşteri Detayı Aç (F5)" : undefined}
-              >
-                <Badge bg="secondary" className="px-1 py-0" style={{ fontSize: "10px" }}>{k}</Badge>
-                <span className="text-muted">{l}</span>
-              </span>
-            ))}
+          {/* ─── Alt Kısayol Çubuğu (Sadece Kaydet ve F8 Detay) ─────────────────────── */}
+          <div className="d-flex gap-3 flex-wrap mt-2 pt-2 border-top align-items-center">
+            <span
+              className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+              style={{ fontSize: "11.5px", cursor: "pointer" }}
+              onClick={handleSave}
+              title="Fişi Kaydet (F1)"
+            >
+              <Badge bg="primary" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F1</Badge>
+              <span className="fw-bold text-dark">Kaydet</span>
+            </span>
+            <span
+              className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+              style={{ fontSize: "11.5px", cursor: "pointer" }}
+              onClick={openDetayModal}
+              title="Müşteri Detayı Aç (F8)"
+            >
+              <Badge bg="dark" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F8</Badge>
+              <span className="fw-bold text-dark">Detay</span>
+            </span>
           </div>
         </Card.Body>
       </Card>
@@ -1817,8 +1870,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         filterFn={(item, term) => {
           const t = term.toLowerCase();
           return (item.fisNo || "").toLowerCase().includes(t) ||
-                 (item.unvan || "").toLowerCase().includes(t) ||
-                 (item.tarih || "").includes(t);
+            (item.unvan || "").toLowerCase().includes(t) ||
+            (item.tarih || "").includes(t);
         }}
         onSelect={(item) => { setShowFisModal(false); loadFisById(item.sarrafFisiId); }}
       />
@@ -1906,12 +1959,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         </Modal.Footer>
       </Modal>
 
-      {/* ─── F5 Detay Modalı: Label solda, Input sağda, Enter/Yön Tuşları ile Geçiş ─ */}
+      {/* ─── F8 Detay Modalı: Label solda, Input sağda, Enter/Yön Tuşları ile Geçiş ─ */}
       <Modal show={showDetayModal} onHide={() => setShowDetayModal(false)} centered size="lg">
         <Modal.Header closeButton className="py-2">
           <Modal.Title className="h6 mb-0 d-flex align-items-center">
             <IconBinoculars size={16} className="text-primary me-2" />
-            Müşteri Detayı — F5
+            Müşteri Detayı — F8
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">

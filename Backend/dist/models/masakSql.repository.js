@@ -519,12 +519,13 @@ export class MasakSqlRepository {
             return [];
         const req = pool.request();
         req.input("limit", sql.Int, limit);
-        req.input("kimlik", sql.VarChar(20), kimlik);
+        req.input("kimlik", sql.VarChar(50), kimlik);
+        req.input("kimlikLike", sql.NVarChar(1000), kimlik ? `%${MasakSqlRepository.likeKacir(kimlik)}%` : null);
         req.input("adNorm", sql.NVarChar(500), adNorm);
         req.input("adLike", sql.NVarChar(500), adNorm ? `%${MasakSqlRepository.likeKacir(adNorm)}%` : null);
         const orKosullar = [];
         if (kimlik) {
-            orKosullar.push("([TCKN] = @kimlik OR [VKN] = @kimlik)");
+            orKosullar.push("([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[' OR [DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[')");
         }
         if (adNorm) {
             orKosullar.push("[AD_UNVAN_NORM] = @adNorm");
@@ -541,7 +542,8 @@ export class MasakSqlRepository {
         const res = await req.query(`
       SELECT TOP (@limit) *,
         CASE
-          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik) THEN 100
+          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[') THEN 100
+          WHEN @kimlik IS NOT NULL AND ([DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[') THEN 85
           WHEN @adNorm IS NOT NULL AND [AD_UNVAN_NORM] = @adNorm THEN 90
           WHEN @adLike IS NOT NULL AND [DIGER_ISIMLER_NORM] LIKE @adLike ESCAPE '[' THEN 70
           ELSE 50
@@ -556,13 +558,15 @@ export class MasakSqlRepository {
         return res.recordset.map((r) => {
             const kayit = MasakSqlRepository.mapKayit(r);
             const skor = r.SKOR ?? 50;
-            const eslesmeTipi = skor === 100
-                ? "KIMLIK_TAM"
+            const eslesmeTipi = skor >= 95
+                ? (kimlik ? "KIMLIK_TAM" : "AD_TAM")
                 : skor === 90
                     ? "AD_TAM"
-                    : skor === 70
-                        ? "ALIAS_TAM"
-                        : "AD_KELIME";
+                    : skor >= 80
+                        ? (kimlik ? "KIMLIK_TAM" : "AD_KELIME")
+                        : skor === 70
+                            ? "ALIAS_TAM"
+                            : "AD_KELIME";
             return {
                 ...kayit,
                 skor,
