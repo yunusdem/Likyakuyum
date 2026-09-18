@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
 import {
@@ -17,7 +17,9 @@ import {
 import { CashDeskService } from "../../services/cashDeskService";
 import { MusteriSecimModal, SelectedCustomerResult } from "./MusteriSecimModal";
 import { CariService, CariKartItem } from "../../services/cariService";
-import { DovizFisService, KayitsizMusteriItem } from "../../services/dovizFisService";
+import { DovizFisService, KayitsizMusteriItem, IstatistikSecimItem } from "../../services/dovizFisService";
+import { StatisticService, StatisticItem } from "../../services/statisticService";
+import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -237,6 +239,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const farkTL = totalTutar - totalOdemeTutar;
   const farkHas = alisHas - odemeHas;
 
+  // İstatistik Tanımları Listesi ve Seçili İstatistik
+  const [statisticList, setStatisticList] = useState<StatisticItem[]>([]);
+  const [istatistikId, setIstatistikId] = useState<number | null>(null);
+  const [istatistikKodu, setIstatistikKodu] = useState<string>("");
+  const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
+
   // MASAK Sorgulama ve Limit Takip Durumu
   const [isSearchingMasak, setIsSearchingMasak] = useState<boolean>(false);
   const [masakModalOpen, setMasakModalOpen] = useState<boolean>(false);
@@ -251,12 +259,45 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // MASAK Malvarlığı Dondurulanlar Bloke Durumu
   const isMasakBlocked = Boolean(masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
 
-  // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
-  const isMasakLimitExceeded = (
-    totalTutar >= 185000 ||
-    totalOdemeTutar >= 185000 ||
-    odemeRows.some((o) => (o.paraKodu === "USD" || o.paraKodu === "$") && Number(o.miktar) >= 5000)
-  );
+  // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü (İstatistik Tanımında Fiş Dizayn Tipi = 0 olanlarda çalışır)
+  const isMasakLimitExceeded = useMemo(() => {
+    const matchedStat = statisticList.find(
+      (s) => (istatistikId && s.id === istatistikId) || (istatistikKodu && s.kod === istatistikKodu)
+    );
+    if (matchedStat && matchedStat.fisDizaynTipi !== 0) {
+      return false;
+    }
+
+    return (
+      totalTutar >= 185000 ||
+      totalOdemeTutar >= 185000 ||
+      odemeRows.some((o) => (o.paraKodu === "USD" || o.paraKodu === "$") && Number(o.miktar) >= 5000)
+    );
+  }, [totalTutar, totalOdemeTutar, odemeRows, istatistikId, istatistikKodu, statisticList]);
+
+  // Tip veya İstatistik Listesi değiştiğinde varsayılan istatistik seç (Alış ise ilk alış, Satış ise ilk satış)
+  useEffect(() => {
+    if (statisticList.length > 0) {
+      const found = statisticList.find((s) => {
+        const fType = Number(s.fisTipi);
+        if (tip === 0) {
+          return fType === 2 || fType === 0 || fType === 3;
+        } else {
+          return fType === 1 || fType === 0 || fType === 3;
+        }
+      });
+      if (found) {
+        setIstatistikId(found.id);
+        setIstatistikKodu(found.kod);
+      }
+    }
+  }, [tip, statisticList]);
+
+  const handleSelectIstatistik = (item: IstatistikSecimItem) => {
+    setIstatistikId(item.id);
+    setIstatistikKodu(item.kod);
+    setShowIstatistikModal(false);
+  };
 
   // MASAK limiti aşıldığında popup/toast bildirim göster
   const prevMasakLimitRef = useRef(false);
@@ -348,18 +389,20 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   useEffect(() => {
     (async () => {
       try {
-        const [vezneler, urunler, fisler, cariler, kayitsizlar] = await Promise.all([
+        const [vezneler, urunler, fisler, cariler, kayitsizlar, stats] = await Promise.all([
           CashDeskService.getVezneler().catch((): VezneItem[] => []),
           SarrafFisService.getUrunler().catch(() => []),
           SarrafFisService.getFisList({ limit: 200 }).catch(() => []),
           CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
           DovizFisService.getKayitsizMusteriler().catch(() => []),
+          StatisticService.getStatistics().catch(() => [] as StatisticItem[]),
         ]);
         setVezneList(vezneler as VezneItem[]);
         setUrunList(urunler);
         setFisList(fisler);
         setCariList(cariler as CariKartItem[]);
         setKayitsizMusteriList(kayitsizlar as KayitsizMusteriItem[]);
+        setStatisticList(stats as StatisticItem[]);
         if (!queryId) {
           let userVezneId: number | null = null;
           if (user?.id) {
@@ -414,6 +457,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setDetayKimlikGecerlilikTarihi("");
     setDetayVekilAdi("");
     setDetayVekilKimlikNo("");
+    setIstatistikId(null);
+    setIstatistikKodu("");
     setLines([createEmptyRow(1)]);
     setActiveRowIndex(0);
     setOdemeRows([createEmptyOdemeRow(1)]);
@@ -709,6 +754,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       if (raw.vekilAdi) setDetayVekilAdi(raw.vekilAdi);
       if (raw.vekilKimlikNo) setDetayVekilKimlikNo(raw.vekilKimlikNo);
+
+      // Cari kartta tanımlı istatistiği uygula
+      const statId = tip === 0 ? raw.alisIstatistikId : raw.satisIstatistikId;
+      if (statId && statisticList.length > 0) {
+        const m = statisticList.find((s) => s.id === Number(statId));
+        if (m) {
+          setIstatistikId(m.id);
+          setIstatistikKodu(m.kod);
+        }
+      }
     }
 
     setShowCariModal(false);
@@ -1192,7 +1247,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         return;
       }
       if (e.key === "F1") { e.preventDefault(); handleSave(); }
-      else if (e.key === "F3") { e.preventDefault(); setShowFisModal(true); }
+      else if (e.key === "F3") { e.preventDefault(); setShowIstatistikModal(true); }
       else if (e.key === "F4") { e.preventDefault(); resetForm(); }
       else if (e.key === "F8") { e.preventDefault(); openDetayModal(); }
     };
@@ -1437,18 +1492,51 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 </div>
               </div>
 
-              {/* Row 2: Belge No */}
-              <div className="d-flex align-items-center mb-1">
-                <label style={{ width: 70, minWidth: 70, fontSize: "12px", fontWeight: 600 }}>Belge no</label>
-                <Form.Control
-                  ref={belgeNoRef}
-                  size="sm"
-                  value={fisNo}
-                  onChange={(e) => setFisNo(e.target.value)}
-                  onKeyDown={(e) => handleHeaderKeyDown(e, "belgeNo")}
-                  placeholder=""
-                  style={{ flex: 1 }}
-                />
+              {/* Row 2: Belge No & İstatistik Kodu */}
+              <div className="d-flex align-items-center mb-1 gap-2">
+                <div className="d-flex align-items-center" style={{ flex: 1 }}>
+                  <label style={{ width: 70, minWidth: 70, fontSize: "12px", fontWeight: 600 }}>Belge no</label>
+                  <Form.Control
+                    ref={belgeNoRef}
+                    size="sm"
+                    value={fisNo}
+                    onChange={(e) => setFisNo(e.target.value)}
+                    onKeyDown={(e) => handleHeaderKeyDown(e, "belgeNo")}
+                    placeholder=""
+                    style={{ flex: 1 }}
+                  />
+                </div>
+                <div className="d-flex align-items-center" style={{ flex: 1 }}>
+                  <label style={{ width: 55, minWidth: 55, fontSize: "12px", fontWeight: 600 }}>İstatistik</label>
+                  <InputGroup size="sm" style={{ flex: 1 }}>
+                    <Form.Control
+                      type="text"
+                      size="sm"
+                      autoComplete="off"
+                      value={istatistikKodu}
+                      maxLength={20}
+                      onChange={(e) => setIstatistikKodu(e.target.value.slice(0, 20))}
+                      onDoubleClick={() => setShowIstatistikModal(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === "F3") {
+                          e.preventDefault();
+                          setShowIstatistikModal(true);
+                        }
+                      }}
+                      className="font-monospace text-center px-1"
+                      title="İstatistik Kodu (F3 ile seçebilirsiniz)"
+                      placeholder="F3 Seç"
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      className="px-2 py-0 d-flex align-items-center justify-content-center"
+                      onClick={() => setShowIstatistikModal(true)}
+                      title="F3) İstatistik Kodu Seçimi"
+                    >
+                      <IconBinoculars size={14} />
+                    </Button>
+                  </InputGroup>
+                </div>
               </div>
             </Col>
           </Row>
@@ -1899,7 +1987,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       <LookupModal<UrunItem>
         show={showUrunModal}
         onHide={() => { setShowUrunModal(false); setActiveRowIdForUrun(null); }}
-        title="Ürün Seç (F4)"
+        title="Ürün Seç"
         items={urunList}
         isLoading={isUrunLoading}
         columns={urunColumns}
@@ -2216,6 +2304,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       <MasakModal
         show={masakManagementOpen}
         onHide={() => setMasakManagementOpen(false)}
+      />
+
+      {/* F3) İstatistik Kodu Seçim Modalı */}
+      <IstatistikSecimModal
+        show={showIstatistikModal}
+        onClose={() => setShowIstatistikModal(false)}
+        tip={tip}
+        onSelect={handleSelectIstatistik}
+        currentKod={istatistikKodu}
       />
     </div>
   );

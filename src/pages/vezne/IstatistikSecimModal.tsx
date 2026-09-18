@@ -38,51 +38,35 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
 
     const loadData = async () => {
       try {
-        // Öncelikli olarak /api/v1/doviz-fis/istatistikler?tip={tip} endpoint'inden al
-        const data = await DovizFisService.getIstatistikler(tip);
-        if (isMounted) {
-          if (data && data.length > 0) {
-            setItems(data);
-          } else {
-            // Yedek olarak StatisticService'den filtreleyerek al
-            const allStats = await StatisticService.getStatistics();
-            const fallbackFiltered = allStats
-              .filter((s) => s.fisTipi === tip)
-              .map((s) => ({
-                id: s.id,
-                kod: (s.kod || "").trim(),
-                ad: (s.aciklama || "").trim(),
-                aciklama: (s.aciklama || "").trim(),
-                tip: s.fisTipi,
-                fisTipi: s.fisTipi,
-                fisDizaynTipi: s.fisDizaynTipi,
-                ciktiSatirSayisi: s.ciktiSatirSayisi,
-              }));
-            setItems(fallbackFiltered);
+        const allStats = await StatisticService.getStatistics();
+        const filtered = allStats.filter((s) => {
+          const fType = Number(s.fisTipi);
+          if (tip === 0) {
+            // ALIŞ ekranı: 2 (Alış) ve 0/3 (Alış-Satış)
+            return fType === 2 || fType === 0 || fType === 3;
+          } else if (tip === 1) {
+            // SATIŞ ekranı: 1 (Satış) ve 0/3 (Alış-Satış)
+            return fType === 1 || fType === 0 || fType === 3;
           }
+          return true;
+        });
+
+        const mapped = filtered.map((s) => ({
+          id: s.id,
+          kod: (s.kod || "").trim(),
+          ad: (s.aciklama || "").trim(),
+          aciklama: (s.aciklama || "").trim(),
+          tip: Number(s.fisTipi),
+          fisTipi: Number(s.fisTipi),
+          fisDizaynTipi: Number(s.fisDizaynTipi),
+          ciktiSatirSayisi: Number(s.ciktiSatirSayisi),
+        }));
+
+        if (isMounted) {
+          setItems(mapped);
         }
       } catch (err) {
         console.error("İstatistikler yüklenirken hata:", err);
-        if (isMounted) {
-          try {
-            const allStats = await StatisticService.getStatistics();
-            const fallbackFiltered = allStats
-              .filter((s) => s.fisTipi === tip)
-              .map((s) => ({
-                id: s.id,
-                kod: (s.kod || "").trim(),
-                ad: (s.aciklama || "").trim(),
-                aciklama: (s.aciklama || "").trim(),
-                tip: s.fisTipi,
-                fisTipi: s.fisTipi,
-                fisDizaynTipi: s.fisDizaynTipi,
-                ciktiSatirSayisi: s.ciktiSatirSayisi,
-              }));
-            setItems(fallbackFiltered);
-          } catch {
-            setItems([]);
-          }
-        }
       } finally {
         if (isMounted) {
           setLoading(false);

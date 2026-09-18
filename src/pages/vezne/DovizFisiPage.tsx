@@ -885,6 +885,34 @@ export const DovizFisiPage: React.FC = () => {
   const loadLookupsAndList = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
+      // Load paralar independently and immediately
+      apiClient.get<ParaItem[]>("/para")
+        .then((r) => {
+          if (r.data && r.data.length > 0) {
+            setParaList(r.data);
+          }
+        })
+        .catch(() => {});
+
+      // Load cariler and kayitsizlar independently and immediately
+      CariService.getCariKartlar()
+        .then((c) => {
+          const trimmed = (c || []).map((item) => ({
+            ...item,
+            kod: (item.kod || "").replace(/\s+/g, " ").trim(),
+            ad: (item.ad || "").replace(/\s+/g, " ").trim(),
+            telefon: (item.telefon || "").trim(),
+          }));
+          setCariList(trimmed);
+        })
+        .catch(() => {});
+
+      DovizFisService.getKayitsizMusteriler()
+        .then((k) => {
+          if (k && k.length > 0) setKayitsizMusteriList(k);
+        })
+        .catch(() => {});
+
       const [cariler, vezneler, paralar, kurTabloRes, istatistikler, fisler, cariLk, compDef, kayitsizlar] = await Promise.all([
         CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
         apiClient.get<VezneItem[]>("/vezne").then((r) => r.data || []).catch(() => [] as VezneItem[]),
@@ -897,7 +925,7 @@ export const DovizFisiPage: React.FC = () => {
         DovizFisService.getKayitsizMusteriler().catch(() => [] as KayitsizMusteriItem[]),
       ]);
 
-      if (kayitsizlar) {
+      if (kayitsizlar && kayitsizlar.length > 0) {
         setKayitsizMusteriList(kayitsizlar);
       }
 
@@ -929,13 +957,15 @@ export const DovizFisiPage: React.FC = () => {
         applyDefaultF8Detay(curLookups, compDef);
       }
 
-      const trimmedCariler = cariler.map((c) => ({
-        ...c,
-        kod: (c.kod || "").replace(/\s+/g, " ").trim(),
-        ad: (c.ad || "").replace(/\s+/g, " ").trim(),
-        telefon: (c.telefon || "").trim(),
-      }));
-      setCariList(trimmedCariler);
+      if (cariler && cariler.length > 0) {
+        const trimmedCariler = cariler.map((c) => ({
+          ...c,
+          kod: (c.kod || "").replace(/\s+/g, " ").trim(),
+          ad: (c.ad || "").replace(/\s+/g, " ").trim(),
+          telefon: (c.telefon || "").trim(),
+        }));
+        setCariList(trimmedCariler);
+      }
 
       let currentVezneId = 1;
       if (vezneler && vezneler.length > 0) {
@@ -1030,6 +1060,7 @@ export const DovizFisiPage: React.FC = () => {
           { id: 4, kod: "CHF", ad: "İsviçre Frangı", efektifAlis: 55.0, efektifSatis: 56.5, dovizAlis: 54.8, dovizSatis: 56.8, parite: 1.1 }
         );
       }
+      combinedParalar.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
       setParaList(combinedParalar);
 
       if (isDuzeltmeMode) {
@@ -1885,6 +1916,16 @@ export const DovizFisiPage: React.FC = () => {
 
   // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
   const isMasakLimitExceeded = useMemo(() => {
+    // İstatistik Tanımında Fiş Dizayn Tipi !== 0 olanlarda MASAK kontrolü çalışmaz (atlatılır)
+    const matchedStat = statisticList.find(
+      (s) =>
+        (istatistikId && s.id === istatistikId) ||
+        (istatistikKodu && (s.kod || "").trim().toLowerCase() === istatistikKodu.trim().toLowerCase())
+    );
+    if (matchedStat && Number(matchedStat.fisDizaynTipi) !== 0) {
+      return false;
+    }
+
     // Fişteki geçerli döviz satırları
     const validLines = lines.filter((l) => {
       const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
@@ -1894,7 +1935,7 @@ export const DovizFisiPage: React.FC = () => {
     if (validLines.length === 0) return false;
 
     let totalUsdEquivalent = 0;
-    let hasForeignCurrency = false;
+    let hasUsdLimitDirect = false;
 
     const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
     const activeUsdRate = usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 0;
@@ -1905,29 +1946,32 @@ export const DovizFisiPage: React.FC = () => {
       const k = typeof l.kur === "number" ? l.kur : parseFloat(String(l.kur).replace(/,/g, ".")) || 0;
 
       if (kod === "USD" || kod === "$") {
-        hasForeignCurrency = true;
         totalUsdEquivalent += m;
+        if (m >= 5000) hasUsdLimitDirect = true;
       } else if (kod === "TL" || kod === "TRY" || kod === "TRL" || kod === "") {
         // TL satırı
       } else {
         // EUR, GBP gibi diğer yabancı para birimleri -> USD karşılığı
-        hasForeignCurrency = true;
         const lineTl = m * (k > 0 ? k : 1);
         if (activeUsdRate > 0) {
           totalUsdEquivalent += lineTl / activeUsdRate;
+        } else if (k > 0) {
+          totalUsdEquivalent += lineTl / 35; // Fallback USD rate
         }
       }
     });
 
-    // Yabancı para işlemlerinde 5.000 USD sınırı esastır (örn. 4.999 USD sınır altındadır, 5.000 USD ve üzeri sınıra tabidir)
-    if (hasForeignCurrency) {
-      return totalUsdEquivalent >= 5000;
-    }
-
-    // Saf TL işlemlerinde 185.000 TL sınırı esastır
     const tlTotal = Math.abs(sonToplam);
-    return tlTotal >= 185000;
-  }, [sonToplam, lines, paraList, tip, kurTuru, resolveCurrencyRate]);
+    const tutarTotal = Number(totalTutar) || 0;
+
+    // 185.000 TL veya 5.000 USD eşiği kontrolü
+    return (
+      hasUsdLimitDirect ||
+      totalUsdEquivalent >= 5000 ||
+      tlTotal >= 185000 ||
+      tutarTotal >= 185000
+    );
+  }, [statisticList, istatistikId, istatistikKodu, sonToplam, totalTutar, lines, paraList, tip, kurTuru, resolveCurrencyRate]);
 
   // MASAK Malvarlığı Dondurulanlar Bloke Durumu
   const isMasakBlocked = Boolean(masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
@@ -2060,10 +2104,8 @@ export const DovizFisiPage: React.FC = () => {
   }, [lines, sonToplam]);
 
   /**
-   * Fiş tipine göre varsayılan istatistiği belirler (saf parametre fonksiyonu - stale closure yok):
-   * 1. Kullanıcı tanımındaki buyStatCode / sellStatCode (istatistik kodu olarak saklanır)
-   * 2. Firma tanımlarındaki ALIS_ISTATISTIK_ID / SATIS_ISTATISTIK_ID (id bazlı, String karşılaştırma)
-   * 3. Fallback: Alış→'9249', Satış→'10285' sabit kodları
+   * Fiş tipine göre varsayılan istatistiği belirler:
+   * Doğrudan fiş tipine göre veritabanındaki İLK VERİ seçilir (Alış: 2 veya 0/3, Satış: 1 veya 0/3)
    */
   const applyDefaultIstatistik = (
     fisTipi: number,
@@ -2071,44 +2113,31 @@ export const DovizFisiPage: React.FC = () => {
     compDef: TodvzTanimDto | null,
     currentUser: typeof user
   ) => {
-    // 1. Kullanıcı tanımındaki stat kodu (buyStatCode / sellStatCode)
-    const userStatKod = (fisTipi === 1
-      ? (currentUser?.sellStatCode || "")
-      : (currentUser?.buyStatCode || "")
-    ).trim();
-
-    if (userStatKod) {
-      const matched = istatistikler.find(
-        (s) => (s.kod || "").trim().toLowerCase() === userStatKod.toLowerCase()
-      );
-      if (matched) {
-        setIstatistikId(matched.id);
-        setIstatistikKodu(matched.kod || userStatKod);
-        return;
-      }
-      // Liste içinde bulunamadıysa kodu direkt yaz (ID olmadan)
+    if (!istatistikler || istatistikler.length === 0) {
+      const fallbackKod = fisTipi === 0 ? "9249" : "10285";
       setIstatistikId(null);
-      setIstatistikKodu(userStatKod);
+      setIstatistikKodu(fallbackKod);
       return;
     }
 
-    // 2. Firma tanımındaki istatistik ID (String karşılaştırma ile tip güvenliği)
-    const compIstatistikId = fisTipi === 1
-      ? (compDef?.SATIS_ISTATISTIK_ID ?? null)
-      : (compDef?.ALIS_ISTATISTIK_ID ?? null);
-
-    if (compIstatistikId != null) {
-      const matched = istatistikler.find(
-        (s) => String(s.id) === String(compIstatistikId)
-      );
-      if (matched) {
-        setIstatistikId(matched.id);
-        setIstatistikKodu(matched.kod || "");
-        return;
+    // 1. Fiş tipine göre filtrelenmiş listedeki İLK VERİ (Alış ise ilk alış/ortak verisi, Satış ise ilk satış/ortak verisi)
+    const matchingList = istatistikler.filter((s) => {
+      const fType = Number(s.fisTipi);
+      if (fisTipi === 0) {
+        return fType === 2 || fType === 0 || fType === 3;
+      } else {
+        return fType === 1 || fType === 0 || fType === 3;
       }
+    });
+
+    if (matchingList.length > 0) {
+      const firstItem = matchingList[0];
+      setIstatistikId(firstItem.id);
+      setIstatistikKodu(firstItem.kod || "");
+      return;
     }
 
-    // 3. Fallback: sabit varsayılan kodlar (Alış→9249, Satış→10285)
+    // 2. Fallback: sabit varsayılan kodlar (Alış→9249, Satış→10285)
     const fallbackKod = fisTipi === 0 ? "9249" : "10285";
     const fallbackMatched = istatistikler.find(
       (s) => (s.kod || "").trim() === fallbackKod
@@ -2119,10 +2148,17 @@ export const DovizFisiPage: React.FC = () => {
       return;
     }
 
-    // 4. Hiçbiri yoksa varsayılan kodu direkt yaz
+    // 3. Hiçbiri yoksa varsayılan kodu direkt yaz
     setIstatistikId(null);
     setIstatistikKodu(fallbackKod);
   };
+
+  // Tip veya İstatistik Listesi değiştiğinde varsayılan istatistik seç (Alış ise ilk alış, Satış ise ilk satış)
+  useEffect(() => {
+    if (!isDuzeltmeMode && statisticList.length > 0) {
+      applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
+    }
+  }, [tip, statisticList, isDuzeltmeMode]);
 
   const handleTipChange = (newTip: number) => {
     setTip(newTip);
@@ -3572,7 +3608,29 @@ export const DovizFisiPage: React.FC = () => {
                           variant="outline-secondary"
                           className="px-2 py-0 d-flex align-items-center justify-content-center"
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
-                          onClick={() => setShowCariModal(true)}
+                          onClick={() => {
+                            if (cariList.length === 0) {
+                              CariService.getCariKartlar()
+                                .then((c) => {
+                                  const trimmed = (c || []).map((item) => ({
+                                    ...item,
+                                    kod: (item.kod || "").replace(/\s+/g, " ").trim(),
+                                    ad: (item.ad || "").replace(/\s+/g, " ").trim(),
+                                    telefon: (item.telefon || "").trim(),
+                                  }));
+                                  setCariList(trimmed);
+                                })
+                                .catch(() => {});
+                            }
+                            if (kayitsizMusteriList.length === 0) {
+                              DovizFisService.getKayitsizMusteriler()
+                                .then((k) => {
+                                  if (k && k.length > 0) setKayitsizMusteriList(k);
+                                })
+                                .catch(() => {});
+                            }
+                            setShowCariModal(true);
+                          }}
                           title="Cari / Müşteri Seç (F4)"
                         >
                           <IconBinoculars size={14} />
@@ -3897,6 +3955,13 @@ export const DovizFisiPage: React.FC = () => {
                             className="p-0 px-1 text-secondary text-decoration-none"
                             onClick={() => {
                               setParaModalRowId(row.id);
+                              if (paraList.length === 0) {
+                                apiClient.get<ParaItem[]>("/para")
+                                  .then((r) => {
+                                    if (r.data && r.data.length > 0) setParaList(r.data);
+                                  })
+                                  .catch(() => {});
+                              }
                               setShowParaModal(true);
                             }}
                             title="Para / Maden Seç (Dürbün)"
@@ -4921,10 +4986,10 @@ export const DovizFisiPage: React.FC = () => {
         items={paraList}
         columns={paraColumns}
         filterFn={(item, term) => {
-          const t = term.toLowerCase();
+          const t = term.toLowerCase().trim();
           return (
-            item.kod.toLowerCase().includes(t) ||
-            item.ad.toLowerCase().includes(t)
+            (item.kod || "").toLowerCase().includes(t) ||
+            (item.ad || "").toLowerCase().includes(t)
           );
         }}
         onSelect={(item) => {

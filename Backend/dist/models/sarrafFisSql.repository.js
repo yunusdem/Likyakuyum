@@ -29,7 +29,7 @@ export class SarrafFisSqlRepository {
                ISNULL(ISCILIK,0) AS iscilik, ISNULL(BIRIM,0) AS birim,
                ISNULL(URUN_TIPI,0) AS urunTipi
         FROM [dbo].[TODVZ_PARA] WITH (NOLOCK)
-        ORDER BY SIRA_NO, KOD
+        ORDER BY PARA_ID ASC
       `);
             return (result.recordset || []).map((r) => ({
                 paraId: Number(r.paraId),

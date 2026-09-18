@@ -313,12 +313,12 @@ export const StatisticDefinitionsPage: React.FC = () => {
         {
           header: "Fiş Tipi",
           render: (item) =>
-            item.fisTipi === 1
-              ? "1 - ALIŞ"
-              : item.fisTipi === 2
-              ? "2 - SATIŞ"
-              : item.fisTipi === 3
-              ? "3 - ALIŞ-SATIŞ"
+            item.fisTipi === 2
+              ? "2 - ALIŞ"
+              : item.fisTipi === 1
+              ? "1 - SATIŞ"
+              : item.fisTipi === 3 || item.fisTipi === 0
+              ? "0 - ALIŞ-SATIŞ"
               : `${item.fisTipi}`,
           width: "20%",
         },
@@ -784,8 +784,9 @@ export const StatisticDefinitionsPage: React.FC = () => {
                             cursor: "pointer",
                           }}
                         >
-                          <option value={1}>1 - ALIŞ</option>
-                          <option value={2}>2 - SATIŞ</option>
+                          <option value={2}>2 - ALIŞ</option>
+                          <option value={1}>1 - SATIŞ</option>
+                          <option value={0}>0 - ALIŞ-SATIŞ</option>
                           <option value={3}>3 - ALIŞ-SATIŞ</option>
                         </select>
                       </td>

@@ -323,7 +323,17 @@ export class DovizFisController {
         if (tipParam !== undefined && tipParam !== null && tipParam !== "") {
             const tipVal = parseInt(String(tipParam), 10);
             if (!isNaN(tipVal)) {
-                filtered = all.filter((item) => item.fisTipi === tipVal);
+                if (tipVal === 0) {
+                    // Alış Fişi (0): Fiş Tipi = 2 (Alış) veya 0/3 (Alış-Satış)
+                    filtered = all.filter((item) => item.fisTipi === 2 || item.fisTipi === 0 || item.fisTipi === 3);
+                }
+                else if (tipVal === 1) {
+                    // Satış Fişi (1): Fiş Tipi = 1 (Satış) veya 0/3 (Alış-Satış)
+                    filtered = all.filter((item) => item.fisTipi === 1 || item.fisTipi === 0 || item.fisTipi === 3);
+                }
+                else {
+                    filtered = all.filter((item) => item.fisTipi === tipVal || item.fisTipi === 0 || item.fisTipi === 3);
+                }
             }
         }
         const mapped = filtered.map((item) => ({

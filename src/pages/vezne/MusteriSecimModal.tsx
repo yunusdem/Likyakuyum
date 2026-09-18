@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Modal, Table, Button, Form, InputGroup, Badge, Nav } from "react-bootstrap";
+import { Modal, Table, Button, Form, InputGroup, Badge, Nav, Spinner } from "react-bootstrap";
 import { IconUser, IconX, IconSearch, IconCheck, IconCornerDownLeft, IconUserOff, IconUsers } from "@tabler/icons-react";
-import { CariKartItem } from "../../services/cariService";
-import { KayitsizMusteriItem } from "../../services/dovizFisService";
+import { CariKartItem, CariService } from "../../services/cariService";
+import { DovizFisService, KayitsizMusteriItem } from "../../services/dovizFisService";
 
 export type CustomerSelectionType = "registered" | "unregistered" | "anonymous";
 
@@ -37,29 +37,82 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
   const [activeTab, setActiveTab] = useState<"registered" | "unregistered">("registered");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [internalCariler, setInternalCariler] = useState<CariKartItem[]>(cariler || []);
+  const [internalKayitsizlar, setInternalKayitsizlar] = useState<KayitsizMusteriItem[]>(kayitsizMusteriler || []);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Modal açıldığında sıfırla
+  const effectiveCariler = cariler && cariler.length > 0 ? cariler : internalCariler;
+  const effectiveKayitsizlar = kayitsizMusteriler && kayitsizMusteriler.length > 0 ? kayitsizMusteriler : internalKayitsizlar;
+
+  // Prop güncellemelerini iç state'e aktar
   useEffect(() => {
-    if (show) {
-      setSearchTerm("");
-      setSelectedIndex(0);
+    if (cariler && cariler.length > 0) {
+      setInternalCariler(cariler);
+    }
+  }, [cariler]);
+
+  useEffect(() => {
+    if (kayitsizMusteriler && kayitsizMusteriler.length > 0) {
+      setInternalKayitsizlar(kayitsizMusteriler);
+    }
+  }, [kayitsizMusteriler]);
+
+  // Modal açıldığında sadece gerçekten liste tamamen boşsa arka planda sessizce çek
+  useEffect(() => {
+    if (!show) return;
+
+    setSearchTerm("");
+    setSelectedIndex(0);
+
+    const checkAndFetch = async () => {
+      const needsCariler = effectiveCariler.length === 0;
+      const needsKayitsiz = effectiveKayitsizlar.length === 0;
+
+      if (needsCariler || needsKayitsiz) {
+        if (needsCariler && activeTab === "registered") {
+          setIsLoading(true);
+        }
+        try {
+          const [fetchedCariler, fetchedKayitsizlar] = await Promise.all([
+            needsCariler ? CariService.getCariKartlar().catch(() => [] as CariKartItem[]) : Promise.resolve(effectiveCariler),
+            needsKayitsiz ? DovizFisService.getKayitsizMusteriler().catch(() => [] as KayitsizMusteriItem[]) : Promise.resolve(effectiveKayitsizlar),
+          ]);
+
+          if (fetchedCariler && fetchedCariler.length > 0) {
+            const trimmed = fetchedCariler.map((c) => ({
+              ...c,
+              kod: (c.kod || "").replace(/\s+/g, " ").trim(),
+              ad: (c.ad || "").replace(/\s+/g, " ").trim(),
+              telefon: (c.telefon || "").trim(),
+            }));
+            setInternalCariler(trimmed);
+          }
+          if (fetchedKayitsizlar && fetchedKayitsizlar.length > 0) {
+            setInternalKayitsizlar(fetchedKayitsizlar);
+          }
+        } finally {
+          setIsLoading(false);
+        }
+      }
       setTimeout(() => {
         searchInputRef.current?.focus();
-      }, 100);
-    }
+      }, 50);
+    };
+
+    checkAndFetch();
   }, [show]);
 
-  // Tab değiştiğinde seçimi ve aramayı koru ama satır seçimini sıfırla
+  // Tab değiştiğinde seçimi koru ama satır seçimini sıfırla
   useEffect(() => {
     setSelectedIndex(0);
   }, [activeTab]);
 
   // Filtrelenmiş liste
   const currentList = useMemo(() => {
-    const list = activeTab === "registered" ? cariler : kayitsizMusteriler;
+    const list = activeTab === "registered" ? effectiveCariler : effectiveKayitsizlar;
     if (!searchTerm.trim()) return list;
     const term = searchTerm.toLowerCase().trim();
 
@@ -72,7 +125,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
 
       return kod.includes(term) || ad.includes(term) || unvan.includes(term) || vkn.includes(term) || tel.includes(term);
     });
-  }, [activeTab, cariler, kayitsizMusteriler, searchTerm]);
+  }, [activeTab, effectiveCariler, effectiveKayitsizlar, searchTerm]);
 
   // Seçili satırı görünümde tut
   useEffect(() => {
@@ -291,7 +344,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
                   borderBottomColor: activeTab === "registered" ? "#ffffff" : undefined,
                 }}
               >
-                Kayıtlı Cariler ({cariler.length})
+                Kayıtlı Cariler ({effectiveCariler.length})
               </Nav.Link>
             </Nav.Item>
             <Nav.Item>
@@ -305,7 +358,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
                   borderBottomColor: activeTab === "unregistered" ? "#ffffff" : undefined,
                 }}
               >
-                Kayıtsız Müşteriler ({kayitsizMusteriler.length})
+                Kayıtsız Müşteriler ({effectiveKayitsizlar.length})
               </Nav.Link>
             </Nav.Item>
           </Nav>
@@ -374,7 +427,12 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
             backgroundColor: "#f8fafc",
           }}
         >
-          {currentList.length === 0 ? (
+          {isLoading && currentList.length === 0 ? (
+            <div className="d-flex flex-column align-items-center justify-content-center py-5 text-muted">
+              <Spinner animation="border" size="sm" className="mb-2 text-primary" />
+              <span style={{ fontSize: "13px" }}>Müşteri ve cari kayıtları yükleniyor...</span>
+            </div>
+          ) : currentList.length === 0 ? (
             <div className="text-center py-5 text-muted">
               <p className="mb-1 fw-semibold" style={{ fontSize: "13.5px" }}>
                 Kayıt bulunamadı
