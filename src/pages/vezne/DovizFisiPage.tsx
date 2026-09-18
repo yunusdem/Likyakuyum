@@ -12,6 +12,7 @@ import {
   InputGroup,
   Modal,
   Dropdown,
+  Spinner,
 } from "react-bootstrap";
 import {
   IconFileText,
@@ -23,9 +24,17 @@ import {
   IconWorld,
   IconLock,
   IconAlertTriangle,
+  IconShieldCheck,
+  IconShieldExclamation,
+  IconShield,
+  IconSearch,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import { MasakService, MasakEslesme } from "../../services/masakService";
+import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
+import MasakModal from "../../components/masak/MasakModal";
 import { DovizFisiPrintModal } from "./DovizFisiPrintModal";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { MusteriSecimModal, SelectedCustomerResult } from "./MusteriSecimModal";
@@ -403,6 +412,7 @@ export const DovizFisiPage: React.FC = () => {
   const [isLoadingFisList, setIsLoadingFisList] = useState<boolean>(false);
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const detayContainerRef = useRef<HTMLDivElement | null>(null);
+  const headerRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Active Doviz Fis Form State
   const [fisId, setFisId] = useState<number | null>(null);
@@ -429,6 +439,17 @@ export const DovizFisiPage: React.FC = () => {
   const [kurTuru, setKurTuru] = useState<number>(0); // 0: Efektif, 1: Döviz
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
+
+  // MASAK Sorgulama ve Limit Takip Durumu
+  const [isSearchingMasak, setIsSearchingMasak] = useState<boolean>(false);
+  const [masakModalOpen, setMasakModalOpen] = useState<boolean>(false);
+  const [masakManagementOpen, setMasakManagementOpen] = useState<boolean>(false);
+  const [masakResult, setMasakResult] = useState<{
+    queriedName?: string;
+    queriedId?: string;
+    matches: MasakEslesme[];
+    searched: boolean;
+  }>({ matches: [], searched: false });
 
   // Detailed Customer Information (Detay Modal State) with IDs - Defaults to TÜRKİYE / 01 Gerçek Kişi
   const [detayCariTipi, setDetayCariTipi] = useState<string>("Şahıs");
@@ -1854,6 +1875,122 @@ export const DovizFisiPage: React.FC = () => {
     }
   }, [totalTutar, calculatedBsmv, totalMasraf, tip, tlKurusSayisi]);
 
+  // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
+  const isMasakLimitExceeded = useMemo(() => {
+    // Fişteki geçerli döviz satırları
+    const validLines = lines.filter((l) => {
+      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
+    });
+
+    if (validLines.length === 0) return false;
+
+    let totalUsdEquivalent = 0;
+    let hasForeignCurrency = false;
+
+    const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+    const activeUsdRate = usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 0;
+
+    validLines.forEach((l) => {
+      const kod = (l.paraKodu || "").trim().toUpperCase();
+      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const k = typeof l.kur === "number" ? l.kur : parseFloat(String(l.kur).replace(/,/g, ".")) || 0;
+
+      if (kod === "USD" || kod === "$") {
+        hasForeignCurrency = true;
+        totalUsdEquivalent += m;
+      } else if (kod === "TL" || kod === "TRY" || kod === "TRL" || kod === "") {
+        // TL satırı
+      } else {
+        // EUR, GBP gibi diğer yabancı para birimleri -> USD karşılığı
+        hasForeignCurrency = true;
+        const lineTl = m * (k > 0 ? k : 1);
+        if (activeUsdRate > 0) {
+          totalUsdEquivalent += lineTl / activeUsdRate;
+        }
+      }
+    });
+
+    // Yabancı para işlemlerinde 5.000 USD sınırı esastır (örn. 4.999 USD sınır altındadır, 5.000 USD ve üzeri sınıra tabidir)
+    if (hasForeignCurrency) {
+      return totalUsdEquivalent >= 5000;
+    }
+
+    // Saf TL işlemlerinde 185.000 TL sınırı esastır
+    const tlTotal = Math.abs(sonToplam);
+    return tlTotal >= 185000;
+  }, [sonToplam, lines, paraList, tip, kurTuru, resolveCurrencyRate]);
+
+  // MASAK limiti aşıldığında popup/toast bildirim göster
+  const prevMasakLimitRef = useRef(false);
+  useEffect(() => {
+    if (isMasakLimitExceeded && !prevMasakLimitRef.current) {
+      setNotification({
+        type: "warning",
+        message: "⚠️ MASAK Yasal Sınırı Aşıldı (≥185.000 TL / 5.000 USD): Mevzuat gereği İsim, T.C. Kimlik / VKN, Adres ve Hukuki Yapı alanları zorunludur.",
+      });
+    }
+    prevMasakLimitRef.current = isMasakLimitExceeded;
+  }, [isMasakLimitExceeded]);
+
+  // MASAK Listelerinden İsim veya TC/VKN ile Sorgulama
+  const handleSearchMasak = async (explicitName?: string, explicitId?: string) => {
+    const rawName = explicitName !== undefined ? explicitName : unvan;
+    const rawId = explicitId !== undefined ? explicitId : vergiKimlikNo;
+
+    const isAnon = !rawName || !rawName.trim() ||
+      rawName.trim().toUpperCase() === "İSİM BEYAN EDİLMEMİŞTİR" ||
+      rawName.trim().toUpperCase() === "ISIM BEYAN EDILMEMISTIR";
+
+    const cleanName = isAnon ? "" : rawName.trim();
+    const cleanId = (rawId || "").trim();
+
+    if (!cleanName && !cleanId) {
+      setNotification({
+        type: "warning",
+        message: "MASAK sorgusu yapabilmek için lütfen bir Müşteri Adı / Ünvan veya T.C. Kimlik / VKN giriniz.",
+      });
+      return;
+    }
+
+    try {
+      setIsSearchingMasak(true);
+      const res = await MasakService.sorgula({
+        ad: cleanName || undefined,
+        kimlikNo: cleanId || undefined,
+        limit: 30,
+      });
+
+      const matches = res?.kayitlar || [];
+      setMasakResult({
+        queriedName: cleanName || cleanId,
+        queriedId: cleanId,
+        matches,
+        searched: true,
+      });
+      setMasakModalOpen(true);
+
+      if (matches.length > 0) {
+        setNotification({
+          type: "danger",
+          message: `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`,
+        });
+      } else {
+        setNotification({
+          type: "success",
+          message: `✅ MASAK Sorgulaması Temiz: "${cleanName || cleanId}" için listede kısıtlama veya bloke kaydı bulunamadı.`,
+        });
+      }
+    } catch (err: any) {
+      setNotification({
+        type: "danger",
+        message: `MASAK sorgusu yapılamadı: ${err?.message || "Sunucu bağlantı hatası"}`,
+      });
+    } finally {
+      setIsSearchingMasak(false);
+    }
+  };
+
   // F9) Banknot Say (Para Sayma) Açılış Kontrolü
   const handleOpenBanknotSay = useCallback(() => {
     // Fiş gridindeki geçerli döviz satırlarını kontrol et
@@ -2388,6 +2525,57 @@ export const DovizFisiPage: React.FC = () => {
       }
     }
 
+    // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolleri
+    if (isMasakLimitExceeded) {
+      const isAnon = !unvan || !unvan.trim() ||
+        unvan.trim().toLocaleUpperCase('tr-TR') === "İSİM BEYAN EDİLMEMİŞTİR" ||
+        unvan.trim().toLocaleUpperCase('tr-TR') === "ISIM BEYAN EDILMEMISTIR";
+
+      const missingFields: string[] = [];
+      if (isAnon) missingFields.push("İsim / Ünvan");
+      if (!vergiKimlikNo || !vergiKimlikNo.trim()) missingFields.push("T.C. Kimlik / VKN");
+      if (!detayAdres || !detayAdres.trim()) missingFields.push("Müşteri Adresi");
+      if (!detayHukukiYapi && !detayHukukiYapiId) missingFields.push("Hukuki Yapı");
+
+      if (missingFields.length > 0) {
+        setNotification({
+          type: "warning",
+          message: `⚠️ MASAK Yasal Sınırı Aşıldı (≥185.000 TL / 5.000 USD): Mevzuat gereği ${missingFields.join(", ")} zorunludur. Lütfen F8 Detay penceresinden eksik bilgileri doldurunuz.`,
+        });
+        setShowDetayModal(true);
+        return;
+      }
+
+      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır
+      try {
+        const cleanName = isAnon ? "" : unvan.trim();
+        const cleanId = (vergiKimlikNo || "").trim();
+        if (cleanName || cleanId) {
+          const res = await MasakService.sorgula({
+            ad: cleanName || undefined,
+            kimlikNo: cleanId || undefined,
+            limit: 15,
+          });
+          const matches = res?.kayitlar || [];
+          setMasakResult({
+            queriedName: cleanName || cleanId,
+            queriedId: cleanId,
+            matches,
+            searched: true,
+          });
+          if (matches.length > 0) {
+            setMasakModalOpen(true);
+            setNotification({
+              type: "danger",
+              message: `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`,
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Auto MASAK check error:", err);
+      }
+    }
+
     try {
       let finalIlId = (detayIlId && Number(detayIlId) > 0) ? Number(detayIlId) : undefined;
       if (!finalIlId && detayIl.trim()) {
@@ -2546,6 +2734,7 @@ export const DovizFisiPage: React.FC = () => {
         yetkiliKisi: detayYetkiliKisi.trim() || undefined,
         yetkiliKisiId: finalYetkiliKisiId,
         kimlikKaynagi: detayKimlikKaynagi.trim() || undefined,
+        masakListesindeVar: (masakResult.matches && masakResult.matches.length > 0) ? true : false,
         gmBeyannameNo: gmBeyannameNo.trim() || undefined,
         gmBeyannameTarih: (gmBeyannameTarih.trim() && !gmBeyannameTarih.startsWith("1899") && !gmBeyannameTarih.startsWith("1900") && !gmBeyannameTarih.startsWith("0001")) ? gmBeyannameTarih.trim() : undefined,
         gmDovizSayi: gmDovizSayi.trim() || undefined,
@@ -3311,6 +3500,7 @@ export const DovizFisiPage: React.FC = () => {
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       <InputGroup size="sm" style={{ height: "30px" }}>
                         <Form.Control
+                          ref={(el) => { headerRefs.current["unvan"] = el; }}
                           type="text"
                           autoComplete="off"
                           disabled={isLocked}
@@ -3335,9 +3525,20 @@ export const DovizFisiPage: React.FC = () => {
                           className="px-2 py-0 d-flex align-items-center justify-content-center"
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => setShowCariModal(true)}
-                          title="Cari / Müşteri Seç"
+                          title="Cari / Müşteri Seç (F4)"
                         >
                           <IconBinoculars size={14} />
+                        </Button>
+                        <Button
+                          variant="outline-danger"
+                          className="px-2 py-0 d-flex align-items-center justify-content-center gap-1"
+                          style={{ height: "30px", fontSize: "11px", fontWeight: 600, borderColor: "#cbd5e1" }}
+                          onClick={() => handleSearchMasak()}
+                          disabled={isSearchingMasak}
+                          title="İsim ve TC ile MASAK Listelerinde Sorgula"
+                        >
+                          {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={14} color="#dc2626" />}
+                          <span className="d-none d-xl-inline text-danger"></span>
                         </Button>
                       </InputGroup>
                     </div>
@@ -3431,17 +3632,32 @@ export const DovizFisiPage: React.FC = () => {
                       VKN / TCKN
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <Form.Control
-                        type="text"
-                        size="sm"
-                        autoComplete="off"
-                        disabled={isLocked}
-                        value={vergiKimlikNo}
-                        maxLength={11}
-                        onChange={(e) => setVergiKimlikNo(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                        className="font-monospace px-2.5 py-1"
-                        style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-                      />
+                      <InputGroup size="sm" style={{ height: "30px" }}>
+                        <Form.Control
+                          ref={(el) => { headerRefs.current["vkn"] = el; }}
+                          type="text"
+                          size="sm"
+                          autoComplete="off"
+                          disabled={isLocked}
+                          value={vergiKimlikNo}
+                          maxLength={11}
+                          onChange={(e) => setVergiKimlikNo(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                          className="font-monospace px-2.5 py-1"
+                          style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                          placeholder="TCKN / VKN"
+                        />
+                        <Button
+                          variant="outline-danger"
+                          className="px-2 py-0 d-flex align-items-center justify-content-center gap-1"
+                          style={{ height: "30px", fontSize: "11px", fontWeight: 600, borderColor: "#cbd5e1" }}
+                          onClick={() => handleSearchMasak()}
+                          disabled={isSearchingMasak}
+                          title="TC/VKN ile MASAK Listelerinde Sorgula"
+                        >
+                          {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={14} color="#dc2626" />}
+                          <span className="d-none d-xl-inline text-danger"></span>
+                        </Button>
+                      </InputGroup>
                     </div>
                   </div>
 
@@ -4153,6 +4369,17 @@ export const DovizFisiPage: React.FC = () => {
                     }}
                   >
                     {tcknDogrulandi === true ? <IconCheck size={13} /> : tcknDogrulandi === false ? <IconAlertTriangle size={13} /> : <IconWorld size={13} />}
+                  </Button>
+                  <Button
+                    variant="outline-danger"
+                    className="px-2 py-0 d-flex align-items-center justify-content-center gap-1"
+                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    onClick={() => handleSearchMasak(unvan, vergiKimlikNo)}
+                    disabled={isSearchingMasak}
+                    title="Bu TC/VKN ile MASAK Listelerinde Sorgula"
+                  >
+                    {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={13} color="#dc2626" />}
+                    <span>MASAK</span>
                   </Button>
                 </InputGroup>
               </div>
@@ -5152,6 +5379,23 @@ export const DovizFisiPage: React.FC = () => {
         onCountsChange={setBanknotSaymaCounts}
         tlKurusSayisi={tlKurusSayisi}
         dovizKurusSayisi={dovizKurusSayisi}
+      />
+
+      {/* MASAK Sorgulama Sonuç Modalı */}
+      <MasakSonucModal
+        show={masakModalOpen}
+        onHide={() => setMasakModalOpen(false)}
+        queriedName={masakResult.queriedName}
+        queriedId={masakResult.queriedId}
+        matches={masakResult.matches}
+        searched={masakResult.searched}
+        onOpenMasakManagement={() => setMasakManagementOpen(true)}
+      />
+
+      {/* MASAK Resmi Listeleri Yönetme / Güncelleme Modalı */}
+      <MasakModal
+        show={masakManagementOpen}
+        onHide={() => setMasakManagementOpen(false)}
       />
     </div>
   );

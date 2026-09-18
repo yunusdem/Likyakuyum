@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal } from "react-bootstrap";
+import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
 import {
-  IconCheck, IconBinoculars, IconAlertTriangle, IconPlus,
+  IconCheck, IconBinoculars, IconAlertTriangle, IconPlus, IconShieldExclamation, IconShieldCheck,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { useAuth } from "../../context/AuthContext";
+import { MasakService, MasakEslesme } from "../../services/masakService";
+import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
+import MasakModal from "../../components/masak/MasakModal";
 import {
   SarrafFisService, SaveSarrafFisPayload, SarrafFisListItem,
   UrunItem, VezneBakiyeItem,
@@ -234,6 +237,78 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const farkTL = totalTutar - totalOdemeTutar;
   const farkHas = alisHas - odemeHas;
 
+  // MASAK Sorgulama ve Limit Takip Durumu
+  const [isSearchingMasak, setIsSearchingMasak] = useState<boolean>(false);
+  const [masakModalOpen, setMasakModalOpen] = useState<boolean>(false);
+  const [masakManagementOpen, setMasakManagementOpen] = useState<boolean>(false);
+  const [masakResult, setMasakResult] = useState<{
+    queriedName?: string;
+    queriedId?: string;
+    matches: MasakEslesme[];
+    searched: boolean;
+  }>({ matches: [], searched: false });
+
+  // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
+  const isMasakLimitExceeded = (
+    totalTutar >= 185000 ||
+    totalOdemeTutar >= 185000 ||
+    odemeRows.some((o) => (o.paraKodu === "USD" || o.paraKodu === "$") && Number(o.miktar) >= 5000)
+  );
+
+  // MASAK limiti aşıldığında popup/toast bildirim göster
+  const prevMasakLimitRef = useRef(false);
+  useEffect(() => {
+    if (isMasakLimitExceeded && !prevMasakLimitRef.current) {
+      showNotif("warning", "⚠️ MASAK Yasal Sınırı Aşıldı (≥185.000 TL / 5.000 USD): Mevzuat gereği İsim, T.C. Kimlik / VKN, Adres ve Hukuki Yapı alanları zorunludur.");
+    }
+    prevMasakLimitRef.current = isMasakLimitExceeded;
+  }, [isMasakLimitExceeded]);
+
+  const handleSearchMasak = async (explicitName?: string, explicitId?: string) => {
+    const rawName = explicitName !== undefined ? explicitName : unvan;
+    const rawId = explicitId !== undefined ? explicitId : detayVergiKimlikNo;
+
+    const isAnon = !rawName || !rawName.trim() ||
+      rawName.trim().toUpperCase() === "İSİM BEYAN EDİLMEMİŞTİR" ||
+      rawName.trim().toUpperCase() === "ISIM BEYAN EDILMEMISTIR";
+
+    const cleanName = isAnon ? "" : rawName.trim();
+    const cleanId = (rawId || "").trim();
+
+    if (!cleanName && !cleanId) {
+      showNotif("warning", "MASAK sorgusu yapabilmek için lütfen Müşteri Adı / Ünvan veya T.C. Kimlik / VKN giriniz.");
+      return;
+    }
+
+    try {
+      setIsSearchingMasak(true);
+      const res = await MasakService.sorgula({
+        ad: cleanName || undefined,
+        kimlikNo: cleanId || undefined,
+        limit: 30,
+      });
+
+      const matches = res?.kayitlar || [];
+      setMasakResult({
+        queriedName: cleanName || cleanId,
+        queriedId: cleanId,
+        matches,
+        searched: true,
+      });
+      setMasakModalOpen(true);
+
+      if (matches.length > 0) {
+        showNotif("danger", `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`);
+      } else {
+        showNotif("success", `✅ MASAK Sorgulaması Temiz: "${cleanName || cleanId}" için listede kısıtlama kaydı bulunamadı.`);
+      }
+    } catch (err: any) {
+      showNotif("danger", `MASAK sorgusu yapılamadı: ${err?.message || "Sunucu bağlantı hatası"}`);
+    } finally {
+      setIsSearchingMasak(false);
+    }
+  };
+
   // Sayfa ilk açılınca otomatik inputa / işleme odaklan
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -427,6 +502,53 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (!vezneId) { showNotif("warning", "Vezne seçiniz"); return; }
     const validLines = lines.filter((l) => l.urunId > 0 && Number(l.miktar) > 0);
     if (!validLines.length) { showNotif("warning", "En az bir geçerli satır giriniz"); return; }
+
+    // 185.000 TL veya 5.000 USD MASAK Sınır ve Kimlik Bilgisi Kontrolü
+    if (isMasakLimitExceeded) {
+      const activeUnvan = (unvan || detayUnvan || "").trim();
+      const isAnon = !activeUnvan ||
+        activeUnvan.toUpperCase() === "İSİM BEYAN EDİLMEMİŞTİR" ||
+        activeUnvan.toUpperCase() === "ISIM BEYAN EDILMEMISTIR";
+
+      const missingFields: string[] = [];
+      if (isAnon) missingFields.push("İsim / Ünvan");
+      if (!detayVergiKimlikNo || !detayVergiKimlikNo.trim()) missingFields.push("T.C. Kimlik / VKN");
+      if (!detayAdres || !detayAdres.trim()) missingFields.push("Müşteri Adresi");
+      if (detayKisilikTipi === undefined || detayKisilikTipi === null) missingFields.push("Hukuki Yapı / Kişilik Tipi");
+
+      if (missingFields.length > 0) {
+        showNotif("warning", `⚠️ MASAK Yasal Sınırı Aşıldı (≥185.000 TL / 5.000 USD): Mevzuat gereği ${missingFields.join(", ")} zorunludur. Lütfen Detay penceresinden eksik bilgileri doldurunuz.`);
+        openDetayModal();
+        return;
+      }
+
+      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır
+      try {
+        const cleanName = isAnon ? "" : (unvan || detayUnvan || "").trim();
+        const cleanId = (detayVergiKimlikNo || "").trim();
+        if (cleanName || cleanId) {
+          const res = await MasakService.sorgula({
+            ad: cleanName || undefined,
+            kimlikNo: cleanId || undefined,
+            limit: 15,
+          });
+          const matches = res?.kayitlar || [];
+          setMasakResult({
+            queriedName: cleanName || cleanId,
+            queriedId: cleanId,
+            matches,
+            searched: true,
+          });
+          if (matches.length > 0) {
+            setMasakModalOpen(true);
+            showNotif("danger", `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`);
+          }
+        }
+      } catch (err) {
+        console.error("Auto MASAK check error:", err);
+      }
+    }
+
     setIsSaving(true);
     try {
       const payload: SaveSarrafFisPayload = {
@@ -459,6 +581,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         kimlikGecerlilikTarihi: detayKimlikGecerlilikTarihi || null,
         vekilAdi: detayVekilAdi || null,
         vekilKimlikNo: detayVekilKimlikNo || null,
+        masakListesindeVar: (masakResult.matches && masakResult.matches.length > 0) ? true : false,
         kullaniciId: Number(user?.id) || 1,
         yazdirilanBelgeTipi: 0,
         satirlar: validLines.map((l, i) => ({
@@ -1225,6 +1348,17 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   >
                     <IconBinoculars size={14} />
                   </Button>
+                  <Button
+                    variant="outline-danger"
+                    className="px-2 py-0 d-flex align-items-center justify-content-center gap-1"
+                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    onClick={() => handleSearchMasak(unvan, detayVergiKimlikNo)}
+                    disabled={isSearchingMasak}
+                    title="İsim ve TC/VKN ile MASAK Listelerinde Sorgula"
+                  >
+                    {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={14} color="#dc2626" />}
+                    <span className="d-none d-sm-inline text-danger">MASAK</span>
+                  </Button>
                 </InputGroup>
               </div>
             </Col>
@@ -1829,15 +1963,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
               <div className="d-flex align-items-center mb-2">
                 <label style={{ width: 135, minWidth: 135, fontSize: "12px", fontWeight: 600 }}>Vergi / TC Kimlik</label>
-                <Form.Control
-                  ref={(el) => { detayRefs.current["vergiKimlikNo"] = el; }}
-                  size="sm"
-                  value={detayVergiKimlikNo}
-                  onChange={(e) => setDetayVergiKimlikNo(e.target.value.replace(/\D/g, ""))}
-                  onKeyDown={(e) => handleDetayKeyDown(e, "vergiKimlikNo")}
-                  maxLength={20}
-                  style={{ flex: 1 }}
-                />
+                <InputGroup size="sm" style={{ flex: 1 }}>
+                  <Form.Control
+                    ref={(el) => { detayRefs.current["vergiKimlikNo"] = el; }}
+                    value={detayVergiKimlikNo}
+                    onChange={(e) => setDetayVergiKimlikNo(e.target.value.replace(/\D/g, ""))}
+                    onKeyDown={(e) => handleDetayKeyDown(e, "vergiKimlikNo")}
+                    maxLength={20}
+                  />
+                  <Button
+                    variant="outline-danger"
+                    className="px-2 py-0 d-flex align-items-center justify-content-center gap-1"
+                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    onClick={() => handleSearchMasak(detayUnvan || unvan, detayVergiKimlikNo)}
+                    disabled={isSearchingMasak}
+                    title="Bu TC/VKN ile MASAK Listelerinde Sorgula"
+                  >
+                    {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={13} color="#dc2626" />}
+                    <span>MASAK</span>
+                  </Button>
+                </InputGroup>
               </div>
 
               <div className="d-flex align-items-center mb-2">
@@ -2002,6 +2147,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* MASAK Sorgulama Sonuç Modalı */}
+      <MasakSonucModal
+        show={masakModalOpen}
+        onHide={() => setMasakModalOpen(false)}
+        queriedName={masakResult.queriedName}
+        queriedId={masakResult.queriedId}
+        matches={masakResult.matches}
+        searched={masakResult.searched}
+        onOpenMasakManagement={() => setMasakManagementOpen(true)}
+      />
+
+      {/* MASAK Resmi Listeleri Yönetme / Güncelleme Modalı */}
+      <MasakModal
+        show={masakManagementOpen}
+        onHide={() => setMasakManagementOpen(false)}
+      />
     </div>
   );
 };

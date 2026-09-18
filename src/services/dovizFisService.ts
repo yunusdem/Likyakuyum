@@ -176,6 +176,7 @@ export interface SaveDovizFisPayload {
   yetkiliKisi?: string;
   yetkiliKisiId?: number | null;
   kimlikKaynagi?: string;
+  masakListesindeVar?: boolean;
   kullaniciId?: number;
   satirlar: {
     satirNo?: number;
