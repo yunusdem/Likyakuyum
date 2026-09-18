@@ -190,6 +190,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const extractApiErrorMessage = (err: any, defaultMsg: string): string => {
     if (!err) return defaultMsg;
     if (typeof err === "string") return err;
+    const respErrors = err.response?.data?.errors;
+    if (respErrors && Array.isArray(respErrors) && respErrors.length > 0) {
+      return respErrors.map((e: any) => typeof e === "string" ? e : (e.message || JSON.stringify(e))).join(" | ");
+    }
     const respMsg = err.response?.data?.message || err.response?.data?.error || err.response?.data?.hata;
     if (respMsg && typeof respMsg === "string" && respMsg.trim()) {
       return respMsg.trim();

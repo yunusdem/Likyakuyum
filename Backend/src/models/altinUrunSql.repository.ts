@@ -515,35 +515,53 @@ export class AltinUrunSqlRepository {
       }
     }
 
+    const safeFloat = (v: any, fallback = 0): number => {
+      if (v === undefined || v === null || v === "") return fallback;
+      const parsed = typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, "."));
+      return isNaN(parsed) ? fallback : parsed;
+    };
+
+    const safeNullableFloat = (v: any): number | null => {
+      if (v === undefined || v === null || v === "") return null;
+      const parsed = typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, "."));
+      return isNaN(parsed) ? null : parsed;
+    };
+
     const targetId = dto.altinUrunId && Number(dto.altinUrunId) > 0 ? Number(dto.altinUrunId) : null;
     const req = pool.request();
-    req.output("ALTIN_URUN_ID", sql.Int, targetId);
-    req.input("TARIH", sql.DateTime, dto.tarih ? new Date(dto.tarih) : new Date());
+    req.output("ALTIN_URUN_ID", sql.Int, targetId || null);
+    
+    let parsedTarih = new Date();
+    if (dto.tarih) {
+      const d = new Date(dto.tarih);
+      if (!isNaN(d.getTime())) parsedTarih = d;
+    }
+    req.input("TARIH", sql.DateTime, parsedTarih);
     req.input("GRUP_KODU", sql.VarChar(50), (dto.grupKodu || "").trim().toUpperCase());
-    req.input("URUN_NO", sql.Int, Number(dto.urunNo));
+    req.input("URUN_NO", sql.Int, safeFloat(dto.urunNo, 1));
     req.input("BARKOD", sql.VarChar(50), dto.barkod ? dto.barkod.trim() : null);
     req.input("AYAR", sql.VarChar(50), dto.ayar ? dto.ayar.trim() : null);
     req.input("URETICI_FIRMA", sql.VarChar(150), dto.ureticiFirma ? dto.ureticiFirma.trim() : null);
     req.input("ORJINAL_KOD", sql.VarChar(50), dto.orjinalKod ? dto.orjinalKod.trim() : null);
     req.input("MODEL", sql.VarChar(100), dto.model ? dto.model.trim() : null);
     req.input("BANKO", sql.VarChar(50), dto.banko ? dto.banko.trim() : null);
-    req.input("MIKTAR", sql.Float, Number(dto.miktar) || 0);
-    req.input("HAS_GRAM", sql.Float, Number(dto.hasGram) || 0);
-    req.input("MALIYET_ISCILIK", sql.Float, Number(dto.maliyetIscilik) || 0);
-    req.input("MALIYET_ISCILIK_PARA_KODU", sql.VarChar(10), dto.maliyetIscilikParaKodu || "HAS");
-    req.input("MALIYET_ISCILIK_BIRIM", sql.VarChar(10), dto.maliyetIscilikBirim || "Gram");
-    req.input("MALIYET_ISCILIK_TUTARI", sql.Float, Number(dto.maliyetIscilikTutari) || 0);
-    req.input("SATIS_ISCILIK", sql.Float, Number(dto.satisIscilik) || 0);
-    req.input("SATIS_ISCILIK_TUTARI", sql.Float, Number(dto.satisIscilikTutari) || 0);
-    req.input("ISCILIK_KARI", sql.Float, Number(dto.iscilikKari) || 0);
-    req.input("MALIYET", sql.Float, Number(dto.maliyet) || 0);
-    req.input("MALIYET_PARA_KODU", sql.VarChar(10), dto.maliyetParaKodu || "HAS");
-    req.input("SATIS_FIYATI", sql.Float, Number(dto.satisFiyati) || 0);
-    req.input("SATIS_PARA_KODU", sql.VarChar(10), dto.satisParaKodu || "HAS");
-    req.input("SATIS_KARI_YUZDE", sql.Float, Number(dto.satisKariYuzde) || 0);
-    req.input("HAS_KURU_1", sql.Float, dto.hasKuru1 ?? null);
-    req.input("HAS_KURU_2", sql.Float, dto.hasKuru2 ?? null);
-    req.input("ALTIN_KURU", sql.Float, dto.altinKuru ?? null);
+    req.input("MIKTAR", sql.Float, safeFloat(dto.miktar));
+    req.input("HAS_GRAM", sql.Float, safeFloat(dto.hasGram));
+    req.input("MALIYET_ISCILIK", sql.Float, safeFloat(dto.maliyetIscilik));
+    req.input("MALIYET_ISCILIK_PARA_KODU", sql.VarChar(20), dto.maliyetIscilikParaKodu || "HAS");
+    req.input("MALIYET_ISCILIK_BIRIM", sql.VarChar(20), dto.maliyetIscilikBirim || "Gram");
+    req.input("MALIYET_ISCILIK_TUTARI", sql.Float, safeFloat(dto.maliyetIscilikTutari));
+    req.input("SATIS_ISCILIK", sql.Float, safeFloat(dto.satisIscilik));
+    req.input("SATIS_ISCILIK_TUTARI", sql.Float, safeFloat(dto.satisIscilikTutari));
+    req.input("ISCILIK_KARI", sql.Float, safeFloat(dto.iscilikKari));
+    req.input("MALIYET", sql.Float, safeFloat(dto.maliyet));
+    req.input("MALIYET_PARA_KODU", sql.VarChar(20), dto.maliyetParaKodu || "HAS");
+    req.input("SATIS_FIYATI", sql.Float, safeFloat(dto.satisFiyati));
+    req.input("SATIS_PARA_KODU", sql.VarChar(20), dto.satisParaKodu || "HAS");
+    req.input("SATIS_KARI_YUZDE", sql.Float, safeFloat(dto.satisKariYuzde));
+    req.input("HAS_KURU_1", sql.Float, safeNullableFloat(dto.hasKuru1));
+    req.input("HAS_KURU_2", sql.Float, safeNullableFloat(dto.hasKuru2));
+    req.input("ALTIN_KURU", sql.Float, safeNullableFloat(dto.altinKuru));
     req.input("SATILDI", sql.Bit, dto.satildi ? 1 : 0);
     req.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
     req.input("KULLANICI_ID", sql.Int, kullaniciId || null);
@@ -554,7 +572,16 @@ export class AltinUrunSqlRepository {
       result = await req.execute("SODVZ_ALTIN_URUN_KAYDET");
     } catch (err: any) {
       logger.error("[AltinUrunSqlRepository.save] Error:", err);
-      throw ApiError.badRequest(err.message || "Altın ürün kaydedilemedi.");
+      const rawMsg = err.originalError?.message || err.message || "";
+      let friendlyMsg = "Altın ürün kaydedilemedi.";
+      if (rawMsg.includes("numaralı ürün kodu daha önce kaydedilmiş") || rawMsg.includes("daha önce kaydedilmiş")) {
+        friendlyMsg = `⚠️ [${(dto.grupKodu || "").trim().toUpperCase()}-${dto.urunNo}] numaralı ürün daha önce kaydedilmiş. Lütfen farklı bir ürün numarası giriniz veya mevcut kaydı seçiniz.`;
+      } else if (rawMsg.includes("Validation failed for parameter")) {
+        friendlyMsg = `⚠️ Geçersiz veri biçimi: ${rawMsg}`;
+      } else if (rawMsg) {
+        friendlyMsg = rawMsg;
+      }
+      throw ApiError.badRequest(friendlyMsg);
     }
 
     let savedId = Number(result?.output?.ALTIN_URUN_ID) || Number(req.parameters.ALTIN_URUN_ID?.value) || targetId;

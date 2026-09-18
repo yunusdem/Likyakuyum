@@ -208,11 +208,6 @@ export const NumeratorDefinitionsPage: React.FC = () => {
     const currentRow = rows.find((r) => r.tur === tur);
     const willBeActive = !currentRow?.isActive;
 
-    if (!willBeActive) {
-      // Unchecked tick: immediately delete from DB so no old record remains
-      NumeratorService.deleteNumerator(`${tur}_null`).catch(() => {});
-    }
-
     setRows((prev) =>
       prev.map((r) => {
         if (r.tur !== tur) return r;
@@ -230,7 +225,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
           uzunluk: willBeActive ? (r.uzunluk !== "" ? r.uzunluk : defUzunluk) : "",
           onuneSifirKoy: willBeActive ? true : false,
           isDirty: true,
-          existingId: willBeActive ? r.existingId : null,
+          existingId: r.existingId,
         };
       })
     );
@@ -244,9 +239,14 @@ export const NumeratorDefinitionsPage: React.FC = () => {
     setRows((prev) =>
       prev.map((r) => {
         if (r.tur !== tur) return r;
+        const std = STANDARD_NUMERATORS.find((s) => s.tur === tur);
+        const defUzunluk = std ? std.defaultUzunluk : 10;
         return {
           ...r,
           [field]: val,
+          isActive: true, // Editing any field automatically activates the numerator
+          uzunluk: r.uzunluk !== "" && r.uzunluk !== undefined ? r.uzunluk : defUzunluk,
+          onuneSifirKoy: r.onuneSifirKoy !== undefined ? r.onuneSifirKoy : true,
           isDirty: true,
         };
       })
@@ -277,12 +277,19 @@ export const NumeratorDefinitionsPage: React.FC = () => {
       let deletedCount = 0;
 
       for (const row of rows) {
-        if (row.isActive) {
+        const hasValues = (row.onek && row.onek.trim().length > 0) || 
+                          (row.baslangic !== "" && row.baslangic !== null && Number(row.baslangic) > 0) ||
+                          (row.bitis !== "" && row.bitis !== null && Number(row.bitis) > 0);
+        const shouldSave = row.isActive || hasValues;
+
+        if (shouldSave) {
           const MAX_INT = 2147483647;
           const cleanOnek = (String(row.onek || "")).trim().slice(0, 50);
-          const rawBaslangic = parseInt(String(row.baslangic).replace(/[^0-9]/g, ""), 10) || 0;
+          const rawBaslangic = parseInt(String(row.baslangic).replace(/[^0-9]/g, ""), 10) || 1;
           const rawBitis = parseInt(String(row.bitis).replace(/[^0-9]/g, ""), 10) || 0;
-          const rawUzunluk = parseInt(String(row.uzunluk).replace(/[^0-9]/g, ""), 10) || 10;
+          const std = STANDARD_NUMERATORS.find((s) => s.tur === row.tur);
+          const defaultUzunluk = std?.defaultUzunluk || 10;
+          const rawUzunluk = parseInt(String(row.uzunluk).replace(/[^0-9]/g, ""), 10) || defaultUzunluk;
 
           const cleanBaslangic = Math.min(MAX_INT, Math.max(0, rawBaslangic));
           const cleanBitis = Math.min(MAX_INT, Math.max(0, rawBitis));
@@ -296,17 +303,17 @@ export const NumeratorDefinitionsPage: React.FC = () => {
             baslangic: cleanBaslangic,
             bitis: cleanBitis,
             uzunluk: cleanUzunluk,
-            onuneSifirKoy: row.onuneSifirKoy,
+            onuneSifirKoy: row.onuneSifirKoy !== false,
           });
           savedCount++;
-        } else {
-          // If inactive, ensure it is deleted cleanly
+        } else if (row.existingId) {
+          // If deactivated explicitly and existed in DB, delete cleanly
           await NumeratorService.deleteNumerator(`${row.tur}_${row.yaziciId ?? "null"}`).catch(() => {});
           deletedCount++;
         }
       }
 
-      setAlertSuccess(`✅ Numaratör tanımları başarıyla kaydedildi.`);
+      setAlertSuccess(`✅ Numaratör tanımları başarıyla kaydedildi (${savedCount} numaratör güncellendi).`);
       await loadData();
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
@@ -627,7 +634,6 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         <input
                           type="text"
                           value={row.onek}
-                          disabled={!isRowActive}
                           onChange={(e) => handleFieldChange(row.tur, "onek", e.target.value)}
                           onFocus={() => setActiveCell({ tur: row.tur, col: "onek" })}
                           onBlur={() => setActiveCell(null)}
@@ -663,7 +669,6 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                               ? row.baslangic
                               : formatNumberDisplay(row.baslangic)
                           }
-                          disabled={!isRowActive}
                           onChange={(e) => {
                             const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
                             handleFieldChange(row.tur, "baslangic", raw);
@@ -708,7 +713,6 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                               ? row.bitis
                               : formatNumberDisplay(row.bitis)
                           }
-                          disabled={!isRowActive}
                           onChange={(e) => {
                             const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
                             handleFieldChange(row.tur, "bitis", raw);
@@ -749,7 +753,6 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                           inputMode="numeric"
                           maxLength={2}
                           value={row.uzunluk}
-                          disabled={!isRowActive}
                           onChange={(e) => {
                             const raw = e.target.value.replace(/[^0-9]/g, "").slice(0, 2);
                             handleFieldChange(row.tur, "uzunluk", raw);
@@ -789,7 +792,6 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={row.onuneSifirKoy}
-                          disabled={!isRowActive}
                           onChange={(e) => handleFieldChange(row.tur, "onuneSifirKoy", e.target.checked)}
                           style={{
                             cursor: isRowActive ? "pointer" : "default",

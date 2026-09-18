@@ -567,17 +567,18 @@ export const DovizFisiPage: React.FC = () => {
 
   const linesRef = useRef(lines);
   linesRef.current = lines;
+  const hasInitialFocusedRef = useRef(false);
 
   // Auto-focus handler matching business requirements:
-  // - [C- Döviz Fişi]: Focus on Geliş Nedeni input
-  // - [D- Döviz Fişi Düzeltme]: Focus on first empty input (cell / field), if none is empty focus on Geliş Nedeni
+  // - [C- Döviz Fişi]: Focus on Geliş Nedeni input on initial open
+  // - [D- Döviz Fişi Düzeltme]: Focus on first empty input on initial open
   const focusInitialInput = useCallback(() => {
     if (!isDuzeltmeMode) {
       // [C- Döviz Fişi]: Geliş nedeni inputuna odaklan
       focusGelisNedeni();
     } else {
       // [D- Döviz Fişi Düzeltme]: Boş olan ilk inputa, eğer boş yoksa Geliş nedeni inputuna odaklan
-      const curLines = linesRef.current || lines;
+      const curLines = linesRef.current || [];
       let foundEmpty = false;
       for (let i = 0; i < curLines.length; i++) {
         const row = curLines[i];
@@ -602,7 +603,7 @@ export const DovizFisiPage: React.FC = () => {
         focusGelisNedeni();
       }
     }
-  }, [isDuzeltmeMode, focusGelisNedeni, focusCell, lines]);
+  }, [isDuzeltmeMode, focusGelisNedeni, focusCell]);
 
   // Fetch dynamic balances for current vezne
   const fetchVezneBalances = useCallback(async (vId: number) => {
@@ -1050,9 +1051,14 @@ export const DovizFisiPage: React.FC = () => {
     loadLookupsAndList();
   }, [loadLookupsAndList]);
 
-  // Auto-focus first input on screen load / route navigation
   useEffect(() => {
-    if (!isLoadingLookups) {
+    hasInitialFocusedRef.current = false;
+  }, [location.pathname]);
+
+  // Auto-focus first input ONLY ONCE on screen load / route navigation
+  useEffect(() => {
+    if (!isLoadingLookups && !hasInitialFocusedRef.current) {
+      hasInitialFocusedRef.current = true;
       const timer = setTimeout(() => {
         focusInitialInput();
       }, 100);

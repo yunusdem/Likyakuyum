@@ -335,7 +335,130 @@ export class DovizFisSqlRepository {
         END
       `);
 
-      // 3. Stored Procedure: SODVZ_FIS_KAYDET (Otomatik Seri No & Belge No desteğiyle)
+      // 3. Table: TODVZ_NUMERATOR
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TODVZ_NUMERATOR')
+        BEGIN
+          CREATE TABLE [dbo].[TODVZ_NUMERATOR](
+            [YAZICI_ID] INT NULL,
+            [TUR] TINYINT NOT NULL,
+            [ONEK] VARCHAR(50) NULL,
+            [BASLANGIC] INT NOT NULL DEFAULT(1),
+            [BITIS] INT NOT NULL DEFAULT(0),
+            [UZUNLUK] INT NOT NULL DEFAULT(10),
+            [ONUNE_SIFIR_KOY] BIT NOT NULL DEFAULT(1)
+          );
+        END
+      `);
+
+      // 4. Stored Procedure: SODVZ_NUMERATOR_URET
+      try {
+        await pool.request().query(`
+          CREATE OR ALTER PROCEDURE [dbo].[SODVZ_NUMERATOR_URET]
+            @NUMERATOR_TURU INT,
+            @NUMARA VARCHAR(50) OUTPUT,
+            @YAZICI_ID INT = NULL,
+            @SAYFA_SAYISI INT = 1,
+            @ONEK VARCHAR(50) = NULL OUTPUT,
+            @ONUNE_SIFIR_KOY BIT = 1 OUTPUT
+          AS
+          BEGIN
+            SET NOCOUNT ON;
+            DECLARE @BASLANGIC BIGINT = 1;
+            DECLARE @BITIS BIGINT = 0;
+            DECLARE @UZUNLUK INT = 10;
+            DECLARE @FOUND_TUR INT = NULL;
+            DECLARE @FOUND_YAZICI INT = NULL;
+
+            -- 1. Hedef numaratörü bul
+            SELECT TOP 1 
+              @FOUND_TUR = TUR,
+              @FOUND_YAZICI = YAZICI_ID,
+              @ONEK = ISNULL(ONEK, ''),
+              @BASLANGIC = ISNULL(BASLANGIC, 1),
+              @BITIS = ISNULL(BITIS, 0),
+              @UZUNLUK = ISNULL(UZUNLUK, 10),
+              @ONUNE_SIFIR_KOY = ISNULL(ONUNE_SIFIR_KOY, 1)
+            FROM [dbo].[TODVZ_NUMERATOR]
+            WHERE TUR = @NUMERATOR_TURU
+              AND (@YAZICI_ID IS NULL OR YAZICI_ID = @YAZICI_ID OR YAZICI_ID IS NULL OR YAZICI_ID = 0)
+            ORDER BY CASE WHEN YAZICI_ID = @YAZICI_ID THEN 0 WHEN YAZICI_ID IS NOT NULL THEN 1 ELSE 2 END;
+
+            -- 2. Eğer bulunamadıysa ve e-belge türü ise (14-21), standart fallback türü dene (8 veya 9)
+            IF @FOUND_TUR IS NULL AND @NUMERATOR_TURU >= 14 AND @NUMERATOR_TURU <= 21
+            BEGIN
+              DECLARE @FALLBACK_TUR INT = CASE WHEN @NUMERATOR_TURU <= 17 THEN 8 ELSE 9 END;
+              SELECT TOP 1 
+                @FOUND_TUR = TUR,
+                @FOUND_YAZICI = YAZICI_ID,
+                @ONEK = ISNULL(ONEK, ''),
+                @BASLANGIC = ISNULL(BASLANGIC, 1),
+                @BITIS = ISNULL(BITIS, 0),
+                @UZUNLUK = ISNULL(UZUNLUK, 10),
+                @ONUNE_SIFIR_KOY = ISNULL(ONUNE_SIFIR_KOY, 1)
+              FROM [dbo].[TODVZ_NUMERATOR]
+              WHERE TUR = @FALLBACK_TUR
+              ORDER BY CASE WHEN YAZICI_ID = @YAZICI_ID THEN 0 WHEN YAZICI_ID IS NOT NULL THEN 1 ELSE 2 END;
+            END;
+
+            IF @FOUND_TUR IS NOT NULL
+            BEGIN
+              IF @BITIS > 0 AND @BASLANGIC > @BITIS
+              BEGIN
+                RETURN 1; -- Numaratör bitiş sayısını geçmiş
+              END;
+
+              DECLARE @NUM_STR VARCHAR(50) = CAST(@BASLANGIC AS VARCHAR(50));
+              DECLARE @REQ_PAD INT = @UZUNLUK - LEN(ISNULL(@ONEK, ''));
+              IF @REQ_PAD < 1 SET @REQ_PAD = 1;
+
+              IF @ONUNE_SIFIR_KOY = 1
+              BEGIN
+                IF LEN(@NUM_STR) < @REQ_PAD
+                  SET @NUM_STR = REPLICATE('0', @REQ_PAD - LEN(@NUM_STR)) + @NUM_STR;
+              END;
+
+              SET @NUMARA = ISNULL(@ONEK, '') + @NUM_STR;
+
+              -- Sayacı artır ve güncelle
+              UPDATE [dbo].[TODVZ_NUMERATOR]
+              SET BASLANGIC = @BASLANGIC + ISNULL(@SAYFA_SAYISI, 1)
+              WHERE TUR = @FOUND_TUR
+                AND (
+                  (@FOUND_YAZICI IS NULL AND (YAZICI_ID IS NULL OR YAZICI_ID = 0))
+                  OR (YAZICI_ID = @FOUND_YAZICI)
+                );
+
+              RETURN 0;
+            END
+            ELSE
+            BEGIN
+              -- Numaratör kaydı hiç yoksa varsayılan üretim
+              SET @ONEK = CASE 
+                WHEN @NUMERATOR_TURU IN (0, 1, 2, 3) THEN 'A'
+                WHEN @NUMERATOR_TURU IN (4, 5, 6, 7) THEN 'S'
+                WHEN @NUMERATOR_TURU = 8 THEN 'DAB'
+                WHEN @NUMERATOR_TURU = 9 THEN 'DSB'
+                WHEN @NUMERATOR_TURU >= 14 AND @NUMERATOR_TURU <= 17 THEN 'EDA'
+                WHEN @NUMERATOR_TURU >= 18 AND @NUMERATOR_TURU <= 21 THEN 'EDS'
+                WHEN @NUMERATOR_TURU = 10 THEN 'TR'
+                ELSE 'DOC'
+              END;
+              SET @ONUNE_SIFIR_KOY = 1;
+              SET @UZUNLUK = 10;
+              
+              DECLARE @LAST_VAL BIGINT = ISNULL((SELECT MAX(FIS_ID) FROM TODVZ_FIS), 0) + 1;
+              DECLARE @PAD_LEN INT = CASE WHEN @NUMERATOR_TURU >= 14 AND @NUMERATOR_TURU <= 21 THEN 13 ELSE 7 END;
+              SET @NUMARA = @ONEK + RIGHT(REPLICATE('0', @PAD_LEN) + CAST(@LAST_VAL AS VARCHAR(20)), @PAD_LEN);
+              RETURN 0;
+            END;
+          END;
+        `);
+      } catch (eProc) {
+        // Procedure definition might exist in base database
+      }
+
+      // 5. Stored Procedure: SODVZ_FIS_KAYDET (Otomatik Seri No & Belge No desteğiyle)
       try {
         await pool.request().query(`
           CREATE OR ALTER PROCEDURE [dbo].[SODVZ_FIS_KAYDET]
@@ -1603,10 +1726,162 @@ export class DovizFisSqlRepository {
           WHERE SERI_NO IS NULL OR LEN(LTRIM(RTRIM(SERI_NO))) = 0;
         END;
 
-        -- 12.2. Belge No:
-        -- Kullanıcı tarafından girilmişse onu koru, boş ise SODVZ_FIS_KAYDET stored procedure içindeki SODVZ_NUMERATOR_URET'ten otomatik üretilecek
-        IF @P_BELGE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@P_BELGE_NO))) > 0
+        -- 12.2. Belge No Otomatik Atama:
+        -- Kullanıcı tarafından girilmişse onu koru, boş ise ilgili numaratörden (SODVZ_NUMERATOR_URET veya TODVZ_NUMERATOR) otomatik üretip ata
+        IF (@P_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@P_BELGE_NO))) = 0)
         BEGIN
+          DECLARE @CALC_BELGE_FIS_DIZAYN_TIPI INT = 0;
+          IF @EFF_ISTATISTIK_ID IS NOT NULL
+          BEGIN
+            SELECT @CALC_BELGE_FIS_DIZAYN_TIPI = ISNULL(FIS_DIZAYN_TIPI, 0)
+            FROM TODVZ_ISTATISTIK
+            WHERE ISTATISTIK_ID = @EFF_ISTATISTIK_ID;
+          END;
+
+          -- e-Döviz Fişi Belge No Numaratör Türü (Alış: 14..17, Satış: 18..21)
+          DECLARE @E_BELGE_NUM_TUR INT = 14 + @TIP * 4 + ISNULL(@CALC_BELGE_FIS_DIZAYN_TIPI, 0);
+          DECLARE @STD_BELGE_NUM_TUR INT = CASE WHEN @TIP = 0 THEN 8 ELSE 9 END;
+          DECLARE @TARGET_BELGE_TUR INT = @E_BELGE_NUM_TUR;
+
+          -- Eğer e-döviz numaratörü tanımlı değilse veya standart belge no kullanılıyorsa fallback yap
+          IF OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM TODVZ_NUMERATOR WHERE TUR = @E_BELGE_NUM_TUR)
+            BEGIN
+              SET @TARGET_BELGE_TUR = @STD_BELGE_NUM_TUR;
+            END;
+          END;
+
+          DECLARE @GEN_BELGE_NO VARCHAR(50) = NULL;
+          DECLARE @GEN_B_ONEK VARCHAR(20) = NULL;
+          DECLARE @GEN_B_SIFIR BIT = 1;
+          DECLARE @GEN_B_RET INT = 0;
+
+          IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+          BEGIN
+            -- 1. Hedef Belge Numaratörü ile SODVZ_NUMERATOR_URET çağrısı
+            BEGIN TRY
+              EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @GEN_BELGE_NO OUTPUT, @CALC_YAZICI_ID, 1, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+            END TRY
+            BEGIN CATCH
+            END CATCH;
+
+            -- 2. Eğer üretilemediyse ve NULL yazıcı ile dene
+            IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0)
+            BEGIN
+              BEGIN TRY
+                EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+
+            -- 3. Eğer hala üretilemediyse ve @TARGET_BELGE_TUR <> @STD_BELGE_NUM_TUR, standart tür ile dene
+            IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0) AND @TARGET_BELGE_TUR <> @STD_BELGE_NUM_TUR
+            BEGIN
+              BEGIN TRY
+                EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @STD_BELGE_NUM_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+          END;
+
+          -- 4. Eğer prosedürden üretilemediyse TODVZ_NUMERATOR tablosundan doğrudan üret ve sayacı artır
+          IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0) AND OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+          BEGIN
+            DECLARE @NUM_ONEK VARCHAR(50) = NULL;
+            DECLARE @NUM_BASLANGIC BIGINT = NULL;
+            DECLARE @NUM_BITIS BIGINT = 0;
+            DECLARE @NUM_UZUNLUK INT = 10;
+            DECLARE @NUM_SIFIR BIT = 1;
+            DECLARE @FOUND_B_TUR INT = NULL;
+
+            SELECT TOP 1 
+              @FOUND_B_TUR = TUR,
+              @NUM_ONEK = ISNULL(ONEK, ''),
+              @NUM_BASLANGIC = ISNULL(BASLANGIC, 1),
+              @NUM_BITIS = ISNULL(BITIS, 0),
+              @NUM_UZUNLUK = ISNULL(UZUNLUK, 10),
+              @NUM_SIFIR = ISNULL(ONUNE_SIFIR_KOY, 1)
+            FROM TODVZ_NUMERATOR
+            WHERE TUR IN (@TARGET_BELGE_TUR, @STD_BELGE_NUM_TUR, @E_BELGE_NUM_TUR)
+            ORDER BY CASE WHEN TUR = @TARGET_BELGE_TUR THEN 0 WHEN TUR = @E_BELGE_NUM_TUR THEN 1 ELSE 2 END;
+
+            IF @FOUND_B_TUR IS NOT NULL AND @NUM_BASLANGIC IS NOT NULL
+            BEGIN
+              DECLARE @RAW_NUM_STR VARCHAR(50) = CAST(@NUM_BASLANGIC AS VARCHAR(50));
+              DECLARE @PAD_B_LEN INT = @NUM_UZUNLUK - LEN(ISNULL(@NUM_ONEK, ''));
+              IF @PAD_B_LEN < 1 SET @PAD_B_LEN = 1;
+              IF @NUM_SIFIR = 1
+              BEGIN
+                IF LEN(@RAW_NUM_STR) < @PAD_B_LEN
+                  SET @RAW_NUM_STR = REPLICATE('0', @PAD_B_LEN - LEN(@RAW_NUM_STR)) + @RAW_NUM_STR;
+              END;
+              SET @GEN_BELGE_NO = ISNULL(@NUM_ONEK, '') + @RAW_NUM_STR;
+
+              UPDATE TODVZ_NUMERATOR
+              SET BASLANGIC = @NUM_BASLANGIC + 1
+              WHERE TUR = @FOUND_B_TUR;
+            END;
+          END;
+
+          -- 5. Numaratör tablosunda hiç tanım yoksa, TODVZ_FIS tablosundaki son Belge No'dan devam et
+          IF @GEN_BELGE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) > 0
+          BEGIN
+            SET @P_BELGE_NO = LTRIM(RTRIM(@GEN_BELGE_NO));
+          END
+          ELSE
+          BEGIN
+            DECLARE @SON_BELGE VARCHAR(50) = NULL;
+            SELECT TOP 1 @SON_BELGE = BELGE_NO 
+            FROM TODVZ_FIS 
+            WHERE TIP = @TIP AND BELGE_NO IS NOT NULL AND LEN(BELGE_NO) > 0
+            ORDER BY FIS_ID DESC;
+
+            DECLARE @FALLBACK_B_ONEK VARCHAR(10) = CASE WHEN @TIP = 0 THEN 'EDA' ELSE 'EDS' END;
+            DECLARE @SON_B_NUM BIGINT = 0;
+            IF @SON_BELGE IS NOT NULL
+            BEGIN
+              DECLARE @B_DIGITS VARCHAR(30) = '';
+              DECLARE @B_PREFIX VARCHAR(30) = '';
+              DECLARE @B_POS INT = 1;
+              WHILE @B_POS <= LEN(@SON_BELGE)
+              BEGIN
+                DECLARE @B_CH CHAR(1) = SUBSTRING(@SON_BELGE, @B_POS, 1);
+                IF @B_CH LIKE '[0-9]'
+                  SET @B_DIGITS = @B_DIGITS + @B_CH;
+                ELSE IF LEN(@B_DIGITS) = 0
+                  SET @B_PREFIX = @B_PREFIX + @B_CH;
+                SET @B_POS = @B_POS + 1;
+              END;
+              IF LEN(@B_DIGITS) > 0
+              BEGIN
+                SET @SON_B_NUM = CAST(@B_DIGITS AS BIGINT);
+                DECLARE @NEXT_B_STR VARCHAR(30) = CAST((@SON_B_NUM + 1) AS VARCHAR(30));
+                IF LEN(@NEXT_B_STR) < LEN(@B_DIGITS)
+                  SET @NEXT_B_STR = REPLICATE('0', LEN(@B_DIGITS) - LEN(@NEXT_B_STR)) + @NEXT_B_STR;
+                SET @P_BELGE_NO = @B_PREFIX + @NEXT_B_STR;
+              END
+              ELSE
+              BEGIN
+                SET @P_BELGE_NO = @FALLBACK_B_ONEK + '0000000000001';
+              END;
+            END
+            ELSE
+            BEGIN
+              SET @P_BELGE_NO = @FALLBACK_B_ONEK + '0000000000001';
+            END;
+          END;
+
+          -- Geçici tablodaki satırların BELGE_NO alanını güncelle
+          UPDATE #TODVZ_ISKELE_FIS_SATIRI 
+          SET BELGE_NO = @P_BELGE_NO 
+          WHERE BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(BELGE_NO))) = 0;
+        END
+        ELSE
+        BEGIN
+          -- Kullanıcı elle belge no girdiyse geçici tablodaki satırlara uygula
           UPDATE #TODVZ_ISKELE_FIS_SATIRI 
           SET BELGE_NO = @P_BELGE_NO 
           WHERE BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(BELGE_NO))) = 0;
