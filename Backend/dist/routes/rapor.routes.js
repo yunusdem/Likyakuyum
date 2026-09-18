@@ -8,6 +8,7 @@ import { authenticate } from "../middlewares/auth.middleware.js";
 const router = Router();
 router.use(authenticate);
 router.get("/sablonlar", RaporController.sablonlar);
+router.get("/secim/:kaynak", RaporController.secim);
 router.get("/:kod/tanim", RaporController.tanim);
 router.get("/:kod/veri", RaporController.veri);
 router.get("/:kod/pdf", RaporController.pdf);

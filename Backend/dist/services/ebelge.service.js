@@ -2,7 +2,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
 import { EbelgeSqlRepository, } from "../models/ebelgeSql.repository.js";
-import { getInvoiceCount, getInvoiceHtml, getInvoicePdf, getInvoiceStatusDetail, getInvoices, getSonBelgeId, getUserListEFatura, gonderimSatirlari, invoiceCheckValidate, invoiceRedKabul, parseAmount, parseCurrency, parseIceDate, sendDraftDocumentApproval, sendInvoice, sendInvoiceTaslak, setInvoiceStatus, } from "./ice/ice.efatura.js";
+import { getInvoiceCount, getInvoiceHtml, getInvoicePdf, getInvoiceStatusDetail, getInvoices, getMusteriCariAdresleri, getOncekiBelgeAdresi, getSonBelgeId, getUserListEFatura, gonderimSatirlari, invoiceCheckValidate, invoiceRedKabul, parseAmount, parseCurrency, parseIceDate, sendDraftDocumentApproval, sendInvoice, sendInvoiceTaslak, setInvoiceStatus, } from "./ice/ice.efatura.js";
 import { getGiderPusulasiCikti, sendGiderPusulasi, } from "./ice/ice.giderpusulasi.js";
 import { despatchAdviceCheckValidate, getDespatchAdviceCikti, getDespatchAdviceStatus, getDespatchAdvices, getUserListDespatchAdvice, irsaliyeGonderimSatirlari, sendDespatchAdvice, } from "./ice/ice.irsaliye.js";
 import { buildDespatchAdviceXml, } from "./ice/ubl/despatchAdviceBuilder.js";
@@ -315,11 +315,23 @@ export class EbelgeService {
         if (!vknTckn) {
             throw ApiError.badRequest("Firma VKN/TCKN bulunamadı. E-Belge ayarlarından firma vergi kimlik numarasını giriniz.");
         }
+        const unvan = verilen?.unvan || firma.unvan || undefined;
+        // Şahıs firması (11 haneli TCKN): UBL-TR ad ve soyadı ayrı ister. Firma tablosunda
+        // yalnızca unvan var; verilmemişse unvanın son kelimesi soyad, öncesi ad sayılır.
+        let ad = verilen?.ad?.trim() || undefined;
+        let soyad = verilen?.soyad?.trim() || undefined;
+        if (vknTckn.length === 11 && !(ad && soyad)) {
+            const parcalar = (unvan || "").trim().split(/\s+/).filter(Boolean);
+            if (parcalar.length > 1) {
+                soyad = parcalar.pop();
+                ad = parcalar.join(" ");
+            }
+        }
         return {
             vknTckn,
-            unvan: verilen?.unvan || firma.unvan || undefined,
-            ad: verilen?.ad,
-            soyad: verilen?.soyad,
+            unvan,
+            ad,
+            soyad,
             vergiDairesi: verilen?.vergiDairesi,
             adres: verilen?.adres || firma.adres || undefined,
             // UBL-TR adreste il/ilçe zorunlu; firma tablosunda bu kolonlar yok, bu yüzden
@@ -390,6 +402,77 @@ export class EbelgeService {
             kullanicilar: sonuc.kullanicilar,
             mesaj: sonuc.mesaj,
         };
+    }
+    /**
+     * Alıcının ICE portalında kayıtlı adreslerini döndürür (doğrulama ekranında seçtirilir).
+     * Mükellef sorgusundan AYRI tutulur: adres bulunamaması belge türü kararını etkilemez.
+     */
+    static async aliciAdresleri(vknTckn, kullanici, dbContext) {
+        const vkn = vknTckn.trim();
+        if (!/^\d{10}$|^\d{11}$/.test(vkn)) {
+            throw ApiError.badRequest("VKN 10, TCKN 11 haneli rakam olmalıdır.");
+        }
+        const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+        // İki kaynak birbirinden bağımsızdır; birinin hatası diğerini engellemez.
+        const ham = [];
+        const ozet = [];
+        let hataSayisi = 0;
+        try {
+            const cari = await getMusteriCariAdresleri(config, vkn);
+            ham.push(...cari.adresler);
+            ozet.push(cari.basarili
+                ? `cari: dönen=${cari.donenCari}, eşleşen=${cari.eslesenCari}, adres=${cari.adresler.length}`
+                : `cari: ${cari.mesaj}`);
+            if (!cari.basarili)
+                hataSayisi++;
+        }
+        catch (err) {
+            hataSayisi++;
+            ozet.push(`cari: ${err?.message || err}`);
+        }
+        if (!ham.length) {
+            try {
+                const onceki = await getOncekiBelgeAdresi(config, vkn);
+                if (onceki.adres)
+                    ham.push(onceki.adres);
+                ozet.push(`önceki belge: bakılan=${onceki.bakilan}, adres=${onceki.adres ? 1 : 0}`);
+            }
+            catch (err) {
+                hataSayisi++;
+                ozet.push(`önceki belge: ${err?.message || err}`);
+            }
+        }
+        const sonuc = { adresler: ham };
+        await EbelgeSqlRepository.writeLog({
+            metod: "AliciAdresSorgu",
+            yon: "GIDEN",
+            basarili: ham.length > 0 || hataSayisi < 2,
+            kullanici,
+            istekOzet: `vkn=${vkn}`,
+            cevapOzet: ozet.join(" | ").slice(0, 400),
+        }, dbContext);
+        if (!ham.length && hataSayisi === 2) {
+            throw ApiError.unprocessable(`Alıcı adresi ICE'den sorgulanamadı (${ozet.join(" | ").slice(0, 300)}).`);
+        }
+        const m = (v) => String(v ?? "").trim();
+        const adresler = sonuc.adresler
+            .map((a) => ({
+            adresAdi: m(a.AdresAdi),
+            adres: [
+                m(a.MahalleCadde),
+                m(a.BinaAdi),
+                m(a.BinaNo) && `No:${m(a.BinaNo)}`,
+                m(a.DaireNo) && `D:${m(a.DaireNo)}`,
+            ].filter(Boolean).join(" "),
+            il: m(a.Sehir),
+            ilce: m(a.Ilce),
+            ulke: m(a.Ulke),
+            postaKodu: m(a.PostaKodu),
+            eposta: m(a.Eposta),
+            telefon: m(a.Telefon),
+        }))
+            .filter((a) => a.adres || a.il || a.ilce);
+        return { adresler };
     }
     /**
      * Belgeyi ICE'de **taslak** olarak oluşturur.
@@ -1621,7 +1704,7 @@ export class EbelgeService {
             sonuclar,
         };
     }
-    /** Kesilmiş e-Arşiv faturasının PDF görüntüsü */
+    /** Kesilmiş e-Arşiv faturasının görüntüsü (ICE PDF ya da HTML döndürebilir) */
     static async earsivPdf(uuid, kullanici, dbContext) {
         const kayit = await EbelgeSqlRepository.getGiden(uuid, dbContext);
         if (!kayit)
@@ -1630,7 +1713,7 @@ export class EbelgeService {
             throw ApiError.badRequest("PDF yalnızca gönderimi kesinleşmiş e-Arşiv belgelerinde alınabilir.");
         }
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
-        const pdf = await previewInvoice(config, {
+        const goruntu = await previewInvoice(config, {
             vknTckn: kayit.ALICI_VKN || kayit.aliciVkn || "",
             faturaNo: kayit.belgeNo,
             duzenlenmeTarihi: kayit.DUZENLEME_TARIHI ? new Date(kayit.DUZENLEME_TARIHI) : new Date(),
@@ -1639,14 +1722,14 @@ export class EbelgeService {
         await EbelgeSqlRepository.writeLog({
             metod: "preview_invoice",
             yon: "GIDEN",
-            basarili: pdf.length > 0,
+            basarili: goruntu.veri.length > 0,
             kullanici,
             ilgiliUuid: uuid,
-            cevapOzet: `${pdf.length} bayt`,
+            cevapOzet: `${goruntu.tur} · ${goruntu.veri.length} bayt`,
         }, dbContext);
-        if (!pdf.length)
-            throw ApiError.notFound("Belgenin PDF çıktısı alınamadı.");
-        return pdf;
+        if (!goruntu.veri.length)
+            throw ApiError.notFound("Belgenin görüntüsü alınamadı.");
+        return goruntu;
     }
     /**
      * Taslağı iptal eder (`DraftCancel`).

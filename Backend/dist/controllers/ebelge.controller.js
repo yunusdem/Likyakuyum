@@ -258,6 +258,14 @@ export class EbelgeController {
         const sonuc = await EbelgeService.mukellefSorgula(vkn, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
         return ApiResponse.ok(res, sonuc.mukellefMi ? "Alıcı e-Fatura mükellefi." : "Alıcı e-Fatura mükellefi değil (e-Arşiv kesilmeli).", sonuc);
     });
+    /** GET /api/v1/e-belge/alici-adres?vkn= — alıcının ICE'de kayıtlı adresleri */
+    static aliciAdresleri = asyncHandler(async (req, res) => {
+        const vkn = String(req.query.vkn || "").trim();
+        if (!vkn)
+            throw ApiError.badRequest("vkn parametresi zorunludur.");
+        const sonuc = await EbelgeService.aliciAdresleri(vkn, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, sonuc.adresler.length ? `${sonuc.adresler.length} kayıtlı adres bulundu.` : "ICE'de kayıtlı adres yok.", sonuc);
+    });
     /**
      * POST /api/v1/e-belge/giden/taslak
      *
@@ -406,11 +414,13 @@ export class EbelgeController {
         const uuid = String(req.params.uuid || "").trim();
         if (!uuid)
             throw ApiError.badRequest("Belge UUID bilgisi zorunludur.");
-        const pdf = await EbelgeService.earsivPdf(uuid, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="${uuid}.pdf"`);
-        res.setHeader("Content-Length", String(pdf.length));
-        return res.status(200).end(pdf);
+        const goruntu = await EbelgeService.earsivPdf(uuid, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        // ICE bu uçtan PDF yerine HTML de döndürebiliyor; istemci türe göre gösterir.
+        const html = goruntu.tur === "html";
+        res.setHeader("Content-Type", html ? "text/html; charset=utf-8" : "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="${uuid}.${html ? "html" : "pdf"}"`);
+        res.setHeader("Content-Length", String(goruntu.veri.length));
+        return res.status(200).end(goruntu.veri);
     });
     /* ======================================================================
        e-İrsaliye (Faz 9)

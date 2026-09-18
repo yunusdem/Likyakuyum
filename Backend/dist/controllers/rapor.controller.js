@@ -7,6 +7,8 @@ const tarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG olmalı"
 const saat = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Saat SS:DD olmalı").transform(s => (s.length === 5 ? s + ":00" : s)).optional();
 const idOpt = z.preprocess(v => (v === "" || v === undefined || v === null ? undefined : v), z.coerce.number().int().positive().optional());
 const idListe = z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)), z.array(z.number().int().positive()).max(200).optional());
+const sayiOpt = (min, max) => z.preprocess(v => (v === "" || v === undefined || v === null ? undefined : String(v).replace(",", ".")), z.coerce.number().min(min).max(max).optional());
+const secimMetni = z.string().trim().regex(/^[A-Za-z0-9_]{0,20}$/, "Seçim değeri geçersiz").optional();
 const parametreSema = z.object({
     tarih, baslangic: tarih, bitis: tarih, baslangicSaat: saat, bitisSaat: saat,
     vezneId: idOpt, paraId: idOpt, cariKartId: idOpt,
@@ -20,6 +22,12 @@ const parametreSema = z.object({
     cariBaslangic: z.string().trim().max(50).optional(), cariBitis: z.string().trim().max(50).optional(),
     vezneBaslangic: z.string().trim().max(50).optional(), vezneBitis: z.string().trim().max(50).optional(),
     cariIdler: idListe, vezneIdler: idListe, cariSonId: idOpt, vezneSonId: idOpt, paraSonId: idOpt,
+    // 2. dalga (docs/raporlar-faz2.md)
+    hesapIdler: idListe, istatistikIdler: idListe, meslekIdler: idListe, sektorIdler: idListe, kullaniciIdler: idListe, bankaIdler: idListe,
+    siralama: secimMetni, durum: secimMetni, birlestir: secimMetni,
+    kasaTipi: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(1).optional()),
+    esik: sayiOpt(0, 1e12), sapma: sayiOpt(0, 1000), adet: sayiOpt(1, 1000),
+    vadeBaslangic: tarih, vadeBitis: tarih,
     paraIdler: z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)), z.array(z.number().int().positive()).max(50).optional()),
 });
 const kodSema = z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{1,20}$/);
@@ -41,6 +49,8 @@ export class RaporController {
             throw ApiError.badRequest(p.error.issues[0]?.message || "Rapor parametreleri geçersiz.", p.error.format());
         if (p.data.baslangic && p.data.bitis && p.data.baslangic > p.data.bitis)
             throw ApiError.badRequest("Başlangıç tarihi bitişten sonra olamaz.");
+        if (p.data.vadeBaslangic && p.data.vadeBitis && p.data.vadeBaslangic > p.data.vadeBitis)
+            throw ApiError.badRequest("Vade başlangıcı bitişten sonra olamaz.");
         if (p.data.cariBaslangic && p.data.cariBitis && p.data.cariBaslangic > p.data.cariBitis)
             throw ApiError.badRequest("Başlangıç cari kodu bitişten büyük olamaz.");
         if (p.data.vezneBaslangic && p.data.vezneBitis && p.data.vezneBaslangic > p.data.vezneBitis)
@@ -60,7 +70,14 @@ export class RaporController {
     /** GET /api/v1/rapor/:kod/veri?... — ekran grid'i */
     static veri = asyncHandler(async (req, res) => {
         const v = await RaporService.veri(RaporController.kod(req), RaporController.parametreler(req), RaporController.getDbContext(req));
-        return ApiResponse.ok(res, v.sinirAsildi ? `Rapor ${v.toplamKayit} satır üretiyor; üst sınır aşıldı. Tarih aralığını daraltın.` : "Rapor verisi.", { satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, ekDipnot: v.ekDipnot, sinirAsildi: !!v.sinirAsildi, toplamKayit: v.toplamKayit, tanim: v.tanim });
+        return ApiResponse.ok(res, v.sinirAsildi ? `Rapor ${v.toplamKayit} satır üretiyor; üst sınır aşıldı. Tarih aralığını daraltın.` : "Rapor verisi.", { satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, ekDipnot: v.ekDipnot, sinirAsildi: !!v.sinirAsildi, toplamKayit: v.toplamKayit, tanim: v.tanim, ozetSatirlar: v.ozetSatirlar || [] });
+    });
+    /** GET /api/v1/rapor/secim/:kaynak — dürbün listeleri (hesap | istatistik | meslek | sektor | kullanici | banka) */
+    static secim = asyncHandler(async (req, res) => {
+        const k = z.enum(["hesap", "istatistik", "meslek", "sektor", "kullanici", "banka"]).safeParse(req.params.kaynak);
+        if (!k.success)
+            throw ApiError.badRequest("Seçim listesi geçersiz.");
+        return ApiResponse.ok(res, "Seçim listesi.", await RaporService.secimListesi(k.data, RaporController.getDbContext(req)));
     });
     /** GET /api/v1/rapor/:kod/pdf?...[&indir=1] */
     static pdf = asyncHandler(async (req, res) => {

@@ -96,8 +96,46 @@ export async function raporExcel(p) {
     else
         for (const s of p.satirlar)
             yaz(s);
-    if (kolonlar.some(k => k.toplam))
+    if (p.tanim.grup?.genelToplam !== false && kolonlar.some(k => k.toplam))
         toplam(p.satirlar, `GENEL TOPLAM (${p.satirlar.length} kayıt)`);
+    // Özet bölümü ayrı sayfada (kolonları farklı olduğu için ana sayfanın sütun biçimlerini bozmaz)
+    if (p.tanim.ozet && p.ozetSatirlar?.length) {
+        const oz = p.tanim.ozet, ws2 = wb.addWorksheet("Özet", { views: [{ state: "frozen", ySplit: 3 }] });
+        const say = (b) => ["sayi", "sayi4", "kur", "tam"].includes(b || "");
+        ws2.mergeCells(1, 1, 1, oz.kolonlar.length);
+        ws2.getCell(1, 1).value = `${p.tanim.ad} — ${oz.baslik}`;
+        ws2.getCell(1, 1).font = { bold: true, size: 12 };
+        oz.kolonlar.forEach((k, i) => {
+            const c = ws2.getRow(3).getCell(i + 1);
+            c.value = k.baslik;
+            c.font = { bold: true };
+            c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE9ECEF" } };
+            c.border = { bottom: { style: "thin" } };
+            ws2.getColumn(i + 1).width = Math.max(10, Math.min(45, (k.g || 1) * 6));
+            if (say(k.bicim))
+                ws2.getColumn(i + 1).numFmt = k.bicim === "sayi4" ? "#,##0.0000" : k.bicim === "kur" ? "#,##0.00###" : k.bicim === "tam" ? "#,##0" : "#,##0.00";
+            ws2.getColumn(i + 1).alignment = { horizontal: k.hiza || (say(k.bicim) ? "right" : "left") };
+        });
+        let r2 = 4;
+        const yaz2 = (satir, kalin = false) => {
+            const row = ws2.getRow(r2++);
+            oz.kolonlar.forEach((k, i) => {
+                const v = satir[k.anahtar], c = row.getCell(i + 1);
+                c.value = say(k.bicim) ? (v === null || v === undefined || v === "" ? null : Number(v)) : (v === null || v === undefined ? "" : String(v));
+                if (kalin)
+                    c.font = { bold: true };
+            });
+        };
+        for (const s of p.ozetSatirlar)
+            yaz2(s);
+        if (oz.kolonlar.some(k => k.toplam)) {
+            const t = { [oz.kolonlar[0].anahtar]: "TOPLAM" };
+            for (const k of oz.kolonlar)
+                if (k.toplam)
+                    t[k.anahtar] = p.ozetSatirlar.reduce((a, x) => a + (Number(x[k.anahtar]) || 0), 0);
+            yaz2(t, true);
+        }
+    }
     const dipnot = [p.tanim.dipnot, p.ekDipnot].filter(Boolean).join("\n");
     r++;
     if (dipnot) {

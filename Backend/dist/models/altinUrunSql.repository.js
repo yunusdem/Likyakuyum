@@ -13,10 +13,10 @@ export class AltinUrunSqlRepository {
           CREATE TABLE [dbo].[TODVZ_ALTIN_URUN] (
             [ALTIN_URUN_ID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
             [TARIH] DATETIME NOT NULL DEFAULT GETDATE(),
-            [GRUP_KODU] VARCHAR(3) NOT NULL,
+            [GRUP_KODU] VARCHAR(50) NOT NULL,
             [URUN_NO] INT NOT NULL,
             [BARKOD] VARCHAR(50) NULL,
-            [AYAR] VARCHAR(20) NULL,
+            [AYAR] VARCHAR(50) NULL,
             [URETICI_FIRMA] VARCHAR(150) NULL,
             [ORJINAL_KOD] VARCHAR(50) NULL,
             [MODEL] VARCHAR(100) NULL,
@@ -24,16 +24,16 @@ export class AltinUrunSqlRepository {
             [MIKTAR] FLOAT NOT NULL DEFAULT 0,
             [HAS_GRAM] FLOAT NOT NULL DEFAULT 0,
             [MALIYET_ISCILIK] FLOAT NOT NULL DEFAULT 0,
-            [MALIYET_ISCILIK_PARA_KODU] VARCHAR(10) NOT NULL DEFAULT 'HAS',
-            [MALIYET_ISCILIK_BIRIM] VARCHAR(10) NOT NULL DEFAULT 'Gram',
+            [MALIYET_ISCILIK_PARA_KODU] VARCHAR(20) NOT NULL DEFAULT 'HAS',
+            [MALIYET_ISCILIK_BIRIM] VARCHAR(20) NOT NULL DEFAULT 'Gram',
             [MALIYET_ISCILIK_TUTARI] FLOAT NOT NULL DEFAULT 0,
             [SATIS_ISCILIK] FLOAT NOT NULL DEFAULT 0,
             [SATIS_ISCILIK_TUTARI] FLOAT NOT NULL DEFAULT 0,
             [ISCILIK_KARI] FLOAT NOT NULL DEFAULT 0,
             [MALIYET] FLOAT NOT NULL DEFAULT 0,
-            [MALIYET_PARA_KODU] VARCHAR(10) NOT NULL DEFAULT 'HAS',
+            [MALIYET_PARA_KODU] VARCHAR(20) NOT NULL DEFAULT 'HAS',
             [SATIS_FIYATI] FLOAT NOT NULL DEFAULT 0,
-            [SATIS_PARA_KODU] VARCHAR(10) NOT NULL DEFAULT 'HAS',
+            [SATIS_PARA_KODU] VARCHAR(20) NOT NULL DEFAULT 'HAS',
             [SATIS_KARI_YUZDE] FLOAT NOT NULL DEFAULT 0,
             [HAS_KURU_1] FLOAT NULL,
             [HAS_KURU_2] FLOAT NULL,
@@ -80,16 +80,16 @@ export class AltinUrunSqlRepository {
             @MIKTAR                     FLOAT = 0,
             @HAS_GRAM                   FLOAT = 0,
             @MALIYET_ISCILIK            FLOAT = 0,
-            @MALIYET_ISCILIK_PARA_KODU  VARCHAR(10) = 'HAS',
-            @MALIYET_ISCILIK_BIRIM      VARCHAR(10) = 'Gram',
+            @MALIYET_ISCILIK_PARA_KODU  VARCHAR(20) = 'HAS',
+            @MALIYET_ISCILIK_BIRIM      VARCHAR(20) = 'Gram',
             @MALIYET_ISCILIK_TUTARI     FLOAT = 0,
             @SATIS_ISCILIK              FLOAT = 0,
             @SATIS_ISCILIK_TUTARI       FLOAT = 0,
             @ISCILIK_KARI               FLOAT = 0,
             @MALIYET                    FLOAT = 0,
-            @MALIYET_PARA_KODU          VARCHAR(10) = 'HAS',
+            @MALIYET_PARA_KODU          VARCHAR(20) = 'HAS',
             @SATIS_FIYATI               FLOAT = 0,
-            @SATIS_PARA_KODU            VARCHAR(10) = 'HAS',
+            @SATIS_PARA_KODU            VARCHAR(20) = 'HAS',
             @SATIS_KARI_YUZDE           FLOAT = 0,
             @HAS_KURU_1                 FLOAT = NULL,
             @HAS_KURU_2                 FLOAT = NULL,
@@ -105,19 +105,19 @@ export class AltinUrunSqlRepository {
             DECLARE @SIMDIKI_ZAMAN DATETIME = GETDATE();
 
             IF (@ALTIN_URUN_ID IS NULL OR @ALTIN_URUN_ID = 0)
-                SET @YENI_KAYIT = 1;
-            ELSE
-                SET @YENI_KAYIT = 0;
+            BEGIN
+                SELECT TOP 1 @ALTIN_URUN_ID = ALTIN_URUN_ID
+                FROM dbo.TODVZ_ALTIN_URUN
+                WHERE GRUP_KODU = @GRUP_KODU AND URUN_NO = @URUN_NO;
 
-            IF @YENI_KAYIT = 1 AND EXISTS (SELECT 1 FROM dbo.TODVZ_ALTIN_URUN WHERE GRUP_KODU = @GRUP_KODU AND URUN_NO = @URUN_NO)
-            BEGIN
-                SET @HATA_MESAJI = RTRIM(@GRUP_KODU) + ' - ' + CAST(@URUN_NO AS VARCHAR(20)) + ' numaralı ürün kodu daha önce kaydedilmiş.';
-                GOTO UNDO;
+                IF (@ALTIN_URUN_ID IS NOT NULL AND @ALTIN_URUN_ID > 0)
+                    SET @YENI_KAYIT = 0;
+                ELSE
+                    SET @YENI_KAYIT = 1;
             END
-            ELSE IF @YENI_KAYIT = 0 AND EXISTS (SELECT 1 FROM dbo.TODVZ_ALTIN_URUN WHERE ALTIN_URUN_ID <> @ALTIN_URUN_ID AND GRUP_KODU = @GRUP_KODU AND URUN_NO = @URUN_NO)
+            ELSE
             BEGIN
-                SET @HATA_MESAJI = RTRIM(@GRUP_KODU) + ' - ' + CAST(@URUN_NO AS VARCHAR(20)) + ' numaralı ürün kodu başka bir kayıtta kullanılıyor.';
-                GOTO UNDO;
+                SET @YENI_KAYIT = 0;
             END
 
             BEGIN TRAN;

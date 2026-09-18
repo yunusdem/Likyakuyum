@@ -358,39 +358,80 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       .replace(/Ö/g, "O")
       .replace(/Ç/g, "C");
 
-    // 1. "22 FANTAZI" / "FANTAZI" milyem = 0.95600
+    // 1. ÖNCELİK 1: Altın Ayar & Milyem Tanımları (TODVZ_AYAR - ayarList)
+    if (ayarList && ayarList.length > 0) {
+      // 1.a: Tam Kod / Ad Eşleşmesi
+      const foundInDb = ayarList.find((a) => {
+        const aKod = (a.ayarKodu || "").toUpperCase().trim();
+        const aAdi = (a.ayarAdi || "").toUpperCase().trim();
+        const aKodNorm = aKod
+          .replace(/İ/g, "I")
+          .replace(/Ş/g, "S")
+          .replace(/Ğ/g, "G")
+          .replace(/Ü/g, "U")
+          .replace(/Ö/g, "O")
+          .replace(/Ç/g, "C");
+        const aAdiNorm = aAdi
+          .replace(/İ/g, "I")
+          .replace(/Ş/g, "S")
+          .replace(/Ğ/g, "G")
+          .replace(/Ü/g, "U")
+          .replace(/Ö/g, "O")
+          .replace(/Ç/g, "C");
+
+        return (
+          aKod === raw ||
+          aAdi === raw ||
+          aKodNorm === normalized ||
+          aAdiNorm === normalized ||
+          `${aKod} AYAR` === raw ||
+          `${aKodNorm} AYAR` === normalized ||
+          `${a.standartAyar} AYAR` === raw ||
+          `${a.standartAyar}` === raw
+        );
+      });
+
+      if (foundInDb && foundInDb.milyem !== undefined && foundInDb.milyem !== null) {
+        const m = Number(foundInDb.milyem);
+        if (m > 0) {
+          return m <= 1 ? m * 1000 : m;
+        }
+      }
+
+      // 1.b: Sayısal Standart Ayar Eşleşmesi (Örn: "22", "14", "18", "24", "8")
+      const parsedNum = parseFloat(normalized.replace(/,/g, "."));
+      if (!isNaN(parsedNum) && parsedNum > 0) {
+        const matchByStandart = ayarList.find((a) => Number(a.standartAyar) === parsedNum);
+        if (matchByStandart && matchByStandart.milyem !== undefined && matchByStandart.milyem !== null) {
+          const m = Number(matchByStandart.milyem);
+          if (m > 0) {
+            return m <= 1 ? m * 1000 : m;
+          }
+        }
+      }
+    }
+
+    // 2. ÖNCELİK 2: FANTAZİ & Statik Harita
     if (normalized.includes("FANTAZI") || raw.includes("FANTAZİ")) {
       return 956;
     }
-
-    // 2. Static map check
     if (AYAR_MILYEM_MAP[raw] || AYAR_MILYEM_MAP[normalized]) {
       return AYAR_MILYEM_MAP[raw] || AYAR_MILYEM_MAP[normalized];
     }
 
-    // 3. Database loaded Ayar list (TODVZ_AYAR)
-    const foundInDb = ayarList.find(
-      (a) =>
-        a.ayarKodu.toUpperCase().trim() === raw ||
-        a.ayarAdi.toUpperCase().trim() === raw ||
-        `${a.ayarKodu} AYAR`.toUpperCase().trim() === raw ||
-        `${a.standartAyar} AYAR`.toUpperCase().trim() === raw
-    );
-    if (foundInDb && foundInDb.milyem > 0) {
-      return Math.round(foundInDb.milyem * 1000);
-    }
-
+    // 3. ÖNCELİK 3: Sayısal Ayrıştırma
     const parsed = parseFloat(normalized.replace(/,/g, "."));
     if (!isNaN(parsed) && parsed > 0) {
       if (parsed <= 24) {
-        if (parsed >= 23.5) return 1000;
-        if (parsed >= 21.5) return 916;
-        if (parsed >= 17.5) return 750;
-        if (parsed >= 13.5) return 585;
-        if (parsed >= 7.5) return 333;
-        return Math.round((parsed / 24) * 1000);
+        if (parsed === 24) return 1000;
+        if (parsed === 22) return 916;
+        if (parsed === 18) return 750;
+        if (parsed === 14) return 585;
+        if (parsed === 8) return 333;
+        return (parsed / 24) * 1000;
+      } else if (parsed > 100 && parsed <= 1000) {
+        return parsed;
       }
-      if (parsed <= 1000) return parsed;
     }
     return 0;
   }, [ayarList]);
@@ -3174,7 +3215,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         show={showAyarModal}
         onHide={() => setShowAyarModal(false)}
         onSelect={(selected) => {
-          handleAyarChange(selected.ayarKodu);
+          AyarService.getAyarlar(false).then((freshList) => {
+            if (freshList && freshList.length > 0) setAyarList(freshList);
+          }).catch(() => {});
+          handleAyarChange(selected.ayarKodu || selected.ayarAdi);
           setShowAyarModal(false);
         }}
         selectedAyarKodu={ayar}

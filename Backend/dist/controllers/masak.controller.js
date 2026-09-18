@@ -1,6 +1,7 @@
 import { MasakService } from "../services/masak.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { MasakSqlRepository } from "../models/masakSql.repository.js";
 export class MasakController {
     static getDbContext(req) {
         return {
@@ -72,13 +73,33 @@ export class MasakController {
      */
     static getListe = asyncHandler(async (req, res) => {
         const dbContext = MasakController.getDbContext(req);
-        const sayfa = await MasakService.listele({
-            listeKod: req.query.listeKod,
-            q: req.query.q,
-            kimlikNo: req.query.kimlikNo,
-            page: req.query.page ? Number(req.query.page) : undefined,
-            pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
-        }, dbContext);
+        // MASAK ekranındaki ad / kimlik no araması da bir kara liste sorgusudur → KNSK loguna yazılır.
+        // Yalnızca arama ölçütü varken ve ilk sayfada (sayfa çevirmek yeni sorgu sayılmaz). Yanıtı bekletmez, hata fırlatmaz.
+        const q = String(req.query.q || "").trim(), kimlikNo = String(req.query.kimlikNo || "").replace(/\s/g, "");
+        const aramaVar = (!!q || !!kimlikNo) && (!req.query.page || Number(req.query.page) === 1);
+        const knskLog = (basarili, kayitlar, aciklama) => {
+            const listeler = [...new Set(kayitlar.map(k => String(k.listeAdi || k.listeKod || "").trim()).filter(Boolean))].join(", ");
+            void MasakSqlRepository.knskLogYaz({ kullaniciId: Number(req.user?.userId) || null, sorgulananAd: q || kimlikNo, dogumTarihi: null,
+                kisilikTuru: kimlikNo.length === 10 ? 1 : 0, basarili, karaListede: kayitlar.length > 0, karaListeAdi: listeler, aciklama }, dbContext);
+        };
+        let sayfa;
+        try {
+            sayfa = await MasakService.listele({
+                listeKod: req.query.listeKod,
+                q: req.query.q,
+                kimlikNo: req.query.kimlikNo,
+                page: req.query.page ? Number(req.query.page) : undefined,
+                pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+            }, dbContext);
+        }
+        catch (e) {
+            if (aramaVar)
+                knskLog(false, [], `Liste araması tamamlanamadı: ${e?.message || e}`);
+            throw e;
+        }
+        if (aramaVar)
+            knskLog(true, sayfa.kayitlar, ["MASAK liste ekranı araması", kimlikNo ? `Kimlik no: ${kimlikNo}` : "",
+                req.query.listeKod ? `Liste: ${String(req.query.listeKod)}` : "", sayfa.toplam ? `${sayfa.toplam} kayıt bulundu` : "Kayıt bulunamadı"].filter(Boolean).join(" · "));
         return ApiResponse.ok(res, "MASAK kayıtları listelendi.", sayfa);
     });
     /**
@@ -95,12 +116,32 @@ export class MasakController {
      */
     static sorgula = asyncHandler(async (req, res) => {
         const dbContext = MasakController.getDbContext(req);
-        const sonuc = await MasakService.sorgula({
-            ad: req.query.ad,
-            kimlikNo: req.query.kimlikNo,
-            dogumTarihi: req.query.dogumTarihi,
-            limit: req.query.limit ? Number(req.query.limit) : undefined,
-        }, dbContext);
+        // KNSK sorgulama logu (rapor: KNSK Sorgulama Log Listesi). Yanıtı bekletmez ve asla hata fırlatmaz; sorgu davranışı değişmez.
+        const ad = String(req.query.ad || "").trim(), kimlikNo = String(req.query.kimlikNo || "").replace(/\s/g, "");
+        const dt = req.query.dogumTarihi ? new Date(String(req.query.dogumTarihi)) : null;
+        const knskLog = (basarili, kayitlar, aciklama) => {
+            const listeler = [...new Set(kayitlar.map(k => String(k.listeAdi || k.listeKod || "").trim()).filter(Boolean))].join(", ");
+            void MasakSqlRepository.knskLogYaz({
+                kullaniciId: Number(req.user?.userId) || null, sorgulananAd: ad || kimlikNo, dogumTarihi: dt && !Number.isNaN(dt.getTime()) ? dt : null,
+                kisilikTuru: req.query.kisilikTuru !== undefined ? (Number(req.query.kisilikTuru) === 1 ? 1 : 0) : kimlikNo.length === 10 ? 1 : 0,
+                basarili, karaListede: kayitlar.length > 0, karaListeAdi: listeler, aciklama,
+            }, dbContext);
+        };
+        let sonuc;
+        try {
+            sonuc = await MasakService.sorgula({
+                ad: req.query.ad,
+                kimlikNo: req.query.kimlikNo,
+                dogumTarihi: req.query.dogumTarihi,
+                limit: req.query.limit ? Number(req.query.limit) : undefined,
+            }, dbContext);
+        }
+        catch (e) {
+            if (ad || kimlikNo)
+                knskLog(false, [], `Sorgu tamamlanamadı: ${e?.message || e}`);
+            throw e;
+        }
+        knskLog(true, sonuc.kayitlar, [kimlikNo ? `Kimlik no: ${kimlikNo}` : "", sonuc.kayitlar.length ? `${sonuc.kayitlar.length} olası eşleşme, en yüksek skor ${sonuc.enYuksekSkor}` : "Eşleşme yok"].filter(Boolean).join(" · "));
         const mesaj = sonuc.eslesmeVar
             ? `MASAK listelerinde ${sonuc.kayitlar.length} olası eşleşme bulundu.`
             : "MASAK listelerinde eşleşme bulunamadı.";

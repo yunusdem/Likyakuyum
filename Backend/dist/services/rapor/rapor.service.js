@@ -26,6 +26,8 @@ export class RaporService {
     static aramaKaydet(kullanici, kod, parametreler, ozet, ctx) {
         return RaporSqlRepository.aramaKaydet(kullanici, this.tanim(kod).kod, parametreler, ozet, ctx);
     }
+    /** Dürbün seçim listeleri (hesap, istatistik, meslek, sektör, kullanıcı, banka) — yalnızca SELECT */
+    static secimListesi(kaynak, ctx) { return RaporSqlRepository.secimListesi(kaynak, ctx); }
     static aramaSil(kullanici, kod, aramaId, ctx) { return RaporSqlRepository.aramaSil(kullanici, this.tanim(kod).kod, aramaId, ctx); }
     static async firma(ctx) {
         const f = await EbelgeSqlRepository.getFirmaBilgisi(ctx).catch(() => ({ vkn: "", unvan: "" }));
@@ -36,14 +38,14 @@ export class RaporService {
         if (v.sinirAsildi)
             throw ApiError.badRequest(`Rapor ${v.toplamKayit} satır üretiyor; üst sınır ${v.tanim.ustSinir || 5000}. Tarih aralığını daraltın.`);
         const firma = await this.firma(ctx);
-        return { pdf: await raporPdf({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot }), tanim: v.tanim };
+        return { pdf: await raporPdf({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot, ozetSatirlar: v.ozetSatirlar }), tanim: v.tanim };
     }
     static async excel(kod, p, kullanici, ctx) {
         const v = await this.veri(kod, p, ctx);
         if (v.sinirAsildi)
             throw ApiError.badRequest(`Rapor ${v.toplamKayit} satır üretiyor; üst sınır ${v.tanim.ustSinir || 5000}. Tarih aralığını daraltın.`);
         const firma = await this.firma(ctx);
-        return { xlsx: await raporExcel({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot }), tanim: v.tanim };
+        return { xlsx: await raporExcel({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot, ozetSatirlar: v.ozetSatirlar }), tanim: v.tanim };
     }
 }
 function guvenliTanim(kod) { try {
