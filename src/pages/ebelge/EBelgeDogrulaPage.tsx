@@ -113,7 +113,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [ekBelgeler, setEkBelgeler] = useState<EbelgeBelgeRef[]>([]);
   const [okc, setOkc] = useState<EbelgeOkc>({});
   const [ibanNo, setIbanNo] = useState<string>("");
-  const [ekBilgiAcik, setEkBilgiAcik] = useState<boolean>(false);
+  const [ekBilgiAcik, setEkBilgiAcik] = useState<boolean>(true);
 
   // Senaryoya özel bloklar (docs/ebelge-revizyon.md 2. tur Faz 10-12)
   const [ihracat, setIhracat] = useState<Record<string, string>>({});
@@ -1145,10 +1145,13 @@ const EBelgeDogrulaPage: React.FC = () => {
             </>
           )}
 
+          {/* ICE'de bu bloklar her belgede açık durur; biz de açık gösteriyoruz (yönetici isteği 20.09.2026). */}
           <div className="d-flex align-items-center gap-2 mt-3 mb-2">
-            <span className="fw-semibold" style={{ fontSize: "13px" }}>Ek Bilgiler</span>
+            <span className="fw-semibold" style={{ fontSize: "13px" }}>
+              Sipariş · İrsaliye · ÖKC · EK Belge · IBAN
+            </span>
             <Button size="sm" variant="link" className="p-0" onClick={() => setEkBilgiAcik((a) => !a)}>
-              {ekBilgiAcik ? "gizle" : "Sipariş · İrsaliye · ÖKC · EK Belge · IBAN"}
+              {ekBilgiAcik ? "gizle" : "göster"}
             </Button>
             {!ekBilgiAcik && ekBilgiOzeti && <span className="small text-secondary">({ekBilgiOzeti})</span>}
           </div>
