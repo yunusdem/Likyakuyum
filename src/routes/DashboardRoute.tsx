@@ -145,10 +145,10 @@ export const DashboardMenu: MenuItemType[] = [
     ],
   },
 
-  // H- Belge → e-Belge ana sayfası (eski "Belge / Fiş PDF" sayfası kaldırıldı)
+  // H- e-Belge → e-Belge ana sayfası (eski "Belge / Fiş PDF" sayfası kaldırıldı)
   {
     id: uuid(),
-    title: "H- Belge",
+    title: "H- e-Belge",
     icon: <IconFileTypePdf size={18} />,
     link: "e-belge",
   },

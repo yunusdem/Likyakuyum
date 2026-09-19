@@ -59,11 +59,17 @@ const tarafSchema = z.object({
   ad: z.string().trim().max(100).optional(),
   soyad: z.string().trim().max(100).optional(),
   vergiDairesi: z.string().trim().max(150).optional(),
+  /** Mahalle / cadde / sokak */
   adres: z.string().trim().max(300).optional(),
+  binaAdi: z.string().trim().max(150).optional(),
+  binaNo: z.string().trim().max(50).optional(),
+  kapiNo: z.string().trim().max(50).optional(),
+  postaKodu: z.string().trim().max(10).optional(),
   ilce: z.string().trim().max(100).optional(),
   il: z.string().trim().max(100).optional(),
   ulke: z.string().trim().max(100).optional(),
   telefon: z.string().trim().max(50).optional(),
+  faks: z.string().trim().max(50).optional(),
   eposta: z.string().trim().max(150).optional(),
   webAdresi: z.string().trim().max(200).optional(),
 });
@@ -75,6 +81,24 @@ const satirSchema = z.object({
   birimKodu: z.string().trim().max(10).optional(),
   birimFiyat: z.number().min(0, "Birim fiyat negatif olamaz."),
   iskontoOrani: z.number().min(0).max(99.99).optional(),
+  iskontoTutari: z.number().min(0).optional(),
+  /** Senaryoya özel satır alanları */
+  gtip: z.string().trim().max(20).optional(),
+  teslimSarti: z.string().trim().max(50).optional(),
+  kapCinsi: z.string().trim().max(50).optional(),
+  kapNo: z.string().trim().max(50).optional(),
+  kapAdet: z.number().min(0).optional(),
+  kunyeNo: z.string().trim().max(50).optional(),
+  malSahibi: z.string().trim().max(300).optional(),
+  malSahibiVkn: z.string().trim().max(11).optional(),
+  ilacTibbiCihaz: z.string().trim().max(100).optional(),
+  etiketNo: z.string().trim().max(50).optional(),
+  harcamaTipi: z.string().trim().max(100).optional(),
+  makinaAdi: z.string().trim().max(150).optional(),
+  makinaId: z.string().trim().max(50).optional(),
+  makineTesvikSiraNo: z.string().trim().max(50).optional(),
+  hizmetKodu: z.string().trim().max(50).optional(),
+  not: z.string().trim().max(500).optional(),
   kdvOrani: z.number().min(0).max(100),
   /** KDV istisnası — kdvOrani 0 ile birlikte kullanılır (GİB istisna kodu) */
   istisnaKodu: z.string().trim().max(10).optional(),
@@ -88,13 +112,23 @@ const satirSchema = z.object({
   ozelMatrahTutari: z.number().min(0).optional(),
 });
 
+const belgeRefSchema = z.object({
+  no: z.string().trim().min(1).max(50),
+  tarih: ebelgeTarihSchema.optional(),
+  ad: z.string().trim().max(200).optional(),
+  tur: z.string().trim().max(100).optional(),
+  turKodu: z.string().trim().max(50).optional(),
+});
+
 export const ebelgeDogrulaSchema = z.object({
   belgeNo: z.string().trim().min(1, "Fatura numarası zorunludur."),
   uuid: z.string().trim().uuid().optional(),
   tarih: ebelgeTarihSchema.optional(),
   saat: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/).optional(),
-  senaryo: z.enum(["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"]),
-  faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI", "TEKNOLOJIDESTEK", "TEVKIFATIADE"]),
+  senaryo: z.enum(["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU",
+    "YOLCUBERABERFATURA", "IHRACAT", "HKS", "ILACTIBBICIHAZ", "IDIS"]),
+  faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI", "TEKNOLOJIDESTEK",
+    "TEVKIFATIADE", "SGK", "HALTIPISATIS", "HALTIPIKOMISYONCU", "YTBSATIS", "YTBISTISNA", "YTBIADE"]),
   paraBirimi: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
   notlar: z.array(z.string().max(1000)).max(10).optional(),
   /** Boş bırakılırsa ayar + TODVZ_TANIM'dan tamamlanır */
@@ -114,6 +148,64 @@ export const ebelgeDogrulaSchema = z.object({
     )
     .max(50)
     .optional(),
+  /** Sipariş / irsaliye / ÖKC / ek belge / IBAN — docs/ebelge-revizyon.md 2. tur Faz 8 */
+  siparis: z.object({ no: z.string().trim().min(1).max(50), tarih: ebelgeTarihSchema.optional() }).optional(),
+  irsaliyeler: z.array(belgeRefSchema).max(50).optional(),
+  ekBelgeler: z.array(belgeRefSchema).max(50).optional(),
+  okc: z.object({
+    fisNo: z.string().trim().max(50).optional(),
+    fisTipi: z.string().trim().max(50).optional(),
+    fisTarihi: ebelgeTarihSchema.optional(),
+    fisSaati: z.string().trim().max(8).optional(),
+    okcNo: z.string().trim().max(50).optional(),
+    zNo: z.string().trim().max(50).optional(),
+  }).optional(),
+  iban: z.object({ iban: z.string().trim().max(34), paraBirimi: z.string().trim().max(3).optional() }).optional(),
+  /** Senaryoya özel bloklar — docs/ebelge-revizyon.md 2. tur Faz 10-12 */
+  ihracat: z.object({
+    firmaUnvani: z.string().trim().max(300).optional(),
+    vkn: z.string().trim().max(11).optional(),
+    ulke: z.string().trim().max(100).optional(),
+    sehir: z.string().trim().max(100).optional(),
+    ilce: z.string().trim().max(100).optional(),
+    teslimSarti: z.string().trim().max(50).optional(),
+    gonderimSekli: z.string().trim().max(50).optional(),
+  }).optional(),
+  turist: z.object({
+    ad: z.string().trim().max(100).optional(),
+    soyad: z.string().trim().max(100).optional(),
+    ulke: z.string().trim().max(100).optional(),
+    uyruk: z.string().trim().max(100).optional(),
+    sehir: z.string().trim().max(100).optional(),
+    ilce: z.string().trim().max(100).optional(),
+    pasaportNo: z.string().trim().max(50).optional(),
+    pasaportTarihi: ebelgeTarihSchema.optional(),
+    bankaAdi: z.string().trim().max(150).optional(),
+    subeAdi: z.string().trim().max(150).optional(),
+    hesapNo: z.string().trim().max(50).optional(),
+    hesapParaBirimi: z.string().trim().max(3).optional(),
+    odemeNotu: z.string().trim().max(300).optional(),
+  }).optional(),
+  araciKurum: z.object({
+    vknTckn: z.string().trim().max(11).optional(),
+    pk: z.string().trim().max(150).optional(),
+    unvan: z.string().trim().max(300).optional(),
+    ulke: z.string().trim().max(100).optional(),
+    sehir: z.string().trim().max(100).optional(),
+    ilce: z.string().trim().max(100).optional(),
+  }).optional(),
+  idisSevkiyatNo: z.string().trim().max(50).optional(),
+  ytb: z.object({ no: z.string().trim().max(50).optional(), tarih: ebelgeTarihSchema.optional() }).optional(),
+  muafiyetSebebi: z.string().trim().max(300).optional(),
+  halMasraflari: z.array(z.object({
+    ad: z.string().trim().min(1).max(100),
+    tutar: z.number().min(0),
+    kdvOrani: z.number().min(0).max(100).optional(),
+  })).max(20).optional(),
+  earsiv: z.object({
+    tip: z.enum(["NORMAL", "INTERNET"]).optional(),
+    gonderimSekli: z.enum(["KAGIT", "ELEKTRONIK"]).optional(),
+  }).optional(),
   /** TRY dışı belgelerde TL karşılığı kur */
   dovizKuru: z
     .object({

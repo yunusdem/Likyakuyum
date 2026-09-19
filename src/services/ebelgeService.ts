@@ -134,7 +134,8 @@ export interface EbelgeSenkronizasyonSonucu {
 
 export type EbelgeSenaryo =
   | "TEMELFATURA" | "TICARIFATURA" | "EARSIVFATURA"
-  | "YATIRIMTESVIK" | "KAMU";
+  | "YATIRIMTESVIK" | "KAMU"
+  | "YOLCUBERABERFATURA" | "IHRACAT" | "HKS" | "ILACTIBBICIHAZ" | "IDIS";
 export type EbelgeFaturaTipi =
   | "SATIS"
   | "IADE"
@@ -143,7 +144,13 @@ export type EbelgeFaturaTipi =
   | "OZELMATRAH"
   | "IHRACKAYITLI"
   | "TEKNOLOJIDESTEK"
-  | "TEVKIFATIADE";
+  | "TEVKIFATIADE"
+  | "SGK"
+  | "HALTIPISATIS"
+  | "HALTIPIKOMISYONCU"
+  | "YTBSATIS"
+  | "YTBISTISNA"
+  | "YTBIADE";
 
 /** Form modu: alıcı e-Fatura mükellefiyse EFATURA, değilse EARSIV. Senaryo listesi moda göre değişir. */
 export type EbelgeFormModu = "EFATURA" | "EARSIV";
@@ -154,8 +161,13 @@ export const EBELGE_SENARYOLAR: Record<EbelgeFormModu, { kod: EbelgeSenaryo; ad:
   EFATURA: [
     { kod: "TEMELFATURA", ad: "Temel Fatura" },
     { kod: "TICARIFATURA", ad: "Ticari Fatura" },
+    { kod: "YOLCUBERABERFATURA", ad: "Yolcu Beraberi Eşya" },
+    { kod: "IHRACAT", ad: "İhracat Fatura" },
+    { kod: "HKS", ad: "Hal Tipi Fatura" },
     { kod: "KAMU", ad: "Kamu Fatura" },
+    { kod: "ILACTIBBICIHAZ", ad: "İlaç / Tıbbi Cihaz" },
     { kod: "YATIRIMTESVIK", ad: "Yatırım Teşvik" },
+    { kod: "IDIS", ad: "IDIS" },
   ],
   EARSIV: [{ kod: "EARSIVFATURA", ad: "E-Arşiv" }],
 };
@@ -163,7 +175,9 @@ export const EBELGE_SENARYOLAR: Record<EbelgeFormModu, { kod: EbelgeSenaryo; ad:
 const TIP_ADLARI: Record<EbelgeFaturaTipi, string> = {
   SATIS: "Satış", IADE: "İade", TEVKIFAT: "Tevkifat", ISTISNA: "İstisna",
   OZELMATRAH: "Özel Matrah", IHRACKAYITLI: "İhraç Kayıtlı", TEKNOLOJIDESTEK: "Teknoloji Destek",
-  TEVKIFATIADE: "Tevkifat İade",
+  TEVKIFATIADE: "Tevkifat İade", SGK: "SGK",
+  HALTIPISATIS: "Hal Tipi Satış", HALTIPIKOMISYONCU: "Hal Tipi Komisyoncu",
+  YTBSATIS: "YTB Satış", YTBISTISNA: "YTB İstisna", YTBIADE: "YTB İade",
 };
 const tipler = (...k: EbelgeFaturaTipi[]) => k.map((kod) => ({ kod, ad: TIP_ADLARI[kod] }));
 /**
@@ -171,12 +185,29 @@ const tipler = (...k: EbelgeFaturaTipi[]) => k.map((kod) => ({ kod, ad: TIP_ADLA
  * İade ve tevkifat iade TICARIFATURA profilinde kullanılamaz. İhraç kayıtlı, doğrulanmış örnek UBL gelene kadar listede yoktur.
  */
 export const EBELGE_FATURA_TIPLERI: Record<EbelgeSenaryo, { kod: EbelgeFaturaTipi; ad: string }[]> = {
-  TEMELFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "TEVKIFATIADE"),
-  TICARIFATURA: tipler("SATIS", "TEVKIFAT", "ISTISNA", "OZELMATRAH"),
-  KAMU: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "TEVKIFATIADE"),
+  TEMELFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "SGK", "TEVKIFATIADE"),
+  TICARIFATURA: tipler("SATIS", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "SGK"),
+  KAMU: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "SGK", "TEVKIFATIADE"),
   YATIRIMTESVIK: tipler("SATIS", "IADE", "ISTISNA"),
-  EARSIVFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH"),
+  // ICE portalinde bu senaryolarda fatura tipi listesi boştur; tip SATIS olarak gönderilir.
+  YOLCUBERABERFATURA: tipler("SATIS"),
+  IHRACAT: tipler("SATIS", "ISTISNA"),
+  HKS: tipler("HALTIPISATIS", "HALTIPIKOMISYONCU"),
+  ILACTIBBICIHAZ: tipler("SATIS"),
+  IDIS: tipler("SATIS"),
+  EARSIVFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH",
+    "HALTIPISATIS", "HALTIPIKOMISYONCU", "YTBSATIS", "YTBISTISNA", "YTBIADE"),
 };
+
+/** Senaryo/tipe göre formda açılacak ek bloklar. */
+export const ebelgeIhracatMi = (s: EbelgeSenaryo) => s === "IHRACAT";
+export const ebelgeTuristMi = (s: EbelgeSenaryo) => s === "YOLCUBERABERFATURA";
+export const ebelgeIdisMi = (s: EbelgeSenaryo) => s === "IDIS";
+export const ebelgeHalMi = (s: EbelgeSenaryo, t: EbelgeFaturaTipi) =>
+  s === "HKS" || t === "HALTIPISATIS" || t === "HALTIPIKOMISYONCU";
+export const ebelgeYtbMi = (s: EbelgeSenaryo, t: EbelgeFaturaTipi) =>
+  s === "YATIRIMTESVIK" || t === "YTBSATIS" || t === "YTBISTISNA" || t === "YTBIADE";
+export const ebelgeIlacMi = (s: EbelgeSenaryo) => s === "ILACTIBBICIHAZ";
 
 /** KNSK (kamu nüfuzuna sahip kişi) — docs/ebelge-revizyon.md K9. Onay 1 yıl geçerlidir. */
 export interface EbelgeKnskKaydi {
@@ -208,20 +239,49 @@ export interface EbelgeTaraf {
   ad?: string;
   soyad?: string;
   vergiDairesi?: string;
+  /** Mahalle / cadde / sokak */
   adres?: string;
+  binaAdi?: string;
+  binaNo?: string;
+  kapiNo?: string;
+  postaKodu?: string;
   ilce?: string;
   il?: string;
+  ulke?: string;
   telefon?: string;
+  faks?: string;
   eposta?: string;
+  webAdresi?: string;
 }
 
 export interface EbelgeSatir {
   ad: string;
   aciklama?: string;
+  /** Satıcının kendi mal/hizmet kodu */
+  hizmetKodu?: string;
+  /** Satır notu */
+  not?: string;
   miktar: number;
   birimKodu?: string;
   birimFiyat: number;
   iskontoOrani?: number;
+  /** Elle girilen iskonto tutarı — doluysa orandan önce gelir */
+  iskontoTutari?: number;
+  /** Senaryoya özel satır alanları */
+  gtip?: string;
+  teslimSarti?: string;
+  kapCinsi?: string;
+  kapNo?: string;
+  kapAdet?: number;
+  kunyeNo?: string;
+  malSahibi?: string;
+  malSahibiVkn?: string;
+  ilacTibbiCihaz?: string;
+  etiketNo?: string;
+  harcamaTipi?: string;
+  makinaAdi?: string;
+  makinaId?: string;
+  makineTesvikSiraNo?: string;
   kdvOrani: number;
   /** KDV istisnası — kdvOrani 0 iken zorunlu (GİB istisna kodu) */
   istisnaKodu?: string;
@@ -233,6 +293,12 @@ export interface EbelgeSatir {
   ozelMatrahKodu?: string;
   ozelMatrahGerekcesi?: string;
   ozelMatrahTutari?: number;
+}
+
+/** Belge referansı — irsaliye ve ek belge satırları (docs/ebelge-revizyon.md 2. tur Faz 8) */
+export interface EbelgeBelgeRef { no: string; tarih?: string; ad?: string; tur?: string; turKodu?: string }
+export interface EbelgeOkc {
+  fisNo?: string; fisTipi?: string; fisTarihi?: string; fisSaati?: string; okcNo?: string; zNo?: string;
 }
 
 export interface EbelgeDogrulaIstegi {
@@ -250,6 +316,23 @@ export interface EbelgeDogrulaIstegi {
   iadeFaturalar?: { belgeNo: string; tarih: string }[];
   /** TRY dışı belgelerde TL karşılığı kur */
   dovizKuru?: { kur: number; tarih?: string };
+  siparis?: { no: string; tarih?: string };
+  ihracat?: { firmaUnvani?: string; vkn?: string; ulke?: string; sehir?: string; ilce?: string; teslimSarti?: string; gonderimSekli?: string };
+  turist?: {
+    ad?: string; soyad?: string; ulke?: string; uyruk?: string; sehir?: string; ilce?: string;
+    pasaportNo?: string; pasaportTarihi?: string; bankaAdi?: string; subeAdi?: string;
+    hesapNo?: string; hesapParaBirimi?: string; odemeNotu?: string;
+  };
+  araciKurum?: { vknTckn?: string; pk?: string; unvan?: string; ulke?: string; sehir?: string; ilce?: string };
+  idisSevkiyatNo?: string;
+  ytb?: { no?: string; tarih?: string };
+  muafiyetSebebi?: string;
+  halMasraflari?: { ad: string; tutar: number; kdvOrani?: number }[];
+  earsiv?: { tip?: "NORMAL" | "INTERNET"; gonderimSekli?: "KAGIT" | "ELEKTRONIK" };
+  irsaliyeler?: EbelgeBelgeRef[];
+  ekBelgeler?: EbelgeBelgeRef[];
+  okc?: EbelgeOkc;
+  iban?: { iban: string; paraBirimi?: string };
   onizleme?: boolean;
 }
 

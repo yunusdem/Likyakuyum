@@ -16,23 +16,50 @@ const kolonlar: SecimKolon<CariKartItem>[] = [
 ];
 const arama = (c: CariKartItem) => [c.kod, c.ad, c.telefon, c.vergiKimlikNo, c.yetkiliKisi];
 
-export default function EBelgeCariDurbun({ onSelect }: {
-  onSelect: (cari: CariKartItem, lookups: CariLookups) => void;
-}) {
+/** Cari listesi + kod çözümleri; dürbünü kullanan her alan aynı veriyi paylaşır. */
+function useCariler() {
   const [kayitlar, setKayitlar] = useState<CariKartItem[]>([]);
   const [lookups, setLookups] = useState<CariLookups | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
-  const [secili, setSecili] = useState<CariKartItem | null>(null);
-  const [hata, setHata] = useState("");
-
+  const [yuklemeHatasi, setYuklemeHatasi] = useState("");
   useEffect(() => {
     let iptal = false;
     Promise.all([CariService.getCariKartlar(), CariService.getLookups()])
       .then(([c, l]) => { if (!iptal) { setKayitlar(c); setLookups(l); } })
-      .catch(e => { if (!iptal) setHata(e?.message || "Cari listesi alınamadı."); })
+      .catch(e => { if (!iptal) setYuklemeHatasi(e?.message || "Cari listesi alınamadı."); })
       .finally(() => { if (!iptal) setYukleniyor(false); });
     return () => { iptal = true; };
   }, []);
+  return { kayitlar, lookups, yukleniyor, yuklemeHatasi };
+}
+
+/**
+ * Unvan alanının dürbünü (docs/ebelge-revizyon.md 2. tur L2): kutuya unvan elle de yazılabilir,
+ * dürbün `TODVZ_CARI_KART`'tan seçtirir. Cari modülü **yalnızca okunur** — buradan yeni cari açılmaz.
+ */
+export function CariUnvanDurbun({ value, onChange, onSelect, disabled }: {
+  value: string;
+  onChange: (unvan: string) => void;
+  onSelect: (cari: CariKartItem, lookups: CariLookups) => void;
+  disabled?: boolean;
+}) {
+  const { kayitlar, lookups, yukleniyor, yuklemeHatasi } = useCariler();
+  return <>
+    <DurbunAlan<CariKartItem> value={value} onChange={onChange} placeholder="Unvan — dürbünle cariden seçebilirsiniz"
+      title="Cari seçimi (yalnızca okuma)" items={kayitlar} yukleniyor={yukleniyor} kolonlar={kolonlar}
+      aramaAlanlari={arama} anahtar={c => String(c.id)} disabled={disabled}
+      aramaYerTutucu="Cari kodu, ünvan, telefon veya vergi no ile arayın…"
+      onSelect={c => { if (lookups) onSelect(c, lookups); }} />
+    {yuklemeHatasi && <div className="form-text text-danger mt-0">{yuklemeHatasi}</div>}
+  </>;
+}
+
+export default function EBelgeCariDurbun({ onSelect }: {
+  onSelect: (cari: CariKartItem, lookups: CariLookups) => void;
+}) {
+  const { kayitlar, lookups, yukleniyor, yuklemeHatasi } = useCariler();
+  const [secili, setSecili] = useState<CariKartItem | null>(null);
+  const [hata, setHata] = useState("");
 
   const sec = (c: CariKartItem) => {
     if (!/^\d{10,11}$/.test(c.vergiKimlikNo?.trim() || "")) { setHata(`${c.kod} carisinin VKN/TCKN'si eksik; kartını düzeltip tekrar seçin.`); return; }
@@ -47,7 +74,7 @@ export default function EBelgeCariDurbun({ onSelect }: {
       <DurbunAlan<CariKartItem> value={metin} saltOkunur onChange={() => undefined} placeholder="Cari seçilmedi — dürbünle arayın" title="Alıcı cari seçimi"
         items={kayitlar} yukleniyor={yukleniyor} kolonlar={kolonlar} aramaAlanlari={arama} anahtar={c => String(c.id)}
         aramaYerTutucu="Cari kodu, ünvan, telefon veya vergi no ile arayın…" onSelect={sec} />
-      {hata ? <div className="form-text text-danger mt-0">{hata}</div>
+      {(hata || yuklemeHatasi) ? <div className="form-text text-danger mt-0">{hata || yuklemeHatasi}</div>
         : secili ? <div className="form-text text-success mt-0">Seçildi: {secili.ad}. Bilgiler alıcı alanlarına yazıldı.</div>
         : <div className="form-text mt-0">Kayıtlı cariyi seçince VKN, unvan, adres ve e-posta kendiliğinden dolar.</div>}
     </Col>

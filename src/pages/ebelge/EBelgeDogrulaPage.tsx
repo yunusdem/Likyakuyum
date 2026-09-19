@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
-import EBelgeCariDurbun from "./EBelgeCariDurbun";
+import EBelgeCariDurbun, { CariUnvanDurbun } from "./EBelgeCariDurbun";
 import EBelgeKodDurbun from "./EBelgeKodDurbun";
 import { KnskFormUyarisi } from "./EBelgeKnsk";
 import { CariService } from "../../services/cariService";
@@ -22,7 +22,15 @@ import {
   EBELGE_BIRIMLER,
   EBELGE_FATURA_TIPLERI,
   EBELGE_SENARYOLAR,
+  ebelgeHalMi,
+  ebelgeIdisMi,
+  ebelgeIhracatMi,
+  ebelgeIlacMi,
+  ebelgeTuristMi,
+  ebelgeYtbMi,
   EbelgeAliciAdres,
+  EbelgeBelgeRef,
+  EbelgeOkc,
   EbelgeDogrulamaSonucu,
   EbelgeFaturaTipi,
   EbelgeFormModu,
@@ -87,6 +95,39 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [aliciIl, setAliciIl] = useState<string>("");
   const [aliciIlce, setAliciIlce] = useState<string>("");
   const [aliciAdres, setAliciAdres] = useState<string>("");
+  // ICE formundaki alıcı alanlarının tamamı (docs/ebelge-revizyon.md 2. tur, Faz 7)
+  const [aliciPk, setAliciPk] = useState<string>("");
+  const [aliciTel, setAliciTel] = useState<string>("");
+  const [aliciFaks, setAliciFaks] = useState<string>("");
+  const [aliciUlke, setAliciUlke] = useState<string>("Türkiye");
+  const [aliciBinaAdi, setAliciBinaAdi] = useState<string>("");
+  const [aliciBinaNo, setAliciBinaNo] = useState<string>("");
+  const [aliciKapiNo, setAliciKapiNo] = useState<string>("");
+  const [aliciPostaKodu, setAliciPostaKodu] = useState<string>("");
+  const [aliciWeb, setAliciWeb] = useState<string>("");
+
+  // Belge üstü ek bloklar — ICE formundaki karşılıkları (docs/ebelge-revizyon.md 2. tur Faz 8)
+  const [siparisNo, setSiparisNo] = useState<string>("");
+  const [siparisTarihi, setSiparisTarihi] = useState<string>("");
+  const [irsaliyeler, setIrsaliyeler] = useState<EbelgeBelgeRef[]>([]);
+  const [ekBelgeler, setEkBelgeler] = useState<EbelgeBelgeRef[]>([]);
+  const [okc, setOkc] = useState<EbelgeOkc>({});
+  const [ibanNo, setIbanNo] = useState<string>("");
+  const [ekBilgiAcik, setEkBilgiAcik] = useState<boolean>(false);
+
+  // Senaryoya özel bloklar (docs/ebelge-revizyon.md 2. tur Faz 10-12)
+  const [ihracat, setIhracat] = useState<Record<string, string>>({});
+  const [turist, setTurist] = useState<Record<string, string>>({});
+  const [araciKurum, setAraciKurum] = useState<Record<string, string>>({});
+  const [idisSevkiyatNo, setIdisSevkiyatNo] = useState<string>("");
+  const [ytbNo, setYtbNo] = useState<string>("");
+  const [ytbTarihi, setYtbTarihi] = useState<string>("");
+  const [muafiyetSebebi, setMuafiyetSebebi] = useState<string>("");
+  const [halMasraflari, setHalMasraflari] = useState<{ ad: string; tutar: number; kdvOrani?: number }[]>([]);
+  const [earsivTipi, setEarsivTipi] = useState<"NORMAL" | "INTERNET">("NORMAL");
+  const [earsivGonderimSekli, setEarsivGonderimSekli] = useState<"KAGIT" | "ELEKTRONIK">("ELEKTRONIK");
+  /** ICE formundaki "E-arşiv faturası e-posta olarak iletilsin" onayı. */
+  const [earsivMailGonder, setEarsivMailGonder] = useState<boolean>(true);
   /** Alıcının ICE portalında kayıtlı adresleri; birden çoksa kullanıcı seçer */
   const [iceAdresler, setIceAdresler] = useState<EbelgeAliciAdres[]>([]);
   const [aliciEposta, setAliciEposta] = useState<string>("");
@@ -293,6 +334,9 @@ const EBelgeDogrulaPage: React.FC = () => {
    */
   const gonderilecekSatirlar = (): EbelgeSatir[] => satirlar.map((s) => ({
     ...s,
+    // Tevkifatlı satırda istisna kodu taşınmaz; KDV'si 0 olan satırda kod zorunlu olduğu için korunur.
+    istisnaKodu: tevkifatliMi && (s.kdvOrani || 0) !== 0 ? undefined : s.istisnaKodu,
+    istisnaGerekcesi: tevkifatliMi && (s.kdvOrani || 0) !== 0 ? undefined : s.istisnaGerekcesi,
     tevkifatKodu: tevkifatliMi ? s.tevkifatKodu : undefined,
     tevkifatOrani: tevkifatliMi ? s.tevkifatOrani : undefined,
     ozelMatrahKodu: ozelMatrahMi ? s.ozelMatrahKodu?.trim() || undefined : undefined,
@@ -322,12 +366,134 @@ const EBelgeDogrulaPage: React.FC = () => {
       const satirKdv = yuvarla((kdvMatrahi(s, m) * (s.kdvOrani || 0)) / 100);
       tevkifat = yuvarla(tevkifat + (satirKdv * s.tevkifatOrani) / 100);
     }
-    return { matrah, kdv, iskonto, tevkifat, toplam: yuvarla(matrah + kdv - tevkifat) };
+    // KDV oranı kırılımı (ICE'deki Toplamlar bloğu): oran bazında matrah ve vergi
+    const kirilim = new Map<number, { oran: number; matrah: number; vergi: number }>();
+    for (const s of satirlar) {
+      const oran = s.kdvOrani || 0;
+      const brut = yuvarla((s.miktar || 0) * (s.birimFiyat || 0));
+      const m = yuvarla(brut - (brut * (s.iskontoOrani || 0)) / 100);
+      const vergiMatrahi = kdvMatrahi(s, m);
+      const mevcut = kirilim.get(oran) || { oran, matrah: 0, vergi: 0 };
+      kirilim.set(oran, {
+        oran,
+        matrah: yuvarla(mevcut.matrah + vergiMatrahi),
+        vergi: yuvarla(mevcut.vergi + (vergiMatrahi * oran) / 100),
+      });
+    }
+    const kdvKirilim = [...kirilim.values()].sort((a, b) => a.oran - b.oran);
+    return { matrah, kdv, iskonto, tevkifat, kdvKirilim, toplam: yuvarla(matrah + kdv - tevkifat) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [satirlar, faturaTipi]);
 
   const satirDegistir = <K extends keyof EbelgeSatir>(i: number, alan: K, deger: EbelgeSatir[K]) => {
     setSatirlar((onceki) => onceki.map((s, idx) => (idx === i ? { ...s, [alan]: deger } : s)));
+  };
+
+  /** Alıcı bloğu — doğrulama ve gönderim aynı gövdeyi kullanır. */
+  const aliciGovdesi = () => ({
+    vknTckn: aliciVkn.trim(),
+    unvan: aliciUnvan.trim() || undefined,
+    ad: aliciAd.trim() || undefined,
+    soyad: aliciSoyad.trim() || undefined,
+    vergiDairesi: aliciVd.trim() || undefined,
+    adres: aliciAdres.trim() || undefined,
+    binaAdi: aliciBinaAdi.trim() || undefined,
+    binaNo: aliciBinaNo.trim() || undefined,
+    kapiNo: aliciKapiNo.trim() || undefined,
+    postaKodu: aliciPostaKodu.trim() || undefined,
+    il: aliciIl.trim() || undefined,
+    ilce: aliciIlce.trim() || undefined,
+    ulke: aliciUlke.trim() || undefined,
+    telefon: aliciTel.trim() || undefined,
+    faks: aliciFaks.trim() || undefined,
+    eposta: aliciEposta.trim() || undefined,
+    webAdresi: aliciWeb.trim() || undefined,
+  });
+
+  /** Senaryoya göre satır tablosuna eklenen kolonlar (ICE formundaki ek kolonların karşılığı). */
+  const satirEkKolonlari: { alan: string; baslik: string; sayi?: boolean }[] = [];
+
+  /**
+   * İstisna ile tevkifat aynı ızgarada bulunmaz: tevkifatlı faturada istisna kodu kolonu kapanır,
+   * diğer tiplerde tevkifat kolonu zaten açılmaz. Tek istisna: tevkifatlı faturada KDV'si 0 olan satır
+   * kalmışsa GİB kod ister, o yüzden kolon geri gelir ve kullanıcı satırı düzeltebilir.
+   */
+  const sifirKdvliSatirVar = satirlar.some((s) => (s.kdvOrani || 0) === 0);
+  const istisnaKolonuGorunur = !tevkifatliMi || sifirKdvliSatirVar;
+
+  const ihracatMi = ebelgeIhracatMi(senaryo);
+  const turistMi = ebelgeTuristMi(senaryo);
+  const idisMi = ebelgeIdisMi(senaryo);
+  const halMi = ebelgeHalMi(senaryo, faturaTipi);
+  const ytbMi = ebelgeYtbMi(senaryo, faturaTipi);
+  const ilacMi = ebelgeIlacMi(senaryo);
+  const istisnaSebebiMi = faturaTipi === "ISTISNA" || faturaTipi === "IHRACKAYITLI" || faturaTipi === "YTBISTISNA";
+
+  if (ihracatMi) {
+    satirEkKolonlari.push(
+      { alan: "gtip", baslik: "GTİP" },
+      { alan: "teslimSarti", baslik: "Teslim Şartı" },
+      { alan: "kapCinsi", baslik: "Eşya Kap Cinsi" },
+      { alan: "kapNo", baslik: "Kap No" },
+      { alan: "kapAdet", baslik: "Kap Adet", sayi: true },
+    );
+  }
+  if (halMi) {
+    satirEkKolonlari.push(
+      { alan: "kunyeNo", baslik: "Künye No" },
+      { alan: "malSahibi", baslik: "Mal Sahibi" },
+      { alan: "malSahibiVkn", baslik: "Mal Sahibi VKN" },
+    );
+  }
+  if (ilacMi) satirEkKolonlari.push({ alan: "ilacTibbiCihaz", baslik: "İlaç & Tıbbi Cihaz" });
+  if (idisMi) satirEkKolonlari.push({ alan: "etiketNo", baslik: "Etiket No" });
+  if (ytbMi) {
+    satirEkKolonlari.push(
+      { alan: "harcamaTipi", baslik: "Harcama Tipi" },
+      { alan: "makinaAdi", baslik: "Makina Adı" },
+      { alan: "makinaId", baslik: "Makina ID" },
+      { alan: "makineTesvikSiraNo", baslik: "Makine Teşvik Sıra No" },
+    );
+  }
+
+  /** Senaryoya özel bloklar — yalnızca ilgili senaryodayken gönderilir. */
+  const senaryoGovdesi = () => {
+    const dolu = (o: Record<string, string>) => {
+      const temiz = Object.fromEntries(Object.entries(o).map(([k, v]) => [k, (v || "").trim()]).filter(([, v]) => v));
+      return Object.keys(temiz).length ? temiz : undefined;
+    };
+    return {
+      ihracat: ihracatMi ? dolu(ihracat) : undefined,
+      turist: turistMi ? dolu(turist) : undefined,
+      araciKurum: turistMi ? dolu(araciKurum) : undefined,
+      idisSevkiyatNo: idisMi ? idisSevkiyatNo.trim() || undefined : undefined,
+      ytb: ytbMi && (ytbNo.trim() || ytbTarihi) ? { no: ytbNo.trim() || undefined, tarih: ytbTarihi || undefined } : undefined,
+      muafiyetSebebi: istisnaSebebiMi ? muafiyetSebebi.trim() || undefined : undefined,
+      halMasraflari: halMi && halMasraflari.filter((m) => m.ad.trim()).length ? halMasraflari.filter((m) => m.ad.trim()) : undefined,
+      earsiv: earsivMi ? { tip: earsivTipi, gonderimSekli: earsivGonderimSekli } : undefined,
+    };
+  };
+
+  /** Kapalı paneldeki dolu blokların kısa özeti. */
+  const ekBilgiOzeti = [
+    siparisNo.trim() && "sipariş",
+    irsaliyeler.some((r) => r.no?.trim()) && `${irsaliyeler.filter((r) => r.no?.trim()).length} irsaliye`,
+    Object.values(okc).some((v) => (v || "").trim()) && "ÖKC",
+    ekBelgeler.some((r) => r.no?.trim()) && `${ekBelgeler.filter((r) => r.no?.trim()).length} ek belge`,
+    ibanNo.trim() && "IBAN",
+  ].filter(Boolean).join(" · ");
+
+  /** Sipariş / irsaliye / ÖKC / ek belge / IBAN — boş alanlar gövdeye hiç konmaz. */
+  const ekBilgiGovdesi = () => {
+    const dolu = (r: EbelgeBelgeRef) => r.no?.trim();
+    const okcDolu = Object.values(okc).some((v) => (v || "").trim());
+    return {
+      siparis: siparisNo.trim() ? { no: siparisNo.trim(), tarih: siparisTarihi || undefined } : undefined,
+      irsaliyeler: irsaliyeler.filter(dolu).length ? irsaliyeler.filter(dolu) : undefined,
+      ekBelgeler: ekBelgeler.filter(dolu).length ? ekBelgeler.filter(dolu) : undefined,
+      okc: okcDolu ? okc : undefined,
+      iban: ibanNo.trim() ? { iban: ibanNo.trim(), paraBirimi: paraBirimi } : undefined,
+    };
   };
 
   /** Belgeyi ICE'de doğrular; şema + schematron geçtiyse doğrulama cevabını, geçmediyse null döner. */
@@ -416,20 +582,12 @@ const EBelgeDogrulaPage: React.FC = () => {
         faturaTipi,
         paraBirimi,
         notlar: not.trim() ? [not.trim()] : undefined,
-        alici: {
-          vknTckn: aliciVkn.trim(),
-          unvan: aliciUnvan.trim() || undefined,
-          ad: aliciAd.trim() || undefined,
-          soyad: aliciSoyad.trim() || undefined,
-          vergiDairesi: aliciVd.trim() || undefined,
-          adres: aliciAdres.trim() || undefined,
-          il: aliciIl.trim() || undefined,
-          ilce: aliciIlce.trim() || undefined,
-          eposta: aliciEposta.trim() || undefined,
-        },
+        alici: aliciGovdesi(),
         satirlar: gonderilecekSatirlar(),
         iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
         dovizKuru: dovizliMi && dovizKuru ? { kur: Number(dovizKuru), tarih } : undefined,
+        ...ekBilgiGovdesi(),
+        ...senaryoGovdesi(),
         onizleme: false,
       });
 
@@ -460,6 +618,20 @@ const EBelgeDogrulaPage: React.FC = () => {
       setAliciVkn(t.aliciVkn || ""); setAliciUnvan(t.aliciUnvan || ""); setAliciAd(t.aliciAd || ""); setAliciSoyad(t.aliciSoyad || "");
       setAliciVd(t.aliciVd || ""); setAliciIl(t.aliciIl || ""); setAliciIlce(t.aliciIlce || ""); setAliciAdres(t.aliciAdres || "");
       setAliciEposta(t.aliciEposta || "");
+      setAliciPk(t.aliciPk || ""); setAliciTel(t.aliciTel || ""); setAliciFaks(t.aliciFaks || "");
+      setAliciUlke(t.aliciUlke || "Türkiye"); setAliciBinaAdi(t.aliciBinaAdi || ""); setAliciBinaNo(t.aliciBinaNo || "");
+      setAliciKapiNo(t.aliciKapiNo || ""); setAliciPostaKodu(t.aliciPostaKodu || ""); setAliciWeb(t.aliciWeb || "");
+      setSiparisNo(t.siparisNo || ""); setSiparisTarihi(t.siparisTarihi || "");
+      setIrsaliyeler(Array.isArray(t.irsaliyeler) ? t.irsaliyeler : []);
+      setEkBelgeler(Array.isArray(t.ekBelgeler) ? t.ekBelgeler : []);
+      setOkc(t.okc && typeof t.okc === "object" ? t.okc : {}); setIbanNo(t.ibanNo || "");
+      setIhracat(t.ihracat || {}); setTurist(t.turist || {}); setAraciKurum(t.araciKurum || {});
+      setIdisSevkiyatNo(t.idisSevkiyatNo || ""); setYtbNo(t.ytbNo || ""); setYtbTarihi(t.ytbTarihi || "");
+      setMuafiyetSebebi(t.muafiyetSebebi || "");
+      setHalMasraflari(Array.isArray(t.halMasraflari) ? t.halMasraflari : []);
+      if (t.earsivTipi) setEarsivTipi(t.earsivTipi);
+      if (t.earsivGonderimSekli) setEarsivGonderimSekli(t.earsivGonderimSekli);
+      if (typeof t.earsivMailGonder === "boolean") setEarsivMailGonder(t.earsivMailGonder);
       if (Array.isArray(t.satirlar) && t.satirlar.length) setSatirlar(t.satirlar);
       setIadeFaturalar(Array.isArray(t.iadeFaturalar) ? t.iadeFaturalar : []); setDovizKuru(t.dovizKuru || "");
       setAlertInfo({ type: "info", message: `Yerel taslak #${id} açıldı. Bu taslak GİB'e gönderilmedi; düzenleyip Gönder ile kesebilirsiniz.` });
@@ -476,7 +648,11 @@ const EBelgeDogrulaPage: React.FC = () => {
         id: yerelTaslakId ?? undefined, belgeTuru: "EArsiv", belgeNo: belgeNo.trim() || null, aliciVkn: aliciVkn.trim() || null,
         aliciUnvan: aliciUnvan.trim() || `${aliciAd} ${aliciSoyad}`.trim() || null, tutar: yerelToplam.toplam, paraBirimi,
         icerik: { belgeNo, tarih, faturaTipi, paraBirimi, not, aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciIl, aliciIlce,
-          aliciAdres, aliciEposta, satirlar, iadeFaturalar, dovizKuru },
+          aliciAdres, aliciEposta, aliciPk, aliciTel, aliciFaks, aliciUlke, aliciBinaAdi, aliciBinaNo, aliciKapiNo,
+          aliciPostaKodu, aliciWeb, siparisNo, siparisTarihi, irsaliyeler, ekBelgeler, okc, ibanNo,
+          ihracat, turist, araciKurum, idisSevkiyatNo, ytbNo, ytbTarihi, muafiyetSebebi, halMasraflari,
+          earsivTipi, earsivGonderimSekli, earsivMailGonder,
+          satirlar, iadeFaturalar, dovizKuru },
       });
       setYerelTaslakId(id);
       setAlertInfo({ type: "success", message: `Taslaklara kaydedildi (yerel taslak #${id}). Belge GİB'e gönderilmedi ve numara kullanılmadı; "Taslaklara Git" ile yeniden açabilirsiniz.` });
@@ -511,24 +687,18 @@ const EBelgeDogrulaPage: React.FC = () => {
             .getElementsByTagName("cbc:IssueTime")[0]?.textContent || undefined,
         belgeNo: belgeNo.trim().toUpperCase(),
         tarih,
+        // PK doluysa alias olarak kullanılır; boşsa sunucu mükellef sorgusundan bulur.
+        aliciAlias: aliciPk.trim() || undefined,
         senaryo: tur === "earsiv" ? ("EARSIVFATURA" as EbelgeSenaryo) : senaryo,
         faturaTipi,
         paraBirimi,
         notlar: not.trim() ? [not.trim()] : undefined,
-        alici: {
-          vknTckn: aliciVkn.trim(),
-          unvan: aliciUnvan.trim() || undefined,
-          ad: aliciAd.trim() || undefined,
-          soyad: aliciSoyad.trim() || undefined,
-          vergiDairesi: aliciVd.trim() || undefined,
-          adres: aliciAdres.trim() || undefined,
-          il: aliciIl.trim() || undefined,
-          ilce: aliciIlce.trim() || undefined,
-          eposta: aliciEposta.trim() || undefined,
-        },
+        alici: aliciGovdesi(),
         satirlar: gonderilecekSatirlar(),
         iadeFaturalar: iadeMi ? iadeFaturalar : undefined,
         dovizKuru: dovizliMi && dovizKuru ? { kur: Number(dovizKuru), tarih } : undefined,
+        ...ekBilgiGovdesi(),
+        ...senaryoGovdesi(),
       };
 
       if (tur === "taslak") {
@@ -543,7 +713,15 @@ const EBelgeDogrulaPage: React.FC = () => {
       }
 
       if (tur === "earsiv") {
-        await ebelgeService.earsivGonder(govde);
+        const cevap = await ebelgeService.earsivGonder(govde);
+        // Kullanıcı onayladıysa ve e-posta girilmişse belge alıcıya iletilir; hata gönderimi etkilemez.
+        if (earsivMailGonder && aliciEposta.trim() && cevap.uuid) {
+          await ebelgeService
+            .belgeMailGonder(cevap.uuid, [{ eposta: aliciEposta.trim(), unvan: aliciUnvan.trim() || undefined }])
+            .catch((e: any) =>
+              setAlertInfo({ type: "warning", message: `Fatura kesildi ancak e-posta gönderilemedi: ${e?.message || ""}` })
+            );
+        }
         // Fatura kesildi; kaynağı olan yerel taslak artık gereksiz. Silinemezse gönderim sonucu etkilenmez.
         if (yerelTaslakId) await ebelgeService.yerelTaslakSil(yerelTaslakId).catch(() => undefined);
       } else await ebelgeService.faturaGonder(govde);
@@ -793,6 +971,271 @@ const EBelgeDogrulaPage: React.FC = () => {
             </>
           )}
 
+          {/* ICE formundaki Sipariş / İrsaliye / ÖKC / EK Belge / IBAN blokları — hepsi isteğe bağlı,
+              boş bırakılırsa belgeye hiç yazılmaz (docs/ebelge-revizyon.md 2. tur Faz 8). */}
+
+          {/* Senaryoya / fatura tipine göre açılan bloklar — ICE formundaki karşılıklarıyla
+              (docs/ebelge-revizyon.md 2. tur Faz 10-12). */}
+          {earsivMi && (
+            <Row className="g-2 mt-1">
+              <Col xs={6} md={3} lg={2}>
+                <Form.Label className="small mb-1">E-arşiv Tipi</Form.Label>
+                <Form.Select size="sm" value={earsivTipi} onChange={(e) => setEarsivTipi(e.target.value as "NORMAL" | "INTERNET")}>
+                  <option value="NORMAL">Normal</option>
+                  <option value="INTERNET">İnternet</option>
+                </Form.Select>
+              </Col>
+              <Col xs={6} md={3} lg={2}>
+                <Form.Label className="small mb-1">Gönderim Şekli</Form.Label>
+                <Form.Select size="sm" value={earsivGonderimSekli}
+                  onChange={(e) => setEarsivGonderimSekli(e.target.value as "KAGIT" | "ELEKTRONIK")}>
+                  <option value="ELEKTRONIK">Elektronik</option>
+                  <option value="KAGIT">Kağıt</option>
+                </Form.Select>
+              </Col>
+              <Col xs={12} md={6} lg={4} className="d-flex align-items-end">
+                <Form.Check
+                  type="checkbox"
+                  id="earsiv-mail-gonder"
+                  className="small mb-1"
+                  checked={earsivMailGonder}
+                  onChange={(e) => setEarsivMailGonder(e.target.checked)}
+                  label={aliciEposta.trim()
+                    ? "E-arşiv faturası e-posta olarak iletilsin"
+                    : "E-arşiv faturası e-posta olarak iletilsin (alıcı e-postası boş)"}
+                />
+              </Col>
+            </Row>
+          )}
+
+          {ihracatMi && (
+            <>
+              <div className="fw-semibold mt-3 mb-1" style={{ fontSize: "12.5px" }}>İhracat Yapılacak Firma Bilgileri</div>
+              <Row className="g-2">
+                {([["firmaUnvani", "Firma Unvanı"], ["vkn", "VKN"], ["ulke", "Ülke"], ["sehir", "Şehir"],
+                   ["ilce", "İlçe"], ["teslimSarti", "Teslim Şartı"], ["gonderimSekli", "Gönderim Şekli"]] as const).map(([alan, etiket]) => (
+                  <Col xs={6} md={3} lg={2} key={alan}>
+                    <Form.Label className="small mb-1">
+                      {etiket} {alan === "firmaUnvani" && <span className="text-danger">*</span>}
+                    </Form.Label>
+                    <Form.Control size="sm" maxLength={300} value={ihracat[alan] || ""}
+                      onChange={(e) => setIhracat((o) => ({ ...o, [alan]: e.target.value }))} />
+                  </Col>
+                ))}
+              </Row>
+            </>
+          )}
+
+          {turistMi && (
+            <>
+              <div className="fw-semibold mt-3 mb-1" style={{ fontSize: "12.5px" }}>Turist Bilgileri</div>
+              <Row className="g-2">
+                {([["ad", "Adı"], ["soyad", "Soyadı"], ["ulke", "Ülke"], ["uyruk", "Uyruk"], ["sehir", "Şehir"],
+                   ["ilce", "İlçe"], ["pasaportNo", "Pasaport No"]] as const).map(([alan, etiket]) => (
+                  <Col xs={6} md={3} lg={2} key={alan}>
+                    <Form.Label className="small mb-1">
+                      {etiket} {["ad", "soyad", "pasaportNo"].includes(alan) && <span className="text-danger">*</span>}
+                    </Form.Label>
+                    <Form.Control size="sm" maxLength={100} value={turist[alan] || ""}
+                      onChange={(e) => setTurist((o) => ({ ...o, [alan]: e.target.value }))} />
+                  </Col>
+                ))}
+                <Col xs={6} md={3} lg={2}>
+                  <Form.Label className="small mb-1">Pasaport Tarihi</Form.Label>
+                  <Form.Control size="sm" type="date" className="custom-date-input" value={turist.pasaportTarihi || ""}
+                    onChange={(e) => setTurist((o) => ({ ...o, pasaportTarihi: e.target.value }))} />
+                </Col>
+              </Row>
+
+              <div className="fw-semibold mt-3 mb-1" style={{ fontSize: "12.5px" }}>Turist Hesap Bilgileri</div>
+              <Row className="g-2">
+                {([["bankaAdi", "Banka Adı"], ["subeAdi", "Şube Adı"], ["hesapNo", "Hesap No / IBAN"],
+                   ["hesapParaBirimi", "Para Birimi"], ["odemeNotu", "Ödeme Notu"]] as const).map(([alan, etiket]) => (
+                  <Col xs={6} md={3} lg={2} key={alan}>
+                    <Form.Label className="small mb-1">{etiket}</Form.Label>
+                    <Form.Control size="sm" maxLength={300} value={turist[alan] || ""}
+                      onChange={(e) => setTurist((o) => ({ ...o, [alan]: e.target.value }))} />
+                  </Col>
+                ))}
+              </Row>
+
+              <div className="fw-semibold mt-3 mb-1" style={{ fontSize: "12.5px" }}>Aracı Kurum Bilgileri</div>
+              <Row className="g-2">
+                {([["vknTckn", "Vergi D. / VKN-TCKN"], ["pk", "PK"], ["unvan", "Unvan"],
+                   ["ulke", "Ülke"], ["sehir", "Şehir"], ["ilce", "İlçe"]] as const).map(([alan, etiket]) => (
+                  <Col xs={6} md={3} lg={2} key={alan}>
+                    <Form.Label className="small mb-1">{etiket}</Form.Label>
+                    <Form.Control size="sm" maxLength={300} value={araciKurum[alan] || ""}
+                      onChange={(e) => setAraciKurum((o) => ({ ...o, [alan]: e.target.value }))} />
+                  </Col>
+                ))}
+              </Row>
+            </>
+          )}
+
+          {(idisMi || ytbMi || istisnaSebebiMi) && (
+            <Row className="g-2 mt-1">
+              {idisMi && (
+                <Col xs={12} md={4} lg={3}>
+                  <Form.Label className="small mb-1">Sevkiyat Numarası <span className="text-danger">*</span></Form.Label>
+                  <Form.Control size="sm" maxLength={50} value={idisSevkiyatNo} onChange={(e) => setIdisSevkiyatNo(e.target.value)} />
+                </Col>
+              )}
+              {ytbMi && (
+                <>
+                  <Col xs={6} md={3} lg={2}>
+                    <Form.Label className="small mb-1">YTB No</Form.Label>
+                    <Form.Control size="sm" maxLength={50} value={ytbNo} onChange={(e) => setYtbNo(e.target.value)} />
+                  </Col>
+                  <Col xs={6} md={3} lg={2}>
+                    <Form.Label className="small mb-1">YTB Tarihi</Form.Label>
+                    <Form.Control size="sm" type="date" className="custom-date-input" value={ytbTarihi}
+                      onChange={(e) => setYtbTarihi(e.target.value)} />
+                  </Col>
+                </>
+              )}
+              {istisnaSebebiMi && (
+                <Col xs={12} md={6} lg={4}>
+                  <Form.Label className="small mb-1">
+                    {faturaTipi === "IHRACKAYITLI" ? "İhraç Kayıtlı Fatura Sebebi" : "KDV İstisna Muafiyet Sebebi"}
+                  </Form.Label>
+                  <Form.Control size="sm" maxLength={300} value={muafiyetSebebi}
+                    onChange={(e) => setMuafiyetSebebi(e.target.value)}
+                    placeholder="Satırda gerekçe yoksa bu açıklama kullanılır" />
+                </Col>
+              )}
+            </Row>
+          )}
+
+          {halMi && (
+            <>
+              <div className="d-flex align-items-center gap-2 mt-3 mb-1">
+                <span className="fw-semibold" style={{ fontSize: "12.5px" }}>Masraflar</span>
+                <Button size="sm" variant="outline-secondary" className="py-0"
+                  onClick={() => setHalMasraflari((o) => [...o, { ad: "", tutar: 0 }])}>
+                  <IconPlus size={13} /> Masraf Ekle
+                </Button>
+              </div>
+              {!halMasraflari.length && <div className="small text-secondary">Komisyon, navlun, hammaliye gibi masrafları buradan ekleyin.</div>}
+              {halMasraflari.map((m, i) => (
+                <Row className="g-2 mb-1 align-items-end" key={`masraf-${i}`}>
+                  <Col xs={6} md={4} lg={3}>
+                    <Form.Label className="small mb-1">Masraf</Form.Label>
+                    <Form.Control size="sm" maxLength={100} value={m.ad} placeholder="Komisyon / Navlun / Hammaliye"
+                      onChange={(e) => setHalMasraflari((o) => o.map((r, j) => (j === i ? { ...r, ad: e.target.value } : r)))} />
+                  </Col>
+                  <Col xs={6} md={3} lg={2}>
+                    <Form.Label className="small mb-1">Tutar</Form.Label>
+                    <Form.Control size="sm" type="number" min={0} step="any" className="text-end font-monospace" value={m.tutar}
+                      onChange={(e) => setHalMasraflari((o) => o.map((r, j) => (j === i ? { ...r, tutar: Number(e.target.value) } : r)))} />
+                  </Col>
+                  <Col xs={6} md={3} lg={2}>
+                    <Form.Label className="small mb-1">KDV %</Form.Label>
+                    <Form.Control size="sm" type="number" min={0} max={100} className="text-end font-monospace" value={m.kdvOrani ?? ""}
+                      onChange={(e) => setHalMasraflari((o) => o.map((r, j) => (j === i ? { ...r, kdvOrani: e.target.value === "" ? undefined : Number(e.target.value) } : r)))} />
+                  </Col>
+                  <Col xs="auto">
+                    <Button size="sm" variant="link" className="p-0" style={{ color: "#dc2626" }} title="Masrafı sil"
+                      onClick={() => setHalMasraflari((o) => o.filter((_, j) => j !== i))}>
+                      <IconTrash size={16} />
+                    </Button>
+                  </Col>
+                </Row>
+              ))}
+            </>
+          )}
+
+          <div className="d-flex align-items-center gap-2 mt-3 mb-2">
+            <span className="fw-semibold" style={{ fontSize: "13px" }}>Ek Bilgiler</span>
+            <Button size="sm" variant="link" className="p-0" onClick={() => setEkBilgiAcik((a) => !a)}>
+              {ekBilgiAcik ? "gizle" : "Sipariş · İrsaliye · ÖKC · EK Belge · IBAN"}
+            </Button>
+            {!ekBilgiAcik && ekBilgiOzeti && <span className="small text-secondary">({ekBilgiOzeti})</span>}
+          </div>
+
+          {ekBilgiAcik && (
+            <div className="border rounded-2 p-2 mb-2">
+              <Row className="g-2">
+                <Col xs={6} md={3} lg={2}>
+                  <Form.Label className="small mb-1">Sipariş No</Form.Label>
+                  <Form.Control size="sm" value={siparisNo} maxLength={50} onChange={(e) => setSiparisNo(e.target.value)} />
+                </Col>
+                <Col xs={6} md={3} lg={2}>
+                  <Form.Label className="small mb-1">Sipariş Tarihi</Form.Label>
+                  <Form.Control size="sm" type="date" className="custom-date-input" value={siparisTarihi}
+                    onChange={(e) => setSiparisTarihi(e.target.value)} />
+                </Col>
+                <Col xs={12} md={6} lg={3}>
+                  <Form.Label className="small mb-1">IBAN</Form.Label>
+                  <Form.Control size="sm" className="font-monospace" value={ibanNo} maxLength={34}
+                    placeholder="TR.." onChange={(e) => setIbanNo(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} />
+                </Col>
+                <Col xs={6} md={3} lg={2}>
+                  <Form.Label className="small mb-1">IBAN Para Birimi</Form.Label>
+                  <Form.Control size="sm" value={paraBirimi} disabled title="Belgenin para birimiyle aynıdır." />
+                </Col>
+              </Row>
+
+              <div className="fw-semibold mt-3 mb-1" style={{ fontSize: "12.5px" }}>ÖKC Bilgisi</div>
+              <Row className="g-2">
+                {([
+                  ["fisNo", "Fiş No", "text"], ["fisTipi", "Fiş Tipi", "text"], ["fisTarihi", "Fiş Tarihi", "date"],
+                  ["fisSaati", "Fiş Saati", "time"], ["okcNo", "ÖKC No", "text"], ["zNo", "Z No", "text"],
+                ] as const).map(([alan, etiket, tip]) => (
+                  <Col xs={6} md={3} lg={2} key={alan}>
+                    <Form.Label className="small mb-1">{etiket}</Form.Label>
+                    <Form.Control size="sm" type={tip} className={tip === "date" ? "custom-date-input" : undefined}
+                      maxLength={50} value={(okc as any)[alan] || ""}
+                      onChange={(e) => setOkc((o) => ({ ...o, [alan]: e.target.value }))} />
+                  </Col>
+                ))}
+              </Row>
+
+              {([
+                ["irsaliye", "İrsaliye Bilgileri", irsaliyeler, setIrsaliyeler, false],
+                ["ek", "EK Belge", ekBelgeler, setEkBelgeler, true],
+              ] as const).map(([anahtar, baslik, liste, setListe, detayli]) => (
+                <div key={anahtar}>
+                  <div className="d-flex align-items-center gap-2 mt-3 mb-1">
+                    <span className="fw-semibold" style={{ fontSize: "12.5px" }}>{baslik}</span>
+                    <Button size="sm" variant="outline-secondary" className="py-0"
+                      onClick={() => (setListe as (f: (o: EbelgeBelgeRef[]) => EbelgeBelgeRef[]) => void)((o) => [...o, { no: "", tarih: "" }])}>
+                      <IconPlus size={13} /> Ekle
+                    </Button>
+                  </div>
+                  {!liste.length && <div className="small text-secondary">Kayıt yok.</div>}
+                  {liste.map((satir, i) => (
+                    <Row className="g-2 mb-1 align-items-end" key={`${anahtar}-${i}`}>
+                      <Col xs={6} md={3} lg={2}>
+                        <Form.Label className="small mb-1">{detayli ? "Belge No" : "İrsaliye No"}</Form.Label>
+                        <Form.Control size="sm" value={satir.no} maxLength={50}
+                          onChange={(e) => (setListe as any)((o: EbelgeBelgeRef[]) => o.map((r, j) => (j === i ? { ...r, no: e.target.value } : r)))} />
+                      </Col>
+                      <Col xs={6} md={3} lg={2}>
+                        <Form.Label className="small mb-1">Tarih</Form.Label>
+                        <Form.Control size="sm" type="date" className="custom-date-input" value={satir.tarih || ""}
+                          onChange={(e) => (setListe as any)((o: EbelgeBelgeRef[]) => o.map((r, j) => (j === i ? { ...r, tarih: e.target.value } : r)))} />
+                      </Col>
+                      {detayli && ([["ad", "Belge Adı"], ["tur", "Belge Türü"], ["turKodu", "Belge Tür Kodu"]] as const).map(([alan, etiket]) => (
+                        <Col xs={6} md={3} lg={2} key={alan}>
+                          <Form.Label className="small mb-1">{etiket}</Form.Label>
+                          <Form.Control size="sm" maxLength={200} value={(satir as any)[alan] || ""}
+                            onChange={(e) => (setListe as any)((o: EbelgeBelgeRef[]) => o.map((r, j) => (j === i ? { ...r, [alan]: e.target.value } : r)))} />
+                        </Col>
+                      ))}
+                      <Col xs="auto">
+                        <Button size="sm" variant="link" className="p-0" style={{ color: "#dc2626" }} title="Satırı sil"
+                          onClick={() => (setListe as any)((o: EbelgeBelgeRef[]) => o.filter((_, j) => j !== i))}>
+                          <IconTrash size={16} />
+                        </Button>
+                      </Col>
+                    </Row>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="fw-semibold mt-3 mb-2" style={{ fontSize: "13px" }}>
             Alıcı
           </div>
@@ -816,6 +1259,8 @@ const EBelgeDogrulaPage: React.FC = () => {
             setAliciVd(lookups.vergiDairesiList.find(x => x.id === cari.vergiDairesiId)?.ad || "");
             setAliciEposta((cari.eposta || "").trim());
             setAliciAdres((cari.adres || "").trim());
+            setAliciTel((cari.telefon || "").trim());
+            setAliciPk((cari.eFaturaPostaKutusu || "").trim());
             setIceAdresler([]);
             setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
           }} />
@@ -836,23 +1281,43 @@ const EBelgeDogrulaPage: React.FC = () => {
                 className="font-monospace"
               />
             </Col>
-            {tcknMi ? (
-              <>
-                <Col xs={6} md={3} lg={2}>
-                  <Form.Label className="small mb-1">Ad</Form.Label>
-                  <Form.Control size="sm" value={aliciAd} onChange={(e) => setAliciAd(e.target.value)} />
-                </Col>
-                <Col xs={6} md={3} lg={2}>
-                  <Form.Label className="small mb-1">Soyad</Form.Label>
-                  <Form.Control size="sm" value={aliciSoyad} onChange={(e) => setAliciSoyad(e.target.value)} />
-                </Col>
-              </>
-            ) : (
-              <Col xs={12} md={6} lg={4}>
-                <Form.Label className="small mb-1">Unvan</Form.Label>
-                <Form.Control size="sm" value={aliciUnvan} onChange={(e) => setAliciUnvan(e.target.value)} />
-              </Col>
-            )}
+            <Col xs={12} md={6} lg={4}>
+              <Form.Label className="small mb-1">
+                Unvan {!tcknMi && <span className="text-danger">*</span>}
+              </Form.Label>
+              <CariUnvanDurbun value={aliciUnvan} onChange={setAliciUnvan} onSelect={(cari, lookups) => {
+                setCariSecimAcik(false);
+                setAliciVkn(cari.vergiKimlikNo?.trim() || "");
+                setAliciUnvan(cari.ad);
+                const parcalar = cari.ad.trim().split(/\s+/);
+                setAliciSoyad(parcalar.length > 1 ? parcalar.pop()! : "");
+                setAliciAd(parcalar.join(" "));
+                setAliciIl(lookups.ilList.find((x) => x.id === cari.ilId)?.ad || "");
+                setAliciIlce(lookups.ilceList.find((x) => x.id === cari.ilceId)?.ad || "");
+                setAliciVd(lookups.vergiDairesiList.find((x) => x.id === cari.vergiDairesiId)?.ad || "");
+                setAliciEposta((cari.eposta || "").trim());
+                setAliciAdres((cari.adres || "").trim());
+                setAliciTel((cari.telefon || "").trim());
+                setAliciPk((cari.eFaturaPostaKutusu || "").trim());
+                setIceAdresler([]);
+                setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
+              }} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Ad {tcknMi && <span className="text-danger">*</span>}</Form.Label>
+              <Form.Control size="sm" value={aliciAd} onChange={(e) => setAliciAd(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Soyad {tcknMi && <span className="text-danger">*</span>}</Form.Label>
+              <Form.Control size="sm" value={aliciSoyad} onChange={(e) => setAliciSoyad(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">PK (posta kutusu)</Form.Label>
+              <Form.Control size="sm" className="font-monospace" value={aliciPk} maxLength={150}
+                onChange={(e) => setAliciPk(e.target.value.trim())}
+                placeholder="boşsa GİB'den bulunur"
+                title="Alıcının GİB posta kutusu etiketi. Boş bırakılırsa mükellef sorgusundan bulunur." />
+            </Col>
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">Vergi Dairesi</Form.Label>
               <Form.Control size="sm" value={aliciVd} onChange={(e) => setAliciVd(e.target.value)} />
@@ -865,9 +1330,42 @@ const EBelgeDogrulaPage: React.FC = () => {
               <Form.Label className="small mb-1">İlçe <span className="text-danger">*</span></Form.Label>
               <Form.Control size="sm" value={aliciIlce} onChange={(e) => setAliciIlce(e.target.value)} />
             </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Ülke</Form.Label>
+              <Form.Control size="sm" value={aliciUlke} maxLength={100} onChange={(e) => setAliciUlke(e.target.value)} />
+            </Col>
             <Col xs={12} md={6} lg={4}>
-              <Form.Label className="small mb-1">Adresin devamı (mahalle, cadde, no)</Form.Label>
+              <Form.Label className="small mb-1">Mahalle / Cadde / Sokak</Form.Label>
               <Form.Control size="sm" value={aliciAdres} maxLength={300} onChange={(e) => setAliciAdres(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Bina Adı</Form.Label>
+              <Form.Control size="sm" value={aliciBinaAdi} maxLength={150} onChange={(e) => setAliciBinaAdi(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={1}>
+              <Form.Label className="small mb-1">Bina No</Form.Label>
+              <Form.Control size="sm" value={aliciBinaNo} maxLength={50} onChange={(e) => setAliciBinaNo(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={1}>
+              <Form.Label className="small mb-1">Kapı No</Form.Label>
+              <Form.Control size="sm" value={aliciKapiNo} maxLength={50} onChange={(e) => setAliciKapiNo(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Posta Kodu</Form.Label>
+              <Form.Control size="sm" className="font-monospace" value={aliciPostaKodu} maxLength={10}
+                onChange={(e) => setAliciPostaKodu(e.target.value.replace(/\D/g, ""))} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Telefon</Form.Label>
+              <Form.Control size="sm" value={aliciTel} maxLength={50} onChange={(e) => setAliciTel(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Faks</Form.Label>
+              <Form.Control size="sm" value={aliciFaks} maxLength={50} onChange={(e) => setAliciFaks(e.target.value)} />
+            </Col>
+            <Col xs={12} md={6} lg={3}>
+              <Form.Label className="small mb-1">Web Sitesi</Form.Label>
+              <Form.Control size="sm" value={aliciWeb} maxLength={200} onChange={(e) => setAliciWeb(e.target.value)} />
             </Col>
             {iceAdresler.length > 1 && (
               <Col xs={12} md={6} lg={4}>
@@ -916,34 +1414,60 @@ const EBelgeDogrulaPage: React.FC = () => {
               <thead>
                 <tr>
                   <th style={{ width: "40px" }}>#</th>
+                  <th style={{ width: "110px" }}>Hizmet Kodu</th>
                   <th>Mal / Hizmet</th>
+                  <th style={{ width: "150px" }}>Satır Not</th>
                   <th style={{ width: "100px" }}>Miktar</th>
                   <th style={{ width: "110px" }}>Birim</th>
                   <th style={{ width: "130px" }}>Birim Fiyat</th>
                   <th style={{ width: "100px" }}>İsk. %</th>
+                  <th style={{ width: "120px" }}>İskonto Tutarı</th>
                   <th style={{ width: "100px" }}>KDV %</th>
-                  <th style={{ width: "170px" }}>İstisna Kodu</th>
+                  {istisnaKolonuGorunur && <th style={{ width: "170px" }}>İstisna Kodu</th>}
                   {tevkifatliMi && <th style={{ width: "190px" }}>Tevkifat</th>}
                   {ozelMatrahMi && <th style={{ width: "250px" }}>Özel Matrah (kod / KDV matrahı)</th>}
-                  <th style={{ width: "130px" }} className="text-end">
-                    Tutar
-                  </th>
+                  {satirEkKolonlari.map((k) => (
+                    <th key={k.alan} style={{ width: "130px" }}>{k.baslik}</th>
+                  ))}
+                  <th style={{ width: "120px" }} className="text-end">KDV Tutarı</th>
+                  <th style={{ width: "130px" }} className="text-end">Tutar</th>
                   <th style={{ width: "50px" }} />
                 </tr>
               </thead>
               <tbody>
                 {satirlar.map((satir, i) => {
                   const brut = (satir.miktar || 0) * (satir.birimFiyat || 0);
-                  const matrah = brut - (brut * (satir.iskontoOrani || 0)) / 100;
+                  const satirIskonto = satir.iskontoTutari != null ? satir.iskontoTutari : (brut * (satir.iskontoOrani || 0)) / 100;
+                  const matrah = brut - satirIskonto;
+                  const satirKdv = (kdvMatrahi(satir, matrah) * (satir.kdvOrani || 0)) / 100;
                   return (
                     <tr key={i}>
                       <td className="text-secondary">{i + 1}</td>
                       <td>
                         <Form.Control
                           size="sm"
+                          className="font-monospace"
+                          maxLength={50}
+                          value={satir.hizmetKodu || ""}
+                          onChange={(e) => satirDegistir(i, "hizmetKodu", e.target.value)}
+                          title="Satıcının kendi mal/hizmet kodu (isteğe bağlı)"
+                        />
+                      </td>
+                      <td>
+                        <Form.Control
+                          size="sm"
                           value={satir.ad}
                           onChange={(e) => satirDegistir(i, "ad", e.target.value)}
                           placeholder="Örn: 22 Ayar Bilezik"
+                        />
+                      </td>
+                      <td>
+                        <Form.Control
+                          size="sm"
+                          maxLength={500}
+                          value={satir.not || ""}
+                          onChange={(e) => satirDegistir(i, "not", e.target.value)}
+                          title="Bu satıra özel not (isteğe bağlı)"
                         />
                       </td>
                       <td>
@@ -989,7 +1513,22 @@ const EBelgeDogrulaPage: React.FC = () => {
                           max={99}
                           className="text-end font-monospace"
                           value={satir.iskontoOrani}
+                          disabled={satir.iskontoTutari != null}
                           onChange={(e) => satirDegistir(i, "iskontoOrani", Number(e.target.value))}
+                        />
+                      </td>
+                      <td>
+                        {/* Tutar girilirse oran yerine bu kullanılır; boşaltılınca orana geri dönülür. */}
+                        <Form.Control
+                          size="sm"
+                          type="number"
+                          min={0}
+                          step="any"
+                          className="text-end font-monospace"
+                          value={satir.iskontoTutari ?? ""}
+                          placeholder={(Math.round(((brut * (satir.iskontoOrani || 0)) / 100) * 100) / 100).toString()}
+                          onChange={(e) => satirDegistir(i, "iskontoTutari", e.target.value === "" ? undefined : Number(e.target.value))}
+                          title="Elle iskonto tutarı. Doluyken İsk.% kapanır."
                         />
                       </td>
                       <td>
@@ -1003,20 +1542,22 @@ const EBelgeDogrulaPage: React.FC = () => {
                           onChange={(e) => satirDegistir(i, "kdvOrani", Number(e.target.value))}
                         />
                       </td>
-                      <td>
-                        <EBelgeKodDurbun
-                          tur="ISTISNA"
-                          placeholder={satir.kdvOrani === 0 ? "zorunlu" : "-"}
-                          value={satir.istisnaKodu || ""}
-                          disabled={ozelMatrahMi && !!satir.ozelMatrahKodu?.trim()}
-                          isInvalid={satir.kdvOrani === 0 && !satir.istisnaKodu?.trim()}
-                          onChange={(kod) => satirDegistir(i, "istisnaKodu", kod)}
-                          onSelect={(k) => {
-                            satirDegistir(i, "istisnaGerekcesi", k.ad);
-                            if (k.kod !== "555") satirDegistir(i, "kdvOrani", 0);
-                          }}
-                        />
-                      </td>
+                      {istisnaKolonuGorunur && (
+                        <td>
+                          <EBelgeKodDurbun
+                            tur="ISTISNA"
+                            placeholder={satir.kdvOrani === 0 ? "zorunlu" : "-"}
+                            value={satir.istisnaKodu || ""}
+                            disabled={ozelMatrahMi && !!satir.ozelMatrahKodu?.trim()}
+                            isInvalid={satir.kdvOrani === 0 && !satir.istisnaKodu?.trim()}
+                            onChange={(kod) => satirDegistir(i, "istisnaKodu", kod)}
+                            onSelect={(k) => {
+                              satirDegistir(i, "istisnaGerekcesi", k.ad);
+                              if (k.kod !== "555") satirDegistir(i, "kdvOrani", 0);
+                            }}
+                          />
+                        </td>
+                      )}
                       {tevkifatliMi && (
                         <td>
                           <div className="d-flex gap-1">
@@ -1075,6 +1616,23 @@ const EBelgeDogrulaPage: React.FC = () => {
                           </div>
                         </td>
                       )}
+                      {satirEkKolonlari.map((k) => (
+                        <td key={k.alan}>
+                          <Form.Control
+                            size="sm"
+                            type={k.sayi ? "number" : "text"}
+                            min={k.sayi ? 0 : undefined}
+                            className={k.sayi ? "text-end font-monospace" : undefined}
+                            maxLength={k.sayi ? undefined : 150}
+                            value={(satir as any)[k.alan] ?? ""}
+                            onChange={(e) =>
+                              satirDegistir(i, k.alan as keyof EbelgeSatir,
+                                (k.sayi ? (e.target.value === "" ? undefined : Number(e.target.value)) : e.target.value) as any)
+                            }
+                          />
+                        </td>
+                      ))}
+                      <td className="text-end font-monospace text-secondary">{ebelgeTutar(satirKdv, paraBirimi)}</td>
                       <td className="text-end font-monospace">{ebelgeTutar(matrah, paraBirimi)}</td>
                       <td className="text-center">
                         <Button
@@ -1095,6 +1653,18 @@ const EBelgeDogrulaPage: React.FC = () => {
               </tbody>
             </Table>
           </div>
+
+          {/* KDV oranı kırılımı — ICE'deki "Toplamlar" bloğunun KDV(%1)…KDV(%20) satırlarının karşılığı */}
+          {yerelToplam.kdvKirilim.length > 1 && (
+            <div className="d-flex flex-wrap justify-content-end gap-3 mt-2 small text-secondary">
+              {yerelToplam.kdvKirilim.map((g) => (
+                <span key={g.oran}>
+                  KDV(%{g.oran}): <span className="font-monospace">{ebelgeTutar(g.vergi, paraBirimi)}</span>
+                  <span className="ms-1">(matrah {ebelgeTutar(g.matrah, paraBirimi)})</span>
+                </span>
+              ))}
+            </div>
+          )}
 
           <div className="d-flex flex-wrap justify-content-end gap-4 mt-3 pt-2 border-top" style={{ fontSize: "13px" }}>
             <span className="text-secondary">

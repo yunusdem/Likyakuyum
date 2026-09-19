@@ -445,3 +445,214 @@ test("adreste il/ilçe zorunlu (UBL-TR AddressType)", () => {
     /Bağlantı Ayarları/
   );
 });
+
+/* ================================================================ taraf alanları (2. tur Faz 7) */
+
+test("alıcı: adres kırılımı ve iletişim alanları UBL-TR sırasıyla yazılır", () => {
+  const { xml } = buildInvoiceXml({
+    ...temel(),
+    alici: {
+      vknTckn: "9876543210", unvan: "Alıcı A.Ş.", vergiDairesi: "Muratpaşa",
+      adres: "Fener Mah. Bülent Ecevit Cad.", binaAdi: "Likya Apt.", binaNo: "12", kapiNo: "3",
+      postaKodu: "07160", ilce: "Muratpaşa", il: "Antalya", ulke: "Türkiye",
+      telefon: "02421112233", faks: "02421112244", eposta: "alici@ornek.com", webAdresi: "https://ornek.com",
+    },
+  });
+  const alici = parser.parse(xml).Invoice.AccountingCustomerParty.Party;
+  assert.equal(alici.PostalAddress.Room, "3");
+  assert.equal(alici.PostalAddress.StreetName, "Fener Mah. Bülent Ecevit Cad.");
+  assert.equal(alici.PostalAddress.BuildingName, "Likya Apt.");
+  assert.equal(alici.PostalAddress.BuildingNumber, "12");
+  assert.equal(alici.PostalAddress.PostalZone, "07160");
+  assert.equal(alici.Contact.Telefax, "02421112244");
+  assert.equal(alici.WebsiteURI, "https://ornek.com");
+  // UBL-TR AddressType sequence bozulursa ICE şema hatası verir
+  const sira = ["Room", "StreetName", "BuildingName", "BuildingNumber", "CitySubdivisionName", "CityName", "PostalZone", "Country"];
+  const adresXml = xml.slice(xml.indexOf("<cac:AccountingCustomerParty>"));
+  const yerler = sira.map((e) => adresXml.indexOf(`<cbc:${e}>`) >= 0 ? adresXml.indexOf(`<cbc:${e}>`) : adresXml.indexOf("<cac:Country>"));
+  assert.deepEqual(yerler, [...yerler].sort((a, b) => a - b));
+});
+
+test("alıcı: boş adres alanları XML'e hiç yazılmaz", () => {
+  const { xml } = buildInvoiceXml(temel());
+  for (const e of ["Room", "BuildingName", "BuildingNumber", "PostalZone", "Telefax"]) {
+    assert.ok(!xml.includes(`<cbc:${e}>`), e);
+  }
+});
+
+/* ================================================================ belge blokları (2. tur Faz 8) */
+
+const bloklu = (): UblFaturaGirdi => ({
+  ...temel(),
+  siparis: { no: "SIP-2026-1", tarih: "2026-01-10" },
+  irsaliyeler: [{ no: "IRS2026000000001", tarih: "2026-01-12" }, { no: "IRS2026000000002", tarih: "2026-01-13" }],
+  ekBelgeler: [{ no: "EK-1", tarih: "2026-01-14", tur: "Sözleşme", turKodu: "SZL" }],
+  okc: { fisNo: "0001", fisTipi: "SATIS", fisTarihi: "2026-01-15", fisSaati: "10:05", okcNo: "OKC-9", zNo: "12" },
+  iban: { iban: "TR330006100519786457841326" },
+});
+
+test("blok: sipariş, irsaliye, ek belge, ÖKC ve IBAN yazılır", () => {
+  const { xml } = buildInvoiceXml(bloklu());
+  const f = parser.parse(xml).Invoice;
+  assert.equal(f.OrderReference.ID, "SIP-2026-1");
+  assert.equal(f.OrderReference.IssueDate, "2026-01-10");
+  assert.equal(f.DespatchDocumentReference.length, 2);
+  assert.equal(f.DespatchDocumentReference[1].ID, "IRS2026000000002");
+  assert.equal(f.PaymentMeans.PayeeFinancialAccount.ID, "TR330006100519786457841326");
+  assert.equal(f.PaymentMeans.PayeeFinancialAccount.CurrencyCode, "TRY");
+  // ek belge + ÖKC alanları (fiş no, fiş tipi, ÖKC no, Z no, saat) aynı listede
+  const ek = f.AdditionalDocumentReference;
+  assert.equal(ek.length, 6);
+  assert.equal(ek[0].DocumentType, "Sözleşme");
+  assert.deepEqual(ek.slice(1).map((r: any) => r.DocumentType), ["OKCFISNO", "OKCFISTIPI", "OKCNO", "ZNO", "OKCFISSAATI"]);
+});
+
+test("blok: UBL-TR sırası — OrderReference → BillingReference → Despatch → Additional → Supplier", () => {
+  const { xml } = buildInvoiceXml({
+    ...bloklu(), senaryo: "TEMELFATURA", faturaTipi: "IADE",
+    iadeFaturalar: [{ belgeNo: "ABC2025000000001", tarih: "2025-12-01" }],
+  });
+  const sira = ["<cac:OrderReference>", "<cac:BillingReference>", "<cac:DespatchDocumentReference>",
+    "<cac:AdditionalDocumentReference>", "<cac:AccountingSupplierParty>"].map((e) => xml.indexOf(e));
+  assert.ok(sira.every((x) => x > 0));
+  assert.deepEqual(sira, [...sira].sort((a, b) => a - b));
+  // PaymentMeans, PricingExchangeRate ve TaxTotal'dan önce gelmeli
+  assert.ok(xml.indexOf("<cac:PaymentMeans>") < xml.indexOf("<cac:TaxTotal>"));
+});
+
+test("blok: geçersiz IBAN ve tarih reddedilir, boş bloklar yazılmaz", () => {
+  assert.throws(() => buildInvoiceXml({ ...temel(), iban: { iban: "TR12" } }), /IBAN/);
+  assert.throws(() => buildInvoiceXml({ ...temel(), irsaliyeler: [{ no: "", tarih: "2026-01-01" }] }), /irsaliye numarası zorunludur/);
+  assert.throws(() => buildInvoiceXml({ ...temel(), siparis: { no: "S1", tarih: "15.01.2026" } }), /Sipariş tarihi/);
+  assert.throws(() => buildInvoiceXml({ ...temel(), okc: { fisSaati: "25:00" } }), /ÖKC fiş saati/);
+  const { xml } = buildInvoiceXml(temel());
+  for (const e of ["OrderReference", "DespatchDocumentReference", "AdditionalDocumentReference", "PaymentMeans"]) {
+    assert.ok(!xml.includes(`<cac:${e}>`), e);
+  }
+});
+
+/* ================================================================ satır kolonları (2. tur Faz 9) */
+
+test("satır: hizmet kodu, satır notu ve elle iskonto tutarı", () => {
+  const { xml, ozet } = buildInvoiceXml({
+    ...temel(),
+    satirlar: [{ ad: "Bilezik", hizmetKodu: "BLZ-22", not: "Vitrin ürünü", miktar: 2, birimFiyat: 1000, kdvOrani: 20, iskontoTutari: 150 }],
+  });
+  const satir = parser.parse(xml).Invoice.InvoiceLine;
+  assert.equal(satir.Note, "Vitrin ürünü");
+  assert.equal(satir.Item.SellersItemIdentification.ID, "BLZ-22");
+  assert.equal(satir.AllowanceCharge.Amount["#text"], "150.00");
+  // 150 / 2000 = 0.075 — oran tutardan geri hesaplanır
+  assert.equal(satir.AllowanceCharge.MultiplierFactorNumeric, "0.075");
+  assert.equal(ozet.iskontoToplam, 150);
+  assert.equal(ozet.malHizmetToplam, 1850);
+  assert.equal(ozet.odenecekTutar, 2220);
+});
+
+test("satır: iskonto tutarı orandan önce gelir, oran tek başına da çalışır", () => {
+  const tutarli = buildInvoiceXml({
+    ...temel(),
+    satirlar: [{ ad: "Bilezik", miktar: 1, birimFiyat: 1000, kdvOrani: 20, iskontoOrani: 50, iskontoTutari: 100 }],
+  });
+  assert.equal(tutarli.ozet.iskontoToplam, 100);
+  const oranli = buildInvoiceXml({
+    ...temel(), satirlar: [{ ad: "Bilezik", miktar: 1, birimFiyat: 1000, kdvOrani: 20, iskontoOrani: 10 }],
+  });
+  assert.equal(oranli.ozet.iskontoToplam, 100);
+});
+
+test("satır: geçersiz iskonto tutarı reddedilir, boş kolonlar yazılmaz", () => {
+  assert.throws(() => buildInvoiceXml({
+    ...temel(), satirlar: [{ ad: "X", miktar: 1, birimFiyat: 100, kdvOrani: 20, iskontoTutari: 200 }],
+  }), /satır tutarını aşamaz/);
+  assert.throws(() => buildInvoiceXml({
+    ...temel(), satirlar: [{ ad: "X", miktar: 1, birimFiyat: 100, kdvOrani: 20, iskontoTutari: -5 }],
+  }), /sıfır ya da pozitif/);
+  const { xml } = buildInvoiceXml(temel());
+  assert.ok(!xml.includes("<cbc:Note>"));
+  assert.ok(!xml.includes("SellersItemIdentification"));
+});
+
+/* ================================================================ yeni senaryolar (2. tur Faz 10-12) */
+
+test("ihracat: yurt dışı alıcı BuyerCustomerParty'de, teslim şartı Delivery'de", () => {
+  const { xml } = buildInvoiceXml({
+    ...temel(), senaryo: "IHRACAT", faturaTipi: "ISTISNA",
+    ihracat: { firmaUnvani: "Lidya GmbH", vkn: "1234567890", ulke: "Almanya", sehir: "Berlin", teslimSarti: "FOB", gonderimSekli: "4" },
+    satirlar: [{ ad: "Bilezik", miktar: 1, birimFiyat: 1000, kdvOrani: 0, istisnaKodu: "301", gtip: "7113190000", kapCinsi: "KOLI", kapNo: "1", kapAdet: 2 }],
+  });
+  const f = parser.parse(xml).Invoice;
+  assert.equal(f.ProfileID, "IHRACAT");
+  assert.equal(f.BuyerCustomerParty.Party.PartyName.Name, "Lidya GmbH");
+  assert.equal(f.DeliveryTerms.ID, "FOB");
+  assert.equal(f.Delivery.Shipment.ShipmentStage.TransportModeCode, "4");
+  assert.equal(f.InvoiceLine.Item.CommodityClassification.ItemClassificationCode["#text"], "7113190000");
+  const ozellikler = f.InvoiceLine.Item.AdditionalItemProperty.map((p: any) => p.Name);
+  assert.ok(ozellikler.includes("Eşya Kap Cinsi") && ozellikler.includes("Kap Adet"));
+  assert.throws(() => buildInvoiceXml({ ...temel(), senaryo: "IHRACAT", faturaTipi: "ISTISNA" }), /firmanın unvanı zorunludur/);
+});
+
+test("yolcu beraberi: turist, pasaport, aracı kurum ve iade hesabı", () => {
+  const girdi: UblFaturaGirdi = {
+    ...temel(), senaryo: "YOLCUBERABERFATURA",
+    turist: { ad: "John", soyad: "Smith", ulke: "İngiltere", uyruk: "GB", pasaportNo: "P123456", pasaportTarihi: "2024-05-01",
+      bankaAdi: "Ziraat", subeAdi: "Kaleiçi", hesapNo: "TR330006100519786457841326", hesapParaBirimi: "TRY", odemeNotu: "İade" },
+    araciKurum: { vknTckn: "1234567890", unvan: "Global Blue", sehir: "İstanbul" },
+  };
+  const f = parser.parse(buildInvoiceXml(girdi).xml).Invoice;
+  assert.equal(f.ProfileID, "YOLCUBERABERFATURA");
+  assert.equal(f.BuyerCustomerParty.Party.Person.FirstName, "John");
+  assert.equal(f.BuyerCustomerParty.Party.Person.IdentityDocumentReference.ID["#text"], "P123456");
+  assert.equal(f.TaxRepresentativeParty.PartyName.Name, "Global Blue");
+  assert.equal(f.PaymentMeans.PayeeFinancialAccount.ID, "TR330006100519786457841326");
+  assert.throws(() => buildInvoiceXml({ ...girdi, turist: { ad: "John", soyad: "Smith" } }), /pasaport numarası zorunludur/);
+});
+
+test("IDIS / YTB / e-Arşiv tipi ek belge referansı olarak yazılır", () => {
+  const idis = parser.parse(buildInvoiceXml({ ...temel(), senaryo: "IDIS", idisSevkiyatNo: "SEV-1" }).xml).Invoice;
+  assert.equal(idis.AdditionalDocumentReference.DocumentType, "IDISSEVKIYATNO");
+  assert.throws(() => buildInvoiceXml({ ...temel(), senaryo: "IDIS" }), /sevkiyat numarası zorunludur/);
+
+  const ytb = parser.parse(buildInvoiceXml({
+    ...temel(), senaryo: "EARSIVFATURA", faturaTipi: "YTBSATIS", ytb: { no: "YTB-9", tarih: "2026-01-02" },
+    earsiv: { tip: "INTERNET", gonderimSekli: "ELEKTRONIK" },
+  }).xml).Invoice;
+  const turler = ytb.AdditionalDocumentReference.map((r: any) => r.DocumentType);
+  assert.deepEqual(turler, ["YATIRIMTESVIKBELGESI", "EARSIVTIPI", "GONDERIMSEKLI"]);
+  assert.throws(() => buildInvoiceXml({ ...temel(), senaryo: "EARSIVFATURA", faturaTipi: "YTBSATIS" }), /teşvik belge numarası zorunludur/);
+  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "YTBSATIS", ytb: { no: "1" } }), /yalnızca e-Arşiv faturada/);
+});
+
+test("hal tipi: masraflar belge seviyesinde AllowanceCharge olarak yazılır", () => {
+  const { xml } = buildInvoiceXml({
+    ...temel(), senaryo: "HKS", faturaTipi: "HALTIPIKOMISYONCU",
+    halMasraflari: [{ ad: "Komisyon", tutar: 100, kdvOrani: 20 }, { ad: "Navlun", tutar: 50 }],
+    satirlar: [{ ad: "Domates", miktar: 10, birimFiyat: 50, kdvOrani: 1, kunyeNo: "K-1", malSahibi: "Ali Veli" }],
+  });
+  const f = parser.parse(xml).Invoice;
+  assert.equal(f.AllowanceCharge.length, 2);
+  assert.equal(f.AllowanceCharge[0].AllowanceChargeReason, "Komisyon");
+  assert.equal(f.AllowanceCharge[0].ChargeIndicator, "true");
+  assert.throws(() => buildInvoiceXml({ ...temel(), senaryo: "HKS", faturaTipi: "HALTIPIKOMISYONCU", halMasraflari: [{ ad: "", tutar: 5 }] }), /açıklama zorunludur/);
+});
+
+test("belge seviyesindeki muafiyet sebebi, gerekçesiz istisna grubuna yazılır", () => {
+  const { xml } = buildInvoiceXml({
+    ...temel(), faturaTipi: "ISTISNA", muafiyetSebebi: "Külçe altın teslimi",
+    satirlar: [{ ad: "Külçe", miktar: 1, birimFiyat: 1000, kdvOrani: 0, istisnaKodu: "229" }],
+  });
+  assert.ok(xml.includes("<cbc:TaxExemptionReason>Külçe altın teslimi</cbc:TaxExemptionReason>"));
+});
+
+test("tevkifat ve istisna aynı satırda taşınmaz (20.09.2026 kuralı)", () => {
+  // Tevkifatlı satırda KDV > 0 olduğu için istisna kodu zaten reddedilir
+  assert.throws(() => buildInvoiceXml({
+    ...temel(), faturaTipi: "TEVKIFAT",
+    satirlar: [{ ad: "İşçilik", miktar: 1, birimFiyat: 1000, kdvOrani: 20, istisnaKodu: "229", tevkifatKodu: "616", tevkifatOrani: 50 }],
+  }), /KDV istisnası bildirilmiş/);
+  // İstisna tipli faturada tevkifat verilirse tip uyuşmazlığı hatası alınır
+  assert.throws(() => buildInvoiceXml({
+    ...temel(), faturaTipi: "ISTISNA",
+    satirlar: [{ ad: "Külçe", miktar: 1, birimFiyat: 1000, kdvOrani: 0, istisnaKodu: "229", tevkifatKodu: "616", tevkifatOrani: 50 }],
+  }), /tipi TEVKIFAT olmalıdır|KDV yokken tevkifat/);
+});
