@@ -299,6 +299,8 @@ export interface IceCariAdres {
   PostaKodu?: string;
   Eposta?: string;
   Telefon?: string;
+  /** Vergi dairesi: UBL'de PartyTaxScheme/TaxScheme/Name; ICE kayıtlı cari kaydında varsa oradan */
+  VergiDairesi?: string;
 }
 
 /**
@@ -339,7 +341,9 @@ export const getMusteriCariAdresleri = async (
     // Metot ICE dokümanında yok; 17.09.2026'da canlı hesapta filtresiz sorguda bile
     // açıklamasız `Success=false` döndü (servis hesapta kapalı). Bu yüzden tek kaynak değildir.
     mesaj: data?.ResponseMessage ? String(data.ResponseMessage) : basarili ? "" : "ICE açıklamasız başarısız döndü",
-    adresler: cariler.flatMap((c) => toArray<IceCariAdres>(c?.Adres_List?.Musteri_Cari_Adres)),
+    // Vergi dairesi cari düzeyinde gelebilir (alan adı ICE dokümanında yok; bulunamazsa boş kalır)
+    adresler: cariler.flatMap((c) => toArray<IceCariAdres>(c?.Adres_List?.Musteri_Cari_Adres).map((a) => ({
+      ...a, VergiDairesi: a?.VergiDairesi || c?.VergiDairesi || c?.Vergi_Dairesi || c?.TaxOffice || "" }))),
     donenCari: donen.length,
     eslesenCari: cariler.length,
   };
@@ -395,6 +399,7 @@ export const ublTarafAdresi = (xml: string, vknTckn: string, etiket: string): Ic
       Ulke: metin(adres.Country?.Name),
       Eposta: metin(party.Contact?.ElectronicMail),
       Telefon: metin(party.Contact?.Telephone),
+      VergiDairesi: metin(toArray<any>(party.PartyTaxScheme)[0]?.TaxScheme?.Name),
     };
     return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde ? sonuc : null;
   }

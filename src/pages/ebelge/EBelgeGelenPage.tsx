@@ -99,7 +99,7 @@ const EBelgeGelenPage: React.FC = () => {
   return (
     <div className="ebelge-gelen-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="E- Belge Gelen Kutusu"
+        pageTitle="e-Belge Gelen Kutusu"
         pageIcon={<IconInbox size={22} className="text-primary" />}
         onRefresh={() => listeYukle(sayfa)}
         onSearch={() => {

@@ -170,7 +170,7 @@ const EBelgeSettingsPage: React.FC = () => {
   return (
     <div className="ebelge-ayarlari-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="E- Belge Bağlantı Ayarları"
+        pageTitle="e-Belge Bağlantı Ayarları"
         pageIcon={<IconFileCertificate size={22} className="text-primary" />}
         onSave={handleSave}
         onRefresh={() => {

@@ -182,7 +182,7 @@ const EBelgeHomePage: React.FC = () => {
   return (
     <div className="ebelge-home-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="E- Belge"
+        pageTitle="e-Belge"
         pageIcon={<IconFileCertificate size={22} className="text-primary" />}
         onRefresh={durumYukle}
         disabled={yukleniyor}

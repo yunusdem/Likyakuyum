@@ -71,7 +71,7 @@ const quickActions = [
     icon: <IconArrowsExchange size={18} strokeWidth={2} className="text-purple" style={{ color: "#7c3aed" }} />,
   },
   {
-    title: "E-Belge",
+    title: "e-Belge",
     to: "/e-belge",
     icon: <IconFileCertificate size={18} strokeWidth={2} className="text-primary" />,
   },

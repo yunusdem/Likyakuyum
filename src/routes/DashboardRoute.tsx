@@ -145,12 +145,12 @@ export const DashboardMenu: MenuItemType[] = [
     ],
   },
 
-  // H- Belge / Fiş PDF (alış-satış fişi belgesi; docs/belgeverapor.md)
+  // H- Belge → e-Belge ana sayfası (eski "Belge / Fiş PDF" sayfası kaldırıldı)
   {
     id: uuid(),
-    title: "H- Belge / Fiş PDF",
+    title: "H- Belge",
     icon: <IconFileTypePdf size={18} />,
-    link: "belge",
+    link: "e-belge",
   },
 
   // I- Etiket İşlemleri

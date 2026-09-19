@@ -100,6 +100,8 @@ export interface EbelgeAliciAdres {
   postaKodu: string;
   eposta: string;
   telefon: string;
+  /** ICE kayıtlı cariden ya da önceki belgenin UBL'sinden; yoksa boş */
+  vergiDairesi: string;
 }
 
 /**
@@ -691,6 +693,7 @@ export class EbelgeService {
         postaKodu: m(a.PostaKodu),
         eposta: m(a.Eposta),
         telefon: m(a.Telefon),
+        vergiDairesi: m(a.VergiDairesi),
       }))
       .filter((a) => a.adres || a.il || a.ilce);
 

@@ -19,7 +19,6 @@ import KurFiyatListesiPage from "./pages/kur/KurFiyatListesiPage";
 import PanoTanimiPage from "./pages/kur/PanoTanimiPage";
 import PanoPage from "./pages/kur/PanoPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
-import BelgePage, { BelgeYonlendir } from "./pages/belge/BelgePage";
 import RaporPage from "./pages/rapor/RaporPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
@@ -205,8 +204,9 @@ export default function App() {
             <Route path="tanimlar/pano-tanimi" element={<PanoTanimiPage />} />
             <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
             <Route path="masak" element={<MasakListsPage />} />
-            <Route path="belge" element={<BelgePage />} />
-            <Route path="raporlar/belge" element={<BelgeYonlendir />} />
+            {/* Eski "Belge / Fiş PDF" adresleri e-Belge ana sayfasına gider */}
+            <Route path="belge" element={<Navigate to="/e-belge" replace />} />
+            <Route path="raporlar/belge" element={<Navigate to="/e-belge" replace />} />
             <Route path="raporlar/:yol" element={<RaporPage />} />
             <Route path="banka/hesap-kartlari" element={<BankaHesapKartiPage />} />
             <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />

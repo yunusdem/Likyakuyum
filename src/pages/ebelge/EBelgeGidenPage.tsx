@@ -230,7 +230,7 @@ const EBelgeGidenPage: React.FC = () => {
   return (
     <div className="ebelge-giden-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="E- Belge Giden Kutusu"
+        pageTitle="e-Belge Giden Kutusu"
         pageIcon={<IconSend size={22} className="text-primary" />}
         onRefresh={() => listeYukle(sayfa)}
         onPrint={() => window.print()}

@@ -103,6 +103,8 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [mukellefSorgulaniyor, setMukellefSorgulaniyor] = useState(false);
   /** Sonucu ekranda duran numara. Numara değişince tür seçimi geçersizleşir. */
   const [sorgulananVkn, setSorgulananVkn] = useState("");
+  /** Son mükellef sorgusunun sonucu (null = sorgulanmadı); kullanıcı türü elle değiştirirse uyarı için */
+  const [gibMukellefMi, setGibMukellefMi] = useState<boolean | null>(null);
   /** Otomatik sorgunun aynı numara için tekrar tekrar denenmesini engeller. */
   const otomatikDenenen = useRef("");
   /** Geç dönen eski sorgunun yeni sonucu ezmesini engeller. */
@@ -185,6 +187,7 @@ const EBelgeDogrulaPage: React.FC = () => {
     yaz(a.adres, "adres", setAliciAdres);
     yaz(a.il, "il", setAliciIl);
     yaz(a.ilce, "ilçe", setAliciIlce);
+    yaz(a.vergiDairesi || "", "vergi dairesi", setAliciVd);
     if (a.eposta) setAliciEposta((o) => { if (o.trim()) return o; doldurulan.push("e-posta"); return a.eposta; });
     return doldurulan;
   };
@@ -226,6 +229,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       const cevap = await ebelgeService.mukellefSorgula(vkn);
       if (sira !== sorguSirasi.current) return;
       setSorgulananVkn(vkn);
+      setGibMukellefMi(!!cevap.mukellefMi);
       // Güncel senaryo ref'ten okunur: otomatik sorgu eski render'ın kapanışıyla çalışabilir.
       if (!cevap.mukellefMi) setSenaryo("EARSIVFATURA");
       else if (senaryoRef.current === "EARSIVFATURA") setSenaryo("TICARIFATURA");
@@ -556,7 +560,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   return (
     <div className="ebelge-dogrula-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="E- Belge Doğrulama"
+        pageTitle="e-Belge Doğrulama"
         pageIcon={<IconFileCheck size={22} className="text-primary" />}
         onSave={() => void (earsivMi ? yerelTaslakKaydet() : islemYap("taslak"))}
         onNew={() => {
@@ -638,17 +642,21 @@ const EBelgeDogrulaPage: React.FC = () => {
             </Col>
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">Belge Türü</Form.Label>
-              {/* Mükellef sorgusu sonuçlandıysa tür GİB kaydına göre kilitlenir; kullanıcı değiştiremez. */}
+              {/* Tür mükellef sorgusuna göre kendiliğinden seçilir; kullanıcı yine de değiştirebilir, GİB sonucundan farklıysa uyarılır. */}
               <Form.Select
                 size="sm"
                 value={formModu}
-                disabled={!!sorgulananVkn}
-                title={sorgulananVkn ? "Tür, mükellef sorgusunun sonucuna göre belirlendi." : undefined}
+                title={sorgulananVkn ? "Tür, mükellef sorgusunun sonucuna göre seçildi; gerekirse değiştirebilirsiniz." : undefined}
                 onChange={(e) => setSenaryo(EBELGE_SENARYOLAR[e.target.value as EbelgeFormModu][e.target.value === "EFATURA" ? 1 : 0].kod)}
               >
                 <option value="EFATURA">e-Fatura</option>
                 <option value="EARSIV">e-Arşiv</option>
               </Form.Select>
+              {sorgulananVkn && aliciVkn.trim() === sorgulananVkn && gibMukellefMi !== null && (formModu === "EFATURA") !== gibMukellefMi && (
+                <div className="small text-danger mt-1">
+                  {gibMukellefMi ? "GİB: alıcı e-Fatura mükellefi; e-Arşiv düzenlenemez." : "GİB: alıcı e-Fatura mükellefi değil; e-Fatura reddedilebilir."}
+                </div>
+              )}
             </Col>
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">Senaryo</Form.Label>

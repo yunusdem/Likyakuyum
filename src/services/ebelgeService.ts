@@ -315,6 +315,8 @@ export interface EbelgeAliciAdres {
   postaKodu: string;
   eposta: string;
   telefon: string;
+  /** ICE'deki kayıttan ya da önceki belgeden; yoksa boş */
+  vergiDairesi?: string;
 }
 
 export interface EbelgeTaslakSonucu {
