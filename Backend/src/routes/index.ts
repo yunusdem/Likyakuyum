@@ -27,6 +27,7 @@ import bankaRoutes from "./banka.routes.js";
 import kasaRoutes from "./kasa.routes.js";
 import etiketRoutes from "./etiket.routes.js";
 import ayarRoutes from "./ayar.routes.js";
+import perakendeRoutes from "./perakende.routes.js";
 
 const apiRouter = Router();
 
@@ -73,6 +74,8 @@ apiRouter.use("/belge", belgeRoutes);
 apiRouter.use("/rapor", raporRoutes);
 apiRouter.use("/sarraf-fis", sarrafFisRoutes);
 apiRouter.use("/vezne/sarraf-fis", sarrafFisRoutes);
+apiRouter.use("/perakende", perakendeRoutes);
+apiRouter.use("/vezne/perakende", perakendeRoutes);
 
 export default apiRouter;
 
