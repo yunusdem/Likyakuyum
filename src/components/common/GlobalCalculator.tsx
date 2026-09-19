@@ -209,19 +209,28 @@ const GlobalCalculator: React.FC = () => {
     <div className="gc-root" role="dialog" aria-label="Hesap makinesi">
       <style>{`
         .gc-root .gc-box{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2000;width:320px;max-width:calc(100vw - 32px);
-          background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid var(--bs-border-color);border-radius:var(--bs-border-radius-lg,.5rem);
+          background:#ffffff;color:#212529;opacity:1;isolation:isolate;border:1px solid var(--bs-border-color);border-radius:var(--bs-border-radius-lg,.5rem);
           box-shadow:0 .75rem 2rem rgba(0,0,0,.25);user-select:none;}
         .gc-root .gc-head{display:flex;align-items:center;justify-content:space-between;padding:.5rem .75rem;cursor:move;
-          border-bottom:1px solid var(--bs-border-color);background:var(--bs-tertiary-bg);border-radius:var(--bs-border-radius-lg,.5rem) var(--bs-border-radius-lg,.5rem) 0 0;}
+          border-bottom:1px solid var(--bs-border-color);background:#f1f3f5;border-radius:var(--bs-border-radius-lg,.5rem) var(--bs-border-radius-lg,.5rem) 0 0;}
         .gc-root .gc-title{font-weight:600;font-size:.9rem;}
         .gc-root .gc-screen{margin:.75rem;padding:.5rem .75rem;border:1px solid var(--bs-border-color);border-radius:var(--bs-border-radius);
-          background:var(--bs-secondary-bg);text-align:right;min-height:64px;}
+          background:#f8f9fa;text-align:right;min-height:64px;}
         .gc-root .gc-hist{font-size:.75rem;color:var(--bs-secondary-color);min-height:1rem;}
         .gc-root .gc-val{font-size:1.6rem;font-weight:600;word-break:break-all;line-height:1.2;}
         .gc-root .gc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;padding:0 .75rem .75rem;}
-        .gc-root .gc-btn{padding:.55rem 0;font-weight:500;border:1px solid var(--bs-border-color);}
+        .gc-root .gc-btn{padding:.55rem 0;font-weight:500;border:1px solid #dee2e6;opacity:1;}
+        .gc-root .gc-btn.btn-light{background:#f1f3f5;color:#212529;}
+        .gc-root .gc-btn[class*="btn-outline-"]:not(:hover){background:#ffffff;}
+        .gc-root .gc-backdrop{position:fixed;inset:0;z-index:1999;background:rgba(0,0,0,.35);}
+        [data-bs-theme="dark"] .gc-root .gc-box{background:#1e2227;color:#e9ecef;}
+        [data-bs-theme="dark"] .gc-root .gc-head{background:#2a2f35;}
+        [data-bs-theme="dark"] .gc-root .gc-screen{background:#15181c;}
+        [data-bs-theme="dark"] .gc-root .gc-btn.btn-light{background:#2a2f35;color:#e9ecef;}
+        [data-bs-theme="dark"] .gc-root .gc-btn[class*="btn-outline-"]:not(:hover){background:#1e2227;}
         .gc-root .gc-foot{display:flex;gap:.5rem;justify-content:flex-end;padding:.6rem .75rem;border-top:1px solid var(--bs-border-color);}
       `}</style>
+      <div className="gc-backdrop" onMouseDown={close} />
       <div className="gc-box" ref={boxRef} style={style}>
         <div className="gc-head" onMouseDown={startDrag}>
           <span className="gc-title"><IconCalculator size={16} className="me-1" />Hesap makinesi</span>
