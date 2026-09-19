@@ -405,7 +405,7 @@ export const dogrulaGirdi = (girdi: UblFaturaGirdi): void => {
 
   // İade faturasında dayanak fatura zorunlu
   if (iadeTipiMi(girdi.faturaTipi)) {
-    const iadeProfilleri: FaturaSenaryo[] = ["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"];
+    const iadeProfilleri: FaturaSenaryo[] = ["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"];
     if (!iadeProfilleri.includes(girdi.senaryo)) {
       throw ApiError.badRequest(`${girdi.faturaTipi} fatura tipi ${girdi.senaryo} profilinde kullanılamaz.`);
     }

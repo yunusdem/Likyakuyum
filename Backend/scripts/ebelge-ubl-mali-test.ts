@@ -131,7 +131,9 @@ test("14.09.2026: 308/339 yalnızca YATIRIMTESVIK profilinde", () => {
 test("14.09.2026: IADE+KAMU ve TEKNOLOJIDESTEK+EARSIVFATURA profil kuralları", () => {
   const iadeFaturalar = [{ belgeNo: "ABC2026000000002", tarih: "2026-01-01" }];
   assert.doesNotThrow(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE", senaryo: "KAMU", iadeFaturalar }));
-  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE", senaryo: "TICARIFATURA", iadeFaturalar }), /IADE.*TICARIFATURA/);
+  // 20.09.2026: ICE portalinde Ticari Fatura tip listesinde İADE de var; 14.09'daki kısıt kaldırıldı.
+  assert.doesNotThrow(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE", senaryo: "TICARIFATURA", iadeFaturalar }));
+  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "IADE", senaryo: "IHRACAT", iadeFaturalar }), /IADE.*IHRACAT/);
   assert.doesNotThrow(() => buildInvoiceXml({ ...temel(), faturaTipi: "TEKNOLOJIDESTEK", senaryo: "EARSIVFATURA" }));
   assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "TEKNOLOJIDESTEK", senaryo: "TEMELFATURA" }), /yalnızca EARSIVFATURA/);
 });
@@ -389,7 +391,8 @@ test("tevkifat iade: hem dayanak fatura hem tevkifat bloğu yazılır", () => {
 test("tevkifat iade: dayanak, tevkifat ve profil kuralları", () => {
   assert.throws(() => buildInvoiceXml({ ...tevkifatIade(), iadeFaturalar: [] }), /iade edilen fatura bilgisi zorunludur/);
   assert.throws(() => buildInvoiceXml({ ...tevkifatIade(), satirlar: temel().satirlar }), /en az bir satırda tevkifat/);
-  assert.throws(() => buildInvoiceXml({ ...tevkifatIade(), senaryo: "TICARIFATURA" }), /TICARIFATURA profilinde kullanılamaz/);
+  assert.doesNotThrow(() => buildInvoiceXml({ ...tevkifatIade(), senaryo: "TICARIFATURA" }));
+  assert.throws(() => buildInvoiceXml({ ...tevkifatIade(), senaryo: "IHRACAT" }), /IHRACAT profilinde kullanılamaz/);
 });
 
 /* ================================================================ karma */

@@ -182,11 +182,11 @@ const TIP_ADLARI: Record<EbelgeFaturaTipi, string> = {
 const tipler = (...k: EbelgeFaturaTipi[]) => k.map((kod) => ({ kod, ad: TIP_ADLARI[kod] }));
 /**
  * Senaryoya göre seçilebilir fatura tipleri (docs/ebelge-revizyon.md K2).
- * İade ve tevkifat iade TICARIFATURA profilinde kullanılamaz. İhraç kayıtlı, doğrulanmış örnek UBL gelene kadar listede yoktur.
+ * Liste ICE portalindeki tip listeleriyle birebirdir. İhraç kayıtlı, doğrulanmış örnek UBL gelene kadar açılmadı.
  */
 export const EBELGE_FATURA_TIPLERI: Record<EbelgeSenaryo, { kod: EbelgeFaturaTipi; ad: string }[]> = {
   TEMELFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "SGK", "TEVKIFATIADE"),
-  TICARIFATURA: tipler("SATIS", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "SGK"),
+  TICARIFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "SGK", "TEVKIFATIADE"),
   KAMU: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "SGK", "TEVKIFATIADE"),
   YATIRIMTESVIK: tipler("SATIS", "IADE", "ISTISNA"),
   // ICE portalinde bu senaryolarda fatura tipi listesi boştur; tip SATIS olarak gönderilir.

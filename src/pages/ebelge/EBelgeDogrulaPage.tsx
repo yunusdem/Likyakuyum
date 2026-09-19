@@ -335,8 +335,8 @@ const EBelgeDogrulaPage: React.FC = () => {
   const gonderilecekSatirlar = (): EbelgeSatir[] => satirlar.map((s) => ({
     ...s,
     // Tevkifatlı satırda istisna kodu taşınmaz; KDV'si 0 olan satırda kod zorunlu olduğu için korunur.
-    istisnaKodu: tevkifatliMi && (s.kdvOrani || 0) !== 0 ? undefined : s.istisnaKodu,
-    istisnaGerekcesi: tevkifatliMi && (s.kdvOrani || 0) !== 0 ? undefined : s.istisnaGerekcesi,
+    istisnaKodu: istisnaTipiMi || (s.kdvOrani || 0) === 0 ? s.istisnaKodu : undefined,
+    istisnaGerekcesi: istisnaTipiMi || (s.kdvOrani || 0) === 0 ? s.istisnaGerekcesi : undefined,
     tevkifatKodu: tevkifatliMi ? s.tevkifatKodu : undefined,
     tevkifatOrani: tevkifatliMi ? s.tevkifatOrani : undefined,
     ozelMatrahKodu: ozelMatrahMi ? s.ozelMatrahKodu?.trim() || undefined : undefined,
@@ -419,7 +419,13 @@ const EBelgeDogrulaPage: React.FC = () => {
    * kalmışsa GİB kod ister, o yüzden kolon geri gelir ve kullanıcı satırı düzeltebilir.
    */
   const sifirKdvliSatirVar = satirlar.some((s) => (s.kdvOrani || 0) === 0);
-  const istisnaKolonuGorunur = !tevkifatliMi || sifirKdvliSatirVar;
+  /**
+   * İstisna kodu kolonu yalnızca istisna nitelikli fatura tiplerinde açılır (yönetici isteği 20.09.2026).
+   * Tek kural dışı: KDV'si 0 olan satır varsa GİB kod istediği için kolon geri gelir, yoksa kullanıcı
+   * "istisna kodu zorunludur" hatasını düzeltebileceği alanı bulamaz.
+   */
+  const istisnaTipiMi = faturaTipi === "ISTISNA" || faturaTipi === "YTBISTISNA" || faturaTipi === "IHRACKAYITLI";
+  const istisnaKolonuGorunur = istisnaTipiMi || sifirKdvliSatirVar;
 
   const ihracatMi = ebelgeIhracatMi(senaryo);
   const turistMi = ebelgeTuristMi(senaryo);
@@ -539,7 +545,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       setAlertInfo({ type: "danger", message: "308 ve 339 kodları yalnızca Yatırım Teşvik profilinde kullanılabilir." });
       return null;
     }
-    if (iadeMi && !["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
+    if (iadeMi && !["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
       setAlertInfo({ type: "danger", message: `İade faturası ${senaryo} profilinde kullanılamaz.` });
       return null;
     }
