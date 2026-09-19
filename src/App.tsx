@@ -48,6 +48,7 @@ import EBelgeKaynakPage from "./pages/ebelge/EBelgeKaynakPage";
 import EBelgeMustahsilPage from "./pages/ebelge/EBelgeMustahsilPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import LoginPage from "./pages/auth/LoginPage";
+import LandingPage from "./pages/LandingPage";
 
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -114,13 +115,13 @@ export default function App() {
         <Routes>
 
         {/* Public Routes */}
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/sign-in" element={<Navigate to="/login" replace />} />
 
         {/* Protected Dashboard Routes - Requires Valid JWT Token */}
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<DashboardLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<HomePage />} />
             <Route path="ayarlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
             <Route path="tanimlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
