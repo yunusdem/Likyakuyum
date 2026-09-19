@@ -537,7 +537,7 @@ export const ProductDefinitionsPage: React.FC = () => {
                           Sıra No
                         </Form.Label>
                         <Col>
-                          <InputGroup style={{ maxWidth: "80px" }}>
+                          <InputGroup style={{ width: "135px" }} className="flex-nowrap">
                             <Form.Control
                               type="text"
                               inputMode="numeric"
@@ -552,10 +552,11 @@ export const ProductDefinitionsPage: React.FC = () => {
                                 handleInputChange("siraNo", isNaN(parsed) ? 0 : parsed);
                               }}
                               className="fw-bold text-end font-monospace"
+                              style={{ width: "65px", minWidth: "55px" }}
                             />
                             <Button
                               variant="outline-secondary"
-                              className="px-2"
+                              className="px-2 d-flex align-items-center justify-content-center"
                               tabIndex={-1}
                               onClick={() => {
                                 const current = parseInt(String(formData.siraNo), 10) || 0;
@@ -567,7 +568,7 @@ export const ProductDefinitionsPage: React.FC = () => {
                             </Button>
                             <Button
                               variant="outline-secondary"
-                              className="px-2"
+                              className="px-2 d-flex align-items-center justify-content-center"
                               tabIndex={-1}
                               onClick={() => {
                                 const current = parseInt(String(formData.siraNo), 10) || 0;
