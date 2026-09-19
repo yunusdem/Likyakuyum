@@ -196,11 +196,11 @@ export class UserSqlRepository {
         movementType: String(entity.HAREKET_TIPI ?? "1"),
       },
 
-      // Stat codes
-      buyStatCode: entity.ALIS_ISTATISTIK_ID != null ? String(entity.ALIS_ISTATISTIK_ID) : "",
-      sellStatCode: entity.SATIS_ISTATISTIK_ID != null ? String(entity.SATIS_ISTATISTIK_ID) : "",
-      arbitrageBuyStatCode: entity.ARBITRAJ_ALIS_ISTATISTIK_ID != null ? String(entity.ARBITRAJ_ALIS_ISTATISTIK_ID) : "",
-      arbitrageSellStatCode: entity.ARBITRAJ_SATIS_ISTATISTIK_ID != null ? String(entity.ARBITRAJ_SATIS_ISTATISTIK_ID) : "",
+      // Stat codes (Prefer JOINed KOD if available, else string ID)
+      buyStatCode: (entity as any).ALIS_ISTATISTIK_KOD ? String((entity as any).ALIS_ISTATISTIK_KOD).trim() : (entity.ALIS_ISTATISTIK_ID != null ? String(entity.ALIS_ISTATISTIK_ID) : ""),
+      sellStatCode: (entity as any).SATIS_ISTATISTIK_KOD ? String((entity as any).SATIS_ISTATISTIK_KOD).trim() : (entity.SATIS_ISTATISTIK_ID != null ? String(entity.SATIS_ISTATISTIK_ID) : ""),
+      arbitrageBuyStatCode: (entity as any).ARBITRAJ_ALIS_ISTATISTIK_KOD ? String((entity as any).ARBITRAJ_ALIS_ISTATISTIK_KOD).trim() : (entity.ARBITRAJ_ALIS_ISTATISTIK_ID != null ? String(entity.ARBITRAJ_ALIS_ISTATISTIK_ID) : ""),
+      arbitrageSellStatCode: (entity as any).ARBITRAJ_SATIS_ISTATISTIK_KOD ? String((entity as any).ARBITRAJ_SATIS_ISTATISTIK_KOD).trim() : (entity.ARBITRAJ_SATIS_ISTATISTIK_ID != null ? String(entity.ARBITRAJ_SATIS_ISTATISTIK_ID) : ""),
 
       // E-Document & Masak
       integratorUsername: entity.ENTEGRATOR_KULLANICI_ADI || "",
@@ -247,6 +247,53 @@ export class UserSqlRepository {
     };
   }
 
+  private static readonly BASE_SELECT = `
+    SELECT 
+      U.*,
+      I_ALIS.KOD AS ALIS_ISTATISTIK_KOD,
+      I_SATIS.KOD AS SATIS_ISTATISTIK_KOD,
+      I_ARB_ALIS.KOD AS ARBITRAJ_ALIS_ISTATISTIK_KOD,
+      I_ARB_SATIS.KOD AS ARBITRAJ_SATIS_ISTATISTIK_KOD,
+      V.KOD AS VEZNE_KOD
+    FROM [dbo].[TODVZ_KULLANICI] U
+    LEFT JOIN [dbo].[TODVZ_ISTATISTIK] I_ALIS ON I_ALIS.ISTATISTIK_ID = U.ALIS_ISTATISTIK_ID
+    LEFT JOIN [dbo].[TODVZ_ISTATISTIK] I_SATIS ON I_SATIS.ISTATISTIK_ID = U.SATIS_ISTATISTIK_ID
+    LEFT JOIN [dbo].[TODVZ_ISTATISTIK] I_ARB_ALIS ON I_ARB_ALIS.ISTATISTIK_ID = U.ARBITRAJ_ALIS_ISTATISTIK_ID
+    LEFT JOIN [dbo].[TODVZ_ISTATISTIK] I_ARB_SATIS ON I_ARB_SATIS.ISTATISTIK_ID = U.ARBITRAJ_SATIS_ISTATISTIK_ID
+    LEFT JOIN [dbo].[TODVZ_VEZNE] V ON V.VEZNE_ID = U.VEZNE_ID
+  `;
+
+  /**
+   * Resolves a valid ISTATISTIK_ID from [dbo].[TODVZ_ISTATISTIK] by kod or id
+   */
+  public static async resolveValidStatId(pool: sql.ConnectionPool, inputStat: any): Promise<number | null> {
+    if (inputStat === undefined || inputStat === null || String(inputStat).trim() === "") {
+      return null;
+    }
+    const rawStr = String(inputStat).trim();
+    const rawId = parseInt(rawStr, 10);
+
+    // 1. Önce KOD olarak tam eşleşme ara
+    const checkKod = await pool.request()
+      .input("chkKod", sql.VarChar(50), rawStr)
+      .query("SELECT TOP 1 [ISTATISTIK_ID] FROM [dbo].[TODVZ_ISTATISTIK] WHERE UPPER(LTRIM(RTRIM([KOD]))) = UPPER(LTRIM(RTRIM(@chkKod)))");
+    if (checkKod.recordset && checkKod.recordset.length > 0) {
+      return checkKod.recordset[0].ISTATISTIK_ID;
+    }
+
+    // 2. ID olarak eşleşme ara
+    if (!isNaN(rawId) && rawId > 0) {
+      const checkId = await pool.request()
+        .input("chkId", sql.Int, rawId)
+        .query("SELECT TOP 1 [ISTATISTIK_ID] FROM [dbo].[TODVZ_ISTATISTIK] WHERE [ISTATISTIK_ID] = @chkId");
+      if (checkId.recordset && checkId.recordset.length > 0) {
+        return rawId;
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Fetches all users from [dbo].[TODVZ_KULLANICI] in the target database
    */
@@ -254,72 +301,8 @@ export class UserSqlRepository {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       const result = await pool.request().query<TodvzKullaniciEntity>(`
-        SELECT 
-          [KULLANICI_ID]
-          ,[AD]
-          ,[SIFRE]
-          ,[SISTEM_YONETICISI]
-          ,[YAZICI_ID]
-          ,[VEZNE_ID]
-          ,[KUR_YETKISI]
-          ,[KUR_TOLERANS_ORANI]
-          ,[KOMISYON_ALMA_YETKISI]
-          ,[PROGRAM_ZEMIN_RENGI]
-          ,[PROGRAM_YAZI_RENGI]
-          ,[MENU_FONTU]
-          ,[MENU_BASLIK_FONTU]
-          ,[PROGRAM_GRID_BASLIK_RENGI]
-          ,[MENU_ARKA_PLAN_RENGI]
-          ,[ANA_MENU_YETKISI]
-          ,[VEZNE_ISLEMLERI_YETKISI]
-          ,[KASA_ISLEMLERI_YETKISI]
-          ,[KUR_ISLEMLERI_YETKISI]
-          ,[CARI_ISLEMLER_YETKISI]
-          ,[YONETICI_ISLEMLERI_YETKISI]
-          ,[MUHASEBE_YETKISI]
-          ,[RAPORLAR_YETKISI]
-          ,[TEKNIK_ISLEMLER_YETKISI]
-          ,[ALAN_ISLEMLERI_YETKISI]
-          ,[TARIH_DEGISTIRME_YETKISI]
-          ,[PROGRAM_GRID_ZEMIN_RENGI]
-          ,[PROGRAM_PENCERE_ZEMIN_RENGI]
-          ,[PROGRAM_PENCERE_YAZI_RENGI]
-          ,[PROGRAM_PENCERE_FOKUS_RENGI]
-          ,[DIALOG_FONTU]
-          ,[GRID_FONTU]
-          ,[DIKEY_ZOOM]
-          ,[YATAY_ZOOM]
-          ,[ALIS_FISI_BASLIK_ZEMIN_RENGI]
-          ,[ALIS_FISI_BASLIK_YAZI_RENGI]
-          ,[SATIS_FISI_BASLIK_ZEMIN_RENGI]
-          ,[SATIS_FISI_BASLIK_YAZI_RENGI]
-          ,[FIS_NO_DEGISTIRME_YETKISI]
-          ,[VEZNE_BAKIYE_KONTROLU]
-          ,[KOMISYON_ORANI]
-          ,[HAREKET_TIPI_VAR]
-          ,[HAREKET_TIPI]
-          ,[CARI_BAKIYE_GOREBILIR]
-          ,[ACIK_VADELI_ISLEM_GOREBILIR]
-          ,[FIS_BANKA_HESABI_SECME_YETKISI]
-          ,[FIS_TUTAR_DEGISTIRME_YETKISI]
-          ,[FIS_GOSTERME_GUN_SAYISI]
-          ,[KONSOLIDE_RAPORLAR_YETKISI]
-          ,[ALIS_ISTATISTIK_ID]
-          ,[SATIS_ISTATISTIK_ID]
-          ,[ARBITRAJ_ALIS_ISTATISTIK_ID]
-          ,[ARBITRAJ_SATIS_ISTATISTIK_ID]
-          ,[ENTEGRATOR_KULLANICI_ADI]
-          ,[ENTEGRATOR_KULLANICI_SIFRESI]
-          ,[E_BELGE_KULLANILIYOR]
-          ,[MASAK_KULLANICI_ADI]
-          ,[MASAK_KULLANICI_SIFRESI]
-          ,[MASAK_UYARISI_VERSIN]
-          ,[SUPHELI_ISLEMLER_YETKILISI]
-          ,[SAPMA_UYARISI_VERILMESIN]
-          ,[GISE_KURU_DISINDA_OLABILIR]
-          ,[CAPRAZ_KUR_KONTROLU_YOK]
-        FROM [dbo].[TODVZ_KULLANICI]
-        ORDER BY [KULLANICI_ID] ASC
+        ${UserSqlRepository.BASE_SELECT}
+        ORDER BY U.[KULLANICI_ID] ASC
       `);
 
       return result.recordset.map(UserSqlRepository.mapEntityToModel);
@@ -339,9 +322,8 @@ export class UserSqlRepository {
       request.input("userId", sql.Int, toInt(id));
 
       const result = await request.query<TodvzKullaniciEntity>(`
-        SELECT TOP 1 *
-        FROM [dbo].[TODVZ_KULLANICI]
-        WHERE [KULLANICI_ID] = @userId
+        ${UserSqlRepository.BASE_SELECT}
+        WHERE U.[KULLANICI_ID] = @userId
       `);
 
       if (!result.recordset || result.recordset.length === 0) {
@@ -365,9 +347,8 @@ export class UserSqlRepository {
       request.input("username", sql.VarChar(50), username.trim());
 
       const result = await request.query<TodvzKullaniciEntity>(`
-        SELECT TOP 1 *
-        FROM [dbo].[TODVZ_KULLANICI]
-        WHERE [AD] = @username
+        ${UserSqlRepository.BASE_SELECT}
+        WHERE U.[AD] = @username
       `);
 
       if (!result.recordset || result.recordset.length === 0) {
@@ -382,7 +363,6 @@ export class UserSqlRepository {
       logger.error(`UserSqlRepository.findByUsername(${username}) error:`, error?.message || error);
       throw error;
     }
-
   }
 
   /**
@@ -504,10 +484,15 @@ export class UserSqlRepository {
       request.input("FIS_TUTAR_DEGISTIRME_YETKISI", sql.Bit, toBit(user.hasSlipAmountChangePerm));
       request.input("FIS_GOSTERME_GUN_SAYISI", sql.Int, toInt(user.displayDays, 0));
       request.input("KONSOLIDE_RAPORLAR_YETKISI", sql.VarChar(16), (menu?.consolidatedReports || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
-      request.input("ALIS_ISTATISTIK_ID", sql.Int, toStatId(user.buyStatCode));
-      request.input("SATIS_ISTATISTIK_ID", sql.Int, toStatId(user.sellStatCode));
-      request.input("ARBITRAJ_ALIS_ISTATISTIK_ID", sql.Int, toStatId(user.arbitrageBuyStatCode));
-      request.input("ARBITRAJ_SATIS_ISTATISTIK_ID", sql.Int, toStatId(user.arbitrageSellStatCode));
+      const alisStatId = await UserSqlRepository.resolveValidStatId(pool, user.buyStatCode);
+      const satisStatId = await UserSqlRepository.resolveValidStatId(pool, user.sellStatCode);
+      const arbAlisStatId = await UserSqlRepository.resolveValidStatId(pool, user.arbitrageBuyStatCode);
+      const arbSatisStatId = await UserSqlRepository.resolveValidStatId(pool, user.arbitrageSellStatCode);
+
+      request.input("ALIS_ISTATISTIK_ID", sql.Int, alisStatId);
+      request.input("SATIS_ISTATISTIK_ID", sql.Int, satisStatId);
+      request.input("ARBITRAJ_ALIS_ISTATISTIK_ID", sql.Int, arbAlisStatId);
+      request.input("ARBITRAJ_SATIS_ISTATISTIK_ID", sql.Int, arbSatisStatId);
       request.input("ENTEGRATOR_KULLANICI_ADI", sql.VarChar(200), (user.integratorUsername || "").slice(0, 200));
       request.input("ENTEGRATOR_KULLANICI_SIFRESI", sql.VarChar(30), (user.integratorPassword || "").slice(0, 30));
       request.input("E_BELGE_KULLANILIYOR", sql.Bit, toBit(user.isEDocumentActive));
@@ -557,7 +542,9 @@ export class UserSqlRepository {
           @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK
         );
 
-        SELECT TOP 1 * FROM [dbo].[TODVZ_KULLANICI] WHERE [KULLANICI_ID] = SCOPE_IDENTITY();
+        DECLARE @NEW_ID INT = SCOPE_IDENTITY();
+        ${UserSqlRepository.BASE_SELECT}
+        WHERE U.[KULLANICI_ID] = @NEW_ID;
       `;
 
 
@@ -637,10 +624,16 @@ export class UserSqlRepository {
       request.input("FIS_TUTAR_DEGISTIRME_YETKISI", sql.Bit, toBit(user.hasSlipAmountChangePerm));
       request.input("FIS_GOSTERME_GUN_SAYISI", sql.Int, toInt(user.displayDays, 0));
       request.input("KONSOLIDE_RAPORLAR_YETKISI", sql.VarChar(16), (menu?.consolidatedReports || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
-      request.input("ALIS_ISTATISTIK_ID", sql.Int, toStatId(user.buyStatCode));
-      request.input("SATIS_ISTATISTIK_ID", sql.Int, toStatId(user.sellStatCode));
-      request.input("ARBITRAJ_ALIS_ISTATISTIK_ID", sql.Int, toStatId(user.arbitrageBuyStatCode));
-      request.input("ARBITRAJ_SATIS_ISTATISTIK_ID", sql.Int, toStatId(user.arbitrageSellStatCode));
+
+      const updateAlisStatId = await UserSqlRepository.resolveValidStatId(pool, user.buyStatCode);
+      const updateSatisStatId = await UserSqlRepository.resolveValidStatId(pool, user.sellStatCode);
+      const updateArbAlisStatId = await UserSqlRepository.resolveValidStatId(pool, user.arbitrageBuyStatCode);
+      const updateArbSatisStatId = await UserSqlRepository.resolveValidStatId(pool, user.arbitrageSellStatCode);
+
+      request.input("ALIS_ISTATISTIK_ID", sql.Int, updateAlisStatId);
+      request.input("SATIS_ISTATISTIK_ID", sql.Int, updateSatisStatId);
+      request.input("ARBITRAJ_ALIS_ISTATISTIK_ID", sql.Int, updateArbAlisStatId);
+      request.input("ARBITRAJ_SATIS_ISTATISTIK_ID", sql.Int, updateArbSatisStatId);
       request.input("ENTEGRATOR_KULLANICI_ADI", sql.VarChar(200), (user.integratorUsername || "").slice(0, 200));
       request.input("ENTEGRATOR_KULLANICI_SIFRESI", sql.VarChar(30), (user.integratorPassword || "").slice(0, 30));
       request.input("E_BELGE_KULLANILIYOR", sql.Bit, toBit(user.isEDocumentActive));
@@ -719,7 +712,8 @@ export class UserSqlRepository {
           [CAPRAZ_KUR_KONTROLU_YOK] = @CAPRAZ_KUR_KONTROLU_YOK
         WHERE [KULLANICI_ID] = @userId;
 
-        SELECT TOP 1 * FROM [dbo].[TODVZ_KULLANICI] WHERE [KULLANICI_ID] = @userId;
+        ${UserSqlRepository.BASE_SELECT}
+        WHERE U.[KULLANICI_ID] = @userId;
       `;
 
       const result = await request.query<TodvzKullaniciEntity>(updateQuery);
@@ -786,7 +780,8 @@ export class UserSqlRepository {
           [SATIS_FISI_BASLIK_YAZI_RENGI] = @SATIS_FISI_BASLIK_YAZI_RENGI
         WHERE [KULLANICI_ID] = @userId;
 
-        SELECT TOP 1 * FROM [dbo].[TODVZ_KULLANICI] WHERE [KULLANICI_ID] = @userId;
+        ${UserSqlRepository.BASE_SELECT}
+        WHERE U.[KULLANICI_ID] = @userId;
       `;
 
       const result = await request.query<TodvzKullaniciEntity>(query);

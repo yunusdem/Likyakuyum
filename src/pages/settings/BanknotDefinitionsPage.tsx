@@ -639,242 +639,249 @@ export const BanknotDefinitionsPage: React.FC = () => {
         }
       `}</style>
 
-      {/* Main Two-Panel Windows Layout Replicating Screenshot */}
-      <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden">
-        <Card.Body className="p-3 bg-body">
-          <Row className="g-3">
-            {/* Left Panel: Currency List Box (Exact layout from Screenshot - Arama kısmı kaldırıldı) */}
-            <Col xs={12} md={5} lg={4} xl={4}>
-              <div className="d-flex flex-column h-100 border rounded-2 bg-white shadow-2xs overflow-hidden">
-                {/* List Box - Doğrudan en üstten başlar */}
-                <div
-                  className="list-group list-group-flush overflow-y-auto flex-grow-1"
-                  style={{ maxHeight: "490px", minHeight: "360px" }}
-                >
-                  {/* Doğrudan yeni para birimi ekleme satırı */}
-                  {isAddingNewCurrency && (
-                    <div
-                      className="p-2 border-bottom shadow-2xs"
-                      style={{
-                        backgroundColor: "#dbeafe",
-                        borderColor: "#93c5fd",
-                        borderLeft: "4px solid #0284c7",
-                      }}
-                    >
-                      <div className="d-flex align-items-center justify-content-between mb-1.5">
-                        <span className="small fw-bold text-primary" style={{ fontSize: "12px" }}>
-                          Yeni Para Birimi
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleCancelNewCurrency}
-                          className="btn btn-sm btn-link p-0 text-muted text-decoration-none"
-                          title="İptal"
-                          style={{ fontSize: "14px", lineHeight: 1 }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <div className="d-flex gap-1">
-                        <Form.Control
-                          ref={newCurrencyKodRef}
-                          size="sm"
-                          maxLength={5}
-                          placeholder="KOD"
-                          value={newCurrencyKod}
-                          onChange={(e) => setNewCurrencyKod(e.target.value.toUpperCase())}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              newCurrencyAdRef.current?.focus();
-                            }
-                          }}
-                          className="fw-bold text-center py-1 px-1 font-monospace"
-                          style={{ width: "65px", fontSize: "12.5px" }}
-                        />
-                        <Form.Control
-                          ref={newCurrencyAdRef}
-                          size="sm"
-                          placeholder="Para birimi adı (Örn: EURO)..."
-                          value={newCurrencyAd}
-                          onChange={(e) => {
-                            setNewCurrencyAd(e.target.value);
-                            if (!newCurrencyKod && e.target.value.length <= 4) {
-                              setNewCurrencyKod(e.target.value.toUpperCase());
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              inputRefs.current[0]?.focus();
-                            }
-                          }}
-                          className="fw-semibold py-1 px-2 flex-grow-1"
-                          style={{ fontSize: "12.5px" }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {loadingCurrencies ? (
-                    <div className="p-4 text-center text-muted">
-                      <Spinner animation="border" size="sm" className="me-2" />
-                      Yükleniyor...
-                    </div>
-                  ) : currencies.length === 0 && !isAddingNewCurrency ? (
-                    <div className="p-4 text-center text-muted small">Para birimi bulunamadı.</div>
-                  ) : (
-                    currencies.map((c) => {
-                      const isSelected = !isAddingNewCurrency && c.id === selectedCurrencyId;
-                      const isCurrencyFocused = isSelected && activeTarget === "currency";
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => handleSelectCurrency(c.id)}
-                          className={`list-group-item list-group-item-action py-2 px-3 d-flex align-items-center justify-content-between border-bottom text-start transition-colors ${
-                            isCurrencyFocused ? "active fw-bold shadow-2xs" : ""
-                          }`}
-                          style={
-                            isSelected
-                              ? {
-                                  backgroundColor: isCurrencyFocused ? "#0284c7" : "#e0f2fe",
-                                  borderColor: isCurrencyFocused ? "#0284c7" : "#bae6fd",
-                                  color: isCurrencyFocused ? "#ffffff" : "#0369a1",
-                                  fontWeight: isCurrencyFocused ? "bold" : "600",
-                                }
-                              : { cursor: "pointer" }
-                          }
-                        >
-                          <span className="text-truncate" style={{ fontSize: "13.5px" }}>
-                            {c.ad}
+      {/* Main Two-Panel Windows Layout - Wide matching ERPToolbar Ribbon */}
+      <div className="w-100">
+        <Card className="shadow-2xs border border-secondary-subtle rounded-3 overflow-hidden">
+          <Card.Body className="p-2.5 bg-body">
+            <div className="d-flex flex-wrap gap-2">
+              {/* Left Panel: Currency List Box */}
+              <div style={{ width: "210px", minWidth: "180px" }}>
+                <div className="d-flex flex-column h-100 border rounded-2 bg-white shadow-2xs overflow-hidden">
+                  {/* List Box */}
+                  <div
+                    className="list-group list-group-flush overflow-y-auto flex-grow-1"
+                    style={{ maxHeight: "320px", minHeight: "240px" }}
+                  >
+                    {/* Doğrudan yeni para birimi ekleme satırı */}
+                    {isAddingNewCurrency && (
+                      <div
+                        className="p-1.5 border-bottom shadow-2xs"
+                        style={{
+                          backgroundColor: "#dbeafe",
+                          borderColor: "#93c5fd",
+                          borderLeft: "3px solid #0284c7",
+                        }}
+                      >
+                        <div className="d-flex align-items-center justify-content-between mb-1">
+                          <span className="small fw-bold text-primary" style={{ fontSize: "11px" }}>
+                            Yeni Para Birimi
                           </span>
-                        </button>
-                      );
-                    })
-                  )}
+                          <button
+                            type="button"
+                            onClick={handleCancelNewCurrency}
+                            className="btn btn-sm btn-link p-0 text-muted text-decoration-none"
+                            title="İptal"
+                            style={{ fontSize: "12px", lineHeight: 1 }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="d-flex gap-1">
+                          <Form.Control
+                            ref={newCurrencyKodRef}
+                            size="sm"
+                            maxLength={5}
+                            placeholder="KOD"
+                            value={newCurrencyKod}
+                            onChange={(e) => setNewCurrencyKod(e.target.value.toUpperCase())}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                newCurrencyAdRef.current?.focus();
+                              }
+                            }}
+                            className="fw-bold text-center py-0.5 px-1 font-monospace"
+                            style={{ width: "55px", fontSize: "11.5px", height: "24px" }}
+                          />
+                          <Form.Control
+                            ref={newCurrencyAdRef}
+                            size="sm"
+                            placeholder="Adı..."
+                            value={newCurrencyAd}
+                            onChange={(e) => {
+                              setNewCurrencyAd(e.target.value);
+                              if (!newCurrencyKod && e.target.value.length <= 4) {
+                                setNewCurrencyKod(e.target.value.toUpperCase());
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                inputRefs.current[0]?.focus();
+                              }
+                            }}
+                            className="fw-semibold py-0.5 px-1.5 flex-grow-1"
+                            style={{ fontSize: "11.5px", height: "24px" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {loadingCurrencies ? (
+                      <div className="p-3 text-center text-muted small">
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        Yükleniyor...
+                      </div>
+                    ) : currencies.length === 0 && !isAddingNewCurrency ? (
+                      <div className="p-3 text-center text-muted small">Para birimi bulunamadı.</div>
+                    ) : (
+                      currencies.map((c) => {
+                        const isSelected = !isAddingNewCurrency && c.id === selectedCurrencyId;
+                        const isCurrencyFocused = isSelected && activeTarget === "currency";
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => handleSelectCurrency(c.id)}
+                            className={`list-group-item list-group-item-action py-1 px-2.5 d-flex align-items-center justify-content-between border-bottom text-start transition-colors ${
+                              isCurrencyFocused ? "active fw-bold shadow-2xs" : ""
+                            }`}
+                            style={
+                              isSelected
+                                ? {
+                                    backgroundColor: isCurrencyFocused ? "#0284c7" : "#e0f2fe",
+                                    borderColor: isCurrencyFocused ? "#0284c7" : "#bae6fd",
+                                    color: isCurrencyFocused ? "#ffffff" : "#0369a1",
+                                    fontWeight: isCurrencyFocused ? "bold" : "600",
+                                  }
+                                : { cursor: "pointer" }
+                            }
+                          >
+                            <span className="text-truncate" style={{ fontSize: "12.5px" }}>
+                              {c.ad}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
-            </Col>
 
-            {/* Right Panel: Banknot Denominations Grid (Exact layout from Screenshot) */}
-            <Col xs={12} md={7} lg={8} xl={8} className="d-flex flex-column">
-              <div className="border rounded-2 bg-white shadow-2xs overflow-hidden flex-grow-1 d-flex flex-column">
-                {/* Grid Table matching Desktop Screenshot (2 columns: # .Banknot and Miktar) */}
-                <div className="table-responsive flex-grow-1 overflow-y-auto" style={{ maxHeight: "460px", minHeight: "360px" }}>
-                  <Table bordered size="sm" className="banknot-grid-table mb-0 align-middle">
-                    <thead className="sticky-top" style={{ top: 0, zIndex: 2, backgroundColor: userHeaderBg }}>
-                      <tr className="small text-nowrap">
-                        <th
-                          style={{
-                            width: "170px",
-                            backgroundColor: userHeaderBg,
-                            color: userHeaderTextColor,
-                            boxShadow: `inset 0 0 0 9999px ${userHeaderBg}`,
-                          }}
-                          className="banknot-th-label text-center fw-bold border-end"
-                        >
-                        </th>
-                        <th
-                          style={{
-                            minWidth: "180px",
-                            backgroundColor: userHeaderBg,
-                            color: userHeaderTextColor,
-                            boxShadow: `inset 0 0 0 9999px ${userHeaderBg}`,
-                          }}
-                          className="banknot-th-miktar text-center fw-bold"
-                        >
-                          Miktar
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loadingBanknotlar ? (
-                        <tr>
-                          <td colSpan={2} className="text-center py-5 text-muted">
-                            <Spinner animation="border" size="sm" className="me-2" />
-                            Banknotlar yükleniyor...
-                          </td>
+              {/* Right Panel: Banknot Denominations Grid (Miktar Tablosu - Dar ve Kompakt) */}
+              <div style={{ width: "230px", minWidth: "200px" }}>
+                <div className="border rounded-2 bg-white shadow-2xs overflow-hidden h-100 d-flex flex-column">
+                  {/* Grid Table */}
+                  <div className="table-responsive flex-grow-1 overflow-y-auto" style={{ maxHeight: "320px", minHeight: "240px" }}>
+                    <Table bordered size="sm" className="banknot-grid-table mb-0 align-middle">
+                      <thead className="sticky-top" style={{ top: 0, zIndex: 2, backgroundColor: userHeaderBg }}>
+                        <tr className="small text-nowrap">
+                          <th
+                            style={{
+                              width: "105px",
+                              backgroundColor: userHeaderBg,
+                              color: userHeaderTextColor,
+                              boxShadow: `inset 0 0 0 9999px ${userHeaderBg}`,
+                              padding: "4px 6px",
+                            }}
+                            className="banknot-th-label text-center fw-bold border-end"
+                          >
+                          </th>
+                          <th
+                            style={{
+                              backgroundColor: userHeaderBg,
+                              color: userHeaderTextColor,
+                              boxShadow: `inset 0 0 0 9999px ${userHeaderBg}`,
+                              padding: "4px 6px",
+                              fontSize: "12px",
+                            }}
+                            className="banknot-th-miktar text-center fw-bold"
+                          >
+                            Miktar
+                          </th>
                         </tr>
-                      ) : rows.length === 0 ? (
-                        <tr>
-                          <td colSpan={2} className="text-center py-5 text-muted small">
-                            Bu para birimine ait banknot kaydı bulunamadı.
-                          </td>
-                        </tr>
-                      ) : (
-                        rows.map((row, index) => {
-                          const isRowSelected = activeTarget === "banknote" && selectedBanknotIndex === index;
-                          return (
-                            <tr
-                              key={row.id}
-                              className={`banknot-row ${isRowSelected ? "banknot-selected-row" : ""}`}
-                              onClick={() => {
-                                setActiveTarget("banknote");
-                                setSelectedBanknotIndex(index);
-                                inputRefs.current[index]?.focus();
-                              }}
-                              style={{
-                                cursor: "pointer",
-                              }}
-                            >
-                              {/* Banknot Sırası (Visual screenshot: 1 .Banknot, 2 .Banknot...) */}
-                              <td
-                                className="banknot-label-cell text-center fw-semibold small font-monospace user-select-none border-end"
+                      </thead>
+                      <tbody>
+                        {loadingBanknotlar ? (
+                          <tr>
+                            <td colSpan={2} className="text-center py-4 text-muted small">
+                              <Spinner animation="border" size="sm" className="me-2" />
+                              Banknotlar yükleniyor...
+                            </td>
+                          </tr>
+                        ) : rows.length === 0 ? (
+                          <tr>
+                            <td colSpan={2} className="text-center py-4 text-muted small">
+                              Bu para birimine ait banknot kaydı bulunamadı.
+                            </td>
+                          </tr>
+                        ) : (
+                          rows.map((row, index) => {
+                            const isRowSelected = activeTarget === "banknote" && selectedBanknotIndex === index;
+                            return (
+                              <tr
+                                key={row.id}
+                                className={`banknot-row ${isRowSelected ? "banknot-selected-row" : ""}`}
+                                onClick={() => {
+                                  setActiveTarget("banknote");
+                                  setSelectedBanknotIndex(index);
+                                  inputRefs.current[index]?.focus();
+                                }}
                                 style={{
-                                  width: "170px",
+                                  cursor: "pointer",
                                 }}
                               >
-                                {index + 1} .Banknot
-                              </td>
-
-                              {/* Miktar Input (Enter moves down, Tab moves down, auto-adds next row at end) */}
-                              <td className="banknot-input-cell p-1">
-                                <Form.Control
-                                  ref={(el) => {
-                                    inputRefs.current[index] = el;
-                                  }}
-                                  type="text"
-                                  inputMode="decimal"
-                                  data-decimal="true"
-                                  size="sm"
-                                  value={row.miktar}
-                                  onFocus={() => {
-                                    setActiveTarget("banknote");
-                                    setSelectedBanknotIndex(index);
-                                  }}
-                                  onClick={() => {
-                                    setActiveTarget("banknote");
-                                    setSelectedBanknotIndex(index);
-                                  }}
-                                  onChange={(e) => handleAmountChange(index, e.target.value)}
-                                  onBlur={() => handleAmountBlur(index)}
-                                  onKeyDown={(e: any) => {
-                                    blockNonNumericKeys(e, true);
-                                    handleKeyDown(e, index);
-                                  }}
-                                  placeholder="0.00"
-                                  className="banknot-amount-input text-end fw-bold font-monospace shadow-none"
+                                {/* Banknot Sırası */}
+                                <td
+                                  className="banknot-label-cell text-center fw-semibold font-monospace user-select-none border-end"
                                   style={{
-                                    fontSize: "14px",
-                                    letterSpacing: "0.5px",
-                                    color: "#0f172a",
-                                    height: "28px",
+                                    width: "105px",
+                                    fontSize: "11.5px",
+                                    padding: "3px 4px",
                                   }}
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </Table>
+                                >
+                                  {index + 1} .Banknot
+                                </td>
+
+                                {/* Miktar Input */}
+                                <td className="banknot-input-cell p-0.5">
+                                  <Form.Control
+                                    ref={(el) => {
+                                      inputRefs.current[index] = el;
+                                    }}
+                                    type="text"
+                                    inputMode="decimal"
+                                    data-decimal="true"
+                                    size="sm"
+                                    value={row.miktar}
+                                    onFocus={() => {
+                                      setActiveTarget("banknote");
+                                      setSelectedBanknotIndex(index);
+                                    }}
+                                    onClick={() => {
+                                      setActiveTarget("banknote");
+                                      setSelectedBanknotIndex(index);
+                                    }}
+                                    onChange={(e) => handleAmountChange(index, e.target.value)}
+                                    onBlur={() => handleAmountBlur(index)}
+                                    onKeyDown={(e: any) => {
+                                      blockNonNumericKeys(e, true);
+                                      handleKeyDown(e, index);
+                                    }}
+                                    placeholder="0.00"
+                                    className="banknot-amount-input text-end fw-bold font-monospace shadow-none"
+                                    style={{
+                                      fontSize: "12.5px",
+                                      letterSpacing: "0.5px",
+                                      color: "#0f172a",
+                                      height: "24px",
+                                      padding: "1px 6px",
+                                    }}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </Table>
+                  </div>
                 </div>
               </div>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
+            </div>
+          </Card.Body>
+        </Card>
+      </div>
 
       {/* Dürbün (LookupModal) for Currency Selection - Exact same light blue highlight & double click */}
       <LookupModal<BanknotCurrencyItem>

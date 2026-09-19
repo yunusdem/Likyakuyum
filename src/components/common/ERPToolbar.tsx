@@ -16,6 +16,7 @@ import {
   IconReceipt,
   IconBarcode,
   IconDiamond,
+  IconCreditCard,
 } from "@tabler/icons-react";
 
 export interface ERPToolbarProps {
@@ -42,6 +43,7 @@ export interface ERPToolbarProps {
   disabled?: boolean;
   pageTitle?: React.ReactNode;
   pageIcon?: React.ReactNode;
+  centerContent?: React.ReactNode;
   rightContent?: React.ReactNode;
   modeText?: React.ReactNode;
   hideNew?: boolean;
@@ -91,46 +93,64 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kur/pano-tanimi": { title: "D- Pano Tanımı", icon: <IconDeviceTv size={20} /> },
   "/ayarlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
   "/tanimlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
-  // A- Vezne İşlemleri (Tüm 12 Sayfa)
-  "/vezne/genel-sarraf-fisi": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/sarraf-fisi": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/sarraf-fisi-kayit": { title: "A- Genel Sarraf Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/sarraf-fisi-duzeltme": { title: "A- Genel Sarraf Fişi Düzeltme", icon: <IconReceipt size={20} /> },
-  "/vezne/perakende-fisi": { title: "B- Perakende Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fisi": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fis": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fisi-kayit": { title: "C- Döviz Fişi", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fisi-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
-  "/vezne/doviz-fis-duzeltme": { title: "D- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
-  "/vezne/transfer-kayit": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
-  "/vezne/vezne-transferi-kayit": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
-  "/vezne/transfer-duzeltme": { title: "F- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
-  "/vezne/vezne-transferi-duzeltme": { title: "F- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
-  "/vezne/vezne-transferi": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
-  "/vezne/transfer": { title: "E- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
-  "/vezne/hareket-listesi": { title: "G- Vezne Hareket Listesi", icon: <IconFileText size={20} /> },
-  "/vezne/bakiye-raporu": { title: "H- Vezne Bakiye Raporu", icon: <IconChartBar size={20} /> },
-  "/vezne/fiyat-kontrolu": { title: "I- Fiyat Kontrolü", icon: <IconChartLine size={20} /> },
-  "/vezne/bakiye-raporu-tarih-bazli": { title: "J- Vezne Bakiye Raporu Tarih Bazlı", icon: <IconChartBar size={20} /> },
-  "/vezne/para-say": { title: "K- Vezne Para Say", icon: <IconCash size={20} /> },
-  "/vezne/izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
-  "/vezne/vezne-izleme": { title: "L- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
+  // A- Vezne İşlemleri (Tüm 16 Sayfa/Rapor)
+  "/vezne/genel-sarraf-fisi": { title: "A- Sarraf Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/sarraf-fisi": { title: "A- Sarraf Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/sarraf-fisi-kayit": { title: "A- Sarraf Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/sarraf-fisi-duzeltme": { title: "B- Sarraf Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/perakende-fisi": { title: "C- Perakende Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/perakende-fisi-kayit": { title: "C- Perakende Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/perakende-fisi-duzeltme": { title: "D- Perakende Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi": { title: "E- Döviz Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fis": { title: "E- Döviz Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi-kayit": { title: "E- Döviz Fişi Kayıt", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fisi-duzeltme": { title: "F- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/doviz-fis-duzeltme": { title: "F- Döviz Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/vezne/transfer-kayit": { title: "G- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/vezne-transferi-kayit": { title: "G- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/transfer-duzeltme": { title: "H- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
+  "/vezne/vezne-transferi-duzeltme": { title: "H- Vezne Transferi Düzeltme", icon: <IconCash size={20} /> },
+  "/vezne/vezne-transferi": { title: "G- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/transfer": { title: "G- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
+  "/vezne/hareket-listesi": { title: "I- Vezne Hareket Listesi", icon: <IconFileText size={20} /> },
+  "/vezne/bakiye-raporu": { title: "J- Vezne Bakiye Raporu", icon: <IconChartBar size={20} /> },
+  "/vezne/fiyat-kontrolu": { title: "K- Fiyat Kontrolü", icon: <IconChartLine size={20} /> },
+  "/vezne/bakiye-raporu-tarih-bazli": { title: "L- Vezne Bakiye Raporu Tarih Bazlı", icon: <IconChartBar size={20} /> },
+  "/vezne/para-say": { title: "M- Vezne Para Say", icon: <IconCash size={20} /> },
+  "/vezne/izleme": { title: "N- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
+  "/vezne/vezne-izleme": { title: "N- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
   "/kasa/hesap-kayit": { title: "A- Hesap Kayıt", icon: <IconBuilding size={20} /> },
   "/kasa/hesap-duzeltme": { title: "B- Hesap Düzeltme", icon: <IconBuilding size={20} /> },
   "/kasa/hareket-kayit": { title: "C- Kasa Hareket Kayıt", icon: <IconCash size={20} /> },
   "/kasa/hareket-duzeltme": { title: "D- Kasa Hareket Düzeltme", icon: <IconCash size={20} /> },
-  "/etiket/barkod-fiyat": { title: "A- Barkod Fiyat", icon: <IconPrinter size={20} /> },
-  "/etiket/barkod-basimi": { title: "A- Barkod Fiyat", icon: <IconPrinter size={20} /> },
-  "/etiket/altin-urun-barkodlama": { title: "B- Altın Ürün Barkodlama", icon: <IconBarcode size={20} /> },
-  "/etiket/altin-urun-tanimlama": { title: "B- Altın Ürün Barkodlama", icon: <IconBarcode size={20} /> },
-  "/etiket/altin-urun-duzeltme": { title: "C- Altın Ürün Düzeltme", icon: <IconBarcode size={20} /> },
+  "/kasa/kasa-hareket-kayit": { title: "C- Kasa Hareket Kayıt", icon: <IconCash size={20} /> },
+  "/kasa/kasa-hareket-duzeltme": { title: "D- Kasa Hareket Düzeltme", icon: <IconCash size={20} /> },
+  "/kasa/hesap-ad-listesi": { title: "I- Hesap Ad Listesi", icon: <IconBuilding size={20} /> },
+  "/banka/hesap-kartlari": { title: "A- Banka Hesap Kartları", icon: <IconCreditCard size={20} /> },
+  "/banka/hesap-karti": { title: "A- Banka Hesap Kartları", icon: <IconCreditCard size={20} /> },
+  "/banka/pos-tanimlari": { title: "B- POS Cihazı Tanımları", icon: <IconCreditCard size={20} /> },
+  "/banka/hareketler": { title: "C- Banka Hesap Hareketleri", icon: <IconCreditCard size={20} /> },
+  "/banka/hesap-hareketleri": { title: "C- Banka Hesap Hareketleri", icon: <IconCreditCard size={20} /> },
+  "/banka/kredi-karti-tahsilat": { title: "D- Kredi Kartı Tahsilatları", icon: <IconCreditCard size={20} /> },
+  "/banka/pos-gun-sonu": { title: "E- POS Gün Sonu İşlemleri", icon: <IconCreditCard size={20} /> },
+  "/perakende/satis": { title: "A- Perakende Satış", icon: <IconBuilding size={20} /> },
+  "/perakende/iade": { title: "B- Perakende Alış / İade", icon: <IconBuilding size={20} /> },
+  "/perakende/vitrin-stok": { title: "C- Vitrin & Stok Takibi", icon: <IconBuilding size={20} /> },
+  "/perakende/hizli-satis": { title: "D- Barkodlu Hızlı Satış", icon: <IconBuilding size={20} /> },
+  "/perakende/liste": { title: "E- Günlük Satış Listesi", icon: <IconBuilding size={20} /> },
+  "/etiket/barkod-fiyat": { title: "A- Barkod Fiyat", icon: <IconBarcode size={20} /> },
+  "/etiket/barkod-basimi": { title: "A- Barkod Fiyat", icon: <IconBarcode size={20} /> },
+  "/etiket/altin-urun-barkodlama": { title: "B- Altın Ürün Barkodlama", icon: <IconDiamond size={20} /> },
+  "/etiket/altin-urun-duzeltme": { title: "C- Altın Ürün Düzeltme", icon: <IconDiamond size={20} /> },
   "/etiket/ozel-urun-barkodlama": { title: "D- Özel Ürün Barkodlama", icon: <IconDiamond size={20} /> },
-  "/etiket/ozel-urun-tanimlama": { title: "D- Özel Ürün Barkodlama", icon: <IconDiamond size={20} /> },
   "/etiket/ozel-urun-duzeltme": { title: "E- Özel Ürün Düzeltme", icon: <IconDiamond size={20} /> },
-  "/etiket/altin-etiket-tasarimi": { title: "F- Altın Etiket Tasarımı", icon: <IconPrinter size={20} /> },
-  "/etiket/ozel-urun-etiket-tasarimi": { title: "G- Özel Ürün Etiket Tasarımı", icon: <IconPrinter size={20} /> },
-  "/etiket/tasarim": { title: "F- Altın Etiket Tasarımı", icon: <IconPrinter size={20} /> },
-  "/etiket/fiyat-etiketi": { title: "A- Barkod Fiyat", icon: <IconPrinter size={20} /> },
+  "/etiket/altin-etiket-tasarimi": { title: "F- Altın Etiket Tasarımı", icon: <IconBarcode size={20} /> },
+  "/etiket/ozel-urun-etiket-tasarimi": { title: "G- Özel Ürün Etiket Tasarımı", icon: <IconBarcode size={20} /> },
+  "/yonetici/ozet": { title: "A- Yönetici Özeti", icon: <IconChartLine size={20} /> },
+  "/yonetici/yetkilendirme": { title: "B- Kullanıcı Yetkilendirme", icon: <IconUser size={20} /> },
+  "/yonetici/fiyat-belirleme": { title: "C- Fiyat / Marj Belirleme", icon: <IconChartLine size={20} /> },
+  "/yonetici/loglar": { title: "D- Sistem Günlükleri (Loglar)", icon: <IconFileText size={20} /> },
+  "/yonetici/onaylar": { title: "E- Onay Bekleyen İşlemler", icon: <IconFileText size={20} /> },
 };
 
 export const ERPToolbar: React.FC<ERPToolbarProps> = ({
@@ -145,9 +165,19 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   onPrint,
   onRefresh,
   onClear,
+  onPreview,
+  onEdit,
+  onSelectUser,
+  onDetailSearch,
+  onFilter,
+  onDuplicate,
+  onHksSend,
+  onEDocument,
+  onConsolidatedDB,
   disabled = false,
   pageTitle,
   pageIcon,
+  centerContent,
   rightContent,
   modeText,
   hideNew,
@@ -155,7 +185,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   hideSearch,
   hideDelete,
   hideNavigation,
-  hidePrint = false,
+  hidePrint,
   disableShortcuts = false,
 }) => {
   const location = useLocation();
@@ -182,6 +212,9 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     (location.pathname.includes("doviz-fis") && !location.pathname.includes("duzeltme")) ||
     // Sarraf Fişi (Kayıt: /vezne/genel-sarraf-fisi, /vezne/sarraf-fisi vs Düzeltme: /vezne/sarraf-fisi-duzeltme)
     (location.pathname.includes("sarraf-fisi") && !location.pathname.includes("duzeltme")) ||
+    (location.pathname.includes("genel-sarraf-fisi") && !location.pathname.includes("duzeltme")) ||
+    // Perakende Fişi (Kayıt: /vezne/perakende-fisi, /vezne/perakende-fisi-kayit vs Düzeltme: /vezne/perakende-fisi-duzeltme)
+    (location.pathname.includes("perakende") && !location.pathname.includes("duzeltme")) ||
     // Vezne Transferi (Kayıt: /vezne/transfer-kayit vs Düzeltme: /vezne/transfer-duzeltme)
     (location.pathname.includes("transfer") && !location.pathname.includes("duzeltme")) ||
     // Kasa Hesap (Kayıt: /kasa/hesap-kayit vs Düzeltme: /kasa/hesap-duzeltme)
@@ -522,20 +555,27 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
         )}
       </div>
 
-      {/* Ortadaki Sayfa İkonu ve Başlığı (Print'in sağında, Refresh'in solunda) */}
-      {finalTitle && (
-        <div className="d-flex align-items-center gap-2 px-2 ms-2 me-auto erp-toolbar-title-box">
-          <span className="erp-tb-divider d-none d-sm-inline-block" style={{ height: "20px", margin: "0 6px 0 0" }} />
-          {finalIcon && (
-            <span className="text-primary d-inline-flex align-items-center">
-              {finalIcon}
+      {/* Ortadaki Sayfa İkonu, Başlığı ve CenterContent */}
+      <div className="d-flex align-items-center gap-3 px-2 ms-2 me-auto">
+        {finalTitle && (
+          <div className="d-flex align-items-center gap-2 erp-toolbar-title-box">
+            <span className="erp-tb-divider d-none d-sm-inline-block" style={{ height: "20px", margin: "0 6px 0 0" }} />
+            {finalIcon && (
+              <span className="text-primary d-inline-flex align-items-center">
+                {finalIcon}
+              </span>
+            )}
+            <span className="fw-bold text-dark fs-6" style={{ letterSpacing: "-0.2px" }}>
+              {finalTitle}
             </span>
-          )}
-          <span className="fw-bold text-dark fs-6" style={{ letterSpacing: "-0.2px" }}>
-            {finalTitle}
-          </span>
-        </div>
-      )}
+          </div>
+        )}
+        {centerContent && (
+          <div className="d-flex align-items-center">
+            {centerContent}
+          </div>
+        )}
+      </div>
 
       {/* Sağ Toolbar Grubu: Custom RightContent + Yenile */}
       <div className="d-flex align-items-center gap-2 ms-auto">

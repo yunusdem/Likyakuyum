@@ -952,7 +952,7 @@ export const CariCardRegistrationPage: React.FC = () => {
         hideNavigation={!isEditPage}
         hidePrint={!isEditPage}
         onPrint={handlePrint}
-        onRefresh={isEditPage ? () => loadData(selectedIndex) : undefined}
+        onRefresh={() => loadData(isEditPage ? selectedIndex : undefined)}
         onClear={handleClear}
         disabled={isLoading || isSaving}
       />

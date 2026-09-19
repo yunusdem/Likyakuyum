@@ -269,7 +269,7 @@ export const KasaHesapKayitPage: React.FC = () => {
           else showNotif("warning", "Silinecek bir hesap kartı seçiniz.");
         }}
         onNew={handleNew}
-        onRefresh={() => window.location.reload()}
+        onRefresh={loadAll}
         onSearch={() => setShowHesapLookup(true)}
         onPrint={() => window.print()}
         onFirst={handleFirst}

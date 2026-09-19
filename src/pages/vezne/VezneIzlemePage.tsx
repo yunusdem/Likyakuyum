@@ -112,11 +112,18 @@ export const VezneIzlemePage: React.FC = () => {
     showVezneBakiyeModal ||
     showFirmaDurumuModal;
 
-  // Load company definitions for decimal formatting
+  // Load company definitions for decimal formatting and tazeleme suresi
   useEffect(() => {
     CompanyService.getDefinitions()
       .then((res) => {
-        if (res) setCompanyDefinitions(res);
+        if (res) {
+          setCompanyDefinitions(res);
+          if (res.TAZELEME_SURESI !== undefined && res.TAZELEME_SURESI !== null && Number(res.TAZELEME_SURESI) > 0) {
+            const sec = Number(res.TAZELEME_SURESI);
+            setSettings((prev) => ({ ...prev, tazelemeSuresi: sec }));
+            setEditSettings((prev) => ({ ...prev, tazelemeSuresi: sec }));
+          }
+        }
       })
       .catch((err) => console.error("Firma tanımları yüklenemedi:", err));
   }, []);
@@ -170,7 +177,17 @@ export const VezneIzlemePage: React.FC = () => {
       const data = await VezneIzlemeService.getIzlemeData();
       if (data) {
         const sortedRows = sortVezneRows(data.rows);
-        setSettings(data.settings);
+        const defsSec =
+          companyDefinitions?.TAZELEME_SURESI !== undefined &&
+          companyDefinitions?.TAZELEME_SURESI !== null &&
+          Number(companyDefinitions.TAZELEME_SURESI) > 0
+            ? Number(companyDefinitions.TAZELEME_SURESI)
+            : undefined;
+
+        setSettings({
+          ...data.settings,
+          tazelemeSuresi: defsSec ?? data.settings.tazelemeSuresi,
+        });
         setColumns(data.columns);
         setRows(sortedRows);
         setLastRefreshed(new Date());
@@ -194,16 +211,22 @@ export const VezneIzlemePage: React.FC = () => {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, []);
+  }, [companyDefinitions]);
 
   // Initial load
   useEffect(() => {
     fetchData(false);
   }, [fetchData]);
 
-  // Auto-refresh timer based on TAZELEME_SURESI
+  // Auto-refresh timer based on Firma Tanımları TAZELEME_SURESI
   useEffect(() => {
-    const sec = settings.tazelemeSuresi;
+    const sec =
+      companyDefinitions?.TAZELEME_SURESI !== undefined &&
+      companyDefinitions?.TAZELEME_SURESI !== null &&
+      Number(companyDefinitions.TAZELEME_SURESI) > 0
+        ? Number(companyDefinitions.TAZELEME_SURESI)
+        : (settings.tazelemeSuresi > 0 ? settings.tazelemeSuresi : 5);
+
     if (sec <= 0) return;
 
     const interval = setInterval(() => {
@@ -213,7 +236,7 @@ export const VezneIzlemePage: React.FC = () => {
     }, sec * 1000);
 
     return () => clearInterval(interval);
-  }, [settings.tazelemeSuresi, isAnyModalOpen, fetchData]);
+  }, [companyDefinitions?.TAZELEME_SURESI, settings.tazelemeSuresi, isAnyModalOpen, fetchData]);
 
   // Handle Save Settings (SODVZ_VEZNE_IZLEME_TANIMI_KAYDET)
   const handleSaveSettings = async () => {
@@ -405,7 +428,7 @@ export const VezneIzlemePage: React.FC = () => {
       <ERPToolbar
         onRefresh={() => fetchData(false)}
         onPrint={() => window.print()}
-        pageTitle="L- Vezne İzleme"
+        pageTitle="N- Vezne İzleme"
         hideDelete
         hideSearch
         hideNavigation
@@ -460,19 +483,26 @@ export const VezneIzlemePage: React.FC = () => {
 
               return (
                 <div key={`vezne-chunk-${chunkIdx}`} className="mb-3">
-                  {/* Çoklu Tablo Varsa Bölüm Başlığı */}
-                  {isMultiChunk && (
-                    <div className="d-flex align-items-center justify-content-between bg-light px-2.5 py-1 border rounded-top border-bottom-0">
+                  {/* Tablo Başlığı: Vezneler ve Son Yenilenme Saati */}
+                  <div className="d-flex align-items-center justify-content-between bg-light px-2.5 py-1.5 border rounded-top border-bottom-0">
+                    <div className="d-flex align-items-center gap-2">
                       <span className="small fw-bold text-primary">
-                        📊 Vezneler ({chunkIdx * 8 + 1} - {chunkIdx * 8 + chunk.length})
+                        📊 Vezneler {isMultiChunk ? `(${chunkIdx * 8 + 1} - ${chunkIdx * 8 + chunk.length})` : ""}
                       </span>
-                      <span className="badge bg-secondary-subtle text-secondary small">
+                      <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: "11px" }}>
                         Toplam {columns.length} Vezne
                       </span>
                     </div>
-                  )}
+                    <div className="d-flex align-items-center gap-1.5 text-muted small font-monospace" style={{ fontSize: "12px" }}>
+                      <IconRefresh size={13} className="text-primary" />
+                      <span>Son Yenilenme:</span>
+                      <strong className="text-dark bg-white px-2 py-0.5 border rounded shadow-2xs">
+                        {lastRefreshed.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </strong>
+                    </div>
+                  </div>
 
-                  <div className={`table-responsive border ${isMultiChunk ? "rounded-bottom" : "rounded"}`}>
+                  <div className="table-responsive border rounded-bottom">
                     <Table
                       bordered
                       hover

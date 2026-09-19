@@ -372,7 +372,53 @@ export const ProductDefinitionsPage: React.FC = () => {
   };
 
   return (
-    <div className="w-100 pb-3">
+    <div className="product-definitions-container w-100 pb-3" style={{ overflowX: "hidden" }}>
+      <style>{`
+        /* Ürün Tanımları: Alt alta satırlar arasındaki boşlukları minimuma indir ve inputları kompakt yap */
+        .product-definitions-container .row {
+          --bs-gutter-y: 0px !important;
+          margin-top: 0 !important;
+          margin-bottom: 0 !important;
+        }
+        .product-definitions-container .row > * {
+          margin-top: 0 !important;
+          padding-top: 1px !important;
+          padding-bottom: 1px !important;
+        }
+        .product-definitions-container .form-group,
+        .product-definitions-container .mb-2 {
+          margin-bottom: 3px !important;
+          margin-top: 0 !important;
+        }
+        .product-definitions-container .form-label,
+        .product-definitions-container .col-form-label {
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+          margin-bottom: 0 !important;
+          font-size: 13px !important;
+          line-height: 28px !important;
+        }
+        .product-definitions-container .form-control,
+        .product-definitions-container .form-select,
+        .product-definitions-container .input-group-text {
+          height: 28px !important;
+          min-height: 28px !important;
+          padding: 2px 8px !important;
+          font-size: 13px !important;
+          line-height: 22px !important;
+        }
+        .product-definitions-container .input-group .btn {
+          height: 28px !important;
+          padding: 2px 8px !important;
+          display: flex !important;
+          align-items: center !important;
+        }
+        .product-definitions-container .input-group .form-control {
+          height: 28px !important;
+          min-height: 28px !important;
+        }
+      `}</style>
+
       {/* 1. Sol Üst Klasik ERP Toolbar */}
       <ERPToolbar
         pageTitle="Ürün Tanımları"
@@ -454,16 +500,18 @@ export const ProductDefinitionsPage: React.FC = () => {
                           Ürün Kodu <span className="text-danger">*</span>
                         </Form.Label>
                         <Col>
-                          <CodeLookupInput
-                            autoFocus
-                            value={formData.kod}
-                            maxLength={5}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleInputChange("kod", e.target.value.toUpperCase())}
-                            onLookupClick={() => setShowLookupModal(true)}
-                            required
-                            lookupTitle="Ürün Tanımı Seç (Oklu Dürbün)"
-                          />
+                          <div style={{ maxWidth: "110px" }}>
+                            <CodeLookupInput
+                              autoFocus
+                              value={formData.kod}
+                              maxLength={5}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleInputChange("kod", e.target.value.toUpperCase())}
+                              onLookupClick={() => setShowLookupModal(true)}
+                              required
+                              lookupTitle="Ürün Tanımı Seç (Oklu Dürbün)"
+                            />
+                          </div>
                         </Col>
                       </Form.Group>
 
@@ -478,6 +526,7 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.ad}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("ad", e.target.value)}
+                            style={{ maxWidth: "200px" }}
                             required
                           />
                         </Col>
@@ -488,7 +537,7 @@ export const ProductDefinitionsPage: React.FC = () => {
                           Sıra No
                         </Form.Label>
                         <Col>
-                          <InputGroup>
+                          <InputGroup style={{ maxWidth: "80px" }}>
                             <Form.Control
                               type="text"
                               inputMode="numeric"
@@ -502,11 +551,12 @@ export const ProductDefinitionsPage: React.FC = () => {
                                 const parsed = parseInt(String(formData.siraNo), 10);
                                 handleInputChange("siraNo", isNaN(parsed) ? 0 : parsed);
                               }}
-                              className="fw-bold"
+                              className="fw-bold text-end font-monospace"
                             />
                             <Button
                               variant="outline-secondary"
                               className="px-2"
+                              tabIndex={-1}
                               onClick={() => {
                                 const current = parseInt(String(formData.siraNo), 10) || 0;
                                 handleInputChange("siraNo", Math.max(0, current - 1));
@@ -518,6 +568,7 @@ export const ProductDefinitionsPage: React.FC = () => {
                             <Button
                               variant="outline-secondary"
                               className="px-2"
+                              tabIndex={-1}
                               onClick={() => {
                                 const current = parseInt(String(formData.siraNo), 10) || 0;
                                 handleInputChange("siraNo", current + 1);
@@ -539,11 +590,11 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.urunTipi}
                             onChange={(e) => handleInputChange("urunTipi", parseInt(e.target.value, 10))}
                             className="fw-bold text-primary"
+                            style={{ maxWidth: "120px" }}
                           >
-                            <option value={0}>0 - Döviz / Efektif / Nakit</option>
-                            <option value={1}>1 - Altın / Sarrafiye / Mamul</option>
-                            <option value={2}>2 - Ziynet / Takı / Mücevher</option>
-                            <option value={3}>3 - Hurda Altın / Diğer</option>
+                            <option value={0}>0 - Döviz</option>
+                            <option value={1}>1 - Altın</option>
+                            <option value={2}>2 - Gümüş</option>
                           </Form.Select>
                         </Col>
                       </Form.Group>
@@ -554,20 +605,12 @@ export const ProductDefinitionsPage: React.FC = () => {
                         </Form.Label>
                         <Col>
                           <Form.Select
-                            value={formData.urunTipi === 0 ? "0" : formData.birim}
+                            value={formData.birim ?? 0}
                             onChange={(e) => handleInputChange("birim", parseInt(e.target.value, 10))}
-                            disabled={formData.urunTipi === 0 || formData.urunTipi === 3}
+                            style={{ maxWidth: "110px" }}
                           >
-                            {formData.urunTipi === 0 ? (
-                              <option value={0}>Döviz / Nakit (Birim Yok)</option>
-                            ) : formData.urunTipi === 3 ? (
-                              <option value={0}>0 - Adet (Hurda)</option>
-                            ) : (
-                              <>
-                                <option value={0}>0 - Adet</option>
-                                <option value={1}>1 - Gram</option>
-                              </>
-                            )}
+                            <option value={0}>0 - Adet</option>
+                            <option value={1}>1 - Gram</option>
                           </Form.Select>
                         </Col>
                       </Form.Group>
@@ -577,7 +620,7 @@ export const ProductDefinitionsPage: React.FC = () => {
                           Bağlı Para Kodu
                         </Form.Label>
                         <Col>
-                          <InputGroup size="sm" className="flex-nowrap">
+                          <InputGroup size="sm" className="flex-nowrap" style={{ maxWidth: "110px" }}>
                             <Form.Control
                               type="text"
                               maxLength={10}
@@ -588,15 +631,18 @@ export const ProductDefinitionsPage: React.FC = () => {
                             />
                             <Button
                               variant="outline-primary"
+                              tabIndex={-1}
+                              onMouseDown={(e) => e.preventDefault()}
                               onClick={() => setShowParaLookupModal(true)}
                               title="Para Birimi Seç (Dürbün)"
-                              className="d-flex align-items-center px-2.5 flex-shrink-0"
+                              className="d-flex align-items-center px-2 flex-shrink-0"
                             >
                               <IconBinoculars size={16} />
                             </Button>
                             {formData.bagliParaKodu && (
                               <Button
                                 variant="outline-secondary"
+                                tabIndex={-1}
                                 onClick={() => handleInputChange("bagliParaKodu", "")}
                                 title="Temizle"
                                 className="px-2 flex-shrink-0"
@@ -616,6 +662,7 @@ export const ProductDefinitionsPage: React.FC = () => {
                           <Form.Select
                             value={formData.pariteIslemi}
                             onChange={(e) => handleInputChange("pariteIslemi", parseInt(e.target.value, 10))}
+                            style={{ maxWidth: "160px" }}
                           >
                             <option value={0}>0 - Çarpma İşlemi (Standart)</option>
                             <option value={1}>1 - Bölme İşlemi (Örn: EUR/USD Parite)</option>
@@ -634,6 +681,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.xmlParaKodu || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("xmlParaKodu", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "110px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -652,6 +701,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.gramaj || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("gramaj", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -667,6 +718,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.hasOrani || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("hasOrani", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -682,6 +735,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.iscilik || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("iscilik", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -697,6 +752,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.hasAlisKatsayisi || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("hasAlisKatsayisi", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -712,6 +769,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.hasSatisKatsayisi || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("hasSatisKatsayisi", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -727,6 +786,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.alimSatimKurFarki || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("alimSatimKurFarki", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -745,6 +806,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.dovizAlisHucreOrani || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("dovizAlisHucreOrani", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -760,6 +823,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.dovizSatisHucreOrani || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("dovizSatisHucreOrani", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -775,6 +840,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.efektifAlisHucreOrani || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("efektifAlisHucreOrani", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -790,6 +857,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.efektifSatisHucreOrani || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("efektifSatisHucreOrani", e.target.value)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "90px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -807,6 +876,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.efektifAlimHesabi || ""}
                             onChange={(e) => handleInputChange("efektifAlimHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -821,6 +892,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.efektifSatimHesabi || ""}
                             onChange={(e) => handleInputChange("efektifSatimHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -835,6 +908,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.efektifDepoHesabi || ""}
                             onChange={(e) => handleInputChange("efektifDepoHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -849,6 +924,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.efektifVaziyetHesabi || ""}
                             onChange={(e) => handleInputChange("efektifVaziyetHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -863,6 +940,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.dovizAlimHesabi || ""}
                             onChange={(e) => handleInputChange("dovizAlimHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -877,6 +956,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.dovizSatimHesabi || ""}
                             onChange={(e) => handleInputChange("dovizSatimHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -891,6 +972,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.dovizDepoHesabi || ""}
                             onChange={(e) => handleInputChange("dovizDepoHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -905,6 +988,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             maxLength={20}
                             value={formData.dovizVaziyetHesabi || ""}
                             onChange={(e) => handleInputChange("dovizVaziyetHesabi", e.target.value)}
+                            className="font-monospace"
+                            style={{ maxWidth: "130px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -918,6 +1003,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                             type="number"
                             value={formData.muhasebeSiraNo ?? ""}
                             onChange={(e) => handleInputChange("muhasebeSiraNo", e.target.value ? parseInt(e.target.value, 10) : null)}
+                            className="font-monospace text-end"
+                            style={{ maxWidth: "80px" }}
                           />
                         </Col>
                       </Form.Group>
@@ -968,8 +1055,8 @@ export const ProductDefinitionsPage: React.FC = () => {
                   : item.urunTipi === 1
                     ? "Altın"
                     : item.urunTipi === 2
-                      ? "Ziynet"
-                      : "Hurda"}
+                      ? "Gümüş"
+                      : "Diğer"}
               </Badge>
             ),
           },

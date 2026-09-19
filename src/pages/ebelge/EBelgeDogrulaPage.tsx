@@ -475,6 +475,15 @@ const EBelgeDogrulaPage: React.FC = () => {
           setSatirlar([{ ...BOS_SATIR }]);
           setAlertInfo(null);
         }}
+        onRefresh={() => {
+          if (aliciVkn.trim().length >= 10) {
+            void mukellefSorgula(aliciVkn, true);
+          } else {
+            setBelgeNo("");
+            setSatirlar([{ ...BOS_SATIR }]);
+            setAlertInfo(null);
+          }
+        }}
         onPrint={() => window.print()}
         disabled={dogrulaniyor || taslakGonderiliyor || mukellefSorgulaniyor}
       />

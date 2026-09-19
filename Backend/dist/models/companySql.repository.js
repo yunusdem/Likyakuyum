@@ -275,7 +275,7 @@ export class CompanySqlRepository {
         SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]
       `);
             const existingRow = currentRes.recordset[0] || {};
-            // 1. Check if SODVZ_FIRMA_TANIMI_KAYDET procedure exists / create or alter it
+            // 1. Create or alter SODVZ_FIRMA_TANIMI_KAYDET procedure
             try {
                 await pool.request().query(`
           CREATE OR ALTER PROCEDURE [dbo].[SODVZ_FIRMA_TANIMI_KAYDET]
@@ -328,55 +328,20 @@ export class CompanySqlRepository {
             catch (procCreateErr) {
                 logger.warn("Could not check/create SODVZ_FIRMA_TANIMI_KAYDET procedure:", procCreateErr.message);
             }
-            // 2. Execute SODVZ_FIRMA_TANIMI_KAYDET stored procedure
-            const parseNum = (v) => (v !== undefined && v !== null && v !== "" && !isNaN(Number(v))) ? Number(v) : null;
+            // 2. Fetch existing columns from INFORMATION_SCHEMA to ensure no non-existent column errors
+            let dbCols = new Set();
             try {
-                const procReq = pool.request();
-                const fAdi = (sanitizedData.FIRMA_ADI !== undefined ? sanitizedData.FIRMA_ADI : existingRow.FIRMA_ADI) || null;
-                const dosyaNo = (sanitizedData.DOSYA_NO !== undefined ? sanitizedData.DOSYA_NO : existingRow.DOSYA_NO) || null;
-                const subeKodu = (sanitizedData.SUBE_KODU !== undefined ? sanitizedData.SUBE_KODU : existingRow.SUBE_KODU) || "1";
-                const subeAdi = (sanitizedData.SUBE_ADI !== undefined ? sanitizedData.SUBE_ADI : existingRow.SUBE_ADI) || null;
-                const vdId = parseNum(sanitizedData.VERGI_DAIRESI_ID) ?? parseNum(existingRow.VERGI_DAIRESI_ID);
-                const vkn = (sanitizedData.VERGI_KIMLIK_NO !== undefined ? sanitizedData.VERGI_KIMLIK_NO : existingRow.VERGI_KIMLIK_NO) || null;
-                const adres = (sanitizedData.ADRES !== undefined ? sanitizedData.ADRES : existingRow.ADRES) || null;
-                const pkId = parseNum(sanitizedData.POSTA_KODU_ID) ?? parseNum(existingRow.POSTA_KODU_ID);
-                const ilceId = parseNum(sanitizedData.ILCE_ID) ?? parseNum(existingRow.ILCE_ID);
-                const ilId = parseNum(sanitizedData.IL_ID) ?? parseNum(existingRow.IL_ID);
-                const ulkeId = parseNum(sanitizedData.ULKE_ID) ?? parseNum(existingRow.ULKE_ID);
-                const telefon = (sanitizedData.TELEFON !== undefined ? sanitizedData.TELEFON : existingRow.TELEFON) || null;
-                const webAdresi = (sanitizedData.WEB_ADRESI !== undefined ? sanitizedData.WEB_ADRESI : existingRow.WEB_ADRESI) || null;
-                const eposta = (sanitizedData.EPOSTA !== undefined ? sanitizedData.EPOSTA : existingRow.EPOSTA) || null;
-                const mersisNo = (sanitizedData.MERSIS_NO !== undefined ? sanitizedData.MERSIS_NO : existingRow.MERSIS_NO) || null;
-                const tSicilNo = (sanitizedData.TICARET_SICIL_NO !== undefined ? sanitizedData.TICARET_SICIL_NO : existingRow.TICARET_SICIL_NO) || null;
-                const muesseseTipi = Number(sanitizedData.YETKILI_MUESSESE_TIPI ?? existingRow.YETKILI_MUESSESE_TIPI ?? 0);
-                const eDefter = sanitizedData.E_DEFTER_MUKELLEFI !== undefined ? (sanitizedData.E_DEFTER_MUKELLEFI ? 1 : 0) : (existingRow.E_DEFTER_MUKELLEFI ? 1 : 0);
-                const uretimHesabiId = parseNum(sanitizedData.URETIM_HESABI_ID) ?? parseNum(existingRow.URETIM_HESABI_ID);
-                procReq.input("FIRMA_ADI", sql.VarChar(200), fAdi);
-                procReq.input("DOSYA_NO", sql.VarChar(20), dosyaNo ? String(dosyaNo).slice(0, 20) : null);
-                procReq.input("SUBE_KODU", sql.VarChar(20), subeKodu ? String(subeKodu).slice(0, 20) : "1");
-                procReq.input("SUBE_ADI", sql.VarChar(200), subeAdi);
-                procReq.input("VERGI_DAIRESI_ID", sql.Int, vdId);
-                procReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), vkn);
-                procReq.input("ADRES", sql.VarChar(200), adres);
-                procReq.input("POSTA_KODU_ID", sql.Int, pkId);
-                procReq.input("ILCE_ID", sql.Int, ilceId);
-                procReq.input("IL_ID", sql.Int, ilId);
-                procReq.input("ULKE_ID", sql.Int, ulkeId);
-                procReq.input("TELEFON", sql.VarChar(20), telefon ? String(telefon).slice(0, 20) : null);
-                procReq.input("WEB_ADRESI", sql.VarChar(100), webAdresi);
-                procReq.input("EPOSTA", sql.VarChar(100), eposta);
-                procReq.input("MERSIS_NO", sql.VarChar(20), mersisNo ? String(mersisNo).slice(0, 20) : null);
-                procReq.input("TICARET_SICIL_NO", sql.VarChar(20), tSicilNo ? String(tSicilNo).slice(0, 20) : null);
-                procReq.input("YETKILI_MUESSESE_TIPI", sql.TinyInt, muesseseTipi);
-                procReq.input("E_DEFTER_MUKELLEFI", sql.Bit, eDefter);
-                procReq.input("URETIM_HESABI_ID", sql.Int, uretimHesabiId);
-                await procReq.execute("SODVZ_FIRMA_TANIMI_KAYDET");
+                const colsRes = await pool.request().query(`
+          SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_TANIM'
+        `);
+                dbCols = new Set(colsRes.recordset.map((r) => r.COLUMN_NAME.toUpperCase()));
             }
-            catch (procErr) {
-                logger.warn("SODVZ_FIRMA_TANIMI_KAYDET execution error, continuing with full update:", procErr.message);
+            catch (colErr) {
+                logger.warn("Could not query INFORMATION_SCHEMA.COLUMNS for TODVZ_TANIM:", colErr.message);
             }
-            // 3. Update all table columns to ensure other tabs (Para, Muhasebe, Limitler, E-Belge, Fiş vb.) are saved
-            const columnMapping = [
+            // Comprehensive column mappings for all TODVZ_TANIM fields
+            const allColumnMappings = [
+                // 1. Genel
                 { name: "SURUM", type: sql.VarChar, len: 20 },
                 { name: "FIRMA_ADI", type: sql.VarChar, len: 200 },
                 { name: "DOSYA_NO", type: sql.VarChar, len: 20 },
@@ -397,18 +362,118 @@ export class CompanySqlRepository {
                 { name: "YETKILI_MUESSESE_TIPI", type: sql.TinyInt },
                 { name: "E_DEFTER_MUKELLEFI", type: sql.Bit },
                 { name: "URETIM_HESABI_ID", type: sql.Int },
+                // 2. Para & Oranlar
                 { name: "USD_PARA_ID", type: sql.Int },
                 { name: "EUR_PARA_ID", type: sql.Int },
                 { name: "RAPOR_PARA_ID", type: sql.Int },
-                { name: "DOVIZ_VERGI_SINIRI_PARA_ID", type: sql.Int },
-                { name: "ALTIN_VERGI_SINIRI_PARA_ID", type: sql.Int },
                 { name: "FAVORI_PARA_ID", type: sql.Int },
                 { name: "HAS_ALTIN_PARA_ID", type: sql.Int },
                 { name: "HAS_GUMUS_PARA_ID", type: sql.Int },
+                { name: "TL_KURUS_SAYISI", type: sql.Int },
+                { name: "DOVIZ_KURUS_SAYISI", type: sql.Int },
+                { name: "KUR_KURUS_SAYISI", type: sql.Int },
+                { name: "GRAM_ONDALIK_SAYISI", type: sql.Int },
+                { name: "DOVIZ_ALIS_DVZ_SATIS_ORANI", type: sql.Float },
+                { name: "EFEKTIF_ALIS_DVZ_SATIS_ORANI", type: sql.Float },
+                { name: "EFEKTIF_SATIS_DVZ_SATIS_ORANI", type: sql.Float },
+                { name: "MERKEZ_BANKASI_KURUNU_AL", type: sql.Bit },
+                { name: "FISDE_KUR_TURU_DEGISEBILIR", type: sql.Bit },
                 { name: "ALIS_ISTATISTIK_ID", type: sql.Int },
                 { name: "SATIS_ISTATISTIK_ID", type: sql.Int },
+                { name: "ARBITRAJ_ALIS_ISTATISTIK_ID", type: sql.Int },
+                { name: "ARBITRAJ_SATIS_ISTATISTIK_ID", type: sql.Int },
+                { name: "FOREKS_KUR_VEZNE_ID", type: sql.Int },
+                { name: "FOREKS_KUR_DOSYA_ADI", type: sql.VarChar, len: 200 },
+                { name: "FOREKS_KUR_YENILEME_SURESI", type: sql.Int },
+                { name: "FOREKS_KUR_BASAMAK_SAYISI", type: sql.Int },
+                { name: "KUR_TEXT_DOSYASI", type: sql.VarChar, len: 200 },
+                { name: "DEFAULT_KUR_KAYNAGI", type: sql.TinyInt },
+                // 3. Muhasebe & Hesaplar
+                { name: "KASA_HESABI", type: sql.VarChar, len: 20 },
+                { name: "KOMISYON_HESABI", type: sql.VarChar, len: 20 },
+                { name: "BMV_HESABI", type: sql.VarChar, len: 20 },
+                { name: "KMV_HESABI", type: sql.VarChar, len: 20 },
+                { name: "KMV_GIDER_HESABI", type: sql.VarChar, len: 20 },
+                { name: "SERMAYE_HESABI_ID", type: sql.Int },
+                { name: "KAMBIYO_KAR_HESABI", type: sql.VarChar, len: 20 },
+                { name: "KAMBIYO_ZARAR_HESABI", type: sql.VarChar, len: 20 },
+                { name: "ISCILIK_HESABI", type: sql.VarChar, len: 20 },
+                { name: "KMV_UYGULAMA_SEKLI", type: sql.TinyInt },
+                { name: "KDV_GELIR_HESABI", type: sql.VarChar, len: 20 },
+                { name: "KDV_GIDER_HESABI", type: sql.VarChar, len: 20 },
+                { name: "HESAP_YILI", type: sql.Int },
+                { name: "ISCILIK_GIRIS_SEKLI", type: sql.TinyInt },
+                { name: "ISCILIK_FIYATA_DAHIL", type: sql.Bit },
+                // 4. Limitler & Tolerans
+                { name: "TL_VERGI_SINIRI", type: sql.Float },
+                { name: "DOVIZ_VERGI_SINIRI", type: sql.Float },
+                { name: "ALTIN_VERGI_SINIRI", type: sql.Float },
+                { name: "SAR_KIMLIK_KONTROL_SINIRI", type: sql.Float },
+                { name: "DOVIZ_VERGI_SINIRI_PARA_ID", type: sql.Int },
+                { name: "ALTIN_VERGI_SINIRI_PARA_ID", type: sql.Int },
+                { name: "VERGI_SINIRI_ASILINCA_YASAKLA", type: sql.Bit },
+                { name: "CARI_TL_TOLERANSI", type: sql.Float },
+                { name: "CARI_USD_TOLERANSI", type: sql.Float },
+                { name: "TL_YUVARLAMA_ARALIGI", type: sql.Float },
+                { name: "TL_YUVARLAMA_ESIGI", type: sql.Float },
+                { name: "SATISIN_DAYANAGI", type: sql.VarChar, len: 100 },
+                { name: "VERGI_NO_SORGULAMA_YONTEMI", type: sql.TinyInt },
+                { name: "VERGI_SORGULAYAN_TC_NO", type: sql.VarChar, len: 20 },
+                // 5. E-Server & E-Belge
+                { name: "E_BELGE_SERVER_IP", type: sql.VarChar, len: 20 },
+                { name: "E_BELGE_SERVER_PORTU", type: sql.Int },
+                { name: "ENTEGRATOR_YANIT_VERME_SURESI", type: sql.Int },
+                { name: "MUSAVIR_TURMOB_SIFRESI", type: sql.VarChar, len: 200 },
+                { name: "E_FATURA_PORTAL_ADRESI", type: sql.VarChar, len: 200 },
+                { name: "E_DOVIZ_FIS_BASILSIN", type: sql.Bit },
+                { name: "ENTEGRATORE_ANLIK_GONDERILSIN", type: sql.Bit },
+                { name: "E_FATURA_POSTA_KUTUSU", type: sql.VarChar, len: 200 },
+                { name: "E_IRSALIYE_POSTA_KUTUSU", type: sql.VarChar, len: 200 },
+                { name: "E_FATURA_KDV_MUAFIYET_KODU", type: sql.VarChar, len: 20 },
+                { name: "E_FATURA_KDV_MUAFIYET_ADI", type: sql.VarChar, len: 200 },
+                { name: "BELGE_DIZINI", type: sql.VarChar, len: 200 },
                 { name: "E_BELGE_BASLANGIC_TARIHI", type: sql.DateTime },
+                // 6. Fiş, Cari & Sistem
+                { name: "TAZELEME_SURESI", type: sql.Int },
+                { name: "EKRANDAKI_VEZNE_SAYISI", type: sql.TinyInt },
+                { name: "DEGISIKLIK_TAKIP_SIFRESI", type: sql.VarChar, len: 30 },
+                { name: "FIS_MASAK_KONTROLU_VAR", type: sql.Bit },
+                { name: "FISTE_COKLU_SATIR", type: sql.Bit },
+                { name: "FISTE_SAAT_CIKMASIN", type: sql.Bit },
+                { name: "FIS_NO_BASINA_SIFIR", type: sql.Bit },
+                { name: "CARI_KOD_BASINA_SIFIR", type: sql.Bit },
+                { name: "CARI_KOD_SIRA_NO", type: sql.Int },
+                { name: "FIS_CARI_ISLEME_SORULSUN", type: sql.Bit },
+                { name: "YEDEK_KLASORU", type: sql.VarChar, len: 200 },
+                { name: "IKINCI_YEDEK_KLASORU", type: sql.VarChar, len: 200 },
+                { name: "TOPLAMDA_PARA_KODU", type: sql.Bit },
+                { name: "CARI_DEKONT_KUR_CINSI", type: sql.TinyInt },
+                { name: "CARI_DEKONT_ISLEM_CINSI", type: sql.TinyInt },
+                { name: "XSLT_DIZINI", type: sql.VarChar, len: 200 },
+                { name: "XSLT_DOSYALARI_KOPYALANSIN", type: sql.Bit },
+                { name: "RPT_DOSYALARI_KOPYALANSIN", type: sql.Bit },
+                { name: "ALIS_FIS_BELGESI", type: sql.TinyInt },
+                { name: "SATIS_FIS_BELGESI", type: sql.TinyInt },
+                { name: "FIRMA_DURUMU_RAPORU", type: sql.Bit },
+                { name: "CARI_EKSTRA_BILGI_KONTROLU", type: sql.Bit },
+                { name: "CARI_KAYIT_BILGI_SILME", type: sql.Bit },
+                { name: "SARRAFIYE_FAVORI_BELGE_TURU", type: sql.TinyInt },
+                { name: "VADELI_ISLEM_CINSI", type: sql.TinyInt },
+                { name: "DEVIR_ALANI", type: sql.VarChar, len: 200 },
+                { name: "DEVIR_ALANI2", type: sql.VarChar, len: 200 },
+                { name: "IKINCI_PANO_DZG", type: sql.VarChar, len: 200 },
+                { name: "DIG_CSV_DIZINI", type: sql.VarChar, len: 100 },
+                { name: "DIGER_VERITABANI_ADI", type: sql.VarChar, len: 200 },
+                { name: "ORTAK_ALAN", type: sql.Bit },
+                { name: "FISLERI_AKTARILACAK_ALAN", type: sql.Bit },
+                { name: "BELGE_YAZICI_MODU", type: sql.TinyInt },
+                { name: "DONEM_ONAY_TARIHI", type: sql.DateTime },
+                { name: "DONEM_ONAY_GUN_SAYISI", type: sql.Int },
             ];
+            // Filter columns that actually exist in DB (or if query failed, use all mappings)
+            const columnMapping = dbCols.size > 0
+                ? allColumnMappings.filter((col) => dbCols.has(String(col.name).toUpperCase()))
+                : allColumnMappings;
             const updateReq = pool.request();
             for (const col of columnMapping) {
                 let val = sanitizedData[col.name];

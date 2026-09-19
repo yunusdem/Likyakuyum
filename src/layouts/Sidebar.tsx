@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect, useRef } from "react";
+import React, { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Accordion,
@@ -114,6 +114,18 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
   }, [location.pathname]);
 
+  const navigateWithDashboardHop = useCallback((to: string) => {
+    const normTarget = to.startsWith("/") ? to : `/${to}`;
+    if (normTarget === "/dashboard" || normTarget === "/") {
+      navigate("/dashboard");
+      return;
+    }
+    navigate("/dashboard", { replace: true });
+    setTimeout(() => {
+      navigate(normTarget);
+    }, 15);
+  }, [navigate]);
+
   // Global keyboard listener for sidebar navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -162,7 +174,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             setPending(null);
             if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
             const to = matchedChild.link.startsWith("/") ? matchedChild.link : `/${matchedChild.link}`;
-            navigate(to);
+            navigateWithDashboardHop(to);
             return;
           }
         }
@@ -203,7 +215,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       window.removeEventListener("keydown", handleKeyDown);
       if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
     };
-  }, [collapsed, handleCollapsed, navigate]);
+  }, [collapsed, handleCollapsed, navigateWithDashboardHop]);
 
   const displayName = user?.fullName || user?.username || "Admin";
   const displayRole = user?.role === "admin" || user?.isSysAdmin ? "Sistem Yöneticisi" : "Kasa Sorumlusu";
@@ -215,12 +227,8 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   };
 
   const handleLinkClick = (e: React.MouseEvent, to: string) => {
-    const normCurrent = location.pathname.startsWith("/") ? location.pathname : `/${location.pathname}`;
-    const normTarget = to.startsWith("/") ? to : `/${to}`;
-    if (normCurrent === normTarget) {
-      e.preventDefault();
-      window.location.reload();
-    }
+    e.preventDefault();
+    navigateWithDashboardHop(to);
   };
 
   //Generate Link

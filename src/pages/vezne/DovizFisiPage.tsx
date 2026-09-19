@@ -2032,10 +2032,6 @@ export const DovizFisiPage: React.FC = () => {
         });
       } else {
         setMasakModalOpen(false);
-        setNotification({
-          type: "success",
-          message: `✅ MASAK Sorgulaması Temiz: "${cleanName || cleanId}" için kısıtlama veya bloke kaydı bulunamadı.`,
-        });
       }
     } catch (err: any) {
       setNotification({
@@ -3331,7 +3327,7 @@ export const DovizFisiPage: React.FC = () => {
         pageTitle={
           <div className="d-flex align-items-center gap-2">
             <span style={{ fontSize: "14px", fontWeight: 700 }}>
-              {isDuzeltmeMode ? "D- Döviz Fişi Düzeltme" : "C- Döviz Fişi"}
+              {isDuzeltmeMode ? "F- Döviz Fişi Düzeltme" : "E- Döviz Fişi Kayıt"}
             </span>
             <span
               className="badge px-2 py-0.5 fw-bold text-white shadow-2xs"

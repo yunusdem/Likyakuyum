@@ -248,6 +248,18 @@ const EBelgeIrsaliyePage: React.FC = () => {
           setOnayAcik(false);
           setAlertInfo(null);
         }}
+        onRefresh={() => {
+          if (aliciVkn.trim().length >= 10) {
+            void mukellefSorgula();
+          } else {
+            setBelgeNo("");
+            setSatirlar([{ ...BOS_SATIR }]);
+            setSonuc(null);
+            setGonderildi(null);
+            setOnayAcik(false);
+            setAlertInfo(null);
+          }
+        }}
         onPrint={() => window.print()}
         disabled={kilitli}
       />

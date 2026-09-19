@@ -187,14 +187,16 @@ export default function App() {
             <Route path="vezne/transfer" element={<VezneTransferiPage />} />
             <Route path="vezne/izleme" element={<VezneIzlemePage />} />
             <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
-            <Route path="vezne/sarraf-fisi" element={<SarrafFisiPage />} />
-            <Route path="vezne/sarraf-fisi-kayit" element={<SarrafFisiPage />} />
-            <Route path="vezne/sarraf-fisi-duzeltme" element={<SarrafFisiPage />} />
-            <Route path="vezne/genel-sarraf-fisi" element={<SarrafFisiPage />} />
-            <Route path="vezne/perakende-fisi" element={<PerakendeFisiPage />} />
-            <Route path="vezne/perakende-fis" element={<PerakendeFisiPage />} />
-            <Route path="vezne/perakende-fisi-kayit" element={<PerakendeFisiPage />} />
-            <Route path="vezne/perakende" element={<PerakendeFisiPage />} />
+            <Route path="vezne/sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
+            <Route path="vezne/sarraf-fisi-kayit" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
+            <Route path="vezne/genel-sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
+            <Route path="vezne/sarraf-fisi-duzeltme" element={<SarrafFisiPage key="sarraf-duzeltme" isDuzeltme={true} />} />
+            <Route path="vezne/perakende-fisi" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+            <Route path="vezne/perakende-fis" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+            <Route path="vezne/perakende-fisi-kayit" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+            <Route path="vezne/perakende" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+            <Route path="vezne/perakende-fisi-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
+            <Route path="vezne/perakende-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />

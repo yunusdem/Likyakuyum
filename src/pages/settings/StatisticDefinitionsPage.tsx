@@ -57,12 +57,12 @@ export const StatisticDefinitionsPage: React.FC = () => {
       setAlertError(null);
 
       const list = await StatisticService.getStatistics();
-      const mapped: StatisticRowState[] = (list || []).map((s) => ({
+        const mapped: StatisticRowState[] = (list || []).map((s) => ({
         clientId: `db_${s.id}`,
         id: s.id,
         kod: s.kod || "",
         aciklama: s.aciklama || "",
-        fisTipi: s.fisTipi ?? 1,
+        fisTipi: s.fisTipi ?? 0,
         komisyonOrani: s.komisyonOrani ?? 0,
         bmvOrani: s.bmvOrani ?? 0,
         kmvOrani: s.kmvOrani ?? 0,
@@ -134,7 +134,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
       clientId: `new_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       kod: "",
       aciklama: "",
-      fisTipi: 1,
+      fisTipi: 0,
       komisyonOrani: 0,
       bmvOrani: 0,
       kmvOrani: 0,
@@ -248,18 +248,27 @@ export const StatisticDefinitionsPage: React.FC = () => {
       let updatedCount = 0;
 
       for (const row of dirtyRows) {
+        const parsedFisTipi = parseInt(String(row.fisTipi), 10);
+        const parsedKomisyon = parseFloat(String(row.komisyonOrani));
+        const parsedBmv = parseFloat(String(row.bmvOrani));
+        const parsedKmv = parseFloat(String(row.kmvOrani));
+        const parsedDizayn = parseInt(String(row.fisDizaynTipi), 10);
+        const parsedBelgeNo = parseInt(String(row.belgeNoUretmeSekli), 10);
+        const parsedCiktiSatir = parseInt(String(row.ciktiSatirSayisi), 10);
+        const parsedF1 = parseInt(String(row.f1Tusu), 10);
+
         const payload: StatisticFormData = {
           kod: (row.kod || "").trim().slice(0, 20),
           aciklama: (row.aciklama || "").trim(),
-          fisTipi: parseInt(String(row.fisTipi), 10) || 1,
-          komisyonOrani: parseFloat(String(row.komisyonOrani)) || 0,
-          bmvOrani: parseFloat(String(row.bmvOrani)) || 0,
-          kmvOrani: parseFloat(String(row.kmvOrani)) || 0,
+          fisTipi: isNaN(parsedFisTipi) ? 0 : parsedFisTipi,
+          komisyonOrani: isNaN(parsedKomisyon) ? 0 : parsedKomisyon,
+          bmvOrani: isNaN(parsedBmv) ? 0 : parsedBmv,
+          kmvOrani: isNaN(parsedKmv) ? 0 : parsedKmv,
           komisyonYetkisi: row.komisyonYetkisi !== false,
-          fisDizaynTipi: parseInt(String(row.fisDizaynTipi), 10) || 0,
-          belgeNoUretmeSekli: parseInt(String(row.belgeNoUretmeSekli), 10) || 0,
-          ciktiSatirSayisi: Math.max(1, parseInt(String(row.ciktiSatirSayisi), 10) || 1),
-          f1Tusu: parseInt(String(row.f1Tusu), 10) || 0,
+          fisDizaynTipi: isNaN(parsedDizayn) ? 0 : parsedDizayn,
+          belgeNoUretmeSekli: isNaN(parsedBelgeNo) ? 0 : parsedBelgeNo,
+          ciktiSatirSayisi: isNaN(parsedCiktiSatir) || parsedCiktiSatir < 1 ? 1 : parsedCiktiSatir,
+          f1Tusu: isNaN(parsedF1) ? 0 : parsedF1,
           odemeSekliVar: !!row.odemeSekliVar,
           odemeSekli:
             row.odemeSekliVar && row.odemeSekli !== null && row.odemeSekli !== undefined && String(row.odemeSekli) !== ""
@@ -313,12 +322,12 @@ export const StatisticDefinitionsPage: React.FC = () => {
         {
           header: "Fiş Tipi",
           render: (item) =>
-            item.fisTipi === 2
-              ? "2 - ALIŞ"
+            item.fisTipi === 0
+              ? "0 - ALIŞ"
               : item.fisTipi === 1
               ? "1 - SATIŞ"
-              : item.fisTipi === 3 || item.fisTipi === 0
-              ? "0 - ALIŞ-SATIŞ"
+              : item.fisTipi === 2
+              ? "2 - ALIŞ-SATIŞ"
               : `${item.fisTipi}`,
           width: "20%",
         },
@@ -407,7 +416,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                 tableLayout: "auto",
                 fontSize: "13px",
                 color: "#000000",
-                minWidth: "1680px",
+                minWidth: "100%",
               }}
             >
               <thead>
@@ -439,7 +448,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "95px",
+                      width: "110px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -452,8 +461,8 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "220px",
-                      minWidth: "160px",
+                      width: "280px",
+                      minWidth: "200px",
                       padding: "3px 8px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -466,7 +475,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "135px",
+                      width: "160px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -479,8 +488,8 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "125px",
-                      padding: "3px 6px",
+                      width: "50px",
+                      padding: "3px 4px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
                       textAlign: "center",
@@ -505,7 +514,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "75px",
+                      width: "80px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -518,7 +527,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "65px",
+                      width: "75px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -531,7 +540,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "80px",
+                      width: "90px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -544,7 +553,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "75px",
+                      width: "80px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -557,7 +566,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "75px",
+                      width: "80px",
                       padding: "3px 6px",
                       borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
@@ -570,9 +579,8 @@ export const StatisticDefinitionsPage: React.FC = () => {
                   </th>
                   <th
                     style={{
-                      width: "75px",
+                      width: "90px",
                       padding: "3px 4px",
-                      borderRight: "1px solid #8ab8ee",
                       borderBottom: "1px solid #8ab8ee",
                       textAlign: "center",
                       fontWeight: 600,
@@ -581,84 +589,6 @@ export const StatisticDefinitionsPage: React.FC = () => {
                     title="Komisyon Yetkisi Aktif"
                   >
                     Kom. Yetkisi
-                  </th>
-                  <th
-                    style={{
-                      width: "80px",
-                      padding: "3px 4px",
-                      borderRight: "1px solid #8ab8ee",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                    title="Ödeme Şekli Tanımlı"
-                  >
-                    Ödeme Şekli?
-                  </th>
-                  <th
-                    style={{
-                      width: "135px",
-                      padding: "3px 6px",
-                      borderRight: "1px solid #8ab8ee",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Ödeme Şekli
-                  </th>
-                  <th
-                    style={{
-                      width: "90px",
-                      padding: "3px 6px",
-                      borderRight: "1px solid #8ab8ee",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Muh. Hesap
-                  </th>
-                  <th
-                    style={{
-                      width: "90px",
-                      padding: "3px 6px",
-                      borderRight: "1px solid #8ab8ee",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Depo Hesap
-                  </th>
-                  <th
-                    style={{
-                      width: "90px",
-                      padding: "3px 6px",
-                      borderRight: "1px solid #8ab8ee",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Vaziyet Hesap
-                  </th>
-                  <th
-                    style={{
-                      width: "42px",
-                      padding: "3px 4px",
-                      borderBottom: "1px solid #8ab8ee",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Sil
                   </th>
                 </tr>
               </thead>
@@ -784,10 +714,9 @@ export const StatisticDefinitionsPage: React.FC = () => {
                             cursor: "pointer",
                           }}
                         >
-                          <option value={2}>2 - ALIŞ</option>
+                          <option value={0}>0 - ALIŞ</option>
                           <option value={1}>1 - SATIŞ</option>
-                          <option value={0}>0 - ALIŞ-SATIŞ</option>
-                          <option value={3}>3 - ALIŞ-SATIŞ</option>
+                          <option value={2}>2 - ALIŞ-SATIŞ</option>
                         </select>
                       </td>
 
@@ -814,8 +743,9 @@ export const StatisticDefinitionsPage: React.FC = () => {
                                 : "none",
                             outline: "none",
                             backgroundColor: "transparent",
-                            padding: "0 4px",
+                            padding: "0 2px",
                             fontSize: "12px",
+                            textAlign: "center",
                             color: "#000000",
                             cursor: "pointer",
                           }}
@@ -1031,7 +961,6 @@ export const StatisticDefinitionsPage: React.FC = () => {
                           padding: 0,
                           textAlign: "center",
                           verticalAlign: "middle",
-                          borderRight: "1px solid #e0e0e0",
                         }}
                       >
                         <input
@@ -1051,182 +980,6 @@ export const StatisticDefinitionsPage: React.FC = () => {
                           title="Komisyon Yetkisi Aktif"
                         />
                       </td>
-
-                      {/* Ödeme Şekli Var Checkbox */}
-                      <td
-                        style={{
-                          padding: 0,
-                          textAlign: "center",
-                          verticalAlign: "middle",
-                          borderRight: "1px solid #e0e0e0",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={row.odemeSekliVar}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            handleFieldChange(row.clientId, "odemeSekliVar", checked);
-                            if (!checked) {
-                              handleFieldChange(row.clientId, "odemeSekli", null);
-                            } else if (row.odemeSekli === null) {
-                              handleFieldChange(row.clientId, "odemeSekli", 0);
-                            }
-                          }}
-                          style={{
-                            cursor: "pointer",
-                            width: "14px",
-                            height: "14px",
-                            margin: "0 auto",
-                            display: "block",
-                            accentColor: "#0f172a",
-                          }}
-                          title="Ödeme Şekli Tanımlı"
-                        />
-                      </td>
-
-                      {/* Ödeme Şekli Select */}
-                      <td
-                        style={{
-                          padding: 0,
-                          borderRight: "1px solid #e0e0e0",
-                        }}
-                      >
-                        <select
-                          value={row.odemeSekli ?? ""}
-                          disabled={!row.odemeSekliVar}
-                          onChange={(e) =>
-                            handleFieldChange(
-                              row.clientId,
-                              "odemeSekli",
-                              e.target.value !== "" ? parseInt(e.target.value, 10) : null
-                            )
-                          }
-                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "odemeSekli" })}
-                          onBlur={() => setActiveCell(null)}
-                          style={{
-                            width: "100%",
-                            height: "23px",
-                            border:
-                              activeCell?.clientId === row.clientId && activeCell?.col === "odemeSekli"
-                                ? "1px dotted #000000"
-                                : "none",
-                            outline: "none",
-                            backgroundColor: "transparent",
-                            padding: "0 4px",
-                            fontSize: "12px",
-                            color: row.odemeSekliVar ? "#000000" : "#94a3b8",
-                            cursor: row.odemeSekliVar ? "pointer" : "not-allowed",
-                          }}
-                        >
-                          <option value="">(Seçilmedi)</option>
-                          <option value={0}>0 - Nakit</option>
-                          <option value={1}>1 - Kredi Kartı / POS</option>
-                          <option value={2}>2 - Havale / EFT</option>
-                          <option value={3}>3 - Çek / Senet</option>
-                        </select>
-                      </td>
-
-                      {/* Muhasebe Hesap ID */}
-                      <td
-                        style={{
-                          padding: 0,
-                          borderRight: "1px solid #e0e0e0",
-                        }}
-                      >
-                        <input
-                          type="number"
-                          value={row.muhHesapId ?? ""}
-                          placeholder="Hesap ID"
-                          onChange={(e) =>
-                            handleFieldChange(row.clientId, "muhHesapId", e.target.value)
-                          }
-                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "muhHesapId" })}
-                          onBlur={() => setActiveCell(null)}
-                          style={{
-                            width: "100%",
-                            height: "23px",
-                            border:
-                              activeCell?.clientId === row.clientId && activeCell?.col === "muhHesapId"
-                                ? "1px dotted #000000"
-                                : "none",
-                            outline: "none",
-                            backgroundColor: "transparent",
-                            padding: "0 6px",
-                            fontSize: "13px",
-                            textAlign: "right",
-                            color: "#000000",
-                          }}
-                        />
-                      </td>
-
-                      {/* Depo Hesap ID */}
-                      <td
-                        style={{
-                          padding: 0,
-                          borderRight: "1px solid #e0e0e0",
-                        }}
-                      >
-                        <input
-                          type="number"
-                          value={row.efektifDepoHesapId ?? ""}
-                          placeholder="Depo ID"
-                          onChange={(e) =>
-                            handleFieldChange(row.clientId, "efektifDepoHesapId", e.target.value)
-                          }
-                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "efektifDepoHesapId" })}
-                          onBlur={() => setActiveCell(null)}
-                          style={{
-                            width: "100%",
-                            height: "23px",
-                            border:
-                              activeCell?.clientId === row.clientId &&
-                              activeCell?.col === "efektifDepoHesapId"
-                                ? "1px dotted #000000"
-                                : "none",
-                            outline: "none",
-                            backgroundColor: "transparent",
-                            padding: "0 6px",
-                            fontSize: "13px",
-                            textAlign: "right",
-                            color: "#000000",
-                          }}
-                        />
-                      </td>
-
-                      {/* Vaziyet Hesap ID */}
-                      <td
-                        style={{
-                          padding: 0,
-                          borderRight: "1px solid #e0e0e0",
-                        }}
-                      >
-                        <input
-                          type="number"
-                          value={row.efektifVaziyetHesapId ?? ""}
-                          placeholder="Vaziyet ID"
-                          onChange={(e) =>
-                            handleFieldChange(row.clientId, "efektifVaziyetHesapId", e.target.value)
-                          }
-                          onFocus={() => setActiveCell({ clientId: row.clientId, col: "efektifVaziyetHesapId" })}
-                          onBlur={() => setActiveCell(null)}
-                          style={{
-                            width: "100%",
-                            height: "23px",
-                            border:
-                              activeCell?.clientId === row.clientId &&
-                              activeCell?.col === "efektifVaziyetHesapId"
-                                ? "1px dotted #000000"
-                                : "none",
-                            outline: "none",
-                            backgroundColor: "transparent",
-                            padding: "0 6px",
-                            fontSize: "13px",
-                            textAlign: "right",
-                            color: "#000000",
-                          }}
-                        />
-                      </td>
                     </tr>
                   );
                 })}
@@ -1234,7 +987,7 @@ export const StatisticDefinitionsPage: React.FC = () => {
                 {rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={17}
+                      colSpan={12}
                       className="text-center py-4 text-muted"
                       style={{ fontSize: "13px" }}
                     >

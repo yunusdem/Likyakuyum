@@ -586,32 +586,11 @@ const UserDefinitionsPage: React.FC = () => {
     setCurrentUser((prev) => ({ ...prev, [field]: value }));
   };
 
-  const isDefaultOrPlaceholder = (val: any) => {
-    if (val === undefined || val === null) return true;
-    const str = String(val).trim();
-    return (
-      str === "0" ||
-      str === "00" ||
-      str === "0.00" ||
-      str === "1" ||
-      str === "EMM2026" ||
-      str === "EAR2026" ||
-      str === "EFN2026" ||
-      str === "Şifre girin" ||
-      str === "Kullanıcı adı girin"
-    );
-  };
-
   const handleInputFocusOrClick = (
     e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement> | React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
-    field?: keyof UserProfile
+    _field?: keyof UserProfile
   ) => {
-    const target = e.currentTarget;
-    if (field && isDefaultOrPlaceholder(currentUser[field])) {
-      updateField(field, "" as any);
-    } else {
-      target.select();
-    }
+    e.currentTarget.select();
   };
 
   /** İstatistik lookup açar — seçilince ilgili stat kod alanını günceller */
@@ -619,11 +598,31 @@ const UserDefinitionsPage: React.FC = () => {
     setIstatistikModalConfig({ show: true, field, title });
   };
 
+  /** Alış için (0-ALIŞ ve 2-ALIŞ-SATIŞ), Satış için (1-SATIŞ ve 2-ALIŞ-SATIŞ) filtreler */
+  const filteredIstatistikList = useMemo(() => {
+    const field = istatistikModalConfig.field;
+    if (field === "buyStatCode" || field === "arbitrageBuyStatCode") {
+      return istatistikList.filter((s) => {
+        const ft = Number(s.fisTipi);
+        return ft === 0 || ft === 2;
+      });
+    } else if (field === "sellStatCode" || field === "arbitrageSellStatCode") {
+      return istatistikList.filter((s) => {
+        const ft = Number(s.fisTipi);
+        return ft === 1 || ft === 2;
+      });
+    }
+    return istatistikList;
+  }, [istatistikList, istatistikModalConfig.field]);
+
   /** Seçili stat koda ait istatistik kaydını döndürür (adını göstermek için) */
   const getIstatistikNameByKod = (kod?: string | null): string => {
     if (!kod) return "";
+    const clean = (kod || "").trim().toLowerCase();
     const it = istatistikList.find(
-      (s) => (s.kod || "").trim().toLowerCase() === (kod || "").trim().toLowerCase()
+      (s) =>
+        (s.kod || "").trim().toLowerCase() === clean ||
+        String(s.id) === clean
     );
     return it ? `${it.kod} - ${it.aciklama || ""}`.trim() : kod;
   };
@@ -686,9 +685,16 @@ const UserDefinitionsPage: React.FC = () => {
           ...currentUser,
           username: trimmedUsername.replace(/\s+/g, ""),
         });
-        setAlertSuccess(`"${updated.username}" kullanıcısı başarıyla güncellendi.`);
+        setAlertSuccess(`"${updated?.username || trimmedUsername}" kullanıcısı başarıyla güncellendi.`);
         const res = await UserService.listUsers();
-        setUsers(res.data || []);
+        const updatedList = res.data || [];
+        setUsers(updatedList);
+        const found = updatedList.find((u) => String(u.id) === String(currentUser.id));
+        if (found) {
+          setCurrentUser(found);
+        } else if (updated) {
+          setCurrentUser(updated);
+        }
         if (authUser?.id && String(currentUser.id) === String(authUser.id)) {
           await refreshUser().catch(() => {});
         }
@@ -708,17 +714,19 @@ const UserDefinitionsPage: React.FC = () => {
           ...newUserData,
           username: trimmedUsername.replace(/\s+/g, ""),
         });
-        setAlertSuccess(`"${created.username}" kullanıcısı başarıyla veritabanına eklendi.`);
+        setAlertSuccess(`"${created?.username || trimmedUsername}" kullanıcısı başarıyla veritabanına eklendi.`);
 
         // Veritabanındaki kullanıcı listesini güncelle
         const res = await UserService.listUsers();
         const updatedList = res.data || [];
         setUsers(updatedList);
-        const newIdx = updatedList.findIndex((u) => u.id === created.id);
+        const newIdx = updatedList.findIndex((u) => u.id === created?.id);
         if (newIdx !== -1) {
           setUserIndex(newIdx);
+          setCurrentUser(updatedList[newIdx]);
+        } else if (created) {
+          setCurrentUser(created);
         }
-        setCurrentUser(created);
         setIsNewRecord(false);
         setTimeout(() => setAlertSuccess(null), 4500);
       }
@@ -2137,7 +2145,7 @@ const UserDefinitionsPage: React.FC = () => {
         show={istatistikModalConfig.show}
         onHide={() => setIstatistikModalConfig((p) => ({ ...p, show: false }))}
         title={istatistikModalConfig.title}
-        items={istatistikList}
+        items={filteredIstatistikList}
         searchPlaceholder="Kod, açıklama veya ID ile arayın..."
         columns={[
           {
@@ -2150,6 +2158,17 @@ const UserDefinitionsPage: React.FC = () => {
             header: "Kod",
             width: "110px",
             render: (s) => <Badge bg="secondary" className="font-monospace">{s.kod}</Badge>,
+          },
+          {
+            header: "Fiş Tipi",
+            width: "120px",
+            align: "center",
+            render: (s) => {
+              const ft = Number(s.fisTipi);
+              const label = ft === 0 ? "0 - ALIŞ" : ft === 1 ? "1 - SATIŞ" : ft === 2 ? "2 - ALIŞ-SATIŞ" : `${ft}`;
+              const badgeVariant = ft === 0 ? "primary" : ft === 1 ? "success" : "info";
+              return <Badge bg={badgeVariant} className="px-2 py-1">{label}</Badge>;
+            },
           },
           {
             header: "Açıklama",

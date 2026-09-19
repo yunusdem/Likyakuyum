@@ -545,7 +545,7 @@ export const KasaHareketPage: React.FC = () => {
           else showNotif("warning", "Geri alınacak bir kasa hareketi seçiniz.");
         }}
         onNew={handleNew}
-        onRefresh={() => window.location.reload()}
+        onRefresh={loadAll}
         onSearch={() => setShowHareketLookup(true)}
         onPrint={() => window.print()}
         onFirst={handleFirst}

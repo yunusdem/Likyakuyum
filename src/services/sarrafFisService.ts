@@ -50,6 +50,8 @@ export interface SarrafFisListItem {
 export interface SarrafFisModel {
   sarrafFisiId: number;
   fisNo?: string;
+  seri?: string | null;
+  seriNo?: string | null;
   tarih: string;
   saat?: string;
   tip: number;
@@ -103,6 +105,10 @@ export interface SaveSarrafFisPayload {
   tarih: string;
   saat?: string | null;
   fisNo?: string | null;
+  seri?: string | null;
+  seriNo?: string | null;
+  belgeNo?: string | null;
+  irsaliyeNo?: string | null;
   tip: number;
   altinHasKuru: number;
   kdvOrani?: number | null;

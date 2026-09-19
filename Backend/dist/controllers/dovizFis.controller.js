@@ -324,15 +324,15 @@ export class DovizFisController {
             const tipVal = parseInt(String(tipParam), 10);
             if (!isNaN(tipVal)) {
                 if (tipVal === 0) {
-                    // Alış Fişi (0): Fiş Tipi = 2 (Alış) veya 0/3 (Alış-Satış)
-                    filtered = all.filter((item) => item.fisTipi === 2 || item.fisTipi === 0 || item.fisTipi === 3);
+                    // Alış Fişi (0): Fiş Tipi = 0 (Alış) veya 2 (Alış-Satış) (geriye dönük 3 de desteklenir)
+                    filtered = all.filter((item) => item.fisTipi === 0 || item.fisTipi === 2 || item.fisTipi === 3);
                 }
                 else if (tipVal === 1) {
-                    // Satış Fişi (1): Fiş Tipi = 1 (Satış) veya 0/3 (Alış-Satış)
-                    filtered = all.filter((item) => item.fisTipi === 1 || item.fisTipi === 0 || item.fisTipi === 3);
+                    // Satış Fişi (1): Fiş Tipi = 1 (Satış) veya 2 (Alış-Satış) (geriye dönük 3 de desteklenir)
+                    filtered = all.filter((item) => item.fisTipi === 1 || item.fisTipi === 2 || item.fisTipi === 3);
                 }
                 else {
-                    filtered = all.filter((item) => item.fisTipi === tipVal || item.fisTipi === 0 || item.fisTipi === 3);
+                    filtered = all.filter((item) => item.fisTipi === tipVal || item.fisTipi === 2 || item.fisTipi === 0);
                 }
             }
         }

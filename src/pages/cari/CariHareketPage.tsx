@@ -198,45 +198,47 @@ export const CariHareketPage: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
 
   // Load initial lookups (Cariler, Vezneler, Paralar)
-  useEffect(() => {
-    const fetchInitialLookups = async () => {
-      try {
-        setIsLoadingLookups(true);
-        const [cariler, vezneRes, paraRes] = await Promise.all([
-          CariService.getCariKartlar().catch(() => []),
-          apiClient.get<any[]>("/vezne").catch(() => ({ data: [] })),
-          apiClient.get<any[]>("/para").catch(() => ({ data: [] })),
-        ]);
+  const fetchInitialLookups = useCallback(async () => {
+    try {
+      setIsLoadingLookups(true);
+      const [cariler, vezneRes, paraRes] = await Promise.all([
+        CariService.getCariKartlar().catch(() => []),
+        apiClient.get<any[]>("/vezne").catch(() => ({ data: [] })),
+        apiClient.get<any[]>("/para").catch(() => ({ data: [] })),
+      ]);
 
-        setCariList(cariler || []);
+      setCariList(cariler || []);
 
-        const vezneler: VezneItem[] = (vezneRes.data || []).map((v) => ({
-          id: v.id || v.VEZNE_ID,
-          kod: (v.kod || v.KOD || "").trim(),
-          ad: (v.ad || v.AD || "").trim(),
-        }));
-        setVezneList(vezneler);
+      const vezneler: VezneItem[] = (vezneRes.data || []).map((v) => ({
+        id: v.id || v.VEZNE_ID,
+        kod: (v.kod || v.KOD || "").trim(),
+        ad: (v.ad || v.AD || "").trim(),
+      }));
+      setVezneList(vezneler);
 
-        const paralar: ParaItem[] = (paraRes.data || []).map((p) => ({
-          id: p.id || p.PARA_ID,
-          kod: (p.kod || p.KOD || "").trim(),
-          ad: (p.ad || p.AD || "").trim(),
-          hasOrani: p.hasOrani || p.HAS_ORANI,
-        }));
-        setParaList(paralar);
+      const paralar: ParaItem[] = (paraRes.data || []).map((p) => ({
+        id: p.id || p.PARA_ID,
+        kod: (p.kod || p.KOD || "").trim(),
+        ad: (p.ad || p.AD || "").trim(),
+        hasOrani: p.hasOrani || p.HAS_ORANI,
+      }));
+      setParaList(paralar);
 
-        if (!queryId && !isEditMode) {
-          applyUserVezne(vezneler);
-        }
-      } catch (err: any) {
-        console.error("Lookups fetch error:", err);
-      } finally {
-        setIsLoadingLookups(false);
+      if (!queryId && !isEditMode) {
+        applyUserVezne(vezneler);
       }
-    };
+    } catch (err: any) {
+      console.error("Lookups fetch error:", err);
+    } finally {
+      setIsLoadingLookups(false);
+    }
+  }, [queryId, isEditMode, applyUserVezne]);
 
+  useEffect(() => {
     fetchInitialLookups();
-  }, []); // Run once on mount!
+  }, [fetchInitialLookups]);
+
+
 
   // Load record if queryId present or edit mode (Kayıt sayfasında daima boş, Düzeltme sayfasında son kayıt)
   useEffect(() => {
@@ -354,6 +356,18 @@ export const CariHareketPage: React.FC = () => {
       navigate("/cari/hareket-kayit");
     }
   };
+
+  const handleRefresh = useCallback(async () => {
+    await fetchInitialLookups();
+    if (cariKartId) loadCariBakiye(cariKartId);
+    if (currentHareketId) {
+      await loadRecordById(currentHareketId);
+    } else if (isEditMode) {
+      await loadLastRecord();
+    } else {
+      handleNewRecord();
+    }
+  }, [fetchInitialLookups, cariKartId, currentHareketId, isEditMode, vezneList]);
 
   // Save Record (F2)
   const handleSave = async () => {
@@ -851,10 +865,7 @@ export const CariHareketPage: React.FC = () => {
         onNext={navInfo.nextId ? handleNavNext : undefined}
         onLast={navInfo.lastId ? handleNavLast : undefined}
         onPrint={handlePrint}
-        onRefresh={() => {
-          if (cariKartId) loadCariBakiye(cariKartId);
-          if (currentHareketId) loadRecordById(currentHareketId);
-        }}
+        onRefresh={handleRefresh}
         onClear={handleNewRecord}
         disabled={isSaving}
       />
