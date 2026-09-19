@@ -97,7 +97,6 @@
     "altToplam": true,
     "genelToplam": false
   },
-  "dipnot": "Her para birimi ayrı defterdir; ilk satır başlangıç tarihinden önceki devirdir (devir tutarı ara toplama dahildir). Bakiye = devir + girişler − çıkışlar.",
   "ozet": {
     "baslik": "Kapanış — para bazında",
     "kolonlar": [

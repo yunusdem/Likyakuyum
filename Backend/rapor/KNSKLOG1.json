@@ -126,6 +126,5 @@
         "bicim": "tam"
       }
     ]
-  },
-  "dipnot": "Vezne, sorguyu yapan kullanıcının tanımlı veznesidir. Başarısız sorgu: kara liste servisine ulaşılamadığı veya sorgunun tamamlanamadığı kayıtlar; bu durumda müşteri kontrol edilmemiş sayılır."
+  }
 }

@@ -353,6 +353,10 @@ const EBelgeDogrulaPage: React.FC = () => {
       });
       return null;
     }
+    if (satirlar.some((s) => s.istisnaKodu?.trim() && s.istisnaKodu.trim() !== "555" && s.kdvOrani !== 0)) {
+      setAlertInfo({ type: "danger", message: "İstisna kodu girilen satırda KDV oranı 0 olmalıdır. Kodu silin ya da KDV oranını 0 yapın." });
+      return null;
+    }
     if (satirlar.some((s) => s.istisnaKodu?.trim() === "555" && s.kdvOrani === 0)) {
       setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu KDV 0 ile kullanılamaz." });
       return null;
@@ -845,9 +849,8 @@ const EBelgeDogrulaPage: React.FC = () => {
               <Form.Control size="sm" value={aliciIlce} onChange={(e) => setAliciIlce(e.target.value)} />
             </Col>
             <Col xs={12} md={6} lg={4}>
-              <Form.Label className="small mb-1">Adres</Form.Label>
-              <Form.Control size="sm" value={aliciAdres} maxLength={300} onChange={(e) => setAliciAdres(e.target.value)}
-                placeholder="Cari kartından ya da ICE'deki önceki faturadan dolar" />
+              <Form.Label className="small mb-1">Adresin devamı (mahalle, cadde, no)</Form.Label>
+              <Form.Control size="sm" value={aliciAdres} maxLength={300} onChange={(e) => setAliciAdres(e.target.value)} />
             </Col>
             {iceAdresler.length > 1 && (
               <Col xs={12} md={6} lg={4}>
@@ -988,9 +991,13 @@ const EBelgeDogrulaPage: React.FC = () => {
                           tur="ISTISNA"
                           placeholder={satir.kdvOrani === 0 ? "zorunlu" : "-"}
                           value={satir.istisnaKodu || ""}
-                          disabled={satir.kdvOrani !== 0}
+                          disabled={ozelMatrahMi && !!satir.ozelMatrahKodu?.trim()}
                           isInvalid={satir.kdvOrani === 0 && !satir.istisnaKodu?.trim()}
                           onChange={(kod) => satirDegistir(i, "istisnaKodu", kod)}
+                          onSelect={(k) => {
+                            satirDegistir(i, "istisnaGerekcesi", k.ad);
+                            if (k.kod !== "555") satirDegistir(i, "kdvOrani", 0);
+                          }}
                         />
                       </td>
                       {tevkifatliMi && (

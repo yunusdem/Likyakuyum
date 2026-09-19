@@ -172,7 +172,6 @@
     "baslik": "{{gunBaslik}}",
     "altToplam": true
   },
-  "dipnot": "Miktar toplamı farklı para birimlerini birlikte içerebilir; para bazında toplam rapor sonundaki tablodadır.",
   "ozet": {
     "baslik": "GENEL TOPLAM — para bazında",
     "kolonlar": [

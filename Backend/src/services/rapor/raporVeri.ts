@@ -274,7 +274,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     if (kmt.length) kmt.push({ para: "TOPLAM (TL)", kmt: "T", devir: tDevir, alis: tAlis, satis: tSatis, kapanis: tKapanis, eft: "E", sonuc: tE },
       { para: "", kmt: "", devir: null, alis: null, satis: null, kapanis: null, eft: "F", sonuc: tF }, { para: "", kmt: "", devir: null, alis: null, satis: null, kapanis: null, eft: "T", sonuc: tE + tF });
     return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`,
-      "Rapor altındaki tablo eski rapor yöntemidir — KMT: Kur, Miktar, TL · EFT: Evalüasyon, Faaliyet, Toplam. Faaliyet = satış miktarı × (ortalama satış − ortalama alış); evalüasyon = devrin ve mevcudun kur farkı (alış yoksa devir × (kapanış − devir kuru)). Üstteki satırlar ağırlıklı ortalama maliyet yöntemini kullanır; iki yöntemin kârı farklı olabilir.",
+      "Rapor altındaki tablo — KMT: Kur, Miktar, TL · EFT: Evalüasyon, Faaliyet, Toplam. Faaliyet = satış miktarı × (ortalama satış − ortalama alış); evalüasyon = devrin ve mevcudun kur farkı (alış yoksa devir × (kapanış − devir kuru)). Üstteki satırlar ağırlıklı ortalama maliyet yöntemini kullanır; iki yöntemin kârı farklı olabilir.",
       kmt);
   },
 
@@ -376,6 +376,10 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     const BELGE = ["Fiş", "Transfer", "Cari", "Hesap"];
     const satirlar = res.recordset.map((r: any) => { const id = Number(r.paraId), giris = Number(r.giris) || 0, cikis = Number(r.cikis) || 0, miktar = giris || cikis;
       const secilenKur = kur.kurlar.get(id) ?? 0, ks = kur.satisKurlari.get(id) ?? 0, fis = Number(r.belgeTipi) === 0;
+      // Fişin TL ödeme ayağı: döviz satırının karşılığıdır; miktar ve "seçilen kurla TL" kolonlarına yazılırsa aynı fiş iki kez toplanır
+      const odeme = fis && String(r.aciklama || "").endsWith("— ödeme");
+      if (odeme) return { ...r, belgeTipi: BELGE[0], yon: giris ? "<<" : ">>", tip: Number(r.fisTip) === 1 ? "Satış" : "Alış", giris, cikis, miktar: null, kur: null, tutar: 0, komisyon: 0, bmv: 0,
+        secilenKur: null, secilenTl: 0, kurSatis: null, tlSatis: 0, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` };
       return { ...r, belgeTipi: BELGE[Number(r.belgeTipi)] || "", yon: giris ? "<<" : ">>", tip: fis ? (Number(r.fisTip) === 1 ? "Satış" : "Alış") : "", giris, cikis, miktar,
         kur: Number(r.kur) || 0, tutar: Number(r.tutar) || 0, komisyon: Number(r.komisyon) || 0, bmv: Number(r.bmv) || 0,
         secilenKur, secilenTl: miktar * secilenKur, kurSatis: ks, tlSatis: miktar * ks, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }; });

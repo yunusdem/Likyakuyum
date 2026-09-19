@@ -144,9 +144,8 @@
       "pdf": false
     }
   ],
-  "dipnot": "Yöntem: ağırlıklı ortalama maliyet. Her alış, ilgili dövizin stokuna alış tutarıyla eklenir; her satışta o andaki ortalama maliyet (toplam maliyet ÷ stok miktarı) ile satış maliyeti hesaplanır. Brüt kâr = satış TL − satış maliyeti. Net kâr = brüt kâr + komisyon − (BSMV + KMV + KDV). Ortalama maliyet kayıtların başından itibaren yürütülür; dönem dışındaki hareketler yalnızca maliyeti etkiler, kâra yazılmaz. Stok sıfırken yapılan satışlarda maliyet olarak satış kuru alınır (kâr 0). İptal fişler kapsam dışıdır. KMT gösterimi: K yalnızca kur kolonlarını (ortalama alış/satış/maliyet kuru), M yalnızca miktarları, T yalnızca TL tutarlarını gösterir; boş bırakılırsa hepsi.",
   "ozet": {
-    "baslik": "KMT / EFT analizi (eski rapor düzeni)",
+    "baslik": "KMT / EFT analizi",
     "kolonlar": [
       {
         "anahtar": "para",

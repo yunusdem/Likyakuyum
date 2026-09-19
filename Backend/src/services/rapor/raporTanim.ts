@@ -72,7 +72,9 @@ export interface RaporTanim {
     /** Grup başlığının altında ikinci satır (Cari Ekstre: adres · telefon · VKN) — {{alan}} yer tutucuları */
     altBaslik?: string;
     /** false → genel toplam basılmaz (gruplar farklı para birimlerindeyse toplamın anlamı yoktur: kasa defteri, hesap ekstresi) */
-    genelToplam?: boolean };
+    genelToplam?: boolean;
+    /** "kip:<değer>": gruplama yalnızca `birlestir` bu değerdeyken uygulanır (kolonlardaki `kosul` ile aynı kural) */
+    kosul?: `kip:${string}` };
   /** Rapor sonunda ikinci küçük tablo (Crystal alt raporlarının karşılığı: "GENEL TOPLAM — para bazında", meslek özeti). Satırlar veriyle (`ozetSatirlar`) gelir. */
   ozet?: { baslik: string; kolonlar: RaporKolon[] };
   /** PDF altına basılan yöntem/uyarı notu (kâr-zarar: ağırlıklı ortalama açıklaması) */

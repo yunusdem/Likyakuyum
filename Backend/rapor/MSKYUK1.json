@@ -156,7 +156,6 @@
       "pdf": false
     }
   ],
-  "dipnot": "Tutar fişin TL toplamıdır; USD karşılığı fişin kayıt anındaki gişe USD kuruyla hesaplanır. Kimlik no = vergi / TC kimlik numarası, yoksa pasaport numarası. İptal fişler hariçtir.",
   "grup": {
     "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",

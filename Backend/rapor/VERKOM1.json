@@ -179,6 +179,5 @@
     "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",
     "altToplam": true
-  },
-  "dipnot": "Miktar farklı para birimlerinde olduğu için toplanmaz. İptal edilmiş fişler kapsam dışıdır."
+  }
 }

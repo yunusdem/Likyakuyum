@@ -134,7 +134,6 @@
     "baslik": "{{cariBaslik}}",
     "altToplam": false
   },
-  "dipnot": "Borç/alacak ve bakiye para biriminde. Has karşılığı = bakiye × para tanımındaki has oranı. TL karşılığı = bakiye × seçilen kur; firma açısından işaretlidir: carinin bize borcu (+), carinin bizden alacağı (−), toplamı net cari alacağımızdır.",
   "ozet": {
     "baslik": "Para bazında toplam ve net bakiye",
     "kolonlar": [

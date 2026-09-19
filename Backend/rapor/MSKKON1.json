@@ -181,6 +181,5 @@
       "g": 1.5,
       "pdf": false
     }
-  ],
-  "dipnot": "Tutar fişin TL toplamıdır; USD karşılığı fişin kayıt anındaki gişe USD kuruyla hesaplanır. Kimlik no = vergi / TC kimlik numarası, yoksa pasaport numarası. İptal fişler hariçtir. Kontroller: (1) fişte MASAK listesi eşleşmesi işaretli; (2) tutar eşiğin üstünde ama kimlik no, doğum tarihi veya meslek eksik; (3) aynı kimlikle aynı gün, her biri eşiğin altında en az belirtilen sayıda fiş ve toplamı eşiği aşıyor. Bu liste bir ön kontroldür; şüpheli işlem kararı yetkiliye aittir."
+  ]
 }

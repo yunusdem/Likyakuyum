@@ -1,7 +1,7 @@
 {
   "kod": "KARLIL1",
   "ad": "Kârlılık Raporu",
-  "aciklama": "Satış işlemlerinin ağırlıklı ortalama maliyete göre kârı; işlem bazında, para grubu ile.",
+  "aciklama": "Para bazında kârlılık: alış miktarı, ortalama alış ve satış kuru, satış miktarı ve tutarı, brüt kâr ve kâr yüzdesi; istenirse işlem bazında ayrıntı.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -36,72 +36,153 @@
         }
       ],
       "varsayilan": "tarih"
+    },
+    {
+      "ad": "birlestir",
+      "etiket": "Rapor tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "ozet",
+          "ad": "Para bazında"
+        },
+        {
+          "deger": "detay",
+          "ad": "Detaylı (işlem bazında)"
+        }
+      ],
+      "varsayilan": "ozet"
     }
   ],
   "kolonlar": [
     {
-      "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 2.1,
-      "bicim": "tarihSaat"
+      "anahtar": "para",
+      "baslik": "Para adı",
+      "g": 3,
+      "kosul": "kip:ozet"
     },
     {
-      "anahtar": "belgeNo",
-      "baslik": "Belge no",
-      "g": 1.7
-    },
-    {
-      "anahtar": "unvan",
-      "baslik": "Ünvan",
-      "g": 2.8,
-      "pdf": false
-    },
-    {
-      "anahtar": "vezneKod",
-      "baslik": "Vezne",
-      "g": 0.9,
-      "hiza": "center",
-      "pdf": false
-    },
-    {
-      "anahtar": "miktar",
-      "baslik": "Miktar",
+      "anahtar": "alisMiktar",
+      "baslik": "Alış miktarı",
       "g": 1.8,
       "bicim": "sayi",
-      "toplam": true
+      "kosul": "kip:ozet"
     },
     {
-      "anahtar": "satisKuru",
-      "baslik": "Satış kuru",
-      "g": 1.4,
-      "bicim": "kur"
+      "anahtar": "ortAlis",
+      "baslik": "Ortalama alış",
+      "g": 1.5,
+      "bicim": "kur",
+      "kosul": "kip:ozet"
     },
     {
-      "anahtar": "maliyetKuru",
-      "baslik": "Maliyet kuru",
-      "g": 1.4,
-      "bicim": "kur"
+      "anahtar": "ortSatis",
+      "baslik": "Ortalama satış",
+      "g": 1.5,
+      "bicim": "kur",
+      "kosul": "kip:ozet"
     },
     {
-      "anahtar": "satisTutari",
-      "baslik": "Satış (TL)",
+      "anahtar": "satisMiktar",
+      "baslik": "Satış miktarı",
+      "g": 1.8,
+      "bicim": "sayi",
+      "kosul": "kip:ozet"
+    },
+    {
+      "anahtar": "satisTutar",
+      "baslik": "Satış tutarı",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
-    },
-    {
-      "anahtar": "maliyetTutari",
-      "baslik": "Maliyet (TL)",
-      "g": 2,
-      "bicim": "sayi",
-      "toplam": true
+      "kosul": "kip:ozet"
     },
     {
       "anahtar": "brutKar",
       "baslik": "Brüt kâr",
       "g": 1.8,
       "bicim": "sayi",
-      "toplam": true
+      "kosul": "kip:ozet"
+    },
+    {
+      "anahtar": "karYuzde",
+      "baslik": "Kâr %",
+      "g": 1,
+      "bicim": "sayi",
+      "kosul": "kip:ozet"
+    },
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 2.1,
+      "bicim": "tarihSaat",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 1.7,
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 2.8,
+      "pdf": false,
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false,
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "satisKuru",
+      "baslik": "Satış kuru",
+      "g": 1.4,
+      "bicim": "kur",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "maliyetKuru",
+      "baslik": "Maliyet kuru",
+      "g": 1.4,
+      "bicim": "kur",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "satisTutari",
+      "baslik": "Satış (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "maliyetTutari",
+      "baslik": "Maliyet (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "brutKar",
+      "baslik": "Brüt kâr",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kip:detay"
     },
     {
       "anahtar": "komisyon",
@@ -109,7 +190,8 @@
       "g": 1.5,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "kip:detay"
     },
     {
       "anahtar": "vergiler",
@@ -117,30 +199,33 @@
       "g": 1.5,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "kip:detay"
     },
     {
       "anahtar": "netKar",
       "baslik": "Net kâr",
       "g": 1.8,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kosul": "kip:detay"
     },
     {
       "anahtar": "karYuzde",
       "baslik": "Kâr %",
       "g": 1.1,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "kosul": "kip:detay"
     }
   ],
   "grup": {
     "anahtar": "paraBaslik",
     "baslik": "{{paraBaslik}}",
-    "altToplam": true
+    "altToplam": true,
+    "kosul": "kip:detay"
   },
-  "dipnot": "Yöntem: ağırlıklı ortalama maliyet (Kâr / Zarar Faaliyet Analizi ile aynı). Maliyet, kayıtların başından itibaren alışlarla yürütülür; stok yokken yapılan satışta son bilinen ortalama, o da yoksa satış kuru maliyet sayılır. Brüt kâr = satış − maliyet; net kâr = brüt + komisyon − (BSMV + KMV + KDV); kâr % = brüt kâr / maliyet. TL satırları ve iptal fişler hariçtir.",
   "ozet": {
-    "baslik": "Para bazında kârlılık (eski rapor düzeni)",
+    "baslik": "Toplam",
     "kolonlar": [
       {
         "anahtar": "para",

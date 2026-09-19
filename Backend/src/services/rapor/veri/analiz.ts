@@ -68,10 +68,13 @@ export const ANALIZ_SORGULARI: Record<string, Sorgu> = {
       const o = pz.get(h.paraKod); if (h.tip === 0) { o.alisMiktar += h.miktar; o.alisTutar += h.tutar; } else { o.satisMiktar += h.miktar; o.satisTutar += h.tutar; } o.sonOrt = h.ortMaliyet || o.sonOrt; }
     const paraOzeti = [...pz.values()].filter(o => o.satisMiktar || o.alisMiktar).map(o => { const ortAlis = o.alisMiktar ? o.alisTutar / o.alisMiktar : o.sonOrt, brut = o.satisMiktar ? o.satisTutar - o.satisMiktar * ortAlis : 0;
       return { para: `${o.paraKod} — ${o.paraAd}`, alisMiktar: o.alisMiktar, ortAlis, ortSatis: o.satisMiktar ? o.satisTutar / o.satisMiktar : 0, satisMiktar: o.satisMiktar, satisTutar: o.satisTutar, brutKar: brut, karYuzde: o.satisTutar ? (brut / o.satisTutar) * 100 : 0 }; });
+    const paraSatirlari = [...paraOzeti];
     if (paraOzeti.length > 1) { const st = paraOzeti.reduce((a, o) => a + o.satisTutar, 0), bk = paraOzeti.reduce((a, o) => a + o.brutKar, 0);
-      paraOzeti.push({ para: "GENEL TOPLAM", alisMiktar: 0, ortAlis: 0, ortSatis: 0, satisMiktar: 0, satisTutar: st, brutKar: bk, karYuzde: st ? (bk / st) * 100 : 0 }); }
+      paraOzeti.push({ para: "GENEL TOPLAM", alisMiktar: null, ortAlis: null, ortSatis: null, satisMiktar: null, satisTutar: st, brutKar: bk, karYuzde: st ? (bk / st) * 100 : 0 } as any); }
+    // Varsayılan düzen para başına tek satır + genel toplam (kâr % = Σ brüt kâr ÷ Σ satış tutarı); "detay" seçilirse işlem bazlı satırlar, para tablosu rapor sonunda
+    if (p.birlestir !== "detay") return sinirla(paraSatirlari, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`, undefined, paraOzeti.filter(o => o.para === "GENEL TOPLAM"));
     return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`,
-      "Satırlardaki maliyet kayıtların başından yürütülen ağırlıklı ortalama maliyettir; kâr % = brüt kâr ÷ satış tutarı. Rapor sonundaki para bazındaki tablo eski rapor yöntemini kullanır: brüt kâr = satış tutarı − satış miktarı × dönemin ortalama alış kuru (dönemde alış yoksa yürüyen ortalama maliyet); bu yüzden iki brüt kâr farklı olabilir.",
+      "Satırlardaki maliyet kayıtların başından yürütülen ağırlıklı ortalama maliyettir; kâr % = brüt kâr ÷ satış tutarı. Rapor sonundaki para bazındaki tabloda brüt kâr = satış tutarı − satış miktarı × dönemin ortalama alış kuru (dönemde alış yoksa yürüyen ortalama maliyet); bu yüzden iki brüt kâr farklı olabilir.",
       paraOzeti);
   },
 

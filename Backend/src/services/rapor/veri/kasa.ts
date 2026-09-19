@@ -106,7 +106,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
     for (const x of satirlar) { const o = nt.get(x.paraKod) || { paraKod: x.paraKod, giris: 0, cikis: 0 }; o.giris += x.giris; o.cikis += x.cikis; nt.set(x.paraKod, o); }
     const netToplamlar = [...nt.values()].map(o => { const n = o.giris - o.cikis; return { ...o, netToplam: Math.abs(n), netTipi: n > 0 ? "B" : n < 0 ? "A" : "" }; });
     return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p)}${adetOzeti(p.hesapIdler, "hesap")}${p.kasaTipi === 0 ? " · Giriş" : p.kasaTipi === 1 ? " · Çıkış" : ""}`,
-      "Toplamlar farklı para birimlerini birlikte içerebilir; para bazında toplam için sıralamayı \"Para\" seçin. Net = giriş − çıkış; B/A: giriş B, çıkış A (eski rapordaki harfler). KDV tutarı TL'dir.",
+      "Toplamlar farklı para birimlerini birlikte içerebilir; para bazında toplam için sıralamayı \"Para\" seçin. Net = giriş − çıkış; B/A: giriş B, çıkış A. KDV tutarı TL'dir.",
       netToplamlar);
   },
 

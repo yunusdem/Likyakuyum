@@ -110,7 +110,8 @@ export async function hedefPara(pool: sql.ConnectionPool, p: RaporParametreler, 
 export function sinirla(satirlar: any[], tanim: RaporTanim, filtreOzeti: string, ekDipnot?: string, ozetSatirlar?: Record<string, any>[]): RaporSonucVeri {
   const sinir = tanim.ustSinir || RAPOR_UST_SINIR;
   if (satirlar.length > sinir) return { satirlar: [], filtreOzeti, ekDipnot, sinirAsildi: true, toplamKayit: satirlar.length };
-  return { satirlar, filtreOzeti, ekDipnot, toplamKayit: satirlar.length, ...(ozetSatirlar?.length ? { ozetSatirlar } : {}) };
+  // Hesap açıklamaları basılmaz (kullanıcı kararı 19.09.2026: eski raporlardaki gibi sade çıktı); not yalnızca rapor boşken, nedenini söylemek için gösterilir
+  return { satirlar, filtreOzeti, ekDipnot: satirlar.length ? undefined : ekDipnot, toplamKayit: satirlar.length, ...(ozetSatirlar?.length ? { ozetSatirlar } : {}) };
 }
 
 export const aralikOzeti = (p: RaporParametreler) => `${tarihTr(p.baslangic)} – ${tarihTr(p.bitis)}`;
