@@ -1,5 +1,5 @@
-import React, { Fragment, useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import React, { Fragment, useState, useEffect, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   IconArrowBarLeft,
   IconArrowBarRight,
@@ -57,7 +57,7 @@ const quickActions = [
   },
   {
     title: "Perakende",
-    to: "/vezne/perakende-fisi",
+    to: "/vezne/perakende-fisi-kayit",
     icon: <IconShoppingCart size={18} strokeWidth={2} className="text-danger" />,
   },
   {
@@ -79,6 +79,7 @@ const quickActions = [
 
 
 const Header: React.FC = () => {
+  const navigate = useNavigate();
   const [isNoficationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -89,6 +90,18 @@ const Header: React.FC = () => {
   const toggleSidebar = () => {
     handleCollapsed(isExpanded ? "collapsed" : "expanded");
   };
+
+  const navigateWithDashboardHop = useCallback((to: string) => {
+    const normTarget = to.startsWith("/") ? to : `/${to}`;
+    if (normTarget === "/dashboard" || normTarget === "/") {
+      navigate("/dashboard");
+      return;
+    }
+    navigate("/dashboard", { replace: true });
+    setTimeout(() => {
+      navigate(normTarget);
+    }, 15);
+  }, [navigate]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -163,6 +176,10 @@ const Header: React.FC = () => {
                   <Link
                     key={idx}
                     to={action.to}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateWithDashboardHop(action.to);
+                    }}
                     className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
                   >
                     <span className="d-flex align-items-center justify-content-center" style={{ marginBottom: "2px" }}>
@@ -257,6 +274,10 @@ const Header: React.FC = () => {
               <Link
                 key={idx}
                 to={action.to}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithDashboardHop(action.to);
+                }}
                 className="d-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill"
               >
                 <span>{action.icon}</span>

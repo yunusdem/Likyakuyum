@@ -44,6 +44,8 @@ export interface PerakendeFaturaModel {
   faturaTipi: number; // 1: Satış, 2: İade
   senaryo: string; // EARSIVFATURA, TEMELFATURA, TICARIFATURA
   cariKartId?: number | null;
+  cariKod?: string | null;
+  cariUnvan?: string | null;
   aliciVknTckn: string;
   aliciUnvan: string;
   adres?: string | null;
@@ -111,6 +113,8 @@ export interface PerakendeFaturaListItem {
   faturaTipi: number;
   senaryo: string;
   cariKartId?: number | null;
+  cariKod?: string | null;
+  cariUnvan?: string | null;
   aliciVknTckn: string;
   aliciUnvan: string;
   adres?: string | null;

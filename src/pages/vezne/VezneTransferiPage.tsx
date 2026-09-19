@@ -263,6 +263,30 @@ export const VezneTransferiPage: React.FC = () => {
     }
   }, [getUserVezne, vezneList, queryId, navigate, location.pathname]);
 
+  const handleRefresh = useCallback(async () => {
+    setIsLoadingLookups(true);
+    try {
+      const [vezneler, paralar] = await Promise.all([
+        CashDeskService.getVezneler().catch(() => []),
+        ProductDefinitionService.getProducts().catch(async () => {
+          const fallbackCurrencies = await CashDeskService.getCurrencies().catch(() => []);
+          return fallbackCurrencies.map((c) => ({ id: c.id, kod: c.code, ad: c.name } as ProductItem));
+        }),
+      ]);
+      setVezneList(vezneler);
+      setParaList(paralar.map((p) => ({ id: p.id, kod: p.kod.trim(), ad: p.ad.trim() })));
+      if (transferId) {
+        await loadTransferById(transferId);
+      } else if (!isDuzeltmeMode) {
+        resetForm();
+      }
+    } catch (err) {
+      console.error("Yenileme hatası:", err);
+    } finally {
+      setIsLoadingLookups(false);
+    }
+  }, [transferId, isDuzeltmeMode, loadTransferById, resetForm]);
+
   // Navigation handlers (|◀, ◀, ▶, ▶|)
   const handleNavigate = async (action: "first" | "prev" | "next" | "last") => {
     try {
@@ -814,7 +838,7 @@ export const VezneTransferiPage: React.FC = () => {
         onNext={() => handleNavigate("next")}
         onLast={() => handleNavigate("last")}
         onPrint={() => setShowPrintModal(true)}
-        onRefresh={handleTopluTransfer}
+        onRefresh={handleRefresh}
         pageTitle={isDuzeltmeMode ? "F- Vezne Transferi Düzeltme" : "E- Vezne Transferi Kayıt"}
         pageIcon={<IconCash size={20} className="text-primary" />}
         hideSearch={!isDuzeltmeMode}

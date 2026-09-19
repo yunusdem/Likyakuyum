@@ -728,29 +728,49 @@ export class PerakendeSqlRepository {
         await this.ensureTablesAndProcedures(pool);
         const req = pool.request();
         let query = `
-      SELECT TOP ${filter.limit || 100}
-        f.[FATURA_ID], f.[VEZNE_ID], f.[FATURA_NO], f.[ETTN], f.[TARIH],
-        f.[FATURA_TIPI], f.[SENARYO], f.[CARI_KART_ID], f.[ALICI_VKN_TCKN],
-        f.[ALICI_UNVAN], f.[ADRES], f.[ILCE], f.[IL], f.[VERGI_DAIRESI],
-        f.[EPOSTA], f.[TELEFON], f.[PARA_ID], f.[KUR], f.[ARA_TOPLAM],
-        f.[TOPLAM_KDV], f.[GENEL_TOPLAM], f.[E_BELGE_DURUMU], f.[GIB_STATU_KODU],
-        f.[EKLEYEN_ID], f.[EKLEME_ZAMANI],
-        v.[KOD] AS [VEZNE_KOD], v.[AD] AS [VEZNE_AD],
-        p.[KOD] AS [PARA_KODU]
+      SELECT TOP ${filter.limit || 500}
+        f.[FATURA_ID],
+        ISNULL(f.[VEZNE_ID], 1) AS [VEZNE_ID],
+        ISNULL(f.[FATURA_NO], '') AS [FATURA_NO],
+        f.[ETTN],
+        ISNULL(f.[TARIH], GETDATE()) AS [TARIH],
+        ISNULL(f.[FATURA_TIPI], 1) AS [FATURA_TIPI],
+        ISNULL(f.[SENARYO], 'EARSIVFATURA') AS [SENARYO],
+        f.[CARI_KART_ID],
+        ISNULL(f.[ALICI_VKN_TCKN], '11111111111') AS [ALICI_VKN_TCKN],
+        ISNULL(f.[ALICI_UNVAN], 'NİHAİ TÜKETİCİ') AS [ALICI_UNVAN],
+        ISNULL(f.[ADRES], '') AS [ADRES],
+        ISNULL(f.[ILCE], '') AS [ILCE],
+        ISNULL(f.[IL], '') AS [IL],
+        ISNULL(f.[VERGI_DAIRESI], '') AS [VERGI_DAIRESI],
+        ISNULL(f.[EPOSTA], '') AS [EPOSTA],
+        ISNULL(f.[TELEFON], '') AS [TELEFON],
+        ISNULL(f.[PARA_ID], 1) AS [PARA_ID],
+        ISNULL(f.[KUR], 1.0) AS [KUR],
+        ISNULL(f.[ARA_TOPLAM], 0) AS [ARA_TOPLAM],
+        ISNULL(f.[TOPLAM_KDV], 0) AS [TOPLAM_KDV],
+        ISNULL(f.[GENEL_TOPLAM], 0) AS [GENEL_TOPLAM],
+        ISNULL(f.[E_BELGE_DURUMU], 0) AS [E_BELGE_DURUMU],
+        f.[GIB_STATU_KODU],
+        f.[EKLEYEN_ID],
+        f.[EKLEME_ZAMANI],
+        ISNULL(v.[KOD], '') AS [VEZNE_KOD],
+        ISNULL(v.[AD], '') AS [VEZNE_AD],
+        ISNULL(p.[KOD], 'TL') AS [PARA_KODU]
       FROM [dbo].[TODVZ_FATURA] f
       LEFT JOIN [dbo].[TODVZ_VEZNE] v ON f.[VEZNE_ID] = v.[VEZNE_ID]
       LEFT JOIN [dbo].[TODVZ_PARA] p ON f.[PARA_ID] = p.[PARA_ID]
       WHERE 1=1
     `;
-        if (filter.baslangicTarihi) {
-            query += ` AND CAST(f.[TARIH] AS DATE) >= @BASLANGIC`;
-            req.input("BASLANGIC", sql.Date, new Date(filter.baslangicTarihi));
+        if (filter.baslangicTarihi && filter.baslangicTarihi.trim()) {
+            query += ` AND CAST(f.[TARIH] AS DATE) >= CAST(@BASLANGIC AS DATE)`;
+            req.input("BASLANGIC", sql.VarChar(50), filter.baslangicTarihi.trim().substring(0, 10));
         }
-        if (filter.bitisTarihi) {
-            query += ` AND CAST(f.[TARIH] AS DATE) <= @BITIS`;
-            req.input("BITIS", sql.Date, new Date(filter.bitisTarihi));
+        if (filter.bitisTarihi && filter.bitisTarihi.trim()) {
+            query += ` AND CAST(f.[TARIH] AS DATE) <= CAST(@BITIS AS DATE)`;
+            req.input("BITIS", sql.VarChar(50), filter.bitisTarihi.trim().substring(0, 10));
         }
-        if (filter.aliciVknTckn) {
+        if (filter.aliciVknTckn && filter.aliciVknTckn.trim()) {
             query += ` AND f.[ALICI_VKN_TCKN] LIKE @VKN`;
             req.input("VKN", sql.VarChar(50), `%${filter.aliciVknTckn.trim()}%`);
         }
@@ -758,7 +778,7 @@ export class PerakendeSqlRepository {
             query += ` AND f.[E_BELGE_DURUMU] = @DURUM`;
             req.input("DURUM", sql.TinyInt, filter.eBelgeDurumu);
         }
-        if (filter.search) {
+        if (filter.search && filter.search.trim()) {
             query += ` AND (f.[FATURA_NO] LIKE @SEARCH OR f.[ALICI_UNVAN] LIKE @SEARCH OR f.[ALICI_VKN_TCKN] LIKE @SEARCH)`;
             req.input("SEARCH", sql.VarChar(200), `%${filter.search.trim()}%`);
         }
@@ -770,26 +790,26 @@ export class PerakendeSqlRepository {
             vezneKod: row.VEZNE_KOD,
             vezneAd: row.VEZNE_AD,
             faturaNo: row.FATURA_NO,
-            ettn: String(row.ETTN),
+            ettn: String(row.ETTN || ""),
             tarih: row.TARIH ? new Date(row.TARIH).toISOString() : new Date().toISOString(),
-            faturaTipi: row.FATURA_TIPI,
-            senaryo: row.SENARYO,
+            faturaTipi: Number(row.FATURA_TIPI) || 1,
+            senaryo: row.SENARYO || "EARSIVFATURA",
             cariKartId: row.CARI_KART_ID,
-            aliciVknTckn: row.ALICI_VKN_TCKN,
-            aliciUnvan: row.ALICI_UNVAN,
-            adres: row.ADRES,
-            ilce: row.ILCE,
-            il: row.IL,
-            vergiDairesi: row.VERGI_DAIRESI,
-            eposta: row.EPOSTA,
-            telefon: row.TELEFON,
-            paraId: row.PARA_ID,
+            aliciVknTckn: row.ALICI_VKN_TCKN || "",
+            aliciUnvan: row.ALICI_UNVAN || "",
+            adres: row.ADRES || "",
+            ilce: row.ILCE || "",
+            il: row.IL || "",
+            vergiDairesi: row.VERGI_DAIRESI || "",
+            eposta: row.EPOSTA || "",
+            telefon: row.TELEFON || "",
+            paraId: row.PARA_ID || 1,
             paraKodu: row.PARA_KODU || "TL",
             kur: Number(row.KUR) || 1.0,
             araToplam: Number(row.ARA_TOPLAM) || 0,
             toplamKdv: Number(row.TOPLAM_KDV) || 0,
             genelToplam: Number(row.GENEL_TOPLAM) || 0,
-            eBelgeDurumu: row.E_BELGE_DURUMU ?? 0,
+            eBelgeDurumu: Number(row.E_BELGE_DURUMU) || 0,
             gibStatuKodu: row.GIB_STATU_KODU,
             ekleyenId: row.EKLEYEN_ID,
             eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : null,

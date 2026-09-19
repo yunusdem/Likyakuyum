@@ -1,53 +1,61 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
+  Table,
+  Button,
+  Badge,
+  Modal,
+  Form,
+  InputGroup,
   Card,
   Row,
   Col,
-  Form,
-  Button,
-  Table,
-  Badge,
-  InputGroup,
-  Modal,
   Spinner,
 } from "react-bootstrap";
 import {
   IconBarcode,
-  IconPlus,
-  IconPrinter,
-  IconReceipt,
-  IconFileCheck,
   IconSearch,
-  IconBinoculars,
-  IconUser,
-  IconRefresh,
-  IconDeviceFloppy,
-  IconHistory,
-  IconCheck,
-  IconX,
+  IconPrinter,
+  IconPlus,
   IconTrash,
-  IconCurrencyLira,
+  IconRefresh,
+  IconBinoculars,
   IconEdit,
+  IconX,
+  IconHistory,
 } from "@tabler/icons-react";
-import ERPToolbar from "../../components/common/ERPToolbar";
-import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import { ERPToolbar } from "../../components/common/ERPToolbar";
+import { LookupModal, LookupColumn } from "../../components/common/LookupModal";
+import {
+  CariKartItem,
+  CariLookups,
+  CariService,
+} from "../../services/cariService";
+import {
+  DovizFisService,
+  KayitsizMusteriItem,
+} from "../../services/dovizFisService";
+import {
+  EtiketService,
+  AltinUrunItem,
+  OzelUrunItem,
+} from "../../services/etiketService";
+import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import {
   PerakendeService,
-  PerakendeUrunItem,
   PerakendeFaturaModel,
+  PerakendeFaturaListItem,
   SavePerakendeFaturaPayload,
   SavePerakendeFaturaSatiriPayload,
-  PerakendeFaturaListItem,
 } from "../../services/perakendeService";
-import { CashDeskService, VezneItem } from "../../services/cashDeskService";
-import { CariService, CariKartItem, CariLookups } from "../../services/cariService";
-import { DovizFisService, KayitsizMusteriItem } from "../../services/dovizFisService";
-import { EtiketService, AltinUrunItem, OzelUrunItem } from "../../services/etiketService";
-import { AyarService, AyarItem } from "../../services/ayarService";
 import { AyarSecimModal } from "../../components/common/AyarSecimModal";
-import { MusteriSecimModal, SelectedCustomerResult } from "./MusteriSecimModal";
+import { AyarItem } from "../../services/ayarService";
+import {
+  MusteriSecimModal,
+  SelectedCustomerResult,
+} from "./MusteriSecimModal";
 import { PerakendeFisiPrintModal } from "./PerakendeFisiPrintModal";
-import { SarrafFisService } from "../../services/sarrafFisService";
+import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 
@@ -68,6 +76,32 @@ interface CartLineItem {
   toplamTutar: number | string;
 }
 
+export interface OdemeRow {
+  id: string;
+  paraId?: number;
+  paraKodu: string;
+  paraAdi: string;
+  adet: number | string;
+  miktar: number | string;
+  milyem: number | string;
+  hasGram: number | string;
+  kur: number | string;
+  tutar: number | string;
+}
+
+const DEFAULT_ODEME_URUNLER: UrunItem[] = [
+  { id: 1, paraId: 1, kod: "TL", ad: "TÜRK LİRASI", urunTipi: 0, gramaj: 0, hasOrani: 0 },
+  { id: 2, paraId: 2, kod: "USD", ad: "AMERİKAN DOLARI", urunTipi: 1, gramaj: 0, hasOrani: 0 },
+  { id: 3, paraId: 3, kod: "EUR", ad: "EURO", urunTipi: 1, gramaj: 0, hasOrani: 0 },
+  { id: 4, paraId: 4, kod: "HAS", ad: "HAS ALTIN (24 AYAR)", urunTipi: 2, gramaj: 1, hasOrani: 1000 },
+  { id: 5, paraId: 5, kod: "CEYREK", ad: "ÇEYREK ALTIN", urunTipi: 2, gramaj: 1.75, hasOrani: 916 },
+  { id: 6, paraId: 6, kod: "YARIM", ad: "YARIM ALTIN", urunTipi: 2, gramaj: 3.5, hasOrani: 916 },
+  { id: 7, paraId: 7, kod: "TAM", ad: "TAM ALTIN", urunTipi: 2, gramaj: 7.0, hasOrani: 916 },
+  { id: 8, paraId: 8, kod: "ATA", ad: "ATA LİRA", urunTipi: 2, gramaj: 7.216, hasOrani: 916 },
+  { id: 9, paraId: 9, kod: "POS", ad: "KREDİ KARTI / POS", urunTipi: 0, gramaj: 0, hasOrani: 0 },
+  { id: 10, paraId: 10, kod: "HAVALE", ad: "HAVALE / EFT", urunTipi: 0, gramaj: 0, hasOrani: 0 },
+];
+
 const GRID_COLS = [
   "barkod",
   "urunAdi",
@@ -80,6 +114,17 @@ const GRID_COLS = [
   "kdvOrani",
 ] as const;
 type GridColKey = typeof GRID_COLS[number];
+
+const ODEME_GRID_COLS = [
+  "paraKodu",
+  "adet",
+  "miktar",
+  "milyem",
+  "hasGram",
+  "kur",
+  "tutar",
+] as const;
+type OdemeGridColKey = typeof ODEME_GRID_COLS[number];
 
 const makeId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -100,6 +145,18 @@ const createEmptyRow = (): CartLineItem => ({
   toplamTutar: "",
 });
 
+const createEmptyOdemeRow = (index: number = 1): OdemeRow => ({
+  id: `odeme-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+  paraKodu: "TL",
+  paraAdi: "TÜRK LİRASI",
+  adet: "",
+  miktar: "",
+  milyem: "",
+  hasGram: "",
+  kur: 1,
+  tutar: "",
+});
+
 const isRowEmpty = (row?: CartLineItem): boolean => {
   if (!row) return true;
   const hasBarkod = Boolean(row.barkod && String(row.barkod).trim());
@@ -113,12 +170,20 @@ const isRowEmpty = (row?: CartLineItem): boolean => {
   return !hasBarkod && !hasUrunAdi && !hasGram && !hasHasGram && !hasBirimFiyat && !hasTutar && !hasKdvTutari;
 };
 
-export const PerakendeFisiPage: React.FC = () => {
+export interface PerakendeFisiPageProps {
+  isDuzeltme?: boolean;
+}
+
+export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme = false }) => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { showSuccess, showError, showWarning, showInfo } = useToast();
+  const isDuzeltmeMode = Boolean(isDuzeltme || location.pathname.includes("duzeltme"));
 
   // Active Loaded Invoice State
   const [currentFaturaId, setCurrentFaturaId] = useState<number | null>(null);
+  const [, setCurrentIndex] = useState<number>(0);
 
   // Header State
   const [faturaNo, setFaturaNo] = useState<string>("");
@@ -130,11 +195,12 @@ export const PerakendeFisiPage: React.FC = () => {
   );
   const [vezneler, setVezneler] = useState<VezneItem[]>([]);
   const [selectedVezne, setSelectedVezne] = useState<VezneItem | null>(null);
-  const [faturaTipi, setFaturaTipi] = useState<number>(1); // 1: Satış, 2: İade
+  const [faturaTipi, setFaturaTipi] = useState<number>(1); // 0: Alış, 1: Satış
   const [senaryo, setSenaryo] = useState<string>("EARSIVFATURA");
 
   // Customer State
   const [aliciVknTckn, setAliciVknTckn] = useState<string>("11111111111");
+  const [cariKod, setCariKod] = useState<string>("");
   const [aliciUnvan, setAliciUnvan] = useState<string>("NİHAİ TÜKETİCİ");
   const [cariKartId, setCariKartId] = useState<number | null>(null);
   const [adres, setAdres] = useState<string>("");
@@ -144,22 +210,21 @@ export const PerakendeFisiPage: React.FC = () => {
   const [telefon, setTelefon] = useState<string>("");
   const [eposta, setEposta] = useState<string>("");
 
-  // Barcode & Cart State
-  const [barcodeInput, setBarcodeInput] = useState<string>("");
-  const [isScanning, setIsScanning] = useState<boolean>(false);
+  // Cart & Grid State
   const [items, setItems] = useState<CartLineItem[]>([createEmptyRow()]);
-  const [activeRowIndex, setActiveRowIndex] = useState<number>(0);
-  const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
-    x: number;
-    y: number;
-    rowId: string;
-    rowIndex: number;
-  } | null>(null);
+  const [, setActiveRowIndex] = useState<number>(0);
+
+  // Payment Rows State
+  const [odemeRows, setOdemeRows] = useState<OdemeRow[]>([createEmptyOdemeRow(1)]);
+  const [activeOdemeRowIndex, setActiveOdemeRowIndex] = useState<number>(0);
+  const [activeOdemeRowIdForUrun, setActiveOdemeRowIdForUrun] = useState<string | null>(null);
+  const [showOdemeUrunModal, setShowOdemeUrunModal] = useState<boolean>(false);
+  const [odemeUrunList, setOdemeUrunList] = useState<UrunItem[]>(DEFAULT_ODEME_URUNLER);
+  const [altinHasKuru, setAltinHasKuru] = useState<number>(3000);
 
   // Refs for grid keyboard navigation
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const rowInputRefs = useRef<Record<string, HTMLElement | null>>({});
+  const odemeInputRefs = useRef<Record<string, HTMLElement | null>>({});
 
   // Submitting State & Mutex Ref
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -188,16 +253,11 @@ export const PerakendeFisiPage: React.FC = () => {
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historySearch, setHistorySearch] = useState<string>("");
   const [historyStartDate, setHistoryStartDate] = useState<string>(
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10)
+    new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10)
   );
   const [historyEndDate, setHistoryEndDate] = useState<string>(
     new Date().toISOString().substring(0, 10)
   );
-
-  // Audio cues (Muted per user request)
-  const playBeep = useCallback((_type: "success" | "error") => {
-    // Sesler tamamen kapatıldı
-  }, []);
 
   // Safe selection bounds helper
   const getSelectionBounds = (el: any): { isAtStart: boolean; isAtEnd: boolean } => {
@@ -218,13 +278,37 @@ export const PerakendeFisiPage: React.FC = () => {
     return { isAtStart: true, isAtEnd: true };
   };
 
-  // Focus Grid Cell Helper
+  // Focus Grid Cell Helper (Items Table)
   const focusGridCell = (
     rowId: string,
     field: GridColKey,
     mode: "select" | "start" | "end" = "select"
   ) => {
     const el = rowInputRefs.current[`${rowId}_${field}`];
+    if (el) {
+      el.focus();
+      if (el instanceof HTMLInputElement) {
+        try {
+          if (mode === "select") {
+            el.select();
+          } else if (mode === "start") {
+            el.setSelectionRange(0, 0);
+          } else if (mode === "end") {
+            const len = el.value ? el.value.length : 0;
+            el.setSelectionRange(len, len);
+          }
+        } catch { }
+      }
+    }
+  };
+
+  // Focus Payment Grid Cell Helper
+  const focusOdemeGridCell = (
+    rowId: string,
+    field: OdemeGridColKey,
+    mode: "select" | "start" | "end" = "select"
+  ) => {
+    const el = odemeInputRefs.current[`${rowId}_${field}`];
     if (el) {
       el.focus();
       if (el instanceof HTMLInputElement) {
@@ -254,44 +338,43 @@ export const PerakendeFisiPage: React.FC = () => {
     }
   }, [senaryo]);
 
-  // Load Products for Lookup
+  // Load products list for dropdown / modal lookup
   const loadProductsForLookup = useCallback(async () => {
     setIsProductLoading(true);
     try {
-      const [altin, ozel] = await Promise.all([
-        EtiketService.getAltinUrunler({ limit: 500 }).catch(() => []),
-        EtiketService.getOzelUrunler({ limit: 500 }).catch(() => []),
+      const [altinlar, ozeller] = await Promise.all([
+        EtiketService.getAltinUrunler().catch(() => [] as AltinUrunItem[]),
+        EtiketService.getOzelUrunler().catch(() => [] as OzelUrunItem[]),
       ]);
-      setAltinList(altin || []);
-      setOzelList(ozel || []);
-    } catch {
-      // ignore
+      setAltinList(altinlar);
+      setOzelList(ozeller);
+    } catch (err) {
+      console.error("loadProductsForLookup error:", err);
     } finally {
       setIsProductLoading(false);
     }
   }, []);
 
-  // Helper to determine the logged-in user's assigned vezne
+  // Determine user's active cashier vezne on mount
   const resolveUserVezne = useCallback(
     async (list: VezneItem[]): Promise<VezneItem | undefined> => {
       if (!list || list.length === 0) return undefined;
 
-      let userVezneId: number | null = null;
       if (user?.id) {
-        userVezneId = await SarrafFisService.getUserVezneId(Number(user.id)).catch(() => null);
-      }
-
-      if (userVezneId) {
-        const uv = list.find((v) => v.id === userVezneId);
-        if (uv) return uv;
+        try {
+          const userVezneId = await SarrafFisService.getUserVezneId(Number(user.id));
+          if (userVezneId) {
+            const uv = list.find((v) => v.id === userVezneId);
+            if (uv) return uv;
+          }
+        } catch { }
       }
 
       if (user?.cashierCode) {
-        const target = String(user.cashierCode).trim().toLowerCase();
+        const target = String(user.cashierCode).toLowerCase().trim();
         const uv = list.find(
           (v) =>
-            String(v.id).toLowerCase() === target ||
-            v.kod.toLowerCase() === target ||
+            String(v.id) === target ||
             String(v.kod).toLowerCase() === target
         );
         if (uv) return uv;
@@ -326,15 +409,74 @@ export const PerakendeFisiPage: React.FC = () => {
       .then(setKayitsizMusteriler)
       .catch(console.error);
 
-    // Fatura No varsayılan olarak boş gelir, boş bırakılırsa kayıtta numaratörden otomatik üretilir.
+    SarrafFisService.getUrunler()
+      .then((res) => {
+        if (res && res.length > 0) {
+          setOdemeUrunList(res);
+        }
+      })
+      .catch(console.error);
+
     loadProductsForLookup();
 
-    setTimeout(() => {
-      barcodeInputRef.current?.focus();
-    }, 150);
-  }, [loadProductsForLookup, resolveUserVezne]);
+    if (isDuzeltmeMode) {
+      PerakendeService.listInvoices({ limit: 500 })
+        .then(async (res: any) => {
+          const rawList = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+          if (rawList.length > 0) {
+            const mappedList: PerakendeFaturaListItem[] = rawList.map((f: any) => ({
+              faturaId: Number(f.faturaId ?? f.FATURA_ID) || 0,
+              vezneId: f.vezneId ?? f.VEZNE_ID ?? null,
+              vezneKod: f.vezneKod || f.VEZNE_KOD || "",
+              vezneAd: f.vezneAd || f.VEZNE_AD || "",
+              faturaNo: f.faturaNo || f.FATURA_NO || "",
+              ettn: f.ettn || f.ETTN || "",
+              tarih: f.tarih || f.TARIH || new Date().toISOString(),
+              faturaTipi: Number(f.faturaTipi ?? f.FATURA_TIPI) === 0 ? 0 : 1,
+              senaryo: f.senaryo || f.SENARYO || "EARSIVFATURA",
+              cariKartId: f.cariKartId ?? f.CARI_KART_ID ?? null,
+              cariKod: f.cariKod || f.CARI_KOD || null,
+              cariUnvan: f.cariUnvan || f.CARI_UNVAN || null,
+              aliciVknTckn: f.aliciVknTckn || f.ALICI_VKN_TCKN || "",
+              aliciUnvan: f.aliciUnvan || f.ALICI_UNVAN || "",
+              adres: f.adres || f.ADRES || "",
+              ilce: f.ilce || f.ILCE || "",
+              il: f.il || f.IL || "",
+              vergiDairesi: f.vergiDairesi || f.VERGI_DAIRESI || "",
+              eposta: f.eposta || f.EPOSTA || "",
+              telefon: f.telefon || f.TELEFON || "",
+              paraId: Number(f.paraId ?? f.PARA_ID) || 1,
+              paraKodu: f.paraKodu || f.PARA_KODU || "TL",
+              kur: Number(f.kur ?? f.KUR) || 1.0,
+              araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
+              toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+              genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
+              eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
+              gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
+              ekleyenId: f.ekleyenId ?? f.EKLEYEN_ID ?? null,
+              eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
+            })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
 
-  // Recalculate Totals for single row
+            setHistoryList(mappedList);
+            const lastIdx = mappedList.length - 1;
+            const lastInv = mappedList[lastIdx];
+            if (lastInv?.faturaId) {
+              setCurrentIndex(lastIdx);
+              await handleSelectInvoiceForEdit(lastInv.faturaId);
+            }
+          }
+        })
+        .catch(console.error);
+    }
+
+    setTimeout(() => {
+      if (items[0]) {
+        focusGridCell(items[0].id, "barkod", "select");
+      }
+    }, 150);
+  }, [loadProductsForLookup, resolveUserVezne, isDuzeltmeMode]);
+
+  // Recalculate Totals for single Cart line item
   const recalculateLine = (line: Partial<CartLineItem>): CartLineItem => {
     const miktar = Number(line.miktar) || 0;
     const birimFiyat = Number(line.birimFiyat) || 0;
@@ -361,7 +503,34 @@ export const PerakendeFisiPage: React.FC = () => {
     };
   };
 
-  // Add Product to Cart
+  // Recompute single Payment Row
+  const recomputeOdemeRow = (row: OdemeRow, hasKuru: number): OdemeRow => {
+    const miktar = Number(row.miktar) || 0;
+    const milyem = Number(row.milyem) || 0;
+    const kur = Number(row.kur) || 0;
+
+    let tutar = Number(row.tutar) || 0;
+    let hasGram = Number(row.hasGram) || 0;
+
+    if (row.paraKodu === "TL" || row.paraKodu === "TRY") {
+      tutar = miktar;
+      hasGram = hasKuru > 0 ? miktar / hasKuru : 0;
+    } else if (milyem > 0) {
+      hasGram = miktar * (milyem / 1000);
+      tutar = kur > 0 ? miktar * kur : (hasKuru > 0 ? hasGram * hasKuru : 0);
+    } else {
+      tutar = miktar * kur;
+      hasGram = hasKuru > 0 ? tutar / hasKuru : 0;
+    }
+
+    return {
+      ...row,
+      hasGram: hasGram > 0 ? Number(hasGram.toFixed(4)) : (row.hasGram === "" ? "" : 0),
+      tutar: tutar > 0 ? Number(tutar.toFixed(2)) : (row.tutar === "" ? "" : 0),
+    };
+  };
+
+  // Add Product to Cart with automatic new empty row generation & focus
   const addProductToCart = (product: {
     altinUrunId?: number | null;
     barkod: string;
@@ -388,73 +557,31 @@ export const PerakendeFisiPage: React.FC = () => {
     });
 
     setItems((prev) => {
-      // If there is any empty row in the table, populate that row instead of adding a new one
       const emptyIdx = prev.findIndex(
         (r) => !r.barkod?.trim() && !r.urunAdi?.trim() && (!r.birimFiyat || Number(r.birimFiyat) === 0)
       );
 
+      let next: CartLineItem[];
+      const newEmptyRow = createEmptyRow();
       if (emptyIdx >= 0) {
-        const next = [...prev];
+        next = [...prev];
         next[emptyIdx] = { ...populated, id: prev[emptyIdx].id };
-        setActiveRowIndex(emptyIdx);
+        if (emptyIdx === prev.length - 1) {
+          next.push(newEmptyRow);
+          setActiveRowIndex(next.length - 1);
+          setTimeout(() => focusGridCell(newEmptyRow.id, "barkod", "select"), 50);
+        } else {
+          setActiveRowIndex(emptyIdx + 1);
+          setTimeout(() => focusGridCell(next[emptyIdx + 1].id, "barkod", "select"), 50);
+        }
         return next;
       } else {
-        setActiveRowIndex(prev.length);
-        return [...prev, populated];
+        next = [...prev, populated, newEmptyRow];
+        setActiveRowIndex(next.length - 1);
+        setTimeout(() => focusGridCell(newEmptyRow.id, "barkod", "select"), 50);
+        return next;
       }
     });
-
-    showSuccess(`Ürün eklendi: ${product.urunAdi} (${product.barkod})`);
-    playBeep("success");
-    setBarcodeInput("");
-  };
-
-  // Barcode Lookup Handler (from main scanner input)
-  const handleBarcodeSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const barcode = barcodeInput.trim();
-    if (!barcode) return;
-
-    // Check if barcode already in cart
-    const existingIndex = items.findIndex(
-      (item) => item.barkod && item.barkod.toLowerCase() === barcode.toLowerCase()
-    );
-
-    if (existingIndex >= 0) {
-      showWarning(`'${barcode}' barkodlu ürün zaten tabloda eklenmiş!`);
-      playBeep("error");
-      setBarcodeInput("");
-      barcodeInputRef.current?.focus();
-      return;
-    }
-
-    setIsScanning(true);
-    try {
-      const product = await PerakendeService.getProductByBarcode(barcode);
-      if (product) {
-        addProductToCart({
-          altinUrunId: product.altinUrunId,
-          barkod: product.barkod,
-          urunAdi: product.urunAdi,
-          ayar: product.ayar,
-          miktar: product.miktar,
-          birim: product.birim,
-          gram: product.gram,
-          hasGram: product.hasGram,
-          satisFiyati: product.satisFiyati,
-          kdvOrani: product.kdvOrani,
-        });
-      }
-    } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || `'${barcode}' barkodlu ürün bulunamadı.`;
-      showError(msg);
-      playBeep("error");
-    } finally {
-      setIsScanning(false);
-      setTimeout(() => {
-        barcodeInputRef.current?.focus();
-      }, 50);
-    }
   };
 
   // Product Selection from Dürbün (LookupModal)
@@ -485,9 +612,6 @@ export const PerakendeFisiPage: React.FC = () => {
     });
 
     setShowProductLookup(false);
-    setTimeout(() => {
-      barcodeInputRef.current?.focus();
-    }, 50);
   };
 
   // Combined Lookup Items for Product Search Modal
@@ -523,42 +647,39 @@ export const PerakendeFisiPage: React.FC = () => {
     },
     {
       header: "Ayar",
-      width: "70px",
+      width: "80px",
       align: "center",
-      render: (it) => <span>{it.item.ayar || "-"}</span>,
+      render: (it) => <Badge bg="light" text="dark" className="border">{it.item.ayar || "-"}</Badge>,
     },
     {
-      header: "Has Gram",
+      header: "Gram",
       width: "90px",
       align: "right",
       render: (it) => (
-        <span className="font-monospace">{Number((it.item as any).hasGram || 0).toFixed(3)}</span>
+        <span className="font-monospace">
+          {it.tip === "altin" ? (it.item as AltinUrunItem).miktar || "-" : (it.item as OzelUrunItem).miktar || "-"}
+        </span>
       ),
     },
     {
-      header: "Satış Fiyatı",
+      header: "Fiyat",
       width: "110px",
       align: "right",
       render: (it) => (
-        <span className="font-monospace fw-bold text-dark">
-          {Number(it.item.satisFiyati || 0).toLocaleString("tr-TR", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}{" "}
-          ₺
-        </span>
+        <strong className="text-success font-monospace">
+          {Number(it.item.satisFiyati || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+        </strong>
       ),
     },
   ];
 
-  // Update Item in Cart
-  const handleUpdateItem = (id: string, updates: Partial<CartLineItem>) => {
+  // Table Grid Cell Modification Handler
+  const handleUpdateItem = (rowId: string, field: keyof CartLineItem, value: any) => {
     setItems((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          return recalculateLine({ ...item, ...updates });
-        }
-        return item;
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const updated = { ...r, [field]: value };
+        return recalculateLine(updated);
       })
     );
   };
@@ -585,31 +706,36 @@ export const PerakendeFisiPage: React.FC = () => {
           PerakendeService.getProductByBarcode(val)
             .then((product) => {
               if (product) {
-                setItems((prev) =>
-                  prev.map((r) =>
-                    r.id === rowId
-                      ? recalculateLine({
-                        ...r,
-                        altinUrunId: product.altinUrunId,
-                        barkod: product.barkod,
-                        urunAdi: product.urunAdi || "Altın Ürün",
-                        ayar: product.ayar || "14K",
-                        miktar: product.miktar || 1,
-                        birim: product.birim || "Adet",
-                        gram: product.gram || 0,
-                        hasGram: product.hasGram || 0,
-                        birimFiyat: product.satisFiyati || 0,
-                        kdvOrani: product.kdvOrani ?? 0,
-                      })
-                      : r
-                  )
-                );
-                playBeep("success");
-                focusGridCell(rowId, "miktar", "select");
+                const populated = recalculateLine({
+                  ...row,
+                  altinUrunId: product.altinUrunId,
+                  barkod: product.barkod,
+                  urunAdi: product.urunAdi || "Altın Ürün",
+                  ayar: product.ayar || "14K",
+                  miktar: product.miktar || 1,
+                  birim: product.birim || "Adet",
+                  gram: product.gram || 0,
+                  hasGram: product.hasGram || 0,
+                  birimFiyat: product.satisFiyati || 0,
+                  kdvOrani: product.kdvOrani ?? 0,
+                });
+
+                setItems((prev) => {
+                  const next = prev.map((r, i) => (i === rowIndex ? populated : r));
+                  if (rowIndex === prev.length - 1) {
+                    const newRow = createEmptyRow();
+                    next.push(newRow);
+                    setActiveRowIndex(next.length - 1);
+                    setTimeout(() => focusGridCell(newRow.id, "barkod", "select"), 50);
+                  } else {
+                    setActiveRowIndex(rowIndex + 1);
+                    setTimeout(() => focusGridCell(next[rowIndex + 1].id, "barkod", "select"), 50);
+                  }
+                  return next;
+                });
               }
             })
             .catch(() => {
-              playBeep("error");
               setShowProductLookup(true);
             });
           return;
@@ -634,13 +760,12 @@ export const PerakendeFisiPage: React.FC = () => {
         const nk = GRID_COLS[colIdx + 1];
         focusGridCell(rowId, nk, "select");
       } else {
-        // Last column in row -> jump to next row or create a new row!
+        // Last column in row -> jump to next row or create a new row
         if (rowIndex < items.length - 1) {
           const nr = items[rowIndex + 1];
           setActiveRowIndex(rowIndex + 1);
           focusGridCell(nr.id, "barkod", "select");
         } else {
-          // If current row is completely empty, do NOT create another new empty row
           const currentRow = items[rowIndex];
           if (isRowEmpty(currentRow)) {
             focusGridCell(currentRow.id, "barkod", "select");
@@ -676,118 +801,270 @@ export const PerakendeFisiPage: React.FC = () => {
         const pr = items[rowIndex - 1];
         setActiveRowIndex(rowIndex - 1);
         focusGridCell(pr.id, colKey, "select");
-      } else {
-        barcodeInputRef.current?.focus();
       }
     } else if (e.key === "ArrowRight") {
       if (isAtEnd) {
         e.preventDefault();
         if (colIdx + 1 < totalCols) {
-          const nk = GRID_COLS[colIdx + 1];
-          focusGridCell(rowId, nk, "start");
-        } else if (rowIndex < items.length - 1) {
-          const nr = items[rowIndex + 1];
-          setActiveRowIndex(rowIndex + 1);
-          focusGridCell(nr.id, "barkod", "start");
+          focusGridCell(rowId, GRID_COLS[colIdx + 1], "select");
         }
       }
     } else if (e.key === "ArrowLeft") {
       if (isAtStart) {
         e.preventDefault();
         if (colIdx > 0) {
-          const pk = GRID_COLS[colIdx - 1];
-          focusGridCell(rowId, pk, "end");
-        } else if (rowIndex > 0) {
-          const pr = items[rowIndex - 1];
-          setActiveRowIndex(rowIndex - 1);
-          focusGridCell(pr.id, GRID_COLS[totalCols - 1], "end");
+          focusGridCell(rowId, GRID_COLS[colIdx - 1], "select");
         }
+      }
+    } else if (e.key === "F4" || (e.key === "Enter" && colKey === "barkod" && !items[rowIndex]?.barkod)) {
+      e.preventDefault();
+      if (colKey === "barkod") {
+        setShowProductLookup(true);
+      } else if (colKey === "ayar") {
+        setActiveAyarRowId(rowId);
+        setShowAyarModal(true);
       }
     }
   };
 
-  // Add New Row (Right Click / Context Menu)
-  const handleAddRow = (afterIndex?: number) => {
-    const targetIndex = typeof afterIndex === "number" ? afterIndex : items.length - 1;
-    const targetRow = items[targetIndex];
+  // Payment Grid Update Handler
+  const updateOdemeRow = useCallback((rowId: string, field: keyof OdemeRow, value: any) => {
+    setOdemeRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        let sanitizedValue = value;
+        if (field === "adet") {
+          sanitizedValue = value.replace(/\D/g, "");
+        }
+        const updated = { ...r, [field]: sanitizedValue };
+        return recomputeOdemeRow(updated, altinHasKuru);
+      })
+    );
+  }, [altinHasKuru]);
 
-    // Eğer satır komple boş ise sağ tık yapıp yeni satır ekleye basınca hiçbir şey olmasın
-    if (isRowEmpty(targetRow)) {
-      if (targetRow) {
-        focusGridCell(targetRow.id, "barkod", "select");
+  // Apply selected Currency / Product to Payment Row
+  const applyProductToOdemeRow = useCallback((rowId: string, item: UrunItem) => {
+    setOdemeRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const isTL = item.kod.toUpperCase() === "TL" || item.kod.toUpperCase() === "TRY";
+        const milyem = item.hasOrani ? item.hasOrani : (item.urunTipi === 2 ? 1000 : "");
+        const kur = isTL ? 1 : (item.urunTipi === 2 ? altinHasKuru : 1);
+        const updated: OdemeRow = {
+          ...r,
+          paraId: item.paraId || item.id,
+          paraKodu: item.kod,
+          paraAdi: item.ad,
+          milyem: milyem ? String(milyem) : "",
+          kur: kur > 0 ? kur : 1,
+        };
+        return recomputeOdemeRow(updated, altinHasKuru);
+      })
+    );
+  }, [altinHasKuru]);
+
+  // Keyboard navigation for Payment Grid
+  const handleOdemeGridKeyDown = (
+    e: React.KeyboardEvent<HTMLElement>,
+    rowIndex: number,
+    colKey: OdemeGridColKey,
+    rowId: string
+  ) => {
+    const colIdx = ODEME_GRID_COLS.indexOf(colKey);
+    const totalCols = ODEME_GRID_COLS.length;
+
+    if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+      e.preventDefault();
+      if (colIdx + 1 < totalCols) {
+        focusOdemeGridCell(rowId, ODEME_GRID_COLS[colIdx + 1], "select");
+      } else {
+        if (rowIndex < odemeRows.length - 1) {
+          const nr = odemeRows[rowIndex + 1];
+          setActiveOdemeRowIndex(rowIndex + 1);
+          focusOdemeGridCell(nr.id, "paraKodu", "select");
+        } else {
+          const newRow = createEmptyOdemeRow(odemeRows.length + 1);
+          setOdemeRows((prev) => [...prev, newRow]);
+          setActiveOdemeRowIndex(odemeRows.length);
+          setTimeout(() => focusOdemeGridCell(newRow.id, "paraKodu", "select"), 30);
+        }
       }
-      return;
+    } else if (e.key === "Tab" && e.shiftKey) {
+      e.preventDefault();
+      if (colIdx > 0) {
+        focusOdemeGridCell(rowId, ODEME_GRID_COLS[colIdx - 1], "select");
+      } else if (rowIndex > 0) {
+        const pr = odemeRows[rowIndex - 1];
+        setActiveOdemeRowIndex(rowIndex - 1);
+        focusOdemeGridCell(pr.id, ODEME_GRID_COLS[totalCols - 1], "select");
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (rowIndex < odemeRows.length - 1) {
+        const nr = odemeRows[rowIndex + 1];
+        setActiveOdemeRowIndex(rowIndex + 1);
+        focusOdemeGridCell(nr.id, colKey, "select");
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (rowIndex > 0) {
+        const pr = odemeRows[rowIndex - 1];
+        setActiveOdemeRowIndex(rowIndex - 1);
+        focusOdemeGridCell(pr.id, colKey, "select");
+      }
     }
+  };
 
-    // Herhangi bir yer dolu ise yeni satır eklesin
+  const openOdemeUrunModal = (rowId: string) => {
+    setActiveOdemeRowIdForUrun(rowId);
+    setShowOdemeUrunModal(true);
+  };
+
+  // Insert Row at specific index (Items Table)
+  const handleAddRow = useCallback((afterIndex?: number) => {
     const newRow = createEmptyRow();
-    if (typeof afterIndex === "number" && afterIndex >= 0 && afterIndex < items.length) {
-      setItems((prev) => {
+    setItems((prev) => {
+      if (typeof afterIndex === "number" && afterIndex >= 0) {
         const next = [...prev];
         next.splice(afterIndex + 1, 0, newRow);
         return next;
-      });
-      setActiveRowIndex(afterIndex + 1);
-    } else {
-      setItems((prev) => [...prev, newRow]);
-      setActiveRowIndex(items.length);
-    }
-    setTimeout(() => focusGridCell(newRow.id, "barkod", "select"), 30);
-  };
-
-  // Delete Row (Right Click / Context Menu)
-  const handleDeleteRow = (targetRowIdOrIndex: string | number) => {
-    setItems((prev) => {
-      let next: CartLineItem[];
-      if (typeof targetRowIdOrIndex === "number") {
-        next = prev.filter((_, idx) => idx !== targetRowIdOrIndex);
-      } else {
-        next = prev.filter((r) => r.id !== targetRowIdOrIndex);
       }
-      if (next.length === 0) {
+      return [...prev, newRow];
+    });
+
+    setTimeout(() => {
+      focusGridCell(newRow.id, "barkod", "select");
+    }, 50);
+  }, []);
+
+  // Insert Row at specific index (Payment Table)
+  const handleAddOdemeRow = useCallback((afterIndex?: number) => {
+    const newRow = createEmptyOdemeRow(odemeRows.length + 1);
+    setOdemeRows((prev) => {
+      if (typeof afterIndex === "number" && afterIndex >= 0) {
+        const next = [...prev];
+        next.splice(afterIndex + 1, 0, newRow);
+        return next;
+      }
+      return [...prev, newRow];
+    });
+
+    setTimeout(() => {
+      focusOdemeGridCell(newRow.id, "paraKodu", "select");
+    }, 50);
+  }, [odemeRows.length]);
+
+  // Delete Item Row
+  const handleDeleteRow = useCallback((rowId: string) => {
+    setItems((prev) => {
+      const filtered = prev.filter((r, idx) => r.id !== rowId && String(idx) !== String(rowId));
+      if (filtered.length === 0) {
         return [createEmptyRow()];
       }
-      return next;
+      return filtered;
     });
-    showSuccess("Satır silindi");
-  };
+  }, []);
 
-  // Global click & contextmenu event listener for ERPContextMenu integration
+  // Delete Payment Row
+  const handleDeleteOdemeRow = useCallback((rowId: string) => {
+    setOdemeRows((prev) => {
+      const filtered = prev.filter((r, idx) => r.id !== rowId && String(idx) !== String(rowId));
+      if (filtered.length === 0) {
+        return [createEmptyOdemeRow(1)];
+      }
+      return filtered.map((r, idx) => ({ ...r, satirNo: idx + 1 }));
+    });
+  }, []);
+
+  // Sağ tık ERP Menüsü Olayları (Satırı Sil & Satır Ekle)
   useEffect(() => {
-    const handleErpRowDelete = (e: any) => {
+    const handleGridDelete = (e: any) => {
       const rowId = e.detail?.rowId;
-      if (rowId) {
+      const tableType = e.detail?.tableType;
+      if (!rowId) return;
+
+      if (tableType === "odeme" || odemeRows.some((o, idx) => o.id === rowId || String(idx) === String(rowId))) {
+        handleDeleteOdemeRow(rowId);
+      } else {
         handleDeleteRow(rowId);
       }
     };
 
-    const handleErpRowAdd = () => {
-      handleAddRow();
+    const handleGridAdd = (e: any) => {
+      const tableType = e.detail?.tableType;
+      const rowId = e.detail?.rowId;
+
+      if (tableType === "odeme" || (rowId && odemeRows.some((o, idx) => o.id === rowId || String(idx) === String(rowId)))) {
+        setOdemeRows((prev) => [...prev, createEmptyOdemeRow(prev.length + 1)]);
+      } else {
+        setItems((prev) => [...prev, createEmptyRow()]);
+      }
     };
 
-    const handleWindowClick = () => {
-      setContextMenu(null);
-    };
-
-    window.addEventListener("erp-grid-row-delete", handleErpRowDelete);
-    window.addEventListener("erp-grid-row-add", handleErpRowAdd);
-    window.addEventListener("click", handleWindowClick);
-    window.addEventListener("scroll", handleWindowClick, true);
-
+    window.addEventListener("erp-grid-row-delete", handleGridDelete);
+    window.addEventListener("erp-grid-row-add", handleGridAdd);
     return () => {
-      window.removeEventListener("erp-grid-row-delete", handleErpRowDelete);
-      window.removeEventListener("erp-grid-row-add", handleErpRowAdd);
-      window.removeEventListener("click", handleWindowClick);
-      window.removeEventListener("scroll", handleWindowClick, true);
+      window.removeEventListener("erp-grid-row-delete", handleGridDelete);
+      window.removeEventListener("erp-grid-row-add", handleGridAdd);
     };
-  }, [items]);
+  }, [handleDeleteRow, handleDeleteOdemeRow, odemeRows]);
 
-  // Reset / New (F1 / Toolbar onNew)
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT");
+
+      if (e.key === "F1") {
+        e.preventDefault();
+        handleCompleteSale(false);
+      } else if (e.key === "F2") {
+        e.preventDefault();
+        if (isDuzeltmeMode && currentFaturaId) {
+          handleDeleteCurrent();
+        }
+      } else if (e.key === "F3") {
+        e.preventDefault();
+        if (isDuzeltmeMode) {
+          handleOpenHistory();
+        }
+      } else if (e.key === "F4") {
+        e.preventDefault();
+        setShowMusteriModal(true);
+      } else if (e.key === "F9") {
+        e.preventDefault();
+        handleCompleteSale(true);
+      } else if (e.key === "Insert" && !isInput) {
+        e.preventDefault();
+        handleAddRow();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
+  // Reset / New (Toolbar onNew)
+  const handleNew = () => {
+    if (isDuzeltmeMode) {
+      navigate("/vezne/perakende-fisi-kayit");
+    } else {
+      handleReset();
+    }
+  };
+
   const handleReset = async () => {
     setCurrentFaturaId(null);
+    setCurrentIndex(0);
     setItems([createEmptyRow()]);
+    setOdemeRows([createEmptyOdemeRow(1)]);
     setActiveRowIndex(0);
     setAliciVknTckn("11111111111");
+    setCariKod("");
     setAliciUnvan("NİHAİ TÜKETİCİ");
     setCariKartId(null);
     setAdres("");
@@ -807,13 +1084,16 @@ export const PerakendeFisiPage: React.FC = () => {
 
     showInfo("Yeni satış formu hazırlandı");
     setTimeout(() => {
-      barcodeInputRef.current?.focus();
+      if (items[0]) {
+        focusGridCell(items[0].id, "barkod", "select");
+      }
     }, 50);
   };
 
   // Quick Nihai Tüketici
   const handleSetNihaiTuketici = () => {
     setAliciVknTckn("11111111111");
+    setCariKod("");
     setAliciUnvan("NİHAİ TÜKETİCİ");
     setCariKartId(null);
     setAdres("");
@@ -822,13 +1102,13 @@ export const PerakendeFisiPage: React.FC = () => {
     setVergiDairesi("");
     setTelefon("");
     setEposta("");
-    showInfo("Müşteri 'NİHAİ TÜKETİCİ' olarak ayarlandı");
   };
 
   // Customer selection from Modal
   const handleSelectCustomer = async (res: SelectedCustomerResult) => {
     setAliciUnvan(res.unvan);
     setAliciVknTckn(res.vergiKimlikNo || "11111111111");
+    setCariKod(res.kod || (res.raw as any)?.kod || (res.raw as any)?.cariKodu || "");
     setAdres(res.adres || "");
     setTelefon(res.telefon || "");
 
@@ -896,10 +1176,6 @@ export const PerakendeFisiPage: React.FC = () => {
       setEposta("");
     }
     setShowMusteriModal(false);
-    showSuccess(`Müşteri seçildi: ${res.unvan}`);
-    setTimeout(() => {
-      barcodeInputRef.current?.focus();
-    }, 50);
   };
 
   // Valid non-empty items
@@ -908,19 +1184,16 @@ export const PerakendeFisiPage: React.FC = () => {
   );
 
   // Complete Sale & Save Invoice
-  // withPrint = false -> F1 / Normal Kaydet (düz kaydeder, yazdırma modalı açılmaz)
-  // withPrint = true  -> F9 / Kaydet & Yazdır (faturayı kaydeder ve yazdırma modalını açar)
   const handleCompleteSale = async (withPrint: boolean = false) => {
     if (isSubmittingRef.current) return;
 
     if (validItems.length === 0) {
-      showError("Fatura oluşturmak için sepete en az 1 adet ürün eklemelisiniz!");
-      barcodeInputRef.current?.focus();
+      showWarning("Faturada en az bir satış kalemi bulunmalıdır!");
       return;
     }
 
     const cleanVkn = (aliciVknTckn || "").replace(/\D/g, "");
-    if (cleanVkn.length !== 10 && cleanVkn.length !== 11) {
+    if (cleanVkn.length !== 11 && cleanVkn.length !== 10) {
       showWarning("TCKN (11 hane) veya VKN (10 hane) geçerli uzunlukta olmalıdır!");
     }
 
@@ -968,14 +1241,61 @@ export const PerakendeFisiPage: React.FC = () => {
 
       const result = await PerakendeService.createInvoice(payload);
 
-      showSuccess(`Fatura başarıyla kaydedildi! (No: ${result.faturaNo})`);
-
       if (withPrint) {
         setPrintedFatura(result);
         setShowPrintModal(true);
       }
 
-      handleReset();
+      if (isDuzeltmeMode) {
+        showSuccess("Kayıt güncellendi");
+        // Fiş düzenlenince otomatik son kayıt açılsın
+        const res: any = await PerakendeService.listInvoices({ limit: 500 });
+        const rawList = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+        if (rawList.length > 0) {
+          const mappedList: PerakendeFaturaListItem[] = rawList.map((f: any) => ({
+            faturaId: Number(f.faturaId ?? f.FATURA_ID) || 0,
+            vezneId: f.vezneId ?? f.VEZNE_ID ?? null,
+            vezneKod: f.vezneKod || f.VEZNE_KOD || "",
+            vezneAd: f.vezneAd || f.VEZNE_AD || "",
+            faturaNo: f.faturaNo || f.FATURA_NO || "",
+            ettn: f.ettn || f.ETTN || "",
+            tarih: f.tarih || f.TARIH || new Date().toISOString(),
+            faturaTipi: Number(f.faturaTipi ?? f.FATURA_TIPI) === 0 ? 0 : 1,
+            senaryo: f.senaryo || f.SENARYO || "EARSIVFATURA",
+            cariKartId: f.cariKartId ?? f.CARI_KART_ID ?? null,
+            cariKod: f.cariKod || f.CARI_KOD || null,
+            cariUnvan: f.cariUnvan || f.CARI_UNVAN || null,
+            aliciVknTckn: f.aliciVknTckn || f.ALICI_VKN_TCKN || "",
+            aliciUnvan: f.aliciUnvan || f.ALICI_UNVAN || "",
+            adres: f.adres || f.ADRES || "",
+            ilce: f.ilce || f.ILCE || "",
+            il: f.il || f.IL || "",
+            vergiDairesi: f.vergiDairesi || f.VERGI_DAIRESI || "",
+            eposta: f.eposta || f.EPOSTA || "",
+            telefon: f.telefon || f.TELEFON || "",
+            paraId: Number(f.paraId ?? f.PARA_ID) || 1,
+            paraKodu: f.paraKodu || f.PARA_KODU || "TL",
+            kur: Number(f.kur ?? f.KUR) || 1.0,
+            araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
+            toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+            genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
+            eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
+            gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
+            ekleyenId: f.ekleyenId ?? f.EKLEYEN_ID ?? null,
+            eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
+          })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
+
+          setHistoryList(mappedList);
+          const targetId = result?.faturaId || currentFaturaId || mappedList[mappedList.length - 1]?.faturaId;
+          if (targetId) {
+            const idx = mappedList.findIndex((x) => x.faturaId === targetId);
+            setCurrentIndex(idx >= 0 ? idx : mappedList.length - 1);
+            await handleSelectInvoiceForEdit(targetId);
+          }
+        }
+      } else {
+        handleReset();
+      }
     } catch (err: any) {
       const msg =
         err.response?.data?.message || err.message || "Fatura ve satış kaydedilirken bir hata oluştu.";
@@ -991,14 +1311,49 @@ export const PerakendeFisiPage: React.FC = () => {
     setShowHistoryModal(true);
     setHistoryLoading(true);
     try {
-      const list = await PerakendeService.listInvoices({
+      const res: any = await PerakendeService.listInvoices({
         baslangicTarihi: historyStartDate,
         bitisTarihi: historyEndDate,
-        search: historySearch || undefined,
+        search: historySearch.trim() || undefined,
+        limit: 100,
       });
-      setHistoryList(list);
-    } catch {
-      showError("Geçmiş faturalar yüklenemedi");
+      const rawList = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      const mappedList: PerakendeFaturaListItem[] = rawList.map((f: any) => ({
+        faturaId: Number(f.faturaId ?? f.FATURA_ID) || 0,
+        vezneId: f.vezneId ?? f.VEZNE_ID ?? null,
+        vezneKod: f.vezneKod || f.VEZNE_KOD || "",
+        vezneAd: f.vezneAd || f.VEZNE_AD || "",
+        faturaNo: f.faturaNo || f.FATURA_NO || "",
+        ettn: f.ettn || f.ETTN || "",
+        tarih: f.tarih || f.TARIH || new Date().toISOString(),
+        faturaTipi: Number(f.faturaTipi ?? f.FATURA_TIPI) === 0 ? 0 : 1,
+        senaryo: f.senaryo || f.SENARYO || "EARSIVFATURA",
+        cariKartId: f.cariKartId ?? f.CARI_KART_ID ?? null,
+        cariKod: f.cariKod || f.CARI_KOD || null,
+        cariUnvan: f.cariUnvan || f.CARI_UNVAN || null,
+        aliciVknTckn: f.aliciVknTckn || f.ALICI_VKN_TCKN || "",
+        aliciUnvan: f.aliciUnvan || f.ALICI_UNVAN || "",
+        adres: f.adres || f.ADRES || "",
+        ilce: f.ilce || f.ILCE || "",
+        il: f.il || f.IL || "",
+        vergiDairesi: f.vergiDairesi || f.VERGI_DAIRESI || "",
+        eposta: f.eposta || f.EPOSTA || "",
+        telefon: f.telefon || f.TELEFON || "",
+        paraId: Number(f.paraId ?? f.PARA_ID) || 1,
+        paraKodu: f.paraKodu || f.PARA_KODU || "TL",
+        kur: Number(f.kur ?? f.KUR) || 1.0,
+        araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
+        toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+        genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
+        eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
+        gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
+        ekleyenId: f.ekleyenId ?? f.EKLEYEN_ID ?? null,
+        eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
+      })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
+
+      setHistoryList(mappedList);
+    } catch (err: any) {
+      showError("Faturalar aranırken hata oluştu: " + (err.message || ""));
     } finally {
       setHistoryLoading(false);
     }
@@ -1007,104 +1362,125 @@ export const PerakendeFisiPage: React.FC = () => {
   const handleSearchHistory = async () => {
     setHistoryLoading(true);
     try {
-      const list = await PerakendeService.listInvoices({
+      const res: any = await PerakendeService.listInvoices({
         baslangicTarihi: historyStartDate,
         bitisTarihi: historyEndDate,
-        search: historySearch || undefined,
+        search: historySearch.trim() || undefined,
+        limit: 100,
       });
-      setHistoryList(list);
-    } catch {
-      showError("Arama hatası");
+      const rawList = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      const mappedList: PerakendeFaturaListItem[] = rawList.map((f: any) => ({
+        faturaId: Number(f.faturaId ?? f.FATURA_ID) || 0,
+        vezneId: f.vezneId ?? f.VEZNE_ID ?? null,
+        vezneKod: f.vezneKod || f.VEZNE_KOD || "",
+        vezneAd: f.vezneAd || f.VEZNE_AD || "",
+        faturaNo: f.faturaNo || f.FATURA_NO || "",
+        ettn: f.ettn || f.ETTN || "",
+        tarih: f.tarih || f.TARIH || new Date().toISOString(),
+        faturaTipi: Number(f.faturaTipi ?? f.FATURA_TIPI) === 0 ? 0 : 1,
+        senaryo: f.senaryo || f.SENARYO || "EARSIVFATURA",
+        cariKartId: f.cariKartId ?? f.CARI_KART_ID ?? null,
+        aliciVknTckn: f.aliciVknTckn || f.ALICI_VKN_TCKN || "",
+        aliciUnvan: f.aliciUnvan || f.ALICI_UNVAN || "",
+        adres: f.adres || f.ADRES || "",
+        ilce: f.ilce || f.ILCE || "",
+        il: f.il || f.IL || "",
+        vergiDairesi: f.vergiDairesi || f.VERGI_DAIRESI || "",
+        eposta: f.eposta || f.EPOSTA || "",
+        telefon: f.telefon || f.TELEFON || "",
+        paraId: Number(f.paraId ?? f.PARA_ID) || 1,
+        paraKodu: f.paraKodu || f.PARA_KODU || "TL",
+        kur: Number(f.kur ?? f.KUR) || 1.0,
+        araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
+        toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+        genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
+        eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
+        gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
+        ekleyenId: f.ekleyenId ?? f.EKLEYEN_ID ?? null,
+        eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
+      })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
+
+      setHistoryList(mappedList);
+    } catch (err: any) {
+      showError("Filtreleme hatası: " + (err.message || ""));
     } finally {
       setHistoryLoading(false);
     }
   };
 
+  // Load single invoice by ID
   const handleSelectInvoiceForEdit = async (id: number) => {
     try {
-      const response = await PerakendeService.getInvoiceById(id);
-      if (!response) {
-        showError("Fatura detayı bulunamadı");
+      const inv: any = await PerakendeService.getInvoiceById(id);
+      if (!inv) {
+        showError("Fatura detayları getirilemedi.");
         return;
       }
 
-      let inv: any = response;
-      if (inv && inv.data && typeof inv.data === "object" && !Array.isArray(inv.data)) {
-        inv = inv.data;
+      setCurrentFaturaId(inv.faturaId);
+      setFaturaNo(inv.faturaNo || "");
+      if (inv.tarih) {
+        setTarih(inv.tarih.substring(0, 10));
+        setSaat(inv.tarih.substring(11, 16) || "12:00");
       }
-      if (inv && inv.data && typeof inv.data === "object" && !Array.isArray(inv.data)) {
-        inv = inv.data;
-      }
+      setFaturaTipi(Number(inv.faturaTipi ?? inv.FATURA_TIPI) === 0 ? 0 : 1);
+      setSenaryo(inv.senaryo || "EARSIVFATURA");
+      setAliciVknTckn(inv.aliciVknTckn || "11111111111");
+      setAliciUnvan(inv.aliciUnvan || "NİHAİ TÜKETİCİ");
+      setCariKartId(inv.cariKartId || null);
+      setAdres(inv.adres || "");
+      setIlce(inv.ilce || "");
+      setIl(inv.il || "");
+      setVergiDairesi(inv.vergiDairesi || "");
+      setTelefon(inv.telefon || "");
+      setEposta(inv.eposta || "");
 
-      setCurrentFaturaId(inv.faturaId || inv.FATURA_ID || id);
-      setFaturaNo(inv.faturaNo || inv.FATURA_NO || "");
-      const invDate = inv.tarih || inv.TARIH;
-      if (invDate) {
-        const d = new Date(invDate);
-        if (!isNaN(d.getTime())) {
-          setTarih(d.toISOString().slice(0, 10));
-          setSaat(d.toTimeString().slice(0, 5));
+      if (inv.cariKod || inv.CARI_KOD) {
+        setCariKod(inv.cariKod || inv.CARI_KOD);
+      } else if (inv.cariKartId) {
+        try {
+          const c = cariler.find((x) => x.id === inv.cariKartId) || (await CariService.getCariKartById(inv.cariKartId));
+          if (c?.kod) setCariKod(c.kod);
+          else if ((c as any)?.cariKodu) setCariKod((c as any).cariKodu);
+        } catch {
+          setCariKod("");
         }
-      }
-      setFaturaTipi(inv.faturaTipi ?? inv.FATURA_TIPI ?? 1);
-      setSenaryo(inv.senaryo || inv.SENARYO || "EARSIVFATURA");
-      setCariKartId(inv.cariKartId ?? inv.CARI_KART_ID ?? null);
-      setAliciVknTckn(inv.aliciVknTckn || inv.ALICI_VKN_TCKN || "11111111111");
-      setAliciUnvan(inv.aliciUnvan || inv.ALICI_UNVAN || "NİHAİ TÜKETİCİ");
-      setAdres(inv.adres || inv.ADRES || "");
-      setIlce(inv.ilce || inv.ILCE || "");
-      setIl(inv.il || inv.IL || "");
-      setVergiDairesi(inv.vergiDairesi || inv.VERGI_DAIRESI || "");
-      setEposta(inv.eposta || inv.EPOSTA || "");
-      setTelefon(inv.telefon || inv.TELEFON || "");
-
-      const vezId = inv.vezneId ?? inv.VEZNE_ID;
-      if (vezId && vezneler.length > 0) {
-        const matchedVezne = vezneler.find((v) => v.id === vezId);
-        if (matchedVezne) setSelectedVezne(matchedVezne);
+      } else {
+        setCariKod("");
       }
 
-      const rawLines: any[] =
-        inv.satirlar ||
-        inv.SATIRLAR ||
-        inv.lines ||
-        inv.LINES ||
-        inv.items ||
-        inv.ITEMS ||
-        [];
-
-      if (rawLines && rawLines.length > 0) {
-        const mappedRows: CartLineItem[] = rawLines.map((s: any, idx: number) => {
-          const m = Number(s.miktar ?? s.MIKTAR ?? s.quantity ?? s.adet) || 1;
-          const f = Number(s.birimFiyat ?? s.BIRIM_FIYAT ?? s.unitPrice ?? s.fiyat) || 0;
-          const tutar = Number(s.tutar ?? s.TUTAR ?? s.total) || Math.round(m * f * 100) / 100;
-          const kdvRate = Number(s.kdvOrani ?? s.KDV_ORANI ?? s.vatRate ?? s.kdv) || 0;
+      const rawSatirlar: any[] = inv.satirlar || inv.SATIRLAR || [];
+      if (rawSatirlar && rawSatirlar.length > 0) {
+        const loadedItems: CartLineItem[] = rawSatirlar.map((s: any) => {
+          const miktar = Number(s.miktar ?? s.MIKTAR) || 1;
+          const birimFiyat = Number(s.birimFiyat ?? s.BIRIM_FIYAT) || 0;
+          const tutar = Number(s.tutar ?? s.TUTAR) || Math.round(miktar * birimFiyat * 100) / 100;
+          const kdvOrani = Number(s.kdvOrani ?? s.KDV_ORANI) || 0;
           const kdvTutari =
-            Number(s.kdvTutari ?? s.KDV_TUTARI ?? s.vatAmount) ||
-            Math.round(tutar * (kdvRate / 100) * 100) / 100;
+            Number(s.kdvTutari ?? s.KDV_TUTARI) ||
+            Math.round(tutar * (kdvOrani / 100) * 100) / 100;
           const toplamTutar =
             Number(s.toplamTutar ?? s.TOPLAM_TUTAR ?? s.grandTotal) ||
             Math.round((tutar + kdvTutari) * 100) / 100;
 
           return {
-            id: s.faturaSatirId ? `row_${s.faturaSatirId}` : s.id ? `row_${s.id}` : makeId(),
+            id: makeId(),
             altinUrunId: s.altinUrunId ?? s.ALTIN_URUN_ID ?? null,
-            barkod: (s.barkod || s.BARKOD || "").toString(),
-            urunAdi: (s.urunAdi || s.URUN_ADI || "Altın Ürün").toString(),
-            ayar: (s.ayar || s.AYAR || "").toString(),
-            miktar: m,
-            birim: (s.birim || s.BIRIM || "Adet").toString(),
+            barkod: s.barkod || s.BARKOD || "",
+            urunAdi: s.urunAdi || s.URUN_ADI || "Altın Ürün",
+            ayar: s.ayar || s.AYAR || "14K",
+            miktar,
+            birim: s.birim || s.BIRIM || "Adet",
             gram: Number(s.gram ?? s.GRAM) || 0,
             hasGram: Number(s.hasGram ?? s.HAS_GRAM) || 0,
-            birimFiyat: f,
+            birimFiyat,
             tutar,
-            kdvOrani: kdvRate,
+            kdvOrani,
             kdvTutari,
             toplamTutar,
           };
         });
-        setItems(mappedRows);
-        setActiveRowIndex(0);
+        setItems([...loadedItems, createEmptyRow()]);
       } else {
         const invGenelToplam = Number(inv.genelToplam ?? inv.GENEL_TOPLAM) || 0;
         const invAraToplam = Number(inv.araToplam ?? inv.ARA_TOPLAM) || invGenelToplam;
@@ -1116,8 +1492,8 @@ export const PerakendeFisiPage: React.FC = () => {
               id: makeId(),
               altinUrunId: null,
               barkod: "",
-              urunAdi: "Perakende Satış Kalemi",
-              ayar: "",
+              urunAdi: "Perakende Satış",
+              ayar: "14K",
               miktar: 1,
               birim: "Adet",
               gram: 0,
@@ -1128,116 +1504,96 @@ export const PerakendeFisiPage: React.FC = () => {
               kdvTutari: invToplamKdv,
               toplamTutar: invGenelToplam || invAraToplam,
             },
+            createEmptyRow(),
           ]);
         } else {
           setItems([createEmptyRow()]);
         }
-        setActiveRowIndex(0);
       }
 
       setShowHistoryModal(false);
-      showSuccess(
-        `'${inv.faturaNo || inv.FATURA_NO || ""}' numaralı fatura (${rawLines.length > 0 ? rawLines.length : 1} kalem) forma yüklendi.`
-      );
-    } catch (err: any) {
+    } catch (err) {
       console.error("handleSelectInvoiceForEdit error:", err);
-      showError("Fatura detayı yüklenirken bir hata oluştu");
+      showError("Fatura yüklenirken hata oluştu.");
     }
   };
 
-  const handleViewInvoiceDetail = async (id: number) => {
-    try {
-      const detail = await PerakendeService.getInvoiceById(id);
-      if (detail) {
-        setPrintedFatura(detail);
-        setShowPrintModal(true);
-      }
-    } catch {
-      showError("Fatura detayı getirilemedi");
-    }
-  };
-
-  const handleDeleteInvoice = async (id: number, faturaNumarasi: string) => {
-    if (
-      !window.confirm(
-        `'${faturaNumarasi}' numaralı faturayı silmek ve satılan altın ürünleri tekrar stoğa iade etmek istediğinize emin misiniz?`
-      )
-    ) {
+  // Delete invoice (Toolbar onDelete / F2)
+  const handleDeleteInvoice = async (id: number, no: string) => {
+    if (!window.confirm(`'${no}' numaralı faturayı silmek ve ürünleri stoğa iade etmek istediğinize emin misiniz?`)) {
       return;
     }
 
     try {
       await PerakendeService.deleteInvoice(id);
-      showSuccess(`'${faturaNumarasi}' numaralı fatura silindi ve ürünler stoğa iade edildi.`);
-      setHistoryList((prev) => prev.filter((item) => item.faturaId !== id));
+      setHistoryList((prev) => prev.filter((f) => f.faturaId !== id));
+
       if (currentFaturaId === id) {
-        handleReset();
+        const remaining = historyList.filter((f) => f.faturaId !== id);
+        if (remaining.length > 0) {
+          const last = remaining[remaining.length - 1];
+          await handleSelectInvoiceForEdit(last.faturaId);
+        } else {
+          handleReset();
+        }
       }
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || "Fatura silinemedi";
-      showError(msg);
+      showError("Fatura silinirken hata: " + (err.message || ""));
     }
   };
 
-  const handleDeleteCurrent = () => {
-    if (currentFaturaId) {
-      handleDeleteInvoice(currentFaturaId, faturaNo);
-    } else if (items.length > 1 || (items[0] && (items[0].barkod || items[0].urunAdi || Number(items[0].birimFiyat) > 0))) {
-      handleDeleteRow(activeRowIndex);
-    } else {
-      showInfo("Silinecek bir kayıt veya satır bulunamadı");
-    }
+  const handleDeleteCurrent = async () => {
+    if (!currentFaturaId) return;
+    await handleDeleteInvoice(currentFaturaId, faturaNo);
   };
 
-  // Keyboard Shortcuts References
-  const handleResetRef = useRef(handleReset);
-  handleResetRef.current = handleReset;
+  // Navigation handlers
+  const handleFirst = async () => {
+    if (historyList.length === 0) return;
+    const sorted = [...historyList].sort((a, b) => a.faturaId - b.faturaId);
+    setCurrentIndex(0);
+    await handleSelectInvoiceForEdit(sorted[0].faturaId);
+  };
 
-  const handleSaveNormalRef = useRef(() => handleCompleteSale(false));
-  handleSaveNormalRef.current = () => handleCompleteSale(false);
+  const handlePrev = async () => {
+    if (historyList.length === 0) return;
+    const sorted = [...historyList].sort((a, b) => a.faturaId - b.faturaId);
+    const currIdx = sorted.findIndex((f) => f.faturaId === currentFaturaId);
+    const nextIdx = currIdx > 0 ? currIdx - 1 : 0;
+    setCurrentIndex(nextIdx);
+    await handleSelectInvoiceForEdit(sorted[nextIdx].faturaId);
+  };
 
-  const handleSavePrintRef = useRef(() => handleCompleteSale(true));
-  handleSavePrintRef.current = () => handleCompleteSale(true);
+  const handleNext = async () => {
+    if (historyList.length === 0) return;
+    const sorted = [...historyList].sort((a, b) => a.faturaId - b.faturaId);
+    const currIdx = sorted.findIndex((f) => f.faturaId === currentFaturaId);
+    const nextIdx = currIdx >= 0 && currIdx < sorted.length - 1 ? currIdx + 1 : sorted.length - 1;
+    setCurrentIndex(nextIdx);
+    await handleSelectInvoiceForEdit(sorted[nextIdx].faturaId);
+  };
 
-  const handleDeleteRef = useRef(handleDeleteCurrent);
-  handleDeleteRef.current = handleDeleteCurrent;
+  const handleLast = async () => {
+    if (historyList.length === 0) return;
+    const sorted = [...historyList].sort((a, b) => a.faturaId - b.faturaId);
+    const lastIdx = sorted.length - 1;
+    setCurrentIndex(lastIdx);
+    await handleSelectInvoiceForEdit(sorted[lastIdx].faturaId);
+  };
 
-  const handleOpenHistoryRef = useRef(handleOpenHistory);
-  handleOpenHistoryRef.current = handleOpenHistory;
-
-  // Keyboard Shortcuts (Registered ONCE)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLTextAreaElement) return;
-
-      if (e.key === "F1") {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSaveNormalRef.current();
-      } else if (e.key === "F2") {
-        e.preventDefault();
-        e.stopPropagation();
-        handleDeleteRef.current();
-      } else if (e.key === "F3") {
-        e.preventDefault();
-        e.stopPropagation();
-        handleOpenHistoryRef.current();
-      } else if (e.key === "F4") {
-        e.preventDefault();
-        e.stopPropagation();
-        setShowMusteriModal(true);
-      } else if (e.key === "F9") {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSavePrintRef.current();
+  const handleViewInvoiceDetail = async (id: number) => {
+    try {
+      const inv = await PerakendeService.getInvoiceById(id);
+      if (inv) {
+        setPrintedFatura(inv);
+        setShowPrintModal(true);
       }
-    };
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  // Calculate Running Totals
+  // Grand totals calculation
   const totalQuantity = validItems.reduce((acc, i) => acc + (Number(i.miktar) || 0), 0);
   const totalGrams = validItems.reduce((acc, i) => acc + (Number(i.gram) || 0), 0);
   const totalHasGrams = validItems.reduce((acc, i) => acc + (Number(i.hasGram) || 0), 0);
@@ -1245,10 +1601,82 @@ export const PerakendeFisiPage: React.FC = () => {
   const toplamKdv = validItems.reduce((acc, i) => acc + (Number(i.kdvTutari) || 0), 0);
   const genelToplam = validItems.reduce((acc, i) => acc + (Number(i.toplamTutar) || 0), 0);
 
+  // Payment totals calculation
+  const totalOdemeAdet = odemeRows.reduce((s, r) => s + (Number(r.adet) || 0), 0);
+  const totalOdemeMiktar = odemeRows.reduce((s, r) => s + (Number(r.miktar) || 0), 0);
+  const totalOdemeHas = odemeRows.reduce((s, r) => s + (Number(r.hasGram) || 0), 0);
+  const totalOdemeTutar = odemeRows.reduce((s, r) => s + (Number(r.tutar) || 0), 0);
+
+  const farkTL = genelToplam - totalOdemeTutar;
+  const farkHas = totalHasGrams - totalOdemeHas;
+
+  // Auto-sync single payment row to genelToplam and totalHasGrams so Fark = 0 and payment table is automatically filled
+  useEffect(() => {
+    setOdemeRows((prev) => {
+      if (prev.length === 1) {
+        const first = prev[0];
+        if (first.paraKodu === "TL" || !first.paraKodu) {
+          const tutarVal = genelToplam > 0 ? parseFloat(genelToplam.toFixed(2)) : "";
+          const hasKuruNum = Number(altinHasKuru) || 0;
+          const hasVal =
+            hasKuruNum > 0 && Number(tutarVal) > 0
+              ? parseFloat((Number(tutarVal) / hasKuruNum).toFixed(4))
+              : (totalHasGrams > 0 ? parseFloat(totalHasGrams.toFixed(4)) : "");
+          const adetVal = genelToplam > 0 ? 1 : "";
+
+          if (
+            first.tutar !== tutarVal ||
+            first.miktar !== tutarVal ||
+            first.hasGram !== hasVal ||
+            first.adet !== adetVal ||
+            first.kur !== 1 ||
+            first.paraAdi !== "TÜRK LİRASI"
+          ) {
+            return [
+              {
+                ...first,
+                paraKodu: "TL",
+                paraAdi: "TÜRK LİRASI",
+                adet: adetVal,
+                miktar: tutarVal,
+                kur: 1,
+                hasGram: hasVal,
+                tutar: tutarVal,
+              },
+            ];
+          }
+        }
+      }
+      return prev;
+    });
+  }, [genelToplam, totalHasGrams, altinHasKuru]);
+
   // Vezne Lookup Columns
   const vezneLookupColumns: LookupColumn<VezneItem>[] = [
     { header: "Kod", width: "100px", align: "center", render: (v) => <span className="fw-bold">{v.kod}</span> },
     { header: "Vezne Adı", render: (v) => <span>{v.ad}</span> },
+  ];
+
+  // Payment Product Lookup Columns
+  const odemeLookupColumns: LookupColumn<UrunItem>[] = [
+    { header: "Kod", width: "110px", render: (u) => <span className="fw-bold font-monospace text-primary">{u.kod}</span> },
+    { header: "Para / Ürün Adı", render: (u) => <span>{u.ad}</span> },
+    {
+      header: "Tip",
+      width: "100px",
+      align: "center",
+      render: (u) => (
+        <Badge bg={u.urunTipi === 0 ? "secondary" : u.urunTipi === 1 ? "info" : "warning"} className="text-dark">
+          {u.urunTipi === 0 ? "Para / Nakit" : u.urunTipi === 1 ? "Döviz" : "Altın / Ziynet"}
+        </Badge>
+      ),
+    },
+    {
+      header: "Milyem / Has",
+      width: "110px",
+      align: "right",
+      render: (u) => <span className="font-monospace">{u.hasOrani ? `${u.hasOrani} ‰` : "-"}</span>,
+    },
   ];
 
   return (
@@ -1261,9 +1689,9 @@ export const PerakendeFisiPage: React.FC = () => {
         disableShortcuts
         pageTitle={
           <span style={{ fontWeight: 700, fontSize: "14px" }}>
-            B- Perakende Fişi{" "}
-            <Badge bg={faturaTipi === 1 ? "success" : "danger"} style={{ fontSize: "11px" }}>
-              {faturaTipi === 1 ? "SATIŞ" : "İADE"}
+            {isDuzeltmeMode ? "D- Perakende Fişi Düzeltme" : "C- Perakende Fişi Kayıt"}{" "}
+            <Badge bg={faturaTipi === 1 ? "success" : "primary"} style={{ fontSize: "11px" }}>
+              {faturaTipi === 1 ? "SATIŞ" : "ALIŞ"}
             </Badge>
             <Badge bg="primary" className="ms-1" style={{ fontSize: "11px" }}>
               {senaryo === "EARSIVFATURA" ? "e-Arşiv" : "e-Fatura"}
@@ -1271,14 +1699,33 @@ export const PerakendeFisiPage: React.FC = () => {
           </span>
         }
         pageIcon={<IconBarcode size={20} />}
-        onNew={handleReset}
+        onNew={handleNew}
         onSave={() => handleCompleteSale(false)}
         onPrint={() => handleCompleteSale(true)}
-        onSearch={handleOpenHistory}
-        onDelete={handleDeleteCurrent}
-        hideDelete={false}
+        onSearch={isDuzeltmeMode ? handleOpenHistory : undefined}
+        onDelete={isDuzeltmeMode && currentFaturaId ? handleDeleteCurrent : undefined}
+        hideSearch={!isDuzeltmeMode}
+        hideDelete={!isDuzeltmeMode || !currentFaturaId}
+        hideNavigation={!isDuzeltmeMode}
+        onFirst={isDuzeltmeMode ? handleFirst : undefined}
+        onPrev={isDuzeltmeMode ? handlePrev : undefined}
+        onNext={isDuzeltmeMode ? handleNext : undefined}
+        onLast={isDuzeltmeMode ? handleLast : undefined}
         rightContent={
           <div className="d-flex align-items-center gap-1">
+            {isDuzeltmeMode && (
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="py-1 px-2 fw-semibold d-flex align-items-center gap-1"
+                style={{ fontSize: "11px" }}
+                onClick={() => navigate("/vezne/perakende-fisi-kayit")}
+                title="Kayıt Sayfasına Git"
+              >
+                <IconPlus size={15} />
+                <span>Kayıt Sayfası</span>
+              </Button>
+            )}
             <Button
               variant="outline-success"
               size="sm"
@@ -1301,30 +1748,20 @@ export const PerakendeFisiPage: React.FC = () => {
         style={{ fontSize: "12px" }}
       >
         <div className="d-flex align-items-center flex-wrap gap-2">
-          {/* Vezne Seçimi */}
+          {/* Vezne (Giriş Yapanın Veznesi - Sabit ve Değiştirilemez) */}
           <div className="d-flex align-items-center gap-1">
             <span className="fw-bold text-primary" style={{ minWidth: 45 }}>
               VEZNE
             </span>
-            <div className="input-group input-group-sm" style={{ width: 115 }}>
-              <input
-                type="text"
-                value={selectedVezne?.kod || ""}
-                readOnly
-                onClick={() => setShowVezneModal(true)}
-                className="form-control form-control-sm text-center fw-bold bg-white"
-                style={{ cursor: "pointer", fontSize: "12px" }}
-              />
-              <Button
-                size="sm"
-                variant="outline-secondary"
-                className="px-2 py-0 d-flex align-items-center"
-                onClick={() => setShowVezneModal(true)}
-                title="Vezne Seç"
-              >
-                <IconBinoculars size={14} />
-              </Button>
-            </div>
+            <input
+              type="text"
+              value={selectedVezne?.kod || user?.cashierCode || "01"}
+              readOnly
+              disabled
+              className="form-control form-control-sm text-center fw-bold bg-light"
+              style={{ width: 60, fontSize: "12px", cursor: "not-allowed" }}
+              title="Vezne giriş yapan kullanıcıya aittir ve değiştirilemez"
+            />
             {selectedVezne?.ad && (
               <span className="text-muted small ms-1 d-none d-md-inline">({selectedVezne.ad})</span>
             )}
@@ -1398,209 +1835,184 @@ export const PerakendeFisiPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Fatura Tipi */}
+        {/* Fatura Tipi / İşlem: Sadece Alış (0) ve Satış (1) */}
         <div className="d-flex align-items-center gap-1">
+          <span className="fw-bold text-secondary small">İŞLEM:</span>
           <Form.Select
             size="sm"
-            style={{ width: 95, fontSize: "12px", fontWeight: 700 }}
-            className={faturaTipi === 1 ? "text-success border-success" : "text-danger border-danger"}
+            style={{ width: 100, fontSize: "12px", fontWeight: 700 }}
+            className={faturaTipi === 1 ? "text-success border-success" : "text-primary border-primary"}
             value={faturaTipi}
             onChange={(e) => setFaturaTipi(Number(e.target.value))}
           >
+            <option value={0}>ALIŞ</option>
             <option value={1}>SATIŞ</option>
-            <option value={2}>İADE</option>
           </Form.Select>
         </div>
       </div>
 
-      {/* ─── 3. Header Panel: Müşteri & Cari Bilgileri (Responsive Grid) ─ */}
+      {/* ─── 3. Header Panel: Müşteri & Cari Bilgileri (2 Düzenli Satır) ─── */}
       <Card className="shadow-sm mb-2 border">
         <Card.Body className="p-2">
-          <Row className="g-2">
-            {/* Sol Sütun: Ünvan & Dürbün, TCKN / VKN */}
-            {/* Sol Sütun: Ünvan & Dürbün, TCKN / VKN, Vergi Dairesi, İl / İlçe */}
-            <Col xs={12} lg={6}>
-              <div className="d-flex align-items-center mb-1 flex-wrap flex-sm-nowrap gap-1">
-                <label style={{ width: 85, minWidth: 85, fontSize: "12px", fontWeight: 600 }}>
-                  Müşteri Adı
-                </label>
-                <InputGroup size="sm" style={{ flex: 1, minWidth: "150px" }}>
-                  <Form.Control
-                    value={aliciUnvan}
-                    onChange={(e) => {
-                      setAliciUnvan(e.target.value);
-                      if (cariKartId) setCariKartId(null);
-                    }}
-                    style={{ fontSize: "12px", fontWeight: 600 }}
-                  />
-                  <Button
-                    variant="outline-secondary"
-                    className="px-2 py-0 d-flex align-items-center"
-                    onClick={() => setShowMusteriModal(true)}
-                    title="Cari / Müşteri Seç (F4)"
-                  >
-                    <IconBinoculars size={14} />
-                  </Button>
-                </InputGroup>
+          {/* 1. Satır: TCKN / VKN | Cari Kodu | Müşteri Adı (+ Dürbün + Nihai Tüketici) */}
+          <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            {/* TCKN / VKN */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "210px" }}>
+              <label style={{ width: 75, minWidth: 75, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                TCKN / VKN
+              </label>
+              <Form.Control
+                size="sm"
+                maxLength={11}
+                value={aliciVknTckn}
+                onChange={(e) => setAliciVknTckn(e.target.value.replace(/\D/g, ""))}
+                style={{ fontSize: "12px", fontFamily: "monospace", fontWeight: 600, width: "135px" }}
+              />
+            </div>
+
+            {/* Cari Kodu */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "180px" }}>
+              <label style={{ width: 65, minWidth: 65, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                Cari Kodu
+              </label>
+              <InputGroup size="sm" style={{ width: "120px" }}>
+                <Form.Control
+                  size="sm"
+                  value={cariKod}
+                  onChange={(e) => setCariKod(e.target.value)}
+                  style={{ fontSize: "12px", fontFamily: "monospace", fontWeight: 600 }}
+                />
                 <Button
-                  variant="outline-primary"
-                  size="sm"
-                  className="px-2 py-0"
-                  onClick={handleSetNihaiTuketici}
-                  title="Nihai Tüketici Olarak Doldur"
-                  style={{ fontSize: "11px", whiteSpace: "nowrap" }}
+                  variant="outline-secondary"
+                  className="px-1.5 py-0 d-flex align-items-center"
+                  onClick={() => setShowMusteriModal(true)}
+                  title="Cari Seç"
                 >
-                  Nihai Tüketici
+                  <IconBinoculars size={13} />
                 </Button>
-              </div>
+              </InputGroup>
+            </div>
 
-              <div className="d-flex align-items-center mb-1">
-                <label style={{ width: 85, minWidth: 85, fontSize: "12px", fontWeight: 600 }}>
-                  TCKN / VKN
-                </label>
+            {/* Müşteri Adı (+ Dürbün + Nihai Tüketici Butonu) */}
+            <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: "280px" }}>
+              <label style={{ width: 75, minWidth: 75, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                Müşteri Adı
+              </label>
+              <InputGroup size="sm" style={{ flex: 1 }}>
+                <Form.Control
+                  value={aliciUnvan}
+                  onChange={(e) => {
+                    setAliciUnvan(e.target.value);
+                    if (cariKartId) setCariKartId(null);
+                  }}
+                  style={{ fontSize: "12px", fontWeight: 600 }}
+                />
+                <Button
+                  variant="outline-secondary"
+                  className="px-2 py-0 d-flex align-items-center"
+                  onClick={() => setShowMusteriModal(true)}
+                  title="Cari / Müşteri Seç (F4)"
+                >
+                  <IconBinoculars size={14} />
+                </Button>
+              </InputGroup>
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="px-2 py-0"
+                onClick={handleSetNihaiTuketici}
+                title="Nihai Tüketici Olarak Doldur"
+                style={{ fontSize: "11px", whiteSpace: "nowrap" }}
+              >
+                Nihai Tüketici
+              </Button>
+            </div>
+          </div>
+
+          {/* 2. Satır: Vergi Dairesi | İl / İlçe | Telefon | E-Posta | Adres */}
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            {/* Vergi Dairesi */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "180px", flex: 1 }}>
+              <label style={{ width: 75, minWidth: 75, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                Vergi Dairesi
+              </label>
+              <Form.Control
+                size="sm"
+                value={vergiDairesi}
+                onChange={(e) => setVergiDairesi(e.target.value)}
+                style={{ fontSize: "12px" }}
+              />
+            </div>
+
+            {/* İl / İlçe */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "200px", flex: 1.2 }}>
+              <label style={{ width: 55, minWidth: 55, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                İl / İlçe
+              </label>
+              <div className="d-flex gap-1 w-100">
                 <Form.Control
                   size="sm"
-                  maxLength={11}
-                  value={aliciVknTckn}
-                  onChange={(e) => setAliciVknTckn(e.target.value.replace(/\D/g, ""))}
-                  style={{ fontSize: "12px", fontFamily: "monospace", fontWeight: 600, flex: 1 }}
+                  placeholder="İl"
+                  value={il}
+                  onChange={(e) => setIl(e.target.value)}
+                  style={{ fontSize: "12px" }}
                 />
-              </div>
-
-              <div className="d-flex align-items-center mb-1">
-                <label style={{ width: 85, minWidth: 85, fontSize: "12px", fontWeight: 600 }}>
-                  Vergi Dairesi
-                </label>
                 <Form.Control
                   size="sm"
-                  value={vergiDairesi}
-                  onChange={(e) => setVergiDairesi(e.target.value)}
-                  style={{ fontSize: "12px", flex: 1 }}
+                  placeholder="İlçe"
+                  value={ilce}
+                  onChange={(e) => setIlce(e.target.value)}
+                  style={{ fontSize: "12px" }}
                 />
               </div>
+            </div>
 
-              <div className="d-flex align-items-center">
-                <label style={{ width: 85, minWidth: 85, fontSize: "12px", fontWeight: 600 }}>
-                  İl / İlçe
-                </label>
-                <div className="d-flex gap-1" style={{ flex: 1 }}>
-                  <Form.Control
-                    size="sm"
-                    value={il}
-                    onChange={(e) => setIl(e.target.value)}
-                    style={{ fontSize: "12px", flex: 1 }}
-                  />
-                  <Form.Control
-                    size="sm"
-                    value={ilce}
-                    onChange={(e) => setIlce(e.target.value)}
-                    style={{ fontSize: "12px", flex: 1 }}
-                  />
-                </div>
-              </div>
-            </Col>
+            {/* Telefon */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "160px", flex: 1 }}>
+              <label style={{ width: 50, minWidth: 50, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                Telefon
+              </label>
+              <Form.Control
+                size="sm"
+                value={telefon}
+                onChange={(e) => setTelefon(e.target.value)}
+                style={{ fontSize: "12px" }}
+              />
+            </div>
 
-            {/* Sağ Sütun: Adres, Telefon, E-Posta */}
-            <Col xs={12} lg={6}>
-              <div className="d-flex align-items-start mb-1">
-                <label style={{ width: 65, minWidth: 65, fontSize: "12px", fontWeight: 600, paddingTop: "3px" }}>
-                  Adres
-                </label>
-                <Form.Control
-                  size="sm"
-                  as="textarea"
-                  rows={2}
-                  value={adres}
-                  onChange={(e) => setAdres(e.target.value)}
-                  style={{ fontSize: "12px", flex: 1, resize: "none" }}
-                />
-              </div>
+            {/* E-Posta */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "170px", flex: 1 }}>
+              <label style={{ width: 50, minWidth: 50, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                E-Posta
+              </label>
+              <Form.Control
+                size="sm"
+                type="email"
+                value={eposta}
+                onChange={(e) => setEposta(e.target.value)}
+                style={{ fontSize: "12px" }}
+              />
+            </div>
 
-              <div className="d-flex align-items-center mb-1">
-                <label style={{ width: 65, minWidth: 65, fontSize: "12px", fontWeight: 600 }}>
-                  Telefon
-                </label>
-                <Form.Control
-                  size="sm"
-                  value={telefon}
-                  onChange={(e) => setTelefon(e.target.value)}
-                  style={{ fontSize: "12px", flex: 1 }}
-                />
-              </div>
-
-              <div className="d-flex align-items-center">
-                <label style={{ width: 65, minWidth: 65, fontSize: "12px", fontWeight: 600 }}>
-                  E-Posta
-                </label>
-                <Form.Control
-                  size="sm"
-                  type="email"
-                  value={eposta}
-                  onChange={(e) => setEposta(e.target.value)}
-                  style={{ fontSize: "12px", flex: 1 }}
-                />
-              </div>
-            </Col>
-          </Row>
+            {/* Adres */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "200px", flex: 1.5 }}>
+              <label style={{ width: 45, minWidth: 45, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                Adres
+              </label>
+              <Form.Control
+                size="sm"
+                value={adres}
+                onChange={(e) => setAdres(e.target.value)}
+                style={{ fontSize: "12px" }}
+              />
+            </div>
+          </div>
         </Card.Body>
       </Card>
 
-      {/* ─── 4. Hızlı Barkod Okuma & Dürbünlü Seçim Alanı (Ortalı & Kompakt) ─── */}
-      <div className="d-flex justify-content-center my-2">
-        <div
-          className="d-flex align-items-center gap-2 p-1.5 bg-white border rounded shadow-sm w-100"
-          style={{ maxWidth: 540 }}
-        >
-          <div className="d-flex align-items-center gap-1 text-primary fw-bold px-1 px-sm-2 flex-shrink-0">
-            <IconBarcode size={22} />
-            <span className="d-none d-sm-inline" style={{ fontSize: "12px" }}>BARKOD OKUYUCU</span>
-          </div>
-
-          <Form onSubmit={handleBarcodeSubmit} className="flex-grow-1">
-            <InputGroup size="sm">
-              <Form.Control
-                ref={barcodeInputRef}
-                type="text"
-                className="fw-bold font-monospace bg-white"
-                style={{ fontSize: "13px" }}
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-                disabled={isScanning}
-                autoFocus
-              />
-              {/* Barkod Dürbün Butonu */}
-              <Button
-                type="button"
-                variant="outline-secondary"
-                className="px-2 py-0 d-flex align-items-center"
-                onClick={() => setShowProductLookup(true)}
-                title="Barkodlu Altın / Özel Ürün Listesinden Seç"
-              >
-                <IconBinoculars size={16} />
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                className="px-3 fw-bold d-flex align-items-center gap-1"
-                disabled={isScanning || !barcodeInput.trim()}
-              >
-                {isScanning ? (
-                  <Spinner size="sm" animation="border" />
-                ) : (
-                  <>
-                    <IconPlus size={15} />
-                    <span>Ekle</span>
-                  </>
-                )}
-              </Button>
-            </InputGroup>
-          </Form>
-        </div>
-      </div>
-
-      {/* ─── 5. Satış Kalemleri Grid Tablosu (Tam Ekrana Sığar, Mobilde Kaydırılabilir) ─── */}
+      {/* ─── 4. Satış Kalemleri Grid Tablosu (Tam Ekrana Sığar, Mobilde Kaydırılabilir) ─── */}
       <div
-        className="table-responsive border rounded bg-white shadow-sm w-100"
+        className="table-responsive border rounded bg-white shadow-sm w-100 mb-2"
         style={{ minHeight: "160px", overflowX: "auto" }}
       >
         <Table
@@ -1613,332 +2025,529 @@ export const PerakendeFisiPage: React.FC = () => {
           <thead style={{ background: "#d9e8fb", color: "#000" }}>
             <tr className="text-center align-middle">
               <th style={{ width: "3%", minWidth: "28px" }}>#</th>
-              <th style={{ width: "12%", minWidth: "115px" }}>Barkod</th>
-              <th style={{ width: "22%", minWidth: "145px" }}>Mal / Hizmet Açıklaması</th>
-              <th style={{ width: "8%", minWidth: "80px" }}>Ayar</th>
-              <th style={{ width: "5%", minWidth: "50px" }}>Miktar</th>
-              <th style={{ width: "5%", minWidth: "45px" }}>Birim</th>
-              <th style={{ width: "8%", minWidth: "65px" }}>Gram</th>
-              <th style={{ width: "8%", minWidth: "65px" }}>Has Gr</th>
-              <th style={{ width: "9%", minWidth: "75px" }}>Birim Fiyat (₺)</th>
-              <th style={{ width: "5%", minWidth: "48px" }}>KDV %</th>
-              <th style={{ width: "7%", minWidth: "65px" }}>KDV Tutarı</th>
-              <th style={{ width: "8%", minWidth: "78px" }}>Satır Toplamı (₺)</th>
+              <th style={{ width: "13%", minWidth: "130px" }}>Barkod</th>
+              <th style={{ width: "23%", minWidth: "180px" }}>Ürün Açıklaması / Model</th>
+              <th style={{ width: "7%", minWidth: "65px" }}>Ayar</th>
+              <th style={{ width: "6%", minWidth: "55px" }}>Miktar</th>
+              <th style={{ width: "6%", minWidth: "55px" }}>Birim</th>
+              <th style={{ width: "8%", minWidth: "70px" }}>Gram</th>
+              <th style={{ width: "8%", minWidth: "70px" }}>Has Gr</th>
+              <th style={{ width: "10%", minWidth: "85px" }}>Birim Fiyat (₺)</th>
+              <th style={{ width: "5%", minWidth: "45px" }}>KDV %</th>
+              <th style={{ width: "7%", minWidth: "70px" }}>KDV (₺)</th>
+              <th style={{ width: "9%", minWidth: "85px" }}>Satır Toplamı (₺)</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((item, idx) => (
-              <tr
-                key={item.id}
-                data-row-id={item.id}
-                data-table-type="perakende-satir"
-                className="align-middle"
-                style={idx === activeRowIndex ? { background: "#edf5ff" } : {}}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setActiveRowIndex(idx);
-                  setContextMenu({
-                    visible: true,
-                    x: e.clientX,
-                    y: e.clientY,
-                    rowId: item.id,
-                    rowIndex: idx,
-                  });
-                }}
-              >
-                <td className="text-center text-muted small" style={{ padding: "2px" }}>
-                  {idx + 1}
-                </td>
+            {items.map((item, idx) => {
+              return (
+                <tr
+                  key={item.id}
+                  data-row-id={item.id}
+                  data-table-type="kalemler"
+                  style={{
+                    backgroundColor: idx % 2 === 0 ? "#ffffff" : "#fdfdfd",
+                  }}
+                >
+                  {/* Satır Sıra No */}
+                  <td className="text-center text-muted fw-bold" style={{ fontSize: "11px" }}>
+                    {idx + 1}
+                  </td>
 
-                {/* Barkod (Dürbünlü Giriş) */}
-                <td style={{ padding: "2px" }}>
-                  <InputGroup size="sm">
-                    <Form.Control
+                  {/* Barkod (+ Dürbün) */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <div className="input-group input-group-sm">
+                      <input
+                        ref={(el) => {
+                          rowInputRefs.current[`${item.id}_barkod`] = el;
+                        }}
+                        type="text"
+                        className="form-control form-control-sm font-monospace fw-bold text-primary p-1"
+                        style={{ fontSize: "12px" }}
+                        value={item.barkod}
+                        onChange={(e) => handleUpdateItem(item.id, "barkod", e.target.value)}
+                        onKeyDown={(e) => handleGridKeyDown(e, idx, "barkod", item.id)}
+                        onFocus={() => setActiveRowIndex(idx)}
+                        placeholder="Barkod Okut..."
+                      />
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        className="px-1.5 py-0 d-flex align-items-center"
+                        onClick={() => {
+                          setShowProductLookup(true);
+                        }}
+                        title="Barkod Listesinden Seç (F4)"
+                      >
+                        <IconBinoculars size={13} />
+                      </Button>
+                    </div>
+                  </td>
+
+                  {/* Ürün Adı */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <input
                       ref={(el) => {
-                        rowInputRefs.current[`${item.id}_barkod`] = el;
+                        rowInputRefs.current[`${item.id}_urunAdi`] = el;
                       }}
-                      size="sm"
                       type="text"
-                      className="font-monospace py-0 px-1 fw-bold text-primary"
-                      style={{ fontSize: "11.5px", height: "24px" }}
-                      value={item.barkod}
-                      onChange={(e) => handleUpdateItem(item.id, { barkod: e.target.value })}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "barkod", item.id)}
+                      className="form-control form-control-sm p-1"
+                      style={{ fontSize: "12px" }}
+                      value={item.urunAdi}
+                      onChange={(e) => handleUpdateItem(item.id, "urunAdi", e.target.value)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "urunAdi", item.id)}
                       onFocus={() => setActiveRowIndex(idx)}
+                      placeholder="Ürün adı..."
                     />
-                    <Button
-                      variant="outline-secondary"
-                      className="px-1 py-0 d-flex align-items-center"
-                      onClick={() => {
-                        setActiveRowIndex(idx);
-                        setShowProductLookup(true);
-                      }}
-                      title="Ürün Seç"
-                      style={{ height: "24px" }}
-                    >
-                      <IconBinoculars size={12} />
-                    </Button>
-                  </InputGroup>
-                </td>
+                  </td>
 
-                {/* Mal / Hizmet Açıklaması */}
-                <td style={{ padding: "2px" }}>
-                  <Form.Control
-                    ref={(el) => {
-                      rowInputRefs.current[`${item.id}_urunAdi`] = el;
-                    }}
-                    size="sm"
-                    type="text"
-                    className="py-0 px-1 fw-semibold"
-                    style={{ fontSize: "11.5px", height: "24px" }}
-                    value={item.urunAdi}
-                    onChange={(e) => handleUpdateItem(item.id, { urunAdi: e.target.value })}
-                    onKeyDown={(e) => handleGridKeyDown(e, idx, "urunAdi", item.id)}
-                    onFocus={() => setActiveRowIndex(idx)}
-                  />
-                </td>
-
-                {/* Ayar (Dürbünlü Seçim & Giriş) */}
-                <td style={{ padding: "2px" }}>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_ayar`] = el;
-                      }}
-                      size="sm"
-                      type="text"
-                      className="text-center font-monospace py-0 px-1 fw-bold"
-                      style={{ fontSize: "11px", height: "24px" }}
-                      value={item.ayar}
-                      onChange={(e) => handleUpdateItem(item.id, { ayar: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === "F4") {
-                          e.preventDefault();
-                          setActiveRowIndex(idx);
+                  {/* Ayar */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <div className="input-group input-group-sm">
+                      <input
+                        ref={(el) => {
+                          rowInputRefs.current[`${item.id}_ayar`] = el;
+                        }}
+                        type="text"
+                        className="form-control form-control-sm text-center fw-bold p-1"
+                        style={{ fontSize: "11.5px" }}
+                        value={item.ayar}
+                        onChange={(e) => handleUpdateItem(item.id, "ayar", e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "F4" || (e.key === "Enter" && !item.ayar)) {
+                            e.preventDefault();
+                            setActiveAyarRowId(item.id);
+                            setShowAyarModal(true);
+                            return;
+                          }
+                          handleGridKeyDown(e, idx, "ayar", item.id);
+                        }}
+                        onFocus={() => setActiveRowIndex(idx)}
+                      />
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        className="px-1 py-0 d-flex align-items-center"
+                        onClick={() => {
                           setActiveAyarRowId(item.id);
                           setShowAyarModal(true);
-                          return;
-                        }
-                        handleGridKeyDown(e, idx, "ayar", item.id);
+                        }}
+                        title="Ayar Seç (F4)"
+                      >
+                        <IconBinoculars size={12} />
+                      </Button>
+                    </div>
+                  </td>
+
+                  {/* Miktar */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <input
+                      ref={(el) => {
+                        rowInputRefs.current[`${item.id}_miktar`] = el;
                       }}
+                      type="number"
+                      min={1}
+                      className="form-control form-control-sm text-center font-monospace p-1"
+                      style={{ fontSize: "12px" }}
+                      value={item.miktar}
+                      onChange={(e) => handleUpdateItem(item.id, "miktar", e.target.value)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "miktar", item.id)}
                       onFocus={() => setActiveRowIndex(idx)}
                     />
-                    <Button
-                      variant="outline-secondary"
-                      className="px-1 py-0 d-flex align-items-center"
-                      onClick={() => {
-                        setActiveRowIndex(idx);
-                        setActiveAyarRowId(item.id);
-                        setShowAyarModal(true);
+                  </td>
+
+                  {/* Birim */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <input
+                      ref={(el) => {
+                        rowInputRefs.current[`${item.id}_birim`] = el;
                       }}
-                      title="Ayar Listesinden Seç (F4)"
-                      style={{ height: "24px" }}
-                    >
-                      <IconBinoculars size={12} />
-                    </Button>
-                  </InputGroup>
-                </td>
+                      type="text"
+                      className="form-control form-control-sm text-center p-1"
+                      style={{ fontSize: "11.5px" }}
+                      value={item.birim}
+                      onChange={(e) => handleUpdateItem(item.id, "birim", e.target.value)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "birim", item.id)}
+                      onFocus={() => setActiveRowIndex(idx)}
+                    />
+                  </td>
 
-                {/* Miktar */}
-                <td style={{ padding: "2px" }}>
-                  <Form.Control
-                    ref={(el) => {
-                      rowInputRefs.current[`${item.id}_miktar`] = el;
-                    }}
-                    size="sm"
-                    type="number"
-                    min={1}
-                    className="text-center font-monospace py-0 px-1"
-                    style={{ fontSize: "11.5px", height: "24px" }}
-                    value={item.miktar}
-                    onChange={(e) =>
-                      handleUpdateItem(item.id, {
-                        miktar: e.target.value === "" ? "" : Number(e.target.value),
-                      })
-                    }
-                    onKeyDown={(e) => handleGridKeyDown(e, idx, "miktar", item.id)}
-                    onFocus={() => setActiveRowIndex(idx)}
-                  />
-                </td>
+                  {/* Gram */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <input
+                      ref={(el) => {
+                        rowInputRefs.current[`${item.id}_gram`] = el;
+                      }}
+                      type="number"
+                      step="0.01"
+                      className="form-control form-control-sm text-end font-monospace p-1"
+                      style={{ fontSize: "12px" }}
+                      value={item.gram}
+                      onChange={(e) => handleUpdateItem(item.id, "gram", e.target.value)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "gram", item.id)}
+                      onFocus={() => setActiveRowIndex(idx)}
+                    />
+                  </td>
 
-                {/* Birim */}
-                <td style={{ padding: "2px" }}>
-                  <Form.Control
-                    ref={(el) => {
-                      rowInputRefs.current[`${item.id}_birim`] = el;
-                    }}
-                    size="sm"
-                    type="text"
-                    className="text-center py-0 px-1"
-                    style={{ fontSize: "11px", height: "24px" }}
-                    value={item.birim}
-                    onChange={(e) => handleUpdateItem(item.id, { birim: e.target.value })}
-                    onKeyDown={(e) => handleGridKeyDown(e, idx, "birim", item.id)}
-                    onFocus={() => setActiveRowIndex(idx)}
-                  />
-                </td>
+                  {/* Has Gram */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <input
+                      ref={(el) => {
+                        rowInputRefs.current[`${item.id}_hasGram`] = el;
+                      }}
+                      type="number"
+                      step="0.001"
+                      className="form-control form-control-sm text-end font-monospace p-1"
+                      style={{ fontSize: "12px" }}
+                      value={item.hasGram}
+                      onChange={(e) => handleUpdateItem(item.id, "hasGram", e.target.value)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "hasGram", item.id)}
+                      onFocus={() => setActiveRowIndex(idx)}
+                    />
+                  </td>
 
-                {/* Gram */}
-                <td style={{ padding: "2px" }}>
-                  <Form.Control
-                    ref={(el) => {
-                      rowInputRefs.current[`${item.id}_gram`] = el;
-                    }}
-                    size="sm"
-                    type="number"
-                    step="0.01"
-                    className="text-end font-monospace py-0 px-1"
-                    style={{ fontSize: "11.5px", height: "24px" }}
-                    value={item.gram}
-                    onChange={(e) =>
-                      handleUpdateItem(item.id, {
-                        gram: e.target.value === "" ? "" : Number(e.target.value),
-                      })
-                    }
-                    onKeyDown={(e) => handleGridKeyDown(e, idx, "gram", item.id)}
-                    onFocus={() => setActiveRowIndex(idx)}
-                  />
-                </td>
+                  {/* Birim Fiyat */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <input
+                      ref={(el) => {
+                        rowInputRefs.current[`${item.id}_birimFiyat`] = el;
+                      }}
+                      type="number"
+                      step="0.01"
+                      className="form-control form-control-sm text-end font-monospace fw-bold text-success p-1"
+                      style={{ fontSize: "12px" }}
+                      value={item.birimFiyat}
+                      onChange={(e) => handleUpdateItem(item.id, "birimFiyat", e.target.value)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "birimFiyat", item.id)}
+                      onFocus={() => setActiveRowIndex(idx)}
+                      placeholder="0.00"
+                    />
+                  </td>
 
-                {/* Has Gram */}
-                <td style={{ padding: "2px" }}>
-                  <Form.Control
-                    ref={(el) => {
-                      rowInputRefs.current[`${item.id}_hasGram`] = el;
-                    }}
-                    size="sm"
-                    type="number"
-                    step="0.001"
-                    className="text-end font-monospace py-0 px-1"
-                    style={{ fontSize: "11.5px", height: "24px" }}
-                    value={item.hasGram}
-                    onChange={(e) =>
-                      handleUpdateItem(item.id, {
-                        hasGram: e.target.value === "" ? "" : Number(e.target.value),
-                      })
-                    }
-                    onKeyDown={(e) => handleGridKeyDown(e, idx, "hasGram", item.id)}
-                    onFocus={() => setActiveRowIndex(idx)}
-                  />
-                </td>
+                  {/* KDV % */}
+                  <td style={{ padding: "2px 4px" }}>
+                    <input
+                      ref={(el) => {
+                        rowInputRefs.current[`${item.id}_kdvOrani`] = el;
+                      }}
+                      type="number"
+                      className="form-control form-control-sm text-center font-monospace p-1"
+                      style={{ fontSize: "11.5px" }}
+                      value={item.kdvOrani}
+                      onChange={(e) => handleUpdateItem(item.id, "kdvOrani", e.target.value)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "kdvOrani", item.id)}
+                      onFocus={() => setActiveRowIndex(idx)}
+                    />
+                  </td>
 
-                {/* Birim Fiyat */}
-                <td style={{ padding: "2px" }}>
-                  <Form.Control
-                    ref={(el) => {
-                      rowInputRefs.current[`${item.id}_birimFiyat`] = el;
-                    }}
-                    size="sm"
-                    type="number"
-                    step="0.01"
-                    className="text-end font-monospace fw-bold py-0 px-1 text-primary"
-                    style={{ fontSize: "11.5px", height: "24px" }}
-                    value={item.birimFiyat}
-                    onChange={(e) =>
-                      handleUpdateItem(item.id, {
-                        birimFiyat: e.target.value === "" ? "" : Number(e.target.value),
-                      })
-                    }
-                    onKeyDown={(e) => handleGridKeyDown(e, idx, "birimFiyat", item.id)}
-                    onFocus={() => setActiveRowIndex(idx)}
-                  />
-                </td>
+                  {/* KDV Tutarı */}
+                  <td className="text-end font-monospace text-muted px-2" style={{ fontSize: "11.5px" }}>
+                    {typeof item.kdvTutari === "number" && item.kdvTutari > 0
+                      ? `${item.kdvTutari.toLocaleString("tr-TR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })} ₺`
+                      : "-"}
+                  </td>
 
-                {/* KDV % (Kullanıcı İstediği Değeri Yazabilir, Varsayılan 0) */}
-                <td style={{ padding: "2px" }}>
-                  <Form.Control
-                    ref={(el) => {
-                      rowInputRefs.current[`${item.id}_kdvOrani`] = el;
-                    }}
-                    size="sm"
-                    type="number"
-                    min={0}
-                    step={1}
-                    className="text-center font-monospace py-0 px-1"
-                    style={{ fontSize: "11.5px", height: "24px" }}
-                    value={item.kdvOrani === "" ? "" : item.kdvOrani}
-                    onChange={(e) =>
-                      handleUpdateItem(item.id, {
-                        kdvOrani: e.target.value === "" ? "" : Number(e.target.value),
-                      })
-                    }
-                    onKeyDown={(e) => handleGridKeyDown(e, idx, "kdvOrani", item.id)}
-                    onFocus={() => setActiveRowIndex(idx)}
-                  />
-                </td>
-
-                {/* KDV Tutarı */}
-                <td className="text-end font-monospace" style={{ padding: "2px 6px" }}>
-                  {typeof item.kdvTutari === "number" && item.kdvTutari > 0
-                    ? item.kdvTutari.toLocaleString("tr-TR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                    : "-"}
-                </td>
-
-                {/* Satır Toplamı */}
-                <td className="text-end fw-bold font-monospace text-dark" style={{ padding: "2px 6px" }}>
-                  {typeof item.toplamTutar === "number" && item.toplamTutar > 0
-                    ? `${item.toplamTutar.toLocaleString("tr-TR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })} ₺`
-                    : "-"}
-                </td>
-              </tr>
-            ))}
+                  {/* Satır Toplamı */}
+                  <td className="text-end font-monospace fw-bold text-dark px-2" style={{ fontSize: "12px" }}>
+                    {typeof item.toplamTutar === "number" && item.toplamTutar > 0
+                      ? `${item.toplamTutar.toLocaleString("tr-TR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })} ₺`
+                      : "-"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
       </div>
 
-      {/* ─── 6. Alt Toplam ve Hesap Özeti Paneli (Responsive) ──────────── */}
-      <div
-        className="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-center justify-content-between p-2 mt-2 border rounded bg-light gap-2"
-        style={{ fontSize: "12px" }}
-      >
-        <div className="d-flex align-items-center flex-wrap gap-2 gap-sm-3">
-          <div>
-            <span className="text-muted me-1">Kalem:</span>
-            <strong className="font-monospace text-dark">{validItems.length}</strong>
-          </div>
-          <div>
-            <span className="text-muted me-1">Toplam Adet:</span>
-            <strong className="font-monospace text-dark">{totalQuantity}</strong>
-          </div>
-          <div>
-            <span className="text-muted me-1">Toplam Gram:</span>
-            <strong className="font-monospace text-dark">{totalGrams.toFixed(2)} gr</strong>
-          </div>
-          <div>
-            <span className="text-muted me-1">Toplam Has:</span>
-            <strong className="font-monospace text-dark">{totalHasGrams.toFixed(3)} has</strong>
-          </div>
-        </div>
+      {/* ─── 5. Bottom Sections: ÖDEME TABLOSU (Solda) | TL/HAS Özet (Sağda) ─── */}
+      <Row className="g-2 align-items-start mb-2">
+        {/* SOLDA: Ödeme / Tahsilat Tablosu (Sarraf Fişi ile Birebir Aynı Tasarım) */}
+        <Col xs={12} lg={8} md={7}>
+          <div className="border rounded bg-white shadow-sm overflow-hidden">
+            <div className="bg-light px-2 py-1 border-bottom d-flex align-items-center justify-content-between">
+              <span className="fw-bold text-secondary" style={{ fontSize: "12px" }}>
+                ÖDEME / TAHSİLAT TABLOSU
+              </span>
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="py-0 px-2 d-flex align-items-center gap-1"
+                style={{ fontSize: "11px" }}
+                onClick={() => {
+                  const newRow = createEmptyOdemeRow(odemeRows.length + 1);
+                  setOdemeRows((prev) => [...prev, newRow]);
+                  setActiveOdemeRowIndex(odemeRows.length);
+                  setTimeout(() => focusOdemeGridCell(newRow.id, "paraKodu", "select"), 30);
+                }}
+              >
+                <IconPlus size={13} />
+                <span>Ödeme Satırı Ekle</span>
+              </Button>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <Table bordered size="sm" hover className="mb-0 align-middle text-nowrap" style={{ fontSize: "11.5px", minWidth: 620 }}>
+                <thead style={{ background: "#d9e8fb", color: "#000" }}>
+                  <tr className="text-center align-middle">
+                    <th style={{ width: 25 }} className="text-center">#</th>
+                    <th style={{ width: 110 }}>Para</th>
+                    <th style={{ width: 140 }}>Para adı</th>
+                    <th style={{ width: 55 }}>Adet</th>
+                    <th style={{ width: 75 }}>Miktar</th>
+                    <th style={{ width: 70 }}>Milyem</th>
+                    <th style={{ width: 85 }}>Has Gr</th>
+                    <th style={{ width: 95 }}>Kur</th>
+                    <th style={{ width: 110 }}>Tutar (TL)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {odemeRows.map((oRow, rowIndex) => (
+                    <tr
+                      key={oRow.id}
+                      data-row-id={oRow.id}
+                      data-table-type="odeme"
+                      style={rowIndex === activeOdemeRowIndex ? { background: "#edf5ff" } : {}}
+                    >
+                      <td className="text-muted text-center" style={{ padding: "2px", fontSize: "10px", verticalAlign: "middle" }}>
+                        {rowIndex + 1}
+                      </td>
 
-        <div className="d-flex align-items-center flex-wrap justify-content-between justify-content-lg-end gap-2 gap-sm-3">
-          <div>
-            <span className="text-muted me-1">Ara Toplam:</span>
-            <strong className="font-monospace text-dark">
-              {araToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
-            </strong>
-          </div>
-          <div>
-            <span className="text-muted me-1">KDV:</span>
-            <strong className="font-monospace text-warning-emphasis">
-              {toplamKdv.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
-            </strong>
-          </div>
-          <div className="px-3 py-1 bg-success text-white rounded font-monospace fw-bold fs-6 text-center">
-            GENEL TOPLAM: {genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
-          </div>
-        </div>
-      </div>
+                      {/* Para Kodu (+ Dürbün) */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <InputGroup size="sm">
+                          <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_paraKodu`] = el; }}
+                            value={oRow.paraKodu}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateOdemeRow(oRow.id, "paraKodu", val);
+                              if (val.trim().toUpperCase() === "TL" || val.trim().toUpperCase() === "TRY") {
+                                setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, paraKodu: "TL", paraAdi: "TÜRK LİRASI", kur: 1, milyem: "" } : r));
+                              } else {
+                                const match = odemeUrunList.find((u) => u.kod.trim().toLowerCase() === val.trim().toLowerCase());
+                                if (match) {
+                                  applyProductToOdemeRow(oRow.id, match);
+                                }
+                              }
+                            }}
+                            onDoubleClick={() => openOdemeUrunModal(oRow.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "F4" || e.key === "F3") {
+                                e.preventDefault();
+                                openOdemeUrunModal(oRow.id);
+                                return;
+                              }
+                              handleOdemeGridKeyDown(e, rowIndex, "paraKodu", oRow.id);
+                            }}
+                            onFocus={() => setActiveOdemeRowIndex(rowIndex)}
+                            style={{ fontSize: "11px", padding: "1px 4px", textTransform: "uppercase", fontWeight: 600 }}
+                          />
+                          <Button
+                            type="button"
+                            tabIndex={-1}
+                            variant="outline-secondary"
+                            className="px-1 py-0 d-flex align-items-center"
+                            onClick={() => openOdemeUrunModal(oRow.id)}
+                            title="Para / Ürün Seç (F3/F4)"
+                          >
+                            <IconBinoculars size={12} />
+                          </Button>
+                        </InputGroup>
+                      </td>
 
-      {/* ─── 7. Kısayol Bilgilendirme Çubuğu (Footer Notu) ────────────── */}
+                      {/* Para Adı */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <Form.Control
+                          size="sm"
+                          value={oRow.paraAdi || (oRow.paraKodu === "TL" ? "TÜRK LİRASI" : "")}
+                          readOnly
+                          style={{ fontSize: "11px", padding: "1px 4px", background: "#f8f9fa" }}
+                        />
+                      </td>
+
+                      {/* Adet */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <Form.Control
+                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
+                          inputMode="numeric"
+                          size="sm"
+                          className="text-end font-monospace"
+                          value={oRow.adet || ""}
+                          onChange={(e) => updateOdemeRow(oRow.id, "adet", e.target.value)}
+                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "adet", oRow.id)}
+                          onFocus={() => setActiveOdemeRowIndex(rowIndex)}
+                          style={{ fontSize: "11px", padding: "1px 4px" }}
+                        />
+                      </td>
+
+                      {/* Miktar */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <Form.Control
+                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_miktar`] = el; }}
+                          inputMode="decimal"
+                          size="sm"
+                          className="text-end font-monospace fw-semibold"
+                          value={oRow.miktar}
+                          onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
+                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "miktar", oRow.id)}
+                          onFocus={() => setActiveOdemeRowIndex(rowIndex)}
+                          style={{ fontSize: "11px", padding: "1px 4px" }}
+                        />
+                      </td>
+
+                      {/* Milyem */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <Form.Control
+                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_milyem`] = el; }}
+                          inputMode="decimal"
+                          size="sm"
+                          className="text-end font-monospace"
+                          value={oRow.milyem}
+                          onChange={(e) => updateOdemeRow(oRow.id, "milyem", e.target.value)}
+                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "milyem", oRow.id)}
+                          onFocus={() => setActiveOdemeRowIndex(rowIndex)}
+                          style={{ fontSize: "11px", padding: "1px 4px" }}
+                        />
+                      </td>
+
+                      {/* Has Gr */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <Form.Control
+                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_hasGram`] = el; }}
+                          inputMode="decimal"
+                          size="sm"
+                          className="text-end font-monospace"
+                          value={oRow.hasGram}
+                          onChange={(e) => updateOdemeRow(oRow.id, "hasGram", e.target.value)}
+                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "hasGram", oRow.id)}
+                          onFocus={() => setActiveOdemeRowIndex(rowIndex)}
+                          style={{ fontSize: "11px", padding: "1px 4px" }}
+                        />
+                      </td>
+
+                      {/* Kur */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <Form.Control
+                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_kur`] = el; }}
+                          inputMode="decimal"
+                          size="sm"
+                          className="text-end font-monospace"
+                          value={oRow.kur}
+                          onChange={(e) => updateOdemeRow(oRow.id, "kur", e.target.value)}
+                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}
+                          onFocus={() => setActiveOdemeRowIndex(rowIndex)}
+                          style={{ fontSize: "11px", padding: "1px 4px" }}
+                        />
+                      </td>
+
+                      {/* Tutar */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <Form.Control
+                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_tutar`] = el; }}
+                          inputMode="decimal"
+                          size="sm"
+                          className="text-end font-monospace fw-bold text-success"
+                          value={oRow.tutar}
+                          onChange={(e) => updateOdemeRow(oRow.id, "tutar", e.target.value)}
+                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "tutar", oRow.id)}
+                          onFocus={() => setActiveOdemeRowIndex(rowIndex)}
+                          style={{ fontSize: "11px", padding: "1px 4px" }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot style={{ background: "#f2f4f7", fontWeight: 600, fontSize: "11px" }}>
+                  <tr>
+                    <td colSpan={3} className="text-end small">Toplam</td>
+                    <td style={{ textAlign: "right" }}>{totalOdemeAdet || ""}</td>
+                    <td style={{ textAlign: "right" }}>{totalOdemeMiktar ? Number(totalOdemeMiktar).toFixed(3) : ""}</td>
+                    <td></td>
+                    <td style={{ textAlign: "right" }}>{totalOdemeHas ? Number(totalOdemeHas).toFixed(4) : ""}</td>
+                    <td></td>
+                    <td style={{ textAlign: "right" }}>
+                      {totalOdemeTutar ? totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) + " TL" : ""}
+                    </td>
+                  </tr>
+                </tfoot>
+              </Table>
+            </div>
+          </div>
+        </Col>
+
+        {/* SAĞDA: TL / HAS Özet Tablosu */}
+        <Col xs={12} lg={4} md={5}>
+          <div className="d-flex flex-column gap-2">
+            {/* TL / HAS Karşılığı ve Fark Tablosu */}
+            <div className="border rounded bg-white overflow-hidden shadow-sm">
+              <Table bordered size="sm" className="mb-0 align-middle" style={{ fontSize: "11.5px" }}>
+                <thead style={{ background: "#eef2f6" }}>
+                  <tr>
+                    <th></th>
+                    <th className="text-center" style={{ width: "42%" }}>TL</th>
+                    <th className="text-center" style={{ width: "42%" }}>HAS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="fw-semibold text-secondary">{faturaTipi === 0 ? "Alış" : "Satış"}</td>
+                    <td className="text-end font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</td>
+                    <td className="text-end font-monospace">{totalHasGrams.toFixed(4)}</td>
+                  </tr>
+                  <tr>
+                    <td className="fw-semibold text-secondary">{faturaTipi === 0 ? "Ödeme" : "Tahsilat"}</td>
+                    <td className="text-end font-monospace">{totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</td>
+                    <td className="text-end font-monospace">{totalOdemeHas.toFixed(4)}</td>
+                  </tr>
+                  <tr style={{ background: (Math.abs(farkTL) > 0.01 || Math.abs(farkHas) > 0.0001) ? "#fff5f5" : "#f8f9fa" }}>
+                    <td className="fw-bold">Fark</td>
+                    <td className="text-end fw-bold font-monospace" style={{ color: Math.abs(farkTL) > 0.01 ? "#dc3545" : "inherit" }}>
+                      {farkTL.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                    </td>
+                    <td className="text-end fw-bold font-monospace" style={{ color: Math.abs(farkHas) > 0.0001 ? "#dc3545" : "inherit" }}>
+                      {farkHas.toFixed(4)}
+                    </td>
+                  </tr>
+                </tbody>
+              </Table>
+            </div>
+
+            {/* Alt Toplam Özeti Kutusu */}
+            <div className="p-2 border rounded bg-light" style={{ fontSize: "11.5px" }}>
+              <div className="d-flex justify-content-between mb-1">
+                <span className="text-muted">Toplam Kalem:</span>
+                <strong className="font-monospace">{validItems.length}</strong>
+              </div>
+              <div className="d-flex justify-content-between mb-1">
+                <span className="text-muted">Toplam Gram / Adet:</span>
+                <strong className="font-monospace">{totalGrams.toFixed(2)} gr ({totalQuantity} ad)</strong>
+              </div>
+              <div className="d-flex justify-content-between mb-1">
+                <span className="text-muted">Ara Toplam:</span>
+                <strong className="font-monospace">{araToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</strong>
+              </div>
+              <div className="d-flex justify-content-between mb-1">
+                <span className="text-muted">Toplam KDV:</span>
+                <strong className="font-monospace">{toplamKdv.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</strong>
+              </div>
+              <div className="d-flex justify-content-between pt-1 border-top fw-bold text-success" style={{ fontSize: "13px" }}>
+                <span>GENEL TOPLAM:</span>
+                <span className="font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</span>
+              </div>
+            </div>
+          </div>
+        </Col>
+      </Row>
+
+      {/* ─── 6. Kısayol Bilgilendirme Çubuğu (Footer Notu) ────────────── */}
       <div
-        className="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-1.5 mt-2 rounded border bg-white text-muted shadow-sm"
+        className="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-1.5 rounded border bg-white text-muted shadow-sm"
         style={{ fontSize: "11px" }}
       >
         <div className="d-flex align-items-center flex-wrap gap-2 gap-md-3">
@@ -1972,49 +2581,7 @@ export const PerakendeFisiPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ─── Sağ Tık Context Menü (Satır Ekle / Sil) ─────────────────── */}
-      {contextMenu?.visible && (
-        <div
-          className="position-fixed bg-white border rounded shadow-lg py-1"
-          style={{
-            top: `${contextMenu.y}px`,
-            left: `${contextMenu.x}px`,
-            zIndex: 9999,
-            minWidth: 160,
-            fontSize: "12px",
-            boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="px-3 py-1 text-muted fw-bold border-bottom" style={{ fontSize: "11px" }}>
-            Satır İşlemleri (#{contextMenu.rowIndex + 1})
-          </div>
-          <button
-            type="button"
-            className="dropdown-item px-3 py-1.5 d-flex align-items-center gap-2 text-success"
-            style={{ cursor: "pointer" }}
-            onClick={() => {
-              handleAddRow(contextMenu.rowIndex);
-              setContextMenu(null);
-            }}
-          >
-            <IconPlus size={15} />
-            <span>Yeni Satır Ekle</span>
-          </button>
-          <button
-            type="button"
-            className="dropdown-item px-3 py-1.5 d-flex align-items-center gap-2 text-danger"
-            style={{ cursor: "pointer" }}
-            onClick={() => {
-              handleDeleteRow(contextMenu.rowId);
-              setContextMenu(null);
-            }}
-          >
-            <IconTrash size={15} />
-            <span>Satırı Sil</span>
-          </button>
-        </div>
-      )}
+
 
       {/* ─── MODALS ───────────────────────────────────────────────────── */}
 
@@ -2038,6 +2605,29 @@ export const PerakendeFisiPage: React.FC = () => {
           return barkod.includes(t) || model.includes(t) || ayar.includes(t);
         }}
         onSelect={handleSelectFromProductLookup}
+      />
+
+      {/* Ödeme / Para Ürün Seçim Modalı */}
+      <LookupModal
+        show={showOdemeUrunModal}
+        onHide={() => {
+          setShowOdemeUrunModal(false);
+          setActiveOdemeRowIdForUrun(null);
+        }}
+        title="Ödeme Para / Döviz / Altın Seçimi"
+        items={odemeUrunList}
+        columns={odemeLookupColumns}
+        filterFn={(u, term) =>
+          u.kod.toLowerCase().includes(term.toLowerCase()) ||
+          u.ad.toLowerCase().includes(term.toLowerCase())
+        }
+        onSelect={(selectedUrun) => {
+          if (activeOdemeRowIdForUrun) {
+            applyProductToOdemeRow(activeOdemeRowIdForUrun, selectedUrun);
+          }
+          setShowOdemeUrunModal(false);
+          setActiveOdemeRowIdForUrun(null);
+        }}
       />
 
       {/* Vezne Seçim Modalı (LookupModal) */}
@@ -2223,25 +2813,25 @@ export const PerakendeFisiPage: React.FC = () => {
                       className="user-select-none"
                       title="Forma aktarmak ve düzenlemek için çift tıklayın"
                     >
-                      <td className="fw-bold font-monospace text-primary">{f.faturaNo}</td>
+                      <td className="fw-bold font-monospace text-primary">{f.faturaNo || "-"}</td>
                       <td className="small">
-                        {new Date(f.tarih).toLocaleDateString("tr-TR")}
+                        {f.tarih ? new Date(f.tarih).toLocaleDateString("tr-TR") : "-"}
                       </td>
                       <td>
                         <Badge bg="light" text="dark" className="border">
-                          {f.senaryo}
+                          {f.senaryo || "EARSIVFATURA"}
                         </Badge>
                       </td>
-                      <td className="fw-bold">{f.aliciUnvan}</td>
-                      <td className="font-monospace small">{f.aliciVknTckn}</td>
+                      <td className="fw-bold">{f.aliciUnvan || "-"}</td>
+                      <td className="font-monospace small">{f.aliciVknTckn || "-"}</td>
                       <td className="text-end font-monospace">
-                        {f.araToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                        {(Number(f.araToplam) || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
                       </td>
                       <td className="text-end font-monospace">
-                        {f.toplamKdv.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                        {(Number(f.toplamKdv) || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
                       </td>
                       <td className="text-end fw-bold font-monospace text-success">
-                        {f.genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                        {(Number(f.genelToplam) || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
                       </td>
                       <td className="text-center">
                         {f.eBelgeDurumu === 2 ? (

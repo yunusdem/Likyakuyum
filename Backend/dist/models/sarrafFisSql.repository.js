@@ -117,17 +117,24 @@ export class SarrafFisSqlRepository {
             if (!h)
                 return null;
             const satirlar = (await pool.request().input("id2", sql.Int, sarrafFisiId)
-                .query(`SELECT SFS.*, ISNULL(RTRIM(P.KOD),'') AS URUN_KODU, ISNULL(P.AD,'') AS URUN_ADI
+                .query(`SELECT SFS.*, ISNULL(RTRIM(P.KOD),'') AS URUN_KODU, ISNULL(P.AD,'') AS URUN_ADI, ISNULL(P.HAS_ORANI, 0) AS PARA_HAS_ORANI
                 FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] SFS WITH (NOLOCK)
                   LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON P.PARA_ID = SFS.URUN_ID
                 WHERE SFS.SARRAF_FISI_ID = @id2 ORDER BY SFS.SATIR_NO`)).recordset;
             const odemeler = (await pool.request().input("id3", sql.Int, sarrafFisiId)
-                .query(`SELECT OS.*, ISNULL(RTRIM(P.KOD),'') AS PARA_KODU
+                .query(`SELECT OS.*, ISNULL(RTRIM(P.KOD),'') AS PARA_KODU, ISNULL(P.HAS_ORANI, 0) AS PARA_HAS_ORANI
                 FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
                   LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON P.PARA_ID = OS.PARA_ID
                 WHERE OS.SARRAF_FISI_ID = @id3 ORDER BY OS.SATIR_NO`)).recordset;
+            const rawFisNo = (h.FIS_NO || "").trim();
+            const rawIrsaliyeNo = (h.IRSALIYE_NO || "").trim();
+            const seriNo = rawFisNo;
+            const belgeNo = rawIrsaliyeNo;
             return {
-                sarrafFisiId: h.SARRAF_FISI_ID, fisNo: (h.FIS_NO || "").trim(),
+                sarrafFisiId: h.SARRAF_FISI_ID,
+                fisNo: rawFisNo,
+                seriNo: seriNo,
+                belgeNo: belgeNo,
                 tarih: h.TARIH ? h.TARIH.toISOString().split("T")[0] : "",
                 saat: h.SAAT ? h.SAAT.toISOString() : null,
                 tip: h.TIP, altinHasKuru: Number(h.ALTIN_HAS_KURU) || 0,
@@ -151,22 +158,40 @@ export class SarrafFisSqlRepository {
                 yetkiliKisiId: h.YETKILI_KISI_ID ?? null,
                 kimlikGecerlilikTarihi: h.KIMLIK_GECERLILIK_TARIHI ? h.KIMLIK_GECERLILIK_TARIHI.toISOString().split("T")[0] : null,
                 masakListesindeVar: h.MASAK_LISTESINDE_VAR === true || h.MASAK_LISTESINDE_VAR === 1,
-                satirlar: satirlar.map((r) => ({
-                    satirNo: r.SATIR_NO, urunId: r.URUN_ID ?? 0,
-                    urunKodu: (r.URUN_KODU || "").trim(), urunAdi: r.URUN_ADI || "",
-                    miktar: Number(r.MIKTAR) || 0, milyem: Number(r.MILYEM) || 0, hasGram: Number(r.HAS_GRAM) || 0,
-                    adet: Number(r.ADET) || 0, iscilikiMiktari: Number(r.ISCILIK_MIKTARI) || 0,
-                    iscilikHasGram: Number(r.ISCILIK_HAS_GRAM) || 0, aciklama: r.ACIKLAMA || null,
-                    iscilikHesaplamaSekli: r.ISCILIK_HESAPLAMA_SEKLI ?? null,
-                    kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0, urunTipi: r.URUN_TIPI ?? 0,
-                    karat: r.KARAT != null ? Number(r.KARAT) : null, sarrafFisiSatiriId: r.SARRAF_FISI_SATIRI_ID,
-                })),
-                odemeSatirlari: odemeler.map((r) => ({
-                    satirNo: r.SATIR_NO, islemeYeri: r.ISLEME_YERI, odemeAraciTuru: r.ODEME_ARACI_TURU,
-                    paraId: r.PARA_ID ?? null, paraKodu: (r.PARA_KODU || "").trim(),
-                    miktar: Number(r.MIKTAR) || 0, milyem: Number(r.MILYEM) || 0, hasGram: Number(r.HAS_GRAM) || 0,
-                    kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0,
-                })),
+                satirlar: satirlar.map((r) => {
+                    const mVal = (r.MILYEM !== null && r.MILYEM !== undefined && Number(r.MILYEM) !== 0)
+                        ? Number(r.MILYEM)
+                        : (r.HAS_ORANI !== null && r.HAS_ORANI !== undefined && Number(r.HAS_ORANI) !== 0
+                            ? Number(r.HAS_ORANI)
+                            : (r.PARA_HAS_ORANI !== null && r.PARA_HAS_ORANI !== undefined && Number(r.PARA_HAS_ORANI) !== 0
+                                ? Number(r.PARA_HAS_ORANI)
+                                : (Number(r.MILYEM) || 0)));
+                    return {
+                        satirNo: r.SATIR_NO, urunId: r.URUN_ID ?? 0,
+                        urunKodu: (r.URUN_KODU || "").trim(), urunAdi: r.URUN_ADI || "",
+                        miktar: Number(r.MIKTAR) || 0, milyem: mVal, hasGram: Number(r.HAS_GRAM) || 0,
+                        adet: Number(r.ADET) || 0, iscilikiMiktari: Number(r.ISCILIK_MIKTARI) || 0,
+                        iscilikHasGram: Number(r.ISCILIK_HAS_GRAM) || 0, aciklama: r.ACIKLAMA || null,
+                        iscilikHesaplamaSekli: r.ISCILIK_HESAPLAMA_SEKLI ?? null,
+                        kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0, urunTipi: r.URUN_TIPI ?? 0,
+                        karat: r.KARAT != null ? Number(r.KARAT) : null, sarrafFisiSatiriId: r.SARRAF_FISI_SATIRI_ID,
+                    };
+                }),
+                odemeSatirlari: odemeler.map((r) => {
+                    const mVal = (r.MILYEM !== null && r.MILYEM !== undefined && Number(r.MILYEM) !== 0)
+                        ? Number(r.MILYEM)
+                        : (r.HAS_ORANI !== null && r.HAS_ORANI !== undefined && Number(r.HAS_ORANI) !== 0
+                            ? Number(r.HAS_ORANI)
+                            : (r.PARA_HAS_ORANI !== null && r.PARA_HAS_ORANI !== undefined && Number(r.PARA_HAS_ORANI) !== 0
+                                ? Number(r.PARA_HAS_ORANI)
+                                : (Number(r.MILYEM) || 0)));
+                    return {
+                        satirNo: r.SATIR_NO, islemeYeri: r.ISLEME_YERI, odemeAraciTuru: r.ODEME_ARACI_TURU,
+                        paraId: r.PARA_ID ?? null, paraKodu: (r.PARA_KODU || "").trim(),
+                        miktar: Number(r.MIKTAR) || 0, milyem: mVal, hasGram: Number(r.HAS_GRAM) || 0,
+                        kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0,
+                    };
+                }),
             };
         }
         catch (err) {
@@ -212,16 +237,43 @@ export class SarrafFisSqlRepository {
             const dt = safeDate(d);
             return dt || new Date();
         };
+        const rawSeriNo = (dto.seriNo || "").trim();
+        const rawBelgeNo = (dto.belgeNo || dto.irsaliyeNo || dto.fisNo || "").trim();
+        let effectiveSeriNo = null;
+        if (rawSeriNo && /\d/.test(rawSeriNo)) {
+            effectiveSeriNo = rawSeriNo;
+        }
+        else {
+            effectiveSeriNo = null;
+        }
+        let effectiveBelgeNo = null;
+        if (rawBelgeNo && rawBelgeNo !== rawSeriNo) {
+            effectiveBelgeNo = rawBelgeNo;
+        }
+        else {
+            effectiveBelgeNo = null;
+        }
+        let effectiveKdv = dto.kdv != null && !isNaN(Number(dto.kdv)) ? Number(dto.kdv) : null;
+        if (effectiveKdv === null) {
+            if (dto.kdvOrani != null && Number(dto.kdvOrani) > 0) {
+                const totIscilik = (dto.satirlar || []).reduce((s, r) => s + (Number(r.iscilikHasGram) || 0), 0);
+                effectiveKdv = (Number(dto.kdvOrani) * (Number(dto.altinHasKuru) || 0) * totIscilik) / 100;
+            }
+            else {
+                effectiveKdv = 0;
+            }
+        }
         req.input("IN_SARRAF_FISI_ID", sql.Int, dto.sarrafFisiId ?? null);
         req.input("IN_VEZNE_ID", sql.Int, dto.vezneId);
         req.input("IN_CARI_KART_ID", sql.Int, dto.cariKartId ?? null);
         req.input("IN_TARIH", sql.DateTime, parseDate(dto.tarih));
         req.input("IN_SAAT", sql.DateTime, dto.saat ? (safeDate(dto.saat) || parseDate(dto.tarih)) : new Date());
-        req.input("IN_FIS_NO", sql.Char(20), dto.fisNo ? String(dto.fisNo).trim() : null);
+        req.input("IN_FIS_NO", sql.Char(20), effectiveSeriNo);
+        req.input("IN_IRSALIYE_NO", sql.Char(20), effectiveBelgeNo);
         req.input("IN_TIP", sql.TinyInt, Number(dto.tip) || 0);
         req.input("IN_ALTIN_HAS_KURU", sql.Float, Number(dto.altinHasKuru) || 0);
-        req.input("IN_KDV_ORANI", sql.Float, Number(dto.kdvOrani) || 0);
-        req.input("IN_KDV", sql.Float, Number(dto.kdv) || 0);
+        req.input("IN_KDV_ORANI", sql.Float, dto.kdvOrani != null && !isNaN(Number(dto.kdvOrani)) ? Number(dto.kdvOrani) : null);
+        req.input("IN_KDV", sql.Float, Number(effectiveKdv) || 0);
         req.input("IN_E_FATURA_POSTA", sql.VarChar(200), dto.eFaturaPosta ?? null);
         req.input("IN_E_IRSALIYE_POSTA", sql.VarChar(200), dto.eIrsaliyePosta ?? null);
         req.input("IN_IRSALIYE_ZAMANI", sql.DateTime, safeDate(dto.irsaliyeZamani));
@@ -276,7 +328,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_sNo`, sql.Int, s.satirNo || (idx + 1));
             req.input(`${p}_uId`, sql.Int, s.urunId);
             req.input(`${p}_mik`, sql.Float, Number(s.miktar) || 0);
-            req.input(`${p}_mil`, sql.Int, Number(s.milyem) || 0);
+            req.input(`${p}_mil`, sql.Float, Number(s.milyem) || 0);
             req.input(`${p}_hg`, sql.Float, Number(s.hasGram) || 0);
             req.input(`${p}_ad`, sql.Int, s.adet != null && !isNaN(Number(s.adet)) ? Number(s.adet) : 0);
             req.input(`${p}_im`, sql.Int, Number(s.iscilikiMiktari) || 0);
@@ -316,7 +368,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_pid`, sql.Int, o.paraId ?? null);
             req.input(`${p}_pos`, sql.Int, o.posCihaziId ?? null);
             req.input(`${p}_mik`, sql.Float, Number(o.miktar) || 0);
-            req.input(`${p}_mil`, sql.Int, Number(o.milyem) || 0);
+            req.input(`${p}_mil`, sql.Float, Number(o.milyem) || 0);
             req.input(`${p}_hg`, sql.Float, Number(o.hasGram) || 0);
             req.input(`${p}_kur`, sql.Float, Number(o.kur) || 1);
             req.input(`${p}_tut`, sql.Float, Number(o.tutar) || 0);
@@ -336,7 +388,7 @@ export class SarrafFisSqlRepository {
       IF OBJECT_ID('tempdb..#TODVZ_ISKELE_SARRAF_FISI_SATIRI') IS NOT NULL DROP TABLE #TODVZ_ISKELE_SARRAF_FISI_SATIRI;
       CREATE TABLE #TODVZ_ISKELE_SARRAF_FISI_SATIRI (
         SATIR_ID INT NULL, SATIR_NO INT NOT NULL, URUN_ID INT NULL,
-        MIKTAR FLOAT NOT NULL DEFAULT 0, MILYEM INT NOT NULL DEFAULT 0,
+        MIKTAR FLOAT NOT NULL DEFAULT 0, MILYEM FLOAT NOT NULL DEFAULT 0,
         HAS_GRAM FLOAT NOT NULL DEFAULT 0, ADET INT NOT NULL DEFAULT 0,
         ISCILIK_MIKTARI INT NOT NULL DEFAULT 0, ISCILIK_HAS_GRAM FLOAT NOT NULL DEFAULT 0,
         ACIKLAMA VARCHAR(100) NULL, ISCILIK_HESAPLAMA_SEKLI TINYINT NOT NULL DEFAULT 0,
@@ -349,7 +401,7 @@ export class SarrafFisSqlRepository {
         SATIR_NO INT NOT NULL, ISLEME_YERI TINYINT NOT NULL DEFAULT 0,
         ODEME_ARACI_TURU TINYINT NOT NULL DEFAULT 0, PARA_ID INT NULL,
         POS_CIHAZI_ID INT NULL, MIKTAR FLOAT NOT NULL DEFAULT 0,
-        MILYEM INT NOT NULL DEFAULT 0, HAS_GRAM FLOAT NOT NULL DEFAULT 0,
+        MILYEM FLOAT NOT NULL DEFAULT 0, HAS_GRAM FLOAT NOT NULL DEFAULT 0,
         KUR FLOAT NOT NULL DEFAULT 1, TUTAR FLOAT NOT NULL DEFAULT 0, DEGISTIRILDI BIT NOT NULL DEFAULT 0
       );
 
@@ -372,7 +424,7 @@ export class SarrafFisSqlRepository {
 
       DECLARE @OUT_SARRAF_FISI_ID INT = @IN_SARRAF_FISI_ID;
       DECLARE @OUT_FIS_NO CHAR(20) = @IN_FIS_NO;
-      DECLARE @OUT_IRSALIYE_NO CHAR(20) = NULL;
+      DECLARE @OUT_IRSALIYE_NO CHAR(20) = @IN_IRSALIYE_NO;
       DECLARE @OUT_YENI_KAYIT BIT = 0;
 
       DECLARE @EFFECTIVE_FAVORI_PARA_ID INT = @IN_FAVORI_PARA_ID;
@@ -448,9 +500,274 @@ export class SarrafFisSqlRepository {
       IF OBJECT_ID('tempdb..#TODVZ_ISKELE_ODEME_SATIRI') IS NOT NULL DROP TABLE #TODVZ_ISKELE_ODEME_SATIRI;
       IF OBJECT_ID('tempdb..#TODVZ_ISKELE_URUN_OGESI_ISLEMI') IS NOT NULL DROP TABLE #TODVZ_ISKELE_URUN_OGESI_ISLEMI;
 
+      IF (@OUT_FIS_NO IS NULL OR LEN(LTRIM(RTRIM(@OUT_FIS_NO))) = 0)
+      BEGIN
+        DECLARE @SARRAF_NUM_TUR INT = CASE @IN_TIP WHEN 0 THEN 0 ELSE 4 END;
+
+        DECLARE @NUM_YAZICI_ID INT = NULL;
+        IF OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+        BEGIN
+          SELECT TOP 1 @NUM_YAZICI_ID = YAZICI_ID
+          FROM TODVZ_NUMERATOR
+          WHERE TUR = @SARRAF_NUM_TUR
+          ORDER BY CASE WHEN YAZICI_ID IS NOT NULL THEN 0 ELSE 1 END;
+        END;
+
+        DECLARE @GEN_FIS_NO VARCHAR(20) = NULL;
+        DECLARE @GEN_ONEK VARCHAR(10) = NULL;
+        DECLARE @GEN_SIFIR BIT = 1;
+        DECLARE @GEN_RET INT = 0;
+
+        IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+        BEGIN
+          -- 1. Hedef yazıcı ID ile çağır
+          BEGIN TRY
+            EXEC @GEN_RET = SODVZ_NUMERATOR_URET @SARRAF_NUM_TUR, @GEN_FIS_NO OUTPUT, @NUM_YAZICI_ID, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+          END TRY
+          BEGIN CATCH
+          END CATCH;
+
+          -- 2. Eğer üretilemediyse ve @NUM_YAZICI_ID NULL değildiyse, NULL yazıcı ile dene
+          IF (@GEN_FIS_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_FIS_NO))) = 0) AND @NUM_YAZICI_ID IS NOT NULL
+          BEGIN
+            BEGIN TRY
+              EXEC @GEN_RET = SODVZ_NUMERATOR_URET @SARRAF_NUM_TUR, @GEN_FIS_NO OUTPUT, NULL, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+            END TRY
+            BEGIN CATCH
+            END CATCH;
+          END;
+
+          -- 3. Temel TUR ile dene (0 veya 4)
+          IF (@GEN_FIS_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_FIS_NO))) = 0)
+          BEGIN
+            DECLARE @BASE_TUR INT = CASE @IN_TIP WHEN 0 THEN 0 ELSE 4 END;
+            BEGIN TRY
+              EXEC @GEN_RET = SODVZ_NUMERATOR_URET @BASE_TUR, @GEN_FIS_NO OUTPUT, NULL, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+            END TRY
+            BEGIN CATCH
+            END CATCH;
+          END;
+        END;
+
+        -- 4. Eğer prosedürden üretilemediyse TODVZ_NUMERATOR tablosundan doğrudan üret ve sayacı artır
+        IF (@GEN_FIS_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_FIS_NO))) = 0) AND OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+        BEGIN
+          DECLARE @N_ONEK VARCHAR(10) = NULL;
+          DECLARE @N_BASLANGIC BIGINT = NULL;
+          DECLARE @N_BITIS BIGINT = 0;
+          DECLARE @N_UZUNLUK INT = 10;
+          DECLARE @N_SIFIR BIT = 1;
+          DECLARE @N_TUR INT = @SARRAF_NUM_TUR;
+
+          SELECT TOP 1
+            @N_ONEK = ONEK,
+            @N_BASLANGIC = BASLANGIC,
+            @N_BITIS = ISNULL(BITIS, 0),
+            @N_UZUNLUK = ISNULL(UZUNLUK, 10),
+            @N_SIFIR = ISNULL(ONUNE_SIFIR_KOY, 1)
+          FROM TODVZ_NUMERATOR
+          WHERE TUR = @SARRAF_NUM_TUR
+          ORDER BY CASE WHEN YAZICI_ID IS NULL THEN 0 ELSE 1 END;
+
+          IF @N_BASLANGIC IS NULL
+          BEGIN
+            SET @N_TUR = CASE @IN_TIP WHEN 0 THEN 0 ELSE 4 END;
+            SELECT TOP 1
+              @N_ONEK = ONEK,
+              @N_BASLANGIC = BASLANGIC,
+              @N_BITIS = ISNULL(BITIS, 0),
+              @N_UZUNLUK = ISNULL(UZUNLUK, 10),
+              @N_SIFIR = ISNULL(ONUNE_SIFIR_KOY, 1)
+            FROM TODVZ_NUMERATOR
+            WHERE TUR = @N_TUR
+            ORDER BY CASE WHEN YAZICI_ID IS NULL THEN 0 ELSE 1 END;
+          END;
+
+          IF @N_BASLANGIC IS NOT NULL
+          BEGIN
+            UPDATE TODVZ_NUMERATOR
+            SET BASLANGIC = @N_BASLANGIC + 1
+            WHERE TUR = @N_TUR AND ((@NUM_YAZICI_ID IS NULL AND YAZICI_ID IS NULL) OR YAZICI_ID = @NUM_YAZICI_ID);
+
+            DECLARE @N_PAD_LEN INT = @N_UZUNLUK;
+            IF @N_ONEK IS NOT NULL
+              SET @N_PAD_LEN = @N_PAD_LEN - LEN(RTRIM(@N_ONEK));
+            IF @N_PAD_LEN < 1 SET @N_PAD_LEN = 1;
+
+            DECLARE @N_NUM_STR VARCHAR(20) = CAST(@N_BASLANGIC AS VARCHAR(20));
+            IF @N_SIFIR = 1 AND LEN(@N_NUM_STR) < @N_PAD_LEN
+              SET @N_NUM_STR = REPLICATE('0', @N_PAD_LEN - LEN(@N_NUM_STR)) + @N_NUM_STR;
+
+            IF @N_ONEK IS NOT NULL
+              SET @GEN_FIS_NO = RTRIM(@N_ONEK) + @N_NUM_STR;
+            ELSE
+              SET @GEN_FIS_NO = @N_NUM_STR;
+          END;
+        END;
+
+        -- 5. Numaratörde hiç yoksa son kayıttan türet
+        IF (@GEN_FIS_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_FIS_NO))) = 0)
+        BEGIN
+          DECLARE @SON_FIS_NO VARCHAR(20) = NULL;
+          SELECT TOP 1 @SON_FIS_NO = RTRIM(FIS_NO)
+          FROM TODVZ_SARRAF_FISI
+          WHERE TIP = @IN_TIP AND FIS_NO IS NOT NULL AND LEN(RTRIM(FIS_NO)) > 0
+          ORDER BY SARRAF_FISI_ID DESC;
+
+          DECLARE @DEF_ONEK VARCHAR(5) = CASE WHEN @IN_TIP = 0 THEN 'A' ELSE 'S' END;
+          IF @SON_FIS_NO IS NOT NULL
+          BEGIN
+            DECLARE @DIGITS VARCHAR(30) = '';
+            DECLARE @PREFIX VARCHAR(30) = '';
+            DECLARE @P_IDX INT = 1;
+            WHILE @P_IDX <= LEN(@SON_FIS_NO)
+            BEGIN
+              DECLARE @CH CHAR(1) = SUBSTRING(@SON_FIS_NO, @P_IDX, 1);
+              IF @CH LIKE '[0-9]'
+                SET @DIGITS = @DIGITS + @CH;
+              ELSE IF LEN(@DIGITS) = 0
+                SET @PREFIX = @PREFIX + @CH;
+              SET @P_IDX = @P_IDX + 1;
+            END;
+            IF LEN(@DIGITS) > 0
+            BEGIN
+              DECLARE @NEXT_VAL BIGINT = CAST(@DIGITS AS BIGINT) + 1;
+              DECLARE @NEXT_STR VARCHAR(30) = CAST(@NEXT_VAL AS VARCHAR(30));
+              IF LEN(@NEXT_STR) < LEN(@DIGITS)
+                SET @NEXT_STR = REPLICATE('0', LEN(@DIGITS) - LEN(@NEXT_STR)) + @NEXT_STR;
+              SET @GEN_FIS_NO = (CASE WHEN LEN(@PREFIX) > 0 THEN @PREFIX ELSE @DEF_ONEK END) + @NEXT_STR;
+            END
+            ELSE
+            BEGIN
+              SET @GEN_FIS_NO = @DEF_ONEK + '0000000001';
+            END;
+          END
+          ELSE
+          BEGIN
+            SET @GEN_FIS_NO = @DEF_ONEK + '0000000001';
+          END;
+        END;
+
+        SET @OUT_FIS_NO = LTRIM(RTRIM(@GEN_FIS_NO));
+        IF (@OUT_FIS_NO IS NOT NULL AND LEN(@OUT_FIS_NO) > 0 AND @OUT_SARRAF_FISI_ID IS NOT NULL)
+        BEGIN
+          UPDATE [dbo].[TODVZ_SARRAF_FISI] SET FIS_NO = @OUT_FIS_NO WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
+        END;
+      END;
+
+      -- Belge No / İrsaliye No Kontrolü & Üretimi
+      IF (@OUT_IRSALIYE_NO IS NULL OR LEN(LTRIM(RTRIM(@OUT_IRSALIYE_NO))) = 0)
+      BEGIN
+        DECLARE @TARGET_BELGE_TUR INT = CASE WHEN @IN_TIP = 0 THEN 8 ELSE 9 END;
+        DECLARE @GEN_BELGE_NO VARCHAR(20) = NULL;
+        DECLARE @GEN_B_ONEK VARCHAR(10) = NULL;
+        DECLARE @GEN_B_SIFIR BIT = 1;
+        DECLARE @GEN_B_RET INT = 0;
+
+        IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+        BEGIN
+          BEGIN TRY
+            EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+          END TRY
+          BEGIN CATCH
+          END CATCH;
+        END;
+
+        IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0) AND OBJECT_ID('TODVZ_NUMERATOR') IS NOT NULL
+        BEGIN
+          DECLARE @BN_ONEK VARCHAR(10) = NULL;
+          DECLARE @BN_BASLANGIC BIGINT = NULL;
+          DECLARE @BN_UZUNLUK INT = 10;
+          DECLARE @BN_SIFIR BIT = 1;
+
+          SELECT TOP 1
+            @BN_ONEK = ONEK,
+            @BN_BASLANGIC = BASLANGIC,
+            @BN_UZUNLUK = ISNULL(UZUNLUK, 10),
+            @BN_SIFIR = ISNULL(ONUNE_SIFIR_KOY, 1)
+          FROM TODVZ_NUMERATOR
+          WHERE TUR = @TARGET_BELGE_TUR
+          ORDER BY CASE WHEN YAZICI_ID IS NULL THEN 0 ELSE 1 END;
+
+          IF @BN_BASLANGIC IS NOT NULL
+          BEGIN
+            UPDATE TODVZ_NUMERATOR
+            SET BASLANGIC = @BN_BASLANGIC + 1
+            WHERE TUR = @TARGET_BELGE_TUR AND YAZICI_ID IS NULL;
+
+            DECLARE @BN_PAD_LEN INT = @BN_UZUNLUK;
+            IF @BN_ONEK IS NOT NULL
+              SET @BN_PAD_LEN = @BN_PAD_LEN - LEN(RTRIM(@BN_ONEK));
+            IF @BN_PAD_LEN < 1 SET @BN_PAD_LEN = 1;
+
+            DECLARE @BN_NUM_STR VARCHAR(20) = CAST(@BN_BASLANGIC AS VARCHAR(20));
+            IF @BN_SIFIR = 1 AND LEN(@BN_NUM_STR) < @BN_PAD_LEN
+              SET @BN_NUM_STR = REPLICATE('0', @BN_PAD_LEN - LEN(@BN_NUM_STR)) + @BN_NUM_STR;
+
+            IF @BN_ONEK IS NOT NULL
+              SET @GEN_BELGE_NO = RTRIM(@BN_ONEK) + @BN_NUM_STR;
+            ELSE
+              SET @GEN_BELGE_NO = @BN_NUM_STR;
+          END;
+        END;
+
+        IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0)
+        BEGIN
+          DECLARE @SON_IRSALIYE VARCHAR(20) = NULL;
+          SELECT TOP 1 @SON_IRSALIYE = RTRIM(IRSALIYE_NO)
+          FROM TODVZ_SARRAF_FISI
+          WHERE TIP = @IN_TIP AND IRSALIYE_NO IS NOT NULL AND LEN(RTRIM(IRSALIYE_NO)) > 0
+          ORDER BY SARRAF_FISI_ID DESC;
+
+          DECLARE @DEF_B_ONEK VARCHAR(5) = 'B';
+          IF @SON_IRSALIYE IS NOT NULL
+          BEGIN
+            DECLARE @B_DIGITS VARCHAR(30) = '';
+            DECLARE @B_PREFIX VARCHAR(30) = '';
+            DECLARE @BP_IDX INT = 1;
+            WHILE @BP_IDX <= LEN(@SON_IRSALIYE)
+            BEGIN
+              DECLARE @BCH CHAR(1) = SUBSTRING(@SON_IRSALIYE, @BP_IDX, 1);
+              IF @BCH LIKE '[0-9]'
+                SET @B_DIGITS = @B_DIGITS + @BCH;
+              ELSE IF LEN(@B_DIGITS) = 0
+                SET @B_PREFIX = @B_PREFIX + @BCH;
+              SET @BP_IDX = @BP_IDX + 1;
+            END;
+            IF LEN(@B_DIGITS) > 0
+            BEGIN
+              DECLARE @NEXT_BVAL BIGINT = CAST(@B_DIGITS AS BIGINT) + 1;
+              DECLARE @NEXT_BSTR VARCHAR(30) = CAST(@NEXT_BVAL AS VARCHAR(30));
+              IF LEN(@NEXT_BSTR) < LEN(@B_DIGITS)
+                SET @NEXT_BSTR = REPLICATE('0', LEN(@B_DIGITS) - LEN(@NEXT_BSTR)) + @NEXT_BSTR;
+              SET @GEN_BELGE_NO = (CASE WHEN LEN(@B_PREFIX) > 0 THEN @B_PREFIX ELSE @DEF_B_ONEK END) + @NEXT_BSTR;
+            END
+            ELSE
+            BEGIN
+              SET @GEN_BELGE_NO = @DEF_B_ONEK + '0000000001';
+            END;
+          END
+          ELSE
+          BEGIN
+            SET @GEN_BELGE_NO = @DEF_B_ONEK + '0000000001';
+          END;
+        END;
+
+        SET @OUT_IRSALIYE_NO = LTRIM(RTRIM(@GEN_BELGE_NO));
+        IF (@OUT_IRSALIYE_NO IS NOT NULL AND LEN(@OUT_IRSALIYE_NO) > 0 AND @OUT_SARRAF_FISI_ID IS NOT NULL)
+        BEGIN
+          UPDATE [dbo].[TODVZ_SARRAF_FISI] SET IRSALIYE_NO = @OUT_IRSALIYE_NO WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
+        END;
+      END
+      ELSE IF (@OUT_IRSALIYE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@OUT_IRSALIYE_NO))) > 0 AND @OUT_SARRAF_FISI_ID IS NOT NULL)
+      BEGIN
+        UPDATE [dbo].[TODVZ_SARRAF_FISI] SET IRSALIYE_NO = @OUT_IRSALIYE_NO WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
+      END;
+
       SELECT 
         @OUT_SARRAF_FISI_ID AS OUT_SARRAF_FISI_ID,
         @OUT_FIS_NO AS OUT_FIS_NO,
+        @OUT_IRSALIYE_NO AS OUT_IRSALIYE_NO,
         @OUT_YENI_KAYIT AS OUT_YENI_KAYIT;
     `;
         try {
@@ -469,9 +786,10 @@ export class SarrafFisSqlRepository {
                 outRecord = result.recordset?.[0];
             }
             const sarrafFisiId = Number(outRecord?.OUT_SARRAF_FISI_ID || dto.sarrafFisiId || 0);
-            const fisNo = String(outRecord?.OUT_FIS_NO || dto.fisNo || "").trim();
+            const fullFisNo = String(outRecord?.OUT_FIS_NO || dto.fisNo || "").trim();
+            const rawIrsaliye = String(outRecord?.OUT_IRSALIYE_NO || dto.irsaliyeNo || "").trim();
             const yeniKayit = outRecord?.OUT_YENI_KAYIT === 1 || outRecord?.OUT_YENI_KAYIT === true;
-            return { sarrafFisiId, fisNo, yeniKayit };
+            return { sarrafFisiId, fisNo: fullFisNo, seriNo: fullFisNo, belgeNo: rawIrsaliye, yeniKayit };
         }
         catch (err) {
             const precedingMsgs = Array.isArray(err?.precedingErrors)

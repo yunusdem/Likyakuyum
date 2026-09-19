@@ -70,7 +70,7 @@ export class BanknotSqlRepository {
       FROM [dbo].[TODVZ_PARA] P
       LEFT JOIN [dbo].[TODVZ_BANKNOT] B ON P.[PARA_ID] = B.[PARA_ID]
       GROUP BY P.[PARA_ID], P.[KOD], P.[AD], P.[SIRA_NO]
-      ORDER BY ISNULL(P.[SIRA_NO], 999) ASC, P.[PARA_ID] ASC
+      ORDER BY P.[PARA_ID] ASC
     `;
         const res = await pool.request().query(query);
         return res.recordset.map((r) => ({
@@ -288,7 +288,7 @@ export class BanknotSqlRepository {
         return (res.rowsAffected[0] || 0) >= 0;
     }
     /**
-     * Deletes a currency completely (both TODVZ_BANKNOT and TODVZ_PARA)
+     * Deletes a currency completely (both TODVZ_BANKNOT and TODVZ_PARA, along with TODVZ_KUR)
      */
     static async deleteCurrency(paraId, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
@@ -314,7 +314,11 @@ export class BanknotSqlRepository {
             await new sql.Request(transaction)
                 .input("paraId", sql.Int, paraId)
                 .query("DELETE FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
-            // 3. Delete the currency from TODVZ_PARA
+            // 3. Delete rates from TODVZ_KUR for this currency
+            await new sql.Request(transaction)
+                .input("paraId", sql.Int, paraId)
+                .query("DELETE FROM [dbo].[TODVZ_KUR] WHERE [PARA_ID] = @paraId");
+            // 4. Delete the currency from TODVZ_PARA
             const delRes = await new sql.Request(transaction)
                 .input("paraId", sql.Int, paraId)
                 .query("DELETE FROM [dbo].[TODVZ_PARA] WHERE [PARA_ID] = @paraId");
@@ -324,7 +328,31 @@ export class BanknotSqlRepository {
         catch (err) {
             await transaction.rollback();
             logger.error(`BanknotSqlRepository.deleteCurrency(${paraId}) error:`, err);
-            throw err;
+            if (err instanceof ApiError)
+                throw err;
+            const msg = err?.message || "";
+            if (err?.number === 547 || msg.includes("REFERENCE constraint") || msg.includes("FOREIGN KEY")) {
+                if (msg.includes("TODVZ_FIS") || msg.includes("FIS_SATIRI")) {
+                    throw ApiError.badRequest("Bu para birimi ile yapılmış döviz alış/satış fişleri bulunmaktadır. Geçmiş fiş hareketi olan para birimleri silinemez.");
+                }
+                if (msg.includes("TODVZ_CARI")) {
+                    throw ApiError.badRequest("Bu para birimi ile yapılmış cari hesap hareketleri bulunmaktadır. Geçmiş hareketi olan para birimleri silinemez.");
+                }
+                if (msg.includes("TODVZ_HESAP")) {
+                    throw ApiError.badRequest("Bu para birimine ait kasa veya hesap hareketleri bulunmaktadır. Geçmiş hareketi olan para birimleri silinemez.");
+                }
+                if (msg.includes("TODVZ_BANKA")) {
+                    throw ApiError.badRequest("Bu para birimine bağlı banka hareketleri bulunmaktadır. Geçmiş hareketi olan para birimleri silinemez.");
+                }
+                if (msg.includes("TODVZ_VEZNE")) {
+                    throw ApiError.badRequest("Bu para birimine bağlı vezne tanımları bulunmaktadır. Önce ilgili veznelerdeki para birimini değiştiriniz.");
+                }
+                if (msg.includes("TODVZ_PANO")) {
+                    throw ApiError.badRequest("Bu para birimi fiyat panosunda yer almaktadır. Önce pano satırlarından çıkarınız.");
+                }
+                throw ApiError.badRequest("Bu para birimine bağlı geçmiş işlem, fiş veya hesap hareketleri bulunduğu için silinemez.");
+            }
+            throw ApiError.badRequest(`Para birimi silinemedi: ${msg}`);
         }
     }
 }

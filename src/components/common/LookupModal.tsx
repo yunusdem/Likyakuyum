@@ -64,9 +64,11 @@ export function LookupModal<T extends Record<string, any>>({
     ? items.filter((item) => filterFn(item, searchTerm.trim()))
     : items;
 
-  // Single click: Select row only (do NOT populate form or close modal)
+  // Single click: Confirm selection, populate form fields and close modal
   const handleRowClick = (item: T) => {
     setSelectedItem(item);
+    onSelect(item);
+    onHide();
   };
 
   // Double click: Confirm selection, populate form fields and close modal
@@ -75,33 +77,11 @@ export function LookupModal<T extends Record<string, any>>({
     onHide();
   };
 
-  // Track last clicked button for instant double-click on "Seç"
-  const lastClickedSecRef = useRef<{ id: string; time: number } | null>(null);
-
-  // Click on "Seç" button: 1st click highlights/selects the row, 2nd click confirms and takes the record
+  // Click on "Seç" button: immediately confirms selection, populates form fields and closes modal
   const handleSecButtonClick = (e: React.MouseEvent, item: T) => {
     e.stopPropagation();
-    const itemId = getItemId(item) || JSON.stringify(item);
-    const selectedId = getItemId(selectedItem) || (selectedItem ? JSON.stringify(selectedItem) : "");
-    const now = Date.now();
-
-    const isAlreadySelected = Boolean(
-      selectedItem && (itemId && selectedId ? itemId === selectedId : item === selectedItem)
-    );
-
-    const isRapidDoubleClick =
-      lastClickedSecRef.current &&
-      lastClickedSecRef.current.id === itemId &&
-      now - lastClickedSecRef.current.time < 500;
-
-    if (isAlreadySelected || isRapidDoubleClick) {
-      lastClickedSecRef.current = null;
-      onSelect(item);
-      onHide();
-    } else {
-      lastClickedSecRef.current = { id: itemId, time: now };
-      setSelectedItem(item);
-    }
+    onSelect(item);
+    onHide();
   };
 
   // Confirm currently selected item
@@ -207,7 +187,7 @@ export function LookupModal<T extends Record<string, any>>({
         {/* Info Banner */}
         <div className="d-flex align-items-center justify-content-between mb-2 px-1 text-muted small">
           <span>
-            💡 <strong>İpucu:</strong> Satıra tek tıklayarak seçebilir, çift tıklayarak doğrudan forma aktarabilirsiniz.
+            💡 <strong>İpucu:</strong> Satıra tıklayarak, Enter basarak veya Seç butonuyla doğrudan forma aktarabilirsiniz.
           </span>
           {selectedItem && (
             <Badge bg="primary" className="py-1 px-2">
@@ -311,7 +291,7 @@ export function LookupModal<T extends Record<string, any>>({
                           variant={isSelected ? "primary" : "outline-secondary"}
                           className={`py-0 px-2 fs-7 ${isSelected ? "fw-bold shadow-sm" : ""}`}
                           onClick={(e) => handleSecButtonClick(e, item)}
-                          title={isSelected ? "Kaydı almak için tekrar tıklayın" : "Seçmek için tıklayın, almak için iki kez tıklayın"}
+                          title="Bu kaydı seç ve aktar"
                         >
                           Seç
                         </Button>
