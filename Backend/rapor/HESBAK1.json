@@ -30,6 +30,18 @@
   ],
   "kolonlar": [
     {
+      "anahtar": "hesapKod",
+      "baslik": "Kod",
+      "g": 1.2,
+      "pdf": false
+    },
+    {
+      "anahtar": "hesapAd",
+      "baslik": "Ad",
+      "g": 3,
+      "pdf": false
+    },
+    {
       "anahtar": "paraKod",
       "baslik": "Para",
       "g": 1,
@@ -51,6 +63,18 @@
       "anahtar": "bakiye",
       "baslik": "Bakiye",
       "g": 2.1,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "borcBakiye",
+      "baslik": "Borç bakiye",
+      "g": 2,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "alacakBakiye",
+      "baslik": "Alacak bakiye",
+      "g": 2,
       "bicim": "sayi"
     },
     {
@@ -87,5 +111,40 @@
     "anahtar": "hesapBaslik",
     "baslik": "{{hesapBaslik}}",
     "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Para bazında toplam ve net bakiye",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "borcBakiye",
+        "baslik": "Borç bakiye toplamı",
+        "g": 2.4,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "alacakBakiye",
+        "baslik": "Alacak bakiye toplamı",
+        "g": 2.4,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "netBakiye",
+        "baslik": "Bakiye",
+        "g": 2.4,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "bakiyeTipi",
+        "baslik": "B/A",
+        "g": 0.6,
+        "hiza": "center"
+      }
+    ]
   }
 }

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Col, Form, Row, Table } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import EBelgeCariSec from "./EBelgeCariSec";
 import { EbelgeGiderIstegi, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
+import { useYerelTaslak } from "./useYerelTaslak";
 
 const bosSatir = () => ({ ad: "", miktar: 1, birimKodu: "C62", birimFiyat: 0, vergiOrani: 0 });
 const bugun = () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
@@ -12,26 +13,35 @@ export default function EBelgeGiderPage() {
   const [busy, setBusy] = useState(false);
   const [hata, setHata] = useState("");
   const [onizleme, setOnizleme] = useState<Awaited<ReturnType<typeof ebelgeService.giderOnizle>> | null>(null);
-  const [onay, setOnay] = useState(false);
   const [sonuc, setSonuc] = useState<Awaited<ReturnType<typeof ebelgeService.giderGonder>> | null>(null);
   const [gonderimDenendi, setGonderimDenendi] = useState(false);
   const [pdf, setPdf] = useState<string | null>(null);
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf); }, [pdf]);
-  const degistir = (patch: Partial<EbelgeGiderIstegi>) => { setGirdi(o => ({ ...o, ...patch })); setOnizleme(null); setOnay(false); };
+  const degistir = (patch: Partial<EbelgeGiderIstegi>) => { setGirdi(o => ({ ...o, ...patch })); setOnizleme(null); };
+  const taslak = useYerelTaslak<EbelgeGiderIstegi & Record<string, unknown>>("EGiderPusulasi", (t) => setGirdi(t));
+  const aliciAdi = girdi.alici.unvan || `${girdi.alici.ad || ""} ${girdi.alici.soyad || ""}`.trim();
+  const taslakKaydet = () => taslak.kaydet({ belgeNo: girdi.belgeNo, aliciVkn: girdi.alici.vknTckn, aliciUnvan: aliciAdi, paraBirimi: "TRY",
+    tutar: girdi.satirlar.reduce((t, s) => t + (s.miktar || 0) * (s.birimFiyat || 0) * (1 + (s.vergiOrani || 0) / 100), 0) }, girdi as EbelgeGiderIstegi & Record<string, unknown>);
   const kontrol = async () => {
     setBusy(true); setHata(""); setOnizleme(null);
     try { setOnizleme(await ebelgeService.giderOnizle(girdi)); }
     catch (e: any) { setHata(e.message || "Kontrol başarısız."); } finally { setBusy(false); }
   };
   const gonder = async () => {
-    setBusy(true); setHata(""); setOnay(false); setGonderimDenendi(true);
-    try { setSonuc(await ebelgeService.giderGonder(girdi)); }
+    // Tek adım (docs/ebelge-revizyon.md K5): önce yerel kontrol; geçmezse hiçbir şey gönderilmez ve form açık kalır.
+    setBusy(true); setHata("");
+    try { setOnizleme(await ebelgeService.giderOnizle(girdi)); }
+    catch (e: any) { setHata(e.message || "Kontrol başarısız."); setBusy(false); return; }
+    setGonderimDenendi(true);
+    try { setSonuc(await ebelgeService.giderGonder(girdi)); await taslak.gonderildi(); }
     catch (e: any) { setHata(`${e.message || "Gönderim tamamlanamadı."} Giden kutusunda belge numarasıyla sonucu kontrol edin.`); }
     finally { setBusy(false); }
   };
   return <div className="w-100 pb-3">
     <div className="d-flex justify-content-between mb-3"><h5>e-Gider Pusulası Oluştur</h5><Link to="/e-belge/giden">Giden Kutusu</Link></div>
     {hata && <Alert variant="danger">{hata}</Alert>}
+    {taslak.taslakHata && <Alert variant="danger">{taslak.taslakHata}</Alert>}
+    {taslak.taslakMesaj && !sonuc && <Alert variant="info">{taslak.taslakMesaj}</Alert>}
     {sonuc && <Alert variant="success">{sonuc.belgeNo}: Gönderildi. {sonuc.mesaj}
       <Button size="sm" className="ms-2" onClick={async () => { try { setPdf(await ebelgeService.giderPdf(sonuc.uuid)); } catch (e: any) { setHata(e.message); } }}>PDF aç</Button></Alert>}
     {pdf && <iframe title="e-Gider PDF" src={pdf} width="100%" height="600" />}
@@ -61,14 +71,10 @@ export default function EBelgeGiderPage() {
         <tbody>{girdi.satirlar.map((s,i) => <tr key={i}>{(['ad','miktar','birimKodu','birimFiyat','vergiOrani'] as const).map(key => <td key={key}><Form.Control size="sm" aria-label={`${i + 1}. satır ${key}`} value={s[key]} type={['ad','birimKodu'].includes(key) ? 'text' : 'number'} step="any" onChange={e => degistir({ satirlar: girdi.satirlar.map((satir,j) => j === i ? { ...satir, [key]: ['ad','birimKodu'].includes(key) ? e.target.value : Number(e.target.value) } : satir) })} /></td>)}
           <td><Button size="sm" variant="outline-danger" disabled={girdi.satirlar.length === 1} onClick={() => degistir({ satirlar: girdi.satirlar.filter((_,j) => i !== j) })}>Sil</Button></td></tr>)}</tbody></Table>
         <Button size="sm" onClick={() => degistir({ satirlar: [...girdi.satirlar, bosSatir()] })}>Satır ekle</Button>
-        <Button size="sm" className="ms-2" onClick={kontrol}>Kontrol et ve toplamı göster</Button>
-        {onizleme && <Alert variant="info" className="mt-3">Mal/hizmet: {ebelgeTutar(onizleme.ozet.malHizmetToplam, 'TRY')} · Vergi: {ebelgeTutar(onizleme.ozet.vergiToplam, 'TRY')} · Ödenecek: {ebelgeTutar(onizleme.ozet.odenecekTutar, 'TRY')}
-          <p className="mb-2">Yerel kontrol tamamlandı. ICE'nin bu belge türü için gönderim öncesi doğrulama servisi bulunmuyor.</p>
-          <Button size="sm" onClick={() => setOnay(true)}>Gönder</Button>
-        </Alert>}
-        {onay && <Alert variant="warning">{girdi.belgeNo} · {girdi.alici.unvan || `${girdi.alici.ad} ${girdi.alici.soyad}`} · {ebelgeTutar(onizleme!.ozet.odenecekTutar, 'TRY')}. ICE üzerinden e-Gider belgesi oluşturulacak.
-          <Button size="sm" className="ms-2" onClick={gonder}>Gönderimi onayla</Button><Button size="sm" className="ms-2" variant="secondary" onClick={() => setOnay(false)}>Vazgeç</Button>
-        </Alert>}
+        <Button size="sm" className="ms-2" variant="outline-secondary" onClick={kontrol}>Toplamı göster</Button>
+        <Button size="sm" className="ms-2" variant="secondary" disabled={taslak.taslakBusy} onClick={taslakKaydet}>Taslaklara Kaydet</Button>
+        <Button size="sm" className="ms-2" variant="success" onClick={gonder}>Gönder</Button>
+        {onizleme && <Alert variant="info" className="mt-3 mb-0">Mal/hizmet: {ebelgeTutar(onizleme.ozet.malHizmetToplam, 'TRY')} · Vergi: {ebelgeTutar(onizleme.ozet.vergiToplam, 'TRY')} · Ödenecek: {ebelgeTutar(onizleme.ozet.odenecekTutar, 'TRY')}</Alert>}
       </Card.Body></Card>
     </fieldset>
   </div>;

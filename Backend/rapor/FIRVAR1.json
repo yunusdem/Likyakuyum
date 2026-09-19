@@ -25,6 +25,12 @@
       "ad": "kurTuru",
       "etiket": "Kur",
       "tip": "kurSecimi"
+    },
+    {
+      "ad": "hedefParaId",
+      "etiket": "Karşılık parası",
+      "tip": "para",
+      "not": "Rapor altı toplamlarının çevrileceği para; boş bırakılırsa TL"
     }
   ],
   "kolonlar": [
@@ -78,5 +84,45 @@
     "anahtar": "grup",
     "baslik": "{{grup}}",
     "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Varlık hareketi ve evalüasyon",
+    "kolonlar": [
+      {
+        "anahtar": "kalem",
+        "baslik": "Para / kalem",
+        "g": 4
+      },
+      {
+        "anahtar": "devir",
+        "baslik": "Devir",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "borc",
+        "baslik": "Borç",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "alacak",
+        "baslik": "Alacak",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "devreden",
+        "baslik": "Devreden",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "deger",
+        "baslik": "Değer (seçilen para)",
+        "g": 2.4,
+        "bicim": "sayi"
+      }
+    ]
   }
 }

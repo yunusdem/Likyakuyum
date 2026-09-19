@@ -5,9 +5,9 @@
   "kagit": "A4-yatay",
   "parametreler": [
     {
-      "ad": "tarih",
-      "etiket": "Tarih",
-      "tip": "tarih",
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
       "zorunlu": true,
       "varsayilan": "bugun"
     },
@@ -25,6 +25,12 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "hedefParaId",
+      "etiket": "Denge parası",
+      "tip": "para",
+      "not": "Rapor altı toplamlarının çevrileceği para; boş bırakılırsa TL"
     }
   ],
   "kolonlar": [
@@ -40,16 +46,42 @@
       "pdf": false
     },
     {
+      "anahtar": "devir",
+      "baslik": "Devir",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "mevcut",
+      "baslik": "Mevcut",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "lsSembol",
+      "baslik": "L/S",
+      "g": 0.6,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "lsMiktar",
+      "baslik": "Long / Short",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
       "anahtar": "longMiktar",
       "baslik": "Long",
       "g": 2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "shortMiktar",
       "baslik": "Short",
       "g": 2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "net",
@@ -67,13 +99,15 @@
       "anahtar": "vadeliNet",
       "baslik": "Vadeli (net)",
       "g": 1.8,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "netVadeliDahil",
       "baslik": "Net (vadeli dahil)",
       "g": 2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "kur",
@@ -117,5 +151,27 @@
       "toplam": true,
       "kosul": "kurIkisi"
     }
-  ]
+  ],
+  "ozet": {
+    "baslik": "Denge analizi — denge parası cinsinden",
+    "kolonlar": [
+      {
+        "anahtar": "kalem",
+        "baslik": "Kalem",
+        "g": 4
+      },
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "deger",
+        "baslik": "Değer",
+        "g": 2.4,
+        "bicim": "sayi"
+      }
+    ]
+  }
 }

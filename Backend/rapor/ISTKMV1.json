@@ -1,8 +1,8 @@
 {
   "kod": "ISTKMV1",
   "ad": "İstatistik Bazında KMV Raporu",
-  "aciklama": "Satış fişlerinde doğan kambiyo muameleleri vergisi; istatistik kodu, para ve KMV oranı bazında.",
-  "kagit": "A4",
+  "aciklama": "İstatistik kodu bazında fiş satırları: müşteri, ülke, belge / seri no, para, miktar, kur, tutar, KMV ve fiş toplamı; rapor sonunda KMV özeti.",
+  "kagit": "A4-yatay",
   "parametreler": [
     {
       "ad": "baslangic",
@@ -10,6 +10,11 @@
       "tip": "tarihAralik",
       "zorunlu": true,
       "varsayilan": "bugun"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "İşlem türü",
+      "tip": "fisTipi"
     },
     {
       "ad": "istatistikIdler",
@@ -30,48 +35,151 @@
   ],
   "kolonlar": [
     {
-      "anahtar": "paraKod",
-      "baslik": "Para",
-      "g": 1,
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 1.9,
+      "bicim": "tarihSaat"
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.8,
       "hiza": "center"
     },
     {
-      "anahtar": "adet",
-      "baslik": "Fiş adedi",
-      "g": 1.2,
-      "bicim": "tam",
-      "toplam": true
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.8,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "İsim / Ünvan",
+      "g": 3
+    },
+    {
+      "anahtar": "kimlikNo",
+      "baslik": "Vergi / TC no",
+      "g": 1.6
+    },
+    {
+      "anahtar": "ulke",
+      "baslik": "Ülke",
+      "g": 1.3
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 2
+    },
+    {
+      "anahtar": "seriNo",
+      "baslik": "Seri no",
+      "g": 1.4
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.8,
+      "hiza": "center"
     },
     {
       "anahtar": "miktar",
       "baslik": "Miktar",
-      "g": 2.2,
+      "g": 1.6,
       "bicim": "sayi"
     },
     {
-      "anahtar": "matrah",
-      "baslik": "Matrah (TL)",
-      "g": 2.4,
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.2,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.3,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "fisToplami",
+      "baslik": "Fiş toplamı",
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true
     },
     {
       "anahtar": "kmvOrani",
       "baslik": "KMV oranı",
-      "g": 1.4,
-      "bicim": "sayi4"
+      "g": 1,
+      "bicim": "sayi4",
+      "pdf": false
     },
     {
-      "anahtar": "kmv",
-      "baslik": "KMV",
-      "g": 2,
-      "bicim": "sayi",
-      "toplam": true
+      "anahtar": "istatistikKod",
+      "baslik": "İstatistik",
+      "g": 1,
+      "pdf": false
     }
   ],
   "grup": {
     "anahtar": "istatistikBaslik",
     "baslik": "{{istatistikBaslik}}",
     "altToplam": true
+  },
+  "ozet": {
+    "baslik": "KMV özeti — istatistik × para × oran",
+    "kolonlar": [
+      {
+        "anahtar": "istatistik",
+        "baslik": "İstatistik",
+        "g": 3.5
+      },
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 0.9,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Fiş adedi",
+        "g": 1,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "miktar",
+        "baslik": "Miktar",
+        "g": 1.8,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "matrah",
+        "baslik": "Matrah (TL)",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "kmvOrani",
+        "baslik": "KMV oranı",
+        "g": 1,
+        "bicim": "sayi4"
+      },
+      {
+        "anahtar": "kmv",
+        "baslik": "KMV",
+        "g": 1.6,
+        "bicim": "sayi"
+      }
+    ]
   }
 }

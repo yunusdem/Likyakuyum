@@ -1168,7 +1168,7 @@ export class EbelgeService {
         "e-Arşiv senaryosu bu uçtan gönderilemez; e-Arşiv gönderimi için /earsiv/gonder kullanılır."
       );
     }
-    if (girdi.faturaTipi === "OZELMATRAH" || girdi.faturaTipi === "IHRACKAYITLI") {
+    if (girdi.faturaTipi === "IHRACKAYITLI") {
       throw ApiError.unprocessable(
         `${girdi.faturaTipi} tipi bu üreteçte henüz desteklenmiyor; yapısı doğrulanmış örnekle eklenecektir.`
       );
@@ -2016,12 +2016,10 @@ export class EbelgeService {
     const belgeNo = girdi.belgeNo.trim().toUpperCase();
     girdi = { ...girdi, belgeNo, tarih: girdi.tarih || new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" }) };
 
-    // Üreteç artık istisna, tevkifat, iade referansı ve döviz kurunu destekliyor.
-    // Özel matrah hâlâ desteklenmiyor; yapısı doğrulanmış örnekle eklenecek.
-    if (girdi.faturaTipi === "OZELMATRAH") {
-      throw ApiError.unprocessable(
-        "Özel matrah faturası bu üreteçte henüz desteklenmiyor. Yapısı doğrulanmış bir GİB/ICE örneğiyle eklenecektir."
-      );
+    // Üreteç istisna, tevkifat, iade referansı, döviz kuru ve özel matrahı destekliyor (docs/ebelge-revizyon.md K4).
+    // TEVKIFATIADE ICE portalinde yalnızca e-Fatura tiplerinde yer alır; e-Arşiv'de kesilmez.
+    if (girdi.faturaTipi === "TEVKIFATIADE") {
+      throw ApiError.unprocessable("Tevkifat iade tipi e-Arşiv faturada kullanılamaz.");
     }
     if (girdi.faturaTipi === "IHRACKAYITLI") {
       throw ApiError.unprocessable(

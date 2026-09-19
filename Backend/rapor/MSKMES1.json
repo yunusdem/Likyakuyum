@@ -26,19 +26,31 @@
       "ad": "vezneIdler",
       "etiket": "Vezne (dürbünden seçin)",
       "tip": "vezneCoklu"
+    },
+    {
+      "ad": "adet",
+      "etiket": "İşlem sayısı alt limiti",
+      "tip": "sayi",
+      "not": "Dönemde en az bu kadar fişi olan müşteriler; boş = sınır yok"
+    },
+    {
+      "ad": "esik",
+      "etiket": "Tutar alt limiti (TL)",
+      "tip": "sayi",
+      "not": "Dönem toplamı en az bu tutar olan müşteriler; boş = sınır yok"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "zaman",
       "baslik": "Tarih / saat",
-      "g": 2.1,
+      "g": 1.9,
       "bicim": "tarihSaat"
     },
     {
       "anahtar": "belgeNo",
       "baslik": "Belge no",
-      "g": 1.8
+      "g": 2.2
     },
     {
       "anahtar": "tip",
@@ -49,48 +61,88 @@
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 3.4
+      "g": 3
     },
     {
-      "anahtar": "kimlikNo",
-      "baslik": "Kimlik no",
-      "g": 1.7
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi"
     },
     {
-      "anahtar": "paralar",
-      "baslik": "Paralar",
-      "g": 1.5
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.8,
+      "hiza": "center"
     },
     {
-      "anahtar": "vezneKod",
-      "baslik": "Vezne",
-      "g": 0.9,
-      "hiza": "center",
-      "pdf": false
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.3,
+      "bicim": "kur"
     },
     {
       "anahtar": "tutar",
       "baslik": "Tutar (TL)",
-      "g": 2.1,
+      "g": 2,
       "bicim": "sayi",
       "toplam": true
     },
     {
       "anahtar": "usdKarsiligi",
       "baslik": "USD karşılığı",
-      "g": 1.9,
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true
     },
     {
+      "anahtar": "kimlikNo",
+      "baslik": "Kimlik no",
+      "g": 1.6,
+      "pdf": false
+    },
+    {
+      "anahtar": "meslek",
+      "baslik": "Meslek",
+      "g": 2,
+      "pdf": false
+    },
+    {
+      "anahtar": "sektor",
+      "baslik": "Sektör",
+      "g": 2,
+      "pdf": false
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.8,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "musteriIslemSayisi",
+      "baslik": "Müşteri işlem sayısı",
+      "g": 1.2,
+      "bicim": "tam",
+      "pdf": false
+    },
+    {
+      "anahtar": "musteriTutar",
+      "baslik": "Müşteri tutarı (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "pdf": false
+    },
+    {
       "anahtar": "kaydeden",
       "baslik": "Kaydeden",
-      "g": 1.5,
+      "g": 1.4,
       "pdf": false
     }
   ],
   "grup": {
-    "anahtar": "grupBaslik",
+    "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",
     "altToplam": true
   },
@@ -100,33 +152,36 @@
       {
         "anahtar": "grup",
         "baslik": "Meslek",
-        "g": 5
+        "g": 4
+      },
+      {
+        "anahtar": "musteri",
+        "baslik": "Müşteri",
+        "g": 1,
+        "bicim": "tam"
       },
       {
         "anahtar": "adet",
-        "baslik": "Fiş adedi",
-        "g": 1.5,
-        "bicim": "tam",
-        "toplam": true
+        "baslik": "İşlem sayısı",
+        "g": 1.2,
+        "bicim": "tam"
       },
       {
         "anahtar": "tutar",
         "baslik": "Tutar (TL)",
-        "g": 2.5,
-        "bicim": "sayi",
-        "toplam": true
+        "g": 2,
+        "bicim": "sayi"
       },
       {
         "anahtar": "usdKarsiligi",
         "baslik": "USD karşılığı",
-        "g": 2.2,
-        "bicim": "sayi",
-        "toplam": true
+        "g": 2,
+        "bicim": "sayi"
       },
       {
         "anahtar": "pay",
         "baslik": "Pay %",
-        "g": 1.3,
+        "g": 1,
         "bicim": "sayi"
       }
     ]

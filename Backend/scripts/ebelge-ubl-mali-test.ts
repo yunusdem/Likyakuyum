@@ -312,11 +312,84 @@ test("TRY belgede kur bloğu yazılmaz", () => {
 
 /* ================================================================ özel matrah */
 
-test("özel matrah açıkça reddedilir (uydurma yapılmaz)", () => {
-  assert.throws(
-    () => buildInvoiceXml({ ...temel(), faturaTipi: "OZELMATRAH" }),
-    /henüz desteklenmiyor/
-  );
+// 19.09.2026 (docs/ebelge-revizyon.md K4): özel matrah GİB UBL-TR kılavuzuna göre yazıldı. Gönderimden önce her belge
+// ICE `invoice_check_validate`ten geçtiği için yapı ICE'de reddedilirse belge kesilmez.
+const ozelMatrahli = (): UblFaturaGirdi => ({
+  ...temel(),
+  faturaTipi: "OZELMATRAH",
+  // 22 ayar bilezik: satış bedeli 100.000, KDV yalnızca 5.000 TL işçilik üzerinden
+  satirlar: [{ ad: "22 Ayar Bilezik", miktar: 1, birimFiyat: 100000, kdvOrani: 20,
+    ozelMatrahKodu: "805", ozelMatrahGerekcesi: "Altından mamül ziynet eşyası", ozelMatrahTutari: 5000 }],
+});
+
+test("özel matrah: KDV satır tutarı üzerinden değil özel matrah üzerinden hesaplanır", () => {
+  const { ozet } = buildInvoiceXml(ozelMatrahli());
+  assert.equal(ozet.malHizmetToplam, 100000);
+  assert.equal(ozet.kdvToplam, 1000);
+  assert.equal(ozet.odenecekTutar, 101000);
+  assert.deepEqual(ozet.kdvGruplari, [{ oran: 20, matrah: 5000, vergi: 1000, istisnaKodu: "805", istisnaGerekcesi: "Altından mamül ziynet eşyası" }]);
+});
+
+test("özel matrah: kod TaxExemptionReasonCode alanında, TaxableAmount özel matrah tutarıdır", () => {
+  const { xml } = buildInvoiceXml(ozelMatrahli());
+  const f = parser.parse(xml).Invoice;
+  assert.equal(f.InvoiceTypeCode, "OZELMATRAH");
+  for (const alt of [f.TaxTotal.TaxSubtotal, f.InvoiceLine.TaxTotal.TaxSubtotal]) {
+    assert.equal(alt.TaxableAmount["#text"], "5000.00");
+    assert.equal(alt.TaxAmount["#text"], "1000.00");
+    assert.equal(alt.TaxCategory.TaxExemptionReasonCode, "805");
+    assert.equal(alt.TaxCategory.TaxScheme.TaxTypeCode, "0015");
+  }
+  assert.equal(f.InvoiceLine.LineExtensionAmount["#text"], "100000.00");
+  assert.equal(f.LegalMonetaryTotal.TaxInclusiveAmount["#text"], "101000.00");
+  assert.equal(f.LegalMonetaryTotal.PayableAmount["#text"], "101000.00");
+});
+
+test("özel matrah: özel matrahlı ve normal KDV'li satır ayrı gruplanır", () => {
+  const g = ozelMatrahli();
+  g.satirlar.push({ ad: "Kutu", miktar: 1, birimFiyat: 100, kdvOrani: 20 });
+  const { ozet } = buildInvoiceXml(g);
+  assert.equal(ozet.kdvGruplari.length, 2);
+  assert.equal(ozet.kdvToplam, 1020);
+  assert.equal(ozet.odenecekTutar, 101120);
+});
+
+test("özel matrah: kural ihlalleri reddedilir", () => {
+  const s = ozelMatrahli().satirlar[0];
+  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "OZELMATRAH" }), /en az bir satırda özel matrah/);
+  assert.throws(() => buildInvoiceXml({ ...ozelMatrahli(), faturaTipi: "SATIS" }), /tipi OZELMATRAH olmalıdır/);
+  assert.throws(() => buildInvoiceXml({ ...ozelMatrahli(), satirlar: [{ ...s, ozelMatrahKodu: "351" }] }), /801-812/);
+  assert.throws(() => buildInvoiceXml({ ...ozelMatrahli(), satirlar: [{ ...s, ozelMatrahTutari: undefined }] }), /birlikte verilmelidir/);
+  assert.throws(() => buildInvoiceXml({ ...ozelMatrahli(), satirlar: [{ ...s, ozelMatrahTutari: -1 }] }), /sıfır ya da pozitif/);
+});
+
+test("ihraç kayıtlı hâlâ açıkça reddedilir (uydurma yapılmaz)", () => {
+  assert.throws(() => buildInvoiceXml({ ...temel(), faturaTipi: "IHRACKAYITLI" }), /henüz desteklenmiyor/);
+});
+
+/* ================================================================ tevkifat iade */
+
+const tevkifatIade = (): UblFaturaGirdi => ({
+  ...temel(),
+  senaryo: "TEMELFATURA",
+  faturaTipi: "TEVKIFATIADE",
+  iadeFaturalar: [{ belgeNo: "ABC2025000000009", tarih: "2025-12-20" }],
+  satirlar: [{ ad: "İşçilik", miktar: 1, birimFiyat: 1000, kdvOrani: 20, tevkifatKodu: "616", tevkifatOrani: 50 }],
+});
+
+test("tevkifat iade: hem dayanak fatura hem tevkifat bloğu yazılır", () => {
+  const { xml, ozet } = buildInvoiceXml(tevkifatIade());
+  const f = parser.parse(xml).Invoice;
+  assert.equal(f.InvoiceTypeCode, "TEVKIFATIADE");
+  assert.equal(f.BillingReference.InvoiceDocumentReference.ID, "ABC2025000000009");
+  assert.equal(f.WithholdingTaxTotal.TaxAmount["#text"], "100.00");
+  assert.equal(ozet.odenecekTutar, 1100);
+});
+
+test("tevkifat iade: dayanak, tevkifat ve profil kuralları", () => {
+  assert.throws(() => buildInvoiceXml({ ...tevkifatIade(), iadeFaturalar: [] }), /iade edilen fatura bilgisi zorunludur/);
+  assert.throws(() => buildInvoiceXml({ ...tevkifatIade(), satirlar: temel().satirlar }), /en az bir satırda tevkifat/);
+  assert.throws(() => buildInvoiceXml({ ...tevkifatIade(), senaryo: "TICARIFATURA" }), /TICARIFATURA profilinde kullanılamaz/);
 });
 
 /* ================================================================ karma */

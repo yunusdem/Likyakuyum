@@ -14,7 +14,7 @@ const sayiOpt = (min: number, max: number) => z.preprocess(v => (v === "" || v =
 const secimMetni = z.string().trim().regex(/^[A-Za-z0-9_]{0,20}$/, "Seçim değeri geçersiz").optional();
 const parametreSema = z.object({
   tarih, baslangic: tarih, bitis: tarih, baslangicSaat: saat, bitisSaat: saat,
-  vezneId: idOpt, paraId: idOpt, cariKartId: idOpt,
+  vezneId: idOpt, paraId: idOpt, cariKartId: idOpt, hedefParaId: idOpt,
   fisTipi: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(1).optional()),
   kurTuru: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().optional()),
   kurTarihi: tarih, kurAlani: z.enum(["alis", "satis", "ikisi"]).optional(),
@@ -30,7 +30,7 @@ const parametreSema = z.object({
   hesapIdler: idListe, istatistikIdler: idListe, meslekIdler: idListe, sektorIdler: idListe, kullaniciIdler: idListe, bankaIdler: idListe,
   siralama: secimMetni, durum: secimMetni, birlestir: secimMetni,
   kasaTipi: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(1).optional()),
-  esik: sayiOpt(0, 1e12), sapma: sayiOpt(0, 1000), adet: sayiOpt(1, 1000),
+  esik: sayiOpt(0, 1e12), sapma: sayiOpt(0, 1000), adet: sayiOpt(1, 1000), yasKucuk: sayiOpt(0, 150), yasBuyuk: sayiOpt(0, 150),
   vadeBaslangic: tarih, vadeBitis: tarih,
   paraIdler: z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)),
     z.array(z.number().int().positive()).max(50).optional()),

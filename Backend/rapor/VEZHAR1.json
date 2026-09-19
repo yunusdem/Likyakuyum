@@ -1,7 +1,7 @@
 {
   "kod": "VEZHAR1",
   "ad": "Vezne Hareket Listesi",
-  "aciklama": "Tarih ve saat aralığındaki alış/satış fişleri; vezne, para ve tip filtresi; seçilen kurla TL karşılığı.",
+  "aciklama": "Vezne defteri: fiş, transfer, nakit cari ve kasa hesap hareketleri; vezne bazında giriş / çıkış miktarları.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -45,20 +45,10 @@
       "bicim": "tarihSaat"
     },
     {
-      "anahtar": "belgeNo",
-      "baslik": "Belge no",
-      "g": 2.2
-    },
-    {
-      "anahtar": "tip",
-      "baslik": "Tip",
-      "g": 0.9,
+      "anahtar": "belgeTipi",
+      "baslik": "Belge",
+      "g": 1,
       "hiza": "center"
-    },
-    {
-      "anahtar": "unvan",
-      "baslik": "Ünvan",
-      "g": 3.6
     },
     {
       "anahtar": "paraKod",
@@ -67,16 +57,63 @@
       "hiza": "center"
     },
     {
-      "anahtar": "miktar",
-      "baslik": "Miktar",
-      "g": 1.8,
-      "bicim": "sayi"
+      "anahtar": "yon",
+      "baslik": "",
+      "g": 0.5,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 3.4
     },
     {
       "anahtar": "kur",
       "baslik": "Kur",
       "g": 1.4,
-      "bicim": "kur",
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "giris",
+      "baslik": "Giriş",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "cikis",
+      "baslik": "Çıkış",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "bankaHesabi",
+      "baslik": "Banka hesabı",
+      "g": 2
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 2.2,
+      "pdf": false
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 3.6,
+      "pdf": false
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi",
       "pdf": false
     },
     {
@@ -84,14 +121,16 @@
       "baslik": "Tutar (TL)",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "komisyon",
       "baslik": "Komisyon",
       "g": 1.5,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "bmv",
@@ -113,7 +152,8 @@
       "baslik": "Seçilen kurla TL",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "kurSatis",
@@ -136,5 +176,39 @@
     "anahtar": "vezneKod",
     "baslik": "Vezne {{vezneBaslik}}",
     "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Vezne ve para bazında giriş / çıkış",
+    "kolonlar": [
+      {
+        "anahtar": "vezne",
+        "baslik": "Vezne",
+        "g": 3
+      },
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "giris",
+        "baslik": "Giriş",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "cikis",
+        "baslik": "Çıkış",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "net",
+        "baslik": "Net",
+        "g": 2.2,
+        "bicim": "sayi"
+      }
+    ]
   }
 }

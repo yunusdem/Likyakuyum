@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
+import { useYerelTaslak } from "./useYerelTaslak";
 import {
   IconTruckDelivery,
   IconPlus,
@@ -187,6 +188,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
       const cevap = await ebelgeService.irsaliyeGonder(istekGovdesi());
       setGonderildi({ belgeNo: cevap.belgeNo, uuid: cevap.uuid });
       setOnayAcik(false);
+      await taslak.gonderildi();
       setAlertInfo({
         type: "success",
         message:
@@ -232,6 +234,43 @@ const EBelgeIrsaliyePage: React.FC = () => {
     }
   };
 
+  // Yerel taslak (docs/ebelge-revizyon.md K3): ICE'de irsaliye taslağı yoktur; form olduğu gibi saklanır.
+  const taslak = useYerelTaslak<Record<string, any>>("EIrsaliye", (t) => {
+    setBelgeNo(t.belgeNo || ""); setTarih(t.tarih || bugunISO()); setIrsaliyeTipi(t.irsaliyeTipi || "SEVK"); setNot(t.not || "");
+    setAliciVkn(t.aliciVkn || ""); setAliciUnvan(t.aliciUnvan || ""); setAliciAd(t.aliciAd || ""); setAliciSoyad(t.aliciSoyad || "");
+    setAliciIl(t.aliciIl || ""); setAliciIlce(t.aliciIlce || ""); setTeslimatPostaKodu(t.teslimatPostaKodu || "");
+    setSevkTarihi(t.sevkTarihi || bugunISO()); setSevkSaati(t.sevkSaati || ""); setPlaka(t.plaka || ""); setPlakaTuru(t.plakaTuru || "PLAKA");
+    setSoforAd(t.soforAd || ""); setSoforSoyad(t.soforSoyad || ""); setSoforTckn(t.soforTckn || "");
+    setTasiyiciVkn(t.tasiyiciVkn || ""); setTasiyiciUnvan(t.tasiyiciUnvan || "");
+    if (Array.isArray(t.satirlar) && t.satirlar.length) setSatirlar(t.satirlar);
+  });
+  const taslakKaydet = () => taslak.kaydet(
+    { belgeNo: belgeNo.trim(), aliciVkn: aliciVkn.trim(), aliciUnvan: aliciUnvan.trim() || `${aliciAd} ${aliciSoyad}`.trim() },
+    { belgeNo, tarih, irsaliyeTipi, not, aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciIl, aliciIlce, teslimatPostaKodu, sevkTarihi, sevkSaati,
+      plaka, plakaTuru, soforAd, soforSoyad, soforTckn, tasiyiciVkn, tasiyiciUnvan, satirlar });
+
+  /**
+   * Tek adımlı gönderim (docs/ebelge-revizyon.md K5): ön kontrol + ICE doğrulaması geçerse ARA ONAY OLMADAN gönderir.
+   * Doğrulama geçmezse hiçbir şey gönderilmez; sonuç kartı hatayı gösterir.
+   */
+  const dogrulaVeGonder = async () => {
+    const hata = onKontrol();
+    if (hata) return setAlertInfo({ type: "danger", message: hata });
+    setAlertInfo(null); setSonuc(null); setDogrulaniyor(true);
+    try {
+      const cevap = await ebelgeService.irsaliyeDogrula({ ...istekGovdesi(), onizleme: true });
+      setSonuc(cevap);
+      if (!(cevap.semaGecerli && cevap.schematronGecerli)) {
+        setAlertInfo({ type: "danger", message: `İrsaliye gönderilmedi: ${cevap.mesaj || "ICE doğrulamasından geçemedi."}` });
+        return;
+      }
+    } catch (err: any) {
+      setAlertInfo({ type: "danger", message: err?.message || "Doğrulama yapılamadı." });
+      return;
+    } finally { setDogrulaniyor(false); }
+    await gonder();
+  };
+
   const gonderilebilir = Boolean(sonuc?.semaGecerli && sonuc?.schematronGecerli && !gonderildi);
 
   return (
@@ -259,6 +298,8 @@ const EBelgeIrsaliyePage: React.FC = () => {
         GİB'e gönderilir.
       </Alert>
 
+      {taslak.taslakHata && <Alert variant="danger" className="py-2 px-3 mb-3 border rounded shadow-2xs small">{taslak.taslakHata}</Alert>}
+      {taslak.taslakMesaj && !gonderildi && <Alert variant="info" className="py-2 px-3 mb-3 border rounded shadow-2xs small">{taslak.taslakMesaj}</Alert>}
       {alertInfo && (
         <Alert
           variant={alertInfo.type}
@@ -657,6 +698,13 @@ const EBelgeIrsaliyePage: React.FC = () => {
               {dogrulaniyor ? <Spinner animation="border" size="sm" /> : <IconFileCheck size={16} />}
               Doğrula (gönderme yok)
             </Button>
+            <Button size="sm" variant="secondary" onClick={taslakKaydet} disabled={kilitli || taslak.taslakBusy} className="d-flex align-items-center gap-1">
+              Taslaklara Kaydet
+            </Button>
+            <Button size="sm" variant="success" onClick={() => void dogrulaVeGonder()} disabled={kilitli || !!gonderildi} className="d-flex align-items-center gap-1">
+              {gonderiliyor ? <Spinner animation="border" size="sm" /> : <IconSend size={16} />}
+              Gönder
+            </Button>
           </div>
         </Card.Body>
       </Card>
@@ -727,54 +775,13 @@ const EBelgeIrsaliyePage: React.FC = () => {
             ) : (
               gonderilebilir && (
                 <div className="border rounded-2 p-3 mb-3 shadow-2xs">
-                  {!onayAcik ? (
-                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                      <span className="small text-secondary">
-                        İrsaliye doğrulamadan geçti. GİB'e gönderebilirsiniz.
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline-danger"
-                        onClick={() => setOnayAcik(true)}
-                        className="d-flex align-items-center gap-1"
-                      >
-                        <IconSend size={15} />
-                        GİB'e Gönder
-                      </Button>
-                    </div>
-                  ) : (
-                    <div>
-                      <Alert variant="danger" className="py-2 px-3 mb-2 border rounded shadow-2xs small">
-                        <IconAlertTriangle size={15} className="me-1" />
-                        <strong>İrsaliye GİB'e gönderilecek</strong> ve bu işlem{" "}
-                        <strong>geri alınamaz</strong>. Belge numarası ({belgeNo.toUpperCase()})
-                        kullanılmış sayılır.
-                        <br />
-                        Alıcı: <strong>{aliciVkn.trim().length === 11 ? `${aliciAd.trim()} ${aliciSoyad.trim()}` : aliciUnvan.trim() || `${aliciAd.trim()} ${aliciSoyad.trim()}`}</strong> ({aliciVkn}) · Sevk: {sevkTarihi}
-                        {plaka ? ` · Plaka: ${plaka}` : ""}
-                      </Alert>
-                      <div className="d-flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={gonder}
-                          disabled={gonderiliyor}
-                          className="d-flex align-items-center gap-1"
-                        >
-                          {gonderiliyor ? <Spinner animation="border" size="sm" /> : null}
-                          Evet, irsaliyeyi GİB'e gönder
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setOnayAcik(false)}
-                          disabled={gonderiliyor}
-                        >
-                          Vazgeç
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <span className="small text-secondary">İrsaliye doğrulamadan geçti. GİB'e gönderebilirsiniz.</span>
+                    <Button size="sm" variant="success" onClick={gonder} disabled={gonderiliyor} className="d-flex align-items-center gap-1">
+                      {gonderiliyor ? <Spinner animation="border" size="sm" /> : <IconSend size={15} />}
+                      Gönder
+                    </Button>
+                  </div>
                 </div>
               )
             )}

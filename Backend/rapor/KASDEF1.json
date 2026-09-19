@@ -38,8 +38,7 @@
     {
       "anahtar": "hesapKod",
       "baslik": "Hesap",
-      "g": 1.2,
-      "pdf": false
+      "g": 1.2
     },
     {
       "anahtar": "hesapAd",
@@ -98,5 +97,46 @@
     "altToplam": true,
     "genelToplam": false
   },
-  "dipnot": "Her para birimi ayrı defterdir; ilk satır başlangıç tarihinden önceki devirdir (devir tutarı ara toplama dahildir). Bakiye = devir + girişler − çıkışlar."
+  "dipnot": "Her para birimi ayrı defterdir; ilk satır başlangıç tarihinden önceki devirdir (devir tutarı ara toplama dahildir). Bakiye = devir + girişler − çıkışlar.",
+  "ozet": {
+    "baslik": "Kapanış — para bazında",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "giris",
+        "baslik": "Giriş toplamı",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "cikis",
+        "baslik": "Çıkış toplamı",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "devredenGiris",
+        "baslik": "Devreden (giriş tarafı)",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "devredenCikis",
+        "baslik": "Devreden (çıkış tarafı)",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "toplam",
+        "baslik": "Toplam",
+        "g": 2,
+        "bicim": "sayi"
+      }
+    ]
+  }
 }

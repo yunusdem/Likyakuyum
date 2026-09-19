@@ -25,6 +25,12 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "hedefParaId",
+      "etiket": "Karşılık parası",
+      "tip": "para",
+      "not": "Rapor altı toplamlarının çevrileceği para; boş bırakılırsa TL"
     }
   ],
   "kolonlar": [
@@ -97,5 +103,45 @@
       "toplam": true,
       "kosul": "kurIkisi"
     }
-  ]
+  ],
+  "ozet": {
+    "baslik": "Son durum — seçilen para cinsinden",
+    "kolonlar": [
+      {
+        "anahtar": "kalem",
+        "baslik": "Varlık",
+        "g": 2
+      },
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 0.9,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "borc",
+        "baslik": "Borç",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "alacak",
+        "baslik": "Alacak",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "bakiye",
+        "baslik": "Bakiye",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "bakiyeTipi",
+        "baslik": "B/A",
+        "g": 0.6,
+        "hiza": "center"
+      }
+    ]
+  }
 }

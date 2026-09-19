@@ -1,7 +1,7 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
-import { type RaporParametreler, kurCoz, ozetEk, paraKumesi, sinirla, tarihTr, vezneBakiyeleri, VEZNE_BAKIYE_DIPNOT } from "../raporOrtak.js";
+import { type RaporParametreler, gunOnce, hedefPara, kurCoz, kurTarihte, ozetEk, paraKumesi, sinirla, tarihTr, vezneBakiyeleri, VEZNE_BAKIYE_DIPNOT } from "../raporOrtak.js";
 import { maliyetYurut } from "./analiz.js";
 
 /** Yönetici raporları — 2. dalga (docs/raporlar-faz2.md, Faz R2-Y): firma son durum, long / short denge analizi. Yalnızca SELECT. */
@@ -67,14 +67,26 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
       const net = o.vezne + o.banka + o.cariAlacak - o.cariBorc, k = kur.kurlar.get(o.paraId) ?? 0, ks = kur.satisKurlari.get(o.paraId) ?? 0;
       return { ...o, net, kur: k, tlKarsiligi: net * k, kurSatis: ks, tlSatis: net * ks };
     }).filter(o => [o.vezne, o.banka, o.cariAlacak, o.cariBorc].some(v => Math.abs(v) > 0.000001));
-    return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p)} · ${kur.aciklama}`,
-      `Net pozisyon = vezne mevcudu + banka hesapları + cari alacaklarımız − cari borçlarımız. ${VEZNE_BAKIYE_DIPNOT} Kasa hesap hareketleri vezne mevcudunun içindedir, ayrıca eklenmez. Banka: iptal edilmemiş banka hareketlerinin para bazında giriş − çıkış toplamı (hesap kartındaki devir tutarı hariç). Vezne seçimi yalnızca vezne mevcudunu süzer. ${kur.aciklama}.`);
+    // Eski "FİRMA SON DURUM" rapor altı: Kasa / Cari / Toplam satırları — borç, alacak, bakiye + B/A, seçilen para cinsinden (eski @SecilenKasaBorc … @ToplamBakiye formülleri).
+    // Kasa: vezne mevcudu pozitifse borç (varlık), negatifse alacak; Cari: carilerin bize borcu = borç, carilerin alacağı = alacak. Banka eski raporda yoktu, ayrı satırdır.
+    const hedef = await hedefPara(pool, p, kur), deger = (o: any, miktar: number) => hedef.cevir(miktar * (kur.kurlar.get(o.paraId) ?? 0));
+    const kalem = (ad: string, borc: number, alacak: number) => { const n = borc - alacak; return { kalem: ad, paraKod: hedef.kod, borc, alacak, bakiye: Math.abs(n), bakiyeTipi: n > 0 ? "B" : n < 0 ? "A" : "" }; };
+    const top = (f: (o: any) => number) => satirlar.reduce((a, o) => a + deger(o, f(o)), 0);
+    const kasa = kalem("Kasa", top(o => Math.max(o.vezne, 0)), top(o => Math.max(-o.vezne, 0))), banka = kalem("Banka", top(o => Math.max(o.banka, 0)), top(o => Math.max(-o.banka, 0))),
+      cariK = kalem("Cari", top(o => o.cariAlacak), top(o => o.cariBorc));
+    const sonDurum = [kasa, ...(banka.borc || banka.alacak ? [banka] : []), cariK, kalem("Toplam", kasa.borc + banka.borc + cariK.borc, kasa.alacak + banka.alacak + cariK.alacak)];
+    return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p)} · ${kur.aciklama} · ${hedef.aciklama}`,
+      `Net pozisyon = vezne mevcudu + banka hesapları + cari alacaklarımız − cari borçlarımız. ${VEZNE_BAKIYE_DIPNOT} Kasa hesap hareketleri vezne mevcudunun içindedir, ayrıca eklenmez. Banka: iptal edilmemiş banka hareketlerinin para bazında giriş − çıkış toplamı (hesap kartındaki devir tutarı hariç). Vezne seçimi yalnızca vezne mevcudunu süzer. ${kur.aciklama}.`,
+      sonDurum);
   },
 
   /** Long / short denge analizi — döviz ve kıymetli maden pozisyonu (TL hariç); vadeli dekontlar ayrı kolon; ortalama maliyete göre değerleme farkı */
   async LONSHO1(pool, p, t) {
-    if (!p.tarih) throw ApiError.badRequest("Tarih zorunludur.");
-    const kur = await kurCoz(pool, p);
+    // İki tarih arası (kullanıcı kararı 19.09.2026, eski rapordaki gibi): devir = ilk tarihten önceki günün kapanışı, mevcut = son tarih. Eski çağrılar için tek `tarih` de kabul edilir.
+    const bit = p.bitis || p.tarih, bas = p.baslangic || bit;
+    if (!bit || !bas) throw ApiError.badRequest("Tarih aralığı zorunludur.");
+    p = { ...p, tarih: bit };
+    const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || bit });
     // Ortalama maliyet: kâr-zarar ile aynı ağırlıklı ortalama, kayıtların başından seçilen tarihe kadar
     const fis = await pool.request().input("t", sql.Date, p.tarih).query(`
       SELECT S.PARA_ID paraId, F.TIP tip, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.TUTAR,0) tutar, ISNULL(S.KUR,0) kur
@@ -82,13 +94,25 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
       WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date)<=@t ORDER BY S.PARA_ID, F.TARIH, F.FIS_ID, S.SATIR_NO;`);
     const ortMaliyet = new Map<number, number>();
     for (const h of maliyetYurut(fis.recordset.map((r: any) => ({ paraId: Number(r.paraId), tip: Number(r.tip), miktar: Number(r.miktar), tutar: Number(r.tutar), kur: Number(r.kur) })))) ortMaliyet.set(h.paraId, h.ortMaliyet);
+    const devirGun = gunOnce(bas), devirKur = await kurTarihte(pool, devirGun), mevcutKur = await kurTarihte(pool, bit);
+    const devirler = new Map<number, number>((await pozisyonlar(pool, { ...p, tarih: devirGun }, { banka: false, vadeli: false })).map(o => [o.paraId, o.vezne + o.cariAlacak - o.cariBorc]));
     const satirlar = (await pozisyonlar(pool, p, { banka: false, vadeli: true })).filter(o => o.paraId !== kur.tlId).map(o => {
       const longM = o.vezne + o.cariAlacak, shortM = o.cariBorc, ls = lsDurumu(longM, shortM), vadeliNet = o.vadeliAlacak - o.vadeliBorc;
       const k = kur.kurlar.get(o.paraId) ?? 0, ks = kur.satisKurlari.get(o.paraId) ?? 0, om = ortMaliyet.get(o.paraId) ?? 0;
       return { ...o, longMiktar: longM, shortMiktar: shortM, net: ls.net, durum: ls.durum, vadeliNet, netVadeliDahil: ls.net + vadeliNet, kur: k, tlKarsiligi: ls.net * k, kurSatis: ks, tlSatis: ls.net * ks,
-        ortMaliyet: om, degerlemeFarki: om ? ls.net * (k - om) : 0 };
-    }).filter(o => [o.longMiktar, o.shortMiktar, o.vadeliAlacak, o.vadeliBorc].some(v => Math.abs(v) > 0.000001));
-    return sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p)} · ${kur.aciklama}`,
-      `Long = vezne mevcudu + cari alacaklarımız; short = cari borçlarımız; net = long − short (LONG: fazla pozisyon, SHORT: açık pozisyon). TL kapsam dışıdır. Vadeli = seçilen tarihte vadesi gelmemiş cari dekontların neti (emanet verme +, emanet alma −); cari bakiyelere dahil değildir, "Net (vadeli dahil)" kolonunda eklenir. Değerleme farkı = net × (seçilen kur − ağırlıklı ortalama maliyet kuru). ${kur.aciklama}.`);
+        ortMaliyet: om, degerlemeFarki: om ? ls.net * (k - om) : 0,
+        // Eski "LONG / SHORT DENGE ANALİZİ": Devir, Mevcut, sembol (@LongShortSembol: devir > mevcut → S, değilse L) ve |mevcut − devir|
+        devir: devirler.get(o.paraId) ?? 0, mevcut: ls.net, lsSembol: (devirler.get(o.paraId) ?? 0) > ls.net ? "S" : "L", lsMiktar: Math.abs(ls.net - (devirler.get(o.paraId) ?? 0)) };
+    }).filter(o => [o.longMiktar, o.shortMiktar, o.vadeliAlacak, o.vadeliBorc, o.devir].some(v => Math.abs(v) > 0.000001));
+    // Rapor altı (eski @SecilenDevir, @SecilenMevcut, @DengeFarki, @ToplamNetKar): devir devir günü kuruyla, mevcut son tarih kuruyla değerlenir ve denge parasına çevrilir
+    const hedef = await hedefPara(pool, p, kur), hd = hedef.id === kur.tlId ? 1 : devirKur.get(hedef.id) ?? 0, hm = hedef.id === kur.tlId ? 1 : mevcutKur.get(hedef.id) ?? 0;
+    const bol = (x: number, y: number) => (y > 0 ? x / y : 0);
+    const sDevir = satirlar.reduce((a, o) => a + bol(o.devir * (devirKur.get(o.paraId) ?? 0), hd), 0), sMevcut = satirlar.reduce((a, o) => a + bol(o.mevcut * (mevcutKur.get(o.paraId) ?? 0), hm), 0);
+    const denge = bol(satirlar.reduce((a, o) => a + (o.mevcut - o.devir) * (mevcutKur.get(o.paraId) ?? 0), 0), hm), netKar = sMevcut - sDevir;
+    const dengeOzeti = [{ kalem: `Devir değeri (${tarihTr(devirGun)} kuruyla)`, paraKod: hedef.kod, deger: sDevir }, { kalem: `Mevcut değeri (${tarihTr(bit)} kuruyla)`, paraKod: hedef.kod, deger: sMevcut },
+      { kalem: "Denge farkı", paraKod: hedef.kod, deger: denge }, { kalem: netKar < 0 ? "Toplam Net Zarar" : "Toplam Net Kâr", paraKod: hedef.kod, deger: Math.abs(netKar) }];
+    return sinirla(satirlar, t, `${tarihTr(bas)} – ${tarihTr(bit)}${ozetEk(p)} · ${kur.aciklama} · Denge parası: ${hedef.kod}`,
+      `Long = vezne mevcudu + cari alacaklarımız; short = cari borçlarımız; net = long − short (LONG: fazla pozisyon, SHORT: açık pozisyon). TL kapsam dışıdır. Vadeli = seçilen tarihte vadesi gelmemiş cari dekontların neti (emanet verme +, emanet alma −); cari bakiyelere dahil değildir, "Net (vadeli dahil)" kolonunda eklenir. Değerleme farkı = net × (seçilen kur − ağırlıklı ortalama maliyet kuru). ${kur.aciklama}. Devir = ilk tarihten önceki günün net pozisyonu, Mevcut = son tarihteki net pozisyon; L / S = mevcut devirden büyükse L, küçükse S. Devir ve mevcut değerleri ilgili günün kur tablosundaki efektif alış kuruyla hesaplanır.`,
+      dengeOzeti);
   },
 };

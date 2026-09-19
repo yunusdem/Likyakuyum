@@ -35,6 +35,11 @@
       "bicim": "tarihSaat"
     },
     {
+      "anahtar": "seriNo",
+      "baslik": "Seri no",
+      "g": 1.4
+    },
+    {
       "anahtar": "belgeNo",
       "baslik": "Belge no",
       "g": 1.8
@@ -42,7 +47,8 @@
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 3.4
+      "g": 3.4,
+      "pdf": false
     },
     {
       "anahtar": "paraKod",
@@ -54,7 +60,8 @@
       "anahtar": "miktar",
       "baslik": "Miktar",
       "g": 1.9,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "toplam": true
     },
     {
       "anahtar": "kur",
@@ -88,8 +95,7 @@
       "baslik": "KMV",
       "g": 1.4,
       "bicim": "sayi",
-      "toplam": true,
-      "pdf": false
+      "toplam": true
     },
     {
       "anahtar": "kdv",

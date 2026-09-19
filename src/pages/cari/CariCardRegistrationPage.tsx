@@ -49,6 +49,7 @@ import {
   CariLookups,
 } from "../../services/cariService";
 import { ebelgeService } from "../../services/ebelgeService";
+import { KnskCariAlani } from "../ebelge/EBelgeKnsk";
 import { Country, State, City } from "country-state-city";
 import CountryStateCitySelect, { GeoLocationValue } from "../../components/common/CountryStateCitySelect";
 
@@ -1210,6 +1211,16 @@ export const CariCardRegistrationPage: React.FC = () => {
                           checked={formData.karaListede}
                           onChange={(e) => handleInputChange("karaListede", e.target.checked)}
                         />
+                      </Col>
+                    </Form.Group>
+
+                    {/* KNSK (kamu nüfuzuna sahip kişi): e-Belge'nin kendi tablosunda, VKN/TCKN'ye bağlı tutulur — docs/ebelge-revizyon.md K9 */}
+                    <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
+                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
+                        KNSK
+                      </Form.Label>
+                      <Col>
+                        <KnskCariAlani vknTckn={formData.vergiKimlikNo || ""} ad={formData.ad} />
                       </Col>
                     </Form.Group>
                     </div>

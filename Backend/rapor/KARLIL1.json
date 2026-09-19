@@ -138,5 +138,57 @@
     "baslik": "{{paraBaslik}}",
     "altToplam": true
   },
-  "dipnot": "Yöntem: ağırlıklı ortalama maliyet (Kâr / Zarar Faaliyet Analizi ile aynı). Maliyet, kayıtların başından itibaren alışlarla yürütülür; stok yokken yapılan satışta son bilinen ortalama, o da yoksa satış kuru maliyet sayılır. Brüt kâr = satış − maliyet; net kâr = brüt + komisyon − (BSMV + KMV + KDV); kâr % = brüt kâr / maliyet. TL satırları ve iptal fişler hariçtir."
+  "dipnot": "Yöntem: ağırlıklı ortalama maliyet (Kâr / Zarar Faaliyet Analizi ile aynı). Maliyet, kayıtların başından itibaren alışlarla yürütülür; stok yokken yapılan satışta son bilinen ortalama, o da yoksa satış kuru maliyet sayılır. Brüt kâr = satış − maliyet; net kâr = brüt + komisyon − (BSMV + KMV + KDV); kâr % = brüt kâr / maliyet. TL satırları ve iptal fişler hariçtir.",
+  "ozet": {
+    "baslik": "Para bazında kârlılık (eski rapor düzeni)",
+    "kolonlar": [
+      {
+        "anahtar": "para",
+        "baslik": "Para adı",
+        "g": 3
+      },
+      {
+        "anahtar": "alisMiktar",
+        "baslik": "Alış miktarı",
+        "g": 1.8,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "ortAlis",
+        "baslik": "Ortalama alış",
+        "g": 1.5,
+        "bicim": "kur"
+      },
+      {
+        "anahtar": "ortSatis",
+        "baslik": "Ortalama satış",
+        "g": 1.5,
+        "bicim": "kur"
+      },
+      {
+        "anahtar": "satisMiktar",
+        "baslik": "Satış miktarı",
+        "g": 1.8,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "satisTutar",
+        "baslik": "Satış tutarı",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "brutKar",
+        "baslik": "Brüt kâr",
+        "g": 1.8,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "karYuzde",
+        "baslik": "Kâr %",
+        "g": 1,
+        "bicim": "sayi"
+      }
+    ]
+  }
 }
