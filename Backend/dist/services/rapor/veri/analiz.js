@@ -55,7 +55,7 @@ export const ANALIZ_SORGULARI = {
         const satirlar = yurutulen.filter(h => h.tip === 1 && new Date(h.tarih) >= bas).map((h) => {
             const brut = h.tutar - h.maliyet, net = brut + (Number(h.komisyon) || 0) - (Number(h.vergiler) || 0);
             return { ...h, satisKuru: h.kur, maliyetKuru: h.ortMaliyet, satisTutari: h.tutar, maliyetTutari: h.maliyet, brutKar: brut, komisyon: Number(h.komisyon) || 0, vergiler: Number(h.vergiler) || 0,
-                netKar: net, karYuzde: h.maliyet ? (brut / h.maliyet) * 100 : 0, paraBaslik: `${h.paraKod} — ${h.paraAd}` };
+                netKar: net, karYuzde: h.tutar ? (brut / h.tutar) * 100 : 0, paraBaslik: `${h.paraKod} — ${h.paraAd}` };
         });
         if (p.siralama === "kar") { // para grupları korunur, grup içinde net kâra göre büyükten küçüğe
             const sira = new Map();
@@ -63,7 +63,39 @@ export const ANALIZ_SORGULARI = {
                 sira.set(s.paraBaslik, sira.size); });
             satirlar.sort((a, b) => sira.get(a.paraBaslik) - sira.get(b.paraBaslik) || b.netKar - a.netKar);
         }
-        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`);
+        // Eski "KARLILIK RAPORU" (para başına tek satır): alış miktarı, ortalama alış, ortalama satış, satış miktarı, satış tutarı, brüt kâr, kâr %.
+        // Eski @BrutKar = satış tutarı − satış miktarı × ortalama alış kuru; @YuzdeKar = brüt kâr ÷ satış tutarı × 100; @ToplamYuzdeKar = Σ brüt kâr ÷ Σ satış tutarı × 100.
+        // Ortalama alış = dönem içi alışların ortalaması; dönemde alış yoksa yürüyen ortalama maliyet (eski yordam şifreli — canlıda karşılaştırılacak).
+        const pz = new Map();
+        for (const h of yurutulen) {
+            if (new Date(h.tarih) < bas)
+                continue;
+            if (!pz.has(h.paraKod))
+                pz.set(h.paraKod, { paraKod: h.paraKod, paraAd: h.paraAd, alisMiktar: 0, alisTutar: 0, satisMiktar: 0, satisTutar: 0, sonOrt: 0 });
+            const o = pz.get(h.paraKod);
+            if (h.tip === 0) {
+                o.alisMiktar += h.miktar;
+                o.alisTutar += h.tutar;
+            }
+            else {
+                o.satisMiktar += h.miktar;
+                o.satisTutar += h.tutar;
+            }
+            o.sonOrt = h.ortMaliyet || o.sonOrt;
+        }
+        const paraOzeti = [...pz.values()].filter(o => o.satisMiktar || o.alisMiktar).map(o => {
+            const ortAlis = o.alisMiktar ? o.alisTutar / o.alisMiktar : o.sonOrt, brut = o.satisMiktar ? o.satisTutar - o.satisMiktar * ortAlis : 0;
+            return { para: `${o.paraKod} — ${o.paraAd}`, alisMiktar: o.alisMiktar, ortAlis, ortSatis: o.satisMiktar ? o.satisTutar / o.satisMiktar : 0, satisMiktar: o.satisMiktar, satisTutar: o.satisTutar, brutKar: brut, karYuzde: o.satisTutar ? (brut / o.satisTutar) * 100 : 0 };
+        });
+        const paraSatirlari = [...paraOzeti];
+        if (paraOzeti.length > 1) {
+            const st = paraOzeti.reduce((a, o) => a + o.satisTutar, 0), bk = paraOzeti.reduce((a, o) => a + o.brutKar, 0);
+            paraOzeti.push({ para: "GENEL TOPLAM", alisMiktar: null, ortAlis: null, ortSatis: null, satisMiktar: null, satisTutar: st, brutKar: bk, karYuzde: st ? (bk / st) * 100 : 0 });
+        }
+        // Varsayılan düzen para başına tek satır + genel toplam (kâr % = Σ brüt kâr ÷ Σ satış tutarı); "detay" seçilirse işlem bazlı satırlar, para tablosu rapor sonunda
+        if (p.birlestir !== "detay")
+            return sinirla(paraSatirlari, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`, undefined, paraOzeti.filter(o => o.para === "GENEL TOPLAM"));
+        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`, "Satırlardaki maliyet kayıtların başından yürütülen ağırlıklı ortalama maliyettir; kâr % = brüt kâr ÷ satış tutarı. Rapor sonundaki para bazındaki tabloda brüt kâr = satış tutarı − satış miktarı × dönemin ortalama alış kuru (dönemde alış yoksa yürüyen ortalama maliyet); bu yüzden iki brüt kâr farklı olabilir.", paraOzeti);
     },
     /** Altın işçilik raporu — sarraf fişi satırlarındaki işçilik (has gram) ve fişteki altın has kuruyla TL karşılığı */
     async ALTISC1(pool, p, t) {
@@ -77,15 +109,20 @@ export const ANALIZ_SORGULARI = {
         const f = filtreler(req, p, { vezne: "V", para: "S.URUN_ID" });
         const res = await req.query(`
       SELECT F.SARRAF_FISI_ID fisId, F.TARIH tarih, RTRIM(ISNULL(F.FIS_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan, F.TIP tipKod, RTRIM(ISNULL(V.KOD,'')) vezneKod,
-        ISNULL(F.ALTIN_HAS_KURU,0) hasKuru, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(S.ADET,0) adet, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.MILYEM,0) milyem,
+        ISNULL(F.ALTIN_HAS_KURU,0) hasKuru, ISNULL(F.KDV_ORANI,0) kdvOrani, ISNULL(F.KDV,0) fisKdv, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(S.ADET,0) adet, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.MILYEM,0) milyem,
         ISNULL(S.HAS_GRAM,0) hasGram, ISNULL(S.ISCILIK_HESAPLAMA_SEKLI,0) sekilKod, ISNULL(S.ISCILIK_MIKTARI,0) iscilikMiktari, ISNULL(S.ISCILIK_HAS_GRAM,0) iscilikHasGram, ISNULL(S.TUTAR,0) tutar
       FROM dbo.TODVZ_SARRAF_FISI F JOIN dbo.TODVZ_SARRAF_FISI_SATIRI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
         LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.URUN_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
       WHERE CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip) AND (ISNULL(S.ISCILIK_HAS_GRAM,0)<>0 OR ISNULL(S.ISCILIK_MIKTARI,0)<>0) ${f}
       ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, F.TARIH, F.SARRAF_FISI_ID, S.SATIR_NO;`);
+        // KDV sarraf fişinde fiş düzeyinde tutulur: fişin listelenen ilk satırında gösterilir (toplamlar iki kez sayılmasın); KDV matrahı = KDV ÷ oran
+        const kdvGorulen = new Set();
         const satirlar = res.recordset.map((r) => {
             const ihg = Number(r.iscilikHasGram) || 0, hk = Number(r.hasKuru) || 0;
-            return { ...r, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", adet: Number(r.adet), miktar: Number(r.miktar), milyem: Number(r.milyem), hasGram: Number(r.hasGram), sekil: ISCILIK_SEKLI[Number(r.sekilKod)] || "-",
+            const ilk = !kdvGorulen.has(Number(r.fisId));
+            kdvGorulen.add(Number(r.fisId));
+            const oran = Number(r.kdvOrani) || 0, kdv = ilk ? Number(r.fisKdv) || 0 : 0;
+            return { ...r, cins: r.paraKod, kdvOrani: oran, kdv, kdvMatrahi: oran > 0 ? kdv / (oran / 100) : 0, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", adet: Number(r.adet), miktar: Number(r.miktar), milyem: Number(r.milyem), hasGram: Number(r.hasGram), sekil: ISCILIK_SEKLI[Number(r.sekilKod)] || "-",
                 iscilikMiktari: Number(r.iscilikMiktari), iscilikHasGram: ihg, hasKuru: hk, iscilikTutari: ihg * hk, tutar: Number(r.tutar), paraBaslik: `${r.paraKod} — ${r.paraAd}` };
         });
         return sinirla(satirlar, t, ozet, "Kaynak: Genel Sarraf Fişi satırları; yalnızca işçiliği olan satırlar listelenir. İşçilik miktarı milyem cinsindendir (adet başına veya toplam); işçilik has gram = işçilik miktarı / 1000 (adet başına ise × adet). İşçilik tutarı (TL) = işçilik has gram × fişteki altın has kuru.");
@@ -112,8 +149,12 @@ export const ANALIZ_SORGULARI = {
         const satirlar = res.recordset.map((r) => {
             const a = Number(r.alisAdet) || 0, s = Number(r.satisAdet) || 0, hacim = (Number(r.alisTutar) || 0) + (Number(r.satisTutar) || 0);
             return { ...r, personel: r.personel || `Kullanıcı ${r.kullaniciId || "?"}`, alisAdet: a, alisTutar: Number(r.alisTutar) || 0, satisAdet: s, satisTutar: Number(r.satisTutar) || 0, toplamAdet: a + s, toplamTutar: hacim,
-                ortIslem: a + s ? hacim / (a + s) : 0, komisyon: Number(r.komisyon) || 0, iptalAdet: Number(r.iptalAdet) || 0, sapmaAdet: Number(r.sapmaAdet) || 0, gunSayisi: Number(r.gunSayisi) || 0 };
-        });
+                ortIslem: a + s ? hacim / (a + s) : 0, komisyon: Number(r.komisyon) || 0, iptalAdet: Number(r.iptalAdet) || 0, sapmaAdet: Number(r.sapmaAdet) || 0, gunSayisi: Number(r.gunSayisi) || 0,
+                // Eski "PERSONEL DEĞERLENDİRME": @Ciro/Gun ve @Hareket/Gun (gün sayısı 0 ise 0)
+                ciroGun: Number(r.gunSayisi) ? hacim / Number(r.gunSayisi) : 0, hareketGun: Number(r.gunSayisi) ? (a + s) / Number(r.gunSayisi) : 0 };
+        })
+            // Eski rapordaki sıralama: ciro ya da hareket sayısına göre azalan; "ad" seçilirse personel adına göre
+            .sort((x, y) => p.siralama === "ad" ? 0 : p.siralama === "hareket" ? y.toplamAdet - x.toplamAdet : y.toplamTutar - x.toplamTutar);
         return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm vezneler"}${adetOzeti(p.kullaniciIdler, "personel")}`, "Personel = fişi kaydeden kullanıcı. Tutarlar fişlerin TL toplam tutarıdır; iptal fişler adet ve tutarlara girmez, yalnızca \"İptal\" kolonunda sayılır. Kur sapması = kuru kayıt anındaki gişe kurundan farklı girilmiş fiş satırı sayısı. Çalışılan gün = fiş kesilen farklı gün sayısı.");
     },
 };

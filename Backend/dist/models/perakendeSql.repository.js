@@ -609,10 +609,12 @@ export class PerakendeSqlRepository {
         f.[TOPLAM_KDV], f.[GENEL_TOPLAM], f.[E_BELGE_DURUMU], f.[GIB_STATU_KODU],
         f.[EKLEYEN_ID], f.[EKLEME_ZAMANI],
         v.[KOD] AS [VEZNE_KOD], v.[AD] AS [VEZNE_AD],
-        p.[KOD] AS [PARA_KODU]
+        p.[KOD] AS [PARA_KODU],
+        c.[KOD] AS [CARI_KOD], c.[AD] AS [CARI_UNVAN]
       FROM [dbo].[TODVZ_FATURA] f
       LEFT JOIN [dbo].[TODVZ_VEZNE] v ON f.[VEZNE_ID] = v.[VEZNE_ID]
       LEFT JOIN [dbo].[TODVZ_PARA] p ON f.[PARA_ID] = p.[PARA_ID]
+      LEFT JOIN [dbo].[TODVZ_CARI_KART] c ON f.[CARI_KART_ID] = c.[CARI_KART_ID]
       WHERE f.[FATURA_ID] = @FATURA_ID;
     `);
         if (!headRes.recordset || headRes.recordset.length === 0) {
@@ -699,6 +701,8 @@ export class PerakendeSqlRepository {
             faturaTipi: row.FATURA_TIPI,
             senaryo: row.SENARYO,
             cariKartId: row.CARI_KART_ID,
+            cariKod: row.CARI_KOD || null,
+            cariUnvan: row.CARI_UNVAN || null,
             aliciVknTckn: row.ALICI_VKN_TCKN,
             aliciUnvan: row.ALICI_UNVAN,
             adres: row.ADRES,
@@ -756,10 +760,13 @@ export class PerakendeSqlRepository {
         f.[EKLEME_ZAMANI],
         ISNULL(v.[KOD], '') AS [VEZNE_KOD],
         ISNULL(v.[AD], '') AS [VEZNE_AD],
-        ISNULL(p.[KOD], 'TL') AS [PARA_KODU]
+        ISNULL(p.[KOD], 'TL') AS [PARA_KODU],
+        ISNULL(c.[KOD], '') AS [CARI_KOD],
+        ISNULL(c.[AD], '') AS [CARI_UNVAN]
       FROM [dbo].[TODVZ_FATURA] f
       LEFT JOIN [dbo].[TODVZ_VEZNE] v ON f.[VEZNE_ID] = v.[VEZNE_ID]
       LEFT JOIN [dbo].[TODVZ_PARA] p ON f.[PARA_ID] = p.[PARA_ID]
+      LEFT JOIN [dbo].[TODVZ_CARI_KART] c ON f.[CARI_KART_ID] = c.[CARI_KART_ID]
       WHERE 1=1
     `;
         if (filter.baslangicTarihi && filter.baslangicTarihi.trim()) {
@@ -795,6 +802,8 @@ export class PerakendeSqlRepository {
             faturaTipi: Number(row.FATURA_TIPI) || 1,
             senaryo: row.SENARYO || "EARSIVFATURA",
             cariKartId: row.CARI_KART_ID,
+            cariKod: row.CARI_KOD || null,
+            cariUnvan: row.CARI_UNVAN || null,
             aliciVknTckn: row.ALICI_VKN_TCKN || "",
             aliciUnvan: row.ALICI_UNVAN || "",
             adres: row.ADRES || "",

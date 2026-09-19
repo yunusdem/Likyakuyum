@@ -374,7 +374,7 @@ export const KasaHesapKayitPage: React.FC = () => {
                   KDV Oranı (%) :
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "260px" }}>
+                  <div style={{ maxWidth: "80px" }}>
                     <Form.Control
                       ref={kdvRef}
                       type="number"
@@ -387,7 +387,7 @@ export const KasaHesapKayitPage: React.FC = () => {
                           handleSave();
                         }
                       }}
-                      className="font-monospace"
+                      className="font-monospace text-end"
                     />
                   </div>
                 </Col>

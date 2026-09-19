@@ -1,5 +1,6 @@
 import { useContext, ReactNode } from "react";
 import { AccordionContext, useAccordionButton, Nav } from "react-bootstrap";
+import useMenu from "hooks/useMenu";
 
 interface CustomToggleProps {
   children: ReactNode;
@@ -19,6 +20,7 @@ export default function CustomToggle({
   callback,
 }: CustomToggleProps) {
   const { activeEventKey } = useContext(AccordionContext);
+  const { collapsed, handleCollapsed } = useMenu();
   const decoratedOnClick = useAccordionButton(
     eventKey,
     () => callback && callback(eventKey)
@@ -31,6 +33,9 @@ export default function CustomToggle({
         href="#"
         onClick={(e) => {
           e.preventDefault();
+          if (collapsed === "collapsed") {
+            handleCollapsed("expanded");
+          }
           decoratedOnClick(e);
         }}
         data-bs-toggle="dropdown"
@@ -44,7 +49,6 @@ export default function CustomToggle({
         )}
         <span className="text">{children}</span>
       </Nav.Link>
-
     </Nav.Item>
   );
 }
@@ -58,6 +62,7 @@ export function CustomToggleLevel2({
   ariaControls = "",
 }: CustomToggleProps) {
   const { activeEventKey } = useContext(AccordionContext);
+  const { collapsed, handleCollapsed } = useMenu();
   const decoratedOnClick = useAccordionButton(eventKey);
   const isCurrentEventKey = activeEventKey === eventKey;
 
@@ -67,6 +72,9 @@ export function CustomToggleLevel2({
       className={className}
       onClick={(e) => {
         e.preventDefault();
+        if (collapsed === "collapsed") {
+          handleCollapsed("expanded");
+        }
         decoratedOnClick(e);
       }}
       data-bs-toggle="collapse"

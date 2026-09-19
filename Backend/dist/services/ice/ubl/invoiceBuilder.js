@@ -1,6 +1,10 @@
 import { randomUUID } from "crypto";
 import { escapeXml } from "../ice.client.js";
 import { ApiError } from "../../../utils/ApiError.js";
+/** İade niteliğindeki tipler: dayanak fatura (`cac:BillingReference`) zorunludur. */
+export const iadeTipiMi = (t) => t === "IADE" || t === "TEVKIFATIADE";
+/** Tevkifatlı satır taşıyabilen tipler. */
+export const tevkifatTipiMi = (t) => t === "TEVKIFAT" || t === "TEVKIFATIADE";
 /* ==========================================================================
    Yardımcılar
    ========================================================================== */
@@ -114,20 +118,45 @@ export const dogrulaGirdi = (girdi) => {
             if (satir.kdvOrani === 0) {
                 throw ApiError.badRequest(`${no}. satırda KDV yokken tevkifat uygulanamaz; tevkifat KDV tutarı üzerinden hesaplanır.`);
             }
-            if (girdi.faturaTipi !== "TEVKIFAT") {
+            if (!tevkifatTipiMi(girdi.faturaTipi)) {
                 throw ApiError.badRequest("Tevkifatlı satır bulunan faturanın tipi TEVKIFAT olmalıdır.");
             }
         }
+        // Özel matrah: kod ve tutar birlikte, yalnızca OZELMATRAH tipinde
+        const omKod = satir.ozelMatrahKodu?.trim();
+        if (Boolean(omKod) !== (satir.ozelMatrahTutari != null)) {
+            throw ApiError.badRequest(`${no}. satırda özel matrah kodu ve özel matrah tutarı birlikte verilmelidir.`);
+        }
+        if (omKod) {
+            if (girdi.faturaTipi !== "OZELMATRAH") {
+                throw ApiError.badRequest("Özel matrahlı satır bulunan faturanın tipi OZELMATRAH olmalıdır.");
+            }
+            if (!/^8(0[1-9]|1[0-2])$/.test(omKod)) {
+                throw ApiError.badRequest(`${no}. satırda özel matrah kodu 801-812 aralığında olmalıdır.`);
+            }
+            if (!Number.isFinite(satir.ozelMatrahTutari) || satir.ozelMatrahTutari < 0) {
+                throw ApiError.badRequest(`${no}. satırda özel matrah tutarı sıfır ya da pozitif bir sayı olmalıdır.`);
+            }
+            if (istisnaKodu) {
+                throw ApiError.badRequest(`${no}. satırda özel matrah ile KDV istisna kodu birlikte kullanılamaz.`);
+            }
+            if (!(satir.kdvOrani > 0)) {
+                throw ApiError.badRequest(`${no}. satırda özel matrah KDV oranı olmadan kullanılamaz.`);
+            }
+        }
     });
+    if (girdi.faturaTipi === "OZELMATRAH" && !girdi.satirlar.some((x) => x.ozelMatrahKodu?.trim())) {
+        throw ApiError.badRequest("OZELMATRAH tipi faturada en az bir satırda özel matrah kodu ve tutarı olmalıdır.");
+    }
     // Tevkifat tipinde en az bir tevkifatlı satır aranır
-    if (girdi.faturaTipi === "TEVKIFAT" && !girdi.satirlar.some((x) => x.tevkifatKodu?.trim())) {
-        throw ApiError.badRequest("TEVKIFAT tipi faturada en az bir satırda tevkifat bilgisi olmalıdır.");
+    if (tevkifatTipiMi(girdi.faturaTipi) && !girdi.satirlar.some((x) => x.tevkifatKodu?.trim())) {
+        throw ApiError.badRequest(`${girdi.faturaTipi} tipi faturada en az bir satırda tevkifat bilgisi olmalıdır.`);
     }
     // İade faturasında dayanak fatura zorunlu
-    if (girdi.faturaTipi === "IADE") {
+    if (iadeTipiMi(girdi.faturaTipi)) {
         const iadeProfilleri = ["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"];
         if (!iadeProfilleri.includes(girdi.senaryo)) {
-            throw ApiError.badRequest(`IADE fatura tipi ${girdi.senaryo} profilinde kullanılamaz.`);
+            throw ApiError.badRequest(`${girdi.faturaTipi} fatura tipi ${girdi.senaryo} profilinde kullanılamaz.`);
         }
         if (!girdi.iadeFaturalar?.length) {
             throw ApiError.badRequest("İade faturasında iade edilen fatura bilgisi zorunludur.");
@@ -144,7 +173,7 @@ export const dogrulaGirdi = (girdi) => {
     if (girdi.faturaTipi === "TEKNOLOJIDESTEK" && girdi.senaryo !== "EARSIVFATURA") {
         throw ApiError.badRequest("TEKNOLOJIDESTEK fatura tipi yalnızca EARSIVFATURA profilinde kullanılabilir.");
     }
-    if (girdi.faturaTipi !== "IADE" && girdi.iadeFaturalar?.length) {
+    if (!iadeTipiMi(girdi.faturaTipi) && girdi.iadeFaturalar?.length) {
         throw ApiError.badRequest("İade referansı yalnızca IADE tipi faturada kullanılabilir.");
     }
     // Dövizli belgede kur zorunlu
@@ -155,9 +184,9 @@ export const dogrulaGirdi = (girdi) => {
             throw ApiError.badRequest(`${pb} cinsinden belgede TL karşılığı kur bilgisi zorunludur.`);
         }
     }
-    // Özel matrah henüz desteklenmiyor — doğrulanmış örnek olmadan üretilmez
-    if (girdi.faturaTipi === "OZELMATRAH") {
-        throw ApiError.unprocessable("Özel matrah faturası bu üreteçte henüz desteklenmiyor. Yapısı doğrulanmış bir GİB/ICE örneğiyle eklenecektir.");
+    // İhraç kayıtlı: KDV'nin tecil/ödenecek tutara etkisi doğrulanmış örnek olmadan yazılmaz
+    if (girdi.faturaTipi === "IHRACKAYITLI") {
+        throw ApiError.unprocessable("İhraç kayıtlı fatura bu üreteçte henüz desteklenmiyor. Yapısı doğrulanmış bir GİB/ICE örneğiyle eklenecektir.");
     }
 };
 /**
@@ -170,10 +199,12 @@ export const hesapla = (satirlar) => {
         const brut = yuvarla(satir.miktar * satir.birimFiyat);
         const iskonto = yuvarla((brut * (satir.iskontoOrani || 0)) / 100);
         const matrah = yuvarla(brut - iskonto);
-        const kdvTutari = yuvarla((matrah * satir.kdvOrani) / 100);
+        // Özel matrahlı satırda KDV, satır tutarı yerine bildirilen özel matrah üzerinden hesaplanır
+        const kdvMatrahi = satir.ozelMatrahKodu?.trim() ? yuvarla(satir.ozelMatrahTutari || 0) : matrah;
+        const kdvTutari = yuvarla((kdvMatrahi * satir.kdvOrani) / 100);
         // Tevkifat KDV tutarı üzerinden hesaplanır, matrah üzerinden değil
         const tevkifatTutari = yuvarla((kdvTutari * (satir.tevkifatOrani || 0)) / 100);
-        return { siraNo: i + 1, matrah, iskonto, kdvTutari, kdvOrani: satir.kdvOrani, tevkifatTutari };
+        return { siraNo: i + 1, matrah, kdvMatrahi, iskonto, kdvTutari, kdvOrani: satir.kdvOrani, tevkifatTutari };
     });
     const malHizmetToplam = yuvarla(satirHesaplari.reduce((t, s) => t + s.matrah, 0));
     const iskontoToplam = yuvarla(satirHesaplari.reduce((t, s) => t + s.iskonto, 0));
@@ -183,17 +214,19 @@ export const hesapla = (satirlar) => {
     const gruplar = new Map();
     satirHesaplari.forEach((h, i) => {
         const kaynak = satirlar[i];
-        const anahtar = `${h.kdvOrani}|${kaynak.istisnaKodu || ""}`;
+        // Özel matrah kodu da istisna kodu gibi TaxExemptionReasonCode alanında taşınır; ikisi aynı satırda bulunamaz
+        const kod = kaynak.ozelMatrahKodu?.trim() || kaynak.istisnaKodu;
+        const anahtar = `${h.kdvOrani}|${kod || ""}`;
         const mevcut = gruplar.get(anahtar) || {
             oran: h.kdvOrani,
             matrah: 0,
             vergi: 0,
-            istisnaKodu: kaynak.istisnaKodu,
-            istisnaGerekcesi: kaynak.istisnaGerekcesi,
+            istisnaKodu: kod,
+            istisnaGerekcesi: kaynak.ozelMatrahKodu?.trim() ? kaynak.ozelMatrahGerekcesi : kaynak.istisnaGerekcesi,
         };
         gruplar.set(anahtar, {
             ...mevcut,
-            matrah: yuvarla(mevcut.matrah + h.matrah),
+            matrah: yuvarla(mevcut.matrah + h.kdvMatrahi),
             vergi: yuvarla(mevcut.vergi + h.kdvTutari),
         });
     });
@@ -311,9 +344,9 @@ const invoiceLineXml = (satir, hesap, paraBirimi) => `<cac:InvoiceLine>` +
         : "") +
     `<cac:TaxTotal>` +
     `<cbc:TaxAmount currencyID="${paraBirimi}">${tutar(hesap.kdvTutari)}</cbc:TaxAmount>` +
-    kdvTaxSubtotalXml(hesap.matrah, hesap.kdvTutari, hesap.kdvOrani, paraBirimi, {
-        kod: satir.istisnaKodu,
-        gerekce: satir.istisnaGerekcesi,
+    kdvTaxSubtotalXml(hesap.kdvMatrahi, hesap.kdvTutari, hesap.kdvOrani, paraBirimi, {
+        kod: satir.ozelMatrahKodu?.trim() || satir.istisnaKodu,
+        gerekce: satir.ozelMatrahKodu?.trim() ? satir.ozelMatrahGerekcesi : satir.istisnaGerekcesi,
     }) +
     `</cac:TaxTotal>` +
     (hesap.tevkifatTutari > 0 && satir.tevkifatKodu

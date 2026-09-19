@@ -56,9 +56,11 @@ catch {
 } }
 /** Koşullu kolonlar: kurIkisi → yalnızca Kur alanı "Alış + Satış" iken */
 function kosulUygula(tanim, p) {
-    if (!tanim.kolonlar.some(k => k.kosul))
+    if (!tanim.kolonlar.some(k => k.kosul) && !tanim.grup?.kosul)
         return tanim;
-    return { ...tanim, kolonlar: tanim.kolonlar.filter(k => !k.kosul || (k.kosul === "kurIkisi" && p.kurAlani === "ikisi")) };
+    const kip = p.birlestir || String(tanim.parametreler.find(x => x.ad === "birlestir")?.varsayilan ?? "");
+    return { ...tanim, grup: tanim.grup?.kosul && tanim.grup.kosul !== `kip:${kip}` ? undefined : tanim.grup,
+        kolonlar: tanim.kolonlar.filter(k => !k.kosul || (k.kosul === "kurIkisi" ? p.kurAlani === "ikisi" : k.kosul === `kip:${kip}`)) };
 }
 /** KMT (Kur / Miktar / TL) gösterimi: seçilince yalnızca o gruba ait ve etiketsiz kolonlar kalır (kâr-zarar, .rpt parametresi). */
 function kmtUygula(tanim, kmt) {

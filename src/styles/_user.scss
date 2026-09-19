@@ -578,6 +578,26 @@ tr.lookup-selected-row:hover > td {
   flex-shrink: 0;
 }
 
+.erp-toolbar-center-section {
+  max-width: 100%;
+  
+  @media (max-width: 768px) {
+    width: 100%;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed #e2e8f0;
+  }
+}
+
+.erp-toolbar-center-content,
+.erp-toolbar-tab-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 // ----------------------------------------------------
 // Solid Dual-Tone Logo Text matching LK Monogram
 // Likya: Gold/Yellow | Kuyum: Dark Gold/Bronze (No gradient)

@@ -228,6 +228,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
   const handleLinkClick = (e: React.MouseEvent, to: string) => {
     e.preventDefault();
+    if (collapsed === "collapsed") {
+      handleCollapsed("expanded");
+    }
     navigateWithDashboardHop(to);
   };
 
@@ -255,6 +258,11 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     <div
       id={containerId}
       className="d-flex flex-column h-100"
+      onClick={() => {
+        if (collapsed === "collapsed") {
+          handleCollapsed("expanded");
+        }
+      }}
     >
       {/* 1. Brand Logo Header */}
       {hideLogo || (
@@ -262,6 +270,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           <Link
             to="/dashboard"
             onClick={() => {
+              if (collapsed === "collapsed") {
+                handleCollapsed("expanded");
+              }
               setActiveMenuKey("");
               setPending(null);
               if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
@@ -302,6 +313,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
         <Accordion
           activeKey={activeMenuKey}
           onSelect={(k: any) => {
+            if (collapsed === "collapsed") {
+              handleCollapsed("expanded");
+            }
             const nextKey = k ? String(k) : "";
             setActiveMenuKey(nextKey);
             const idx = parseInt(nextKey, 10);

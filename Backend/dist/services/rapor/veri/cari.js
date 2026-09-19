@@ -8,26 +8,57 @@ export function kalanGun(vade, bugun) {
     return Math.round((gun(vade) - gun(bugun)) / 86400000);
 }
 export const CARI2_SORGULARI = {
-    /** POS ekstre — POS / kredi kartı türündeki cari hareketler (HAREKET_TIPI = 2), POS cihazı bazında */
+    /**
+     * POS ekstre — POS / kredi kartı türündeki cari hareketler (HAREKET_TIPI = 2), POS cihazı × para bazında.
+     * Eski "POS EKSTRE RAPORU" metrikleri: grup başlığında cihaz kodu + adı, yürüyen bakiye (@Bakiye = Σborç − Σalacak), başlangıç öncesi hareketler "POS Devir"
+     * satırında (borç ve alacak brüt — eski raporda grup toplamına dahildir), grup altında son bakiye (@SonBakiye). Cihaz tanımındaki DEVIR alanı ve eski görünümün
+     * ISLEM_KODU alanı kullanılmaz: kaynağı şifreli görünümde kaldı ve veritabanında doğrulanacak POS kaydı yok (19.09.2026).
+     */
     async POSEKS1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
         const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
         const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" });
         const res = await req.query(`
-      SELECT H.CARI_HAREKET_ID fisNo, H.TARIH tarih, ISNULL(H.POS_CIHAZI_ID,0) posId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, H.TIP tipKod,
-        RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, RTRIM(P.KOD) paraKod, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
+      SELECT H.CARI_HAREKET_ID fisNo, H.TARIH tarih, ISNULL(H.POS_CIHAZI_ID,0) posId, RTRIM(ISNULL(PC.KOD,'')) cihazKod, RTRIM(ISNULL(PC.AD,'')) cihazAd,
+        RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, H.TIP tipKod,
+        RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, RTRIM(P.KOD) paraKod, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod, CASE WHEN CAST(H.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
       FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
       JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID
-      WHERE H.HAREKET_TIPI=2 AND CAST(H.TARIH AS date) BETWEEN @bas AND @bit ${f}
-      ORDER BY ISNULL(H.POS_CIHAZI_ID,0), ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
-        const satirlar = res.recordset.map((r) => {
-            const m = Number(r.meblag) || 0, borc = Number(r.tipKod) === 0;
-            const pos = Number(r.posId) ? `POS cihazı ${r.posId}` : "POS cihazı belirtilmemiş";
-            return { ...r, fisNo: String(r.fisNo ?? ""), posCihazi: Number(r.posId) ? String(r.posId) : "-", borc: borc ? m : 0, alacak: borc ? 0 : m,
-                grupAnahtar: `${r.posId}|${r.paraKod}`, grupBaslik: `${pos} · ${r.paraKod}` };
-        });
-        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm cariler"}`, "Yalnızca hareket tipi \"POS / Kredi Kartı\" olan cari hareketler listelenir; POS cihazı ve para birimi bazında gruplanır. Borç = carinin borçlandığı, Alacak = cariden POS ile tahsil edilen tutar.");
+      LEFT JOIN dbo.TODVZ_POS_CIHAZI PC ON PC.POS_CIHAZI_ID=H.POS_CIHAZI_ID
+      WHERE H.HAREKET_TIPI=2 AND CAST(H.TARIH AS date)<=@bit ${f}
+      ORDER BY ISNULL(PC.KOD,''), ISNULL(H.POS_CIHAZI_ID,0), ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
+        const gruplar = new Map();
+        for (const r of res.recordset) {
+            const k = `${r.posId}|${r.paraKod}`, m = Number(r.meblag) || 0, borc = Number(r.tipKod) === 0;
+            const pos = Number(r.posId) ? [r.cihazKod, r.cihazAd].filter(Boolean).join(" — ") || `POS cihazı ${r.posId}` : "POS cihazı belirtilmemiş";
+            if (!gruplar.has(k))
+                gruplar.set(k, { devirBorc: 0, devirAlacak: 0, hareketler: [], ortak: { grupAnahtar: k, grupBaslik: `CİHAZ: ${pos} · ${r.paraKod}`, posCihazi: Number(r.posId) ? (r.cihazKod || String(r.posId)) : "-", paraKod: r.paraKod } });
+            const g = gruplar.get(k);
+            if (r.onceki) {
+                if (borc)
+                    g.devirBorc += m;
+                else
+                    g.devirAlacak += m;
+            }
+            else
+                g.hareketler.push({ ...r, fisNo: String(r.fisNo ?? ""), borc: borc ? m : 0, alacak: borc ? 0 : m });
+        }
+        const satirlar = [], sonBakiyeler = [];
+        for (const g of gruplar.values()) {
+            let bakiye = g.devirBorc - g.devirAlacak, borc = g.devirBorc, alacak = g.devirAlacak;
+            if (g.devirBorc || g.devirAlacak)
+                satirlar.push({ ...g.ortak, fisNo: "", tarih: p.baslangic, cariKod: "", cariAd: "", aciklama: "POS Devir", vezneKod: "", borc: g.devirBorc, alacak: g.devirAlacak, bakiye, devirSatiri: true });
+            for (const h of g.hareketler) {
+                bakiye += h.borc - h.alacak;
+                borc += h.borc;
+                alacak += h.alacak;
+                satirlar.push({ ...g.ortak, ...h, bakiye });
+            }
+            if (g.hareketler.length || g.devirBorc || g.devirAlacak)
+                sonBakiyeler.push({ cihaz: g.ortak.grupBaslik, borc, alacak, sonBakiye: bakiye });
+        }
+        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm cariler"}`, "Yalnızca hareket tipi \"POS / Kredi Kartı\" olan cari hareketler listelenir; POS cihazı ve para birimi bazında gruplanır. Borç = carinin borçlandığı, Alacak = cariden POS ile tahsil edilen tutar; bakiye = borç − alacak (yürüyen). Başlangıç tarihinden önceki hareketler \"POS Devir\" satırında toplanır ve grup toplamına dahildir.", sonBakiyeler);
     },
     /** Vadeli işlem listesi — vadesi olan cari dekontlar (emanet alma / verme, virman); iptal edilenler hariç */
     async VADISL1(pool, p, t) {

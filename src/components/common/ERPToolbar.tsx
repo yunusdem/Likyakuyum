@@ -556,22 +556,22 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
       </div>
 
       {/* Ortadaki Sayfa İkonu, Başlığı ve CenterContent */}
-      <div className="d-flex align-items-center gap-3 px-2 ms-2 me-auto">
+      <div className="d-flex align-items-center gap-2 gap-md-3 px-1 px-md-2 ms-0 ms-sm-2 my-1 my-sm-0 me-auto flex-wrap erp-toolbar-center-section">
         {finalTitle && (
-          <div className="d-flex align-items-center gap-2 erp-toolbar-title-box">
+          <div className="d-flex align-items-center gap-1.5 erp-toolbar-title-box flex-shrink-0">
             <span className="erp-tb-divider d-none d-sm-inline-block" style={{ height: "20px", margin: "0 6px 0 0" }} />
             {finalIcon && (
               <span className="text-primary d-inline-flex align-items-center">
                 {finalIcon}
               </span>
             )}
-            <span className="fw-bold text-dark fs-6" style={{ letterSpacing: "-0.2px" }}>
+            <span className="fw-bold text-dark fs-6 text-nowrap" style={{ letterSpacing: "-0.2px" }}>
               {finalTitle}
             </span>
           </div>
         )}
         {centerContent && (
-          <div className="d-flex align-items-center">
+          <div className="d-flex align-items-center erp-toolbar-center-content" style={{ maxWidth: "100%", overflowX: "auto" }}>
             {centerContent}
           </div>
         )}

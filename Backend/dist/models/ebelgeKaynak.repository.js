@@ -104,8 +104,10 @@ export class EbelgeKaynakRepository {
         AND (@tur IS NULL OR K.belgeTuru=@tur)
         AND (@ilk IS NULL OR K.tarih>=@ilk) AND (@son IS NULL OR K.tarih<DATEADD(day,1,@son))
         AND (K.belgeNo LIKE @arama OR K.unvan LIKE @arama);
-      SELECT COUNT(*) toplam FROM #Kaynak WHERE @durum IS NULL OR durum=@durum;
-      SELECT * FROM #Kaynak WHERE @durum IS NULL OR durum=@durum
+      -- Ekranda tek 'Hatalı' filtresi vardır: gönderilmiş ve gönderilmemiş dışındaki her durum
+      -- (KONTROL_GEREKLI, BELIRSIZ, GONDERILIYOR…) onun altında listelenir. Bkz. docs/ebelge-revizyon.md K6
+      SELECT COUNT(*) toplam FROM #Kaynak WHERE (@durum IS NULL OR durum=@durum OR (@durum='HATA' AND durum NOT IN('GONDERILDI','GONDERILMEDI')));
+      SELECT * FROM #Kaynak WHERE (@durum IS NULL OR durum=@durum OR (@durum='HATA' AND durum NOT IN('GONDERILDI','GONDERILMEDI')))
         ORDER BY tarih DESC,evrakTuru,belgeId DESC,belgeTuru,belgeNo OFFSET @atla ROWS FETCH NEXT 50 ROWS ONLY;
     `);
         return { toplam: result.recordsets[0][0].toplam, kayitlar: result.recordsets[1].map((k) => ({ ...k, ...kaynakSecim(k) })) };

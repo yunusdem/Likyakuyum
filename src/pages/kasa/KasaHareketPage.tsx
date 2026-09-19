@@ -599,13 +599,15 @@ export const KasaHareketPage: React.FC = () => {
                   İşlem Tarihi <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <Form.Control
-                    type="date"
-                    size="sm"
-                    value={tarih}
-                    onChange={(e) => setTarih(e.target.value)}
-                    className="font-monospace"
-                  />
+                  <div style={{ maxWidth: "200px" }}>
+                    <Form.Control
+                      type="date"
+                      size="sm"
+                      value={tarih}
+                      onChange={(e) => setTarih(e.target.value)}
+                      className="font-monospace"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
 
@@ -615,15 +617,17 @@ export const KasaHareketPage: React.FC = () => {
                   İşlem Türü <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <Form.Select
-                    size="sm"
-                    value={tip}
-                    onChange={(e) => setTip(Number(e.target.value))}
-                    className="fw-semibold"
-                  >
-                    <option value={1}>Kasadan Çıkış</option>
-                    <option value={0}>Kasaya Giriş</option>
-                  </Form.Select>
+                  <div style={{ maxWidth: "200px" }}>
+                    <Form.Select
+                      size="sm"
+                      value={tip}
+                      onChange={(e) => setTip(Number(e.target.value))}
+                      className="fw-semibold"
+                    >
+                      <option value={1}>Kasadan Çıkış</option>
+                      <option value={0}>Kasaya Giriş</option>
+                    </Form.Select>
+                  </div>
                 </Col>
               </Form.Group>
 
@@ -633,22 +637,24 @@ export const KasaHareketPage: React.FC = () => {
                   Hesap Seçimi <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      type="text"
-                      readOnly
-                      placeholder=""
-                      value={hesapKod ? `${hesapKod} - ${hesapAd}` : hesapAd}
-                      className="fw-bold bg-light"
-                    />
-                    <Button
-                      variant="outline-secondary"
-                      onClick={() => setShowHesapLookup(true)}
-                      title="Hesap Listesinden Seç (F3)"
-                    >
-                      <IconBinoculars size={16} />
-                    </Button>
-                  </InputGroup>
+                  <div style={{ maxWidth: "200px" }}>
+                    <InputGroup size="sm">
+                      <Form.Control
+                        type="text"
+                        readOnly
+                        placeholder=""
+                        value={hesapKod ? `${hesapKod} - ${hesapAd}` : hesapAd}
+                        className="fw-bold bg-light"
+                      />
+                      <Button
+                        variant="outline-secondary"
+                        onClick={() => setShowHesapLookup(true)}
+                        title="Hesap Listesinden Seç (F3)"
+                      >
+                        <IconBinoculars size={16} />
+                      </Button>
+                    </InputGroup>
+                  </div>
                 </Col>
               </Form.Group>
 
@@ -658,12 +664,14 @@ export const KasaHareketPage: React.FC = () => {
                   Açıklama :
                 </Form.Label>
                 <Col>
-                  <Form.Control
-                    type="text"
-                    size="sm"
-                    value={aciklama}
-                    onChange={(e) => setAciklama(e.target.value)}
-                  />
+                  <div style={{ maxWidth: "200px" }}>
+                    <Form.Control
+                      type="text"
+                      size="sm"
+                      value={aciklama}
+                      onChange={(e) => setAciklama(e.target.value)}
+                    />
+                  </div>
                 </Col>
               </Form.Group>
 
@@ -673,61 +681,63 @@ export const KasaHareketPage: React.FC = () => {
                   Gramaj / Meblağ <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      type="number"
-                      step="any"
-                      value={meblag}
-                      onChange={(e) => handleMeblagChange(e.target.value)}
-                      className="fw-bold font-monospace text-primary text-end allow-full-width"
-                      style={{ minWidth: "120px", flex: "1 1 auto" }}
-                    />
-                    {/* Açılır Para Birimi Kutusu (Kısa ve aşağı oku kaldırılmış) */}
-                    <Form.Select
-                      size="sm"
-                      value={paraId ?? ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (!val) {
-                          setParaId(null);
-                          setParaKod("TL");
-                        } else {
-                          const pId = Number(val);
-                          const matched = lookups.paralar.find((p) => p.id === pId);
-                          if (matched) {
-                            setParaId(matched.id);
-                            setParaKod(matched.kod);
+                  <div style={{ maxWidth: "200px" }}>
+                    <InputGroup size="sm">
+                      <Form.Control
+                        type="number"
+                        step="any"
+                        value={meblag}
+                        onChange={(e) => handleMeblagChange(e.target.value)}
+                        className="fw-bold font-monospace text-primary text-end allow-full-width"
+                        style={{ minWidth: "60px", flex: "1 1 auto" }}
+                      />
+                      {/* Açılır Para Birimi Kutusu (Kısa ve aşağı oku kaldırılmış) */}
+                      <Form.Select
+                        size="sm"
+                        value={paraId ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) {
+                            setParaId(null);
+                            setParaKod("TL");
+                          } else {
+                            const pId = Number(val);
+                            const matched = lookups.paralar.find((p) => p.id === pId);
+                            if (matched) {
+                              setParaId(matched.id);
+                              setParaKod(matched.kod);
+                            }
                           }
-                        }
-                      }}
-                      style={{
-                        width: "56px",
-                        maxWidth: "56px",
-                        minWidth: "56px",
-                        fontWeight: "bold",
-                        backgroundImage: "none",
-                        appearance: "none",
-                        WebkitAppearance: "none",
-                        textAlign: "center",
-                        paddingLeft: "4px",
-                        paddingRight: "4px",
-                      }}
-                      className="bg-light font-monospace text-center flex-shrink-0"
-                    >
-                      {lookups.paralar.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.kod}
-                        </option>
-                      ))}
-                    </Form.Select>
-                    <Button
-                      variant="outline-secondary"
-                      onClick={() => setShowParaLookup(true)}
-                      title="Para Birimi Ara"
-                    >
-                      <IconBinoculars size={15} />
-                    </Button>
-                  </InputGroup>
+                        }}
+                        style={{
+                          width: "54px",
+                          maxWidth: "54px",
+                          minWidth: "54px",
+                          fontWeight: "bold",
+                          backgroundImage: "none",
+                          appearance: "none",
+                          WebkitAppearance: "none",
+                          textAlign: "center",
+                          paddingLeft: "3px",
+                          paddingRight: "3px",
+                        }}
+                        className="bg-light font-monospace text-center flex-shrink-0"
+                      >
+                        {lookups.paralar.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.kod}
+                          </option>
+                        ))}
+                      </Form.Select>
+                      <Button
+                        variant="outline-secondary"
+                        onClick={() => setShowParaLookup(true)}
+                        title="Para Birimi Ara"
+                      >
+                        <IconBinoculars size={15} />
+                      </Button>
+                    </InputGroup>
+                  </div>
                 </Col>
               </Form.Group>
             </Col>
@@ -740,22 +750,24 @@ export const KasaHareketPage: React.FC = () => {
                   Vezne <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <InputGroup size="sm">
-                    <Form.Control
-                      type="text"
-                      readOnly
-                      placeholder=""
-                      value={vezneKod ? `${vezneKod} - ${vezneAd}` : vezneAd}
-                      className="fw-semibold bg-light"
-                    />
-                    <Button
-                      variant="outline-secondary"
-                      onClick={() => setShowVezneLookup(true)}
-                      title="Vezne Seç"
-                    >
-                      <IconBinoculars size={16} />
-                    </Button>
-                  </InputGroup>
+                  <div style={{ maxWidth: "200px" }}>
+                    <InputGroup size="sm">
+                      <Form.Control
+                        type="text"
+                        readOnly
+                        placeholder=""
+                        value={vezneKod ? `${vezneKod} - ${vezneAd}` : vezneAd}
+                        className="fw-semibold bg-light"
+                      />
+                      <Button
+                        variant="outline-secondary"
+                        onClick={() => setShowVezneLookup(true)}
+                        title="Vezne Seç"
+                      >
+                        <IconBinoculars size={16} />
+                      </Button>
+                    </InputGroup>
+                  </div>
                 </Col>
               </Form.Group>
 
@@ -765,7 +777,7 @@ export const KasaHareketPage: React.FC = () => {
                   KDV Oranı (%) :
                 </Form.Label>
                 <Col>
-                  <div className="d-flex align-items-center gap-2">
+                  <div className="d-flex align-items-center gap-2" style={{ maxWidth: "200px" }}>
                     <Form.Control
                       type="number"
                       step="any"
@@ -773,7 +785,7 @@ export const KasaHareketPage: React.FC = () => {
                       value={kdvOrani}
                       onChange={(e) => handleKdvOraniChange(e.target.value)}
                       className="font-monospace text-end"
-                      style={{ maxWidth: "80px" }}
+                      style={{ maxWidth: "55px" }}
                     />
                     <span className="small fw-bold text-secondary flex-shrink-0">Tutar:</span>
                     <Form.Control
@@ -783,6 +795,7 @@ export const KasaHareketPage: React.FC = () => {
                       value={kdvTutari}
                       onChange={(e) => handleKdvTutariChange(e.target.value)}
                       className="font-monospace text-end bg-light fw-semibold"
+                      style={{ maxWidth: "95px" }}
                     />
                   </div>
                 </Col>
@@ -794,13 +807,15 @@ export const KasaHareketPage: React.FC = () => {
                   Toplam Tutar :
                 </Form.Label>
                 <Col>
-                  <Form.Control
-                    type="text"
-                    size="sm"
-                    readOnly
-                    value={`${genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${paraKod}`}
-                    className="fw-bold font-monospace bg-light text-end"
-                  />
+                  <div style={{ maxWidth: "200px" }}>
+                    <Form.Control
+                      type="text"
+                      size="sm"
+                      readOnly
+                      value={`${genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${paraKod}`}
+                      className="fw-bold font-monospace bg-light text-end"
+                    />
+                  </div>
                 </Col>
               </Form.Group>
 

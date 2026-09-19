@@ -796,32 +796,46 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
         {/* 1. Üst ERP Aksiyon Şeridi (Ribbon Toolbar) */}
         <ERPToolbar
-          pageTitle={
-            <div className="d-flex align-items-center flex-wrap gap-2">
-              <span className="fw-bold text-dark fs-6 text-nowrap">Firma Tanımları</span>
-              <div className="vr mx-1 align-self-center text-secondary" style={{ height: "18px", opacity: 0.35 }} />
-              <Nav activeKey={activeTab} onSelect={(k) => setActiveTab(k || "genel")} className="d-flex align-items-center flex-wrap gap-1 border-0" style={{ fontSize: "0.74rem" }}>
-                {companyTabs.map((tab) => {
-                  const isActive = activeTab === tab.key;
-                  return (
-                    <Nav.Item key={tab.key}>
-                      <Nav.Link
-                        eventKey={tab.key}
-                        className={`py-1 px-2 fw-semibold d-flex align-items-center text-nowrap border-0 rounded-0 shadow-none ${isActive ? "text-dark" : "text-secondary"}`}
-                        style={{
-                          background: "transparent",
-                          borderBottom: isActive ? `2.5px solid ${tab.color}` : "2.5px solid transparent",
-                          color: isActive ? "#212529" : "#6c757d",
-                          transition: "border-bottom 0.15s ease",
-                        }}
-                      >
-                        <span style={{ color: tab.color }}>{tab.icon}</span>
-                        <span>{tab.label}</span>
-                      </Nav.Link>
-                    </Nav.Item>
-                  );
-                })}
-              </Nav>
+          pageTitle="Firma Tanımları"
+          pageIcon={<IconBuildingStore size={20} />}
+          centerContent={
+            <div
+              className="d-flex align-items-center gap-1 ms-sm-1 border-start ps-2 overflow-x-auto flex-nowrap erp-toolbar-tab-list"
+              style={{
+                maxWidth: "100%",
+                WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              {companyTabs.map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`btn btn-sm btn-link text-decoration-none px-2 py-1 d-flex align-items-center gap-1 flex-nowrap text-nowrap transition-all ${
+                      isActive ? "text-dark fw-bold" : "text-secondary fw-semibold"
+                    }`}
+                    style={{
+                      border: "none",
+                      borderRadius: 0,
+                      borderBottom: isActive ? `2.5px solid ${tab.color}` : "2.5px solid transparent",
+                      color: isActive ? "#212529" : "#6c757d",
+                      fontSize: "13px",
+                      lineHeight: "1.3",
+                      cursor: "pointer",
+                      paddingBottom: "4px",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span style={{ color: tab.color }}>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
           }
           onSave={() => handleSave()}

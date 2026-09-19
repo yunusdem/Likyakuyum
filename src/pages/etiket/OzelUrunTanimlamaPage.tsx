@@ -1647,6 +1647,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     value={barkod || (grupKodu && urunNo ? `${grupKodu}${format3Digits(urunNo)}` : "")}
                     onChange={(e) => setBarkod(e.target.value)}
                     className="font-monospace fw-bold text-dark bg-white"
+                    style={{ maxWidth: "160px" }}
                   />
                 </div>
               </Col>
@@ -1669,7 +1670,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Mamul Tipi :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "200px" }}>
                       <Form.Control
                         type="text"
                         size="sm"
@@ -1686,7 +1687,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Üretici Firma :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "200px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
@@ -1718,7 +1719,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                           size="sm"
                           value={orjinalKod}
                           onChange={(e) => setOrjinalKod(e.target.value)}
-                          className="font-monospace bg-white flex-grow-1"
+                          className="font-monospace bg-white text-end"
+                          style={{ maxWidth: "150px" }}
                         />
                       </div>
                     </Col>
@@ -1732,7 +1734,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                           size="sm"
                           value={model}
                           onChange={(e) => setModel(e.target.value)}
-                          className="bg-white flex-grow-1"
+                          className="bg-white"
+                          style={{ maxWidth: "160px" }}
                         />
                       </div>
                     </Col>
@@ -1743,7 +1746,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Banko :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "200px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
@@ -1807,7 +1810,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Montür Gr / Ayar :
                     </div>
-                    <div className="flex-grow-1 d-flex align-items-center gap-1.5">
+                    <div className="flex-grow-1 d-flex align-items-center gap-1.5" style={{ maxWidth: "270px" }}>
                       <Form.Control
                         type="text"
                         inputMode="decimal"
@@ -1815,16 +1818,16 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         value={monturGram ?? ""}
                         onChange={(e) => handleMonturGramChange(cleanInputStr(e.target.value))}
                         className="fw-bold font-monospace text-end bg-white"
-                        style={{ maxWidth: "110px" }}
+                        style={{ maxWidth: "105px" }}
                         placeholder="0.00"
                       />
-                      <InputGroup size="sm" className="flex-grow-1">
+                      <InputGroup size="sm" style={{ maxWidth: "160px" }}>
                         <Form.Control
                           type="text"
                           list="ayarListesi"
                           value={ayar}
                           onChange={(e) => handleAyarChange(e.target.value)}
-                          className="bg-white fw-bold font-monospace"
+                          className="bg-white fw-bold font-monospace text-end"
                           placeholder="Ayar seçin / yazın"
                         />
                         <Button
@@ -1902,7 +1905,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Toplam Maliyet :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "220px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
@@ -1935,8 +1938,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Satış Kârı % :
                     </div>
-                    <div className="flex-grow-1">
-                      <InputGroup size="sm" style={{ maxWidth: "140px" }}>
+                    <div style={{ maxWidth: "140px" }}>
+                      <InputGroup size="sm">
                         <Form.Control
                           type="text"
                           inputMode="decimal"
@@ -1954,7 +1957,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Satış Fiyatı :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "220px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
@@ -2034,7 +2037,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   <tr className="text-secondary small border-bottom">
                     <th style={{ width: "35px" }} className="text-center">#</th>
                     <th style={{ width: "17%" }}>Taş Cinsi</th>
-                    <th style={{ width: "65px" }} className="text-center">Adet</th>
+                    <th style={{ width: "65px" }} className="text-end">Adet</th>
                     <th style={{ width: "90px" }} className="text-end">Karat (Ct)</th>
                     <th style={{ width: "70px" }} className="text-center">Renk</th>
                     <th style={{ width: "80px" }} className="text-center">Saflık</th>
@@ -2097,7 +2100,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                             onKeyDown={(e) => handleCellKeyDown(e, idx, 1)}
                             data-grid-row={idx}
                             data-grid-col={1}
-                            className="text-center bg-white py-1 px-1 font-monospace"
+                            className="text-end bg-white py-1 px-1 font-monospace"
                             style={{ fontSize: "12px" }}
                           />
                         </td>

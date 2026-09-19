@@ -1339,6 +1339,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     value={barkod || (grupKodu && urunNo ? `${grupKodu}${format3Digits(urunNo)}` : "")}
                     onChange={(e) => setBarkod(e.target.value)}
                     className="font-monospace fw-bold text-dark bg-white"
+                    style={{ maxWidth: "160px" }}
                   />
                 </div>
               </Col>
@@ -1354,7 +1355,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 <div>
                   <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
                     <IconScale size={18} />
-                    <span>Ürün Özellikleri</span>
+                    <span>Özellikleri</span>
                   </div>
 
                   {/* Ayar */}
@@ -1362,14 +1363,14 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
                       Ayar :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "160px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
                           list="altinAyarListesi"
                           value={ayar}
                           onChange={(e) => handleAyarChange(e.target.value)}
-                          className="fw-bold bg-white"
+                          className="fw-bold bg-white text-end font-monospace"
                           placeholder="Ayar seçin veya yazın"
                         />
                         <Button
@@ -1395,7 +1396,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
                       Üretici Firma :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "200px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
@@ -1420,13 +1421,13 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
                       Orjinal Kod :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "160px" }}>
                       <Form.Control
                         type="text"
                         size="sm"
                         value={orjinalKod}
                         onChange={(e) => setOrjinalKod(e.target.value)}
-                        className="font-monospace bg-white"
+                        className="font-monospace bg-white text-end"
                       />
                     </div>
                   </div>
@@ -1436,7 +1437,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
                       Model :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "200px" }}>
                       <Form.Control
                         type="text"
                         size="sm"
@@ -1452,7 +1453,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
                       Banko :
                     </div>
-                    <div className="flex-grow-1">
+                    <div style={{ maxWidth: "200px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
@@ -1647,7 +1648,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 <div>
                   <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
                     <IconCalculator size={18} />
-                    <span>Miktar ve İşçilik</span>
+                    <span>Miktar / İşçilik</span>
                   </div>
 
                   {/* Miktar & İşçilik Inputları */}
@@ -1920,9 +1921,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                             setSeciliResimIndex(idx);
                             setResim(imgUrl);
                           }}
-                          className={`rounded border p-0.5 cursor-pointer ${
-                            idx === seciliResimIndex ? "border-primary border-2 shadow-sm" : "border-light opacity-75"
-                          }`}
+                          className={`rounded border p-0.5 cursor-pointer ${idx === seciliResimIndex ? "border-primary border-2 shadow-sm" : "border-light opacity-75"
+                            }`}
                           style={{
                             width: "36px",
                             height: "36px",
@@ -2518,13 +2518,12 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       >
         <Modal.Header
           closeButton
-          className={`py-2 px-3 text-white ${
-            modalNotif?.type === "success"
-              ? "bg-success"
-              : modalNotif?.type === "danger"
+          className={`py-2 px-3 text-white ${modalNotif?.type === "success"
+            ? "bg-success"
+            : modalNotif?.type === "danger"
               ? "bg-danger"
               : "bg-warning"
-          }`}
+            }`}
         >
           <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
             {modalNotif?.type === "success" && <IconCheck size={18} />}
@@ -2534,8 +2533,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
               {modalNotif?.type === "success"
                 ? "İşlem Başarılı"
                 : modalNotif?.type === "danger"
-                ? "Hata"
-                : "Bilgi / Uyarı"}
+                  ? "Hata"
+                  : "Bilgi / Uyarı"}
             </span>
           </Modal.Title>
         </Modal.Header>
@@ -2550,8 +2549,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
               modalNotif?.type === "success"
                 ? "success"
                 : modalNotif?.type === "danger"
-                ? "danger"
-                : "primary"
+                  ? "danger"
+                  : "primary"
             }
             size="sm"
             className="px-4 fw-semibold"
@@ -2721,11 +2720,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                 <div
                   key={idx}
                   onClick={() => setSeciliResimIndex(idx)}
-                  className={`rounded border p-0.5 cursor-pointer transition-all ${
-                    idx === seciliResimIndex
-                      ? "border-warning border-2 scale-110 shadow"
-                      : "border-secondary opacity-60 hover-opacity-100"
-                  }`}
+                  className={`rounded border p-0.5 cursor-pointer transition-all ${idx === seciliResimIndex
+                    ? "border-warning border-2 scale-110 shadow"
+                    : "border-secondary opacity-60 hover-opacity-100"
+                    }`}
                   style={{ width: "50px", height: "50px", background: "#fff", cursor: "pointer" }}
                 >
                   <img
@@ -2746,7 +2744,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         onSelect={(selected) => {
           AyarService.getAyarlar(false).then((freshList) => {
             if (freshList && freshList.length > 0) setAyarList(freshList);
-          }).catch(() => {});
+          }).catch(() => { });
           handleAyarChange(selected.ayarKodu || selected.ayarAdi);
           setShowAyarModal(false);
         }}

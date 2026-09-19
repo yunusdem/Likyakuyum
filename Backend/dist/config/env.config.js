@@ -40,8 +40,8 @@ const envSchema = z.object({
         .string()
         .min(16, "JWT_REFRESH_SECRET must be at least 16 characters long")
         .default("kuyumcu_erp_super_secret_refresh_jwt_key_2026_!@#$"),
-    JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
-    JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+    JWT_ACCESS_EXPIRES_IN: z.string().default("30d"),
+    JWT_REFRESH_EXPIRES_IN: z.string().default("90d"),
     RATE_LIMIT_WINDOW_MS: z
         .string()
         .default("60000")

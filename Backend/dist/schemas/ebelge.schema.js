@@ -71,6 +71,10 @@ const satirSchema = z.object({
     /** KDV tevkifatı — oran KDV tutarı üzerinden uygulanır */
     tevkifatKodu: z.string().trim().max(10).optional(),
     tevkifatOrani: z.number().min(0).max(100).optional(),
+    /** Özel matrah — yalnızca OZELMATRAH tipinde; KDV bu tutar üzerinden hesaplanır */
+    ozelMatrahKodu: z.string().trim().max(10).optional(),
+    ozelMatrahGerekcesi: z.string().trim().max(300).optional(),
+    ozelMatrahTutari: z.number().min(0).optional(),
 });
 export const ebelgeDogrulaSchema = z.object({
     belgeNo: z.string().trim().min(1, "Fatura numarası zorunludur."),
@@ -78,7 +82,7 @@ export const ebelgeDogrulaSchema = z.object({
     tarih: ebelgeTarihSchema.optional(),
     saat: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/).optional(),
     senaryo: z.enum(["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"]),
-    faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI", "TEKNOLOJIDESTEK"]),
+    faturaTipi: z.enum(["SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "IHRACKAYITLI", "TEKNOLOJIDESTEK", "TEVKIFATIADE"]),
     paraBirimi: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
     notlar: z.array(z.string().max(1000)).max(10).optional(),
     /** Boş bırakılırsa ayar + TODVZ_TANIM'dan tamamlanır */
@@ -310,3 +314,34 @@ export const ebelgeKaynakListeSchema = z.object({
     sayfa: z.coerce.number().int().min(1).max(100000).default(1),
     baslangicTarihi: kaynakTarih.optional(), bitisTarihi: kaynakTarih.optional(),
 }).refine(v => !v.baslangicTarihi || !v.bitisTarihi || v.baslangicTarihi <= v.bitisTarihi, "Tarih aralığı geçersiz.");
+/** Kod dürbünü (istisna / tevkifat / özel matrah / ihraç kayıtlı) — docs/ebelge-revizyon.md K8 */
+const ebelgeKodTuru = z.enum(["ISTISNA", "TEVKIFAT", "OZELMATRAH", "IHRACKAYITLI"]);
+export const ebelgeKodListeSchema = z.object({ tur: ebelgeKodTuru.optional() });
+export const ebelgeKodEkleSchema = z.object({
+    tur: ebelgeKodTuru,
+    kod: z.string().trim().regex(/^\d{3,4}$/, "Kod 3-4 haneli sayı olmalıdır."),
+    ad: z.string().trim().min(3, "Açıklama en az 3 karakter olmalıdır.").max(300),
+    oran: z.coerce.number().min(0).max(100).nullish(),
+});
+/** Yerel taslak — docs/ebelge-revizyon.md K3. ICERIK formun hâlidir; gönderimde asıl şemalar yeniden doğrular. */
+const yerelTaslakTuru = z.enum(["EArsiv", "EIrsaliye", "EGiderPusulasi", "EMustahsil"]);
+export const ebelgeYerelTaslakListeSchema = z.object({ belgeTuru: yerelTaslakTuru.optional() });
+export const ebelgeYerelTaslakKaydetSchema = z.object({
+    id: z.coerce.number().int().positive().optional(),
+    belgeTuru: yerelTaslakTuru,
+    belgeNo: z.string().trim().max(40).nullish(),
+    aliciVkn: z.string().trim().max(11).nullish(),
+    aliciUnvan: z.string().trim().max(300).nullish(),
+    tutar: z.coerce.number().finite().nullish(),
+    paraBirimi: z.string().trim().max(10).nullish(),
+    icerik: z.record(z.string(), z.unknown()),
+}).refine((v) => JSON.stringify(v.icerik).length <= 500_000, "Taslak içeriği çok büyük.");
+/** KNSK (kamu nüfuzuna sahip kişi) — docs/ebelge-revizyon.md K9 */
+const knskVkn = z.string().trim().regex(/^\d{10,11}$/, "VKN 10, TCKN 11 haneli olmalıdır.");
+export const ebelgeKnskVknSchema = z.object({ vkn: knskVkn });
+export const ebelgeKnskListeSchema = z.object({ yaklasan: z.enum(["0", "1"]).optional() });
+export const ebelgeKnskOnaySchema = z.object({
+    vknTckn: knskVkn,
+    ad: z.string().trim().max(300).nullish(),
+    aciklama: z.string().trim().max(500).nullish(),
+});

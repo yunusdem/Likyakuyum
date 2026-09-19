@@ -956,6 +956,77 @@ export const CariCardRegistrationPage: React.FC = () => {
         onRefresh={() => loadData(isEditPage ? selectedIndex : undefined)}
         onClear={handleClear}
         disabled={isLoading || isSaving}
+        centerContent={
+          <div
+            className="d-flex align-items-center gap-1 ms-sm-1 border-start ps-2 overflow-x-auto flex-nowrap erp-toolbar-tab-list"
+            style={{
+              maxWidth: "100%",
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+          >
+            {[
+              {
+                key: "general",
+                label: "Temel",
+                icon: <IconBuildingStore size={15} />,
+                hasError: !!(fieldErrors.kod || fieldErrors.ad || fieldErrors.vergiKimlikNo || fieldErrors.cariBakiyeSiniri),
+              },
+              {
+                key: "contact",
+                label: "İletişim",
+                icon: <IconMapPin size={15} />,
+                hasError: !!(fieldErrors.telefon || fieldErrors.eposta),
+              },
+              {
+                key: "personal",
+                label: "Nüfus",
+                icon: <IconIdBadge2 size={15} />,
+                hasError: false,
+              },
+              {
+                key: "corporate",
+                label: "E-MASAK",
+                icon: <IconFileCertificate size={15} />,
+                hasError: !!fieldErrors.yetkiliKimlikNo,
+              },
+              {
+                key: "settings",
+                label: "Fiş",
+                icon: <IconReceipt2 size={15} />,
+                hasError: !!fieldErrors.vekilKimlikNo,
+              },
+            ].map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`btn btn-sm btn-link text-decoration-none px-2 py-1 d-flex align-items-center gap-1 flex-nowrap text-nowrap transition-all ${
+                    isActive ? "text-primary fw-bold" : "text-secondary fw-semibold"
+                  }`}
+                  style={{
+                    border: "none",
+                    borderRadius: 0,
+                    borderBottom: isActive ? "2.5px solid var(--bs-primary, #0d6efd)" : "2.5px solid transparent",
+                    fontSize: "13px",
+                    lineHeight: "1.3",
+                    cursor: "pointer",
+                    paddingBottom: "3px",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                  {tab.hasError && <span className="badge bg-danger p-1" style={{ fontSize: "9px" }}>!</span>}
+                </button>
+              );
+            })}
+          </div>
+        }
       />
 
       {/* Bildirimler: sayfa dışı, sağ altta sabit konumlu, yer kaplamaz; çarpıya basınca veya bir süre sonra kapanır */}
@@ -982,47 +1053,11 @@ export const CariCardRegistrationPage: React.FC = () => {
         <Card.Body className="p-3 p-md-4">
           <div className="w-100">
             <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || "general")}>
-              <Nav variant="pills" className="mb-4 gap-1 bg-light p-1.5 rounded-3 border">
-                <Nav.Item>
-                  <Nav.Link eventKey="general" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconBuildingStore size={15} /> Temel
-                    {(fieldErrors.kod || fieldErrors.ad || fieldErrors.vergiKimlikNo || fieldErrors.cariBakiyeSiniri) && (
-                      <span className="badge bg-danger ms-1 p-1">!</span>
-                    )}
-                  </Nav.Link>
-                </Nav.Item>
-                <Nav.Item>
-                  <Nav.Link eventKey="contact" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconMapPin size={15} /> İletişim
-                    {(fieldErrors.telefon || fieldErrors.eposta) && (
-                      <span className="badge bg-danger ms-1 p-1">!</span>
-                    )}
-                  </Nav.Link>
-                </Nav.Item>
-                <Nav.Item>
-                  <Nav.Link eventKey="personal" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconIdBadge2 size={15} /> Nüfus
-                  </Nav.Link>
-                </Nav.Item>
-                <Nav.Item>
-                  <Nav.Link eventKey="corporate" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconFileCertificate size={15} /> E-MASAK
-                    {fieldErrors.yetkiliKimlikNo && <span className="badge bg-danger ms-1 p-1">!</span>}
-                  </Nav.Link>
-                </Nav.Item>
-                <Nav.Item>
-                  <Nav.Link eventKey="settings" className="py-1.5 px-3 small d-flex align-items-center gap-1.5">
-                    <IconReceipt2 size={15} /> Fiş
-                    {fieldErrors.vekilKimlikNo && <span className="badge bg-danger ms-1 p-1">!</span>}
-                  </Nav.Link>
-                </Nav.Item>
-              </Nav>
-
               <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
                 <Tab.Content>
                   {/* TAB 1: Temel & Kimlik */}
                   <Tab.Pane eventKey="general">
-                    <div style={{ maxWidth: "460px" }}>
+                    <div style={{ maxWidth: "390px" }}>
                       <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
                         <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                           Cari Kodu
@@ -1101,7 +1136,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           isInvalid={!!fieldErrors.vergiKimlikNo}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleInputChange("vergiKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                          className="font-monospace"
+                          className="font-monospace text-end"
                         />
                         {fieldErrors.vergiKimlikNo && (
                           <div className="text-danger small mt-1">{fieldErrors.vergiKimlikNo}</div>
@@ -1177,6 +1212,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                             const cleaned = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
                             handleInputChange("cariBakiyeSiniri", cleaned === "" ? null : parseFloat(cleaned) || 0);
                           }}
+                          className="font-monospace text-end"
                         />
                         {fieldErrors.cariBakiyeSiniri && (
                           <div className="text-danger small mt-1">{fieldErrors.cariBakiyeSiniri}</div>
@@ -1228,7 +1264,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 2: İletişim & Adres */}
                   <Tab.Pane eventKey="contact">
-                    <div style={{ maxWidth: "460px" }}>
+                    <div style={{ maxWidth: "390px" }}>
                     {/* Cascading Ülke -> İl -> İlçe Seçimi (country-state-city kütüphanesi) & Otomatik Uyruk */}
                     <CountryStateCitySelect
                       countryCode={selectedCountryIso}
@@ -1289,6 +1325,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                             );
                             handleInputChange("postaKoduId", match ? match.id : null);
                           }}
+                          className="font-monospace text-end"
                         />
                         <datalist id="posta-kodu-onerileri">
                           {lookups.postaKoduList.map((pk) => (
@@ -1331,6 +1368,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           isInvalid={!!fieldErrors.telefon}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleInputChange("telefon", e.target.value.replace(/\D/g, "").slice(0, 15))}
+                          className="font-monospace text-end"
                         />
                         {fieldErrors.telefon && (
                           <div className="text-danger small mt-1">{fieldErrors.telefon}</div>
@@ -1378,7 +1416,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 3: Nüfus & Şahıs */}
                   <Tab.Pane eventKey="personal">
-                    <div style={{ maxWidth: "480px" }}>
+                    <div style={{ maxWidth: "410px" }}>
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
                       <Form.Label column style={labelColStylePersonal} className="small fw-semibold text-secondary text-start text-nowrap">
                         Baba Adı
@@ -1448,6 +1486,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           value={formData.kimlikSeriNo || ""}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleInputChange("kimlikSeriNo", e.target.value)}
+                          className="font-monospace"
                         />
                       </Col>
                     </Form.Group>
@@ -1463,6 +1502,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           value={formData.pasaportNo || ""}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleInputChange("pasaportNo", e.target.value)}
+                          className="font-monospace"
                         />
                       </Col>
                     </Form.Group>
@@ -1554,7 +1594,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 4: E-Dönüşüm & MASAK */}
                   <Tab.Pane eventKey="corporate">
-                    <div style={{ maxWidth: "560px" }}>
+                    <div style={{ maxWidth: "420px" }}>
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
                       <Form.Label column style={labelColStyleCorporate} className="small fw-semibold text-secondary text-start text-nowrap">
                         E-Fatura Posta Kutusu
@@ -1636,7 +1676,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           isInvalid={!!fieldErrors.yetkiliKimlikNo}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleInputChange("yetkiliKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                          className="font-monospace"
+                          className="font-monospace text-end"
                         />
                         {fieldErrors.yetkiliKimlikNo && (
                           <div className="text-danger small mt-1">{fieldErrors.yetkiliKimlikNo}</div>
@@ -1719,7 +1759,7 @@ export const CariCardRegistrationPage: React.FC = () => {
 
                   {/* TAB 5: Fiş & İstatistik & Vekil Eşleştirmeleri */}
                   <Tab.Pane eventKey="settings">
-                    <div style={{ maxWidth: "560px" }}>
+                    <div style={{ maxWidth: "435px" }}>
                     <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
                       <Form.Label column style={labelColStyleSettings} className="small fw-semibold text-secondary text-start text-nowrap">
                         Varsayılan Alış İstatistiği
@@ -1881,7 +1921,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           isInvalid={!!fieldErrors.vekilKimlikNo}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleInputChange("vekilKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                          className="font-monospace"
+                          className="font-monospace text-end"
                         />
                         {fieldErrors.vekilKimlikNo && (
                           <div className="text-danger small mt-1">{fieldErrors.vekilKimlikNo}</div>

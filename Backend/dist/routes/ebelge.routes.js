@@ -44,6 +44,17 @@ router.post("/gelen/:uuid/statu", EbelgeController.gelenStatuIsle);
 router.post("/giden/dogrula", EbelgeController.dogrulaGidenBelge);
 router.get("/giden/son-belge-no", EbelgeController.getSonBelgeNo);
 router.get("/mukellef", EbelgeController.mukellefSorgula);
+router.get("/yerel-taslak", EbelgeController.yerelTaslakListe);
+router.get("/yerel-taslak/:id", EbelgeController.yerelTaslakGetir);
+router.post("/yerel-taslak", EbelgeController.yerelTaslakKaydet);
+router.delete("/yerel-taslak/:id", EbelgeController.yerelTaslakSil);
+router.get("/knsk", EbelgeController.knskListe);
+// TCKN adres çubuğuna ve erişim loglarına düşmesin diye gövdede taşınır
+router.post("/knsk/sorgula", EbelgeController.knskGetir);
+router.post("/knsk", EbelgeController.knskOnayla);
+router.post("/knsk/kaldir", EbelgeController.knskKaldir);
+router.get("/kodlar", EbelgeController.kodListe);
+router.post("/kodlar", EbelgeController.kodEkle);
 router.get("/alici-adres", EbelgeController.aliciAdresleri);
 router.get("/giden", EbelgeController.listGiden);
 // Taslak oluşturma / iptal — ICE'de kayıt oluşturur ama GİB'e GİTMEZ.

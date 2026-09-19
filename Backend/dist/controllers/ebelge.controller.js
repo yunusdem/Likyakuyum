@@ -4,6 +4,12 @@ import { ApiError } from "../utils/ApiError.js";
 import { EbelgeService } from "../services/ebelge.service.js";
 import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
+import { EbelgeKodRepository } from "../models/ebelgeKod.repository.js";
+import { EbelgeTaslakRepository } from "../models/ebelgeTaslak.repository.js";
+import { EbelgeKnskRepository, KNSK_UYARI_GUN } from "../models/ebelgeKnsk.repository.js";
+import { ebelgeKnskVknSchema, ebelgeKnskListeSchema, ebelgeKnskOnaySchema } from "../schemas/ebelge.schema.js";
+import { ebelgeYerelTaslakListeSchema, ebelgeYerelTaslakKaydetSchema } from "../schemas/ebelge.schema.js";
+import { ebelgeKodListeSchema, ebelgeKodEkleSchema } from "../schemas/ebelge.schema.js";
 import { ebelgeKaynakKimlikSchema, ebelgeKaynakGonderSchema, ebelgeKaynakListeSchema, ebelgeMustahsilSchema } from "../schemas/ebelge.schema.js";
 import { ebelgeAyarSchema, ebelgeDogrulaSchema, ebelgeTaslakSchema, ebelgeTarihSchema, ebelgeArsivSenkronizeSchema, ebelgeArsivListeSchema, ebelgeArsivStatuSchema, ebelgeGiderPusulasiSchema, ebelgeIrsaliyeSchema, } from "../schemas/ebelge.schema.js";
 import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
@@ -67,6 +73,71 @@ export class EbelgeController {
         if (!/^[0-9a-f-]{36}$/i.test(uuid) || Number.isNaN(tarih.getTime()))
             throw ApiError.badRequest("ETTN veya iptal tarihi geçersiz.");
         return ApiResponse.ok(res, "e-Döviz iptal edildi.", await EbelgeKaynakService.dovizIptal(uuid, tarih, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req)));
+    });
+    static kodListe = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKodListeSchema.safeParse(req.query);
+        if (!parsed.success)
+            throw ApiError.badRequest("Kod türü geçersiz.", parsed.error.format());
+        return ApiResponse.ok(res, "Kodlar listelendi.", await EbelgeKodRepository.list(parsed.data.tur, EbelgeController.getDbContext(req)));
+    });
+    static kodEkle = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKodEkleSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest(parsed.error.issues[0]?.message || "Kod bilgisi geçersiz.", parsed.error.format());
+        return ApiResponse.ok(res, "Kod eklendi.", await EbelgeKodRepository.ekle(parsed.data, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req)));
+    });
+    static yerelTaslakListe = asyncHandler(async (req, res) => {
+        const parsed = ebelgeYerelTaslakListeSchema.safeParse(req.query);
+        if (!parsed.success)
+            throw ApiError.badRequest("Belge türü geçersiz.", parsed.error.format());
+        return ApiResponse.ok(res, "Yerel taslaklar listelendi.", await EbelgeTaslakRepository.list(parsed.data.belgeTuru, EbelgeController.getDbContext(req)));
+    });
+    static yerelTaslakGetir = asyncHandler(async (req, res) => {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0)
+            throw ApiError.badRequest("Taslak numarası geçersiz.");
+        return ApiResponse.ok(res, "Taslak alındı.", await EbelgeTaslakRepository.get(id, EbelgeController.getDbContext(req)));
+    });
+    static yerelTaslakKaydet = asyncHandler(async (req, res) => {
+        const parsed = ebelgeYerelTaslakKaydetSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest(parsed.error.issues[0]?.message || "Taslak bilgisi geçersiz.", parsed.error.format());
+        return ApiResponse.ok(res, "Taslak kaydedildi.", await EbelgeTaslakRepository.kaydet(parsed.data, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req)));
+    });
+    static yerelTaslakSil = asyncHandler(async (req, res) => {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0)
+            throw ApiError.badRequest("Taslak numarası geçersiz.");
+        await EbelgeTaslakRepository.sil(id, EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "Taslak silindi.", { id });
+    });
+    static knskListe = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKnskListeSchema.safeParse(req.query);
+        if (!parsed.success)
+            throw ApiError.badRequest("KNSK filtresi geçersiz.", parsed.error.format());
+        const kayitlar = await EbelgeKnskRepository.list(parsed.data.yaklasan === "1", EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "KNSK kayıtları listelendi.", { uyariGun: KNSK_UYARI_GUN, kayitlar });
+    });
+    static knskGetir = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKnskVknSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest(parsed.error.issues[0]?.message || "Numara geçersiz.");
+        const kayit = await EbelgeKnskRepository.get(parsed.data.vkn, EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, kayit ? "KNSK kaydı bulundu." : "KNSK kaydı yok.", { uyariGun: KNSK_UYARI_GUN, kayit });
+    });
+    static knskOnayla = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKnskOnaySchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest(parsed.error.issues[0]?.message || "KNSK bilgisi geçersiz.", parsed.error.format());
+        const kayit = await EbelgeKnskRepository.onayla(parsed.data, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "KNSK kaydı onaylandı.", { uyariGun: KNSK_UYARI_GUN, kayit });
+    });
+    static knskKaldir = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKnskVknSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest(parsed.error.issues[0]?.message || "Numara geçersiz.");
+        await EbelgeKnskRepository.kaldir(parsed.data.vkn, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "KNSK işareti kaldırıldı.", { vknTckn: parsed.data.vkn });
     });
     static getDbContext(req) {
         return {
