@@ -5,6 +5,7 @@ import { IconSend, IconAlertTriangle, IconMail, IconPrinter } from "@tabler/icon
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import EBelgeArsivPanel from "./EBelgeArsivPanel";
+import EBelgeYerelTaslaklar from "./EBelgeYerelTaslaklar";
 import {
   EbelgeGidenSatiri,
   ebelgeGidenDurumRozet,
@@ -45,11 +46,10 @@ const EBelgeGidenPage: React.FC = () => {
   const [bitisTarihi, setBitisTarihi] = useState("");
   const [secimler, setSecimler] = useState<string[]>([]);
   const [topluBusy, setTopluBusy] = useState(false);
-  const [topluOnay, setTopluOnay] = useState(false);
   const [islemSonuclari, setIslemSonuclari] = useState<Record<string, string>>({});
   const seciliTaslaklar = kayitlar.filter(s => secimler.includes(s.uuid) && s.belgeTuru === "EFatura" && s.gonderimDurumu === "TASLAK");
   const topluGonder = async () => {
-    setTopluBusy(true); setTopluOnay(false);
+    setTopluBusy(true);
     for (const satir of seciliTaslaklar) {
       setIslemSonuclari(o => ({ ...o, [satir.uuid]: "Gönderiliyor…" }));
       try {
@@ -66,8 +66,7 @@ const EBelgeGidenPage: React.FC = () => {
 
   // İptal (çöp kovası) butonu yönetici isteğiyle kaldırıldı (14.09.2026); iptal bildirimi bu ekrandan yapılmaz.
 
-  // Taslak onayı (GİB'e gönderim) — iki adımlı onay
-  const [onaylanacak, setOnaylanacak] = useState<EbelgeGidenSatiri | null>(null);
+  // Taslak onayı (GİB'e gönderim) — ara onay kartı kaldırıldı, düğme doğrudan gönderir (docs/ebelge-revizyon.md K5)
   const [onaylaniyor, setOnaylaniyor] = useState<boolean>(false);
 
   // E-posta gönderimi — iki adımlı onay
@@ -107,8 +106,8 @@ const EBelgeGidenPage: React.FC = () => {
     }
   };
 
-  const taslagiOnayla = async () => {
-    if (!onaylanacak) return;
+  const taslagiOnayla = async (onaylanacak: EbelgeGidenSatiri) => {
+    if (onaylaniyor) return;
     setOnaylaniyor(true);
     setAlertInfo(null);
     try {
@@ -117,7 +116,6 @@ const EBelgeGidenPage: React.FC = () => {
         type: "success",
         message: `${sonuc.belgeNo} onaylandı ve GİB'e gönderildi. ${sonuc.mesaj}`.trim(),
       });
-      setOnaylanacak(null);
       await listeYukle(sayfa);
     } catch (err: any) {
       setAlertInfo({ type: "danger", message: err?.message || "Taslak onaylanamadı." });
@@ -212,7 +210,7 @@ const EBelgeGidenPage: React.FC = () => {
         setKayitlar(sonuc.kayitlar);
         setToplam(sonuc.toplam);
         setSayfa(hedefSayfa);
-        setSecimler([]); setTopluOnay(false);
+        setSecimler([]);
       } catch (err: any) {
         setAlertInfo({ type: "danger", message: err?.message || "Liste alınamadı." });
       } finally {
@@ -307,40 +305,11 @@ const EBelgeGidenPage: React.FC = () => {
         </Card>
       )}
 
-      {onaylanacak && (
-        <Card className="shadow-sm border rounded-3 overflow-hidden mb-3" style={{ borderColor: "#dc2626" }}>
-          <Card.Body className="p-3 bg-body">
-            <Alert variant="danger" className="py-2 px-3 mb-2 border rounded shadow-2xs small">
-              <IconAlertTriangle size={15} className="me-1" />
-              <strong>{onaylanacak.belgeNo}</strong> numaralı taslak onaylanıp{" "}
-              <strong>GİB'e gönderilecek</strong>. Bu işlem <strong>geri alınamaz</strong>; belge
-              artık iptal edilemez, düzeltme için alıcının red cevabı ya da iade faturası gerekir.
-              <br />
-              Alıcı: <strong>{onaylanacak.aliciUnvan || onaylanacak.aliciVkn}</strong> · Tutar:{" "}
-              <strong>{ebelgeTutar(onaylanacak.tutar, onaylanacak.paraBirimi)}</strong>
-            </Alert>
-            <div className="d-flex gap-2">
-              <Button size="sm" variant="danger" onClick={taslagiOnayla} disabled={onaylaniyor}>
-                {onaylaniyor ? <Spinner animation="border" size="sm" className="me-1" /> : null}
-                Evet, onayla ve GİB'e gönder
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setOnaylanacak(null)}
-                disabled={onaylaniyor}
-              >
-                Vazgeç
-              </Button>
-            </div>
-          </Card.Body>
-        </Card>
-      )}
-
       <Button size="sm" variant="outline-secondary" className="mb-3" onClick={() => setArsivAcik(!arsivAcik)}>
         {arsivAcik ? "ICE arşivini gizle" : "ICE arşivini aç"}
       </Button>
       {arsivAcik && <EBelgeArsivPanel />}
+      {(durum === "TASLAK" || durum === "TUMU") && <EBelgeYerelTaslaklar />}
 
       {detay && <Card className="mb-3"><Card.Body>
         <div className="d-flex justify-content-between"><strong>{detay.belgeNo} — Rapor ve e-posta durumu</strong>
@@ -424,13 +393,8 @@ const EBelgeGidenPage: React.FC = () => {
           <div className="d-flex gap-2 align-items-center mb-2">
             <Button size="sm" disabled={topluBusy || yukleniyor || !kayitlar.length} onClick={() => setSecimler(secimler.length === kayitlar.length ? [] : kayitlar.map(s => s.uuid))}>Sayfadakileri seç / kaldır</Button>
             <span className="small">{secimler.length} seçili · {seciliTaslaklar.length} gönderilebilir taslak</span>
-            <Button size="sm" disabled={topluBusy || !seciliTaslaklar.length} onClick={() => setTopluOnay(true)}>Seçili taslakları gönder</Button>
+            <Button size="sm" disabled={topluBusy || !seciliTaslaklar.length} onClick={topluGonder}>Seçili taslakları gönder</Button>
           </div>
-          {topluOnay && <Alert variant="warning">
-            {seciliTaslaklar.map(s => s.belgeNo).join(", ")} belgeleri GİB'e gönderilecek.
-            <Button className="ms-2" size="sm" onClick={topluGonder}>Gönderimi onayla</Button>
-            <Button className="ms-2" size="sm" variant="secondary" onClick={() => setTopluOnay(false)}>Vazgeç</Button>
-          </Alert>}
           <div className="d-flex align-items-center justify-content-between mb-2">
             <span className="fw-semibold" style={{ fontSize: "13px" }}>
               Giden Belgeler
@@ -547,9 +511,10 @@ const EBelgeGidenPage: React.FC = () => {
                               className="p-0 me-2"
                               style={{ color: "#0284c7" }}
                               title="Taslağı onayla ve GİB'e gönder"
+                              disabled={onaylaniyor || topluBusy}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setOnaylanacak(satir);
+                                void taslagiOnayla(satir);
                               }}
                             >
                               <IconSend size={16} />

@@ -1,7 +1,7 @@
 {
   "kod": "FISLIS1",
   "ad": "Fiş Listeleme",
-  "aciklama": "Alış / satış fişleri, fiş başına tek satır; vezne bazında gruplu, komisyon ve vergi toplamlarıyla.",
+  "aciklama": "Tarih aralığındaki fiş satırları: para, vezne, seri / belge no, miktar, kur, KMV ve lira tutarı; gün bazında ara toplam, rapor sonunda para bazında toplam.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -46,20 +46,66 @@
       "bicim": "tarihSaat"
     },
     {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "seriNo",
+      "baslik": "Seri no",
+      "g": 1.5
+    },
+    {
       "anahtar": "belgeNo",
       "baslik": "Belge no",
-      "g": 1.8
+      "g": 2
     },
     {
       "anahtar": "tip",
       "baslik": "Tip",
       "g": 0.8,
-      "hiza": "center"
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.3,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Lira",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
     },
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 3.4
+      "g": 3.4,
+      "pdf": false
     },
     {
       "anahtar": "kimlikNo",
@@ -77,44 +123,20 @@
       "anahtar": "istatistikKod",
       "baslik": "İst.",
       "g": 0.8,
-      "hiza": "center"
-    },
-    {
-      "anahtar": "paralar",
-      "baslik": "Paralar",
-      "g": 1.6
-    },
-    {
-      "anahtar": "satirSayisi",
-      "baslik": "Satır",
-      "g": 0.7,
-      "bicim": "tam",
+      "hiza": "center",
       "pdf": false
-    },
-    {
-      "anahtar": "toplamTutar",
-      "baslik": "Toplam tutar",
-      "g": 2.1,
-      "bicim": "sayi",
-      "toplam": true
     },
     {
       "anahtar": "komisyon",
       "baslik": "Komisyon",
       "g": 1.6,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "bmv",
       "baslik": "BSMV",
-      "g": 1.4,
-      "bicim": "sayi",
-      "toplam": true
-    },
-    {
-      "anahtar": "kmv",
-      "baslik": "KMV",
       "g": 1.4,
       "bicim": "sayi",
       "toplam": true,
@@ -129,16 +151,91 @@
       "pdf": false
     },
     {
+      "anahtar": "toplamTutar",
+      "baslik": "Toplam tutar",
+      "g": 2.1,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
       "anahtar": "odemeTutari",
       "baslik": "Ödeme tutarı",
       "g": 2.1,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     }
   ],
   "grup": {
-    "anahtar": "vezneBaslik",
-    "baslik": "{{vezneBaslik}}",
+    "anahtar": "gunBaslik",
+    "baslik": "{{gunBaslik}}",
     "altToplam": true
+  },
+  "dipnot": "Miktar toplamı farklı para birimlerini birlikte içerebilir; para bazında toplam rapor sonundaki tablodadır.",
+  "ozet": {
+    "baslik": "GENEL TOPLAM — para bazında",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "tip",
+        "baslik": "Tip",
+        "g": 0.9,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Fiş adedi",
+        "g": 1,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "satirAdedi",
+        "baslik": "Satır",
+        "g": 0.9,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "miktar",
+        "baslik": "Miktar",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "ortKur",
+        "baslik": "Ort. kur",
+        "g": 1.4,
+        "bicim": "kur"
+      },
+      {
+        "anahtar": "tutar",
+        "baslik": "Lira",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "kmv",
+        "baslik": "KMV",
+        "g": 1.5,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "komisyon",
+        "baslik": "Komisyon",
+        "g": 1.5,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "bmv",
+        "baslik": "BSMV",
+        "g": 1.5,
+        "bicim": "sayi"
+      }
+    ]
   }
 }

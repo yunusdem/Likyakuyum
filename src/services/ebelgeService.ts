@@ -142,7 +142,65 @@ export type EbelgeFaturaTipi =
   | "ISTISNA"
   | "OZELMATRAH"
   | "IHRACKAYITLI"
-  | "TEKNOLOJIDESTEK";
+  | "TEKNOLOJIDESTEK"
+  | "TEVKIFATIADE";
+
+/** Form modu: alıcı e-Fatura mükellefiyse EFATURA, değilse EARSIV. Senaryo listesi moda göre değişir. */
+export type EbelgeFormModu = "EFATURA" | "EARSIV";
+export const ebelgeFormModu = (s: EbelgeSenaryo): EbelgeFormModu => (s === "EARSIVFATURA" ? "EARSIV" : "EFATURA");
+
+/** ICE portalindeki sıra ve adlarla. Yalnızca üretecin desteklediği senaryolar listelenir (docs/ebelge-revizyon.md K1). */
+export const EBELGE_SENARYOLAR: Record<EbelgeFormModu, { kod: EbelgeSenaryo; ad: string }[]> = {
+  EFATURA: [
+    { kod: "TEMELFATURA", ad: "Temel Fatura" },
+    { kod: "TICARIFATURA", ad: "Ticari Fatura" },
+    { kod: "KAMU", ad: "Kamu Fatura" },
+    { kod: "YATIRIMTESVIK", ad: "Yatırım Teşvik" },
+  ],
+  EARSIV: [{ kod: "EARSIVFATURA", ad: "E-Arşiv" }],
+};
+
+const TIP_ADLARI: Record<EbelgeFaturaTipi, string> = {
+  SATIS: "Satış", IADE: "İade", TEVKIFAT: "Tevkifat", ISTISNA: "İstisna",
+  OZELMATRAH: "Özel Matrah", IHRACKAYITLI: "İhraç Kayıtlı", TEKNOLOJIDESTEK: "Teknoloji Destek",
+  TEVKIFATIADE: "Tevkifat İade",
+};
+const tipler = (...k: EbelgeFaturaTipi[]) => k.map((kod) => ({ kod, ad: TIP_ADLARI[kod] }));
+/**
+ * Senaryoya göre seçilebilir fatura tipleri (docs/ebelge-revizyon.md K2).
+ * İade ve tevkifat iade TICARIFATURA profilinde kullanılamaz. İhraç kayıtlı, doğrulanmış örnek UBL gelene kadar listede yoktur.
+ */
+export const EBELGE_FATURA_TIPLERI: Record<EbelgeSenaryo, { kod: EbelgeFaturaTipi; ad: string }[]> = {
+  TEMELFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "TEVKIFATIADE"),
+  TICARIFATURA: tipler("SATIS", "TEVKIFAT", "ISTISNA", "OZELMATRAH"),
+  KAMU: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH", "TEVKIFATIADE"),
+  YATIRIMTESVIK: tipler("SATIS", "IADE", "ISTISNA"),
+  EARSIVFATURA: tipler("SATIS", "IADE", "TEVKIFAT", "ISTISNA", "OZELMATRAH"),
+};
+
+/** KNSK (kamu nüfuzuna sahip kişi) — docs/ebelge-revizyon.md K9. Onay 1 yıl geçerlidir. */
+export interface EbelgeKnskKaydi {
+  vknTckn: string; ad: string | null; aciklama: string | null; kayitTarihi: string; sonOnayTarihi: string;
+  bitisTarihi: string; /** Bitişe kalan gün; süresi dolmuşsa negatif */ kalanGun: number; onaylayan: string | null;
+}
+
+/** GİB kod listeleri — docs/ebelge-revizyon.md K8 */
+export type EbelgeKodTuru = "ISTISNA" | "TEVKIFAT" | "OZELMATRAH" | "IHRACKAYITLI";
+export interface EbelgeKod { tur: EbelgeKodTuru; kod: string; ad: string; oran: number | null; sistem: boolean }
+
+/** Yerel taslak (ICE'de taslak metodu olmayan belge türleri) — docs/ebelge-revizyon.md K3 */
+export type EbelgeYerelTaslakTuru = "EArsiv" | "EIrsaliye" | "EGiderPusulasi" | "EMustahsil";
+export interface EbelgeYerelTaslak {
+  id: number; belgeTuru: EbelgeYerelTaslakTuru; belgeNo: string | null; aliciVkn: string | null; aliciUnvan: string | null;
+  tutar: number | null; paraBirimi: string | null; olusturan: string | null; olusturmaTarihi: string; guncellemeTarihi: string;
+}
+/** Yerel taslağın açılacağı form */
+export const EBELGE_YEREL_TASLAK_FORMU: Record<EbelgeYerelTaslakTuru, { ad: string; yol: string }> = {
+  EArsiv: { ad: "e-Arşiv", yol: "/e-belge/dogrula" },
+  EIrsaliye: { ad: "e-İrsaliye", yol: "/e-belge/irsaliye" },
+  EGiderPusulasi: { ad: "e-Gider", yol: "/e-belge/gider" },
+  EMustahsil: { ad: "e-Müstahsil", yol: "/e-belge/mustahsil" },
+};
 
 export interface EbelgeTaraf {
   vknTckn: string;
@@ -171,6 +229,10 @@ export interface EbelgeSatir {
   /** KDV tevkifatı — oran KDV tutarı üzerinden uygulanır */
   tevkifatKodu?: string;
   tevkifatOrani?: number;
+  /** Özel matrah — yalnızca OZELMATRAH tipinde; KDV satır tutarı yerine bu tutar üzerinden hesaplanır */
+  ozelMatrahKodu?: string;
+  ozelMatrahGerekcesi?: string;
+  ozelMatrahTutari?: number;
 }
 
 export interface EbelgeDogrulaIstegi {
@@ -550,6 +612,36 @@ export const ebelgeService = {
   async mukellefSorgula(vkn: string): Promise<EbelgeMukellefSonucu> {
     const res = await apiClient.get<EbelgeMukellefSonucu>("/e-belge/mukellef", { vkn });
     return res.data;
+  },
+
+  async yerelTaslakListe(belgeTuru?: EbelgeYerelTaslakTuru): Promise<EbelgeYerelTaslak[]> {
+    return (await apiClient.get<EbelgeYerelTaslak[]>("/e-belge/yerel-taslak", belgeTuru ? { belgeTuru } : undefined)).data;
+  },
+  async yerelTaslakGetir<T = Record<string, unknown>>(id: number): Promise<EbelgeYerelTaslak & { icerik: T }> {
+    return (await apiClient.get<EbelgeYerelTaslak & { icerik: T }>(`/e-belge/yerel-taslak/${id}`)).data;
+  },
+  async yerelTaslakKaydet(t: { id?: number; belgeTuru: EbelgeYerelTaslakTuru; belgeNo?: string | null; aliciVkn?: string | null;
+    aliciUnvan?: string | null; tutar?: number | null; paraBirimi?: string | null; icerik: Record<string, unknown> }): Promise<{ id: number }> {
+    return (await apiClient.post<{ id: number }>("/e-belge/yerel-taslak", t)).data;
+  },
+  async yerelTaslakSil(id: number): Promise<void> { await apiClient.delete(`/e-belge/yerel-taslak/${id}`); },
+
+  async knskListe(yalnizYaklasan = false): Promise<{ uyariGun: number; kayitlar: EbelgeKnskKaydi[] }> {
+    return (await apiClient.get<{ uyariGun: number; kayitlar: EbelgeKnskKaydi[] }>("/e-belge/knsk", yalnizYaklasan ? { yaklasan: "1" } : undefined)).data;
+  },
+  async knskGetir(vkn: string): Promise<{ uyariGun: number; kayit: EbelgeKnskKaydi | null }> {
+    return (await apiClient.post<{ uyariGun: number; kayit: EbelgeKnskKaydi | null }>("/e-belge/knsk/sorgula", { vkn })).data;
+  },
+  async knskOnayla(k: { vknTckn: string; ad?: string | null; aciklama?: string | null }): Promise<{ uyariGun: number; kayit: EbelgeKnskKaydi }> {
+    return (await apiClient.post<{ uyariGun: number; kayit: EbelgeKnskKaydi }>("/e-belge/knsk", k)).data;
+  },
+  async knskKaldir(vkn: string): Promise<void> { await apiClient.post("/e-belge/knsk/kaldir", { vkn }); },
+
+  async kodListe(tur?: EbelgeKodTuru): Promise<EbelgeKod[]> {
+    return (await apiClient.get<EbelgeKod[]>("/e-belge/kodlar", tur ? { tur } : undefined)).data;
+  },
+  async kodEkle(k: { tur: EbelgeKodTuru; kod: string; ad: string; oran?: number | null }): Promise<EbelgeKod> {
+    return (await apiClient.post<EbelgeKod>("/e-belge/kodlar", k)).data;
   },
 
   /** Alıcının ICE'de kayıtlı adresleri; kayıt yoksa boş liste döner. */

@@ -25,6 +25,12 @@
       "ad": "kurTuru",
       "etiket": "Kur",
       "tip": "kurSecimi"
+    },
+    {
+      "ad": "hedefParaId",
+      "etiket": "Karşılık parası",
+      "tip": "para",
+      "not": "Bakiyelerin çevrileceği para; boş bırakılırsa TL"
     }
   ],
   "kolonlar": [
@@ -58,6 +64,20 @@
       "g": 2.6,
       "bicim": "sayi",
       "toplam": true
+    },
+    {
+      "anahtar": "hedefKarsiligi",
+      "baslik": "Seçilen para karşılığı",
+      "g": 2.2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "hedefParaKod",
+      "baslik": "Karş. para",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
     },
     {
       "anahtar": "kurSatis",

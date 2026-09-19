@@ -12,6 +12,13 @@
   ],
   "kolonlar": [
     {
+      "anahtar": "siraNo",
+      "baslik": "S.No",
+      "g": 0.7,
+      "hiza": "right",
+      "bicim": "tam"
+    },
+    {
       "anahtar": "kod",
       "baslik": "Kod",
       "g": 1.4
@@ -19,7 +26,7 @@
     {
       "anahtar": "ad",
       "baslik": "Ad / Ünvan",
-      "g": 4
+      "g": 3.2
     },
     {
       "anahtar": "kisilik",
@@ -30,6 +37,51 @@
       "anahtar": "vergiNo",
       "baslik": "VKN / TCKN",
       "g": 1.8
+    },
+    {
+      "anahtar": "yetkili",
+      "baslik": "Yetkili",
+      "g": 2
+    },
+    {
+      "anahtar": "vergiDairesi",
+      "baslik": "Vergi dairesi",
+      "g": 1.8
+    },
+    {
+      "anahtar": "babaAdi",
+      "baslik": "Baba adı",
+      "g": 1.4
+    },
+    {
+      "anahtar": "ilce",
+      "baslik": "İlçe",
+      "g": 1.4
+    },
+    {
+      "anahtar": "postaKodu",
+      "baslik": "Posta kodu",
+      "g": 1
+    },
+    {
+      "anahtar": "il",
+      "baslik": "İl",
+      "g": 1.3
+    },
+    {
+      "anahtar": "ulke",
+      "baslik": "Ülke",
+      "g": 0.9
+    },
+    {
+      "anahtar": "uyruk",
+      "baslik": "Uyruğu",
+      "g": 1.2
+    },
+    {
+      "anahtar": "hukukiYapi",
+      "baslik": "Hukuki yapı",
+      "g": 1.1
     },
     {
       "anahtar": "pasaportNo",
@@ -51,7 +103,8 @@
     {
       "anahtar": "adres",
       "baslik": "Adres",
-      "g": 4
+      "g": 4,
+      "pdf": false
     },
     {
       "anahtar": "karaListe",

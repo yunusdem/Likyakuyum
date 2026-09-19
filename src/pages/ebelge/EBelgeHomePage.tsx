@@ -14,6 +14,7 @@ import {
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { EbelgeAyar, ebelgeService } from "../../services/ebelgeService";
+import { KnskYaklasanlarKarti } from "./EBelgeKnsk";
 
 /**
  * e-Belge ana sayfası (hub).
@@ -100,9 +101,12 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
   const [sorgulaniyor, setSorgulaniyor] = useState(false);
   const [sonuc, setSonuc] = useState<{ mukellefMi: boolean; mesaj: string } | null>(null);
   const [hata, setHata] = useState<string | null>(null);
+  /** Sorgu sonuçsuzken "Forma geç": hangi formun açılacağı kullanıcıya sorulur. */
+  const [formSor, setFormSor] = useState(false);
   const sira = useRef(0);
+  const formaGec = (earsiv: boolean) => { onHide(); navigate(`/e-belge/dogrula?senaryo=${earsiv ? "EARSIVFATURA" : "TICARIFATURA"}${vkn ? `&vkn=${encodeURIComponent(vkn)}` : ""}`); };
   const yonlendir = (m: boolean, no: string) => { onHide(); navigate(`/e-belge/dogrula?vkn=${encodeURIComponent(no)}&senaryo=${m ? "TICARIFATURA" : "EARSIVFATURA"}`); };
-  useEffect(() => { if (show) { setVkn(""); setSonuc(null); setHata(null); setSorgulaniyor(false); } }, [show]);
+  useEffect(() => { if (show) { setVkn(""); setSonuc(null); setHata(null); setSorgulaniyor(false); setFormSor(false); } }, [show]);
   useEffect(() => {
     if (!/^\d{10,11}$/.test(vkn)) { setSonuc(null); setHata(null); return; }
     const no = vkn, s = ++sira.current;
@@ -136,10 +140,17 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
           </Alert>}
           {hata && <Alert variant="danger" className="py-2 mb-0 small">{hata}</Alert>}
         </div>
+        {formSor && <Alert variant="light" className="border py-2 mt-2 mb-0 small">
+          <div className="fw-semibold mb-2">Hangi forma gitmek istiyorsunuz?</div>
+          <div className="d-flex gap-2">
+            <Button size="sm" variant="primary" onClick={() => formaGec(false)}>e-Fatura formu</Button>
+            <Button size="sm" variant="success" onClick={() => formaGec(true)}>e-Arşiv formu</Button>
+          </div>
+        </Alert>}
       </Modal.Body>
       <Modal.Footer className="py-2">
         <Button variant="secondary" size="sm" onClick={onHide}>Vazgeç</Button>
-        <Button variant="outline-primary" size="sm" disabled={sorgulaniyor} onClick={() => { onHide(); navigate(vkn ? `/e-belge/dogrula?vkn=${encodeURIComponent(vkn)}` : "/e-belge/dogrula"); }}>Forma geç</Button>
+        <Button variant="outline-primary" size="sm" disabled={sorgulaniyor} onClick={() => setFormSor(true)}>Forma geç</Button>
       </Modal.Footer>
     </Modal>
   );
@@ -207,6 +218,8 @@ const EBelgeHomePage: React.FC = () => {
           </div>
         </Card.Body>
       </Card>
+
+      <KnskYaklasanlarKarti />
 
       <Row className="g-3">
         {KARTLAR.map((kart) => (

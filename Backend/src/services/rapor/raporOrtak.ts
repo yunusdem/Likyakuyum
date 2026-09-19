@@ -22,7 +22,11 @@ export interface RaporParametreler {
   hesapIdler?: number[]; istatistikIdler?: number[]; meslekIdler?: number[]; sektorIdler?: number[]; kullaniciIdler?: number[]; bankaIdler?: number[];
   siralama?: string; durum?: string; birlestir?: string; kasaTipi?: number;
   esik?: number; sapma?: number; adet?: number;
+  /** MASAK yaş raporu: "yaşından küçük" / "yaşından büyük" sınırları (eski rapor parametreleri) */
+  yasKucuk?: number; yasBuyuk?: number;
   vadeBaslangic?: string; vadeBitis?: string;
+  /** Karşılıkların çevrileceği para (eski raporlardaki "seçilen para"); boş = TL */
+  hedefParaId?: number;
 }
 
 /** Seçim listesi filtresi: `kolon IN (…)`; liste boşsa boş metin. `onek` parametre adlarının çakışmaması içindir. */
@@ -37,16 +41,32 @@ export const adetOzeti = (idler: number[] | undefined, ad: string) => (idler?.le
 
 export const tarihTr = (v?: string) => (v ? v.split("-").reverse().join(".") : "");
 export const HAREKET_TIPI: Record<number, string> = { 0: "Nakit", 1: "Banka / Havale", 2: "POS / Kredi Kartı", 3: "Dekont", 4: "Virman", 5: "Devir" };
-export const KISILIK: Record<number, string> = { 0: "Gerçek kişi", 1: "Tüzel kişi" };
+/** KISILIK_TIPI kodları — eski programın kodlaması (canlıda doğrulandı 19.09.2026: eski kart listesi 0 → "Ş", 1 → "ŞF", 2 → "F" basıyor). */
+export const KISILIK: Record<number, string> = { 0: "Şahıs", 1: "Şahıs firması", 2: "Tüzel kişi", 3: "Yetkili Müessese", 4: "Banka" };
 
 /** TL para kaydı: KOD 'TL' / 'TRY'; yoksa fiş SP'sinin kullandığı PARA_ID=1. */
 export const TL_PARA_SQL = `ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1)`;
+
+/** USD para kaydı (KOD 'USD'); yoksa NULL → karşılıklar 0 çıkar. */
+export const USD_PARA_SQL = `(SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD))='USD' ORDER BY PARA_ID)`;
+/**
+ * Fişin USD kuru (F = TODVZ_FIS takma adı) — "USD karşılığı" hesabının böleni. Fiş kaydı GISE_USD_KURU'na gerçek kur yazmadığında (0 / 1) sırayla:
+ * 1) fişteki USD satırının kuru (fiş o kurla kesilmiştir), 2) fiş tarihine eşit/önceki en yakın kur tablosundaki USD kuru (alışta alış, satışta satış; efektif yoksa döviz kuru). Bulunamazsa 0.
+ */
+export const FIS_USD_KURU_SQL = `(CASE WHEN ISNULL(F.GISE_USD_KURU,0) NOT IN (0,1) THEN F.GISE_USD_KURU ELSE ISNULL(COALESCE(
+    (SELECT TOP 1 US.KUR FROM dbo.TODVZ_FIS_SATIRI US WHERE US.FIS_ID=F.FIS_ID AND US.PARA_ID=${USD_PARA_SQL} AND ISNULL(US.KUR,0)>0 ORDER BY US.SATIR_NO),
+    (SELECT TOP 1 CASE WHEN F.TIP=0 THEN COALESCE(NULLIF(UK.EFEKTIF_ALIS,0),UK.DOVIZ_ALIS) ELSE COALESCE(NULLIF(UK.EFEKTIF_SATIS,0),UK.DOVIZ_SATIS) END
+      FROM dbo.TODVZ_KUR UK JOIN dbo.TODVZ_KUR_TABLOSU UT ON UT.KUR_TABLOSU_ID=UK.KUR_TABLOSU_ID
+      WHERE UK.PARA_ID=${USD_PARA_SQL} AND CAST(UT.TARIH AS date)<=CAST(F.TARIH AS date)
+        AND (CASE WHEN F.TIP=0 THEN COALESCE(NULLIF(UK.EFEKTIF_ALIS,0),UK.DOVIZ_ALIS) ELSE COALESCE(NULLIF(UK.EFEKTIF_SATIS,0),UK.DOVIZ_SATIS) END)>0
+      ORDER BY UT.TARIH DESC, UT.KUR_TABLOSU_ID DESC)),0) END)`;
 
 /** Kur tablosu: kurTuru 0 = anlık gişe (en son), 2 = saklanan (kurTarihi'ne eşit/önceki en yakın gün). */
 export async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler) {
   const tur = p.kurTuru === 2 ? 2 : 0;
   const ikisi = p.kurAlani === "ikisi";
-  const alan = p.kurAlani === "satis" ? "DOVIZ_SATIS" : "DOVIZ_ALIS";
+  // Eski raporlar efektif kuru kullanır (SODVZCR_* yordamları EFEKTIF_ALIS / EFEKTIF_SATIS döndürür); efektif girilmemişse döviz kuruna düşülür
+  const alan = p.kurAlani === "satis" ? "COALESCE(NULLIF(EFEKTIF_SATIS,0),DOVIZ_SATIS)" : "COALESCE(NULLIF(EFEKTIF_ALIS,0),DOVIZ_ALIS)";
   const req = pool.request().input("tur", sql.TinyInt, tur).input("t", sql.Date, p.kurTarihi || p.tarih || null);
   const res = await req.query(`
     SELECT TOP 1 T.KUR_TABLOSU_ID id, T.TARIH tarih FROM dbo.TODVZ_KUR_TABLOSU T
@@ -55,16 +75,36 @@ export async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler) {
   const tablo = res.recordset[0];
   const kurlar = new Map<number, number>(), satisKurlari = new Map<number, number>();
   if (tablo) {
-    const k = await pool.request().input("id", sql.Int, tablo.id).query(`SELECT PARA_ID, ${alan} kur, DOVIZ_SATIS satis, PARITE FROM dbo.TODVZ_KUR WHERE KUR_TABLOSU_ID=@id`);
+    const k = await pool.request().input("id", sql.Int, tablo.id).query(`SELECT PARA_ID, ${alan} kur, COALESCE(NULLIF(EFEKTIF_SATIS,0),DOVIZ_SATIS) satis, PARITE FROM dbo.TODVZ_KUR WHERE KUR_TABLOSU_ID=@id`);
     for (const r of k.recordset) { kurlar.set(Number(r.PARA_ID), Number(r.kur) || 0); satisKurlari.set(Number(r.PARA_ID), Number(r.satis) || 0); }
   }
   const tlId = Number((await pool.request().query(`SELECT ${TL_PARA_SQL} id`)).recordset[0]?.id || 1);
   kurlar.set(tlId, 1); satisKurlari.set(tlId, 1);
   const aciklama = tablo
-    ? `Kur: ${tur === 0 ? "anlık gişe kuru" : "saklanan kur"} (${ikisi ? "döviz alış + satış" : alan === "DOVIZ_ALIS" ? "döviz alış" : "döviz satış"}, tablo tarihi ${new Date(tablo.tarih).toLocaleDateString("tr-TR")})`
+    ? `Kur: ${tur === 0 ? "anlık gişe kuru" : "saklanan kur"} (${ikisi ? "efektif alış + satış" : p.kurAlani === "satis" ? "efektif satış" : "efektif alış"}, tablo tarihi ${new Date(tablo.tarih).toLocaleDateString("tr-TR")})`
     : "Kur tablosu bulunamadı; TL karşılıkları 0 gösterildi.";
   /** kurlar: seçilen alan (ikisi → alış); satisKurlari: satış kuru (ikisi seçilince ek kolonlar) */
   return { kurlar, satisKurlari, ikisi, tlId, aciklama };
+}
+
+/** Bir önceki gün (YYYY-AA-GG) — "devir" = dönem başından önceki günün kapanışı */
+export const gunOnce = (gun: string) => { const d = new Date(`${gun}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+/** Verilen tarihe eşit/önceki en yakın kur tablosundaki efektif alış kurları (efektif yoksa döviz alış); TL = 1. Devir / kapanış değerlemeleri için (eski yordamlardaki DEVIR_* / MEVCUT_* / KAPANIS kurları). */
+export async function kurTarihte(pool: sql.ConnectionPool, tarih: string) {
+  const r = await pool.request().input("t", sql.Date, tarih).query(`
+    SELECT K.PARA_ID id, COALESCE(NULLIF(K.EFEKTIF_ALIS,0),K.DOVIZ_ALIS) kur FROM dbo.TODVZ_KUR K
+    WHERE K.KUR_TABLOSU_ID=(SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T WHERE CAST(T.TARIH AS date)<=@t ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC)`);
+  const m = new Map<number, number>(r.recordset.map((x: any) => [Number(x.id), Number(x.kur) || 0]));
+  m.set(Number((await pool.request().query(`SELECT ${TL_PARA_SQL} id`)).recordset[0]?.id || 1), 1);
+  return m;
+}
+
+/** Seçilen (hedef) paraya çevrim: TL karşılığı ÷ hedef paranın kuru; hedef boş ya da TL ise TL karşılığının kendisi. Eski raporlardaki SECILEN_* alanlarının karşılığı. */
+export async function hedefPara(pool: sql.ConnectionPool, p: RaporParametreler, kur: { kurlar: Map<number, number>; tlId: number }) {
+  const id = p.hedefParaId && p.hedefParaId !== kur.tlId ? p.hedefParaId : kur.tlId;
+  const kod = String((await pool.request().input("id", sql.Int, id).query(`SELECT RTRIM(KOD) kod FROM dbo.TODVZ_PARA WHERE PARA_ID=@id`)).recordset[0]?.kod || "TL");
+  const bolen = id === kur.tlId ? 1 : kur.kurlar.get(id) ?? 0;
+  return { id, kod, cevir: (tl: number) => (bolen > 0 ? tl / bolen : 0), aciklama: `Karşılık parası: ${kod}` };
 }
 
 export function sinirla(satirlar: any[], tanim: RaporTanim, filtreOzeti: string, ekDipnot?: string, ozetSatirlar?: Record<string, any>[]): RaporSonucVeri {

@@ -54,6 +54,13 @@
   ],
   "kolonlar": [
     {
+      "anahtar": "siraNo",
+      "baslik": "S.No",
+      "g": 0.7,
+      "hiza": "right",
+      "bicim": "tam"
+    },
+    {
       "anahtar": "tarih",
       "baslik": "Tarih",
       "g": 1.6,
@@ -100,6 +107,12 @@
       "pdf": false
     },
     {
+      "anahtar": "meblag",
+      "baslik": "Meblağ",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
       "anahtar": "borc",
       "baslik": "Borç",
       "g": 2,
@@ -118,5 +131,46 @@
     "anahtar": "paraKod",
     "baslik": "Para birimi: {{paraKod}}",
     "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Para bazında net toplam",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Kayıt",
+        "g": 1,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "borc",
+        "baslik": "Borç",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "alacak",
+        "baslik": "Alacak",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "netToplam",
+        "baslik": "Net toplam",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "netTipi",
+        "baslik": "B/A",
+        "g": 0.6,
+        "hiza": "center"
+      }
+    ]
   }
 }

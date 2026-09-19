@@ -1,7 +1,7 @@
 {
   "kod": "CARBAK1",
   "ad": "Cari Bakiye Raporu",
-  "aciklama": "Tarih aralığındaki borç/alacak hareketleri ve bitiş tarihi itibarıyla cari bakiyeleri; para ve has bazında, sıfır bakiyeliler dahil.",
+  "aciklama": "Bitiş tarihi itibarıyla cari bakiyeleri (borç bakiye / alacak bakiye) ve tarih aralığındaki borç/alacak hareketleri; para ve has bazında, sıfır bakiyeliler hariç.",
   "kagit": "A4",
   "parametreler": [
     {
@@ -45,28 +45,44 @@
       "hiza": "center"
     },
     {
-      "anahtar": "borc",
-      "baslik": "Borç",
+      "anahtar": "borcBakiye",
+      "baslik": "Borç bakiye",
       "g": 2.2,
       "bicim": "sayi"
     },
     {
-      "anahtar": "alacak",
-      "baslik": "Alacak",
+      "anahtar": "alacakBakiye",
+      "baslik": "Alacak bakiye",
       "g": 2.2,
       "bicim": "sayi"
+    },
+    {
+      "anahtar": "borc",
+      "baslik": "Dönem borç",
+      "g": 2.2,
+      "bicim": "sayi",
+      "pdf": false
+    },
+    {
+      "anahtar": "alacak",
+      "baslik": "Dönem alacak",
+      "g": 2.2,
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "bakiye",
       "baslik": "Bakiye",
       "g": 2.2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "yon",
       "baslik": "Yön",
       "g": 1.2,
-      "hiza": "center"
+      "hiza": "center",
+      "pdf": false
     },
     {
       "anahtar": "hasOrani",
@@ -118,5 +134,40 @@
     "baslik": "{{cariBaslik}}",
     "altToplam": false
   },
-  "dipnot": "Borç/alacak ve bakiye para biriminde. Has karşılığı = bakiye × para tanımındaki has oranı. TL karşılığı = bakiye × seçilen kur; firma açısından işaretlidir: carinin bize borcu (+), carinin bizden alacağı (−), toplamı net cari alacağımızdır."
+  "dipnot": "Borç/alacak ve bakiye para biriminde. Has karşılığı = bakiye × para tanımındaki has oranı. TL karşılığı = bakiye × seçilen kur; firma açısından işaretlidir: carinin bize borcu (+), carinin bizden alacağı (−), toplamı net cari alacağımızdır.",
+  "ozet": {
+    "baslik": "Para bazında toplam ve net bakiye",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "borcBakiye",
+        "baslik": "Borç bakiye toplamı",
+        "g": 2.4,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "alacakBakiye",
+        "baslik": "Alacak bakiye toplamı",
+        "g": 2.4,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "netBakiye",
+        "baslik": "Bakiye",
+        "g": 2.4,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "bakiyeTipi",
+        "baslik": "B/A",
+        "g": 0.6,
+        "hiza": "center"
+      }
+    ]
+  }
 }

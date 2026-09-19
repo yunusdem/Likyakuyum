@@ -82,6 +82,12 @@
       "g": 2,
       "bicim": "sayi",
       "toplam": true
+    },
+    {
+      "anahtar": "bakiye",
+      "baslik": "Bakiye",
+      "g": 1.9,
+      "bicim": "sayi"
     }
   ],
   "grup": {
@@ -89,5 +95,33 @@
     "baslik": "{{grupBaslik}}",
     "altToplam": true,
     "genelToplam": false
+  },
+  "ozet": {
+    "baslik": "Cihaz bazında toplam ve son bakiye",
+    "kolonlar": [
+      {
+        "anahtar": "cihaz",
+        "baslik": "Cihaz · para",
+        "g": 4
+      },
+      {
+        "anahtar": "borc",
+        "baslik": "Borç",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "alacak",
+        "baslik": "Alacak",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "sonBakiye",
+        "baslik": "Son bakiye",
+        "g": 2,
+        "bicim": "sayi"
+      }
+    ]
   }
 }

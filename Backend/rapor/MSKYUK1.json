@@ -28,15 +28,19 @@
       "tip": "secim",
       "secenekler": [
         {
-          "deger": "fis",
-          "ad": "Fiş bazında"
+          "deger": "donem",
+          "ad": "Müşterinin dönem toplamı"
         },
         {
           "deger": "gunluk",
           "ad": "Aynı kimliğin günlük toplamı"
+        },
+        {
+          "deger": "fis",
+          "ad": "Fiş bazında"
         }
       ],
-      "varsayilan": "fis"
+      "varsayilan": "donem"
     },
     {
       "ad": "vezneIdler",
@@ -48,13 +52,13 @@
     {
       "anahtar": "zaman",
       "baslik": "Tarih / saat",
-      "g": 2.1,
+      "g": 1.9,
       "bicim": "tarihSaat"
     },
     {
       "anahtar": "belgeNo",
       "baslik": "Belge no",
-      "g": 1.8
+      "g": 2.2
     },
     {
       "anahtar": "tip",
@@ -65,12 +69,45 @@
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 3.4
+      "g": 3
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.3,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "usdKarsiligi",
+      "baslik": "USD karşılığı",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
     },
     {
       "anahtar": "kimlikNo",
       "baslik": "Kimlik no",
-      "g": 1.7
+      "g": 1.6,
+      "pdf": false
     },
     {
       "anahtar": "meslek",
@@ -79,44 +116,90 @@
       "pdf": false
     },
     {
-      "anahtar": "paralar",
-      "baslik": "Paralar",
-      "g": 1.5
+      "anahtar": "sektor",
+      "baslik": "Sektör",
+      "g": 2,
+      "pdf": false
     },
     {
       "anahtar": "vezneKod",
       "baslik": "Vezne",
-      "g": 0.9,
+      "g": 0.8,
       "hiza": "center",
       "pdf": false
     },
     {
-      "anahtar": "fisAdedi",
-      "baslik": "Fiş adedi",
-      "g": 1,
+      "anahtar": "musteriIslemSayisi",
+      "baslik": "Müşteri işlem sayısı",
+      "g": 1.2,
       "bicim": "tam",
-      "toplam": true
+      "pdf": false
     },
     {
-      "anahtar": "tutar",
-      "baslik": "Tutar (TL)",
-      "g": 2.1,
+      "anahtar": "musteriTutar",
+      "baslik": "Müşteri tutarı (TL)",
+      "g": 2,
       "bicim": "sayi",
-      "toplam": true
-    },
-    {
-      "anahtar": "usdKarsiligi",
-      "baslik": "USD karşılığı",
-      "g": 1.9,
-      "bicim": "sayi",
-      "toplam": true
+      "pdf": false
     },
     {
       "anahtar": "kaydeden",
       "baslik": "Kaydeden",
-      "g": 1.5,
+      "g": 1.4,
+      "pdf": false
+    },
+    {
+      "anahtar": "yas",
+      "baslik": "Yaş",
+      "g": 0.7,
+      "bicim": "tam",
       "pdf": false
     }
   ],
-  "dipnot": "Tutar fişin TL toplamıdır; USD karşılığı fişin kayıt anındaki gişe USD kuruyla hesaplanır. Kimlik no = vergi / TC kimlik numarası, yoksa pasaport numarası. İptal fişler hariçtir."
+  "dipnot": "Tutar fişin TL toplamıdır; USD karşılığı fişin kayıt anındaki gişe USD kuruyla hesaplanır. Kimlik no = vergi / TC kimlik numarası, yoksa pasaport numarası. İptal fişler hariçtir.",
+  "grup": {
+    "anahtar": "grupAnahtar",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Müşteri bazında özet",
+    "kolonlar": [
+      {
+        "anahtar": "grup",
+        "baslik": "Müşteri",
+        "g": 4
+      },
+      {
+        "anahtar": "musteri",
+        "baslik": "Müşteri",
+        "g": 1,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "İşlem sayısı",
+        "g": 1.2,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "tutar",
+        "baslik": "Tutar (TL)",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "usdKarsiligi",
+        "baslik": "USD karşılığı",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "pay",
+        "baslik": "Pay %",
+        "g": 1,
+        "bicim": "sayi"
+      }
+    ]
+  }
 }

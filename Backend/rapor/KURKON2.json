@@ -33,6 +33,18 @@
         {
           "deger": "gun",
           "ad": "Yalnız gün × para"
+        },
+        {
+          "deger": "genel",
+          "ad": "Genel (dönem × para)"
+        },
+        {
+          "deger": "vezne",
+          "ad": "Vezne bazında (dönem)"
+        },
+        {
+          "deger": "kullanici",
+          "ad": "Kullanıcı bazında (dönem)"
         }
       ],
       "varsayilan": "ayrinti"
@@ -72,7 +84,8 @@
       "baslik": "Alış tutarı (TL)",
       "g": 2.1,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "ortAlisKuru",
@@ -91,7 +104,8 @@
       "baslik": "Satış tutarı (TL)",
       "g": 2.1,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "ortSatisKuru",
@@ -103,6 +117,43 @@
       "anahtar": "makas",
       "baslik": "Makas",
       "g": 1.2,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "borcMeblag",
+      "baslik": "Cari işlem toplam borç",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "ortBorcKuru",
+      "baslik": "Cari ort. kur borç",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "alacakMeblag",
+      "baslik": "Cari işlem toplam alacak",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "ortAlacakKuru",
+      "baslik": "Cari ort. kur alacak",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "genelOrtKur1",
+      "baslik": "Genel ort. kur (Alış+Borç)",
+      "g": 1.6,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "genelOrtKur2",
+      "baslik": "Genel ort. kur (Satış+Alacak)",
+      "g": 1.6,
       "bicim": "kur"
     }
   ],

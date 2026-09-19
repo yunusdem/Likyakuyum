@@ -110,6 +110,18 @@
       "pdf": false
     },
     {
+      "anahtar": "meblag",
+      "baslik": "Meblağ",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "ba",
+      "baslik": "B/A",
+      "g": 0.6,
+      "hiza": "center"
+    },
+    {
       "anahtar": "giris",
       "baslik": "Giriş",
       "g": 1.9,
@@ -120,6 +132,13 @@
       "anahtar": "cikis",
       "baslik": "Çıkış",
       "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "net",
+      "baslik": "Net (G−Ç)",
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true
     },
@@ -149,5 +168,40 @@
     "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",
     "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Para bazında net toplam",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "giris",
+        "baslik": "Giriş",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "cikis",
+        "baslik": "Çıkış",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "netToplam",
+        "baslik": "Net toplam",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "netTipi",
+        "baslik": "B/A",
+        "g": 0.6,
+        "hiza": "center"
+      }
+    ]
   }
 }

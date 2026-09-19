@@ -21,6 +21,26 @@
       "ad": "vezneIdler",
       "etiket": "Vezne (dürbünden seçin)",
       "tip": "vezneCoklu"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "ciro",
+          "ad": "Ciro bazında (büyükten küçüğe)"
+        },
+        {
+          "deger": "hareket",
+          "ad": "Hareket bazında (büyükten küçüğe)"
+        },
+        {
+          "deger": "ad",
+          "ad": "Personel adı"
+        }
+      ],
+      "varsayilan": "ciro"
     }
   ],
   "kolonlar": [
@@ -31,17 +51,43 @@
     },
     {
       "anahtar": "gunSayisi",
-      "baslik": "Çalışılan gün",
+      "baslik": "Gün",
       "g": 1.1,
+      "bicim": "tam"
+    },
+    {
+      "anahtar": "toplamTutar",
+      "baslik": "Cirosu (TL)",
+      "g": 2.3,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "ciroGun",
+      "baslik": "Ciro / Gün (TL)",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "toplamAdet",
+      "baslik": "Hareket sayısı",
+      "g": 1.2,
       "bicim": "tam",
-      "pdf": false
+      "toplam": true
+    },
+    {
+      "anahtar": "hareketGun",
+      "baslik": "Hareket / Gün",
+      "g": 1.3,
+      "bicim": "sayi"
     },
     {
       "anahtar": "alisAdet",
       "baslik": "Alış adedi",
       "g": 1.1,
       "bicim": "tam",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "alisTutar",
@@ -55,7 +101,8 @@
       "baslik": "Satış adedi",
       "g": 1.1,
       "bicim": "tam",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     },
     {
       "anahtar": "satisTutar",
@@ -65,24 +112,11 @@
       "toplam": true
     },
     {
-      "anahtar": "toplamAdet",
-      "baslik": "Toplam işlem",
-      "g": 1.2,
-      "bicim": "tam",
-      "toplam": true
-    },
-    {
-      "anahtar": "toplamTutar",
-      "baslik": "Toplam hacim (TL)",
-      "g": 2.3,
-      "bicim": "sayi",
-      "toplam": true
-    },
-    {
       "anahtar": "ortIslem",
       "baslik": "Ort. işlem (TL)",
       "g": 1.9,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "pdf": false
     },
     {
       "anahtar": "komisyon",
@@ -103,7 +137,8 @@
       "baslik": "Kur sapması",
       "g": 1.1,
       "bicim": "tam",
-      "toplam": true
+      "toplam": true,
+      "pdf": false
     }
   ]
 }

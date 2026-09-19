@@ -33,6 +33,26 @@
       "ad": "vezneIdler",
       "etiket": "Vezne (dürbünden seçin)",
       "tip": "vezneCoklu"
+    },
+    {
+      "ad": "durum",
+      "etiket": "Kapsam",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "kural",
+          "ad": "Kontrol kurallarına takılanlar"
+        },
+        {
+          "deger": "sinirUstu",
+          "ad": "TL vergi sınırının üstündekiler"
+        },
+        {
+          "deger": "tumu",
+          "ad": "Tüm fiş satırları"
+        }
+      ],
+      "varsayilan": "kural"
     }
   ],
   "kolonlar": [
@@ -64,28 +84,34 @@
       "g": 1.7
     },
     {
+      "anahtar": "vergiDairesi",
+      "baslik": "Vergi dairesi",
+      "g": 1.6
+    },
+    {
+      "anahtar": "uyruk",
+      "baslik": "Uyruk",
+      "g": 1.3
+    },
+    {
       "anahtar": "pasaportNo",
       "baslik": "Pasaport no",
-      "g": 1.5,
-      "pdf": false
+      "g": 1.5
     },
     {
       "anahtar": "babaAdi",
       "baslik": "Baba adı",
-      "g": 1.6,
-      "pdf": false
+      "g": 1.6
     },
     {
       "anahtar": "anneAdi",
       "baslik": "Anne adı",
-      "g": 1.6,
-      "pdf": false
+      "g": 1.6
     },
     {
       "anahtar": "kimlikSeriNo",
       "baslik": "Kimlik seri no",
-      "g": 1.5,
-      "pdf": false
+      "g": 1.5
     },
     {
       "anahtar": "adres",
@@ -94,16 +120,34 @@
       "pdf": false
     },
     {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.3,
+      "bicim": "kur"
+    },
+    {
       "anahtar": "paralar",
       "baslik": "Paralar",
-      "g": 1.5
+      "g": 1.5,
+      "pdf": false
     },
     {
       "anahtar": "vezneKod",
       "baslik": "Vezne",
       "g": 0.9,
-      "hiza": "center",
-      "pdf": false
+      "hiza": "center"
     },
     {
       "anahtar": "neden",
@@ -119,7 +163,7 @@
     },
     {
       "anahtar": "tutar",
-      "baslik": "Tutar (TL)",
+      "baslik": "Satır tutarı (TL)",
       "g": 2.1,
       "bicim": "sayi",
       "toplam": true

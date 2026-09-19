@@ -94,7 +94,7 @@ export class MasakController {
     const knskLog = (basarili: boolean, kayitlar: { listeAdi?: string | null; listeKod?: string | null }[], aciklama: string) => {
       const listeler = [...new Set(kayitlar.map(k => String(k.listeAdi || k.listeKod || "").trim()).filter(Boolean))].join(", ");
       void MasakSqlRepository.knskLogYaz({ kullaniciId: Number(req.user?.userId) || null, sorgulananAd: q || kimlikNo, dogumTarihi: null,
-        kisilikTuru: kimlikNo.length === 10 ? 1 : 0, basarili, karaListede: kayitlar.length > 0, karaListeAdi: listeler, aciklama }, dbContext);
+        kisilikTuru: kimlikNo.length === 10 ? 2 : 0, basarili, karaListede: kayitlar.length > 0, karaListeAdi: listeler, aciklama }, dbContext);
     };
 
     let sayfa: Awaited<ReturnType<typeof MasakService.listele>>;
@@ -142,7 +142,8 @@ export class MasakController {
       const listeler = [...new Set(kayitlar.map(k => String(k.listeAdi || k.listeKod || "").trim()).filter(Boolean))].join(", ");
       void MasakSqlRepository.knskLogYaz({
         kullaniciId: Number(req.user?.userId) || null, sorgulananAd: ad || kimlikNo, dogumTarihi: dt && !Number.isNaN(dt.getTime()) ? dt : null,
-        kisilikTuru: req.query.kisilikTuru !== undefined ? (Number(req.query.kisilikTuru) === 1 ? 1 : 0) : kimlikNo.length === 10 ? 1 : 0,
+        // Eski programın kodlaması: 0 Şahıs, 1 Şahıs firması, 2 Tüzel kişi, 3 Yetkili Müessese, 4 Banka. Kişilik verilmediyse 10 haneli kimlik (VKN) tüzel sayılır.
+        kisilikTuru: [0, 1, 2, 3, 4].includes(Number(req.query.kisilikTuru)) && req.query.kisilikTuru !== "" ? Number(req.query.kisilikTuru) : kimlikNo.length === 10 ? 2 : 0,
         basarili, karaListede: kayitlar.length > 0, karaListeAdi: listeler, aciklama,
       }, dbContext);
     };

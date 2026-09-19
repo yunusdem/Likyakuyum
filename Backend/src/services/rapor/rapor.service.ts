@@ -60,7 +60,8 @@ function guvenliTanim(kod: string): RaporTanim | null { try { return raporTanimO
 /** Koşullu kolonlar: kurIkisi → yalnızca Kur alanı "Alış + Satış" iken */
 function kosulUygula(tanim: RaporTanim, p: RaporParametreler): RaporTanim {
   if (!tanim.kolonlar.some(k => k.kosul)) return tanim;
-  return { ...tanim, kolonlar: tanim.kolonlar.filter(k => !k.kosul || (k.kosul === "kurIkisi" && p.kurAlani === "ikisi")) };
+  const kip = p.birlestir || String(tanim.parametreler.find(x => x.ad === "birlestir")?.varsayilan ?? "");
+  return { ...tanim, kolonlar: tanim.kolonlar.filter(k => !k.kosul || (k.kosul === "kurIkisi" ? p.kurAlani === "ikisi" : k.kosul === `kip:${kip}`)) };
 }
 
 /** KMT (Kur / Miktar / TL) gösterimi: seçilince yalnızca o gruba ait ve etiketsiz kolonlar kalır (kâr-zarar, .rpt parametresi). */

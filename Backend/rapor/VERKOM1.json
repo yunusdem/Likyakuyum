@@ -25,6 +25,42 @@
       "ad": "fisTipi",
       "etiket": "Tip",
       "tip": "fisTipi"
+    },
+    {
+      "ad": "birlestir",
+      "etiket": "Rapor tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "detay",
+          "ad": "Detaylı (fiş satırları)"
+        },
+        {
+          "deger": "toplam",
+          "ad": "Toplam (gün × para)"
+        }
+      ],
+      "varsayilan": "detay"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Gruplama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "vezne",
+          "ad": "Vezne bazında"
+        },
+        {
+          "deger": "para",
+          "ad": "Döviz bazında"
+        },
+        {
+          "deger": "gun",
+          "ad": "Gün bazında (tarih ara toplamı)"
+        }
+      ],
+      "varsayilan": "vezne"
     }
   ],
   "kolonlar": [
@@ -32,11 +68,37 @@
       "anahtar": "gun",
       "baslik": "Gün",
       "g": 1.6,
-      "bicim": "tarih"
+      "bicim": "tarih",
+      "kosul": "kip:toplam"
+    },
+    {
+      "anahtar": "zaman",
+      "baslik": "Tarih / saat",
+      "g": 1.9,
+      "bicim": "tarihSaat",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "seriNo",
+      "baslik": "Seri no",
+      "g": 1.4,
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 2,
+      "kosul": "kip:detay"
     },
     {
       "anahtar": "paraKod",
-      "baslik": "Para",
+      "baslik": "SMB",
       "g": 1,
       "hiza": "center"
     },
@@ -46,7 +108,8 @@
       "g": 0.9,
       "bicim": "tam",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "kip:toplam"
     },
     {
       "anahtar": "miktar",
@@ -63,6 +126,20 @@
       "toplam": true
     },
     {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "komisyonOrani",
+      "baslik": "%",
+      "g": 0.8,
+      "bicim": "sayi4",
+      "kosul": "kip:detay"
+    },
+    {
       "anahtar": "komisyon",
       "baslik": "Komisyon",
       "g": 1.8,
@@ -77,11 +154,11 @@
       "toplam": true
     },
     {
-      "anahtar": "kmv",
-      "baslik": "KMV",
-      "g": 1.6,
-      "bicim": "sayi",
-      "toplam": true
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.6,
+      "hiza": "center",
+      "kosul": "kip:detay"
     },
     {
       "anahtar": "kdv",
@@ -99,8 +176,8 @@
     }
   ],
   "grup": {
-    "anahtar": "vezneKod",
-    "baslik": "Vezne {{vezneBaslik}}",
+    "anahtar": "grupAnahtar",
+    "baslik": "{{grupBaslik}}",
     "altToplam": true
   },
   "dipnot": "Miktar farklı para birimlerinde olduğu için toplanmaz. İptal edilmiş fişler kapsam dışıdır."

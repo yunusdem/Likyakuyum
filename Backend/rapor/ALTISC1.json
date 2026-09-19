@@ -40,6 +40,12 @@
       "g": 1.6
     },
     {
+      "anahtar": "cins",
+      "baslik": "Cins",
+      "g": 1,
+      "hiza": "center"
+    },
+    {
       "anahtar": "unvan",
       "baslik": "Ünvan",
       "g": 2.8,
@@ -89,13 +95,15 @@
     {
       "anahtar": "sekil",
       "baslik": "İşçilik şekli",
-      "g": 1.5
+      "g": 1.5,
+      "pdf": false
     },
     {
       "anahtar": "iscilikMiktari",
       "baslik": "İşçilik (milyem)",
       "g": 1.4,
-      "bicim": "tam"
+      "bicim": "tam",
+      "pdf": false
     },
     {
       "anahtar": "iscilikHasGram",
@@ -120,11 +128,30 @@
     },
     {
       "anahtar": "tutar",
-      "baslik": "Satır tutarı",
+      "baslik": "Tutar",
       "g": 1.9,
       "bicim": "sayi",
-      "toplam": true,
-      "pdf": false
+      "toplam": true
+    },
+    {
+      "anahtar": "kdvOrani",
+      "baslik": "KDV %",
+      "g": 0.8,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "kdv",
+      "baslik": "KDV",
+      "g": 1.5,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kdvMatrahi",
+      "baslik": "KDV matrahı",
+      "g": 1.8,
+      "bicim": "sayi",
+      "toplam": true
     }
   ],
   "grup": {
