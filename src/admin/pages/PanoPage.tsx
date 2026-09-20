@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Alert, Card, Col, Row, Spinner, Table } from "react-bootstrap";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { adminApi, gunYaz, LisansUyarisi, OzetDto, tarihYaz } from "../services/adminApi";
+import MusteriSorgu from "../components/MusteriSorgu";
 
 const Sayi: React.FC<{ baslik: string; deger: number; renk?: string }> = ({ baslik, deger, renk }) => (
   <Col xs={6} md={4} xl={2}>
@@ -63,6 +64,8 @@ const PanoPage: React.FC = () => {
         <h5 className="mb-0">Hoş geldiniz, {admin?.adSoyad}</h5>
         <div className="text-muted small">Son giriş: {tarihYaz(admin?.sonGiris)}</div>
       </div>
+
+      <MusteriSorgu />
 
       {hata && <Alert variant="danger">{hata}</Alert>}
       {!ozet && !hata && (

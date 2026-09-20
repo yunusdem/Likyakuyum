@@ -13,6 +13,7 @@ import KullanicilarPage from "./pages/KullanicilarPage";
 import CevrimiciPage from "./pages/CevrimiciPage";
 import GirisGecmisiPage from "./pages/GirisGecmisiPage";
 import IslemKaydiPage from "./pages/IslemKaydiPage";
+import EpostaDogrulaPage from "./pages/EpostaDogrulaPage";
 
 /** Oturum yoksa girişe; geçici şifreyle girildiyse şifre belirleme ekranına kilitler. */
 const Korumali: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -36,6 +37,8 @@ const Korumali: React.FC<{ children: React.ReactElement }> = ({ children }) => {
 const AdminApp: React.FC = () => (
   <Routes>
     <Route path="/giris" element={<AdminLoginPage />} />
+    {/* Herkese açık: firmanın doğrulama mailindeki bağlantıyla açtığı sayfa */}
+    <Route path="/eposta-dogrula" element={<EpostaDogrulaPage />} />
     <Route
       element={
         <Korumali>

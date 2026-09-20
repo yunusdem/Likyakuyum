@@ -12,6 +12,7 @@ import {
   adminGirisSiniri,
   sifreBelirlenmisOlmali,
   adminHataIsleyici,
+  epostaOnaySiniri,
 } from "../middlewares/adminAuth.middleware.js";
 import { ApiError } from "../utils/ApiError.js";
 import {
@@ -32,6 +33,8 @@ import {
   girisLogSchema,
   islemLogSchema,
   oturumKapatSchema,
+  epostaDogrulamaElleSchema,
+  epostaOnaySchema,
 } from "../schemas/admin.schema.js";
 
 // Ana admin paneli API'si (docs/ADMIN_PANEL_YOL_HARITASI.md). Kullanıcı tarafının authenticate'i burada kullanılmaz.
@@ -41,6 +44,9 @@ router.use(adminKapisi);
 
 // Açık uç
 router.post("/auth/login", adminGirisSiniri, validate(adminGirisSchema), AdminAuthController.giris);
+
+// Açık uç: firma, maildeki doğrulama bağlantısını açıp düğmeye basınca (oturum yok; anahtar tek kullanımlık)
+router.post("/eposta-dogrulama/onayla", epostaOnaySiniri, validate(epostaOnaySchema), FirmaController.epostaOnayla);
 
 // Buradan sonrası admin oturumu ister
 router.use(adminAuthenticate);
@@ -58,6 +64,9 @@ router.put("/adminler/:id", validate(adminGuncelleSchema), AdminYonetimControlle
 router.post("/adminler/:id/sifre-sifirla", validate(adminIdSchema), AdminYonetimController.sifreSifirla);
 
 router.get("/ozet", FirmaController.ozet);
+router.get("/mail-durumu", FirmaController.mailDurumu);
+router.post("/firmalar/:id/eposta-dogrulama/gonder", validate(adminIdSchema), FirmaController.epostaDogrulamaGonder);
+router.put("/firmalar/:id/eposta-dogrulama", validate(epostaDogrulamaElleSchema), FirmaController.epostaDogrulamaElle);
 
 router.get("/firmalar", FirmaController.listele);
 router.post("/firmalar", validate(firmaEkleSchema), FirmaController.ekle);

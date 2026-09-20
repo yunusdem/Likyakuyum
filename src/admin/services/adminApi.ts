@@ -40,6 +40,8 @@ export interface LisansDto {
 export interface FirmaDto {
   firmaId: number;
   firmaKodu: string;
+  musteriNo: string | null;
+  prgTur: number;
   unvan: string;
   vknTckn: string | null;
   vergiDairesi: string | null;
@@ -60,6 +62,13 @@ export interface FirmaDto {
   dogrulayanAdmin: string | null;
   dogrulamaTarihi: string | null;
   dogrulamaNotu: string | null;
+  /** E-posta adresi doğrulandı mı (firma kimlik onayından ayrı) */
+  epostaDogrulandi: boolean;
+  epostaDogrulamaTarihi: string | null;
+  epostaDogrulamaKaynak: "MAIL" | "ADMIN" | null;
+  epostaSonGonderim: string | null;
+  /** Gönderilmiş ve henüz kullanılmamış bağlantının son geçerlilik zamanı */
+  epostaBaglantiBitis: string | null;
   dbSonTestTarihi: string | null;
   dbSonTestSonucu: string | null;
   masakDurumu: string | null;
@@ -73,6 +82,9 @@ export interface FirmaDto {
 
 export interface FirmaGirdi {
   firmaKodu: string;
+  /** Firmanın müşteri numarası (ör. D20AC0001); benzersiz */
+  musteriNo: string;
+  prgTur: number;
   unvan: string;
   vknTckn: string;
   vergiDairesi: string;
@@ -179,6 +191,12 @@ const sorgu = (p: Record<string, string | number | boolean | undefined>): string
   return metin ? `?${metin}` : "";
 };
 
+export interface MailDurumu {
+  yapilandirildi: boolean;
+  gonderen: string | null;
+  gecerlilikSaat: number;
+}
+
 export interface LisansUyarisi {
   firmaId: number;
   firmaKodu: string;
@@ -258,7 +276,7 @@ async function istek<T>(yontem: string, yol: string, govde?: unknown): Promise<T
   const json = await yanit.json().catch(() => null);
   if (!yanit.ok) {
     // Giriş denemesindeki 401 "şifre hatalı" demektir; diğer 401'ler oturumun bittiğini gösterir.
-    if (yanit.status === 401 && yol !== "/auth/login") {
+    if (yanit.status === 401 && yol !== "/auth/login" && yol !== "/eposta-dogrulama/onayla") {
       tokenYaz(null);
       window.dispatchEvent(new Event(OTURUM_BITTI_OLAYI));
     }
@@ -296,6 +314,12 @@ export const adminApi = {
     istek<{ basarili: boolean; sonuc: string; firma: FirmaDto }>("POST", `/firmalar/${firmaId}/db-test`),
   firmaMasakKontrol: (firmaId: number) =>
     istek<{ sonuc: string; firma: FirmaDto }>("POST", `/firmalar/${firmaId}/masak-kontrol`),
+  mailDurumu: () => istek<MailDurumu>("GET", "/mail-durumu"),
+  epostaDogrulamaGonder: (firmaId: number) => istek<FirmaDto>("POST", `/firmalar/${firmaId}/eposta-dogrulama/gonder`),
+  epostaDogrulamaElle: (firmaId: number, dogrulandi: boolean) =>
+    istek<FirmaDto>("PUT", `/firmalar/${firmaId}/eposta-dogrulama`, { dogrulandi }),
+  /** Herkese açık: maildeki bağlantıyı açan firma düğmeye basınca */
+  epostaOnayla: (anahtar: string) => istek<{ unvan: string; eposta: string }>("POST", "/eposta-dogrulama/onayla", { anahtar }),
   lisanslar: (firmaId: number) => istek<LisansDto[]>("GET", `/firmalar/${firmaId}/lisanslar`),
   lisansEkle: (firmaId: number, veri: LisansGirdi) =>
     istek<{ firma: FirmaDto; lisanslar: LisansDto[] }>("POST", `/firmalar/${firmaId}/lisanslar`, veri),

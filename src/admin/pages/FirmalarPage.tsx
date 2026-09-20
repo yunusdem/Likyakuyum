@@ -4,7 +4,7 @@ import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstra
 import { IconPlus } from "@tabler/icons-react";
 import { adminApi, FirmaDto, FirmaDurum } from "../services/adminApi";
 import FirmaFormu from "../components/FirmaFormu";
-import { DogrulamaRozeti, DurumRozeti, LisansRozeti } from "../components/FirmaRozetleri";
+import { DogrulamaRozeti, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
 
 type DurumFiltresi = "HEPSI" | FirmaDurum;
 
@@ -38,7 +38,7 @@ const FirmalarPage: React.FC = () => {
       (f) =>
         (durum === "HEPSI" || f.durum === durum) &&
         (q === "" ||
-          [f.firmaKodu, f.unvan, f.vknTckn, f.yetkiliKisi, f.dbName].some((v) => (v || "").toLocaleLowerCase("tr").includes(q)))
+          [f.firmaKodu, f.musteriNo, f.unvan, f.vknTckn, f.yetkiliKisi, f.dbName].some((v) => (v || "").toLocaleLowerCase("tr").includes(q)))
     );
   }, [firmalar, arama, durum]);
 
@@ -52,7 +52,7 @@ const FirmalarPage: React.FC = () => {
               <Form.Control
                 size="sm"
                 style={{ width: 220 }}
-                placeholder="Kod, unvan, VKN, veritabanı…"
+                placeholder="Kod, müşteri no, unvan, VKN…"
                 value={arama}
                 onChange={(e) => setArama(e.target.value)}
               />
@@ -84,6 +84,7 @@ const FirmalarPage: React.FC = () => {
               <thead>
                 <tr>
                   <th>Kod</th>
+                  <th>Müşteri No</th>
                   <th>Unvan</th>
                   <th>Durum</th>
                   <th>Lisans bitiş</th>
@@ -96,6 +97,7 @@ const FirmalarPage: React.FC = () => {
                 {gorunen.map((f) => (
                   <tr key={f.firmaId} role="button" onClick={() => navigate(`/firmalar/${f.firmaId}`)}>
                     <td className="fw-semibold">{f.firmaKodu}</td>
+                    <td>{f.musteriNo || <span className="text-danger small">tanımlı değil</span>}</td>
                     <td>{f.unvan}</td>
                     <td>
                       <DurumRozeti durum={f.durum} />
@@ -108,7 +110,7 @@ const FirmalarPage: React.FC = () => {
                       {f.aktifLisans ? ` / ${f.aktifLisans.kullaniciLimiti}` : ""}
                     </td>
                     <td>
-                      <DogrulamaRozeti dogrulandi={f.dogrulandi} />
+                      <DogrulamaRozeti dogrulandi={f.dogrulandi} /> <EpostaRozeti firma={f} />
                     </td>
                     <td className="text-muted small">
                       {f.dbServer} · {f.dbName}

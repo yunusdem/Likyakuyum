@@ -57,6 +57,13 @@ const firmaGovdesi = z.object({
     .min(2, "Firma kodu en az 2 karakter olmalıdır")
     .max(20)
     .regex(/^[a-zA-Z0-9_-]+$/, "Firma kodu yalnızca harf, rakam, alt çizgi ve tire içerebilir"),
+  musteriNo: z
+    .string()
+    .trim()
+    .min(3, "Müşteri no en az 3 karakter olmalıdır")
+    .max(20)
+    .regex(/^[a-zA-Z0-9]+$/, "Müşteri no yalnızca harf ve rakam içerebilir"),
+  prgTur: z.coerce.number().int().min(0).max(999).optional(),
   unvan: z.string().trim().min(2, "Unvan en az 2 karakter olmalıdır").max(200),
   vknTckn: z
     .string()
@@ -166,6 +173,18 @@ export const girisLogSchema = z.object({
 export const islemLogSchema = z.object({ query: z.object(sayfalama) });
 
 export const oturumKapatSchema = z.object({ params: z.object({ sid: z.string().uuid("Geçersiz oturum kimliği") }) });
+
+// ------------------------------------------------------- E-posta doğrulaması ---
+
+export const epostaDogrulamaElleSchema = z.object({
+  params: idParam,
+  body: z.object({ dogrulandi: z.boolean() }),
+});
+
+// base64url, 32 bayt = 43 karakter; biraz pay bırakıldı
+export const epostaOnaySchema = z.object({
+  body: z.object({ anahtar: z.string().regex(/^[A-Za-z0-9_-]{20,100}$/, "Geçersiz bağlantı") }),
+});
 
 export const lisansEkleSchema = z.object({
   params: idParam,

@@ -55,7 +55,10 @@ export type AdminIslem =
   | "KULLANICI_ICE_AKTARILDI"
   | "MODUL_DEGISTI"
   | "MODUL_KATALOG_ESITLENDI"
-  | "OTURUM_KAPATILDI";
+  | "OTURUM_KAPATILDI"
+  | "EPOSTA_DOGRULAMA_GONDERILDI"
+  | "EPOSTA_DOGRULANDI"
+  | "EPOSTA_DOGRULAMA_KALDIRILDI";
 
 export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF";
 export type BaglantiModu = "cloud" | "local";
@@ -82,6 +85,10 @@ export interface LisansDto {
 export interface FirmaDto {
   firmaId: number;
   firmaKodu: string;
+  /** Firmanın müşteri numarası (ör. D20AC0001); admin yazar, benzersizdir. Eski kayıtlarda boş olabilir. */
+  musteriNo: string | null;
+  /** Program türü; şimdilik yalnızca 0. Yalnızca panelde saklanır ve gösterilir. */
+  prgTur: number;
   unvan: string;
   vknTckn: string | null;
   vergiDairesi: string | null;
@@ -103,6 +110,14 @@ export interface FirmaDto {
   dogrulayanAdmin: string | null;
   dogrulamaTarihi: Date | null;
   dogrulamaNotu: string | null;
+  /** E-posta adresi doğrulandı mı (firma kimlik onayından AYRI). Adres değişince kendiliğinden sıfırlanır. */
+  epostaDogrulandi: boolean;
+  epostaDogrulamaTarihi: Date | null;
+  /** 'MAIL': firma maildeki bağlantıyla doğruladı · 'ADMIN': admin elle işaretledi */
+  epostaDogrulamaKaynak: "MAIL" | "ADMIN" | null;
+  epostaSonGonderim: Date | null;
+  /** Gönderilmiş ve henüz kullanılmamış bağlantının son geçerlilik zamanı; yoksa / süresi dolduysa null */
+  epostaBaglantiBitis: Date | null;
   dbSonTestTarihi: Date | null;
   dbSonTestSonucu: string | null;
   masakDurumu: string | null;
@@ -117,6 +132,8 @@ export interface FirmaDto {
 /** Firma kaydında yazılabilen alanlar. */
 export interface FirmaGirdi {
   firmaKodu: string;
+  musteriNo: string;
+  prgTur?: number;
   unvan: string;
   vknTckn?: string | null;
   vergiDairesi?: string | null;

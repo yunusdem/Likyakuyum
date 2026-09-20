@@ -5,7 +5,8 @@ import { adminApi, FirmaDto, FirmaDurum, gunYaz, LisansDto, LisansGirdi, tarihYa
 import FirmaFormu from "../components/FirmaFormu";
 import FirmaKullanicilari from "../components/FirmaKullanicilari";
 import FirmaModulleri from "../components/FirmaModulleri";
-import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, LisansRozeti } from "../components/FirmaRozetleri";
+import FirmaEpostaDogrulama from "../components/FirmaEpostaDogrulama";
+import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
 
 const DURUM_ACIKLAMASI: Record<FirmaDurum, string> = {
   AKTIF: "Firma normal çalışır.",
@@ -151,10 +152,20 @@ const FirmaDetayPage: React.FC = () => {
               <h5 className="mb-1">
                 {firma.unvan} <span className="text-muted fw-normal">· {firma.firmaKodu}</span>
               </h5>
+              <div className="small mb-2">
+                Müşteri No:{" "}
+                {firma.musteriNo ? (
+                  <strong>{firma.musteriNo}</strong>
+                ) : (
+                  <span className="text-danger">tanımlı değil</span>
+                )}
+                <span className="text-muted ms-3">Program türü: {firma.prgTur}</span>
+              </div>
               <div className="d-flex flex-wrap gap-2 align-items-center">
                 <DurumRozeti durum={firma.durum} />
                 <LisansRozeti firma={firma} />
                 <DogrulamaRozeti dogrulandi={firma.dogrulandi} />
+                <EpostaRozeti firma={firma} />
                 <span className="text-muted small">
                   Kullanıcı: {firma.kullaniciSayisi}
                   {firma.aktifLisans ? ` / ${firma.aktifLisans.kullaniciLimiti}` : ""}
@@ -257,6 +268,10 @@ const FirmaDetayPage: React.FC = () => {
                   >
                     {firma.dogrulandi ? "Doğrulamayı Kaldır" : "Doğrulandı Olarak İşaretle"}
                   </Button>
+                </Col>
+
+                <Col lg={12}>
+                  <FirmaEpostaDogrulama firma={firma} firmaGuncellendi={setFirma} bildir={setBilgi} />
                 </Col>
 
                 <Col lg={6}>

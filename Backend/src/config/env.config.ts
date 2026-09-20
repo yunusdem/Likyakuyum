@@ -16,6 +16,17 @@ const potentialEnvPaths = [
   path.resolve(__dirname, ".env"),
 ];
 
+// Önce .env.local okunur (git'te İZLENMEZ). .env git'te izlendiği için sunucuda "Discard changes" / stash / checkout
+// ile sıfırlanabiliyor; sunucuya özel ve gizli ayarlar (ADMIN_*, MERKEZ_GIRIS) bu yüzden .env.local'de durur.
+// dotenv var olan değişkeni ezmediği için önce okunan dosya önceliklidir.
+for (const envPath of potentialEnvPaths) {
+  const localPath = `${envPath}.local`;
+  if (fs.existsSync(localPath)) {
+    dotenv.config({ path: localPath });
+    break;
+  }
+}
+
 for (const envPath of potentialEnvPaths) {
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath });
@@ -90,6 +101,24 @@ const envSchema = z.object({
   // "zorunlu": firma kayıtlı/aktif/lisanslı ve kullanıcı merkezde tanımlı olmalı. Tüm firmalar panelde tanımlanıp
   // kullanıcıları içe aktarılmadan "zorunlu" YAPMAYIN; tanımsız firmalar giremez.
   MERKEZ_GIRIS: z.enum(["kapali", "zorunlu"]).default("kapali"),
+  // Mail gönderimi (firma e-posta doğrulaması). SMTP_HOST ya da SMTP_FROM boşsa mail özelliği kapalıdır.
+  // Değerler sunucudaki Backend/.env.local dosyasına yazılır (git izlemez).
+  SMTP_HOST: z.string().default(""),
+  SMTP_PORT: z
+    .string()
+    .default("587")
+    .transform((val) => parseInt(val, 10) || 587),
+  // true: 465 (doğrudan TLS) · false: 587 / 25 (STARTTLS)
+  SMTP_SECURE: z
+    .string()
+    .default("false")
+    .transform((val) => val === "true"),
+  SMTP_USER: z.string().default(""),
+  SMTP_PASSWORD: z.string().default(""),
+  // Gönderen: "Likya Kuyum <bilgi@likyakuyum.com>" biçiminde de yazılabilir
+  SMTP_FROM: z.string().default(""),
+  // Maillerdeki bağlantıların başı (yönetim panelinin dış adresi)
+  ADMIN_PANEL_URL: z.string().default("https://admin.likyakuyum.com"),
   ADMIN_ORIGIN: z
     .string()
     .default(

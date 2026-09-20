@@ -66,6 +66,9 @@ BEGIN
   CREATE TABLE [dbo].[ADM_FIRMA] (
     [FIRMA_ID]            INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     [FIRMA_KODU]          VARCHAR(20)    COLLATE Latin1_General_CI_AS NOT NULL, -- uygulama BUYUK harfle yazar
+    -- Firmanin musteri numarasi (or. D20AC0001). Admin yazar, uygulama BUYUK harfe cevirir; benzersizlik asagidaki filtreli indekste.
+    [MUSTERI_NO]          VARCHAR(20)    COLLATE Latin1_General_CI_AS NULL,
+    [PRG_TUR]             INT            NOT NULL CONSTRAINT [DF_ADM_FIRMA_PRG_TUR] DEFAULT 0, -- program turu; simdilik yalniz 0
     [UNVAN]               NVARCHAR(200)  NOT NULL,
     [VKN_TCKN]            VARCHAR(11)    NULL,
     [VERGI_DAIRESI]       NVARCHAR(100)  NULL,
@@ -89,6 +92,13 @@ BEGIN
     [DOGRULAYAN_ADMIN_ID] INT            NULL,
     [DOGRULAMA_TARIHI]    DATETIME       NULL,
     [DOGRULAMA_NOTU]      NVARCHAR(500)  NULL,
+    -- E-posta adresinin dogrulanmasi (firma kimlik onayindan AYRI). Baglantidaki anahtarin yalnizca SHA-256 ozeti saklanir.
+    [EPOSTA_DOGRULANDI]        BIT          NOT NULL CONSTRAINT [DF_ADM_FIRMA_EPOSTA_DOGRULANDI] DEFAULT 0,
+    [EPOSTA_DOGRULAMA_TARIHI]  DATETIME     NULL,
+    [EPOSTA_DOGRULAMA_KAYNAK]  VARCHAR(10)  NULL,   -- 'MAIL' | 'ADMIN'
+    [EPOSTA_TOKEN_HASH]        VARCHAR(64)  NULL,
+    [EPOSTA_TOKEN_BITIS]       DATETIME     NULL,
+    [EPOSTA_SON_GONDERIM]      DATETIME     NULL,
     [DB_SON_TEST_TARIHI]  DATETIME       NULL,
     [DB_SON_TEST_SONUCU]  NVARCHAR(500)  NULL,
     [MASAK_DURUMU]        NVARCHAR(200)  NULL,
@@ -99,6 +109,28 @@ BEGIN
     CONSTRAINT [CK_ADM_FIRMA_DURUM] CHECK ([DURUM] IN ('AKTIF','DONDURULMUS','PASIF'))
   );
 END
+GO
+
+-- Onceki surumle kurulmus veritabanlari icin: musteri no ve program turu kolonlari (tekrar calistirilabilir)
+IF COL_LENGTH('dbo.ADM_FIRMA', 'MUSTERI_NO') IS NULL
+  ALTER TABLE [dbo].[ADM_FIRMA] ADD [MUSTERI_NO] VARCHAR(20) COLLATE Latin1_General_CI_AS NULL;
+GO
+IF COL_LENGTH('dbo.ADM_FIRMA', 'PRG_TUR') IS NULL
+  ALTER TABLE [dbo].[ADM_FIRMA] ADD [PRG_TUR] INT NOT NULL CONSTRAINT [DF_ADM_FIRMA_PRG_TUR] DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UX_ADM_FIRMA_MUSTERI_NO')
+  CREATE UNIQUE INDEX [UX_ADM_FIRMA_MUSTERI_NO] ON [dbo].[ADM_FIRMA]([MUSTERI_NO]) WHERE [MUSTERI_NO] IS NOT NULL;
+GO
+
+-- Onceki surumle kurulmus veritabanlari icin: e-posta dogrulama kolonlari (tekrar calistirilabilir)
+IF COL_LENGTH('dbo.ADM_FIRMA', 'EPOSTA_DOGRULANDI') IS NULL
+  ALTER TABLE [dbo].[ADM_FIRMA] ADD
+    [EPOSTA_DOGRULANDI]       BIT         NOT NULL CONSTRAINT [DF_ADM_FIRMA_EPOSTA_DOGRULANDI] DEFAULT 0,
+    [EPOSTA_DOGRULAMA_TARIHI] DATETIME    NULL,
+    [EPOSTA_DOGRULAMA_KAYNAK] VARCHAR(10) NULL,
+    [EPOSTA_TOKEN_HASH]       VARCHAR(64) NULL,
+    [EPOSTA_TOKEN_BITIS]      DATETIME    NULL,
+    [EPOSTA_SON_GONDERIM]     DATETIME    NULL;
 GO
 
 -- Lisanslar (uzatma = yeni satır; firma başına tek AKTIF=1)

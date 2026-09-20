@@ -75,6 +75,18 @@ export const adminHataIsleyici = (err: any, req: Request, res: Response, _next: 
   res.status(500).json({ success: false, message: "Sunucu tarafında bir hata oluştu." });
 };
 
+/** Maildeki doğrulama bağlantısının herkese açık ucu: IP başına 15 dakikada 30 istek (anahtar deneme-yanılmasına karşı). */
+export const epostaOnaySiniri = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => istemciIp(req as Request),
+  handler: (req, res, next) => {
+    next(new ApiError(429, "Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyiniz."));
+  },
+});
+
 /** Admin girişine deneme sınırı: IP başına 15 dakikada 10 başarısız deneme. */
 export const adminGirisSiniri = rateLimit({
   windowMs: 15 * 60 * 1000,
