@@ -178,7 +178,33 @@ export class EtiketController {
     return ApiResponse.ok(res, "Fotoğraf başarıyla yüklendi.", data);
   });
 
+  // ─── Sektörel Logo & Damga Yönetimi (TODVZ_FOTOGRAF URUN_TIPI = 9) ─────────
+  public static listLogolar = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const { tip } = req.query;
+    const data = await EtiketService.listLogolar(tip !== undefined && tip !== "" ? Number(tip) : 9, dbContext);
+    return ApiResponse.ok(res, "Logolar listelendi.", data);
+  });
+
+  public static saveLogo = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const data = await EtiketService.saveLogo(
+      req.body,
+      EtiketController.getKullaniciId(req),
+      req.body.tip !== undefined ? Number(req.body.tip) : 9,
+      dbContext
+    );
+    return ApiResponse.ok(res, "Logo başarıyla kaydedildi.", data);
+  });
+
+  public static deleteLogo = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    await EtiketService.deleteLogo(Number(req.params.id), dbContext);
+    return ApiResponse.ok(res, "Logo silindi.");
+  });
+
   // ─── Etiket Şablonları ─────────────────────────────────────────────────────
+
   public static listSablon = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = EtiketController.getDbContext(req);
     const { etiketTipi } = req.query;

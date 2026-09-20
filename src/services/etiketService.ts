@@ -147,17 +147,58 @@ export interface SaveOzelUrunPayload {
 }
 
 // ─── Etiket Şablonları ────────────────────────────────────────────────────────
+export type EtiketElementType = "field" | "barcode" | "qrcode" | "rfid" | "logo" | "text" | "icon" | "line" | "rect" | "ellipse" | "image" | "qr";
+export type EtiketSekli = "kelebek" | "dambil" | "kuyruklu" | "rfid" | "dikdortgen";
+export type EtiketArkaPlan = "beyaz" | "altin" | "siyah" | "gumus";
+
 export interface EtiketSablonAlan {
-  key: string;
-  ad: string;
-  aktif: boolean;
-  sira: number;
+  id?: string;
+  alan: string;  // field key or element type
+  key?: string;
+  ad?: string;
+  aktif?: boolean;
+  sira?: number;
+  etiketElementTipi?: EtiketElementType;
+  type?: EtiketElementType;
+  x?: number; // mm
+  y?: number; // mm
+  genislik?: number; // mm (width)
+  yukseklik?: number; // mm (height)
+  width?: number; // mm
+  height?: number; // mm
+  fontSize?: number; // pt
+  fontWeight?: "normal" | "bold" | "600" | "800";
+  fontFamily?: string;
+  fontStyle?: "normal" | "italic";
+  textDecoration?: "none" | "underline";
+  color?: string;
+  backgroundColor?: string;
+  textAlign?: "left" | "center" | "right";
+  rotation?: number;
+  prefix?: string;
+  suffix?: string;
+  customText?: string;
+  text?: string;
+  iconName?: string;
+  iconEmoji?: string;
+  barkodFormat?: "CODE128" | "EAN13" | "CODE39" | "QR" | "RFID";
+  barcodeFormat?: "CODE128" | "EAN13" | "CODE39" | "QR" | "RFID";
+  barcodeValue?: string;
+  showBarcodeText?: boolean;
+  borderWidth?: number;
+  borderColor?: string;
+  borderRadius?: number;
+  opacity?: number;
+  visible?: boolean;
+  locked?: boolean;
+  zIndex?: number;
+  imageData?: string;
 }
 
 export interface EtiketSablonItem {
   etiketSablonId: number;
   ad: string;
-  etiketTipi: number; // 0: Altın/Sarrafiye, 1: Özel/Pırlanta, 2: Yüzük-Bilezik, 3: Fiyat-Ayar
+  etiketTipi: number; // 0: Altın/Sarrafiye, 1: Özel/Pırlanta, 2: Yüzük-Bilezik, 3: Fiyat-Ayar, 4: Kablosuz RFID
   genislikMm: number;
   yukseklikMm: number;
   kuyrukPayiMm: number;
@@ -165,6 +206,12 @@ export interface EtiketSablonItem {
   barkodTipi: string; // CODE128 | QR
   alanlar: EtiketSablonAlan[];
   varsayilan: boolean;
+  etiketSekli?: EtiketSekli;
+  solKanatGenislikMm?: number;
+  sagKanatGenislikMm?: number;
+  kuyrukGenislikMm?: number;
+  arkaPlanRengi?: EtiketArkaPlan;
+  rfidDahili?: boolean;
 }
 
 export interface SaveEtiketSablonPayload {
@@ -178,6 +225,12 @@ export interface SaveEtiketSablonPayload {
   barkodTipi?: string;
   alanlar?: EtiketSablonAlan[];
   varsayilan?: boolean;
+  etiketSekli?: EtiketSekli;
+  solKanatGenislikMm?: number;
+  sagKanatGenislikMm?: number;
+  kuyrukGenislikMm?: number;
+  arkaPlanRengi?: EtiketArkaPlan;
+  rfidDahili?: boolean;
 }
 
 export interface EtiketGrupNoResult {
@@ -333,6 +386,31 @@ export const EtiketService = {
   async deleteSablon(id: number): Promise<void> {
     await apiClient.delete(`/etiket/sablon/${id}`);
   },
+  // ─── Sektörel Logo & Damga Yönetimi (TODVZ_FOTOGRAF URUN_TIPI = 9) ─────────
+
+  async getLogolar(tip = 9): Promise<EtiketLogoItem[]> {
+    const res = await apiClient.get<EtiketLogoItem[]>("/etiket/logolar", { tip });
+    const data = (res.data as any)?.data ?? res.data;
+    return Array.isArray(data) ? data : [];
+  },
+  async saveLogo(payload: { base64: string; dosyaAdi?: string; mimeTipi?: string; tip?: number }): Promise<EtiketLogoItem> {
+    const res = await apiClient.post<EtiketLogoItem>("/etiket/logolar", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+  async deleteLogo(id: number): Promise<void> {
+    await apiClient.delete(`/etiket/logolar/${id}`);
+  },
 };
 
+export interface EtiketLogoItem {
+  fotografId: number;
+  urunTipi: number;
+  urunId: number;
+  dosyaAdi: string;
+  mimeTipi: string;
+  dataUrl: string;
+  eklemeZamani?: string | null;
+}
+
 export default EtiketService;
+

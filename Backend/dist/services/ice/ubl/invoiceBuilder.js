@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto";
 import { escapeXml } from "../ice.client.js";
 import { ApiError } from "../../../utils/ApiError.js";
+/** Yatırım teşvik belgesi (YTB No / Tarihi) isteyen tipler. */
+export const ytbTipiMi = (t) => t === "YTBSATIS" || t === "YTBISTISNA" || t === "YTBIADE";
 /** İade niteliğindeki tipler: dayanak fatura (`cac:BillingReference`) zorunludur. */
-export const iadeTipiMi = (t) => t === "IADE" || t === "TEVKIFATIADE";
+export const iadeTipiMi = (t) => t === "IADE" || t === "TEVKIFATIADE" || t === "YTBIADE";
 /** Tevkifatlı satır taşıyabilen tipler. */
 export const tevkifatTipiMi = (t) => t === "TEVKIFAT" || t === "TEVKIFATIADE";
 /* ==========================================================================
@@ -88,6 +90,15 @@ export const dogrulaGirdi = (girdi) => {
         if (satir.iskontoOrani != null && (satir.iskontoOrani < 0 || satir.iskontoOrani >= 100)) {
             throw ApiError.badRequest(`${no}. satırda iskonto oranı 0-100 aralığında olmalıdır.`);
         }
+        if (satir.iskontoTutari != null) {
+            const brut = satir.miktar * satir.birimFiyat;
+            if (!Number.isFinite(satir.iskontoTutari) || satir.iskontoTutari < 0) {
+                throw ApiError.badRequest(`${no}. satırda iskonto tutarı sıfır ya da pozitif olmalıdır.`);
+            }
+            if (satir.iskontoTutari > brut) {
+                throw ApiError.badRequest(`${no}. satırda iskonto tutarı satır tutarını aşamaz.`);
+            }
+        }
         const istisnaKodu = satir.istisnaKodu?.trim();
         // 14.09.2026 kuralı: 555 sıfır KDV ile kullanılamaz; diğer istisnalar sıfır KDV ister.
         if (istisnaKodu === "555" && satir.kdvOrani === 0) {
@@ -154,7 +165,7 @@ export const dogrulaGirdi = (girdi) => {
     }
     // İade faturasında dayanak fatura zorunlu
     if (iadeTipiMi(girdi.faturaTipi)) {
-        const iadeProfilleri = ["TEMELFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"];
+        const iadeProfilleri = ["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA", "YATIRIMTESVIK", "KAMU"];
         if (!iadeProfilleri.includes(girdi.senaryo)) {
             throw ApiError.badRequest(`${girdi.faturaTipi} fatura tipi ${girdi.senaryo} profilinde kullanılamaz.`);
         }
@@ -184,6 +195,66 @@ export const dogrulaGirdi = (girdi) => {
             throw ApiError.badRequest(`${pb} cinsinden belgede TL karşılığı kur bilgisi zorunludur.`);
         }
     }
+    // Senaryoya bağlı zorunluluklar (ICE formundaki blokların karşılığı)
+    if (girdi.senaryo === "IHRACAT" && !girdi.ihracat?.firmaUnvani?.trim()) {
+        throw ApiError.badRequest("İhracat faturasında ihracat yapılacak firmanın unvanı zorunludur.");
+    }
+    if (girdi.senaryo === "YOLCUBERABERFATURA") {
+        if (!girdi.turist?.pasaportNo?.trim()) {
+            throw ApiError.badRequest("Yolcu beraberi eşya faturasında turistin pasaport numarası zorunludur.");
+        }
+        if (!(girdi.turist?.ad?.trim() && girdi.turist?.soyad?.trim())) {
+            throw ApiError.badRequest("Yolcu beraberi eşya faturasında turistin adı ve soyadı zorunludur.");
+        }
+    }
+    if (girdi.senaryo === "IDIS" && !girdi.idisSevkiyatNo?.trim()) {
+        throw ApiError.badRequest("IDIS faturasında sevkiyat numarası zorunludur.");
+    }
+    // YTB numarası yalnızca e-Arşiv'in YTB tiplerinde zorunlu tutulur; YATIRIMTESVIK profilinde
+    // bugüne kadar numarasız belge kesilebildiği için o akış bozulmaz.
+    if (ytbTipiMi(girdi.faturaTipi) && !girdi.ytb?.no?.trim()) {
+        throw ApiError.badRequest("YTB fatura tiplerinde yatırım teşvik belge numarası zorunludur.");
+    }
+    if (ytbTipiMi(girdi.faturaTipi) && girdi.senaryo !== "EARSIVFATURA") {
+        throw ApiError.badRequest("YTB fatura tipleri yalnızca e-Arşiv faturada kullanılabilir.");
+    }
+    if ((girdi.faturaTipi === "HALTIPISATIS" || girdi.faturaTipi === "HALTIPIKOMISYONCU") &&
+        girdi.senaryo !== "EARSIVFATURA" && girdi.senaryo !== "HKS") {
+        throw ApiError.badRequest("Hal tipi fatura tipleri yalnızca e-Arşiv ya da Hal Tipi profilinde kullanılabilir.");
+    }
+    (girdi.halMasraflari || []).forEach((m, i) => {
+        if (!m.ad?.trim())
+            throw ApiError.badRequest(`${i + 1}. masraf satırında açıklama zorunludur.`);
+        if (!Number.isFinite(m.tutar) || m.tutar < 0)
+            throw ApiError.badRequest(`${i + 1}. masraf satırında tutar sıfır ya da pozitif olmalıdır.`);
+    });
+    const tarihGecerli = (t) => !t || /^\d{4}-\d{2}-\d{2}$/.test(t);
+    if (!tarihGecerli(girdi.siparis?.tarih))
+        throw ApiError.badRequest("Sipariş tarihi YYYY-AA-GG biçiminde olmalıdır.");
+    if (!tarihGecerli(girdi.ytb?.tarih))
+        throw ApiError.badRequest("YTB tarihi YYYY-AA-GG biçiminde olmalıdır.");
+    if (!tarihGecerli(girdi.turist?.pasaportTarihi))
+        throw ApiError.badRequest("Pasaport tarihi YYYY-AA-GG biçiminde olmalıdır.");
+    (girdi.irsaliyeler || []).forEach((r, i) => {
+        if (!r.no?.trim())
+            throw ApiError.badRequest(`${i + 1}. irsaliye satırında irsaliye numarası zorunludur.`);
+        if (!tarihGecerli(r.tarih))
+            throw ApiError.badRequest(`${i + 1}. irsaliye satırının tarihi YYYY-AA-GG biçiminde olmalıdır.`);
+    });
+    (girdi.ekBelgeler || []).forEach((r, i) => {
+        if (!r.no?.trim())
+            throw ApiError.badRequest(`${i + 1}. ek belge satırında belge numarası zorunludur.`);
+        if (!tarihGecerli(r.tarih))
+            throw ApiError.badRequest(`${i + 1}. ek belge satırının tarihi YYYY-AA-GG biçiminde olmalıdır.`);
+    });
+    if (!tarihGecerli(girdi.okc?.fisTarihi))
+        throw ApiError.badRequest("ÖKC fiş tarihi YYYY-AA-GG biçiminde olmalıdır.");
+    if (girdi.okc?.fisSaati && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(girdi.okc.fisSaati)) {
+        throw ApiError.badRequest("ÖKC fiş saati SS:DD biçiminde olmalıdır.");
+    }
+    if (girdi.iban?.iban?.trim() && !/^TR\d{24}$/.test(girdi.iban.iban.replace(/\s/g, "").toUpperCase())) {
+        throw ApiError.badRequest("IBAN 'TR' ile başlayan 26 karakter olmalıdır.");
+    }
     // İhraç kayıtlı: KDV'nin tecil/ödenecek tutara etkisi doğrulanmış örnek olmadan yazılmaz
     if (girdi.faturaTipi === "IHRACKAYITLI") {
         throw ApiError.unprocessable("İhraç kayıtlı fatura bu üreteçte henüz desteklenmiyor. Yapısı doğrulanmış bir GİB/ICE örneğiyle eklenecektir.");
@@ -197,7 +268,10 @@ export const hesapla = (satirlar) => {
     const yuvarla = (n) => Math.round(n * 100) / 100;
     const satirHesaplari = satirlar.map((satir, i) => {
         const brut = yuvarla(satir.miktar * satir.birimFiyat);
-        const iskonto = yuvarla((brut * (satir.iskontoOrani || 0)) / 100);
+        // Elle girilen iskonto tutarı orandan önce gelir (ICE formundaki "İskonto Tutarı" kolonu)
+        const iskonto = satir.iskontoTutari != null
+            ? yuvarla(satir.iskontoTutari)
+            : yuvarla((brut * (satir.iskontoOrani || 0)) / 100);
         const matrah = yuvarla(brut - iskonto);
         // Özel matrahlı satırda KDV, satır tutarı yerine bildirilen özel matrah üzerinden hesaplanır
         const kdvMatrahi = satir.ozelMatrahKodu?.trim() ? yuvarla(satir.ozelMatrahTutari || 0) : matrah;
@@ -276,17 +350,22 @@ const partyXml = (taraf, varsayilanUlke = "Türkiye") => {
         `<cac:PartyIdentification><cbc:ID schemeID="${sema}">${escapeXml(kimlik)}</cbc:ID></cac:PartyIdentification>` +
         (gosterilecekUnvan ? `<cac:PartyName><cbc:Name>${escapeXml(gosterilecekUnvan)}</cbc:Name></cac:PartyName>` : "") +
         `<cac:PostalAddress>` +
+        etiket("cbc:Room", taraf.kapiNo) +
         etiket("cbc:StreetName", taraf.adres) +
+        etiket("cbc:BuildingName", taraf.binaAdi) +
+        etiket("cbc:BuildingNumber", taraf.binaNo) +
         etiket("cbc:CitySubdivisionName", taraf.ilce) +
         etiket("cbc:CityName", taraf.il) +
+        etiket("cbc:PostalZone", taraf.postaKodu) +
         `<cac:Country><cbc:Name>${escapeXml(taraf.ulke || varsayilanUlke)}</cbc:Name></cac:Country>` +
         `</cac:PostalAddress>` +
         (taraf.vergiDairesi?.trim()
             ? `<cac:PartyTaxScheme><cac:TaxScheme><cbc:Name>${escapeXml(taraf.vergiDairesi)}</cbc:Name></cac:TaxScheme></cac:PartyTaxScheme>`
             : "") +
-        (taraf.telefon?.trim() || taraf.eposta?.trim()
+        (taraf.telefon?.trim() || taraf.faks?.trim() || taraf.eposta?.trim()
             ? `<cac:Contact>` +
                 etiket("cbc:Telephone", taraf.telefon) +
+                etiket("cbc:Telefax", taraf.faks) +
                 etiket("cbc:ElectronicMail", taraf.eposta) +
                 `</cac:Contact>`
             : "") +
@@ -330,14 +409,169 @@ const tevkifatSubtotalXml = (matrahTutari, vergiTutari, oran, kod, paraBirimi) =
     `<cbc:TaxTypeCode>${escapeXml(kod)}</cbc:TaxTypeCode>` +
     `</cac:TaxScheme></cac:TaxCategory>` +
     `</cac:TaxSubtotal>`;
+/**
+ * Ek belge referansı. UBL `DocumentReferenceType` sequence: ID → IssueDate → DocumentTypeCode →
+ * DocumentType → ... Sıra bozulursa şema hatası alınır.
+ */
+const belgeReferansXml = (etiketAdi, r) => `<${etiketAdi}>` +
+    `<cbc:ID>${escapeXml(r.no.trim())}</cbc:ID>` +
+    etiket("cbc:IssueDate", r.tarih) +
+    etiket("cbc:DocumentTypeCode", r.turKodu) +
+    etiket("cbc:DocumentType", r.tur) +
+    (r.ad?.trim() ? `<cac:Attachment><cac:ExternalReference><cbc:DocumentHash>${escapeXml(r.ad)}</cbc:DocumentHash></cac:ExternalReference></cac:Attachment>` : "") +
+    `</${etiketAdi}>`;
+/** ÖKC alanları ayrı ek belge referanslarına açılır; boş alan yazılmaz. */
+const okcXml = (okc, tarih) => {
+    if (!okc)
+        return "";
+    const alanlar = [
+        ["OKCFISNO", okc.fisNo], ["OKCFISTIPI", okc.fisTipi], ["OKCNO", okc.okcNo], ["ZNO", okc.zNo],
+        ["OKCFISSAATI", okc.fisSaati],
+    ];
+    return alanlar
+        .filter(([, deger]) => deger?.trim())
+        .map(([kod, deger]) => belgeReferansXml("cac:AdditionalDocumentReference", { no: deger.trim(), tarih: okc.fisTarihi || tarih, tur: kod }))
+        .join("");
+};
+/** IBAN — `cac:PaymentMeans`. PaymentMeansCode zorunludur; UBL-TR'de banka havalesi için ZZZ kullanılır. */
+const paymentMeansXml = (iban, belgeParaBirimi) => {
+    const no = iban?.iban?.replace(/\s/g, "").toUpperCase();
+    if (!no)
+        return "";
+    return `<cac:PaymentMeans>` +
+        `<cbc:PaymentMeansCode>ZZZ</cbc:PaymentMeansCode>` +
+        `<cac:PayeeFinancialAccount>` +
+        `<cbc:ID>${escapeXml(no)}</cbc:ID>` +
+        `<cbc:CurrencyCode>${escapeXml(iban?.paraBirimi || belgeParaBirimi)}</cbc:CurrencyCode>` +
+        `</cac:PayeeFinancialAccount>` +
+        `</cac:PaymentMeans>`;
+};
+/** Ad/değer çifti — GİB'in özel yapısı doğrulanmamış satır alanları için. */
+const itemPropertyXml = (ad, deger) => deger === undefined || deger === null || String(deger).trim() === ""
+    ? ""
+    : `<cac:AdditionalItemProperty><cbc:Name>${escapeXml(ad)}</cbc:Name><cbc:Value>${escapeXml(deger)}</cbc:Value></cac:AdditionalItemProperty>`;
+/** Senaryoya özel satır alanları — sırası UBL `ItemType` içinde serbesttir. */
+const satirEkAlanlariXml = (satir) => (satir.gtip?.trim()
+    ? `<cac:CommodityClassification><cbc:ItemClassificationCode listID="GTIP">${escapeXml(satir.gtip.trim())}</cbc:ItemClassificationCode></cac:CommodityClassification>`
+    : "") +
+    itemPropertyXml("Teslim Şartı", satir.teslimSarti) +
+    itemPropertyXml("Eşya Kap Cinsi", satir.kapCinsi) +
+    itemPropertyXml("Kap No", satir.kapNo) +
+    itemPropertyXml("Kap Adet", satir.kapAdet) +
+    itemPropertyXml("Künye No", satir.kunyeNo) +
+    itemPropertyXml("Mal Sahibi", satir.malSahibi) +
+    itemPropertyXml("Mal Sahibi VKN/TCKN", satir.malSahibiVkn) +
+    itemPropertyXml("İlaç & Tıbbi Cihaz", satir.ilacTibbiCihaz) +
+    itemPropertyXml("Etiket No", satir.etiketNo) +
+    itemPropertyXml("Harcama Tipi", satir.harcamaTipi) +
+    itemPropertyXml("Makina Adı", satir.makinaAdi) +
+    itemPropertyXml("Makina ID", satir.makinaId) +
+    itemPropertyXml("Makine Teşvik Sıra No", satir.makineTesvikSiraNo);
+/**
+ * İhracat / yolcu beraberi eşya faturasında gerçek alıcı `cac:BuyerCustomerParty` içinde bildirilir;
+ * `cac:AccountingCustomerParty` ise belgenin gönderildiği taraf olarak kalır.
+ */
+const ihracatAliciXml = (g) => {
+    const i = g.ihracat;
+    if (!i?.firmaUnvani?.trim())
+        return "";
+    return `<cac:BuyerCustomerParty><cac:Party>` +
+        (i.vkn?.trim() ? `<cac:PartyIdentification><cbc:ID schemeID="VKN">${escapeXml(i.vkn.trim())}</cbc:ID></cac:PartyIdentification>` : "") +
+        `<cac:PartyName><cbc:Name>${escapeXml(i.firmaUnvani.trim())}</cbc:Name></cac:PartyName>` +
+        `<cac:PostalAddress>` +
+        etiket("cbc:CitySubdivisionName", i.ilce) +
+        etiket("cbc:CityName", i.sehir) +
+        `<cac:Country><cbc:Name>${escapeXml(i.ulke || "")}</cbc:Name></cac:Country>` +
+        `</cac:PostalAddress>` +
+        `</cac:Party></cac:BuyerCustomerParty>`;
+};
+/** Yolcu beraberi eşya: turist bilgileri `cac:BuyerCustomerParty/cac:Party/cac:Person` içinde taşınır. */
+const turistXml = (g) => {
+    const t = g.turist;
+    if (!t?.pasaportNo?.trim() && !t?.ad?.trim())
+        return "";
+    return `<cac:BuyerCustomerParty><cac:Party>` +
+        `<cac:PostalAddress>` +
+        etiket("cbc:CitySubdivisionName", t?.ilce) +
+        etiket("cbc:CityName", t?.sehir) +
+        `<cac:Country><cbc:Name>${escapeXml(t?.ulke || "")}</cbc:Name></cac:Country>` +
+        `</cac:PostalAddress>` +
+        `<cac:Person>` +
+        etiket("cbc:FirstName", t?.ad) +
+        etiket("cbc:FamilyName", t?.soyad) +
+        etiket("cbc:NationalityID", t?.uyruk) +
+        (t?.pasaportNo?.trim()
+            ? `<cac:IdentityDocumentReference><cbc:ID schemeID="PASAPORTNO">${escapeXml(t.pasaportNo.trim())}</cbc:ID>` +
+                etiket("cbc:IssueDate", t.pasaportTarihi) +
+                `</cac:IdentityDocumentReference>`
+            : "") +
+        `</cac:Person>` +
+        `</cac:Party></cac:BuyerCustomerParty>`;
+};
+/** Yolcu beraberi eşya: aracı kurum — `cac:TaxRepresentativeParty`. */
+const araciKurumXml = (g) => {
+    const a = g.araciKurum;
+    if (!a?.vknTckn?.trim() && !a?.unvan?.trim())
+        return "";
+    return `<cac:TaxRepresentativeParty>` +
+        (a?.vknTckn?.trim()
+            ? `<cac:PartyIdentification><cbc:ID schemeID="${kimlikSemasi(a.vknTckn.trim())}">${escapeXml(a.vknTckn.trim())}</cbc:ID></cac:PartyIdentification>`
+            : "") +
+        (a?.unvan?.trim() ? `<cac:PartyName><cbc:Name>${escapeXml(a.unvan.trim())}</cbc:Name></cac:PartyName>` : "") +
+        `<cac:PostalAddress>` +
+        etiket("cbc:CitySubdivisionName", a?.ilce) +
+        etiket("cbc:CityName", a?.sehir) +
+        `<cac:Country><cbc:Name>${escapeXml(a?.ulke || "Türkiye")}</cbc:Name></cac:Country>` +
+        `</cac:PostalAddress>` +
+        `</cac:TaxRepresentativeParty>`;
+};
+/** İhracat teslim şartı ve gönderim şekli — `cac:Delivery`. */
+const deliveryXml = (g) => {
+    const teslim = g.ihracat?.teslimSarti?.trim();
+    const gonderim = g.ihracat?.gonderimSekli?.trim();
+    if (!teslim && !gonderim)
+        return "";
+    return `<cac:Delivery>` +
+        (gonderim
+            ? `<cac:Shipment><cbc:ID>1</cbc:ID><cac:ShipmentStage><cbc:TransportModeCode>${escapeXml(gonderim)}</cbc:TransportModeCode></cac:ShipmentStage></cac:Shipment>`
+            : "") +
+        `</cac:Delivery>` +
+        (teslim ? `<cac:DeliveryTerms><cbc:ID>${escapeXml(teslim)}</cbc:ID></cac:DeliveryTerms>` : "");
+};
+/** Turistin iade hesabı — `cac:PaymentMeans` (IBAN bloğundan ayrı bir ödeme aracı olarak yazılır). */
+const turistHesabiXml = (g) => {
+    const t = g.turist;
+    if (!t?.hesapNo?.trim())
+        return "";
+    return `<cac:PaymentMeans>` +
+        `<cbc:PaymentMeansCode>ZZZ</cbc:PaymentMeansCode>` +
+        etiket("cbc:InstructionNote", t.odemeNotu) +
+        `<cac:PayeeFinancialAccount>` +
+        `<cbc:ID>${escapeXml(t.hesapNo.trim())}</cbc:ID>` +
+        etiket("cbc:CurrencyCode", t.hesapParaBirimi) +
+        etiket("cbc:PaymentNote", [t.bankaAdi, t.subeAdi].filter(Boolean).join(" / ")) +
+        `</cac:PayeeFinancialAccount>` +
+        `</cac:PaymentMeans>`;
+};
+/** Hal tipi komisyoncu masrafları — belge seviyesinde `cac:AllowanceCharge` (masraf). */
+const masraflarXml = (g, paraBirimi) => (g.halMasraflari || [])
+    .filter((m) => m.ad?.trim())
+    .map((m) => `<cac:AllowanceCharge>` +
+    `<cbc:ChargeIndicator>true</cbc:ChargeIndicator>` +
+    `<cbc:AllowanceChargeReason>${escapeXml(m.ad.trim())}</cbc:AllowanceChargeReason>` +
+    `<cbc:Amount currencyID="${paraBirimi}">${tutar(m.tutar)}</cbc:Amount>` +
+    `</cac:AllowanceCharge>`)
+    .join("");
 const invoiceLineXml = (satir, hesap, paraBirimi) => `<cac:InvoiceLine>` +
     `<cbc:ID>${hesap.siraNo}</cbc:ID>` +
+    etiket("cbc:Note", satir.not) +
     `<cbc:InvoicedQuantity unitCode="${escapeXml(satir.birimKodu || "C62")}">${miktar(satir.miktar)}</cbc:InvoicedQuantity>` +
     `<cbc:LineExtensionAmount currencyID="${paraBirimi}">${tutar(hesap.matrah)}</cbc:LineExtensionAmount>` +
     (hesap.iskonto > 0
         ? `<cac:AllowanceCharge>` +
             `<cbc:ChargeIndicator>false</cbc:ChargeIndicator>` +
-            `<cbc:MultiplierFactorNumeric>${(satir.iskontoOrani || 0) / 100}</cbc:MultiplierFactorNumeric>` +
+            // Oran, iskontonun brüt tutara bölümünden yazılır; tutar elle girilmiş olsa da UBL oran bekler.
+            `<cbc:MultiplierFactorNumeric>${Math.round((hesap.iskonto / (hesap.matrah + hesap.iskonto)) * 1e6) / 1e6}</cbc:MultiplierFactorNumeric>` +
             `<cbc:Amount currencyID="${paraBirimi}">${tutar(hesap.iskonto)}</cbc:Amount>` +
             `<cbc:BaseAmount currencyID="${paraBirimi}">${tutar(hesap.matrah + hesap.iskonto)}</cbc:BaseAmount>` +
             `</cac:AllowanceCharge>`
@@ -358,6 +592,10 @@ const invoiceLineXml = (satir, hesap, paraBirimi) => `<cac:InvoiceLine>` +
     `<cac:Item>` +
     etiket("cbc:Description", satir.aciklama) +
     `<cbc:Name>${escapeXml(satir.ad)}</cbc:Name>` +
+    satirEkAlanlariXml(satir) +
+    (satir.hizmetKodu?.trim()
+        ? `<cac:SellersItemIdentification><cbc:ID>${escapeXml(satir.hizmetKodu.trim())}</cbc:ID></cac:SellersItemIdentification>`
+        : "") +
     `</cac:Item>` +
     `<cac:Price><cbc:PriceAmount currencyID="${paraBirimi}">${tutar(satir.birimFiyat)}</cbc:PriceAmount></cac:Price>` +
     `</cac:InvoiceLine>`;
@@ -391,16 +629,53 @@ export const buildInvoiceXml = (girdi) => {
         notlarXml +
         `<cbc:DocumentCurrencyCode>${escapeXml(paraBirimi)}</cbc:DocumentCurrencyCode>` +
         `<cbc:LineCountNumeric>${girdi.satirlar.length}</cbc:LineCountNumeric>` +
-        // UBL-TR sequence: LineCountNumeric → InvoicePeriod → OrderReference → BillingReference
+        // UBL-TR sequence: LineCountNumeric → InvoicePeriod → OrderReference → BillingReference →
+        // DespatchDocumentReference → ... → AdditionalDocumentReference → AccountingSupplierParty
+        (girdi.siparis?.no?.trim()
+            ? `<cac:OrderReference>` +
+                `<cbc:ID>${escapeXml(girdi.siparis.no.trim())}</cbc:ID>` +
+                etiket("cbc:IssueDate", girdi.siparis.tarih) +
+                `</cac:OrderReference>`
+            : "") +
         (girdi.iadeFaturalar || [])
             .map((ref) => `<cac:BillingReference><cac:InvoiceDocumentReference>` +
             `<cbc:ID>${escapeXml(ref.belgeNo.trim())}</cbc:ID>` +
             `<cbc:IssueDate>${escapeXml(ref.tarih)}</cbc:IssueDate>` +
             `</cac:InvoiceDocumentReference></cac:BillingReference>`)
             .join("") +
+        (girdi.irsaliyeler || [])
+            .filter((r) => r.no?.trim())
+            .map((r) => belgeReferansXml("cac:DespatchDocumentReference", r))
+            .join("") +
+        (girdi.ekBelgeler || [])
+            .filter((r) => r.no?.trim())
+            .map((r) => belgeReferansXml("cac:AdditionalDocumentReference", r))
+            .join("") +
+        okcXml(girdi.okc, tarih) +
+        // YTB ve IDIS bilgileri de ek belge referansı olarak taşınır (yapı ICE testinde doğrulanacak)
+        (girdi.ytb?.no?.trim()
+            ? belgeReferansXml("cac:AdditionalDocumentReference", { no: girdi.ytb.no.trim(), tarih: girdi.ytb.tarih, tur: "YATIRIMTESVIKBELGESI" })
+            : "") +
+        (girdi.idisSevkiyatNo?.trim()
+            ? belgeReferansXml("cac:AdditionalDocumentReference", { no: girdi.idisSevkiyatNo.trim(), tarih, tur: "IDISSEVKIYATNO" })
+            : "") +
+        (girdi.senaryo === "EARSIVFATURA" && girdi.earsiv?.tip
+            ? belgeReferansXml("cac:AdditionalDocumentReference", { no: girdi.earsiv.tip, tarih, tur: "EARSIVTIPI" })
+            : "") +
+        (girdi.senaryo === "EARSIVFATURA" && girdi.earsiv?.gonderimSekli
+            ? belgeReferansXml("cac:AdditionalDocumentReference", { no: girdi.earsiv.gonderimSekli, tarih, tur: "GONDERIMSEKLI" })
+            : "") +
         `<cac:AccountingSupplierParty>${partyXml(girdi.gonderici)}</cac:AccountingSupplierParty>` +
         `<cac:AccountingCustomerParty>${partyXml(girdi.alici)}</cac:AccountingCustomerParty>` +
-        // UBL-TR sequence: AllowanceCharge → TaxExchangeRate → PricingExchangeRate → TaxTotal
+        // UBL-TR sequence: AccountingCustomerParty → BuyerCustomerParty → ... → TaxRepresentativeParty → Delivery
+        ihracatAliciXml(girdi) +
+        turistXml(girdi) +
+        araciKurumXml(girdi) +
+        deliveryXml(girdi) +
+        // UBL-TR sequence: Delivery → PaymentMeans → PaymentTerms → AllowanceCharge → PricingExchangeRate → TaxTotal
+        paymentMeansXml(girdi.iban, paraBirimi) +
+        turistHesabiXml(girdi) +
+        masraflarXml(girdi, paraBirimi) +
         (paraBirimi !== "TRY" && girdi.dovizKuru
             ? `<cac:PricingExchangeRate>` +
                 `<cbc:SourceCurrencyCode>${escapeXml(paraBirimi)}</cbc:SourceCurrencyCode>` +
@@ -414,7 +689,7 @@ export const buildInvoiceXml = (girdi) => {
         ozet.kdvGruplari
             .map((g) => kdvTaxSubtotalXml(g.matrah, g.vergi, g.oran, paraBirimi, {
             kod: g.istisnaKodu,
-            gerekce: g.istisnaGerekcesi,
+            gerekce: g.istisnaGerekcesi || (g.istisnaKodu ? girdi.muafiyetSebebi : undefined),
         }))
             .join("") +
         `</cac:TaxTotal>` +

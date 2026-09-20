@@ -23,13 +23,13 @@ export interface EtiketYazdirModalProps {
 }
 
 const DEFAULT_ALANLAR: EtiketSablonAlan[] = [
-  { key: "grupUrunNo", ad: "Ürün No", aktif: true, sira: 1 },
-  { key: "mamulTipi", ad: "Mamul", aktif: true, sira: 2 },
-  { key: "ayar", ad: "Ayar/Milyem", aktif: true, sira: 3 },
-  { key: "has", ad: "Has", aktif: true, sira: 4 },
-  { key: "gram", ad: "Gr", aktif: true, sira: 5 },
-  { key: "tas", ad: "Taş/Karat", aktif: true, sira: 6 },
-  { key: "fiyat", ad: "Fiyat", aktif: true, sira: 7 },
+  { alan: "grupUrunNo", key: "grupUrunNo", ad: "Ürün No", aktif: true, sira: 1 },
+  { alan: "mamulTipi", key: "mamulTipi", ad: "Mamul", aktif: true, sira: 2 },
+  { alan: "ayar", key: "ayar", ad: "Ayar/Milyem", aktif: true, sira: 3 },
+  { alan: "has", key: "has", ad: "Has", aktif: true, sira: 4 },
+  { alan: "gram", key: "gram", ad: "Gr", aktif: true, sira: 5 },
+  { alan: "tas", key: "tas", ad: "Taş/Karat", aktif: true, sira: 6 },
+  { alan: "fiyat", key: "fiyat", ad: "Fiyat", aktif: true, sira: 7 },
 ];
 
 const BarcodeSvg: React.FC<{ value: string; tip: string }> = ({ value, tip }) => {
@@ -162,41 +162,110 @@ export const EtiketYazdirModal: React.FC<EtiketYazdirModalProps> = ({
           className="border rounded p-2 d-flex flex-wrap gap-2"
           style={{ maxHeight: "360px", overflowY: "auto", background: "#f8f9fa" }}
         >
-          {printItems.map((it, idx) => (
-            <div
-              key={`${it.id}-${idx}`}
-              className="etiket-label bg-white border border-dark d-flex flex-column justify-content-between p-1"
-              style={{
-                width: `${genislik}mm`,
-                height: `${yukseklik + kuyrukPayi}mm`,
-                fontSize: "7px",
-                lineHeight: 1.1,
-                boxSizing: "border-box",
-              }}
-            >
-              <div className="d-flex justify-content-between align-items-start">
-                {logoKonumu !== "yok" && (
-                  <div
-                    className="border border-secondary text-secondary d-flex align-items-center justify-content-center"
-                    style={{ width: "10mm", height: "5mm", fontSize: "5px", order: logoKonumu.includes("sag") ? 2 : 0 }}
-                  >
-                    LOGO
-                  </div>
-                )}
-                <div className="flex-grow-1 ps-1">
-                  {alanlar.map((a) => (
-                    <div key={a.key} className="d-flex justify-content-between">
-                      <span className="text-muted">{a.ad}:</span>
-                      <span className="fw-bold ms-1">{it.fields[a.key] ?? "-"}</span>
+          {printItems.map((it, idx) => {
+            const isVisualDesign = alanlar.some((a) => a.x !== undefined && a.y !== undefined);
+
+            if (isVisualDesign) {
+              return (
+                <div
+                  key={`${it.id}-${idx}`}
+                  className="etiket-label bg-white border border-dark position-relative"
+                  style={{
+                    width: `${genislik}mm`,
+                    height: `${yukseklik}mm`,
+                    boxSizing: "border-box",
+                    overflow: "hidden",
+                    color: "#000000",
+                    pageBreakInside: "avoid",
+                  }}
+                >
+                  {alanlar.map((elem) => {
+                    const sampleVal =
+                      elem.type === "text"
+                        ? elem.customText || elem.ad
+                        : `${elem.prefix || ""}${it.fields[elem.key] ?? (elem.key === "barkod" ? it.barkod : "-")}${elem.suffix || ""}`;
+
+                    return (
+                      <div
+                        key={elem.id || elem.key}
+                        className="position-absolute d-flex align-items-center"
+                        style={{
+                          left: `${elem.x || 0}mm`,
+                          top: `${elem.y || 0}mm`,
+                          width: `${elem.width || 15}mm`,
+                          height: `${elem.height || 4}mm`,
+                          fontSize: `${elem.fontSize || 7.5}pt`,
+                          fontWeight: elem.fontWeight || "normal",
+                          fontFamily: elem.fontFamily || "monospace",
+                          color: elem.color || "#000000",
+                          backgroundColor: elem.backgroundColor || "transparent",
+                          transform: elem.rotation ? `rotate(${elem.rotation}deg)` : undefined,
+                          transformOrigin: "center center",
+                          justifyContent:
+                            elem.textAlign === "center"
+                              ? "center"
+                              : elem.textAlign === "right"
+                              ? "flex-end"
+                              : "flex-start",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          lineHeight: 1,
+                        }}
+                      >
+                        {elem.type === "barcode" ? (
+                          <BarcodeSvg value={it.barkod} tip="CODE128" />
+                        ) : elem.type === "qrcode" ? (
+                          <BarcodeSvg value={it.barkod} tip="QR" />
+                        ) : elem.type === "rfid" ? (
+                          <div className="d-flex align-items-center gap-1 border border-dark px-1" style={{ fontSize: "5pt" }}>
+                            <span>RFID</span>
+                          </div>
+                        ) : (
+                          <span>{sampleVal}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={`${it.id}-${idx}`}
+                className="etiket-label bg-white border border-dark d-flex flex-column justify-content-between p-1"
+                style={{
+                  width: `${genislik}mm`,
+                  height: `${yukseklik + kuyrukPayi}mm`,
+                  fontSize: "7px",
+                  lineHeight: 1.1,
+                  boxSizing: "border-box",
+                }}
+              >
+                <div className="d-flex justify-content-between align-items-start">
+                  {logoKonumu !== "yok" && (
+                    <div
+                      className="border border-secondary text-secondary d-flex align-items-center justify-content-center"
+                      style={{ width: "10mm", height: "5mm", fontSize: "5px", order: logoKonumu.includes("sag") ? 2 : 0 }}
+                    >
+                      LOGO
                     </div>
-                  ))}
+                  )}
+                  <div className="flex-grow-1 ps-1">
+                    {alanlar.map((a) => (
+                      <div key={a.key} className="d-flex justify-content-between">
+                        <span className="text-muted">{a.ad}:</span>
+                        <span className="fw-bold ms-1">{it.fields[a.key] ?? "-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="d-flex justify-content-center mt-1">
+                  <BarcodeSvg value={it.barkod} tip={barkodTipi} />
                 </div>
               </div>
-              <div className="d-flex justify-content-center mt-1">
-                <BarcodeSvg value={it.barkod} tip={barkodTipi} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <style>{`
@@ -207,7 +276,7 @@ export const EtiketYazdirModal: React.FC<EtiketYazdirModalProps> = ({
               position: absolute; left: 0; top: 0; max-height: none !important; overflow: visible !important;
               background: #fff !important; border: none !important;
             }
-            .etiket-label { break-inside: avoid; }
+            .etiket-label { break-inside: avoid; page-break-inside: avoid; }
           }
         `}</style>
       </Modal.Body>

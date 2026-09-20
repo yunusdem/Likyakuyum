@@ -1,6 +1,7 @@
 import { AltinUrunSqlRepository, AltinUrunModel, SaveAltinUrunDto } from "../models/altinUrunSql.repository.js";
 import { OzelUrunSqlRepository, OzelUrunModel, SaveOzelUrunDto } from "../models/ozelUrunSql.repository.js";
 import { EtiketSablonSqlRepository, EtiketSablonModel, SaveEtiketSablonDto } from "../models/etiketSablonSql.repository.js";
+import { EtiketLogoSqlRepository, EtiketLogoModel } from "../models/etiketLogoSql.repository.js";
 import { EtiketNumeratorSqlRepository, EtiketGrupNoResult } from "../models/etiketNumeratorSql.repository.js";
 import { UrunResimSqlRepository } from "../models/urunResimSql.repository.js";
 import { BankoSqlRepository, BankoModel, SaveBankoDto } from "../models/bankoSql.repository.js";
@@ -158,6 +159,24 @@ export class EtiketService {
     return EtiketSablonSqlRepository.remove(id, dbContext);
   }
 
+  // ─── Sektörel Logo & Damga Yönetimi (TODVZ_FOTOGRAF URUN_TIPI = 9) ─────────
+  public static listLogolar(tip: number = 9, dbContext?: DbCtx) {
+    return EtiketLogoSqlRepository.listLogos(tip, dbContext);
+  }
+
+  public static saveLogo(
+    data: { base64: string; dosyaAdi?: string; mimeTipi?: string },
+    kullaniciId?: number,
+    tip: number = 9,
+    dbContext?: DbCtx
+  ) {
+    return EtiketLogoSqlRepository.saveLogo(data, kullaniciId, tip, 0, dbContext);
+  }
+
+  public static deleteLogo(id: number, dbContext?: DbCtx) {
+    return EtiketLogoSqlRepository.deleteLogo(id, dbContext);
+  }
+
   // ─── Banko Yönetimi (TODVZ_BANKO) ──────────────────────────────────────────
   public static listBankolar(filter?: { search?: string; aktif?: boolean }, dbContext?: DbCtx): Promise<BankoModel[]> {
     return BankoSqlRepository.list(filter, dbContext);
@@ -175,3 +194,4 @@ export class EtiketService {
     return BankoSqlRepository.remove(id, dbContext);
   }
 }
+
