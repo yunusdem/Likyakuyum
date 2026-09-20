@@ -445,27 +445,40 @@
 
 .rotate-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  background: #10b981;
-  border: 2px solid #ffffff;
+  width: 18px;
+  height: 18px;
+  background: #0284c7;
+  border: 1.5px solid #ffffff;
   border-radius: 50%;
-  top: -22px;
-  left: calc(50% - 5px);
+  bottom: -26px;
+  left: calc(50% - 9px);
   cursor: grab;
   z-index: 101;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  transition: transform 0.1s, background-color 0.15s;
 }
-.rotate-handle:active { cursor: grabbing; }
+.rotate-handle:hover {
+  background: #0369a1;
+  transform: scale(1.15);
+}
+.rotate-handle:active {
+  cursor: grabbing;
+  background: #075985;
+  transform: scale(1.2);
+}
 
 .rotate-handle-line {
   position: absolute;
-  width: 1px;
-  height: 14px;
+  width: 1.5px;
+  height: 18px;
   background: #0284c7;
-  top: -16px;
-  left: calc(50% - 0.5px);
+  bottom: -18px;
+  left: calc(50% - 0.75px);
   pointer-events: none;
 }
 

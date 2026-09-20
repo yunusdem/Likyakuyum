@@ -222,6 +222,7 @@ export interface CanvasElement {
   zIndex: number;
   // Text/Field
   text?: string;
+  isNumeric?: boolean;
   fieldKey?: string;
   prefix?: string;
   suffix?: string;
@@ -232,6 +233,7 @@ export interface CanvasElement {
   textDecoration?: "none" | "underline";
   textAlign?: "left" | "center" | "right";
   color?: string;
+
   // Shape/Container
   backgroundColor?: string;
   borderColor?: string;
@@ -1262,6 +1264,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   // Drag & Move state refs (Piksel hassasiyetinde akıcı hareket)
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasScrollContainerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     active: boolean;
     type: "move" | "resize" | "rotate" | "lasso";
@@ -1282,6 +1285,20 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const [lasso, setLasso] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const imageTargetIdRef = useRef<string | null>(null);
+  const inlineInputRef = useRef<HTMLInputElement>(null);
+
+  // Çift tıklamada input açıldığında anında odaklan ve tüm metni seç
+  useEffect(() => {
+    if (editingId) {
+      setTimeout(() => {
+        if (inlineInputRef.current) {
+          inlineInputRef.current.focus();
+          inlineInputRef.current.select();
+        }
+      }, 20);
+    }
+  }, [editingId]);
+
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1507,6 +1524,21 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     return () => window.removeEventListener("keydown", handler);
   }, [selectedIds, selectedElements, clipboard, elements, editingId, isFullscreen]);
 
+  // ─── Mouse Wheel ile Zoom Yapma (Native Non-Passive Listener - Konsol Hatasız) ──
+  useEffect(() => {
+    const el = canvasScrollContainerRef.current;
+    if (!el) return;
+    const handleNativeWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.12 : 0.12;
+        setZoom((z) => clamp(Math.round((z + delta) * 20) / 20, 0.3, 4.5));
+      }
+    };
+    el.addEventListener("wheel", handleNativeWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleNativeWheel);
+  }, []);
+
   // ─── Eleman Ekle ──────────────────────────────────────────────────────────
   const addElement = useCallback(
     (overrides: Partial<CanvasElement> & { type: ElementType }) => {
@@ -1531,7 +1563,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         fontWeight: "normal",
         fontStyle: "normal",
         textDecoration: "none",
-        textAlign: "left",
+        textAlign: overrides.textAlign || (overrides.isNumeric ? "right" : "left"),
         color: "#000000",
         backgroundColor: "transparent",
         borderColor: "transparent",
@@ -1545,12 +1577,6 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     [elements, labelConfig]
   );
 
-  // ─── Mouse Wheel ile Zoom Yapma ───────────────────────────────────────────
-  const handleWheelZoom = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.12 : 0.12;
-    setZoom((z) => clamp(Math.round((z + delta) * 20) / 20, 0.3, 4.5));
-  }, []);
 
   // ─── HTML5 Sürükle Bırak (Drag & Drop) ─────────────────────────────────────
   const handleCanvasDragOver = (e: React.DragEvent) => {
@@ -1622,14 +1648,9 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   );
 
   // ─── Sürükleme Başlatıcı ───────────────────────────────────────────────────
-  const startDragMove = (clientX: number, clientY: number, id: string, eDetail = 1) => {
+  const startDragMove = (clientX: number, clientY: number, id: string) => {
     const el = elements.find((item) => item.id === id);
     if (!el || el.locked) return;
-
-    if (eDetail === 2 && (el.type === "text" || el.type === "field")) {
-      setEditingId(id);
-      return;
-    }
 
     if (!selectedIds.includes(id)) {
       setSelectedIds([id]);
@@ -1686,10 +1707,11 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     (e: React.MouseEvent, id: string) => {
       if (e.button === 2) return;
       e.stopPropagation();
-      startDragMove(e.clientX, e.clientY, id, e.detail);
+      startDragMove(e.clientX, e.clientY, id);
     },
     [elements, selectedIds, getCanvasPos]
   );
+
 
   const handleResizeMouseDown = useCallback(
     (e: React.MouseEvent, id: string, handle: string) => {
@@ -1736,6 +1758,32 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         centerX: mmToPx(el.x + el.width / 2, zoom),
         centerY: mmToPx(el.y + el.height / 2, zoom),
       };
+    },
+    [elements, zoom]
+  );
+
+  const handleRotateTouchStart = useCallback(
+    (e: React.TouchEvent, id: string) => {
+      if (e.touches.length === 1) {
+        e.stopPropagation();
+        const touch = e.touches[0];
+        const el = elements.find((el) => el.id === id);
+        if (!el) return;
+        dragRef.current = {
+          active: true,
+          type: "rotate",
+          elementId: id,
+          startX: touch.clientX,
+          startY: touch.clientY,
+          origX: el.x,
+          origY: el.y,
+          origW: el.width,
+          origH: el.height,
+          origRot: el.rotation,
+          centerX: mmToPx(el.x + el.width / 2, zoom),
+          centerY: mmToPx(el.y + el.height / 2, zoom),
+        };
+      }
     },
     [elements, zoom]
   );
@@ -1941,11 +1989,42 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           clientY - rect.top - dr.centerY,
           clientX - rect.left - dr.centerX
         );
-        const deg = (angle * 180) / Math.PI + 90;
+        const rawDeg = ((angle * 180) / Math.PI - 90 + 360) % 360;
+
+        // Mıknatıslı Açı Yakalama (0°, 90°, 180°, 270° - Tam Dik ve Düz)
+        const SNAP_TOLERANCE = 5.0; // ±5° manyetik yakalama
+        const snapAngles = [0, 90, 180, 270, 360];
+        let finalDeg = Math.round(rawDeg);
+        let isSnapped = false;
+
+        for (const target of snapAngles) {
+          if (Math.abs(rawDeg - target) <= SNAP_TOLERANCE) {
+            finalDeg = target % 360;
+            isSnapped = true;
+            break;
+          }
+        }
+
+        const el = elements.find((item) => item.id === dr.elementId);
+        if (el) {
+          const centerX = el.x + el.width / 2;
+          const centerY = el.y + el.height / 2;
+
+          if (isSnapped) {
+            // Tam dik veya düz olunca merkez kılavuz çizgileri gösterilir
+            setGuidelines({
+              xLines: [centerX],
+              yLines: [centerY],
+            });
+          } else {
+            setGuidelines({ xLines: [], yLines: [] });
+          }
+        }
+
         dispatch({
           type: "UPDATE_ELEMENT",
           id: dr.elementId,
-          changes: { rotation: Math.round(deg) },
+          changes: { rotation: finalDeg },
         });
       } else if (dr.type === "lasso" && dr.lassoStart) {
         if (!canvasRef.current) return;
@@ -2225,18 +2304,21 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     const isEditing = editingId === el.id;
 
     if (el.type === "text" || el.type === "field") {
+      const isRight = el.textAlign === "right" || el.isNumeric;
+      const isCenter = el.textAlign === "center";
       const textStyle: React.CSSProperties = {
         fontFamily: el.fontFamily || "Arial",
         fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
         fontWeight: el.fontWeight || "normal",
         fontStyle: el.fontStyle || "normal",
         textDecoration: el.textDecoration || "none",
-        textAlign: el.textAlign || "left",
+        textAlign: isRight ? "right" : isCenter ? "center" : "left",
         color: el.color || "#000000",
         width: "100%",
         height: "100%",
         display: "flex",
         alignItems: "center",
+        justifyContent: isRight ? "flex-end" : isCenter ? "center" : "flex-start",
         padding: "0 2px",
         whiteSpace: "nowrap",
         overflow: "hidden",
@@ -2247,41 +2329,69 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       const displayText =
         el.type === "field"
           ? `${el.prefix || ""}[${el.fieldKey || el.text || "Alan"}]${el.suffix || ""}`
-          : el.text || "Metin";
+          : el.text || (el.isNumeric ? "0.00" : "Metin");
 
       if (isEditing) {
         return (
           <input
+            ref={inlineInputRef}
             type="text"
+            inputMode={el.isNumeric ? "decimal" : "text"}
             className="element-inline-edit"
             autoFocus
-            defaultValue={el.type === "field" ? (el.fieldKey || el.text || "") : (el.text || "")}
+            value={el.type === "field" ? (el.fieldKey || el.text || "") : (el.text ?? "")}
             style={{
               fontFamily: el.fontFamily || "Arial",
               fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
               fontWeight: el.fontWeight || "normal",
               color: el.color || "#000",
+              textAlign: isRight ? "right" : isCenter ? "center" : "left",
+              width: "100%",
+              height: "100%",
+              boxSizing: "border-box",
+              position: "relative",
+              zIndex: 100,
             }}
-            onFocus={(e) => e.target.select()}
-            onBlur={(e) => {
-              if (el.type === "field") {
-                updateElement(el.id, { text: e.target.value, fieldKey: e.target.value });
-              } else {
-                updateElement(el.id, { text: e.target.value });
-              }
-              setEditingId(null);
-              dispatch({ type: "PUSH_HISTORY" });
-            }}
+            onFocus={(e) => e.currentTarget.select()}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                (e.target as HTMLInputElement).blur();
+              if (el.isNumeric) {
+                const allowedKeys = [
+                  "Backspace", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+                  "Tab", "Enter", "Escape", "Home", "End"
+                ];
+                if (
+                  !allowedKeys.includes(e.key) &&
+                  !e.ctrlKey &&
+                  !e.metaKey &&
+                  !/^[0-9.,]$/.test(e.key)
+                ) {
+                  e.preventDefault();
+                }
               }
-              if (e.key === "Escape") {
-                setEditingId(null);
+              if (e.key === "Enter" || e.key === "Escape") {
+                (e.target as HTMLInputElement).blur();
               }
               e.stopPropagation();
             }}
+            onChange={(e) => {
+              let val = e.target.value;
+              if (el.isNumeric) {
+                val = val.replace(/[^0-9.,]/g, "");
+              }
+              if (el.type === "field") {
+                updateElement(el.id, { text: val, fieldKey: val });
+              } else {
+                updateElement(el.id, { text: val });
+              }
+            }}
+            onBlur={() => {
+              setEditingId(null);
+              dispatch({ type: "PUSH_HISTORY" });
+            }}
             onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
           />
         );
       }
@@ -2289,18 +2399,30 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       return (
         <div
           style={textStyle}
-          onClick={(e) => {
-            if (isSelected) {
-              setEditingId(el.id);
-            }
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            dragRef.current = null;
+            setSelectedIds([el.id]);
+            setEditingId(el.id);
           }}
         >
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span
+            style={{
+              width: "100%",
+              textAlign: isRight ? "right" : isCenter ? "center" : "left",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              display: "block",
+            }}
+          >
             {displayText}
           </span>
         </div>
       );
     }
+
+
 
     if (el.type === "barcode") {
       return (
@@ -2972,113 +3094,110 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
               <div className="toolbar-divider" />
 
-              {/* Yazı Rengi */}
-              <span className="toolbar-label">Renk:</span>
-              <div
-                className="color-swatch"
-                style={{ background: selectedElement.color || "#000" }}
-                title="Yazı Rengi"
-              >
-                <input
-                  type="color"
-                  value={selectedElement.color || "#000000"}
-                  onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })}
-                />
+              {/* Yazı Rengi: "Renk:" solda, renk kutusu sağında yan yana */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Renk:</span>
+                <div
+                  className="color-swatch"
+                  style={{ background: selectedElement.color || "#000" }}
+                  title="Yazı Rengi"
+                >
+                  <input
+                    type="color"
+                    value={selectedElement.color || "#000000"}
+                    onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })}
+                  />
+                </div>
               </div>
+
+              <div className="toolbar-divider" />
+
+              {/* Döndürme Hızlı Butonu */}
+              <button
+                className="tb-btn"
+                style={{ height: 26 }}
+                title="90° Sağa Döndür"
+                onClick={() =>
+                  updateElement(selectedElement.id, {
+                    rotation: ((selectedElement.rotation || 0) + 90) % 360,
+                  })
+                }
+              >
+                <IconRotate size={14} />
+                <span style={{ fontSize: 9.5 }}>+90°</span>
+              </button>
             </>
           )}
 
           {/* Şekil Renkleri */}
           {(selectedElement.type === "rect" || selectedElement.type === "ellipse") && (
             <>
-              <span className="toolbar-label">Dolgu:</span>
-              <div
-                className="color-swatch"
-                style={{ background: selectedElement.backgroundColor || "transparent" }}
-                title="Dolgu Rengi"
-              >
-                <input
-                  type="color"
-                  value={selectedElement.backgroundColor || "#ffffff"}
-                  onChange={(e) => updateElement(selectedElement.id, { backgroundColor: e.target.value })}
-                />
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Dolgu:</span>
+                <div
+                  className="color-swatch"
+                  style={{ background: selectedElement.backgroundColor || "transparent" }}
+                  title="Dolgu Rengi"
+                >
+                  <input
+                    type="color"
+                    value={selectedElement.backgroundColor || "#ffffff"}
+                    onChange={(e) => updateElement(selectedElement.id, { backgroundColor: e.target.value })}
+                  />
+                </div>
               </div>
-              <span className="toolbar-label">Kenar:</span>
-              <div
-                className="color-swatch"
-                style={{ background: selectedElement.borderColor || "#000" }}
-                title="Kenarlık Rengi"
-              >
-                <input
-                  type="color"
-                  value={selectedElement.borderColor || "#000000"}
-                  onChange={(e) => updateElement(selectedElement.id, { borderColor: e.target.value })}
-                />
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Kenar:</span>
+                <div
+                  className="color-swatch"
+                  style={{ background: selectedElement.borderColor || "#000" }}
+                  title="Kenarlık Rengi"
+                >
+                  <input
+                    type="color"
+                    value={selectedElement.borderColor || "#000000"}
+                    onChange={(e) => updateElement(selectedElement.id, { borderColor: e.target.value })}
+                  />
+                </div>
               </div>
+
+              <div className="toolbar-divider" />
+
+              <button
+                className="tb-btn"
+                style={{ height: 26 }}
+                title="90° Sağa Döndür"
+                onClick={() =>
+                  updateElement(selectedElement.id, {
+                    rotation: ((selectedElement.rotation || 0) + 90) % 360,
+                  })
+                }
+              >
+                <IconRotate size={14} />
+                <span style={{ fontSize: 9.5 }}>+90°</span>
+              </button>
             </>
           )}
 
-          <div className="toolbar-divider" />
-
-          {/* Döndürme Hızlı Butonları */}
-          <button
-            className="tb-btn"
-            style={{ height: 26 }}
-            title="90° Sağa Döndür"
-            onClick={() =>
-              updateElement(selectedElement.id, {
-                rotation: ((selectedElement.rotation || 0) + 90) % 360,
-              })
-            }
-          >
-            <IconRotate size={14} />
-            <span style={{ fontSize: 9.5 }}>+90°</span>
-          </button>
-
-          {/* Katman Sırası */}
-          <button
-            className="tb-btn"
-            style={{ height: 26, width: 26, padding: 0 }}
-            title="Öne Getir (Ctrl+])"
-            onClick={() => bringForward(selectedElement.id)}
-          >
-            <IconArrowUp size={14} />
-          </button>
-          <button
-            className="tb-btn"
-            style={{ height: 26, width: 26, padding: 0 }}
-            title="Arkaya Gönder (Ctrl+[)"
-            onClick={() => sendBackward(selectedElement.id)}
-          >
-            <IconArrowDown size={14} />
-          </button>
-
-          {/* Klonla */}
-          <button
-            className="tb-btn"
-            style={{ height: 26, width: 26, padding: 0 }}
-            title="Klonla (Ctrl+D)"
-            onClick={() => {
-              const newEl = { ...selectedElement, id: genId(), x: selectedElement.x + 2, y: selectedElement.y + 2, zIndex: selectedElement.zIndex + 1 };
-              dispatch({ type: "ADD_ELEMENT", element: newEl });
-              setSelectedIds([newEl.id]);
-            }}
-          >
-            <IconCopy size={14} />
-          </button>
-
-          {/* Sil */}
-          <button
-            className="tb-btn danger"
-            style={{ height: 26, width: 26, padding: 0 }}
-            title="Sil (Delete)"
-            onClick={() => {
-              dispatch({ type: "DELETE_ELEMENTS", ids: selectedIds });
-              setSelectedIds([]);
-            }}
-          >
-            <IconTrash size={14} />
-          </button>
+          {/* Diğer Elemanlar için Döndürme */}
+          {selectedElement.type !== "text" &&
+            selectedElement.type !== "field" &&
+            selectedElement.type !== "rect" &&
+            selectedElement.type !== "ellipse" && (
+              <button
+                className="tb-btn"
+                style={{ height: 26 }}
+                title="90° Sağa Döndür"
+                onClick={() =>
+                  updateElement(selectedElement.id, {
+                    rotation: ((selectedElement.rotation || 0) + 90) % 360,
+                  })
+                }
+              >
+                <IconRotate size={14} />
+                <span style={{ fontSize: 9.5 }}>+90°</span>
+              </button>
+            )}
         </div>
       )}
 
@@ -3148,25 +3267,48 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   </div>
                 </button>
 
-                {/* Sayı Alanı (Sağa Dayalı) */}
+                {/* Sayı Alanı (Sağa Dayalı - Sadece Sayı) */}
                 <button
                   className="elem-btn"
                   draggable={true}
                   onDragStart={(e) => {
                     e.dataTransfer.setData(
                       "application/json",
-                      JSON.stringify({ type: "text", text: "0.00", fontSize: 8.5, fontWeight: "bold", color: "#000000", textAlign: "right", width: 18, height: 4.5 })
+                      JSON.stringify({
+                        type: "text",
+                        isNumeric: true,
+                        text: "0.00",
+                        fontSize: 8.5,
+                        fontWeight: "bold",
+                        color: "#000000",
+                        textAlign: "right",
+                        width: 18,
+                        height: 4.5,
+                      })
                     );
                     e.dataTransfer.effectAllowed = "copy";
                   }}
-                  onClick={() => addElement({ type: "text", text: "0.00", fontSize: 8.5, fontWeight: "bold", color: "#000000", textAlign: "right", width: 18, height: 4.5 })}
+                  onClick={() =>
+                    addElement({
+                      type: "text",
+                      isNumeric: true,
+                      text: "0.00",
+                      fontSize: 8.5,
+                      fontWeight: "bold",
+                      color: "#000000",
+                      textAlign: "right",
+                      width: 18,
+                      height: 4.5,
+                    })
+                  }
                 >
                   <div className="elem-btn-icon" style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8" }}>#</div>
                   <div style={{ textAlign: "left", flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>Sayı Alanı (Sağa Dayalı)</div>
-                    <div style={{ fontSize: 9, color: "#94a3b8" }}>Gram, Fiyat, Ayar vb.</div>
+                    <div style={{ fontSize: 9, color: "#94a3b8" }}>Sadece sayı: Gram, Fiyat, Ayar vb.</div>
                   </div>
                 </button>
+
 
                 {/* Görsel / Logo Kutusu */}
                 <button
@@ -3911,13 +4053,14 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         {/* ── Orta Aydınlık Kanvas Çalışma Alanı (Figma / Canva Grid) ───── */}
         <div className="canvas-area">
           <div
+            ref={canvasScrollContainerRef}
             className="canvas-scroll-container"
-            onWheel={handleWheelZoom}
             onMouseDown={handleCanvasMouseDown}
             onDragOver={handleCanvasDragOver}
             onDrop={handleCanvasDrop}
             onContextMenu={(e) => handleContextMenu(e)}
           >
+
             <div className="canvas-workspace">
               {/* Etiket Bounding Box Wrapper */}
               <div className="label-canvas-wrapper">
@@ -3997,10 +4140,31 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                           key={el.id}
                           className={`canvas-element ${isSelected ? "selected" : ""}`}
                           style={elStyle}
-                          onMouseDown={(e) => handleElementMouseDown(e, el.id)}
-                          onTouchStart={(e) => handleElementTouchStart(e, el.id)}
+                          onMouseDown={(e) => {
+                            if (editingId === el.id) {
+                              e.stopPropagation();
+                              return;
+                            }
+                            handleElementMouseDown(e, el.id);
+                          }}
+                          onTouchStart={(e) => {
+                            if (editingId === el.id) {
+                              e.stopPropagation();
+                              return;
+                            }
+                            handleElementTouchStart(e, el.id);
+                          }}
                           onContextMenu={(e) => handleContextMenu(e, el.id)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (el.type === "text" || el.type === "field") {
+                              dragRef.current = null;
+                              setSelectedIds([el.id]);
+                              setEditingId(el.id);
+                            }
+                          }}
                         >
+
                           {!isSelected && <div className="element-hover-ring" />}
 
                           {/* İçerik */}
@@ -4014,7 +4178,10 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                                 className="rotate-handle"
                                 title="Döndür"
                                 onMouseDown={(e) => handleRotateMouseDown(e, el.id)}
-                              />
+                                onTouchStart={(e) => handleRotateTouchStart(e, el.id)}
+                              >
+                                <IconRotate size={10} stroke={2.5} />
+                              </div>
                               {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const).map((h) => (
                                 <div
                                   key={h}
@@ -4115,8 +4282,8 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                 <>
                   <div className="prop-group">
                     <div className="prop-group-title">
-                      <span>Metin Özellikleri</span>
-                      <span style={{ fontSize: 9.5, color: "#38bdf8" }}>{selectedElement.type}</span>
+                      <span>{selectedElement.isNumeric ? "Sayı Alanı Özellikleri" : "Metin Özellikleri"}</span>
+                      <span style={{ fontSize: 9.5, color: "#38bdf8" }}>{selectedElement.isNumeric ? "Sayı (Sağa Dayalı)" : selectedElement.type}</span>
                     </div>
                     {selectedElement.type === "field" && (
                       <div className="prop-row">
@@ -4135,15 +4302,42 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                     )}
                     {selectedElement.type === "text" && (
                       <div className="prop-row">
-                        <span className="prop-label">Metin:</span>
+                        <span className="prop-label">{selectedElement.isNumeric ? "Sayı:" : "Metin:"}</span>
                         <input
                           type="text"
+                          inputMode={selectedElement.isNumeric ? "decimal" : "text"}
                           className="prop-input"
+                          style={{ textAlign: selectedElement.isNumeric ? "right" : "left" }}
                           value={selectedElement.text || ""}
-                          onChange={(e) => updateElement(selectedElement.id, { text: e.target.value })}
+                          placeholder={selectedElement.isNumeric ? "0.00" : "Metin giriniz..."}
+                          onKeyDown={(e) => {
+                            if (selectedElement.isNumeric) {
+                              const allowedKeys = [
+                                "Backspace", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+                                "Tab", "Enter", "Escape", "Home", "End"
+                              ];
+                              if (
+                                !allowedKeys.includes(e.key) &&
+                                !e.ctrlKey &&
+                                !e.metaKey &&
+                                !/^[0-9.,]$/.test(e.key)
+                              ) {
+                                e.preventDefault();
+                              }
+                            }
+                          }}
+                          onChange={(e) => {
+                            let val = e.target.value;
+                            if (selectedElement.isNumeric) {
+                              val = val.replace(/[^0-9.,]/g, "");
+                            }
+                            updateElement(selectedElement.id, { text: val });
+                          }}
                         />
                       </div>
                     )}
+
+
                     <div className="prop-row">
                       <span className="prop-label">Önek:</span>
                       <input
