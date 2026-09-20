@@ -10,6 +10,8 @@ export interface JwtPayload {
   dbName?: string;
   dbUser?: string;
   dbPassword?: string;
+  /** Merkez (LIKYA_ADMIN) oturum kimliği; MERKEZ_GIRIS=zorunlu iken her istekte doğrulanır */
+  sid?: string;
   iat?: number;
   exp?: number;
 }

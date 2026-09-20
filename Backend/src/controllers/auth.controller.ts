@@ -5,10 +5,11 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { env } from "../config/env.config.js";
+import { istemciIp, istemciTarayici } from "../utils/istemci.utils.js";
 
 export class AuthController {
   public static login = asyncHandler(async (req: Request, res: Response) => {
-    const result = await AuthService.login(req.body);
+    const result = await AuthService.login(req.body, { ip: istemciIp(req), tarayici: istemciTarayici(req) });
 
     // Set HTTP-only refresh token cookie for security
     res.cookie("refreshToken", result.tokens.refreshToken, {
@@ -50,7 +51,7 @@ export class AuthController {
 
   public static logout = asyncHandler(async (req: Request, res: Response) => {
     if (req.user?.userId) {
-      await AuthService.logout(req.user.userId);
+      await AuthService.logout(req.user.userId, req.user.sid);
     }
 
     res.clearCookie("refreshToken");
@@ -61,6 +62,14 @@ export class AuthController {
     const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
     const user = await AuthService.getProfile(req.user!.userId, dbContext);
     return ApiResponse.ok(res, "Profil bilgisi başarıyla getirildi.", user);
+  });
+
+  public static changePassword = asyncHandler(async (req: Request, res: Response) => {
+    await AuthService.changePassword(
+      { userId: req.user!.userId, dbServer: req.user?.dbServer, dbName: req.user?.dbName },
+      req.body
+    );
+    return ApiResponse.ok(res, "Şifreniz değiştirildi.");
   });
 
 }

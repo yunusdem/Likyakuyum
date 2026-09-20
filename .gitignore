@@ -4,3 +4,6 @@ Backend/belge-arsiv/
 
 # Yerel çalışma notları: depoya gönderilmez
 docs/*.md
+
+# Ana admin paneli build çıktısı (npm run build:admin); sunucuda üretilir
+dist-admin/

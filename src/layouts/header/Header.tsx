@@ -24,6 +24,8 @@ import UserMenu from "./UserMenu";
 import NoficationList from "components/common/NoficationList";
 import MasakModal from "components/masak/MasakModal";
 import MasakMenu from "components/masak/MasakMenu";
+import { useAuth } from "../../context/AuthContext";
+import { UST_KISAYOLLAR, modulAcikMi } from "../../config/modulKatalogu";
 import HeaderThemeSelector from "components/theme/HeaderThemeSelector";
 
 //import custom hooks
@@ -80,6 +82,14 @@ const quickActions = [
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
+  // Yönetim panelinden firmaya kapatılan üst kısayollar çizilmez (adres → modül kodu: config/modulKatalogu.ts)
+  const { user } = useAuth();
+  const acikModuller = user?.merkez?.moduller;
+  const gorunenKisayollar = quickActions.filter((a) => {
+    const kisayol = UST_KISAYOLLAR.find((k) => k.to === a.to);
+    return !kisayol || modulAcikMi(acikModuller, kisayol.key);
+  });
+  const masakAcik = modulAcikMi(acikModuller, "ust:masak");
   const [isNoficationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -172,7 +182,7 @@ const Header: React.FC = () => {
 
               {/* Desktop Quick Actions (Icon + Text Label) */}
               <div className="d-none d-md-flex align-items-center gap-2 gap-lg-2.5 ms-2 border-start ps-3">
-                {quickActions.map((action, idx) => (
+                {gorunenKisayollar.map((action, idx) => (
                   <Link
                     key={idx}
                     to={action.to}
@@ -200,7 +210,7 @@ const Header: React.FC = () => {
                 ))}
 
                 {/* MASAK Quick Action Dropdown (Beside E-Belge) */}
-                <MasakMenu onUpdate={() => setIsMasakModalOpen(true)} />
+                {masakAcik && <MasakMenu onUpdate={() => setIsMasakModalOpen(true)} />}
               </div>
             </div>
 
@@ -270,7 +280,7 @@ const Header: React.FC = () => {
 
           {/* Mobile Quick Actions Sub-Bar (Horizontal Scrollable Strip) */}
           <div className="d-flex d-md-none align-items-center gap-2 pt-2 pb-1 border-top mt-1 header-quick-actions-mobile">
-            {quickActions.map((action, idx) => (
+            {gorunenKisayollar.map((action, idx) => (
               <Link
                 key={idx}
                 to={action.to}
@@ -293,7 +303,7 @@ const Header: React.FC = () => {
               </Link>
             ))}
 
-            <MasakMenu mobile onUpdate={() => setIsMasakModalOpen(true)} />
+            {masakAcik && <MasakMenu mobile onUpdate={() => setIsMasakModalOpen(true)} />}
           </div>
         </Container>
       </header>

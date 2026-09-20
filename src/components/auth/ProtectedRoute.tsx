@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -70,6 +70,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   if (!isAuthenticated) {
     // Redirect to login, preserving intended route
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Geçici şifreyle giren kullanıcı, kendi şifresini belirleyene kadar yalnızca o ekranı görür
+  if (user?.merkez?.sifreDegismeli && location.pathname !== "/sifre-degistir") {
+    return <Navigate to="/sifre-degistir" replace />;
   }
 
   return children ? <>{children}</> : <Outlet />;

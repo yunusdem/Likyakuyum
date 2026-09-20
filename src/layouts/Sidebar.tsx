@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect, useRef, useCallback } from "react";
+import React, { Fragment, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Accordion,
@@ -16,6 +16,7 @@ import CustomToggle, { CustomToggleLevel2 } from "./SidebarMenuToggle";
 import {
   IconX,
   IconLogin2,
+  IconKey,
   IconChevronUp,
   IconSettings,
   IconCheck,
@@ -30,6 +31,7 @@ import { useAuth } from "../context/AuthContext";
 // import required routes
 import { getAssetPath } from "helper/assetPath";
 import { DashboardMenu } from "routes/DashboardRoute";
+import { menuyuSuz } from "../config/modulKatalogu";
 
 interface SidebarProps {
   hideLogo: boolean;
@@ -42,6 +44,10 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   const currentPath = location.pathname;
   const { handleCollapsed, collapsed } = useMenu();
   const { user, logout } = useAuth();
+  // Yönetim panelinden firmaya kapatılan menüler hiç çizilmez (kısayol tuşları da yalnız görünen menüde çalışır)
+  const gorunenMenu = useMemo(() => menuyuSuz(DashboardMenu, user?.merkez?.moduller), [user?.merkez?.moduller]);
+  const gorunenMenuRef = useRef(gorunenMenu);
+  gorunenMenuRef.current = gorunenMenu;
 
   const [activeMenuKey, setActiveMenuKey] = useState<string>("");
   const [pendingMenuIndex, setPendingMenuIndex] = useState<number | null>(null);
@@ -162,7 +168,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
       // 5. If a menu is currently open/pending: check its sub-items first
       if (pendingMenuIndexRef.current !== null) {
-        const currentMenu = DashboardMenu[pendingMenuIndexRef.current];
+        const currentMenu = gorunenMenuRef.current[pendingMenuIndexRef.current];
         if (currentMenu?.children) {
           const matchedChild = currentMenu.children.find((child) => {
             const childKey = getShortcutLetter(child.name || child.title);
@@ -181,7 +187,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       }
 
       // 6. Otherwise check if pressed letter matches a top-level menu (e.g. A -> Vezne İşlemleri)
-      const topMenuIndex = DashboardMenu.findIndex((menu) => {
+      const topMenuIndex = gorunenMenuRef.current.findIndex((menu) => {
         const menuKey = getShortcutLetter(menu.title);
         return menuKey === pressed;
       });
@@ -333,7 +339,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           as="ul"
           className="navbar-nav flex-column mb-0"
         >
-          {DashboardMenu.map(function (menu, index) {
+          {gorunenMenu.map(function (menu, index) {
             if (menu.grouptitle) {
               return (
                 <Nav.Item key={index} as="li">
@@ -540,6 +546,16 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
               </span>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => navigate("/sifre-degistir")}
+            className="btn btn-outline-secondary btn-sm p-1.5 d-flex align-items-center justify-content-center rounded-3 flex-shrink-0 shadow-xs"
+            title="Şifre Değiştir"
+            style={{ width: "36px", height: "36px", transition: "all 0.2s ease" }}
+          >
+            <IconKey size={19} />
+          </button>
 
           {/* Direct Logout Button */}
           <button
