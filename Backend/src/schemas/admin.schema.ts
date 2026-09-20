@@ -174,6 +174,18 @@ export const islemLogSchema = z.object({ query: z.object(sayfalama) });
 
 export const oturumKapatSchema = z.object({ params: z.object({ sid: z.string().uuid("Geçersiz oturum kimliği") }) });
 
+// ------------------------------------------------------- E-posta doğrulaması ---
+
+export const epostaDogrulamaElleSchema = z.object({
+  params: idParam,
+  body: z.object({ dogrulandi: z.boolean() }),
+});
+
+// base64url, 32 bayt = 43 karakter; biraz pay bırakıldı
+export const epostaOnaySchema = z.object({
+  body: z.object({ anahtar: z.string().regex(/^[A-Za-z0-9_-]{20,100}$/, "Geçersiz bağlantı") }),
+});
+
 export const lisansEkleSchema = z.object({
   params: idParam,
   body: z.object({

@@ -26,6 +26,9 @@ const ISLEM_ETIKETI: Record<string, string> = {
   MODUL_DEGISTI: "Modül ayarı",
   MODUL_KATALOG_ESITLENDI: "Modül kataloğu eşitlendi",
   OTURUM_KAPATILDI: "Oturum kapatıldı",
+  EPOSTA_DOGRULAMA_GONDERILDI: "Doğrulama maili gönderildi",
+  EPOSTA_DOGRULANDI: "E-posta doğrulandı",
+  EPOSTA_DOGRULAMA_KALDIRILDI: "E-posta doğrulaması kaldırıldı",
 };
 
 /** JSON değerini "alan: değer" satırları olarak yazar; çözülemezse olduğu gibi gösterir. */

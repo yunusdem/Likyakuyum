@@ -6,6 +6,8 @@ const SECIM = `
   SELECT f.FIRMA_ID, f.FIRMA_KODU, f.MUSTERI_NO, f.PRG_TUR, f.UNVAN, f.VKN_TCKN, f.VERGI_DAIRESI, f.YETKILI_KISI, f.TELEFON, f.EPOSTA, f.ADRES,
          f.DURUM, f.DURUM_NOTU, f.DURUM_TARIHI, f.BAGLANTI_MODU, f.DB_SERVER, f.DB_PORT, f.DB_NAME, f.DB_USER,
          CAST(CASE WHEN f.DB_SIFRE_ENC IS NULL THEN 0 ELSE 1 END AS BIT) AS DB_SIFRE_TANIMLI,
+         f.EPOSTA_DOGRULANDI, f.EPOSTA_DOGRULAMA_TARIHI, f.EPOSTA_DOGRULAMA_KAYNAK, f.EPOSTA_SON_GONDERIM,
+         CASE WHEN f.EPOSTA_TOKEN_HASH IS NOT NULL AND f.EPOSTA_TOKEN_BITIS > GETDATE() THEN f.EPOSTA_TOKEN_BITIS END AS EPOSTA_BAGLANTI_BITIS,
          f.DOGRULANDI, f.DOGRULAYAN_ADMIN_ID, a.KULLANICI_ADI AS DOGRULAYAN_ADMIN, f.DOGRULAMA_TARIHI, f.DOGRULAMA_NOTU,
          f.DB_SON_TEST_TARIHI, f.DB_SON_TEST_SONUCU, f.MASAK_DURUMU, f.MASAK_SON_KONTROL, f.OLUSTURMA_TARIHI,
          (SELECT COUNT(*) FROM dbo.ADM_KULLANICI k WHERE k.FIRMA_ID = f.FIRMA_ID AND k.DURUM = 'AKTIF') AS KULLANICI_SAYISI,
@@ -51,6 +53,11 @@ const satirdan = (r: any): FirmaDto => ({
   dogrulayanAdmin: r.DOGRULAYAN_ADMIN ?? null,
   dogrulamaTarihi: r.DOGRULAMA_TARIHI ?? null,
   dogrulamaNotu: r.DOGRULAMA_NOTU ?? null,
+  epostaDogrulandi: !!r.EPOSTA_DOGRULANDI,
+  epostaDogrulamaTarihi: r.EPOSTA_DOGRULAMA_TARIHI ?? null,
+  epostaDogrulamaKaynak: r.EPOSTA_DOGRULAMA_KAYNAK ?? null,
+  epostaSonGonderim: r.EPOSTA_SON_GONDERIM ?? null,
+  epostaBaglantiBitis: r.EPOSTA_BAGLANTI_BITIS ?? null,
   dbSonTestTarihi: r.DB_SON_TEST_TARIHI ?? null,
   dbSonTestSonucu: r.DB_SON_TEST_SONUCU ?? null,
   masakDurumu: r.MASAK_DURUMU ?? null,
@@ -151,7 +158,13 @@ export class FirmaSqlRepository {
         FIRMA_KODU = @firmaKodu, MUSTERI_NO = @musteriNo, PRG_TUR = @prgTur, UNVAN = @unvan, VKN_TCKN = @vknTckn, VERGI_DAIRESI = @vergiDairesi,
         YETKILI_KISI = @yetkiliKisi, TELEFON = @telefon, EPOSTA = @eposta, ADRES = @adres,
         BAGLANTI_MODU = @baglantiModu, DB_SERVER = @dbServer, DB_PORT = @dbPort, DB_NAME = @dbName,
-        DB_ANAHTAR = @dbAnahtar, DB_USER = @dbUser
+        DB_ANAHTAR = @dbAnahtar, DB_USER = @dbUser,
+        -- E-posta adresi değiştiyse doğrulama ve bekleyen bağlantı geçersiz olur (doğrulanan adres artık bu değil)
+        EPOSTA_DOGRULANDI = CASE WHEN ISNULL(@eposta, N'') = ISNULL(EPOSTA, N'') THEN EPOSTA_DOGRULANDI ELSE 0 END,
+        EPOSTA_DOGRULAMA_TARIHI = CASE WHEN ISNULL(@eposta, N'') = ISNULL(EPOSTA, N'') THEN EPOSTA_DOGRULAMA_TARIHI ELSE NULL END,
+        EPOSTA_DOGRULAMA_KAYNAK = CASE WHEN ISNULL(@eposta, N'') = ISNULL(EPOSTA, N'') THEN EPOSTA_DOGRULAMA_KAYNAK ELSE NULL END,
+        EPOSTA_TOKEN_HASH = CASE WHEN ISNULL(@eposta, N'') = ISNULL(EPOSTA, N'') THEN EPOSTA_TOKEN_HASH ELSE NULL END,
+        EPOSTA_TOKEN_BITIS = CASE WHEN ISNULL(@eposta, N'') = ISNULL(EPOSTA, N'') THEN EPOSTA_TOKEN_BITIS ELSE NULL END
         ${dbSifreEnc !== undefined ? ", DB_SIFRE_ENC = @dbSifreEnc" : ""}
       WHERE FIRMA_ID = @id
     `);
@@ -204,6 +217,62 @@ export class FirmaSqlRepository {
       dbUser: r.DB_USER ?? null,
       dbSifreEnc: r.DB_SIFRE_ENC ?? null,
     };
+  }
+
+  // ------------------------------------------------------------ e-posta doğrulaması
+
+  public static async epostaSonGonderimdenBeriSn(firmaId: number): Promise<number | null> {
+    const pool = await getAdminPool();
+    const res = await pool
+      .request()
+      .input("id", sql.Int, firmaId)
+      .query(`SELECT DATEDIFF(SECOND, EPOSTA_SON_GONDERIM, GETDATE()) AS SN FROM dbo.ADM_FIRMA WHERE FIRMA_ID = @id`);
+    return res.recordset[0]?.SN ?? null;
+  }
+
+  /** Yeni bağlantının özetini yazar; önceki bağlantı (varsa) böylece geçersiz olur. */
+  public static async epostaAnahtariYaz(firmaId: number, anahtarOzeti: string, gecerlilikSaat: number): Promise<void> {
+    const pool = await getAdminPool();
+    await pool
+      .request()
+      .input("id", sql.Int, firmaId)
+      .input("ozet", sql.VarChar(64), anahtarOzeti)
+      .input("saat", sql.Int, gecerlilikSaat).query(`
+        UPDATE dbo.ADM_FIRMA
+        SET EPOSTA_TOKEN_HASH = @ozet, EPOSTA_TOKEN_BITIS = DATEADD(HOUR, @saat, GETDATE()), EPOSTA_SON_GONDERIM = GETDATE()
+        WHERE FIRMA_ID = @id
+      `);
+  }
+
+  /**
+   * Bağlantıdaki anahtarın özetiyle doğrular. Tek ifade: anahtar aynı anda iki kez kullanılamaz (ilk UPDATE özeti siler).
+   * Eşleşme yoksa / süresi dolmuşsa null.
+   */
+  public static async epostaAnahtariylaDogrula(
+    anahtarOzeti: string
+  ): Promise<{ firmaId: number; unvan: string; eposta: string } | null> {
+    const pool = await getAdminPool();
+    const res = await pool.request().input("ozet", sql.VarChar(64), anahtarOzeti).query(`
+      UPDATE dbo.ADM_FIRMA
+      SET EPOSTA_DOGRULANDI = 1, EPOSTA_DOGRULAMA_TARIHI = GETDATE(), EPOSTA_DOGRULAMA_KAYNAK = 'MAIL',
+          EPOSTA_TOKEN_HASH = NULL, EPOSTA_TOKEN_BITIS = NULL
+      OUTPUT inserted.FIRMA_ID, inserted.UNVAN, inserted.EPOSTA
+      WHERE EPOSTA_TOKEN_HASH = @ozet AND EPOSTA_TOKEN_BITIS > GETDATE() AND EPOSTA IS NOT NULL
+    `);
+    const r = res.recordset[0];
+    return r ? { firmaId: r.FIRMA_ID, unvan: r.UNVAN, eposta: r.EPOSTA } : null;
+  }
+
+  public static async epostaDogrulamaElleYaz(firmaId: number, dogrulandi: boolean): Promise<void> {
+    const pool = await getAdminPool();
+    await pool.request().input("id", sql.Int, firmaId).input("d", sql.Bit, dogrulandi).query(`
+      UPDATE dbo.ADM_FIRMA
+      SET EPOSTA_DOGRULANDI = @d,
+          EPOSTA_DOGRULAMA_TARIHI = CASE WHEN @d = 1 THEN GETDATE() ELSE NULL END,
+          EPOSTA_DOGRULAMA_KAYNAK = CASE WHEN @d = 1 THEN 'ADMIN' ELSE NULL END,
+          EPOSTA_TOKEN_HASH = NULL, EPOSTA_TOKEN_BITIS = NULL
+      WHERE FIRMA_ID = @id
+    `);
   }
 
   public static async dbTestSonucuYaz(firmaId: number, sonuc: string): Promise<void> {

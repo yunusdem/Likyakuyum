@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { FirmaService } from "../../services/admin/firma.service.js";
 import { FirmaBaglantiService } from "../../services/admin/firmaBaglanti.service.js";
+import { EpostaDogrulamaService } from "../../services/admin/epostaDogrulama.service.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 
@@ -43,6 +44,24 @@ export class FirmaController {
   public static masakKontrol = asyncHandler(async (req: Request, res: Response) => {
     const sonuc = await FirmaBaglantiService.masakKontrol(id(req));
     return ApiResponse.ok(res, sonuc.sonuc, { ...sonuc, firma: await FirmaService.getir(id(req)) });
+  });
+
+  public static mailDurumu = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "Mail durumu getirildi.", EpostaDogrulamaService.mailDurumu());
+  });
+
+  public static epostaDogrulamaGonder = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "Doğrulama maili gönderildi.", await EpostaDogrulamaService.gonder(req.admin!, id(req)));
+  });
+
+  public static epostaDogrulamaElle = asyncHandler(async (req: Request, res: Response) => {
+    const firma = await EpostaDogrulamaService.elleAyarla(req.admin!, id(req), req.body.dogrulandi);
+    return ApiResponse.ok(res, "E-posta doğrulaması güncellendi.", firma);
+  });
+
+  /** Herkese açık: maildeki bağlantıyı açan kişi düğmeye basınca çağrılır (oturum gerekmez). */
+  public static epostaOnayla = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "E-posta adresiniz doğrulandı.", await EpostaDogrulamaService.onayla(req.body.anahtar));
   });
 
   public static lisanslar = asyncHandler(async (req: Request, res: Response) => {

@@ -36,5 +36,18 @@ export const LisansRozeti: React.FC<{ firma: Pick<FirmaDto, "lisansDurumu" | "li
   }
 };
 
+/** E-posta doğrulaması: doğrulandı / mail gönderildi, bekleniyor / doğrulanmadı */
+export const EpostaRozeti: React.FC<{ firma: Pick<FirmaDto, "eposta" | "epostaDogrulandi" | "epostaBaglantiBitis"> }> = ({ firma }) => {
+  if (firma.epostaDogrulandi) return <Badge bg="success">E-posta doğrulandı</Badge>;
+  if (!firma.eposta) return <Badge bg="light" text="dark">E-posta yok</Badge>;
+  if (firma.epostaBaglantiBitis)
+    return (
+      <Badge bg="warning" text="dark">
+        E-posta: yanıt bekleniyor
+      </Badge>
+    );
+  return <Badge bg="secondary">E-posta doğrulanmadı</Badge>;
+};
+
 export const DogrulamaRozeti: React.FC<{ dogrulandi: boolean }> = ({ dogrulandi }) =>
   dogrulandi ? <Badge bg="success">Doğrulandı</Badge> : <Badge bg="secondary">Doğrulanmadı</Badge>;

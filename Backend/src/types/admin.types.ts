@@ -55,7 +55,10 @@ export type AdminIslem =
   | "KULLANICI_ICE_AKTARILDI"
   | "MODUL_DEGISTI"
   | "MODUL_KATALOG_ESITLENDI"
-  | "OTURUM_KAPATILDI";
+  | "OTURUM_KAPATILDI"
+  | "EPOSTA_DOGRULAMA_GONDERILDI"
+  | "EPOSTA_DOGRULANDI"
+  | "EPOSTA_DOGRULAMA_KALDIRILDI";
 
 export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF";
 export type BaglantiModu = "cloud" | "local";
@@ -107,6 +110,14 @@ export interface FirmaDto {
   dogrulayanAdmin: string | null;
   dogrulamaTarihi: Date | null;
   dogrulamaNotu: string | null;
+  /** E-posta adresi doğrulandı mı (firma kimlik onayından AYRI). Adres değişince kendiliğinden sıfırlanır. */
+  epostaDogrulandi: boolean;
+  epostaDogrulamaTarihi: Date | null;
+  /** 'MAIL': firma maildeki bağlantıyla doğruladı · 'ADMIN': admin elle işaretledi */
+  epostaDogrulamaKaynak: "MAIL" | "ADMIN" | null;
+  epostaSonGonderim: Date | null;
+  /** Gönderilmiş ve henüz kullanılmamış bağlantının son geçerlilik zamanı; yoksa / süresi dolduysa null */
+  epostaBaglantiBitis: Date | null;
   dbSonTestTarihi: Date | null;
   dbSonTestSonucu: string | null;
   masakDurumu: string | null;

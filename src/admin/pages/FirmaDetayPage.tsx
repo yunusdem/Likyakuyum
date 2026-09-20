@@ -5,7 +5,8 @@ import { adminApi, FirmaDto, FirmaDurum, gunYaz, LisansDto, LisansGirdi, tarihYa
 import FirmaFormu from "../components/FirmaFormu";
 import FirmaKullanicilari from "../components/FirmaKullanicilari";
 import FirmaModulleri from "../components/FirmaModulleri";
-import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, LisansRozeti } from "../components/FirmaRozetleri";
+import FirmaEpostaDogrulama from "../components/FirmaEpostaDogrulama";
+import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
 
 const DURUM_ACIKLAMASI: Record<FirmaDurum, string> = {
   AKTIF: "Firma normal çalışır.",
@@ -164,6 +165,7 @@ const FirmaDetayPage: React.FC = () => {
                 <DurumRozeti durum={firma.durum} />
                 <LisansRozeti firma={firma} />
                 <DogrulamaRozeti dogrulandi={firma.dogrulandi} />
+                <EpostaRozeti firma={firma} />
                 <span className="text-muted small">
                   Kullanıcı: {firma.kullaniciSayisi}
                   {firma.aktifLisans ? ` / ${firma.aktifLisans.kullaniciLimiti}` : ""}
@@ -266,6 +268,10 @@ const FirmaDetayPage: React.FC = () => {
                   >
                     {firma.dogrulandi ? "Doğrulamayı Kaldır" : "Doğrulandı Olarak İşaretle"}
                   </Button>
+                </Col>
+
+                <Col lg={12}>
+                  <FirmaEpostaDogrulama firma={firma} firmaGuncellendi={setFirma} bildir={setBilgi} />
                 </Col>
 
                 <Col lg={6}>
