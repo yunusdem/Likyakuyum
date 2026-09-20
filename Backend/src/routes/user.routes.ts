@@ -49,6 +49,12 @@ router.put(
   UserController.updateUser
 );
 
+router.post(
+  "/:id/sifre-sifirla",
+  validate(getUserByIdSchema),
+  UserController.sifreSifirla
+);
+
 router.delete(
   "/:id",
   validate(getUserByIdSchema),

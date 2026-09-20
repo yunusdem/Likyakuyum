@@ -65,6 +65,14 @@ export const refreshTokenSchema = z.object({
   }),
 });
 
+// Şifre kuralı (8+ karakter, harf + rakam) serviste sifreKuralHatasi ile denetlenir.
+export const changePasswordSchema = z.object({
+  body: z.object({
+    currentPassword: z.string().min(1, "Mevcut şifre girilmelidir").max(200),
+    newPassword: z.string().min(1, "Yeni şifre girilmelidir").max(200),
+  }),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>["body"];
 export type RegisterInput = z.infer<typeof registerSchema>["body"];
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>["body"];

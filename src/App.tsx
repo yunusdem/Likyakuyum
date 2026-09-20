@@ -5,6 +5,8 @@ import Sidebar from "layouts/Sidebar";
 import HomePage from "./pages/HomePage";
 import ModulePage from "./pages/ModulePage";
 import UserDefinitionsPage from "./pages/settings/UserDefinitionsPage";
+import ChangePasswordPage from "./pages/auth/ChangePasswordPage";
+import ModulKorumasi from "./components/auth/ModulKorumasi";
 import CompanyDefinitionsPage from "./pages/settings/CompanyDefinitionsPage";
 import CashDeskDefinitionsPage from "./pages/settings/CashDeskDefinitionsPage";
 import PrinterDefinitionsPage from "./pages/settings/PrinterDefinitionsPage";
@@ -82,7 +84,7 @@ const DashboardLayout: React.FC = () => {
       <div id="content" className="position-relative min-vh-100 d-flex flex-column">
         <Header />
         <main className="flex-grow-1 custom-container pt-1 pb-3">
-          <Outlet />
+          <ModulKorumasi />
         </main>
         <footer className="custom-container py-3 border-top mt-auto bg-body">
           <div className="d-flex align-items-center">
@@ -123,6 +125,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<DashboardLayout />}>
             <Route path="dashboard" element={<HomePage />} />
+            <Route path="sifre-degistir" element={<ChangePasswordPage />} />
             <Route path="ayarlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
             <Route path="tanimlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
             <Route path="ayarlar/firma-tanimlari" element={<CompanyDefinitionsPage />} />

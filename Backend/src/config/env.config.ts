@@ -72,6 +72,30 @@ const envSchema = z.object({
     .string()
     .default("true")
     .transform((val) => val === "true"),
+  // Ana admin paneli (docs/ADMIN_PANEL_YOL_HARITASI.md). Kod içinde varsayılan şifre/secret YOK:
+  // ADMIN_DB_USER, ADMIN_DB_PASSWORD, ADMIN_JWT_SECRET veya ADMIN_DB_ENC_KEY boşsa admin API'si kapalı kalır.
+  ADMIN_DB_SERVER: z.string().default("localhost"),
+  ADMIN_DB_PORT: z
+    .string()
+    .default("1433")
+    .transform((val) => parseInt(val, 10)),
+  ADMIN_DB_NAME: z.string().default("LIKYA_ADMIN"),
+  ADMIN_DB_USER: z.string().default(""),
+  ADMIN_DB_PASSWORD: z.string().default(""),
+  ADMIN_JWT_SECRET: z.string().default(""),
+  ADMIN_JWT_EXPIRES_IN: z.string().default("8h"),
+  // Firma veritabanı şifrelerini LIKYA_ADMIN içinde şifreli saklamak için (AES-256-GCM). Değişirse kayıtlı şifreler çözülemez.
+  ADMIN_DB_ENC_KEY: z.string().default(""),
+  // Kullanıcı girişinin merkez (LIKYA_ADMIN) kontrolünden geçmesi. "kapali": giriş eskisi gibi çalışır.
+  // "zorunlu": firma kayıtlı/aktif/lisanslı ve kullanıcı merkezde tanımlı olmalı. Tüm firmalar panelde tanımlanıp
+  // kullanıcıları içe aktarılmadan "zorunlu" YAPMAYIN; tanımsız firmalar giremez.
+  MERKEZ_GIRIS: z.enum(["kapali", "zorunlu"]).default("kapali"),
+  ADMIN_ORIGIN: z
+    .string()
+    .default(
+      "http://admin.likyakuyum.com,https://admin.likyakuyum.com,http://localhost:3001,http://127.0.0.1:3001"
+    )
+    .transform((val) => val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)),
 });
 
 

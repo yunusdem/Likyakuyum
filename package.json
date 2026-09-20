@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "dev:admin": "vite --config vite.admin.config.ts",
+    "build:admin": "tsc && vite build --config vite.admin.config.ts",
     "agent": "node local-agent/server.js"
   },
   "dependencies": {

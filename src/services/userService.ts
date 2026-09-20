@@ -1,6 +1,21 @@
 import { apiClient, ApiResponse } from "./apiClient";
 
+/** Yönetim paneli (merkez) açıkken giriş ve /auth/me yanıtında gelen firma/lisans bilgisi; kapalıyken gelmez. */
+export interface MerkezOturumBilgisi {
+  firmaKodu: string;
+  firmaUnvan: string;
+  firmaYoneticisi: boolean;
+  sifreDegismeli: boolean;
+  lisansBitis: string | null;
+  lisansKalanGun: number | null;
+  kullaniciLimiti: number | null;
+  kullaniciSayisi: number;
+  /** Firmaya açık modül kodları; null = kısıt yok */
+  moduller: string[] | null;
+}
+
 export interface UserProfileDto {
+  merkez?: MerkezOturumBilgisi;
   id: string;
   username: string;
   fullName: string;
@@ -132,6 +147,12 @@ export const UserService = {
   /**
    * Deletes a user from MSSQL TODVZ_KULLANICI
    */
+  /** Firma yöneticisinin kullanıcıya geçici şifre vermesi (yalnızca yönetim paneli/merkez açıkken) */
+  async sifreSifirla(id: string): Promise<{ geciciSifre: string }> {
+    const res = await apiClient.post<{ geciciSifre: string }>(`/users/${id}/sifre-sifirla`);
+    return res.data;
+  },
+
   async deleteUser(id: string) {
     const res = await apiClient.delete(`/users/${id}`);
     return res;

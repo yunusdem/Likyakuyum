@@ -466,6 +466,26 @@ const UserDefinitionsPage: React.FC = () => {
 
 
 
+  // Yönetim paneli (merkez) açıkken mevcut kullanıcının şifresi buradan yazılmaz; firma yöneticisi sıfırlar
+  const merkez = authUser?.merkez;
+  const [geciciSifre, setGeciciSifre] = useState<{ kullaniciAdi: string; sifre: string } | null>(null);
+  const [sifreSifirlaOnay, setSifreSifirlaOnay] = useState<boolean>(false);
+
+  const handleSifreSifirla = async () => {
+    setSifreSifirlaOnay(false);
+    if (!currentUser.id) return;
+    try {
+      setIsLoading(true);
+      setAlertError(null);
+      const sonuc = await UserService.sifreSifirla(currentUser.id);
+      setGeciciSifre({ kullaniciAdi: currentUser.username, sifre: sonuc.geciciSifre });
+    } catch (err: any) {
+      setAlertError(err?.message || "Şifre sıfırlanamadı.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Modal States
   const [showConsolidatedModal, setShowConsolidatedModal] = useState<boolean>(false);
   const [showEDocumentModal, setShowEDocumentModal] = useState<boolean>(false);
@@ -885,6 +905,25 @@ const UserDefinitionsPage: React.FC = () => {
                   Şifre:
                 </Form.Label>
                 <Col sm={8}>
+                  {merkez && !isNewRecord ? (
+                    <Button
+                      variant="outline-secondary"
+                      size="sm"
+                      className="w-100 d-flex align-items-center justify-content-center gap-1"
+                      disabled={isLoading || !merkez.firmaYoneticisi || String(currentUser.id) === String(authUser?.id)}
+                      title={
+                        String(currentUser.id) === String(authUser?.id)
+                          ? "Kendi şifrenizi Şifre Değiştir ekranından değiştirin"
+                          : !merkez.firmaYoneticisi
+                            ? "Şifre sıfırlamak için firma yöneticisi olmalısınız"
+                            : "Kullanıcıya geçici şifre verir; ilk girişte kendi şifresini belirler"
+                      }
+                      onClick={() => setSifreSifirlaOnay(true)}
+                    >
+                      <IconKey size={16} />
+                      Şifre Sıfırla
+                    </Button>
+                  ) : (
                   <InputGroup size="sm">
                     <InputGroup.Text className="bg-light text-muted">
                       <IconKey size={16} />
@@ -906,6 +945,7 @@ const UserDefinitionsPage: React.FC = () => {
                       {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
                     </Button>
                   </InputGroup>
+                  )}
                 </Col>
               </Form.Group>
             </Col>
@@ -1905,6 +1945,46 @@ const UserDefinitionsPage: React.FC = () => {
           </Card.Body>
         </Card>
       </Tab.Container>
+
+      {/* Şifre sıfırlama onayı ve bir kez gösterilen geçici şifre */}
+      <Modal show={sifreSifirlaOnay} onHide={() => setSifreSifirlaOnay(false)} centered>
+        <Modal.Body className="p-4">
+          <strong>{currentUser.username}</strong> kullanıcısının şifresi sıfırlansın mı? Mevcut şifresi geçersiz olur.
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" size="sm" onClick={() => setSifreSifirlaOnay(false)}>
+            Vazgeç
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleSifreSifirla}>
+            Sıfırla
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={!!geciciSifre} onHide={() => setGeciciSifre(null)} backdrop="static" keyboard={false} centered>
+        <Modal.Header>
+          <Modal.Title as="h6">Geçici Şifre</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="mb-2">
+            <strong>{geciciSifre?.kullaniciAdi}</strong> için geçici şifre:
+          </p>
+          <div
+            className="font-monospace text-center p-3 mb-3 border rounded bg-light"
+            style={{ fontSize: "1.3rem", letterSpacing: "1px", userSelect: "all" }}
+          >
+            {geciciSifre?.sifre}
+          </div>
+          <Alert variant="warning" className="mb-0 small">
+            Bu şifre bir daha gösterilmez. Kullanıcı ilk girişinde kendi şifresini belirleyecek.
+          </Alert>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="primary" size="sm" onClick={() => setGeciciSifre(null)}>
+            Not aldım, kapat
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* Modal 1: Konsolide Veritabanları */}
       <Modal

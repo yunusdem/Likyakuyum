@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Form, Button, Alert, Spinner, Row, Col, InputGroup } from "react-bootstrap";
+import { Form, Button, Alert, Spinner, Row, Col, InputGroup, Modal } from "react-bootstrap";
 import {
   IconUser,
   IconLock,
@@ -26,6 +26,14 @@ import {
 
 const PREDEFINED_SERVERS = ["localhost", "127.0.0.1"];
 const PREDEFINED_DBS = ["R2016_dvz"];
+
+// Yönetim panelinden gelen giriş engelleri açılır pencerede gösterilir (docs/ADMIN_PANEL_YOL_HARITASI.md K3)
+const ENGEL_BASLIKLARI: Record<string, string> = {
+  FIRMA_DONDURULDU: "Hesabınız donduruldu",
+  LISANS_BITTI: "Hesabınız donduruldu",
+  FIRMA_PASIF: "Hesap kullanımda değil",
+  KULLANICI_PASIF: "Kullanıcı hesabı kapalı",
+};
 
 export const LoginPage: React.FC = () => {
   const [rememberMe, setRememberMe] = useState<boolean>(() => {
@@ -85,6 +93,15 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [engel, setEngel] = useState<{ baslik: string; mesaj: string } | null>(null);
+
+  /** Giriş bir yönetim engeline takıldıysa pencereyi açar ve true döner. */
+  const engelGoster = (err: any): boolean => {
+    const baslik = err?.kod ? ENGEL_BASLIKLARI[err.kod] : undefined;
+    if (!baslik) return false;
+    setEngel({ baslik, mesaj: err.message });
+    return true;
+  };
 
   const handleConnectionModeChange = (mode: ConnectionMode) => {
     setConnectionModeState(mode);
@@ -201,6 +218,7 @@ export const LoginPage: React.FC = () => {
 
         navigate("/dashboard", { replace: true });
       } catch (err: any) {
+        if (engelGoster(err)) return;
         const msg = err.message || "Giriş başarısız. Lütfen yerel SQL Server bağlantı bilgilerinizi kontrol ediniz.";
         setErrorMsg(msg);
         if (msg.toLowerCase().includes("sql") || msg.toLowerCase().includes("login failed") || msg.toLowerCase().includes("veritabanı")) {
@@ -244,6 +262,7 @@ export const LoginPage: React.FC = () => {
 
         navigate("/dashboard", { replace: true });
       } catch (err: any) {
+        if (engelGoster(err)) return;
         const msg = err.message || "Giriş başarısız. Lütfen kullanıcı adı ve şifrenizi kontrol ediniz.";
         setErrorMsg(msg);
         if (msg.toLowerCase().includes("sql") || msg.toLowerCase().includes("login failed") || msg.toLowerCase().includes("veritabanı")) {
@@ -791,6 +810,21 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <Modal show={!!engel} onHide={() => setEngel(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title as="h5" className="d-flex align-items-center gap-2">
+            <IconAlertCircle size={22} className="text-danger" />
+            {engel?.baslik}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>{engel?.mesaj}</Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setEngel(null)}>
+            Tamam
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };

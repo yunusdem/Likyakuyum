@@ -102,6 +102,13 @@ export const AuthService = {
   },
 
   /**
+   * Kullanıcının kendi şifresini değiştirmesi (ilk girişteki zorunlu değişim dahil)
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await apiClient.post("/auth/change-password", { currentPassword, newPassword });
+  },
+
+  /**
    * Sets token, user and active database in localStorage
    */
   setSession(

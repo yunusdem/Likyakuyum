@@ -26,6 +26,7 @@ export const DashboardMenu: MenuItemType[] = [
   // A- Vezne İşlemleri
   {
     id: uuid(),
+    key: "vezne", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "A- Vezne İşlemleri",
     icon: <IconCoins size={18} />,
     children: [
@@ -51,6 +52,7 @@ export const DashboardMenu: MenuItemType[] = [
   // B- Kasa İşlemleri
   {
     id: uuid(),
+    key: "kasa", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "B- Kasa İşlemleri",
     icon: <IconBuildingBank size={18} />,
     children: [
@@ -69,6 +71,7 @@ export const DashboardMenu: MenuItemType[] = [
   // C- Kur İşlemleri
   {
     id: uuid(),
+    key: "kur", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "C- Kur İşlemleri",
     icon: <IconChartLine size={18} />,
     children: [
@@ -82,6 +85,7 @@ export const DashboardMenu: MenuItemType[] = [
   // D- Cari İşlemler
   {
     id: uuid(),
+    key: "cari", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "D- Cari İşlemler",
     icon: <IconUsers size={18} />,
     children: [
@@ -104,6 +108,7 @@ export const DashboardMenu: MenuItemType[] = [
   // E- Yönetici İşlemleri
   {
     id: uuid(),
+    key: "yonetici", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "E- Yönetici İşlemleri",
     icon: <IconShieldLock size={18} />,
     children: [
@@ -122,6 +127,7 @@ export const DashboardMenu: MenuItemType[] = [
   // F- Banka / POS İşlemleri
   {
     id: uuid(),
+    key: "banka", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "F- Banka / POS İşlemleri",
     icon: <IconCreditCard size={18} />,
     children: [
@@ -136,6 +142,7 @@ export const DashboardMenu: MenuItemType[] = [
   // G- Raporlar
   {
     id: uuid(),
+    key: "raporlar", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "G- Raporlar",
     icon: <IconReportAnalytics size={18} />,
     // "raporlar" klasöründeki raporlar + açılır MASAK grubu; diğer klasörlerin raporları kendi işlem menülerinde (docs/raporlar-faz2.md)
@@ -148,6 +155,7 @@ export const DashboardMenu: MenuItemType[] = [
   // H- e-Belge → e-Belge ana sayfası (eski "Belge / Fiş PDF" sayfası kaldırıldı)
   {
     id: uuid(),
+    key: "ebelge", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "H- e-Belge",
     icon: <IconFileTypePdf size={18} />,
     link: "e-belge",
@@ -156,6 +164,7 @@ export const DashboardMenu: MenuItemType[] = [
   // I- Etiket İşlemleri
   {
     id: uuid(),
+    key: "etiket", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "I- Etiket İşlemleri",
     icon: <IconBarcode size={18} />,
     children: [
@@ -172,6 +181,7 @@ export const DashboardMenu: MenuItemType[] = [
   // J- Perakende İşlemleri
   {
     id: uuid(),
+    key: "perakende", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "J- Perakende İşlemleri",
     icon: <IconBuildingStore size={18} />,
     children: [
@@ -186,6 +196,7 @@ export const DashboardMenu: MenuItemType[] = [
   // K- Ayarlar
   {
     id: uuid(),
+    key: "ayarlar", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
     title: "K- Ayarlar",
     icon: <IconSettings size={18} />,
     children: [

@@ -1,0 +1,132 @@
+// Ana admin paneli kabuğu. Renkler kullanıcı uygulamasının bordo başlığıyla uyumludur.
+$adm-bordo: #8a1538;
+$adm-bordo-koyu: #6d102c;
+
+body {
+  background: #f6f4f5;
+}
+
+.adm-kabuk {
+  display: flex;
+  min-height: 100vh;
+}
+
+.adm-yan {
+  width: 230px;
+  flex-shrink: 0;
+  background: $adm-bordo;
+  color: #fff;
+}
+
+.adm-marka {
+  padding: 18px 20px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  background: $adm-bordo-koyu;
+
+  small {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 400;
+    opacity: 0.8;
+  }
+}
+
+.adm-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+
+  a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    &.aktif {
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+      font-weight: 600;
+    }
+  }
+}
+
+.adm-govde {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-ust {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e6e1e3;
+}
+
+.adm-icerik {
+  padding: 24px;
+}
+
+.adm-giris {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+
+  .card {
+    width: 100%;
+    max-width: 380px;
+    border-top: 4px solid $adm-bordo;
+  }
+}
+
+.adm-gecici-sifre {
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 1.35rem;
+  letter-spacing: 1px;
+  padding: 12px;
+  text-align: center;
+  background: #f6f4f5;
+  border: 1px dashed $adm-bordo;
+  border-radius: 6px;
+  user-select: all;
+}
+
+.btn-adm {
+  background: $adm-bordo;
+  border-color: $adm-bordo;
+  color: #fff;
+
+  &:hover,
+  &:focus,
+  &:disabled {
+    background: $adm-bordo-koyu;
+    border-color: $adm-bordo-koyu;
+    color: #fff;
+  }
+}
+
+@media (max-width: 768px) {
+  .adm-kabuk {
+    flex-direction: column;
+  }
+  .adm-yan {
+    width: 100%;
+  }
+  .adm-menu {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

@@ -119,7 +119,11 @@ class ApiClient {
           window.dispatchEvent(new CustomEvent("kuyumcu_session_expired"));
         }
 
-        throw new Error(errorMessage);
+        // Sunucunun hata kodu (ör. giriş reddinde errors.kod = FIRMA_DONDURULDU) çağırana taşınır
+        const apiError = new Error(errorMessage) as Error & { kod?: string; status?: number };
+        apiError.kod = json?.errors?.kod;
+        apiError.status = response.status;
+        throw apiError;
       }
 
       return json as ApiResponse<T>;
