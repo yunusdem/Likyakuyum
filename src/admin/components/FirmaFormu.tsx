@@ -24,6 +24,18 @@ const baslangic = (f?: FirmaDto): FirmaGirdi => ({
   dbUser: f?.dbUser ?? "",
 });
 
+const TR_ASCII: Record<string, string> = { ç: "C", ğ: "G", ı: "I", i: "I", ö: "O", ş: "S", ü: "U", Ç: "C", Ğ: "G", İ: "I", Ö: "O", Ş: "S", Ü: "U" };
+
+/**
+ * Firma kodu yalnızca A-Z, 0-9, tire ve alt çizgiden oluşur. Yazılan değer gerçekten dönüştürülür: yalnızca CSS ile
+ * büyük gösterilirse Türkçe klavyeden gelen "ı" / "İ" görünmeden değerde kalır ve kod reddedilir.
+ */
+export const firmaKodunaCevir = (deger: string): string =>
+  deger
+    .replace(/[çğıiöşüÇĞİÖŞÜ]/g, (h) => TR_ASCII[h])
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "");
+
 const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
   const [veri, setVeri] = useState<FirmaGirdi>(() => baslangic(firma));
   // Kayıtlı şifre hiçbir zaman sunucudan gelmez; alan boş bırakılırsa mevcut şifreye dokunulmaz.
@@ -60,7 +72,15 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
         <Col md={3}>
           <Form.Group controlId="frmKod">
             <Form.Label>Firma kodu</Form.Label>
-            <Form.Control {...alan("firmaKodu")} required minLength={2} maxLength={20} pattern="[a-zA-Z0-9_\-]+" style={{ textTransform: "uppercase" }} />
+            <Form.Control
+              value={veri.firmaKodu}
+              onChange={(e) => setVeri((v) => ({ ...v, firmaKodu: firmaKodunaCevir(e.target.value) }))}
+              required
+              minLength={2}
+              maxLength={20}
+              placeholder="ör. LIKYA01"
+            />
+            <Form.Text muted>Büyük harf, rakam, tire ve alt çizgi.</Form.Text>
           </Form.Group>
         </Col>
         <Col md={9}>

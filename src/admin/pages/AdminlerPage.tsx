@@ -4,6 +4,15 @@ import { IconPlus } from "@tabler/icons-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { adminApi, AdminDto, tarihYaz } from "../services/adminApi";
 
+const TR_ASCII: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", Ç: "c", Ğ: "g", İ: "i", I: "i", Ö: "o", Ş: "s", Ü: "u" };
+
+/** Admin kullanıcı adı: küçük harf, rakam, nokta, alt çizgi, tire. Türkçe harfler İngilizce karşılığına çevrilir. */
+const kullaniciAdinaCevir = (deger: string): string =>
+  deger
+    .replace(/[çğıöşüÇĞİIÖŞÜ]/g, (h) => TR_ASCII[h])
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "");
+
 interface GeciciSifreBilgisi {
   kullaniciAdi: string;
   sifre: string;
@@ -225,14 +234,13 @@ const AdminlerPage: React.FC = () => {
               <Form.Label>Kullanıcı adı</Form.Label>
               <Form.Control
                 value={yeniKullaniciAdi}
-                onChange={(e) => setYeniKullaniciAdi(e.target.value)}
+                onChange={(e) => setYeniKullaniciAdi(kullaniciAdinaCevir(e.target.value))}
                 required
                 minLength={3}
                 maxLength={50}
-                pattern="[a-zA-Z0-9._\-]+"
                 autoFocus
               />
-              <Form.Text muted>Harf, rakam, nokta, alt çizgi ve tire.</Form.Text>
+              <Form.Text muted>Küçük harf, rakam, nokta, alt çizgi ve tire.</Form.Text>
             </Form.Group>
             <Form.Group controlId="admYeniAdSoyad">
               <Form.Label>Ad Soyad</Form.Label>
