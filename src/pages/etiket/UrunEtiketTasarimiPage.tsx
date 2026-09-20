@@ -21,6 +21,7 @@ import {
   IconCrown,
   IconDiamond,
   IconDeviceFloppy,
+  IconPrinter,
   IconTrash,
   IconCopy,
   IconPlus,
@@ -267,6 +268,222 @@ export interface LabelConfig {
   bgColor: string;
   bgTexture: "beyaz" | "krem" | "siyah" | "altin";
 }
+
+export type PaperLayoutId =
+  | "single"
+  | "roll"
+  | "roll2"
+  | "roll3"
+  | "a4"
+  | "a5"
+  | "a6"
+  | "a3"
+  | "sheet_100x150"
+  | "strip_80x200";
+
+export interface PaperLayoutOption {
+  id: PaperLayoutId;
+  name: string;
+  shortName: string;
+  icon: string;
+  badge: string;
+  widthMm: number;
+  heightMm: number;
+  description: string;
+}
+
+export const PAPER_LAYOUTS: PaperLayoutOption[] = [
+  {
+    id: "single",
+    name: "Tekli 1:1",
+    shortName: "Tekli 1:1",
+    icon: "🏷️",
+    badge: "1:1 Birebir",
+    widthMm: 0,
+    heightMm: 0,
+    description: "Tekli etiket birebir milimetrik görünüm",
+  },
+  {
+    id: "roll",
+    name: "1'li Rulo",
+    shortName: "1'li Rulo",
+    icon: "📜",
+    badge: "Tek Sıra Rulo",
+    widthMm: 0,
+    heightMm: 0,
+    description: "Kuyumcu tek sıra termal barkod rulosu",
+  },
+  {
+    id: "roll2",
+    name: "2'li Rulo",
+    shortName: "2'li Rulo",
+    icon: "📜",
+    badge: "Çift Sıra Rulo",
+    widthMm: 0,
+    heightMm: 0,
+    description: "2'li yan yana çift sıralı kuyumcu rulosu",
+  },
+  {
+    id: "roll3",
+    name: "3'lü Rulo",
+    shortName: "3'lü Rulo",
+    icon: "📜",
+    badge: "Üç Sıra Rulo",
+    widthMm: 0,
+    heightMm: 0,
+    description: "3'lü yan yana üç sıralı kuyumcu rulosu",
+  },
+  {
+    id: "a4",
+    name: "A4 Tabaka",
+    shortName: "A4 Tabaka",
+    icon: "📄",
+    badge: "A4 Tabaka",
+    widthMm: 210,
+    heightMm: 297,
+    description: "Standart A4 etiket sayfasına çoklu tabaka dizilimi (210×297 mm)",
+  },
+  {
+    id: "a5",
+    name: "A5 Tabaka",
+    shortName: "A5 Tabaka",
+    icon: "📄",
+    badge: "A5 Tabaka",
+    widthMm: 148,
+    heightMm: 210,
+    description: "A5 yarım boy etiket tabakası (148×210 mm)",
+  },
+  {
+    id: "a6",
+    name: "A6 Tabaka",
+    shortName: "A6 Tabaka",
+    icon: "📄",
+    badge: "A6 Tabaka",
+    widthMm: 105,
+    heightMm: 148,
+    description: "A6 çeyrek boy mini etiket tabakası (105×148 mm)",
+  },
+  {
+    id: "a3",
+    name: "A3 Tabaka",
+    shortName: "A3 Tabaka",
+    icon: "📑",
+    badge: "A3 Tabaka",
+    widthMm: 297,
+    heightMm: 420,
+    description: "Geniş A3 matbaa tabakası (297×420 mm)",
+  },
+  {
+    id: "sheet_100x150",
+    name: "10×15 Tabaka",
+    shortName: "10×15 Tabaka",
+    icon: "🏷️",
+    badge: "10×15 Kart",
+    widthMm: 100,
+    heightMm: 150,
+    description: "100×150 mm kuyumcu mini etiket kartı tabakası",
+  },
+  {
+    id: "strip_80x200",
+    name: "8×20 Şerit",
+    shortName: "8×20 Şerit",
+    icon: "📜",
+    badge: "8×20 Şerit",
+    widthMm: 80,
+    heightMm: 200,
+    description: "80×200 mm kuyumcu vitrin şerit kartı",
+  },
+];
+
+export interface PaperTypeOption {
+  id: string;
+  name: string;
+  shortName: string;
+  bgColor: string;
+  borderColor: string;
+  previewBg: string;
+  shadow?: string;
+  isDark?: boolean;
+  opacity?: number;
+  description: string;
+}
+
+export const LABEL_PAPERS: PaperTypeOption[] = [
+  {
+    id: "kuse_beyaz",
+    name: "Kuşe Parlak Beyaz",
+    shortName: "Kuşe Beyaz",
+    bgColor: "#ffffff",
+    borderColor: "#cbd5e1",
+    previewBg: "#ffffff",
+    description: "Standart kuyumcu parlak beyaz kuşe etiket",
+  },
+  {
+    id: "mat_pp",
+    name: "Mat Polipropilen (PP)",
+    shortName: "Mat PP",
+    bgColor: "#f8fafc",
+    borderColor: "#94a3b8",
+    previewBg: "#f1f5f9",
+    description: "Yırtılmaz, suya ve parfüme dayanıklı mat PP etiket",
+  },
+  {
+    id: "metalik_altin",
+    name: "Metalik Altın Varak (Gold)",
+    shortName: "Metalik Altın",
+    bgColor: "#fef08a",
+    borderColor: "#ca8a04",
+    previewBg: "linear-gradient(135deg, #fef08a, #ca8a04)",
+    description: "Lüks altın varak metalize kuyumcu etiketi",
+  },
+  {
+    id: "metalik_gumus",
+    name: "Metalik Parlak Gümüş (Silver)",
+    shortName: "Metalik Gümüş",
+    bgColor: "#e2e8f0",
+    borderColor: "#94a3b8",
+    previewBg: "linear-gradient(135deg, #ffffff, #94a3b8)",
+    description: "Pırlanta ve saat için metalik gümüş folyo etiket",
+  },
+  {
+    id: "seffaf",
+    name: "Buzlu Şeffaf (Transparan)",
+    shortName: "Şeffaf",
+    bgColor: "rgba(255, 255, 255, 0.7)",
+    borderColor: "#38bdf8",
+    previewBg: "repeating-conic-gradient(#cbd5e1 0% 25%, #ffffff 0% 50%) 50% / 8px 8px",
+    opacity: 0.85,
+    description: "Şeffaf transparan kuyumcu yüzük ve bileklik etiketi",
+  },
+  {
+    id: "siyah_mat",
+    name: "Lüks Mat Siyah (Dark Velvet)",
+    shortName: "Siyah Mat",
+    bgColor: "#18181b",
+    borderColor: "#52525b",
+    previewBg: "#18181b",
+    isDark: true,
+    description: "Özel koleksiyon ve pırlanta için mat siyah etiket",
+  },
+  {
+    id: "kraft",
+    name: "Doğal Kraft / Saman Kağıt",
+    shortName: "Kraft Kağıt",
+    bgColor: "#d7be9d",
+    borderColor: "#a88860",
+    previewBg: "#d7be9d",
+    description: "Doğal ve otantik el yapımı mücevher kraft etiketi",
+  },
+  {
+    id: "saten_krem",
+    name: "Saten Dokulu Krem (İpek)",
+    shortName: "Saten Krem",
+    bgColor: "#fffbeb",
+    borderColor: "#fde68a",
+    previewBg: "#fef3c7",
+    description: "İpek ve saten kumaş dokulu zarif krem etiket",
+  },
+];
 
 export interface BuiltinTemplate {
   id: string;
@@ -887,26 +1104,43 @@ function QRRenderer({ value, size }: { value: string; size: number }) {
   );
 }
 
+function isColorDark(color?: string): boolean {
+  if (!color || color === "transparent") return false;
+  const c = color.trim().toLowerCase();
+  if (c === "#000" || c === "#000000" || c === "#18181b" || c === "#0f172a" || c === "#111827") return true;
+  if (c.startsWith("#") && c.length === 7) {
+    const r = parseInt(c.slice(1, 3), 16);
+    const g = parseInt(c.slice(3, 5), 16);
+    const b = parseInt(c.slice(5, 7), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness < 128;
+  }
+  return false;
+}
+
 // ─── Gerçekçi Etiket Şekli SVG (Birebir Siluet, Katlama & Görsel Izgara Çizgileri) ─
 function LabelShapeSVG({
   config,
   zoom,
   snapGrid,
+  isPreview = false,
 }: {
   config: LabelConfig;
   zoom: number;
   snapGrid: number;
+  isPreview?: boolean;
 }) {
   const W = mmToPx(config.genislikMm, zoom);
   const H = mmToPx(config.yukseklikMm, zoom);
   const r = mmToPx(3, zoom);
 
+  const isDark = isColorDark(config.bgColor);
   const shapeFill = config.bgColor || "#ffffff";
-  const strokeColor = "#cbd5e1";
-  const foldLineColor = "#94a3b8";
+  const strokeColor = isPreview ? "#cbd5e1" : "#94a3b8";
+  const foldLineColor = isDark ? "rgba(255, 255, 255, 0.4)" : "#94a3b8";
 
-  // Görsel Izgara Deseni Tanımı
-  const gridPatternSize = snapGrid > 0 ? mmToPx(snapGrid, zoom) : 0;
+  // Görsel Izgara Deseni Tanımı (Önizleme modunda ızgara gizlenir)
+  const gridPatternSize = !isPreview && snapGrid > 0 ? mmToPx(snapGrid, zoom) : 0;
   const patId = `grid_pat_${config.etiketSekli}_${Math.round(snapGrid * 10)}_${Math.round(zoom * 100)}`;
 
   // 1. KELEBEK ŞEKLİ (Gerçekçi Kuyumcu Etiket Rulosu Boğumu)
@@ -1206,6 +1440,302 @@ function LabelShapeSVG({
   );
 }
 
+// ─── Statik Çoklu Tabaka / Rulo Etiket Hücresi (Önizleme & Baskı İçin) ────────
+const StaticLabelCell: React.FC<{
+  config: LabelConfig;
+  elements: CanvasElement[];
+  zoom: number;
+}> = ({ config, elements, zoom }) => {
+  const W = mmToPx(config.genislikMm, zoom);
+  const H = mmToPx(config.yukseklikMm, zoom);
+  const sorted = [...elements].filter((e) => e.visible).sort((a, b) => a.zIndex - b.zIndex);
+  const isDark = isColorDark(config.bgColor);
+
+  return (
+    <div
+      className="static-label-cell"
+      style={{
+        width: W,
+        height: H,
+        position: "relative",
+        boxSizing: "border-box",
+        flexShrink: 0,
+        backgroundColor: config.bgColor || "#ffffff",
+        borderRadius: config.etiketSekli === "dambil" ? 6 * zoom : 2,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+        overflow: "visible",
+      }}
+    >
+      <LabelShapeSVG config={config} zoom={zoom} snapGrid={0} isPreview={true} />
+      {sorted.map((el) => {
+        const isRight = el.textAlign === "right" || el.isNumeric;
+        const isCenter = el.textAlign === "center";
+        const effectiveTextColor =
+          isDark && (!el.color || el.color === "#000000" || el.color === "#000" || el.color.toLowerCase() === "#111827")
+            ? "#f8fafc"
+            : el.color || "#000000";
+
+        const elStyle: React.CSSProperties = {
+          position: "absolute",
+          left: mmToPx(el.x, zoom),
+          top: mmToPx(el.y, zoom),
+          width: mmToPx(el.width, zoom),
+          height: mmToPx(el.height, zoom),
+          transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+          opacity: el.opacity,
+          zIndex: el.zIndex,
+          boxSizing: "border-box",
+          pointerEvents: "none",
+        };
+
+        return (
+          <div key={el.id} className="canvas-element" style={elStyle}>
+            {(el.type === "text" || el.type === "field") && (
+              <div
+                style={{
+                  fontFamily: el.fontFamily || "Arial",
+                  fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
+                  fontWeight: el.fontWeight || "normal",
+                  fontStyle: el.fontStyle || "normal",
+                  textDecoration: el.textDecoration || "none",
+                  textAlign: isRight ? "right" : isCenter ? "center" : "left",
+                  color: effectiveTextColor,
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: isRight ? "flex-end" : isCenter ? "center" : "flex-start",
+                  padding: "0 2px",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  userSelect: "none",
+                  background: el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : undefined,
+                }}
+              >
+                <span
+                  style={{
+                    width: "100%",
+                    textAlign: isRight ? "right" : isCenter ? "center" : "left",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    display: "block",
+                  }}
+                >
+                  {el.type === "field"
+                    ? `${el.prefix || ""}${el.text || el.fieldKey || "Alan"}${el.suffix || ""}`
+                    : el.text || (el.isNumeric ? "0.00" : "Metin")}
+                </span>
+              </div>
+            )}
+
+            {el.type === "barcode" && (
+              <BarcodeRenderer
+                value={el.barcodeValue || el.text || "123456789"}
+                format={el.barcodeFormat || "CODE128"}
+                width={mmToPx(el.width, zoom)}
+                height={mmToPx(el.height, zoom)}
+              />
+            )}
+
+            {el.type === "qr" && (
+              <QRRenderer
+                value={el.barcodeValue || el.text || "QR"}
+                size={Math.min(mmToPx(el.width, zoom), mmToPx(el.height, zoom))}
+              />
+            )}
+
+            {el.type === "icon" && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "100%",
+                  height: "100%",
+                  fontSize: `${mmToPx(el.height * 0.75, zoom)}px`,
+                  lineHeight: 1,
+                  color: el.color || "#000",
+                }}
+              >
+                {el.iconEmoji || "⭐"}
+              </div>
+            )}
+
+            {(el.type === "rect" || el.type === "rect-round") && (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  background: el.backgroundColor || "transparent",
+                  border: `${(el.borderWidth || 1) * zoom * 0.8}px solid ${el.borderColor || "#000000"}`,
+                  borderRadius: el.type === "rect-round" ? 4 * zoom : (el.borderRadius || 0) * zoom,
+                }}
+              />
+            )}
+
+            {el.type === "ellipse" && (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  background: el.backgroundColor || "transparent",
+                  border: `${(el.borderWidth || 1) * zoom * 0.8}px solid ${el.borderColor || "#000000"}`,
+                  borderRadius: "50%",
+                }}
+              />
+            )}
+
+            {el.type === "diamond" && (
+              <svg viewBox="0 0 40 40" style={{ width: "100%", height: "100%" }}>
+                <polygon
+                  points="20,2 38,20 20,38 2,20"
+                  fill={el.backgroundColor || "transparent"}
+                  stroke={el.borderColor || "#000000"}
+                  strokeWidth={el.borderWidth || 1}
+                />
+              </svg>
+            )}
+
+            {el.type === "line" && (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}>
+                <div style={{ width: "100%", height: `${Math.max(1, (el.borderWidth || 1) * zoom * 0.8)}px`, background: el.borderColor || "#000000" }} />
+              </div>
+            )}
+
+            {el.type === "line-dashed" && (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}>
+                <div style={{ width: "100%", borderTop: `${Math.max(1, (el.borderWidth || 1) * zoom * 0.8)}px dashed ${el.borderColor || "#000000"}` }} />
+              </div>
+            )}
+
+            {el.type === "line-dotted" && (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}>
+                <div style={{ width: "100%", borderTop: `${Math.max(1, (el.borderWidth || 1) * zoom * 0.8)}px dotted ${el.borderColor || "#000000"}` }} />
+              </div>
+            )}
+
+            {el.type === "line-double" && (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}>
+                <div style={{ width: "100%", borderTop: `${Math.max(2, 2.5 * zoom)}px double ${el.borderColor || "#000000"}` }} />
+              </div>
+            )}
+
+            {el.type === "line-vertical" && (
+              <div style={{ width: "100%", height: "100%", display: "flex", justifyContent: "center" }}>
+                <div style={{ height: "100%", width: `${Math.max(1, (el.borderWidth || 1) * zoom * 0.8)}px`, background: el.borderColor || "#000000" }} />
+              </div>
+            )}
+
+            {(el.type === "image" || el.type === "logo") && el.imageData && (
+              <img
+                src={el.imageData}
+                alt="Logo/Görsel"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  display: "block",
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ─── Kayıtlı Şablon Kartı Görsel Küçük Resim (Thumbnail) ───────────────────
+const SablonThumbnail: React.FC<{ sablon: EtiketSablonItem }> = ({ sablon }) => {
+  const bg = sablon.arkaPlanRengi
+    ? (sablon.arkaPlanRengi === "beyaz" ? "#ffffff" : sablon.arkaPlanRengi === "altin" ? "#fef08a" : sablon.arkaPlanRengi === "siyah" ? "#18181b" : sablon.arkaPlanRengi === "gumus" ? "#e2e8f0" : sablon.arkaPlanRengi)
+    : (sablon as any).bgColor || "#ffffff";
+
+  const config: LabelConfig = {
+    etiketTipi: sablon.etiketTipi || 1,
+    etiketSekli: (sablon.etiketSekli as any) || "kelebek",
+    genislikMm: sablon.genislikMm || 50,
+    yukseklikMm: sablon.yukseklikMm || 20,
+    solKanatMm: sablon.solKanatGenislikMm ?? (sablon.genislikMm || 50) / 2,
+    sagKanatMm: sablon.sagKanatGenislikMm ?? (sablon.genislikMm || 50) / 2,
+    kopruGenislikMm: 9,
+    kopruYukseklikMm: 8,
+    kuyrukGenislikMm: sablon.kuyrukGenislikMm ?? 35,
+    kuyrukKalinlikMm: 4,
+    delikCapiMm: 0,
+    delikKonumu: "yok",
+    katlamaCizgisi: true,
+    bgColor: bg,
+    bgTexture: "beyaz",
+  };
+
+  const els: CanvasElement[] = (sablon.alanlar || []).map((alan, i) => ({
+    id: `thumb-${sablon.etiketSablonId}-${i}`,
+    type: (alan.etiketElementTipi || "text") as ElementType,
+    x: alan.x ?? 5,
+    y: alan.y ?? 5 + i * 5,
+    width: alan.genislik ?? (alan.etiketElementTipi === "barcode" ? 25 : 20),
+    height: alan.yukseklik ?? (alan.etiketElementTipi === "barcode" ? 8 : 4),
+    rotation: alan.rotation ?? 0,
+    opacity: alan.opacity ?? 1,
+    locked: false,
+    visible: alan.visible ?? true,
+    zIndex: alan.zIndex ?? i,
+    text: alan.text || alan.alan,
+    fieldKey: alan.alan,
+    prefix: alan.prefix,
+    suffix: alan.suffix,
+    fontSize: alan.fontSize ?? 7,
+    fontFamily: alan.fontFamily ?? "Arial",
+    fontWeight: (alan.fontWeight as any) ?? "normal",
+    fontStyle: (alan.fontStyle as any) ?? "normal",
+    textDecoration: (alan.textDecoration as any) ?? "none",
+    textAlign: (alan.textAlign as any) ?? "left",
+    color: alan.color ?? "#000000",
+    backgroundColor: alan.backgroundColor ?? "transparent",
+    borderColor: alan.borderColor ?? "transparent",
+    borderWidth: alan.borderWidth ?? 0,
+    borderRadius: alan.borderRadius ?? 0,
+    barcodeFormat: alan.barkodFormat as any,
+    iconEmoji: alan.iconEmoji,
+  }));
+
+  const maxW = 175;
+  const maxH = 88;
+  const rawW = mmToPx(config.genislikMm, 1);
+  const rawH = mmToPx(config.yukseklikMm, 1);
+  const scale = Math.min(maxW / rawW, maxH / rawH, 1.15);
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        padding: 4,
+      }}
+    >
+      <div
+        style={{
+          width: mmToPx(config.genislikMm, scale),
+          height: mmToPx(config.yukseklikMm, scale),
+          position: "relative",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.6)",
+          borderRadius: config.etiketSekli === "dambil" ? 4 * scale : 2,
+          overflow: "visible",
+        }}
+      >
+        <StaticLabelCell config={config} elements={els} zoom={scale} />
+      </div>
+    </div>
+  );
+};
+
 // ─── Ana Bileşen ──────────────────────────────────────────────────────────────
 const UrunEtiketTasarimiPage: React.FC = () => {
   const navigate = useNavigate();
@@ -1232,6 +1762,203 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const [snapGrid, setSnapGrid] = useState(0); // 0 = Serbest / Akıcı piksel hassasiyeti
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [selectedLayoutId, setSelectedLayoutId] = useState<PaperLayoutId>("single");
+  const [selectedPaperId, setSelectedPaperId] = useState<string>("kuse_beyaz");
+
+  const selectedPaper = useMemo(
+    () => LABEL_PAPERS.find((p) => p.id === selectedPaperId) || LABEL_PAPERS[0],
+    [selectedPaperId]
+  );
+
+  const selectedLayout = useMemo(
+    () => PAPER_LAYOUTS.find((l) => l.id === selectedLayoutId) || PAPER_LAYOUTS[0],
+    [selectedLayoutId]
+  );
+
+  const currentLayoutInfo = useMemo(() => {
+    const labelW = labelConfig.genislikMm;
+    const labelH = labelConfig.yukseklikMm;
+    if (selectedLayoutId === "single") {
+      return {
+        name: "Tekli 1:1",
+        pageW: labelW,
+        pageH: labelH,
+        cols: 1,
+        rows: 1,
+        total: 1,
+        margin: 0,
+        gap: 0,
+        description: `Tekli Etiket • 1:1 Gerçek Boyut (${labelW}×${labelH} mm)`,
+      };
+    }
+    if (selectedLayoutId === "roll") {
+      return {
+        name: "1'li Rulo",
+        pageW: labelW + 8,
+        pageH: (labelH + 3) * 6 + 20,
+        cols: 1,
+        rows: 6,
+        total: 6,
+        margin: 4,
+        gap: 3,
+        description: `1'li Termal Rulo • Sürekli Ardışık Baskı (${labelW}×${labelH} mm)`,
+      };
+    }
+    if (selectedLayoutId === "roll2") {
+      return {
+        name: "2'li Rulo",
+        pageW: (labelW + 3) * 2 + 8,
+        pageH: (labelH + 3) * 5 + 20,
+        cols: 2,
+        rows: 5,
+        total: 10,
+        margin: 4,
+        gap: 3,
+        description: `2'li Yan Yana Rulo • 5 Sıra (10 Adet)`,
+      };
+    }
+    if (selectedLayoutId === "roll3") {
+      return {
+        name: "3'lü Rulo",
+        pageW: (labelW + 3) * 3 + 8,
+        pageH: (labelH + 3) * 5 + 20,
+        cols: 3,
+        rows: 5,
+        total: 15,
+        margin: 4,
+        gap: 3,
+        description: `3'lü Yan Yana Rulo • 5 Sıra (15 Adet)`,
+      };
+    }
+
+    let pageW = 210;
+    let pageH = 297;
+    let margin = 7;
+    let pageName = "A4 Tabaka";
+
+    if (selectedLayoutId === "a4") {
+      pageW = 210;
+      pageH = 297;
+      margin = 7;
+      pageName = "A4 Tabaka";
+    } else if (selectedLayoutId === "a5") {
+      pageW = 148;
+      pageH = 210;
+      margin = 5;
+      pageName = "A5 Tabaka";
+    } else if (selectedLayoutId === "a6") {
+      pageW = 105;
+      pageH = 148;
+      margin = 4;
+      pageName = "A6 Tabaka";
+    } else if (selectedLayoutId === "a3") {
+      pageW = 297;
+      pageH = 420;
+      margin = 10;
+      pageName = "A3 Tabaka";
+    } else if (selectedLayoutId === "sheet_100x150") {
+      pageW = 100;
+      pageH = 150;
+      margin = 4;
+      pageName = "10×15 Tabaka";
+    } else if (selectedLayoutId === "strip_80x200") {
+      pageW = 80;
+      pageH = 200;
+      margin = 4;
+      pageName = "8×20 Şerit";
+    }
+
+    const gap = 2;
+    const cols = Math.max(1, Math.floor((pageW - margin * 2 + gap) / (labelW + gap)));
+    const rows = Math.max(1, Math.floor((pageH - margin * 2 + gap) / (labelH + gap)));
+    const total = cols * rows;
+
+    return {
+      name: pageName,
+      pageW,
+      pageH,
+      cols,
+      rows,
+      total,
+      margin,
+      gap,
+      description: `${pageName} (${pageW}×${pageH} mm) • 1 Sayfada ${total} Adet (${cols} Sütun × ${rows} Satır)`,
+    };
+  }, [selectedLayoutId, labelConfig.genislikMm, labelConfig.yukseklikMm]);
+
+  // Önizleme Modu Otomatik Ekrana Sığdırma (Fit-to-Screen) & Zoom
+  const [previewZoom, setPreviewZoom] = useState<number>(0.65);
+
+  const calculateFitZoom = useCallback(
+    (layoutId: PaperLayoutId) => {
+      const container = canvasScrollContainerRef.current;
+      const availW = (container ? container.clientWidth : window.innerWidth) - 130;
+      const availH = (container ? container.clientHeight : window.innerHeight) - 100;
+
+      let pageW = 210;
+      let pageH = 297;
+      if (layoutId === "single") {
+        pageW = labelConfig.genislikMm;
+        pageH = labelConfig.yukseklikMm;
+      } else if (layoutId === "roll") {
+        pageW = labelConfig.genislikMm + 8;
+        pageH = (labelConfig.yukseklikMm + 3) * 6 + 20;
+      } else if (layoutId === "roll2") {
+        pageW = (labelConfig.genislikMm + 3) * 2 + 8;
+        pageH = (labelConfig.yukseklikMm + 3) * 5 + 20;
+      } else if (layoutId === "roll3") {
+        pageW = (labelConfig.genislikMm + 3) * 3 + 8;
+        pageH = (labelConfig.yukseklikMm + 3) * 5 + 20;
+      } else if (layoutId === "a4") {
+        pageW = 210;
+        pageH = 297;
+      } else if (layoutId === "a5") {
+        pageW = 148;
+        pageH = 210;
+      } else if (layoutId === "a6") {
+        pageW = 105;
+        pageH = 148;
+      } else if (layoutId === "a3") {
+        pageW = 297;
+        pageH = 420;
+      } else if (layoutId === "sheet_100x150") {
+        pageW = 100;
+        pageH = 150;
+      } else if (layoutId === "strip_80x200") {
+        pageW = 80;
+        pageH = 200;
+      }
+
+      const sheetW_px = mmToPx(pageW, 1);
+      const sheetH_px = mmToPx(pageH, 1);
+
+      if (sheetW_px <= 0 || sheetH_px <= 0) return 0.65;
+
+      const scaleW = availW / sheetW_px;
+      const scaleH = availH / sheetH_px;
+      let fit = Math.min(scaleW, scaleH) * 0.94;
+
+      if (layoutId === "single") {
+        fit = Math.min(fit, 1.8);
+      } else {
+        fit = Math.min(fit, 1.2);
+      }
+
+      return clamp(Math.round(fit * 100) / 100, 0.15, 3.0);
+    },
+    [labelConfig.genislikMm, labelConfig.yukseklikMm]
+  );
+
+  useEffect(() => {
+    if (isPreviewMode) {
+      const fit = calculateFitZoom(selectedLayoutId);
+      setPreviewZoom(fit);
+      if (canvasScrollContainerRef.current) {
+        canvasScrollContainerRef.current.scrollTop = 0;
+      }
+    }
+  }, [isPreviewMode, selectedLayoutId, calculateFitZoom]);
 
   // Şablon ve Dürbün State
   const [sablonlar, setSablonlar] = useState<EtiketSablonItem[]>([]);
@@ -1239,6 +1966,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saveModal, setSaveModal] = useState(false);
   const [durbunModal, setDurbunModal] = useState(false);
+  const [durbunSelectedId, setDurbunSelectedId] = useState<number | null>(null);
   const [durbunFilter, setDurbunFilter] = useState("");
   const [durbunTipFilter, setDurbunTipFilter] = useState<number | "all">("all");
   const [sablonAdi, setSablonAdi] = useState("");
@@ -1432,6 +2160,10 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       const isEditing = editingId !== null || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 
       if (e.key === "Escape") {
+        if (isPreviewMode) {
+          setIsPreviewMode(false);
+          return;
+        }
         setSelectedIds([]);
         setEditingId(null);
         setContextMenu(null);
@@ -1452,6 +2184,11 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
         handleQuickSaveRef.current();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        handleDirectPrint();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "a" && !isEditing) {
@@ -1522,19 +2259,321 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedIds, selectedElements, clipboard, elements, editingId, isFullscreen]);
+  }, [selectedIds, selectedElements, clipboard, elements, editingId, isFullscreen, isPreviewMode]);
 
-  // ─── Mouse Wheel ile Zoom Yapma (Native Non-Passive Listener - Konsol Hatasız) ──
+  // ─── Doğrudan Çıktı Alma (Baskı) Yordamı ──────────────────────────────────
+  const handleDirectPrint = useCallback(() => {
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const title = sablonAdi ? `${sablonAdi} - Etiket Baskı` : "Etiket Baskı";
+
+    const isRollType = selectedLayoutId === "roll" || selectedLayoutId === "roll2" || selectedLayoutId === "roll3";
+    const isSheetType = !isRollType && selectedLayoutId !== "single";
+
+    // 1. TÜM TABAKA VE KART BASKILARI (A4, A5, A6, A3, 10x15, 8x20)
+    if (isPreviewMode && isSheetType) {
+      const { pageW, pageH, margin, gap, cols, rows, total, name } = currentLayoutInfo;
+      const labelW = labelConfig.genislikMm;
+      const labelH = labelConfig.yukseklikMm;
+
+      const singleCellEl = document.querySelector(".static-label-cell") || canvasRef.current;
+      const cellHtml = singleCellEl ? singleCellEl.innerHTML : "";
+      const currentW = mmToPx(labelW, zoom);
+      const currentH = mmToPx(labelH, zoom);
+
+      let gridItemsHtml = "";
+      for (let i = 0; i < total; i++) {
+        gridItemsHtml += `
+          <div style="width: ${labelW}mm; height: ${labelH}mm; position: relative; overflow: hidden; box-sizing: border-box;">
+            <div style="width: ${currentW}px; height: ${currentH}px; transform: scale(${1 / zoom}); transform-origin: 0 0; position: absolute; top: 0; left: 0;">
+              ${cellHtml}
+            </div>
+          </div>
+        `;
+      }
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${title} (${name} Baskı)</title>
+            <style>
+              @page {
+                size: ${pageW}mm ${pageH}mm portrait;
+                margin: ${margin}mm;
+              }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+              }
+              .sheet-grid {
+                display: grid;
+                grid-template-columns: repeat(${cols}, ${labelW}mm);
+                grid-auto-rows: ${labelH}mm;
+                gap: ${gap}mm;
+                justify-content: center;
+                align-content: flex-start;
+              }
+              .resize-handle,
+              .rotate-handle,
+              .rotate-handle-line,
+              .element-hover-ring,
+              .element-inline-edit,
+              .element-rotate-badge,
+              .smart-guide,
+              [style*="z-index: 9990"],
+              [style*="zIndex: 9990"],
+              [style*="z-index: 9999"],
+              [style*="zIndex: 9999"] {
+                display: none !important;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="sheet-grid">
+              ${gridItemsHtml}
+            </div>
+            <script>
+              window.onload = function() {
+                window.focus();
+                window.print();
+                setTimeout(function() { window.close(); }, 700);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      return;
+    }
+
+    // 2. TERMAL RULO ŞERİT BASKISI (1'li, 2'li, 3'lü Rulo)
+    if (isPreviewMode && isRollType) {
+      const { cols, rows, pageW } = currentLayoutInfo;
+      const singleCellEl = document.querySelector(".static-label-cell") || canvasRef.current;
+      const cellHtml = singleCellEl ? singleCellEl.innerHTML : "";
+      const currentW = mmToPx(labelConfig.genislikMm, zoom);
+      const currentH = mmToPx(labelConfig.yukseklikMm, zoom);
+
+      let rollItemsHtml = "";
+      for (let r = 0; r < rows; r++) {
+        rollItemsHtml += `<div style="display: flex; gap: 3mm; margin-bottom: 3mm; justify-content: center; page-break-inside: avoid; break-inside: avoid;">`;
+        for (let c = 0; c < cols; c++) {
+          rollItemsHtml += `
+            <div style="width: ${labelConfig.genislikMm}mm; height: ${labelConfig.yukseklikMm}mm; position: relative; overflow: hidden;">
+              <div style="width: ${currentW}px; height: ${currentH}px; transform: scale(${1 / zoom}); transform-origin: 0 0; position: absolute; top: 0; left: 0;">
+                ${cellHtml}
+              </div>
+            </div>
+          `;
+        }
+        rollItemsHtml += `</div>`;
+      }
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${title} (Rulo Şerit Baskı)</title>
+            <style>
+              @page {
+                size: ${labelConfig.genislikMm + 6}mm auto;
+                margin: 0;
+              }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              html, body {
+                margin: 0;
+                padding: 3mm 0;
+                background: #ffffff;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+              }
+              .resize-handle,
+              .rotate-handle,
+              .rotate-handle-line,
+              .element-hover-ring,
+              .element-inline-edit,
+              .element-rotate-badge,
+              .smart-guide,
+              [style*="z-index: 9990"],
+              [style*="zIndex: 9990"],
+              [style*="z-index: 9999"],
+              [style*="zIndex: 9999"] {
+                display: none !important;
+              }
+            </style>
+          </head>
+          <body>
+            ${rollItemsHtml}
+            <script>
+              window.onload = function() {
+                window.focus();
+                window.print();
+                setTimeout(function() { window.close(); }, 700);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      return;
+    }
+
+    // 3. TEKLİ BİREBİR ETİKET BASKISI (Varsayılan)
+    const elCanvas = canvasRef.current;
+    const labelHtml = elCanvas ? elCanvas.innerHTML : "";
+    const currentW = mmToPx(labelConfig.genislikMm, zoom);
+    const currentH = mmToPx(labelConfig.yukseklikMm, zoom);
+    const scaleFactor = 1 / zoom;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${title}</title>
+          <style>
+            @page {
+              size: ${labelConfig.genislikMm}mm ${labelConfig.yukseklikMm}mm;
+              margin: 0;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              width: ${labelConfig.genislikMm}mm;
+              height: ${labelConfig.yukseklikMm}mm;
+              background: #ffffff;
+              overflow: hidden;
+            }
+            .print-wrapper {
+              position: relative;
+              width: ${labelConfig.genislikMm}mm;
+              height: ${labelConfig.yukseklikMm}mm;
+              overflow: hidden;
+              background: #ffffff;
+            }
+            .print-scalable-canvas {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: ${currentW}px;
+              height: ${currentH}px;
+              transform: scale(${scaleFactor});
+              transform-origin: 0 0;
+            }
+            .canvas-element {
+              position: absolute;
+              box-sizing: border-box;
+            }
+            .resize-handle,
+            .rotate-handle,
+            .rotate-handle-line,
+            .element-hover-ring,
+            .element-inline-edit,
+            .element-rotate-badge,
+            .smart-guide,
+            [style*="z-index: 9990"],
+            [style*="zIndex: 9990"],
+            [style*="z-index: 9999"],
+            [style*="zIndex: 9999"] {
+              display: none !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-wrapper">
+            <div class="print-scalable-canvas">
+              ${labelHtml}
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              window.print();
+              setTimeout(function() {
+                window.close();
+              }, 700);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  }, [labelConfig, sablonAdi, zoom, isPreviewMode, selectedLayoutId]);
+
+  const isPreviewModeRef = useRef(isPreviewMode);
+  isPreviewModeRef.current = isPreviewMode;
+
+  // ─── Mouse Wheel ile Zoom Yapma (Otomatik Yakınlaştırma & Uzaklaştırma) ──────
   useEffect(() => {
     const el = canvasScrollContainerRef.current;
     if (!el) return;
+
     const handleNativeWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.12 : 0.12;
-        setZoom((z) => clamp(Math.round((z + delta) * 20) / 20, 0.3, 4.5));
+      // Önizleme modundayken:
+      // Eğer Ctrl/Cmd basılıysa veya pinch zoom yapılıyorsa sayfayı büyüt/küçült.
+      // Normal tekerlek kaydırmasında ise sayfanın dikey kaydırılmasına izin ver.
+      if (isPreviewModeRef.current) {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const zoomFactor = Math.exp(-e.deltaY * 0.008);
+          setPreviewZoom((prevZoom) => {
+            const nextZoom = prevZoom * zoomFactor;
+            return clamp(Math.round(nextZoom * 100) / 100, 0.15, 3.5);
+          });
+        }
+        return;
       }
+
+      e.preventDefault();
+
+      let zoomFactor: number;
+      if (e.ctrlKey || e.metaKey) {
+        // Trackpad pinch zoom veya Ctrl + Wheel (Hassas ve akıcı)
+        zoomFactor = Math.exp(-e.deltaY * 0.008);
+      } else {
+        // Standart Mouse Wheel tekerleği (Yukarı = Yakınlaş, Aşağı = Uzaklaş)
+        const direction = e.deltaY < 0 ? 1 : -1;
+        zoomFactor = direction > 0 ? 1.15 : 0.87;
+      }
+
+      setZoom((prevZoom) => {
+        const nextZoom = prevZoom * zoomFactor;
+        return clamp(Math.round(nextZoom * 100) / 100, 0.25, 5.0);
+      });
     };
+
     el.addEventListener("wheel", handleNativeWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleNativeWheel);
   }, []);
@@ -2096,9 +3135,67 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     []
   );
 
-  const updateLabelConfig = useCallback((changes: Partial<LabelConfig>) => {
-    dispatch({ type: "SET_LABEL_CONFIG", config: changes });
-  }, []);
+  const updateLabelConfig = useCallback(
+    (changes: Partial<LabelConfig>, shouldScaleElements: boolean = true) => {
+      const oldW = labelConfig.genislikMm;
+      const oldH = labelConfig.yukseklikMm;
+      const newW = changes.genislikMm !== undefined ? changes.genislikMm : oldW;
+      const newH = changes.yukseklikMm !== undefined ? changes.yukseklikMm : oldH;
+
+      const hasDimensionChange =
+        (changes.genislikMm !== undefined && changes.genislikMm !== oldW && changes.genislikMm > 0) ||
+        (changes.yukseklikMm !== undefined && changes.yukseklikMm !== oldH && changes.yukseklikMm > 0);
+
+      if (shouldScaleElements && hasDimensionChange && oldW > 0 && oldH > 0 && elements.length > 0) {
+        const ratioX = newW / oldW;
+        const ratioY = newH / oldH;
+        const fontRatio = (ratioX + ratioY) / 2;
+
+        // Also scale shape sub-dimensions proportionally if not explicitly provided
+        const scaledConfigChanges: Partial<LabelConfig> = { ...changes };
+        if (changes.solKanatMm === undefined && labelConfig.solKanatMm) {
+          scaledConfigChanges.solKanatMm = Math.round(labelConfig.solKanatMm * ratioX * 10) / 10;
+        }
+        if (changes.sagKanatMm === undefined && labelConfig.sagKanatMm) {
+          scaledConfigChanges.sagKanatMm = Math.round(labelConfig.sagKanatMm * ratioX * 10) / 10;
+        }
+        if (changes.kopruGenislikMm === undefined && labelConfig.kopruGenislikMm) {
+          scaledConfigChanges.kopruGenislikMm = Math.max(1, Math.round(labelConfig.kopruGenislikMm * ratioX * 10) / 10);
+        }
+        if (changes.kuyrukGenislikMm === undefined && labelConfig.kuyrukGenislikMm) {
+          scaledConfigChanges.kuyrukGenislikMm = Math.round(labelConfig.kuyrukGenislikMm * ratioX * 10) / 10;
+        }
+        if (changes.kuyrukKalinlikMm === undefined && labelConfig.kuyrukKalinlikMm) {
+          scaledConfigChanges.kuyrukKalinlikMm = Math.max(1, Math.round(labelConfig.kuyrukKalinlikMm * ratioY * 10) / 10);
+        }
+        if (changes.kopruYukseklikMm === undefined && labelConfig.kopruYukseklikMm) {
+          scaledConfigChanges.kopruYukseklikMm = Math.round(labelConfig.kopruYukseklikMm * ratioY * 10) / 10;
+        }
+
+        const scaledElements: CanvasElement[] = elements.map((el) => ({
+          ...el,
+          x: Math.round(el.x * ratioX * 100) / 100,
+          y: Math.round(el.y * ratioY * 100) / 100,
+          width: Math.max(0.5, Math.round(el.width * ratioX * 100) / 100),
+          height: Math.max(0.5, Math.round(el.height * ratioY * 100) / 100),
+          fontSize: el.fontSize ? Math.max(3, Math.round(el.fontSize * fontRatio * 10) / 10) : el.fontSize,
+          borderWidth: el.borderWidth ? Math.max(0.2, Math.round(el.borderWidth * fontRatio * 10) / 10) : el.borderWidth,
+          borderRadius: el.borderRadius ? Math.round(el.borderRadius * fontRatio * 10) / 10 : el.borderRadius,
+        }));
+
+        dispatch({
+          type: "LOAD_STATE",
+          state: {
+            elements: scaledElements,
+            labelConfig: { ...labelConfig, ...scaledConfigChanges },
+          },
+        });
+      } else {
+        dispatch({ type: "SET_LABEL_CONFIG", config: changes });
+      }
+    },
+    [labelConfig, elements]
+  );
 
   // ─── Katman Yönetimi (Doğru Sıralama & Katman Değişimi) ─────────────────────
   const reorderLayers = (newOrderedList: CanvasElement[]) => {
@@ -2229,6 +3326,121 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
   const handleSave = handleQuickSave;
 
+  // ─── 15 Saniyede Bir Otomatik Kayıt & Veri Kaybını Önleme ───────────────────
+  const autoSaveStateRef = useRef({ elements, labelConfig, sablonAdi, activeSablon });
+  useEffect(() => {
+    autoSaveStateRef.current = { elements, labelConfig, sablonAdi, activeSablon };
+  }, [elements, labelConfig, sablonAdi, activeSablon]);
+
+  const performAutoSave = useCallback(async () => {
+    const { elements: currentEls, labelConfig: currentCfg, sablonAdi: currentName, activeSablon: currentSablon } = autoSaveStateRef.current;
+    
+    // 1. Tarayıcı LocalStorage Otomatik Yedekleme (Anında ve Kesintisiz)
+    try {
+      if (currentEls.length > 0) {
+        localStorage.setItem(
+          "likya_etiket_auto_backup",
+          JSON.stringify({
+            elements: currentEls,
+            labelConfig: currentCfg,
+            sablonAdi: currentName,
+            activeSablonId: currentSablon?.etiketSablonId || null,
+            savedAt: new Date().toISOString(),
+          })
+        );
+      }
+    } catch (e) {
+      console.warn("LocalStorage auto-save uyarısı:", e);
+    }
+
+    // 2. Eğer en az 1 eleman varsa veya aktif şablon varsa veritabanına da sessizce kaydet
+    if (currentEls.length > 0 && (currentName.trim() || currentSablon?.etiketSablonId)) {
+      try {
+        const nameToSave = currentName.trim() || currentSablon?.ad || "Otomatik Tasarım";
+        const alanlar: EtiketSablonAlan[] = currentEls.map((el) => ({
+          alan: el.fieldKey || el.text || el.type,
+          etiketElementTipi: el.type as any,
+          x: el.x,
+          y: el.y,
+          genislik: el.width,
+          yukseklik: el.height,
+          rotation: el.rotation,
+          fontSize: el.fontSize,
+          fontFamily: el.fontFamily,
+          fontWeight: el.fontWeight,
+          fontStyle: el.fontStyle,
+          textDecoration: el.textDecoration,
+          textAlign: el.textAlign,
+          color: el.color,
+          backgroundColor: el.backgroundColor,
+          borderColor: el.borderColor,
+          borderWidth: el.borderWidth,
+          borderRadius: el.borderRadius,
+          prefix: el.prefix,
+          suffix: el.suffix,
+          barkodFormat: el.barcodeFormat,
+          zIndex: el.zIndex,
+          opacity: el.opacity,
+          visible: el.visible,
+          locked: el.locked,
+          iconEmoji: el.iconEmoji,
+          text: el.text,
+        }));
+
+        const savedItem = await EtiketService.saveSablon({
+          etiketSablonId: currentSablon?.etiketSablonId || null,
+          ad: nameToSave,
+          etiketTipi: currentCfg.etiketTipi,
+          genislikMm: currentCfg.genislikMm,
+          yukseklikMm: currentCfg.yukseklikMm,
+          etiketSekli: currentCfg.etiketSekli,
+          solKanatGenislikMm: currentCfg.solKanatMm,
+          sagKanatGenislikMm: currentCfg.sagKanatMm,
+          kuyrukGenislikMm: currentCfg.kuyrukGenislikMm,
+          alanlar,
+        });
+
+        if (savedItem && !currentSablon?.etiketSablonId) {
+          setActiveSablon(savedItem);
+        }
+      } catch (err) {
+        // Arka plan otomatik kayıtta kullanıcı akışını kesmeden sessizce devam et
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      performAutoSave();
+    }, 15000); // 15 saniyede bir periyodik otomatik kayıt
+
+    return () => clearInterval(interval);
+  }, [performAutoSave]);
+
+  // Sayfa açılışında yerel taslak yedeği varsa otomatik kurtarma
+  useEffect(() => {
+    try {
+      const backupStr = localStorage.getItem("likya_etiket_auto_backup");
+      if (backupStr) {
+        const backup = JSON.parse(backupStr);
+        if (backup && Array.isArray(backup.elements) && backup.elements.length > 0) {
+          if (editorState.present.elements.length === 0) {
+            dispatch({
+              type: "LOAD_STATE",
+              state: {
+                elements: backup.elements,
+                labelConfig: backup.labelConfig || defaultLabelConfig,
+              },
+            });
+            if (backup.sablonAdi) {
+              setSablonAdi(backup.sablonAdi);
+            }
+          }
+        }
+      }
+    } catch { }
+  }, []);
+
   const handleLoadSablon = (sablon: EtiketSablonItem) => {
     const els: CanvasElement[] = (sablon.alanlar || []).map((alan, i) => ({
       id: genId(),
@@ -2306,6 +3518,12 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     if (el.type === "text" || el.type === "field") {
       const isRight = el.textAlign === "right" || el.isNumeric;
       const isCenter = el.textAlign === "center";
+      const isDarkPaper = isPreviewMode && selectedPaper.isDark;
+      const effectiveTextColor =
+        isDarkPaper && (!el.color || el.color === "#000000" || el.color === "#000" || el.color.toLowerCase() === "#111827")
+          ? "#f8fafc"
+          : el.color || "#000000";
+
       const textStyle: React.CSSProperties = {
         fontFamily: el.fontFamily || "Arial",
         fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
@@ -2313,7 +3531,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         fontStyle: el.fontStyle || "normal",
         textDecoration: el.textDecoration || "none",
         textAlign: isRight ? "right" : isCenter ? "center" : "left",
-        color: el.color || "#000000",
+        color: effectiveTextColor,
         width: "100%",
         height: "100%",
         display: "flex",
@@ -2328,7 +3546,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
       const displayText =
         el.type === "field"
-          ? `${el.prefix || ""}[${el.fieldKey || el.text || "Alan"}]${el.suffix || ""}`
+          ? `${el.prefix || ""}${el.text || el.fieldKey || "Alan"}${el.suffix || ""}`
           : el.text || (el.isNumeric ? "0.00" : "Metin");
 
       if (isEditing) {
@@ -2339,7 +3557,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             inputMode={el.isNumeric ? "decimal" : "text"}
             className="element-inline-edit"
             autoFocus
-            value={el.type === "field" ? (el.fieldKey || el.text || "") : (el.text ?? "")}
+            value={el.type === "field" ? (el.text || el.fieldKey || "") : (el.text ?? "")}
             style={{
               fontFamily: el.fontFamily || "Arial",
               fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
@@ -2976,230 +4194,182 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       </div>
 
       {/* ── Dinamik Bağlamsal Toolbar (Seçili Eleman Araçları) ─────────────── */}
-      {selectedElement && (
-        <div className="top-context-toolbar animate-fadein">
-          {(selectedElement.type === "text" || selectedElement.type === "field") && (
-            <>
-              {/* Doğrudan Düzenleme Butonu */}
-              <button
-                className="tb-btn highlight"
-                style={{ height: 26, fontSize: 11 }}
-                title="Metni Düzenle (veya Çift Tıkla)"
-                onClick={() => setEditingId(selectedElement.id)}
-              >
-                <IconEdit size={13} />
-                <span>Düzenle</span>
-              </button>
-
-              {/* Font Ailesi */}
-              <select
-                className="toolbar-select"
-                style={{ width: 120, height: 26, fontSize: 11 }}
-                value={selectedElement.fontFamily || "Arial"}
-                onChange={(e) => {
-                  updateElement(selectedElement.id, { fontFamily: e.target.value });
-                  dispatch({ type: "PUSH_HISTORY" });
-                }}
-              >
-                {FONT_FAMILIES.map((f) => (
-                  <option key={f} value={f} style={{ fontFamily: f }}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-
-              {/* Font Boyutu */}
-              <input
-                type="number"
-                className="toolbar-input w-45"
-                style={{ height: 26 }}
-                value={selectedElement.fontSize || 8}
-                min={4}
-                max={72}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) =>
-                  updateElement(selectedElement.id, { fontSize: Number(e.target.value) })
-                }
-                title="Font Boyutu (pt)"
-              />
-
-              <div className="toolbar-divider" />
-
-              {/* Bold, Italic, Underline */}
-              <button
-                className={`tb-btn ${selectedElement.fontWeight === "bold" ? "active" : ""}`}
-                style={{ height: 26, width: 26, padding: 0 }}
-                title="Kalın (Bold)"
-                onClick={() =>
-                  updateElement(selectedElement.id, {
-                    fontWeight: selectedElement.fontWeight === "bold" ? "normal" : "bold",
-                  })
-                }
-              >
-                <IconBold size={14} />
-              </button>
-              <button
-                className={`tb-btn ${selectedElement.fontStyle === "italic" ? "active" : ""}`}
-                style={{ height: 26, width: 26, padding: 0 }}
-                title="İtalik"
-                onClick={() =>
-                  updateElement(selectedElement.id, {
-                    fontStyle: selectedElement.fontStyle === "italic" ? "normal" : "italic",
-                  })
-                }
-              >
-                <IconItalic size={14} />
-              </button>
-              <button
-                className={`tb-btn ${selectedElement.textDecoration === "underline" ? "active" : ""}`}
-                style={{ height: 26, width: 26, padding: 0 }}
-                title="Altı Çizili"
-                onClick={() =>
-                  updateElement(selectedElement.id, {
-                    textDecoration:
-                      selectedElement.textDecoration === "underline" ? "none" : "underline",
-                  })
-                }
-              >
-                <IconUnderline size={14} />
-              </button>
-
-              <div className="toolbar-divider" />
-
-              {/* Hizalama */}
-              <button
-                className={`tb-btn ${selectedElement.textAlign === "left" ? "active" : ""}`}
-                style={{ height: 26, width: 26, padding: 0 }}
-                title="Sola Hizala"
-                onClick={() => updateElement(selectedElement.id, { textAlign: "left" })}
-              >
-                <IconAlignLeft size={14} />
-              </button>
-              <button
-                className={`tb-btn ${(!selectedElement.textAlign || selectedElement.textAlign === "center") ? "active" : ""}`}
-                style={{ height: 26, width: 26, padding: 0 }}
-                title="Ortala"
-                onClick={() => updateElement(selectedElement.id, { textAlign: "center" })}
-              >
-                <IconAlignCenter size={14} />
-              </button>
-              <button
-                className={`tb-btn ${selectedElement.textAlign === "right" ? "active" : ""}`}
-                style={{ height: 26, width: 26, padding: 0 }}
-                title="Sağa Hizala"
-                onClick={() => updateElement(selectedElement.id, { textAlign: "right" })}
-              >
-                <IconAlignRight size={14} />
-              </button>
-
-              <div className="toolbar-divider" />
-
-              {/* Yazı Rengi: "Renk:" solda, renk kutusu sağında yan yana */}
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Renk:</span>
-                <div
-                  className="color-swatch"
-                  style={{ background: selectedElement.color || "#000" }}
-                  title="Yazı Rengi"
+      {selectedElement &&
+        !isPreviewMode &&
+        (selectedElement.type === "text" ||
+          selectedElement.type === "field" ||
+          selectedElement.type === "rect" ||
+          selectedElement.type === "ellipse") && (
+          <div className="top-context-toolbar animate-fadein">
+            {(selectedElement.type === "text" || selectedElement.type === "field") && (
+              <>
+                {/* Doğrudan Düzenleme Butonu */}
+                <button
+                  className="tb-btn highlight"
+                  style={{ height: 26, fontSize: 11 }}
+                  title="Metni Düzenle (veya Çift Tıkla)"
+                  onClick={() => setEditingId(selectedElement.id)}
                 >
-                  <input
-                    type="color"
-                    value={selectedElement.color || "#000000"}
-                    onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })}
-                  />
-                </div>
-              </div>
+                  <IconEdit size={13} />
+                  <span>Düzenle</span>
+                </button>
 
-              <div className="toolbar-divider" />
-
-              {/* Döndürme Hızlı Butonu */}
-              <button
-                className="tb-btn"
-                style={{ height: 26 }}
-                title="90° Sağa Döndür"
-                onClick={() =>
-                  updateElement(selectedElement.id, {
-                    rotation: ((selectedElement.rotation || 0) + 90) % 360,
-                  })
-                }
-              >
-                <IconRotate size={14} />
-                <span style={{ fontSize: 9.5 }}>+90°</span>
-              </button>
-            </>
-          )}
-
-          {/* Şekil Renkleri */}
-          {(selectedElement.type === "rect" || selectedElement.type === "ellipse") && (
-            <>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Dolgu:</span>
-                <div
-                  className="color-swatch"
-                  style={{ background: selectedElement.backgroundColor || "transparent" }}
-                  title="Dolgu Rengi"
+                {/* Font Ailesi */}
+                <select
+                  className="toolbar-select"
+                  style={{ width: 120, height: 26, fontSize: 11 }}
+                  value={selectedElement.fontFamily || "Arial"}
+                  onChange={(e) => {
+                    updateElement(selectedElement.id, { fontFamily: e.target.value });
+                    dispatch({ type: "PUSH_HISTORY" });
+                  }}
                 >
-                  <input
-                    type="color"
-                    value={selectedElement.backgroundColor || "#ffffff"}
-                    onChange={(e) => updateElement(selectedElement.id, { backgroundColor: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Kenar:</span>
-                <div
-                  className="color-swatch"
-                  style={{ background: selectedElement.borderColor || "#000" }}
-                  title="Kenarlık Rengi"
+                  {FONT_FAMILIES.map((f) => (
+                    <option key={f} value={f} style={{ fontFamily: f }}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Font Boyutu */}
+                <input
+                  type="number"
+                  className="toolbar-input w-45"
+                  style={{ height: 26 }}
+                  value={selectedElement.fontSize || 8}
+                  min={4}
+                  max={72}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) =>
+                    updateElement(selectedElement.id, { fontSize: Number(e.target.value) })
+                  }
+                  title="Font Boyutu (pt)"
+                />
+
+                <div className="toolbar-divider" />
+
+                {/* Bold, Italic, Underline */}
+                <button
+                  className={`tb-btn ${selectedElement.fontWeight === "bold" ? "active" : ""}`}
+                  style={{ height: 26, width: 26, padding: 0 }}
+                  title="Kalın (Bold)"
+                  onClick={() =>
+                    updateElement(selectedElement.id, {
+                      fontWeight: selectedElement.fontWeight === "bold" ? "normal" : "bold",
+                    })
+                  }
                 >
-                  <input
-                    type="color"
-                    value={selectedElement.borderColor || "#000000"}
-                    onChange={(e) => updateElement(selectedElement.id, { borderColor: e.target.value })}
-                  />
+                  <IconBold size={14} />
+                </button>
+                <button
+                  className={`tb-btn ${selectedElement.fontStyle === "italic" ? "active" : ""}`}
+                  style={{ height: 26, width: 26, padding: 0 }}
+                  title="İtalik"
+                  onClick={() =>
+                    updateElement(selectedElement.id, {
+                      fontStyle: selectedElement.fontStyle === "italic" ? "normal" : "italic",
+                    })
+                  }
+                >
+                  <IconItalic size={14} />
+                </button>
+                <button
+                  className={`tb-btn ${selectedElement.textDecoration === "underline" ? "active" : ""}`}
+                  style={{ height: 26, width: 26, padding: 0 }}
+                  title="Altı Çizili"
+                  onClick={() =>
+                    updateElement(selectedElement.id, {
+                      textDecoration:
+                        selectedElement.textDecoration === "underline" ? "none" : "underline",
+                    })
+                  }
+                >
+                  <IconUnderline size={14} />
+                </button>
+
+                <div className="toolbar-divider" />
+
+                {/* Hizalama */}
+                <button
+                  className={`tb-btn ${selectedElement.textAlign === "left" ? "active" : ""}`}
+                  style={{ height: 26, width: 26, padding: 0 }}
+                  title="Sola Hizala"
+                  onClick={() => updateElement(selectedElement.id, { textAlign: "left" })}
+                >
+                  <IconAlignLeft size={14} />
+                </button>
+                <button
+                  className={`tb-btn ${(!selectedElement.textAlign || selectedElement.textAlign === "center") ? "active" : ""}`}
+                  style={{ height: 26, width: 26, padding: 0 }}
+                  title="Ortala"
+                  onClick={() => updateElement(selectedElement.id, { textAlign: "center" })}
+                >
+                  <IconAlignCenter size={14} />
+                </button>
+                <button
+                  className={`tb-btn ${selectedElement.textAlign === "right" ? "active" : ""}`}
+                  style={{ height: 26, width: 26, padding: 0 }}
+                  title="Sağa Hizala"
+                  onClick={() => updateElement(selectedElement.id, { textAlign: "right" })}
+                >
+                  <IconAlignRight size={14} />
+                </button>
+
+                <div className="toolbar-divider" />
+
+                {/* Yazı Rengi: "Renk:" solda, renk kutusu sağında yan yana */}
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Renk:</span>
+                  <div
+                    className="color-swatch"
+                    style={{ background: selectedElement.color || "#000" }}
+                    title="Yazı Rengi"
+                  >
+                    <input
+                      type="color"
+                      value={selectedElement.color || "#000000"}
+                      onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })}
+                    />
+                  </div>
                 </div>
-              </div>
-
-              <div className="toolbar-divider" />
-
-              <button
-                className="tb-btn"
-                style={{ height: 26 }}
-                title="90° Sağa Döndür"
-                onClick={() =>
-                  updateElement(selectedElement.id, {
-                    rotation: ((selectedElement.rotation || 0) + 90) % 360,
-                  })
-                }
-              >
-                <IconRotate size={14} />
-                <span style={{ fontSize: 9.5 }}>+90°</span>
-              </button>
-            </>
-          )}
-
-          {/* Diğer Elemanlar için Döndürme */}
-          {selectedElement.type !== "text" &&
-            selectedElement.type !== "field" &&
-            selectedElement.type !== "rect" &&
-            selectedElement.type !== "ellipse" && (
-              <button
-                className="tb-btn"
-                style={{ height: 26 }}
-                title="90° Sağa Döndür"
-                onClick={() =>
-                  updateElement(selectedElement.id, {
-                    rotation: ((selectedElement.rotation || 0) + 90) % 360,
-                  })
-                }
-              >
-                <IconRotate size={14} />
-                <span style={{ fontSize: 9.5 }}>+90°</span>
-              </button>
+              </>
             )}
-        </div>
-      )}
+
+            {/* Şekil Renkleri */}
+            {(selectedElement.type === "rect" || selectedElement.type === "ellipse") && (
+              <>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Dolgu:</span>
+                  <div
+                    className="color-swatch"
+                    style={{ background: selectedElement.backgroundColor || "transparent" }}
+                    title="Dolgu Rengi"
+                  >
+                    <input
+                      type="color"
+                      value={selectedElement.backgroundColor || "#ffffff"}
+                      onChange={(e) => updateElement(selectedElement.id, { backgroundColor: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Kenar:</span>
+                  <div
+                    className="color-swatch"
+                    style={{ background: selectedElement.borderColor || "#000" }}
+                    title="Kenarlık Rengi"
+                  >
+                    <input
+                      type="color"
+                      value={selectedElement.borderColor || "#000000"}
+                      onChange={(e) => updateElement(selectedElement.id, { borderColor: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
       {/* ── Ana Editör Gövdesi ────────────────────────────────────────────── */}
       <div className="label-editor-body">
@@ -3942,7 +5112,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   >
                     <IconGripVertical size={11} style={{ color: "#64748b", flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {el.type === "field" ? `[${el.fieldKey}]` : el.type === "text" ? el.text : el.type}
+                      {el.type === "field" ? (el.text || el.fieldKey || "Alan") : el.type === "text" ? el.text : el.type}
                     </span>
                     <button
                       className={`layer-icon-btn ${el.visible ? "active" : ""}`}
@@ -4024,7 +5194,8 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                         }));
                         dispatch({ type: "SET_ELEMENTS", elements: newElements as any });
                         setSelectedIds([]);
-                        setSablonAdi(tmpl.ad);
+                        // Sektörel hazır şablon seçildiğinde sıfırdan yeni tasarım gibi açılır
+                        setSablonAdi("");
                         setActiveSablon(null);
                       }}
                     >
@@ -4052,110 +5223,324 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
         {/* ── Orta Aydınlık Kanvas Çalışma Alanı (Figma / Canva Grid) ───── */}
         <div className="canvas-area">
+          {/* Üst Bar - Sol Üstte Kapat, Sağ Üstte Çıktı Al, Ortada Arka Plansız Doğrudan Kapasite Metni */}
+          <div className="preview-top-actions-bar">
+            {isPreviewMode ? (
+              <button
+                type="button"
+                className="canvas-floating-btn"
+                title="Önizleme Modunu Kapat (ESC)"
+                onClick={() => setIsPreviewMode(false)}
+              >
+                <IconX size={15} />
+                <span>Kapat (ESC)</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="canvas-floating-btn print-btn"
+                title="Doğrudan Çıktı Al (Yazdır - Ctrl+P)"
+                onClick={handleDirectPrint}
+              >
+                <IconPrinter size={15} />
+                <span>Çıktı Al</span>
+              </button>
+            )}
+
+            {/* Kapat ile Çıktı Al Butonları Arasında Arka Plansız Doğrudan Net Yazı */}
+            {isPreviewMode && (
+              <div className="preview-top-center-info">
+                <span className="preview-info-text">{currentLayoutInfo.description}</span>
+              </div>
+            )}
+
+            {isPreviewMode ? (
+              <button
+                type="button"
+                className="canvas-floating-btn print-btn"
+                title="Doğrudan Çıktı Al (Yazdır - Ctrl+P)"
+                onClick={handleDirectPrint}
+              >
+                <IconPrinter size={15} />
+                <span>Çıktı Al</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="canvas-floating-btn"
+                title="Baskı Önizleme Modu (A4, A3, Rulo ve Tabaka Görünümü)"
+                onClick={() => {
+                  setSelectedLayoutId("single");
+                  setIsPreviewMode(true);
+                  setEditingId(null);
+                  setSelectedIds([]);
+                }}
+              >
+                <IconEye size={15} />
+                <span>Önizle</span>
+              </button>
+            )}
+          </div>
+
+          {/* Sağ Tarafta Dikey Kağıt Seçim Çekmecesi (Üzerine gelince genişler, seçilince küçülür) */}
+          {isPreviewMode && (
+            <div
+              className="preview-right-paper-drawer animate-fadein"
+              title="Kağıt & Tabaka Düzeni Seçimi (Genişletmek için üzerine gelin)"
+            >
+              {PAPER_LAYOUTS.map((layout) => {
+                const isActive = selectedLayoutId === layout.id;
+                return (
+                  <button
+                    key={layout.id}
+                    type="button"
+                    className={`preview-paper-item-btn ${isActive ? "active" : ""}`}
+                    title={layout.description}
+                    onClick={() => {
+                      setSelectedLayoutId(layout.id);
+                      setPreviewZoom(calculateFitZoom(layout.id));
+                    }}
+                  >
+                    <span className="paper-icon">{layout.icon}</span>
+                    <span className="paper-name">{layout.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Sağ Altta Yakınlaştırma / Uzaklaştırma & Ekrana Sığdır Kontrolleri */}
+          {isPreviewMode && (
+            <div className="preview-bottom-zoom-bar animate-fadein">
+              <button
+                type="button"
+                className="preview-zoom-btn"
+                title="Uzaklaştır (Ctrl + Tekerlek)"
+                onClick={() => setPreviewZoom((z) => clamp(Math.round((z - 0.08) * 100) / 100, 0.15, 3.0))}
+              >
+                -
+              </button>
+              <button
+                type="button"
+                className="preview-zoom-fit-btn"
+                title="Sayfayı Ekrana Tam Sığdır"
+                onClick={() => setPreviewZoom(calculateFitZoom(selectedLayoutId))}
+              >
+                <span>{Math.round(previewZoom * 100)}%</span>
+                <span className="fit-text">Sığdır</span>
+              </button>
+              <button
+                type="button"
+                className="preview-zoom-btn"
+                title="Yakınlaştır (Ctrl + Tekerlek)"
+                onClick={() => setPreviewZoom((z) => clamp(Math.round((z + 0.08) * 100) / 100, 0.15, 3.0))}
+              >
+                +
+              </button>
+            </div>
+          )}
+
           <div
             ref={canvasScrollContainerRef}
-            className="canvas-scroll-container"
+            className={`canvas-scroll-container ${isPreviewMode ? "preview-mode-scroll" : ""}`}
             onMouseDown={handleCanvasMouseDown}
             onDragOver={handleCanvasDragOver}
             onDrop={handleCanvasDrop}
             onContextMenu={(e) => handleContextMenu(e)}
           >
 
-            <div className="canvas-workspace">
-              {/* Etiket Bounding Box Wrapper */}
-              <div className="label-canvas-wrapper">
-                {/* Üst ve Sol Milimetrik Ölçü Rozetleri */}
-                <div className="label-dimension-badge-top">
-                  {labelConfig.genislikMm} mm
+            <div className={`canvas-workspace ${isPreviewMode ? "preview-mode-workspace" : ""}`}>
+              {/* 1. ÇOKLU TABAKA ÖNİZLEMESİ (A4, A5, A6, A3, 10x15, 8x20) */}
+              {isPreviewMode &&
+                selectedLayoutId !== "single" &&
+                selectedLayoutId !== "roll" &&
+                selectedLayoutId !== "roll2" &&
+                selectedLayoutId !== "roll3" && (() => {
+                  const { pageW, pageH, margin, gap, cols, rows, total } = currentLayoutInfo;
+                  const labelW = labelConfig.genislikMm;
+                  const labelH = labelConfig.yukseklikMm;
+                  const sheetScale = previewZoom;
+
+                  return (
+                    <div className="sheet-preview-container">
+                      <div
+                        className="sheet-page-wrapper"
+                        style={{
+                          width: mmToPx(pageW, sheetScale),
+                          height: mmToPx(pageH, sheetScale),
+                          padding: mmToPx(margin, sheetScale),
+                        }}
+                      >
+                        <div
+                          className="sheet-grid-wrapper"
+                          style={{
+                            gridTemplateColumns: `repeat(${cols}, ${mmToPx(labelW, sheetScale)}px)`,
+                            gridAutoRows: `${mmToPx(labelH, sheetScale)}px`,
+                            gap: `${mmToPx(gap, sheetScale)}px`,
+                          }}
+                        >
+                          {Array.from({ length: total }).map((_, idx) => (
+                            <StaticLabelCell
+                              key={`sheet-item-${idx}`}
+                              config={labelConfig}
+                              elements={elements}
+                              zoom={sheetScale}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              {/* 2. KUYUMCU TERMAL RULO ŞERİT ÖNİZLEMESİ (1'li, 2'li, 3'lü Rulo) */}
+              {isPreviewMode &&
+                (selectedLayoutId === "roll" || selectedLayoutId === "roll2" || selectedLayoutId === "roll3") && (() => {
+                  const { cols, rows, pageW } = currentLayoutInfo;
+                  const carrierMargin = 4;
+                  const gapX = 3;
+                  const gapY = 3;
+                  const rollScale = previewZoom;
+
+                  return (
+                    <div className="sheet-preview-container">
+                      <div
+                        className="roll-strip-carrier"
+                        style={{
+                          width: mmToPx(pageW, rollScale),
+                          padding: `${mmToPx(10, rollScale)}px ${mmToPx(carrierMargin, rollScale)}px`,
+                          gap: `${mmToPx(gapY, rollScale)}px`,
+                        }}
+                      >
+                        {Array.from({ length: rows }).map((_, rIdx) => (
+                          <React.Fragment key={`roll-row-${rIdx}`}>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: `${mmToPx(gapX, rollScale)}px`,
+                                justifyContent: "center",
+                              }}
+                            >
+                              {Array.from({ length: cols }).map((_, cIdx) => (
+                                <StaticLabelCell
+                                  key={`roll-cell-${rIdx}-${cIdx}`}
+                                  config={labelConfig}
+                                  elements={elements}
+                                  zoom={rollScale}
+                                />
+                              ))}
+                            </div>
+                            {rIdx < rows - 1 && <div className="roll-perforation-mark" />}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              {/* 3. TEKLİ ETİKET ÖNİZLEMESİ */}
+              {isPreviewMode && selectedLayoutId === "single" && (
+                <div className="sheet-preview-container">
+                  <StaticLabelCell
+                    config={labelConfig}
+                    elements={elements}
+                    zoom={previewZoom}
+                  />
                 </div>
-                <div className="label-dimension-badge-left">
-                  {labelConfig.yukseklikMm} mm
-                </div>
+              )}
 
-                {/* Asıl Etiket Tuvali */}
-                <div
-                  ref={canvasRef}
-                  className="label-canvas"
-                  style={{
-                    width: canvasW,
-                    height: canvasH,
-                    position: "relative",
-                  }}
-                >
-                  {/* Birebir Kesim Silueti ve Görsel Izgara Çizgileri */}
-                  <LabelShapeSVG config={labelConfig} zoom={zoom} snapGrid={snapGrid} />
+              {/* 4. TASARIM MODU ETİKET TUVALİ */}
+              {!isPreviewMode && (
+                <div className="label-canvas-wrapper">
+                  {/* Üst ve Sol Milimetrik Ölçü Rozetleri */}
+                  <div className="label-dimension-badge-top">
+                    {labelConfig.genislikMm} mm
+                  </div>
+                  <div className="label-dimension-badge-left">
+                    {labelConfig.yukseklikMm} mm
+                  </div>
 
-                  {/* 🧲 Akıllı Mıknatıslı Hizalama Kılavuz Çizgileri (Smart Guides) */}
-                  {guidelines.xLines.map((gx, idx) => (
-                    <div
-                      key={`gx-${idx}`}
-                      style={{
-                        position: "absolute",
-                        left: mmToPx(gx, zoom),
-                        top: 0,
-                        width: 1,
-                        height: "100%",
-                        background: "#ec4899",
-                        boxShadow: "0 0 6px rgba(236,72,153,0.9)",
-                        zIndex: 9990,
-                        pointerEvents: "none",
-                      }}
-                    />
-                  ))}
-                  {guidelines.yLines.map((gy, idx) => (
-                    <div
-                      key={`gy-${idx}`}
-                      style={{
-                        position: "absolute",
-                        top: mmToPx(gy, zoom),
-                        left: 0,
-                        height: 1,
-                        width: "100%",
-                        background: "#ec4899",
-                        boxShadow: "0 0 6px rgba(236,72,153,0.9)",
-                        zIndex: 9990,
-                        pointerEvents: "none",
-                      }}
-                    />
-                  ))}
+                  {/* Asıl Etiket Tuvali */}
+                  <div
+                    ref={canvasRef}
+                    className="label-canvas"
+                    style={{
+                      width: canvasW,
+                      height: canvasH,
+                      position: "relative",
+                    }}
+                  >
+                    {/* Birebir Kesim Silueti ve Görsel Izgara Çizgileri */}
+                    <LabelShapeSVG config={labelConfig} zoom={zoom} snapGrid={snapGrid} isPreview={isPreviewMode} />
 
-                  {/* Tuval Elemanları */}
-                  {sortedElements
-                    .filter((el) => el.visible)
-                    .map((el) => {
+                    {/* 🧲 Akıllı Mıknatıslı Hizalama Kılavuz Çizgileri (Smart Guides) */}
+                    {guidelines.xLines.map((gx, idx) => (
+                      <div
+                        key={`gx-${idx}`}
+                        style={{
+                          position: "absolute",
+                          left: mmToPx(gx, zoom),
+                          top: 0,
+                          width: 1,
+                          height: "100%",
+                          background: "#ec4899",
+                          boxShadow: "0 0 6px rgba(236,72,153,0.9)",
+                          zIndex: 9990,
+                          pointerEvents: "none",
+                        }}
+                      />
+                    ))}
+                    {guidelines.yLines.map((gy, idx) => (
+                      <div
+                        key={`gy-${idx}`}
+                        style={{
+                          position: "absolute",
+                          top: mmToPx(gy, zoom),
+                          left: 0,
+                          height: 1,
+                          width: "100%",
+                          background: "#ec4899",
+                          boxShadow: "0 0 6px rgba(236,72,153,0.9)",
+                          zIndex: 9990,
+                          pointerEvents: "none",
+                        }}
+                      />
+                    ))}
+
+                    {/* Katmanlar (Elements) */}
+                    {sortedElements.map((el) => {
                       const isSelected = selectedIds.includes(el.id);
-                      const elStyle: React.CSSProperties = {
-                        left: mmToPx(el.x, zoom),
-                        top: mmToPx(el.y, zoom),
-                        width: mmToPx(el.width, zoom),
-                        height: mmToPx(el.height, zoom),
-                        transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
-                        opacity: el.opacity,
-                        zIndex: el.zIndex,
-                        cursor: el.locked ? "not-allowed" : "move",
-                      };
+                      if (!el.visible) return null;
 
                       return (
                         <div
                           key={el.id}
                           className={`canvas-element ${isSelected ? "selected" : ""}`}
-                          style={elStyle}
+                          style={{
+                            left: mmToPx(el.x, zoom),
+                            top: mmToPx(el.y, zoom),
+                            width: mmToPx(el.width, zoom),
+                            height: mmToPx(el.height, zoom),
+                            transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+                            transformOrigin: "center center",
+                            zIndex: el.zIndex,
+                            opacity: el.opacity,
+                            cursor: el.locked ? "not-allowed" : "move",
+                          }}
                           onMouseDown={(e) => {
-                            if (editingId === el.id) {
-                              e.stopPropagation();
-                              return;
-                            }
+                            if (editingId === el.id) return;
                             handleElementMouseDown(e, el.id);
                           }}
                           onTouchStart={(e) => {
-                            if (editingId === el.id) {
-                              e.stopPropagation();
-                              return;
-                            }
+                            if (editingId === el.id) return;
                             handleElementTouchStart(e, el.id);
                           }}
-                          onContextMenu={(e) => handleContextMenu(e, el.id)}
+                          onContextMenu={(e) => {
+                            if (isPreviewMode) return;
+                            handleContextMenu(e, el.id);
+                          }}
                           onDoubleClick={(e) => {
+                            if (isPreviewMode) return;
                             e.stopPropagation();
                             if (el.type === "text" || el.type === "field") {
                               dragRef.current = null;
@@ -4165,13 +5550,13 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                           }}
                         >
 
-                          {!isSelected && <div className="element-hover-ring" />}
+                          {!isSelected && !isPreviewMode && <div className="element-hover-ring" />}
 
                           {/* İçerik */}
                           {renderElementContent(el, isSelected)}
 
                           {/* Seçim ve Boyutlandırma Tutamaçları */}
-                          {isSelected && !el.locked && selectedIds.length === 1 && (
+                          {isSelected && !isPreviewMode && !el.locked && selectedIds.length === 1 && (
                             <>
                               <div className="rotate-handle-line" />
                               <div
@@ -4196,7 +5581,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                     })}
 
                   {/* Lasso Seçim */}
-                  {lasso && (
+                  {lasso && !isPreviewMode && (
                     <div
                       className="lasso-box"
                       style={{
@@ -4209,6 +5594,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   )}
                 </div>
               </div>
+            )}
             </div>
           </div>
 
@@ -5014,7 +6400,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           </div>
 
           {/* Şablon Kartları Izgarası */}
-          <div style={{ maxHeight: 380, overflowY: "auto" }}>
+          <div style={{ maxHeight: 440, overflowY: "auto", paddingRight: 4 }}>
             {filteredSablonlar.length === 0 ? (
               <div style={{ textAlign: "center", padding: "30px 0", color: "#64748b", fontSize: 13 }}>
                 Kayıtlı şablon bulunamadı
@@ -5024,43 +6410,63 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                 {filteredSablonlar.map((s) => {
                   const tip = ETIKET_TIPLERI.find((t) => t.value === s.etiketTipi);
                   const sekil = ETIKET_SEKILLERI.find((x) => x.value === s.etiketSekli);
+                  const isSelected = durbunSelectedId === s.etiketSablonId;
                   const isActive = activeSablon?.etiketSablonId === s.etiketSablonId;
+
                   return (
                     <div
                       key={s.etiketSablonId}
-                      className={`sablon-card ${isActive ? "active" : ""}`}
-                      onClick={() => {
+                      className={`sablon-card ${isSelected ? "selected-card" : ""} ${isActive ? "active" : ""}`}
+                      onClick={() => setDurbunSelectedId(s.etiketSablonId)}
+                      onDoubleClick={() => {
                         handleLoadSablon(s);
                         setDurbunModal(false);
                       }}
+                      title="1 Tık: Seçin | Çift Tık: Doğrudan Yükleyin"
                     >
+                      {/* Gerçekçi Görsel Etiket Önizleme Fotoğrafı */}
                       <div className="sablon-card-preview">
-                        <span style={{ fontSize: 22 }}>{sekil?.icon || tip?.icon || "🏷️"}</span>
+                        <SablonThumbnail sablon={s} />
                         <Badge
                           bg="secondary"
-                          style={{ position: "absolute", top: 5, right: 5, fontSize: 8.5, opacity: 0.9 }}
+                          style={{
+                            position: "absolute",
+                            top: 4,
+                            right: 4,
+                            fontSize: 8.5,
+                            background: "rgba(15, 23, 42, 0.85)",
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            backdropFilter: "blur(4px)",
+                            zIndex: 10,
+                          }}
                         >
-                          {sekil?.ad || "Etiket"}
+                          {sekil?.ad || tip?.ad || "Etiket"}
                         </Badge>
                       </div>
-                      <div className="sablon-card-name" title={s.ad}>{s.ad}</div>
+
+                      <div className="sablon-card-name" title={s.ad}>
+                        {s.ad}
+                      </div>
                       <div className="sablon-card-meta">
                         <span>{s.genislikMm}×{s.yukseklikMm} mm</span>
                         <span>•</span>
-                        <span>{s.alanlar?.length || 0} eleman</span>
+                        <span>{s.alanlar?.length || 0} alan</span>
                       </div>
+
                       <div style={{ display: "flex", gap: 5, marginTop: "auto" }}>
                         <button
+                          type="button"
                           style={{
                             flex: 1,
                             padding: "4px 0",
-                            background: "#0284c7",
+                            background: isSelected ? "#0284c7" : "#334155",
                             border: "none",
                             borderRadius: 4,
                             color: "#fff",
                             fontSize: 11,
                             fontWeight: 600,
                             cursor: "pointer",
+                            transition: "all 0.15s ease",
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -5068,9 +6474,10 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                             setDurbunModal(false);
                           }}
                         >
-                          Seç & Yükle
+                          {isSelected ? "✓ Yükle" : "Yükle"}
                         </button>
                         <button
+                          type="button"
                           style={{
                             padding: "4px 8px",
                             background: "rgba(239,68,68,0.12)",
@@ -5086,6 +6493,9 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                             if (confirm(`"${s.ad}" şablonunu silmek istiyor musunuz?`)) {
                               await EtiketService.deleteSablon(s.etiketSablonId);
                               loadSablonlarList();
+                              if (durbunSelectedId === s.etiketSablonId) {
+                                setDurbunSelectedId(null);
+                              }
                             }
                           }}
                         >
@@ -5099,13 +6509,45 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             )}
           </div>
         </Modal.Body>
-        <Modal.Footer style={{ background: "#0f172a", borderColor: "#334155" }}>
-          <button
-            style={{ padding: "5px 14px", background: "transparent", border: "1px solid #334155", borderRadius: 5, color: "#94a3b8", fontSize: 12, cursor: "pointer" }}
-            onClick={() => setDurbunModal(false)}
-          >
-            Kapat
-          </button>
+        <Modal.Footer style={{ background: "#0f172a", borderColor: "#334155", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 11, color: "#94a3b8" }}>
+            💡 <strong>İpucu:</strong> Şablonu seçmek için <strong>1 kez</strong>, yüklemek için <strong>2 kez (çift tık)</strong> tıklayın.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              style={{ padding: "5px 14px", background: "transparent", border: "1px solid #334155", borderRadius: 5, color: "#94a3b8", fontSize: 12, cursor: "pointer" }}
+              onClick={() => setDurbunModal(false)}
+            >
+              Kapat
+            </button>
+            {(() => {
+              const selectedItem = sablonlar.find((s) => s.etiketSablonId === durbunSelectedId);
+              return (
+                <button
+                  style={{
+                    padding: "5px 16px",
+                    background: selectedItem ? "#0284c7" : "#334155",
+                    border: "none",
+                    borderRadius: 5,
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: selectedItem ? "pointer" : "not-allowed",
+                    opacity: selectedItem ? 1 : 0.5,
+                  }}
+                  disabled={!selectedItem}
+                  onClick={() => {
+                    if (selectedItem) {
+                      handleLoadSablon(selectedItem);
+                      setDurbunModal(false);
+                    }
+                  }}
+                >
+                  Seçili Şablonu Yükle
+                </button>
+              );
+            })()}
+          </div>
         </Modal.Footer>
       </Modal>
 
