@@ -149,7 +149,7 @@ export interface SaveOzelUrunPayload {
 // ─── Etiket Şablonları ────────────────────────────────────────────────────────
 export type EtiketElementType = "field" | "barcode" | "qrcode" | "rfid" | "logo" | "text" | "icon" | "line" | "rect" | "ellipse" | "image" | "qr";
 export type EtiketSekli = "kelebek" | "dambil" | "kuyruklu" | "rfid" | "dikdortgen";
-export type EtiketArkaPlan = "beyaz" | "altin" | "siyah" | "gumus";
+export type EtiketArkaPlan = "beyaz" | "altin" | "siyah" | "gumus" | string;
 
 export interface EtiketSablonAlan {
   id?: string;

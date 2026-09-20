@@ -970,38 +970,45 @@
 
 .sablon-card {
   background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 10px;
+  border: 1.5px solid #334155;
+  border-radius: 9px;
+  padding: 8px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
   display: flex;
   flex-direction: column;
+  user-select: none;
+  position: relative;
 }
 
 .sablon-card:hover {
   border-color: #38bdf8;
-  background: rgba(56, 189, 248, 0.05);
+  background: rgba(56, 189, 248, 0.06);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.sablon-card.selected-card {
+  border-color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.12) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.5), 0 8px 20px rgba(0, 0, 0, 0.4) !important;
 }
 
 .sablon-card.active {
-  border-color: #0284c7;
-  background: rgba(2, 132, 199, 0.12);
-  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.4);
+  border-color: #10b981;
 }
 
 .sablon-card-preview {
-  height: 55px;
-  background: #1e293b;
-  border-radius: 5px;
-  margin-bottom: 6px;
+  height: 105px;
+  background: #090d16;
+  border-radius: 6px;
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .sablon-card-name {
@@ -1031,3 +1038,457 @@
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── Kanvas Üst Aksiyon Butonları (Önizle & Çıktı Al) ────────────────────────── */
+.canvas-top-left-actions {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.canvas-top-right-actions {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.canvas-floating-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #0f172a;
+  color: #f1f5f9;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  backdrop-filter: blur(8px);
+}
+
+.canvas-floating-btn:hover {
+  background: #1e293b;
+  border-color: #38bdf8;
+  color: #38bdf8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(56, 189, 248, 0.25);
+}
+
+.canvas-floating-btn:active {
+  transform: translateY(0);
+}
+
+.canvas-floating-btn.print-btn {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+.canvas-floating-btn.print-btn:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  border-color: #7dd3fc;
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+}
+
+.canvas-floating-btn.preview-active {
+  background: #f59e0b;
+  border-color: #fcd34d;
+  color: #1e293b;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+}
+
+.canvas-floating-btn.preview-active:hover {
+  background: #d97706;
+  color: #ffffff;
+}
+
+.preview-banner-bar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 59;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  backdrop-filter: blur(10px);
+  padding: 5px 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fcd34d;
+  font-size: 11.5px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* ─── Önizleme Üst Bar (Kapat - Kapasite Bilgisi - Çıktı Al) ──────────────── */
+.preview-top-actions-bar {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  right: 14px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.preview-top-actions-bar button {
+  pointer-events: auto;
+}
+
+.preview-top-center-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  user-select: none;
+  text-align: center;
+  flex: 1;
+}
+
+.preview-top-center-info .preview-info-text {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 10px rgba(255, 255, 255, 0.9);
+}
+
+.preview-right-paper-drawer {
+  position: absolute;
+  right: 14px;
+  top: 54px;
+  z-index: 85;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 5px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+  width: 42px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.preview-right-paper-drawer::-webkit-scrollbar {
+  display: none;
+}
+
+.preview-right-paper-drawer:hover,
+.preview-right-paper-drawer.expanded {
+  width: 145px;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.7), 0 0 16px rgba(56, 189, 248, 0.25);
+  border-color: #475569;
+}
+
+.preview-paper-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.preview-paper-item-btn:hover {
+  background: rgba(51, 65, 85, 0.9);
+  color: #f1f5f9;
+  border-color: #64748b;
+}
+
+.preview-paper-item-btn.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+.preview-paper-item-btn .paper-icon {
+  font-size: 14px;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.preview-paper-item-btn .paper-name {
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.preview-right-paper-drawer:hover .preview-paper-item-btn .paper-name,
+.preview-right-paper-drawer.expanded .preview-paper-item-btn .paper-name {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ─── Sağ Alt Yakınlaştırma Kontrolleri ──────────────────────────────────────── */
+.preview-bottom-zoom-bar {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 85;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 3px 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+.preview-zoom-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #334155;
+  border-radius: 5px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preview-zoom-btn:hover {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #38bdf8;
+}
+
+.preview-zoom-fit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 24px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #334155;
+  border-radius: 5px;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preview-zoom-fit-btn:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+}
+
+.preview-zoom-fit-btn .fit-text {
+  font-size: 9.5px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+/* Önizleme Modu İçin Dikey Kaydırma ve Çalışma Alanı */
+.canvas-scroll-container.preview-mode-scroll {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  scroll-behavior: smooth;
+}
+
+.canvas-workspace.preview-mode-workspace {
+  padding-top: 55px !important;
+  padding-bottom: 85vh !important;
+  padding-left: 30px !important;
+  padding-right: 65px !important;
+  min-height: 100% !important;
+  min-width: max-content !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  box-sizing: border-box !important;
+}
+
+.paper-selector-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.paper-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.paper-chip:hover {
+  background: rgba(51, 65, 85, 0.95);
+  color: #f1f5f9;
+  border-color: #64748b;
+}
+
+.paper-chip.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+.paper-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Sayfa ve Tabaka Düzeni Önizleme Kartları ───────────────────────────────── */
+.sheet-preview-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.sheet-info-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.sheet-info-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  color: #0284c7;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.sheet-page-wrapper {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06);
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.sheet-grid-wrapper {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  align-content: flex-start;
+}
+
+/* ─── Rulo Şerit (Barkod Yazıcı Taşıyıcı Bandı) ────────────────────────────── */
+.roll-strip-carrier {
+  background: #fef08a; /* Glassine sarı/bej kuyumcu rulo taşıyıcı astar bandı */
+  background: linear-gradient(180deg, #fef9c3 0%, #fef08a 100%);
+  border-left: 2px dashed #ca8a04;
+  border-right: 2px dashed #ca8a04;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 4px;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.roll-perforation-mark {
+  width: 100%;
+  height: 1px;
+  border-top: 1px dashed rgba(202, 138, 4, 0.6);
+  margin: 4px 0;
+}
+
+.static-label-cell {
+  position: relative;
+  box-sizing: border-box;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.static-label-cell:hover {
+  transform: scale(1.02);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
