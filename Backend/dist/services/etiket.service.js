@@ -1,6 +1,7 @@
 import { AltinUrunSqlRepository } from "../models/altinUrunSql.repository.js";
 import { OzelUrunSqlRepository } from "../models/ozelUrunSql.repository.js";
 import { EtiketSablonSqlRepository } from "../models/etiketSablonSql.repository.js";
+import { EtiketLogoSqlRepository } from "../models/etiketLogoSql.repository.js";
 import { EtiketNumeratorSqlRepository } from "../models/etiketNumeratorSql.repository.js";
 import { UrunResimSqlRepository } from "../models/urunResimSql.repository.js";
 import { BankoSqlRepository } from "../models/bankoSql.repository.js";
@@ -127,6 +128,16 @@ export class EtiketService {
     }
     static removeSablon(id, dbContext) {
         return EtiketSablonSqlRepository.remove(id, dbContext);
+    }
+    // ─── Sektörel Logo & Damga Yönetimi (TODVZ_FOTOGRAF URUN_TIPI = 9) ─────────
+    static listLogolar(tip = 9, dbContext) {
+        return EtiketLogoSqlRepository.listLogos(tip, dbContext);
+    }
+    static saveLogo(data, kullaniciId, tip = 9, dbContext) {
+        return EtiketLogoSqlRepository.saveLogo(data, kullaniciId, tip, 0, dbContext);
+    }
+    static deleteLogo(id, dbContext) {
+        return EtiketLogoSqlRepository.deleteLogo(id, dbContext);
     }
     // ─── Banko Yönetimi (TODVZ_BANKO) ──────────────────────────────────────────
     static listBankolar(filter, dbContext) {

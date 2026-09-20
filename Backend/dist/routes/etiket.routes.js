@@ -10,6 +10,10 @@ router.post("/gruplar", EtiketController.saveGrup);
 router.delete("/gruplar", EtiketController.deleteGrup);
 router.get("/uretici-firmalar", EtiketController.getUreticiFirmalar);
 router.post("/foto-yukle", EtiketController.uploadFoto);
+// Sektörel Logo & Damga Yönetimi (TODVZ_FOTOGRAF URUN_TIPI = 9)
+router.get("/logolar", EtiketController.listLogolar);
+router.post("/logolar", EtiketController.saveLogo);
+router.delete("/logolar/:id", EtiketController.deleteLogo);
 // Banko Yönetimi (TODVZ_BANKO)
 router.get("/bankolar", EtiketController.listBankolar);
 router.get("/bankolar/:id", EtiketController.getBankoById);
