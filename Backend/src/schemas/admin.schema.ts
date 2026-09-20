@@ -57,6 +57,13 @@ const firmaGovdesi = z.object({
     .min(2, "Firma kodu en az 2 karakter olmalıdır")
     .max(20)
     .regex(/^[a-zA-Z0-9_-]+$/, "Firma kodu yalnızca harf, rakam, alt çizgi ve tire içerebilir"),
+  musteriNo: z
+    .string()
+    .trim()
+    .min(3, "Müşteri no en az 3 karakter olmalıdır")
+    .max(20)
+    .regex(/^[a-zA-Z0-9]+$/, "Müşteri no yalnızca harf ve rakam içerebilir"),
+  prgTur: z.coerce.number().int().min(0).max(999).optional(),
   unvan: z.string().trim().min(2, "Unvan en az 2 karakter olmalıdır").max(200),
   vknTckn: z
     .string()

@@ -3,7 +3,7 @@ import { getAdminPool } from "../../config/adminDb.config.js";
 import { FirmaDto, FirmaDurum, LisansDurumu, LISANS_UYARI_GUN } from "../../types/admin.types.js";
 
 const SECIM = `
-  SELECT f.FIRMA_ID, f.FIRMA_KODU, f.UNVAN, f.VKN_TCKN, f.VERGI_DAIRESI, f.YETKILI_KISI, f.TELEFON, f.EPOSTA, f.ADRES,
+  SELECT f.FIRMA_ID, f.FIRMA_KODU, f.MUSTERI_NO, f.PRG_TUR, f.UNVAN, f.VKN_TCKN, f.VERGI_DAIRESI, f.YETKILI_KISI, f.TELEFON, f.EPOSTA, f.ADRES,
          f.DURUM, f.DURUM_NOTU, f.DURUM_TARIHI, f.BAGLANTI_MODU, f.DB_SERVER, f.DB_PORT, f.DB_NAME, f.DB_USER,
          CAST(CASE WHEN f.DB_SIFRE_ENC IS NULL THEN 0 ELSE 1 END AS BIT) AS DB_SIFRE_TANIMLI,
          f.DOGRULANDI, f.DOGRULAYAN_ADMIN_ID, a.KULLANICI_ADI AS DOGRULAYAN_ADMIN, f.DOGRULAMA_TARIHI, f.DOGRULAMA_NOTU,
@@ -28,6 +28,8 @@ const lisansDurumu = (lisansId: number | null, kalanGun: number | null): LisansD
 const satirdan = (r: any): FirmaDto => ({
   firmaId: r.FIRMA_ID,
   firmaKodu: r.FIRMA_KODU,
+  musteriNo: r.MUSTERI_NO ?? null,
+  prgTur: r.PRG_TUR ?? 0,
   unvan: r.UNVAN,
   vknTckn: r.VKN_TCKN ?? null,
   vergiDairesi: r.VERGI_DAIRESI ?? null,
@@ -71,6 +73,8 @@ const satirdan = (r: any): FirmaDto => ({
 /** Tabloya yazılan, servis tarafından hazırlanmış alanlar. */
 export interface FirmaYazim {
   firmaKodu: string;
+  musteriNo: string;
+  prgTur: number;
   unvan: string;
   vknTckn: string | null;
   vergiDairesi: string | null;
@@ -89,6 +93,8 @@ export interface FirmaYazim {
 const yazimGirdileri = (req: sql.Request, v: FirmaYazim): sql.Request =>
   req
     .input("firmaKodu", sql.VarChar(20), v.firmaKodu)
+    .input("musteriNo", sql.VarChar(20), v.musteriNo)
+    .input("prgTur", sql.Int, v.prgTur)
     .input("unvan", sql.NVarChar(200), v.unvan)
     .input("vknTckn", sql.VarChar(11), v.vknTckn)
     .input("vergiDairesi", sql.NVarChar(100), v.vergiDairesi)
@@ -126,9 +132,9 @@ export class FirmaSqlRepository {
   public static async ekle(v: FirmaYazim, dbSifreEnc: string | null): Promise<number> {
     const pool = await getAdminPool();
     const res = await yazimGirdileri(pool.request(), v).input("dbSifreEnc", sql.VarChar(600), dbSifreEnc).query(`
-      INSERT INTO dbo.ADM_FIRMA (FIRMA_KODU, UNVAN, VKN_TCKN, VERGI_DAIRESI, YETKILI_KISI, TELEFON, EPOSTA, ADRES,
+      INSERT INTO dbo.ADM_FIRMA (FIRMA_KODU, MUSTERI_NO, PRG_TUR, UNVAN, VKN_TCKN, VERGI_DAIRESI, YETKILI_KISI, TELEFON, EPOSTA, ADRES,
                                  BAGLANTI_MODU, DB_SERVER, DB_PORT, DB_NAME, DB_ANAHTAR, DB_USER, DB_SIFRE_ENC, DURUM_TARIHI)
-      VALUES (@firmaKodu, @unvan, @vknTckn, @vergiDairesi, @yetkiliKisi, @telefon, @eposta, @adres,
+      VALUES (@firmaKodu, @musteriNo, @prgTur, @unvan, @vknTckn, @vergiDairesi, @yetkiliKisi, @telefon, @eposta, @adres,
               @baglantiModu, @dbServer, @dbPort, @dbName, @dbAnahtar, @dbUser, @dbSifreEnc, GETDATE());
       SELECT CAST(SCOPE_IDENTITY() AS INT) AS FIRMA_ID;
     `);
@@ -142,7 +148,7 @@ export class FirmaSqlRepository {
     if (dbSifreEnc !== undefined) req.input("dbSifreEnc", sql.VarChar(600), dbSifreEnc);
     await req.query(`
       UPDATE dbo.ADM_FIRMA SET
-        FIRMA_KODU = @firmaKodu, UNVAN = @unvan, VKN_TCKN = @vknTckn, VERGI_DAIRESI = @vergiDairesi,
+        FIRMA_KODU = @firmaKodu, MUSTERI_NO = @musteriNo, PRG_TUR = @prgTur, UNVAN = @unvan, VKN_TCKN = @vknTckn, VERGI_DAIRESI = @vergiDairesi,
         YETKILI_KISI = @yetkiliKisi, TELEFON = @telefon, EPOSTA = @eposta, ADRES = @adres,
         BAGLANTI_MODU = @baglantiModu, DB_SERVER = @dbServer, DB_PORT = @dbPort, DB_NAME = @dbName,
         DB_ANAHTAR = @dbAnahtar, DB_USER = @dbUser

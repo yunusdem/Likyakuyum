@@ -11,6 +11,8 @@ interface Props {
 
 const baslangic = (f?: FirmaDto): FirmaGirdi => ({
   firmaKodu: f?.firmaKodu ?? "",
+  musteriNo: f?.musteriNo ?? "",
+  prgTur: f?.prgTur ?? 0,
   unvan: f?.unvan ?? "",
   vknTckn: f?.vknTckn ?? "",
   vergiDairesi: f?.vergiDairesi ?? "",
@@ -36,6 +38,9 @@ export const firmaKodunaCevir = (deger: string): string =>
     .toUpperCase()
     .replace(/[^A-Z0-9_-]/g, "");
 
+/** Müşteri no: yalnızca A-Z ve 0-9 (ör. D20AC0001); tire/alt çizgi yoktur. */
+export const musteriNoyaCevir = (deger: string): string => firmaKodunaCevir(deger).replace(/[^A-Z0-9]/g, "");
+
 const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
   const [veri, setVeri] = useState<FirmaGirdi>(() => baslangic(firma));
   // Kayıtlı şifre hiçbir zaman sunucudan gelmez; alan boş bırakılırsa mevcut şifreye dokunulmaz.
@@ -44,7 +49,7 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
   const [bekliyor, setBekliyor] = useState(false);
 
   const alan = <K extends keyof FirmaGirdi>(ad: K) => ({
-    value: veri[ad] as string,
+    value: (veri[ad] ?? "") as string,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setVeri((v) => ({ ...v, [ad]: e.target.value })),
   });
@@ -83,7 +88,33 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
             <Form.Text muted>Büyük harf, rakam, tire ve alt çizgi.</Form.Text>
           </Form.Group>
         </Col>
-        <Col md={9}>
+        <Col md={3}>
+          <Form.Group controlId="frmMusteriNo">
+            <Form.Label>Müşteri No</Form.Label>
+            <Form.Control
+              value={veri.musteriNo}
+              onChange={(e) => setVeri((v) => ({ ...v, musteriNo: musteriNoyaCevir(e.target.value) }))}
+              required
+              minLength={3}
+              maxLength={20}
+              placeholder="ör. D20AC0001"
+            />
+            <Form.Text muted>Benzersiz. Harf ve rakam.</Form.Text>
+          </Form.Group>
+        </Col>
+        <Col md={2}>
+          <Form.Group controlId="frmPrgTur">
+            <Form.Label>Program türü</Form.Label>
+            <Form.Control
+              type="number"
+              min={0}
+              max={999}
+              value={veri.prgTur}
+              onChange={(e) => setVeri((v) => ({ ...v, prgTur: Math.max(0, Number(e.target.value) || 0) }))}
+            />
+          </Form.Group>
+        </Col>
+        <Col md={12}>
           <Form.Group controlId="frmUnvan">
             <Form.Label>Unvan</Form.Label>
             <Form.Control {...alan("unvan")} required minLength={2} maxLength={200} />

@@ -7,3 +7,7 @@ docs/*.md
 
 # Ana admin paneli build çıktısı (npm run build:admin); sunucuda üretilir
 dist-admin/
+
+# Sunucuya ozel gizli ayarlar (ADMIN_*, MERKEZ_GIRIS): git izlemez, Discard/stash ile silinemez
+Backend/.env.local
+.env.local

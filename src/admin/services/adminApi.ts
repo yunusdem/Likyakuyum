@@ -40,6 +40,8 @@ export interface LisansDto {
 export interface FirmaDto {
   firmaId: number;
   firmaKodu: string;
+  musteriNo: string | null;
+  prgTur: number;
   unvan: string;
   vknTckn: string | null;
   vergiDairesi: string | null;
@@ -73,6 +75,9 @@ export interface FirmaDto {
 
 export interface FirmaGirdi {
   firmaKodu: string;
+  /** Firmanın müşteri numarası (ör. D20AC0001); benzersiz */
+  musteriNo: string;
+  prgTur: number;
   unvan: string;
   vknTckn: string;
   vergiDairesi: string;

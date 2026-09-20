@@ -82,6 +82,10 @@ export interface LisansDto {
 export interface FirmaDto {
   firmaId: number;
   firmaKodu: string;
+  /** Firmanın müşteri numarası (ör. D20AC0001); admin yazar, benzersizdir. Eski kayıtlarda boş olabilir. */
+  musteriNo: string | null;
+  /** Program türü; şimdilik yalnızca 0. Yalnızca panelde saklanır ve gösterilir. */
+  prgTur: number;
   unvan: string;
   vknTckn: string | null;
   vergiDairesi: string | null;
@@ -117,6 +121,8 @@ export interface FirmaDto {
 /** Firma kaydında yazılabilen alanlar. */
 export interface FirmaGirdi {
   firmaKodu: string;
+  musteriNo: string;
+  prgTur?: number;
   unvan: string;
   vknTckn?: string | null;
   vergiDairesi?: string | null;

@@ -151,6 +151,15 @@ const FirmaDetayPage: React.FC = () => {
               <h5 className="mb-1">
                 {firma.unvan} <span className="text-muted fw-normal">· {firma.firmaKodu}</span>
               </h5>
+              <div className="small mb-2">
+                Müşteri No:{" "}
+                {firma.musteriNo ? (
+                  <strong>{firma.musteriNo}</strong>
+                ) : (
+                  <span className="text-danger">tanımlı değil</span>
+                )}
+                <span className="text-muted ms-3">Program türü: {firma.prgTur}</span>
+              </div>
               <div className="d-flex flex-wrap gap-2 align-items-center">
                 <DurumRozeti durum={firma.durum} />
                 <LisansRozeti firma={firma} />

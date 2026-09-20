@@ -26,6 +26,8 @@ const yazimHazirla = (g: FirmaGirdi): FirmaYazim => {
   const { port, anahtar } = firmaDbAnahtari(g.dbServer, dbName);
   return {
     firmaKodu: g.firmaKodu.trim().toUpperCase(),
+    musteriNo: g.musteriNo.trim().toUpperCase(),
+    prgTur: g.prgTur ?? 0,
     unvan: g.unvan.trim(),
     vknTckn: bosIseNull(g.vknTckn),
     vergiDairesi: bosIseNull(g.vergiDairesi),
@@ -44,16 +46,19 @@ const yazimHazirla = (g: FirmaGirdi): FirmaYazim => {
 
 const cakismaHatasi = (err: any): ApiError => {
   const msg = String(err?.message || "");
+  if (msg.includes("UX_ADM_FIRMA_MUSTERI_NO")) return ApiError.conflict("Bu müşteri no başka bir firmada kullanılıyor.");
   if (msg.includes("UQ_ADM_FIRMA_KODU")) return ApiError.conflict("Bu firma kodu başka bir firmada kullanılıyor.");
   if (msg.includes("UQ_ADM_FIRMA_DB_ANAHTAR")) {
     return ApiError.conflict("Bu sunucu ve veritabanı başka bir firmaya tanımlı. Bir veritabanı yalnızca bir firmaya bağlanabilir.");
   }
-  return ApiError.conflict("Kayıt çakışması: firma kodu veya veritabanı başka bir firmada kullanılıyor.");
+  return ApiError.conflict("Kayıt çakışması: firma kodu, müşteri no veya veritabanı başka bir firmada kullanılıyor.");
 };
 
 /** Denetim izine yazılacak alanlar (şifre ASLA dahil edilmez). */
 const logAlanlari = (f: FirmaDto | FirmaYazim) => ({
   firmaKodu: f.firmaKodu,
+  musteriNo: f.musteriNo,
+  prgTur: f.prgTur,
   unvan: f.unvan,
   vknTckn: f.vknTckn,
   vergiDairesi: f.vergiDairesi,

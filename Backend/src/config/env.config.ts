@@ -16,6 +16,17 @@ const potentialEnvPaths = [
   path.resolve(__dirname, ".env"),
 ];
 
+// Önce .env.local okunur (git'te İZLENMEZ). .env git'te izlendiği için sunucuda "Discard changes" / stash / checkout
+// ile sıfırlanabiliyor; sunucuya özel ve gizli ayarlar (ADMIN_*, MERKEZ_GIRIS) bu yüzden .env.local'de durur.
+// dotenv var olan değişkeni ezmediği için önce okunan dosya önceliklidir.
+for (const envPath of potentialEnvPaths) {
+  const localPath = `${envPath}.local`;
+  if (fs.existsSync(localPath)) {
+    dotenv.config({ path: localPath });
+    break;
+  }
+}
+
 for (const envPath of potentialEnvPaths) {
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath });
