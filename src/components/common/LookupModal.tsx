@@ -44,7 +44,8 @@ export function LookupModal<T extends Record<string, any>>({
     if (it.cariKartId !== undefined && it.cariKartId !== null) return `cari-${it.cariKartId}`;
     if (it.vezneId !== undefined && it.vezneId !== null) return `vezne-${it.vezneId}`;
     if (it.panoId !== undefined && it.panoId !== null) return `pano-${it.panoId}`;
-    if (it.paraId !== undefined && it.paraId !== null) return `para-${it.paraId}`;
+    if (it.sayimFisiId !== undefined && it.sayimFisiId !== null) return `sayim-${it.sayimFisiId}`;
+    if (it.fisNo !== undefined && it.fisNo !== null) return `fisno-${it.fisNo}`;
     if (it.id !== undefined && it.id !== null) return `id-${it.id}`;
     if (it.ID !== undefined && it.ID !== null) return `ID-${it.ID}`;
     if (it.kod !== undefined && it.kod !== null) return `kod-${it.kod}`;
@@ -64,11 +65,9 @@ export function LookupModal<T extends Record<string, any>>({
     ? items.filter((item) => filterFn(item, searchTerm.trim()))
     : items;
 
-  // Single click: Confirm selection, populate form fields and close modal
+  // Single click: Select row (highlight blue), do not close modal
   const handleRowClick = (item: T) => {
     setSelectedItem(item);
-    onSelect(item);
-    onHide();
   };
 
   // Double click: Confirm selection, populate form fields and close modal
@@ -187,7 +186,7 @@ export function LookupModal<T extends Record<string, any>>({
         {/* Info Banner */}
         <div className="d-flex align-items-center justify-content-between mb-2 px-1 text-muted small">
           <span>
-            💡 <strong>İpucu:</strong> Satıra tıklayarak, Enter basarak veya Seç butonuyla doğrudan forma aktarabilirsiniz.
+            💡 <strong>İpucu:</strong> Satıra çift tıklayarak, Enter basarak veya Seç butonuyla doğrudan forma aktarabilirsiniz.
           </span>
           {selectedItem && (
             <Badge bg="primary" className="py-1 px-2">

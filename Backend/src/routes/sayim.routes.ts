@@ -1,0 +1,15 @@
+import { Router } from "express";
+import { SayimController } from "../controllers/sayim.controller.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
+
+const router = Router();
+
+router.use(authenticate);
+
+router.get("/next-no", SayimController.getNextFisNo);
+router.get("/", SayimController.listSayimFisleri);
+router.get("/:id", SayimController.getSayimFisiById);
+router.post("/", SayimController.saveSayimFisi);
+router.delete("/:id", SayimController.deleteSayimFisi);
+
+export default router;

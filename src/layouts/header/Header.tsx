@@ -64,7 +64,7 @@ const quickActions = [
   },
   {
     title: "Banka",
-    to: "/banka/hesap-kartlari",
+    to: "/banka/hareketler",
     icon: <IconBuildingBank size={18} strokeWidth={2} className="text-secondary" />,
   },
   {

@@ -20,6 +20,7 @@ import {
   IconHeart,
   IconCrown,
   IconDiamond,
+  IconAlertTriangle,
   IconDeviceFloppy,
   IconPrinter,
   IconTrash,
@@ -1972,6 +1973,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const [sablonAdi, setSablonAdi] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorPopup, setErrorPopup] = useState<{ show: boolean; title: string; message: string } | null>(null);
   const [savedIndicator, setSavedIndicator] = useState(false);
   const [editTitleModal, setEditTitleModal] = useState(false);
   const [titleInput, setTitleInput] = useState("");
@@ -3285,8 +3287,14 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         text: el.text,
       }));
 
+      // Eğer aynı isimde kayıtlı bir şablon varsa onun ID'sini bularak güncelle
+      const matchedExisting = sablonlar.find(
+        (s) => s.ad && s.ad.trim().toLowerCase() === nameToSave.toLowerCase()
+      );
+      const targetSablonId = activeSablon?.etiketSablonId || matchedExisting?.etiketSablonId || null;
+
       const savedItem = await EtiketService.saveSablon({
-        etiketSablonId: activeSablon?.etiketSablonId || null,
+        etiketSablonId: targetSablonId,
         ad: nameToSave,
         etiketTipi: labelConfig.etiketTipi,
         genislikMm: labelConfig.genislikMm,
@@ -3311,7 +3319,13 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     } catch (err: any) {
       console.error("Kaydetme hatası:", err);
       setSaveStatus("error");
-      setErrorMessage(err?.response?.data?.message || err?.message || "Kayıt sırasında bir hata oluştu!");
+      const errText = err?.response?.data?.message || err?.message || "Kayıt sırasında bir hata oluştu!";
+      setErrorMessage(errText);
+      setErrorPopup({
+        show: true,
+        title: "Şablon Kayıt Bildirimi",
+        message: errText,
+      });
       setTimeout(() => {
         setSaveStatus("idle");
         setErrorMessage(null);
@@ -3357,6 +3371,11 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     if (currentEls.length > 0 && (currentName.trim() || currentSablon?.etiketSablonId)) {
       try {
         const nameToSave = currentName.trim() || currentSablon?.ad || "Otomatik Tasarım";
+        const matchedExisting = sablonlar.find(
+          (s) => s.ad && s.ad.trim().toLowerCase() === nameToSave.toLowerCase()
+        );
+        const targetSablonId = currentSablon?.etiketSablonId || matchedExisting?.etiketSablonId || null;
+
         const alanlar: EtiketSablonAlan[] = currentEls.map((el) => ({
           alan: el.fieldKey || el.text || el.type,
           etiketElementTipi: el.type as any,
@@ -3388,7 +3407,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         }));
 
         const savedItem = await EtiketService.saveSablon({
-          etiketSablonId: currentSablon?.etiketSablonId || null,
+          etiketSablonId: targetSablonId,
           ad: nameToSave,
           etiketTipi: currentCfg.etiketTipi,
           genislikMm: currentCfg.genislikMm,
@@ -3407,7 +3426,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         // Arka plan otomatik kayıtta kullanıcı akışını kesmeden sessizce devam et
       }
     }
-  }, []);
+  }, [sablonlar]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -6655,6 +6674,53 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             disabled={!titleInput.trim()}
           >
             Uygula
+          </button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ── ⚠️ Ortalanmış Hata / Bildirim Popup Modalı ──────────────────── */}
+      <Modal
+        show={Boolean(errorPopup?.show)}
+        onHide={() => setErrorPopup(null)}
+        centered
+        className="dark-modal"
+      >
+        <Modal.Header closeButton style={{ background: "#0f172a", borderColor: "#334155", color: "#f8fafc" }}>
+          <Modal.Title style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAlertTriangle size={20} color="#ef4444" />
+            <span style={{ fontWeight: 700 }}>{errorPopup?.title || "Hata / Uyarı"}</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={{ background: "#1e293b", color: "#f1f5f9", padding: "20px 24px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ background: "rgba(239,68,68,0.15)", borderRadius: "50%", padding: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <IconAlertTriangle size={24} color="#ef4444" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#f87171" }}>
+                İşlem Uyarısı
+              </div>
+              <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
+                {errorPopup?.message}
+              </div>
+            </div>
+          </div>
+        </Modal.Body>
+        <Modal.Footer style={{ background: "#0f172a", borderColor: "#334155" }}>
+          <button
+            style={{
+              padding: "6px 20px",
+              background: "#ef4444",
+              border: "none",
+              borderRadius: 6,
+              color: "#ffffff",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            onClick={() => setErrorPopup(null)}
+          >
+            Tamam
           </button>
         </Modal.Footer>
       </Modal>

@@ -37,6 +37,7 @@ import BarkodEtiketBasimiPage from "./pages/etiket/BarkodEtiketBasimiPage";
 import AltinUrunTanimlamaPage from "./pages/etiket/AltinUrunTanimlamaPage";
 import OzelUrunTanimlamaPage from "./pages/etiket/OzelUrunTanimlamaPage";
 import UrunEtiketTasarimiPage from "./pages/etiket/UrunEtiketTasarimiPage";
+import BarkodluSayimFisiPage from "./pages/etiket/BarkodluSayimFisiPage";
 import TopluEtiketYazdirmaPage from "./pages/etiket/TopluEtiketYazdirmaPage";
 import YuzukBilezikEtiketiPage from "./pages/etiket/YuzukBilezikEtiketiPage";
 import FiyatAyarEtiketleriPage from "./pages/etiket/FiyatAyarEtiketleriPage";
@@ -236,6 +237,8 @@ export default function App() {
             <Route path="etiket/ozel-urun-etiket-tasarimi" element={<UrunEtiketTasarimiPage />} />
             <Route path="etiket/tasarim" element={<UrunEtiketTasarimiPage />} />
             <Route path="etiket/fiyat-etiketi" element={<FiyatAyarEtiketleriPage />} />
+            <Route path="etiket/sayim-fisi" element={<BarkodluSayimFisiPage />} />
+            <Route path="etiket/barkodlu-sayim-fisi" element={<BarkodluSayimFisiPage />} />
             <Route path=":section/*" element={<ModulePage />} />
 
 

@@ -400,6 +400,33 @@ export const EtiketService = {
   async deleteLogo(id: number): Promise<void> {
     await apiClient.delete(`/etiket/logolar/${id}`);
   },
+
+  // ─── Barkodlu Sayım Fişi Yönetimi (SODVZ_SAYIM_FISI_KAYDET & SODVZ_SAYIM_SATIR_EKLE) ───
+  async getNextSayimFisNo(): Promise<string> {
+    const res = await apiClient.get<{ fisNo: string }>("/sayim/next-no");
+    const data = (res.data as any)?.data ?? res.data;
+    return data?.fisNo || "";
+  },
+
+  async getSayimFisleri(limit = 100): Promise<any[]> {
+    const res = await apiClient.get<any[]>("/sayim", { limit });
+    const data = (res.data as any)?.data ?? res.data;
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getSayimFisiById(id: number): Promise<any> {
+    const res = await apiClient.get<any>(`/sayim/${id}`);
+    return (res.data as any)?.data ?? res.data;
+  },
+
+  async saveSayimFisi(payload: any): Promise<any> {
+    const res = await apiClient.post<any>("/sayim", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+
+  async deleteSayimFisi(id: number): Promise<void> {
+    await apiClient.delete(`/sayim/${id}`);
+  },
 };
 
 export interface EtiketLogoItem {

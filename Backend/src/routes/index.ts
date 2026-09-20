@@ -29,6 +29,7 @@ import etiketRoutes from "./etiket.routes.js";
 import ayarRoutes from "./ayar.routes.js";
 import perakendeRoutes from "./perakende.routes.js";
 import adminRoutes from "./admin.routes.js";
+import sayimRoutes from "./sayim.routes.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { modulKapisi } from "../middlewares/modul.middleware.js";
 
@@ -45,6 +46,7 @@ apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
 apiRouter.use("/ayar", ayarRoutes);
 apiRouter.use("/ayarlar-tanim", ayarRoutes);
+apiRouter.use("/sayim", sayimRoutes);
 apiRouter.use("/banka", kapi("/banka"), bankaRoutes);
 apiRouter.use("/kasa", kapi("/kasa"), kasaRoutes);
 apiRouter.use("/etiket", kapi("/etiket"), etiketRoutes);

@@ -31,7 +31,7 @@ export const UST_KISAYOLLAR: { key: string; baslik: string; to?: string }[] = [
   { key: "ust:sarraf", baslik: "Sarraf", to: "/vezne/genel-sarraf-fisi" },
   { key: "ust:doviz", baslik: "Döviz", to: "/vezne/doviz-fisi" },
   { key: "ust:perakende", baslik: "Perakende", to: "/vezne/perakende-fisi-kayit" },
-  { key: "ust:banka", baslik: "Banka", to: "/banka/hesap-kartlari" },
+  { key: "ust:banka", baslik: "Banka", to: "/banka/hareketler" },
   { key: "ust:c-hareket", baslik: "C. Hareket", to: "/cari/hareket-kayit" },
   { key: "ust:e-belge", baslik: "e-Belge", to: "/e-belge" },
   { key: "ust:masak", baslik: "MASAK" },
