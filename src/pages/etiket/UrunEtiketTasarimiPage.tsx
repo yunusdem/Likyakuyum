@@ -851,7 +851,7 @@ function BarcodeRenderer({
           margin: 1,
           textMargin: 1,
         });
-      } catch {}
+      } catch { }
     }
   }, [displayVal, format, height]);
 
@@ -874,7 +874,7 @@ function QRRenderer({ value, size }: { value: string; size: number }) {
       QRCode.toCanvas(canvasRef.current, value || "RFID", {
         width: Math.max(16, size),
         margin: 1,
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, [value, size]);
   return (
@@ -1328,7 +1328,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     try {
       const data = await EtiketService.getSablonlar();
       setSablonlar(data);
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -1513,7 +1513,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       const maxZ = elements.length > 0 ? Math.max(...elements.map((e) => e.zIndex)) : 0;
       const w = overrides.width || (overrides.type === "barcode" ? 26 : overrides.type === "qr" ? 14 : overrides.type === "line" ? 20 : 20);
       const h = overrides.height || (overrides.type === "barcode" ? 8 : overrides.type === "qr" ? 14 : overrides.type === "line" ? 0.5 : 5);
-      
+
       const newEl: CanvasElement = {
         id: genId(),
         type: overrides.type,
@@ -1605,7 +1605,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         x: Math.round(finalX * 100) / 100,
         y: Math.round(finalY * 100) / 100,
       });
-    } catch {}
+    } catch { }
   };
 
   // ─── Mouse / Touch Koordinatları ──────────────────────────────────────────
@@ -2522,7 +2522,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           onClick={() => setDurbunModal(true)}
         >
           <IconBinoculars size={15} />
-          <span>Şablonlar</span>
+          <span> </span>
         </button>
 
         {/* Yeni Şablon */}
