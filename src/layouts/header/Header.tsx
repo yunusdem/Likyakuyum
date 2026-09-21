@@ -174,8 +174,8 @@ const Header: React.FC = () => {
                   style={{ width: "26px", height: "26px", objectFit: "contain" }}
                 />
                 <span className="fw-bold fs-6 text-nowrap">
-                  <span className="brand-text-likya">Likya</span>{" "}
-                  <span className="brand-text-kuyum">Kuyum</span>
+                  <span className="brand-text-likya">LİKYA</span>{" "}
+                  <span className="brand-text-kuyum">KUYUM</span>
                 </span>
               </div>
 

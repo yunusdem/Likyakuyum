@@ -442,15 +442,15 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
               className="fw-bold site-logo-text text-nowrap"
               style={{ fontSize: "1.25rem" }}
             >
-              <span className="brand-text-likya">Likya</span>{" "}
-              <span className="brand-text-kuyum">Kuyum</span>
+              <span className="brand-text-likya">LİKYA</span>{" "}
+              <span className="brand-text-kuyum">KUYUM</span>
             </span>
           </Link>
 
           {/* Close Button ('X' - visible on all screens <1200px like Nest Hub, tablets, phones) */}
           <button
             type="button"
-            className="btn btn-ghost p-1 d-flex d-xl-none align-items-center justify-content-center rounded-circle text-secondary"
+            className="btn btn-ghost p-1 d-flex d-xl-none align-items-center justify-content-center rounded-circle text-white"
             onClick={() => handleCollapsed("collapsed")}
             title="Menüyü Kapat"
           >

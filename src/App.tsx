@@ -95,8 +95,8 @@ const DashboardLayout: React.FC = () => {
               className="flex-shrink-0 me-2"
               style={{ width: "22px", height: "22px", objectFit: "contain" }}
             />
-            <span className="text-muted small">
-              © 2026 <strong className="brand-text-likya">Likya</strong> <strong className="brand-text-kuyum">Kuyum</strong>. Tüm hakları saklıdır.
+            <span className="text-muted small d-inline-flex align-items-center">
+              © 2026&nbsp;<strong className="text-dark fw-bold">LİKYA KUYUM</strong>.&nbsp;Tüm hakları saklıdır.
             </span>
           </div>
         </footer>
