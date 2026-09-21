@@ -1,6 +1,7 @@
-import { useContext, ReactNode } from "react";
+import React, { useContext, ReactNode } from "react";
 import { AccordionContext, useAccordionButton, Nav } from "react-bootstrap";
 import useMenu from "hooks/useMenu";
+import { IconChevronDown } from "@tabler/icons-react";
 
 interface CustomToggleProps {
   children: ReactNode;
@@ -10,6 +11,7 @@ interface CustomToggleProps {
   dataBsTarget?: string;
   ariaControls?: string;
   icon?: ReactNode;
+  theme?: { bg: string; color: string; borderColor?: string };
   callback?: (eventKey: string) => void;
 }
 
@@ -17,6 +19,7 @@ export default function CustomToggle({
   children,
   eventKey,
   icon,
+  theme,
   callback,
 }: CustomToggleProps) {
   const { activeEventKey } = useContext(AccordionContext);
@@ -27,8 +30,9 @@ export default function CustomToggle({
   );
 
   const isCurrentEventKey = activeEventKey === eventKey;
+
   return (
-    <Nav.Item as="li" className="dropdown">
+    <Nav.Item as="li" className={`dropdown sidebar-parent-item ${isCurrentEventKey ? "is-open" : ""}`}>
       <Nav.Link
         href="#"
         onClick={(e) => {
@@ -39,15 +43,32 @@ export default function CustomToggle({
           decoratedOnClick(e);
         }}
         data-bs-toggle="dropdown"
-        aria-expanded={isCurrentEventKey ? true : false}
-        className="dropdown-toggle d-flex align-items-center"
+        aria-expanded={isCurrentEventKey}
+        className={`sidebar-menu-btn d-flex align-items-center w-100 ${isCurrentEventKey ? "menu-open" : ""}`}
       >
         {icon && (
-          <span className="nav-icon me-2 d-inline-flex align-items-center justify-content-center">
+          <span
+            className="sidebar-icon-pill d-inline-flex align-items-center justify-content-center flex-shrink-0"
+            style={{
+              backgroundColor: theme?.bg || "#f1f5f9",
+              color: theme?.color || "#475569",
+              border: `1px solid ${theme?.borderColor || "transparent"}`,
+            }}
+          >
             {icon}
           </span>
         )}
-        <span className="text">{children}</span>
+        <span className="sidebar-menu-title text flex-grow-1 text-truncate">{children}</span>
+        <span
+          className="sidebar-chevron ms-auto d-inline-flex align-items-center justify-content-center"
+          style={{
+            transform: isCurrentEventKey ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)",
+            color: isCurrentEventKey ? "#334155" : "#94a3b8",
+          }}
+        >
+          <IconChevronDown size={16} strokeWidth={2.2} />
+        </span>
       </Nav.Link>
     </Nav.Item>
   );
@@ -56,7 +77,7 @@ export default function CustomToggle({
 export function CustomToggleLevel2({
   children,
   eventKey,
-  className = "nav-link py-1 px-3 d-flex align-items-center justify-content-between",
+  className = "sidebar-level2-btn py-1.5 px-2.5 d-flex align-items-center justify-content-between text-decoration-none",
   href = "#",
   dataBsTarget = "",
   ariaControls = "",
@@ -69,7 +90,7 @@ export function CustomToggleLevel2({
   return (
     <a
       href={href}
-      className={className}
+      className={`${className} ${isCurrentEventKey ? "level2-open" : ""}`}
       onClick={(e) => {
         e.preventDefault();
         if (collapsed === "collapsed") {
@@ -83,24 +104,15 @@ export function CustomToggleLevel2({
       aria-controls={ariaControls}
       style={{ cursor: "pointer", textDecoration: "none" }}
     >
-      <span className="text">{children}</span>
-      <span className="dropdown-arrow ms-auto d-inline-flex align-items-center opacity-75">
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{
-            transform: isCurrentEventKey ? "rotate(90deg)" : "rotate(0deg)",
-            transition: "transform 0.2s ease-in-out",
-          }}
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+      <span className="text text-truncate">{children}</span>
+      <span
+        className="dropdown-arrow ms-auto d-inline-flex align-items-center opacity-75"
+        style={{
+          transform: isCurrentEventKey ? "rotate(90deg)" : "rotate(0deg)",
+          transition: "transform 0.2s ease-in-out",
+        }}
+      >
+        <IconChevronDown size={14} strokeWidth={2.2} />
       </span>
     </a>
   );

@@ -3,10 +3,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Accordion,
   Badge,
-  Image,
   ListGroup,
   Nav,
-  Dropdown,
 } from "react-bootstrap";
 
 //import custom types
@@ -17,19 +15,38 @@ import {
   IconX,
   IconLogin2,
   IconKey,
-  IconChevronUp,
-  IconSettings,
-  IconCheck,
   IconUser,
   IconClock,
   IconCalendar,
   IconCash,
+  IconFilePlus,
+  IconFilePencil,
+  IconFileSpreadsheet,
+  IconListDetails,
+  IconId,
+  IconBarcode,
+  IconTrendingUp,
+  IconArrowsExchange,
+  IconEye,
+  IconDeviceTv,
+  IconLock,
+  IconCreditCard,
+  IconShoppingCart,
+  IconArrowBackUp,
+  IconBuildingStore,
+  IconSettings,
+  IconUserCheck,
+  IconPrinter,
+  IconNumbers,
+  IconRefresh,
+  IconShieldExclamation,
+  IconBuilding,
+  IconFileText,
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
 
 // import required routes
-import { getAssetPath } from "helper/assetPath";
 import { DashboardMenu } from "routes/DashboardRoute";
 import { menuyuSuz } from "../config/modulKatalogu";
 
@@ -37,6 +54,155 @@ interface SidebarProps {
   hideLogo: boolean;
   containerId?: string;
 }
+
+export interface MenuVisualTheme {
+  bg: string;
+  color: string;
+  borderColor?: string;
+}
+
+export const MENU_THEMES: Record<string, MenuVisualTheme> = {
+  vezne: { bg: "#fef3c7", color: "#d97706", borderColor: "#fde68a" }, // Gold/Amber
+  kasa: { bg: "#dcfce7", color: "#16a34a", borderColor: "#bbf7d0" }, // Emerald/Green
+  kur: { bg: "#e0e7ff", color: "#4f46e5", borderColor: "#c7d2fe" }, // Indigo
+  cari: { bg: "#ffedd5", color: "#ea580c", borderColor: "#fed7aa" }, // Warm Orange (like Müşterilerim in screenshot)
+  yonetici: { bg: "#f3e8ff", color: "#9333ea", borderColor: "#e9d5ff" }, // Purple/Violet
+  banka: { bg: "#e0f2fe", color: "#0284c7", borderColor: "#bae6fd" }, // Sky Blue / Cyan (like İş Ortaklarım in screenshot)
+  raporlar: { bg: "#fce7f3", color: "#db2777", borderColor: "#fbcfe8" }, // Rose/Pink
+  ebelge: { bg: "#fee2e2", color: "#dc2626", borderColor: "#fecaca" }, // Soft Red
+  etiket: { bg: "#ccfbf1", color: "#0d9488", borderColor: "#99f6e4" }, // Teal
+  perakende: { bg: "#ecfdf5", color: "#059669", borderColor: "#a7f3d0" }, // Mint/Emerald
+  ayarlar: { bg: "#f1f5f9", color: "#475569", borderColor: "#e2e8f0" }, // Slate
+};
+
+const FALLBACK_PALETTES: MenuVisualTheme[] = [
+  { bg: "#e0f2fe", color: "#0284c7", borderColor: "#bae6fd" },
+  { bg: "#ffedd5", color: "#ea580c", borderColor: "#fed7aa" },
+  { bg: "#fef3c7", color: "#d97706", borderColor: "#fde68a" },
+  { bg: "#dcfce7", color: "#16a34a", borderColor: "#bbf7d0" },
+  { bg: "#f3e8ff", color: "#9333ea", borderColor: "#e9d5ff" },
+  { bg: "#ccfbf1", color: "#0d9488", borderColor: "#99f6e4" },
+  { bg: "#fce7f3", color: "#db2777", borderColor: "#fbcfe8" },
+];
+
+export const getThemeForMenu = (menu: MenuItemType, index: number): MenuVisualTheme => {
+  if (menu.key && MENU_THEMES[menu.key]) {
+    return MENU_THEMES[menu.key];
+  }
+  const title = (menu.title || "").toLowerCase();
+  if (title.includes("vezne")) return MENU_THEMES.vezne;
+  if (title.includes("kasa")) return MENU_THEMES.kasa;
+  if (title.includes("kur")) return MENU_THEMES.kur;
+  if (title.includes("cari")) return MENU_THEMES.cari;
+  if (title.includes("yönetici") || title.includes("yonetici")) return MENU_THEMES.yonetici;
+  if (title.includes("banka") || title.includes("pos")) return MENU_THEMES.banka;
+  if (title.includes("rapor")) return MENU_THEMES.raporlar;
+  if (title.includes("belge") || title.includes("e-belge")) return MENU_THEMES.ebelge;
+  if (title.includes("etiket") || title.includes("barkod")) return MENU_THEMES.etiket;
+  if (title.includes("perakende") || title.includes("satış")) return MENU_THEMES.perakende;
+  if (title.includes("ayar")) return MENU_THEMES.ayarlar;
+
+  return FALLBACK_PALETTES[index % FALLBACK_PALETTES.length];
+};
+
+export const getSubmenuIcon = (name: string) => {
+  const n = (name || "").toLowerCase();
+  if (
+    n.includes("fisi kayit") ||
+    n.includes("fişi kayıt") ||
+    n.includes("hesap kayit") ||
+    n.includes("hesap kayıt") ||
+    n.includes("kart kayit") ||
+    n.includes("kart kayıt") ||
+    n.includes("hareket kayit") ||
+    n.includes("hareket kayıt") ||
+    n.includes("dekont kayit") ||
+    n.includes("dekont kayıt") ||
+    n.includes("transfer kayit") ||
+    n.includes("transfer kayıt") ||
+    n.includes("hızlı") ||
+    n.includes("ekle")
+  ) {
+    return <IconFilePlus size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (
+    n.includes("duzeltme") ||
+    n.includes("düzeltme") ||
+    n.includes("duzenle") ||
+    n.includes("düzenle")
+  ) {
+    return <IconFilePencil size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (
+    n.includes("rapor") ||
+    n.includes("ekstre") ||
+    n.includes("analiz") ||
+    n.includes("defter")
+  ) {
+    return <IconFileSpreadsheet size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("liste") || n.includes("hareketler")) {
+    return <IconListDetails size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("kart") || n.includes("müşteri") || n.includes("musteri")) {
+    return <IconId size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("barkod") || n.includes("etiket") || n.includes("ürün") || n.includes("urun")) {
+    return <IconBarcode size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("fiyat") || n.includes("kur")) {
+    return <IconTrendingUp size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("para") || n.includes("sayim") || n.includes("sayım") || n.includes("say")) {
+    return <IconCash size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("transfer") || n.includes("tahsilat")) {
+    return <IconArrowsExchange size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("izleme") || n.includes("kontrol")) {
+    return <IconEye size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("pano")) {
+    return <IconDeviceTv size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("emanet")) {
+    return <IconLock size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("pos") || n.includes("banka")) {
+    return <IconCreditCard size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("satış") || n.includes("satis")) {
+    return <IconShoppingCart size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("alış") || n.includes("alis") || n.includes("iade")) {
+    return <IconArrowBackUp size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("vitrin") || n.includes("stok")) {
+    return <IconBuildingStore size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("tanim") || n.includes("tanım") || n.includes("ayar")) {
+    return <IconSettings size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("kullanıcı") || n.includes("kullanici") || n.includes("aktivasyon")) {
+    return <IconUserCheck size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("yazıcı") || n.includes("yazici")) {
+    return <IconPrinter size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("numara") || n.includes("numaratör")) {
+    return <IconNumbers size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("devir") || n.includes("servis")) {
+    return <IconRefresh size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("masak")) {
+    return <IconShieldExclamation size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("firma")) {
+    return <IconBuilding size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  return <IconFileText size={16} className="sidebar-sub-icon flex-shrink-0" />;
+};
 
 const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   const location = useLocation();
@@ -202,7 +368,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
         // Scroll opened menu into view
         setTimeout(() => {
-          const el = document.querySelectorAll(".sidebar-menu-wrapper .nav-item.dropdown")[topMenuIndex];
+          const el = document.querySelectorAll(".sidebar-menu-wrapper .sidebar-parent-item")[topMenuIndex];
           if (el) {
             el.scrollIntoView({ behavior: "smooth", block: "nearest" });
           }
@@ -224,7 +390,6 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   }, [collapsed, handleCollapsed, navigateWithDashboardHop]);
 
   const displayName = user?.fullName || user?.username || "Admin";
-  const displayRole = user?.role === "admin" || user?.isSysAdmin ? "Sistem Yöneticisi" : "Kasa Sorumlusu";
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -238,26 +403,6 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       handleCollapsed("expanded");
     }
     navigateWithDashboardHop(to);
-  };
-
-  //Generate Link
-  const generateLink = (item: MenuItemType) => {
-    const to = item.link?.startsWith("/") ? item.link : `/${item.link}`;
-    return (
-      <Link
-        to={to}
-        onClick={(e) => handleLinkClick(e, to)}
-        className={`nav-link ${currentPath === to ? "active" : ""}`}>
-        <span className="text">{item.name || item.title}</span>
-        {item.badge && (
-          <Badge
-            className="ms-1"
-            bg={item.badgecolor ? item.badgecolor : "primary"}>
-            {item.badge}
-          </Badge>
-        )}
-      </Link>
-    );
   };
 
   return (
@@ -314,7 +459,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
         </div>
       )}
 
-      {/* 2. Scrollable Navigation Menu (Strictly below the logo) */}
+      {/* 2. Scrollable Navigation Menu */}
       <div className="sidebar-menu-wrapper">
         <Accordion
           activeKey={activeMenuKey}
@@ -340,23 +485,34 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           className="navbar-nav flex-column mb-0"
         >
           {gorunenMenu.map(function (menu, index) {
+            const theme = getThemeForMenu(menu, index);
+
             if (menu.grouptitle) {
               return (
-                <Nav.Item key={index} as="li">
-                  <div className="nav-heading">{menu.title}</div>
-                  <hr className="mx-3 nav-line mb-1" />
-                </Nav.Item>
+                <div key={index} className="sidebar-menu-section nav-heading-section">
+                  <Nav.Item as="li" className="nav-heading-item">
+                    <div className="nav-heading">{menu.title}</div>
+                  </Nav.Item>
+                </div>
               );
             } else {
               if (menu.children) {
                 return (
-                  <Fragment key={index}>
-                    {/* Dropdown Parent Menu */}
-                    <CustomToggle eventKey={index.toString()} icon={menu.icon}>
+                  <div key={index} className="sidebar-menu-section">
+                    {/* Dropdown Parent Menu with Colorful Icon Badge */}
+                    <CustomToggle
+                      eventKey={index.toString()}
+                      icon={menu.icon}
+                      theme={theme}
+                    >
                       {menu.title}
                     </CustomToggle>
+
                     <Accordion.Collapse eventKey={index.toString()}>
-                      <ListGroup as="ul" className="dropdown-menu sidebar-submenu-list flex-column show position-static bg-transparent py-1">
+                      <ListGroup
+                        as="ul"
+                        className="sidebar-submenu-list flex-column show position-static bg-transparent py-1"
+                      >
                         {menu.children.map(function (
                           menuLevel1Item,
                           menuLevel1Index
@@ -367,7 +523,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                 as="li"
                                 bsPrefix="nav-item"
                                 key={menuLevel1Index}
-                                className="w-100"
+                                className="w-100 mb-0.5"
                               >
                                 {/* Nested Level 2 Accordion */}
                                 <Accordion
@@ -383,7 +539,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                   <Accordion.Collapse eventKey={`sub-${menuLevel1Index}`}>
                                     <ListGroup
                                       as="ul"
-                                      className="nav flex-column ps-3 py-1"
+                                      className="nav flex-column ps-2 py-1"
                                     >
                                       {menuLevel1Item.children.map(function (
                                         menuLevel2Item,
@@ -401,10 +557,12 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                             <Link
                                               to={to2}
                                               onClick={(e) => handleLinkClick(e, to2)}
-                                              className={`nav-link sidebar-sub-link py-1 px-3 ${currentPath === to2 ? "active" : ""
-                                                }`}
+                                              className={`nav-link sidebar-sub-link py-1 px-2.5 ${
+                                                currentPath === to2 ? "active" : ""
+                                              }`}
                                             >
-                                              <span className="text">
+                                              {getSubmenuIcon(menuLevel2Item.name || menuLevel2Item.title || "")}
+                                              <span className="text ms-1">
                                                 {menuLevel2Item.name || menuLevel2Item.title}
                                               </span>
                                             </Link>
@@ -425,14 +583,17 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                 as="li"
                                 bsPrefix="nav-item"
                                 key={menuLevel1Index}
+                                className="mb-0.5"
                               >
                                 <Link
                                   to={to1}
                                   onClick={(e) => handleLinkClick(e, to1)}
-                                  className={`nav-link sidebar-sub-link py-1 px-3 ${currentPath === to1 ? "active" : ""
-                                    }`}
+                                  className={`nav-link sidebar-sub-link py-1 px-2.5 ${
+                                    currentPath === to1 ? "active" : ""
+                                  }`}
                                 >
-                                  <span className="text">
+                                  {getSubmenuIcon(menuLevel1Item.name || menuLevel1Item.title || "")}
+                                  <span className="text ms-1">
                                     {menuLevel1Item.name || menuLevel1Item.title}
                                   </span>
                                 </Link>
@@ -442,23 +603,50 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                         })}
                       </ListGroup>
                     </Accordion.Collapse>
-                  </Fragment>
+                  </div>
                 );
               } else {
-                const to = menu.link?.startsWith("/") ? menu.link : (menu.link ? `/${menu.link}` : "#");
+                const to = menu.link?.startsWith("/")
+                  ? menu.link
+                  : menu.link
+                  ? `/${menu.link}`
+                  : "#";
                 return (
-                  <Nav.Item as="li" key={index}>
-                    <Link
-                      to={to}
-                      onClick={(e) => handleLinkClick(e, to)}
-                      className={`nav-link ${currentPath === to ? "active" : ""
+                  <div key={index} className="sidebar-menu-section">
+                    <Nav.Item as="li" className="sidebar-parent-item">
+                      <Link
+                        to={to}
+                        onClick={(e) => handleLinkClick(e, to)}
+                        className={`sidebar-menu-btn nav-link d-flex align-items-center ${
+                          currentPath === to ? "active" : ""
                         }`}
-                    >
-                      {menu.icon && <span className="nav-icon">{menu.icon}</span>}
-                      <span className="text">{menu.title}</span>
-                    </Link>
-
-                  </Nav.Item>
+                      >
+                        {menu.icon && (
+                          <span
+                            className="sidebar-icon-pill d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                            style={{
+                              backgroundColor: theme.bg,
+                              color: theme.color,
+                              border: `1px solid ${theme.borderColor || "transparent"}`,
+                            }}
+                          >
+                            {menu.icon}
+                          </span>
+                        )}
+                        <span className="sidebar-menu-title text flex-grow-1 text-truncate">
+                          {menu.title}
+                        </span>
+                        {menu.badge && (
+                          <Badge
+                            className="ms-1"
+                            bg={menu.badgecolor ? menu.badgecolor : "primary"}
+                          >
+                            {menu.badge}
+                          </Badge>
+                        )}
+                      </Link>
+                    </Nav.Item>
+                  </div>
                 );
               }
             }
@@ -468,12 +656,12 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
       {/* 3. Bottom User Profile Bar (Full Sidebar Width, Centered & Aesthetic) */}
       <div
-        className="flex-shrink-0 border-top px-3 pt-3.5 pb-4 w-100"
+        className="flex-shrink-0 border-top px-3 pt-3 pb-3.5 w-100"
         style={{
           borderColor: "#e2e8f0",
           background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
           boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.8)",
-          minHeight: "90px",
+          minHeight: "88px",
         }}
       >
         <div className="d-flex align-items-center justify-content-between w-100">
@@ -481,15 +669,15 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           <div
             className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 position-relative"
             style={{
-              width: "40px",
-              height: "40px",
+              width: "38px",
+              height: "38px",
               backgroundColor: "#ffffff",
               border: "1.5px solid #94a3b8",
               boxShadow: "0 2px 5px rgba(15, 23, 42, 0.08)",
             }}
             title={`Kullanıcı: ${displayName}`}
           >
-            <IconUser size={22} strokeWidth={2.2} style={{ color: "#1e293b" }} />
+            <IconUser size={21} strokeWidth={2.2} style={{ color: "#1e293b" }} />
             <span
               className="position-absolute rounded-circle"
               style={{
@@ -510,7 +698,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             {/* 1. Satır: Kullanıcı Adı */}
             <h6
               className="mb-1 text-truncate fw-bold text-dark w-100"
-              style={{ fontSize: "0.90rem", letterSpacing: "0.2px" }}
+              style={{ fontSize: "0.88rem", letterSpacing: "0.2px" }}
             >
               {displayName}
             </h6>
@@ -518,7 +706,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             {/* 2. Satır: Tarih ve Saat Yan Yana */}
             <div
               className="d-flex align-items-center justify-content-center gap-1.5 w-100 text-secondary"
-              style={{ fontSize: "0.76rem", lineHeight: "1.2" }}
+              style={{ fontSize: "0.75rem", lineHeight: "1.2" }}
             >
               <span className="d-inline-flex align-items-center gap-1 text-dark fw-semibold text-nowrap">
                 <IconCalendar size={12} className="text-primary flex-shrink-0" />
@@ -534,11 +722,11 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             {/* 3. Satır: Vezne Numarası */}
             <div
               className="d-flex align-items-center justify-content-center gap-1 w-100 mt-1"
-              style={{ fontSize: "0.76rem" }}
+              style={{ fontSize: "0.75rem" }}
             >
               <span
                 className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-0.5 rounded-pill fw-semibold font-monospace d-inline-flex align-items-center gap-1 text-nowrap"
-                style={{ letterSpacing: "0.3px", fontSize: "0.73rem" }}
+                style={{ letterSpacing: "0.3px", fontSize: "0.72rem" }}
                 title={`Kullanıcı Vezne Numarası: ${user?.cashierCode || "01"}`}
               >
                 <IconCash size={13} className="text-primary flex-shrink-0" />
@@ -550,11 +738,11 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           <button
             type="button"
             onClick={() => navigate("/sifre-degistir")}
-            className="btn btn-outline-secondary btn-sm p-1.5 d-flex align-items-center justify-content-center rounded-3 flex-shrink-0 shadow-xs"
+            className="btn btn-outline-secondary btn-sm p-1.5 d-flex align-items-center justify-content-center rounded-3 flex-shrink-0 shadow-xs me-1"
             title="Şifre Değiştir"
-            style={{ width: "36px", height: "36px", transition: "all 0.2s ease" }}
+            style={{ width: "34px", height: "34px", transition: "all 0.2s ease" }}
           >
-            <IconKey size={19} />
+            <IconKey size={18} />
           </button>
 
           {/* Direct Logout Button */}
@@ -563,9 +751,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             onClick={handleLogout}
             className="btn btn-outline-danger btn-sm p-1.5 d-flex align-items-center justify-content-center rounded-3 flex-shrink-0 shadow-xs"
             title="Güvenli Çıkış Yap"
-            style={{ width: "36px", height: "36px", transition: "all 0.2s ease" }}
+            style={{ width: "34px", height: "34px", transition: "all 0.2s ease" }}
           >
-            <IconLogin2 size={19} />
+            <IconLogin2 size={18} />
           </button>
         </div>
       </div>
@@ -574,4 +762,3 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 };
 
 export default Sidebar;
-
