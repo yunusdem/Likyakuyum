@@ -24,6 +24,7 @@ export const EBankaOdemeLinkleriPage: React.FC = () => {
   const [cariSecAcik, setCariSecAcik] = useState(false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const [silinecek, setSilinecek] = useState<EBankaVposLink | null>(null);
+  const [gosterilenLink, setGosterilenLink] = useState<string | null>(null);
   const { bildir, bildirimKutusu } = useBildirim();
 
   const yukle = useCallback(async () => {
@@ -90,11 +91,31 @@ export const EBankaOdemeLinkleriPage: React.FC = () => {
   };
 
   const kopyala = async (metin: string, bildirimli = true) => {
+    let tamam = false;
     try {
-      await navigator.clipboard.writeText(metin);
-      if (bildirimli) bildir("success", "Link panoya kopyalandı.");
+      // navigator.clipboard yalnızca HTTPS'te (güvenli bağlamda) vardır; site HTTP'den açıldığında eski yönteme düşülür
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(metin);
+        tamam = true;
+      } else {
+        const alan = document.createElement("textarea");
+        alan.value = metin;
+        alan.setAttribute("readonly", "");
+        alan.style.position = "fixed";
+        alan.style.opacity = "0";
+        document.body.appendChild(alan);
+        alan.select();
+        tamam = document.execCommand("copy");
+        alan.remove();
+      }
     } catch {
-      if (bildirimli) bildir("warning", "Panoya kopyalanamadı; linki elle seçip kopyalayın.");
+      tamam = false;
+    }
+    if (tamam) {
+      if (bildirimli) bildir("success", "Link panoya kopyalandı.");
+    } else {
+      // Kopyalanamıyorsa link kaybolmasın: seçilip kopyalanabilecek bir pencerede gösterilir
+      setGosterilenLink(metin);
     }
   };
 
@@ -195,7 +216,9 @@ export const EBankaOdemeLinkleriPage: React.FC = () => {
                     <div className="text-muted">{[l.telefon, l.eposta].filter(Boolean).join(" · ")}</div>
                   </td>
                   <td>
-                    <Badge bg={l.odendi ? "success" : "secondary"}>{l.odendi ? "Ödendi" : l.durum || "Bekliyor"}</Badge>
+                    <Badge bg={l.odendi ? "success" : "secondary"} title={l.durum ? `Vomsis durumu: ${l.durum}` : undefined}>
+                      {l.odendi ? "Ödendi" : "Bekliyor"}
+                    </Badge>
                   </td>
                   <td>{l.bankaHareketId && l.bankaHareketId > 0 ? <Badge bg="success">#{l.bankaHareketId}</Badge> : l.odendi ? <span className="text-muted">Kesilmedi</span> : ""}</td>
                   <td className="text-end text-nowrap">
@@ -316,6 +339,16 @@ export const EBankaOdemeLinkleriPage: React.FC = () => {
             Sil
           </Button>
         </Modal.Footer>
+      </Modal>
+
+      <Modal show={!!gosterilenLink} onHide={() => setGosterilenLink(null)} centered>
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="fs-6 fw-bold">Ödeme Linki</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="small">
+          <div className="mb-2">Tarayıcı panoya kopyalamaya izin vermedi. Linki aşağıdan seçip kopyalayın:</div>
+          <Form.Control as="textarea" rows={3} readOnly value={gosterilenLink || ""} className="font-monospace" onFocus={(e) => e.target.select()} />
+        </Modal.Body>
       </Modal>
 
       <CariSecModal show={cariSecAcik} onHide={() => setCariSecAcik(false)} onSec={cariSecildi} />

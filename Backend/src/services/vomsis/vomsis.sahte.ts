@@ -40,10 +40,11 @@ const hesap = (id: number, bankId: number, doviz: string, no: string, iban: stri
   bank: bankaOzeti(bankId),
 });
 
+// IBAN'ların hiçbiri sağlama denetiminden geçmez: gerçek bir hesaba denk gelemezler
 const HESAPLAR = [
   hesap(101, 5, "TL", "3123647", "TR440004600115888000123647", "1284530.75", "Kapalıçarşı", "115", "CARIHSP"),
   hesap(102, 5, "USD", "3123648", "TR170004600115001000123648", "48250.00", "Kapalıçarşı", "115", "CARIHSP"),
-  hesap(103, 22, "TL", "2913129", "TR700013400000291312900004", "356720.10", "Yeditepe", "4840", "VDSZMVD"),
+  hesap(103, 22, "TL", "2913129", "TR700013400000291312900005", "356720.10", "Yeditepe", "4840", "VDSZMVD"),
   hesap(104, 12, "EUR", "6298811", "TR320006200029800006298811", "19840.50", "Eminönü", "298", "CARIHSP"),
 ];
 
@@ -84,7 +85,7 @@ const iban = (id: number) => HESAPLAR.find((h) => h.id === id)!.iban;
 
 const SABLONLAR: Sablon[] = [
   { hesapId: 101, tip: "TRFGEL", bankaKodu: "EFT", saat: "09:42:10", tutar: 185000, aciklama: "ALTIN ALIM BEDELI FATURA NO 2026/118", karsiUnvan: "ÖRNEK KUYUMCULUK SAN. TİC. LTD. ŞTİ.", karsiIban: "TR110006200000100000000001", karsiVkn: "1234567890" },
-  { hesapId: 101, tip: "TRFGID", bankaKodu: "EFT", saat: "10:15:33", tutar: -96500, aciklama: "HAS ALTIN ODEMESI", karsiUnvan: "DENEME DARPHANE A.Ş.", karsiIban: "TR940013500000007906080001", karsiVkn: "3230491123", herGun: 2 },
+  { hesapId: 101, tip: "TRFGID", bankaKodu: "EFT", saat: "10:15:33", tutar: -96500, aciklama: "HAS ALTIN ODEMESI", karsiUnvan: "DENEME DARPHANE A.Ş.", karsiIban: "TR940013500000007906080002", karsiVkn: "3230491123", herGun: 2 },
   { hesapId: 101, tip: "TRFGEL", bankaKodu: "FAST", saat: "11:03:48", tutar: 12750, aciklama: "BILEZIK KAPORA", gonderenAd: "AYŞE ÖRNEK", gonderenTckn: "11111111110", karsiIban: "TR560001000000000000000042", herGun: 3 },
   { hesapId: 101, tip: "MASRKOM", bankaKodu: "MSR", saat: "10:15:34", tutar: -12.8, aciklama: "EFT MASRAFI + BSMV", herGun: 2 },
   { hesapId: 101, tip: "POSYAT", bankaKodu: "POS", saat: "06:00:05", tutar: 43280.4, aciklama: "UYE ISYERI 0123456 POS NET TUTAR" },

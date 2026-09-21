@@ -29,6 +29,19 @@ export const ModRozeti: React.FC<{ mod?: EBankaMod }> = ({ mod }) =>
     </Badge>
   ) : null;
 
+/** Kart başlığında görünüm seçimi. Temanın nav-tabs stili kart başlığına sığmayıp tablo başlığının üstüne bindiği için sade düğmeler kullanılır. */
+export function SekmeDugmeleri<T extends string>({ secili, secenekler, onSec }: { secili: T; secenekler: { anahtar: T; ad: string }[]; onSec: (anahtar: T) => void }) {
+  return (
+    <div className="d-flex flex-wrap gap-1">
+      {secenekler.map((s) => (
+        <Button key={s.anahtar} size="sm" variant={s.anahtar === secili ? "primary" : "light"} className={s.anahtar === secili ? "" : "border"} onClick={() => onSec(s.anahtar)}>
+          {s.ad}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 export type BildirimTuru = "success" | "danger" | "warning";
 
 export const useBildirim = () => {

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, Badge, Button, Card, Col, Form, Modal, Nav, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
 import { IconRefresh, IconSearch } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { EBankaMod, EBankaService, EBankaVposIslem, EBankaVposIslemDetayi } from "../../services/ebankaService";
-import { ModRozeti, bugun, gunOnce, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
+import { ModRozeti, SekmeDugmeleri, bugun, gunOnce, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
 
 // F- e-Banka > H- Sanal POS İşlemleri: liste, detay, iptal / iade, Vomsis müşterileri (docs/EBANKA_VOMSIS_YOL_HARITASI.md, Faz 4, E22, E25)
 
@@ -147,15 +147,15 @@ export const EBankaVposIslemlerPage: React.FC = () => {
       {bildirimKutusu}
 
       <Card className="border shadow-sm w-100 bg-white">
-        <Card.Header className="bg-white py-1">
-          <Nav variant="tabs" activeKey={gorunum} onSelect={(k) => (k === "musteriler" ? musterileriAc() : setGorunum("islemler"))} className="small border-0">
-            <Nav.Item>
-              <Nav.Link eventKey="islemler">İşlemler</Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="musteriler">Vomsis Müşterileri</Nav.Link>
-            </Nav.Item>
-          </Nav>
+        <Card.Header className="bg-white py-2">
+          <SekmeDugmeleri<typeof gorunum>
+            secili={gorunum}
+            onSec={(k) => (k === "musteriler" ? musterileriAc() : setGorunum("islemler"))}
+            secenekler={[
+              { anahtar: "islemler", ad: "İşlemler" },
+              { anahtar: "musteriler", ad: "Vomsis Müşterileri" },
+            ]}
+          />
         </Card.Header>
 
         {gorunum === "islemler" && (

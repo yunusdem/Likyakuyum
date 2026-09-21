@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Badge, Button, Card, Col, Form, Modal, Nav, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
 import { IconArrowsExchange, IconChevronLeft, IconChevronRight, IconFileSpreadsheet, IconReceipt, IconRefresh, IconSearch } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { BankaHesapItem, BankaService } from "../../services/bankaService";
 import { EBankaCari, EBankaPosEsitlemeSonucu, EBankaPosListesi, EBankaPosOzet, EBankaService } from "../../services/ebankaService";
-import { CariSecModal, EsitlemeModal, ModRozeti, bugun, gunOnce, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
+import { CariSecModal, EsitlemeModal, ModRozeti, SekmeDugmeleri, bugun, gunOnce, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
 
 // F- e-Banka > E- POS Terminalleri ve Hareketleri (docs/EBANKA_VOMSIS_YOL_HARITASI.md, Faz 3, E21)
 // Yalnızca izleme. İki işlem: Excel / muhasebe fişi dökümü ve seçilen satırlardan elle banka fişi.
@@ -249,18 +249,16 @@ export const EBankaPosPage: React.FC = () => {
       )}
 
       <Card className="border shadow-sm w-100 bg-white">
-        <Card.Header className="bg-white py-1">
-          <Nav variant="tabs" activeKey={gorunum} onSelect={(k) => setGorunum((k as typeof gorunum) || "hareketler")} className="small border-0">
-            <Nav.Item>
-              <Nav.Link eventKey="hareketler">Hareketler</Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="gunluk">Gün / Terminal Toplamları</Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="terminaller">Terminaller ({ozet?.terminaller.length ?? 0})</Nav.Link>
-            </Nav.Item>
-          </Nav>
+        <Card.Header className="bg-white py-2">
+          <SekmeDugmeleri<typeof gorunum>
+            secili={gorunum}
+            onSec={setGorunum}
+            secenekler={[
+              { anahtar: "hareketler", ad: "Hareketler" },
+              { anahtar: "gunluk", ad: "Gün / Terminal Toplamları" },
+              { anahtar: "terminaller", ad: `Terminaller (${ozet?.terminaller.length ?? 0})` },
+            ]}
+          />
         </Card.Header>
         <Card.Body className="p-0">
           {gorunum === "hareketler" && (
