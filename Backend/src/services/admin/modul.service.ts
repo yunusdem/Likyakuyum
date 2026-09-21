@@ -21,6 +21,8 @@ export const API_MODULLERI: Record<string, string[]> = {
   "/perakende": ["perakende", "vezne", "ust:perakende"],
   "/kasa": ["kasa", "raporlar", "yonetici"],
   "/banka": ["banka", "ust:banka", "kasa", "raporlar"],
+  // F- e-Banka (Vomsis): F- Banka altındaki açılır grup, ayrı açılıp kapatılır (docs/EBANKA_VOMSIS_YOL_HARITASI.md, E9)
+  "/ebanka": ["banka:#f-e-banka"],
   "/cari-hareket": ["cari", "ust:c-hareket", "raporlar", "vezne"],
   "/cari-dekont": ["cari", "ust:c-hareket", "raporlar"],
   "/e-belge": ["ebelge", "ust:e-belge", "vezne", "perakende", "ayarlar"],

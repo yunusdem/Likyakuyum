@@ -30,6 +30,9 @@ import ayarRoutes from "./ayar.routes.js";
 import perakendeRoutes from "./perakende.routes.js";
 import adminRoutes from "./admin.routes.js";
 import sayimRoutes from "./sayim.routes.js";
+import ebankaRoutes from "./ebanka.routes.js";
+import { EBankaController } from "../controllers/ebanka.controller.js";
+import { DONUS_YOLU } from "../services/ebankaVposOdeme.service.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { modulKapisi } from "../middlewares/modul.middleware.js";
 
@@ -48,6 +51,10 @@ apiRouter.use("/ayar", ayarRoutes);
 apiRouter.use("/ayarlar-tanim", ayarRoutes);
 apiRouter.use("/sayim", sayimRoutes);
 apiRouter.use("/banka", kapi("/banka"), bankaRoutes);
+apiRouter.use("/ebanka", kapi("/ebanka"), ebankaRoutes);
+// Banka, 3D Secure sonrası müşterinin tarayıcısını buraya yollar (GET ya da POST). Oturumsuzdur: yalnızca sabit bir sayfa döner,
+// gelen veriyi okumaz ve hiçbir kayda dokunmaz; ödeme sonucu ekrandan Vomsis'e sorularak doğrulanır.
+apiRouter.all(DONUS_YOLU, EBankaController.vposDonus);
 apiRouter.use("/kasa", kapi("/kasa"), kasaRoutes);
 apiRouter.use("/etiket", kapi("/etiket"), etiketRoutes);
 apiRouter.use("/vezne/izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);
