@@ -132,7 +132,7 @@ export const DashboardMenu: MenuItemType[] = [
   {
     id: uuid(),
     key: "banka", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
-    title: "F- Banka / POS İşlemleri",
+    title: "F- Banka / POS",
     icon: <IconCreditCard size={18} />,
     children: [
       { id: uuid(), name: "A- Banka Hesap Kartları", link: "banka/hesap-kartlari" },
@@ -229,10 +229,11 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "E- Kullanıcı Tanımları", link: "ayarlar/kullanici-tanimlari" },
       { id: uuid(), name: "F- Yazıcı Tanımları", link: "ayarlar/yazici-tanimlari" },
       { id: uuid(), name: "G- Numaratörler", link: "ayarlar/numeratorler" },
-      { id: uuid(), name: "H- Devir İşlemi", link: "ayarlar/devir-islemi" },
-      { id: uuid(), name: "I- Servis İşlemleri", link: "ayarlar/servis-islemleri" },
-      { id: uuid(), name: "J- MASAK Malvarlıkları Dondurulanlar", link: "ayarlar/masak-dondurulanlar" },
-      { id: uuid(), name: "K- Firma Tanımları", link: "ayarlar/firma-tanimlari" },
+      { id: uuid(), name: "H- İskonto Tanımları", link: "ayarlar/iskonto-tanimlari" },
+      { id: uuid(), name: "I- Devir İşlemi", link: "ayarlar/devir-islemi" },
+      { id: uuid(), name: "J- Servis İşlemleri", link: "ayarlar/servis-islemleri" },
+      { id: uuid(), name: "K- MASAK Malvarlıkları Dondurulanlar", link: "ayarlar/masak-dondurulanlar" },
+      { id: uuid(), name: "L- Firma Tanımları", link: "ayarlar/firma-tanimlari" },
     ],
   },
 ];

@@ -13,6 +13,7 @@ import PrinterDefinitionsPage from "./pages/settings/PrinterDefinitionsPage";
 import ProductDefinitionsPage from "./pages/settings/ProductDefinitionsPage";
 import StatisticDefinitionsPage from "./pages/settings/StatisticDefinitionsPage";
 import NumeratorDefinitionsPage from "./pages/settings/NumeratorDefinitionsPage";
+import IskontoDefinitionsPage from "./pages/settings/IskontoDefinitionsPage";
 import CariCardRegistrationPage from "./pages/cari/CariCardRegistrationPage";
 import CariCardListPage from "./pages/cari/CariCardListPage";
 import CariHareketPage from "./pages/cari/CariHareketPage";
@@ -156,6 +157,10 @@ export default function App() {
             <Route path="tanimlar/numarator-tanimlari" element={<NumeratorDefinitionsPage />} />
             <Route path="ayarlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
             <Route path="tanimlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
+            <Route path="ayarlar/iskonto-tanimlari" element={<IskontoDefinitionsPage />} />
+            <Route path="tanimlar/iskonto-tanimlari" element={<IskontoDefinitionsPage />} />
+            <Route path="ayarlar/iskonto" element={<IskontoDefinitionsPage />} />
+            <Route path="tanimlar/iskonto" element={<IskontoDefinitionsPage />} />
             <Route path="ayarlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
             {/* e-Belge (ICE entegratör) */}
             <Route path="e-belge" element={<EBelgeHomePage />} />

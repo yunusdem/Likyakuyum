@@ -52,11 +52,12 @@ export class EtiketSablonSqlRepository {
           DECLARE @HATA_MESAJI VARCHAR(500);
           DECLARE @SIMDIKI_ZAMAN DATETIME = GETDATE();
 
-          IF EXISTS (SELECT 1 FROM TODVZ_ETIKET_SABLON WHERE AD = @AD AND (@ETIKET_SABLON_ID IS NULL OR ETIKET_SABLON_ID <> @ETIKET_SABLON_ID))
+          -- Eğer ID verilmemişse fakat aynı isimde şablon zaten varsa, mevcut kaydı güncellemek üzere ID'sini al
+          IF @ETIKET_SABLON_ID IS NULL OR @ETIKET_SABLON_ID = 0
           BEGIN
-            SET @HATA_MESAJI = RTRIM(@AD) + ' adında bir etiket şablonu zaten mevcut.';
-            RAISERROR (@HATA_MESAJI, 16, 1);
-            RETURN 1;
+            SELECT TOP 1 @ETIKET_SABLON_ID = ETIKET_SABLON_ID 
+            FROM TODVZ_ETIKET_SABLON 
+            WHERE AD = @AD;
           END
 
           BEGIN TRAN;
@@ -168,7 +169,19 @@ export class EtiketSablonSqlRepository {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTables(pool);
         await this.ensureProcedures(pool);
-        const targetId = dto.etiketSablonId && Number(dto.etiketSablonId) > 0 ? Number(dto.etiketSablonId) : null;
+        let targetId = dto.etiketSablonId && Number(dto.etiketSablonId) > 0 ? Number(dto.etiketSablonId) : null;
+        if (!targetId && (dto.ad || "").trim()) {
+            try {
+                const existRes = await pool
+                    .request()
+                    .input("AD", sql.VarChar(100), (dto.ad || "").trim())
+                    .query("SELECT TOP 1 ETIKET_SABLON_ID FROM dbo.TODVZ_ETIKET_SABLON WHERE AD = @AD");
+                if (existRes.recordset && existRes.recordset.length > 0) {
+                    targetId = Number(existRes.recordset[0].ETIKET_SABLON_ID);
+                }
+            }
+            catch { }
+        }
         const req = pool.request();
         req.output("ETIKET_SABLON_ID", sql.Int, targetId);
         req.input("AD", sql.VarChar(100), (dto.ad || "").trim());

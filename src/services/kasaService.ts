@@ -6,6 +6,10 @@ export interface HesapItem {
   ad: string;
   kdvOrani: number;
   aktif: boolean;
+  iskontoId?: number | null;
+  iskontoKodu?: string | null;
+  iskontoTanim?: string | null;
+  iskontoOrani?: number | null;
   toplamGiris?: number;
   toplamCikis?: number;
   bakiye?: number;
@@ -20,6 +24,7 @@ export interface SaveHesapPayload {
   kod: string;
   ad: string;
   kdvOrani?: number;
+  iskontoId?: number | null;
 }
 
 export interface HesapHareketiItem {

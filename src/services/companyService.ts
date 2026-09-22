@@ -130,6 +130,7 @@ export interface TodvzTanimDto {
   HAS_GUMUS_PARA_ID?: number | null;
   URETIM_HESABI_ID?: number | null;
   URETIM_HESABI?: string | null;
+  ISKONTO_ID?: number | null;
 }
 
 export const defaultCompanyTanim: TodvzTanimDto = {
@@ -147,6 +148,7 @@ export const defaultCompanyTanim: TodvzTanimDto = {
   TELEFON: "",
   URETIM_HESABI_ID: null,
   URETIM_HESABI: "",
+  ISKONTO_ID: null,
   USD_PARA_ID: 2,
   EUR_PARA_ID: 3,
   RAPOR_PARA_ID: 2,

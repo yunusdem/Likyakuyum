@@ -131,4 +131,5 @@ export interface TodvzTanimEntity {
   HAS_GUMUS_PARA_ID: number | null; // int
   URETIM_HESABI_ID?: number | null; // int (TODVZ_HESAP HESAP_ID)
   URETIM_HESABI?: string | null;
+  ISKONTO_ID?: number | null; // int (TODVZ_ISKONTO ISKONTO_ID)
 }

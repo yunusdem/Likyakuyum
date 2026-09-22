@@ -42,6 +42,10 @@ import {
   IconShieldExclamation,
   IconBuilding,
   IconFileText,
+  IconPercentage,
+  IconChartBar,
+  IconCoins,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
@@ -106,7 +110,70 @@ export const getThemeForMenu = (menu: MenuItemType, index: number): MenuVisualTh
 };
 
 export const getSubmenuIcon = (name: string) => {
-  const n = (name || "").toLowerCase();
+  const raw = name || "";
+  const n = raw.toLowerCase();
+
+  // 1. İskonto Tanımları -> IconPercentage (%)
+  if (
+    raw.includes("İskonto") ||
+    raw.includes("iskonto") ||
+    n.includes("iskonto") ||
+    n.includes("i̇skonto") ||
+    n.includes("indirim")
+  ) {
+    return <IconPercentage size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 2. Banknot Tanımları -> IconCash
+  if (n.includes("banknot")) {
+    return <IconCash size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 3. İstatistik Tanımları -> IconChartBar
+  if (
+    raw.includes("İstatistik") ||
+    raw.includes("istatistik") ||
+    n.includes("istatistik") ||
+    n.includes("i̇statistik")
+  ) {
+    return <IconChartBar size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 4. Vezne Tanımları -> IconBuildingStore
+  if (n.includes("vezne tanım") || n.includes("vezne tanim")) {
+    return <IconBuildingStore size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 5. Kullanıcı Tanımları -> IconUser
+  if (n.includes("kullanıcı") || n.includes("kullanici") || n.includes("aktivasyon")) {
+    return <IconUser size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 6. Yazıcı Tanımları -> IconPrinter
+  if (n.includes("yazıcı") || n.includes("yazici")) {
+    return <IconPrinter size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 7. Ürün Tanımları -> IconCoins
+  if (n.includes("ürün tanım") || n.includes("urun tanim") || n.includes("urun tanım")) {
+    return <IconCoins size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 8. MASAK -> IconShieldCheck
+  if (n.includes("masak")) {
+    return <IconShieldCheck size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 9. Numaratörler -> IconNumbers
+  if (n.includes("numara") || n.includes("numaratör")) {
+    return <IconNumbers size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 10. Firma Tanımları -> IconBuildingStore
+  if (n.includes("firma")) {
+    return <IconBuildingStore size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
   if (
     n.includes("fisi kayit") ||
     n.includes("fişi kayıt") ||
@@ -180,26 +247,11 @@ export const getSubmenuIcon = (name: string) => {
   if (n.includes("vitrin") || n.includes("stok")) {
     return <IconBuildingStore size={16} className="sidebar-sub-icon flex-shrink-0" />;
   }
-  if (n.includes("tanim") || n.includes("tanım") || n.includes("ayar")) {
-    return <IconSettings size={16} className="sidebar-sub-icon flex-shrink-0" />;
-  }
-  if (n.includes("kullanıcı") || n.includes("kullanici") || n.includes("aktivasyon")) {
-    return <IconUserCheck size={16} className="sidebar-sub-icon flex-shrink-0" />;
-  }
-  if (n.includes("yazıcı") || n.includes("yazici")) {
-    return <IconPrinter size={16} className="sidebar-sub-icon flex-shrink-0" />;
-  }
-  if (n.includes("numara") || n.includes("numaratör")) {
-    return <IconNumbers size={16} className="sidebar-sub-icon flex-shrink-0" />;
-  }
   if (n.includes("devir") || n.includes("servis")) {
     return <IconRefresh size={16} className="sidebar-sub-icon flex-shrink-0" />;
   }
-  if (n.includes("masak")) {
-    return <IconShieldExclamation size={16} className="sidebar-sub-icon flex-shrink-0" />;
-  }
-  if (n.includes("firma")) {
-    return <IconBuilding size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  if (n.includes("tanim") || n.includes("tanım") || n.includes("ayar")) {
+    return <IconSettings size={16} className="sidebar-sub-icon flex-shrink-0" />;
   }
   return <IconFileText size={16} className="sidebar-sub-icon flex-shrink-0" />;
 };

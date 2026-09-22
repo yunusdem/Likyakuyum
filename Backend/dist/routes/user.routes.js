@@ -17,5 +17,6 @@ router.patch("/appearance", UserController.updateMyAppearance);
 // Single User CRUD
 router.get("/:id", validate(getUserByIdSchema), UserController.getUserById);
 router.put("/:id", validate(updateUserSchema), UserController.updateUser);
+router.post("/:id/sifre-sifirla", validate(getUserByIdSchema), UserController.sifreSifirla);
 router.delete("/:id", validate(getUserByIdSchema), UserController.deleteUser);
 export default router;

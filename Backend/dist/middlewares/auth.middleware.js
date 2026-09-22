@@ -2,6 +2,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { verifyAccessToken } from "../utils/token.utils.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { setDbCredentials, normalizeServerName } from "../config/mssql.config.js";
+import { OturumService } from "../services/oturum.service.js";
 /**
  * Middleware to authenticate requests via JWT Bearer token in Authorization header or cookie.
  */
@@ -44,6 +45,11 @@ export const authenticate = (req, res, next) => {
             if (rawSrv !== srv) {
                 setDbCredentials(rawSrv, db, u, p);
             }
+        }
+        // Merkez açıksa oturum (sid) her istekte doğrulanır: dondurma / pasife alma / oturum kapatma anında etkili olur
+        if (OturumService.aktifMi()) {
+            OturumService.dogrula(decoded, req.originalUrl).then(() => next(), next);
+            return;
         }
         next();
     }

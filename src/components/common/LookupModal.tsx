@@ -16,6 +16,7 @@ export interface LookupModalProps<T> {
   items: T[];
   isLoading?: boolean;
   searchPlaceholder?: string;
+  selectedId?: any;
   columns: LookupColumn<T>[];
   filterFn: (item: T, term: string) => boolean;
   onSelect: (item: T) => void;
@@ -28,6 +29,7 @@ export function LookupModal<T extends Record<string, any>>({
   items = [],
   isLoading = false,
   searchPlaceholder = "Arama yapın...",
+  selectedId,
   columns,
   filterFn,
   onSelect,
@@ -38,6 +40,7 @@ export function LookupModal<T extends Record<string, any>>({
 
   const getItemId = (it: any): string => {
     if (!it) return "";
+    if (it.iskontoId !== undefined && it.iskontoId !== null) return `iskonto-${it.iskontoId}`;
     if (it.hesapHareketiId !== undefined && it.hesapHareketiId !== null) return `hareket-${it.hesapHareketiId}`;
     if (it.hesapId !== undefined && it.hesapId !== null) return `hesap-${it.hesapId}`;
     if (it.fisId !== undefined && it.fisId !== null) return `fis-${it.fisId}`;
@@ -53,13 +56,26 @@ export function LookupModal<T extends Record<string, any>>({
     return "";
   };
 
-  // Reset selection and search term whenever modal opens
+  // Reset search term and pre-select item matching selectedId whenever modal opens
   useEffect(() => {
     if (show) {
-      setSelectedItem(null);
       setSearchTerm("");
+      if (selectedId !== undefined && selectedId !== null && items && items.length > 0) {
+        const found = items.find((it: any) => {
+          if (it.id !== undefined && (it.id === selectedId || String(it.id) === String(selectedId))) return true;
+          if (it.hesapId !== undefined && (it.hesapId === selectedId || String(it.hesapId) === String(selectedId))) return true;
+          if (it.iskontoId !== undefined && (it.iskontoId === selectedId || String(it.iskontoId) === String(selectedId))) return true;
+          if (it.kod !== undefined && String(it.kod) === String(selectedId)) return true;
+          if (it.code !== undefined && String(it.code) === String(selectedId)) return true;
+          if (it.ID !== undefined && (it.ID === selectedId || String(it.ID) === String(selectedId))) return true;
+          return false;
+        });
+        setSelectedItem(found || null);
+      } else {
+        setSelectedItem(null);
+      }
     }
-  }, [show]);
+  }, [show, selectedId, items]);
 
   const filteredItems = searchTerm.trim()
     ? items.filter((item) => filterFn(item, searchTerm.trim()))

@@ -233,6 +233,37 @@ export class CompanySqlRepository {
                 copy[hf] = null;
             }
         }
+        // 8. Validate ISKONTO_ID in TODVZ_ISKONTO
+        if (copy.ISKONTO_ID !== undefined && copy.ISKONTO_ID !== null) {
+            const iskId = toValidId(copy.ISKONTO_ID);
+            if (iskId) {
+                try {
+                    const iskTableRes = await pool.request().query(`
+            SELECT 1 FROM sys.tables WHERE name = 'TODVZ_ISKONTO'
+          `);
+                    if (iskTableRes.recordset && iskTableRes.recordset.length > 0) {
+                        const res = await pool.request().query(`
+              SELECT TOP 1 1 FROM [dbo].[TODVZ_ISKONTO] WHERE [ISKONTO_ID] = ${iskId}
+            `);
+                        if (res.recordset && res.recordset.length > 0) {
+                            copy.ISKONTO_ID = iskId;
+                        }
+                        else {
+                            copy.ISKONTO_ID = null;
+                        }
+                    }
+                    else {
+                        copy.ISKONTO_ID = iskId;
+                    }
+                }
+                catch {
+                    copy.ISKONTO_ID = null;
+                }
+            }
+            else {
+                copy.ISKONTO_ID = null;
+            }
+        }
         return copy;
     }
     /**
@@ -254,7 +285,7 @@ export class CompanySqlRepository {
           VALUES ('2016', '1', 'Firma Tanımı');
         `);
             }
-            // Ensure URETIM_HESABI_ID column exists in TODVZ_TANIM table
+            // Ensure URETIM_HESABI_ID and ISKONTO_ID columns exist in TODVZ_TANIM table
             try {
                 await pool.request().query(`
           IF NOT EXISTS (
@@ -265,10 +296,19 @@ export class CompanySqlRepository {
           BEGIN
             ALTER TABLE [dbo].[TODVZ_TANIM] ADD [URETIM_HESABI_ID] INT NULL;
           END
+
+          IF NOT EXISTS (
+            SELECT 1 FROM sys.columns 
+            WHERE object_id = OBJECT_ID(N'[dbo].[TODVZ_TANIM]') 
+            AND name = 'ISKONTO_ID'
+          )
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_TANIM] ADD [ISKONTO_ID] INT NULL;
+          END
         `);
             }
             catch (colErr) {
-                logger.warn("Could not check/create URETIM_HESABI_ID column in TODVZ_TANIM:", colErr.message);
+                logger.warn("Could not check/create URETIM_HESABI_ID/ISKONTO_ID columns in TODVZ_TANIM:", colErr.message);
             }
             // Re-fetch existing row
             const currentRes = await pool.request().query(`
@@ -279,49 +319,55 @@ export class CompanySqlRepository {
             try {
                 await pool.request().query(`
           CREATE OR ALTER PROCEDURE [dbo].[SODVZ_FIRMA_TANIMI_KAYDET]
-            @FIRMA_ADI VARCHAR(200) = NULL,
-            @DOSYA_NO VARCHAR(20) = NULL,
-            @SUBE_KODU VARCHAR(20) = NULL,
-            @SUBE_ADI VARCHAR(200) = NULL,
-            @VERGI_DAIRESI_ID INT = NULL,
-            @VERGI_KIMLIK_NO VARCHAR(50) = NULL,
-            @ADRES VARCHAR(200) = NULL,
-            @POSTA_KODU_ID INT = NULL,
-            @ILCE_ID INT = NULL,
-            @IL_ID INT = NULL,
-            @ULKE_ID INT = NULL,
-            @TELEFON VARCHAR(20) = NULL,
-            @WEB_ADRESI VARCHAR(100) = NULL,
-            @EPOSTA VARCHAR(100) = NULL,
-            @MERSIS_NO VARCHAR(20) = NULL,
-            @TICARET_SICIL_NO VARCHAR(20) = NULL,
-            @YETKILI_MUESSESE_TIPI TINYINT = 0,
-            @E_DEFTER_MUKELLEFI BIT = 0,
-            @URETIM_HESABI_ID INT = NULL
+            @FIRMA_ADI              VARCHAR(200) = NULL,
+            @DOSYA_NO               VARCHAR(20) = NULL,
+            @SUBE_KODU              VARCHAR(20) = NULL,
+            @SUBE_ADI               VARCHAR(200) = NULL,
+            @VERGI_DAIRESI_ID       INT = NULL,
+            @VERGI_KIMLIK_NO        VARCHAR(50) = NULL,
+            @ADRES                  VARCHAR(200) = NULL,
+            @POSTA_KODU_ID          INT = NULL,
+            @ILCE_ID                INT = NULL,
+            @IL_ID                  INT = NULL,
+            @ULKE_ID                INT = NULL,
+            @TELEFON                VARCHAR(20) = NULL,
+            @WEB_ADRESI             VARCHAR(100) = NULL,
+            @EPOSTA                 VARCHAR(100) = NULL,
+            @MERSIS_NO              VARCHAR(20) = NULL,
+            @TICARET_SICIL_NO       VARCHAR(20) = NULL,
+            @YETKILI_MUESSESE_TIPI  TINYINT = 0,
+            @E_DEFTER_MUKELLEFI     BIT = 0,
+            @URETIM_HESABI_ID       INT = NULL,
+            @ISKONTO_ID             INT = NULL
           AS
           BEGIN
             SET NOCOUNT ON;
+
+            -- 0 veya negatif gelirse NULL yap
+            IF (@ISKONTO_ID <= 0) SET @ISKONTO_ID = NULL;
+
             UPDATE [dbo].[TODVZ_TANIM]
             SET 
-              [FIRMA_ADI] = @FIRMA_ADI,
-              [DOSYA_NO] = @DOSYA_NO,
-              [SUBE_KODU] = @SUBE_KODU,
-              [SUBE_ADI] = @SUBE_ADI,
-              [VERGI_DAIRESI_ID] = @VERGI_DAIRESI_ID,
-              [VERGI_KIMLIK_NO] = @VERGI_KIMLIK_NO,
-              [ADRES] = @ADRES,
-              [POSTA_KODU_ID] = @POSTA_KODU_ID,
-              [ILCE_ID] = @ILCE_ID,
-              [IL_ID] = @IL_ID,
-              [ULKE_ID] = @ULKE_ID,
-              [TELEFON] = @TELEFON,
-              [WEB_ADRESI] = @WEB_ADRESI,
-              [EPOSTA] = @EPOSTA,
-              [MERSIS_NO] = @MERSIS_NO,
-              [TICARET_SICIL_NO] = @TICARET_SICIL_NO,
+              [FIRMA_ADI]             = @FIRMA_ADI,
+              [DOSYA_NO]              = @DOSYA_NO,
+              [SUBE_KODU]             = @SUBE_KODU,
+              [SUBE_ADI]              = @SUBE_ADI,
+              [VERGI_DAIRESI_ID]      = @VERGI_DAIRESI_ID,
+              [VERGI_KIMLIK_NO]       = @VERGI_KIMLIK_NO,
+              [ADRES]                 = @ADRES,
+              [POSTA_KODU_ID]         = @POSTA_KODU_ID,
+              [ILCE_ID]               = @ILCE_ID,
+              [IL_ID]                 = @IL_ID,
+              [ULKE_ID]               = @ULKE_ID,
+              [TELEFON]               = @TELEFON,
+              [WEB_ADRESI]            = @WEB_ADRESI,
+              [EPOSTA]                = @EPOSTA,
+              [MERSIS_NO]             = @MERSIS_NO,
+              [TICARET_SICIL_NO]      = @TICARET_SICIL_NO,
               [YETKILI_MUESSESE_TIPI] = @YETKILI_MUESSESE_TIPI,
-              [E_DEFTER_MUKELLEFI] = @E_DEFTER_MUKELLEFI,
-              [URETIM_HESABI_ID] = @URETIM_HESABI_ID;
+              [E_DEFTER_MUKELLEFI]    = @E_DEFTER_MUKELLEFI,
+              [URETIM_HESABI_ID]      = @URETIM_HESABI_ID,
+              [ISKONTO_ID]            = @ISKONTO_ID;
           END;
         `);
             }
@@ -362,6 +408,7 @@ export class CompanySqlRepository {
                 { name: "YETKILI_MUESSESE_TIPI", type: sql.TinyInt },
                 { name: "E_DEFTER_MUKELLEFI", type: sql.Bit },
                 { name: "URETIM_HESABI_ID", type: sql.Int },
+                { name: "ISKONTO_ID", type: sql.Int },
                 // 2. Para & Oranlar
                 { name: "USD_PARA_ID", type: sql.Int },
                 { name: "EUR_PARA_ID", type: sql.Int },

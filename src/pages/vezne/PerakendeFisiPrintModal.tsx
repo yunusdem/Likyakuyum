@@ -413,6 +413,20 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
                           ₺
                         </td>
                       </tr>
+                      {Number(fatura.iskontoTutari || 0) > 0 && (
+                        <tr className="text-danger">
+                          <td className="fw-semibold">
+                            İskonto {Number(fatura.iskontoOrani || 0) > 0 ? `(%${fatura.iskontoOrani})` : ""}:
+                          </td>
+                          <td className="text-end font-monospace fw-semibold">
+                            -{Number(fatura.iskontoTutari).toLocaleString("tr-TR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{" "}
+                            ₺
+                          </td>
+                        </tr>
+                      )}
                       <tr className="table-active">
                         <td className="fw-bold fs-6">Ödenecek Tutar:</td>
                         <td className="text-end fw-bold fs-6 text-primary font-monospace">
@@ -521,6 +535,12 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
               <div className="mb-2 text-end" style={{ fontSize: "11px" }}>
                 <div>Ara Toplam: {fatura.araToplam.toFixed(2)} ₺</div>
                 <div>KDV: {fatura.toplamKdv.toFixed(2)} ₺</div>
+                {Number(fatura.iskontoTutari || 0) > 0 && (
+                  <div>
+                    İskonto {Number(fatura.iskontoOrani || 0) > 0 ? `(%${fatura.iskontoOrani})` : ""}: -
+                    {Number(fatura.iskontoTutari).toFixed(2)} ₺
+                  </div>
+                )}
                 <div className="fw-bold fs-6 border-top pt-1">
                   GENEL TOPLAM: {fatura.genelToplam.toFixed(2)} ₺
                 </div>

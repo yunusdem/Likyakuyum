@@ -377,7 +377,7 @@ export const BankaHesapKartiPage: React.FC = () => {
                       value={hesapNo}
                       onChange={(e) => setHesapNo(e.target.value.replace(/\D/g, ""))}
                       onKeyDown={(e) => handleInputKeyDown(e, hesapAdiRef, undefined)}
-                      className="fw-bold text-primary font-monospace"
+                      className="fw-bold font-monospace"
                     />
                   </div>
                 </Col>

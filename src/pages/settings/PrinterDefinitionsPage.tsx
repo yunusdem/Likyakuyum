@@ -9,7 +9,6 @@ import {
   Alert,
   Spinner,
   Modal,
-  InputGroup,
 } from "react-bootstrap";
 import {
   IconPrinter,
@@ -18,8 +17,6 @@ import {
   IconAlertCircle,
   IconTrash,
   IconAdjustments,
-  IconChevronUp,
-  IconChevronDown,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -177,7 +174,14 @@ export const PrinterDefinitionsPage: React.FC = () => {
       return;
     }
 
-    const cleanSiraNo = parseInt(String(formData.siraNo), 10) || 1;
+    let cleanSiraNo = parseInt(String(formData.siraNo), 10);
+    if (isNaN(cleanSiraNo) || cleanSiraNo <= 0) {
+      const maxSira = yazicilar.reduce((max, y) => {
+        const s = Number(y.siraNo);
+        return !isNaN(s) && s > max ? s : max;
+      }, 0);
+      cleanSiraNo = Math.max(maxSira + 1, yazicilar.length + 1);
+    }
     const cleanKopyaSayisi = parseInt(String(formData.kopyaSayisi), 10) || 1;
 
     const payload: YaziciFormData = {
@@ -193,12 +197,13 @@ export const PrinterDefinitionsPage: React.FC = () => {
       if (isNewRecord || !selectedYazici) {
         const created = await PrinterService.createYazici(payload);
         setAlertSuccess(`✅ "${created.ad}" yazıcısı veritabanına başarıyla eklendi.`);
-        await loadData(yazicilar.length);
-        setIsNewRecord(false);
+        await loadData();
+        handleClear(false);
       } else {
         const updated = await PrinterService.updateYazici(selectedYazici.id, payload);
         setAlertSuccess(`✅ "${updated.ad}" yazıcı bilgileri başarıyla güncellendi.`);
-        await loadData(selectedIndex);
+        await loadData();
+        handleClear(false);
       }
 
       setTimeout(() => setAlertSuccess(null), 4500);
@@ -298,63 +303,36 @@ export const PrinterDefinitionsPage: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Main Container Card (Tam Genişlik, Liste Kaldırıldı, Yatay Inputlar) */}
-      <Card className="border-0 shadow-sm rounded-3 mb-4 bg-white">
+      {/* 2. Main Container Card (Tam Sayfa Dış Kenarlık) */}
+      <Card className="border shadow-sm mb-3 w-100 bg-white">
         <Card.Body className="p-3 p-md-4">
-          <div className="w-100">
-            {(() => {
-              const labelColStyle = { width: "155px", flex: "0 0 155px", maxWidth: "155px" };
-              return (
-                <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-                  <div className="border rounded-3 p-3 p-md-4 bg-white shadow-2xs mb-3" style={{ maxWidth: "520px" }}>
+          <Row>
+            <Col lg={7} md={12}>
+              {(() => {
+                const labelColStyle = { width: "155px", flex: "0 0 155px", maxWidth: "155px" };
+                return (
+                  <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
                     {/* Sıra No */}
                     <Form.Group as={Row} className="mb-2 align-items-center g-2">
                       <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                        Sıra No <span className="text-danger">*</span> :
+                        Sıra No :
                       </Form.Label>
                       <Col>
                         <div style={{ maxWidth: "130px" }}>
-                          <InputGroup size="sm">
-                            <Form.Control
-                              autoFocus
-                              type="text"
-                              inputMode="numeric"
-                              value={formData.siraNo || ""}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => {
-                                const val = e.target.value.replace(/[^0-9]/g, "");
-                                handleInputChange("siraNo", val === "" ? "" : parseInt(val, 10));
-                              }}
-                              onBlur={() => {
-                                const parsed = parseInt(String(formData.siraNo), 10);
-                                handleInputChange("siraNo", isNaN(parsed) || parsed < 1 ? 1 : parsed);
-                              }}
-                              className="fw-bold font-monospace text-end"
-                              required
-                            />
-                            <Button
-                              variant="outline-secondary"
-                              className="px-2"
-                              onClick={() => {
-                                const current = parseInt(String(formData.siraNo), 10) || 1;
-                                handleInputChange("siraNo", Math.max(1, current - 1));
-                              }}
-                              type="button"
-                            >
-                              <IconChevronDown size={14} />
-                            </Button>
-                            <Button
-                              variant="outline-secondary"
-                              className="px-2"
-                              onClick={() => {
-                                const current = parseInt(String(formData.siraNo), 10) || 0;
-                                handleInputChange("siraNo", current + 1);
-                              }}
-                              type="button"
-                            >
-                              <IconChevronUp size={14} />
-                            </Button>
-                          </InputGroup>
+                          <Form.Control
+                            autoFocus
+                            size="sm"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Otomatik"
+                            value={formData.siraNo !== undefined && formData.siraNo !== null ? formData.siraNo : ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9]/g, "");
+                              handleInputChange("siraNo", val === "" ? "" : parseInt(val, 10));
+                            }}
+                            className="font-monospace text-dark"
+                          />
                         </div>
                       </Col>
                     </Form.Group>
@@ -365,7 +343,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                         Yazıcı Tanımı / Adı <span className="text-danger">*</span> :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "260px" }}>
+                        <div style={{ maxWidth: "280px" }}>
                           <CodeLookupInput
                             value={formData.ad}
                             maxLength={200}
@@ -385,7 +363,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                         Cihaz / Aygıt Adı :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "260px" }}>
+                        <div style={{ maxWidth: "280px" }}>
                           <Form.Control
                             type="text"
                             size="sm"
@@ -404,7 +382,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                         Bağlantı Noktası :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "220px" }}>
+                        <div style={{ maxWidth: "240px" }}>
                           <Form.Control
                             type="text"
                             size="sm"
@@ -428,7 +406,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                             size="sm"
                             value={formData.belgeYaziciModu}
                             onChange={(e) => handleInputChange("belgeYaziciModu", parseInt(e.target.value, 10))}
-                            className="fw-bold text-primary"
+                            className="fw-semibold text-dark"
                           >
                             <option value={0}>0 - Standart Windows Sürücüsü (A4 / A5 Fatura)</option>
                             <option value={1}>1 - ESC/POS Direkt Termal (USB/Seri Port)</option>
@@ -446,45 +424,22 @@ export const PrinterDefinitionsPage: React.FC = () => {
                       </Form.Label>
                       <Col>
                         <div style={{ maxWidth: "130px" }}>
-                          <InputGroup size="sm">
-                            <Form.Control
-                              type="text"
-                              inputMode="numeric"
-                              value={formData.kopyaSayisi || ""}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => {
-                                const val = e.target.value.replace(/[^0-9]/g, "");
-                                handleInputChange("kopyaSayisi", val === "" ? "" : parseInt(val, 10));
-                              }}
-                              onBlur={() => {
-                                const parsed = parseInt(String(formData.kopyaSayisi), 10);
-                                handleInputChange("kopyaSayisi", isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99));
-                              }}
-                              className="fw-bold font-monospace text-end"
-                            />
-                            <Button
-                              variant="outline-secondary"
-                              className="px-2"
-                              onClick={() => {
-                                const current = parseInt(String(formData.kopyaSayisi), 10) || 1;
-                                handleInputChange("kopyaSayisi", Math.max(1, current - 1));
-                              }}
-                              type="button"
-                            >
-                              <IconChevronDown size={14} />
-                            </Button>
-                            <Button
-                              variant="outline-secondary"
-                              className="px-2"
-                              onClick={() => {
-                                const current = parseInt(String(formData.kopyaSayisi), 10) || 0;
-                                handleInputChange("kopyaSayisi", Math.min(99, current + 1));
-                              }}
-                              type="button"
-                            >
-                              <IconChevronUp size={14} />
-                            </Button>
-                          </InputGroup>
+                          <Form.Control
+                            size="sm"
+                            type="text"
+                            inputMode="numeric"
+                            value={formData.kopyaSayisi || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9]/g, "");
+                              handleInputChange("kopyaSayisi", val === "" ? "" : parseInt(val, 10));
+                            }}
+                            onBlur={() => {
+                              const parsed = parseInt(String(formData.kopyaSayisi), 10);
+                              handleInputChange("kopyaSayisi", isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99));
+                            }}
+                            className="font-monospace text-dark"
+                          />
                         </div>
                       </Col>
                     </Form.Group>
@@ -495,7 +450,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                         Çıktı / Arşiv Dizini :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "300px" }}>
+                        <div style={{ maxWidth: "340px" }}>
                           <Form.Control
                             type="text"
                             size="sm"
@@ -506,11 +461,11 @@ export const PrinterDefinitionsPage: React.FC = () => {
                         </div>
                       </Col>
                     </Form.Group>
-                  </div>
-                </Form>
-              );
-            })()}
-          </div>
+                  </Form>
+                );
+              })()}
+            </Col>
+          </Row>
         </Card.Body>
       </Card>
 
