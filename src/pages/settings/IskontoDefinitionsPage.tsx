@@ -110,13 +110,15 @@ export const IskontoDefinitionsPage: React.FC = () => {
     list.forEach((item) => {
       const trimmed = (item.kod || "").trim().toUpperCase();
       if (trimmed) existingCodes.add(trimmed);
-      const match = trimmed.match(/^ISK(\d+)$/);
+      const match = trimmed.match(/\d+/g);
       if (match) {
-        const n = parseInt(match[1], 10);
-        if (!isNaN(n) && n > maxNum) maxNum = n;
+        match.forEach((numStr) => {
+          const n = parseInt(numStr, 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
+        });
       }
     });
-    let candidateNum = Math.max(maxNum + 1, list.length + 1);
+    let candidateNum = Math.max(maxNum + 1, list.length + 1, 1);
     let candidateCode = `ISK${String(candidateNum).padStart(3, "0")}`;
     while (existingCodes.has(candidateCode)) {
       candidateNum++;
@@ -163,7 +165,7 @@ export const IskontoDefinitionsPage: React.FC = () => {
   // ─── Yeni Kayıt Açma ───────────────────────────────────────────────────────
   const handleNew = useCallback(() => {
     setIskontoId(null);
-    setKod(generateNextKod(iskontoList));
+    setKod(""); // Boş bırakılarak "Otomatik" placeholder gösterilir
     setTanim("");
     setIskontoTipi(1);
     setOran("");
@@ -179,7 +181,7 @@ export const IskontoDefinitionsPage: React.FC = () => {
     setTimeout(() => {
       tanimRef.current?.focus();
     }, 50);
-  }, [iskontoList, generateNextKod]);
+  }, []);
 
   // ─── Veri Yükleme ──────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -190,17 +192,13 @@ export const IskontoDefinitionsPage: React.FC = () => {
         : [];
       setIskontoList(safeItems);
 
-      if (safeItems.length > 0 && iskontoId === null) {
-        setKod(generateNextKod(safeItems));
-      }
-
       setTimeout(() => {
         tanimRef.current?.focus();
       }, 100);
     } catch (err: any) {
       showNotif("danger", err?.message || "İskonto verileri yüklenemedi.");
     }
-  }, [iskontoId, generateNextKod]);
+  }, []);
 
   useEffect(() => {
     loadAll();
@@ -216,7 +214,7 @@ export const IskontoDefinitionsPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const effectiveKod = kod.trim() || generateNextKod(iskontoList);
+      const effectiveKod = (iskontoId ? kod.trim() : "") || generateNextKod(iskontoList);
       const payload: SaveIskontoPayload = {
         iskontoId,
         kod: effectiveKod,
@@ -235,9 +233,10 @@ export const IskontoDefinitionsPage: React.FC = () => {
 
       const saved = await IskontoService.saveIskonto(payload);
       const savedName = saved?.tanim || tanim.trim();
+      const savedKod = saved?.kod || effectiveKod;
       showNotif(
         "success",
-        `İskonto tanımı ${iskontoId ? "güncellendi" : "kaydedildi"}: "${savedName}"`
+        `İskonto tanımı kaydedildi: "${savedName}" (${savedKod})`
       );
 
       const updatedList = await IskontoService.getIskontolar();
@@ -246,18 +245,8 @@ export const IskontoDefinitionsPage: React.FC = () => {
         : [];
       setIskontoList(safeList);
 
-      if (saved?.iskontoId) {
-        const freshlyLoaded = safeList.find(
-          (x) => x && x.iskontoId === saved.iskontoId
-        );
-        if (freshlyLoaded) {
-          handleSelectIskonto(freshlyLoaded);
-        } else {
-          handleNew();
-        }
-      } else {
-        handleNew();
-      }
+      // Kayıt eklendikten sonra tüm alanları sıfırla ve yeni kayda hazırla
+      handleNew();
 
       return saved || null;
     } catch (err: any) {
@@ -284,7 +273,6 @@ export const IskontoDefinitionsPage: React.FC = () => {
     iskontoList,
     generateNextKod,
     handleNew,
-    handleSelectIskonto,
   ]);
 
   // ─── Sil Aksiyonu (F2) ────────────────────────────────────────────────────
@@ -503,6 +491,8 @@ export const IskontoDefinitionsPage: React.FC = () => {
                       id="iskontoKoduInput"
                       size="sm"
                       value={kod}
+                      placeholder="Otomatik"
+                      readOnly={true}
                       onChange={(e) => setKod(e.target.value.toUpperCase())}
                       onLookupClick={() => setShowLookup(true)}
                       lookupTitle="Tanımlı İskontolardan Seç (Dürbün)"
@@ -512,7 +502,7 @@ export const IskontoDefinitionsPage: React.FC = () => {
                           tanimRef.current?.focus();
                         }
                       }}
-                      className="fw-bold font-monospace"
+                      className="fw-bold font-monospace bg-light"
                     />
                   </div>
                 </Col>

@@ -48,6 +48,10 @@ import {
   SavePerakendeFaturaPayload,
   SavePerakendeFaturaSatiriPayload,
 } from "../../services/perakendeService";
+import {
+  IskontoService,
+  IskontoItem,
+} from "../../services/iskontoService";
 import { AyarSecimModal } from "../../components/common/AyarSecimModal";
 import { AyarItem } from "../../services/ayarService";
 import {
@@ -221,6 +225,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [showOdemeUrunModal, setShowOdemeUrunModal] = useState<boolean>(false);
   const [odemeUrunList, setOdemeUrunList] = useState<UrunItem[]>(DEFAULT_ODEME_URUNLER);
   const [altinHasKuru, setAltinHasKuru] = useState<number>(3000);
+
+  // Iskonto (TODVZ_ISKONTO)
+  const [iskontolar, setIskontolar] = useState<IskontoItem[]>([]);
+  const [selectedIskontoId, setSelectedIskontoId] = useState<number | null>(null);
+  const [iskontoOrani, setIskontoOrani] = useState<number>(0);
+  const [iskontoTutari, setIskontoTutari] = useState<number>(0);
+  const [iskontoKodu, setIskontoKodu] = useState<string>("");
+  const [showIskontoModal, setShowIskontoModal] = useState<boolean>(false);
 
   // Refs for grid keyboard navigation
   const rowInputRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -417,6 +429,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       })
       .catch(console.error);
 
+    IskontoService.getIskontolar({ aktif: true })
+      .then((data) => {
+        setIskontolar(data || []);
+      })
+      .catch(console.error);
+
     loadProductsForLookup();
 
     if (isDuzeltmeMode) {
@@ -450,6 +468,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               kur: Number(f.kur ?? f.KUR) || 1.0,
               araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
               toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+              iskontoId: f.iskontoId ?? f.ISKONTO_ID ?? null,
+              iskontoKodu: f.iskontoKodu || f.ISKONTO_KODU || null,
+              iskontoOrani: Number(f.iskontoOrani ?? f.ISKONTO_ORANI) || 0,
+              iskontoTutari: Number(f.iskontoTutari ?? f.ISKONTO_TUTARI) || 0,
               genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
               eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
               gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
@@ -670,6 +692,101 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           {Number(it.item.satisFiyati || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
         </strong>
       ),
+    },
+  ];
+
+  const iskontoLookupColumns: LookupColumn<IskontoItem>[] = [
+    {
+      header: "İskonto Kodu",
+      width: "110px",
+      render: (item) => {
+        const minReq = Number(item.minTutar) || 0;
+        const isEligible = minReq === 0 || brutToplam >= minReq;
+        return (
+          <span className={`font-monospace fw-bold ${isEligible ? "text-dark" : "text-muted opacity-50"}`}>
+            {item.kod || "-"}
+          </span>
+        );
+      },
+    },
+    {
+      header: "İskonto Tanımı",
+      render: (item) => {
+        const minReq = Number(item.minTutar) || 0;
+        const isEligible = minReq === 0 || brutToplam >= minReq;
+        return (
+          <span className={isEligible ? "fw-semibold" : "text-muted opacity-50"}>
+            {item.tanim}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Tipi",
+      width: "110px",
+      align: "center",
+      render: (item) => {
+        const minReq = Number(item.minTutar) || 0;
+        const isEligible = minReq === 0 || brutToplam >= minReq;
+        const opacityClass = isEligible ? "" : "opacity-50";
+        if (item.iskontoTipi === 1) return <Badge bg="info" className={`text-dark ${opacityClass}`}>Yüzde (%)</Badge>;
+        if (item.iskontoTipi === 2) return <Badge bg="primary" className={opacityClass}>Sabit Tutar</Badge>;
+        if (item.iskontoTipi === 3) return <Badge bg="warning" className={`text-dark ${opacityClass}`}>Has Gram</Badge>;
+        return <Badge bg="secondary" className={opacityClass}>Serbest</Badge>;
+      },
+    },
+    {
+      header: "Değer / Oran",
+      width: "110px",
+      align: "right",
+      render: (item) => {
+        const minReq = Number(item.minTutar) || 0;
+        const isEligible = minReq === 0 || brutToplam >= minReq;
+        if (!isEligible) {
+          if (item.iskontoTipi === 1) return <span className="font-monospace text-muted opacity-50">%{item.oran}</span>;
+          if (item.iskontoTipi === 2) return <span className="font-monospace text-muted opacity-50">{item.tutar?.toLocaleString("tr-TR")} ₺</span>;
+          if (item.iskontoTipi === 3) return <span className="font-monospace text-muted opacity-50">{item.hasTutar} Gr</span>;
+          return "-";
+        }
+        if (item.iskontoTipi === 1) return <span className="font-monospace fw-bold text-primary">%{item.oran}</span>;
+        if (item.iskontoTipi === 2) return <span className="font-monospace fw-bold text-success">{item.tutar?.toLocaleString("tr-TR")} ₺</span>;
+        if (item.iskontoTipi === 3) return <span className="font-monospace fw-bold text-warning">{item.hasTutar} Gr Has</span>;
+        return "-";
+      },
+    },
+    {
+      header: "Min. Fiş Tutarı",
+      width: "120px",
+      align: "right",
+      render: (item) => {
+        const minReq = Number(item.minTutar) || 0;
+        const isEligible = minReq === 0 || brutToplam >= minReq;
+        return minReq ? (
+          <span className={`font-monospace ${isEligible ? "text-dark" : "text-danger opacity-75"}`}>
+            {minReq.toLocaleString("tr-TR")} ₺
+          </span>
+        ) : (
+          <span className="text-muted">-</span>
+        );
+      },
+    },
+    {
+      header: "Durum",
+      width: "110px",
+      align: "center",
+      render: (item) => {
+        const minReq = Number(item.minTutar) || 0;
+        const isEligible = minReq === 0 || brutToplam >= minReq;
+        return isEligible ? (
+          <Badge bg="success-subtle" className="text-success border border-success-subtle">
+            Uygun
+          </Badge>
+        ) : (
+          <Badge bg="secondary" className="opacity-50">
+            Yetersiz Tutar
+          </Badge>
+        );
+      },
     },
   ];
 
@@ -1076,6 +1193,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setFaturaTipi(1);
     setSenaryo("EARSIVFATURA");
     setFaturaNo("");
+    setSelectedIskontoId(null);
+    setIskontoOrani(0);
+    setIskontoTutari(0);
+    setIskontoKodu("");
 
     if (vezneler.length > 0) {
       const uv = await resolveUserVezne(vezneler);
@@ -1236,6 +1357,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         eposta: eposta.trim() || undefined,
         paraId: 1, // TL
         kur: 1.0,
+        iskontoId: selectedIskontoId,
+        iskontoKodu: iskontoKodu || (selectedIskonto ? selectedIskonto.kod || "" : ""),
+        iskontoOrani: calculatedIskontoOrani,
+        iskontoTutari: calculatedIskontoTutari,
         satirlar: payloadSatirlar,
       };
 
@@ -1278,6 +1403,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             kur: Number(f.kur ?? f.KUR) || 1.0,
             araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
             toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+            iskontoId: f.iskontoId ?? f.ISKONTO_ID ?? null,
+            iskontoKodu: f.iskontoKodu || f.ISKONTO_KODU || null,
+            iskontoOrani: Number(f.iskontoOrani ?? f.ISKONTO_ORANI) || 0,
+            iskontoTutari: Number(f.iskontoTutari ?? f.ISKONTO_TUTARI) || 0,
             genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
             eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
             gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
@@ -1344,6 +1473,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         kur: Number(f.kur ?? f.KUR) || 1.0,
         araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
         toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+        iskontoId: f.iskontoId ?? f.ISKONTO_ID ?? null,
+        iskontoKodu: f.iskontoKodu || f.ISKONTO_KODU || null,
+        iskontoOrani: Number(f.iskontoOrani ?? f.ISKONTO_ORANI) || 0,
+        iskontoTutari: Number(f.iskontoTutari ?? f.ISKONTO_TUTARI) || 0,
         genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
         eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
         gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
@@ -1393,6 +1526,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         kur: Number(f.kur ?? f.KUR) || 1.0,
         araToplam: Number(f.araToplam ?? f.ARA_TOPLAM) || 0,
         toplamKdv: Number(f.toplamKdv ?? f.TOPLAM_KDV) || 0,
+        iskontoId: f.iskontoId ?? f.ISKONTO_ID ?? null,
+        iskontoKodu: f.iskontoKodu || f.ISKONTO_KODU || null,
+        iskontoOrani: Number(f.iskontoOrani ?? f.ISKONTO_ORANI) || 0,
+        iskontoTutari: Number(f.iskontoTutari ?? f.ISKONTO_TUTARI) || 0,
         genelToplam: Number(f.genelToplam ?? f.GENEL_TOPLAM) || 0,
         eBelgeDurumu: Number(f.eBelgeDurumu ?? f.E_BELGE_DURUMU) || 0,
         gibStatuKodu: f.gibStatuKodu || f.GIB_STATU_KODU || null,
@@ -1434,6 +1571,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       setVergiDairesi(inv.vergiDairesi || "");
       setTelefon(inv.telefon || "");
       setEposta(inv.eposta || "");
+      setSelectedIskontoId(inv.iskontoId ?? inv.ISKONTO_ID ?? null);
+      setIskontoKodu(inv.iskontoKodu || inv.ISKONTO_KODU || "");
+      setIskontoOrani(Number(inv.iskontoOrani ?? inv.ISKONTO_ORANI) || 0);
+      setIskontoTutari(Number(inv.iskontoTutari ?? inv.ISKONTO_TUTARI) || 0);
 
       if (inv.cariKod || inv.CARI_KOD) {
         setCariKod(inv.cariKod || inv.CARI_KOD);
@@ -1599,7 +1740,58 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const totalHasGrams = validItems.reduce((acc, i) => acc + (Number(i.hasGram) || 0), 0);
   const araToplam = validItems.reduce((acc, i) => acc + (Number(i.tutar) || 0), 0);
   const toplamKdv = validItems.reduce((acc, i) => acc + (Number(i.kdvTutari) || 0), 0);
-  const genelToplam = validItems.reduce((acc, i) => acc + (Number(i.toplamTutar) || 0), 0);
+  const brutToplam = araToplam + toplamKdv;
+
+  // Selected iskonto calculation & limits
+  const selectedIskonto = iskontolar.find((x) => x.iskontoId === selectedIskontoId) || null;
+
+  let calculatedIskontoTutari = 0;
+  let calculatedIskontoOrani = 0;
+
+  if (selectedIskonto) {
+    const minReq = Number(selectedIskonto.minTutar) || 0;
+    if (minReq <= 0 || brutToplam >= minReq) {
+      if (selectedIskonto.iskontoTipi === 1) {
+        // Yüzde (%)
+        const oranVal = Number(selectedIskonto.oran) || 0;
+        calculatedIskontoOrani = oranVal;
+        calculatedIskontoTutari = Math.round(((brutToplam * oranVal) / 100) * 100) / 100;
+      } else if (selectedIskonto.iskontoTipi === 2) {
+        // Sabit Tutar (TL)
+        const tutarVal = Number(selectedIskonto.tutar) || 0;
+        calculatedIskontoTutari = Math.min(brutToplam, tutarVal);
+        calculatedIskontoOrani = brutToplam > 0 ? Math.round((calculatedIskontoTutari / brutToplam) * 10000) / 100 : 0;
+      } else if (selectedIskonto.iskontoTipi === 3) {
+        // Has Gram
+        const hasVal = Number(selectedIskonto.hasTutar) || 0;
+        const hasKur = Number(altinHasKuru) || 0;
+        const tutarVal = Math.round(hasVal * hasKur * 100) / 100;
+        calculatedIskontoTutari = Math.min(brutToplam, tutarVal);
+        calculatedIskontoOrani = brutToplam > 0 ? Math.round((calculatedIskontoTutari / brutToplam) * 10000) / 100 : 0;
+      } else {
+        // Serbest / Diğer
+        calculatedIskontoTutari = Number(iskontoTutari) || 0;
+        calculatedIskontoOrani =
+          Number(iskontoOrani) ||
+          (brutToplam > 0 ? Math.round((calculatedIskontoTutari / brutToplam) * 10000) / 100 : 0);
+      }
+
+      // Max Iskonto Tutari Cap Check
+      const maxCap = Number(selectedIskonto.maxIskontoTutari) || 0;
+      if (maxCap > 0 && calculatedIskontoTutari > maxCap) {
+        calculatedIskontoTutari = maxCap;
+      }
+    }
+  } else if (iskontoTutari > 0) {
+    // Loaded from existing invoice
+    calculatedIskontoTutari = Math.min(brutToplam, Number(iskontoTutari) || 0);
+    calculatedIskontoOrani =
+      Number(iskontoOrani) ||
+      (brutToplam > 0 ? Math.round((calculatedIskontoTutari / brutToplam) * 10000) / 100 : 0);
+  }
+
+  const genelToplam = Math.max(0, Math.round((brutToplam - calculatedIskontoTutari) * 100) / 100);
+
 
   // Payment totals calculation
   const totalOdemeAdet = odemeRows.reduce((s, r) => s + (Number(r.adet) || 0), 0);
@@ -1894,7 +2086,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             </div>
 
             {/* Müşteri Adı (+ Dürbün + Nihai Tüketici Butonu) */}
-            <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: "280px" }}>
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "260px", width: "340px", flex: "1.2 1 280px" }}>
               <label style={{ width: 75, minWidth: 75, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
                 Müşteri Adı
               </label>
@@ -1909,23 +2101,57 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 />
                 <Button
                   variant="outline-secondary"
-                  className="px-2 py-0 d-flex align-items-center"
+                  className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => setShowMusteriModal(true)}
                   title="Cari / Müşteri Seç (F4)"
                 >
-                  <IconBinoculars size={14} />
+                  <IconBinoculars size={13} />
                 </Button>
               </InputGroup>
               <Button
                 variant="outline-primary"
                 size="sm"
-                className="px-2 py-0"
+                className="px-1.5 py-0"
                 onClick={handleSetNihaiTuketici}
                 title="Nihai Tüketici Olarak Doldur"
                 style={{ fontSize: "11px", whiteSpace: "nowrap" }}
               >
-                Nihai Tüketici
+                Nihai
               </Button>
+            </div>
+
+            {/* İskonto Bölümü (Müşteri Adı'nın Sağında - Doğrudan Dürbün ile Seçim) */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "240px", width: "290px", flex: "1 1 240px" }}>
+              <label style={{ width: 50, minWidth: 50, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
+                İskonto
+              </label>
+              <InputGroup size="sm" style={{ flex: 1 }}>
+                <Form.Control
+                  readOnly
+                  placeholder="İskonto Seç (Dürbün)..."
+                  value={
+                    selectedIskonto
+                      ? `${selectedIskonto.kod ? `[${selectedIskonto.kod}] ` : ""}${selectedIskonto.tanim}`
+                      : (iskontoKodu ? `[${iskontoKodu}]` : "")
+                  }
+                  onClick={() => setShowIskontoModal(true)}
+                  style={{
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    backgroundColor: "#fff",
+                    fontWeight: selectedIskonto || iskontoKodu ? 600 : "normal",
+                  }}
+                  title="İskonto Seçmek İçin Tıklayın (Dürbün)"
+                />
+                <Button
+                  variant="outline-secondary"
+                  className="px-2 py-0 d-flex align-items-center"
+                  onClick={() => setShowIskontoModal(true)}
+                  title="İskonto Seç (Dürbün)"
+                >
+                  <IconBinoculars size={13} />
+                </Button>
+              </InputGroup>
             </div>
           </div>
 
@@ -2536,7 +2762,20 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 <span className="text-muted">Toplam KDV:</span>
                 <strong className="font-monospace">{toplamKdv.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</strong>
               </div>
-              <div className="d-flex justify-content-between pt-1 border-top fw-bold text-success" style={{ fontSize: "13px" }}>
+
+              {/* İskonto & İndirim Özeti */}
+              {calculatedIskontoTutari > 0 && (
+                <div className="d-flex justify-content-between text-danger fw-semibold my-1 pt-1 border-top">
+                  <span>
+                    İskonto {iskontoKodu ? `(${iskontoKodu})` : ""} {calculatedIskontoOrani > 0 ? `(%${calculatedIskontoOrani})` : ""}:
+                  </span>
+                  <strong className="font-monospace">
+                    -{calculatedIskontoTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                  </strong>
+                </div>
+              )}
+
+              <div className="d-flex justify-content-between pt-1 fw-bold text-success" style={{ fontSize: "13px" }}>
                 <span>GENEL TOPLAM:</span>
                 <span className="font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</span>
               </div>
@@ -2584,6 +2823,39 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
 
       {/* ─── MODALS ───────────────────────────────────────────────────── */}
+
+      {/* İskonto Seçim Modalı (LookupModal) */}
+      <LookupModal<IskontoItem>
+        show={showIskontoModal}
+        onHide={() => setShowIskontoModal(false)}
+        title="İskonto Tanımı Seçiniz"
+        items={iskontolar}
+        columns={iskontoLookupColumns}
+        filterFn={(it, term) => {
+          const t = term.toLowerCase();
+          return (
+            (it.kod ? it.kod.toLowerCase().includes(t) : false) ||
+            (it.tanim ? it.tanim.toLowerCase().includes(t) : false) ||
+            (it.aciklama ? it.aciklama.toLowerCase().includes(t) : false)
+          );
+        }}
+        onSelect={(selected) => {
+          if (selected) {
+            const minReq = Number(selected.minTutar) || 0;
+            if (minReq > 0 && brutToplam < minReq) {
+              // Fiş tutarı minimumu karşılamıyorsa hata popup'ı verme, seçme
+              setShowIskontoModal(false);
+              return;
+            }
+            setSelectedIskontoId(selected.iskontoId);
+            setIskontoKodu(selected.kod || "");
+            if (selected.iskontoTipi === 1) {
+              setIskontoOrani(Number(selected.oran) || 0);
+            }
+          }
+          setShowIskontoModal(false);
+        }}
+      />
 
       {/* Barkodlu Altın / Özel Ürün Seçim Modalı (LookupModal) */}
       <LookupModal

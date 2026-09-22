@@ -59,6 +59,10 @@ export interface PerakendeFaturaModel {
   kur: number;
   araToplam: number;
   toplamKdv: number;
+  iskontoId?: number | null;
+  iskontoKodu?: string | null;
+  iskontoOrani?: number;
+  iskontoTutari?: number;
   genelToplam: number;
   eBelgeDurumu: number; // 0: Taslak, 1: İletildi, 2: Onaylandı, 3: Hata, 4: İptal
   gibStatuKodu?: string | null;
@@ -99,6 +103,10 @@ export interface SavePerakendeFaturaPayload {
   telefon?: string | null;
   paraId?: number;
   kur?: number;
+  iskontoId?: number | null;
+  iskontoKodu?: string | null;
+  iskontoOrani?: number | null;
+  iskontoTutari?: number | null;
   satirlar: SavePerakendeFaturaSatiriPayload[];
 }
 
@@ -128,6 +136,10 @@ export interface PerakendeFaturaListItem {
   kur: number;
   araToplam: number;
   toplamKdv: number;
+  iskontoId?: number | null;
+  iskontoKodu?: string | null;
+  iskontoOrani?: number;
+  iskontoTutari?: number;
   genelToplam: number;
   eBelgeDurumu: number;
   gibStatuKodu?: string | null;

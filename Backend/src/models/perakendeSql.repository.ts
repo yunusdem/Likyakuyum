@@ -48,6 +48,10 @@ export interface FaturaModel {
   kur: number;
   araToplam: number;
   toplamKdv: number;
+  iskontoId?: number | null;
+  iskontoKodu?: string | null;
+  iskontoOrani?: number;
+  iskontoTutari?: number;
   genelToplam: number;
   eBelgeDurumu: number; // 0: Taslak, 1: İletildi, 2: Onaylandı, 3: Hata, 4: İptal
   gibStatuKodu?: string | null;
@@ -90,6 +94,10 @@ export interface CreateFaturaDto {
   kur?: number;
   araToplam?: number;
   toplamKdv?: number;
+  iskontoId?: number | null;
+  iskontoKodu?: string | null;
+  iskontoOrani?: number | null;
+  iskontoTutari?: number | null;
   genelToplam?: number;
   satirlar: CreateFaturaSatiriDto[];
 }
@@ -138,6 +146,10 @@ export class PerakendeSqlRepository {
             [KUR] FLOAT NOT NULL DEFAULT 1.0,
             [ARA_TOPLAM] FLOAT NOT NULL DEFAULT 0,
             [TOPLAM_KDV] FLOAT NOT NULL DEFAULT 0,
+            [ISKONTO_ID] INT NULL,
+            [ISKONTO_KODU] VARCHAR(50) NULL,
+            [ISKONTO_ORANI] FLOAT NOT NULL DEFAULT 0,
+            [ISKONTO_TUTARI] FLOAT NOT NULL DEFAULT 0,
             [GENEL_TOPLAM] FLOAT NOT NULL DEFAULT 0,
             [E_BELGE_DURUMU] TINYINT NOT NULL DEFAULT 0,
             [GIB_STATU_KODU] VARCHAR(50) NULL,
@@ -148,6 +160,13 @@ export class PerakendeSqlRepository {
           );
           CREATE NONCLUSTERED INDEX IX_TODVZ_FATURA_TARIH ON dbo.TODVZ_FATURA([TARIH] DESC);
           CREATE NONCLUSTERED INDEX IX_TODVZ_FATURA_NO ON dbo.TODVZ_FATURA([FATURA_NO]);
+        END
+        ELSE
+        BEGIN
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_ID] INT NULL;
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_KODU') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_KODU] VARCHAR(50) NULL;
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_ORANI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_ORANI] FLOAT NOT NULL DEFAULT 0;
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_TUTARI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_TUTARI] FLOAT NOT NULL DEFAULT 0;
         END;
       `);
 
@@ -195,7 +214,170 @@ export class PerakendeSqlRepository {
         END;
       `);
 
-      // 3. Stored Procedure: SODVZ_FATURA_SIL
+      // 3. Stored Procedure: SODVZ_FATURA_KAYDET
+      await pool.request().batch(`
+        CREATE OR ALTER PROCEDURE dbo.SODVZ_FATURA_KAYDET
+            @FATURA_ID          INT = NULL OUTPUT,
+            @VEZNE_ID           INT,
+            @FATURA_NO          VARCHAR(50),
+            @ETTN               UNIQUEIDENTIFIER = NULL,
+            @TARIH              DATETIME = NULL,
+            @FATURA_TIPI        TINYINT = 1,
+            @SENARYO            VARCHAR(50) = 'EARSIVFATURA',
+            @CARI_KART_ID       INT = NULL,
+            @ALICI_VKN_TCKN     VARCHAR(50),
+            @ALICI_UNVAN        VARCHAR(250),
+            @ADRES              VARCHAR(500) = NULL,
+            @ILCE               VARCHAR(100) = NULL,
+            @IL                 VARCHAR(100) = NULL,
+            @VERGI_DAIRESI      VARCHAR(100) = NULL,
+            @EPOSTA             VARCHAR(100) = NULL,
+            @TELEFON            VARCHAR(50) = NULL,
+            @PARA_ID            INT = 1,
+            @KUR                FLOAT = 1.0,
+            @ARA_TOPLAM         FLOAT = 0,
+            @TOPLAM_KDV         FLOAT = 0,
+            @GENEL_TOPLAM       FLOAT = 0,
+            @ISKONTO_ID         INT = NULL,
+            @ISKONTO_KODU       VARCHAR(50) = NULL,
+            @ISKONTO_ORANI      FLOAT = 0,
+            @ISKONTO_TUTARI     FLOAT = 0,
+            @KULLANICI_ID       INT = NULL
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+
+            IF @ETTN IS NULL SET @ETTN = NEWID();
+            IF @TARIH IS NULL SET @TARIH = GETDATE();
+
+            IF (@FATURA_ID IS NULL OR @FATURA_ID = 0)
+            BEGIN
+                IF EXISTS (SELECT 1 FROM dbo.TODVZ_FATURA WHERE FATURA_NO = @FATURA_NO)
+                BEGIN
+                    RAISERROR ('Bu fatura numarası daha önce kullanılmış.', 16, 1);
+                    RETURN 1;
+                END;
+
+                INSERT INTO dbo.TODVZ_FATURA (
+                    VEZNE_ID, FATURA_NO, ETTN, TARIH, FATURA_TIPI, SENARYO,
+                    CARI_KART_ID, ALICI_VKN_TCKN, ALICI_UNVAN, ADRES, ILCE, IL,
+                    VERGI_DAIRESI, EPOSTA, TELEFON, PARA_ID, KUR,
+                    ARA_TOPLAM, TOPLAM_KDV, ISKONTO_ID, ISKONTO_KODU, ISKONTO_ORANI, ISKONTO_TUTARI, GENEL_TOPLAM,
+                    E_BELGE_DURUMU, EKLEYEN_ID, EKLEME_ZAMANI
+                )
+                VALUES (
+                    @VEZNE_ID, @FATURA_NO, @ETTN, @TARIH, @FATURA_TIPI, @SENARYO,
+                    @CARI_KART_ID, @ALICI_VKN_TCKN, @ALICI_UNVAN, @ADRES, @ILCE, @IL,
+                    @VERGI_DAIRESI, @EPOSTA, @TELEFON, @PARA_ID, @KUR,
+                    @ARA_TOPLAM, @TOPLAM_KDV, @ISKONTO_ID, @ISKONTO_KODU, @ISKONTO_ORANI, @ISKONTO_TUTARI, @GENEL_TOPLAM,
+                    0, @KULLANICI_ID, GETDATE()
+                );
+
+                SET @FATURA_ID = SCOPE_IDENTITY();
+            END
+            ELSE
+            BEGIN
+                UPDATE dbo.TODVZ_FATURA
+                SET VEZNE_ID          = @VEZNE_ID,
+                    FATURA_NO         = @FATURA_NO,
+                    TARIH             = @TARIH,
+                    FATURA_TIPI       = @FATURA_TIPI,
+                    SENARYO           = @SENARYO,
+                    CARI_KART_ID      = @CARI_KART_ID,
+                    ALICI_VKN_TCKN    = @ALICI_VKN_TCKN,
+                    ALICI_UNVAN       = @ALICI_UNVAN,
+                    ADRES             = @ADRES,
+                    ILCE              = @ILCE,
+                    IL                = @IL,
+                    VERGI_DAIRESI     = @VERGI_DAIRESI,
+                    EPOSTA            = @EPOSTA,
+                    TELEFON           = @TELEFON,
+                    PARA_ID           = @PARA_ID,
+                    KUR               = @KUR,
+                    ARA_TOPLAM        = @ARA_TOPLAM,
+                    TOPLAM_KDV        = @TOPLAM_KDV,
+                    ISKONTO_ID        = @ISKONTO_ID,
+                    ISKONTO_KODU      = @ISKONTO_KODU,
+                    ISKONTO_ORANI     = @ISKONTO_ORANI,
+                    ISKONTO_TUTARI    = @ISKONTO_TUTARI,
+                    GENEL_TOPLAM      = @GENEL_TOPLAM,
+                    GUNCELLEYEN_ID    = @KULLANICI_ID,
+                    GUNCELLEME_ZAMANI = GETDATE()
+                WHERE FATURA_ID = @FATURA_ID;
+            END;
+
+            RETURN 0;
+        END;
+      `);
+
+      // 4. Stored Procedure: SODVZ_FATURA_SATIR_EKLE
+      await pool.request().batch(`
+        CREATE OR ALTER PROCEDURE dbo.SODVZ_FATURA_SATIR_EKLE
+            @FATURA_ID          INT,
+            @SATIR_NO           INT,
+            @ALTIN_URUN_ID      INT = NULL,
+            @BARKOD             VARCHAR(50) = NULL,
+            @URUN_ADI           VARCHAR(200),
+            @AYAR               VARCHAR(50) = NULL,
+            @MIKTAR             FLOAT = 1,
+            @BIRIM              VARCHAR(20) = 'Adet',
+            @GRAM               FLOAT = 0,
+            @HAS_GRAM           FLOAT = 0,
+            @BIRIM_FIYAT        FLOAT,
+            @KDV_ORANI          FLOAT = 0
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+
+            DECLARE @TUTAR FLOAT = @MIKTAR * @BIRIM_FIYAT;
+            DECLARE @KDV_TUTARI FLOAT = ROUND(@TUTAR * (@KDV_ORANI / 100.0), 2);
+            DECLARE @TOPLAM_TUTAR FLOAT = @TUTAR + @KDV_TUTARI;
+
+            BEGIN TRAN;
+
+            INSERT INTO dbo.TODVZ_FATURA_SATIRI (
+                FATURA_ID, SATIR_NO, ALTIN_URUN_ID, BARKOD, URUN_ADI,
+                AYAR, MIKTAR, BIRIM, GRAM, HAS_GRAM,
+                BIRIM_FIYAT, TUTAR, KDV_ORANI, KDV_TUTARI, TOPLAM_TUTAR
+            )
+            VALUES (
+                @FATURA_ID, @SATIR_NO, @ALTIN_URUN_ID, @BARKOD, @URUN_ADI,
+                @AYAR, @MIKTAR, @BIRIM, @GRAM, @HAS_GRAM,
+                @BIRIM_FIYAT, @TUTAR, @KDV_ORANI, @KDV_TUTARI, @TOPLAM_TUTAR
+            );
+
+            -- Barkodlu ürün ise stoktan düş (SATILDI = 1)
+            IF (@ALTIN_URUN_ID IS NOT NULL AND @ALTIN_URUN_ID > 0)
+            BEGIN
+                UPDATE dbo.TODVZ_ALTIN_URUN
+                SET SATILDI = 1,
+                    GUNCELLEME_ZAMANI = GETDATE()
+                WHERE ALTIN_URUN_ID = @ALTIN_URUN_ID;
+            END
+            ELSE IF (@BARKOD IS NOT NULL AND LEN(@BARKOD) > 0)
+            BEGIN
+                UPDATE dbo.TODVZ_ALTIN_URUN
+                SET SATILDI = 1,
+                    GUNCELLEME_ZAMANI = GETDATE()
+                WHERE BARKOD = @BARKOD;
+            END;
+
+            -- Fatura başlığındaki genel toplamları satırlardan ve kayıtlı iskontodan hesaplayarak güncelle
+            UPDATE dbo.TODVZ_FATURA
+            SET ARA_TOPLAM   = ISNULL((SELECT SUM(TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0),
+                TOPLAM_KDV   = ISNULL((SELECT SUM(KDV_TUTARI) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0),
+                GENEL_TOPLAM = CASE 
+                  WHEN (ISNULL((SELECT SUM(TOPLAM_TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0) - ISNULL(ISKONTO_TUTARI, 0)) < 0 THEN 0
+                  ELSE (ISNULL((SELECT SUM(TOPLAM_TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0) - ISNULL(ISKONTO_TUTARI, 0))
+                END
+            WHERE FATURA_ID = @FATURA_ID;
+
+            COMMIT TRAN;
+            RETURN 0;
+        END;
+      `);
+
+      // 5. Stored Procedure: SODVZ_FATURA_SIL
       await pool.request().batch(`
         CREATE OR ALTER PROCEDURE dbo.SODVZ_FATURA_SIL
             @FATURA_ID INT
@@ -430,9 +612,13 @@ export class PerakendeSqlRepository {
     const paraId = dto.paraId || 1;
     const kur = dto.kur && dto.kur > 0 ? dto.kur : 1.0;
 
+    const iskontoId = dto.iskontoId || null;
+    const iskontoKodu = dto.iskontoKodu ? dto.iskontoKodu.trim() : null;
+    const iskontoOrani = Number(dto.iskontoOrani) || 0;
+    let iskontoTutari = Number(dto.iskontoTutari) || 0;
+
     let araToplam = 0;
     let toplamKdv = 0;
-    let genelToplam = 0;
 
     dto.satirlar.forEach((s) => {
       const m = Number(s.miktar) || 1;
@@ -442,8 +628,14 @@ export class PerakendeSqlRepository {
       const kdvTutari = Math.round(tutar * (kdvRate / 100) * 100) / 100;
       araToplam += tutar;
       toplamKdv += kdvTutari;
-      genelToplam += tutar + kdvTutari;
     });
+
+    if (iskontoOrani > 0 && iskontoTutari === 0) {
+      iskontoTutari = Math.round(((araToplam + toplamKdv) * (iskontoOrani / 100)) * 100) / 100;
+    }
+
+    const brutToplam = araToplam + toplamKdv;
+    const genelToplam = Math.max(0, Math.round((brutToplam - iskontoTutari) * 100) / 100);
 
     let outFaturaId: number = 0;
     let finalFaturaNo: string = faturaNo;
@@ -587,6 +779,10 @@ export class PerakendeSqlRepository {
       saveHeadReq.input("KUR", sql.Float, kur);
       saveHeadReq.input("ARA_TOPLAM", sql.Float, araToplam);
       saveHeadReq.input("TOPLAM_KDV", sql.Float, toplamKdv);
+      saveHeadReq.input("ISKONTO_ID", sql.Int, iskontoId);
+      saveHeadReq.input("ISKONTO_KODU", sql.VarChar(50), iskontoKodu);
+      saveHeadReq.input("ISKONTO_ORANI", sql.Float, iskontoOrani);
+      saveHeadReq.input("ISKONTO_TUTARI", sql.Float, iskontoTutari);
       saveHeadReq.input("GENEL_TOPLAM", sql.Float, genelToplam);
       saveHeadReq.input("KULLANICI_ID", sql.Int, userId || null);
 
@@ -599,16 +795,16 @@ export class PerakendeSqlRepository {
             VEZNE_ID, FATURA_NO, ETTN, TARIH, FATURA_TIPI, SENARYO,
             CARI_KART_ID, ALICI_VKN_TCKN, ALICI_UNVAN, ADRES, ILCE, IL,
             VERGI_DAIRESI, EPOSTA, TELEFON, PARA_ID, KUR,
-            ARA_TOPLAM, TOPLAM_KDV, GENEL_TOPLAM, E_BELGE_DURUMU,
-            EKLEYEN_ID, EKLEME_ZAMANI
+            ARA_TOPLAM, TOPLAM_KDV, ISKONTO_ID, ISKONTO_KODU, ISKONTO_ORANI, ISKONTO_TUTARI, GENEL_TOPLAM,
+            E_BELGE_DURUMU, EKLEYEN_ID, EKLEME_ZAMANI
           )
           OUTPUT INSERTED.FATURA_ID
           VALUES (
             @VEZNE_ID, @FATURA_NO, ISNULL(@ETTN, NEWID()), ISNULL(@TARIH, GETDATE()), @FATURA_TIPI, @SENARYO,
             @CARI_KART_ID, @ALICI_VKN_TCKN, @ALICI_UNVAN, @ADRES, @ILCE, @IL,
             @VERGI_DAIRESI, @EPOSTA, @TELEFON, @PARA_ID, @KUR,
-            @ARA_TOPLAM, @TOPLAM_KDV, @GENEL_TOPLAM, 0,
-            @KULLANICI_ID, GETDATE()
+            @ARA_TOPLAM, @TOPLAM_KDV, @ISKONTO_ID, @ISKONTO_KODU, @ISKONTO_ORANI, @ISKONTO_TUTARI, @GENEL_TOPLAM,
+            0, @KULLANICI_ID, GETDATE()
           );
         END
         ELSE
@@ -632,6 +828,10 @@ export class PerakendeSqlRepository {
               KUR               = @KUR,
               ARA_TOPLAM        = @ARA_TOPLAM,
               TOPLAM_KDV        = @TOPLAM_KDV,
+              ISKONTO_ID        = @ISKONTO_ID,
+              ISKONTO_KODU      = @ISKONTO_KODU,
+              ISKONTO_ORANI     = @ISKONTO_ORANI,
+              ISKONTO_TUTARI    = @ISKONTO_TUTARI,
               GENEL_TOPLAM      = @GENEL_TOPLAM,
               GUNCELLEYEN_ID    = @KULLANICI_ID,
               GUNCELLEME_ZAMANI = GETDATE()
@@ -720,14 +920,17 @@ export class PerakendeSqlRepository {
         }
       }
 
-      // 5. Update header summary amounts from lines
+      // 5. Update header summary amounts from lines taking stored discount into account
       const summaryReq = new sql.Request(transaction);
       summaryReq.input("FATURA_ID", sql.Int, outFaturaId);
       await summaryReq.query(`
         UPDATE dbo.TODVZ_FATURA
         SET ARA_TOPLAM   = ISNULL((SELECT SUM(TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0),
             TOPLAM_KDV   = ISNULL((SELECT SUM(KDV_TUTARI) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0),
-            GENEL_TOPLAM = ISNULL((SELECT SUM(TOPLAM_TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0)
+            GENEL_TOPLAM = CASE 
+              WHEN (ISNULL((SELECT SUM(TOPLAM_TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0) - ISNULL(ISKONTO_TUTARI, 0)) < 0 THEN 0
+              ELSE (ISNULL((SELECT SUM(TOPLAM_TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0) - ISNULL(ISKONTO_TUTARI, 0))
+            END
         WHERE FATURA_ID = @FATURA_ID;
       `);
 
@@ -767,7 +970,12 @@ export class PerakendeSqlRepository {
         f.[FATURA_TIPI], f.[SENARYO], f.[CARI_KART_ID], f.[ALICI_VKN_TCKN],
         f.[ALICI_UNVAN], f.[ADRES], f.[ILCE], f.[IL], f.[VERGI_DAIRESI],
         f.[EPOSTA], f.[TELEFON], f.[PARA_ID], f.[KUR], f.[ARA_TOPLAM],
-        f.[TOPLAM_KDV], f.[GENEL_TOPLAM], f.[E_BELGE_DURUMU], f.[GIB_STATU_KODU],
+        f.[TOPLAM_KDV],
+        ISNULL(f.[ISKONTO_ID], NULL) AS [ISKONTO_ID],
+        ISNULL(f.[ISKONTO_KODU], '') AS [ISKONTO_KODU],
+        ISNULL(f.[ISKONTO_ORANI], 0) AS [ISKONTO_ORANI],
+        ISNULL(f.[ISKONTO_TUTARI], 0) AS [ISKONTO_TUTARI],
+        f.[GENEL_TOPLAM], f.[E_BELGE_DURUMU], f.[GIB_STATU_KODU],
         f.[EKLEYEN_ID], f.[EKLEME_ZAMANI],
         v.[KOD] AS [VEZNE_KOD], v.[AD] AS [VEZNE_AD],
         p.[KOD] AS [PARA_KODU],
@@ -884,6 +1092,10 @@ export class PerakendeSqlRepository {
       kur: Number(row.KUR) || 1.0,
       araToplam: Number(row.ARA_TOPLAM) || 0,
       toplamKdv: Number(row.TOPLAM_KDV) || 0,
+      iskontoId: row.ISKONTO_ID || null,
+      iskontoKodu: row.ISKONTO_KODU || null,
+      iskontoOrani: Number(row.ISKONTO_ORANI) || 0,
+      iskontoTutari: Number(row.ISKONTO_TUTARI) || 0,
       genelToplam: Number(row.GENEL_TOPLAM) || 0,
       eBelgeDurumu: row.E_BELGE_DURUMU ?? 0,
       gibStatuKodu: row.GIB_STATU_KODU,
@@ -926,6 +1138,10 @@ export class PerakendeSqlRepository {
         ISNULL(f.[KUR], 1.0) AS [KUR],
         ISNULL(f.[ARA_TOPLAM], 0) AS [ARA_TOPLAM],
         ISNULL(f.[TOPLAM_KDV], 0) AS [TOPLAM_KDV],
+        ISNULL(f.[ISKONTO_ID], NULL) AS [ISKONTO_ID],
+        ISNULL(f.[ISKONTO_KODU], '') AS [ISKONTO_KODU],
+        ISNULL(f.[ISKONTO_ORANI], 0) AS [ISKONTO_ORANI],
+        ISNULL(f.[ISKONTO_TUTARI], 0) AS [ISKONTO_TUTARI],
         ISNULL(f.[GENEL_TOPLAM], 0) AS [GENEL_TOPLAM],
         ISNULL(f.[E_BELGE_DURUMU], 0) AS [E_BELGE_DURUMU],
         f.[GIB_STATU_KODU],
@@ -998,6 +1214,10 @@ export class PerakendeSqlRepository {
       kur: Number(row.KUR) || 1.0,
       araToplam: Number(row.ARA_TOPLAM) || 0,
       toplamKdv: Number(row.TOPLAM_KDV) || 0,
+      iskontoId: row.ISKONTO_ID || null,
+      iskontoKodu: row.ISKONTO_KODU || null,
+      iskontoOrani: Number(row.ISKONTO_ORANI) || 0,
+      iskontoTutari: Number(row.ISKONTO_TUTARI) || 0,
       genelToplam: Number(row.GENEL_TOPLAM) || 0,
       eBelgeDurumu: Number(row.E_BELGE_DURUMU) || 0,
       gibStatuKodu: row.GIB_STATU_KODU,
