@@ -337,7 +337,7 @@ export const KasaHesapKayitPage: React.FC = () => {
                           adRef.current?.focus();
                         }
                       }}
-                      className="fw-bold text-primary font-monospace"
+                      className="fw-bold font-monospace"
                     />
                   </div>
                 </Col>

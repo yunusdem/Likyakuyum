@@ -42,6 +42,7 @@ import {
   IconShieldExclamation,
   IconBuilding,
   IconFileText,
+  IconPercentage,
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
@@ -179,6 +180,9 @@ export const getSubmenuIcon = (name: string) => {
   }
   if (n.includes("vitrin") || n.includes("stok")) {
     return <IconBuildingStore size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+  if (n.includes("iskonto") || n.includes("indirim")) {
+    return <IconPercentage size={16} className="sidebar-sub-icon flex-shrink-0" />;
   }
   if (n.includes("tanim") || n.includes("tanım") || n.includes("ayar")) {
     return <IconSettings size={16} className="sidebar-sub-icon flex-shrink-0" />;
