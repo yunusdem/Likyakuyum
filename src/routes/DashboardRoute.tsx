@@ -154,6 +154,7 @@ export const DashboardMenu: MenuItemType[] = [
           { id: uuid(), name: "G- Ödeme Linkleri", link: "ebanka/odeme-linkleri" },
           { id: uuid(), name: "H- Sanal POS İşlemleri", link: "ebanka/sanal-pos-islemleri" },
           { id: uuid(), name: "I- Ayarlar", link: "ebanka/ayarlar" },
+          { id: uuid(), name: "J- Tahsilat / Ödeme Mutabakatı", link: "ebanka/mutabakat" },
         ],
       },
     ],

@@ -79,7 +79,7 @@ export const planla = (h: AktarimAdayi, s: AktarimSozlukleri): AktarimPlani => {
 const gun = (h: AktarimAdayi): string => (h.sistemTarihi || "").slice(0, 10);
 
 export class EBankaAktarimService {
-  private static async sozlukler(dbContext?: DbContext): Promise<AktarimSozlukleri> {
+  public static async sozlukler(dbContext?: DbContext): Promise<AktarimSozlukleri> {
     const [bizimIbanlar, vknSozlugu, ibanSozlugu, para, kurallar] = await Promise.all([
       EBankaAktarimSqlRepository.bizimIbanlar(dbContext),
       EBankaAktarimSqlRepository.vknSozlugu(dbContext),

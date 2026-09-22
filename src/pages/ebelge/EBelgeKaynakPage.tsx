@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Form, Modal, Table } from "react-bootstrap";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { EbelgeKaynakDetay, EbelgeKaynakSatiri, ebelgeService, ebelgeTutar, ebelgeGidenDurumRozet } from "../../services/ebelgeService";
 import { BelgeService } from "../../services/belgeService";
 import './ebelgeKaynak.css';
@@ -19,8 +19,12 @@ const durumRozet = (durum: string) => ebelgeGidenDurumRozet(['GONDERILDI', 'GOND
 export default function EBelgeKaynakPage() {
   const [kayitlar, setKayitlar] = useState<EbelgeKaynakSatiri[]>([]);
   const [sayfa, setSayfa] = useState(1); const [toplam, setToplam] = useState(0);
-  const [arama, setArama] = useState(''); const [durum, setDurum] = useState('');
-  const [kaynak, setKaynak] = useState<Kaynak>(''); const [ilk, setIlk] = useState(bugun); const [son, setSon] = useState(bugun);
+  // e-Banka > Tahsilat / Ödeme Mutabakatı'ndaki "Fatura kes" bu ekranı ?kaynak=&tarih=&ara= ile açar; parametre yoksa davranış değişmez
+  const [parametreler] = useSearchParams();
+  const pKaynak = (['FATURA', 'IRSALIYE', 'GIDER', 'DOVIZ'].includes(parametreler.get('kaynak') || '') ? parametreler.get('kaynak') : '') as Kaynak;
+  const pTarih = /^\d{4}-\d{2}-\d{2}$/.test(parametreler.get('tarih') || '') ? parametreler.get('tarih')! : '';
+  const [arama, setArama] = useState(parametreler.get('ara') || ''); const [durum, setDurum] = useState('');
+  const [kaynak, setKaynak] = useState<Kaynak>(pKaynak); const [ilk, setIlk] = useState(pTarih || bugun); const [son, setSon] = useState(pTarih || bugun);
   const [busy, setBusy] = useState(false); const [hata, setHata] = useState('');
   const [secili, setSecili] = useState<string[]>([]);
   const [dovizTipi, setDovizTipi] = useState(''); const [listelendi, setListelendi] = useState(false);
@@ -29,6 +33,8 @@ export default function EBelgeKaynakPage() {
   const [pdf, setPdf] = useState<{ url: string; no: string } | null>(null);
   const requestId = useRef(0);
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf.url); }, [pdf]);
+  // Dışarıdan süzgeçle açıldıysa liste kendiliğinden gelir
+  useEffect(() => { if (pKaynak || pTarih || parametreler.get('ara')) void yukle(); /* yalnızca açılışta */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const yukle = async (p = 1) => {
     const id = ++requestId.current;
     setSecili([]);

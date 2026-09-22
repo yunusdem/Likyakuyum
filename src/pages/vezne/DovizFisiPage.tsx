@@ -59,6 +59,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { printReportTable } from "../../utils/printReport";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 
 interface VezneItem {
   id: number;
@@ -2851,6 +2852,7 @@ export const DovizFisiPage: React.FC = () => {
           message: `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi. Yeni fiş kaydına geçildi.`,
         });
         window.scrollTo({ top: 0, behavior: "smooth" });
+        if (await ebFis.kaydedildi(saved.fisId)) return;
         // Kayıt sonrasında otomatik yeni kayıt moduna geç ve tüm alanları temizle
         resetForm();
         applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
@@ -3319,8 +3321,16 @@ export const DovizFisiPage: React.FC = () => {
     { header: "Vezne Adı", render: (v) => v.ad },
   ];
 
+  // e-Banka mutabakatından "Fiş kes" ile gelindiyse cari / tarih / yön dolu açılır
+  const ebFis = useEBankaFisKesimi("doviz", !isLoadingLookups && !isDuzeltmeMode, (b) => {
+    handleTipChange(b.tip);
+    if (b.musteri) handleSelectCustomer(b.musteri);
+    setTarih(b.tarih);
+  });
+
   return (
     <div className="w-100 pb-3" style={{ backgroundColor: "#f8fafc", minHeight: "100vh", overflowX: "hidden" }}>
+      {ebFis.bant}
       {/* Top ERP Toolbar with Refresh Icon on right and Dynamic Balances */}
       <ERPToolbar
         disableShortcuts={true}

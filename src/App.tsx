@@ -32,6 +32,7 @@ import PerakendeFisiPage from "./pages/vezne/PerakendeFisiPage";
 import BankaHesapKartiPage from "./pages/banka/BankaHesapKartiPage";
 import BankaHareketiPage from "./pages/banka/BankaHareketiPage";
 import EBankaAyarlarPage from "./pages/ebanka/EBankaAyarlarPage";
+import EBankaMutabakatPage from "./pages/ebanka/EBankaMutabakatPage";
 import EBankaOzetPage from "./pages/ebanka/EBankaOzetPage";
 import EBankaHesaplarPage from "./pages/ebanka/EBankaHesaplarPage";
 import EBankaHareketlerPage from "./pages/ebanka/EBankaHareketlerPage";
@@ -235,6 +236,7 @@ export default function App() {
             <Route path="ebanka/odeme-linkleri" element={<EBankaOdemeLinkleriPage />} />
             <Route path="ebanka/sanal-pos-islemleri" element={<EBankaVposIslemlerPage />} />
             <Route path="ebanka/ayarlar" element={<EBankaAyarlarPage />} />
+            <Route path="ebanka/mutabakat" element={<EBankaMutabakatPage />} />
             <Route path="kasa/hesap-kayit" element={<KasaHesapKayitPage />} />
             <Route path="kasa/hesap-duzeltme" element={<KasaHesapKayitPage />} />
             <Route path="kasa/hareket-kayit" element={<KasaHareketPage />} />

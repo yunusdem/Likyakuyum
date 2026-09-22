@@ -25,6 +25,7 @@ import {
   IconHistory,
 } from "@tabler/icons-react";
 import { ERPToolbar } from "../../components/common/ERPToolbar";
+import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { LookupModal, LookupColumn } from "../../components/common/LookupModal";
 import {
   CariKartItem,
@@ -1294,6 +1295,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           }
         }
       } else {
+        // Yazdırılacaksa yazdırma penceresi açık kalsın, yalnız eşlenir
+        if (await ebFis.kaydedildi(result?.faturaId, !withPrint)) return;
         handleReset();
       }
     } catch (err: any) {
@@ -1679,11 +1682,19 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     },
   ];
 
+  // e-Banka mutabakatından "Fiş kes" ile gelindiyse cari / tarih / yön dolu açılır
+  const ebFis = useEBankaFisKesimi("perakende", cariler.length > 0 && !isDuzeltmeMode, (b) => {
+    setFaturaTipi(b.tip);
+    if (b.musteri) void handleSelectCustomer(b.musteri);
+    setTarih(b.tarih);
+  });
+
   return (
     <div
       className="perakende-fisi-page w-100 pb-3"
       style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px" }}
     >
+      {ebFis.bant}
       {/* ─── 1. Top ERP Toolbar ────────────────────────────────────────── */}
       <ERPToolbar
         disableShortcuts

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useLocation } from "react-router-dom";
+import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
 import {
   IconCheck, IconBinoculars, IconAlertTriangle, IconPlus, IconShieldExclamation, IconShieldCheck,
@@ -1102,6 +1103,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         // Düzeltme modunda formu boşaltma, kaydedilen kaydı tekrar yükle
         await loadFisById(result.sarrafFisiId);
       } else {
+        if (await ebFis.kaydedildi(result.sarrafFisiId)) return;
         // Kayıt sayfasında formu temizle ve yeni fişe geç
         resetForm();
       }
@@ -2019,8 +2021,22 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       ? "B- Sarraf Fişi Düzeltme"
       : "A- Sarraf Fişi Kayıt";
 
+  // e-Banka mutabakatından "Fiş kes" ile gelindiyse cari / tarih / yön dolu açılır
+  const ebFis = useEBankaFisKesimi("sarraf", cariList.length > 0 && !isDuzeltmeMode && !queryId, (b) => {
+    setTip(b.tip);
+    const hasKurItem = kurSatirlar.find((k) => ["HAS", "ALTIN", "HAS ALTIN"].includes((k.kod || "").toUpperCase().trim()));
+    const rate = hasKurItem ? (b.tip === 0 ? (hasKurItem.dovizAlis ?? hasKurItem.efektifAlis) : (hasKurItem.dovizSatis ?? hasKurItem.efektifSatis)) || 0 : 0;
+    if (rate > 0) setAltinHasKuru(rate);
+    const gumusKurItem = kurSatirlar.find((k) => ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ"].includes((k.kod || "").toUpperCase().trim()));
+    const gRate = gumusKurItem ? (b.tip === 0 ? (gumusKurItem.dovizAlis ?? gumusKurItem.efektifAlis) : (gumusKurItem.dovizSatis ?? gumusKurItem.efektifSatis)) || 0 : 0;
+    if (gRate > 0) setGumusHasKuru(gRate);
+    if (b.musteri) handleSelectCustomer(b.musteri);
+    setTarih(b.tarih);
+  });
+
   return (
     <div className="sarraf-fisi-page w-100 pb-3" style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px" }}>
+      {ebFis.bant}
       <ERPToolbar
         disableShortcuts
         pageTitle={

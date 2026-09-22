@@ -3,6 +3,7 @@ import { EBankaService } from "../services/ebanka.service.js";
 import { EBankaAktarimService } from "../services/ebankaAktarim.service.js";
 import { EBankaDenetimService } from "../services/ebankaDenetim.service.js";
 import { EBankaEsitlemeService } from "../services/ebankaEsitleme.service.js";
+import { EBankaMutabakatService } from "../services/ebankaMutabakat.service.js";
 import { EBankaPosService } from "../services/ebankaPos.service.js";
 import { EBankaVposService } from "../services/ebankaVpos.service.js";
 import { DONUS_SAYFASI, EBankaVposOdemeService } from "../services/ebankaVposOdeme.service.js";
@@ -42,6 +43,29 @@ export class EBankaController {
   public static logListele = asyncHandler(async (req: Request, res: Response) => {
     const data = await EBankaService.logListele(Number(req.query.limit) || 50, EBankaController.getDbContext(req));
     return ApiResponse.ok(res, "İşlem günlüğü listelendi.", data);
+  });
+
+  // ─── Tahsilat / ödeme mutabakatı ───────────────────────────────────────────
+  public static mutabakat = asyncHandler(async (req: Request, res: Response) => {
+    const yaz = (v: unknown) => (v ? String(v) : undefined);
+    const data = await EBankaMutabakatService.liste(
+      { baslangic: yaz(req.query.baslangic), bitis: yaz(req.query.bitis), yon: yaz(req.query.yon) },
+      EBankaController.kullaniciId(req),
+      EBankaController.getDbContext(req)
+    );
+    return ApiResponse.ok(res, "Mutabakat listelendi.", data);
+  });
+
+  public static mutabakatEsle = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "Fiş eşlendi.", await EBankaMutabakatService.esle(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
+  });
+
+  public static mutabakatEslemeKaldir = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "Eşleşme kaldırıldı.", await EBankaMutabakatService.eslemeyiKaldir(req.body || {}, EBankaController.getDbContext(req)));
+  });
+
+  public static mutabakatFaturaGerekmez = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "İşaret kaydedildi.", await EBankaMutabakatService.faturaGerekmez(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
   });
 
   // ─── Sistem denetimi ───────────────────────────────────────────────────────

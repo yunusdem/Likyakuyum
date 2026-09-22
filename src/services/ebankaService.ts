@@ -39,6 +39,53 @@ export interface EBankaLog {
   kullaniciId: number | null;
 }
 
+// ─── Tahsilat / ödeme mutabakatı ─────────────────────────────────────────────
+export type MutabakatFisTuru = "doviz" | "sarraf" | "perakende";
+export type MutabakatDurumu = "faturalandi" | "faturasiz" | "fissiz" | "oneri" | "gerekmez" | "virman";
+
+export interface MutabakatFisi {
+  fisTuru: MutabakatFisTuru;
+  fisId: number;
+  fisNo: string | null;
+  tarih: string | null;
+  cariKartId: number | null;
+  cariAdi: string | null;
+  yon: "gelen" | "giden";
+  tutar: number;
+  fisToplami: number;
+  faturali: boolean;
+  faturaBilgisi: string | null;
+  otomatik?: boolean;
+  fark?: number;
+  baskaHarekette?: boolean;
+}
+
+export interface MutabakatSatiri {
+  vomsisId: number;
+  tarih: string | null;
+  bankaAdi: string;
+  hesapNo: string | null;
+  doviz: string | null;
+  yon: "gelen" | "giden";
+  tutar: number;
+  tipAdi: string | null;
+  karsiTaraf: string | null;
+  aciklama: string | null;
+  cari: { cariKartId: number; ad: string } | null;
+  cariNedeni: string | null;
+  durum: MutabakatDurumu;
+  fark: number | null;
+  faturaGerekmez: boolean;
+  not: string | null;
+  fisler: MutabakatFisi[];
+  adaylar: MutabakatFisi[];
+}
+
+export interface MutabakatListesi {
+  satirlar: MutabakatSatiri[];
+  ozet: { toplam: number; faturalandi: number; faturasiz: number; fissiz: number; oneri: number; gerekmez: number; virman: number; farkli: number };
+}
+
 export interface EBankaDenetimSonucu {
   grup: string;
   ad: string;
@@ -462,6 +509,24 @@ export const EBankaService = {
   async getLog(limit = 50): Promise<EBankaLog[]> {
     const data = veri<EBankaLog[]>(await apiClient.get("/ebanka/log", { limit }));
     return Array.isArray(data) ? data : [];
+  },
+
+  // ─── Tahsilat / ödeme mutabakatı ───────────────────────────────────────────
+  /** Listeler; tutarı tam tutan tek fiş olan hareketleri sunucu kendiliğinden eşler. */
+  async getMutabakat(filtre: { baslangic: string; bitis: string; yon?: string }): Promise<MutabakatListesi> {
+    return veri<MutabakatListesi>(await apiClient.get("/ebanka/mutabakat", bosOlmayanlar(filtre), { timeoutMs: 120000 }));
+  },
+
+  async mutabakatEsle(vomsisId: number, fisTuru: MutabakatFisTuru, fisId: number): Promise<void> {
+    await apiClient.post("/ebanka/mutabakat/esle", { vomsisId, fisTuru, fisId });
+  },
+
+  async mutabakatEslemeKaldir(vomsisId: number, fisTuru: MutabakatFisTuru, fisId: number): Promise<void> {
+    await apiClient.post("/ebanka/mutabakat/esle-kaldir", { vomsisId, fisTuru, fisId });
+  },
+
+  async mutabakatFaturaGerekmez(vomsisId: number, deger: boolean, not?: string): Promise<void> {
+    await apiClient.post("/ebanka/mutabakat/fatura-gerekmez", { vomsisId, deger, not });
   },
 
   // ─── Sistem denetimi ───────────────────────────────────────────────────────
