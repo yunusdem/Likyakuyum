@@ -1,12 +1,16 @@
 import { UserSqlRepository } from "../models/userSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
-import { comparePassword } from "../utils/password.utils.js";
+import { comparePassword, hashPassword } from "../utils/password.utils.js";
 import { generateAuthTokens, verifyRefreshToken } from "../utils/token.utils.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { setDbCredentials } from "../config/mssql.config.js";
 import { env } from "../config/env.config.js";
+import { MerkezGirisService } from "./merkezGiris.service.js";
+import { ESKI_SIFRE_ISARETI } from "../types/admin.types.js";
+import { sifreDogrula } from "../utils/sifre.utils.js";
+import { OturumService } from "./oturum.service.js";
 export class AuthService {
-    static async login(input) {
+    static async login(input, istemci = { ip: "", tarayici: "" }) {
         const mode = input.mode === "local" ? "local" : "cloud";
         let targetServer = "";
         let targetDb = "";
@@ -44,6 +48,10 @@ export class AuthService {
             targetDbUser = rawDbUser || "sa";
             targetDbPassword = rawDbPassword;
         }
+        // Merkez kontrolü (MERKEZ_GIRIS=zorunlu): firma kayıtlı, aktif ve lisanslı değilse veritabanına hiç gidilmez
+        const merkezFirma = MerkezGirisService.aktifMi()
+            ? await MerkezGirisService.firmaKontrol(targetServer, targetDb, input.username, istemci)
+            : null;
         // Dinamik bağlantı havuzuna hedef sunucu kimlik bilgilerini kaydet
         setDbCredentials(targetServer, targetDb, targetDbUser, targetDbPassword);
         const dbContext = {
@@ -52,7 +60,18 @@ export class AuthService {
             dbUser: targetDbUser,
             dbPassword: targetDbPassword,
         };
+        if (merkezFirma)
+            await MerkezGirisService.havuzDogrula(targetServer, targetDb, targetDbUser, targetDbPassword);
         const user = await UserSqlRepository.findByUsername(input.username, dbContext);
+        if (merkezFirma) {
+            // Şifre ve kullanıcı durumu merkezde doğrulanır; firma veritabanındaki satır yalnızca operasyonel alanlar içindir
+            const kullanici = await MerkezGirisService.kullaniciDogrula(merkezFirma, input.username, input.password, user?.passwordHash || user?.password || null, istemci);
+            if (!user) {
+                throw ApiError.unauthorized("Kullanıcı firma veritabanında bulunamadı. Lütfen hizmet sağlayıcınızla iletişime geçiniz.");
+            }
+            const sid = await OturumService.ac(kullanici.kullaniciId, merkezFirma.firmaId, istemci);
+            return this.oturumAc(user, dbContext, await MerkezGirisService.oturumBilgisi({ firma: merkezFirma, kullanici }), sid);
+        }
         if (!user) {
             throw ApiError.unauthorized(ResponseMessages.INVALID_CREDENTIALS);
         }
@@ -75,6 +94,9 @@ export class AuthService {
         if (!isPasswordValid) {
             throw ApiError.unauthorized(ResponseMessages.INVALID_CREDENTIALS);
         }
+        return this.oturumAc(user, dbContext);
+    }
+    static oturumAc(user, dbContext, merkez, sid) {
         const tokens = generateAuthTokens({
             userId: user.id,
             username: user.username,
@@ -84,9 +106,10 @@ export class AuthService {
             dbName: dbContext.dbName,
             dbUser: dbContext.dbUser,
             dbPassword: dbContext.dbPassword,
+            ...(sid && { sid }),
         });
         return {
-            user: UserSqlRepository.toDto(user),
+            user: { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }) },
             tokens,
         };
     }
@@ -193,6 +216,7 @@ export class AuthService {
                 cashierCode: user.cashierCode,
                 dbServer: decoded.dbServer,
                 dbName: decoded.dbName,
+                ...(decoded.sid && { sid: decoded.sid }),
             });
             return newTokens;
         }
@@ -200,14 +224,42 @@ export class AuthService {
             throw ApiError.unauthorized("Oturum yenileme başarısız. Lütfen tekrar giriş yapınız.");
         }
     }
-    static async logout(userId) {
-        // Stateless JWT token handling
+    static async logout(userId, sid) {
+        // JWT durumsuzdur; merkez açıksa oturum kaydı kapatılır ve token bir daha kabul edilmez
+        await OturumService.bitir(sid);
     }
     static async getProfile(userId, dbContext) {
         const user = await UserSqlRepository.findById(userId, dbContext);
         if (!user) {
             throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
         }
-        return UserSqlRepository.toDto(user);
+        // Merkez açıksa: firma dondurulmuş/pasif/lisansı bitmiş ya da kullanıcı kapatılmışsa 401 → istemci girişe döner
+        const baglam = await MerkezGirisService.baglam({ ...dbContext, username: user.username });
+        return { ...UserSqlRepository.toDto(user), ...(baglam && { merkez: await MerkezGirisService.oturumBilgisi(baglam) }) };
+    }
+    /**
+     * Kullanıcının kendi şifresini değiştirmesi. Merkez açıksa şifre merkezde (bcrypt) doğrulanır ve yazılır,
+     * ilk girişteki zorunlu değişim de buradan geçer; kapalıysa yalnızca firma veritabanındaki alan güncellenir.
+     */
+    static async changePassword(oturum, girdi) {
+        const dbContext = { dbServer: oturum.dbServer, dbName: oturum.dbName };
+        const user = await UserSqlRepository.findById(oturum.userId, dbContext);
+        if (!user)
+            throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
+        MerkezGirisService.sifreKuraliniDenetle(girdi.newPassword);
+        if (girdi.newPassword === girdi.currentPassword) {
+            throw ApiError.badRequest("Yeni şifre mevcut şifreyle aynı olamaz.");
+        }
+        const baglam = await MerkezGirisService.baglam({ ...dbContext, username: user.username });
+        const mevcutDogru = baglam && baglam.kullanici.sifreHash !== ESKI_SIFRE_ISARETI
+            ? await sifreDogrula(girdi.currentPassword, baglam.kullanici.sifreHash)
+            : await comparePassword(girdi.currentPassword, user.passwordHash || user.password || "");
+        if (!mevcutDogru)
+            throw ApiError.badRequest("Mevcut şifre hatalı.");
+        const ozet = baglam
+            ? await MerkezGirisService.sifreYaz(baglam.kullanici.kullaniciId, girdi.newPassword, false)
+            : await hashPassword(girdi.newPassword);
+        await UserSqlRepository.updatePassword(user.id, ozet, dbContext);
+        OturumService.onbellegiTemizle(); // "şifre değişmeli" kilidi hemen kalksın
     }
 }

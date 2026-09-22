@@ -30,6 +30,10 @@ import ayarRoutes from "./ayar.routes.js";
 import perakendeRoutes from "./perakende.routes.js";
 import adminRoutes from "./admin.routes.js";
 import sayimRoutes from "./sayim.routes.js";
+import iskontoRoutes from "./iskonto.routes.js";
+import ebankaRoutes from "./ebanka.routes.js";
+import { EBankaController } from "../controllers/ebanka.controller.js";
+import { DONUS_YOLU } from "../services/ebankaVposOdeme.service.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { modulKapisi } from "../middlewares/modul.middleware.js";
 

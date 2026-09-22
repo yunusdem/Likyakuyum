@@ -55,3 +55,10 @@ export const refreshTokenSchema = z.object({
         refreshToken: z.string().min(1, "Refresh token zorunludur"),
     }),
 });
+// Şifre kuralı (8+ karakter, harf + rakam) serviste sifreKuralHatasi ile denetlenir.
+export const changePasswordSchema = z.object({
+    body: z.object({
+        currentPassword: z.string().min(1, "Mevcut şifre girilmelidir").max(200),
+        newPassword: z.string().min(1, "Yeni şifre girilmelidir").max(200),
+    }),
+});

@@ -758,6 +758,18 @@ export class UserSqlRepository {
         }
     }
     /**
+     * Yalnızca SIFRE alanını yazar (şifre değiştirme / sıfırlama). Değer, password.utils hashPassword özetidir.
+     */
+    static async updatePassword(id, sifreOzeti, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        const result = await pool
+            .request()
+            .input("userId", sql.Int, toInt(id))
+            .input("SIFRE", sql.VarChar(30), (sifreOzeti || "").slice(0, 30))
+            .query(`UPDATE [dbo].[TODVZ_KULLANICI] SET [SIFRE] = @SIFRE WHERE [KULLANICI_ID] = @userId`);
+        return (result.rowsAffected?.[0] || 0) > 0;
+    }
+    /**
      * Converts a UserModel into safe UserResponseDto
      */
     static toDto(user) {

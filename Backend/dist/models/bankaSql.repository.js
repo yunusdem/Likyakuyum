@@ -763,6 +763,16 @@ export class BankaSqlRepository {
             const headReq = new sql.Request(transaction);
             headReq.input("ID", sql.Int, bankaHareketId);
             await headReq.query(`DELETE FROM TODVZ_BANKA_HAREKET WHERE BANKA_HAREKET_ID = @ID`);
+            // e-Banka: Vomsis'ten otomatik kesilmiş fiş silinirse hareket "aktarılmayacak" olur, kendiliğinden yeniden fiş kesilmez (docs/EBANKA_VOMSIS_YOL_HARITASI.md, E23)
+            const ebankaReq = new sql.Request(transaction);
+            ebankaReq.input("ID", sql.Int, bankaHareketId);
+            await ebankaReq.query(`
+        IF OBJECT_ID('TODVZ_EBANKA_HAREKET', 'U') IS NOT NULL
+          UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = 2, BANKA_HAREKET_ID = NULL WHERE BANKA_HAREKET_ID = @ID;
+        -- POS satırlarından elle kesilmiş fiş silinirse satırlar yeniden fişlenebilir olur (E21)
+        IF OBJECT_ID('TODVZ_EBANKA_POS_HAREKET', 'U') IS NOT NULL
+          UPDATE TODVZ_EBANKA_POS_HAREKET SET BANKA_HAREKET_ID = NULL WHERE BANKA_HAREKET_ID = @ID;
+      `);
             await transaction.commit();
             return true;
         }
@@ -785,7 +795,11 @@ export class BankaSqlRepository {
         IPTAL_TARIHI = CASE WHEN @IPTAL = 1 THEN GETDATE() ELSE NULL END,
         GUNCELLEYEN_ID = @KULLANICI_ID,
         GUNCELLEME_ZAMANI = GETDATE()
-      WHERE BANKA_HAREKET_ID = @ID
+      WHERE BANKA_HAREKET_ID = @ID;
+
+      -- e-Banka: Vomsis'ten kesilmiş fiş iptal edilince hareket "aktarılmayacak" olur; iptal geri alınırsa yeniden "aktarıldı" (E23)
+      IF OBJECT_ID('TODVZ_EBANKA_HAREKET', 'U') IS NOT NULL
+        UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = CASE WHEN @IPTAL = 1 THEN 2 ELSE 1 END WHERE BANKA_HAREKET_ID = @ID;
     `);
         return true;
     }

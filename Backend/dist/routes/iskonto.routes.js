@@ -1,0 +1,10 @@
+import { Router } from "express";
+import { IskontoController } from "../controllers/iskonto.controller.js";
+import { authenticate } from "../middlewares/auth.middleware.js";
+const router = Router();
+router.use(authenticate);
+router.get("/", IskontoController.listIskontolar);
+router.get("/:id", IskontoController.getIskontoById);
+router.post("/", IskontoController.saveIskonto);
+router.delete("/:id", IskontoController.deleteIskonto);
+export default router;
