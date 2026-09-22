@@ -158,7 +158,7 @@ export const EBankaPosPage: React.FC = () => {
             <ModRozeti mod={ozet?.mod} />
             <Button size="sm" variant="primary" onClick={() => setEsitlemeAcik(true)}>
               <IconRefresh size={16} className="me-1" />
-              Vomsis'ten Güncelle
+              Bankadan Güncelle
             </Button>
           </div>
         }
@@ -397,7 +397,7 @@ export const EBankaPosPage: React.FC = () => {
                 {!ozet?.terminaller.length && (
                   <tr>
                     <td colSpan={8} className="text-center text-muted py-3">
-                      Terminal yok. "Vomsis'ten Güncelle" ile çekin.
+                      Terminal yok. "Bankadan Güncelle" ile çekin.
                     </td>
                   </tr>
                 )}
@@ -487,7 +487,7 @@ export const EBankaPosPage: React.FC = () => {
         sonEsitleme={ozet?.sonEsitleme ?? null}
         varsayilanGun={14}
         calistir={(bas, bit) => EBankaService.posEsitle(bas, bit)}
-        aciklama="POS terminalleri ve seçilen aralıktaki POS hareketleri çekilir (Vomsis 14 günlük dilimlerle verir; uzun aralık uzun sürer). Daha önce çekilmiş hareketler yeniden eklenmez."
+        aciklama="POS terminalleri ve seçilen aralıktaki POS hareketleri çekilir (banka 14 günlük dilimlerle verir; uzun aralık uzun sürer). Daha önce çekilmiş hareketler yeniden eklenmez."
         onHide={() => setEsitlemeAcik(false)}
         onBitti={(s) => {
           setEsitlemeAcik(false);

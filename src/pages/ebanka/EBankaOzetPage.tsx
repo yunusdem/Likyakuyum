@@ -47,7 +47,7 @@ export const EBankaOzetPage: React.FC = () => {
             <ModRozeti mod={ozet?.mod} />
             <Button size="sm" variant="primary" onClick={() => setEsitlemeAcik(true)}>
               <IconRefresh size={16} className="me-1" />
-              Vomsis'ten Güncelle
+              Bankadan Güncelle
             </Button>
           </div>
         }
@@ -56,7 +56,7 @@ export const EBankaOzetPage: React.FC = () => {
 
       {ozet && ozet.hesaplar.length === 0 && !yukleniyor && (
         <Alert variant="light" className="border small">
-          Henüz veri çekilmedi. <b>Vomsis'ten Güncelle</b> ile bankaları, hesapları ve hareketleri çekin.
+          Henüz veri çekilmedi. <b>Bankadan Güncelle</b> ile bankaları, hesapları ve hareketleri çekin.
         </Alert>
       )}
 
@@ -89,7 +89,7 @@ export const EBankaOzetPage: React.FC = () => {
 
       {!!ozet?.eslesmeyenHesapAdedi && (
         <Alert variant="warning" className="small py-2">
-          {ozet.eslesmeyenHesapAdedi} Vomsis hesabı bir Banka Hesap Kartı ile eşleşmedi. Eşleşmeyen hesabın hareketleri fişe aktarılmaz.{" "}
+          {ozet.eslesmeyenHesapAdedi} banka hesabı bir Banka Hesap Kartı ile eşleşmedi. Eşleşmeyen hesabın hareketleri fişe aktarılmaz.{" "}
           <Link to="/ebanka/hesaplar">Hesaplar ekranından eşleyin.</Link>
         </Alert>
       )}

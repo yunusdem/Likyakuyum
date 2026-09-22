@@ -52,11 +52,11 @@ const vomsisHatasi = (durum: number, govde: any): ApiError => {
   if (durum === 401 || durum === 403) {
     return new ApiError(
       HttpStatus.BAD_GATEWAY,
-      `Vomsis isteği reddetti (${durum}). API anahtarı/şifresi hatalı olabilir ya da sunucunun IP adresi Vomsis panelindeki API uygulamasına tanımlı değildir.${ek ? ` Vomsis: ${ek}` : ""}`
+      `Banka servisi isteği reddetti (${durum}). API anahtarı/şifresi hatalı olabilir ya da sunucunun IP adresi servis panelindeki API uygulamasına tanımlı değildir.${ek ? ` Servis: ${ek}` : ""}`
     );
   }
-  if (durum === 429) return new ApiError(HttpStatus.BAD_GATEWAY, "Vomsis çağrı sınırına takıldı (servisler 5 dakikada bir çağrılabilir). Biraz sonra yeniden deneyin.");
-  return new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis hata döndürdü (${durum}).${ek ? ` ${ek}` : ""}`);
+  if (durum === 429) return new ApiError(HttpStatus.BAD_GATEWAY, "Banka servisi çağrı sınırına takıldı (servisler 5 dakikada bir çağrılabilir). Biraz sonra yeniden deneyin.");
+  return new ApiError(HttpStatus.BAD_GATEWAY, `Banka servisi hata döndürdü (${durum}).${ek ? ` ${ek}` : ""}`);
 };
 
 const httpIstek = async (url: string, metod: string, token: string | null, govde?: unknown): Promise<{ durum: number; veri: any }> => {
@@ -82,8 +82,8 @@ const httpIstek = async (url: string, metod: string, token: string | null, govde
     }
     return { durum: yanit.status, veri };
   } catch (err: any) {
-    if (err?.name === "AbortError") throw new ApiError(HttpStatus.BAD_GATEWAY, "Vomsis yanıt vermedi (zaman aşımı).");
-    throw new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis'e ulaşılamadı: ${err?.message || err}`);
+    if (err?.name === "AbortError") throw new ApiError(HttpStatus.BAD_GATEWAY, "Banka servisi yanıt vermedi (zaman aşımı).");
+    throw new ApiError(HttpStatus.BAD_GATEWAY, `Banka servisine ulaşılamadı: ${err?.message || err}`);
   } finally {
     clearTimeout(zamanlayici);
   }
@@ -96,9 +96,9 @@ export class VomsisClient {
     const ayriVpos = servis === "vpos" && ayar?.vposAppKey;
     const appKey = ayriVpos ? ayar!.vposAppKey : ayar?.appKey;
     const sifreli = ayriVpos ? ayar!.vposAppSecretSifreli : ayar?.appSecretSifreli;
-    if (!appKey || !sifreli) throw ApiError.badRequest("Vomsis API anahtarı tanımlı değil. F- e-Banka > Ayarlar ekranından girin.");
+    if (!appKey || !sifreli) throw ApiError.badRequest("API anahtarı tanımlı değil. F- e-Banka > Ayarlar ekranından girin.");
     const appSecret = sifreCoz(sifreli);
-    if (!appSecret) throw ApiError.badRequest("Kayıtlı Vomsis API şifresi çözülemedi (sunucu şifreleme anahtarı değişmiş olabilir). Şifreyi yeniden girin.");
+    if (!appSecret) throw ApiError.badRequest("Kayıtlı API şifresi çözülemedi (sunucu şifreleme anahtarı değişmiş olabilir). Şifreyi yeniden girin.");
     return { appKey, appSecret };
   }
 
@@ -127,7 +127,7 @@ export class VomsisClient {
 
     if (!ayar || ayar.mod === "sahte") {
       const yanit = sahteYanit(servis, metod, yol, secenek.sorgu, secenek.govde);
-      if (yanit === undefined) throw new ApiError(HttpStatus.NOT_IMPLEMENTED, `Bu Vomsis ucu test (örnek veri) modunda henüz yok: ${metod} ${yol}`);
+      if (yanit === undefined) throw new ApiError(HttpStatus.NOT_IMPLEMENTED, `Bu servis ucu test (örnek veri) modunda henüz yok: ${metod} ${yol}`);
       return yanit as T;
     }
 
@@ -154,7 +154,7 @@ export class VomsisClient {
     if (!ayar || ayar.mod === "sahte") {
       if (servis === "vpos") return { mod: "sahte", ayrinti: `Test modu: Sanal POS örnek veriyle çalışır (${SAHTE_TOKEN}).` };
       const { banks } = await this.istek<{ banks: unknown[] }>("banka", "/banks", {}, dbContext);
-      return { mod: "sahte", ayrinti: `Test modu: örnek veriden ${banks.length} banka okundu. Vomsis'e istek gönderilmedi.` };
+      return { mod: "sahte", ayrinti: `Test modu: örnek veriden ${banks.length} banka okundu. Banka servisine istek gönderilmedi.` };
     }
     await EBankaSqlRepository.tokenYaz(servis, null, null, dbContext);
     await this.girisYap(servis, dbContext);

@@ -86,7 +86,7 @@ export const EBankaTipKurallari: React.FC<{ bildir: (type: BildirimTuru, message
               {satirlar.length === 0 && (
                 <tr>
                   <td colSpan={3} className="text-center text-muted py-3">
-                    Hareket tipleri ilk "Vomsis'ten Güncelle" ile gelir.
+                    Hareket tipleri ilk "Bankadan Güncelle" ile gelir.
                   </td>
                 </tr>
               )}

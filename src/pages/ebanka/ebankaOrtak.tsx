@@ -118,7 +118,7 @@ export function EsitlemeModal<T = EBankaEsitlemeSonucu>({
   return (
     <Modal show={show} onHide={calisiyor ? undefined : onHide} centered backdrop={calisiyor ? "static" : true}>
       <Modal.Header closeButton={!calisiyor} className="py-2">
-        <Modal.Title className="fs-6 fw-bold">Vomsis'ten Güncelle</Modal.Title>
+        <Modal.Title className="fs-6 fw-bold">Bankadan Güncelle</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         <Row className="g-2">

@@ -138,7 +138,7 @@ export const EBankaHesaplarPage: React.FC = () => {
               {hesaplar.length === 0 && !yukleniyor && (
                 <tr>
                   <td colSpan={9} className="text-center text-muted py-3">
-                    Hesap yok. Özet ekranından "Vomsis'ten Güncelle" ile çekin.
+                    Hesap yok. Özet ekranından "Bankadan Güncelle" ile çekin.
                   </td>
                 </tr>
               )}

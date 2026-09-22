@@ -127,12 +127,12 @@ export class EBankaVposService {
       },
       dbContext
     );
-    if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis ödeme linkini oluşturmadı: ${yanit.message || "bilinmeyen hata"}`);
+    if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `Ödeme linki oluşturulamadı: ${yanit.message || "bilinmeyen hata"}`);
 
     // Oluşturma yanıtının biçimi dokümanda yok; uid olası yerlerde aranır
     const d = yanit?.requestDetail || yanit?.data || yanit?.item || yanit || {};
     const uid = kirp(d.uid) || kirp(d.payment_uid) || kirp(yanit?.uid) || kirp(yanit?.payment_uid);
-    if (!uid) throw new ApiError(HttpStatus.BAD_GATEWAY, "Vomsis ödeme linkini oluşturdu ama kimliğini (uid) döndürmedi. Vomsis panelinden kontrol edin.");
+    if (!uid) throw new ApiError(HttpStatus.BAD_GATEWAY, "Ödeme linki oluşturuldu ama kimliği (uid) dönmedi. Servis panelinden kontrol edin.");
 
     let link = kirp(d.payment_info?.link) || kirp(d.link) || null;
     let durum = kirp(d.status) || kirp(d.durum) || null;
@@ -223,7 +223,7 @@ export class EBankaVposService {
     if (!l) throw ApiError.notFound("Ödeme linki bulunamadı.");
     if (l.odendi) throw ApiError.conflict("Ödenmiş link silinemez.");
     const yanit = await VomsisClient.istek("vpos", `/request-payment/${encodeURIComponent(uid)}`, { metod: "DELETE" }, dbContext);
-    if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis linki silmedi: ${yanit.message || "bilinmeyen hata"}`);
+    if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `Link silinemedi: ${yanit.message || "bilinmeyen hata"}`);
     await EBankaVposSqlRepository.linkSilindiYaz(uid, dbContext);
     await EBankaSqlRepository.logYaz({ islem: "vpos-link-sil", mod: (await this.ayar(dbContext)).mod, basarili: true, mesaj: l.baslik || uid, kullaniciId }, dbContext);
   }
@@ -241,7 +241,7 @@ export class EBankaVposService {
     const { mod } = await this.ayar(dbContext);
     try {
       const yanit = await VomsisClient.istek("vpos", "/transactions-list", { sorgu: { status: "" } }, dbContext);
-      if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis işlem listesini vermedi: ${yanit.message || "bilinmeyen hata"}`);
+      if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `İşlem listesi alınamadı: ${yanit.message || "bilinmeyen hata"}`);
       const satirlar = Array.isArray(yanit?.data) ? yanit.data : Array.isArray(yanit?.data?.data) ? yanit.data.data : [];
       const adet = await EBankaVposSqlRepository.islemleriYaz(satirlar, dbContext);
       await EBankaSqlRepository.logYaz({ islem: "vpos-islem-guncelle", mod, basarili: true, adet, mesaj: `${adet} Sanal POS işlemi`, kullaniciId }, dbContext);
@@ -261,7 +261,7 @@ export class EBankaVposService {
     const yerel = await EBankaVposSqlRepository.islemGetir(referansNo, dbContext);
     // Vomsis dokümanı bu GET ucunda referanceNo'yu gövdede gösteriyor; GET gövdesi gönderilemediği için sorgu parametresi olarak verilir
     const yanit = await VomsisClient.istek("vpos", "/transaction/find", { sorgu: { referanceNo: referansNo } }, dbContext).catch((err: any) => ({ success: false, message: err?.message }));
-    return { yerel, vomsis: yanit?.success === false ? null : yanit?.data ?? null, vomsisHatasi: yanit?.success === false ? yanit.message || "Vomsis detay vermedi." : null };
+    return { yerel, vomsis: yanit?.success === false ? null : yanit?.data ?? null, vomsisHatasi: yanit?.success === false ? yanit.message || "Servis detay vermedi." : null };
   }
 
   /** İptal (cancel) ya da kısmi/tam iade (refund). Muhasebe: E25. */

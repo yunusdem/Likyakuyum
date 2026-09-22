@@ -118,7 +118,7 @@ export const EBankaHareketlerPage: React.FC = () => {
         rightContent={
           <Button size="sm" variant="primary" onClick={() => setEsitlemeAcik(true)}>
             <IconRefresh size={16} className="me-1" />
-            Vomsis'ten Güncelle
+            Bankadan Güncelle
           </Button>
         }
       />
@@ -313,9 +313,9 @@ export const EBankaHareketlerPage: React.FC = () => {
                 <DetaySatiri ad="Ödeyen VKN" deger={secili.odeyenVkn} mono />
                 <DetaySatiri ad="Fiş No" deger={secili.fisNo} mono />
                 <DetaySatiri ad="Evrak No" deger={secili.evrakNo} mono />
-                <DetaySatiri ad="Vomsis Notu" deger={secili.notu} />
-                <DetaySatiri ad="Vomsis Etiketleri" deger={secili.etiketler} />
-                <DetaySatiri ad="Vomsis No" deger={secili.vomsisId} mono />
+                <DetaySatiri ad="Servis Notu" deger={secili.notu} />
+                <DetaySatiri ad="Servis Etiketleri" deger={secili.etiketler} />
+                <DetaySatiri ad="Hareket No" deger={secili.vomsisId} mono />
                 <DetaySatiri ad="Aktarım" deger={AKTARIM[secili.aktarimDurumu].ad + (secili.bankaHareketId ? ` — Banka fişi #${secili.bankaHareketId}` : "")} />
               </tbody>
             </Table>

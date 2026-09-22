@@ -50,7 +50,7 @@ export class EBankaEsitlemeService {
     if (mod === "canli") {
       const gecen = await EBankaVeriSqlRepository.sonEsitlemedenBeriSaniye(dbContext);
       if (gecen !== null && gecen >= 0 && gecen < BES_DAKIKA_SN) {
-        throw new ApiError(HttpStatus.TOO_MANY_REQUESTS, `Vomsis 5 dakikada bir sorgulanabilir. ${BES_DAKIKA_SN - gecen} saniye sonra yeniden deneyin.`);
+        throw new ApiError(HttpStatus.TOO_MANY_REQUESTS, `Banka servisi 5 dakikada bir sorgulanabilir. ${BES_DAKIKA_SN - gecen} saniye sonra yeniden deneyin.`);
       }
     }
 
@@ -68,7 +68,7 @@ export class EBankaEsitlemeService {
         { sorgu: { beginDate: vomsisTarihi(baslangic, "00:00:00"), endDate: vomsisTarihi(bitis, "23:59:59") } },
         dbContext
       );
-      if (yanit?.status && yanit.status !== "success") throw new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis hareketleri vermedi: ${yanit.message || yanit.status}`);
+      if (yanit?.status && yanit.status !== "success") throw new ApiError(HttpStatus.BAD_GATEWAY, `Banka servisi hareketleri vermedi: ${yanit.message || yanit.status}`);
       const hareketler = dizi<VomsisHareket>(yanit?.transactions);
 
       await EBankaVeriSqlRepository.bankalariYaz(bankalar, dbContext);

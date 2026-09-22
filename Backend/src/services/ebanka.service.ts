@@ -75,7 +75,7 @@ export class EBankaService {
       const posTemiz = await EBankaPosSqlRepository.fisliSatirYok(dbContext);
       const vposTemiz = await EBankaVposSqlRepository.fisliKayitYok(dbContext);
       if (!posTemiz || !vposTemiz || !(await EBankaVeriSqlRepository.aynayiBosalt(dbContext))) {
-        throw ApiError.conflict("Fişe aktarılmış Vomsis hareketleri varken çalışma modu değiştirilemez.");
+        throw ApiError.conflict("Fişe aktarılmış banka hareketleri varken çalışma modu değiştirilemez.");
       }
       await EBankaPosSqlRepository.aynayiBosalt(dbContext);
       await EBankaVposSqlRepository.aynayiBosalt(dbContext);
@@ -151,9 +151,9 @@ export class EBankaService {
   public static async hesapEsle(vomsisHesapId: number, bankaId: number | null, dbContext?: DbContext): Promise<EBankaHesap[]> {
     if (!Number.isInteger(vomsisHesapId) || vomsisHesapId <= 0) throw ApiError.badRequest("Geçersiz hesap.");
     const sonuc = await EBankaVeriSqlRepository.hesapEsle(vomsisHesapId, bankaId, dbContext);
-    if (sonuc === "hesap-yok") throw ApiError.notFound("Vomsis hesabı bulunamadı.");
+    if (sonuc === "hesap-yok") throw ApiError.notFound("Banka hesabı bulunamadı.");
     if (sonuc === "kart-yok") throw ApiError.badRequest("Seçilen Banka Hesap Kartı bulunamadı.");
-    if (sonuc === "kart-dolu") throw ApiError.conflict("Bu Banka Hesap Kartı başka bir Vomsis hesabına bağlı.");
+    if (sonuc === "kart-dolu") throw ApiError.conflict("Bu Banka Hesap Kartı başka bir banka hesabına bağlı.");
     return EBankaVeriSqlRepository.hesaplariListele(dbContext);
   }
 

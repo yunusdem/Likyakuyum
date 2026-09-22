@@ -115,7 +115,7 @@ export const EBankaVposIslemlerPage: React.FC = () => {
       setMusteriler(await EBankaService.getVomsisMusterileri());
     } catch (err: any) {
       setMusteriler([]);
-      bildir("danger", err?.message || "Vomsis müşterileri okunamadı.");
+      bildir("danger", err?.message || "Sanal POS müşterileri okunamadı.");
     }
   };
 
@@ -139,7 +139,7 @@ export const EBankaVposIslemlerPage: React.FC = () => {
             <ModRozeti mod={mod} />
             <Button size="sm" variant="primary" disabled={guncelleniyor} onClick={guncelle}>
               {guncelleniyor ? <Spinner size="sm" className="me-1" /> : <IconRefresh size={16} className="me-1" />}
-              Vomsis'ten Güncelle
+              Bankadan Güncelle
             </Button>
           </div>
         }
@@ -153,7 +153,7 @@ export const EBankaVposIslemlerPage: React.FC = () => {
             onSec={(k) => (k === "musteriler" ? musterileriAc() : setGorunum("islemler"))}
             secenekler={[
               { anahtar: "islemler", ad: "İşlemler" },
-              { anahtar: "musteriler", ad: "Vomsis Müşterileri" },
+              { anahtar: "musteriler", ad: "Sanal POS Müşterileri" },
             ]}
           />
         </Card.Header>
@@ -242,7 +242,7 @@ export const EBankaVposIslemlerPage: React.FC = () => {
                   {islemler.length === 0 && !yukleniyor && (
                     <tr>
                       <td colSpan={9} className="text-center text-muted py-3">
-                        İşlem yok. "Vomsis'ten Güncelle" ile çekin.
+                        İşlem yok. "Bankadan Güncelle" ile çekin.
                       </td>
                     </tr>
                   )}
@@ -257,7 +257,7 @@ export const EBankaVposIslemlerPage: React.FC = () => {
             <Table size="sm" hover responsive className="mb-0 small align-middle">
               <thead className="table-light">
                 <tr>
-                  <th style={{ width: "90px" }}>Vomsis No</th>
+                  <th style={{ width: "90px" }}>Müşteri No</th>
                   <th>Ünvan</th>
                   <th>E-posta</th>
                   <th className="text-end">Fatura Bilgisi</th>
@@ -275,7 +275,7 @@ export const EBankaVposIslemlerPage: React.FC = () => {
                 {(!musteriler || musteriler.length === 0) && (
                   <tr>
                     <td colSpan={4} className="text-center text-muted py-3">
-                      {musteriler ? "Vomsis'te kayıtlı müşteri yok." : "Yükleniyor…"}
+                      {musteriler ? "Sanal POS'ta kayıtlı müşteri yok." : "Yükleniyor…"}
                     </td>
                   </tr>
                 )}
@@ -305,7 +305,7 @@ export const EBankaVposIslemlerPage: React.FC = () => {
                   ["Vade Farkı Oranı", detay?.vomsis?.installmentRatio && Number(detay.vomsis.installmentRatio) ? `%${detay.vomsis.installmentRatio}` : null],
                   ["Kart", [secili.kartNo, secili.kartBanka, secili.kartAilesi].filter(Boolean).join(" · ")],
                   ["Sanal POS", secili.posAdi],
-                  ["Vomsis Durumu", detay?.vomsis?.status],
+                  ["Servis Durumu", detay?.vomsis?.status],
                   ["Hata", [secili.hataKodu && secili.hataKodu !== "00" ? secili.hataKodu : null, secili.hataMesaji].filter(Boolean).join(" ")],
                   ["İade Tutarı", secili.iadeTutar ? paraYaz(secili.iadeTutar) : null],
                   ["Tahsilat Fişi", secili.bankaHareketId && secili.bankaHareketId > 0 ? `#${secili.bankaHareketId}` : null],
@@ -322,10 +322,10 @@ export const EBankaVposIslemlerPage: React.FC = () => {
                   </React.Fragment>
                 ))}
             </Row>
-            {!detay && <div className="text-muted mt-2">Vomsis'ten detay alınıyor…</div>}
+            {!detay && <div className="text-muted mt-2">Detay alınıyor…</div>}
             {detay?.vomsisHatasi && (
               <Alert variant="light" className="border py-1 mt-2 mb-0">
-                Vomsis detayı alınamadı: {detay.vomsisHatasi}
+                Detay alınamadı: {detay.vomsisHatasi}
               </Alert>
             )}
 

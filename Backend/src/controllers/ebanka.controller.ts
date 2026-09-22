@@ -228,7 +228,7 @@ export class EBankaController {
   });
 
   public static vposMusteriler = asyncHandler(async (req: Request, res: Response) => {
-    return ApiResponse.ok(res, "Vomsis müşterileri listelendi.", await EBankaVposService.vomsisMusterileri(EBankaController.getDbContext(req)));
+    return ApiResponse.ok(res, "Sanal POS müşterileri listelendi.", await EBankaVposService.vomsisMusterileri(EBankaController.getDbContext(req)));
   });
 
   // ─── Sanal POS: kartla ödeme (3D Secure) ───────────────────────────────────

@@ -216,7 +216,7 @@ export const EBankaOdemeLinkleriPage: React.FC = () => {
                     <div className="text-muted">{[l.telefon, l.eposta].filter(Boolean).join(" · ")}</div>
                   </td>
                   <td>
-                    <Badge bg={l.odendi ? "success" : "secondary"} title={l.durum ? `Vomsis durumu: ${l.durum}` : undefined}>
+                    <Badge bg={l.odendi ? "success" : "secondary"} title={l.durum ? `Servis durumu: ${l.durum}` : undefined}>
                       {l.odendi ? "Ödendi" : "Bekliyor"}
                     </Badge>
                   </td>

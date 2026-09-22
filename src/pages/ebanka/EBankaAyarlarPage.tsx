@@ -15,7 +15,7 @@ const ETIKET_SINIFI = "small fw-bold text-secondary text-start";
 const ISLEM_ADLARI: Record<string, string> = {
   "baglanti-testi": "Bağlantı testi",
   "baglanti-testi-vpos": "Bağlantı testi (Sanal POS)",
-  esitleme: "Vomsis'ten güncelleme",
+  esitleme: "Bankadan güncelleme",
   aktarim: "Banka fişine aktarım",
   "pos-esitleme": "POS güncelleme",
   "pos-fis": "POS'tan banka fişi",
@@ -151,7 +151,7 @@ export const EBankaAyarlarPage: React.FC = () => {
         hideNavigation
         hidePrint
         disabled={!!mesgul}
-        modeText="Vomsis Açık Bankacılık"
+        modeText="Açık Bankacılık"
         rightContent={
           ayar && (
             <Badge bg={ayar.mod === "canli" ? "success" : "warning"} text={ayar.mod === "canli" ? undefined : "dark"} className="px-2 py-1 fs-7">
@@ -324,8 +324,8 @@ export const EBankaAyarlarPage: React.FC = () => {
           </div>
 
           <Alert variant="light" className="border small mt-3 mb-0 py-2">
-            Vomsis yalnızca kendi panelinde <b>Ayarlar &gt; API Ayarları</b> altında tanımlı IP adreslerinden gelen istekleri kabul eder. Canlı moda
-            geçmeden önce bu programın çalıştığı sunucunun sabit IP adresini Vomsis'teki API uygulamanıza ekleyin.
+            Banka servisi yalnızca kendi panelinde <b>Ayarlar &gt; API Ayarları</b> altında tanımlı IP adreslerinden gelen istekleri kabul eder. Canlı moda
+            geçmeden önce bu programın çalıştığı sunucunun sabit IP adresini servis panelindeki API uygulamanıza ekleyin.
           </Alert>
         </Card.Body>
       </Card>

@@ -85,7 +85,7 @@ export const EBankaSistemDenetimi: React.FC<{ bankalar: BankaHesapItem[]; bildir
       </Card.Header>
       <Card.Body className="p-0">
         <div className="small text-muted px-3 py-2 border-bottom">
-          Vomsis hesabı gerekmeden bu sunucunun hazır olduğunu denetler: veritabanı ve tablolar, banka fişi altyapısı, para / kur / cari tanımları, ayarlar, sunucudan Vomsis'e erişim
+          Banka servisi hesabı gerekmeden bu sunucunun hazır olduğunu denetler: veritabanı ve tablolar, banka fişi altyapısı, para / kur / cari tanımları, ayarlar, sunucudan banka servisine erişim
           ve 3D Secure dönüş adresi. Hiçbir kayıt değiştirmez.
         </div>
         {sonuclar && (
@@ -103,7 +103,7 @@ export const EBankaSistemDenetimi: React.FC<{ bankalar: BankaHesapItem[]; bildir
           <div className="small fw-bold text-secondary mb-1">Fiş kesme denemesi</div>
           <div className="small text-muted mb-2">
             Otomatik aktarımın kullandığı yoldan, seçtiğiniz banka hesabına <b>0,01 TL'lik bir banka fişi keser, geri okur ve hemen siler</b>. Geriye kayıt kalmaz; yalnızca bir fiş numarası
-            harcanır. Test modunda da çalışır. Bu, Vomsis hesabı olmadan fiş kesme zincirinin bu sunucuda çalıştığının kanıtıdır.
+            harcanır. Test modunda da çalışır. Bu, banka servisi hesabı olmadan fiş kesme zincirinin bu sunucuda çalıştığının kanıtıdır.
           </div>
           <div className="d-flex flex-wrap align-items-center gap-2">
             <Form.Select size="sm" style={{ maxWidth: "340px" }} value={bankaId} onChange={(e) => setBankaId(e.target.value)}>

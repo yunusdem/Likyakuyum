@@ -104,7 +104,7 @@ export class EBankaDenetimService {
 
     await dene("Banka fişi", "Banka Hesap Kartları", async () => {
       const r = (await sorgu(`SELECT COUNT(*) AS N, SUM(CASE WHEN LEN(LTRIM(RTRIM(ISNULL(IBAN, '')))) >= 16 THEN 1 ELSE 0 END) AS IBANLI FROM TODVZ_BANKA`))[0];
-      ekle("Banka fişi", "Banka Hesap Kartları", r.N > 0 ? (r.IBANLI > 0 ? "tamam" : "uyari") : "uyari", r.N > 0 ? `${r.N} kart, ${r.IBANLI || 0} tanesinde IBAN var${r.IBANLI > 0 ? "" : " — IBAN'ı olmayan kart Vomsis hesabıyla kendiliğinden eşleşmez, elle eşlenir"}` : "Hiç Banka Hesap Kartı yok; Vomsis hesapları eşlenemez");
+      ekle("Banka fişi", "Banka Hesap Kartları", r.N > 0 ? (r.IBANLI > 0 ? "tamam" : "uyari") : "uyari", r.N > 0 ? `${r.N} kart, ${r.IBANLI || 0} tanesinde IBAN var${r.IBANLI > 0 ? "" : " — IBAN'ı olmayan kart banka hesabıyla kendiliğinden eşleşmez, elle eşlenir"}` : "Hiç Banka Hesap Kartı yok; banka hesapları eşlenemez");
     });
 
     // ─── Eşleşme verisi ──────────────────────────────────────────────────────
@@ -139,9 +139,9 @@ export class EBankaDenetimService {
 
     // ─── Ayarlar ─────────────────────────────────────────────────────────────
     const ayar = await EBankaSqlRepository.ayarGetir(dbContext).catch(() => null);
-    ekle("Ayarlar", "Çalışma modu", "bilgi", (ayar?.mod ?? "sahte") === "canli" ? "Canlı" : "Test (örnek veri) — Vomsis'e istek gitmez, fiş kesilmez");
-    ekle("Ayarlar", "Şifreleme anahtarı", env.ADMIN_DB_ENC_KEY.length >= 32 ? "tamam" : "hata", env.ADMIN_DB_ENC_KEY.length >= 32 ? "ADMIN_DB_ENC_KEY tanımlı" : "Sunucuda ADMIN_DB_ENC_KEY yok ya da 32 karakterden kısa (Backend/.env.local) — Vomsis API şifresi kaydedilemez");
-    ekle("Ayarlar", "Vomsis API anahtarı", ayar?.appKey && ayar.appSecretSifreli ? "tamam" : "bilgi", ayar?.appKey && ayar.appSecretSifreli ? "Tanımlı" : "Henüz girilmemiş (Test modu için gerekmez)");
+    ekle("Ayarlar", "Çalışma modu", "bilgi", (ayar?.mod ?? "sahte") === "canli" ? "Canlı" : "Test (örnek veri) — banka servisine istek gitmez, fiş kesilmez");
+    ekle("Ayarlar", "Şifreleme anahtarı", env.ADMIN_DB_ENC_KEY.length >= 32 ? "tamam" : "hata", env.ADMIN_DB_ENC_KEY.length >= 32 ? "ADMIN_DB_ENC_KEY tanımlı" : "Sunucuda ADMIN_DB_ENC_KEY yok ya da 32 karakterden kısa (Backend/.env.local) — API şifresi kaydedilemez");
+    ekle("Ayarlar", "Servis API anahtarı", ayar?.appKey && ayar.appSecretSifreli ? "tamam" : "bilgi", ayar?.appKey && ayar.appSecretSifreli ? "Tanımlı" : "Henüz girilmemiş (Test modu için gerekmez)");
     ekle("Ayarlar", "Aktarım başlangıç tarihi", ayar?.aktarimBaslangic ? "tamam" : "uyari", ayar?.aktarimBaslangic ? ayar.aktarimBaslangic.split("-").reverse().join(".") : "Girilmemiş — girilene kadar hiçbir hareket fişe aktarılmaz");
     await dene("Ayarlar", "Sanal POS banka hesabı", async () => {
       if (!ayar?.vposBankaId) return void ekle("Ayarlar", "Sanal POS banka hesabı", "uyari", "Seçilmemiş — Sanal POS tahsilatları için fiş kesilemez");
@@ -157,9 +157,9 @@ export class EBankaDenetimService {
       const t0 = Date.now();
       try {
         const y = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: "{}", signal: kontrol.signal });
-        ekle("Ağ", `Vomsis erişimi — ${ad}`, y.status < 500 ? "tamam" : "uyari", `Sunucudan ulaşılıyor (HTTP ${y.status}, ${Date.now() - t0} ms)${y.status >= 500 ? " — Vomsis tarafında geçici sorun olabilir" : ""}`);
+        ekle("Ağ", `Servis erişimi — ${ad}`, y.status < 500 ? "tamam" : "uyari", `Sunucudan ulaşılıyor (HTTP ${y.status}, ${Date.now() - t0} ms)${y.status >= 500 ? " — servis tarafında geçici sorun olabilir" : ""}`);
       } catch (err: any) {
-        ekle("Ağ", `Vomsis erişimi — ${ad}`, "hata", `Sunucudan ${new URL(url).host} adresine ulaşılamıyor (${err?.name === "AbortError" ? "10 sn'de yanıt yok" : err?.cause?.code || err?.message}) — güvenlik duvarı / DNS / internet çıkışı denetlenmeli`);
+        ekle("Ağ", `Servis erişimi — ${ad}`, "hata", `Sunucudan ${new URL(url).host} adresine ulaşılamıyor (${err?.name === "AbortError" ? "10 sn'de yanıt yok" : err?.cause?.code || err?.message}) — güvenlik duvarı / DNS / internet çıkışı denetlenmeli`);
       } finally {
         clearTimeout(zamanlayici);
       }

@@ -77,7 +77,7 @@ export class EBankaVposOdemeService {
     const b = rakamlar(bin).slice(0, 6);
     if (b.length !== 6) throw ApiError.badRequest("BIN için kart numarasının ilk 6 hanesi gerekir.");
     const yanit = await VomsisClient.istek("vpos", "/bin-check", { metod: "POST", govde: { cc_number: Number(b) } }, dbContext);
-    if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis kart bilgisini vermedi: ${yanit.message || "bilinmeyen hata"}`);
+    if (yanit?.success === false) throw new ApiError(HttpStatus.BAD_GATEWAY, `Kart bilgisi alınamadı: ${yanit.message || "bilinmeyen hata"}`);
     const d = yanit?.data || yanit || {};
     return { kart: d.card_info || null, taksitler: Array.isArray(d.installments) ? d.installments : [] };
   }
@@ -155,7 +155,7 @@ export class EBankaVposOdemeService {
         dbContext
       );
     } catch (err: any) {
-      const mesaj = kartsizMesaj(err?.message) || "Vomsis'e ulaşılamadı";
+      const mesaj = kartsizMesaj(err?.message) || "Banka servisine ulaşılamadı";
       await EBankaVposSqlRepository.odemeSonucuYaz(referansNo, { basarili: false, hataKodu: null, hataMesaji: mesaj, kartBanka: null, posAdi: null }, dbContext);
       await EBankaSqlRepository.logYaz({ islem: "vpos-odeme", mod, basarili: false, mesaj: `${referansNo} ${cari.ad}: ${mesaj}`, kullaniciId }, dbContext);
       throw new ApiError(err?.statusCode || HttpStatus.BAD_GATEWAY, mesaj);
@@ -170,12 +170,12 @@ export class EBankaVposOdemeService {
     else if (d.inputs && typeof d.inputs === "object") alanlar = Object.entries(d.inputs).map(([ad, deger]) => ({ ad, deger: kirp(deger) }));
 
     if (!htmlContent && !gateway) {
-      const mesaj = kartsizMesaj(kirp(d.message) || kirp(d.error_message) || kirp(d.errorMessage)) || "Vomsis 3D Secure yönlendirmesi döndürmedi.";
+      const mesaj = kartsizMesaj(kirp(d.message) || kirp(d.error_message) || kirp(d.errorMessage)) || "3D Secure yönlendirmesi alınamadı.";
       await EBankaVposSqlRepository.odemeSonucuYaz(referansNo, { basarili: false, hataKodu: kirp(d.error_code) || null, hataMesaji: mesaj, kartBanka: null, posAdi: null }, dbContext);
       await EBankaSqlRepository.logYaz({ islem: "vpos-odeme", mod, basarili: false, mesaj: `${referansNo} ${cari.ad}: ${mesaj}`, kullaniciId }, dbContext);
       throw new ApiError(HttpStatus.BAD_GATEWAY, `Ödeme başlatılamadı: ${mesaj}`);
     }
-    if (gateway && !/^https:\/\//i.test(gateway) && mod === "canli") throw new ApiError(HttpStatus.BAD_GATEWAY, "Vomsis güvenli olmayan bir banka adresi döndürdü; ödeme durduruldu.");
+    if (gateway && !/^https:\/\//i.test(gateway) && mod === "canli") throw new ApiError(HttpStatus.BAD_GATEWAY, "Servis güvenli olmayan bir banka adresi döndürdü; ödeme durduruldu.");
 
     await EBankaSqlRepository.logYaz({ islem: "vpos-odeme", mod, basarili: true, mesaj: `${referansNo} ${cari.ad}: ${tutar.toFixed(2)} ${paraBirimi} 3D doğrulamaya gönderildi`, kullaniciId }, dbContext);
     return { referansNo, htmlContent, gateway, alanlar };
@@ -200,7 +200,7 @@ export class EBankaVposOdemeService {
 
       const basarili = odemeBasariliMi(d);
       const sonucsuz = !basarili && !kirp(d.errorMessage) && (kirp(d.errorCode) === "" || kirp(d.errorCode) === "00") && !/başarısız|basarisiz|fail|hata/i.test(kirp(d.status));
-      if (sonucsuz) return { durum: "bekliyor" as const, mesaj: `Vomsis durumu: ${kirp(d.status) || "bekliyor"}`, islem };
+      if (sonucsuz) return { durum: "bekliyor" as const, mesaj: `Servis durumu: ${kirp(d.status) || "bekliyor"}`, islem };
 
       await EBankaVposSqlRepository.odemeSonucuYaz(
         referansNo,

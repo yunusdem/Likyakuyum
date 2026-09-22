@@ -48,7 +48,7 @@ export class EBankaPosService {
     if (mod === "canli") {
       const { gecenSaniye } = await EBankaPosSqlRepository.sonEsitleme(dbContext);
       if (gecenSaniye !== null && gecenSaniye >= 0 && gecenSaniye < BES_DAKIKA_SN) {
-        throw new ApiError(HttpStatus.TOO_MANY_REQUESTS, `Vomsis 5 dakikada bir sorgulanabilir. ${BES_DAKIKA_SN - gecenSaniye} saniye sonra yeniden deneyin.`);
+        throw new ApiError(HttpStatus.TOO_MANY_REQUESTS, `Banka servisi 5 dakikada bir sorgulanabilir. ${BES_DAKIKA_SN - gecenSaniye} saniye sonra yeniden deneyin.`);
       }
     }
 
@@ -72,7 +72,7 @@ export class EBankaPosService {
             { sorgu: { beginDate: vomsisGunu(d.bas), endDate: vomsisGunu(d.bit) } },
             dbContext
           );
-          if (yanit?.status && yanit.status !== "success") throw new ApiError(HttpStatus.BAD_GATEWAY, `Vomsis POS hareketlerini vermedi: ${yanit.message || yanit.status}`);
+          if (yanit?.status && yanit.status !== "success") throw new ApiError(HttpStatus.BAD_GATEWAY, `Banka servisi POS hareketlerini vermedi: ${yanit.message || yanit.status}`);
           const sonuc = await EBankaPosSqlRepository.hareketleriYaz(t.id, dizi<VomsisPosHareket>(yanit?.transactions), dbContext);
           yeni += sonuc.yeni;
           guncellenen += sonuc.guncellenen;
