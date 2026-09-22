@@ -140,6 +140,22 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "C- Banka Hesap Hareketleri", link: "banka/hareketler" },
       { id: uuid(), name: "D- Kredi Kartı Tahsilatları", link: "banka/kredi-karti-tahsilat" },
       { id: uuid(), name: "E- POS Gün Sonu İşlemleri", link: "banka/pos-gun-sonu" },
+      // Vomsis açık bankacılık (docs/EBANKA_VOMSIS_YOL_HARITASI.md). Grup kodu "banka:#f-e-banka" kalıcıdır — başlığı değiştirmeyin.
+      {
+        id: uuid(),
+        title: "F- e-Banka",
+        children: [
+          { id: uuid(), name: "A- Özet", link: "ebanka/ozet" },
+          { id: uuid(), name: "B- Hesaplar", link: "ebanka/hesaplar" },
+          { id: uuid(), name: "C- Hesap Hareketleri", link: "ebanka/hareketler" },
+          { id: uuid(), name: "D- Bekleyenler", link: "ebanka/bekleyenler" },
+          { id: uuid(), name: "E- POS Terminalleri ve Hareketleri", link: "ebanka/pos" },
+          { id: uuid(), name: "F- Sanal POS Tahsilat", link: "ebanka/sanal-pos-tahsilat" },
+          { id: uuid(), name: "G- Ödeme Linkleri", link: "ebanka/odeme-linkleri" },
+          { id: uuid(), name: "H- Sanal POS İşlemleri", link: "ebanka/sanal-pos-islemleri" },
+          { id: uuid(), name: "I- Ayarlar", link: "ebanka/ayarlar" },
+        ],
+      },
     ],
   },
 
