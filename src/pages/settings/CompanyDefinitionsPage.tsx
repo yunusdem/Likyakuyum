@@ -34,6 +34,7 @@ import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { CariService, CariLookups, LookupItem, CariKartItem, DEFAULT_POSTA_KODLARI } from "../../services/cariService";
 import { KasaService, HesapItem } from "../../services/kasaService";
+import { IskontoService, IskontoItem } from "../../services/iskontoService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
@@ -66,6 +67,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
     TELEFON: "",
     URETIM_HESABI_ID: null,
     URETIM_HESABI: "",
+    ISKONTO_ID: null,
     EPOSTA: "",
     WEB_ADRESI: "",
     DOSYA_NO: "",
@@ -215,10 +217,12 @@ export const CompanyDefinitionsPage: React.FC = () => {
   });
   const [cariKartlar, setCariKartlar] = useState<CariKartItem[]>([]);
   const [hesapList, setHesapList] = useState<HesapItem[]>([]);
+  const [iskontoList, setIskontoList] = useState<IskontoItem[]>([]);
   const [lookupModalConfig, setLookupModalConfig] = useState<{
     show: boolean;
     title: string;
     items: any[];
+    selectedId?: any;
     columns: LookupColumn<any>[];
     filterFn: (item: any, term: string) => boolean;
     onSelect: (item: any) => void;
@@ -226,19 +230,70 @@ export const CompanyDefinitionsPage: React.FC = () => {
     show: false,
     title: "",
     items: [],
+    selectedId: null,
     columns: [],
     filterFn: () => true,
     onSelect: () => { },
   });
 
+  const ensureLookups = async (): Promise<CariLookups> => {
+    if (
+      lookups.vergiDairesiList.length > 0 ||
+      lookups.ilList.length > 0 ||
+      lookups.paraList.length > 0
+    ) {
+      return lookups;
+    }
+    try {
+      const data = await CariService.getLookups().catch(() => null);
+      if (data) {
+        setLookups(data);
+        return data;
+      }
+    } catch (err) {
+      console.error("Lookups yüklenemedi:", err);
+    }
+    return lookups;
+  };
+
+  const ensureHesaplar = async (): Promise<HesapItem[]> => {
+    if (hesapList.length > 0) return hesapList;
+    try {
+      const data = await KasaService.getHesaplar().catch(() => []);
+      if (data && data.length > 0) {
+        setHesapList(data);
+        return data;
+      }
+    } catch (err) {
+      console.error("Hesaplar yüklenemedi:", err);
+    }
+    return hesapList;
+  };
+
+  const ensureIskontolar = async (): Promise<IskontoItem[]> => {
+    if (iskontoList.length > 0) return iskontoList;
+    try {
+      const data = await IskontoService.getIskontolar().catch(() => []);
+      if (data && data.length > 0) {
+        setIskontoList(data);
+        return data;
+      }
+    } catch (err) {
+      console.error("İskontolar yüklenemedi:", err);
+    }
+    return iskontoList;
+  };
+
   const loadLookups = async () => {
     try {
-      const [data, hesaplar] = await Promise.all([
-        CariService.getLookups(),
+      const [data, hesaplar, iskontolar] = await Promise.all([
+        CariService.getLookups().catch(() => null),
         KasaService.getHesaplar().catch(() => []),
+        IskontoService.getIskontolar().catch(() => []),
       ]);
       if (data) setLookups(data);
       if (hesaplar) setHesapList(hesaplar);
+      if (iskontolar) setIskontoList(iskontolar);
     } catch (err) {
       console.error("Lookups yüklenirken hata:", err);
     }
@@ -247,7 +302,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
   const ensureCariKartlar = async (): Promise<CariKartItem[]> => {
     if (cariKartlar.length === 0) {
       try {
-        const list = await CariService.getCariKartlar();
+        const list = await CariService.getCariKartlar().catch(() => []);
         setCariKartlar(list || []);
         return list || [];
       } catch (err) {
@@ -267,59 +322,68 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
   const getVergiDairesiName = (id?: number | null) => {
     if (!id) return "";
-    const it = lookups.vergiDairesiList.find((x) => x.id === id);
+    const it = lookups.vergiDairesiList.find((x) => x.id === id || Number(x.id) === Number(id));
     return it ? it.ad : "";
   };
 
   const getIlName = (id?: number | null) => {
     if (!id) return "";
-    const it = lookups.ilList.find((x) => x.id === id);
+    const it = lookups.ilList.find((x) => x.id === id || Number(x.id) === Number(id));
     return it ? it.ad : "";
   };
 
   const getIlceName = (id?: number | null) => {
     if (!id) return "";
-    const it = lookups.ilceList.find((x) => x.id === id);
+    const it = lookups.ilceList.find((x) => x.id === id || Number(x.id) === Number(id));
     return it ? it.ad : "";
   };
 
   const getPostaKoduName = (id?: number | null) => {
     if (!id) return "";
     const list = lookups.postaKoduList && lookups.postaKoduList.length > 0 ? lookups.postaKoduList : DEFAULT_POSTA_KODLARI;
-    const it = list.find((x) => x.id === id || x.kod === String(id));
+    const it = list.find((x) => x.id === id || Number(x.id) === Number(id) || x.kod === String(id));
     return it ? it.ad : "";
   };
 
   const getUlkeName = (id?: number | null) => {
     if (!id) return "";
-    const it = lookups.ulkeList.find((x) => x.id === id);
+    const it = lookups.ulkeList.find((x) => x.id === id || Number(x.id) === Number(id));
     return it ? it.ad : "";
   };
 
   const getParaName = (id?: number | null) => {
     if (!id) return "";
-    const it = lookups.paraList.find((x) => x.id === id);
+    const it = lookups.paraList.find((x) => x.id === id || Number(x.id) === Number(id));
     return it ? `${it.kod || ""} - ${it.ad || ""}`.trim() : "";
   };
 
   const getIstatistikName = (id?: number | null) => {
     if (!id) return "";
-    const it = lookups.istatistikList.find((x) => x.id === id);
+    const it = lookups.istatistikList.find((x) => x.id === id || Number(x.id) === Number(id));
     return it ? `${it.kod || ""} - ${it.ad || ""}`.trim() : "";
   };
 
   const getCariName = (id?: number | null) => {
     if (!id) return "";
-    const it = cariKartlar.find((x) => x.id === id);
+    const it = cariKartlar.find((x) => x.id === id || Number(x.id) === Number(id));
     return it ? `${it.kod || ""} - ${it.ad || ""}`.trim() : "";
   };
 
+  const getIskontoName = (id?: number | null) => {
+    if (!id) return "";
+    const found = iskontoList.find((x) => x.iskontoId === id || Number(x.iskontoId) === Number(id));
+    if (!found) return `ID: ${id}`;
+    return `${found.kod ? `[${found.kod}] ` : ""}${found.tanim}`;
+  };
+
   // Lookup Modals
-  const openVergiDairesiLookup = () => {
+  const openVergiDairesiLookup = async () => {
+    const lk = await ensureLookups();
     setLookupModalConfig({
       show: true,
       title: "Vergi Dairesi Seçimi",
-      items: lookups.vergiDairesiList,
+      items: lk.vergiDairesiList || [],
+      selectedId: formData.VERGI_DAIRESI_ID,
       columns: [
         { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.id}</span>, width: "80px" },
         { header: "Vergi Dairesi Adı", render: (it) => <span className="fw-medium">{it.ad}</span> },
@@ -335,11 +399,13 @@ export const CompanyDefinitionsPage: React.FC = () => {
     });
   };
 
-  const openIlLookup = () => {
+  const openIlLookup = async () => {
+    const lk = await ensureLookups();
     setLookupModalConfig({
       show: true,
       title: "İl Seçimi (Plaka / Şehir)",
-      items: lookups.ilList,
+      items: lk.ilList || [],
+      selectedId: formData.IL_ID,
       columns: [
         { header: "Plaka", render: (it) => <Badge bg="primary" className="font-monospace">{it.kod || it.id}</Badge>, width: "90px" },
         { header: "İl Adı", render: (it) => <span className="fw-medium">{it.ad}</span> },
@@ -355,11 +421,16 @@ export const CompanyDefinitionsPage: React.FC = () => {
     });
   };
 
-  const openIlceLookup = () => {
+  const openIlceLookup = async () => {
+    const lk = await ensureLookups();
+    const list = formData.IL_ID
+      ? (lk.ilceList || []).filter((x: any) => !x.ustId || x.ustId === formData.IL_ID || Number(x.ustId) === Number(formData.IL_ID))
+      : lk.ilceList || [];
     setLookupModalConfig({
       show: true,
       title: "İlçe Seçimi",
-      items: lookups.ilceList,
+      items: list.length > 0 ? list : lk.ilceList || [],
+      selectedId: formData.ILCE_ID,
       columns: [
         { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.id}</span>, width: "80px" },
         { header: "İlçe Adı", render: (it) => <span className="fw-medium">{it.ad}</span> },
@@ -375,12 +446,14 @@ export const CompanyDefinitionsPage: React.FC = () => {
     });
   };
 
-  const openPostaKoduLookup = () => {
-    const list = lookups.postaKoduList && lookups.postaKoduList.length > 0 ? lookups.postaKoduList : DEFAULT_POSTA_KODLARI;
+  const openPostaKoduLookup = async () => {
+    const lk = await ensureLookups();
+    const list = lk.postaKoduList && lk.postaKoduList.length > 0 ? lk.postaKoduList : DEFAULT_POSTA_KODLARI;
     setLookupModalConfig({
       show: true,
       title: "Posta Kodu Seçimi",
       items: list,
+      selectedId: formData.POSTA_KODU_ID,
       columns: [
         { header: "Posta Kodu", render: (it) => <Badge bg="primary" className="font-monospace">{it.kod || it.id}</Badge>, width: "120px" },
         { header: "Bölge / Mahalle", render: (it) => <span className="fw-medium">{it.ad}</span> },
@@ -402,11 +475,13 @@ export const CompanyDefinitionsPage: React.FC = () => {
     });
   };
 
-  const openUlkeLookup = () => {
+  const openUlkeLookup = async () => {
+    const lk = await ensureLookups();
     setLookupModalConfig({
       show: true,
       title: "Ülke Seçimi",
-      items: lookups.ulkeList,
+      items: lk.ulkeList || [],
+      selectedId: formData.ULKE_ID,
       columns: [
         { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.id}</span>, width: "90px" },
         { header: "Kod", render: (it) => <span className="badge bg-light text-dark border font-monospace">{it.kod || "-"}</span>, width: "90px" },
@@ -423,11 +498,13 @@ export const CompanyDefinitionsPage: React.FC = () => {
     });
   };
 
-  const openParaLookup = (field: keyof TodvzTanimDto, title: string) => {
+  const openParaLookup = async (field: keyof TodvzTanimDto, title: string) => {
+    const lk = await ensureLookups();
     setLookupModalConfig({
       show: true,
       title,
-      items: lookups.paraList,
+      items: lk.paraList || [],
+      selectedId: formData[field],
       columns: [
         { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.id}</span>, width: "80px" },
         { header: "Döviz Kodu", render: (it) => <Badge bg="success" className="font-monospace px-2 py-1">{it.kod}</Badge>, width: "110px" },
@@ -444,10 +521,11 @@ export const CompanyDefinitionsPage: React.FC = () => {
     });
   };
 
-  const openIstatistikLookup = (field: keyof TodvzTanimDto, title: string) => {
+  const openIstatistikLookup = async (field: keyof TodvzTanimDto, title: string) => {
+    const lk = await ensureLookups();
     const isAlis = field === "ALIS_ISTATISTIK_ID" || field === "ARBITRAJ_ALIS_ISTATISTIK_ID";
     const isSatis = field === "SATIS_ISTATISTIK_ID" || field === "ARBITRAJ_SATIS_ISTATISTIK_ID";
-    const filteredList = lookups.istatistikList.filter((it: any) => {
+    const filteredList = (lk.istatistikList || []).filter((it: any) => {
       const ft = Number(it.fisTipi);
       if (isAlis) return ft === 0 || ft === 2;
       if (isSatis) return ft === 1 || ft === 2;
@@ -458,6 +536,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
       show: true,
       title,
       items: filteredList,
+      selectedId: formData[field],
       columns: [
         { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.id}</span>, width: "80px" },
         { header: "Kod", render: (it) => <Badge bg="secondary" className="font-monospace">{it.kod}</Badge>, width: "120px" },
@@ -487,15 +566,12 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
   const openSermayeHesabiLookup = async () => {
     try {
-      let list = hesapList;
-      if (list.length === 0) {
-        list = await KasaService.getHesaplar().catch(() => []);
-        setHesapList(list || []);
-      }
+      const list = await ensureHesaplar();
       setLookupModalConfig({
         show: true,
         title: "Sermaye Hesabı (Hesap Kartı - A- Hesap Kayıt) Seçimi",
         items: list,
+        selectedId: formData.SERMAYE_HESABI_ID,
         columns: [
           { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.hesapId}</span>, width: "70px" },
           { header: "Hesap Kodu", render: (it) => <Badge bg="primary" className="font-monospace">{it.kod}</Badge>, width: "120px" },
@@ -518,15 +594,12 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
   const openUretimHesabiLookup = async () => {
     try {
-      let list = hesapList;
-      if (list.length === 0) {
-        list = await KasaService.getHesaplar().catch(() => []);
-        setHesapList(list || []);
-      }
+      const list = await ensureHesaplar();
       setLookupModalConfig({
         show: true,
         title: "Üretim Hesabı (Hesap Kartı) Seçimi",
         items: list,
+        selectedId: formData.URETIM_HESABI_ID,
         columns: [
           { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.hesapId}</span>, width: "70px" },
           { header: "Hesap Kodu", render: (it) => <Badge bg="primary" className="font-monospace">{it.kod}</Badge>, width: "120px" },
@@ -546,6 +619,54 @@ export const CompanyDefinitionsPage: React.FC = () => {
       });
     } catch (err) {
       console.error("Üretim hesabı lookup hatası:", err);
+    }
+  };
+
+  const openIskontoLookup = async () => {
+    try {
+      const list = await ensureIskontolar();
+      setLookupModalConfig({
+        show: true,
+        title: "İskonto Tanımı Seçimi",
+        items: list,
+        selectedId: formData.ISKONTO_ID,
+        columns: [
+          { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.iskontoId}</span>, width: "60px" },
+          { header: "İskonto Kodu", render: (it) => <Badge bg="secondary" className="font-monospace">{it.kod || "-"}</Badge>, width: "110px" },
+          { header: "İskonto Tanımı", render: (it) => <span className="fw-medium">{it.tanim}</span> },
+          {
+            header: "Tip",
+            render: (it) => {
+              if (it.iskontoTipi === 1) return <Badge bg="info" className="text-dark">Yüzde (%)</Badge>;
+              if (it.iskontoTipi === 2) return <Badge bg="primary">Sabit Tutar</Badge>;
+              if (it.iskontoTipi === 3) return <Badge bg="warning" className="text-dark">Has Gram</Badge>;
+              return <Badge bg="light" className="text-dark">-</Badge>;
+            },
+            width: "100px",
+          },
+          {
+            header: "Değer",
+            render: (it) => {
+              if (it.iskontoTipi === 1) return <span className="font-monospace fw-bold text-primary">%{it.oran}</span>;
+              if (it.iskontoTipi === 2) return <span className="font-monospace fw-bold text-success">{it.tutar?.toLocaleString("tr-TR")} ₺</span>;
+              if (it.iskontoTipi === 3) return <span className="font-monospace fw-bold text-warning">{it.hasTutar} Gr Has</span>;
+              return "-";
+            },
+            width: "110px",
+            align: "right",
+          },
+        ],
+        filterFn: (it, term) => {
+          const t = term.toLowerCase();
+          return (it.kod && it.kod.toLowerCase().includes(t)) || (it.tanim && it.tanim.toLowerCase().includes(t)) || String(it.iskontoId).includes(t);
+        },
+        onSelect: (it) => {
+          handleChange("ISKONTO_ID", it.iskontoId);
+          setLookupModalConfig((prev) => ({ ...prev, show: false }));
+        },
+      });
+    } catch (err) {
+      console.error("İskonto lookup hatası:", err);
     }
   };
 
@@ -1644,7 +1765,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 <InputGroup size="sm" className="flex-nowrap">
                                   <div
                                     className="form-control form-control-sm bg-white text-truncate text-secondary flex-grow-1 text-start"
-                                    style={{ fontSize: "0.82rem", minWidth: 0 }}
+                                    style={{ fontSize: "0.82rem", minWidth: 0, cursor: "pointer" }}
+                                    onClick={openUretimHesabiLookup}
                                     title={getHesapName(formData.URETIM_HESABI_ID)}
                                   >
                                     {getHesapName(formData.URETIM_HESABI_ID) || (formData.URETIM_HESABI ? formData.URETIM_HESABI : "Üretim Hesabı Seçiniz (A- Hesap Kayıt)")}
@@ -1653,6 +1775,32 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                     variant="outline-primary"
                                     onClick={openUretimHesabiLookup}
                                     title="Listeden Seç (Dürbün - A- Hesap Kayıt)"
+                                    className="d-flex align-items-center px-2 flex-shrink-0"
+                                  >
+                                    <IconBinoculars size={16} />
+                                  </Button>
+                                </InputGroup>
+                              </Col>
+                            </Form.Group>
+                          </Col>
+
+                          <Col xs={12}>
+                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İskonto :</Form.Label>
+                              <Col>
+                                <InputGroup size="sm" className="flex-nowrap">
+                                  <div
+                                    className="form-control form-control-sm bg-white text-truncate text-secondary flex-grow-1 text-start"
+                                    style={{ fontSize: "0.82rem", minWidth: 0, cursor: "pointer" }}
+                                    onClick={openIskontoLookup}
+                                    title={getIskontoName(formData.ISKONTO_ID)}
+                                  >
+                                    {getIskontoName(formData.ISKONTO_ID) || "İskonto Seçiniz"}
+                                  </div>
+                                  <Button
+                                    variant="outline-primary"
+                                    onClick={openIskontoLookup}
+                                    title="Listeden Seç (Dürbün - İskonto Tanımları)"
                                     className="d-flex align-items-center px-2 flex-shrink-0"
                                   >
                                     <IconBinoculars size={16} />
@@ -2497,6 +2645,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
           onHide={() => setLookupModalConfig((prev) => ({ ...prev, show: false }))}
           title={lookupModalConfig.title}
           items={lookupModalConfig.items}
+          selectedId={lookupModalConfig.selectedId}
           columns={lookupModalConfig.columns}
           filterFn={lookupModalConfig.filterFn}
           onSelect={lookupModalConfig.onSelect}
