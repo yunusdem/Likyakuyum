@@ -75,6 +75,8 @@ export class KasaHesapSqlRepository {
         BEGIN
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP' AND COLUMN_NAME = 'AKTIF')
             ALTER TABLE [dbo].[TODVZ_HESAP] ADD [AKTIF] BIT NOT NULL DEFAULT 1;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP' AND COLUMN_NAME = 'ISKONTO_ID')
+            ALTER TABLE [dbo].[TODVZ_HESAP] ADD [ISKONTO_ID] INT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP' AND COLUMN_NAME = 'EKLEYEN_ID')
             ALTER TABLE [dbo].[TODVZ_HESAP] ADD [EKLEYEN_ID] INT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP' AND COLUMN_NAME = 'EKLEME_ZAMANI')
@@ -113,54 +115,87 @@ export class KasaHesapSqlRepository {
         try {
             await pool.request().query(`
         CREATE OR ALTER PROCEDURE [dbo].[SODVZ_HESAP_KAYDET]
-          @HESAP_ID INT OUTPUT,
-          @KOD VARCHAR(30),
-          @AD VARCHAR(150),
-          @KDV_ORANI FLOAT
+          @HESAP_ID    INT OUTPUT,
+          @KOD         VARCHAR(30),
+          @AD          VARCHAR(150),
+          @KDV_ORANI   FLOAT,
+          @ISKONTO_ID  INT = NULL
         AS
         BEGIN
           SET NOCOUNT ON;
-          DECLARE @HATA_MESAJI VARCHAR(250)
+          DECLARE @HATA_MESAJI VARCHAR(250);
+
+          -- 0 veya negatif gelirse NULL yap
+          IF (@ISKONTO_ID <= 0) SET @ISKONTO_ID = NULL;
+
+          -- İskonto kontrolü: Eğer bir ID girilmişse TODVZ_ISKONTO tablosunda var mı?
+          IF (@ISKONTO_ID IS NOT NULL AND OBJECT_ID('dbo.TODVZ_ISKONTO') IS NOT NULL)
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM dbo.TODVZ_ISKONTO WHERE ISKONTO_ID = @ISKONTO_ID)
+            BEGIN
+              SET @HATA_MESAJI = 'Seçilen iskonto tanımı sistemde bulunamadı.';
+              GOTO UNDO;
+            END
+          END
+
           IF @HESAP_ID IS NULL OR @HESAP_ID = 0  /* INSERT */
           BEGIN
-            IF EXISTS(SELECT * FROM TODVZ_HESAP H WHERE H.AD = @AD)
+            IF EXISTS(SELECT 1 FROM dbo.TODVZ_HESAP H WHERE H.AD = @AD)
             BEGIN
-              SET @HATA_MESAJI = RTRIM(ISNULL(@AD,'')) + ' adındaki hesap daha önce açılmış'
-              GOTO UNDO
+              SET @HATA_MESAJI = RTRIM(ISNULL(@AD,'')) + ' adındaki hesap daha önce açılmış';
+              GOTO UNDO;
             END
-            IF EXISTS(SELECT * FROM TODVZ_HESAP H WHERE H.KOD = @KOD)
+
+            IF EXISTS(SELECT 1 FROM dbo.TODVZ_HESAP H WHERE H.KOD = @KOD)
             BEGIN
-              SET @HATA_MESAJI = RTRIM(ISNULL(@KOD,'')) + ' kodundaki hesap daha önce açılmış'
-              GOTO UNDO
+              SET @HATA_MESAJI = RTRIM(ISNULL(@KOD,'')) + ' kodundaki hesap daha önce açılmış';
+              GOTO UNDO;
             END
-            INSERT INTO TODVZ_HESAP (KOD, AD, KDV_ORANI, EKLEME_ZAMANI)
-              VALUES(@KOD, @AD, @KDV_ORANI, GETDATE())
-            IF @@ERROR<>0  GOTO UNDO
-            SET @HESAP_ID = SCOPE_IDENTITY()
+
+            INSERT INTO dbo.TODVZ_HESAP (
+              KOD, AD, KDV_ORANI, ISKONTO_ID, EKLEME_ZAMANI
+            )
+            VALUES (
+              @KOD, @AD, @KDV_ORANI, @ISKONTO_ID, GETDATE()
+            );
+
+            IF @@ERROR <> 0 GOTO UNDO;
+
+            SET @HESAP_ID = SCOPE_IDENTITY();
             IF @HESAP_ID IS NULL OR @HESAP_ID = 0
-              SET @HESAP_ID = IDENT_CURRENT('TODVZ_HESAP')
+              SET @HESAP_ID = IDENT_CURRENT('dbo.TODVZ_HESAP');
           END
-          ELSE BEGIN  /* UPDATE */
-            IF EXISTS(SELECT * FROM TODVZ_HESAP H WHERE H.AD = @AD AND H.HESAP_ID <> @HESAP_ID)
+          ELSE /* UPDATE */
+          BEGIN
+            IF EXISTS(SELECT 1 FROM dbo.TODVZ_HESAP H WHERE H.AD = @AD AND H.HESAP_ID <> @HESAP_ID)
             BEGIN
-              SET @HATA_MESAJI = RTRIM(ISNULL(@AD,'')) + ' adındaki hesap daha önce açılmış'
-              GOTO UNDO
+              SET @HATA_MESAJI = RTRIM(ISNULL(@AD,'')) + ' adındaki hesap daha önce açılmış';
+              GOTO UNDO;
             END
-            IF EXISTS(SELECT * FROM TODVZ_HESAP H WHERE H.KOD = @KOD AND H.HESAP_ID <> @HESAP_ID)
+
+            IF EXISTS(SELECT 1 FROM dbo.TODVZ_HESAP H WHERE H.KOD = @KOD AND H.HESAP_ID <> @HESAP_ID)
             BEGIN
-              SET @HATA_MESAJI = RTRIM(ISNULL(@KOD,'')) + ' kodundaki hesap daha önce açılmış'
-              GOTO UNDO
+              SET @HATA_MESAJI = RTRIM(ISNULL(@KOD,'')) + ' kodundaki hesap daha önce açılmış';
+              GOTO UNDO;
             END
-            UPDATE TODVZ_HESAP
-              SET KOD = @KOD, AD = @AD, KDV_ORANI = @KDV_ORANI, GUNCELLEME_ZAMANI = GETDATE()
-              WHERE HESAP_ID = @HESAP_ID
-            IF @@ERROR<>0  GOTO UNDO
+
+            UPDATE dbo.TODVZ_HESAP
+            SET KOD = @KOD,
+                AD = @AD,
+                KDV_ORANI = @KDV_ORANI,
+                ISKONTO_ID = @ISKONTO_ID,
+                GUNCELLEME_ZAMANI = GETDATE()
+            WHERE HESAP_ID = @HESAP_ID;
+
+            IF @@ERROR <> 0 GOTO UNDO;
           END
-          RETURN 0
+
+          RETURN 0;
+
         UNDO:
-          RAISERROR (@HATA_MESAJI,16,1)
-          RETURN 1
-        END
+          RAISERROR (@HATA_MESAJI, 16, 1);
+          RETURN 1;
+        END;
       `);
             await pool.request().query(`
         CREATE OR ALTER PROCEDURE [dbo].[SODVZ_HESAP_SIL]
@@ -361,11 +396,13 @@ export class KasaHesapSqlRepository {
         await this.ensureProcedures(pool);
         let query = `
       SELECT
-        H.HESAP_ID, H.KOD, H.AD, H.KDV_ORANI, H.AKTIF,
+        H.HESAP_ID, H.KOD, H.AD, H.KDV_ORANI, H.AKTIF, H.ISKONTO_ID,
+        I.KOD AS ISKONTO_KODU, I.TANIM AS ISKONTO_TANIM, I.ORAN AS ISKONTO_ORANI,
         H.EKLEYEN_ID, H.EKLEME_ZAMANI, H.GUNCELLEYEN_ID, H.GUNCELLEME_ZAMANI,
         ISNULL((SELECT SUM(MEBLAG) FROM TODVZ_HESAP_HAREKETI WHERE HESAP_ID = H.HESAP_ID AND TIP = 0), 0) AS TOPLAM_GIRIS,
         ISNULL((SELECT SUM(MEBLAG) FROM TODVZ_HESAP_HAREKETI WHERE HESAP_ID = H.HESAP_ID AND TIP = 1), 0) AS TOPLAM_CIKIS
       FROM TODVZ_HESAP H
+      LEFT JOIN TODVZ_ISKONTO I ON I.ISKONTO_ID = H.ISKONTO_ID
       WHERE 1=1
     `;
         const request = pool.request();
@@ -388,6 +425,10 @@ export class KasaHesapSqlRepository {
                 ad: (r.AD || "").trim(),
                 kdvOrani: Number(r.KDV_ORANI) || 0,
                 aktif: Boolean(r.AKTIF),
+                iskontoId: r.ISKONTO_ID ? Number(r.ISKONTO_ID) : null,
+                iskontoKodu: r.ISKONTO_KODU ? String(r.ISKONTO_KODU).trim() : null,
+                iskontoTanim: r.ISKONTO_TANIM ? String(r.ISKONTO_TANIM).trim() : null,
+                iskontoOrani: r.ISKONTO_ORANI != null ? Number(r.ISKONTO_ORANI) : null,
                 toplamGiris,
                 toplamCikis,
                 bakiye: toplamGiris - toplamCikis,
@@ -425,11 +466,13 @@ export class KasaHesapSqlRepository {
             }
         }
         const targetHesapId = dto.hesapId && Number(dto.hesapId) > 0 ? Number(dto.hesapId) : null;
+        const targetIskontoId = dto.iskontoId && Number(dto.iskontoId) > 0 ? Number(dto.iskontoId) : null;
         const req = pool.request();
         req.input("TARGET_ID", sql.Int, targetHesapId);
         req.input("KOD", sql.VarChar(30), kod);
         req.input("AD", sql.VarChar(150), (dto.ad || "").trim());
         req.input("KDV_ORANI", sql.Float, Number(dto.kdvOrani) || 0);
+        req.input("ISKONTO_ID", sql.Int, targetIskontoId);
         const batchQuery = `
       SET NOCOUNT ON;
       DECLARE @OUT_ID INT = @TARGET_ID;
@@ -438,7 +481,8 @@ export class KasaHesapSqlRepository {
         @HESAP_ID = @OUT_ID OUTPUT,
         @KOD = @KOD,
         @AD = @AD,
-        @KDV_ORANI = @KDV_ORANI;
+        @KDV_ORANI = @KDV_ORANI,
+        @ISKONTO_ID = @ISKONTO_ID;
 
       SELECT @OUT_ID AS RESULT_ID;
     `;

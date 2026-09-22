@@ -2128,7 +2128,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               <InputGroup size="sm" style={{ flex: 1 }}>
                 <Form.Control
                   readOnly
-                  placeholder="İskonto Seç (Dürbün)..."
                   value={
                     selectedIskonto
                       ? `${selectedIskonto.kod ? `[${selectedIskonto.kod}] ` : ""}${selectedIskonto.tanim}`
