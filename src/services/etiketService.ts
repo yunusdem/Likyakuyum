@@ -184,6 +184,7 @@ export interface EtiketSablonAlan {
   barkodFormat?: "CODE128" | "EAN13" | "CODE39" | "QR" | "RFID";
   barcodeFormat?: "CODE128" | "EAN13" | "CODE39" | "QR" | "RFID";
   barcodeValue?: string;
+  barcodeText?: string;
   showBarcodeText?: boolean;
   borderWidth?: number;
   borderColor?: string;

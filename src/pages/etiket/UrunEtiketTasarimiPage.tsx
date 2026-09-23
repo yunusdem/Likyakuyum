@@ -251,6 +251,8 @@ export interface CanvasElement {
   // Barcode
   barcodeFormat?: "CODE128" | "EAN13" | "QR" | "RFID";
   barcodeValue?: string;
+  barcodeText?: string;
+  showText?: boolean;
   // Image
   imageData?: string;
 }
@@ -1093,30 +1095,36 @@ function BarcodeRenderer({
   format,
   width,
   height,
+  barcodeText,
+  showText = true,
 }: {
   value: string;
   format: string;
   width: number;
   height: number;
+  barcodeText?: string;
+  showText?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const displayVal = value || "123456789";
+  const customText = (barcodeText !== undefined && barcodeText.trim() !== "") ? barcodeText : displayVal;
 
   useEffect(() => {
-    if (svgRef.current) {
+    if (svgRef.current && format !== "QR") {
       try {
         JsBarcode(svgRef.current, displayVal, {
           format: format === "EAN13" ? "EAN13" : "CODE128",
           width: 1.2,
           height: Math.max(10, height * 0.55),
-          displayValue: true,
-          fontSize: 7,
+          displayValue: showText !== false,
+          text: customText,
+          fontSize: 8,
           margin: 1,
           textMargin: 1,
         });
       } catch { }
     }
-  }, [displayVal, format, height]);
+  }, [displayVal, format, height, customText, showText]);
 
   if (format === "QR") {
     return <QRRenderer value={displayVal} size={Math.min(width, height)} />;
@@ -1131,21 +1139,281 @@ function BarcodeRenderer({
 }
 
 function QRRenderer({ value, size }: { value: string; size: number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [svgHtml, setSvgHtml] = useState<string>("");
+
   useEffect(() => {
-    if (canvasRef.current) {
-      QRCode.toCanvas(canvasRef.current, value || "RFID", {
-        width: Math.max(16, size),
-        margin: 1,
-      }).catch(() => { });
-    }
+    let active = true;
+    QRCode.toString(value || "QR", {
+      type: "svg",
+      margin: 0,
+      width: Math.max(16, size),
+      errorCorrectionLevel: "M",
+    })
+      .then((svg) => {
+        if (active) setSvgHtml(svg);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [value, size]);
+
+  if (!svgHtml) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "9px",
+          color: "#94a3b8",
+        }}
+      >
+        QR
+      </div>
+    );
+  }
+
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ width: "100%", height: "100%", imageRendering: "pixelated" }}
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      dangerouslySetInnerHTML={{ __html: svgHtml }}
     />
   );
+}
+
+// ─── Vektörel Baskı SVG Üreticileri (Sıfır Kayıp, 300+ DPI Termal Çıktı) ────────
+function getBarcodeSvgString(value: string, format: string, showText = true, barcodeText?: string): string {
+  try {
+    const svgNode = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const displayVal = value || "123456789";
+    const customText = (barcodeText !== undefined && barcodeText.trim() !== "") ? barcodeText : displayVal;
+    JsBarcode(svgNode, displayVal, {
+      format: format === "EAN13" ? "EAN13" : "CODE128",
+      width: 1.5,
+      height: 40,
+      displayValue: showText !== false,
+      text: customText,
+      fontSize: 10,
+      margin: 0,
+      textMargin: 1,
+    });
+    svgNode.setAttribute("style", "width: 100%; height: 100%; display: block;");
+    svgNode.setAttribute("preserveAspectRatio", "none");
+    return svgNode.outerHTML;
+  } catch {
+    return `<div style="font-size:8px;text-align:center;width:100%;height:100%;">${value || "BARCODE"}</div>`;
+  }
+}
+
+async function getQrSvgString(value: string): Promise<string> {
+  try {
+    const svg = await QRCode.toString(value || "QR", {
+      type: "svg",
+      margin: 0,
+      errorCorrectionLevel: "M",
+    });
+    return svg.replace(/<svg\s+/, '<svg style="width:100%;height:100%;display:block;" ');
+  } catch {
+    return `<div style="font-size:8px;text-align:center;width:100%;height:100%;">QR</div>`;
+  }
+}
+
+async function buildSingleLabelHtml(
+  config: LabelConfig,
+  elementsList: CanvasElement[]
+): Promise<string> {
+  const W = config.genislikMm;
+  const H = config.yukseklikMm;
+  const isDark = isColorDark(config.bgColor);
+
+  const elementsHtmlPromises = elementsList
+    .filter((el) => el.visible !== false)
+    .map(async (el) => {
+      const left = el.x;
+      const top = el.y;
+      const width = el.width;
+      const height = el.height;
+      const rotation = el.rotation || 0;
+      const opacity = el.opacity ?? 1;
+
+      let innerContent = "";
+
+      if (el.type === "text" || el.type === "field") {
+        const textContent =
+          el.type === "field"
+            ? `${el.prefix || ""}${el.text || el.fieldKey || ""}${el.suffix || ""}`
+            : el.text || (el.isNumeric ? "0.00" : "");
+        const isRight = el.textAlign === "right" || (el.isNumeric && !el.textAlign);
+        const isCenter = el.textAlign === "center";
+        const alignSelf = isRight ? "flex-end" : isCenter ? "center" : "flex-start";
+        const textAlignCss = isRight ? "right" : isCenter ? "center" : "left";
+        const fontSizeMm = (el.fontSize || 8) * 0.352778; // 1pt = 0.352778mm
+        const effectiveColor = el.color || (isDark ? "#ffffff" : "#000000");
+
+        innerContent = `
+          <div style="
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: ${alignSelf};
+            text-align: ${textAlignCss};
+            font-family: ${el.fontFamily || "Arial"}, sans-serif;
+            font-size: ${fontSizeMm}mm;
+            font-weight: ${el.fontWeight || "normal"};
+            font-style: ${el.fontStyle || "normal"};
+            text-decoration: ${el.textDecoration || "none"};
+            color: ${effectiveColor};
+            line-height: 1.05;
+            white-space: nowrap;
+            overflow: hidden;
+            background: ${el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : "transparent"};
+            box-sizing: border-box;
+          ">
+            <span style="width: 100%; text-align: ${textAlignCss}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">
+              ${textContent}
+            </span>
+          </div>
+        `;
+      } else if (el.type === "barcode") {
+        const barcodeVal = el.barcodeValue || el.text || "123456789";
+        const customText = el.barcodeText;
+        const showTxt = el.showText !== false;
+        const svgStr = getBarcodeSvgString(barcodeVal, el.barcodeFormat || "CODE128", showTxt, customText);
+        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
+      } else if (el.type === "qr") {
+        const qrVal = el.barcodeValue || el.text || "QR";
+        const svgStr = await getQrSvgString(qrVal);
+        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
+      } else if (el.type === "rfid") {
+        const rfidVal = el.barcodeValue || el.text || "RFID";
+        const svgStr = await getQrSvgString(rfidVal);
+        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
+      } else if (el.type === "icon") {
+        const iconSizeMm = height * 0.75;
+        innerContent = `
+          <div style="
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: ${iconSizeMm}mm;
+            line-height: 1;
+            color: ${el.color || "#000000"};
+            font-family: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Segoe UI Symbol',sans-serif;
+          ">
+            ${el.iconEmoji || "⭐"}
+          </div>
+        `;
+      } else if (el.type === "rect" || el.type === "rect-round") {
+        const borderMm = (el.borderWidth || 1) * 0.264583;
+        const radiusMm = el.type === "rect-round" ? 1.5 : (el.borderRadius || 0) * 0.264583;
+        innerContent = `
+          <div style="
+            width: 100%;
+            height: 100%;
+            background: ${el.backgroundColor || "transparent"};
+            border: ${borderMm}mm solid ${el.borderColor || "#000000"};
+            border-radius: ${radiusMm}mm;
+            box-sizing: border-box;
+          "></div>
+        `;
+      } else if (el.type === "ellipse") {
+        const borderMm = (el.borderWidth || 1) * 0.264583;
+        innerContent = `
+          <div style="
+            width: 100%;
+            height: 100%;
+            background: ${el.backgroundColor || "transparent"};
+            border: ${borderMm}mm solid ${el.borderColor || "#000000"};
+            border-radius: 50%;
+            box-sizing: border-box;
+          "></div>
+        `;
+      } else if (el.type === "line-vertical") {
+        const lineThickMm = (el.borderWidth || 1) * 0.264583;
+        innerContent = `
+          <div style="
+            width: 0;
+            height: 100%;
+            border-left: ${lineThickMm}mm solid ${el.borderColor || "#000000"};
+            position: absolute;
+            left: 50%;
+            top: 0;
+          "></div>
+        `;
+      } else if (el.type === "line" || el.type === "line-dashed" || el.type === "line-dotted" || el.type === "line-double") {
+        const lineThickMm = (el.borderWidth || 1) * 0.264583;
+        const borderStyle = el.type === "line-dashed" ? "dashed" : el.type === "line-dotted" ? "dotted" : el.type === "line-double" ? "double" : "solid";
+        innerContent = `
+          <div style="
+            width: 100%;
+            height: 0;
+            border-top: ${lineThickMm}mm ${borderStyle} ${el.borderColor || "#000000"};
+            position: absolute;
+            top: 50%;
+            left: 0;
+          "></div>
+        `;
+      } else if (el.type === "image" || el.type === "logo") {
+        if (el.imageData) {
+          innerContent = `
+            <img
+              src="${el.imageData}"
+              style="width:100%;height:100%;object-fit:contain;display:block;"
+            />
+          `;
+        }
+      }
+
+      return `
+        <div style="
+          position: absolute;
+          left: ${left}mm;
+          top: ${top}mm;
+          width: ${width}mm;
+          height: ${height}mm;
+          transform: rotate(${rotation}deg);
+          transform-origin: center center;
+          opacity: ${opacity};
+          box-sizing: border-box;
+          z-index: ${el.zIndex || 1};
+          overflow: hidden;
+        ">
+          ${innerContent}
+        </div>
+      `;
+    });
+
+  const elementsHtmlArray = await Promise.all(elementsHtmlPromises);
+  const elementsHtml = elementsHtmlArray.join("\n");
+
+  return `
+    <div class="print-label-cell" style="
+      position: relative;
+      width: ${W}mm;
+      height: ${H}mm;
+      background: ${config.bgColor || "#ffffff"};
+      overflow: hidden;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    ">
+      ${elementsHtml}
+    </div>
+  `;
 }
 
 function isColorDark(color?: string): boolean {
@@ -1813,6 +2081,8 @@ const StaticLabelCell: React.FC<{
                 format={el.barcodeFormat || "CODE128"}
                 width={mmToPx(el.width, zoom)}
                 height={mmToPx(el.height, zoom)}
+                barcodeText={el.barcodeText}
+                showText={el.showText !== false}
               />
             )}
 
@@ -1980,6 +2250,9 @@ const SablonThumbnail: React.FC<{ sablon: EtiketSablonItem }> = ({ sablon }) => 
     borderWidth: alan.borderWidth ?? 0,
     borderRadius: alan.borderRadius ?? 0,
     barcodeFormat: alan.barkodFormat as any,
+    barcodeValue: alan.barcodeValue,
+    barcodeText: alan.barcodeText || alan.customText,
+    showText: alan.showBarcodeText ?? true,
     iconEmoji: alan.iconEmoji,
   }));
 
@@ -2549,7 +2822,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   }, [selectedIds, selectedElements, clipboard, elements, editingId, isFullscreen, isPreviewMode]);
 
   // ─── Doğrudan Çıktı Alma (Baskı) Yordamı ──────────────────────────────────
-  const handleDirectPrint = useCallback(() => {
+  const handleDirectPrint = useCallback(async () => {
     const printWindow = window.open("", "_blank", "width=900,height=700");
     if (!printWindow) {
       window.print();
@@ -2561,24 +2834,19 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     const isRollType = selectedLayoutId === "roll" || selectedLayoutId === "roll2" || selectedLayoutId === "roll3";
     const isSheetType = !isRollType && selectedLayoutId !== "single";
 
+    const singleLabelHtml = await buildSingleLabelHtml(labelConfig, elements);
+
     // 1. TÜM TABAKA VE KART BASKILARI (A4, A5, A6, A3, 10x15, 8x20)
     if (isPreviewMode && isSheetType) {
-      const { pageW, pageH, margin, gap, cols, rows, total, name } = currentLayoutInfo;
+      const { pageW, pageH, margin, gap, cols, total, name } = currentLayoutInfo;
       const labelW = labelConfig.genislikMm;
       const labelH = labelConfig.yukseklikMm;
-
-      const singleCellEl = document.querySelector(".static-label-cell") || canvasRef.current;
-      const cellHtml = singleCellEl ? singleCellEl.innerHTML : "";
-      const currentW = mmToPx(labelW, zoom);
-      const currentH = mmToPx(labelH, zoom);
 
       let gridItemsHtml = "";
       for (let i = 0; i < total; i++) {
         gridItemsHtml += `
           <div style="width: ${labelW}mm; height: ${labelH}mm; position: relative; overflow: hidden; box-sizing: border-box;">
-            <div style="width: ${currentW}px; height: ${currentH}px; transform: scale(${1 / zoom}); transform-origin: 0 0; position: absolute; top: 0; left: 0;">
-              ${cellHtml}
-            </div>
+            ${singleLabelHtml}
           </div>
         `;
       }
@@ -2616,19 +2884,6 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                 justify-content: center;
                 align-content: flex-start;
               }
-              .resize-handle,
-              .rotate-handle,
-              .rotate-handle-line,
-              .element-hover-ring,
-              .element-inline-edit,
-              .element-rotate-badge,
-              .smart-guide,
-              [style*="z-index: 9990"],
-              [style*="zIndex: 9990"],
-              [style*="z-index: 9999"],
-              [style*="zIndex: 9999"] {
-                display: none !important;
-              }
             </style>
           </head>
           <body>
@@ -2637,9 +2892,11 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             </div>
             <script>
               window.onload = function() {
-                window.focus();
-                window.print();
-                setTimeout(function() { window.close(); }, 700);
+                setTimeout(function() {
+                  window.focus();
+                  window.print();
+                  setTimeout(function() { window.close(); }, 700);
+                }, 250);
               };
             </script>
           </body>
@@ -2651,11 +2908,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
     // 2. TERMAL RULO ŞERİT BASKISI (1'li, 2'li, 3'lü Rulo)
     if (isPreviewMode && isRollType) {
-      const { cols, rows, pageW } = currentLayoutInfo;
-      const singleCellEl = document.querySelector(".static-label-cell") || canvasRef.current;
-      const cellHtml = singleCellEl ? singleCellEl.innerHTML : "";
-      const currentW = mmToPx(labelConfig.genislikMm, zoom);
-      const currentH = mmToPx(labelConfig.yukseklikMm, zoom);
+      const { cols, rows } = currentLayoutInfo;
 
       let rollItemsHtml = "";
       for (let r = 0; r < rows; r++) {
@@ -2663,9 +2916,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         for (let c = 0; c < cols; c++) {
           rollItemsHtml += `
             <div style="width: ${labelConfig.genislikMm}mm; height: ${labelConfig.yukseklikMm}mm; position: relative; overflow: hidden;">
-              <div style="width: ${currentW}px; height: ${currentH}px; transform: scale(${1 / zoom}); transform-origin: 0 0; position: absolute; top: 0; left: 0;">
-                ${cellHtml}
-              </div>
+              ${singleLabelHtml}
             </div>
           `;
         }
@@ -2698,28 +2949,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                 flex-direction: column;
                 align-items: center;
               }
-              .resize-handle,
-              .rotate-handle,
-              .rotate-handle-line,
-              .element-hover-ring,
-              .element-inline-edit,
-              .element-rotate-badge,
-              .smart-guide,
-              [style*="z-index: 9990"],
-              [style*="zIndex: 9990"],
-              [style*="z-index: 9999"],
-              [style*="zIndex: 9999"] {
-                display: none !important;
-              }
             </style>
           </head>
           <body>
             ${rollItemsHtml}
             <script>
               window.onload = function() {
-                window.focus();
-                window.print();
-                setTimeout(function() { window.close(); }, 700);
+                setTimeout(function() {
+                  window.focus();
+                  window.print();
+                  setTimeout(function() { window.close(); }, 700);
+                }, 250);
               };
             </script>
           </body>
@@ -2729,13 +2969,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       return;
     }
 
-    // 3. TEKLİ BİREBİR ETİKET BASKISI (Varsayılan)
-    const elCanvas = canvasRef.current;
-    const labelHtml = elCanvas ? elCanvas.innerHTML : "";
-    const currentW = mmToPx(labelConfig.genislikMm, zoom);
-    const currentH = mmToPx(labelConfig.yukseklikMm, zoom);
-    const scaleFactor = 1 / zoom;
-
+    // 3. TEKLİ BİREBİR ETİKET BASKISI (Termal Barkod Yazıcı)
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -2770,54 +3004,28 @@ const UrunEtiketTasarimiPage: React.FC = () => {
               overflow: hidden;
               background: #ffffff;
             }
-            .print-scalable-canvas {
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: ${currentW}px;
-              height: ${currentH}px;
-              transform: scale(${scaleFactor});
-              transform-origin: 0 0;
-            }
-            .canvas-element {
-              position: absolute;
-              box-sizing: border-box;
-            }
-            .resize-handle,
-            .rotate-handle,
-            .rotate-handle-line,
-            .element-hover-ring,
-            .element-inline-edit,
-            .element-rotate-badge,
-            .smart-guide,
-            [style*="z-index: 9990"],
-            [style*="zIndex: 9990"],
-            [style*="z-index: 9999"],
-            [style*="zIndex: 9999"] {
-              display: none !important;
-            }
           </style>
         </head>
         <body>
           <div class="print-wrapper">
-            <div class="print-scalable-canvas">
-              ${labelHtml}
-            </div>
+            ${singleLabelHtml}
           </div>
           <script>
             window.onload = function() {
-              window.focus();
-              window.print();
               setTimeout(function() {
-                window.close();
-              }, 700);
+                window.focus();
+                window.print();
+                setTimeout(function() {
+                  window.close();
+                }, 700);
+              }, 250);
             };
           </script>
         </body>
       </html>
     `);
     printWindow.document.close();
-  }, [labelConfig, sablonAdi, zoom, isPreviewMode, selectedLayoutId]);
+  }, [labelConfig, sablonAdi, isPreviewMode, selectedLayoutId, currentLayoutInfo, elements]);
 
   const isPreviewModeRef = useRef(isPreviewMode);
   isPreviewModeRef.current = isPreviewMode;
@@ -3422,6 +3630,89 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     []
   );
 
+  const alignElement = useCallback(
+    (
+      alignment: "center-h" | "center-v" | "tail" | "left-wing" | "right-wing",
+      elId?: string
+    ) => {
+      const targetId = elId || (selectedIds.length === 1 ? selectedIds[0] : null);
+      if (!targetId) return;
+      const el = elements.find((e) => e.id === targetId);
+      if (!el) return;
+
+      const W = labelConfig.genislikMm;
+      const H = labelConfig.yukseklikMm;
+
+      if (alignment === "center-h") {
+        updateElement(targetId, { x: Math.max(0, Math.round(((W - el.width) / 2) * 10) / 10) });
+      } else if (alignment === "center-v") {
+        updateElement(targetId, { y: Math.max(0, Math.round(((H - el.height) / 2) * 10) / 10) });
+      } else if (alignment === "tail") {
+        let tailStartX = 0;
+        let tailW = labelConfig.kuyrukGenislikMm || 35;
+
+        if (labelConfig.etiketSekli === "kuyruklu") {
+          const minBodyW = Math.min(8, W * 0.5);
+          const tailLen = Math.max(0, Math.min(labelConfig.kuyrukGenislikMm || 35, W - minBodyW));
+          tailStartX = W - tailLen;
+          tailW = tailLen;
+        } else if (
+          labelConfig.etiketSekli === "bogumlukuyruk" ||
+          labelConfig.etiketSekli === "bogumlukuyrukkeskin"
+        ) {
+          const rawSolW = Math.max(1, labelConfig.solKanatMm || W / 3);
+          const rawSagW = Math.max(1, labelConfig.sagKanatMm || W / 3);
+          const rawTailLen = Math.max(0, labelConfig.kuyrukGenislikMm ?? 15);
+          const rawTotal = rawSolW + rawSagW + rawTailLen;
+          const fitScale = rawTotal > W && rawTotal > 0 ? W / rawTotal : 1;
+          tailStartX = (rawSolW + rawSagW) * fitScale;
+          tailW = rawTailLen * fitScale;
+        } else if (labelConfig.etiketSekli === "dambil" || labelConfig.etiketSekli === "kelebek") {
+          const solW = Math.min(labelConfig.solKanatMm || W / 2, W - 2);
+          const neckW = labelConfig.kopruGenislikMm !== undefined ? labelConfig.kopruGenislikMm : 8;
+          tailStartX = solW - neckW / 2;
+          tailW = neckW;
+        } else {
+          tailStartX = W / 2;
+          tailW = W / 2;
+        }
+
+        const newX = Math.max(0, Math.round((tailStartX + (tailW - el.width) / 2) * 10) / 10);
+        const newY = Math.max(0, Math.round(((H - el.height) / 2) * 10) / 10);
+        updateElement(targetId, { x: newX, y: newY });
+      } else if (alignment === "left-wing") {
+        let wingW = labelConfig.solKanatMm || W / 2;
+        if (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") {
+          const rawSolW = Math.max(1, labelConfig.solKanatMm || W / 3);
+          const rawSagW = Math.max(1, labelConfig.sagKanatMm || W / 3);
+          const rawTailLen = Math.max(0, labelConfig.kuyrukGenislikMm ?? 15);
+          const rawTotal = rawSolW + rawSagW + rawTailLen;
+          const fitScale = rawTotal > W && rawTotal > 0 ? W / rawTotal : 1;
+          wingW = rawSolW * fitScale;
+        }
+        const newX = Math.max(0, Math.round(((wingW - el.width) / 2) * 10) / 10);
+        const newY = Math.max(0, Math.round(((H - el.height) / 2) * 10) / 10);
+        updateElement(targetId, { x: newX, y: newY });
+      } else if (alignment === "right-wing") {
+        let startX = labelConfig.solKanatMm || W / 2;
+        let wingW = labelConfig.sagKanatMm || W / 2;
+        if (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") {
+          const rawSolW = Math.max(1, labelConfig.solKanatMm || W / 3);
+          const rawSagW = Math.max(1, labelConfig.sagKanatMm || W / 3);
+          const rawTailLen = Math.max(0, labelConfig.kuyrukGenislikMm ?? 15);
+          const rawTotal = rawSolW + rawSagW + rawTailLen;
+          const fitScale = rawTotal > W && rawTotal > 0 ? W / rawTotal : 1;
+          startX = rawSolW * fitScale;
+          wingW = rawSagW * fitScale;
+        }
+        const newX = Math.max(0, Math.round((startX + (wingW - el.width) / 2) * 10) / 10);
+        const newY = Math.max(0, Math.round(((H - el.height) / 2) * 10) / 10);
+        updateElement(targetId, { x: newX, y: newY });
+      }
+    },
+    [elements, labelConfig, selectedIds, updateElement]
+  );
+
   const updateLabelConfig = useCallback(
     (changes: Partial<LabelConfig>, shouldScaleElements: boolean = true) => {
       const oldW = labelConfig.genislikMm;
@@ -3617,6 +3908,10 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         prefix: el.prefix,
         suffix: el.suffix,
         barkodFormat: el.barcodeFormat,
+        barcodeFormat: el.barcodeFormat,
+        barcodeValue: el.barcodeValue,
+        barcodeText: el.barcodeText,
+        showBarcodeText: el.showText,
         zIndex: el.zIndex,
         opacity: el.opacity,
         visible: el.visible,
@@ -3750,6 +4045,10 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           prefix: el.prefix,
           suffix: el.suffix,
           barkodFormat: el.barcodeFormat,
+          barcodeFormat: el.barcodeFormat,
+          barcodeValue: el.barcodeValue,
+          barcodeText: el.barcodeText,
+          showBarcodeText: el.showText,
           zIndex: el.zIndex,
           opacity: el.opacity,
           visible: el.visible,
@@ -3841,6 +4140,9 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       borderWidth: alan.borderWidth ?? 0,
       borderRadius: alan.borderRadius ?? 0,
       barcodeFormat: alan.barkodFormat as any,
+      barcodeValue: alan.barcodeValue,
+      barcodeText: alan.barcodeText || alan.customText,
+      showText: alan.showBarcodeText ?? true,
       iconEmoji: alan.iconEmoji,
     }));
 
@@ -4020,6 +4322,8 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           format={el.barcodeFormat || "CODE128"}
           width={mmToPx(el.width, zoom)}
           height={mmToPx(el.height, zoom)}
+          barcodeText={el.barcodeText}
+          showText={el.showText !== false}
         />
       );
     }
@@ -4757,6 +5061,36 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   </div>
                 </div>
               </>
+            )}
+
+            <div className="toolbar-divider" />
+
+            {/* Hızlı Konum Hizalama Butonları */}
+            <button
+              className="tb-btn"
+              style={{ fontSize: 11, padding: "0 6px", height: 26 }}
+              title="Etiketin yatay ortasına hizala"
+              onClick={() => alignElement("center-h")}
+            >
+              ↔ Ortala
+            </button>
+            <button
+              className="tb-btn"
+              style={{ fontSize: 11, padding: "0 6px", height: 26 }}
+              title="Etiketin dikey ortasına hizala"
+              onClick={() => alignElement("center-v")}
+            >
+              ↕ Dikey Ortala
+            </button>
+            {(labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "dambil") && (
+              <button
+                className="tb-btn"
+                style={{ fontSize: 11, padding: "0 8px", height: 26, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}
+                title="Kuyruk şeridinin tam ortasına hizala"
+                onClick={() => alignElement("tail")}
+              >
+                🦴 Kuyruğa Ortala
+              </button>
             )}
           </div>
         )}
@@ -6347,6 +6681,175 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
           {selectedElement ? (
             <>
+              {/* ── Konum, Boyut & Akıllı Hizalama ── */}
+              <div className="prop-group">
+                <div className="prop-group-title">
+                  <span>📍 Konum, Boyut & Hizalama</span>
+                  <span style={{ fontSize: 9, color: "#38bdf8" }}>{selectedElement.type}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
+                  <div className="prop-row" style={{ margin: 0 }}>
+                    <span className="prop-label" style={{ minWidth: 20 }}>X:</span>
+                    <input
+                      type="number"
+                      step={0.5}
+                      className="prop-input"
+                      value={Math.round(selectedElement.x * 10) / 10}
+                      onChange={(e) => updateElement(selectedElement.id, { x: Number(e.target.value) })}
+                    />
+                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
+                  </div>
+                  <div className="prop-row" style={{ margin: 0 }}>
+                    <span className="prop-label" style={{ minWidth: 20 }}>Y:</span>
+                    <input
+                      type="number"
+                      step={0.5}
+                      className="prop-input"
+                      value={Math.round(selectedElement.y * 10) / 10}
+                      onChange={(e) => updateElement(selectedElement.id, { y: Number(e.target.value) })}
+                    />
+                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
+                  </div>
+                  <div className="prop-row" style={{ margin: 0 }}>
+                    <span className="prop-label" style={{ minWidth: 20 }}>En:</span>
+                    <input
+                      type="number"
+                      step={0.5}
+                      min={1}
+                      className="prop-input"
+                      value={Math.round(selectedElement.width * 10) / 10}
+                      onChange={(e) => updateElement(selectedElement.id, { width: Math.max(1, Number(e.target.value)) })}
+                    />
+                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
+                  </div>
+                  <div className="prop-row" style={{ margin: 0 }}>
+                    <span className="prop-label" style={{ minWidth: 20 }}>Boy:</span>
+                    <input
+                      type="number"
+                      step={0.5}
+                      min={1}
+                      className="prop-input"
+                      value={Math.round(selectedElement.height * 10) / 10}
+                      onChange={(e) => updateElement(selectedElement.id, { height: Math.max(1, Number(e.target.value)) })}
+                    />
+                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                  <button
+                    className="elem-btn"
+                    style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10.5, justifyContent: "center" }}
+                    title="Etiketin yatay ortasına hizala"
+                    onClick={() => alignElement("center-h")}
+                  >
+                    ↔ Yatay Ortala
+                  </button>
+                  <button
+                    className="elem-btn"
+                    style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10.5, justifyContent: "center" }}
+                    title="Etiketin dikey ortasına hizala"
+                    onClick={() => alignElement("center-v")}
+                  >
+                    ↕ Dikey Ortala
+                  </button>
+                  {(labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "dambil") && (
+                    <button
+                      className="elem-btn"
+                      style={{ flex: "1 1 100%", padding: "5px 6px", fontSize: 10.5, justifyContent: "center", background: "rgba(56, 189, 248, 0.12)", borderColor: "rgba(56, 189, 248, 0.35)", color: "#38bdf8", fontWeight: 600 }}
+                      title="Kuyruk şeridinin tam ortasına hizalar"
+                      onClick={() => alignElement("tail")}
+                    >
+                      🦴 Kuyruğa Tam Ortala
+                    </button>
+                  )}
+                  {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "dambil") && (
+                    <>
+                      <button
+                        className="elem-btn"
+                        style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10, justifyContent: "center" }}
+                        title="Sol kanadın ortasına hizalar"
+                        onClick={() => alignElement("left-wing")}
+                      >
+                        ◀ Sol Kanat
+                      </button>
+                      <button
+                        className="elem-btn"
+                        style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10, justifyContent: "center" }}
+                        title="Sağ kanadın ortasına hizalar"
+                        onClick={() => alignElement("right-wing")}
+                      >
+                        Sağ Kanat ▶
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Barkod, QR & RFID Özel Özellikleri ── */}
+              {(selectedElement.type === "barcode" || selectedElement.type === "qr" || selectedElement.type === "rfid") && (
+                <div className="prop-group">
+                  <div className="prop-group-title">
+                    <span>
+                      {selectedElement.type === "barcode" ? "▨ Barkod Özellikleri" : selectedElement.type === "qr" ? "▦ QR Kod Özellikleri" : "📡 RFID Özellikleri"}
+                    </span>
+                    <span style={{ fontSize: 9.5, color: "#38bdf8" }}>{selectedElement.barcodeFormat || "CODE128"}</span>
+                  </div>
+
+                  <div className="prop-row">
+                    <span className="prop-label">Format:</span>
+                    <select
+                      className="prop-input"
+                      value={selectedElement.barcodeFormat || (selectedElement.type === "qr" ? "QR" : selectedElement.type === "rfid" ? "RFID" : "CODE128")}
+                      onChange={(e) => {
+                        const fmt = e.target.value as any;
+                        const newType = fmt === "QR" ? "qr" : fmt === "RFID" ? "rfid" : "barcode";
+                        updateElement(selectedElement.id, { barcodeFormat: fmt, type: newType });
+                      }}
+                    >
+                      <option value="CODE128">CODE128 (Standart)</option>
+                      <option value="EAN13">EAN-13 (13 Haneli)</option>
+                      <option value="QR">QR Kod (Karekod)</option>
+                      <option value="RFID">RFID / Kablosuz Çip</option>
+                    </select>
+                  </div>
+
+                  <div className="prop-row">
+                    <span className="prop-label">Veri/Değer:</span>
+                    <input
+                      type="text"
+                      className="prop-input"
+                      value={selectedElement.barcodeValue || selectedElement.text || ""}
+                      placeholder="Barkod veya Link/Metin..."
+                      onChange={(e) => updateElement(selectedElement.id, { barcodeValue: e.target.value, text: e.target.value })}
+                    />
+                  </div>
+
+                  {selectedElement.type === "barcode" && (
+                    <>
+                      <div className="prop-row">
+                        <span className="prop-label" title="Barkodun altında yazılacak özel metin">Alt Yazı:</span>
+                        <input
+                          type="text"
+                          className="prop-input"
+                          value={selectedElement.barcodeText !== undefined ? selectedElement.barcodeText : ""}
+                          placeholder={selectedElement.barcodeValue || selectedElement.text || "Otomatik (Barkod No)"}
+                          onChange={(e) => updateElement(selectedElement.id, { barcodeText: e.target.value })}
+                        />
+                      </div>
+                      <label className="small-form-check" style={{ marginTop: 4 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedElement.showText !== false}
+                          onChange={(e) => updateElement(selectedElement.id, { showText: e.target.checked })}
+                        />
+                        <span>Barkod Alt Yazısını Göster</span>
+                      </label>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Metin & ERP Alan Ayarları */}
               {(selectedElement.type === "text" || selectedElement.type === "field") && (
                 <>
