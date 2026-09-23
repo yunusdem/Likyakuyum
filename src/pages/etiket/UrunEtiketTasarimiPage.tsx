@@ -135,9 +135,11 @@ const ETIKET_TIPLERI = [
 const ETIKET_SEKILLERI: { value: EtiketSekli; ad: string; icon: string; desc: string }[] = [
   { value: "kelebek", ad: "Kelebek (Çift Kanat)", icon: "🦋", desc: "İki kanatlı, katlamalı orta köprülü" },
   { value: "kuyruklu", ad: "Kuyruklu (Kordon/İpli)", icon: "🏷️", desc: "Gövde ve uzun kuyruk şeridi" },
+  { value: "bogumlukuyruk", ad: "Boğumlu Kuyruk (Çift Kanat + Kuyruk)", icon: "🎗️", desc: "Ortada boğumlu iki kanat, sağda kuyruk şeridi" },
   { value: "dambil", ad: "Dambıl (Yüzük)", icon: "🦴", desc: "İki yuvarlak başlık, ince köprü" },
   { value: "rfid", ad: "Kablosuz RFID", icon: "📡", desc: "Dahili anten ve çip alanı" },
   { value: "dikdortgen", ad: "Standart Dikdörtgen", icon: "▬", desc: "Klasik kuyumcu kartı" },
+  { value: "bogumlukuyrukkeskin", ad: "Boğumlu Kuyruk (Keskin Köşeli)", icon: "📐", desc: "Köşeleri yuvarlatılmamış, ortası boğumlu, sağda kuyruklu" },
 ];
 
 const ALTIN_ALANLAR = [
@@ -184,10 +186,12 @@ const ICON_PRESETS = [
 const POPULAR_SIZES = [
   { ad: "65×22 mm (Kelebek)", icon: "🦋", config: { genislikMm: 65, yukseklikMm: 22, etiketSekli: "kelebek" as const, solKanatMm: 28, kopruGenislikMm: 9 } },
   { ad: "70×15 mm (Kuyruklu)", icon: "🏷️", config: { genislikMm: 70, yukseklikMm: 15, etiketSekli: "kuyruklu" as const, kuyrukGenislikMm: 35, kuyrukKalinlikMm: 4 } },
+  { ad: "75×20 mm (Boğumlu Kuyruk)", icon: "🎗️", config: { genislikMm: 75, yukseklikMm: 20, etiketSekli: "bogumlukuyruk" as const, solKanatMm: 30, sagKanatMm: 30, kopruGenislikMm: 8, bogumDerinlikMm: 2, kuyrukGenislikMm: 15, kuyrukKalinlikMm: 4 } },
   { ad: "80×12 mm (Dambıl)", icon: "🦴", config: { genislikMm: 80, yukseklikMm: 12, etiketSekli: "dambil" as const, solKanatMm: 35, kopruYukseklikMm: 4 } },
   { ad: "45×10 mm (Mini)", icon: "▬", config: { genislikMm: 45, yukseklikMm: 10, etiketSekli: "dikdortgen" as const } },
   { ad: "50×20 mm (Kare)", icon: "▬", config: { genislikMm: 50, yukseklikMm: 20, etiketSekli: "dikdortgen" as const } },
   { ad: "72×18 mm (RFID)", icon: "📡", config: { genislikMm: 72, yukseklikMm: 18, etiketSekli: "rfid" as const } },
+  { ad: "75×20 mm (Boğumlu Kuyruk - Keskin Köşe)", icon: "📐", config: { genislikMm: 75, yukseklikMm: 20, etiketSekli: "bogumlukuyrukkeskin" as const, solKanatMm: 30, sagKanatMm: 30, kopruGenislikMm: 8, bogumDerinlikMm: 2, kuyrukGenislikMm: 15, kuyrukKalinlikMm: 4, koseYuvarlikligiMm: 0 } },
 ];
 
 // ─── Tip Tanımları ────────────────────────────────────────────────────────────
@@ -268,6 +272,9 @@ export interface LabelConfig {
   katlamaCizgisi: boolean;
   bgColor: string;
   bgTexture: "beyaz" | "krem" | "siyah" | "altin";
+  koseYuvarlikligiMm?: number; // Dış köşe yuvarlaklığı (mm) - tüm şekillerde ayarlanabilir
+  bogumEkle?: boolean;         // Standart Dikdörtgen üzerine özel boğum ekle
+  kuyrukEkle?: boolean;        // Standart Dikdörtgen üzerine özel kuyruk ekle
 }
 
 export type PaperLayoutId =
@@ -887,6 +894,42 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       { type: "text", x: 42, y: 16.5, width: 35, height: 3.5, text: "Model No: TRB-SET-2026", fontSize: 6.5, color: "#64748b" },
     ],
   },
+  {
+    id: "builtin_11",
+    ad: "Boğumlu Kuyruklu Bilezik / İpli Kolye (Keskin Köşe)",
+    kategori: "Altın / Sarrafiye",
+    etiketTipi: 0,
+    icon: "📐",
+    aciklama: "85×16 mm ortası boğumlu, köşeleri keskin (yuvarlatılmamış) çift kanatlı ve uzun kordonlu bilezik etiketi",
+    config: {
+      etiketTipi: 0,
+      etiketSekli: "bogumlukuyrukkeskin",
+      genislikMm: 85,
+      yukseklikMm: 16,
+      solKanatMm: 35,
+      sagKanatMm: 35,
+      kopruGenislikMm: 8,
+      bogumDerinlikMm: 2,
+      kopruYukseklikMm: 16,
+      kuyrukGenislikMm: 15,
+      kuyrukKalinlikMm: 4,
+      koseYuvarlikligiMm: 0,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "barcode", x: 2, y: 2, width: 20, height: 6, barcodeValue: "220849103", barcodeFormat: "CODE128" },
+      { type: "text", x: 23, y: 2, width: 10, height: 3.5, text: "22 AYAR", fontSize: 6.5, fontWeight: "bold", color: "#b45309" },
+      { type: "text", x: 23, y: 5.5, width: 10, height: 3.5, text: "14.80 g", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 2, y: 9.5, width: 31, height: 3.5, text: "Ajda Bilezik 22K", fontSize: 6.5, color: "#000" },
+      { type: "text", x: 40, y: 2, width: 28, height: 4.5, text: "₺ 48.950", fontSize: 8.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 40, y: 7.5, width: 28, height: 3.5, text: "İpli Uzun Kordon Modeli", fontSize: 6.5, color: "#475569" },
+      { type: "text", x: 40, y: 11.5, width: 28, height: 3.5, text: "Kod: BLZ-2208", fontSize: 6, color: "#64748b" },
+    ],
+  },
 ];
 
 interface CanvasState {
@@ -1133,7 +1176,11 @@ function LabelShapeSVG({
 }) {
   const W = mmToPx(config.genislikMm, zoom);
   const H = mmToPx(config.yukseklikMm, zoom);
-  const r = mmToPx(3, zoom);
+  // Köşe yarıçapı: kullanıcı "Köşe Yuvarlaklığı" ile ayarlayabilir (varsayılan 3mm).
+  // Etiket çok küçültüldüğünde (ör. yükseklik 10mm altı) yarıçap gövdenin yarısını
+  // aşıp şeklin kendi içine girmesine yol açmasın diye sınırlanır.
+  const cornerMm = config.koseYuvarlikligiMm !== undefined ? config.koseYuvarlikligiMm : 3;
+  const r = Math.max(0, Math.min(mmToPx(cornerMm, zoom), H / 2 - 0.5, W / 6));
 
   const isDark = isColorDark(config.bgColor);
   const shapeFill = config.bgColor || "#ffffff";
@@ -1146,11 +1193,14 @@ function LabelShapeSVG({
 
   // 1. KELEBEK ŞEKLİ (Gerçekçi Kuyumcu Etiket Rulosu Boğumu)
   if (config.etiketSekli === "kelebek") {
-    const solW = mmToPx(config.solKanatMm || config.genislikMm / 2, zoom);
-    const neckW = mmToPx(config.kopruGenislikMm !== undefined ? config.kopruGenislikMm : 6, zoom);
+    const solW = Math.min(mmToPx(config.solKanatMm || config.genislikMm / 2, zoom), W - 2);
+    const sagW = Math.max(2, W - solW);
+    const rawNeckW = mmToPx(config.kopruGenislikMm !== undefined ? config.kopruGenislikMm : 6, zoom);
+    // Köprü/boğum genişliği kanatlardan taşıp kavis kendi üstüne binmesin diye kanatlarla sınırlanır
+    const neckW = Math.max(2, Math.min(rawNeckW, solW * 1.4, sagW * 1.4));
     // Boğum / Çentik derinliği: Standart etiket rulolarında üstten ve alttan 1.5 - 3mm kavisli çentiktir
     const indentMm = config.bogumDerinlikMm !== undefined ? config.bogumDerinlikMm : 2.0;
-    const indent = mmToPx(indentMm, zoom);
+    const indent = Math.max(0, Math.min(mmToPx(indentMm, zoom), H / 2 - 1));
     const midX = solW;
     const neckTop = indent;
     const neckBot = H - indent;
@@ -1220,12 +1270,15 @@ function LabelShapeSVG({
 
   // 2. DAMBIL ŞEKLİ (Yüzük & Alyans İki Oval Başlıklı)
   if (config.etiketSekli === "dambil") {
-    const solW = mmToPx(config.solKanatMm || config.genislikMm / 2, zoom);
+    const solW = Math.min(mmToPx(config.solKanatMm || config.genislikMm / 2, zoom), W - 2);
+    const sagW = Math.max(2, W - solW);
     const midX = solW;
-    const headR = H / 2;
+    // Baş dairesinin yarıçapı, dar kanatlarda iki başlık birbirine binmesin diye kanat genişlikleriyle de sınırlanır
+    const headR = Math.max(1, Math.min(H / 2, solW, sagW));
     const indentMm = config.bogumDerinlikMm !== undefined ? config.bogumDerinlikMm : 3.0;
-    const indent = mmToPx(indentMm, zoom);
-    const neckW = mmToPx(config.kopruGenislikMm !== undefined ? config.kopruGenislikMm : 8, zoom);
+    const indent = Math.max(0, Math.min(mmToPx(indentMm, zoom), H / 2 - 1));
+    const rawNeckW = mmToPx(config.kopruGenislikMm !== undefined ? config.kopruGenislikMm : 8, zoom);
+    const neckW = Math.max(2, Math.min(rawNeckW, solW * 1.4, sagW * 1.4));
     const neckTop = indent;
     const neckBot = H - indent;
 
@@ -1282,24 +1335,25 @@ function LabelShapeSVG({
 
   // 3. KUYRUKLU ETİKET
   if (config.etiketSekli === "kuyruklu") {
-    const tailLen = mmToPx(config.kuyrukGenislikMm || 35, zoom);
-    const bodyW = Math.max(mmToPx(20, zoom), W - tailLen);
-    const tailH = mmToPx(config.kuyrukKalinlikMm || 4, zoom);
+    // Gövde her zaman en az 8mm kalsın diye kuyruk uzunluğu buna göre sınırlanır;
+    // böylece gövde ve kuyruk oranı, etiket ne kadar küçültülürse küçültülsün W ile tutarlı kalır.
+    const minBodyW = Math.min(mmToPx(8, zoom), W * 0.5);
+    const tailLen = Math.max(0, Math.min(mmToPx(config.kuyrukGenislikMm || 35, zoom), W - minBodyW));
+    const bodyW = W - tailLen;
+    const tailH = Math.max(1, Math.min(mmToPx(config.kuyrukKalinlikMm || 4, zoom), H * 0.9));
     const tailTop = (H - tailH) / 2;
     const tailBot = (H + tailH) / 2;
-    const tailR = tailH / 2;
+    const tailR = Math.min(tailH / 2, tailLen / 2);
 
     const path = `
       M ${r} 0
       L ${bodyW - r} 0
       Q ${bodyW} 0 ${bodyW} ${r}
-      L ${bodyW} ${tailTop - 2}
-      C ${bodyW} ${tailTop}, ${bodyW + 2} ${tailTop}, ${bodyW + 4} ${tailTop}
+      L ${bodyW} ${tailTop}
       L ${W - tailR} ${tailTop}
       A ${tailR} ${tailR} 0 0 1 ${W} ${tailTop + tailR}
       A ${tailR} ${tailR} 0 0 1 ${W - tailR} ${tailBot}
-      L ${bodyW + 4} ${tailBot}
-      C ${bodyW + 2} ${tailBot}, ${bodyW} ${tailBot}, ${bodyW} ${tailBot + 2}
+      L ${bodyW} ${tailBot}
       L ${bodyW} ${H - r}
       Q ${bodyW} ${H} ${bodyW - r} ${H}
       L ${r} ${H}
@@ -1337,6 +1391,107 @@ function LabelShapeSVG({
               y2={H - 2}
               stroke={foldLineColor}
               strokeWidth={0.8}
+              strokeDasharray="2,2"
+            />
+            <line
+              x1={bodyW}
+              y1={tailTop}
+              x2={bodyW}
+              y2={tailBot}
+              stroke={foldLineColor}
+              strokeWidth={0.8}
+              strokeDasharray="1.5,1.5"
+            />
+          </>
+        )}
+      </svg>
+    );
+  }
+
+  // 3B. BOĞUMLU KUYRUK ŞEKLİ (Ortası boğumlu iki kanat + sağdan çıkan kuyruk şeridi)
+  // "bogumlukuyrukkeskin" de aynı geometriyi kullanır; farkı sadece varsayılan Köşe
+  // Yuvarlaklığı değeridir (0mm = keskin köşe) — kullanıcı ikisinde de köşe yuvarlaklığını
+  // (ve boğum/kuyruk ölçülerini) istediği gibi değiştirebilir.
+  if (config.etiketSekli === "bogumlukuyruk" || config.etiketSekli === "bogumlukuyrukkeskin") {
+    const rawSolW = mmToPx(Math.max(1, config.solKanatMm || config.genislikMm / 3), zoom);
+    const rawSagW = mmToPx(Math.max(1, config.sagKanatMm || config.genislikMm / 3), zoom);
+    const rawTailLen = mmToPx(Math.max(0, config.kuyrukGenislikMm ?? 15), zoom);
+    const rawTotal = rawSolW + rawSagW + rawTailLen;
+    // Girilen sol + sağ + kuyruk toplamı artık genişliği asla aşamayacağı için (giriş tarafında
+    // sınırlanıyor), burada sadece eski/aşırı kayıtlı verilere karşı savunma amaçlı KÜÇÜLTÜLÜR;
+    // toplam W'den küçükse değerler olduğu gibi (gerdirilmeden) çizilir, kalan boşluk kuyruğun
+    // ucunda boş alan olarak kalır.
+    const fitScale = rawTotal > W && rawTotal > 0 ? W / rawTotal : 1;
+    const solW = rawSolW * fitScale;
+    const sagW = rawSagW * fitScale;
+    const tailLen = rawTailLen * fitScale;
+    const bodyW = solW + sagW;
+    const midX = solW;
+
+    const rawNeckW = mmToPx(config.kopruGenislikMm !== undefined ? config.kopruGenislikMm : 8, zoom);
+    const neckW = Math.max(2, Math.min(rawNeckW, solW * 1.4, sagW * 1.4));
+    const indentMm = config.bogumDerinlikMm !== undefined ? config.bogumDerinlikMm : 2.0;
+    const indent = Math.max(0, Math.min(mmToPx(indentMm, zoom), H / 2 - 1));
+    const neckTop = indent;
+    const neckBot = H - indent;
+
+    const tailH = Math.max(1, Math.min(mmToPx(config.kuyrukKalinlikMm || 4, zoom), H * 0.9));
+    const tailTop = (H - tailH) / 2;
+    const tailBot = (H + tailH) / 2;
+    const tailR = Math.min(tailH / 2, tailLen / 2);
+
+    const path = `
+      M ${r} 0
+      L ${midX - neckW / 2} 0
+      C ${midX - neckW / 4} 0, ${midX - neckW / 4} ${neckTop}, ${midX} ${neckTop}
+      C ${midX + neckW / 4} ${neckTop}, ${midX + neckW / 4} 0, ${midX + neckW / 2} 0
+      L ${bodyW - r} 0
+      Q ${bodyW} 0 ${bodyW} ${r}
+      L ${bodyW} ${tailTop}
+      L ${W - tailR} ${tailTop}
+      A ${tailR} ${tailR} 0 0 1 ${W} ${tailTop + tailR}
+      A ${tailR} ${tailR} 0 0 1 ${W - tailR} ${tailBot}
+      L ${bodyW} ${tailBot}
+      L ${bodyW} ${H - r}
+      Q ${bodyW} ${H} ${bodyW - r} ${H}
+      L ${midX + neckW / 2} ${H}
+      C ${midX + neckW / 4} ${H}, ${midX + neckW / 4} ${neckBot}, ${midX} ${neckBot}
+      C ${midX - neckW / 4} ${neckBot}, ${midX - neckW / 4} ${H}, ${midX - neckW / 2} ${H}
+      L ${r} ${H}
+      Q 0 ${H} 0 ${H - r}
+      L 0 ${r}
+      Q 0 0 ${r} 0 Z
+    `;
+
+    return (
+      <svg
+        style={{ position: "absolute", inset: 0, width: W, height: H, pointerEvents: "none", overflow: "visible" }}
+        width={W}
+        height={H}
+      >
+        <defs>
+          <clipPath id="bogumluKuyrukClip">
+            <path d={path} />
+          </clipPath>
+          {gridPatternSize > 0 && (
+            <pattern id={patId} width={gridPatternSize} height={gridPatternSize} patternUnits="userSpaceOnUse">
+              <path d={`M ${gridPatternSize} 0 L 0 0 L 0 ${gridPatternSize}`} fill="none" stroke="#0284c7" strokeWidth={0.8} opacity={0.45} />
+            </pattern>
+          )}
+        </defs>
+        <path d={path} fill={shapeFill} stroke={strokeColor} strokeWidth={1.2} />
+        {gridPatternSize > 0 && (
+          <rect x={0} y={0} width={W} height={H} fill={`url(#${patId})`} clipPath="url(#bogumluKuyrukClip)" />
+        )}
+        {config.katlamaCizgisi && (
+          <>
+            <line
+              x1={midX}
+              y1={Math.max(0, neckTop - 2)}
+              x2={midX}
+              y2={Math.min(H, neckBot + 2)}
+              stroke={foldLineColor}
+              strokeWidth={1}
               strokeDasharray="2,2"
             />
             <line
@@ -1399,46 +1554,168 @@ function LabelShapeSVG({
     );
   }
 
-  // 5. DİKDÖRTGEN
-  return (
-    <svg
-      style={{ position: "absolute", inset: 0, width: W, height: H, pointerEvents: "none" }}
-      width={W}
-      height={H}
-    >
-      <defs>
-        {gridPatternSize > 0 && (
-          <pattern id={patId} width={gridPatternSize} height={gridPatternSize} patternUnits="userSpaceOnUse">
-            <path d={`M ${gridPatternSize} 0 L 0 0 L 0 ${gridPatternSize}`} fill="none" stroke="#0284c7" strokeWidth={0.8} opacity={0.45} />
-          </pattern>
-        )}
-      </defs>
-      <rect
-        x={1}
-        y={1}
-        width={W - 2}
-        height={H - 2}
-        rx={r}
-        fill={shapeFill}
-        stroke={strokeColor}
-        strokeWidth={1.2}
-      />
-      {gridPatternSize > 0 && (
-        <rect x={2} y={2} width={W - 4} height={H - 4} rx={r} fill={`url(#${patId})`} />
-      )}
-      {config.katlamaCizgisi && (
-        <line
-          x1={W / 2}
-          y1={2}
-          x2={W / 2}
-          y2={H - 2}
-          stroke={foldLineColor}
-          strokeWidth={0.8}
-          strokeDasharray="2,2"
+  // 5. DİKDÖRTGEN (Standart) — Boğum ve/veya Kuyruk eklenmemişse basit yuvarlak köşeli dikdörtgen
+  const hasBogum = !!config.bogumEkle;
+  const hasKuyruk = !!config.kuyrukEkle;
+
+  if (!hasBogum && !hasKuyruk) {
+    return (
+      <svg
+        style={{ position: "absolute", inset: 0, width: W, height: H, pointerEvents: "none" }}
+        width={W}
+        height={H}
+      >
+        <defs>
+          {gridPatternSize > 0 && (
+            <pattern id={patId} width={gridPatternSize} height={gridPatternSize} patternUnits="userSpaceOnUse">
+              <path d={`M ${gridPatternSize} 0 L 0 0 L 0 ${gridPatternSize}`} fill="none" stroke="#0284c7" strokeWidth={0.8} opacity={0.45} />
+            </pattern>
+          )}
+        </defs>
+        <rect
+          x={1}
+          y={1}
+          width={W - 2}
+          height={H - 2}
+          rx={r}
+          fill={shapeFill}
+          stroke={strokeColor}
+          strokeWidth={1.2}
         />
-      )}
-    </svg>
-  );
+        {gridPatternSize > 0 && (
+          <rect x={2} y={2} width={W - 4} height={H - 4} rx={r} fill={`url(#${patId})`} />
+        )}
+        {config.katlamaCizgisi && (
+          <line
+            x1={W / 2}
+            y1={2}
+            x2={W / 2}
+            y2={H - 2}
+            stroke={foldLineColor}
+            strokeWidth={0.8}
+            strokeDasharray="2,2"
+          />
+        )}
+      </svg>
+    );
+  }
+
+  // 5B. DİKDÖRTGEN + Özel Boğum ve/veya Özel Kuyruk (kullanıcı tarafından açılıp kapatılabilir)
+  {
+    const minBodyW = hasKuyruk ? Math.min(mmToPx(8, zoom), W * 0.5) : 0;
+    const tailLen = hasKuyruk ? Math.max(0, Math.min(mmToPx(config.kuyrukGenislikMm || 35, zoom), W - minBodyW)) : 0;
+    const bodyW = W - tailLen;
+    const tailH = hasKuyruk ? Math.max(1, Math.min(mmToPx(config.kuyrukKalinlikMm || 4, zoom), H * 0.9)) : 0;
+    const tailTop = (H - tailH) / 2;
+    const tailBot = (H + tailH) / 2;
+    const tailR = hasKuyruk ? Math.min(tailH / 2, tailLen / 2) : 0;
+
+    // Köşe yarıçapı, kuyruğun gövdeyle birleştiği noktadan taşıp geometriyi bozmasın diye
+    // (kuyruk varsa) o noktanın düşey mesafesiyle de sınırlanır.
+    const rr = Math.max(0, Math.min(r, hasKuyruk ? tailTop : r, bodyW / 6));
+
+    const rawMidX = config.solKanatMm ? mmToPx(config.solKanatMm, zoom) : bodyW / 2;
+    const midX = hasBogum ? Math.max(4, Math.min(rawMidX, bodyW - 4)) : bodyW / 2;
+    const rawNeckW = mmToPx(config.kopruGenislikMm !== undefined ? config.kopruGenislikMm : 8, zoom);
+    const neckW = hasBogum ? Math.max(2, Math.min(rawNeckW, midX * 1.4, (bodyW - midX) * 1.4)) : 0;
+    const indentMm = config.bogumDerinlikMm !== undefined ? config.bogumDerinlikMm : 2.0;
+    const indent = hasBogum ? Math.max(0, Math.min(mmToPx(indentMm, zoom), H / 2 - 1)) : 0;
+    const neckTop = indent;
+    const neckBot = H - indent;
+
+    const topBogumPart = hasBogum
+      ? `
+      L ${midX - neckW / 2} 0
+      C ${midX - neckW / 4} 0, ${midX - neckW / 4} ${neckTop}, ${midX} ${neckTop}
+      C ${midX + neckW / 4} ${neckTop}, ${midX + neckW / 4} 0, ${midX + neckW / 2} 0`
+      : "";
+    const botBogumPart = hasBogum
+      ? `
+      L ${midX + neckW / 2} ${H}
+      C ${midX + neckW / 4} ${H}, ${midX + neckW / 4} ${neckBot}, ${midX} ${neckBot}
+      C ${midX - neckW / 4} ${neckBot}, ${midX - neckW / 4} ${H}, ${midX - neckW / 2} ${H}`
+      : "";
+    const tailPart = hasKuyruk
+      ? `
+      L ${bodyW} ${tailTop}
+      L ${W - tailR} ${tailTop}
+      A ${tailR} ${tailR} 0 0 1 ${W} ${tailTop + tailR}
+      A ${tailR} ${tailR} 0 0 1 ${W - tailR} ${tailBot}
+      L ${bodyW} ${tailBot}`
+      : "";
+
+    const path = `
+      M ${rr} 0${topBogumPart}
+      L ${bodyW - rr} 0
+      Q ${bodyW} 0 ${bodyW} ${rr}${tailPart}
+      L ${bodyW} ${H - rr}
+      Q ${bodyW} ${H} ${bodyW - rr} ${H}${botBogumPart}
+      L ${rr} ${H}
+      Q 0 ${H} 0 ${H - rr}
+      L 0 ${rr}
+      Q 0 0 ${rr} 0 Z
+    `;
+
+    return (
+      <svg
+        style={{ position: "absolute", inset: 0, width: W, height: H, pointerEvents: "none", overflow: "visible" }}
+        width={W}
+        height={H}
+      >
+        <defs>
+          <clipPath id="dikdortgenOzelClip">
+            <path d={path} />
+          </clipPath>
+          {gridPatternSize > 0 && (
+            <pattern id={patId} width={gridPatternSize} height={gridPatternSize} patternUnits="userSpaceOnUse">
+              <path d={`M ${gridPatternSize} 0 L 0 0 L 0 ${gridPatternSize}`} fill="none" stroke="#0284c7" strokeWidth={0.8} opacity={0.45} />
+            </pattern>
+          )}
+        </defs>
+        <path d={path} fill={shapeFill} stroke={strokeColor} strokeWidth={1.2} />
+        {gridPatternSize > 0 && (
+          <rect x={0} y={0} width={W} height={H} fill={`url(#${patId})`} clipPath="url(#dikdortgenOzelClip)" />
+        )}
+        {config.katlamaCizgisi && (
+          <>
+            {hasBogum && (
+              <line
+                x1={midX}
+                y1={Math.max(0, neckTop - 2)}
+                x2={midX}
+                y2={Math.min(H, neckBot + 2)}
+                stroke={foldLineColor}
+                strokeWidth={1}
+                strokeDasharray="2,2"
+              />
+            )}
+            {hasKuyruk && (
+              <line
+                x1={bodyW}
+                y1={tailTop}
+                x2={bodyW}
+                y2={tailBot}
+                stroke={foldLineColor}
+                strokeWidth={0.8}
+                strokeDasharray="1.5,1.5"
+              />
+            )}
+            {!hasBogum && (
+              <line
+                x1={bodyW / 2}
+                y1={2}
+                x2={bodyW / 2}
+                y2={H - 2}
+                stroke={foldLineColor}
+                strokeWidth={0.8}
+                strokeDasharray="2,2"
+              />
+            )}
+          </>
+        )}
+      </svg>
+    );
+  }
 }
 
 // ─── Statik Çoklu Tabaka / Rulo Etiket Hücresi (Önizleme & Baskı İçin) ────────
@@ -1557,7 +1834,10 @@ const StaticLabelCell: React.FC<{
                   fontSize: `${mmToPx(el.height * 0.75, zoom)}px`,
                   lineHeight: 1,
                   color: el.color || "#000",
-                }}
+                  fontFamily: "'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Segoe UI Symbol',sans-serif",
+                  WebkitPrintColorAdjust: "exact",
+                  printColorAdjust: "exact",
+                } as React.CSSProperties}
               >
                 {el.iconEmoji || "⭐"}
               </div>
@@ -2191,6 +2471,11 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
         e.preventDefault();
         handleDirectPrint();
+        return;
+      }
+      if (e.key === "F9") {
+        e.preventDefault();
+        handleSaveAndPrintRef.current();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "a" && !isEditing) {
@@ -3151,7 +3436,10 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       if (shouldScaleElements && hasDimensionChange && oldW > 0 && oldH > 0 && elements.length > 0) {
         const ratioX = newW / oldW;
         const ratioY = newH / oldH;
-        const fontRatio = (ratioX + ratioY) / 2;
+        // Sadece genişlik ya da sadece yükseklik değiştirildiğinde (ratioX ≠ ratioY) yazı boyutu
+        // ortalama oranla küçültülürse kutudan daha yavaş küçülüp komşu elemanların üstüne taşabilir.
+        // Bu yüzden metin her zaman EN ÇOK küçülen eksene göre ölçeklenir; böylece kutusuna asla taşmaz.
+        const fontRatio = Math.min(ratioX, ratioY);
 
         // Also scale shape sub-dimensions proportionally if not explicitly provided
         const scaledConfigChanges: Partial<LabelConfig> = { ...changes };
@@ -3197,6 +3485,56 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       }
     },
     [labelConfig, elements]
+  );
+
+  // ─── Boğumlu Kuyruk Şekli: Sol Boğum / Sağ Boğum / Kuyruk Boyu Bağımsız Girişleri ──
+  // Her ölçü girildiği gibi (mm bazında) tam olarak uygulanır, diğer ikisi buna ayak
+  // uydurmaz; toplam genişlik (genislikMm) bu üçünün toplamına göre EN SON, otomatik
+  // olarak yeniden hesaplanır. Yani tasarımı büyültmek/küçültmek için sol/sağ/kuyruktan
+  // herhangi birini değiştirmek yeterlidir — Genişlik alanı sadece sonucu gösterir.
+  const updateBogumluKuyrukSol = useCallback(
+    (v: number) => {
+      const sag = labelConfig.sagKanatMm || 0;
+      const kuyruk = labelConfig.kuyrukGenislikMm || 0;
+      updateLabelConfig({ solKanatMm: v, sagKanatMm: sag, kuyrukGenislikMm: kuyruk, genislikMm: Math.round((v + sag + kuyruk) * 10) / 10 });
+    },
+    [labelConfig, updateLabelConfig]
+  );
+  const updateBogumluKuyrukSag = useCallback(
+    (v: number) => {
+      const sol = labelConfig.solKanatMm || 0;
+      const kuyruk = labelConfig.kuyrukGenislikMm || 0;
+      updateLabelConfig({ sagKanatMm: v, solKanatMm: sol, kuyrukGenislikMm: kuyruk, genislikMm: Math.round((sol + v + kuyruk) * 10) / 10 });
+    },
+    [labelConfig, updateLabelConfig]
+  );
+  const updateBogumluKuyrukKuyruk = useCallback(
+    (v: number) => {
+      const sol = labelConfig.solKanatMm || 0;
+      const sag = labelConfig.sagKanatMm || 0;
+      updateLabelConfig({ kuyrukGenislikMm: v, solKanatMm: sol, sagKanatMm: sag, genislikMm: Math.round((sol + sag + v) * 10) / 10 });
+    },
+    [labelConfig, updateLabelConfig]
+  );
+
+  // Yükseklik ekseninde aynı mantık: Kuyruk Kalınlığı ya da Boğum Derinliği, mevcut
+  // Yükseklik'e sığmayacak kadar büyütülürse -diğer ölçü sabit kalırken- Yükseklik
+  // otomatik olarak (en son) bu değere yetecek kadar büyütülür.
+  const updateKuyrukKalinlik = useCallback(
+    (v: number) => {
+      const neededH = Math.round((v / 0.9) * 10) / 10;
+      const newH = Math.max(labelConfig.yukseklikMm, neededH);
+      updateLabelConfig({ kuyrukKalinlikMm: v, yukseklikMm: newH });
+    },
+    [labelConfig, updateLabelConfig]
+  );
+  const updateBogumDerinlik = useCallback(
+    (v: number) => {
+      const neededH = Math.round((v * 2 + 1) * 10) / 10;
+      const newH = Math.max(labelConfig.yukseklikMm, neededH);
+      updateLabelConfig({ bogumDerinlikMm: v, yukseklikMm: newH });
+    },
+    [labelConfig, updateLabelConfig]
   );
 
   // ─── Katman Yönetimi (Doğru Sıralama & Katman Değişimi) ─────────────────────
@@ -3339,6 +3677,20 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   handleQuickSaveRef.current = handleQuickSave;
 
   const handleSave = handleQuickSave;
+
+  // ─── Kaydet ve Çıktı Al (Tek Tık: Önce Kaydet, Ardından Yazdır) ─────────────
+  const handleSaveAndPrint = async () => {
+    const nameToSave = sablonAdi.trim() || activeSablon?.ad || "";
+    if (!nameToSave) {
+      setSaveModal(true);
+      return;
+    }
+    await handleQuickSave();
+    handleDirectPrint();
+  };
+
+  const handleSaveAndPrintRef = useRef(handleSaveAndPrint);
+  handleSaveAndPrintRef.current = handleSaveAndPrint;
 
   // ─── 15 Saniyede Bir Otomatik Kayıt & Veri Kaybını Önleme ───────────────────
   const autoSaveStateRef = useRef({ elements, labelConfig, sablonAdi, activeSablon });
@@ -3693,7 +4045,8 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             fontSize: `${mmToPx(el.height * 0.75, zoom)}px`,
             lineHeight: 1,
             color: el.color || "#000",
-          }}
+            fontFamily: "'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Segoe UI Symbol',sans-serif",
+          } as React.CSSProperties}
         >
           {el.iconEmoji || "⭐"}
         </div>
@@ -3960,15 +4313,18 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             type="number"
             className="toolbar-input"
             style={{ width: 44, textAlign: "center", padding: "2px 2px" }}
-            value={labelConfig.genislikMm}
+            key={`en-toolbar-${labelConfig.genislikMm}`}
+            defaultValue={labelConfig.genislikMm}
             min={5}
             max={300}
             step={0.5}
             title="Kart / Etiket Genişliği (mm)"
             onFocus={(e) => e.target.select()}
-            onChange={(e) => {
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+            onBlur={(e) => {
               const v = parseFloat(e.target.value);
               if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
+              else e.target.value = String(labelConfig.genislikMm);
             }}
           />
           <button
@@ -3995,15 +4351,18 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             type="number"
             className="toolbar-input"
             style={{ width: 44, textAlign: "center", padding: "2px 2px" }}
-            value={labelConfig.yukseklikMm}
+            key={`boy-toolbar-${labelConfig.yukseklikMm}`}
+            defaultValue={labelConfig.yukseklikMm}
             min={3}
             max={200}
             step={0.5}
             title="Kart / Etiket Yüksekliği (mm)"
             onFocus={(e) => e.target.select()}
-            onChange={(e) => {
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+            onBlur={(e) => {
               const v = parseFloat(e.target.value);
               if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
+              else e.target.value = String(labelConfig.yukseklikMm);
             }}
           />
           <button
@@ -4146,6 +4505,18 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         )}
 
         <div style={{ marginLeft: "auto" }} />
+
+        {/* Kaydet ve Çıktı Al (Tek Tık) */}
+        <button
+          className="tb-btn save-btn"
+          title="Kaydet ve Çıktı Al (F9)"
+          onClick={handleSaveAndPrint}
+          disabled={loading}
+        >
+          <IconDeviceFloppy size={15} />
+          <IconPrinter size={15} />
+          <span>Kaydet ve Çıktı</span>
+        </button>
 
         {/* GÖRSEL IZGARA SEÇİMİ */}
         <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
@@ -4832,7 +5203,25 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                       borderColor: labelConfig.etiketSekli === s.value ? "#38bdf8" : undefined,
                       color: labelConfig.etiketSekli === s.value ? "#38bdf8" : undefined,
                     }}
-                    onClick={() => updateLabelConfig({ etiketSekli: s.value })}
+                    onClick={() => {
+                      if ((s.value === "bogumlukuyruk" || s.value === "bogumlukuyrukkeskin") && labelConfig.etiketSekli !== s.value) {
+                        // Otomatik şablon: sol boğum ve sağ boğum eşit, kuyruk ayrı girilir
+                        updateLabelConfig({
+                          etiketSekli: s.value,
+                          solKanatMm: 30,
+                          sagKanatMm: 30,
+                          kopruGenislikMm: 8,
+                          bogumDerinlikMm: 2,
+                          kuyrukGenislikMm: 15,
+                          kuyrukKalinlikMm: 4,
+                          genislikMm: 75,
+                          yukseklikMm: labelConfig.yukseklikMm >= 8 ? labelConfig.yukseklikMm : 20,
+                          koseYuvarlikligiMm: s.value === "bogumlukuyrukkeskin" ? 0 : 3,
+                        });
+                      } else {
+                        updateLabelConfig({ etiketSekli: s.value });
+                      }
+                    }}
                   >
                     <div className="elem-btn-icon" style={{ fontSize: 14 }}>{s.icon}</div>
                     <div>
@@ -4884,14 +5273,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   <input
                     type="number"
                     className="prop-input"
-                    value={labelConfig.genislikMm}
+                    key={`en-boyut-${labelConfig.genislikMm}`}
+                    defaultValue={labelConfig.genislikMm}
                     min={5}
                     max={300}
                     step={0.5}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    onBlur={(e) => {
                       const v = parseFloat(e.target.value);
                       if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
+                      else e.target.value = String(labelConfig.genislikMm);
                     }}
                   />
                   <button
@@ -4916,14 +5308,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   <input
                     type="number"
                     className="prop-input"
-                    value={labelConfig.yukseklikMm}
+                    key={`boy-boyut-${labelConfig.yukseklikMm}`}
+                    defaultValue={labelConfig.yukseklikMm}
                     min={3}
                     max={200}
                     step={0.5}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    onBlur={(e) => {
                       const v = parseFloat(e.target.value);
                       if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
+                      else e.target.value = String(labelConfig.yukseklikMm);
                     }}
                   />
                   <button
@@ -4936,8 +5331,8 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
                 </div>
 
-                {/* Kelebek & Dambıl Boğum / Çentik Detayları */}
-                {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "dambil") && (
+                {/* Kelebek & Dambıl & Boğumlu Kuyruk Boğum / Çentik Detayları */}
+                {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "dambil" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
                   <>
                     <div className="panel-section-title" style={{ marginTop: 10 }}>
                       <span>🏷️ Boğum & Çentik Ayarları</span>
@@ -4958,20 +5353,23 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                       <input
                         type="number"
                         className="prop-input"
-                        value={labelConfig.bogumDerinlikMm ?? 2.0}
+                        key={`bogum-derinlik-boyut-${labelConfig.bogumDerinlikMm}`}
+                        defaultValue={labelConfig.bogumDerinlikMm ?? 2.0}
                         min={0}
                         max={10}
                         step={0.5}
                         onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
                           const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v >= 0) updateLabelConfig({ bogumDerinlikMm: v });
+                          if (!isNaN(v) && v >= 0) updateBogumDerinlik(v);
+                          else e.target.value = String(labelConfig.bogumDerinlikMm ?? 2.0);
                         }}
                       />
                       <button
                         className="tb-btn"
                         style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                        onClick={() => updateLabelConfig({ bogumDerinlikMm: Math.min(10, Math.round(((labelConfig.bogumDerinlikMm ?? 2) + 0.5) * 10) / 10) })}
+                        onClick={() => updateBogumDerinlik(Math.min(10, Math.round(((labelConfig.bogumDerinlikMm ?? 2) + 0.5) * 10) / 10))}
                       >
                         +
                       </button>
@@ -4990,14 +5388,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                       <input
                         type="number"
                         className="prop-input"
-                        value={labelConfig.kopruGenislikMm}
+                        key={`kopru-genislik-boyut-${labelConfig.kopruGenislikMm}`}
+                        defaultValue={labelConfig.kopruGenislikMm}
                         min={2}
                         max={40}
                         step={0.5}
                         onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
                           const v = parseFloat(e.target.value);
                           if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
+                          else e.target.value = String(labelConfig.kopruGenislikMm);
                         }}
                       />
                       <button
@@ -5016,14 +5417,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                         <input
                           type="number"
                           className="prop-input"
-                          value={labelConfig.solKanatMm}
+                          key={`sol-kanat-boyut-${labelConfig.solKanatMm}`}
+                          defaultValue={labelConfig.solKanatMm}
                           min={5}
                           max={labelConfig.genislikMm - 5}
                           step={0.5}
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => {
+                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                          onBlur={(e) => {
                             const v = parseFloat(e.target.value);
                             if (!isNaN(v) && v > 0) updateLabelConfig({ solKanatMm: v });
+                            else e.target.value = String(labelConfig.solKanatMm);
                           }}
                         />
                         <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
@@ -5040,14 +5444,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                       <input
                         type="number"
                         className="prop-input"
-                        value={labelConfig.kuyrukGenislikMm}
+                        key={`kuyruk-uzunluk-${labelConfig.kuyrukGenislikMm}`}
+                        defaultValue={labelConfig.kuyrukGenislikMm}
                         min={10}
                         max={120}
                         step={1}
                         onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
                           const v = parseFloat(e.target.value);
                           if (!isNaN(v) && v > 0) updateLabelConfig({ kuyrukGenislikMm: v });
+                          else e.target.value = String(labelConfig.kuyrukGenislikMm);
                         }}
                       />
                       <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
@@ -5057,14 +5464,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                       <input
                         type="number"
                         className="prop-input"
-                        value={labelConfig.kuyrukKalinlikMm}
+                        key={`kuyruk-kalinlik-kuyruklu-${labelConfig.kuyrukKalinlikMm}`}
+                        defaultValue={labelConfig.kuyrukKalinlikMm}
                         min={2}
                         max={15}
                         step={0.5}
                         onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
                           const v = parseFloat(e.target.value);
                           if (!isNaN(v) && v > 0) updateLabelConfig({ kuyrukKalinlikMm: v });
+                          else e.target.value = String(labelConfig.kuyrukKalinlikMm);
                         }}
                       />
                       <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
@@ -5072,8 +5482,263 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   </>
                 )}
 
+                {/* Boğumlu Kuyruk Etiket Detayları (Sol Boğum / Sağ Boğum / Kuyruk Boyu bağımsız) */}
+                {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
+                  <>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 6, lineHeight: 1.3 }}>
+                      Kuyruk her zaman dikeyde ortalıdır. Hangisine ne girerseniz o boyutta kalır; Genişlik ve Yükseklik bunlara göre en son otomatik hesaplanır.
+                    </div>
+                    <div className="prop-row">
+                      <span className="prop-label" style={{ width: 80 }}>Sol Boğum:</span>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        key={`sol-bogum-${labelConfig.solKanatMm}`}
+                        defaultValue={labelConfig.solKanatMm}
+                        min={1}
+                        max={200}
+                        step={0.5}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v) && v > 0) updateBogumluKuyrukSol(v);
+                          else e.target.value = String(labelConfig.solKanatMm);
+                        }}
+                      />
+                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                    </div>
+                    <div className="prop-row">
+                      <span className="prop-label" style={{ width: 80 }}>Sağ Boğum:</span>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        key={`sag-bogum-${labelConfig.sagKanatMm}`}
+                        defaultValue={labelConfig.sagKanatMm}
+                        min={1}
+                        max={200}
+                        step={0.5}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v) && v > 0) updateBogumluKuyrukSag(v);
+                          else e.target.value = String(labelConfig.sagKanatMm);
+                        }}
+                      />
+                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                    </div>
+                    <div className="prop-row">
+                      <span className="prop-label" style={{ width: 80 }}>Kuyruk Boyu:</span>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        key={`kuyruk-boyu-${labelConfig.kuyrukGenislikMm}`}
+                        defaultValue={labelConfig.kuyrukGenislikMm}
+                        min={1}
+                        max={150}
+                        step={1}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v) && v > 0) updateBogumluKuyrukKuyruk(v);
+                          else e.target.value = String(labelConfig.kuyrukGenislikMm);
+                        }}
+                      />
+                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                    </div>
+                    <div className="prop-row">
+                      <span className="prop-label" style={{ width: 80 }}>Kuyruk Kalınlık:</span>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        key={`kuyruk-kalinlik-bk-${labelConfig.kuyrukKalinlikMm}`}
+                        defaultValue={labelConfig.kuyrukKalinlikMm}
+                        min={1}
+                        max={30}
+                        step={0.5}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
+                          else e.target.value = String(labelConfig.kuyrukKalinlikMm);
+                        }}
+                      />
+                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                    </div>
+                  </>
+                )}
+
+                {/* Standart Dikdörtgende Kullanıcının İsteğe Bağlı Ekleyebileceği Boğum & Kuyruk */}
+                {labelConfig.etiketSekli === "dikdortgen" && (
+                  <>
+                    <div className="panel-section-title" style={{ marginTop: 10 }}>
+                      <span>🧩 Özel Boğum & Kuyruk Ekle</span>
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 6, lineHeight: 1.3 }}>
+                      Dikdörtgen etiketinize istediğiniz gibi boğum ve/veya kuyruk ekleyip ölçülerini ayarlayabilirsiniz.
+                    </div>
+
+                    <label className="small-form-check" style={{ marginBottom: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!labelConfig.bogumEkle}
+                        onChange={(e) => updateLabelConfig({ bogumEkle: e.target.checked })}
+                      />
+                      <span>Boğum Ekle</span>
+                    </label>
+                    {labelConfig.bogumEkle && (
+                      <>
+                        <div className="prop-row">
+                          <span className="prop-label" style={{ width: 90 }}>Boğum Konumu:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            key={`ozel-bogum-konum-${labelConfig.solKanatMm}-${labelConfig.genislikMm}-${labelConfig.kuyrukGenislikMm}`}
+                            defaultValue={labelConfig.solKanatMm || labelConfig.genislikMm / 2}
+                            min={2}
+                            max={Math.max(2, labelConfig.genislikMm - (labelConfig.kuyrukEkle ? (labelConfig.kuyrukGenislikMm || 20) : 0) - 2)}
+                            step={0.5}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value);
+                              const maxV = Math.max(2, labelConfig.genislikMm - (labelConfig.kuyrukEkle ? (labelConfig.kuyrukGenislikMm || 20) : 0) - 2);
+                              if (!isNaN(v) && v > 0) updateLabelConfig({ solKanatMm: Math.min(v, maxV) });
+                              else e.target.value = String(labelConfig.solKanatMm || labelConfig.genislikMm / 2);
+                            }}
+                          />
+                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm (soldan)</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label" style={{ width: 90 }}>Boğum Genişlik:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            key={`ozel-bogum-genislik-${labelConfig.kopruGenislikMm}`}
+                            defaultValue={labelConfig.kopruGenislikMm ?? 8}
+                            min={2}
+                            max={40}
+                            step={0.5}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
+                              else e.target.value = String(labelConfig.kopruGenislikMm ?? 8);
+                            }}
+                          />
+                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label" style={{ width: 90 }}>Boğum Derinlik:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            key={`ozel-bogum-derinlik-${labelConfig.bogumDerinlikMm}`}
+                            defaultValue={labelConfig.bogumDerinlikMm ?? 2}
+                            min={0}
+                            max={10}
+                            step={0.5}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (!isNaN(v) && v >= 0) updateBogumDerinlik(v);
+                              else e.target.value = String(labelConfig.bogumDerinlikMm ?? 2);
+                            }}
+                          />
+                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                        </div>
+                      </>
+                    )}
+
+                    <label className="small-form-check" style={{ marginBottom: 6, marginTop: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!labelConfig.kuyrukEkle}
+                        onChange={(e) => updateLabelConfig({ kuyrukEkle: e.target.checked })}
+                      />
+                      <span>Kuyruk Ekle</span>
+                    </label>
+                    {labelConfig.kuyrukEkle && (
+                      <>
+                        <div className="prop-row">
+                          <span className="prop-label" style={{ width: 90 }}>Kuyruk Boyu:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            key={`ozel-kuyruk-boyu-${labelConfig.kuyrukGenislikMm}`}
+                            defaultValue={labelConfig.kuyrukGenislikMm || 20}
+                            min={1}
+                            max={150}
+                            step={1}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (!isNaN(v) && v > 0) {
+                                // Gövde (kuyruk hariç kalan kısım) sabit kalır, kuyruk büyüdükçe toplam genişlik ona göre büyür.
+                                const oldKuyruk = labelConfig.kuyrukGenislikMm || 20;
+                                const bodyOnly = Math.max(8, labelConfig.genislikMm - oldKuyruk);
+                                updateLabelConfig({ kuyrukGenislikMm: v, genislikMm: Math.round(Math.max(labelConfig.genislikMm, bodyOnly + v) * 10) / 10 });
+                              } else {
+                                e.target.value = String(labelConfig.kuyrukGenislikMm || 20);
+                              }
+                            }}
+                          />
+                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                        </div>
+                        <div className="prop-row">
+                          <span className="prop-label" style={{ width: 90 }}>Kuyruk Kalınlık:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            key={`ozel-kuyruk-kalinlik-${labelConfig.kuyrukKalinlikMm}`}
+                            defaultValue={labelConfig.kuyrukKalinlikMm || 4}
+                            min={1}
+                            max={30}
+                            step={0.5}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
+                              else e.target.value = String(labelConfig.kuyrukKalinlikMm || 4);
+                            }}
+                          />
+                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
                 <div className="panel-section-title" style={{ marginTop: 10 }}>
                   <span>Çizgiler & Renk</span>
+                </div>
+
+                <div className="prop-row">
+                  <span className="prop-label" style={{ width: 90 }}>Köşe Yuvarlaklığı:</span>
+                  <input
+                    type="number"
+                    className="prop-input"
+                    key={`kose-yuvarlaklik-${labelConfig.koseYuvarlikligiMm}`}
+                    defaultValue={labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3}
+                    min={0}
+                    max={15}
+                    step={0.5}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v >= 0) updateLabelConfig({ koseYuvarlikligiMm: v });
+                      else e.target.value = String(labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3);
+                    }}
+                  />
+                  <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm (0 = keskin köşe)</span>
                 </div>
 
                 <label className="small-form-check" style={{ marginBottom: 6 }}>
@@ -5960,12 +6625,18 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   <input
                     type="number"
                     className="prop-input"
-                    value={labelConfig.genislikMm}
+                    key={`en-model-${labelConfig.genislikMm}`}
+                    defaultValue={labelConfig.genislikMm}
                     step={1}
                     min={5}
                     max={300}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => updateLabelConfig({ genislikMm: Number(e.target.value) })}
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
+                      else e.target.value = String(labelConfig.genislikMm);
+                    }}
                   />
                   <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
                 </div>
@@ -5974,35 +6645,90 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   <input
                     type="number"
                     className="prop-input"
-                    value={labelConfig.yukseklikMm}
+                    key={`boy-model-${labelConfig.yukseklikMm}`}
+                    defaultValue={labelConfig.yukseklikMm}
                     step={1}
                     min={3}
                     max={200}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => updateLabelConfig({ yukseklikMm: Number(e.target.value) })}
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
+                      else e.target.value = String(labelConfig.yukseklikMm);
+                    }}
+                  />
+                  <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
+                </div>
+                <div className="prop-row">
+                  <span className="prop-label">Köşe Yuvarlaklığı:</span>
+                  <input
+                    type="number"
+                    className="prop-input"
+                    key={`kose-yuvarlaklik-model-${labelConfig.koseYuvarlikligiMm}`}
+                    defaultValue={labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3}
+                    step={0.5}
+                    min={0}
+                    max={15}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (!isNaN(v) && v >= 0) updateLabelConfig({ koseYuvarlikligiMm: v });
+                      else e.target.value = String(labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3);
+                    }}
                   />
                   <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
                 </div>
               </div>
 
               {/* Model Detay Ölçüleri (Boğum, Kanatlar, Kuyruk) */}
-              {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "dambil" || labelConfig.etiketSekli === "kuyruklu") && (
+              {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "dambil" || labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
                 <div className="prop-group">
                   <div className="prop-group-title">
                     <span>🔬 Model Milimetrik Boğum & Kuyruk</span>
                   </div>
-                  {labelConfig.etiketSekli === "kuyruklu" && (
+                  {(labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
                     <div className="prop-row">
                       <span className="prop-label">Kuyruk Boyu:</span>
                       <input
                         type="number"
                         className="prop-input"
-                        value={labelConfig.kuyrukGenislikMm !== undefined ? labelConfig.kuyrukGenislikMm : 35}
+                        key={`kuyruk-boyu-model-${labelConfig.kuyrukGenislikMm}`}
+                        defaultValue={labelConfig.kuyrukGenislikMm !== undefined ? labelConfig.kuyrukGenislikMm : 35}
                         step={1}
-                        min={10}
+                        min={1}
                         max={150}
                         onFocus={(e) => e.target.select()}
-                        onChange={(e) => updateLabelConfig({ kuyrukGenislikMm: Number(e.target.value) })}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value);
+                          if (isNaN(v) || v <= 0) { e.target.value = String(labelConfig.kuyrukGenislikMm ?? 35); return; }
+                          if (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") updateBogumluKuyrukKuyruk(v);
+                          else updateLabelConfig({ kuyrukGenislikMm: v });
+                        }}
+                      />
+                      <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
+                    </div>
+                  )}
+                  {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
+                    <div className="prop-row">
+                      <span className="prop-label">Kuyruk Kalınlığı:</span>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        key={`kuyruk-kalinlik-model-${labelConfig.kuyrukKalinlikMm}`}
+                        defaultValue={labelConfig.kuyrukKalinlikMm !== undefined ? labelConfig.kuyrukKalinlikMm : 4}
+                        step={0.5}
+                        min={1}
+                        max={30}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value);
+                          if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
+                          else e.target.value = String(labelConfig.kuyrukKalinlikMm ?? 4);
+                        }}
                       />
                       <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
                     </div>
@@ -6012,12 +6738,17 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                     <input
                       type="number"
                       className="prop-input"
-                      value={labelConfig.bogumDerinlikMm !== undefined ? labelConfig.bogumDerinlikMm : (labelConfig.etiketSekli === "kelebek" ? 2.0 : 3.0)}
+                      key={`bogum-derinlik-${labelConfig.bogumDerinlikMm}`}
+                      defaultValue={labelConfig.bogumDerinlikMm !== undefined ? labelConfig.bogumDerinlikMm : (labelConfig.etiketSekli === "kelebek" ? 2.0 : 3.0)}
                       step={0.5}
                       min={0}
-                      max={15}
+                      max={10}
                       onFocus={(e) => e.target.select()}
-                      onChange={(e) => updateLabelConfig({ bogumDerinlikMm: Number(e.target.value) })}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (!isNaN(v) && v >= 0) updateBogumDerinlik(v);
+                      }}
                     />
                     <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
                   </div>
@@ -6026,29 +6757,67 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                     <input
                       type="number"
                       className="prop-input"
-                      value={labelConfig.kopruGenislikMm !== undefined ? labelConfig.kopruGenislikMm : (labelConfig.etiketSekli === "kelebek" ? 6 : 8)}
+                      key={`kopru-genislik-${labelConfig.kopruGenislikMm}`}
+                      defaultValue={labelConfig.kopruGenislikMm !== undefined ? labelConfig.kopruGenislikMm : (labelConfig.etiketSekli === "kelebek" ? 6 : 8)}
                       step={0.5}
                       min={1}
                       max={30}
                       onFocus={(e) => e.target.select()}
-                      onChange={(e) => updateLabelConfig({ kopruGenislikMm: Number(e.target.value) })}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
+                      }}
                     />
                     <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
                   </div>
                   <div className="prop-row">
-                    <span className="prop-label">Sol Kanat Genişliği:</span>
+                    <span className="prop-label">{(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") ? "Sol Boğum:" : "Sol Kanat Genişliği:"}</span>
                     <input
                       type="number"
                       className="prop-input"
-                      value={labelConfig.solKanatMm || labelConfig.genislikMm / 2}
+                      key={`sol-kanat-model-${labelConfig.solKanatMm}`}
+                      defaultValue={labelConfig.solKanatMm || labelConfig.genislikMm / 2}
                       step={1}
-                      min={5}
-                      max={labelConfig.genislikMm - 5}
+                      min={1}
+                      max={
+                        (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin")
+                          ? 200
+                          : labelConfig.genislikMm - 5
+                      }
                       onFocus={(e) => e.target.select()}
-                      onChange={(e) => updateLabelConfig({ solKanatMm: Number(e.target.value) })}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (isNaN(v) || v <= 0) { e.target.value = String(labelConfig.solKanatMm || labelConfig.genislikMm / 2); return; }
+                        if (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") updateBogumluKuyrukSol(v);
+                        else updateLabelConfig({ solKanatMm: v });
+                      }}
                     />
                     <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
                   </div>
+                  {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
+                    <div className="prop-row">
+                      <span className="prop-label">Sağ Boğum:</span>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        key={`sag-kanat-model-${labelConfig.sagKanatMm}`}
+                        defaultValue={labelConfig.sagKanatMm || labelConfig.genislikMm / 2}
+                        step={1}
+                        min={1}
+                        max={200}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value);
+                          if (!isNaN(v) && v > 0) updateBogumluKuyrukSag(v);
+                          else e.target.value = String(labelConfig.sagKanatMm || labelConfig.genislikMm / 2);
+                        }}
+                      />
+                      <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
+                    </div>
+                  )}
                 </div>
               )}
 

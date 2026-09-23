@@ -12,6 +12,11 @@ router.get("/log", EBankaController.logListele);
 // Sistem denetimi: Vomsis hesabı olmadan sunucunun hazır olduğunu doğrular (denetim salt okunur; deneme fişi kesip hemen siler)
 router.get("/denetim", EBankaController.denetim);
 router.post("/denetim/deneme-fisi", EBankaController.denemeFisi);
+// Tahsilat / ödeme mutabakatı: banka parası ↔ fiş ↔ fatura (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md)
+router.get("/mutabakat", EBankaController.mutabakat);
+router.post("/mutabakat/esle", EBankaController.mutabakatEsle);
+router.post("/mutabakat/esle-kaldir", EBankaController.mutabakatEslemeKaldir);
+router.post("/mutabakat/fatura-gerekmez", EBankaController.mutabakatFaturaGerekmez);
 // Eşitleme (yalnızca elle)
 router.post("/esitle", EBankaController.esitle);
 // Özet / Hesaplar / Hareketler

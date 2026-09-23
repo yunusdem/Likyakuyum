@@ -2,6 +2,7 @@ import { EBankaService } from "../services/ebanka.service.js";
 import { EBankaAktarimService } from "../services/ebankaAktarim.service.js";
 import { EBankaDenetimService } from "../services/ebankaDenetim.service.js";
 import { EBankaEsitlemeService } from "../services/ebankaEsitleme.service.js";
+import { EBankaMutabakatService } from "../services/ebankaMutabakat.service.js";
 import { EBankaPosService } from "../services/ebankaPos.service.js";
 import { EBankaVposService } from "../services/ebankaVpos.service.js";
 import { DONUS_SAYFASI, EBankaVposOdemeService } from "../services/ebankaVposOdeme.service.js";
@@ -35,6 +36,21 @@ export class EBankaController {
     static logListele = asyncHandler(async (req, res) => {
         const data = await EBankaService.logListele(Number(req.query.limit) || 50, EBankaController.getDbContext(req));
         return ApiResponse.ok(res, "İşlem günlüğü listelendi.", data);
+    });
+    // ─── Tahsilat / ödeme mutabakatı ───────────────────────────────────────────
+    static mutabakat = asyncHandler(async (req, res) => {
+        const yaz = (v) => (v ? String(v) : undefined);
+        const data = await EBankaMutabakatService.liste({ baslangic: yaz(req.query.baslangic), bitis: yaz(req.query.bitis), yon: yaz(req.query.yon) }, EBankaController.kullaniciId(req), EBankaController.getDbContext(req));
+        return ApiResponse.ok(res, "Mutabakat listelendi.", data);
+    });
+    static mutabakatEsle = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Fiş eşlendi.", await EBankaMutabakatService.esle(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
+    });
+    static mutabakatEslemeKaldir = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Eşleşme kaldırıldı.", await EBankaMutabakatService.eslemeyiKaldir(req.body || {}, EBankaController.getDbContext(req)));
+    });
+    static mutabakatFaturaGerekmez = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "İşaret kaydedildi.", await EBankaMutabakatService.faturaGerekmez(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
     });
     // ─── Sistem denetimi ───────────────────────────────────────────────────────
     static denetim = asyncHandler(async (req, res) => {
