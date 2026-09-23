@@ -1191,23 +1191,30 @@ function QRRenderer({ value, size }: { value: string; size: number }) {
 }
 
 // ─── Vektörel Baskı SVG Üreticileri (Sıfır Kayıp, 300+ DPI Termal Çıktı) ────────
-function getBarcodeSvgString(value: string, format: string, showText = true, barcodeText?: string): string {
+function getBarcodeSvgString(
+  value: string,
+  format: string,
+  widthMm: number,
+  heightMm: number,
+  showText = true,
+  barcodeText?: string
+): string {
   try {
     const svgNode = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     const displayVal = value || "123456789";
     const customText = (barcodeText !== undefined && barcodeText.trim() !== "") ? barcodeText : displayVal;
+    const heightPx = Math.max(10, heightMm * PX_PER_MM * 0.55);
     JsBarcode(svgNode, displayVal, {
       format: format === "EAN13" ? "EAN13" : "CODE128",
-      width: 1.5,
-      height: 40,
+      width: 1.2,
+      height: heightPx,
       displayValue: showText !== false,
       text: customText,
-      fontSize: 10,
-      margin: 0,
+      fontSize: 8,
+      margin: 1,
       textMargin: 1,
     });
     svgNode.setAttribute("style", "width: 100%; height: 100%; display: block;");
-    svgNode.setAttribute("preserveAspectRatio", "none");
     return svgNode.outerHTML;
   } catch {
     return `<div style="font-size:8px;text-align:center;width:100%;height:100%;">${value || "BARCODE"}</div>`;
@@ -1256,7 +1263,8 @@ async function buildSingleLabelHtml(
         const isCenter = el.textAlign === "center";
         const alignSelf = isRight ? "flex-end" : isCenter ? "center" : "flex-start";
         const textAlignCss = isRight ? "right" : isCenter ? "center" : "left";
-        const fontSizeMm = (el.fontSize || 8) * 0.352778; // 1pt = 0.352778mm
+        const fontSizeMm = ((el.fontSize || 8) * 0.65) / PX_PER_MM;
+        const padX_Mm = 2 / PX_PER_MM;
         const effectiveColor = el.color || (isDark ? "#ffffff" : "#000000");
 
         innerContent = `
@@ -1268,18 +1276,19 @@ async function buildSingleLabelHtml(
             justify-content: ${alignSelf};
             text-align: ${textAlignCss};
             font-family: ${el.fontFamily || "Arial"}, sans-serif;
-            font-size: ${fontSizeMm}mm;
+            font-size: ${fontSizeMm.toFixed(4)}mm;
             font-weight: ${el.fontWeight || "normal"};
             font-style: ${el.fontStyle || "normal"};
             text-decoration: ${el.textDecoration || "none"};
             color: ${effectiveColor};
-            line-height: 1.05;
+            line-height: 1;
+            padding: 0 ${padX_Mm.toFixed(4)}mm;
             white-space: nowrap;
             overflow: hidden;
             background: ${el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : "transparent"};
             box-sizing: border-box;
           ">
-            <span style="width: 100%; text-align: ${textAlignCss}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">
+            <span style="width: 100%; text-align: ${textAlignCss}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 1;">
               ${textContent}
             </span>
           </div>
@@ -1288,7 +1297,7 @@ async function buildSingleLabelHtml(
         const barcodeVal = el.barcodeValue || el.text || "123456789";
         const customText = el.barcodeText;
         const showTxt = el.showText !== false;
-        const svgStr = getBarcodeSvgString(barcodeVal, el.barcodeFormat || "CODE128", showTxt, customText);
+        const svgStr = getBarcodeSvgString(barcodeVal, el.barcodeFormat || "CODE128", el.width, el.height, showTxt, customText);
         innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
       } else if (el.type === "qr") {
         const qrVal = el.barcodeValue || el.text || "QR";
@@ -1339,6 +1348,17 @@ async function buildSingleLabelHtml(
             border-radius: 50%;
             box-sizing: border-box;
           "></div>
+        `;
+      } else if (el.type === "diamond") {
+        innerContent = `
+          <svg viewBox="0 0 40 40" style="width:100%;height:100%;display:block;">
+            <polygon
+              points="20,2 38,20 20,38 2,20"
+              fill="${el.backgroundColor || "transparent"}"
+              stroke="${el.borderColor || "#000000"}"
+              stroke-width="${el.borderWidth || 1}"
+            />
+          </svg>
         `;
       } else if (el.type === "line-vertical") {
         const lineThickMm = (el.borderWidth || 1) * 0.264583;
