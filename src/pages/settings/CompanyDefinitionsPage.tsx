@@ -223,6 +223,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
     title: string;
     items: any[];
     selectedId?: any;
+    initialSearchTerm?: string;
     columns: LookupColumn<any>[];
     filterFn: (item: any, term: string) => boolean;
     onSelect: (item: any) => void;
@@ -231,6 +232,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
     title: "",
     items: [],
     selectedId: null,
+    initialSearchTerm: "",
     columns: [],
     filterFn: () => true,
     onSelect: () => { },
@@ -521,7 +523,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
     });
   };
 
-  const openIstatistikLookup = async (field: keyof TodvzTanimDto, title: string) => {
+  const openIstatistikLookup = async (field: keyof TodvzTanimDto, title: string, searchPrefix?: string) => {
     const lk = await ensureLookups();
     const isAlis = field === "ALIS_ISTATISTIK_ID" || field === "ARBITRAJ_ALIS_ISTATISTIK_ID";
     const isSatis = field === "SATIS_ISTATISTIK_ID" || field === "ARBITRAJ_SATIS_ISTATISTIK_ID";
@@ -537,6 +539,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
       title,
       items: filteredList,
       selectedId: formData[field],
+      initialSearchTerm: searchPrefix || "",
       columns: [
         { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.id}</span>, width: "80px" },
         { header: "Kod", render: (it) => <Badge bg="secondary" className="font-monospace">{it.kod}</Badge>, width: "120px" },
@@ -554,7 +557,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
         { header: "Açıklama", render: (it) => <span className="fw-medium">{it.ad}</span> },
       ],
       filterFn: (it, term) => {
-        const t = term.toLowerCase();
+        const t = (term || "").toLowerCase().trim();
+        if (!t) return true;
         return (it.kod && it.kod.toLowerCase().includes(t)) || (it.ad && it.ad.toLowerCase().includes(t)) || String(it.id).includes(t);
       },
       onSelect: (it) => {
@@ -1593,13 +1597,38 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Alış İstatistik:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap">
-                                  <div className="form-control form-control-sm bg-white text-truncate text-secondary" style={{ fontSize: "0.82rem" }} title={getIstatistikName(formData.ALIS_ISTATISTIK_ID)}>
-                                    {getIstatistikName(formData.ALIS_ISTATISTIK_ID) || "Alış"}
-                                  </div>
+                                  <Form.Control
+                                    size="sm"
+                                    type="text"
+                                    className="bg-white border"
+                                    style={{ fontSize: "0.82rem" }}
+                                    value={getIstatistikName(formData.ALIS_ISTATISTIK_ID)}
+                                    placeholder="Seçiniz veya arayın..."
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (!val.trim()) {
+                                        handleChange("ALIS_ISTATISTIK_ID", null);
+                                      } else {
+                                        const match = (lookups.istatistikList || []).find(
+                                          (x: any) =>
+                                            (x.kod && x.kod.trim().toLowerCase() === val.trim().toLowerCase()) ||
+                                            String(x.id) === val.trim()
+                                        );
+                                        if (match) handleChange("ALIS_ISTATISTIK_ID", match.id);
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        openIstatistikLookup("ALIS_ISTATISTIK_ID", "Alış İstatistik Grubu Seçimi", (e.target as HTMLInputElement).value);
+                                      }
+                                    }}
+                                    title={getIstatistikName(formData.ALIS_ISTATISTIK_ID) || "Alış İstatistik"}
+                                  />
                                   <Button
                                     variant="outline-primary"
-                                    onClick={() => openIstatistikLookup("ALIS_ISTATISTIK_ID", "Alış İstatistik Grubu Seçimi")}
-                                    title="Listeden Seç (Dürbün)"
+                                    onClick={() => openIstatistikLookup("ALIS_ISTATISTIK_ID", "Alış İstatistik Grubu Seçimi", getIstatistikName(formData.ALIS_ISTATISTIK_ID))}
+                                    title="Listeden Seç (Dürbün / Enter)"
                                     className="d-flex align-items-center px-2 flex-shrink-0"
                                   >
                                     <IconBinoculars size={16} />
@@ -1614,13 +1643,38 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Satış İstatistik:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap">
-                                  <div className="form-control form-control-sm bg-white text-truncate text-secondary" style={{ fontSize: "0.82rem" }} title={getIstatistikName(formData.SATIS_ISTATISTIK_ID)}>
-                                    {getIstatistikName(formData.SATIS_ISTATISTIK_ID) || "Satış"}
-                                  </div>
+                                  <Form.Control
+                                    size="sm"
+                                    type="text"
+                                    className="bg-white border"
+                                    style={{ fontSize: "0.82rem" }}
+                                    value={getIstatistikName(formData.SATIS_ISTATISTIK_ID)}
+                                    placeholder="Seçiniz veya arayın..."
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (!val.trim()) {
+                                        handleChange("SATIS_ISTATISTIK_ID", null);
+                                      } else {
+                                        const match = (lookups.istatistikList || []).find(
+                                          (x: any) =>
+                                            (x.kod && x.kod.trim().toLowerCase() === val.trim().toLowerCase()) ||
+                                            String(x.id) === val.trim()
+                                        );
+                                        if (match) handleChange("SATIS_ISTATISTIK_ID", match.id);
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        openIstatistikLookup("SATIS_ISTATISTIK_ID", "Satış İstatistik Grubu Seçimi", (e.target as HTMLInputElement).value);
+                                      }
+                                    }}
+                                    title={getIstatistikName(formData.SATIS_ISTATISTIK_ID) || "Satış İstatistik"}
+                                  />
                                   <Button
                                     variant="outline-primary"
-                                    onClick={() => openIstatistikLookup("SATIS_ISTATISTIK_ID", "Satış İstatistik Grubu Seçimi")}
-                                    title="Listeden Seç (Dürbün)"
+                                    onClick={() => openIstatistikLookup("SATIS_ISTATISTIK_ID", "Satış İstatistik Grubu Seçimi", getIstatistikName(formData.SATIS_ISTATISTIK_ID))}
+                                    title="Listeden Seç (Dürbün / Enter)"
                                     className="d-flex align-items-center px-2 flex-shrink-0"
                                   >
                                     <IconBinoculars size={16} />
@@ -1635,13 +1689,38 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Arbitraj Alış:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap">
-                                  <div className="form-control form-control-sm bg-white text-truncate text-secondary" style={{ fontSize: "0.82rem" }} title={getIstatistikName(formData.ARBITRAJ_ALIS_ISTATISTIK_ID)}>
-                                    {getIstatistikName(formData.ARBITRAJ_ALIS_ISTATISTIK_ID) || "Arbitraj Alış"}
-                                  </div>
+                                  <Form.Control
+                                    size="sm"
+                                    type="text"
+                                    className="bg-white border"
+                                    style={{ fontSize: "0.82rem" }}
+                                    value={getIstatistikName(formData.ARBITRAJ_ALIS_ISTATISTIK_ID)}
+                                    placeholder="Seçiniz veya arayın..."
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (!val.trim()) {
+                                        handleChange("ARBITRAJ_ALIS_ISTATISTIK_ID", null);
+                                      } else {
+                                        const match = (lookups.istatistikList || []).find(
+                                          (x: any) =>
+                                            (x.kod && x.kod.trim().toLowerCase() === val.trim().toLowerCase()) ||
+                                            String(x.id) === val.trim()
+                                        );
+                                        if (match) handleChange("ARBITRAJ_ALIS_ISTATISTIK_ID", match.id);
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        openIstatistikLookup("ARBITRAJ_ALIS_ISTATISTIK_ID", "Arbitraj Alış İstatistik Seçimi", (e.target as HTMLInputElement).value);
+                                      }
+                                    }}
+                                    title={getIstatistikName(formData.ARBITRAJ_ALIS_ISTATISTIK_ID) || "Arbitraj Alış"}
+                                  />
                                   <Button
                                     variant="outline-primary"
-                                    onClick={() => openIstatistikLookup("ARBITRAJ_ALIS_ISTATISTIK_ID", "Arbitraj Alış İstatistik Seçimi")}
-                                    title="Listeden Seç (Dürbün)"
+                                    onClick={() => openIstatistikLookup("ARBITRAJ_ALIS_ISTATISTIK_ID", "Arbitraj Alış İstatistik Seçimi", getIstatistikName(formData.ARBITRAJ_ALIS_ISTATISTIK_ID))}
+                                    title="Listeden Seç (Dürbün / Enter)"
                                     className="d-flex align-items-center px-2 flex-shrink-0"
                                   >
                                     <IconBinoculars size={16} />
@@ -1655,14 +1734,39 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Arbitraj Satış:</Form.Label>
                               <Col>
-                                <InputGroup size="sm" className="flex-nowrap" style={{ maxWidth: "160px" }}>
-                                  <div className="form-control form-control-sm bg-white text-truncate text-secondary" style={{ fontSize: "0.82rem" }} title={getIstatistikName(formData.ARBITRAJ_SATIS_ISTATISTIK_ID)}>
-                                    {getIstatistikName(formData.ARBITRAJ_SATIS_ISTATISTIK_ID) || "Arbitraj Satış"}
-                                  </div>
+                                <InputGroup size="sm" className="flex-nowrap">
+                                  <Form.Control
+                                    size="sm"
+                                    type="text"
+                                    className="bg-white border"
+                                    style={{ fontSize: "0.82rem" }}
+                                    value={getIstatistikName(formData.ARBITRAJ_SATIS_ISTATISTIK_ID)}
+                                    placeholder="Seçiniz veya arayın..."
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (!val.trim()) {
+                                        handleChange("ARBITRAJ_SATIS_ISTATISTIK_ID", null);
+                                      } else {
+                                        const match = (lookups.istatistikList || []).find(
+                                          (x: any) =>
+                                            (x.kod && x.kod.trim().toLowerCase() === val.trim().toLowerCase()) ||
+                                            String(x.id) === val.trim()
+                                        );
+                                        if (match) handleChange("ARBITRAJ_SATIS_ISTATISTIK_ID", match.id);
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        openIstatistikLookup("ARBITRAJ_SATIS_ISTATISTIK_ID", "Arbitraj Satış İstatistik Seçimi", (e.target as HTMLInputElement).value);
+                                      }
+                                    }}
+                                    title={getIstatistikName(formData.ARBITRAJ_SATIS_ISTATISTIK_ID) || "Arbitraj Satış"}
+                                  />
                                   <Button
                                     variant="outline-primary"
-                                    onClick={() => openIstatistikLookup("ARBITRAJ_SATIS_ISTATISTIK_ID", "Arbitraj Satış İstatistik Seçimi")}
-                                    title="Listeden Seç (Dürbün)"
+                                    onClick={() => openIstatistikLookup("ARBITRAJ_SATIS_ISTATISTIK_ID", "Arbitraj Satış İstatistik Seçimi", getIstatistikName(formData.ARBITRAJ_SATIS_ISTATISTIK_ID))}
+                                    title="Listeden Seç (Dürbün / Enter)"
                                     className="d-flex align-items-center px-2 flex-shrink-0"
                                   >
                                     <IconBinoculars size={16} />
@@ -2646,6 +2750,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
           title={lookupModalConfig.title}
           items={lookupModalConfig.items}
           selectedId={lookupModalConfig.selectedId}
+          initialSearchTerm={lookupModalConfig.initialSearchTerm}
           columns={lookupModalConfig.columns}
           filterFn={lookupModalConfig.filterFn}
           onSelect={lookupModalConfig.onSelect}

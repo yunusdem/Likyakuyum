@@ -33,6 +33,21 @@ export interface PerakendeFaturaSatiriItem {
   toplamTutar: number;
 }
 
+export interface PerakendeFaturaOdemeItem {
+  faturaOdemeId?: number;
+  faturaId?: number;
+  satirNo: number;
+  paraId?: number | null;
+  paraKodu: string;
+  paraAdi?: string | null;
+  adet?: number | null;
+  miktar?: number | null;
+  milyem?: number | null;
+  hasGram?: number | null;
+  kur: number;
+  tutar: number;
+}
+
 export interface PerakendeFaturaModel {
   faturaId: number;
   vezneId: number;
@@ -69,6 +84,7 @@ export interface PerakendeFaturaModel {
   ekleyenId?: number | null;
   eklemeZamani?: string | null;
   satirlar?: PerakendeFaturaSatiriItem[];
+  odemeler?: PerakendeFaturaOdemeItem[];
 }
 
 export interface SavePerakendeFaturaSatiriPayload {
@@ -82,6 +98,19 @@ export interface SavePerakendeFaturaSatiriPayload {
   hasGram?: number;
   birimFiyat: number;
   kdvOrani?: number;
+}
+
+export interface SavePerakendeFaturaOdemePayload {
+  satirNo?: number;
+  paraId?: number | null;
+  paraKodu: string;
+  paraAdi?: string | null;
+  adet?: number | null;
+  miktar?: number | null;
+  milyem?: number | null;
+  hasGram?: number | null;
+  kur?: number;
+  tutar: number;
 }
 
 export interface SavePerakendeFaturaPayload {
@@ -108,6 +137,7 @@ export interface SavePerakendeFaturaPayload {
   iskontoOrani?: number | null;
   iskontoTutari?: number | null;
   satirlar: SavePerakendeFaturaSatiriPayload[];
+  odemeler?: SavePerakendeFaturaOdemePayload[];
 }
 
 export interface PerakendeFaturaListItem {

@@ -160,6 +160,8 @@ export interface UrunItem {
   ad: string;
   gramaj?: number;
   hasOrani?: number;
+  alisMilyem?: number;
+  satisMilyem?: number;
   iscilik?: number;
   birim?: number;
   urunTipi?: number;
@@ -189,6 +191,8 @@ export class SarrafFisSqlRepository {
       const result = await pool.request().query(`
         SELECT PARA_ID AS paraId, RTRIM(KOD) AS kod, AD AS ad,
                ISNULL(GRAMAJ,0) AS gramaj, ISNULL(HAS_ORANI,0) AS hasOrani,
+               ISNULL(HAS_ALIS_KATSAYISI,0) AS hasAlisKatsayisi,
+               ISNULL(HAS_SATIS_KATSAYISI,0) AS hasSatisKatsayisi,
                ISNULL(ISCILIK,0) AS iscilik, ISNULL(BIRIM,0) AS birim,
                ISNULL(URUN_TIPI,0) AS urunTipi
         FROM [dbo].[TODVZ_PARA] WITH (NOLOCK)
@@ -201,6 +205,8 @@ export class SarrafFisSqlRepository {
         ad: (r.ad || "").trim(),
         gramaj: Number(r.gramaj) || 0,
         hasOrani: Number(r.hasOrani) || 0,
+        alisMilyem: Number(r.hasAlisKatsayisi) > 0 ? Number(r.hasAlisKatsayisi) : (Number(r.hasOrani) || 0),
+        satisMilyem: Number(r.hasSatisKatsayisi) > 0 ? Number(r.hasSatisKatsayisi) : (Number(r.hasOrani) || 0),
         iscilik: Number(r.iscilik) || 0,
         birim: Number(r.birim) || 0,
         urunTipi: Number(r.urunTipi) || 0,
