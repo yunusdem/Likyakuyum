@@ -131,13 +131,17 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/banka/pos-tanimlari": { title: "B- POS Cihazı Tanımları", icon: <IconCreditCard size={20} /> },
   "/banka/hareketler": { title: "C- Banka Hesap Hareketleri", icon: <IconCreditCard size={20} /> },
   "/banka/hesap-hareketleri": { title: "C- Banka Hesap Hareketleri", icon: <IconCreditCard size={20} /> },
-  "/banka/kredi-karti-tahsilat": { title: "D- Kredi Kartı Tahsilatları", icon: <IconCreditCard size={20} /> },
-  "/banka/pos-gun-sonu": { title: "E- POS Gün Sonu İşlemleri", icon: <IconCreditCard size={20} /> },
-  "/perakende/satis": { title: "A- Perakende Satış", icon: <IconBuilding size={20} /> },
-  "/perakende/iade": { title: "B- Perakende Alış / İade", icon: <IconBuilding size={20} /> },
-  "/perakende/vitrin-stok": { title: "C- Vitrin & Stok Takibi", icon: <IconBuilding size={20} /> },
-  "/perakende/hizli-satis": { title: "D- Barkodlu Hızlı Satış", icon: <IconBuilding size={20} /> },
-  "/perakende/liste": { title: "E- Günlük Satış Listesi", icon: <IconBuilding size={20} /> },
+  "/perakende/perakende-fisi-kayit": { title: "A- Perakende Fişi", icon: <IconReceipt size={20} /> },
+  "/perakende/perakende-fisi-duzeltme": { title: "B- Perakende Fişi Düzeltme", icon: <IconReceipt size={20} /> },
+  "/perakende/vitrin-stok": { title: "C- Vitrin Stok Takibi", icon: <IconBuilding size={20} /> },
+  "/perakende/vitrin-stok-takibi": { title: "C- Vitrin Stok Takibi", icon: <IconBuilding size={20} /> },
+  "/perakende/barkodlu-altin-listesi": { title: "D- Barkodlu Altın Listesi", icon: <IconBarcode size={20} /> },
+  "/perakende/altin-listesi": { title: "D- Barkodlu Altın Listesi", icon: <IconBarcode size={20} /> },
+  "/perakende/barkodlu-ozel-urun-listesi": { title: "E- Barkodlu Özel Ürün Listesi", icon: <IconDiamond size={20} /> },
+  "/perakende/ozel-urun-listesi": { title: "E- Barkodlu Özel Ürün Listesi", icon: <IconDiamond size={20} /> },
+  "/perakende/satis-listesi": { title: "F- Satış Listesi", icon: <IconReceipt size={20} /> },
+  "/perakende/satis": { title: "A- Perakende Fişi", icon: <IconReceipt size={20} /> },
+  "/perakende/liste": { title: "F- Satış Listesi", icon: <IconReceipt size={20} /> },
   "/etiket/barkod-fiyat": { title: "A- Barkod Fiyat", icon: <IconBarcode size={20} /> },
   "/etiket/barkod-basimi": { title: "A- Barkod Fiyat", icon: <IconBarcode size={20} /> },
   "/etiket/altin-urun-barkodlama": { title: "B- Altın Ürün Barkodlama", icon: <IconDiamond size={20} /> },
@@ -441,7 +445,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
               })
             }
             className="erp-tb-btn"
-            title="Ara / Bul (Dürbün - F4)"
+            title="Ara / Bul (Dürbün - F3)"
             aria-label="Ara / Bul"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">

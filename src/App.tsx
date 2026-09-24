@@ -30,8 +30,13 @@ import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
 import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
 import PerakendeFisiPage from "./pages/vezne/PerakendeFisiPage";
+import VitrinStokTakibiPage from "./pages/perakende/VitrinStokTakibiPage";
+import BarkodluAltinListesiPage from "./pages/perakende/BarkodluAltinListesiPage";
+import BarkodluOzelUrunListesiPage from "./pages/perakende/BarkodluOzelUrunListesiPage";
+import SatisListesiPage from "./pages/perakende/SatisListesiPage";
 import BankaHesapKartiPage from "./pages/banka/BankaHesapKartiPage";
 import BankaHareketiPage from "./pages/banka/BankaHareketiPage";
+import PosCihaziTanimlariPage from "./pages/banka/PosCihaziTanimlariPage";
 import EBankaAyarlarPage from "./pages/ebanka/EBankaAyarlarPage";
 import EBankaMutabakatPage from "./pages/ebanka/EBankaMutabakatPage";
 import EBankaOzetPage from "./pages/ebanka/EBankaOzetPage";
@@ -216,6 +221,17 @@ export default function App() {
             <Route path="vezne/perakende" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
             <Route path="vezne/perakende-fisi-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
             <Route path="vezne/perakende-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
+            <Route path="perakende/perakende-fisi-kayit" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+            <Route path="perakende/perakende-fisi-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
+            <Route path="perakende/vitrin-stok" element={<VitrinStokTakibiPage />} />
+            <Route path="perakende/vitrin-stok-takibi" element={<VitrinStokTakibiPage />} />
+            <Route path="perakende/barkodlu-altin-listesi" element={<BarkodluAltinListesiPage />} />
+            <Route path="perakende/altin-listesi" element={<BarkodluAltinListesiPage />} />
+            <Route path="perakende/barkodlu-ozel-urun-listesi" element={<BarkodluOzelUrunListesiPage />} />
+            <Route path="perakende/ozel-urun-listesi" element={<BarkodluOzelUrunListesiPage />} />
+            <Route path="perakende/satis-listesi" element={<SatisListesiPage />} />
+            <Route path="perakende/satis" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+            <Route path="perakende/liste" element={<SatisListesiPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
@@ -230,6 +246,8 @@ export default function App() {
             <Route path="raporlar/:yol" element={<RaporPage />} />
             <Route path="banka/hesap-kartlari" element={<BankaHesapKartiPage />} />
             <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />
+            <Route path="banka/pos-tanimlari" element={<PosCihaziTanimlariPage />} />
+            <Route path="banka/pos-cihazi-tanimlari" element={<PosCihaziTanimlariPage />} />
             <Route path="banka/hareketler" element={<BankaHareketiPage />} />
             <Route path="banka/hesap-hareketleri" element={<BankaHareketiPage />} />
             <Route path="ebanka/ozet" element={<EBankaOzetPage />} />

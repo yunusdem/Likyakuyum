@@ -99,6 +99,28 @@ export class PerakendeSqlRepository {
           IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'TOPLAM_TUTAR') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [TOPLAM_TUTAR] FLOAT NOT NULL DEFAULT 0;
         END;
       `);
+            // 2.b TODVZ_FATURA_ODEME Detail Table
+            await pool.request().batch(`
+        IF OBJECT_ID('dbo.TODVZ_FATURA_ODEME', 'U') IS NULL
+        BEGIN
+          CREATE TABLE dbo.TODVZ_FATURA_ODEME (
+            [FATURA_ODEME_ID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+            [FATURA_ID] INT NOT NULL,
+            [SATIR_NO] INT NOT NULL DEFAULT 1,
+            [PARA_ID] INT NULL,
+            [PARA_KODU] VARCHAR(50) NULL,
+            [PARA_ADI] VARCHAR(100) NULL,
+            [ADET] FLOAT NULL,
+            [MIKTAR] FLOAT NULL,
+            [MILYEM] FLOAT NULL,
+            [HAS_GRAM] FLOAT NULL,
+            [KUR] FLOAT NOT NULL DEFAULT 1.0,
+            [TUTAR] FLOAT NOT NULL DEFAULT 0,
+            [EKLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE()
+          );
+          CREATE NONCLUSTERED INDEX IX_TODVZ_FATURA_ODEME_FID ON dbo.TODVZ_FATURA_ODEME([FATURA_ID]);
+        END;
+      `);
             // 3. Stored Procedure: SODVZ_FATURA_KAYDET
             await pool.request().batch(`
         CREATE OR ALTER PROCEDURE dbo.SODVZ_FATURA_KAYDET
@@ -294,7 +316,11 @@ export class PerakendeSqlRepository {
                 WHERE s.FATURA_ID = @FATURA_ID;
             END;
 
-            -- Satırları ve başlığı kaldır
+            -- Satırları, ödemeleri ve başlığı kaldır
+            IF OBJECT_ID('dbo.TODVZ_FATURA_ODEME', 'U') IS NOT NULL
+            BEGIN
+                DELETE FROM dbo.TODVZ_FATURA_ODEME WHERE FATURA_ID = @FATURA_ID;
+            END;
             DELETE FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID;
             DELETE FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FATURA_ID;
 
@@ -753,6 +779,47 @@ export class PerakendeSqlRepository {
                     await lineReq.query(lineInsertQuery);
                 }
             }
+            // 4.b Insert Payment rows (ODEMELER)
+            const odemeDelReq = new sql.Request(transaction);
+            odemeDelReq.input("FATURA_ID", sql.Int, outFaturaId);
+            await odemeDelReq.query(`
+        IF OBJECT_ID('dbo.TODVZ_FATURA_ODEME', 'U') IS NOT NULL
+        BEGIN
+          DELETE FROM dbo.TODVZ_FATURA_ODEME WHERE FATURA_ID = @FATURA_ID;
+        END;
+      `);
+            if (dto.odemeler && dto.odemeler.length > 0) {
+                let odemeIdx = 1;
+                for (const oRow of dto.odemeler) {
+                    const t = Number(oRow.tutar) || 0;
+                    const k = Number(oRow.kur) || 1;
+                    const paraKod = (oRow.paraKodu || "").trim();
+                    if (!paraKod && t === 0)
+                        continue;
+                    const odemeReq = new sql.Request(transaction);
+                    odemeReq.input("FATURA_ID", sql.Int, outFaturaId);
+                    odemeReq.input("SATIR_NO", sql.Int, oRow.satirNo || odemeIdx++);
+                    odemeReq.input("PARA_ID", sql.Int, oRow.paraId || null);
+                    odemeReq.input("PARA_KODU", sql.VarChar(50), paraKod || "TL");
+                    odemeReq.input("PARA_ADI", sql.VarChar(100), (oRow.paraAdi || "").trim());
+                    odemeReq.input("ADET", sql.Float, oRow.adet !== undefined && oRow.adet !== null && !isNaN(Number(oRow.adet)) ? Number(oRow.adet) : null);
+                    odemeReq.input("MIKTAR", sql.Float, oRow.miktar !== undefined && oRow.miktar !== null && !isNaN(Number(oRow.miktar)) ? Number(oRow.miktar) : null);
+                    odemeReq.input("MILYEM", sql.Float, oRow.milyem !== undefined && oRow.milyem !== null && !isNaN(Number(oRow.milyem)) ? Number(oRow.milyem) : null);
+                    odemeReq.input("HAS_GRAM", sql.Float, oRow.hasGram !== undefined && oRow.hasGram !== null && !isNaN(Number(oRow.hasGram)) ? Number(oRow.hasGram) : null);
+                    odemeReq.input("KUR", sql.Float, k > 0 ? k : 1);
+                    odemeReq.input("TUTAR", sql.Float, t);
+                    await odemeReq.query(`
+            INSERT INTO dbo.TODVZ_FATURA_ODEME (
+              FATURA_ID, SATIR_NO, PARA_ID, PARA_KODU, PARA_ADI,
+              ADET, MIKTAR, MILYEM, HAS_GRAM, KUR, TUTAR
+            )
+            VALUES (
+              @FATURA_ID, @SATIR_NO, @PARA_ID, @PARA_KODU, @PARA_ADI,
+              @ADET, @MIKTAR, @MILYEM, @HAS_GRAM, @KUR, @TUTAR
+            );
+          `);
+                }
+            }
             // 5. Update header summary amounts from lines taking stored discount into account
             const summaryReq = new sql.Request(transaction);
             summaryReq.input("FATURA_ID", sql.Int, outFaturaId);
@@ -885,6 +952,53 @@ export class PerakendeSqlRepository {
                 },
             ];
         }
+        let odemeler = [];
+        try {
+            const odemeReq = pool.request();
+            odemeReq.input("FATURA_ID", sql.Int, faturaId);
+            const odemeRes = await odemeReq.query(`
+        IF OBJECT_ID('dbo.TODVZ_FATURA_ODEME', 'U') IS NOT NULL
+        BEGIN
+          SELECT 
+            FATURA_ODEME_ID AS faturaOdemeId,
+            FATURA_ID AS faturaId,
+            SATIR_NO AS satirNo,
+            PARA_ID AS paraId,
+            ISNULL(PARA_KODU, '') AS paraKodu,
+            ISNULL(PARA_ADI, '') AS paraAdi,
+            ADET AS adet,
+            MIKTAR AS miktar,
+            MILYEM AS milyem,
+            HAS_GRAM AS hasGram,
+            ISNULL(KUR, 1) AS kur,
+            ISNULL(TUTAR, 0) AS tutar
+          FROM dbo.TODVZ_FATURA_ODEME
+          WHERE FATURA_ID = @FATURA_ID
+          ORDER BY SATIR_NO ASC;
+        END
+        ELSE
+        BEGIN
+          SELECT 1 WHERE 1 = 0;
+        END
+      `);
+            odemeler = (odemeRes.recordset || []).map((o) => ({
+                faturaOdemeId: o.faturaOdemeId,
+                faturaId: o.faturaId,
+                satirNo: o.satirNo,
+                paraId: o.paraId,
+                paraKodu: (o.paraKodu || "").trim(),
+                paraAdi: (o.paraAdi || "").trim(),
+                adet: o.adet !== null && o.adet !== undefined ? Number(o.adet) : null,
+                miktar: o.miktar !== null && o.miktar !== undefined ? Number(o.miktar) : null,
+                milyem: o.milyem !== null && o.milyem !== undefined ? Number(o.milyem) : null,
+                hasGram: o.hasGram !== null && o.hasGram !== undefined ? Number(o.hasGram) : null,
+                kur: Number(o.kur) || 1,
+                tutar: Number(o.tutar) || 0,
+            }));
+        }
+        catch (e) {
+            logger.warn("PerakendeSqlRepository.getInvoiceById odeme fetch warning:", e);
+        }
         return {
             faturaId: row.FATURA_ID,
             vezneId: row.VEZNE_ID,
@@ -921,6 +1035,7 @@ export class PerakendeSqlRepository {
             ekleyenId: row.EKLEYEN_ID,
             eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : null,
             satirlar,
+            odemeler,
         };
     }
     /**

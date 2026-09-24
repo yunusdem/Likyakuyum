@@ -138,12 +138,10 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "A- Banka Hesap Kartları", link: "banka/hesap-kartlari" },
       { id: uuid(), name: "B- POS Cihazı Tanımları", link: "banka/pos-tanimlari" },
       { id: uuid(), name: "C- Banka Hesap Hareketleri", link: "banka/hareketler" },
-      { id: uuid(), name: "D- Kredi Kartı Tahsilatları", link: "banka/kredi-karti-tahsilat" },
-      { id: uuid(), name: "E- POS Gün Sonu İşlemleri", link: "banka/pos-gun-sonu" },
       // Vomsis açık bankacılık (docs/EBANKA_VOMSIS_YOL_HARITASI.md). Grup kodu "banka:#f-e-banka" kalıcıdır — başlığı değiştirmeyin.
       {
         id: uuid(),
-        title: "F- e-Banka",
+        title: "D- e-Banka",
         children: [
           { id: uuid(), name: "A- Özet", link: "ebanka/ozet" },
           { id: uuid(), name: "B- Hesaplar", link: "ebanka/hesaplar" },
@@ -207,11 +205,12 @@ export const DashboardMenu: MenuItemType[] = [
     title: "J- Perakende İşlemleri",
     icon: <IconBuildingStore size={18} />,
     children: [
-      { id: uuid(), name: "A- Perakende Satış", link: "perakende/satis" },
-      { id: uuid(), name: "B- Perakende Alış / İade", link: "perakende/iade" },
-      { id: uuid(), name: "C- Vitrin & Stok Takibi", link: "perakende/vitrin-stok" },
-      { id: uuid(), name: "D- Barkodlu Hızlı Satış", link: "perakende/hizli-satis" },
-      { id: uuid(), name: "E- Günlük Satış Listesi", link: "perakende/liste" },
+      { id: uuid(), name: "A- Perakende Fişi", link: "vezne/perakende-fisi-kayit" },
+      { id: uuid(), name: "B- Perakende Fişi Düzeltme", link: "vezne/perakende-fisi-duzeltme" },
+      { id: uuid(), name: "C- Vitrin Stok Takibi", link: "perakende/vitrin-stok" },
+      { id: uuid(), name: "D- Barkodlu Altın Listesi", link: "perakende/barkodlu-altin-listesi" },
+      { id: uuid(), name: "E- Barkodlu Özel Ürün Listesi", link: "perakende/barkodlu-ozel-urun-listesi" },
+      { id: uuid(), name: "F- Satış Listesi", link: "perakende/satis-listesi" },
     ],
   },
 

@@ -44,6 +44,8 @@ export function LookupModal<T extends Record<string, any>>({
   const getItemId = (it: any): string => {
     if (!it) return "";
     if (it.sarrafFisiId !== undefined && it.sarrafFisiId !== null) return `sarraf-${it.sarrafFisiId}`;
+    if (it.altinUrunId !== undefined && it.altinUrunId !== null) return `altin-${it.altinUrunId}`;
+    if (it.ozelUrunId !== undefined && it.ozelUrunId !== null) return `ozel-${it.ozelUrunId}`;
     if (it.iskontoId !== undefined && it.iskontoId !== null) return `iskonto-${it.iskontoId}`;
     if (it.hesapHareketiId !== undefined && it.hesapHareketiId !== null) return `hareket-${it.hesapHareketiId}`;
     if (it.hesapId !== undefined && it.hesapId !== null) return `hesap-${it.hesapId}`;
@@ -52,6 +54,9 @@ export function LookupModal<T extends Record<string, any>>({
     if (it.vezneId !== undefined && it.vezneId !== null) return `vezne-${it.vezneId}`;
     if (it.panoId !== undefined && it.panoId !== null) return `pano-${it.panoId}`;
     if (it.sayimFisiId !== undefined && it.sayimFisiId !== null) return `sayim-${it.sayimFisiId}`;
+    if (it.bankoKodu !== undefined && it.bankoKodu !== null) return `banko-${it.bankoKodu}`;
+    if (it.grupKodu !== undefined && it.grupKodu !== null) return `grup-${it.grupKodu}`;
+    if (it.barkod !== undefined && it.barkod !== null) return `bar-${it.barkod}`;
     if (it.fisNo !== undefined && it.fisNo !== null) return `fisno-${it.fisNo}`;
     if (it.id !== undefined && it.id !== null) return `id-${it.id}`;
     if (it.ID !== undefined && it.ID !== null) return `ID-${it.ID}`;

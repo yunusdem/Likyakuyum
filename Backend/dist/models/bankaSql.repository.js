@@ -278,7 +278,7 @@ export class BankaSqlRepository {
     static async listHareketler(filter, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTables(pool);
-        const topLimit = filter?.limit && filter.limit > 0 ? filter.limit : 200;
+        const topLimit = filter?.limit && filter.limit > 0 ? filter.limit : 2000;
         let query = `
       SELECT TOP (${topLimit})
         h.BANKA_HAREKET_ID,
@@ -349,7 +349,7 @@ export class BankaSqlRepository {
       )`;
             req.input("SEARCH", sql.VarChar(100), `%${filter.search.trim()}%`);
         }
-        query += ` ORDER BY h.TARIH DESC, h.BANKA_HAREKET_ID DESC`;
+        query += ` ORDER BY h.TARIH ASC, h.BANKA_HAREKET_ID ASC`;
         const res = await req.query(query);
         const headers = res.recordset || [];
         if (!headers.length)

@@ -100,6 +100,9 @@ export const BankaHareketiPage: React.FC = () => {
   const [showBankaLookup, setShowBankaLookup] = useState(false);
   const [showCariLookup, setShowCariLookup] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [bankaInitialSearch, setBankaInitialSearch] = useState<string>("");
+  const [cariInitialSearch, setCariInitialSearch] = useState<string>("");
+  const [hareketInitialSearch, setHareketInitialSearch] = useState<string>("");
 
   const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
     setNotification({ type, message: msg });
@@ -292,8 +295,7 @@ export const BankaHareketiPage: React.FC = () => {
       };
 
       const saved = await BankaService.saveHareket(payload);
-      showNotif("success", `Banka hareketi ${hareketId ? "güncellendi" : "kaydedildi"}: #${saved.bankaHareketId}`);
-      setHareketId(saved.bankaHareketId);
+      handleNew();
 
       const updatedList = await BankaService.getHareketler();
       setHareketList(updatedList);
@@ -344,6 +346,120 @@ export const BankaHareketiPage: React.FC = () => {
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   });
+
+  const handleHesapNoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = hesapNo.trim().toLowerCase();
+      if (!val) {
+        setBankaInitialSearch("");
+        setShowBankaLookup(true);
+        return;
+      }
+      // Banka listesinde ara
+      const matches = bankaList.filter((b) => {
+        const k = String(b.kod || b.hesapNo || "").toLowerCase();
+        const a = String(b.ad || b.unvan || b.bankaAdi || "").toLowerCase();
+        const ib = String(b.iban || "").toLowerCase();
+        return k.includes(val) || a.includes(val) || ib.includes(val);
+      });
+      if (matches.length === 1) {
+        const selected = matches[0];
+        setBankaId(selected.bankaId || selected.id);
+        setHesapNo(selected.hesapNo || selected.kod || "");
+        setHesapAdi(selected.ad || selected.unvan || selected.bankaAdi || "");
+        cariAdiRef.current?.focus();
+      } else {
+        setBankaInitialSearch(hesapNo.trim());
+        setShowBankaLookup(true);
+      }
+    } else if (e.key === "F4") {
+      e.preventDefault();
+      setBankaInitialSearch(hesapNo.trim());
+      setShowBankaLookup(true);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      islemTipiRef.current?.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      hesapAdiRef.current?.focus();
+    }
+  };
+
+  const handleHesapAdiKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = hesapAdi.trim().toLowerCase();
+      if (!val) {
+        setBankaInitialSearch("");
+        setShowBankaLookup(true);
+        return;
+      }
+      const matches = bankaList.filter((b) => {
+        const a = String(b.ad || b.unvan || b.bankaAdi || "").toLowerCase();
+        const k = String(b.kod || b.hesapNo || "").toLowerCase();
+        return a.includes(val) || k.includes(val);
+      });
+      if (matches.length === 1) {
+        const selected = matches[0];
+        setBankaId(selected.bankaId || selected.id);
+        setHesapNo(selected.hesapNo || selected.kod || "");
+        setHesapAdi(selected.ad || selected.unvan || selected.bankaAdi || "");
+        cariAdiRef.current?.focus();
+      } else {
+        setBankaInitialSearch(hesapAdi.trim());
+        setShowBankaLookup(true);
+      }
+    } else if (e.key === "F4") {
+      e.preventDefault();
+      setBankaInitialSearch(hesapAdi.trim());
+      setShowBankaLookup(true);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      hesapNoRef.current?.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      cariAdiRef.current?.focus();
+    }
+  };
+
+  const handleCariAdiKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = cariAdi.trim().toLowerCase();
+      if (!val) {
+        setCariInitialSearch("");
+        setShowCariLookup(true);
+        return;
+      }
+      const matches = cariList.filter((c) => {
+        const u = String(c.unvan || c.ad || "").toLowerCase();
+        const k = String(c.kod || c.id || "").toLowerCase();
+        const t = String(c.telefon || "").toLowerCase();
+        const tc = String(c.vergiKimlikNo || c.tcKimlikNo || "").toLowerCase();
+        return u.includes(val) || k.includes(val) || t.includes(val) || tc.includes(val);
+      });
+      if (matches.length === 1) {
+        const selected = matches[0];
+        setCariKartId(selected.id || selected.cariKartId);
+        setCariAdi(selected.unvan || selected.ad || "");
+        tarihRef.current?.focus();
+      } else {
+        setCariInitialSearch(cariAdi.trim());
+        setShowCariLookup(true);
+      }
+    } else if (e.key === "F4") {
+      e.preventDefault();
+      setCariInitialSearch(cariAdi.trim());
+      setShowCariLookup(true);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      hesapAdiRef.current?.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      tarihRef.current?.focus();
+    }
+  };
 
   const handleInputKeyDown = (
     e: React.KeyboardEvent,
@@ -556,20 +672,16 @@ export const BankaHareketiPage: React.FC = () => {
                         type="text"
                         size="sm"
                         value={hesapNo}
-                        onChange={(e) => setHesapNo(e.target.value.replace(/\D/g, ""))}
-                        onKeyDown={(e) => {
-                          if (e.key === "F4") {
-                            e.preventDefault();
-                            setShowBankaLookup(true);
-                          } else {
-                            handleInputKeyDown(e, hesapAdiRef, islemTipiRef);
-                          }
-                        }}
+                        onChange={(e) => setHesapNo(e.target.value)}
+                        onKeyDown={handleHesapNoKeyDown}
                         className="fw-bold text-primary font-monospace shadow-none"
                       />
                       <Button
                         variant="outline-primary"
-                        onClick={() => setShowBankaLookup(true)}
+                        onClick={() => {
+                          setBankaInitialSearch(hesapNo.trim());
+                          setShowBankaLookup(true);
+                        }}
                         title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
                       >
                         <IconBinoculars size={15} />
@@ -593,19 +705,15 @@ export const BankaHareketiPage: React.FC = () => {
                         size="sm"
                         value={hesapAdi}
                         onChange={(e) => setHesapAdi(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "F4") {
-                            e.preventDefault();
-                            setShowBankaLookup(true);
-                          } else {
-                            handleInputKeyDown(e, cariAdiRef, hesapNoRef);
-                          }
-                        }}
+                        onKeyDown={handleHesapAdiKeyDown}
                         className="fw-semibold shadow-none"
                       />
                       <Button
                         variant="outline-primary"
-                        onClick={() => setShowBankaLookup(true)}
+                        onClick={() => {
+                          setBankaInitialSearch(hesapAdi.trim());
+                          setShowBankaLookup(true);
+                        }}
                         title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
                       >
                         <IconBinoculars size={15} />
@@ -632,19 +740,15 @@ export const BankaHareketiPage: React.FC = () => {
                           setCariAdi(e.target.value);
                           if (!e.target.value.trim()) setCariKartId(null);
                         }}
-                        onKeyDown={(e) => {
-                          if (e.key === "F4") {
-                            e.preventDefault();
-                            setShowCariLookup(true);
-                          } else {
-                            handleInputKeyDown(e, tarihRef, hesapAdiRef);
-                          }
-                        }}
+                        onKeyDown={handleCariAdiKeyDown}
                         className="fw-semibold shadow-none"
                       />
                       <Button
                         variant="outline-primary"
-                        onClick={() => setShowCariLookup(true)}
+                        onClick={() => {
+                          setCariInitialSearch(cariAdi.trim());
+                          setShowCariLookup(true);
+                        }}
                         title="Cari Kart Seçimi (TODVZ_CARI_KART) (F4)"
                       >
                         <IconBinoculars size={15} />
@@ -744,6 +848,7 @@ export const BankaHareketiPage: React.FC = () => {
       <LookupModal<any>
         show={showBankaLookup}
         title="Banka Hesabı Seçimi (TODVZ_BANKA_HESABI) (F4)"
+        initialSearchTerm={bankaInitialSearch}
         columns={bankaLookupColumns}
         items={bankaList}
         filterFn={(it, term) => {
@@ -772,6 +877,7 @@ export const BankaHareketiPage: React.FC = () => {
       <LookupModal<any>
         show={showCariLookup}
         title="Cari Kart Seçimi (TODVZ_CARI_KART) (F4)"
+        initialSearchTerm={cariInitialSearch}
         columns={cariLookupColumns}
         items={cariList}
         filterFn={(it, term) => {
@@ -780,7 +886,9 @@ export const BankaHareketiPage: React.FC = () => {
             (it.kod ? it.kod.toLowerCase().includes(t) : false) ||
             (it.ad ? it.ad.toLowerCase().includes(t) : false) ||
             (it.unvan ? it.unvan.toLowerCase().includes(t) : false) ||
-            (it.telefon ? it.telefon.toLowerCase().includes(t) : false)
+            (it.telefon ? it.telefon.toLowerCase().includes(t) : false) ||
+            (it.vergiKimlikNo ? it.vergiKimlikNo.toLowerCase().includes(t) : false) ||
+            (it.tcKimlikNo ? it.tcKimlikNo.toLowerCase().includes(t) : false)
           );
         }}
         onSelect={(selected: any) => {
@@ -796,6 +904,7 @@ export const BankaHareketiPage: React.FC = () => {
       <LookupModal<BankaHareketItem>
         show={showHareketLookup}
         title="Banka Hareketi Arama (F3)"
+        initialSearchTerm={hareketInitialSearch}
         columns={hareketLookupColumns}
         items={hareketList}
         filterFn={(it, term) => {
