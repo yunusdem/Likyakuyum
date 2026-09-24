@@ -277,6 +277,8 @@ export interface LabelConfig {
   koseYuvarlikligiMm?: number; // Dış köşe yuvarlaklığı (mm) - tüm şekillerde ayarlanabilir
   bogumEkle?: boolean;         // Standart Dikdörtgen üzerine özel boğum ekle
   kuyrukEkle?: boolean;        // Standart Dikdörtgen üzerine özel kuyruk ekle
+  yaziciUstKaydirmaMm?: number; // Yazıcı Üst Kaydırma Offseti (mm)
+  yaziciSolKaydirmaMm?: number; // Yazıcı Sol Kaydırma Offseti (mm)
 }
 
 export type PaperLayoutId =
@@ -976,6 +978,8 @@ const defaultLabelConfig: LabelConfig = {
   katlamaCizgisi: true,
   bgColor: "#ffffff",
   bgTexture: "beyaz",
+  yaziciUstKaydirmaMm: -0.8,
+  yaziciSolKaydirmaMm: 0,
 };
 
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -1122,6 +1126,13 @@ function BarcodeRenderer({
           margin: 1,
           textMargin: 1,
         });
+        const svg = svgRef.current;
+        const wAttr = svg.getAttribute("width") || "100";
+        const hAttr = svg.getAttribute("height") || "40";
+        svg.setAttribute("viewBox", `0 0 ${wAttr} ${hAttr}`);
+        svg.removeAttribute("width");
+        svg.removeAttribute("height");
+        svg.setAttribute("preserveAspectRatio", "none");
       } catch { }
     }
   }, [displayVal, format, height, customText, showText]);
@@ -1133,7 +1144,7 @@ function BarcodeRenderer({
   return (
     <svg
       ref={svgRef}
-      style={{ width: "100%", height: "100%", display: "block" }}
+      style={{ width: "100%", height: "100%", display: "block", shapeRendering: "crispEdges" }}
     />
   );
 }
@@ -1203,18 +1214,25 @@ function getBarcodeSvgString(
     const svgNode = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     const displayVal = value || "123456789";
     const customText = (barcodeText !== undefined && barcodeText.trim() !== "") ? barcodeText : displayVal;
-    const heightPx = Math.max(10, heightMm * PX_PER_MM * 0.55);
+    const heightPx = Math.max(12, heightMm * PX_PER_MM * 0.7);
     JsBarcode(svgNode, displayVal, {
       format: format === "EAN13" ? "EAN13" : "CODE128",
-      width: 1.2,
+      width: 1.5,
       height: heightPx,
       displayValue: showText !== false,
       text: customText,
-      fontSize: 8,
+      fontSize: 9,
+      fontOptions: "bold",
       margin: 1,
       textMargin: 1,
     });
-    svgNode.setAttribute("style", "width: 100%; height: 100%; display: block;");
+    const wAttr = svgNode.getAttribute("width") || "100";
+    const hAttr = svgNode.getAttribute("height") || "40";
+    svgNode.setAttribute("viewBox", `0 0 ${wAttr} ${hAttr}`);
+    svgNode.removeAttribute("width");
+    svgNode.removeAttribute("height");
+    svgNode.setAttribute("preserveAspectRatio", "none");
+    svgNode.setAttribute("style", "width: 100%; height: 100%; display: block; shape-rendering: crispEdges;");
     return svgNode.outerHTML;
   } catch {
     return `<div style="font-size:8px;text-align:center;width:100%;height:100%;">${value || "BARCODE"}</div>`;
@@ -1241,12 +1259,14 @@ async function buildSingleLabelHtml(
   const W = config.genislikMm;
   const H = config.yukseklikMm;
   const isDark = isColorDark(config.bgColor);
+  const ustKaydirma = config.yaziciUstKaydirmaMm !== undefined ? config.yaziciUstKaydirmaMm : -0.8;
+  const solKaydirma = config.yaziciSolKaydirmaMm || 0;
 
   const elementsHtmlPromises = elementsList
     .filter((el) => el.visible !== false)
     .map(async (el) => {
-      const left = el.x;
-      const top = el.y;
+      const left = el.x + solKaydirma;
+      const top = el.y - ustKaydirma;
       const width = el.width;
       const height = el.height;
       const rotation = el.rotation || 0;
@@ -1263,9 +1283,8 @@ async function buildSingleLabelHtml(
         const isCenter = el.textAlign === "center";
         const alignSelf = isRight ? "flex-end" : isCenter ? "center" : "flex-start";
         const textAlignCss = isRight ? "right" : isCenter ? "center" : "left";
-        const fontSizeMm = ((el.fontSize || 8) * 0.65) / PX_PER_MM;
-        const padX_Mm = 2 / PX_PER_MM;
-        const effectiveColor = el.color || (isDark ? "#ffffff" : "#000000");
+        const fontSizePt = el.fontSize || 8;
+        const effectiveColor = el.color && el.color !== "transparent" ? el.color : (isDark ? "#ffffff" : "#000000");
 
         innerContent = `
           <div style="
@@ -1276,19 +1295,23 @@ async function buildSingleLabelHtml(
             justify-content: ${alignSelf};
             text-align: ${textAlignCss};
             font-family: ${el.fontFamily || "Arial"}, sans-serif;
-            font-size: ${fontSizeMm.toFixed(4)}mm;
-            font-weight: ${el.fontWeight || "normal"};
+            font-size: ${fontSizePt}pt;
+            font-weight: ${el.fontWeight === "bold" ? "bold" : el.fontWeight || "600"};
             font-style: ${el.fontStyle || "normal"};
             text-decoration: ${el.textDecoration || "none"};
-            color: ${effectiveColor};
-            line-height: 1;
-            padding: 0 ${padX_Mm.toFixed(4)}mm;
+            color: ${effectiveColor} !important;
+            line-height: 1.1;
+            padding: 0 0.5mm;
             white-space: nowrap;
             overflow: hidden;
             background: ${el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : "transparent"};
             box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            -webkit-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
           ">
-            <span style="width: 100%; text-align: ${textAlignCss}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 1;">
+            <span style="width: 100%; text-align: ${textAlignCss}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 1.1; -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important;">
               ${textContent}
             </span>
           </div>
@@ -1299,13 +1322,9 @@ async function buildSingleLabelHtml(
         const showTxt = el.showText !== false;
         const svgStr = getBarcodeSvgString(barcodeVal, el.barcodeFormat || "CODE128", el.width, el.height, showTxt, customText);
         innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
-      } else if (el.type === "qr") {
-        const qrVal = el.barcodeValue || el.text || "QR";
+      } else if (el.type === "qr" || el.type === "rfid") {
+        const qrVal = el.barcodeValue || el.text || (el.type === "qr" ? "QR" : "RFID");
         const svgStr = await getQrSvgString(qrVal);
-        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
-      } else if (el.type === "rfid") {
-        const rfidVal = el.barcodeValue || el.text || "RFID";
-        const svgStr = await getQrSvgString(rfidVal);
         innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
       } else if (el.type === "icon") {
         const iconSizeMm = height * 0.75;
@@ -1316,7 +1335,7 @@ async function buildSingleLabelHtml(
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: ${iconSizeMm}mm;
+            font-size: ${iconSizeMm.toFixed(2)}mm;
             line-height: 1;
             color: ${el.color || "#000000"};
             font-family: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Segoe UI Symbol',sans-serif;
@@ -1325,26 +1344,26 @@ async function buildSingleLabelHtml(
           </div>
         `;
       } else if (el.type === "rect" || el.type === "rect-round") {
-        const borderMm = (el.borderWidth || 1) * 0.264583;
-        const radiusMm = el.type === "rect-round" ? 1.5 : (el.borderRadius || 0) * 0.264583;
+        const borderMm = Math.max(0.35, (el.borderWidth || 1) * 0.352778);
+        const radiusMm = el.type === "rect-round" ? 1.5 : (el.borderRadius || 0) * 0.352778;
         innerContent = `
           <div style="
             width: 100%;
             height: 100%;
             background: ${el.backgroundColor || "transparent"};
-            border: ${borderMm}mm solid ${el.borderColor || "#000000"};
-            border-radius: ${radiusMm}mm;
+            border: ${borderMm.toFixed(3)}mm solid ${el.borderColor || "#000000"};
+            border-radius: ${radiusMm.toFixed(3)}mm;
             box-sizing: border-box;
           "></div>
         `;
       } else if (el.type === "ellipse") {
-        const borderMm = (el.borderWidth || 1) * 0.264583;
+        const borderMm = Math.max(0.35, (el.borderWidth || 1) * 0.352778);
         innerContent = `
           <div style="
             width: 100%;
             height: 100%;
             background: ${el.backgroundColor || "transparent"};
-            border: ${borderMm}mm solid ${el.borderColor || "#000000"};
+            border: ${borderMm.toFixed(3)}mm solid ${el.borderColor || "#000000"};
             border-radius: 50%;
             box-sizing: border-box;
           "></div>
@@ -1356,30 +1375,30 @@ async function buildSingleLabelHtml(
               points="20,2 38,20 20,38 2,20"
               fill="${el.backgroundColor || "transparent"}"
               stroke="${el.borderColor || "#000000"}"
-              stroke-width="${el.borderWidth || 1}"
+              stroke-width="${Math.max(1.5, el.borderWidth || 1)}"
             />
           </svg>
         `;
       } else if (el.type === "line-vertical") {
-        const lineThickMm = (el.borderWidth || 1) * 0.264583;
+        const lineThickMm = Math.max(0.35, (el.borderWidth || 1) * 0.352778);
         innerContent = `
           <div style="
             width: 0;
             height: 100%;
-            border-left: ${lineThickMm}mm solid ${el.borderColor || "#000000"};
+            border-left: ${lineThickMm.toFixed(3)}mm solid ${el.borderColor || "#000000"};
             position: absolute;
             left: 50%;
             top: 0;
           "></div>
         `;
       } else if (el.type === "line" || el.type === "line-dashed" || el.type === "line-dotted" || el.type === "line-double") {
-        const lineThickMm = (el.borderWidth || 1) * 0.264583;
+        const lineThickMm = Math.max(0.35, (el.borderWidth || 1) * 0.352778);
         const borderStyle = el.type === "line-dashed" ? "dashed" : el.type === "line-dotted" ? "dotted" : el.type === "line-double" ? "double" : "solid";
         innerContent = `
           <div style="
             width: 100%;
             height: 0;
-            border-top: ${lineThickMm}mm ${borderStyle} ${el.borderColor || "#000000"};
+            border-top: ${lineThickMm.toFixed(3)}mm ${borderStyle} ${el.borderColor || "#000000"};
             position: absolute;
             top: 50%;
             left: 0;
@@ -1420,7 +1439,9 @@ async function buildSingleLabelHtml(
 
   return `
     <div class="print-label-cell" style="
-      position: relative;
+      position: absolute;
+      top: 0;
+      left: 0;
       width: ${W}mm;
       height: ${H}mm;
       background: ${config.bgColor || "#ffffff"};
@@ -2060,7 +2081,7 @@ const StaticLabelCell: React.FC<{
               <div
                 style={{
                   fontFamily: el.fontFamily || "Arial",
-                  fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
+                  fontSize: `${mmToPx((el.fontSize || 8) * 0.352778, zoom)}px`,
                   fontWeight: el.fontWeight || "normal",
                   fontStyle: el.fontStyle || "normal",
                   textDecoration: el.textDecoration || "none",
@@ -2999,30 +3020,37 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           <style>
             @page {
               size: ${labelConfig.genislikMm}mm ${labelConfig.yukseklikMm}mm;
-              margin: 0;
+              margin: 0 !important;
             }
-            * {
-              box-sizing: border-box;
-              margin: 0;
-              padding: 0;
+            *, *::before, *::after {
+              box-sizing: border-box !important;
+              margin: 0 !important;
+              padding: 0 !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
               color-adjust: exact !important;
             }
             html, body {
-              margin: 0;
-              padding: 0;
-              width: ${labelConfig.genislikMm}mm;
-              height: ${labelConfig.yukseklikMm}mm;
-              background: #ffffff;
-              overflow: hidden;
+              margin: 0 !important;
+              padding: 0 !important;
+              width: ${labelConfig.genislikMm}mm !important;
+              height: ${labelConfig.yukseklikMm}mm !important;
+              position: absolute !important;
+              top: 0 !important;
+              left: 0 !important;
+              background: #ffffff !important;
+              overflow: hidden !important;
             }
             .print-wrapper {
-              position: relative;
-              width: ${labelConfig.genislikMm}mm;
-              height: ${labelConfig.yukseklikMm}mm;
-              overflow: hidden;
-              background: #ffffff;
+              position: absolute !important;
+              top: 0 !important;
+              left: 0 !important;
+              width: ${labelConfig.genislikMm}mm !important;
+              height: ${labelConfig.yukseklikMm}mm !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+              background: #ffffff !important;
             }
           </style>
         </head>
@@ -4134,18 +4162,18 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const handleLoadSablon = (sablon: EtiketSablonItem) => {
     const els: CanvasElement[] = (sablon.alanlar || []).map((alan, i) => ({
       id: genId(),
-      type: (alan.etiketElementTipi || "text") as ElementType,
+      type: (alan.type || alan.etiketElementTipi || "text") as ElementType,
       x: alan.x ?? 5,
       y: alan.y ?? 5 + i * 7,
-      width: alan.genislik ?? (alan.etiketElementTipi === "barcode" ? 25 : 20),
-      height: alan.yukseklik ?? (alan.etiketElementTipi === "barcode" ? 8 : 5),
+      width: alan.width ?? alan.genislik ?? ((alan.type || alan.etiketElementTipi) === "barcode" ? 25 : 20),
+      height: alan.height ?? alan.yukseklik ?? ((alan.type || alan.etiketElementTipi) === "barcode" ? 8 : 5),
       rotation: alan.rotation ?? 0,
       opacity: alan.opacity ?? 1,
       locked: alan.locked ?? false,
       visible: alan.visible ?? true,
       zIndex: alan.zIndex ?? i,
-      text: alan.text || alan.alan,
-      fieldKey: alan.alan,
+      text: alan.text || alan.customText || alan.ad || alan.alan,
+      fieldKey: alan.key || alan.alan,
       prefix: alan.prefix,
       suffix: alan.suffix,
       fontSize: alan.fontSize ?? 8,
@@ -4159,11 +4187,12 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       borderColor: alan.borderColor ?? "transparent",
       borderWidth: alan.borderWidth ?? 0,
       borderRadius: alan.borderRadius ?? 0,
-      barcodeFormat: alan.barkodFormat as any,
+      barcodeFormat: (alan.barcodeFormat || alan.barkodFormat) as any,
       barcodeValue: alan.barcodeValue,
       barcodeText: alan.barcodeText || alan.customText,
-      showText: alan.showBarcodeText ?? true,
+      showText: alan.showBarcodeText ?? alan.showText ?? true,
       iconEmoji: alan.iconEmoji,
+      imageData: alan.imageData,
     }));
 
     dispatch({
@@ -4175,10 +4204,10 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           etiketSekli: sablon.etiketSekli || "kelebek",
           genislikMm: sablon.genislikMm,
           yukseklikMm: sablon.yukseklikMm,
-          solKanatMm: sablon.solKanatGenislikMm ?? sablon.genislikMm / 2,
-          sagKanatMm: sablon.sagKanatGenislikMm ?? sablon.genislikMm / 2,
-          kopruGenislikMm: 9,
-          kopruYukseklikMm: 8,
+          solKanatMm: sablon.solKanatGenislikMm ?? Math.round(sablon.genislikMm * 0.42 * 10) / 10,
+          sagKanatMm: sablon.sagKanatGenislikMm ?? Math.round(sablon.genislikMm * 0.42 * 10) / 10,
+          kopruGenislikMm: Math.round(sablon.genislikMm * 0.16 * 10) / 10,
+          kopruYukseklikMm: Math.round(sablon.yukseklikMm * 0.8 * 10) / 10,
           kuyrukGenislikMm: sablon.kuyrukGenislikMm ?? 35,
           kuyrukKalinlikMm: 4,
           delikCapiMm: 0,
@@ -4219,7 +4248,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
       const textStyle: React.CSSProperties = {
         fontFamily: el.fontFamily || "Arial",
-        fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
+        fontSize: `${mmToPx((el.fontSize || 8) * 0.352778, zoom)}px`,
         fontWeight: el.fontWeight || "normal",
         fontStyle: el.fontStyle || "normal",
         textDecoration: el.textDecoration || "none",
@@ -4253,7 +4282,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             value={el.type === "field" ? (el.text || el.fieldKey || "") : (el.text ?? "")}
             style={{
               fontFamily: el.fontFamily || "Arial",
-              fontSize: `${(el.fontSize || 8) * zoom * 0.65}px`,
+              fontSize: `${mmToPx((el.fontSize || 8) * 0.352778, zoom)}px`,
               fontWeight: el.fontWeight || "normal",
               color: el.color || "#000",
               textAlign: isRight ? "right" : isCenter ? "center" : "left",
@@ -4829,6 +4858,53 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         )}
 
         <div style={{ marginLeft: "auto" }} />
+
+        {/* Hızlı Yazıcı Baskı Kaydırma (Sol & Üst Offset Ayarları) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0, background: "rgba(15, 23, 42, 0.7)", padding: "2px 6px", borderRadius: 5, border: "1px solid #334155" }} title="Yazıcınızın kâğıt beslemesine göre baskıyı sola/sağa veya yukarı/aşağı milimetrik kaydırır">
+          <span className="toolbar-label" style={{ fontSize: 10, color: "#38bdf8", fontWeight: 700 }}>🖨️ Kaydırma:</span>
+          
+          <span className="toolbar-label" style={{ fontSize: 9.5, color: "#94a3b8" }}>Sol:</span>
+          <button
+            className="tb-btn"
+            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
+            title="Baskıyı Sola Kaydır (Sol Kaydırma -0.5mm)"
+            onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) - 0.5) * 10) / 10 })}
+          >
+            -
+          </button>
+          <span style={{ fontSize: 10, color: "#f8fafc", fontWeight: 700, minWidth: 26, textAlign: "center" }}>
+            {(labelConfig.yaziciSolKaydirmaMm || 0) > 0 ? `+${labelConfig.yaziciSolKaydirmaMm}` : (labelConfig.yaziciSolKaydirmaMm || 0)}mm
+          </span>
+          <button
+            className="tb-btn"
+            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
+            title="Baskıyı Sağa Kaydır (Sol Kaydırma +0.5mm)"
+            onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) + 0.5) * 10) / 10 })}
+          >
+            +
+          </button>
+
+          <span className="toolbar-label" style={{ fontSize: 9.5, color: "#94a3b8", marginLeft: 4 }}>Üst:</span>
+          <button
+            className="tb-btn"
+            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
+            title="Baskıyı Yukarı Kaydır (+0.5mm)"
+            onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) + 0.5) * 10) / 10 })}
+          >
+            +
+          </button>
+          <span style={{ fontSize: 10, color: "#f8fafc", fontWeight: 700, minWidth: 26, textAlign: "center" }}>
+            {(labelConfig.yaziciUstKaydirmaMm ?? -0.8) > 0 ? `+${labelConfig.yaziciUstKaydirmaMm ?? -0.8}` : (labelConfig.yaziciUstKaydirmaMm ?? -0.8)}mm
+          </span>
+          <button
+            className="tb-btn"
+            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
+            title="Baskıyı Aşağı Kaydır (-0.5mm)"
+            onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) - 0.5) * 10) / 10 })}
+          >
+            -
+          </button>
+        </div>
 
         {/* Kaydet ve Çıktı Al (Tek Tık) */}
         <button
@@ -6205,7 +6281,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                         borderRadius: 6,
                       }}
                       onClick={() => {
-                        updateLabelConfig(tmpl.config);
+                        updateLabelConfig(tmpl.config, false);
                         const newElements = tmpl.elements.map((el, i) => ({
                           id: genId(),
                           type: el.type,
@@ -7409,6 +7485,105 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                     />
                   </div>
                   <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 4 }}>{labelConfig.bgColor}</span>
+                </div>
+              </div>
+
+              <div className="prop-group" style={{ background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.2)", borderRadius: 6, padding: 8 }}>
+                <div className="prop-group-title" style={{ color: "#38bdf8" }}>
+                  <span>🖨️ Yazıcı Baskı Ayarları</span>
+                </div>
+                <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 8, lineHeight: 1.25 }}>
+                  Yazıcınızın mekanik etiket kaydırmasına göre milimetrik hizalama:
+                </div>
+
+                {/* Dikey Kaydırma */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#cbd5e1", marginBottom: 3 }}>
+                    <span>Dikey (Yukarı / Aşağı):</span>
+                    <span style={{ color: "#38bdf8", fontWeight: 700 }}>
+                      {(labelConfig.yaziciUstKaydirmaMm ?? -0.8) > 0 ? `+${labelConfig.yaziciUstKaydirmaMm ?? -0.8}` : (labelConfig.yaziciUstKaydirmaMm ?? -0.8)} mm
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    <button
+                      className="tb-btn"
+                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
+                      title="0.5mm YUKARI Kaydır (Sayı Artar: +0.5mm)"
+                      onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) + 0.5) * 10) / 10 })}
+                    >
+                      ▲ Yukarı
+                    </button>
+                    <input
+                      type="number"
+                      className="prop-input"
+                      style={{ textAlign: "center", padding: "1px 3px" }}
+                      key={`yazici-ust-${labelConfig.yaziciUstKaydirmaMm}`}
+                      defaultValue={labelConfig.yaziciUstKaydirmaMm ?? -0.8}
+                      step={0.1}
+                      min={-15}
+                      max={15}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      onBlur={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) updateLabelConfig({ yaziciUstKaydirmaMm: v });
+                        else e.target.value = String(labelConfig.yaziciUstKaydirmaMm ?? -0.8);
+                      }}
+                    />
+                    <button
+                      className="tb-btn"
+                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
+                      title="0.5mm AŞAĞI Kaydır (Sayı Azalır: -0.5mm)"
+                      onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) - 0.5) * 10) / 10 })}
+                    >
+                      ▼ Aşağı
+                    </button>
+                  </div>
+                </div>
+
+                {/* Yatay Kaydırma */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#cbd5e1", marginBottom: 3 }}>
+                    <span>Yatay (Sola / Sağa):</span>
+                    <span style={{ color: "#38bdf8", fontWeight: 700 }}>
+                      {(labelConfig.yaziciSolKaydirmaMm || 0) > 0 ? `+${labelConfig.yaziciSolKaydirmaMm}` : (labelConfig.yaziciSolKaydirmaMm || 0)} mm
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    <button
+                      className="tb-btn"
+                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
+                      title="0.5mm SOLA Kaydır (Sol Offset Azalt)"
+                      onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) - 0.5) * 10) / 10 })}
+                    >
+                      ◄ Sola
+                    </button>
+                    <input
+                      type="number"
+                      className="prop-input"
+                      style={{ textAlign: "center", padding: "1px 3px" }}
+                      key={`yazici-sol-${labelConfig.yaziciSolKaydirmaMm}`}
+                      defaultValue={labelConfig.yaziciSolKaydirmaMm || 0}
+                      step={0.1}
+                      min={-15}
+                      max={15}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      onBlur={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) updateLabelConfig({ yaziciSolKaydirmaMm: v });
+                        else e.target.value = String(labelConfig.yaziciSolKaydirmaMm || 0);
+                      }}
+                    />
+                    <button
+                      className="tb-btn"
+                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
+                      title="0.5mm SAĞA Kaydır (Sol Offset Artır)"
+                      onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) + 0.5) * 10) / 10 })}
+                    >
+                      Sağa ►
+                    </button>
+                  </div>
                 </div>
               </div>
             </>

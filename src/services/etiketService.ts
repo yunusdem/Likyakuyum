@@ -213,6 +213,8 @@ export interface EtiketSablonItem {
   kuyrukGenislikMm?: number;
   arkaPlanRengi?: EtiketArkaPlan;
   rfidDahili?: boolean;
+  yaziciUstKaydirmaMm?: number;
+  yaziciSolKaydirmaMm?: number;
 }
 
 export interface SaveEtiketSablonPayload {
@@ -232,6 +234,8 @@ export interface SaveEtiketSablonPayload {
   kuyrukGenislikMm?: number;
   arkaPlanRengi?: EtiketArkaPlan;
   rfidDahili?: boolean;
+  yaziciUstKaydirmaMm?: number;
+  yaziciSolKaydirmaMm?: number;
 }
 
 export interface EtiketGrupNoResult {
