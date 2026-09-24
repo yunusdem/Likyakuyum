@@ -24,6 +24,7 @@ interface MusteriSecimModalProps {
   kayitsizMusteriler: KayitsizMusteriItem[];
   onSelectCustomer: (result: SelectedCustomerResult) => void;
   currentUnvan?: string;
+  initialSearchTerm?: string;
 }
 
 export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
@@ -33,10 +34,11 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
   kayitsizMusteriler,
   onSelectCustomer,
   currentUnvan,
+  initialSearchTerm = "",
 }) => {
   const [activeTab, setActiveTab] = useState<"registered" | "unregistered">("registered");
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [internalCariler, setInternalCariler] = useState<CariKartItem[]>(cariler || []);
   const [internalKayitsizlar, setInternalKayitsizlar] = useState<KayitsizMusteriItem[]>(kayitsizMusteriler || []);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -60,11 +62,12 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     }
   }, [kayitsizMusteriler]);
 
-  // Modal açıldığında sadece gerçekten liste tamamen boşsa arka planda sessizce çek
+  // Modal açıldığında arama terimini başlat ve verileri kontrol et
   useEffect(() => {
     if (!show) return;
 
-    setSearchTerm("");
+    const term = initialSearchTerm ? initialSearchTerm.trim() : "";
+    setSearchTerm(term);
     setSelectedIndex(0);
 
     const checkAndFetch = async () => {
@@ -98,12 +101,17 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
         }
       }
       setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 50);
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+          if (term) {
+            searchInputRef.current.select();
+          }
+        }
+      }, 60);
     };
 
     checkAndFetch();
-  }, [show]);
+  }, [show, initialSearchTerm]);
 
   // Tab değiştiğinde seçimi koru ama satır seçimini sıfırla
   useEffect(() => {
@@ -132,7 +140,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     if (show && selectedIndex !== null && rowRefs.current[selectedIndex]) {
       rowRefs.current[selectedIndex]?.scrollIntoView({
         block: "nearest",
-        behavior: "smooth",
+        behavior: "auto",
       });
     }
   }, [selectedIndex, show]);
@@ -196,21 +204,25 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") {
         e.preventDefault();
+        e.stopPropagation();
         setSelectedIndex((prev) => {
           if (prev === null) return 0;
           return prev < currentList.length - 1 ? prev + 1 : prev;
         });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
+        e.stopPropagation();
         setSelectedIndex((prev) => {
           if (prev === null) return 0;
           return prev > 0 ? prev - 1 : 0;
         });
       } else if (e.key === "Enter") {
         e.preventDefault();
+        e.stopPropagation();
         handleConfirm();
       } else if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
       }
     };
@@ -248,7 +260,6 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
         }
         .musteri-row {
           cursor: pointer;
-          user-select: none;
         }
       `}</style>
 
@@ -271,7 +282,6 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
             backgroundColor: "#e2e8f0",
             borderBottom: "1px solid #94a3b8",
             cursor: "default",
-            userSelect: "none",
           }}
         >
           <div className="d-flex align-items-center gap-2">
@@ -469,6 +479,9 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
                   <th style={{ width: "130px", textAlign: "left" }} className="px-3 py-2">
                     Telefon
                   </th>
+                  <th style={{ width: "70px", textAlign: "center" }} className="px-2 py-2">
+                    Seçim
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -500,6 +513,19 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
                       </td>
                       <td className="px-3 py-2 text-start align-middle text-muted">
                         {tel}
+                      </td>
+                      <td className="text-center align-middle px-2 py-1">
+                        <Button
+                          size="sm"
+                          variant={isSelected ? "primary" : "outline-secondary"}
+                          className={`py-0 px-2 fs-7 ${isSelected ? "fw-bold shadow-sm" : ""}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectRow(item);
+                          }}
+                        >
+                          Seç
+                        </Button>
                       </td>
                     </tr>
                   );

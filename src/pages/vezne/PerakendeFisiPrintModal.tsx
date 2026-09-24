@@ -16,6 +16,7 @@ export interface PerakendeFisiPrintModalProps {
   show: boolean;
   onHide: () => void;
   fatura: PerakendeFaturaModel | null;
+  autoPrint?: boolean;
 }
 
 /**
@@ -77,8 +78,9 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   show,
   onHide,
   fatura,
+  autoPrint = false,
 }) => {
-  const [printType, setPrintType] = useState<"A4" | "POS">("A4");
+  const [printType, setPrintType] = useState<"A4" | "POS">("POS");
   const [company, setCompany] = useState<TodvzTanimDto | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const printAreaRef = useRef<HTMLDivElement>(null);
@@ -99,8 +101,149 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   }, [fatura, show, company]);
 
   const handlePrint = () => {
-    window.print();
+    const isPos = printType === "POS";
+    const targetId = isPos ? "perakende-pos-print-target" : "perakende-a4-print-target";
+    const slipEl = document.getElementById(targetId);
+    if (!slipEl) {
+      window.print();
+      return;
+    }
+
+    let iframe = document.getElementById("perakende-print-iframe") as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "perakende-print-iframe";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${isPos ? "Perakende Bilgi Fişi" : "e-Arşiv Fatura"} - ${fatura?.faturaNo || ""}</title>
+          <style>
+            @page {
+              size: ${isPos ? "auto" : "A4 portrait"};
+              margin: ${isPos ? "0mm" : "5mm"} !important;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            html, body {
+              width: 100%;
+              max-width: ${isPos ? "80mm" : "210mm"};
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff;
+              font-family: ${isPos ? "'Courier New', Courier, monospace, Arial, sans-serif" : "Arial, Helvetica, sans-serif"};
+              color: #000000;
+              height: auto !important;
+              overflow: visible !important;
+            }
+            .thermal-paper {
+              position: static !important;
+              width: 100%;
+              max-width: 78mm;
+              margin: 0 auto !important;
+              padding: 2mm 3mm 4mm 3mm !important;
+              background: #ffffff;
+              color: #000000;
+              font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
+              font-size: 11px;
+              line-height: 1.25;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              page-break-after: avoid !important;
+            }
+            .a4-paper {
+              width: 210mm;
+              min-height: 297mm;
+              margin: 0 auto;
+              padding: 10mm;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 12px;
+              line-height: 1.4;
+            }
+            table {
+              border-collapse: collapse;
+              width: 100%;
+            }
+            th, td {
+              padding: 2px 2px;
+            }
+            img {
+              max-width: 100%;
+            }
+            .text-start { text-align: left; }
+            .text-end { text-align: right; }
+            .text-center { text-align: center; }
+            .fw-bold { font-weight: bold; }
+            .border-top { border-top: 1px solid #000000; }
+            .border-bottom { border-bottom: 1px solid #000000; }
+            .my-1 { margin-top: 4px; margin-bottom: 4px; }
+            .py-1 { padding-top: 4px; padding-bottom: 4px; }
+            .mb-1 { margin-bottom: 4px; }
+            .mb-2 { margin-bottom: 8px; }
+            .mt-1 { margin-top: 4px; }
+            .mt-2 { margin-top: 8px; }
+            .fs-6 { font-size: 13px; }
+            .d-flex { display: flex; }
+            .justify-content-between { justify-content: space-between; }
+          </style>
+        </head>
+        <body>
+          <div class="${isPos ? "thermal-paper" : "a4-paper"}">
+            ${slipEl.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 200);
   };
+
+  // Auto print trigger when opened via F10 or direct-print
+  useEffect(() => {
+    if (show && autoPrint && fatura) {
+      const timer = setTimeout(() => {
+        handlePrint();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [show, autoPrint, fatura, qrDataUrl]);
+
+  // Keyboard shortcut listener (F8 / F10 inside print modal)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!show) return;
+      if (e.key === "F8" || e.key === "F10") {
+        e.preventDefault();
+        handlePrint();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [show, printType, fatura]);
 
   if (!fatura) return null;
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Modal, Form, InputGroup, Table, Button, Spinner, Badge } from "react-bootstrap";
 import { IconSearch, IconBinoculars, IconX, IconCheck } from "@tabler/icons-react";
 
@@ -16,6 +16,7 @@ export interface LookupModalProps<T> {
   items: T[];
   isLoading?: boolean;
   searchPlaceholder?: string;
+  initialSearchTerm?: string;
   selectedId?: any;
   columns: LookupColumn<T>[];
   filterFn: (item: T, term: string) => boolean;
@@ -29,17 +30,20 @@ export function LookupModal<T extends Record<string, any>>({
   items = [],
   isLoading = false,
   searchPlaceholder = "Arama yapın...",
+  initialSearchTerm = "",
   selectedId,
   columns,
   filterFn,
   onSelect,
 }: LookupModalProps<T>) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedItem, setSelectedItem] = useState<T | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   const getItemId = (it: any): string => {
     if (!it) return "";
+    if (it.sarrafFisiId !== undefined && it.sarrafFisiId !== null) return `sarraf-${it.sarrafFisiId}`;
     if (it.iskontoId !== undefined && it.iskontoId !== null) return `iskonto-${it.iskontoId}`;
     if (it.hesapHareketiId !== undefined && it.hesapHareketiId !== null) return `hareket-${it.hesapHareketiId}`;
     if (it.hesapId !== undefined && it.hesapId !== null) return `hesap-${it.hesapId}`;
@@ -56,12 +60,23 @@ export function LookupModal<T extends Record<string, any>>({
     return "";
   };
 
-  // Reset search term and pre-select item matching selectedId whenever modal opens
+  const filteredItems = useMemo(() => {
+    if (!searchTerm.trim()) return items;
+    return items.filter((item) => filterFn(item, searchTerm.trim()));
+  }, [items, searchTerm, filterFn]);
+
+  const prevShowRef = useRef(false);
+
+  // Reset search term and pre-select item matching selectedId only once when modal opens
   useEffect(() => {
-    if (show) {
-      setSearchTerm("");
-      if (selectedId !== undefined && selectedId !== null && items && items.length > 0) {
-        const found = items.find((it: any) => {
+    if (show && !prevShowRef.current) {
+      const term = initialSearchTerm || "";
+      setSearchTerm(term);
+
+      const activeList = term.trim() ? items.filter((item) => filterFn(item, term.trim())) : items;
+      if (selectedId !== undefined && selectedId !== null && activeList && activeList.length > 0) {
+        const foundIdx = activeList.findIndex((it: any) => {
+          if (it.sarrafFisiId !== undefined && (it.sarrafFisiId === selectedId || String(it.sarrafFisiId) === String(selectedId))) return true;
           if (it.id !== undefined && (it.id === selectedId || String(it.id) === String(selectedId))) return true;
           if (it.hesapId !== undefined && (it.hesapId === selectedId || String(it.hesapId) === String(selectedId))) return true;
           if (it.iskontoId !== undefined && (it.iskontoId === selectedId || String(it.iskontoId) === String(selectedId))) return true;
@@ -70,20 +85,33 @@ export function LookupModal<T extends Record<string, any>>({
           if (it.ID !== undefined && (it.ID === selectedId || String(it.ID) === String(selectedId))) return true;
           return false;
         });
-        setSelectedItem(found || null);
+        setSelectedIndex(foundIdx >= 0 ? foundIdx : 0);
       } else {
-        setSelectedItem(null);
+        setSelectedIndex(0);
       }
-    }
-  }, [show, selectedId, items]);
 
-  const filteredItems = searchTerm.trim()
-    ? items.filter((item) => filterFn(item, searchTerm.trim()))
-    : items;
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+          if (term) {
+            searchInputRef.current.select();
+          }
+        }
+      }, 60);
+    }
+    prevShowRef.current = show;
+  }, [show, selectedId, initialSearchTerm, items, filterFn]);
+
+  // Scroll selected row into view automatically (using auto to avoid jumping animation)
+  useEffect(() => {
+    if (show && rowRefs.current[selectedIndex]) {
+      rowRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    }
+  }, [selectedIndex, show]);
 
   // Single click: Select row (highlight blue), do not close modal
-  const handleRowClick = (item: T) => {
-    setSelectedItem(item);
+  const handleRowClick = (index: number) => {
+    setSelectedIndex(index);
   };
 
   // Double click: Confirm selection, populate form fields and close modal
@@ -101,52 +129,48 @@ export function LookupModal<T extends Record<string, any>>({
 
   // Confirm currently selected item
   const handleConfirm = () => {
-    if (selectedItem) {
-      onSelect(selectedItem);
+    if (filteredItems.length > 0 && selectedIndex >= 0 && selectedIndex < filteredItems.length) {
+      onSelect(filteredItems[selectedIndex]);
       onHide();
     } else if (filteredItems.length > 0) {
-      // If no explicit single click but user presses confirm, pick first matched item
       onSelect(filteredItems[0]);
       onHide();
     }
   };
 
-  // Scroll selected row into view automatically
+  // Keyboard navigation handler (ArrowUp, ArrowDown, Enter, Escape)
   useEffect(() => {
-    if (selectedItem) {
-      const el = document.querySelector(".lookup-selected-row");
-      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-  }, [selectedItem]);
+    if (!show) return;
 
-  const handleGlobalKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleConfirm();
-    } else if (e.key === "ArrowDown" && filteredItems.length > 0) {
-      e.preventDefault();
-      if (!selectedItem) {
-        setSelectedItem(filteredItems[0]);
-      } else {
-        const currIdx = filteredItems.findIndex(
-          (it) => (getItemId(it) ? getItemId(it) === getItemId(selectedItem) : it === selectedItem)
-        );
-        if (currIdx < filteredItems.length - 1) {
-          setSelectedItem(filteredItems[currIdx + 1]);
-        }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedIndex((prev) => {
+          if (filteredItems.length === 0) return 0;
+          return prev < filteredItems.length - 1 ? prev + 1 : prev;
+        });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedIndex((prev) => {
+          if (filteredItems.length === 0) return 0;
+          return prev > 0 ? prev - 1 : 0;
+        });
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleConfirm();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onHide();
       }
-    } else if (e.key === "ArrowUp" && filteredItems.length > 0) {
-      e.preventDefault();
-      if (selectedItem) {
-        const currIdx = filteredItems.findIndex(
-          (it) => (getItemId(it) ? getItemId(it) === getItemId(selectedItem) : it === selectedItem)
-        );
-        if (currIdx > 0) {
-          setSelectedItem(filteredItems[currIdx - 1]);
-        }
-      }
-    }
-  };
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [show, selectedIndex, filteredItems, onHide]);
 
   return (
     <Modal
@@ -155,8 +179,7 @@ export function LookupModal<T extends Record<string, any>>({
       size="lg"
       centered
       backdrop="static"
-      keyboard={true}
-      onKeyDown={handleGlobalKeyDown}
+      keyboard={false}
       onEntered={() => {
         // Safe focus after modal animation completes to avoid focus-trap flicker
         searchInputRef.current?.focus();
@@ -169,7 +192,7 @@ export function LookupModal<T extends Record<string, any>>({
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-3">
-        {/* Search Input */}
+        {/* Search Input Bar */}
         <InputGroup className="mb-3">
           <InputGroup.Text className="bg-white border-end-0">
             <IconSearch size={16} className="text-secondary" />
@@ -180,9 +203,8 @@ export function LookupModal<T extends Record<string, any>>({
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setSelectedItem(null);
+              setSelectedIndex(0);
             }}
-            onKeyDown={handleGlobalKeyDown}
             className="border-start-0"
           />
           {searchTerm && (
@@ -191,6 +213,7 @@ export function LookupModal<T extends Record<string, any>>({
               className="border-start-0 bg-white"
               onClick={() => {
                 setSearchTerm("");
+                setSelectedIndex(0);
                 searchInputRef.current?.focus();
               }}
             >
@@ -202,9 +225,9 @@ export function LookupModal<T extends Record<string, any>>({
         {/* Info Banner */}
         <div className="d-flex align-items-center justify-content-between mb-2 px-1 text-muted small">
           <span>
-            💡 <strong>İpucu:</strong> Satıra çift tıklayarak, Enter basarak veya Seç butonuyla doğrudan forma aktarabilirsiniz.
+            💡 <strong>İpucu:</strong> Satıra çift tıklayarak, <strong>Enter</strong> basarak veya <strong>Seç</strong> butonuyla doğrudan forma aktarabilirsiniz. (Yukarı/Aşağı tuşları ile gezinebilirsiniz)
           </span>
-          {selectedItem && (
+          {filteredItems.length > 0 && selectedIndex >= 0 && selectedIndex < filteredItems.length && (
             <Badge bg="primary" className="py-1 px-2">
               1 satır seçildi
             </Badge>
@@ -264,21 +287,17 @@ export function LookupModal<T extends Record<string, any>>({
               <tbody>
                 {filteredItems.map((item, index) => {
                   const itemId = getItemId(item);
-                  const selectedId = getItemId(selectedItem);
-                  const isSelected = Boolean(
-                    selectedItem &&
-                      (itemId && selectedId ? itemId === selectedId : item === selectedItem)
-                  );
+                  const isSelected = index === selectedIndex;
 
                   return (
                     <tr
                       key={`lookup-row-${index}-${itemId || "item"}`}
-                      onClick={() => handleRowClick(item)}
+                      ref={(el) => { rowRefs.current[index] = el; }}
+                      onClick={() => handleRowClick(index)}
                       onDoubleClick={() => handleRowDoubleClick(item)}
                       className={isSelected ? "lookup-selected-row fw-semibold" : ""}
                       style={{
                         cursor: "pointer",
-                        userSelect: "none",
                       }}
                     >
                       <td
@@ -330,7 +349,7 @@ export function LookupModal<T extends Record<string, any>>({
           <Button
             variant="primary"
             size="sm"
-            disabled={!selectedItem && filteredItems.length === 0}
+            disabled={selectedIndex === null || !filteredItems[selectedIndex]}
             onClick={handleConfirm}
           >
             Seçimi Onayla

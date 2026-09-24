@@ -189,6 +189,8 @@ export interface UrunItem {
   ad: string;
   gramaj?: number;
   hasOrani?: number;
+  alisMilyem?: number;
+  satisMilyem?: number;
   iscilik?: number;
   birim?: number;
   urunTipi?: number;
@@ -212,6 +214,8 @@ export class SarrafFisService {
           ad: (r.ad || "").trim(),
           gramaj: Number(r.gramaj) || 0,
           hasOrani: Number(r.hasOrani) || 0,
+          alisMilyem: Number(r.alisMilyem) > 0 ? Number(r.alisMilyem) : (Number(r.hasAlisKatsayisi) > 0 ? Number(r.hasAlisKatsayisi) : (Number(r.hasOrani) || 0)),
+          satisMilyem: Number(r.satisMilyem) > 0 ? Number(r.satisMilyem) : (Number(r.hasSatisKatsayisi) > 0 ? Number(r.hasSatisKatsayisi) : (Number(r.hasOrani) || 0)),
           iscilik: Number(r.iscilik) || 0,
           birim: Number(r.birim) || 0,
           urunTipi: Number(r.urunTipi) || 0,
@@ -229,6 +233,8 @@ export class SarrafFisService {
         ad: (r.ad || "").trim(),
         gramaj: Number(r.gramaj) || 0,
         hasOrani: Number(r.hasOrani) || 0,
+        alisMilyem: Number(r.alisMilyem) > 0 ? Number(r.alisMilyem) : (Number(r.hasAlisKatsayisi) > 0 ? Number(r.hasAlisKatsayisi) : (Number(r.hasOrani) || 0)),
+        satisMilyem: Number(r.satisMilyem) > 0 ? Number(r.satisMilyem) : (Number(r.hasSatisKatsayisi) > 0 ? Number(r.hasSatisKatsayisi) : (Number(r.hasOrani) || 0)),
         iscilik: Number(r.iscilik) || 0,
         birim: Number(r.birim) || 0,
         urunTipi: Number(r.urunTipi) || 0,

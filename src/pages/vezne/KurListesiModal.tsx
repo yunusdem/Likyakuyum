@@ -64,7 +64,7 @@ export const KurListesiModal: React.FC<KurListesiModalProps> = ({
     if (show && selectedIndex !== null && rowRefs.current[selectedIndex]) {
       rowRefs.current[selectedIndex]?.scrollIntoView({
         block: "nearest",
-        behavior: "smooth",
+        behavior: "auto",
       });
     }
   }, [selectedIndex, show]);
@@ -173,7 +173,6 @@ export const KurListesiModal: React.FC<KurListesiModalProps> = ({
             backgroundColor: "#e2e8f0",
             borderBottom: "1px solid #94a3b8",
             cursor: "default",
-            userSelect: "none",
           }}
         >
           <div className="d-flex align-items-center gap-2">
@@ -386,7 +385,6 @@ export const KurListesiModal: React.FC<KurListesiModalProps> = ({
                       className={isSelected ? "kur-selected-row table-primary fw-semibold" : ""}
                       style={{
                         cursor: "pointer",
-                        userSelect: "none",
                         backgroundColor: isSelected ? selectedBgColor : idx % 2 === 1 ? "#f8fafc" : "#ffffff",
                         boxShadow: isSelected ? `inset 0 0 0 9999px ${selectedBgColor}` : undefined,
                       }}
