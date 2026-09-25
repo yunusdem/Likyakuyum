@@ -81,7 +81,7 @@ import {
   EtiketArkaPlan,
 } from "../../services/etiketService";
 
-// ─── Dürbün İkonu (Binoculars) ───────────────────────────────────────────────
+// ─── Yardımcı İkonlar ──────────────────────────────────────────────────────────
 const IconBinoculars = ({ size = 15, color = "currentColor", strokeWidth = 2 }: { size?: number; color?: string; strokeWidth?: number }) => (
   <svg
     width={size}
@@ -102,26 +102,131 @@ const IconBinoculars = ({ size = 15, color = "currentColor", strokeWidth = 2 }: 
   </svg>
 );
 
+const IconHandGrab = ({ size = 15, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <path d="M8 13v-8.5a1.5 1.5 0 0 1 3 0v7.5" />
+    <path d="M11 11.5v-2a1.5 1.5 0 0 1 3 0v2.5" />
+    <path d="M14 10.5a1.5 1.5 0 0 1 3 0v1.5" />
+    <path d="M17 11.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47" />
+  </svg>
+);
+
+const IconFocus2 = ({ size = 15, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <circle cx="12" cy="12" r=".5" fill={color} />
+    <path d="M12 12m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+    <path d="M12 3l0 2" />
+    <path d="M3 12l2 0" />
+    <path d="M12 19l0 2" />
+    <path d="M19 12l2 0" />
+  </svg>
+);
+
+const IconDatabase = ({ size = 15, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <ellipse cx="12" cy="6" rx="8" ry="3" />
+    <path d="M4 6v6c0 1.657 3.582 3 8 3s8-1.343 8-3v-6" />
+    <path d="M4 12v6c0 1.657 3.582 3 8 3s8-1.343 8-3v-6" />
+  </svg>
+);
+
+const IconShapes = ({ size = 15, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <path d="M4 4h5v5h-5z" />
+    <path d="M14 4h6l-3 5z" />
+    <circle cx="16.5" cy="16.5" r="3.5" />
+  </svg>
+);
+
 // ─── Sabitler ────────────────────────────────────────────────────────────────
 
 const PX_PER_MM = 3.7795275591; // 96dpi
 
-const FONT_FAMILIES = [
-  "Inter",
-  "Arial",
-  "Arial Narrow",
-  "Courier New",
-  "Georgia",
-  "Times New Roman",
-  "Trebuchet MS",
-  "Verdana",
-  "Comic Sans MS",
-  "Impact",
-  "Lucida Console",
-  "Palatino Linotype",
-  "Tahoma",
-  "Century Gothic",
-  "Franklin Gothic Medium",
+export interface CanvaFontItem {
+  family: string;
+  name: string;
+  category: "kuyumcu" | "script" | "sans" | "display" | "mono";
+  categoryLabel: string;
+  sample: string;
+}
+
+export const CANVA_FONTS: CanvaFontItem[] = [
+  // 💎 Kuyumcu & Lüks Serif
+  { family: "Cinzel", name: "Cinzel", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "14K Altın Yüzük" },
+  { family: "Playfair Display", name: "Playfair Display", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "Tektaş Pırlanta 0.50ct" },
+  { family: "Bodoni Moda", name: "Bodoni Moda", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "Lüks Kuyumculuk" },
+  { family: "Cormorant Garamond", name: "Cormorant Garamond", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "22K Bilezik 15.40 gr" },
+  { family: "Marcellus", name: "Marcellus", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "Antik & Klasik" },
+  { family: "Prata", name: "Prata", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "Zarif Koleksiyon" },
+  { family: "EB Garamond", name: "EB Garamond", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "Klasik Tasarım" },
+  { family: "Georgia", name: "Georgia", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "Okunaklı Serif" },
+  { family: "Times New Roman", name: "Times New Roman", category: "kuyumcu", categoryLabel: "Kuyumcu & Lüks", sample: "Standart Serif" },
+
+  // ✨ Zarif & El Yazısı (Script)
+  { family: "Great Vibes", name: "Great Vibes", category: "script", categoryLabel: "Zarif Kaligrafi", sample: "Özel Tasarım & Aşk" },
+  { family: "Dancing Script", name: "Dancing Script", category: "script", categoryLabel: "Zarif Kaligrafi", sample: "Sonsuzluk Kolyesi" },
+  { family: "Caveat", name: "Caveat", category: "script", categoryLabel: "Zarif Kaligrafi", sample: "El Yapımı Takı" },
+  { family: "Pacifico", name: "Pacifico", category: "script", categoryLabel: "Zarif Kaligrafi", sample: "Yaz Koleksiyonu" },
+  { family: "Sacramento", name: "Sacramento", category: "script", categoryLabel: "Zarif Kaligrafi", sample: "İmza Serisi" },
+
+  // 🏢 Modern & Net Sans-Serif
+  { family: "Inter", name: "Inter", category: "sans", categoryLabel: "Modern & Net", sample: "Gram: 4.85 gr | 14K" },
+  { family: "Montserrat", name: "Montserrat", category: "sans", categoryLabel: "Modern & Net", sample: "KABASAKAL KUYUMCULUK" },
+  { family: "Poppins", name: "Poppins", category: "sans", categoryLabel: "Modern & Net", sample: "Net & Yuvarlak Harfler" },
+  { family: "Outfit", name: "Outfit", category: "sans", categoryLabel: "Modern & Net", sample: "Minimalist Etiket" },
+  { family: "Roboto", name: "Roboto", category: "sans", categoryLabel: "Modern & Net", sample: "Fiyat: 12.500 ₺" },
+  { family: "Open Sans", name: "Open Sans", category: "sans", categoryLabel: "Modern & Net", sample: "Barkod: 869000123" },
+  { family: "Lato", name: "Lato", category: "sans", categoryLabel: "Modern & Net", sample: "Dengeli & Şık" },
+  { family: "Manrope", name: "Manrope", category: "sans", categoryLabel: "Modern & Net", sample: "Modern Çizgiler" },
+  { family: "Arial", name: "Arial", category: "sans", categoryLabel: "Modern & Net", sample: "Standart Sans-Serif" },
+  { family: "Verdana", name: "Verdana", category: "sans", categoryLabel: "Modern & Net", sample: "Geniş Harfler" },
+  { family: "Tahoma", name: "Tahoma", category: "sans", categoryLabel: "Modern & Net", sample: "Kompakt Düzen" },
+
+  // 🏷️ Kompakt & Başlık Display
+  { family: "Oswald", name: "Oswald", category: "display", categoryLabel: "Başlık & Kompakt", sample: "ALTIN & SARRAFİYE" },
+  { family: "Rubik", name: "Rubik", category: "display", categoryLabel: "Başlık & Kompakt", sample: "YENİ MODEL 2026" },
+  { family: "Quicksand", name: "Quicksand", category: "display", categoryLabel: "Başlık & Kompakt", sample: "İnce Geometrik" },
+  { family: "Impact", name: "Impact", category: "display", categoryLabel: "Başlık & Kompakt", sample: "İNDİRİM %20" },
+
+  // ⌨️ Monospace
+  { family: "Space Mono", name: "Space Mono", category: "mono", categoryLabel: "Daktilo & Kod", sample: "RFID-EPC: E2801160" },
+  { family: "Roboto Mono", name: "Roboto Mono", category: "mono", categoryLabel: "Daktilo & Kod", sample: "0123456789" },
+  { family: "Fira Code", name: "Fira Code", category: "mono", categoryLabel: "Daktilo & Kod", sample: "KOD: YZ-8890" },
+  { family: "Courier New", name: "Courier New", category: "mono", categoryLabel: "Daktilo & Kod", sample: "Daktilo Fontu" },
+];
+
+const FONT_FAMILIES = CANVA_FONTS.map((f) => f.family);
+
+export const CANVA_COLOR_MATRIX = [
+  // 1. Siyah, Griler & Beyaz
+  ["#000000", "#1e293b", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#ffffff"],
+  // 2. Kuyumcu Maden & Sıcak Tonlar
+  ["#92400e", "#b45309", "#d4af37", "#eab308", "#facc15", "#fef08a", "#fffbeb"],
+  // 3. Kırmızılar & Gül Kurusu / Pembe
+  ["#7f1d1d", "#991b1b", "#dc2626", "#ef4444", "#fb7185", "#f43f5e", "#ec4899"],
+  // 4. Turuncular & Amber
+  ["#7c2d12", "#9a3412", "#c2410c", "#ea580c", "#f97316", "#fb923c", "#fed7aa"],
+  // 5. Yeşiller & Zümrüt
+  ["#14532d", "#166534", "#15803d", "#059669", "#10b981", "#34d399", "#a7f3d0"],
+  // 6. Maviler & Safir
+  ["#1e3a8a", "#1e40af", "#1d4ed8", "#2563eb", "#0284c7", "#0ea5e9", "#7dd3fc"],
+  // 7. Morlar & Mürdüm
+  ["#581c87", "#6b21a8", "#7e22ce", "#9333ea", "#a855f7", "#c084fc", "#e9d5ff"],
+];
+
+export const JEWELRY_PALETTE = [
+  { name: "24K Saf Altın", color: "#eab308" },
+  { name: "22K Klasik Altın", color: "#d4af37" },
+  { name: "18K Rose Gold", color: "#fb7185" },
+  { name: "14K Yeşil Altın", color: "#a3e635" },
+  { name: "925 Gümüş", color: "#94a3b8" },
+  { name: "Beyaz Altın", color: "#f8fafc" },
+  { name: "Yakut Kırmızı", color: "#dc2626" },
+  { name: "Zümrüt Yeşil", color: "#059669" },
+  { name: "Safir Mavi", color: "#2563eb" },
+  { name: "Oniks Siyah", color: "#000000" },
+  { name: "Antik Bronz", color: "#92400e" },
+  { name: "Şampanya", color: "#fde047" },
 ];
 
 const ETIKET_TIPLERI = [
@@ -183,6 +288,16 @@ const ICON_PRESETS = [
   { name: "sparkle", label: "Işıltı", emoji: "✨" },
 ];
 
+export const JEWELRY_QUICK_COLORS = [
+  { name: "Siyah", color: "#000000" },
+  { name: "Altın", color: "#d4af37" },
+  { name: "Bronz", color: "#92400e" },
+  { name: "Beyaz", color: "#ffffff" },
+  { name: "Kırmızı", color: "#dc2626" },
+  { name: "Zümrüt", color: "#059669" },
+  { name: "Safir", color: "#2563eb" },
+];
+
 const POPULAR_SIZES = [
   { ad: "65×22 mm (Kelebek)", icon: "🦋", config: { genislikMm: 65, yukseklikMm: 22, etiketSekli: "kelebek" as const, solKanatMm: 28, kopruGenislikMm: 9 } },
   { ad: "70×15 mm (Kuyruklu)", icon: "🏷️", config: { genislikMm: 70, yukseklikMm: 15, etiketSekli: "kuyruklu" as const, kuyrukGenislikMm: 35, kuyrukKalinlikMm: 4 } },
@@ -236,7 +351,8 @@ export interface CanvasElement {
   fontFamily?: string;
   fontWeight?: "normal" | "bold" | "600";
   fontStyle?: "normal" | "italic";
-  textDecoration?: "none" | "underline";
+  textDecoration?: "none" | "underline" | "line-through";
+  textTransform?: "none" | "uppercase" | "lowercase";
   textAlign?: "left" | "center" | "right";
   color?: string;
 
@@ -550,11 +666,11 @@ export const JEWELRY_LOGOS = [
 export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
   {
     id: "builtin_1",
-    ad: "14K / 22K Kelebek Sarrafiye (Standart)",
+    ad: "14K / 22K Kelebek Sarrafiye (Altın Çift Çerçeveli)",
     kategori: "Altın / Sarrafiye",
     etiketTipi: 0,
     icon: "🦋",
-    aciklama: "65×22 mm çift kanatlı klasik kuyumcu barkod ve gramaj etiketi",
+    aciklama: "65×22 mm altın varak çift çerçeveli klasik çift kanatlı kuyumcu etiketi",
     config: {
       etiketTipi: 0,
       etiketSekli: "kelebek",
@@ -574,23 +690,25 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "text", x: 2, y: 2, width: 24, height: 4, text: "LİKYA KUYUMCULUK", fontSize: 7, fontWeight: "bold", color: "#000" },
-      { type: "barcode", x: 2, y: 7, width: 24, height: 7.5, barcodeValue: "140829104", barcodeFormat: "CODE128" },
-      { type: "text", x: 2, y: 16, width: 24, height: 4.5, text: "₺ 18.450", fontSize: 9.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 34, y: 2, width: 28, height: 4, text: "14K Dorika Kolye", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "field", x: 34, y: 7, width: 14, height: 3.5, fieldKey: "ayar", text: "585 14K", fontSize: 7, color: "#000" },
-      { type: "field", x: 48, y: 7, width: 14, height: 3.5, fieldKey: "gramaj", text: "3.42 gr", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "field", x: 34, y: 11.5, width: 28, height: 3.5, fieldKey: "satisIscilik", text: "İşçilik: ₺140/g", fontSize: 6.5, color: "#475569" },
-      { type: "field", x: 34, y: 16, width: 28, height: 3.5, fieldKey: "barkod", text: "KOD: KL-8492", fontSize: 6.5, color: "#64748b" },
+      { type: "rect", x: 1, y: 1, width: 26, height: 20, borderColor: "#d4af37", borderWidth: 1.2 },
+      { type: "rect", x: 37, y: 1, width: 27, height: 20, borderColor: "#d4af37", borderWidth: 1.2 },
+      { type: "text", x: 2, y: 2, width: 24, height: 3.5, text: "LİKYA KUYUMCULUK", fontSize: 7, fontWeight: "bold", color: "#b45309" },
+      { type: "barcode", x: 2, y: 6, width: 24, height: 7.5, barcodeValue: "140829104", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 15.5, width: 24, height: 4.5, text: "₺ 18.450", fontSize: 9.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 38, y: 2.5, width: 25, height: 3.5, text: "14K Dorika Kolye", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "field", x: 38, y: 6.5, width: 12, height: 3, fieldKey: "ayar", text: "585 (14K)", fontSize: 7, color: "#b45309" },
+      { type: "field", x: 51, y: 6.5, width: 13, height: 3, fieldKey: "gramaj", text: "3.42 gr", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "field", x: 38, y: 10.5, width: 25, height: 3, fieldKey: "satisIscilik", text: "İşçilik: ₺140/g", fontSize: 6.5, color: "#475569" },
+      { type: "field", x: 38, y: 14.5, width: 25, height: 3.5, text: "KOD: KL-8492", fontSize: 6.5, color: "#64748b" },
     ],
   },
   {
     id: "builtin_2",
-    ad: "Özel Pırlanta & Tektaş Sertifika Etiketi",
+    ad: "VIP Pırlanta QR Sertifika Kartı (Safir Çerçeveli Kelebek)",
     kategori: "Özel / Pırlanta",
     etiketTipi: 1,
     icon: "💎",
-    aciklama: "70×20 mm karat, renk, berraklık ve QR sertifika bağlantılı pırlanta etiketi",
+    aciklama: "70×20 mm safir mavisi sertifika çerçeveli, karat/renk ve QR kodlu pırlanta etiketi",
     config: {
       etiketTipi: 1,
       etiketSekli: "kelebek",
@@ -610,32 +728,34 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "text", x: 2, y: 2, width: 18, height: 4, text: "DIAMOND VIP", fontSize: 7, fontWeight: "bold", color: "#0284c7" },
-      { type: "qr", x: 21, y: 2, width: 7.5, height: 7.5, barcodeValue: "https://cert.likyakuyum.com/D8492", barcodeFormat: "QR" },
-      { type: "barcode", x: 2, y: 10, width: 26, height: 5.5, barcodeValue: "PIRL-94021", barcodeFormat: "CODE128" },
-      { type: "text", x: 2, y: 16, width: 26, height: 3.5, text: "$ 1.450 / ₺ 49.000", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 36, y: 2, width: 30, height: 3.5, text: "0.45 CT Tektaş Yüzük", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 36, y: 6.5, width: 15, height: 3.5, text: "Renk: F", fontSize: 7, color: "#000" },
-      { type: "text", x: 52, y: 6.5, width: 15, height: 3.5, text: "Berraklık: VS1", fontSize: 7, color: "#000" },
-      { type: "text", x: 36, y: 11, width: 30, height: 3.5, text: "Ağırlık: 2.85 gr (18K)", fontSize: 6.5, color: "#475569" },
-      { type: "text", x: 36, y: 15.5, width: 30, height: 3.5, text: "HRD Sertifika: 240981", fontSize: 6.5, color: "#0284c7" },
+      { type: "rect", x: 1, y: 1, width: 28, height: 18, borderColor: "#0369a1", borderWidth: 1.2 },
+      { type: "rect", x: 41, y: 1, width: 28, height: 18, borderColor: "#0369a1", borderWidth: 1.2 },
+      { type: "text", x: 2, y: 2, width: 17, height: 3.5, text: "DIAMOND VIP", fontSize: 7, fontWeight: "bold", color: "#0284c7" },
+      { type: "qr", x: 20, y: 2, width: 8, height: 8, barcodeValue: "https://cert.likyakuyum.com/D8492", barcodeFormat: "QR" },
+      { type: "barcode", x: 2, y: 9.5, width: 26, height: 5, barcodeValue: "PIRL-94021", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 15, width: 26, height: 3.5, text: "$ 1.450 / ₺ 49.000", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 42, y: 2, width: 26, height: 3.5, text: "0.45 CT Tektaş Yüzük", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 42, y: 6, width: 13, height: 3, text: "Renk: F", fontSize: 7, color: "#000" },
+      { type: "text", x: 55, y: 6, width: 13, height: 3, text: "Berraklık: VS1", fontSize: 7, color: "#000" },
+      { type: "text", x: 42, y: 9.5, width: 26, height: 3, text: "18K Altın (2.85 gr)", fontSize: 6.5, color: "#475569" },
+      { type: "text", x: 42, y: 14, width: 26, height: 3.5, text: "HRD Sertifika: 240981", fontSize: 6.5, fontWeight: "bold", color: "#0284c7" },
     ],
   },
   {
     id: "builtin_3",
-    ad: "Uzun Kuyruklu Bilezik / İpli Kolye",
+    ad: "22K Ajda & Burma Bilezik (Amber Yuvarlak Kenarlı Kuyruk Flama)",
     kategori: "Altın / Sarrafiye",
     etiketTipi: 0,
     icon: "🏷️",
-    aciklama: "85×16 mm gövde ve 45mm ekstra uzun kordonlu katlamalı bilezik etiketi",
+    aciklama: "85×16 mm amber yuvarlatılmış kavisli gövde ve 45mm kuyruk şeritli bilezik etiketi",
     config: {
       etiketTipi: 0,
       etiketSekli: "kuyruklu",
       genislikMm: 85,
       yukseklikMm: 16,
-      solKanatMm: 40,
+      solKanatMm: 38,
       sagKanatMm: 45,
-      kopruGenislikMm: 6,
+      kopruGenislikMm: 5,
       bogumDerinlikMm: 0,
       kopruYukseklikMm: 16,
       kuyrukGenislikMm: 45,
@@ -647,30 +767,31 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "barcode", x: 2, y: 2, width: 22, height: 6, barcodeValue: "220849102", barcodeFormat: "CODE128" },
-      { type: "text", x: 25, y: 2, width: 13, height: 3.5, text: "22 AYAR", fontSize: 7, fontWeight: "bold", color: "#b45309" },
-      { type: "text", x: 25, y: 5.5, width: 13, height: 3.5, text: "14.80 g", fontSize: 8, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 2, y: 9, width: 36, height: 3.5, text: "Ajda Bilezik 22K", fontSize: 7, color: "#000" },
-      { type: "text", x: 2, y: 12.5, width: 36, height: 3.5, text: "₺ 48.950", fontSize: 8.5, fontWeight: "bold", color: "#000" },
+      { type: "rect-round", x: 1, y: 1, width: 36, height: 14, borderColor: "#b45309", borderWidth: 1.2, borderRadius: 2.5 },
+      { type: "barcode", x: 2, y: 2, width: 20, height: 5.5, barcodeValue: "220849102", barcodeFormat: "CODE128" },
+      { type: "text", x: 23, y: 2, width: 13, height: 3.5, text: "22 AYAR", fontSize: 7, fontWeight: "bold", color: "#b45309" },
+      { type: "text", x: 23, y: 5.5, width: 13, height: 3.5, text: "14.80 g", fontSize: 8, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 2, y: 8.5, width: 34, height: 3, text: "Ajda Bilezik 22K (916)", fontSize: 6.5, color: "#000" },
+      { type: "text", x: 2, y: 11.5, width: 34, height: 3.5, text: "₺ 48.950", fontSize: 8.5, fontWeight: "bold", color: "#000" },
     ],
   },
   {
     id: "builtin_4",
-    ad: "Dambıl Yüzük & Alyans Etiketi",
+    ad: "Dambıl İki Başlıklı Yüzük & Alyans (Elips / Yuvarlak Başlıklar)",
     kategori: "Yüzük / Dambıl",
     etiketTipi: 2,
     icon: "🦴",
-    aciklama: "60×14 mm iki oval başlıklı yüzük ve alyans etiketi",
+    aciklama: "60×14 mm iki yuvarlak elips başlıklı, sol tarafta yüzük ölçüsü çemberi ve sağda fiyat",
     config: {
       etiketTipi: 2,
       etiketSekli: "dambil",
       genislikMm: 60,
       yukseklikMm: 14,
-      solKanatMm: 26,
-      sagKanatMm: 26,
+      solKanatMm: 25,
+      sagKanatMm: 25,
       kopruGenislikMm: 8,
       bogumDerinlikMm: 3.0,
-      kopruYukseklikMm: 8,
+      kopruYukseklikMm: 7,
       kuyrukGenislikMm: 35,
       kuyrukKalinlikMm: 4,
       delikCapiMm: 0,
@@ -680,20 +801,22 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "barcode", x: 2, y: 2, width: 18, height: 5.5, barcodeValue: "YZ-8402", barcodeFormat: "CODE128" },
-      { type: "text", x: 2, y: 8.5, width: 18, height: 3.5, text: "ÖLÇÜ: 14", fontSize: 7, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 38, y: 2, width: 18, height: 3.5, text: "2.85 gr 14K", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 38, y: 6, width: 18, height: 3, text: "KOD: ALY-10", fontSize: 6.5, color: "#64748b" },
-      { type: "text", x: 38, y: 9.5, width: 18, height: 3.5, text: "₺ 8.250", fontSize: 8, fontWeight: "bold", color: "#000" },
+      { type: "ellipse", x: 1, y: 1, width: 23, height: 12, borderColor: "#0f172a", borderWidth: 0.8 },
+      { type: "ellipse", x: 36, y: 1, width: 23, height: 12, borderColor: "#0f172a", borderWidth: 0.8 },
+      { type: "barcode", x: 2.5, y: 2, width: 20, height: 5, barcodeValue: "YZ-8402", barcodeFormat: "CODE128" },
+      { type: "text", x: 2.5, y: 8, width: 20, height: 3.5, text: "ÖLÇÜ: 14", fontSize: 7, fontWeight: "bold", color: "#0284c7" },
+      { type: "text", x: 37.5, y: 2, width: 20, height: 3.5, text: "2.85 gr 14K", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 37.5, y: 5.5, width: 20, height: 2.5, text: "KOD: ALY-10", fontSize: 6, color: "#64748b" },
+      { type: "text", x: 37.5, y: 8, width: 20, height: 4, text: "₺ 8.250", fontSize: 8.5, fontWeight: "bold", color: "#000" },
     ],
   },
   {
     id: "builtin_5",
-    ad: "24K Yatırımlık Çeyrek / Yarım Altın",
+    ad: "24K Yatırımlık Darphane Külçe & Ziynet (Altın Köşebentli Çerçeve)",
     kategori: "Altın / Sarrafiye",
     etiketTipi: 0,
     icon: "🪙",
-    aciklama: "50×18 mm çeyrek, yarım, cumhuriyet ve gram külçe altın etiketi",
+    aciklama: "50×18 mm çeyrek, yarım, cumhuriyet ve gram külçe altın için parlak altın yaldızlı etiket",
     config: {
       etiketTipi: 0,
       etiketSekli: "kelebek",
@@ -713,18 +836,20 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
+      { type: "rect", x: 1, y: 1, width: 20, height: 16, borderColor: "#ca8a04", borderWidth: 1.2 },
+      { type: "rect", x: 29, y: 1, width: 20, height: 16, borderColor: "#ca8a04", borderWidth: 1.2 },
       { type: "text", x: 2, y: 2, width: 18, height: 3.5, text: "DARPHANE", fontSize: 7, fontWeight: "bold", color: "#b45309" },
-      { type: "barcode", x: 2, y: 6, width: 18, height: 6, barcodeValue: "CYR-2026", barcodeFormat: "CODE128" },
-      { type: "text", x: 2, y: 13, width: 18, height: 3.5, text: "1.75 gr Has", fontSize: 7, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 28, y: 2, width: 20, height: 3.5, text: "YENİ ÇEYREK", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 28, y: 6.5, width: 20, height: 3, text: "Ayar: 916 (22K)", fontSize: 6.5, color: "#475569" },
-      { type: "text", x: 28, y: 10, width: 20, height: 3, text: "Kur: ₺ 3.140", fontSize: 6.5, color: "#64748b" },
-      { type: "text", x: 28, y: 13.5, width: 20, height: 4, text: "₺ 5.580", fontSize: 8.5, fontWeight: "bold", color: "#000" },
+      { type: "barcode", x: 2, y: 6, width: 18, height: 5.5, barcodeValue: "CYR-2026", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 12.5, width: 18, height: 3.5, text: "1.75 gr Has", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 30, y: 2, width: 18, height: 3.5, text: "YENİ ÇEYREK", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 30, y: 6, width: 18, height: 3, text: "Ayar: 916 (22K)", fontSize: 6.5, color: "#475569" },
+      { type: "text", x: 30, y: 9.5, width: 18, height: 3, text: "Kur: ₺ 3.140", fontSize: 6.5, color: "#64748b" },
+      { type: "text", x: 30, y: 13, width: 18, height: 3.5, text: "₺ 5.580", fontSize: 8.5, fontWeight: "bold", color: "#000" },
     ],
   },
   {
     id: "builtin_6",
-    ad: "Kablosuz RFID Akıllı Mağaza Etiketi",
+    ad: "Kablosuz RFID Akıllı Mağaza Etiketi (Zümrüt Yeşil Antenli)",
     kategori: "Kablosuz RFID",
     etiketTipi: 4,
     icon: "📡",
@@ -748,6 +873,7 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
+      { type: "rect", x: 1, y: 1, width: 58, height: 20, borderColor: "#059669", borderWidth: 1.2 },
       { type: "text", x: 3, y: 2, width: 26, height: 4, text: "📡 RFID SMART TAG", fontSize: 7, fontWeight: "bold", color: "#059669" },
       { type: "field", x: 3, y: 6.5, width: 34, height: 3, fieldKey: "epcAlani", text: "EPC: E280116060000214", fontSize: 6, color: "#059669" },
       { type: "barcode", x: 3, y: 10.5, width: 30, height: 6, barcodeValue: "RFID-9401", barcodeFormat: "CODE128" },
@@ -758,21 +884,21 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
   },
   {
     id: "builtin_7",
-    ad: "Saat & 925 Gümüş Özel Etiketi",
+    ad: "Lüks İsviçre Kol Saati (Dikey Bölmeli Antrasit Kart)",
     kategori: "Fiyat & Ayar",
     etiketTipi: 3,
-    icon: "⌚",
-    aciklama: "60×18 mm saat, gümüş ve aksesuar fiyat ve ayar etiketi",
+    icon: "⏱️",
+    aciklama: "64×20 mm safir cam, otomatik mekanizma ve garanti detaylı dikey ayırıcılı lüks saat etiketi",
     config: {
       etiketTipi: 3,
-      etiketSekli: "kelebek",
-      genislikMm: 60,
-      yukseklikMm: 18,
-      solKanatMm: 26,
-      sagKanatMm: 26,
-      kopruGenislikMm: 6,
-      bogumDerinlikMm: 1.5,
-      kopruYukseklikMm: 15,
+      etiketSekli: "dikdortgen",
+      genislikMm: 64,
+      yukseklikMm: 20,
+      solKanatMm: 32,
+      sagKanatMm: 32,
+      kopruGenislikMm: 0,
+      bogumDerinlikMm: 0,
+      kopruYukseklikMm: 20,
       kuyrukGenislikMm: 35,
       kuyrukKalinlikMm: 4,
       delikCapiMm: 0,
@@ -782,32 +908,34 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "text", x: 2, y: 2, width: 22, height: 4, text: "SILVER & WATCH", fontSize: 7, fontWeight: "bold", color: "#475569" },
-      { type: "barcode", x: 2, y: 6.5, width: 22, height: 6, barcodeValue: "SLV-90412", barcodeFormat: "CODE128" },
-      { type: "text", x: 2, y: 13.5, width: 22, height: 3.5, text: "₺ 2.450", fontSize: 8.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 32, y: 2, width: 26, height: 3.5, text: "Gümüş Baget Yüzük", fontSize: 7, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 32, y: 6, width: 26, height: 3, text: "925 Ayar Gümüş", fontSize: 6.5, color: "#475569" },
-      { type: "text", x: 32, y: 9.5, width: 26, height: 3, text: "Ağırlık: 4.80 gr", fontSize: 6.5, color: "#000" },
-      { type: "text", x: 32, y: 13, width: 26, height: 3, text: "2 Yıl Garanti Belgeli", fontSize: 6, color: "#059669" },
+      { type: "rect", x: 1, y: 1, width: 62, height: 18, borderColor: "#1e293b", borderWidth: 1 },
+      { type: "line-vertical", x: 31, y: 1, width: 1, height: 18, borderColor: "#cbd5e1" },
+      { type: "text", x: 3, y: 2, width: 26, height: 4, text: "GENEVE LUXURY", fontSize: 7, fontWeight: "bold", color: "#0f172a" },
+      { type: "barcode", x: 3, y: 6.5, width: 26, height: 6.5, barcodeValue: "SW-84920", barcodeFormat: "CODE128" },
+      { type: "text", x: 3, y: 14.5, width: 26, height: 4, text: "₺ 68.000", fontSize: 9, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 34, y: 2, width: 27, height: 4, text: "Otomatik Chrono", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 34, y: 6.5, width: 27, height: 3, text: "Safir Cam • 50M", fontSize: 6, color: "#475569" },
+      { type: "text", x: 34, y: 10, width: 27, height: 3, text: "316L Çelik Kasa", fontSize: 6.5, color: "#000" },
+      { type: "text", x: 34, y: 14, width: 27, height: 3.5, text: "5 Yıl Garanti", fontSize: 6, color: "#059669" },
     ],
   },
   {
     id: "builtin_8",
-    ad: "Firma Logolu VIP Lüks Etiket",
+    ad: "Rose Gold & Pembe Taşlı Butik Kolye (Pembe Kesikli Oval Çerçeveli)",
     kategori: "Özel / Pırlanta",
     etiketTipi: 1,
-    icon: "👑",
-    aciklama: "75×22 mm özel marka logolu, yüksek prestijli mücevher kartı",
+    icon: "🌸",
+    aciklama: "65×20 mm zarif pembe kavisli çerçeveli, rose gold ve fantezi renkli taşlı kolye etiketi",
     config: {
       etiketTipi: 1,
       etiketSekli: "kelebek",
-      genislikMm: 75,
-      yukseklikMm: 22,
-      solKanatMm: 32,
-      sagKanatMm: 32,
-      kopruGenislikMm: 7,
+      genislikMm: 65,
+      yukseklikMm: 20,
+      solKanatMm: 28,
+      sagKanatMm: 28,
+      kopruGenislikMm: 6,
       bogumDerinlikMm: 2.0,
-      kopruYukseklikMm: 18,
+      kopruYukseklikMm: 16,
       kuyrukGenislikMm: 35,
       kuyrukKalinlikMm: 4,
       delikCapiMm: 0,
@@ -817,23 +945,62 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "image", x: 3, y: 2, width: 14, height: 6, imageData: JEWELRY_LOGOS[0].dataUrl },
-      { type: "barcode", x: 3, y: 9, width: 26, height: 6.5, barcodeValue: "VIP-10842", barcodeFormat: "CODE128" },
-      { type: "text", x: 3, y: 16.5, width: 26, height: 4, text: "₺ 84.000", fontSize: 9, fontWeight: "bold", color: "#b45309" },
-      { type: "text", x: 40, y: 2, width: 32, height: 4, text: "VIP Özel Tasarım Gerdanlık", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 40, y: 7, width: 16, height: 3.5, text: "18K (750)", fontSize: 7, color: "#000" },
-      { type: "text", x: 56, y: 7, width: 16, height: 3.5, text: "12.40 gr", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 40, y: 11.5, width: 32, height: 3.5, text: "Pırlanta: 0.25 CT H-SI", fontSize: 6.5, color: "#0284c7" },
-      { type: "text", x: 40, y: 16, width: 32, height: 3.5, text: "Sertifika No: LK-2026-09", fontSize: 6.5, color: "#64748b" },
+      { type: "rect-round", x: 1, y: 1, width: 26, height: 18, borderColor: "#db2777", borderWidth: 1.2, borderRadius: 2.5 },
+      { type: "rect-round", x: 37, y: 1, width: 27, height: 18, borderColor: "#db2777", borderWidth: 1.2, borderRadius: 2.5 },
+      { type: "text", x: 2, y: 2, width: 24, height: 3.5, text: "ROSE BOUTIQUE", fontSize: 7, fontWeight: "bold", color: "#be185d" },
+      { type: "barcode", x: 2, y: 6.5, width: 24, height: 6.5, barcodeValue: "RSE-8491", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 14.5, width: 24, height: 4, text: "₺ 26.800", fontSize: 9, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 38, y: 2, width: 25, height: 3.5, text: "14K Pembe Kolye", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 38, y: 6, width: 12, height: 3, text: "585 Ayar", fontSize: 6.5, color: "#be185d" },
+      { type: "text", x: 50, y: 6, width: 13, height: 3, text: "3.95 gr", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 38, y: 9.5, width: 25, height: 3, text: "Doğal Safir & Zirkon", fontSize: 6, color: "#475569" },
+      { type: "text", x: 38, y: 13.5, width: 25, height: 3.5, text: "Kod: NCK-ROSE-26", fontSize: 6, color: "#64748b" },
     ],
   },
   {
     id: "builtin_9",
-    ad: "Promosyon & İndirimli Ürün Etiketi",
+    ad: "22K Mega Trabzon Hasırı (Keskin Boğumlu Çift Kanat + Kuyruk)",
+    kategori: "Altın / Sarrafiye",
+    etiketTipi: 0,
+    icon: "📐",
+    aciklama: "85×18 mm keskin boğumlu çift kanat ve kuyruk şeridi ile ağır hasır bilezik etiketi",
+    config: {
+      etiketTipi: 0,
+      etiketSekli: "bogumlukuyrukkeskin",
+      genislikMm: 85,
+      yukseklikMm: 18,
+      solKanatMm: 35,
+      sagKanatMm: 35,
+      kopruGenislikMm: 8,
+      bogumDerinlikMm: 2,
+      kopruYukseklikMm: 18,
+      kuyrukGenislikMm: 15,
+      kuyrukKalinlikMm: 4,
+      koseYuvarlikligiMm: 0,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "rect", x: 1, y: 1, width: 33, height: 16, borderColor: "#b45309", borderWidth: 1.2 },
+      { type: "barcode", x: 2, y: 2, width: 22, height: 6, barcodeValue: "TRB-2208", barcodeFormat: "CODE128" },
+      { type: "text", x: 25, y: 2, width: 8, height: 3, text: "22K", fontSize: 6.5, fontWeight: "bold", color: "#b45309" },
+      { type: "text", x: 25, y: 5.5, width: 8, height: 3, text: "36.4g", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 2, y: 9, width: 31, height: 3, text: "Trabzon Hasırı 19 Sıra", fontSize: 6.5, color: "#000" },
+      { type: "text", x: 2, y: 12.5, width: 31, height: 4, text: "₺ 118.500", fontSize: 9, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 42, y: 2, width: 26, height: 3.5, text: "Has: 33.34 gr", fontSize: 7, color: "#475569" },
+      { type: "text", x: 42, y: 6.5, width: 26, height: 3.5, text: "TSE & Garanti Belgeli", fontSize: 6, color: "#059669" },
+    ],
+  },
+  {
+    id: "builtin_10",
+    ad: "Promosyon & Kampanya Kartı (Kırmızı Çift Çizgili İndirimli)",
     kategori: "Fiyat & Ayar",
     etiketTipi: 3,
     icon: "🔥",
-    aciklama: "55×20 mm üzeri çizili eski fiyat ve indirimli net fiyat etiketi",
+    aciklama: "55×20 mm üzeri çizili eski liste fiyatı ve indirimli net kırmızı çerçeveli etiket",
     config: {
       etiketTipi: 3,
       etiketSekli: "dikdortgen",
@@ -853,32 +1020,33 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
+      { type: "rect", x: 1, y: 1, width: 53, height: 18, borderColor: "#dc2626", borderWidth: 1.2 },
       { type: "text", x: 2, y: 2, width: 22, height: 4, text: "🔥 %20 İNDİRİM", fontSize: 7.5, fontWeight: "bold", color: "#dc2626" },
-      { type: "barcode", x: 2, y: 7, width: 22, height: 6.5, barcodeValue: "PRM-5821", barcodeFormat: "CODE128" },
+      { type: "barcode", x: 2, y: 7, width: 22, height: 6, barcodeValue: "PRM-5821", barcodeFormat: "CODE128" },
       { type: "text", x: 2, y: 14.5, width: 22, height: 3.5, text: "KOD: IND-20", fontSize: 6.5, color: "#64748b" },
       { type: "text", x: 28, y: 2, width: 24, height: 4, text: "14K İtalyan Zincir", fontSize: 7, fontWeight: "bold", color: "#000" },
       { type: "text", x: 28, y: 6.5, width: 24, height: 3, text: "Ağırlık: 4.50 gr", fontSize: 6.5, color: "#000" },
-      { type: "text", x: 28, y: 10, width: 24, height: 3.5, text: "₺ 22.000", fontSize: 7.5, textDecoration: "underline", color: "#94a3b8" },
-      { type: "text", x: 28, y: 14, width: 24, height: 4.5, text: "₺ 17.600", fontSize: 9.5, fontWeight: "bold", color: "#dc2626" },
+      { type: "text", x: 28, y: 10, width: 24, height: 3, text: "₺ 22.000", fontSize: 7, textDecoration: "underline", color: "#94a3b8" },
+      { type: "text", x: 28, y: 13.5, width: 24, height: 4.5, text: "₺ 17.600", fontSize: 9.5, fontWeight: "bold", color: "#dc2626" },
     ],
   },
   {
-    id: "builtin_10",
-    ad: "Takı Seti & Gerdanlık Geniş Etiket",
-    kategori: "Altın / Sarrafiye",
-    etiketTipi: 0,
-    icon: "✨",
-    aciklama: "80×25 mm çok parçalı takı setleri için geniş detaylı etiket",
+    id: "builtin_11",
+    ad: "Zümrüt & Safir Gerdanlık (Koyu Orman Yeşili Çerçeveli Kelebek)",
+    kategori: "Özel / Pırlanta",
+    etiketTipi: 1,
+    icon: "👑",
+    aciklama: "72×22 mm koyu zümrüt köşebentli, damla kesim renkli taş ve pırlanta karat tablosu",
     config: {
-      etiketTipi: 0,
+      etiketTipi: 1,
       etiketSekli: "kelebek",
-      genislikMm: 80,
-      yukseklikMm: 25,
-      solKanatMm: 35,
-      sagKanatMm: 35,
-      kopruGenislikMm: 7,
+      genislikMm: 72,
+      yukseklikMm: 22,
+      solKanatMm: 31,
+      sagKanatMm: 31,
+      kopruGenislikMm: 6,
       bogumDerinlikMm: 2.0,
-      kopruYukseklikMm: 21,
+      kopruYukseklikMm: 18,
       kuyrukGenislikMm: 35,
       kuyrukKalinlikMm: 4,
       delikCapiMm: 0,
@@ -888,36 +1056,37 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "text", x: 3, y: 2, width: 30, height: 4, text: "3'LÜ DÜĞÜN SETİ", fontSize: 8, fontWeight: "bold", color: "#b45309" },
-      { type: "barcode", x: 3, y: 7.5, width: 28, height: 8, barcodeValue: "SET-30948", barcodeFormat: "CODE128" },
-      { type: "text", x: 3, y: 17.5, width: 28, height: 5, text: "₺ 142.000", fontSize: 10, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 42, y: 2, width: 35, height: 4, text: "Gerdanlık + Bileklik + Küpe", fontSize: 7, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 42, y: 7, width: 17, height: 3.5, text: "22K (916)", fontSize: 7.5, color: "#b45309" },
-      { type: "text", x: 59, y: 7, width: 18, height: 3.5, text: "42.80 gr", fontSize: 8, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 42, y: 12, width: 35, height: 3.5, text: "Has Ağırlık: 39.20 gr Has", fontSize: 6.5, color: "#475569" },
-      { type: "text", x: 42, y: 16.5, width: 35, height: 3.5, text: "Model No: TRB-SET-2026", fontSize: 6.5, color: "#64748b" },
+      { type: "rect", x: 1, y: 1, width: 29, height: 20, borderColor: "#047857", borderWidth: 1.2 },
+      { type: "rect", x: 42, y: 1, width: 29, height: 20, borderColor: "#047857", borderWidth: 1.2 },
+      { type: "text", x: 2, y: 2, width: 27, height: 3.5, text: "ROYAL EMERALD", fontSize: 7, fontWeight: "bold", color: "#047857" },
+      { type: "barcode", x: 2, y: 6.5, width: 27, height: 7, barcodeValue: "ZMR-8401", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 15, width: 27, height: 4.5, text: "₺ 78.500", fontSize: 9.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 43, y: 2, width: 27, height: 3.5, text: "Zümrüt Damla Kolye", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 43, y: 6, width: 27, height: 3, text: "Zümrüt: 1.20 CT Doğal", fontSize: 7, color: "#047857" },
+      { type: "text", x: 43, y: 9.5, width: 27, height: 3, text: "Pırlanta: 0.35 CT F-VS", fontSize: 6.5, color: "#0284c7" },
+      { type: "text", x: 43, y: 13, width: 27, height: 3, text: "18K Beyaz (8.40 gr)", fontSize: 6.5, color: "#000" },
+      { type: "text", x: 43, y: 16.5, width: 27, height: 3.5, text: "Uluslararası Sertifikalı", fontSize: 6, color: "#059669" },
     ],
   },
   {
-    id: "builtin_11",
-    ad: "Boğumlu Kuyruklu Bilezik / İpli Kolye (Keskin Köşe)",
+    id: "builtin_12",
+    ad: "Nazar Boncuklu Mineli Bebek Künyesi (Gök Mavisi Yumuşak Oval)",
     kategori: "Altın / Sarrafiye",
     etiketTipi: 0,
-    icon: "📐",
-    aciklama: "85×16 mm ortası boğumlu, köşeleri keskin (yuvarlatılmamış) çift kanatlı ve uzun kordonlu bilezik etiketi",
+    icon: "🧿",
+    aciklama: "48×14 mm açık mavi yuvarlak kavisli çerçeveli, bebek künyesi ve hediyelik altın etiket",
     config: {
       etiketTipi: 0,
-      etiketSekli: "bogumlukuyrukkeskin",
-      genislikMm: 85,
-      yukseklikMm: 16,
-      solKanatMm: 35,
-      sagKanatMm: 35,
-      kopruGenislikMm: 8,
-      bogumDerinlikMm: 2,
-      kopruYukseklikMm: 16,
-      kuyrukGenislikMm: 15,
-      kuyrukKalinlikMm: 4,
-      koseYuvarlikligiMm: 0,
+      etiketSekli: "kelebek",
+      genislikMm: 48,
+      yukseklikMm: 14,
+      solKanatMm: 21,
+      sagKanatMm: 21,
+      kopruGenislikMm: 5,
+      bogumDerinlikMm: 1.5,
+      kopruYukseklikMm: 11,
+      kuyrukGenislikMm: 25,
+      kuyrukKalinlikMm: 3.5,
       delikCapiMm: 0,
       delikKonumu: "yok",
       katlamaCizgisi: true,
@@ -925,13 +1094,299 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
       bgTexture: "beyaz",
     },
     elements: [
-      { type: "barcode", x: 2, y: 2, width: 20, height: 6, barcodeValue: "220849103", barcodeFormat: "CODE128" },
-      { type: "text", x: 23, y: 2, width: 10, height: 3.5, text: "22 AYAR", fontSize: 6.5, fontWeight: "bold", color: "#b45309" },
-      { type: "text", x: 23, y: 5.5, width: 10, height: 3.5, text: "14.80 g", fontSize: 7.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 2, y: 9.5, width: 31, height: 3.5, text: "Ajda Bilezik 22K", fontSize: 6.5, color: "#000" },
-      { type: "text", x: 40, y: 2, width: 28, height: 4.5, text: "₺ 48.950", fontSize: 8.5, fontWeight: "bold", color: "#000" },
-      { type: "text", x: 40, y: 7.5, width: 28, height: 3.5, text: "İpli Uzun Kordon Modeli", fontSize: 6.5, color: "#475569" },
-      { type: "text", x: 40, y: 11.5, width: 28, height: 3.5, text: "Kod: BLZ-2208", fontSize: 6, color: "#64748b" },
+      { type: "rect-round", x: 1, y: 1, width: 19, height: 12, borderColor: "#38bdf8", borderWidth: 1, borderRadius: 2.5 },
+      { type: "rect-round", x: 28, y: 1, width: 19, height: 12, borderColor: "#38bdf8", borderWidth: 1, borderRadius: 2.5 },
+      { type: "barcode", x: 1.5, y: 1.5, width: 18, height: 5, barcodeValue: "BBK-3021", barcodeFormat: "CODE128" },
+      { type: "text", x: 1.5, y: 7.5, width: 18, height: 4, text: "₺ 6.850", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 29, y: 1.5, width: 17, height: 3, text: "14K Bebek Künye", fontSize: 6.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 29, y: 5, width: 17, height: 2.5, text: "1.85 gr (585)", fontSize: 6, color: "#475569" },
+      { type: "text", x: 29, y: 8, width: 17, height: 3.5, text: "Mineli Nazar", fontSize: 6, color: "#0284c7" },
+    ],
+  },
+  {
+    id: "builtin_13",
+    ad: "Erkek Oniks & Şövalye Yüzük (Mat Siyah Dikdörtgen Dambıl)",
+    kategori: "Yüzük / Dambıl",
+    etiketTipi: 2,
+    icon: "🛡️",
+    aciklama: "62×20 mm mat siyah maskülen dikdörtgen başlıklı, erkek oniks şövalye yüzük etiketi",
+    config: {
+      etiketTipi: 2,
+      etiketSekli: "dambil",
+      genislikMm: 62,
+      yukseklikMm: 20,
+      solKanatMm: 26,
+      sagKanatMm: 26,
+      kopruGenislikMm: 8,
+      bogumDerinlikMm: 3.0,
+      kopruYukseklikMm: 10,
+      kuyrukGenislikMm: 35,
+      kuyrukKalinlikMm: 4,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "rect", x: 1, y: 1, width: 24, height: 18, borderColor: "#0f172a", borderWidth: 1.2 },
+      { type: "rect", x: 37, y: 1, width: 24, height: 18, borderColor: "#0f172a", borderWidth: 1.2 },
+      { type: "barcode", x: 2, y: 2, width: 22, height: 6.5, barcodeValue: "MEN-9402", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 10, width: 22, height: 4, text: "₺ 21.500", fontSize: 8.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 2, y: 15, width: 22, height: 3.5, text: "ÖLÇÜ: 24", fontSize: 7, fontWeight: "bold", color: "#0284c7" },
+      { type: "text", x: 38, y: 2, width: 22, height: 4, text: "14K Oniks Şövalye", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 38, y: 7, width: 22, height: 3.5, text: "Ağırlık: 6.85 gr", fontSize: 7, color: "#000" },
+      { type: "text", x: 38, y: 11.5, width: 22, height: 3.5, text: "Doğal Oniks Taşlı", fontSize: 6.5, color: "#475569" },
+      { type: "text", x: 38, y: 15.5, width: 22, height: 3.5, text: "Kod: SVL-024", fontSize: 6, color: "#64748b" },
+    ],
+  },
+  {
+    id: "builtin_14",
+    ad: "Kuyruklu İnce İtalyan Zincir & Halhal (Mor / Eflatun İnce Şerit)",
+    kategori: "Altın / Sarrafiye",
+    etiketTipi: 0,
+    icon: "📿",
+    aciklama: "75×12 mm eflatun zarif kavisli minyatür gövde ve 40mm ultra-ince kuyruk şeritli etiket",
+    config: {
+      etiketTipi: 0,
+      etiketSekli: "kuyruklu",
+      genislikMm: 75,
+      yukseklikMm: 12,
+      solKanatMm: 30,
+      sagKanatMm: 40,
+      kopruGenislikMm: 5,
+      bogumDerinlikMm: 0,
+      kopruYukseklikMm: 12,
+      kuyrukGenislikMm: 40,
+      kuyrukKalinlikMm: 2.8,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "rect-round", x: 1, y: 1, width: 28, height: 10, borderColor: "#7c3aed", borderWidth: 1, borderRadius: 2 },
+      { type: "barcode", x: 2, y: 1.5, width: 17, height: 4.5, barcodeValue: "ZNC-7401", barcodeFormat: "CODE128" },
+      { type: "text", x: 20, y: 1.5, width: 8, height: 3, text: "14K", fontSize: 6.5, fontWeight: "bold", color: "#7c3aed" },
+      { type: "text", x: 20, y: 5.5, width: 8, height: 3, text: "2.10g", fontSize: 6.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 2, y: 6.5, width: 17, height: 3.5, text: "₺ 8.900", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+    ],
+  },
+  {
+    id: "builtin_15",
+    ad: "Boğumlu Çift Kanat Lüks Pırlanta Seti (Kraliyet Kobalt Mavisi + Kuyruk)",
+    kategori: "Özel / Pırlanta",
+    etiketTipi: 1,
+    icon: "🎗️",
+    aciklama: "88×20 mm boğumlu çift kanat kobalt mavi çerçeve ve sağda kordon kuyruğu ile lüks set etiketi",
+    config: {
+      etiketTipi: 1,
+      etiketSekli: "bogumlukuyruk",
+      genislikMm: 88,
+      yukseklikMm: 20,
+      solKanatMm: 36,
+      sagKanatMm: 36,
+      kopruGenislikMm: 8,
+      bogumDerinlikMm: 2.5,
+      kopruYukseklikMm: 20,
+      kuyrukGenislikMm: 16,
+      kuyrukKalinlikMm: 4,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "rect-round", x: 1, y: 1, width: 34, height: 18, borderColor: "#1d4ed8", borderWidth: 1.2, borderRadius: 2 },
+      { type: "text", x: 2, y: 2, width: 32, height: 3.5, text: "ROYAL DIAMOND SUITE", fontSize: 7, fontWeight: "bold", color: "#1d4ed8" },
+      { type: "barcode", x: 2, y: 6, width: 22, height: 6, barcodeValue: "SET-84092", barcodeFormat: "CODE128" },
+      { type: "text", x: 25, y: 6, width: 9, height: 3, text: "18K Beyaz", fontSize: 6, color: "#475569" },
+      { type: "text", x: 25, y: 9.5, width: 9, height: 3, text: "14.60 gr", fontSize: 6.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 2, y: 13, width: 32, height: 4.5, text: "₺ 165.000", fontSize: 9.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 42, y: 2, width: 26, height: 3.5, text: "Pırlanta: 1.85 CT F-VS", fontSize: 7, fontWeight: "bold", color: "#1d4ed8" },
+      { type: "text", x: 42, y: 6.5, width: 26, height: 3.5, text: "GIA Sertifikalı", fontSize: 6.5, color: "#059669" },
+    ],
+  },
+  {
+    id: "builtin_16",
+    ad: "Özel Atölye İmalat & Tamir Kartı (Amber Tablolu Dikdörtgen)",
+    kategori: "Özel / Pırlanta",
+    etiketTipi: 1,
+    icon: "🔨",
+    aciklama: "70×25 mm müşteri adı, hedef gramaj, teslim tarihi ve bakiye takip amber çerçeveli kart",
+    config: {
+      etiketTipi: 1,
+      etiketSekli: "dikdortgen",
+      genislikMm: 70,
+      yukseklikMm: 25,
+      solKanatMm: 35,
+      sagKanatMm: 35,
+      kopruGenislikMm: 0,
+      bogumDerinlikMm: 0,
+      kopruYukseklikMm: 25,
+      kuyrukGenislikMm: 35,
+      kuyrukKalinlikMm: 4,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "rect", x: 1, y: 1, width: 68, height: 23, borderColor: "#d97706", borderWidth: 1.2 },
+      { type: "line-vertical", x: 35, y: 1, width: 1, height: 23, borderColor: "#d97706" },
+      { type: "text", x: 2, y: 2, width: 31, height: 4, text: "🔨 ATÖLYE İŞ EMRİ", fontSize: 7.5, fontWeight: "bold", color: "#d97706" },
+      { type: "barcode", x: 2, y: 7, width: 31, height: 7, barcodeValue: "SPR-2026-94", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 16.5, width: 31, height: 4, text: "Müşteri: Mehmet Yılmaz", fontSize: 6.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 37, y: 2, width: 30, height: 3.5, text: "Özel Tasarım Alyans", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 37, y: 6, width: 30, height: 3, text: "18K • Hedef: 9.50g", fontSize: 6.5, color: "#000" },
+      { type: "text", x: 37, y: 9.5, width: 30, height: 3, text: "İç Yazı: 'Ayşe & Mehmet'", fontSize: 6, color: "#be185d" },
+      { type: "text", x: 37, y: 13, width: 30, height: 3, text: "Teslim: 28.09.2026", fontSize: 6.5, fontWeight: "bold", color: "#0284c7" },
+      { type: "text", x: 37, y: 17.5, width: 30, height: 4, text: "Kalan: ₺ 12.000", fontSize: 7.5, fontWeight: "bold", color: "#059669" },
+    ],
+  },
+  {
+    id: "builtin_17",
+    ad: "Platin 950 & Pırlanta Lüks Alyans (Platin Gri Çift Çerçeveli Kelebek)",
+    kategori: "Özel / Pırlanta",
+    etiketTipi: 1,
+    icon: "💍",
+    aciklama: "60×18 mm saf Platin 950 ve pırlantalı VIP nikah alyansı için antrasit platin gri etiket",
+    config: {
+      etiketTipi: 1,
+      etiketSekli: "kelebek",
+      genislikMm: 60,
+      yukseklikMm: 18,
+      solKanatMm: 26,
+      sagKanatMm: 26,
+      kopruGenislikMm: 6,
+      bogumDerinlikMm: 1.5,
+      kopruYukseklikMm: 15,
+      kuyrukGenislikMm: 30,
+      kuyrukKalinlikMm: 4,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "rect", x: 1, y: 1, width: 24, height: 16, borderColor: "#475569", borderWidth: 1 },
+      { type: "rect", x: 35, y: 1, width: 24, height: 16, borderColor: "#475569", borderWidth: 1 },
+      { type: "text", x: 2, y: 2, width: 22, height: 3.5, text: "PLATINUM 950", fontSize: 7, fontWeight: "bold", color: "#334155" },
+      { type: "barcode", x: 2, y: 6, width: 22, height: 6, barcodeValue: "PLT-9501", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 13, width: 22, height: 3.5, text: "$ 1.250 / ₺ 42.500", fontSize: 7.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 36, y: 2, width: 22, height: 3.5, text: "Platin Çift Alyans", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 36, y: 5.5, width: 22, height: 3, text: "7.40 gr PT950", fontSize: 6.5, color: "#334155" },
+      { type: "text", x: 36, y: 9, width: 22, height: 3, text: "Pırlanta: 0.08 CT F-VS", fontSize: 6.5, color: "#0284c7" },
+      { type: "text", x: 36, y: 12.5, width: 22, height: 3.5, text: "Ömür Boyu Bakım", fontSize: 6, color: "#059669" },
+    ],
+  },
+  {
+    id: "builtin_18",
+    ad: "İnci & Mercan Kolye Ucu (Mercan Kırmızısı Elips Dambıl)",
+    kategori: "Yüzük / Dambıl",
+    etiketTipi: 2,
+    icon: "🦪",
+    aciklama: "54×16 mm mercan rengi elips çerçeveli, inci milimetre çapı ve kalite sınıfı etiketi",
+    config: {
+      etiketTipi: 2,
+      etiketSekli: "dambil",
+      genislikMm: 54,
+      yukseklikMm: 16,
+      solKanatMm: 22,
+      sagKanatMm: 22,
+      kopruGenislikMm: 7,
+      bogumDerinlikMm: 2.5,
+      kopruYukseklikMm: 8,
+      kuyrukGenislikMm: 30,
+      kuyrukKalinlikMm: 3.5,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "ellipse", x: 1, y: 1, width: 20, height: 14, borderColor: "#ea580c", borderWidth: 1 },
+      { type: "ellipse", x: 33, y: 1, width: 20, height: 14, borderColor: "#ea580c", borderWidth: 1 },
+      { type: "barcode", x: 2, y: 2, width: 18, height: 5, barcodeValue: "PRL-8490", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 8, width: 18, height: 3.5, text: "9.5 mm Akoya", fontSize: 6.5, fontWeight: "bold", color: "#ea580c" },
+      { type: "text", x: 2, y: 11.5, width: 18, height: 3, text: "Grade: AAA", fontSize: 6, color: "#475569" },
+      { type: "text", x: 34, y: 2, width: 18, height: 3.5, text: "14K Sarı Montür", fontSize: 6.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 34, y: 6, width: 18, height: 3, text: "Toplam: 3.20 gr", fontSize: 6.5, color: "#000" },
+      { type: "text", x: 34, y: 10, width: 18, height: 4, text: "₺ 11.500", fontSize: 8.5, fontWeight: "bold", color: "#000" },
+    ],
+  },
+  {
+    id: "builtin_19",
+    ad: "Vintage / Antika Elmas Gül Kesim (Sepia & Antik Bronz Kenarlık)",
+    kategori: "Özel / Pırlanta",
+    etiketTipi: 1,
+    icon: "🥀",
+    aciklama: "58×18 mm anayar elmas, rosecut ve antika tasarım takılar için sepia bronz çerçeveli etiket",
+    config: {
+      etiketTipi: 1,
+      etiketSekli: "kelebek",
+      genislikMm: 58,
+      yukseklikMm: 18,
+      solKanatMm: 25,
+      sagKanatMm: 25,
+      kopruGenislikMm: 6,
+      bogumDerinlikMm: 1.5,
+      kopruYukseklikMm: 15,
+      kuyrukGenislikMm: 30,
+      kuyrukKalinlikMm: 4,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: true,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "rect", x: 1, y: 1, width: 23, height: 16, borderColor: "#78350f", borderWidth: 1.2 },
+      { type: "rect", x: 34, y: 1, width: 23, height: 16, borderColor: "#78350f", borderWidth: 1.2 },
+      { type: "text", x: 2, y: 2, width: 21, height: 3.5, text: "ANTİKA ELMAS", fontSize: 7, fontWeight: "bold", color: "#78350f" },
+      { type: "barcode", x: 2, y: 6, width: 21, height: 6, barcodeValue: "ELM-0842", barcodeFormat: "CODE128" },
+      { type: "text", x: 2, y: 13, width: 21, height: 3.5, text: "₺ 24.800", fontSize: 8.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 35, y: 2, width: 21, height: 3.5, text: "Gül Kesim Elmas", fontSize: 7, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 35, y: 5.5, width: 21, height: 3, text: "0.40 CT RoseCut", fontSize: 6.5, color: "#78350f" },
+      { type: "text", x: 35, y: 9, width: 21, height: 3, text: "8K Altın + Gümüş Montür", fontSize: 6, color: "#475569" },
+      { type: "text", x: 35, y: 12.5, width: 21, height: 3.5, text: "El Yapımı Vintage", fontSize: 6, color: "#059669" },
+    ],
+  },
+  {
+    id: "builtin_20",
+    ad: "Minimal Dar Barkod Şeridi (Kenarlıksız Hızlı Satış)",
+    kategori: "Altın / Sarrafiye",
+    etiketTipi: 0,
+    icon: "⚡",
+    aciklama: "40×12 mm çerçevesiz sade, kompakt hızlı barkod ve net fiyat şeridi",
+    config: {
+      etiketTipi: 0,
+      etiketSekli: "dikdortgen",
+      genislikMm: 40,
+      yukseklikMm: 12,
+      solKanatMm: 20,
+      sagKanatMm: 20,
+      kopruGenislikMm: 0,
+      bogumDerinlikMm: 0,
+      kopruYukseklikMm: 12,
+      kuyrukGenislikMm: 20,
+      kuyrukKalinlikMm: 3,
+      delikCapiMm: 0,
+      delikKonumu: "yok",
+      katlamaCizgisi: false,
+      bgColor: "#ffffff",
+      bgTexture: "beyaz",
+    },
+    elements: [
+      { type: "barcode", x: 1, y: 1, width: 21, height: 7, barcodeValue: "849201", barcodeFormat: "CODE128" },
+      { type: "text", x: 1, y: 8.5, width: 21, height: 3, text: "14K Tektaş • 1.45g", fontSize: 6, color: "#000" },
+      { type: "text", x: 23, y: 1, width: 16, height: 4, text: "₺ 7.450", fontSize: 8.5, fontWeight: "bold", color: "#000" },
+      { type: "text", x: 23, y: 6, width: 16, height: 3, text: "Ölçü: 12", fontSize: 6.5, fontWeight: "bold", color: "#0284c7" },
     ],
   },
 ];
@@ -1163,7 +1618,7 @@ function QRRenderer({ value, size }: { value: string; size: number }) {
       .then((svg) => {
         if (active) setSvgHtml(svg);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       active = false;
     };
@@ -1259,14 +1714,14 @@ async function buildSingleLabelHtml(
   const W = config.genislikMm;
   const H = config.yukseklikMm;
   const isDark = isColorDark(config.bgColor);
-  const ustKaydirma = config.yaziciUstKaydirmaMm !== undefined ? config.yaziciUstKaydirmaMm : -0.8;
+  const ustKaydirma = config.yaziciUstKaydirmaMm || 0;
   const solKaydirma = config.yaziciSolKaydirmaMm || 0;
 
   const elementsHtmlPromises = elementsList
     .filter((el) => el.visible !== false)
     .map(async (el) => {
       const left = el.x + solKaydirma;
-      const top = el.y - ustKaydirma;
+      const top = el.y + ustKaydirma;
       const width = el.width;
       const height = el.height;
       const rotation = el.rotation || 0;
@@ -1283,7 +1738,7 @@ async function buildSingleLabelHtml(
         const isCenter = el.textAlign === "center";
         const alignSelf = isRight ? "flex-end" : isCenter ? "center" : "flex-start";
         const textAlignCss = isRight ? "right" : isCenter ? "center" : "left";
-        const fontSizePt = el.fontSize || 8;
+        const fontSizeMm = ((el.fontSize || 8) * 0.352778).toFixed(3);
         const effectiveColor = el.color && el.color !== "transparent" ? el.color : (isDark ? "#ffffff" : "#000000");
 
         innerContent = `
@@ -1294,14 +1749,14 @@ async function buildSingleLabelHtml(
             align-items: center;
             justify-content: ${alignSelf};
             text-align: ${textAlignCss};
-            font-family: ${el.fontFamily || "Arial"}, sans-serif;
-            font-size: ${fontSizePt}pt;
-            font-weight: ${el.fontWeight === "bold" ? "bold" : el.fontWeight || "600"};
+            font-family: '${el.fontFamily || "Arial"}', sans-serif !important;
+            font-size: ${fontSizeMm}mm !important;
+            font-weight: ${el.fontWeight === "bold" ? "700" : el.fontWeight || "600"};
             font-style: ${el.fontStyle || "normal"};
             text-decoration: ${el.textDecoration || "none"};
             color: ${effectiveColor} !important;
-            line-height: 1.1;
-            padding: 0 0.5mm;
+            line-height: 1.15;
+            padding: 0 0.4mm;
             white-space: nowrap;
             overflow: hidden;
             background: ${el.backgroundColor && el.backgroundColor !== "transparent" ? el.backgroundColor : "transparent"};
@@ -1311,7 +1766,7 @@ async function buildSingleLabelHtml(
             -webkit-text-size-adjust: 100% !important;
             text-size-adjust: 100% !important;
           ">
-            <span style="width: 100%; text-align: ${textAlignCss}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 1.1; -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important;">
+            <span style="width: 100%; text-align: ${textAlignCss}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 1.15; -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important;">
               ${textContent}
             </span>
           </div>
@@ -1321,11 +1776,11 @@ async function buildSingleLabelHtml(
         const customText = el.barcodeText;
         const showTxt = el.showText !== false;
         const svgStr = getBarcodeSvgString(barcodeVal, el.barcodeFormat || "CODE128", el.width, el.height, showTxt, customText);
-        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
+        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">${svgStr}</div>`;
       } else if (el.type === "qr" || el.type === "rfid") {
         const qrVal = el.barcodeValue || el.text || (el.type === "qr" ? "QR" : "RFID");
         const svgStr = await getQrSvgString(qrVal);
-        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${svgStr}</div>`;
+        innerContent = `<div style="width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">${svgStr}</div>`;
       } else if (el.type === "icon") {
         const iconSizeMm = height * 0.75;
         innerContent = `
@@ -2351,9 +2806,19 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const [zoom, setZoom] = useState(1.6);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [clipboard, setClipboard] = useState<CanvasElement[]>([]);
-  const [leftPanelTab, setLeftPanelTab] = useState<"elements" | "shape" | "layers" | "presets">("elements");
-  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  type CanvaSidebarCategory = "templates" | "elements" | "text" | "brand" | "barcode" | "layers" | "settings";
+  const [canvaCategory, setCanvaCategory] = useState<CanvaSidebarCategory>("templates");
+  const [isCanvaDrawerOpen, setIsCanvaDrawerOpen] = useState(true);
+  const [templateFilterQuery, setTemplateFilterQuery] = useState("");
+
+  // 🎨 Canva Font & Color Popover States
+  const [fontMenuOpen, setFontMenuOpen] = useState(false);
+  const [fontSearchQuery, setFontSearchQuery] = useState("");
+  const [activeColorPopover, setActiveColorPopover] = useState<"textColor" | "bgColor" | "borderColor" | null>(null);
+  const [customHexInput, setCustomHexInput] = useState("");
+  const [isLabelSelected, setIsLabelSelected] = useState<boolean>(false);
+  const inspectorRef = useRef<HTMLDivElement>(null);
+
   const [snapGrid, setSnapGrid] = useState(0); // 0 = Serbest / Akıcı piksel hassasiyeti
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -2482,6 +2947,171 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     };
   }, [selectedLayoutId, labelConfig.genislikMm, labelConfig.yukseklikMm]);
 
+  // 🎨 Tasarımda Kullanılan Renkleri Otomatik Topla (Belge Renkleri)
+  const designColors = useMemo(() => {
+    const set = new Set<string>();
+    if (labelConfig.bgColor && labelConfig.bgColor !== "transparent") set.add(labelConfig.bgColor.toLowerCase());
+    elements.forEach((el) => {
+      if (el.color && el.color !== "transparent") set.add(el.color.toLowerCase());
+      if (el.backgroundColor && el.backgroundColor !== "transparent") set.add(el.backgroundColor.toLowerCase());
+      if (el.borderColor && el.borderColor !== "transparent") set.add(el.borderColor.toLowerCase());
+    });
+    return Array.from(set);
+  }, [elements, labelConfig.bgColor]);
+
+  // 🔍 Filtrelenmiş Yazı Tipleri
+  const filteredFonts = useMemo(() => {
+    if (!fontSearchQuery.trim()) return CANVA_FONTS;
+    const q = fontSearchQuery.toLowerCase();
+    return CANVA_FONTS.filter((f) => f.name.toLowerCase().includes(q) || f.categoryLabel.toLowerCase().includes(q));
+  }, [fontSearchQuery]);
+
+  // 🎨 Canva Tarzı Renk Tablosu Popover Render Fonksiyonu
+  const renderColorTablePopover = (
+    title: string,
+    currentColor: string,
+    onSelectColor: (c: string) => void,
+    allowTransparent: boolean = false
+  ) => {
+    return (
+      <div className="canva-color-popover" onClick={(e) => e.stopPropagation()}>
+        <div className="canva-color-popover-header">
+          <span>{title}</span>
+          <button
+            type="button"
+            className="canva-color-close-btn"
+            onClick={() => setActiveColorPopover(null)}
+          >
+            <IconX size={14} />
+          </button>
+        </div>
+
+        {/* Özel Renk ve Damlalık / Hex Bar */}
+        <div className="canva-color-hex-bar">
+          <input
+            type="color"
+            className="canva-color-native-input"
+            value={currentColor.startsWith("#") && currentColor.length === 7 ? currentColor : "#000000"}
+            onChange={(e) => {
+              onSelectColor(e.target.value);
+              dispatch({ type: "PUSH_HISTORY" });
+            }}
+            title="Renk Seçiciyi Aç"
+          />
+          <input
+            type="text"
+            className="canva-color-text-input"
+            placeholder="#000000"
+            value={customHexInput || currentColor}
+            onChange={(e) => {
+              setCustomHexInput(e.target.value);
+              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(e.target.value)) {
+                onSelectColor(e.target.value);
+                dispatch({ type: "PUSH_HISTORY" });
+              }
+            }}
+          />
+        </div>
+
+        {/* Şeffaf Seçeneği (Opsiyonel) */}
+        {allowTransparent && (
+          <div className="canva-color-section">
+            <button
+              type="button"
+              className={`canva-color-transparent-btn ${currentColor === "transparent" ? "active" : ""}`}
+              onClick={() => {
+                onSelectColor("transparent");
+                dispatch({ type: "PUSH_HISTORY" });
+                setActiveColorPopover(null);
+              }}
+            >
+              <span className="transparent-icon">⊘</span>
+              <span>Şeffaf (Dolgu Yok)</span>
+            </button>
+          </div>
+        )}
+
+        {/* Belge Renkleri (Canvas'ta var olanlar) */}
+        {designColors.length > 0 && (
+          <div className="canva-color-section">
+            <div className="canva-color-section-title">📄 Belge Renkleri</div>
+            <div className="canva-color-chips-row">
+              {designColors.map((hex) => (
+                <button
+                  key={hex}
+                  type="button"
+                  className={`canva-color-swatch-box ${currentColor.toLowerCase() === hex ? "selected" : ""}`}
+                  style={{ backgroundColor: hex }}
+                  title={hex}
+                  onClick={() => {
+                    onSelectColor(hex);
+                    dispatch({ type: "PUSH_HISTORY" });
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Kuyumcu & Sektörel Renkler */}
+        <div className="canva-color-section">
+          <div className="canva-color-section-title">💎 Kuyumcu Maden & Taş Tonları</div>
+          <div className="canva-color-chips-row">
+            {JEWELRY_PALETTE.map((item) => (
+              <button
+                key={item.name}
+                type="button"
+                className={`canva-color-swatch-box ${currentColor.toLowerCase() === item.color.toLowerCase() ? "selected" : ""}`}
+                style={{ backgroundColor: item.color }}
+                title={`${item.name} (${item.color})`}
+                onClick={() => {
+                  onSelectColor(item.color);
+                  dispatch({ type: "PUSH_HISTORY" });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Standart Renk Tablosu Matrisi (35 Renk) */}
+        <div className="canva-color-section">
+          <div className="canva-color-section-title">🎨 Standart Renk Tablosu</div>
+          <div className="canva-color-table-grid">
+            {CANVA_COLOR_MATRIX.map((row, rIdx) => (
+              <div key={rIdx} className="canva-color-row">
+                {row.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    className={`canva-color-swatch-box ${currentColor.toLowerCase() === hex.toLowerCase() ? "selected" : ""}`}
+                    style={{ backgroundColor: hex }}
+                    title={hex}
+                    onClick={() => {
+                      onSelectColor(hex);
+                      dispatch({ type: "PUSH_HISTORY" });
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Popover Dışına Tıklayınca Kapat
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (inspectorRef.current && !inspectorRef.current.contains(e.target as Node)) {
+        setFontMenuOpen(false);
+        setActiveColorPopover(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Önizleme Modu Otomatik Ekrana Sığdırma (Fit-to-Screen) & Zoom
   const [previewZoom, setPreviewZoom] = useState<number>(0.65);
 
@@ -2572,6 +3202,18 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const [editTitleModal, setEditTitleModal] = useState(false);
   const [titleInput, setTitleInput] = useState("");
 
+  // Kolay Arayüz Modalları & Serbest Pan/Kaydırma State
+  const [canvasPan, setCanvasPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [fieldsModalOpen, setFieldsModalOpen] = useState(false);
+  const [shapeModalOpen, setShapeModalOpen] = useState(false);
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [logoModalOpen, setLogoModalOpen] = useState(false);
+  const [shapesAccordionOpen, setShapesAccordionOpen] = useState(false);
+  const [fieldSearch, setFieldSearch] = useState("");
+  const [fieldCategory, setFieldCategory] = useState<"all" | "altin" | "pirlanta" | "genel">("all");
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef<{ x: number; y: number; startPanX: number; startPanY: number }>({ x: 0, y: 0, startPanX: 0, startPanY: 0 });
+
   // Özel Sağ Tık Menüsü State
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -2589,6 +3231,29 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const canvasScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // ─── Serbest Kaydırma (Pan) ve Ortala Fonksiyonları ─────────────────────────
+  const centerCanvas = useCallback((smooth = true) => {
+    setCanvasPan({ x: 0, y: 0 });
+    if (canvasScrollContainerRef.current) {
+      const container = canvasScrollContainerRef.current;
+      container.scrollTo({
+        left: Math.max(0, (container.scrollWidth - container.clientWidth) / 2),
+        top: Math.max(0, (container.scrollHeight - container.clientHeight) / 2),
+        behavior: smooth ? "smooth" : "auto",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    centerCanvas(false);
+    const t1 = setTimeout(() => centerCanvas(false), 50);
+    const t2 = setTimeout(() => centerCanvas(true), 250);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [centerCanvas, activeSablon, zoom, labelConfig.genislikMm, labelConfig.yukseklikMm]);
   const dragRef = useRef<{
     active: boolean;
     type: "move" | "resize" | "rotate" | "lasso";
@@ -2777,17 +3442,22 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         dispatch({ type: "REDO" });
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+      if (e.key === "F3") {
+        e.preventDefault();
+        setDurbunModal(true);
+        return;
+      }
+      if (e.key === "F1" || ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S"))) {
         e.preventDefault();
         handleQuickSaveRef.current();
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+      if (e.key === "F9" || ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P"))) {
         e.preventDefault();
         handleDirectPrint();
         return;
       }
-      if (e.key === "F9") {
+      if (e.key === "F10") {
         e.preventDefault();
         handleSaveAndPrintRef.current();
         return;
@@ -2838,6 +3508,12 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         }
         return;
       }
+      if (e.key === "Escape") {
+        setSelectedIds([]);
+        setEditingId(null);
+        setIsLabelSelected(false);
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIds.length > 0) {
           dispatch({ type: "DELETE_ELEMENTS", ids: selectedIds });
@@ -2877,6 +3553,35 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
     const singleLabelHtml = await buildSingleLabelHtml(labelConfig, elements);
 
+    const fontsHeadHtml = `
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Caveat:wght@400..700&family=Cinzel:wght@400..900&family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&family=Dancing+Script:wght@400..700&family=Great+Vibes&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Outfit:wght@100..900&family=Pacifico&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Poppins:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100..900;1,100..900&family=Sacramento&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    `;
+
+    const printScript = `
+      <script>
+        function triggerPrint() {
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+                setTimeout(function() { window.close(); }, 600);
+              }, 120);
+            });
+          } else {
+            setTimeout(function() {
+              window.focus();
+              window.print();
+              setTimeout(function() { window.close(); }, 600);
+            }, 250);
+          }
+        }
+        window.onload = triggerPrint;
+      </script>
+    `;
+
     // 1. TÜM TABAKA VE KART BASKILARI (A4, A5, A6, A3, 10x15, 8x20)
     if (isPreviewMode && isSheetType) {
       const { pageW, pageH, margin, gap, cols, total, name } = currentLayoutInfo;
@@ -2898,6 +3603,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           <head>
             <meta charset="utf-8" />
             <title>${title} (${name} Baskı)</title>
+            ${fontsHeadHtml}
             <style>
               @page {
                 size: ${pageW}mm ${pageH}mm portrait;
@@ -2931,15 +3637,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             <div class="sheet-grid">
               ${gridItemsHtml}
             </div>
-            <script>
-              window.onload = function() {
-                setTimeout(function() {
-                  window.focus();
-                  window.print();
-                  setTimeout(function() { window.close(); }, 700);
-                }, 250);
-              };
-            </script>
+            ${printScript}
           </body>
         </html>
       `);
@@ -2970,6 +3668,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           <head>
             <meta charset="utf-8" />
             <title>${title} (Rulo Şerit Baskı)</title>
+            ${fontsHeadHtml}
             <style>
               @page {
                 size: ${labelConfig.genislikMm + 6}mm auto;
@@ -2994,15 +3693,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           </head>
           <body>
             ${rollItemsHtml}
-            <script>
-              window.onload = function() {
-                setTimeout(function() {
-                  window.focus();
-                  window.print();
-                  setTimeout(function() { window.close(); }, 700);
-                }, 250);
-              };
-            </script>
+            ${printScript}
           </body>
         </html>
       `);
@@ -3017,6 +3708,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         <head>
           <meta charset="utf-8" />
           <title>${title}</title>
+          ${fontsHeadHtml}
           <style>
             @page {
               size: ${labelConfig.genislikMm}mm ${labelConfig.yukseklikMm}mm;
@@ -3058,27 +3750,23 @@ const UrunEtiketTasarimiPage: React.FC = () => {
           <div class="print-wrapper">
             ${singleLabelHtml}
           </div>
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.focus();
-                window.print();
-                setTimeout(function() {
-                  window.close();
-                }, 700);
-              }, 250);
-            };
-          </script>
+          ${printScript}
         </body>
       </html>
     `);
     printWindow.document.close();
   }, [labelConfig, sablonAdi, isPreviewMode, selectedLayoutId, currentLayoutInfo, elements]);
 
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  const canvasPanRef = useRef(canvasPan);
+  canvasPanRef.current = canvasPan;
+
   const isPreviewModeRef = useRef(isPreviewMode);
   isPreviewModeRef.current = isPreviewMode;
 
-  // ─── Mouse Wheel ile Zoom Yapma (Otomatik Yakınlaştırma & Uzaklaştırma) ──────
+  // ─── Mouse Wheel ile Zoom Yapma (Etiket ve Cursor Odaklı Yakınlaştırma / Uzaklaştırma) ──────
   useEffect(() => {
     const el = canvasScrollContainerRef.current;
     if (!el) return;
@@ -3086,7 +3774,6 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     const handleNativeWheel = (e: WheelEvent) => {
       // Önizleme modundayken:
       // Eğer Ctrl/Cmd basılıysa veya pinch zoom yapılıyorsa sayfayı büyüt/küçült.
-      // Normal tekerlek kaydırmasında ise sayfanın dikey kaydırılmasına izin ver.
       if (isPreviewModeRef.current) {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
@@ -3101,6 +3788,9 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
       e.preventDefault();
 
+      const currentZoom = zoomRef.current;
+      const currentPan = canvasPanRef.current;
+
       let zoomFactor: number;
       if (e.ctrlKey || e.metaKey) {
         // Trackpad pinch zoom veya Ctrl + Wheel (Hassas ve akıcı)
@@ -3108,12 +3798,30 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       } else {
         // Standart Mouse Wheel tekerleği (Yukarı = Yakınlaş, Aşağı = Uzaklaş)
         const direction = e.deltaY < 0 ? 1 : -1;
-        zoomFactor = direction > 0 ? 1.15 : 0.87;
+        zoomFactor = direction > 0 ? 1.14 : 0.88;
       }
 
-      setZoom((prevZoom) => {
-        const nextZoom = prevZoom * zoomFactor;
-        return clamp(Math.round(nextZoom * 100) / 100, 0.25, 5.0);
+      const nextZoom = clamp(Math.round(currentZoom * zoomFactor * 100) / 100, 0.3, 6.0);
+      if (nextZoom === currentZoom) return;
+
+      // Mouse imlecinin container içindeki konumuna göre odaklı zoom (Focal point zoom towards cursor):
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+
+      const offsetX = mouseX - centerX;
+      const offsetY = mouseY - centerY;
+
+      const scaleRatio = nextZoom / currentZoom;
+      const nextPanX = currentPan.x + (offsetX - currentPan.x) * (1 - scaleRatio);
+      const nextPanY = currentPan.y + (offsetY - currentPan.y) * (1 - scaleRatio);
+
+      setZoom(nextZoom);
+      setCanvasPan({
+        x: Math.round(nextPanX * 10) / 10,
+        y: Math.round(nextPanY * 10) / 10,
       });
     };
 
@@ -3231,6 +3939,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
   // ─── Sürükleme Başlatıcı ───────────────────────────────────────────────────
   const startDragMove = (clientX: number, clientY: number, id: string) => {
+    setIsLabelSelected(false);
     const el = elements.find((item) => item.id === id);
     if (!el || el.locked) return;
 
@@ -3258,37 +3967,70 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     (e: React.MouseEvent) => {
       if (e.button === 2) return;
 
-      if (
-        e.target === canvasRef.current ||
-        (e.target as HTMLElement).classList.contains("label-canvas") ||
-        (e.target as HTMLElement).classList.contains("canvas-scroll-container")
-      ) {
-        const pos = getCanvasPos(e.clientX, e.clientY);
-        dragRef.current = {
-          active: true,
-          type: "lasso",
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: pos.x,
-          origY: pos.y,
-          origW: 0,
-          origH: 0,
-          origRot: 0,
-          centerX: 0,
-          centerY: 0,
-          lassoStart: pos,
-        };
+      const target = e.target as HTMLElement;
+      const isElementOrHandle =
+        target.closest(".canvas-element") ||
+        target.closest(".resize-handle") ||
+        target.closest(".rotate-handle") ||
+        target.closest(".context-quick-bar") ||
+        target.closest(".canvas-top-action-bar") ||
+        target.closest(".canvas-context-compact-ribbon");
+
+      const isInsideLabel =
+        target.closest(".label-canvas") ||
+        target.closest(".label-canvas-wrapper") ||
+        target.closest(".label-dimension-badge-top") ||
+        target.closest(".label-dimension-badge-left");
+
+      if (isElementOrHandle) {
+        setIsLabelSelected(false);
+      } else {
         if (!e.shiftKey) setSelectedIds([]);
         setEditingId(null);
+
+        // Şablonun zeminine tıklanınca şablon ayarlarını aç, dışarıya tıklanınca kapat
+        if (isInsideLabel) {
+          setIsLabelSelected(true);
+        } else {
+          setIsLabelSelected(false);
+        }
+
+        if (e.shiftKey) {
+          const pos = getCanvasPos(e.clientX, e.clientY);
+          dragRef.current = {
+            active: true,
+            type: "lasso",
+            startX: e.clientX,
+            startY: e.clientY,
+            origX: pos.x,
+            origY: pos.y,
+            origW: 0,
+            origH: 0,
+            origRot: 0,
+            centerX: 0,
+            centerY: 0,
+            lassoStart: pos,
+          };
+        } else {
+          // Doğrudan mouse ile boş alandan tutup serbestçe her yöne kaydır (Pan)
+          isPanningRef.current = true;
+          panStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            startPanX: canvasPan.x,
+            startPanY: canvasPan.y,
+          };
+        }
       }
     },
-    [getCanvasPos]
+    [getCanvasPos, canvasPan]
   );
 
   const handleElementMouseDown = useCallback(
     (e: React.MouseEvent, id: string) => {
       if (e.button === 2) return;
       e.stopPropagation();
+      setIsLabelSelected(false);
       startDragMove(e.clientX, e.clientY, id);
     },
     [elements, selectedIds, getCanvasPos]
@@ -3397,6 +4139,16 @@ const UrunEtiketTasarimiPage: React.FC = () => {
   // ─── Mouse / Touch Move & Up (Kesintisiz Piksel Hassasiyeti) ───────────────
   useEffect(() => {
     const handleMove = (clientX: number, clientY: number) => {
+      if (isPanningRef.current) {
+        const dx = clientX - panStartRef.current.x;
+        const dy = clientY - panStartRef.current.y;
+        setCanvasPan({
+          x: panStartRef.current.startPanX + dx,
+          y: panStartRef.current.startPanY + dy,
+        });
+        return;
+      }
+
       if (!dragRef.current?.active) return;
       const dr = dragRef.current;
 
@@ -3622,6 +4374,9 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     };
 
     const handleEnd = () => {
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+      }
       if (!dragRef.current?.active) return;
       const dr = dragRef.current;
 
@@ -3878,60 +4633,82 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
   // ─── Katman Yönetimi (Doğru Sıralama & Katman Değişimi) ─────────────────────
   const reorderLayers = (newOrderedList: CanvasElement[]) => {
-    const normalized = newOrderedList.map((el, i) => ({ ...el, zIndex: i + 1 }));
+    const normalized = newOrderedList.map((el, i) => ({ ...el, zIndex: (i + 1) * 10 }));
     dispatch({ type: "SET_ELEMENTS", elements: normalized });
     dispatch({ type: "PUSH_HISTORY" });
   };
 
+  const bringToFront = (id: string) => {
+    const list = [...elements];
+    list.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    const idx = list.findIndex((e) => e.id === id);
+    if (idx !== -1) {
+      const [item] = list.splice(idx, 1);
+      list.push(item);
+      reorderLayers(list);
+    }
+  };
+
   const bringForward = (id: string) => {
-    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
-    const idx = sorted.findIndex((e) => e.id === id);
-    if (idx < sorted.length - 1 && idx !== -1) {
-      const temp = sorted[idx];
-      sorted[idx] = sorted[idx + 1];
-      sorted[idx + 1] = temp;
-      reorderLayers(sorted);
+    const list = [...elements];
+    list.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    const idx = list.findIndex((e) => e.id === id);
+    if (idx !== -1 && idx < list.length - 1) {
+      const temp = list[idx];
+      list[idx] = list[idx + 1];
+      list[idx + 1] = temp;
+      reorderLayers(list);
+    } else if (idx === list.length - 1) {
+      reorderLayers(list);
     }
   };
 
   const sendBackward = (id: string) => {
-    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
-    const idx = sorted.findIndex((e) => e.id === id);
+    const list = [...elements];
+    list.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    const idx = list.findIndex((e) => e.id === id);
     if (idx > 0) {
-      const temp = sorted[idx];
-      sorted[idx] = sorted[idx - 1];
-      sorted[idx - 1] = temp;
-      reorderLayers(sorted);
-    }
-  };
-
-  const bringToFront = (id: string) => {
-    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
-    const idx = sorted.findIndex((e) => e.id === id);
-    if (idx !== -1) {
-      const [item] = sorted.splice(idx, 1);
-      sorted.push(item);
-      reorderLayers(sorted);
+      const temp = list[idx];
+      list[idx] = list[idx - 1];
+      list[idx - 1] = temp;
+      reorderLayers(list);
+    } else if (idx === 0) {
+      reorderLayers(list);
     }
   };
 
   const sendToBack = (id: string) => {
-    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
-    const idx = sorted.findIndex((e) => e.id === id);
+    const list = [...elements];
+    list.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    const idx = list.findIndex((e) => e.id === id);
     if (idx !== -1) {
-      const [item] = sorted.splice(idx, 1);
-      sorted.unshift(item);
-      reorderLayers(sorted);
+      const [item] = list.splice(idx, 1);
+      list.unshift(item);
+      reorderLayers(list);
     }
   };
 
-  // ─── Şablon Hızlı & Doğrudan Kaydetme (Ctrl+S) ──────────────────────────────
+  // ─── Şablon Hızlı & Doğrudan Kaydetme (Ctrl+S / F1) ──────────────────────
   const handleQuickSave = async () => {
     const nameToSave = sablonAdi.trim() || activeSablon?.ad || "";
     if (!nameToSave) {
       setSaveModal(true);
       return;
     }
+
+    // Aynı isimde başka bir şablon olup olmadığını kontrol et (Benzersiz İsim Kontrolü)
+    const duplicate = sablonlar.find(
+      (s) =>
+        s.ad &&
+        s.ad.trim().toLowerCase() === nameToSave.toLowerCase() &&
+        s.etiketSablonId !== activeSablon?.etiketSablonId
+    );
+    if (duplicate) {
+      alert(`"${nameToSave}" isminde bir şablon zaten mevcut! Lütfen farklı ve benzersiz bir şablon ismi belirleyin.`);
+      setSaveModal(true);
+      return;
+    }
+
     setLoading(true);
     try {
       const alanlar: EtiketSablonAlan[] = elements.map((el) => ({
@@ -3968,11 +4745,8 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         text: el.text,
       }));
 
-      // Eğer aynı isimde kayıtlı bir şablon varsa onun ID'sini bularak güncelle
-      const matchedExisting = sablonlar.find(
-        (s) => s.ad && s.ad.trim().toLowerCase() === nameToSave.toLowerCase()
-      );
-      const targetSablonId = activeSablon?.etiketSablonId || matchedExisting?.etiketSablonId || null;
+      // Eğer kayıtlı bir şablon seçilmişse güncelle, yoksa yeni şablon oluştur
+      const targetSablonId = activeSablon?.etiketSablonId && activeSablon.etiketSablonId > 0 ? activeSablon.etiketSablonId : null;
 
       const savedItem = await EtiketService.saveSablon({
         etiketSablonId: targetSablonId,
@@ -4043,7 +4817,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
   const performAutoSave = useCallback(async () => {
     const { elements: currentEls, labelConfig: currentCfg, sablonAdi: currentName, activeSablon: currentSablon } = autoSaveStateRef.current;
-    
+
     // 1. Tarayıcı LocalStorage Otomatik Yedekleme (Anında ve Kesintisiz)
     try {
       if (currentEls.length > 0) {
@@ -4252,6 +5026,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         fontWeight: el.fontWeight || "normal",
         fontStyle: el.fontStyle || "normal",
         textDecoration: el.textDecoration || "none",
+        textTransform: el.textTransform || "none",
         textAlign: isRight ? "right" : isCenter ? "center" : "left",
         color: effectiveTextColor,
         width: "100%",
@@ -4555,1791 +5330,1894 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       className={`label-designer-page ${isFullscreen ? "is-fullscreen" : ""}`}
     >
       {/* ── Mobil Backdrop (Paneller Açıkken Tıklayıp Kapatma) ───────────── */}
-      {(leftPanelOpen || rightPanelOpen) && (
+      {isCanvaDrawerOpen && (
         <div
           className="mobile-panel-backdrop"
-          onClick={() => {
-            setLeftPanelOpen(false);
-            setRightPanelOpen(false);
-          }}
+          onClick={() => setIsCanvaDrawerOpen(false)}
         />
       )}
 
-      {/* ── Üst ERP Toolbar (Ekonomik, Asla Üst Üste Binmeyen Düzen) ──────── */}
+      {/* ── Minimalist & Ferah Üst Bar (Sol: Şablon & Dürbün, Orta: Şablon Bilgisi, Sağ: Kaydet & Çıktı Al) ── */}
       <div className="top-erp-toolbar">
-        {/* Sol Panel Toggle */}
-        <button
-          className={`tb-btn ${leftPanelOpen ? "active" : ""}`}
-          title="Sol Paneli Aç/Kapat"
-          onClick={() => {
-            setLeftPanelOpen((v) => !v);
-            if (!leftPanelOpen && window.innerWidth < 1024) setRightPanelOpen(false);
-          }}
-        >
-          <IconMenu2 size={16} />
-          <span>Elemanlar</span>
-        </button>
-
-        {/* 🔭 DÜRBÜN İKONU: Şablonlar */}
-        <button
-          className="tb-btn highlight"
-          title="Kayıtlı Şablonları Ara ve Seç (Dürbün)"
-          onClick={() => setDurbunModal(true)}
-        >
-          <IconBinoculars size={15} />
-          <span> </span>
-        </button>
-
-        {/* Yeni Şablon */}
-        <button
-          className="tb-btn"
-          title="Yeni Boş Şablon"
-          onClick={() => {
-            if (confirm("Yeni bir tasarıma başlamak istiyor musunuz?")) {
-              dispatch({ type: "SET_ELEMENTS", elements: [] });
-              setActiveSablon(null);
-              setSablonAdi("");
-            }
-          }}
-        >
-          <IconPlus size={15} />
-          <span>Yeni</span>
-        </button>
-
-        {/* 🏷️ Şablon Adı ve Düzenleme Kalemi (Dürbün İkonlu) */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "2px 8px",
-            background: "rgba(15,23,42,0.6)",
-            borderRadius: 5,
-            border: "1px solid #334155",
-            flexShrink: 0,
-          }}
-        >
-          <IconBinoculars size={13} color="#38bdf8" />
-          <span style={{ fontSize: 11, color: "#94a3b8" }}>Şablon:</span>
-          <span
-            style={{
-              fontSize: 11.5,
-              fontWeight: 700,
-              color: "#f8fafc",
-              maxWidth: 130,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={sablonAdi || activeSablon?.ad || "İsimsiz Şablon"}
+        {/* Sol Alan: Şablonlar (Dürbün - F3), Yeni, Geri Al / Yinele */}
+        <div className="top-toolbar-left">
+          {/* Dürbün / Şablon Galerisi Butonu (Sol Üstte - F3) */}
+          <button
+            className="top-action-btn"
+            title="Hazır Şablon Galerisi (Dürbün - F3)"
+            onClick={() => setDurbunModal(true)}
           >
-            {sablonAdi || activeSablon?.ad || "İsimsiz Şablon"}
-          </span>
+            <IconBinoculars size={15} />
+            <span>Geçmiş</span>
+            <span style={{ fontSize: 9.5, background: "rgba(255,255,255,0.2)", padding: "1px 4px", borderRadius: 3, fontWeight: 700, marginLeft: 2 }}>F3</span>
+          </button>
+
+          <div className="top-toolbar-divider" />
 
           <button
-            className="tb-btn"
-            style={{ width: 20, height: 20, padding: 0, border: "none", background: "transparent" }}
-            title="Şablon İsmini Değiştir"
+            className="top-icon-action-btn"
+            title="Yeni Tasarım Başlat (Model Seçimi)"
             onClick={() => {
-              setTitleInput(sablonAdi || activeSablon?.ad || "Altın Etiket Tasarımı");
+              if (confirm("Yeni bir tasarıma başlamak istiyor musunuz?")) {
+                dispatch({ type: "SET_ELEMENTS", elements: [] });
+                setActiveSablon(null);
+                setSablonAdi("");
+                setShapeModalOpen(true);
+              }
+            }}
+          >
+            <IconPlus size={15} />
+          </button>
+
+          <button
+            className="top-icon-action-btn"
+            title="Geri Al (Ctrl+Z)"
+            onClick={() => dispatch({ type: "UNDO" })}
+            disabled={editorState.past.length === 0}
+          >
+            <IconArrowBackUp size={15} />
+          </button>
+          <button
+            className="top-icon-action-btn"
+            title="Yinele (Ctrl+Y)"
+            onClick={() => dispatch({ type: "REDO" })}
+            disabled={editorState.future.length === 0}
+          >
+            <IconArrowForwardUp size={15} />
+          </button>
+        </div>
+
+        {/* Orta Alan: Küçük Ekranlarda da Bozulmayan Şablon Başlık Rozeti */}
+        <div className="top-toolbar-center">
+          <div
+            className="top-center-template-card"
+            onClick={() => {
+              setTitleInput(sablonAdi || activeSablon?.ad || "");
               setEditTitleModal(true);
             }}
+            title="Şablon İsmini Düzenlemek İçin Tıklayın"
           >
-            <IconEdit size={13} color="#38bdf8" />
-          </button>
+            <span className="tmpl-icon">🏷️</span>
+            <span className="tmpl-name">{sablonAdi || activeSablon?.ad || "İsimsiz Şablon"}</span>
+            <span className="tmpl-dim">{labelConfig.genislikMm}×{labelConfig.yukseklikMm} mm</span>
+            <IconEdit size={12} color="#38bdf8" className="tmpl-edit-icon" />
+          </div>
         </div>
 
-        <div className="toolbar-divider" />
+        {/* Sağ Alan: Kaydedildi Bildirimi, Yazıcı Ayarları, Çıktı Al, Kaydet (F1) */}
+        <div className="top-toolbar-right">
+          {/* 5 Saniye Sonra Kaybolan 'Kaydedildi' Rozeti (Yazıcı Ayarları Solunda) */}
+          {savedIndicator && (
+            <div className="top-saved-toast-badge animate-fadein">
+              <IconCheck size={13} />
+              <span>Kaydedildi</span>
+            </div>
+          )}
 
-        {/* HIZLI KART BOYUTU DÜZENLEME (EN × BOY mm) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-          <span className="toolbar-label">En:</span>
           <button
-            className="tb-btn"
-            style={{ width: 18, height: 24, padding: 0, fontSize: 12, fontWeight: 700 }}
-            title="Genişliği 1mm Azalt"
-            onClick={() => updateLabelConfig({ genislikMm: Math.max(5, labelConfig.genislikMm - 1) })}
+            className="top-action-btn"
+            title="Yazıcı Kalibrasyon Ayarları"
+            onClick={() => setPrinterModalOpen(true)}
           >
-            -
+            <IconPrinter size={15} />
+            <span>Yazıcı Ayarları</span>
           </button>
-          <input
-            type="number"
-            className="toolbar-input"
-            style={{ width: 44, textAlign: "center", padding: "2px 2px" }}
-            key={`en-toolbar-${labelConfig.genislikMm}`}
-            defaultValue={labelConfig.genislikMm}
-            min={5}
-            max={300}
-            step={0.5}
-            title="Kart / Etiket Genişliği (mm)"
-            onFocus={(e) => e.target.select()}
-            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-            onBlur={(e) => {
-              const v = parseFloat(e.target.value);
-              if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
-              else e.target.value = String(labelConfig.genislikMm);
-            }}
-          />
+
+          {/* Çıktı Al Butonu */}
           <button
-            className="tb-btn"
-            style={{ width: 18, height: 24, padding: 0, fontSize: 12, fontWeight: 700 }}
-            title="Genişliği 1mm Artır"
-            onClick={() => updateLabelConfig({ genislikMm: Math.min(300, labelConfig.genislikMm + 1) })}
+            className="top-action-btn"
+            style={{ background: "rgba(59, 130, 246, 0.18)", borderColor: "#60a5fa", color: "#93c5fd" }}
+            title="Doğrudan Çıktı Al (Ctrl+P)"
+            onClick={handleDirectPrint}
           >
-            +
+            <IconPrinter size={15} />
+            <span>Çıktı Al</span>
           </button>
-        </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-          <span className="toolbar-label">Boy:</span>
+          {/* Normal Kaydet Butonu (F1) */}
           <button
-            className="tb-btn"
-            style={{ width: 18, height: 24, padding: 0, fontSize: 12, fontWeight: 700 }}
-            title="Yüksekliği 1mm Azalt"
-            onClick={() => updateLabelConfig({ yukseklikMm: Math.max(3, labelConfig.yukseklikMm - 1) })}
-          >
-            -
-          </button>
-          <input
-            type="number"
-            className="toolbar-input"
-            style={{ width: 44, textAlign: "center", padding: "2px 2px" }}
-            key={`boy-toolbar-${labelConfig.yukseklikMm}`}
-            defaultValue={labelConfig.yukseklikMm}
-            min={3}
-            max={200}
-            step={0.5}
-            title="Kart / Etiket Yüksekliği (mm)"
-            onFocus={(e) => e.target.select()}
-            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-            onBlur={(e) => {
-              const v = parseFloat(e.target.value);
-              if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
-              else e.target.value = String(labelConfig.yukseklikMm);
-            }}
-          />
-          <button
-            className="tb-btn"
-            style={{ width: 18, height: 24, padding: 0, fontSize: 12, fontWeight: 700 }}
-            title="Yüksekliği 1mm Artır"
-            onClick={() => updateLabelConfig({ yukseklikMm: Math.min(200, labelConfig.yukseklikMm + 1) })}
-          >
-            +
-          </button>
-        </div>
-
-        <div className="toolbar-divider" />
-
-        {/* Geri Al / Yinele */}
-        <button
-          className="tb-btn"
-          title="Geri Al (Ctrl+Z)"
-          onClick={() => dispatch({ type: "UNDO" })}
-          disabled={editorState.past.length === 0}
-        >
-          <IconArrowBackUp size={15} />
-        </button>
-        <button
-          className="tb-btn"
-          title="Yinele (Ctrl+Y / Ctrl+Shift+Z)"
-          onClick={() => dispatch({ type: "REDO" })}
-          disabled={editorState.future.length === 0}
-        >
-          <IconArrowForwardUp size={15} />
-        </button>
-
-        {/* Çoklu Hizalama */}
-        {selectedIds.length > 1 && (
-          <>
-            <div className="toolbar-divider" />
-            <button
-              className="tb-btn"
-              title="Sola Hizala"
-              onClick={() => {
-                const minX = Math.min(...selectedElements.map((e) => e.x));
-                selectedIds.forEach((id) => updateElement(id, { x: minX }));
-              }}
-            >
-              <IconAlignLeft size={14} />
-            </button>
-            <button
-              className="tb-btn"
-              title="Ortaya Hizala"
-              onClick={() => {
-                const minX = Math.min(...selectedElements.map((e) => e.x));
-                const maxX = Math.max(...selectedElements.map((e) => e.x + e.width));
-                const cX = (minX + maxX) / 2;
-                selectedIds.forEach((id) => {
-                  const el = elements.find((e) => e.id === id);
-                  if (el) updateElement(id, { x: cX - el.width / 2 });
-                });
-              }}
-            >
-              <IconAlignCenter size={14} />
-            </button>
-            <button
-              className="tb-btn"
-              title="Sağa Hizala"
-              onClick={() => {
-                const maxX = Math.max(...selectedElements.map((e) => e.x + e.width));
-                selectedIds.forEach((id) => {
-                  const el = elements.find((e) => e.id === id);
-                  if (el) updateElement(id, { x: maxX - el.width });
-                });
-              }}
-            >
-              <IconAlignRight size={14} />
-            </button>
-          </>
-        )}
-
-        {/* Kaydet Butonu ve 5sn Kaydedildi Rozeti */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <button
-            className="tb-btn save-btn"
-            title="Şablonu Kaydet (Ctrl+S)"
+            className="top-print-btn"
+            title="Şablonu Kaydet (F1 / Ctrl+S)"
             onClick={handleQuickSave}
             disabled={loading}
           >
             <IconDeviceFloppy size={15} />
             <span>Kaydet</span>
-          </button>
-          {saveStatus === "saved" && (
-            <span
-              style={{
-                color: "#4ade80",
-                fontWeight: 700,
-                fontSize: 11,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                background: "rgba(34,197,94,0.15)",
-                padding: "3px 8px",
-                borderRadius: 4,
-                border: "1px solid rgba(34,197,94,0.3)",
-              }}
-            >
-              ✓ Kaydedildi
-            </span>
-          )}
-          {saveStatus === "error" && (
-            <span
-              style={{
-                color: "#f87171",
-                fontWeight: 700,
-                fontSize: 11,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                background: "rgba(239,68,68,0.15)",
-                padding: "3px 8px",
-                borderRadius: 4,
-                border: "1px solid rgba(239,68,68,0.3)",
-              }}
-              title={errorMessage || "Kayıt Hatası"}
-            >
-              ✗ Hata: {errorMessage || "Kaydedilemedi"}
-            </span>
-          )}
-        </div>
-
-        {/* Seçili Elemanı Sil */}
-        {selectedIds.length > 0 && (
-          <button
-            className="tb-btn danger"
-            title="Seçili Elemanı Sil (Delete)"
-            onClick={() => {
-              dispatch({ type: "DELETE_ELEMENTS", ids: selectedIds });
-              setSelectedIds([]);
-            }}
-          >
-            <IconTrash size={15} />
-          </button>
-        )}
-
-        <div style={{ marginLeft: "auto" }} />
-
-        {/* Hızlı Yazıcı Baskı Kaydırma (Sol & Üst Offset Ayarları) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0, background: "rgba(15, 23, 42, 0.7)", padding: "2px 6px", borderRadius: 5, border: "1px solid #334155" }} title="Yazıcınızın kâğıt beslemesine göre baskıyı sola/sağa veya yukarı/aşağı milimetrik kaydırır">
-          <span className="toolbar-label" style={{ fontSize: 10, color: "#38bdf8", fontWeight: 700 }}>🖨️ Kaydırma:</span>
-          
-          <span className="toolbar-label" style={{ fontSize: 9.5, color: "#94a3b8" }}>Sol:</span>
-          <button
-            className="tb-btn"
-            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
-            title="Baskıyı Sola Kaydır (Sol Kaydırma -0.5mm)"
-            onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) - 0.5) * 10) / 10 })}
-          >
-            -
-          </button>
-          <span style={{ fontSize: 10, color: "#f8fafc", fontWeight: 700, minWidth: 26, textAlign: "center" }}>
-            {(labelConfig.yaziciSolKaydirmaMm || 0) > 0 ? `+${labelConfig.yaziciSolKaydirmaMm}` : (labelConfig.yaziciSolKaydirmaMm || 0)}mm
-          </span>
-          <button
-            className="tb-btn"
-            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
-            title="Baskıyı Sağa Kaydır (Sol Kaydırma +0.5mm)"
-            onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) + 0.5) * 10) / 10 })}
-          >
-            +
-          </button>
-
-          <span className="toolbar-label" style={{ fontSize: 9.5, color: "#94a3b8", marginLeft: 4 }}>Üst:</span>
-          <button
-            className="tb-btn"
-            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
-            title="Baskıyı Yukarı Kaydır (+0.5mm)"
-            onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) + 0.5) * 10) / 10 })}
-          >
-            +
-          </button>
-          <span style={{ fontSize: 10, color: "#f8fafc", fontWeight: 700, minWidth: 26, textAlign: "center" }}>
-            {(labelConfig.yaziciUstKaydirmaMm ?? -0.8) > 0 ? `+${labelConfig.yaziciUstKaydirmaMm ?? -0.8}` : (labelConfig.yaziciUstKaydirmaMm ?? -0.8)}mm
-          </span>
-          <button
-            className="tb-btn"
-            style={{ width: 18, height: 22, padding: 0, fontSize: 11, fontWeight: 700 }}
-            title="Baskıyı Aşağı Kaydır (-0.5mm)"
-            onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) - 0.5) * 10) / 10 })}
-          >
-            -
+            <span style={{ fontSize: 10, background: "rgba(255,255,255,0.25)", padding: "1px 5px", borderRadius: 4, fontWeight: 800 }}>F1</span>
           </button>
         </div>
-
-        {/* Kaydet ve Çıktı Al (Tek Tık) */}
-        <button
-          className="tb-btn save-btn"
-          title="Kaydet ve Çıktı Al (F9)"
-          onClick={handleSaveAndPrint}
-          disabled={loading}
-        >
-          <IconDeviceFloppy size={15} />
-          <IconPrinter size={15} />
-          <span>Kaydet ve Çıktı</span>
-        </button>
-
-        {/* GÖRSEL IZGARA SEÇİMİ */}
-        <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-          <span className="toolbar-label" style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 3 }}>
-            <IconGridDots size={13} color="#38bdf8" />
-            <span>Izgara:</span>
-          </span>
-          <select
-            className="toolbar-select"
-            value={snapGrid}
-            onChange={(e) => setSnapGrid(Number(e.target.value))}
-            style={{ width: 88, height: 26, fontSize: 11 }}
-          >
-            <option value={0}>Kapalı</option>
-            <option value={0.5}>0.5 mm</option>
-            <option value={1}>1.0 mm</option>
-            <option value={2}>2.0 mm</option>
-            <option value={5}>5.0 mm</option>
-            <option value={10}>10.0 mm</option>
-          </select>
-        </div>
-
-        {/* Kategori: Sabit Altın */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "3px 9px",
-            background: "rgba(217, 119, 6, 0.15)",
-            border: "1px solid rgba(245, 158, 11, 0.4)",
-            borderRadius: 5,
-            color: "#fcd34d",
-            fontSize: 11.5,
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-          title="Kategori: Altın Ürün Etiketi"
-        >
-          <span>🪙</span>
-          <span>Altın</span>
-        </div>
-
-        {/* Tam Ekran Modu */}
-        <button
-          className="tb-btn"
-          title={isFullscreen ? "Tam Ekrandan Çık (ESC)" : "Tam Ekran"}
-          onClick={() => setIsFullscreen((v) => !v)}
-        >
-          {isFullscreen ? <IconMinimize size={15} /> : <IconMaximize size={15} />}
-        </button>
-
-        {/* Sağ Panel Toggle */}
-        <button
-          className={`tb-btn ${rightPanelOpen ? "active" : ""}`}
-          title="Sağ Özellik Panelini Aç/Kapat"
-          onClick={() => {
-            setRightPanelOpen((v) => !v);
-            if (!rightPanelOpen && window.innerWidth < 1024) setLeftPanelOpen(false);
-          }}
-        >
-          <IconSettings size={15} />
-          <span>Ayar</span>
-        </button>
       </div>
-
-      {/* ── Dinamik Bağlamsal Toolbar (Seçili Eleman Araçları) ─────────────── */}
-      {selectedElement &&
-        !isPreviewMode &&
-        (selectedElement.type === "text" ||
-          selectedElement.type === "field" ||
-          selectedElement.type === "rect" ||
-          selectedElement.type === "ellipse") && (
-          <div className="top-context-toolbar animate-fadein">
-            {(selectedElement.type === "text" || selectedElement.type === "field") && (
-              <>
-                {/* Doğrudan Düzenleme Butonu */}
-                <button
-                  className="tb-btn highlight"
-                  style={{ height: 26, fontSize: 11 }}
-                  title="Metni Düzenle (veya Çift Tıkla)"
-                  onClick={() => setEditingId(selectedElement.id)}
-                >
-                  <IconEdit size={13} />
-                  <span>Düzenle</span>
-                </button>
-
-                {/* Font Ailesi */}
-                <select
-                  className="toolbar-select"
-                  style={{ width: 120, height: 26, fontSize: 11 }}
-                  value={selectedElement.fontFamily || "Arial"}
-                  onChange={(e) => {
-                    updateElement(selectedElement.id, { fontFamily: e.target.value });
-                    dispatch({ type: "PUSH_HISTORY" });
-                  }}
-                >
-                  {FONT_FAMILIES.map((f) => (
-                    <option key={f} value={f} style={{ fontFamily: f }}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Font Boyutu */}
-                <input
-                  type="number"
-                  className="toolbar-input w-45"
-                  style={{ height: 26 }}
-                  value={selectedElement.fontSize || 8}
-                  min={4}
-                  max={72}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) =>
-                    updateElement(selectedElement.id, { fontSize: Number(e.target.value) })
-                  }
-                  title="Font Boyutu (pt)"
-                />
-
-                <div className="toolbar-divider" />
-
-                {/* Bold, Italic, Underline */}
-                <button
-                  className={`tb-btn ${selectedElement.fontWeight === "bold" ? "active" : ""}`}
-                  style={{ height: 26, width: 26, padding: 0 }}
-                  title="Kalın (Bold)"
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      fontWeight: selectedElement.fontWeight === "bold" ? "normal" : "bold",
-                    })
-                  }
-                >
-                  <IconBold size={14} />
-                </button>
-                <button
-                  className={`tb-btn ${selectedElement.fontStyle === "italic" ? "active" : ""}`}
-                  style={{ height: 26, width: 26, padding: 0 }}
-                  title="İtalik"
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      fontStyle: selectedElement.fontStyle === "italic" ? "normal" : "italic",
-                    })
-                  }
-                >
-                  <IconItalic size={14} />
-                </button>
-                <button
-                  className={`tb-btn ${selectedElement.textDecoration === "underline" ? "active" : ""}`}
-                  style={{ height: 26, width: 26, padding: 0 }}
-                  title="Altı Çizili"
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      textDecoration:
-                        selectedElement.textDecoration === "underline" ? "none" : "underline",
-                    })
-                  }
-                >
-                  <IconUnderline size={14} />
-                </button>
-
-                <div className="toolbar-divider" />
-
-                {/* Hizalama */}
-                <button
-                  className={`tb-btn ${selectedElement.textAlign === "left" ? "active" : ""}`}
-                  style={{ height: 26, width: 26, padding: 0 }}
-                  title="Sola Hizala"
-                  onClick={() => updateElement(selectedElement.id, { textAlign: "left" })}
-                >
-                  <IconAlignLeft size={14} />
-                </button>
-                <button
-                  className={`tb-btn ${(!selectedElement.textAlign || selectedElement.textAlign === "center") ? "active" : ""}`}
-                  style={{ height: 26, width: 26, padding: 0 }}
-                  title="Ortala"
-                  onClick={() => updateElement(selectedElement.id, { textAlign: "center" })}
-                >
-                  <IconAlignCenter size={14} />
-                </button>
-                <button
-                  className={`tb-btn ${selectedElement.textAlign === "right" ? "active" : ""}`}
-                  style={{ height: 26, width: 26, padding: 0 }}
-                  title="Sağa Hizala"
-                  onClick={() => updateElement(selectedElement.id, { textAlign: "right" })}
-                >
-                  <IconAlignRight size={14} />
-                </button>
-
-                <div className="toolbar-divider" />
-
-                {/* Yazı Rengi: "Renk:" solda, renk kutusu sağında yan yana */}
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Renk:</span>
-                  <div
-                    className="color-swatch"
-                    style={{ background: selectedElement.color || "#000" }}
-                    title="Yazı Rengi"
-                  >
-                    <input
-                      type="color"
-                      value={selectedElement.color || "#000000"}
-                      onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Şekil Renkleri */}
-            {(selectedElement.type === "rect" || selectedElement.type === "ellipse") && (
-              <>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Dolgu:</span>
-                  <div
-                    className="color-swatch"
-                    style={{ background: selectedElement.backgroundColor || "transparent" }}
-                    title="Dolgu Rengi"
-                  >
-                    <input
-                      type="color"
-                      value={selectedElement.backgroundColor || "#ffffff"}
-                      onChange={(e) => updateElement(selectedElement.id, { backgroundColor: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
-                  <span className="toolbar-label" style={{ margin: 0, lineHeight: 1 }}>Kenar:</span>
-                  <div
-                    className="color-swatch"
-                    style={{ background: selectedElement.borderColor || "#000" }}
-                    title="Kenarlık Rengi"
-                  >
-                    <input
-                      type="color"
-                      value={selectedElement.borderColor || "#000000"}
-                      onChange={(e) => updateElement(selectedElement.id, { borderColor: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="toolbar-divider" />
-
-            {/* Hızlı Konum Hizalama Butonları */}
-            <button
-              className="tb-btn"
-              style={{ fontSize: 11, padding: "0 6px", height: 26 }}
-              title="Etiketin yatay ortasına hizala"
-              onClick={() => alignElement("center-h")}
-            >
-              ↔ Ortala
-            </button>
-            <button
-              className="tb-btn"
-              style={{ fontSize: 11, padding: "0 6px", height: 26 }}
-              title="Etiketin dikey ortasına hizala"
-              onClick={() => alignElement("center-v")}
-            >
-              ↕ Dikey Ortala
-            </button>
-            {(labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "dambil") && (
-              <button
-                className="tb-btn"
-                style={{ fontSize: 11, padding: "0 8px", height: 26, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}
-                title="Kuyruk şeridinin tam ortasına hizala"
-                onClick={() => alignElement("tail")}
-              >
-                🦴 Kuyruğa Ortala
-              </button>
-            )}
-          </div>
-        )}
 
       {/* ── Ana Editör Gövdesi ────────────────────────────────────────────── */}
       <div className="label-editor-body">
-        {/* ── Sol Panel (Çekmece: 4 Eşit Sütunlu Asla Çakışmayan Tablar) ─────── */}
-        <div className={`left-panel ${leftPanelOpen ? "open" : "collapsed"}`}>
-          {/* Mobil Başlık ve Kapat Butonu */}
-          <div className="panel-header-mobile">
-            <span>🎨 Bileşenler & Modeller</span>
-            <button
-              onClick={() => setLeftPanelOpen(false)}
-              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
-            >
-              <IconX size={18} />
-            </button>
+        {/* ── Canva Tarzı Sol Menü ve Açılır Panel (Canva Icon Rail & Drawer) ── */}
+        <div className="canva-sidebar-container">
+          {/* Sol Dikey İkon Şeridi */}
+          <div className="canva-icon-rail">
+            {[
+              { id: "templates", label: "Şablonlar", icon: <IconTemplate size={20} /> },
+              { id: "elements", label: "Bileşenler", icon: <IconShapes size={20} /> },
+              { id: "text", label: "Metin", icon: <IconTypography size={20} /> },
+              { id: "brand", label: "Marka", icon: <IconCrown size={20} /> },
+              { id: "barcode", label: "Barkod & QR", icon: <IconBarcode size={20} /> },
+              { id: "layers", label: "Katmanlar", icon: <IconLayersSubtract size={20} /> },
+              { id: "settings", label: "Ayarlar", icon: <IconSettings size={20} /> },
+            ].map((item) => {
+              const isActive = isCanvaDrawerOpen && canvaCategory === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`canva-rail-btn ${isActive ? "active" : ""}`}
+                  title={item.label}
+                  onClick={() => {
+                    if (canvaCategory === item.id && isCanvaDrawerOpen) {
+                      setIsCanvaDrawerOpen(false);
+                    } else {
+                      setCanvaCategory(item.id as any);
+                      setIsCanvaDrawerOpen(true);
+                    }
+                  }}
+                >
+                  <div className="rail-icon">{item.icon}</div>
+                  <span className="rail-label">{item.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* 4 Eşit Sütunlu Tab Başlıkları */}
-          <div className="left-panel-tabs">
-            {(
-              [
-                { key: "elements", label: "Öğeler", icon: <IconPlus size={13} /> },
-                { key: "shape", label: "Boyut", icon: <IconLayoutGrid size={13} /> },
-                { key: "layers", label: "Katman", icon: <IconLayersSubtract size={13} /> },
-                { key: "presets", label: "Şablon", icon: <IconBinoculars size={13} /> },
-              ] as const
-            ).map((tab) => (
-              <div
-                key={tab.key}
-                className={`left-panel-tab ${leftPanelTab === tab.key ? "active" : ""}`}
-                onClick={() => setLeftPanelTab(tab.key as any)}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
+          {/* Açılır Çekmece Panel */}
+          {isCanvaDrawerOpen && (
+            <div className="canva-drawer animate-fadein">
+              <div className="canva-drawer-header">
+                <div className="canva-drawer-title">
+                  {canvaCategory === "templates" && <><span>📂</span> Şablonlar</>}
+                  {canvaCategory === "elements" && <><span>🔷</span> Bileşenler & Şekiller</>}
+                  {canvaCategory === "text" && <><span>📝</span> Metin & Alanlar</>}
+                  {canvaCategory === "brand" && <><span>👑</span> Marka & Damgalar</>}
+                  {canvaCategory === "barcode" && <><span>📊</span> Barkod & QR</>}
+                  {canvaCategory === "layers" && <><span>📑</span> Katmanlar ({elements.length})</>}
+                  {canvaCategory === "settings" && <><span>⚙️</span> Etiket & Yazıcı Ayarları</>}
+                </div>
+                <button
+                  type="button"
+                  className="canva-drawer-close"
+                  title="Paneli Kapat"
+                  onClick={() => setIsCanvaDrawerOpen(false)}
+                >
+                  <IconX size={16} />
+                </button>
               </div>
-            ))}
-          </div>
 
-          {/* Tab İçerikleri */}
-          <div className="left-panel-content">
-            {/* ── 1. Öğeler Sekmesi (Sadeleştirilmiş & Akıcı Sürükle Bırak) ─── */}
-            {leftPanelTab === "elements" && (
-              <>
-                <div className="panel-section-title">
-                  <span>📝 Metin & Sayı</span>
-                  <span className="drag-hint-pill">Tıkla / Sürükle</span>
-                </div>
+              <div className="canva-drawer-content">
+                {/* ── 1. ŞABLONLAR KATEGORİSİ ── */}
+                {canvaCategory === "templates" && (
+                  <>
+                    <div className="panel-section-title">
+                      <span>📂 Şablon Ara & Keşfet</span>
+                    </div>
+                    <div style={{ marginBottom: 10 }}>
+                      <input
+                        type="text"
+                        className="toolbar-input"
+                        style={{ width: "100%", padding: "5px 8px", fontSize: 11.5 }}
+                        placeholder="Şablon veya model ara..."
+                        value={templateFilterQuery}
+                        onChange={(e) => setTemplateFilterQuery(e.target.value)}
+                      />
+                    </div>
 
-                {/* Serbest Metin */}
-                <button
-                  className="elem-btn"
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(
-                      "application/json",
-                      JSON.stringify({ type: "text", text: "Yeni Metin", fontSize: 8, color: "#000000", textAlign: "left", width: 22, height: 4.5 })
-                    );
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => addElement({ type: "text", text: "Yeni Metin", fontSize: 8, color: "#000000", textAlign: "left", width: 22, height: 4.5 })}
-                >
-                  <div className="elem-btn-icon"><IconTypography size={14} /></div>
-                  <div style={{ textAlign: "left", flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>Serbest Metin</div>
-                    <div style={{ fontSize: 9, color: "#94a3b8" }}>Sola hizalı metin</div>
-                  </div>
-                </button>
-
-                {/* Sayı Alanı (Sağa Dayalı - Sadece Sayı) */}
-                <button
-                  className="elem-btn"
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(
-                      "application/json",
-                      JSON.stringify({
-                        type: "text",
-                        isNumeric: true,
-                        text: "0.00",
-                        fontSize: 8.5,
-                        fontWeight: "bold",
-                        color: "#000000",
-                        textAlign: "right",
-                        width: 18,
-                        height: 4.5,
-                      })
-                    );
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() =>
-                    addElement({
-                      type: "text",
-                      isNumeric: true,
-                      text: "0.00",
-                      fontSize: 8.5,
-                      fontWeight: "bold",
-                      color: "#000000",
-                      textAlign: "right",
-                      width: 18,
-                      height: 4.5,
-                    })
-                  }
-                >
-                  <div className="elem-btn-icon" style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8" }}>#</div>
-                  <div style={{ textAlign: "left", flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>Sayı Alanı (Sağa Dayalı)</div>
-                    <div style={{ fontSize: 9, color: "#94a3b8" }}>Sadece sayı: Gram, Fiyat, Ayar vb.</div>
-                  </div>
-                </button>
-
-
-                {/* Görsel / Logo Kutusu */}
-                <button
-                  className="elem-btn"
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(
-                      "application/json",
-                      JSON.stringify({ type: "image", width: 16, height: 10, text: "Görsel" })
-                    );
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => addElement({ type: "image", width: 16, height: 10, text: "Görsel" })}
-                >
-                  <div className="elem-btn-icon"><IconPhoto size={14} color="#0284c7" /></div>
-                  <div style={{ textAlign: "left", flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>Görsel / Logo Kutusu</div>
-                    <div style={{ fontSize: 9, color: "#94a3b8" }}>Sürükle / Tıkla / Sağ Tık</div>
-                  </div>
-                </button>
-
-                <div className="panel-section-title">
-                  <span>📊 Barkodlar & Kodlar</span>
-                </div>
-
-                <button
-                  className="elem-btn"
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(
-                      "application/json",
-                      JSON.stringify({ type: "barcode", barcodeFormat: "CODE128", barcodeValue: "123456789", width: 28, height: 9 })
-                    );
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => addElement({ type: "barcode", barcodeFormat: "CODE128", barcodeValue: "123456789", width: 28, height: 9 })}
-                >
-                  <div className="elem-btn-icon"><IconBarcode size={14} /></div>
-                  <span>Barkod (Code128)</span>
-                </button>
-
-                <button
-                  className="elem-btn"
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(
-                      "application/json",
-                      JSON.stringify({ type: "qr", barcodeFormat: "QR", barcodeValue: "QR", width: 14, height: 14 })
-                    );
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => addElement({ type: "qr", barcodeFormat: "QR", barcodeValue: "QR", width: 14, height: 14 })}
-                >
-                  <div className="elem-btn-icon"><IconQrcode size={14} /></div>
-                  <span>QR Kod</span>
-                </button>
-
-                <button
-                  className="elem-btn"
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(
-                      "application/json",
-                      JSON.stringify({ type: "rfid", barcodeFormat: "RFID", barcodeValue: "RFID", width: 20, height: 8 })
-                    );
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => addElement({ type: "rfid", barcodeFormat: "RFID", barcodeValue: "RFID", width: 20, height: 8 })}
-                >
-                  <div className="elem-btn-icon"><IconWifi size={14} /></div>
-                  <span>RFID / EPC Alanı</span>
-                </button>
-
-                <div className="panel-section-title">
-                  <span>🔷 Çizgiler & Şekiller ({SHAPE_PRESETS.length})</span>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                  {SHAPE_PRESETS.map((s) => {
-                    const shapeData = {
-                      type: s.type,
-                      backgroundColor: "transparent",
-                      borderColor: "#000000",
-                      borderWidth: 1,
-                      width: s.w,
-                      height: s.h,
-                    };
-                    return (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
                       <button
-                        key={s.type}
                         className="elem-btn"
-                        style={{ padding: "6px 7px", fontSize: 10 }}
-                        draggable={true}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("application/json", JSON.stringify(shapeData));
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onClick={() => addElement(shapeData as any)}
+                        style={{ flex: 1, padding: "7px 8px", background: "rgba(56, 189, 248, 0.12)", borderColor: "rgba(56, 189, 248, 0.4)", color: "#0284c7" }}
+                        onClick={() => setDurbunModal(true)}
                       >
-                        <div className="elem-btn-icon" style={{ fontSize: 11, minWidth: 18 }}>{s.icon}</div>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
+                        <IconBinoculars size={14} color="#0284c7" />
+                        <span style={{ fontWeight: 700, fontSize: 11 }}>Kayıtlı Şablonlar</span>
                       </button>
-                    );
-                  })}
-                </div>
-
-                <div className="panel-section-title">⭐ Kuyumcu İkonları</div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                  {ICON_PRESETS.map((ic) => {
-                    const iconData = { type: "icon", iconName: ic.name, iconEmoji: ic.emoji, width: 8, height: 8 };
-                    return (
                       <button
-                        key={ic.name}
                         className="elem-btn"
-                        style={{ justifyContent: "center", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" }}
-                        draggable={true}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("application/json", JSON.stringify(iconData));
-                          e.dataTransfer.effectAllowed = "copy";
+                        style={{ flex: 1, padding: "7px 8px" }}
+                        onClick={() => {
+                          if (confirm("Yeni bir tasarıma başlamak istiyor musunuz?")) {
+                            dispatch({ type: "SET_ELEMENTS", elements: [] });
+                            setActiveSablon(null);
+                            setSablonAdi("");
+                            setShapeModalOpen(true);
+                          }
                         }}
-                        onClick={() => addElement(iconData as any)}
                       >
-                        <span style={{ fontSize: 16 }}>{ic.emoji}</span>
-                        <span style={{ fontSize: 9 }}>{ic.label}</span>
+                        <IconPlus size={14} />
+                        <span style={{ fontWeight: 600, fontSize: 11 }}>+ Yeni Tasarım</span>
                       </button>
-                    );
-                  })}
-                </div>
+                    </div>
 
-                {/* 📷 Fotoğraf, Logo & Barkod Görselleri */}
-                <div className="panel-section-title" style={{ marginTop: 12 }}>
-                  <span>📷 Fotoğraf & Logo Yükle</span>
-                </div>
+                    <div className="panel-section-title">
+                      <span>⭐ Sektörel Hazır Şablonlar ({BUILTIN_TEMPLATES.length})</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+                      {BUILTIN_TEMPLATES
+                        .filter((tmpl) => !templateFilterQuery || tmpl.ad.toLowerCase().includes(templateFilterQuery.toLowerCase()) || tmpl.kategori.toLowerCase().includes(templateFilterQuery.toLowerCase()))
+                        .map((tmpl) => (
+                          <div
+                            key={tmpl.id}
+                            className="elem-btn"
+                            style={{
+                              flexDirection: "column",
+                              alignItems: "stretch",
+                              padding: "8px 10px",
+                              gap: 4,
+                              cursor: "pointer",
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 6,
+                            }}
+                            onClick={() => {
+                              updateLabelConfig(tmpl.config, false);
+                              const newElements = tmpl.elements.map((el, i) => ({
+                                id: genId(),
+                                type: el.type,
+                                x: el.x,
+                                y: el.y,
+                                width: el.width,
+                                height: el.height,
+                                rotation: el.rotation || 0,
+                                text: el.text || "",
+                                fieldKey: el.fieldKey,
+                                barcodeFormat: el.barcodeFormat,
+                                barcodeValue: el.barcodeValue,
+                                imageData: el.imageData,
+                                fontSize: el.fontSize || 8,
+                                fontWeight: el.fontWeight || "normal",
+                                fontStyle: el.fontStyle || "normal",
+                                textDecoration: el.textDecoration || "none",
+                                color: el.color || "#000000",
+                                textAlign: el.textAlign || "left",
+                                fontFamily: "Arial",
+                                zIndex: i + 1,
+                                visible: true,
+                                locked: false,
+                              }));
+                              dispatch({ type: "SET_ELEMENTS", elements: newElements as any });
+                              setSelectedIds([]);
+                              setSablonAdi("");
+                              setActiveSablon(null);
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontSize: 16 }}>{tmpl.icon}</span>
+                                <span style={{ fontWeight: 700, fontSize: 11.5, color: "#0f172a" }}>{tmpl.ad}</span>
+                              </div>
+                              <span style={{ fontSize: 8.5, background: "rgba(56,189,248,0.15)", color: "#0369a1", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>
+                                {tmpl.kategori}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 9.5, color: "#64748b", lineHeight: 1.25 }}>{tmpl.aciklama}</div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 9, color: "#94a3b8", marginTop: 3 }}>
+                              <span>{tmpl.config.genislikMm}×{tmpl.config.yukseklikMm} mm ({tmpl.elements.length} alan)</span>
+                              <span style={{ color: "#059669", fontWeight: 700 }}>Tıkla ve Yükle →</span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
 
-                <input
-                  type="file"
-                  ref={imageInputRef}
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  style={{ display: "none" }}
-                />
+                    <div className="panel-section-title">
+                      <span>💾 Kayıtlı Şablonlarınız ({sablonlar.length})</span>
+                    </div>
+                    {loading ? (
+                      <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>Yükleniyor...</div>
+                    ) : sablonlar.length === 0 ? (
+                      <div style={{ fontSize: 10.5, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>Henüz kayıtlı şablon bulunmuyor.</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {sablonlar
+                          .filter((s) => !templateFilterQuery || (s.ad || "").toLowerCase().includes(templateFilterQuery.toLowerCase()))
+                          .map((s) => (
+                            <div
+                              key={s.etiketSablonId}
+                              className="elem-btn"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                padding: "6px 8px",
+                                background: activeSablon?.etiketSablonId === s.etiketSablonId ? "#ecfdf5" : "#f8fafc",
+                                borderColor: activeSablon?.etiketSablonId === s.etiketSablonId ? "#10b981" : "#e2e8f0",
+                                cursor: "pointer",
+                              }}
+                              onClick={() => handleLoadSablon(s)}
+                            >
+                              <div style={{ textAlign: "left", flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: 11, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {s.ad}
+                                </div>
+                                <div style={{ fontSize: 9, color: "#64748b" }}>
+                                  {s.genislikMm}×{s.yukseklikMm} mm • {s.etiketSekli}
+                                </div>
+                              </div>
+                              <button
+                                style={{ background: "none", border: "none", color: "#ef4444", padding: "2px 6px", cursor: "pointer" }}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`"${s.ad}" şablonunu silmek istediğinize emin misiniz?`)) {
+                                    try {
+                                      await EtiketService.deleteSablon(s.etiketSablonId);
+                                      if (activeSablon?.etiketSablonId === s.etiketSablonId) {
+                                        setActiveSablon(null);
+                                        setSablonAdi("");
+                                      }
+                                      loadSablonlarList();
+                                    } catch (err: any) {
+                                      alert("Şablon silinemedi: " + (err?.message || ""));
+                                    }
+                                  }
+                                }}
+                                title="Şablonu Sil"
+                              >
+                                <IconTrash size={12} />
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </>
+                )}
 
-                <button
-                  className="elem-btn"
-                  style={{
-                    background: "linear-gradient(135deg, rgba(14,165,233,0.15), rgba(99,102,241,0.15))",
-                    borderColor: "rgba(56,189,248,0.4)",
-                    color: "#38bdf8",
-                    padding: "8px 10px",
-                    width: "100%",
-                  }}
-                  onClick={() => imageInputRef.current?.click()}
-                >
-                  <div className="elem-btn-icon"><IconUpload size={16} color="#38bdf8" /></div>
-                  <div style={{ textAlign: "left", flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 11.5 }}>Fotoğraf / Logo Seç</div>
-                    <div style={{ fontSize: 9, color: "#94a3b8" }}>PNG, JPG, SVG veya Barkod Fotoğrafı</div>
-                  </div>
-                </button>
+                {/* ── 2. BİLEŞENLER & ŞEKİLLER KATEGORİSİ ── */}
+                {canvaCategory === "elements" && (
+                  <>
+                    <div className="panel-section-title">
+                      <span>🔷 Geometrik Şekiller</span>
+                      <span className="drag-hint-pill">Tıkla / Sürükle</span>
+                    </div>
+                    <div className="shapes-grid" style={{ marginBottom: 14 }}>
+                      {SHAPE_PRESETS.map((s) => {
+                        const shapeData = {
+                          type: s.type,
+                          backgroundColor: "transparent",
+                          borderColor: "#000000",
+                          borderWidth: 1,
+                          width: s.w,
+                          height: s.h,
+                        };
+                        return (
+                          <button
+                            key={s.type}
+                            className="shape-item-btn"
+                            draggable={true}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("application/json", JSON.stringify(shapeData));
+                              e.dataTransfer.effectAllowed = "copy";
+                            }}
+                            onClick={() => addElement(shapeData as any)}
+                          >
+                            <span className="shape-item-icon">{s.icon}</span>
+                            <span className="shape-item-label">{s.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                <input
-                  type="file"
-                  ref={logoUploadInputRef}
-                  accept="image/*,.svg"
-                  onChange={handleUploadDbLogo}
-                  style={{ display: "none" }}
-                />
+                    <div className="panel-section-title">
+                      <span>⭐ Kuyumcu İkonları & Semboller</span>
+                    </div>
+                    <div className="icons-grid" style={{ marginBottom: 14 }}>
+                      {ICON_PRESETS.map((ic) => {
+                        const iconData = { type: "icon", iconName: ic.name, iconEmoji: ic.emoji, width: 8, height: 8 };
+                        return (
+                          <button
+                            key={ic.name}
+                            className="icon-item-btn"
+                            draggable={true}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("application/json", JSON.stringify(iconData));
+                              e.dataTransfer.effectAllowed = "copy";
+                            }}
+                            onClick={() => addElement(iconData as any)}
+                          >
+                            <span className="icon-item-emoji">{ic.emoji}</span>
+                            <span className="icon-item-label">{ic.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    margin: "12px 0 6px",
-                  }}
-                >
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Sektörel Damga & Logo Hazırları
-                  </span>
-                  <button
-                    className="btn btn-xs btn-outline-info"
-                    style={{
-                      fontSize: 9.5,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      fontWeight: 600,
-                    }}
-                    onClick={() => logoUploadInputRef.current?.click()}
-                    title="Veritabanına yeni damga/logo yükle (TODVZ_FOTOGRAF: Tip 9)"
-                  >
-                    <IconUpload size={11} />
-                    <span>+ Yükle</span>
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      className="elem-btn"
+                      style={{
+                        width: "100%",
+                        background: "#f0fdf4",
+                        borderColor: "#86efac",
+                        color: "#166534",
+                        padding: "8px 10px",
+                        marginTop: 6,
+                      }}
+                      onClick={() => setShapeModalOpen(true)}
+                    >
+                      <div className="elem-btn-icon"><IconShapes size={15} color="#166534" /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 11.5 }}>📐 Boyut & Model Modalı</div>
+                        <div style={{ fontSize: 9, color: "#4b5563" }}>Kelebek, Kuyruklu, Dambıl ölçüleri</div>
+                      </div>
+                    </button>
+                  </>
+                )}
 
-                {/* ── 1. Veritabanına Kayıtlı Kullanıcı Damgaları & Logoları (URUN_TIPI = 9) ── */}
-                {loadingDbLogolar ? (
-                  <div style={{ fontSize: 10, color: "#94a3b8", padding: "6px 4px", textAlign: "center" }}>
-                    Logolar yükleniyor...
-                  </div>
-                ) : dbLogolar.length > 0 ? (
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, color: "#38bdf8", fontWeight: 600, marginBottom: 4 }}>
-                      🏷️ Kayıtlı Logolar ({dbLogolar.length}):
+                {/* ── 3. METİN & VERİTABANI KATEGORİSİ ── */}
+                {canvaCategory === "text" && (
+                  <>
+                    <div className="panel-section-title">
+                      <span>📝 Metin & Sayı Alanları</span>
+                      <span className="drag-hint-pill">Tıkla / Sürükle</span>
+                    </div>
+
+                    {/* Serbest Metin */}
+                    <button
+                      className="elem-btn"
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({ type: "text", text: "Yeni Metin", fontSize: 8, color: "#000000", textAlign: "left", width: 22, height: 4.5 })
+                        );
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => addElement({ type: "text", text: "Yeni Metin", fontSize: 8, color: "#000000", textAlign: "left", width: 22, height: 4.5 })}
+                    >
+                      <div className="elem-btn-icon"><IconTypography size={14} /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>Serbest Metin</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>Sola hizalı açıklama metni</div>
+                      </div>
+                    </button>
+
+                    {/* Sayı Alanı */}
+                    <button
+                      className="elem-btn"
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({
+                            type: "text",
+                            isNumeric: true,
+                            text: "0.00",
+                            fontSize: 8.5,
+                            fontWeight: "bold",
+                            color: "#000000",
+                            textAlign: "right",
+                            width: 18,
+                            height: 4.5,
+                          })
+                        );
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() =>
+                        addElement({
+                          type: "text",
+                          isNumeric: true,
+                          text: "0.00",
+                          fontSize: 8.5,
+                          fontWeight: "bold",
+                          color: "#000000",
+                          textAlign: "right",
+                          width: 18,
+                          height: 4.5,
+                        })
+                      }
+                    >
+                      <div className="elem-btn-icon" style={{ fontSize: 13, fontWeight: 700, color: "#0284c7" }}>#</div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>Sayı Alanı (Sağa Dayalı)</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>Gram, Fiyat, Sayı değerleri</div>
+                      </div>
+                    </button>
+
+                    {/* Veritabanı ERP Alanı Ekle Modalı */}
+                    <button
+                      className="elem-btn"
+                      style={{
+                        background: "rgba(56, 189, 248, 0.12)",
+                        borderColor: "rgba(56, 189, 248, 0.4)",
+                        color: "#0284c7",
+                        padding: "7px 10px",
+                        marginTop: 4,
+                      }}
+                      onClick={() => setFieldsModalOpen(true)}
+                    >
+                      <div className="elem-btn-icon"><IconDatabase size={14} color="#0284c7" /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 700, color: "#0284c7" }}>+ ERP / Veritabanı Alanı Seç</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>Gram, Ayar, Fiyat, Barkod, RFID</div>
+                      </div>
+                    </button>
+
+                    <div className="panel-section-title" style={{ marginTop: 14 }}>
+                      <span>⚡ Hızlı Veri Alanları (Tek Tık)</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+                      {[
+                        { key: "URUN_ADI", label: "Ürün Adı", sample: "Tektaş Yüzük", w: 25, h: 4.5 },
+                        { key: "BARKOD", label: "Barkod No", sample: "86900012345", w: 22, h: 4.5 },
+                        { key: "GRAM", label: "Gram", sample: "4.85 gr", w: 16, h: 4.5, isNumeric: true },
+                        { key: "AYAR", label: "Ayar", sample: "14K", w: 12, h: 4.5 },
+                        { key: "FIYAT", label: "Satış Fiyatı", sample: "12.500 ₺", w: 20, h: 4.5, isNumeric: true },
+                        { key: "TARIH", label: "Tarih", sample: "25.09.2026", w: 18, h: 4 },
+                        { key: "MILYEM", label: "Milyem", sample: "585", w: 12, h: 4.5 },
+                        { key: "OZEL_KOD", label: "Özel Kod", sample: "YZ-001", w: 16, h: 4 },
+                      ].map((f) => (
+                        <button
+                          key={f.key}
+                          className="elem-btn"
+                          style={{ padding: "5px 6px", fontSize: 10, justifyContent: "flex-start", gap: 5 }}
+                          onClick={() =>
+                            addElement({
+                              type: "field",
+                              fieldKey: f.key,
+                              text: f.sample,
+                              fontSize: 8,
+                              fontWeight: "bold",
+                              color: "#000000",
+                              textAlign: f.isNumeric ? "right" : "left",
+                              width: f.w,
+                              height: f.h,
+                            })
+                          }
+                        >
+                          <span style={{ fontSize: 11 }}>🏷️</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* ── 4. MARKA & DAMGALAR KATEGORİSİ ── */}
+                {canvaCategory === "brand" && (
+                  <>
+                    <div className="panel-section-title">
+                      <span>📷 Fotoğraf & Logo Yükle</span>
+                    </div>
+                    <input
+                      type="file"
+                      ref={imageInputRef}
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      className="elem-btn"
+                      style={{
+                        background: "linear-gradient(135deg, rgba(14,165,233,0.12), rgba(99,102,241,0.12))",
+                        borderColor: "rgba(56,189,248,0.4)",
+                        color: "#0284c7",
+                        padding: "8px 10px",
+                        width: "100%",
+                      }}
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      <div className="elem-btn-icon"><IconUpload size={16} color="#0284c7" /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 11.5 }}>Fotoğraf / Logo Seç</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>PNG, JPG, SVG veya Damga Görseli</div>
+                      </div>
+                    </button>
+
+                    <input
+                      type="file"
+                      ref={logoUploadInputRef}
+                      accept="image/*,.svg"
+                      onChange={handleUploadDbLogo}
+                      style={{ display: "none" }}
+                    />
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0 6px" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        Kayıtlı Damgalar & Logolar
+                      </span>
+                      <button
+                        className="btn btn-xs btn-outline-info"
+                        style={{ fontSize: 9.5, padding: "2px 8px", borderRadius: 4, display: "flex", alignItems: "center", gap: 4, fontWeight: 600 }}
+                        onClick={() => logoUploadInputRef.current?.click()}
+                        title="Veritabanına yeni damga/logo yükle"
+                      >
+                        <IconUpload size={11} />
+                        <span>+ Yükle</span>
+                      </button>
+                    </div>
+
+                    {loadingDbLogolar ? (
+                      <div style={{ fontSize: 10, color: "#94a3b8", padding: "6px 4px", textAlign: "center" }}>Logolar yükleniyor...</div>
+                    ) : dbLogolar.length > 0 ? (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                          {dbLogolar.map((lg) => {
+                            const logoData = {
+                              type: "image",
+                              imageData: lg.dataUrl,
+                              width: 14,
+                              height: 8,
+                              text: lg.dosyaAdi,
+                            };
+                            return (
+                              <div
+                                key={lg.fotografId}
+                                className="elem-btn"
+                                style={{ position: "relative", padding: "5px 6px", fontSize: 9.5, gap: 5, cursor: "pointer" }}
+                                draggable={true}
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("application/json", JSON.stringify(logoData));
+                                  e.dataTransfer.effectAllowed = "copy";
+                                }}
+                                onClick={() => addElement(logoData as any)}
+                                title={`${lg.dosyaAdi} (Kayıtlı Logo)`}
+                              >
+                                <img src={lg.dataUrl} alt={lg.dosyaAdi} style={{ width: 18, height: 14, objectFit: "contain", flexShrink: 0, borderRadius: 2 }} />
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
+                                  {lg.dosyaAdi}
+                                </span>
+                                <button
+                                  style={{ background: "none", border: "none", color: "#ef4444", padding: "0 2px", cursor: "pointer", fontSize: 12, lineHeight: 1 }}
+                                  onClick={(e) => handleDeleteDbLogo(lg.fotografId, e)}
+                                  title="Bu logoyu veritabanından sil"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", margin: "10px 0 6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      ⭐ Standart Altın / Gümüş Damgaları:
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                      {dbLogolar.map((lg) => {
+                      {JEWELRY_LOGOS.map((lg) => {
                         const logoData = {
                           type: "image",
                           imageData: lg.dataUrl,
                           width: 14,
                           height: 8,
-                          text: lg.dosyaAdi,
+                          text: lg.name,
                         };
                         return (
-                          <div
-                            key={lg.fotografId}
+                          <button
+                            key={lg.id}
                             className="elem-btn"
-                            style={{
-                              position: "relative",
-                              padding: "5px 6px",
-                              fontSize: 9.5,
-                              gap: 5,
-                              cursor: "pointer",
-                            }}
+                            style={{ padding: "5px 6px", fontSize: 9.5, gap: 5 }}
                             draggable={true}
                             onDragStart={(e) => {
                               e.dataTransfer.setData("application/json", JSON.stringify(logoData));
                               e.dataTransfer.effectAllowed = "copy";
                             }}
                             onClick={() => addElement(logoData as any)}
-                            title={`${lg.dosyaAdi} (Kayıtlı Logo)`}
+                            title={lg.name}
                           >
-                            <img
-                              src={lg.dataUrl}
-                              alt={lg.dosyaAdi}
-                              style={{ width: 18, height: 14, objectFit: "contain", flexShrink: 0, borderRadius: 2 }}
-                            />
-                            <span
-                              style={{
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                flex: 1,
-                                textAlign: "left",
-                              }}
-                            >
-                              {lg.dosyaAdi}
+                            <img src={lg.dataUrl} alt={lg.name} style={{ width: 18, height: 14, objectFit: "contain", flexShrink: 0, borderRadius: 2 }} />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {lg.name}
                             </span>
-                            <button
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#ef4444",
-                                padding: "0 2px",
-                                cursor: "pointer",
-                                fontSize: 12,
-                                lineHeight: 1,
-                                opacity: 0.7,
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                              onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
-                              onClick={(e) => handleDeleteDbLogo(lg.fotografId, e)}
-                              title="Bu logoyu veritabanından sil"
-                            >
-                              ✕
-                            </button>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
-                  </div>
-                ) : null}
+                  </>
+                )}
 
-                {/* ── 2. Sektörel Standart Damgalar ── */}
-                <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, margin: "6px 0 4px" }}>
-                  ⭐ Sektörel Standart Hazırlar:
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                  {JEWELRY_LOGOS.map((lg) => {
-                    const logoData = {
-                      type: "image",
-                      imageData: lg.dataUrl,
-                      width: 14,
-                      height: 8,
-                      text: lg.name,
-                    };
-                    return (
-                      <button
-                        key={lg.id}
-                        className="elem-btn"
-                        style={{ padding: "5px 6px", fontSize: 9.5, gap: 5 }}
-                        draggable={true}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("application/json", JSON.stringify(logoData));
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onClick={() => addElement(logoData as any)}
-                        title={lg.name}
-                      >
-                        <img
-                          src={lg.dataUrl}
-                          alt={lg.name}
-                          style={{ width: 18, height: 14, objectFit: "contain", flexShrink: 0, borderRadius: 2 }}
-                        />
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {lg.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-              </>
-            )}
-
-            {/* ── 2. Şekil & Boyut Sekmesi (Kart Boyutu Düzenleme) ──────────── */}
-            {leftPanelTab === "shape" && (
-              <>
-                <div className="panel-section-title">Etiket Şekli / Modeli</div>
-
-                {ETIKET_SEKILLERI.map((s) => (
-                  <button
-                    key={s.value}
-                    className="elem-btn"
-                    style={{
-                      background: labelConfig.etiketSekli === s.value ? "rgba(56,189,248,0.2)" : undefined,
-                      borderColor: labelConfig.etiketSekli === s.value ? "#38bdf8" : undefined,
-                      color: labelConfig.etiketSekli === s.value ? "#38bdf8" : undefined,
-                    }}
-                    onClick={() => {
-                      if ((s.value === "bogumlukuyruk" || s.value === "bogumlukuyrukkeskin") && labelConfig.etiketSekli !== s.value) {
-                        // Otomatik şablon: sol boğum ve sağ boğum eşit, kuyruk ayrı girilir
-                        updateLabelConfig({
-                          etiketSekli: s.value,
-                          solKanatMm: 30,
-                          sagKanatMm: 30,
-                          kopruGenislikMm: 8,
-                          bogumDerinlikMm: 2,
-                          kuyrukGenislikMm: 15,
-                          kuyrukKalinlikMm: 4,
-                          genislikMm: 75,
-                          yukseklikMm: labelConfig.yukseklikMm >= 8 ? labelConfig.yukseklikMm : 20,
-                          koseYuvarlikligiMm: s.value === "bogumlukuyrukkeskin" ? 0 : 3,
-                        });
-                      } else {
-                        updateLabelConfig({ etiketSekli: s.value });
-                      }
-                    }}
-                  >
-                    <div className="elem-btn-icon" style={{ fontSize: 14 }}>{s.icon}</div>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{s.ad}</div>
-                      <div style={{ fontSize: 9.5, color: "#94a3b8" }}>{s.desc}</div>
-                    </div>
-                  </button>
-                ))}
-
-                <div className="panel-section-title" style={{ marginTop: 12 }}>
-                  <span>⚡ Popüler Hazır Boyutlar</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 8 }}>
-                  {POPULAR_SIZES.map((ps) => (
-                    <button
-                      key={ps.ad}
-                      className="tb-btn"
-                      style={{
-                        background: labelConfig.genislikMm === ps.config.genislikMm && labelConfig.yukseklikMm === ps.config.yukseklikMm && labelConfig.etiketSekli === ps.config.etiketSekli ? "rgba(56,189,248,0.2)" : "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        color: labelConfig.genislikMm === ps.config.genislikMm && labelConfig.yukseklikMm === ps.config.yukseklikMm ? "#38bdf8" : "#cbd5e1",
-                        fontSize: 10,
-                        padding: "4px 6px",
-                        height: "auto",
-                        justifyContent: "flex-start",
-                        borderRadius: 5,
-                      }}
-                      onClick={() => updateLabelConfig(ps.config)}
-                    >
-                      <span>{ps.icon}</span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ps.ad}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="panel-section-title" style={{ marginTop: 8 }}>
-                  <span>Kart / Etiket Boyutları</span>
-                </div>
-
-                <div className="prop-row">
-                  <span className="prop-label">Toplam En:</span>
-                  <button
-                    className="tb-btn"
-                    style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                    onClick={() => updateLabelConfig({ genislikMm: Math.max(5, labelConfig.genislikMm - 1) })}
-                  >
-                    -
-                  </button>
-                  <input
-                    type="number"
-                    className="prop-input"
-                    key={`en-boyut-${labelConfig.genislikMm}`}
-                    defaultValue={labelConfig.genislikMm}
-                    min={5}
-                    max={300}
-                    step={0.5}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
-                      else e.target.value = String(labelConfig.genislikMm);
-                    }}
-                  />
-                  <button
-                    className="tb-btn"
-                    style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                    onClick={() => updateLabelConfig({ genislikMm: Math.min(300, labelConfig.genislikMm + 1) })}
-                  >
-                    +
-                  </button>
-                  <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                </div>
-
-                <div className="prop-row">
-                  <span className="prop-label">Toplam Boy:</span>
-                  <button
-                    className="tb-btn"
-                    style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                    onClick={() => updateLabelConfig({ yukseklikMm: Math.max(3, labelConfig.yukseklikMm - 1) })}
-                  >
-                    -
-                  </button>
-                  <input
-                    type="number"
-                    className="prop-input"
-                    key={`boy-boyut-${labelConfig.yukseklikMm}`}
-                    defaultValue={labelConfig.yukseklikMm}
-                    min={3}
-                    max={200}
-                    step={0.5}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
-                      else e.target.value = String(labelConfig.yukseklikMm);
-                    }}
-                  />
-                  <button
-                    className="tb-btn"
-                    style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                    onClick={() => updateLabelConfig({ yukseklikMm: Math.min(200, labelConfig.yukseklikMm + 1) })}
-                  >
-                    +
-                  </button>
-                  <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                </div>
-
-                {/* Kelebek & Dambıl & Boğumlu Kuyruk Boğum / Çentik Detayları */}
-                {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "dambil" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
+                {/* ── 5. BARKOD & QR KATEGORİSİ ── */}
+                {canvaCategory === "barcode" && (
                   <>
-                    <div className="panel-section-title" style={{ marginTop: 10 }}>
-                      <span>🏷️ Boğum & Çentik Ayarları</span>
-                    </div>
-                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 6, lineHeight: 1.3 }}>
-                      Yazıcı rulo kağıdına göre boğum derinliği (Standart: 1.5 - 2.5 mm, Düz: 0 mm)
+                    <div className="panel-section-title">
+                      <span>📊 Barkod & Kodlar</span>
+                      <span className="drag-hint-pill">Tıkla / Sürükle</span>
                     </div>
 
-                    <div className="prop-row">
-                      <span className="prop-label" style={{ width: 95 }}>Boğum Derinlik:</span>
-                      <button
-                        className="tb-btn"
-                        style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                        onClick={() => updateLabelConfig({ bogumDerinlikMm: Math.max(0, Math.round(((labelConfig.bogumDerinlikMm ?? 2) - 0.5) * 10) / 10) })}
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`bogum-derinlik-boyut-${labelConfig.bogumDerinlikMm}`}
-                        defaultValue={labelConfig.bogumDerinlikMm ?? 2.0}
-                        min={0}
-                        max={10}
-                        step={0.5}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v >= 0) updateBogumDerinlik(v);
-                          else e.target.value = String(labelConfig.bogumDerinlikMm ?? 2.0);
-                        }}
-                      />
-                      <button
-                        className="tb-btn"
-                        style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                        onClick={() => updateBogumDerinlik(Math.min(10, Math.round(((labelConfig.bogumDerinlikMm ?? 2) + 0.5) * 10) / 10))}
-                      >
-                        +
-                      </button>
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                    <button
+                      className="elem-btn"
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({ type: "barcode", barcodeFormat: "CODE128", barcodeValue: "123456789", width: 28, height: 9 })
+                        );
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => addElement({ type: "barcode", barcodeFormat: "CODE128", barcodeValue: "123456789", width: 28, height: 9 })}
+                    >
+                      <div className="elem-btn-icon"><IconBarcode size={14} /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>Barkod (Code128)</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>Kuyumcu ve Sarrafiye standardı</div>
+                      </div>
+                    </button>
+
+                    <button
+                      className="elem-btn"
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({ type: "barcode", barcodeFormat: "EAN13", barcodeValue: "8691234567890", width: 28, height: 9 })
+                        );
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => addElement({ type: "barcode", barcodeFormat: "EAN13", barcodeValue: "8691234567890", width: 28, height: 9 })}
+                    >
+                      <div className="elem-btn-icon"><IconBarcode size={14} /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>Barkod (EAN-13)</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>13 Haneli Uluslararası Barkod</div>
+                      </div>
+                    </button>
+
+                    <button
+                      className="elem-btn"
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({ type: "qr", barcodeFormat: "QR", barcodeValue: "QR", width: 14, height: 14 })
+                        );
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => addElement({ type: "qr", barcodeFormat: "QR", barcodeValue: "QR", width: 14, height: 14 })}
+                    >
+                      <div className="elem-btn-icon"><IconQrcode size={14} /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>QR Kod</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>Karekod link veya ürün verisi</div>
+                      </div>
+                    </button>
+
+                    <button
+                      className="elem-btn"
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({ type: "rfid", barcodeFormat: "RFID", barcodeValue: "RFID", width: 20, height: 8 })
+                        );
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => addElement({ type: "rfid", barcodeFormat: "RFID", barcodeValue: "RFID", width: 20, height: 8 })}
+                    >
+                      <div className="elem-btn-icon"><IconWifi size={14} /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>RFID / EPC Alanı</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>Radyo frekanslı çipli etiket</div>
+                      </div>
+                    </button>
+                  </>
+                )}
+
+                {/* ── 6. KATMANLAR KATEGORİSİ ── */}
+                {canvaCategory === "layers" && (
+                  <>
+                    <div className="panel-section-title">
+                      <span>Katman Sırası ({elements.length} nesne)</span>
                     </div>
 
-                    <div className="prop-row">
-                      <span className="prop-label" style={{ width: 95 }}>Köprü Genişlik:</span>
-                      <button
-                        className="tb-btn"
-                        style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                        onClick={() => updateLabelConfig({ kopruGenislikMm: Math.max(2, Math.round((labelConfig.kopruGenislikMm - 0.5) * 10) / 10) })}
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`kopru-genislik-boyut-${labelConfig.kopruGenislikMm}`}
-                        defaultValue={labelConfig.kopruGenislikMm}
-                        min={2}
-                        max={40}
-                        step={0.5}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
-                          else e.target.value = String(labelConfig.kopruGenislikMm);
-                        }}
-                      />
-                      <button
-                        className="tb-btn"
-                        style={{ width: 22, height: 26, padding: 0, fontSize: 13, fontWeight: 700, background: "#0f172a", border: "1px solid #334155" }}
-                        onClick={() => updateLabelConfig({ kopruGenislikMm: Math.min(40, Math.round((labelConfig.kopruGenislikMm + 0.5) * 10) / 10) })}
-                      >
-                        +
-                      </button>
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                    </div>
-
-                    {labelConfig.etiketSekli === "kelebek" && (
-                      <div className="prop-row">
-                        <span className="prop-label" style={{ width: 95 }}>Sol Kanat:</span>
-                        <input
-                          type="number"
-                          className="prop-input"
-                          key={`sol-kanat-boyut-${labelConfig.solKanatMm}`}
-                          defaultValue={labelConfig.solKanatMm}
-                          min={5}
-                          max={labelConfig.genislikMm - 5}
-                          step={0.5}
-                          onFocus={(e) => e.target.select()}
-                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                          onBlur={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (!isNaN(v) && v > 0) updateLabelConfig({ solKanatMm: v });
-                            else e.target.value = String(labelConfig.solKanatMm);
-                          }}
-                        />
-                        <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                    {elements.length === 0 && (
+                      <div style={{ color: "#64748b", fontSize: 11.5, textAlign: "center", padding: "20px 0" }}>
+                        Tuvalde henüz nesne yok
                       </div>
                     )}
+
+                    {[...elements].sort((a, b) => b.zIndex - a.zIndex).map((el) => (
+                      <div
+                        key={el.id}
+                        className={`layer-item ${selectedIds.includes(el.id) ? "selected" : ""}`}
+                        onClick={(e) => {
+                          if (e.shiftKey) {
+                            setSelectedIds((prev) =>
+                              prev.includes(el.id) ? prev.filter((x) => x !== el.id) : [...prev, el.id]
+                            );
+                          } else {
+                            setSelectedIds([el.id]);
+                          }
+                        }}
+                      >
+                        <IconGripVertical size={11} style={{ color: "#64748b", flexShrink: 0 }} />
+                        <span style={{ flex: 1, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {el.type === "field" ? (el.text || el.fieldKey || "Alan") : el.type === "text" ? el.text : el.type}
+                        </span>
+                        <button
+                          className={`layer-icon-btn ${el.visible ? "active" : ""}`}
+                          title="Görünürlük"
+                          onClick={(e) => { e.stopPropagation(); updateElement(el.id, { visible: !el.visible }); }}
+                        >
+                          {el.visible ? <IconEye size={12} /> : <IconEyeOff size={12} />}
+                        </button>
+                        <button
+                          className={`layer-icon-btn ${el.locked ? "active" : ""}`}
+                          title="Kilitle"
+                          onClick={(e) => { e.stopPropagation(); updateElement(el.id, { locked: !el.locked }); }}
+                        >
+                          {el.locked ? <IconLock size={12} /> : <IconLockOpen size={12} />}
+                        </button>
+                        <button
+                          className="layer-icon-btn"
+                          title="Sil"
+                          style={{ color: "#f87171" }}
+                          onClick={(e) => { e.stopPropagation(); dispatch({ type: "DELETE_ELEMENTS", ids: [el.id] }); setSelectedIds((p) => p.filter((x) => x !== el.id)); }}
+                        >
+                          <IconTrash size={11} />
+                        </button>
+                      </div>
+                    ))}
                   </>
                 )}
 
-                {/* Kuyruklu Etiket Detayları */}
-                {labelConfig.etiketSekli === "kuyruklu" && (
+                {/* ── 7. AYARLAR & YAZICI KATEGORİSİ ── */}
+                {canvaCategory === "settings" && (
                   <>
+                    <div className="panel-section-title">
+                      <span>🖨️ Yazıcı Kalibrasyonu</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-open-printer-modal"
+                      style={{ marginBottom: 14 }}
+                      onClick={() => setPrinterModalOpen(true)}
+                    >
+                      <IconPrinter size={15} />
+                      <span>Yazıcı Ayarları & Kalibrasyon Modalı</span>
+                    </button>
+
+                    <div className="panel-section-title">
+                      <span>📐 Etiket Modeli & Boyutu</span>
+                    </div>
                     <div className="prop-row">
-                      <span className="prop-label" style={{ width: 80 }}>Kuyruk Uzunluk:</span>
+                      <span className="prop-label">Model:</span>
+                      <select
+                        className="prop-input"
+                        value={labelConfig.etiketSekli}
+                        onChange={(e) => updateLabelConfig({ etiketSekli: e.target.value as any })}
+                      >
+                        {ETIKET_SEKILLERI.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.icon} {s.ad}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="prop-row">
+                      <span className="prop-label">Genişlik:</span>
                       <input
                         type="number"
                         className="prop-input"
-                        key={`kuyruk-uzunluk-${labelConfig.kuyrukGenislikMm}`}
-                        defaultValue={labelConfig.kuyrukGenislikMm}
-                        min={10}
-                        max={120}
+                        key={`en-model-${labelConfig.genislikMm}`}
+                        defaultValue={labelConfig.genislikMm}
                         step={1}
+                        min={5}
+                        max={300}
                         onFocus={(e) => e.target.select()}
                         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                         onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v > 0) updateLabelConfig({ kuyrukGenislikMm: v });
-                          else e.target.value = String(labelConfig.kuyrukGenislikMm);
+                          const v = Number(e.target.value);
+                          if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
+                          else e.target.value = String(labelConfig.genislikMm);
                         }}
                       />
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
+                      <span style={{ fontSize: 9, color: "#64748b" }}>mm</span>
                     </div>
                     <div className="prop-row">
-                      <span className="prop-label" style={{ width: 80 }}>Kuyruk Kalınlık:</span>
+                      <span className="prop-label">Yükseklik:</span>
                       <input
                         type="number"
                         className="prop-input"
-                        key={`kuyruk-kalinlik-kuyruklu-${labelConfig.kuyrukKalinlikMm}`}
-                        defaultValue={labelConfig.kuyrukKalinlikMm}
-                        min={2}
-                        max={15}
-                        step={0.5}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v > 0) updateLabelConfig({ kuyrukKalinlikMm: v });
-                          else e.target.value = String(labelConfig.kuyrukKalinlikMm);
-                        }}
-                      />
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                    </div>
-                  </>
-                )}
-
-                {/* Boğumlu Kuyruk Etiket Detayları (Sol Boğum / Sağ Boğum / Kuyruk Boyu bağımsız) */}
-                {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
-                  <>
-                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 6, lineHeight: 1.3 }}>
-                      Kuyruk her zaman dikeyde ortalıdır. Hangisine ne girerseniz o boyutta kalır; Genişlik ve Yükseklik bunlara göre en son otomatik hesaplanır.
-                    </div>
-                    <div className="prop-row">
-                      <span className="prop-label" style={{ width: 80 }}>Sol Boğum:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`sol-bogum-${labelConfig.solKanatMm}`}
-                        defaultValue={labelConfig.solKanatMm}
-                        min={1}
-                        max={200}
-                        step={0.5}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v > 0) updateBogumluKuyrukSol(v);
-                          else e.target.value = String(labelConfig.solKanatMm);
-                        }}
-                      />
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                    </div>
-                    <div className="prop-row">
-                      <span className="prop-label" style={{ width: 80 }}>Sağ Boğum:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`sag-bogum-${labelConfig.sagKanatMm}`}
-                        defaultValue={labelConfig.sagKanatMm}
-                        min={1}
-                        max={200}
-                        step={0.5}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v > 0) updateBogumluKuyrukSag(v);
-                          else e.target.value = String(labelConfig.sagKanatMm);
-                        }}
-                      />
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                    </div>
-                    <div className="prop-row">
-                      <span className="prop-label" style={{ width: 80 }}>Kuyruk Boyu:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`kuyruk-boyu-${labelConfig.kuyrukGenislikMm}`}
-                        defaultValue={labelConfig.kuyrukGenislikMm}
-                        min={1}
-                        max={150}
+                        key={`boy-model-${labelConfig.yukseklikMm}`}
+                        defaultValue={labelConfig.yukseklikMm}
                         step={1}
+                        min={3}
+                        max={200}
                         onFocus={(e) => e.target.select()}
                         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                         onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v > 0) updateBogumluKuyrukKuyruk(v);
-                          else e.target.value = String(labelConfig.kuyrukGenislikMm);
+                          const v = Number(e.target.value);
+                          if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
+                          else e.target.value = String(labelConfig.yukseklikMm);
                         }}
                       />
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                    </div>
-                    <div className="prop-row">
-                      <span className="prop-label" style={{ width: 80 }}>Kuyruk Kalınlık:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`kuyruk-kalinlik-bk-${labelConfig.kuyrukKalinlikMm}`}
-                        defaultValue={labelConfig.kuyrukKalinlikMm}
-                        min={1}
-                        max={30}
-                        step={0.5}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
-                          else e.target.value = String(labelConfig.kuyrukKalinlikMm);
-                        }}
-                      />
-                      <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                    </div>
-                  </>
-                )}
-
-                {/* Standart Dikdörtgende Kullanıcının İsteğe Bağlı Ekleyebileceği Boğum & Kuyruk */}
-                {labelConfig.etiketSekli === "dikdortgen" && (
-                  <>
-                    <div className="panel-section-title" style={{ marginTop: 10 }}>
-                      <span>🧩 Özel Boğum & Kuyruk Ekle</span>
-                    </div>
-                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 6, lineHeight: 1.3 }}>
-                      Dikdörtgen etiketinize istediğiniz gibi boğum ve/veya kuyruk ekleyip ölçülerini ayarlayabilirsiniz.
+                      <span style={{ fontSize: 9, color: "#64748b" }}>mm</span>
                     </div>
 
+                    {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "kelebek") && (
+                      <>
+                        <div className="prop-row">
+                          <span className="prop-label">Sol Kanat:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            value={labelConfig.solKanatMm ?? 28}
+                            step={0.5}
+                            min={1}
+                            max={150}
+                            onChange={(e) => updateLabelConfig({ solKanatMm: Number(e.target.value) || 1 })}
+                          />
+                          <span style={{ fontSize: 9, color: "#64748b" }}>mm</span>
+                        </div>
+
+                        <div className="prop-row">
+                          <span className="prop-label">Sağ Kanat:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            value={labelConfig.sagKanatMm ?? 28}
+                            step={0.5}
+                            min={1}
+                            max={150}
+                            onChange={(e) => updateLabelConfig({ sagKanatMm: Number(e.target.value) || 1 })}
+                          />
+                          <span style={{ fontSize: 9, color: "#64748b" }}>mm</span>
+                        </div>
+
+                        <div className="prop-row">
+                          <span className="prop-label">Boğum Derinlik:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            value={labelConfig.bogumDerinlikMm ?? 2.0}
+                            step={0.2}
+                            min={0}
+                            max={25}
+                            onChange={(e) => updateLabelConfig({ bogumDerinlikMm: Number(e.target.value) || 0 })}
+                          />
+                          <span style={{ fontSize: 9, color: "#64748b" }}>mm</span>
+                        </div>
+
+                        <div className="prop-row">
+                          <span className="prop-label">Kuyruk Boyu:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            value={labelConfig.kuyrukGenislikMm ?? 35}
+                            step={0.5}
+                            min={1}
+                            max={200}
+                            onChange={(e) => updateLabelConfig({ kuyrukGenislikMm: Number(e.target.value) || 1 })}
+                          />
+                          <span style={{ fontSize: 9, color: "#64748b" }}>mm</span>
+                        </div>
+
+                        <div className="prop-row">
+                          <span className="prop-label">Kuyruk Kalınlık:</span>
+                          <input
+                            type="number"
+                            className="prop-input"
+                            value={labelConfig.kuyrukKalinlikMm ?? 4}
+                            step={0.5}
+                            min={1}
+                            max={40}
+                            onChange={(e) => updateLabelConfig({ kuyrukKalinlikMm: Number(e.target.value) || 1 })}
+                          />
+                          <span style={{ fontSize: 9, color: "#64748b" }}>mm</span>
+                        </div>
+                      </>
+                    )}
+
+                    <button
+                      type="button"
+                      className="elem-btn"
+                      style={{
+                        width: "100%",
+                        background: "rgba(56, 189, 248, 0.12)",
+                        borderColor: "rgba(56, 189, 248, 0.4)",
+                        color: "#0284c7",
+                        padding: "7px 10px",
+                        margin: "8px 0 14px",
+                      }}
+                      onClick={() => setShapeModalOpen(true)}
+                    >
+                      <div className="elem-btn-icon"><IconShapes size={14} color="#0284c7" /></div>
+                      <div style={{ textAlign: "left", flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 11 }}>Tüm Model Ölçülerini Düzenle</div>
+                        <div style={{ fontSize: 9, color: "#64748b" }}>Görsel model seçimi ve detay ayarları</div>
+                      </div>
+                    </button>
+
+                    <div className="panel-section-title">
+                      <span>🎨 Kart Rengi & Çizgiler</span>
+                    </div>
                     <label className="small-form-check" style={{ marginBottom: 6 }}>
                       <input
                         type="checkbox"
-                        checked={!!labelConfig.bogumEkle}
-                        onChange={(e) => updateLabelConfig({ bogumEkle: e.target.checked })}
+                        checked={labelConfig.katlamaCizgisi}
+                        onChange={(e) => updateLabelConfig({ katlamaCizgisi: e.target.checked })}
                       />
-                      <span>Boğum Ekle</span>
+                      <span>Katlama Çizgisi</span>
                     </label>
-                    {labelConfig.bogumEkle && (
-                      <>
-                        <div className="prop-row">
-                          <span className="prop-label" style={{ width: 90 }}>Boğum Konumu:</span>
-                          <input
-                            type="number"
-                            className="prop-input"
-                            key={`ozel-bogum-konum-${labelConfig.solKanatMm}-${labelConfig.genislikMm}-${labelConfig.kuyrukGenislikMm}`}
-                            defaultValue={labelConfig.solKanatMm || labelConfig.genislikMm / 2}
-                            min={2}
-                            max={Math.max(2, labelConfig.genislikMm - (labelConfig.kuyrukEkle ? (labelConfig.kuyrukGenislikMm || 20) : 0) - 2)}
-                            step={0.5}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            onBlur={(e) => {
-                              const v = parseFloat(e.target.value);
-                              const maxV = Math.max(2, labelConfig.genislikMm - (labelConfig.kuyrukEkle ? (labelConfig.kuyrukGenislikMm || 20) : 0) - 2);
-                              if (!isNaN(v) && v > 0) updateLabelConfig({ solKanatMm: Math.min(v, maxV) });
-                              else e.target.value = String(labelConfig.solKanatMm || labelConfig.genislikMm / 2);
-                            }}
-                          />
-                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm (soldan)</span>
-                        </div>
-                        <div className="prop-row">
-                          <span className="prop-label" style={{ width: 90 }}>Boğum Genişlik:</span>
-                          <input
-                            type="number"
-                            className="prop-input"
-                            key={`ozel-bogum-genislik-${labelConfig.kopruGenislikMm}`}
-                            defaultValue={labelConfig.kopruGenislikMm ?? 8}
-                            min={2}
-                            max={40}
-                            step={0.5}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            onBlur={(e) => {
-                              const v = parseFloat(e.target.value);
-                              if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
-                              else e.target.value = String(labelConfig.kopruGenislikMm ?? 8);
-                            }}
-                          />
-                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                        </div>
-                        <div className="prop-row">
-                          <span className="prop-label" style={{ width: 90 }}>Boğum Derinlik:</span>
-                          <input
-                            type="number"
-                            className="prop-input"
-                            key={`ozel-bogum-derinlik-${labelConfig.bogumDerinlikMm}`}
-                            defaultValue={labelConfig.bogumDerinlikMm ?? 2}
-                            min={0}
-                            max={10}
-                            step={0.5}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            onBlur={(e) => {
-                              const v = parseFloat(e.target.value);
-                              if (!isNaN(v) && v >= 0) updateBogumDerinlik(v);
-                              else e.target.value = String(labelConfig.bogumDerinlikMm ?? 2);
-                            }}
-                          />
-                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                        </div>
-                      </>
-                    )}
-
-                    <label className="small-form-check" style={{ marginBottom: 6, marginTop: 4 }}>
-                      <input
-                        type="checkbox"
-                        checked={!!labelConfig.kuyrukEkle}
-                        onChange={(e) => updateLabelConfig({ kuyrukEkle: e.target.checked })}
-                      />
-                      <span>Kuyruk Ekle</span>
-                    </label>
-                    {labelConfig.kuyrukEkle && (
-                      <>
-                        <div className="prop-row">
-                          <span className="prop-label" style={{ width: 90 }}>Kuyruk Boyu:</span>
-                          <input
-                            type="number"
-                            className="prop-input"
-                            key={`ozel-kuyruk-boyu-${labelConfig.kuyrukGenislikMm}`}
-                            defaultValue={labelConfig.kuyrukGenislikMm || 20}
-                            min={1}
-                            max={150}
-                            step={1}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            onBlur={(e) => {
-                              const v = parseFloat(e.target.value);
-                              if (!isNaN(v) && v > 0) {
-                                // Gövde (kuyruk hariç kalan kısım) sabit kalır, kuyruk büyüdükçe toplam genişlik ona göre büyür.
-                                const oldKuyruk = labelConfig.kuyrukGenislikMm || 20;
-                                const bodyOnly = Math.max(8, labelConfig.genislikMm - oldKuyruk);
-                                updateLabelConfig({ kuyrukGenislikMm: v, genislikMm: Math.round(Math.max(labelConfig.genislikMm, bodyOnly + v) * 10) / 10 });
-                              } else {
-                                e.target.value = String(labelConfig.kuyrukGenislikMm || 20);
-                              }
-                            }}
-                          />
-                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                        </div>
-                        <div className="prop-row">
-                          <span className="prop-label" style={{ width: 90 }}>Kuyruk Kalınlık:</span>
-                          <input
-                            type="number"
-                            className="prop-input"
-                            key={`ozel-kuyruk-kalinlik-${labelConfig.kuyrukKalinlikMm}`}
-                            defaultValue={labelConfig.kuyrukKalinlikMm || 4}
-                            min={1}
-                            max={30}
-                            step={0.5}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            onBlur={(e) => {
-                              const v = parseFloat(e.target.value);
-                              if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
-                              else e.target.value = String(labelConfig.kuyrukKalinlikMm || 4);
-                            }}
-                          />
-                          <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm</span>
-                        </div>
-                      </>
-                    )}
+                    <div className="prop-row" style={{ marginBottom: 14 }}>
+                      <span className="prop-label">Renk:</span>
+                      <div className="color-swatch" style={{ background: labelConfig.bgColor }} title="Kart Rengi">
+                        <input
+                          type="color"
+                          value={labelConfig.bgColor}
+                          onChange={(e) => updateLabelConfig({ bgColor: e.target.value })}
+                        />
+                      </div>
+                      <span style={{ fontSize: 11, color: "#64748b", marginLeft: 4 }}>{labelConfig.bgColor}</span>
+                    </div>
                   </>
                 )}
-
-                <div className="panel-section-title" style={{ marginTop: 10 }}>
-                  <span>Çizgiler & Renk</span>
-                </div>
-
-                <div className="prop-row">
-                  <span className="prop-label" style={{ width: 90 }}>Köşe Yuvarlaklığı:</span>
-                  <input
-                    type="number"
-                    className="prop-input"
-                    key={`kose-yuvarlaklik-${labelConfig.koseYuvarlikligiMm}`}
-                    defaultValue={labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3}
-                    min={0}
-                    max={15}
-                    step={0.5}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (!isNaN(v) && v >= 0) updateLabelConfig({ koseYuvarlikligiMm: v });
-                      else e.target.value = String(labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3);
-                    }}
-                  />
-                  <span style={{ fontSize: 9.5, color: "#94a3b8" }}>mm (0 = keskin köşe)</span>
-                </div>
-
-                <label className="small-form-check" style={{ marginBottom: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={labelConfig.katlamaCizgisi}
-                    onChange={(e) => updateLabelConfig({ katlamaCizgisi: e.target.checked })}
-                  />
-                  <span>Katlama Çizgisini Göster</span>
-                </label>
-
-                <div className="prop-row">
-                  <span className="prop-label">Renk:</span>
-                  <div className="color-swatch" style={{ background: labelConfig.bgColor }} title="Özel Renk">
-                    <input
-                      type="color"
-                      value={labelConfig.bgColor}
-                      onChange={(e) => updateLabelConfig({ bgColor: e.target.value })}
-                    />
-                  </div>
-                  <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 4 }}>{labelConfig.bgColor}</span>
-                </div>
-              </>
-            )}
-
-            {/* ── 3. Katmanlar Sekmesi ──────────────────────────────── */}
-            {leftPanelTab === "layers" && (
-              <>
-                <div className="panel-section-title">
-                  <span>Katman Sırası</span>
-                  <span style={{ fontSize: 9.5, color: "#94a3b8", fontWeight: 400 }}>
-                    ({elements.length} nesne)
-                  </span>
-                </div>
-
-                {elements.length === 0 && (
-                  <div style={{ color: "#64748b", fontSize: 11.5, textAlign: "center", padding: "20px 0" }}>
-                    Tuvalde henüz nesne yok
-                  </div>
-                )}
-
-                {[...elements].sort((a, b) => b.zIndex - a.zIndex).map((el) => (
-                  <div
-                    key={el.id}
-                    className={`layer-item ${selectedIds.includes(el.id) ? "selected" : ""}`}
-                    onClick={(e) => {
-                      if (e.shiftKey) {
-                        setSelectedIds((prev) =>
-                          prev.includes(el.id) ? prev.filter((x) => x !== el.id) : [...prev, el.id]
-                        );
-                      } else {
-                        setSelectedIds([el.id]);
-                      }
-                    }}
-                  >
-                    <IconGripVertical size={11} style={{ color: "#64748b", flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {el.type === "field" ? (el.text || el.fieldKey || "Alan") : el.type === "text" ? el.text : el.type}
-                    </span>
-                    <button
-                      className={`layer-icon-btn ${el.visible ? "active" : ""}`}
-                      title="Görünürlük"
-                      onClick={(e) => { e.stopPropagation(); updateElement(el.id, { visible: !el.visible }); }}
-                    >
-                      {el.visible ? <IconEye size={12} /> : <IconEyeOff size={12} />}
-                    </button>
-                    <button
-                      className={`layer-icon-btn ${el.locked ? "active" : ""}`}
-                      title="Kilitle"
-                      onClick={(e) => { e.stopPropagation(); updateElement(el.id, { locked: !el.locked }); }}
-                    >
-                      {el.locked ? <IconLock size={12} /> : <IconLockOpen size={12} />}
-                    </button>
-                    <button
-                      className="layer-icon-btn"
-                      title="Sil"
-                      style={{ color: "#f87171" }}
-                      onClick={(e) => { e.stopPropagation(); dispatch({ type: "DELETE_ELEMENTS", ids: [el.id] }); setSelectedIds((p) => p.filter((x) => x !== el.id)); }}
-                    >
-                      <IconTrash size={11} />
-                    </button>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {/* ── 4. Hazır Şablonlar Sekmesi (10 Sektörel Hazır Tasarım) ─── */}
-            {leftPanelTab === "presets" && (
-              <>
-                <div className="panel-section-title">
-                  <span>⭐ Sektörel Hazır Şablonlar ({BUILTIN_TEMPLATES.length})</span>
-                </div>
-                <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 8 }}>
-                  Kuyumcu, sarrafiye ve pırlanta için önceden tasarlanmış hazır kalıplar:
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {BUILTIN_TEMPLATES.map((tmpl) => (
-                    <div
-                      key={tmpl.id}
-                      className="elem-btn"
-                      style={{
-                        flexDirection: "column",
-                        alignItems: "stretch",
-                        padding: "8px 10px",
-                        gap: 4,
-                        cursor: "pointer",
-                        background: "rgba(255, 255, 255, 0.03)",
-                        border: "1px solid rgba(255, 255, 255, 0.07)",
-                        borderRadius: 6,
-                      }}
-                      onClick={() => {
-                        updateLabelConfig(tmpl.config, false);
-                        const newElements = tmpl.elements.map((el, i) => ({
-                          id: genId(),
-                          type: el.type,
-                          x: el.x,
-                          y: el.y,
-                          width: el.width,
-                          height: el.height,
-                          rotation: el.rotation || 0,
-                          text: el.text || "",
-                          fieldKey: el.fieldKey,
-                          barcodeFormat: el.barcodeFormat,
-                          barcodeValue: el.barcodeValue,
-                          imageData: el.imageData,
-                          fontSize: el.fontSize || 8,
-                          fontWeight: el.fontWeight || "normal",
-                          fontStyle: el.fontStyle || "normal",
-                          textDecoration: el.textDecoration || "none",
-                          color: el.color || "#000000",
-                          textAlign: el.textAlign || "left",
-                          fontFamily: "Arial",
-                          zIndex: i + 1,
-                          visible: true,
-                          locked: false,
-                        }));
-                        dispatch({ type: "SET_ELEMENTS", elements: newElements as any });
-                        setSelectedIds([]);
-                        // Sektörel hazır şablon seçildiğinde sıfırdan yeni tasarım gibi açılır
-                        setSablonAdi("");
-                        setActiveSablon(null);
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 16 }}>{tmpl.icon}</span>
-                          <span style={{ fontWeight: 700, fontSize: 11.5, color: "#f8fafc" }}>{tmpl.ad}</span>
-                        </div>
-                        <span style={{ fontSize: 8.5, background: "rgba(56,189,248,0.15)", color: "#38bdf8", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>
-                          {tmpl.kategori}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 9.5, color: "#94a3b8", lineHeight: 1.25 }}>{tmpl.aciklama}</div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 9, color: "#64748b", marginTop: 3 }}>
-                        <span>{tmpl.config.genislikMm}×{tmpl.config.yukseklikMm} mm ({tmpl.elements.length} alan)</span>
-                        <span style={{ color: "#38bdf8", fontWeight: 600 }}>Tıkla ve Uygula →</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Orta Aydınlık Kanvas Çalışma Alanı (Figma / Canva Grid) ───── */}
         <div className="canvas-area">
-          {/* Üst Bar - Sol Üstte Kapat, Sağ Üstte Çıktı Al, Ortada Arka Plansız Doğrudan Kapasite Metni */}
-          <div className="preview-top-actions-bar">
-            {isPreviewMode ? (
+          {/* ── En Üstte Açılan Tam Genişlikteki Ayar & Müfettiş Çubuğu (Kaydırmasız) ── */}
+          {!isPreviewMode && (selectedElement || isLabelSelected) && (
+            <div className="canvas-fullwidth-subbar-container animate-fadein">
+              {/* Şablon Zeminine Tıklanmışsa: Canva Tarzı Şablon Geometri & Ölçü Çubuğu */}
+              {!selectedElement && isLabelSelected && (
+                <div className="canvas-fullwidth-geometry-bar">
+                  <div className="geom-title-badge" title="Aktif Şablon Modeli">
+                    <span>🏷️</span>
+                    <span>{sablonAdi || activeSablon?.ad || "Şablon Ayarları"}</span>
+                  </div>
+
+                  {/* Toplam Genişlik ve Yükseklik */}
+                  <div className="geom-field-group" title="Toplam Genişlik (mm)">
+                    <span className="geom-label">Genişlik:</span>
+                    <input
+                      type="number"
+                      className="geom-input"
+                      value={labelConfig.genislikMm}
+                      min={5}
+                      max={300}
+                      step={0.5}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
+                      }}
+                    />
+                    <span className="geom-unit">mm</span>
+                  </div>
+
+                  <div className="geom-field-group" title="Toplam Yükseklik (mm)">
+                    <span className="geom-label">Yükseklik:</span>
+                    <input
+                      type="number"
+                      className="geom-input"
+                      value={labelConfig.yukseklikMm}
+                      min={4}
+                      max={200}
+                      step={0.5}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
+                      }}
+                    />
+                    <span className="geom-unit">mm</span>
+                  </div>
+
+                  {/* Köşe Yuvarlatma (R - mm) */}
+                  <div className="geom-field-group" title="Köşe Yuvarlaklığı / Radyus (mm)">
+                    <span className="geom-label">Köşe R:</span>
+                    <input
+                      type="number"
+                      className="geom-input"
+                      value={labelConfig.koseYuvarlikligiMm || 0}
+                      min={0}
+                      max={30}
+                      step={0.5}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v) && v >= 0) updateLabelConfig({ koseYuvarlikligiMm: v });
+                      }}
+                    />
+                    <span className="geom-unit">mm</span>
+                  </div>
+
+                  <div className="geom-divider" />
+
+                  {/* Boğumlu Kuyruk & Keskin Boğumlu Kuyruk Alanları */}
+                  {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
+                    <>
+                      <div className="geom-field-group" title="Sol Kanat Genişliği (mm)">
+                        <span className="geom-label">Sol Kanat:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.solKanatMm ?? 28}
+                          min={1}
+                          max={150}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukSol(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Sağ Kanat Genişliği (mm)">
+                        <span className="geom-label">Sağ Kanat:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.sagKanatMm ?? 28}
+                          min={1}
+                          max={150}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukSag(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Boğum Derinliği (mm)">
+                        <span className="geom-label">Boğum:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.bogumDerinlikMm ?? 2.0}
+                          min={0}
+                          max={20}
+                          step={0.2}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v >= 0) updateBogumDerinlik(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Kuyruk Uzunluğu (mm)">
+                        <span className="geom-label">Kuyruk:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.kuyrukGenislikMm ?? 35}
+                          min={1}
+                          max={200}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukKuyruk(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Kuyruk Kalınlığı (mm)">
+                        <span className="geom-label">Kuyruk Kalınlık:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.kuyrukKalinlikMm ?? 4}
+                          min={1}
+                          max={30}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Kuyruklu (Kordon/İpli) Alanları */}
+                  {labelConfig.etiketSekli === "kuyruklu" && (
+                    <>
+                      <div className="geom-field-group" title="Gövde / Sol Kanat Genişliği (mm)">
+                        <span className="geom-label">Gövde:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.solKanatMm ?? 28}
+                          min={1}
+                          max={150}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukSol(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Kuyruk Uzunluğu (mm)">
+                        <span className="geom-label">Kuyruk:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.kuyrukGenislikMm ?? 35}
+                          min={1}
+                          max={200}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukKuyruk(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Kuyruk Kalınlığı (mm)">
+                        <span className="geom-label">Kuyruk Kalınlık:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.kuyrukKalinlikMm ?? 4}
+                          min={1}
+                          max={30}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Kelebek (Çift Kanat) Alanları */}
+                  {labelConfig.etiketSekli === "kelebek" && (
+                    <>
+                      <div className="geom-field-group" title="Sol Kanat (mm)">
+                        <span className="geom-label">Sol Kanat:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.solKanatMm ?? 28}
+                          min={1}
+                          max={150}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukSol(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Sağ Kanat (mm)">
+                        <span className="geom-label">Sağ Kanat:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.sagKanatMm ?? 28}
+                          min={1}
+                          max={150}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukSag(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Köprü Genişliği (mm)">
+                        <span className="geom-label">Köprü Gen:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.kopruGenislikMm ?? 6}
+                          min={1}
+                          max={50}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Köprü Yüksekliği (mm)">
+                        <span className="geom-label">Köprü Yük:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.kopruYukseklikMm ?? 18}
+                          min={1}
+                          max={100}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateLabelConfig({ kopruYukseklikMm: v });
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Dambıl Alanları */}
+                  {labelConfig.etiketSekli === "dambil" && (
+                    <>
+                      <div className="geom-field-group" title="Başlık Çapı (mm)">
+                        <span className="geom-label">Başlık:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.solKanatMm ?? 12}
+                          min={1}
+                          max={100}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateBogumluKuyrukSol(v);
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+
+                      <div className="geom-field-group" title="Köprü Şerit Genişliği (mm)">
+                        <span className="geom-label">Köprü:</span>
+                        <input
+                          type="number"
+                          className="geom-input"
+                          value={labelConfig.kopruGenislikMm ?? 4}
+                          min={1}
+                          max={50}
+                          step={0.5}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
+                          }}
+                        />
+                        <span className="geom-unit">mm</span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Katlama Çizgisi */}
+                  <label className="small-form-check" style={{ marginLeft: 4, cursor: "pointer" }} title="Katlama Kılavuz Çizgisini Göster">
+                    <input
+                      type="checkbox"
+                      checked={labelConfig.katlamaCizgisi}
+                      onChange={(e) => updateLabelConfig({ katlamaCizgisi: e.target.checked })}
+                    />
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: "#475569" }}>Katlama Çizgisi</span>
+                  </label>
+                </div>
+              )}
+
+              {/* Eleman Seçiliyse: Canva Tarzı Tam Genişlikte Bileşen Ayar Müfettişi */}
+              {selectedElement && (
+                <div ref={inspectorRef} className="canvas-fullwidth-inspector">
+                  {/* Tip / Rozet */}
+                  <div className="inspector-badge">
+                    <span>
+                      {selectedElement.type === "text" ? "✏️" :
+                        selectedElement.type === "field" ? "🏷️" :
+                          selectedElement.type === "barcode" ? "📊" :
+                            selectedElement.type === "qr" ? "📱" :
+                              selectedElement.type === "image" || selectedElement.type === "logo" ? "🖼️" : "🔷"}
+                    </span>
+                    <span className="badge-text" title={selectedElement.text || selectedElement.fieldKey || selectedElement.type}>
+                      {selectedElement.fieldKey ? `[${selectedElement.text || selectedElement.fieldKey}]` : (selectedElement.text || selectedElement.type)}
+                    </span>
+                    {selectedElement.type === "text" && (
+                      <button
+                        type="button"
+                        className="inspector-icon-btn"
+                        title="Metni Doğrudan Düzenle"
+                        onClick={() => setEditingId(selectedElement.id)}
+                      >
+                        <IconEdit size={11} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="inspector-divider" />
+
+                  {/* Metin & Veri Alanı Kontrolleri */}
+                  {(selectedElement.type === "text" || selectedElement.type === "field") && (
+                    <>
+                      {/* Canva Tarzı Yazı Tipi (Font) Seçici ve Popover */}
+                      <div style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          className={`canva-font-trigger-btn ${fontMenuOpen ? "active" : ""}`}
+                          title="Yazı Tipini Değiştir"
+                          onClick={() => {
+                            setFontMenuOpen((v) => !v);
+                            setActiveColorPopover(null);
+                          }}
+                        >
+                          <span className="canva-font-trigger-name" style={{ fontFamily: selectedElement.fontFamily || "Arial" }}>
+                            {selectedElement.fontFamily || "Arial"}
+                          </span>
+                          <IconChevronDown size={13} color="#64748b" />
+                        </button>
+
+                        {fontMenuOpen && (
+                          <div className="canva-font-popover" onClick={(e) => e.stopPropagation()}>
+                            <div className="canva-font-header">
+                              <input
+                                type="text"
+                                className="canva-font-search-input"
+                                placeholder="Yazı tipi ara (örn: Cinzel, Playfair, Inter)..."
+                                value={fontSearchQuery}
+                                onChange={(e) => setFontSearchQuery(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
+                            <div className="canva-font-list">
+                              {(["kuyumcu", "script", "sans", "display", "mono"] as const).map((catKey) => {
+                                const fontsInCat = filteredFonts.filter((f) => f.category === catKey);
+                                if (fontsInCat.length === 0) return null;
+                                const catTitle =
+                                  catKey === "kuyumcu" ? "💎 Kuyumcu & Lüks Serif" :
+                                    catKey === "script" ? "✨ Zarif & El Yazısı" :
+                                      catKey === "sans" ? "🏢 Modern & Okunabilir" :
+                                        catKey === "display" ? "🏷️ Başlık & Kompakt" : "⌨️ Daktilo & Kod";
+                                return (
+                                  <div key={catKey}>
+                                    <div className="canva-font-category-header">{catTitle}</div>
+                                    {fontsInCat.map((f) => {
+                                      const isSelected = (selectedElement.fontFamily || "Arial").toLowerCase() === f.family.toLowerCase();
+                                      return (
+                                        <button
+                                          key={f.family}
+                                          type="button"
+                                          className={`canva-font-item ${isSelected ? "selected" : ""}`}
+                                          onClick={() => {
+                                            updateElement(selectedElement.id, { fontFamily: f.family });
+                                            dispatch({ type: "PUSH_HISTORY" });
+                                            setFontMenuOpen(false);
+                                          }}
+                                        >
+                                          <span className="canva-font-item-name" style={{ fontFamily: f.family }}>
+                                            {f.name}
+                                          </span>
+                                          <span className="canva-font-item-preview" style={{ fontFamily: f.family }}>
+                                            {f.sample}
+                                          </span>
+                                          {isSelected && <IconCheck size={14} color="#059669" />}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Punto Stepper: [-] [8.5] [+] */}
+                      <div className="inspector-stepper-group">
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          title="Punto Azalt (-0.5)"
+                          onClick={() => updateElement(selectedElement.id, { fontSize: Math.max(3, (selectedElement.fontSize ?? 8) - 0.5) })}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          className="stepper-input"
+                          value={selectedElement.fontSize ?? 8}
+                          min={3}
+                          max={120}
+                          step={0.5}
+                          title="Punto"
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) updateElement(selectedElement.id, { fontSize: val });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          title="Punto Artır (+0.5)"
+                          onClick={() => updateElement(selectedElement.id, { fontSize: Math.min(120, (selectedElement.fontSize ?? 8) + 0.5) })}
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      {/* Kalın, İtalik, Altı Çizili, Büyük Harf (TT) - Segmented Pill */}
+                      <div className="inspector-segmented-group">
+                        <button
+                          type="button"
+                          className={`seg-btn ${selectedElement.fontWeight === "bold" ? "active" : ""}`}
+                          title="Kalın (Bold)"
+                          onClick={() => updateElement(selectedElement.id, { fontWeight: selectedElement.fontWeight === "bold" ? "normal" : "bold" })}
+                        >
+                          <IconBold size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`seg-btn ${selectedElement.fontStyle === "italic" ? "active" : ""}`}
+                          title="İtalik (Italic)"
+                          onClick={() => updateElement(selectedElement.id, { fontStyle: selectedElement.fontStyle === "italic" ? "normal" : "italic" })}
+                        >
+                          <IconItalic size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`seg-btn ${selectedElement.textDecoration === "underline" ? "active" : ""}`}
+                          title="Altı Çizili (Underline)"
+                          onClick={() => updateElement(selectedElement.id, { textDecoration: selectedElement.textDecoration === "underline" ? "none" : "underline" })}
+                        >
+                          <IconUnderline size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`seg-btn ${selectedElement.textTransform === "uppercase" ? "active" : ""}`}
+                          title="Büyük Harfe Dönüştür (TT)"
+                          style={{ fontSize: 10.5, fontWeight: 800 }}
+                          onClick={() => updateElement(selectedElement.id, { textTransform: selectedElement.textTransform === "uppercase" ? "none" : "uppercase" })}
+                        >
+                          TT
+                        </button>
+                      </div>
+
+                      {/* Hizalama Segmented Pill */}
+                      <div className="inspector-segmented-group">
+                        <button
+                          type="button"
+                          className={`seg-btn ${selectedElement.textAlign === "left" ? "active" : ""}`}
+                          title="Sola Hizala"
+                          onClick={() => updateElement(selectedElement.id, { textAlign: "left" })}
+                        >
+                          <IconAlignLeft size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`seg-btn ${(!selectedElement.textAlign || selectedElement.textAlign === "center") ? "active" : ""}`}
+                          title="Ortala"
+                          onClick={() => updateElement(selectedElement.id, { textAlign: "center" })}
+                        >
+                          <IconAlignCenter size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`seg-btn ${selectedElement.textAlign === "right" ? "active" : ""}`}
+                          title="Sağa Hizala"
+                          onClick={() => updateElement(selectedElement.id, { textAlign: "right" })}
+                        >
+                          <IconAlignRight size={13} />
+                        </button>
+                      </div>
+
+                      <div className="inspector-divider" />
+
+                      {/* Canva Tarzı Yazı Rengi Tablosu */}
+                      <div style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          className={`canva-color-trigger-btn ${activeColorPopover === "textColor" ? "active" : ""}`}
+                          title="Yazı Rengini Seç"
+                          onClick={() => {
+                            setActiveColorPopover(activeColorPopover === "textColor" ? null : "textColor");
+                            setFontMenuOpen(false);
+                          }}
+                        >
+                          <div className="canva-color-chip" style={{ background: selectedElement.color || "#000000" }} />
+                          <span className="canva-color-btn-label">Yazı Rengi</span>
+                          <IconChevronDown size={11} color="#64748b" />
+                        </button>
+
+                        {activeColorPopover === "textColor" &&
+                          renderColorTablePopover(
+                            "Yazı Rengi Seç",
+                            selectedElement.color || "#000000",
+                            (newColor) => updateElement(selectedElement.id, { color: newColor }),
+                            false
+                          )}
+                      </div>
+
+                      {/* Canva Tarzı Zemin / Vurgu Rengi Tablosu */}
+                      <div style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          className={`canva-color-trigger-btn ${activeColorPopover === "bgColor" ? "active" : ""}`}
+                          title="Zemin / Arka Plan Rengini Seç"
+                          onClick={() => {
+                            setActiveColorPopover(activeColorPopover === "bgColor" ? null : "bgColor");
+                            setFontMenuOpen(false);
+                          }}
+                        >
+                          <div
+                            className="canva-color-chip"
+                            style={{
+                              background:
+                                !selectedElement.backgroundColor || selectedElement.backgroundColor === "transparent"
+                                  ? "repeating-conic-gradient(#cbd5e1 0% 25%, #ffffff 0% 50%) 50% / 8px 8px"
+                                  : selectedElement.backgroundColor,
+                            }}
+                          />
+                          <span className="canva-color-btn-label">Zemin Rengi</span>
+                          <IconChevronDown size={11} color="#64748b" />
+                        </button>
+
+                        {activeColorPopover === "bgColor" &&
+                          renderColorTablePopover(
+                            "Zemin / Vurgu Rengi Seç",
+                            selectedElement.backgroundColor || "transparent",
+                            (newColor) => updateElement(selectedElement.id, { backgroundColor: newColor }),
+                            true
+                          )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Geometrik Şekiller */}
+                  {(selectedElement.type === "rect" || selectedElement.type === "rect-round" || selectedElement.type === "ellipse" || selectedElement.type === "diamond" || selectedElement.type.startsWith("line")) && (
+                    <>
+                      {/* Canva Tarzı Dolgu Rengi Tablosu */}
+                      <div style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          className={`canva-color-trigger-btn ${activeColorPopover === "bgColor" ? "active" : ""}`}
+                          title="Şekil Dolgu Rengini Seç"
+                          onClick={() => {
+                            setActiveColorPopover(activeColorPopover === "bgColor" ? null : "bgColor");
+                            setFontMenuOpen(false);
+                          }}
+                        >
+                          <div
+                            className="canva-color-chip"
+                            style={{
+                              background:
+                                !selectedElement.backgroundColor || selectedElement.backgroundColor === "transparent"
+                                  ? "repeating-conic-gradient(#cbd5e1 0% 25%, #ffffff 0% 50%) 50% / 8px 8px"
+                                  : selectedElement.backgroundColor,
+                            }}
+                          />
+                          <span className="canva-color-btn-label">Dolgu Rengi</span>
+                          <IconChevronDown size={11} color="#64748b" />
+                        </button>
+
+                        {activeColorPopover === "bgColor" &&
+                          renderColorTablePopover(
+                            "Şekil Dolgu Rengi Seç",
+                            selectedElement.backgroundColor || "transparent",
+                            (newColor) => updateElement(selectedElement.id, { backgroundColor: newColor }),
+                            true
+                          )}
+                      </div>
+
+                      {/* Canva Tarzı Çizgi / Dış Renk Tablosu */}
+                      <div style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          className={`canva-color-trigger-btn ${activeColorPopover === "borderColor" ? "active" : ""}`}
+                          title="Dış Çizgi / Kenarlık Rengini Seç"
+                          onClick={() => {
+                            setActiveColorPopover(activeColorPopover === "borderColor" ? null : "borderColor");
+                            setFontMenuOpen(false);
+                          }}
+                        >
+                          <div
+                            className="canva-color-chip"
+                            style={{
+                              background:
+                                !selectedElement.borderColor || selectedElement.borderColor === "transparent"
+                                  ? "repeating-conic-gradient(#cbd5e1 0% 25%, #ffffff 0% 50%) 50% / 8px 8px"
+                                  : selectedElement.borderColor,
+                            }}
+                          />
+                          <span className="canva-color-btn-label">Çizgi Rengi</span>
+                          <IconChevronDown size={11} color="#64748b" />
+                        </button>
+
+                        {activeColorPopover === "borderColor" &&
+                          renderColorTablePopover(
+                            "Dış Çizgi / Kenarlık Rengi Seç",
+                            selectedElement.borderColor || "#000000",
+                            (newColor) => updateElement(selectedElement.id, { borderColor: newColor }),
+                            true
+                          )}
+                      </div>
+
+                      {/* Kalınlık Stepper */}
+                      <div className="inspector-stepper-group">
+                        <span className="inspector-label" style={{ paddingLeft: 6 }}>Kalınlık:</span>
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          onClick={() => updateElement(selectedElement.id, { borderWidth: Math.max(0, (selectedElement.borderWidth ?? 1) - 0.5) })}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          className="stepper-input"
+                          value={selectedElement.borderWidth ?? 1}
+                          min={0}
+                          max={20}
+                          step={0.5}
+                          onChange={(e) => updateElement(selectedElement.id, { borderWidth: parseFloat(e.target.value) || 0 })}
+                        />
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          onClick={() => updateElement(selectedElement.id, { borderWidth: Math.min(20, (selectedElement.borderWidth ?? 1) + 0.5) })}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Barkod Kontrolleri */}
+                  {selectedElement.type === "barcode" && (
+                    <>
+                      <div className="inspector-group">
+                        <select
+                          className="inspector-select"
+                          value={selectedElement.barcodeFormat || "CODE128"}
+                          onChange={(e) => updateElement(selectedElement.id, { barcodeFormat: e.target.value as any })}
+                        >
+                          <option value="CODE128">CODE128</option>
+                          <option value="EAN13">EAN13</option>
+                          <option value="CODE39">CODE39</option>
+                          <option value="UPC">UPC</option>
+                        </select>
+                      </div>
+                      <input
+                        type="text"
+                        className="inspector-text-input"
+                        style={{ width: 90 }}
+                        value={selectedElement.barcodeValue || ""}
+                        placeholder="Barkod kodu"
+                        onChange={(e) => updateElement(selectedElement.id, { barcodeValue: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className={`seg-btn ${selectedElement.showText !== false ? "active" : ""}`}
+                        style={{ width: "auto", padding: "0 6px", fontSize: 10, fontWeight: 700 }}
+                        onClick={() => updateElement(selectedElement.id, { showText: selectedElement.showText === false ? true : false })}
+                      >
+                        123 Yazı
+                      </button>
+                      <div className="inspector-color-group">
+                        <div className="inspector-color-palette">
+                          {JEWELRY_QUICK_COLORS.map((c) => (
+                            <button
+                              key={c.color}
+                              type="button"
+                              className={`color-dot ${(selectedElement.color || "#000000").toLowerCase() === c.color.toLowerCase() ? "selected" : ""}`}
+                              style={{ background: c.color }}
+                              onClick={() => updateElement(selectedElement.id, { color: c.color })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* QR Kod Kontrolleri */}
+                  {selectedElement.type === "qr" && (
+                    <>
+                      <input
+                        type="text"
+                        className="inspector-text-input"
+                        style={{ width: 110 }}
+                        value={selectedElement.barcodeValue || ""}
+                        placeholder="URL / Metin"
+                        onChange={(e) => updateElement(selectedElement.id, { barcodeValue: e.target.value })}
+                      />
+                      <div className="inspector-color-group">
+                        <span className="inspector-label">QR:</span>
+                        <div className="inspector-color-palette">
+                          {JEWELRY_QUICK_COLORS.map((c) => (
+                            <button
+                              key={c.color}
+                              type="button"
+                              className={`color-dot ${(selectedElement.color || "#000000").toLowerCase() === c.color.toLowerCase() ? "selected" : ""}`}
+                              style={{ background: c.color }}
+                              onClick={() => updateElement(selectedElement.id, { color: c.color })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Görsel Kontrolleri */}
+                  {(selectedElement.type === "image" || selectedElement.type === "logo") && (
+                    <div className="inspector-group">
+                      <label className="inspector-action-btn" style={{ cursor: "pointer" }} title="Yeni Görsel Yükle">
+                        📷 Değiştir
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (evt) => {
+                                updateElement(selectedElement.id, { imageData: evt.target?.result as string });
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="inspector-divider" />
+
+                  {/* Tuvalde Hızlı Hizalama */}
+                  <div className="inspector-group">
+                    <button type="button" className="inspector-action-btn" title="Tuvalde Yatay Ortala" onClick={() => alignElement("center-h")}>
+                      ↔ Ortala
+                    </button>
+                    <button type="button" className="inspector-action-btn" title="Tuvalde Dikey Ortala" onClick={() => alignElement("center-v")}>
+                      ↕ Dikey
+                    </button>
+                    {(labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "dambil") && (
+                      <button type="button" className="inspector-action-btn tail-btn" title="Kuyruk Şeridine Ortala" onClick={() => alignElement("tail")}>
+                        🦴 Kuyruk
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Kilit Butonu */}
+                  <button
+                    type="button"
+                    className={`inspector-icon-btn ${selectedElement.locked ? "active" : ""}`}
+                    title={selectedElement.locked ? "Kilidi Aç" : "Elemanı Kilitle"}
+                    onClick={() => updateElement(selectedElement.id, { locked: !selectedElement.locked })}
+                  >
+                    {selectedElement.locked ? "🔒" : "🔓"}
+                  </button>
+
+                  {/* Sil Butonu */}
+                  <button
+                    type="button"
+                    className="inspector-icon-btn danger"
+                    title="Seçili Nesneyi Sil (Delete)"
+                    onClick={() => {
+                      dispatch({ type: "DELETE_ELEMENTS", ids: [selectedElement.id] });
+                      setSelectedIds([]);
+                    }}
+                  >
+                    <IconTrash size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sadece Önizleme Modunda Açılan Üst Bar */}
+          {isPreviewMode && (
+            <div className="preview-top-actions-bar animate-fadein">
               <button
                 type="button"
                 className="canvas-floating-btn"
@@ -6349,26 +7227,11 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                 <IconX size={15} />
                 <span>Kapat (ESC)</span>
               </button>
-            ) : (
-              <button
-                type="button"
-                className="canvas-floating-btn print-btn"
-                title="Doğrudan Çıktı Al (Yazdır - Ctrl+P)"
-                onClick={handleDirectPrint}
-              >
-                <IconPrinter size={15} />
-                <span>Çıktı Al</span>
-              </button>
-            )}
 
-            {/* Kapat ile Çıktı Al Butonları Arasında Arka Plansız Doğrudan Net Yazı */}
-            {isPreviewMode && (
               <div className="preview-top-center-info">
                 <span className="preview-info-text">{currentLayoutInfo.description}</span>
               </div>
-            )}
 
-            {isPreviewMode ? (
               <button
                 type="button"
                 className="canvas-floating-btn print-btn"
@@ -6378,23 +7241,8 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                 <IconPrinter size={15} />
                 <span>Çıktı Al</span>
               </button>
-            ) : (
-              <button
-                type="button"
-                className="canvas-floating-btn"
-                title="Baskı Önizleme Modu (A4, A3, Rulo ve Tabaka Görünümü)"
-                onClick={() => {
-                  setSelectedLayoutId("single");
-                  setIsPreviewMode(true);
-                  setEditingId(null);
-                  setSelectedIds([]);
-                }}
-              >
-                <IconEye size={15} />
-                <span>Önizle</span>
-              </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Sağ Tarafta Dikey Kağıt Seçim Çekmecesi (Üzerine gelince genişler, seçilince küçülür) */}
           {isPreviewMode && (
@@ -6453,6 +7301,68 @@ const UrunEtiketTasarimiPage: React.FC = () => {
               </button>
             </div>
           )}
+
+          {/* ⌨️ Sol Altta Kısayol Bilgilendirme (Siyah Sade Yazı) */}
+          <div className="canvas-bottom-left-shortcuts animate-fadein">
+            <button
+              type="button"
+              className="canvas-bottom-shortcut-pill"
+              title="Şablonu Kaydet (F1 veya Ctrl+S)"
+              onClick={() => handleQuickSaveRef.current()}
+            >
+              <kbd>F1</kbd>
+              <span>Kaydet</span>
+            </button>
+            <span className="shortcut-dot">•</span>
+            <button
+              type="button"
+              className="canvas-bottom-shortcut-pill"
+              title="Şablon Ara / Dürbün (F3)"
+              onClick={() => setDurbunModal(true)}
+            >
+              <kbd>F3</kbd>
+              <span>Ara</span>
+            </button>
+            <span className="shortcut-dot">•</span>
+            <button
+              type="button"
+              className="canvas-bottom-shortcut-pill"
+              title="Kaydet ve Doğrudan Çıktı Al (F10)"
+              onClick={() => handleSaveAndPrintRef.current()}
+            >
+              <kbd>F10</kbd>
+              <span>Kaydet/Yazdır</span>
+            </button>
+            <span className="shortcut-dot">•</span>
+            <button
+              type="button"
+              className="canvas-bottom-shortcut-pill"
+              title="Doğrudan Yazdır (F9 veya Ctrl+P)"
+              onClick={() => handleDirectPrint()}
+            >
+              <kbd>F9</kbd>
+              <span>Yazdır</span>
+            </button>
+          </div>
+
+          {/* 👁️ Sağ Altta Önizleme / Tasarım Modu Geçiş Butonu */}
+          <div className="canvas-bottom-right-preview-action animate-fadein">
+            <button
+              type="button"
+              className={`canvas-corner-pill-btn ${isPreviewMode ? "active" : ""}`}
+              title={isPreviewMode ? "Tasarım Moduna Dön (ESC)" : "Önizleme Moduna Geç"}
+              onClick={() => {
+                setIsPreviewMode((v) => !v);
+                if (!isPreviewMode) {
+                  setEditingId(null);
+                  setSelectedIds([]);
+                }
+              }}
+            >
+              <IconEye size={15} />
+              <span>{isPreviewMode ? "Tasarım Modu" : "Önizle"}</span>
+            </button>
+          </div>
 
           <div
             ref={canvasScrollContainerRef}
@@ -6565,7 +7475,13 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
               {/* 4. TASARIM MODU ETİKET TUVALİ */}
               {!isPreviewMode && (
-                <div className="label-canvas-wrapper">
+                <div
+                  className="label-canvas-wrapper"
+                  style={{
+                    transform: `translate(${canvasPan.x}px, ${canvasPan.y}px)`,
+                    willChange: "transform",
+                  }}
+                >
                   {/* Üst ve Sol Milimetrik Ölçü Rozetleri */}
                   <div className="label-dimension-badge-top">
                     {labelConfig.genislikMm} mm
@@ -6694,49 +7610,22 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                       );
                     })}
 
-                  {/* Lasso Seçim */}
-                  {lasso && !isPreviewMode && (
-                    <div
-                      className="lasso-box"
-                      style={{
-                        left: mmToPx(lasso.x, zoom),
-                        top: mmToPx(lasso.y, zoom),
-                        width: mmToPx(lasso.w, zoom),
-                        height: mmToPx(lasso.h, zoom),
-                      }}
-                    />
-                  )}
+                    {/* Lasso Seçim */}
+                    {lasso && !isPreviewMode && (
+                      <div
+                        className="lasso-box"
+                        style={{
+                          left: mmToPx(lasso.x, zoom),
+                          top: mmToPx(lasso.y, zoom),
+                          width: mmToPx(lasso.w, zoom),
+                          height: mmToPx(lasso.h, zoom),
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             </div>
-          </div>
-
-          {/* ── Yüzen Zoom Kontrolleri ───────────────────────────────── */}
-          <div className="zoom-bar">
-            <button
-              className="tb-btn"
-              style={{ padding: "0 4px", height: 24 }}
-              title="Uzaklaştır"
-              onClick={() => setZoom((z) => clamp(Math.round((z - 0.2) * 10) / 10, 0.3, 4.5))}
-            >
-              <IconMinus size={13} />
-            </button>
-            <span
-              className="zoom-value"
-              title="150%'e Sıfırla"
-              onClick={() => setZoom(1.5)}
-            >
-              %{Math.round(zoom * 100)}
-            </span>
-            <button
-              className="tb-btn"
-              style={{ padding: "0 4px", height: 24 }}
-              title="Yaklaştır"
-              onClick={() => setZoom((z) => clamp(Math.round((z + 0.2) * 10) / 10, 0.3, 4.5))}
-            >
-              <IconPlus size={13} />
-            </button>
           </div>
 
           {/* ── Durum Çubuğu ─────────────────────────────────────────── */}
@@ -6760,834 +7649,6 @@ const UrunEtiketTasarimiPage: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
-
-        {/* ── Sağ Özellik Paneli (Seçili Eleman Varsa Eleman, Yoksa Kart Boyutları) ─ */}
-        <div className={`right-panel ${rightPanelOpen ? "open" : "collapsed"}`}>
-          {/* Mobil Başlık ve Kapat Butonu */}
-          <div className="panel-header-mobile">
-            <span>⚙️ {selectedElement ? "Nesne Özellikleri" : "Kart / Etiket Boyutu"}</span>
-            <button
-              onClick={() => setRightPanelOpen(false)}
-              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
-            >
-              <IconX size={18} />
-            </button>
-          </div>
-
-          {selectedElement ? (
-            <>
-              {/* ── Konum, Boyut & Akıllı Hizalama ── */}
-              <div className="prop-group">
-                <div className="prop-group-title">
-                  <span>📍 Konum, Boyut & Hizalama</span>
-                  <span style={{ fontSize: 9, color: "#38bdf8" }}>{selectedElement.type}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
-                  <div className="prop-row" style={{ margin: 0 }}>
-                    <span className="prop-label" style={{ minWidth: 20 }}>X:</span>
-                    <input
-                      type="number"
-                      step={0.5}
-                      className="prop-input"
-                      value={Math.round(selectedElement.x * 10) / 10}
-                      onChange={(e) => updateElement(selectedElement.id, { x: Number(e.target.value) })}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                  </div>
-                  <div className="prop-row" style={{ margin: 0 }}>
-                    <span className="prop-label" style={{ minWidth: 20 }}>Y:</span>
-                    <input
-                      type="number"
-                      step={0.5}
-                      className="prop-input"
-                      value={Math.round(selectedElement.y * 10) / 10}
-                      onChange={(e) => updateElement(selectedElement.id, { y: Number(e.target.value) })}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                  </div>
-                  <div className="prop-row" style={{ margin: 0 }}>
-                    <span className="prop-label" style={{ minWidth: 20 }}>En:</span>
-                    <input
-                      type="number"
-                      step={0.5}
-                      min={1}
-                      className="prop-input"
-                      value={Math.round(selectedElement.width * 10) / 10}
-                      onChange={(e) => updateElement(selectedElement.id, { width: Math.max(1, Number(e.target.value)) })}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                  </div>
-                  <div className="prop-row" style={{ margin: 0 }}>
-                    <span className="prop-label" style={{ minWidth: 20 }}>Boy:</span>
-                    <input
-                      type="number"
-                      step={0.5}
-                      min={1}
-                      className="prop-input"
-                      value={Math.round(selectedElement.height * 10) / 10}
-                      onChange={(e) => updateElement(selectedElement.id, { height: Math.max(1, Number(e.target.value)) })}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                  <button
-                    className="elem-btn"
-                    style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10.5, justifyContent: "center" }}
-                    title="Etiketin yatay ortasına hizala"
-                    onClick={() => alignElement("center-h")}
-                  >
-                    ↔ Yatay Ortala
-                  </button>
-                  <button
-                    className="elem-btn"
-                    style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10.5, justifyContent: "center" }}
-                    title="Etiketin dikey ortasına hizala"
-                    onClick={() => alignElement("center-v")}
-                  >
-                    ↕ Dikey Ortala
-                  </button>
-                  {(labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "dambil") && (
-                    <button
-                      className="elem-btn"
-                      style={{ flex: "1 1 100%", padding: "5px 6px", fontSize: 10.5, justifyContent: "center", background: "rgba(56, 189, 248, 0.12)", borderColor: "rgba(56, 189, 248, 0.35)", color: "#38bdf8", fontWeight: 600 }}
-                      title="Kuyruk şeridinin tam ortasına hizalar"
-                      onClick={() => alignElement("tail")}
-                    >
-                      🦴 Kuyruğa Tam Ortala
-                    </button>
-                  )}
-                  {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin" || labelConfig.etiketSekli === "dambil") && (
-                    <>
-                      <button
-                        className="elem-btn"
-                        style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10, justifyContent: "center" }}
-                        title="Sol kanadın ortasına hizalar"
-                        onClick={() => alignElement("left-wing")}
-                      >
-                        ◀ Sol Kanat
-                      </button>
-                      <button
-                        className="elem-btn"
-                        style={{ flex: "1 1 calc(50% - 4px)", padding: "4px 6px", fontSize: 10, justifyContent: "center" }}
-                        title="Sağ kanadın ortasına hizalar"
-                        onClick={() => alignElement("right-wing")}
-                      >
-                        Sağ Kanat ▶
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Barkod, QR & RFID Özel Özellikleri ── */}
-              {(selectedElement.type === "barcode" || selectedElement.type === "qr" || selectedElement.type === "rfid") && (
-                <div className="prop-group">
-                  <div className="prop-group-title">
-                    <span>
-                      {selectedElement.type === "barcode" ? "▨ Barkod Özellikleri" : selectedElement.type === "qr" ? "▦ QR Kod Özellikleri" : "📡 RFID Özellikleri"}
-                    </span>
-                    <span style={{ fontSize: 9.5, color: "#38bdf8" }}>{selectedElement.barcodeFormat || "CODE128"}</span>
-                  </div>
-
-                  <div className="prop-row">
-                    <span className="prop-label">Format:</span>
-                    <select
-                      className="prop-input"
-                      value={selectedElement.barcodeFormat || (selectedElement.type === "qr" ? "QR" : selectedElement.type === "rfid" ? "RFID" : "CODE128")}
-                      onChange={(e) => {
-                        const fmt = e.target.value as any;
-                        const newType = fmt === "QR" ? "qr" : fmt === "RFID" ? "rfid" : "barcode";
-                        updateElement(selectedElement.id, { barcodeFormat: fmt, type: newType });
-                      }}
-                    >
-                      <option value="CODE128">CODE128 (Standart)</option>
-                      <option value="EAN13">EAN-13 (13 Haneli)</option>
-                      <option value="QR">QR Kod (Karekod)</option>
-                      <option value="RFID">RFID / Kablosuz Çip</option>
-                    </select>
-                  </div>
-
-                  <div className="prop-row">
-                    <span className="prop-label">Veri/Değer:</span>
-                    <input
-                      type="text"
-                      className="prop-input"
-                      value={selectedElement.barcodeValue || selectedElement.text || ""}
-                      placeholder="Barkod veya Link/Metin..."
-                      onChange={(e) => updateElement(selectedElement.id, { barcodeValue: e.target.value, text: e.target.value })}
-                    />
-                  </div>
-
-                  {selectedElement.type === "barcode" && (
-                    <>
-                      <div className="prop-row">
-                        <span className="prop-label" title="Barkodun altında yazılacak özel metin">Alt Yazı:</span>
-                        <input
-                          type="text"
-                          className="prop-input"
-                          value={selectedElement.barcodeText !== undefined ? selectedElement.barcodeText : ""}
-                          placeholder={selectedElement.barcodeValue || selectedElement.text || "Otomatik (Barkod No)"}
-                          onChange={(e) => updateElement(selectedElement.id, { barcodeText: e.target.value })}
-                        />
-                      </div>
-                      <label className="small-form-check" style={{ marginTop: 4 }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedElement.showText !== false}
-                          onChange={(e) => updateElement(selectedElement.id, { showText: e.target.checked })}
-                        />
-                        <span>Barkod Alt Yazısını Göster</span>
-                      </label>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Metin & ERP Alan Ayarları */}
-              {(selectedElement.type === "text" || selectedElement.type === "field") && (
-                <>
-                  <div className="prop-group">
-                    <div className="prop-group-title">
-                      <span>{selectedElement.isNumeric ? "Sayı Alanı Özellikleri" : "Metin Özellikleri"}</span>
-                      <span style={{ fontSize: 9.5, color: "#38bdf8" }}>{selectedElement.isNumeric ? "Sayı (Sağa Dayalı)" : selectedElement.type}</span>
-                    </div>
-                    {selectedElement.type === "field" && (
-                      <div className="prop-row">
-                        <span className="prop-label">Alan:</span>
-                        <select
-                          className="prop-input"
-                          value={selectedElement.fieldKey || ""}
-                          onChange={(e) => updateElement(selectedElement.id, { fieldKey: e.target.value })}
-                        >
-                          <option value="">— Seç —</option>
-                          {ALTIN_ALANLAR.map((a) => (
-                            <option key={a.key} value={a.key}>{a.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    {selectedElement.type === "text" && (
-                      <div className="prop-row">
-                        <span className="prop-label">{selectedElement.isNumeric ? "Sayı:" : "Metin:"}</span>
-                        <input
-                          type="text"
-                          inputMode={selectedElement.isNumeric ? "decimal" : "text"}
-                          className="prop-input"
-                          style={{ textAlign: selectedElement.isNumeric ? "right" : "left" }}
-                          value={selectedElement.text || ""}
-                          placeholder={selectedElement.isNumeric ? "0.00" : "Metin giriniz..."}
-                          onKeyDown={(e) => {
-                            if (selectedElement.isNumeric) {
-                              const allowedKeys = [
-                                "Backspace", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
-                                "Tab", "Enter", "Escape", "Home", "End"
-                              ];
-                              if (
-                                !allowedKeys.includes(e.key) &&
-                                !e.ctrlKey &&
-                                !e.metaKey &&
-                                !/^[0-9.,]$/.test(e.key)
-                              ) {
-                                e.preventDefault();
-                              }
-                            }
-                          }}
-                          onChange={(e) => {
-                            let val = e.target.value;
-                            if (selectedElement.isNumeric) {
-                              val = val.replace(/[^0-9.,]/g, "");
-                            }
-                            updateElement(selectedElement.id, { text: val });
-                          }}
-                        />
-                      </div>
-                    )}
-
-
-                    <div className="prop-row">
-                      <span className="prop-label">Önek:</span>
-                      <input
-                        type="text"
-                        className="prop-input"
-                        value={selectedElement.prefix || ""}
-                        placeholder="örn: Gr: "
-                        onChange={(e) => updateElement(selectedElement.id, { prefix: e.target.value })}
-                      />
-                    </div>
-                    <div className="prop-row">
-                      <span className="prop-label">Sonek:</span>
-                      <input
-                        type="text"
-                        className="prop-input"
-                        value={selectedElement.suffix || ""}
-                        placeholder="örn: TL"
-                        onChange={(e) => updateElement(selectedElement.id, { suffix: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="prop-group">
-                    <div className="prop-group-title">Tipografi & Punto</div>
-                    <div className="prop-row">
-                      <select
-                        className="prop-input"
-                        style={{ fontFamily: selectedElement.fontFamily }}
-                        value={selectedElement.fontFamily || "Arial"}
-                        onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })}
-                      >
-                        {FONT_FAMILIES.map((f) => (
-                          <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="prop-row">
-                      <span className="prop-label">Punto:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        value={selectedElement.fontSize ?? ""}
-                        min={4}
-                        max={72}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const v = e.target.value === "" ? "" : Number(e.target.value);
-                          updateElement(selectedElement.id, { fontSize: v as any });
-                        }}
-                      />
-                      <span style={{ fontSize: 9, color: "#94a3b8" }}>pt</span>
-                    </div>
-
-                    {/* Hızlı Punto Butonları */}
-                    <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 4 }}>
-                      {[6, 7, 8, 9, 10, 11, 12, 14].map((pt) => (
-                        <button
-                          key={pt}
-                          className={`context-punto-btn ${selectedElement.fontSize === pt ? "active" : ""}`}
-                          style={{ flex: 1, textAlign: "center", padding: "2px 0" }}
-                          onClick={() => updateElement(selectedElement.id, { fontSize: pt })}
-                        >
-                          {pt}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="prop-row" style={{ marginTop: 8 }}>
-                      <span className="prop-label">Yazı Rengi:</span>
-                      <div className="color-swatch" style={{ background: selectedElement.color || "#000" }}>
-                        <input
-                          type="color"
-                          value={selectedElement.color || "#000000"}
-                          onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })}
-                        />
-                      </div>
-                      <span style={{ fontSize: 10, color: "#94a3b8" }}>{selectedElement.color || "#000000"}</span>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Görsel & Logo Ayarları */}
-              {(selectedElement.type === "image" || selectedElement.type === "logo") && (
-                <div className="prop-group">
-                  <div className="prop-group-title">Fotoğraf & Logo Özellikleri</div>
-                  {selectedElement.imageData && (
-                    <div style={{ textAlign: "center", marginBottom: 8, background: "rgba(0,0,0,0.3)", padding: 6, borderRadius: 4 }}>
-                      <img
-                        src={selectedElement.imageData}
-                        alt="Seçili Görsel"
-                        style={{ maxHeight: 60, maxWidth: "100%", objectFit: "contain" }}
-                      />
-                    </div>
-                  )}
-                  <button
-                    className="elem-btn"
-                    style={{ width: "100%", padding: "5px 8px", fontSize: 11, justifyContent: "center", gap: 5 }}
-                    onClick={() => {
-                      imageTargetIdRef.current = selectedElement?.id || null;
-                      imageInputRef.current?.click();
-                    }}
-                  >
-                    <IconUpload size={13} />
-                    <span>Fotoğrafı Değiştir</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Şekil Renk & Kenarlık Ayarları */}
-              {(selectedElement.type === "rect" || selectedElement.type === "rect-round" || selectedElement.type === "ellipse" || selectedElement.type === "diamond" || selectedElement.type.startsWith("line")) && (
-                <div className="prop-group">
-                  <div className="prop-group-title">Şekil & Kenarlık</div>
-                  <div className="prop-row">
-                    <span className="prop-label">Çizgi/Kenar Rengi:</span>
-                    <div className="color-swatch" style={{ background: selectedElement.borderColor || "#000" }}>
-                      <input
-                        type="color"
-                        value={selectedElement.borderColor || "#000000"}
-                        onChange={(e) => updateElement(selectedElement.id, { borderColor: e.target.value })}
-                      />
-                    </div>
-                    <span style={{ fontSize: 10, color: "#94a3b8" }}>{selectedElement.borderColor || "#000000"}</span>
-                  </div>
-                  <div className="prop-row">
-                    <span className="prop-label">Kalınlık:</span>
-                    <input
-                      type="number"
-                      className="prop-input"
-                      value={selectedElement.borderWidth ?? 1}
-                      min={1}
-                      max={20}
-                      onChange={(e) => {
-                        const v = e.target.value === "" ? 1 : Number(e.target.value);
-                        updateElement(selectedElement.id, { borderWidth: v });
-                      }}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>px</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Görünürlük & Kilit */}
-              <div className="prop-group">
-                <div className="prop-group-title">Katman & Kilit</div>
-                <label className="small-form-check" style={{ marginBottom: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedElement.locked}
-                    onChange={(e) => updateElement(selectedElement.id, { locked: e.target.checked })}
-                  />
-                  <span>Nesneyi Kilitle</span>
-                </label>
-                <label className="small-form-check">
-                  <input
-                    type="checkbox"
-                    checked={selectedElement.visible}
-                    onChange={(e) => updateElement(selectedElement.id, { visible: e.target.checked })}
-                  />
-                  <span>Görünür</span>
-                </label>
-              </div>
-
-              <div className="prop-group">
-                <button
-                  style={{
-                    width: "100%",
-                    padding: "6px",
-                    background: "rgba(239,68,68,0.12)",
-                    border: "1px solid rgba(239,68,68,0.3)",
-                    borderRadius: 5,
-                    color: "#f87171",
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 5,
-                  }}
-                  onClick={() => {
-                    dispatch({ type: "DELETE_ELEMENTS", ids: [selectedElement.id] });
-                    setSelectedIds([]);
-                  }}
-                >
-                  <IconTrash size={13} />
-                  Nesneyi Sil
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* ── Hiçbir Eleman Seçili Değilken: Doğrudan KART BOYUTU & ŞEKİL DÜZENLEME ── */}
-              <div className="prop-group">
-                <div className="prop-group-title">
-                  <span>📐 Kart / Etiket Boyutu</span>
-                  <span style={{ fontSize: 9, color: "#38bdf8" }}>Genel Ayar</span>
-                </div>
-                <div className="prop-row">
-                  <span className="prop-label">Model:</span>
-                  <select
-                    className="prop-input"
-                    value={labelConfig.etiketSekli}
-                    onChange={(e) => updateLabelConfig({ etiketSekli: e.target.value as any })}
-                  >
-                    {ETIKET_SEKILLERI.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.icon} {s.ad}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="prop-row">
-                  <span className="prop-label">Genişlik:</span>
-                  <input
-                    type="number"
-                    className="prop-input"
-                    key={`en-model-${labelConfig.genislikMm}`}
-                    defaultValue={labelConfig.genislikMm}
-                    step={1}
-                    min={5}
-                    max={300}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (!isNaN(v) && v > 0) updateLabelConfig({ genislikMm: v });
-                      else e.target.value = String(labelConfig.genislikMm);
-                    }}
-                  />
-                  <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                </div>
-                <div className="prop-row">
-                  <span className="prop-label">Yükseklik:</span>
-                  <input
-                    type="number"
-                    className="prop-input"
-                    key={`boy-model-${labelConfig.yukseklikMm}`}
-                    defaultValue={labelConfig.yukseklikMm}
-                    step={1}
-                    min={3}
-                    max={200}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (!isNaN(v) && v > 0) updateLabelConfig({ yukseklikMm: v });
-                      else e.target.value = String(labelConfig.yukseklikMm);
-                    }}
-                  />
-                  <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                </div>
-                <div className="prop-row">
-                  <span className="prop-label">Köşe Yuvarlaklığı:</span>
-                  <input
-                    type="number"
-                    className="prop-input"
-                    key={`kose-yuvarlaklik-model-${labelConfig.koseYuvarlikligiMm}`}
-                    defaultValue={labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3}
-                    step={0.5}
-                    min={0}
-                    max={15}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (!isNaN(v) && v >= 0) updateLabelConfig({ koseYuvarlikligiMm: v });
-                      else e.target.value = String(labelConfig.koseYuvarlikligiMm !== undefined ? labelConfig.koseYuvarlikligiMm : 3);
-                    }}
-                  />
-                  <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                </div>
-              </div>
-
-              {/* Model Detay Ölçüleri (Boğum, Kanatlar, Kuyruk) */}
-              {(labelConfig.etiketSekli === "kelebek" || labelConfig.etiketSekli === "dambil" || labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
-                <div className="prop-group">
-                  <div className="prop-group-title">
-                    <span>🔬 Model Milimetrik Boğum & Kuyruk</span>
-                  </div>
-                  {(labelConfig.etiketSekli === "kuyruklu" || labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
-                    <div className="prop-row">
-                      <span className="prop-label">Kuyruk Boyu:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`kuyruk-boyu-model-${labelConfig.kuyrukGenislikMm}`}
-                        defaultValue={labelConfig.kuyrukGenislikMm !== undefined ? labelConfig.kuyrukGenislikMm : 35}
-                        step={1}
-                        min={1}
-                        max={150}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (isNaN(v) || v <= 0) { e.target.value = String(labelConfig.kuyrukGenislikMm ?? 35); return; }
-                          if (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") updateBogumluKuyrukKuyruk(v);
-                          else updateLabelConfig({ kuyrukGenislikMm: v });
-                        }}
-                      />
-                      <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                    </div>
-                  )}
-                  {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
-                    <div className="prop-row">
-                      <span className="prop-label">Kuyruk Kalınlığı:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`kuyruk-kalinlik-model-${labelConfig.kuyrukKalinlikMm}`}
-                        defaultValue={labelConfig.kuyrukKalinlikMm !== undefined ? labelConfig.kuyrukKalinlikMm : 4}
-                        step={0.5}
-                        min={1}
-                        max={30}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (!isNaN(v) && v > 0) updateKuyrukKalinlik(v);
-                          else e.target.value = String(labelConfig.kuyrukKalinlikMm ?? 4);
-                        }}
-                      />
-                      <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                    </div>
-                  )}
-                  <div className="prop-row">
-                    <span className="prop-label">Boğum Derinliği:</span>
-                    <input
-                      type="number"
-                      className="prop-input"
-                      key={`bogum-derinlik-${labelConfig.bogumDerinlikMm}`}
-                      defaultValue={labelConfig.bogumDerinlikMm !== undefined ? labelConfig.bogumDerinlikMm : (labelConfig.etiketSekli === "kelebek" ? 2.0 : 3.0)}
-                      step={0.5}
-                      min={0}
-                      max={10}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                      onBlur={(e) => {
-                        const v = Number(e.target.value);
-                        if (!isNaN(v) && v >= 0) updateBogumDerinlik(v);
-                      }}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                  </div>
-                  <div className="prop-row">
-                    <span className="prop-label">Köprü / Boğum Genişliği:</span>
-                    <input
-                      type="number"
-                      className="prop-input"
-                      key={`kopru-genislik-${labelConfig.kopruGenislikMm}`}
-                      defaultValue={labelConfig.kopruGenislikMm !== undefined ? labelConfig.kopruGenislikMm : (labelConfig.etiketSekli === "kelebek" ? 6 : 8)}
-                      step={0.5}
-                      min={1}
-                      max={30}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                      onBlur={(e) => {
-                        const v = Number(e.target.value);
-                        if (!isNaN(v) && v > 0) updateLabelConfig({ kopruGenislikMm: v });
-                      }}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                  </div>
-                  <div className="prop-row">
-                    <span className="prop-label">{(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") ? "Sol Boğum:" : "Sol Kanat Genişliği:"}</span>
-                    <input
-                      type="number"
-                      className="prop-input"
-                      key={`sol-kanat-model-${labelConfig.solKanatMm}`}
-                      defaultValue={labelConfig.solKanatMm || labelConfig.genislikMm / 2}
-                      step={1}
-                      min={1}
-                      max={
-                        (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin")
-                          ? 200
-                          : labelConfig.genislikMm - 5
-                      }
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                      onBlur={(e) => {
-                        const v = Number(e.target.value);
-                        if (isNaN(v) || v <= 0) { e.target.value = String(labelConfig.solKanatMm || labelConfig.genislikMm / 2); return; }
-                        if (labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") updateBogumluKuyrukSol(v);
-                        else updateLabelConfig({ solKanatMm: v });
-                      }}
-                    />
-                    <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                  </div>
-                  {(labelConfig.etiketSekli === "bogumlukuyruk" || labelConfig.etiketSekli === "bogumlukuyrukkeskin") && (
-                    <div className="prop-row">
-                      <span className="prop-label">Sağ Boğum:</span>
-                      <input
-                        type="number"
-                        className="prop-input"
-                        key={`sag-kanat-model-${labelConfig.sagKanatMm}`}
-                        defaultValue={labelConfig.sagKanatMm || labelConfig.genislikMm / 2}
-                        step={1}
-                        min={1}
-                        max={200}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (!isNaN(v) && v > 0) updateBogumluKuyrukSag(v);
-                          else e.target.value = String(labelConfig.sagKanatMm || labelConfig.genislikMm / 2);
-                        }}
-                      />
-                      <span style={{ fontSize: 9, color: "#94a3b8" }}>mm</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Hızlı Ölçü Presetleri (Taşmayan Tek Sütun Düzen) */}
-              <div className="prop-group">
-                <div className="prop-group-title">
-                  <span>⚡ Sektörel Standart Ölçüler</span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}>
-                  {POPULAR_SIZES.map((ps) => {
-                    const isSelected =
-                      labelConfig.genislikMm === ps.config.genislikMm &&
-                      labelConfig.yukseklikMm === ps.config.yukseklikMm &&
-                      labelConfig.etiketSekli === ps.config.etiketSekli;
-                    return (
-                      <button
-                        key={ps.ad}
-                        className="elem-btn"
-                        style={{
-                          padding: "5px 8px",
-                          height: "auto",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          borderRadius: 5,
-                          width: "100%",
-                          background: isSelected ? "rgba(56,189,248,0.18)" : "rgba(255,255,255,0.03)",
-                          border: isSelected ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.07)",
-                        }}
-                        onClick={() => updateLabelConfig(ps.config)}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
-                          <span style={{ fontSize: 13, flexShrink: 0 }}>{ps.icon}</span>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {ps.ad}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: 9.5, color: isSelected ? "#38bdf8" : "#94a3b8", fontWeight: 700, flexShrink: 0, marginLeft: 4 }}>
-                          {ps.config.genislikMm}×{ps.config.yukseklikMm}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="prop-group">
-                <div className="prop-group-title">
-                  <span>🎨 Kart Rengi & Çizgiler</span>
-                </div>
-                <label className="small-form-check" style={{ marginBottom: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={labelConfig.katlamaCizgisi}
-                    onChange={(e) => updateLabelConfig({ katlamaCizgisi: e.target.checked })}
-                  />
-                  <span>Katlama Çizgisi</span>
-                </label>
-                <div className="prop-row">
-                  <span className="prop-label">Renk:</span>
-                  <div className="color-swatch" style={{ background: labelConfig.bgColor }} title="Kart Rengi">
-                    <input
-                      type="color"
-                      value={labelConfig.bgColor}
-                      onChange={(e) => updateLabelConfig({ bgColor: e.target.value })}
-                    />
-                  </div>
-                  <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 4 }}>{labelConfig.bgColor}</span>
-                </div>
-              </div>
-
-              <div className="prop-group" style={{ background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.2)", borderRadius: 6, padding: 8 }}>
-                <div className="prop-group-title" style={{ color: "#38bdf8" }}>
-                  <span>🖨️ Yazıcı Baskı Ayarları</span>
-                </div>
-                <div style={{ fontSize: 9.5, color: "#94a3b8", marginBottom: 8, lineHeight: 1.25 }}>
-                  Yazıcınızın mekanik etiket kaydırmasına göre milimetrik hizalama:
-                </div>
-
-                {/* Dikey Kaydırma */}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#cbd5e1", marginBottom: 3 }}>
-                    <span>Dikey (Yukarı / Aşağı):</span>
-                    <span style={{ color: "#38bdf8", fontWeight: 700 }}>
-                      {(labelConfig.yaziciUstKaydirmaMm ?? -0.8) > 0 ? `+${labelConfig.yaziciUstKaydirmaMm ?? -0.8}` : (labelConfig.yaziciUstKaydirmaMm ?? -0.8)} mm
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                    <button
-                      className="tb-btn"
-                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
-                      title="0.5mm YUKARI Kaydır (Sayı Artar: +0.5mm)"
-                      onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) + 0.5) * 10) / 10 })}
-                    >
-                      ▲ Yukarı
-                    </button>
-                    <input
-                      type="number"
-                      className="prop-input"
-                      style={{ textAlign: "center", padding: "1px 3px" }}
-                      key={`yazici-ust-${labelConfig.yaziciUstKaydirmaMm}`}
-                      defaultValue={labelConfig.yaziciUstKaydirmaMm ?? -0.8}
-                      step={0.1}
-                      min={-15}
-                      max={15}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                      onBlur={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v)) updateLabelConfig({ yaziciUstKaydirmaMm: v });
-                        else e.target.value = String(labelConfig.yaziciUstKaydirmaMm ?? -0.8);
-                      }}
-                    />
-                    <button
-                      className="tb-btn"
-                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
-                      title="0.5mm AŞAĞI Kaydır (Sayı Azalır: -0.5mm)"
-                      onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) - 0.5) * 10) / 10 })}
-                    >
-                      ▼ Aşağı
-                    </button>
-                  </div>
-                </div>
-
-                {/* Yatay Kaydırma */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#cbd5e1", marginBottom: 3 }}>
-                    <span>Yatay (Sola / Sağa):</span>
-                    <span style={{ color: "#38bdf8", fontWeight: 700 }}>
-                      {(labelConfig.yaziciSolKaydirmaMm || 0) > 0 ? `+${labelConfig.yaziciSolKaydirmaMm}` : (labelConfig.yaziciSolKaydirmaMm || 0)} mm
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                    <button
-                      className="tb-btn"
-                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
-                      title="0.5mm SOLA Kaydır (Sol Offset Azalt)"
-                      onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) - 0.5) * 10) / 10 })}
-                    >
-                      ◄ Sola
-                    </button>
-                    <input
-                      type="number"
-                      className="prop-input"
-                      style={{ textAlign: "center", padding: "1px 3px" }}
-                      key={`yazici-sol-${labelConfig.yaziciSolKaydirmaMm}`}
-                      defaultValue={labelConfig.yaziciSolKaydirmaMm || 0}
-                      step={0.1}
-                      min={-15}
-                      max={15}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                      onBlur={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v)) updateLabelConfig({ yaziciSolKaydirmaMm: v });
-                        else e.target.value = String(labelConfig.yaziciSolKaydirmaMm || 0);
-                      }}
-                    />
-                    <button
-                      className="tb-btn"
-                      style={{ padding: "0 6px", height: 22, fontSize: 9.5, background: "rgba(255,255,255,0.08)" }}
-                      title="0.5mm SAĞA Kaydır (Sol Offset Artır)"
-                      onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) + 0.5) * 10) / 10 })}
-                    >
-                      Sağa ►
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
         </div>
       </div>
 
@@ -7729,24 +7790,50 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                   <div
                     className="context-menu-item"
                     onClick={() => {
-                      if (contextMenu.targetId) bringForward(contextMenu.targetId);
+                      const target = contextMenu.targetId || selectedIds[0];
+                      if (target) bringToFront(target);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <IconArrowUp size={13} color="#059669" />
+                    <span style={{ fontWeight: 700, color: "#059669" }}>En Öne Getir</span>
+                    <span className="shortcut">Ctrl+Shift+]</span>
+                  </div>
+                  <div
+                    className="context-menu-item"
+                    onClick={() => {
+                      const target = contextMenu.targetId || selectedIds[0];
+                      if (target) bringForward(target);
                       setContextMenu(null);
                     }}
                   >
                     <IconArrowUp size={13} />
-                    <span>Öne Getir</span>
+                    <span>Bir Katman Öne Getir</span>
                     <span className="shortcut">Ctrl+]</span>
                   </div>
                   <div
                     className="context-menu-item"
                     onClick={() => {
-                      if (contextMenu.targetId) sendBackward(contextMenu.targetId);
+                      const target = contextMenu.targetId || selectedIds[0];
+                      if (target) sendBackward(target);
                       setContextMenu(null);
                     }}
                   >
                     <IconArrowDown size={13} />
-                    <span>Arkaya Gönder</span>
+                    <span>Bir Katman Arkaya Gönder</span>
                     <span className="shortcut">Ctrl+[</span>
+                  </div>
+                  <div
+                    className="context-menu-item"
+                    onClick={() => {
+                      const target = contextMenu.targetId || selectedIds[0];
+                      if (target) sendToBack(target);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <IconArrowDown size={13} color="#d97706" />
+                    <span style={{ fontWeight: 600 }}>En Arkaya Gönder</span>
+                    <span className="shortcut">Ctrl+Shift+[</span>
                   </div>
                   <div className="context-menu-divider" />
                   <div
@@ -8145,49 +8232,486 @@ const UrunEtiketTasarimiPage: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* ── ⚠️ Ortalanmış Hata / Bildirim Popup Modalı ──────────────────── */}
+      {/* ── 📐 Etiket Boyut & Geometri Yapılandırma Modalı ────────────────── */}
       <Modal
-        show={Boolean(errorPopup?.show)}
-        onHide={() => setErrorPopup(null)}
+        show={shapeModalOpen}
+        onHide={() => setShapeModalOpen(false)}
         centered
-        className="dark-modal"
+        size="lg"
       >
-        <Modal.Header closeButton style={{ background: "#0f172a", borderColor: "#334155", color: "#f8fafc" }}>
-          <Modal.Title style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
-            <IconAlertTriangle size={20} color="#ef4444" />
-            <span style={{ fontWeight: 700 }}>{errorPopup?.title || "Hata / Uyarı"}</span>
+        <Modal.Header closeButton style={{ background: "#ffffff", borderColor: "#e2e8f0", color: "#0f172a" }}>
+          <Modal.Title style={{ fontSize: 16, display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+            <IconAdjustmentsHorizontal size={20} color="#0284c7" />
+            <span>📐 Etiket Boyut & Geometri Ayarları</span>
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body style={{ background: "#1e293b", color: "#f1f5f9", padding: "20px 24px" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ background: "rgba(239,68,68,0.15)", borderRadius: "50%", padding: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <IconAlertTriangle size={24} color="#ef4444" />
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#f87171" }}>
-                İşlem Uyarısı
+        <Modal.Body style={{ background: "#f8fafc", color: "#0f172a", maxHeight: "75vh", overflowY: "auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16 }}>
+            {/* Sol: Etiket Modelleri & Kesim Şekli Seçimi */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#0284c7", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>1. Etiket Kesim Şekli & Modeli</span>
+                <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>
+                  ({ETIKET_SEKILLERI.length} Farklı Model)
+                </span>
               </div>
-              <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
-                {errorPopup?.message}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxHeight: "58vh", overflowY: "auto", paddingRight: 4 }}>
+                {ETIKET_SEKILLERI.map((s) => {
+                  const isSel = labelConfig.etiketSekli === s.value;
+                  return (
+                    <div
+                      key={s.value}
+                      style={{
+                        padding: "10px 12px",
+                        background: isSel ? "#eff6ff" : "#ffffff",
+                        border: isSel ? "2px solid #0284c7" : "1px solid #cbd5e1",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        boxShadow: isSel ? "0 2px 8px rgba(2,132,199,0.2)" : "0 1px 3px rgba(0,0,0,0.04)",
+                        transition: "all 0.15s ease",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                      onClick={() => updateLabelConfig({ etiketSekli: s.value as any })}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 20 }}>{s.icon}</span>
+                        {isSel && (
+                          <span style={{ fontSize: 10, background: "#0284c7", color: "#ffffff", padding: "1px 6px", borderRadius: 10, fontWeight: 700 }}>
+                            ✓ Seçili
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: isSel ? "#0284c7" : "#0f172a", marginTop: 4 }}>
+                        {s.ad}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#64748b", lineHeight: 1.25 }}>
+                        {s.desc}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sağ: Tüm Milimetrik Boyutlar & Geometri Parametreleri */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#0284c7" }}>
+                2. Tüm Milimetrik Ölçü ve Geometri Ayarları
+              </div>
+
+              {/* Ana Ölçüler */}
+              <div style={{ background: "#ffffff", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                <div style={{ fontWeight: 700, fontSize: 11.5, color: "#0f172a", marginBottom: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 4 }}>
+                  📏 Genel Boyutlar
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>Toplam Genişlik (En):</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.genislikMm}
+                        min={5}
+                        max={300}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ genislikMm: Number(e.target.value) || 10 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>mm</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>Toplam Yükseklik (Boy):</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.yukseklikMm}
+                        min={3}
+                        max={200}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ yukseklikMm: Number(e.target.value) || 5 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>mm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #f1f5f9" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>🔘 Köşe Yuvarlatma (Radyus):</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: 65, textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.koseYuvarlikligiMm || 0}
+                        min={0}
+                        max={30}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ koseYuvarlikligiMm: Math.max(0, Number(e.target.value) || 0) })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>mm</span>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    style={{ width: "100%", accentColor: "#0284c7", cursor: "pointer" }}
+                    min={0}
+                    max={25}
+                    step={0.5}
+                    value={labelConfig.koseYuvarlikligiMm || 0}
+                    onChange={(e) => updateLabelConfig({ koseYuvarlikligiMm: Number(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+
+              {/* Boğum, Kuyruk, Kanat ve Köprü Detayları */}
+              <div style={{ background: "#ffffff", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                <div style={{ fontWeight: 700, fontSize: 11.5, color: "#0f172a", marginBottom: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 4 }}>
+                  🦴 Boğum, Kuyruk & Kanat Detayları
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>Sol Kanat / Gövde:</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.solKanatMm ?? 28}
+                        min={1}
+                        max={150}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ solKanatMm: Number(e.target.value) || 1 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b" }}>mm</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>Sağ Kanat Genişliği:</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.sagKanatMm ?? 28}
+                        min={1}
+                        max={150}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ sagKanatMm: Number(e.target.value) || 1 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b" }}>mm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>✂️ Boğum Derinliği:</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.bogumDerinlikMm ?? 2.0}
+                        min={0}
+                        max={25}
+                        step={0.2}
+                        onChange={(e) => updateLabelConfig({ bogumDerinlikMm: Number(e.target.value) || 0 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b" }}>mm</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>🎗️ Kuyruk Uzunluğu:</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.kuyrukGenislikMm ?? 35}
+                        min={1}
+                        max={200}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ kuyrukGenislikMm: Number(e.target.value) || 1 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b" }}>mm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>📏 Kuyruk Kalınlığı (Yükseklik):</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.kuyrukKalinlikMm ?? 4}
+                        min={1}
+                        max={40}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ kuyrukKalinlikMm: Number(e.target.value) || 1 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b" }}>mm</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>🌉 Köprü Genişliği:</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="number"
+                        className="prop-input"
+                        style={{ width: "100%", textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                        value={labelConfig.kopruGenislikMm ?? 6}
+                        min={1}
+                        max={60}
+                        step={0.5}
+                        onChange={(e) => updateLabelConfig({ kopruGenislikMm: Number(e.target.value) || 1 })}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748b" }}>mm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", display: "block", marginBottom: 3 }}>🌉 Köprü Yüksekliği:</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <input
+                      type="number"
+                      className="prop-input"
+                      style={{ width: 80, textAlign: "center", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                      value={labelConfig.kopruYukseklikMm ?? 18}
+                      min={1}
+                      max={120}
+                      step={0.5}
+                      onChange={(e) => updateLabelConfig({ kopruYukseklikMm: Number(e.target.value) || 1 })}
+                    />
+                    <span style={{ fontSize: 11, color: "#64748b" }}>mm</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Katlama Çizgisi & Delik Ayarları */}
+              <div style={{ background: "#ffffff", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <label className="small-form-check" style={{ cursor: "pointer", margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={labelConfig.katlamaCizgisi}
+                    onChange={(e) => updateLabelConfig({ katlamaCizgisi: e.target.checked })}
+                  />
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: "#1e293b" }}>Katlama Kılavuz Çizgisi</span>
+                </label>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Kart Rengi:</span>
+                  <div className="color-swatch" style={{ background: labelConfig.bgColor, width: 22, height: 22, borderRadius: 4 }}>
+                    <input
+                      type="color"
+                      value={labelConfig.bgColor}
+                      onChange={(e) => updateLabelConfig({ bgColor: e.target.value })}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </Modal.Body>
+        <Modal.Footer style={{ background: "#ffffff", borderColor: "#e2e8f0" }}>
+          <button
+            style={{ padding: "8px 24px", background: "#0284c7", border: "none", borderRadius: 6, color: "#ffffff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(2,132,199,0.3)" }}
+            onClick={() => setShapeModalOpen(false)}
+          >
+            Seç ve Tasarıma Başla
+          </button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ── 🖨️ Yazıcı Kalibrasyon & Baskı Kaydırma Modalı ────────────────── */}
+      <Modal
+        show={printerModalOpen}
+        onHide={() => setPrinterModalOpen(false)}
+        centered
+      >
+        <Modal.Header closeButton style={{ background: "#ffffff", borderColor: "#e2e8f0", color: "#0f172a" }}>
+          <Modal.Title style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+            <IconPrinter size={18} color="#0284c7" />
+            <span>🖨️ Yazıcı Milimetrik Kalibrasyonu & Kaydırma</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={{ background: "#f8fafc", color: "#0f172a" }}>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 14, lineHeight: 1.4 }}>
+            Termal barkod yazıcınızın kağıt besleme veya optik sensör farklılıklarını milimetrik olarak sıfırlayabilirsiniz:
+          </div>
+
+          <div style={{ background: "#ffffff", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", marginBottom: 14 }}>
+            {/* Yatay Sol / Sağ */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#1e293b", marginBottom: 6 }}>
+                <span style={{ fontWeight: 600 }}>Yatay Kaydırma (Sol / Sağ):</span>
+                <span style={{ color: "#0284c7", fontWeight: 700 }}>
+                  {(labelConfig.yaziciSolKaydirmaMm || 0) > 0 ? `+${labelConfig.yaziciSolKaydirmaMm}` : (labelConfig.yaziciSolKaydirmaMm || 0)} mm
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  style={{ height: 28, padding: "0 10px", fontSize: 11.5, fontWeight: 600, background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 6, color: "#334155", cursor: "pointer" }}
+                  onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) - 0.5) * 10) / 10 })}
+                >
+                  ◄ 0.5mm Sola
+                </button>
+                <input
+                  type="number"
+                  className="prop-input"
+                  style={{ textAlign: "center", flex: 1, height: 28, background: "#ffffff", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                  value={labelConfig.yaziciSolKaydirmaMm || 0}
+                  step={0.1}
+                  onChange={(e) => updateLabelConfig({ yaziciSolKaydirmaMm: parseFloat(e.target.value) || 0 })}
+                />
+                <button
+                  type="button"
+                  style={{ height: 28, padding: "0 10px", fontSize: 11.5, fontWeight: 600, background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 6, color: "#334155", cursor: "pointer" }}
+                  onClick={() => updateLabelConfig({ yaziciSolKaydirmaMm: Math.round(((labelConfig.yaziciSolKaydirmaMm || 0) + 0.5) * 10) / 10 })}
+                >
+                  0.5mm Sağa ►
+                </button>
+              </div>
+            </div>
+
+            {/* Dikey Üst / Alt */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#1e293b", marginBottom: 6 }}>
+                <span style={{ fontWeight: 600 }}>Dikey Kaydırma (Yukarı / Aşağı):</span>
+                <span style={{ color: "#0284c7", fontWeight: 700 }}>
+                  {(labelConfig.yaziciUstKaydirmaMm ?? -0.8) > 0 ? `+${labelConfig.yaziciUstKaydirmaMm ?? -0.8}` : (labelConfig.yaziciUstKaydirmaMm ?? -0.8)} mm
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  style={{ height: 28, padding: "0 10px", fontSize: 11.5, fontWeight: 600, background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 6, color: "#334155", cursor: "pointer" }}
+                  onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) + 0.5) * 10) / 10 })}
+                >
+                  ▲ 0.5mm Yukarı
+                </button>
+                <input
+                  type="number"
+                  className="prop-input"
+                  style={{ textAlign: "center", flex: 1, height: 28, background: "#ffffff", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 700 }}
+                  value={labelConfig.yaziciUstKaydirmaMm ?? -0.8}
+                  step={0.1}
+                  onChange={(e) => updateLabelConfig({ yaziciUstKaydirmaMm: parseFloat(e.target.value) || 0 })}
+                />
+                <button
+                  type="button"
+                  style={{ height: 28, padding: "0 10px", fontSize: 11.5, fontWeight: 600, background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 6, color: "#334155", cursor: "pointer" }}
+                  onClick={() => updateLabelConfig({ yaziciUstKaydirmaMm: Math.round(((labelConfig.yaziciUstKaydirmaMm ?? -0.8) - 0.5) * 10) / 10 })}
+                >
+                  ▼ 0.5mm Aşağı
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal.Body>
+        <Modal.Footer style={{ background: "#ffffff", borderColor: "#e2e8f0" }}>
+          <button
+            style={{ padding: "8px 24px", background: "#0284c7", border: "none", borderRadius: 6, color: "#ffffff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(2,132,199,0.3)" }}
+            onClick={() => setPrinterModalOpen(false)}
+          >
+            Kaydet ve Kapat
+          </button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ── 🗄️ Hızlı Veritabanı Alanları Modalı ────────────────────────────── */}
+      <Modal
+        show={fieldsModalOpen}
+        onHide={() => setFieldsModalOpen(false)}
+        centered
+        size="lg"
+        className="dark-modal"
+      >
+        <Modal.Header closeButton style={{ background: "#0f172a", borderColor: "#334155", color: "#f8fafc" }}>
+          <Modal.Title style={{ fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <IconDatabase size={18} color="#38bdf8" />
+            <span>🗄️ Veritabanı Alanı Ekle (Tıkla ve Etikete Yerleştir)</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={{ background: "#1e293b", color: "#e2e8f0" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+            {[
+              { key: "barkod", label: "Barkod Numarası", type: "field", sample: "8690001492", icon: "📊", cat: "Temel" },
+              { key: "urunAdi", label: "Ürün Adı / Cinsi", type: "field", sample: "14K Altın Bileklik", icon: "🏷️", cat: "Temel" },
+              { key: "ayar", label: "Ayar / Karat", type: "field", sample: "585 14K", icon: "✨", cat: "Altın" },
+              { key: "gramaj", label: "Net Gramaj", type: "field", sample: "3.45 gr", icon: "⚖️", cat: "Altın", isNumeric: true },
+              { key: "brutGram", label: "Brüt Gramaj", type: "field", sample: "3.60 gr", icon: "⚖️", cat: "Altın", isNumeric: true },
+              { key: "hasGram", label: "Has Gramajı", type: "field", sample: "2.02 gr", icon: "🪙", cat: "Altın", isNumeric: true },
+              { key: "satisIscilik", label: "Satış İşçilik Tutarı", type: "field", sample: "₺180/gr", icon: "🔨", cat: "Fiyat" },
+              { key: "fiyat", label: "Satış Fiyatı", type: "field", sample: "₺14.250", icon: "💰", cat: "Fiyat" },
+              { key: "milyem", label: "Milyem Değeri", type: "field", sample: "0.585", icon: "📐", cat: "Altın" },
+              { key: "tasKarat", label: "Taş Karatı / Cinsi", type: "field", sample: "0.15 ct VS1", icon: "💎", cat: "Pırlanta" },
+              { key: "epcAlani", label: "RFID EPC Kodu", type: "field", sample: "E280116060000", icon: "📡", cat: "RFID" },
+              { key: "tarih", label: "Üretim / Giriş Tarihi", type: "field", sample: "25.09.2026", icon: "📅", cat: "Genel" },
+            ].map((f) => (
+              <div
+                key={f.key}
+                style={{
+                  padding: "10px 12px",
+                  background: "rgba(15,23,42,0.6)",
+                  border: "1px solid #334155",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  transition: "all 0.15s ease",
+                }}
+                onClick={() => {
+                  addElement({
+                    type: "field",
+                    fieldKey: f.key,
+                    text: f.sample,
+                    fontSize: 8,
+                    color: "#000000",
+                    textAlign: f.isNumeric ? "right" : "left",
+                    width: f.isNumeric ? 18 : 24,
+                    height: 4.5,
+                  });
+                  setFieldsModalOpen(false);
+                }}
+              >
+                <span style={{ fontSize: 20 }}>{f.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, color: "#f8fafc" }}>{f.label}</div>
+                  <div style={{ fontSize: 10, color: "#38bdf8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    Örn: {f.sample}
+                  </div>
+                </div>
+                <span style={{ color: "#38bdf8", fontSize: 11, fontWeight: 700 }}>+ Ekle</span>
+              </div>
+            ))}
+          </div>
+        </Modal.Body>
         <Modal.Footer style={{ background: "#0f172a", borderColor: "#334155" }}>
           <button
-            style={{
-              padding: "6px 20px",
-              background: "#ef4444",
-              border: "none",
-              borderRadius: 6,
-              color: "#ffffff",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-            onClick={() => setErrorPopup(null)}
+            style={{ padding: "6px 16px", background: "transparent", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", fontSize: 12, cursor: "pointer" }}
+            onClick={() => setFieldsModalOpen(false)}
           >
-            Tamam
+            Kapat
           </button>
         </Modal.Footer>
       </Modal>

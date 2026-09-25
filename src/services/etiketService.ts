@@ -170,7 +170,8 @@ export interface EtiketSablonAlan {
   fontWeight?: "normal" | "bold" | "600" | "800";
   fontFamily?: string;
   fontStyle?: "normal" | "italic";
-  textDecoration?: "none" | "underline";
+  textDecoration?: "none" | "underline" | "line-through";
+  textTransform?: "none" | "uppercase" | "lowercase";
   color?: string;
   backgroundColor?: string;
   textAlign?: "left" | "center" | "right";
