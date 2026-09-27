@@ -1,0 +1,735 @@
+/* ==========================================================================
+   LIKYA KUYUMCU ERP - HOPEWELL OFFICIAL TEMPLATE STYLES
+   Pixel-Perfect Match to Hopewell Design with Gold Branding & Corporate Accents
+   ========================================================================== */
+
+:root {
+  --hw-primary: #16a34a;
+  --hw-primary-dark: #0f7a37;
+  --hw-primary-light: #dcfce7;
+  --hw-primary-subtle: #f0fdf4;
+
+  --hw-gold: #c88f18;
+  --hw-gold-dark: #9e640b;
+  --hw-gold-light: #fef3c7;
+  --hw-gold-subtle: #fffbeb;
+
+  --hw-secondary: #f59e0b;
+  --hw-secondary-light: #fef3c7;
+  --hw-accent: #ef4444;
+
+  --hw-bg: #f8fafc;
+  --hw-surface: #ffffff;
+  --hw-text: #0f172a;
+  --hw-text-muted: #5b6b7c;
+
+  --hw-radius: 20px;
+  --hw-radius-sm: 12px;
+  --hw-radius-pill: 999px;
+
+  --hw-shadow-soft: 0 10px 30px -10px rgba(15, 23, 42, 0.12);
+  --hw-shadow-card: 0 14px 35px -12px rgba(15, 23, 42, 0.08);
+  --hw-shadow-lift: 0 20px 45px -12px rgba(22, 163, 74, 0.35);
+
+  --hw-font-display: "Poppins", "Inter", -apple-system, sans-serif;
+  --hw-font-body: "Nunito Sans", "Inter", -apple-system, sans-serif;
+  --hw-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.hw-landing-wrapper {
+  font-family: var(--hw-font-body);
+  color: var(--hw-text);
+  background: var(--hw-bg);
+  overflow-x: hidden;
+  line-height: 1.65;
+}
+
+.hw-landing-wrapper h1,
+.hw-landing-wrapper h2,
+.hw-landing-wrapper h3,
+.hw-landing-wrapper h4,
+.hw-landing-wrapper h5,
+.hw-landing-wrapper h6,
+.hw-font-display {
+  font-family: var(--hw-font-display);
+}
+
+/* ─── Hopewell Eyebrow Pill ─────────────────────────────────────────────── */
+.hw-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hw-primary-dark);
+  background: var(--hw-primary-light);
+  padding: 7px 18px;
+  border-radius: var(--hw-radius-pill);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+}
+
+.hw-eyebrow.gold {
+  color: var(--hw-gold-dark);
+  background: var(--hw-gold-light);
+  border-color: rgba(200, 143, 24, 0.25);
+}
+
+/* ─── Hopewell Accent Curved Underline ──────────────────────────────────── */
+.hw-accent-underline {
+  position: relative;
+  display: inline-block;
+  color: var(--hw-primary);
+}
+
+.hw-accent-underline svg {
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 100%;
+  height: 10px;
+  pointer-events: none;
+}
+
+/* ─── Buttons ──────────────────────────────────────────────────────────── */
+.btn-hw-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #16a34a 0%, #0f7a37 100%);
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 12px 28px;
+  border-radius: var(--hw-radius-pill);
+  border: none;
+  box-shadow: 0 8px 24px -4px rgba(22, 163, 74, 0.38);
+  transition: all 0.3s var(--hw-ease);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn-hw-primary:hover {
+  background: linear-gradient(135deg, #15803d 0%, #0c612c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px -4px rgba(22, 163, 74, 0.48);
+}
+
+.btn-hw-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #ffffff;
+  color: var(--hw-text) !important;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 11px 26px;
+  border-radius: var(--hw-radius-pill);
+  border: 1.5px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+  transition: all 0.3s var(--hw-ease);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn-hw-outline:hover {
+  border-color: var(--hw-primary);
+  color: var(--hw-primary-dark) !important;
+  transform: translateY(-2px);
+}
+
+/* ─── Hero Section ─────────────────────────────────────────────────────── */
+.hw-hero {
+  position: relative;
+  padding: 130px 0 80px;
+  background: radial-gradient(circle at 80% 20%, #dcfce7 0%, #ffffff 60%);
+  overflow: hidden;
+}
+
+.hw-hero-title {
+  font-size: clamp(2.3rem, 4.5vw, 3.6rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.hw-hero-lead {
+  font-size: 1.1rem;
+  color: #5b6b7c;
+  line-height: 1.7;
+  max-width: 580px;
+}
+
+.hw-hero-media {
+  position: relative;
+}
+
+.hw-hero-media-frame {
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 25px 55px -12px rgba(15, 23, 42, 0.18);
+  border: 4px solid #ffffff;
+}
+
+.hw-hero-media-frame img {
+  width: 100%;
+  height: 480px;
+  object-fit: cover;
+  display: block;
+}
+
+/* Floating Cards on Hero */
+.hw-float-card {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  padding: 12px 18px;
+  border-radius: 16px;
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.14);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 2;
+  animation: hw-float 4s ease-in-out infinite;
+}
+
+.hw-float-card-1 {
+  top: 10%;
+  left: -20px;
+}
+
+.hw-float-card-2 {
+  bottom: 8%;
+  right: -20px;
+  animation-delay: -2s;
+}
+
+@keyframes hw-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.hw-fc-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.hw-fc-icon-green {
+  background: linear-gradient(135deg, #16a34a, #0f7a37);
+  color: #ffffff;
+}
+
+.hw-fc-icon-gold {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+}
+
+.hw-fc-val {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.hw-fc-label {
+  font-size: 0.74rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* ─── Solid Green Impact Stats Band ────────────────────────────────────── */
+.hw-stats-band-solid {
+  background: linear-gradient(135deg, #16a34a 0%, #0f7a37 100%);
+  border-radius: 24px;
+  padding: 36px 24px;
+  box-shadow: 0 20px 45px -10px rgba(22, 163, 74, 0.4);
+  color: #ffffff;
+  position: relative;
+  z-index: 2;
+  margin-top: -45px;
+}
+
+.hw-stat-item {
+  text-align: center;
+  padding: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.hw-stat-item:last-child {
+  border-right: none;
+}
+
+.hw-stat-num {
+  font-family: var(--hw-font-display);
+  font-size: clamp(2rem, 3.5vw, 2.7rem);
+  font-weight: 800;
+  line-height: 1.1;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.hw-stat-label {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* ─── About Card with Image Collage ────────────────────────────────────── */
+.hw-about-card {
+  background: #ffffff;
+  border-radius: 28px;
+  padding: 48px;
+  box-shadow: var(--hw-shadow-card);
+  border: 1px solid #e2e8f0;
+}
+
+.hw-about-collage {
+  position: relative;
+}
+
+.hw-about-img-a {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px -10px rgba(15, 23, 42, 0.15);
+}
+
+.hw-about-img-a img {
+  width: 100%;
+  height: 360px;
+  object-fit: cover;
+  display: block;
+}
+
+.hw-about-img-b {
+  position: absolute;
+  bottom: -25px;
+  right: -20px;
+  width: 50%;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px -10px rgba(15, 23, 42, 0.2);
+  border: 4px solid #ffffff;
+}
+
+.hw-about-img-b img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  display: block;
+}
+
+.hw-about-badge {
+  position: absolute;
+  top: -15px;
+  left: -15px;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 12px 18px;
+  box-shadow: 0 12px 30px -8px rgba(15, 23, 42, 0.14);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 2;
+  border: 1px solid #e2e8f0;
+}
+
+.hw-ab-ring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #16a34a, #0f7a37);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Cause / Module Cards Grid ────────────────────────────────────────── */
+.hw-cause-card {
+  background: #ffffff;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: var(--hw-shadow-card);
+  border: 1px solid #e2e8f0;
+  transition: all 0.35s var(--hw-ease);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.hw-cause-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 24px 50px -15px rgba(15, 23, 42, 0.15);
+  border-color: #bbf7d0;
+}
+
+.hw-cause-img-box {
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+}
+
+.hw-cause-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s var(--hw-ease);
+}
+
+.hw-cause-card:hover .hw-cause-img-box img {
+  transform: scale(1.06);
+}
+
+.hw-cause-tag {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 5px 12px;
+  border-radius: var(--hw-radius-pill);
+}
+
+.hw-cause-progress-track {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.hw-cause-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+  border-radius: 3px;
+}
+
+/* ─── 6 Feature Cards Grid ("Giving you can verify") ───────────────────── */
+.hw-feature-box {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 32px 28px;
+  box-shadow: var(--hw-shadow-card);
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s var(--hw-ease);
+  height: 100%;
+}
+
+.hw-feature-box:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 40px -12px rgba(22, 163, 74, 0.18);
+  border-color: #bbf7d0;
+}
+
+.hw-fb-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #dcfce7;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  margin-bottom: 20px;
+  transition: all 0.3s var(--hw-ease);
+}
+
+.hw-feature-box:hover .hw-fb-icon {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+/* ─── 3 Step Timeline ("How your gift is made") ────────────────────────── */
+.hw-step-col {
+  text-align: center;
+  padding: 20px;
+  position: relative;
+}
+
+.hw-step-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px dashed #16a34a;
+  color: #16a34a;
+  font-weight: 800;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  box-shadow: 0 6px 18px rgba(22, 163, 74, 0.15);
+}
+
+/* ─── Team Members Grid ("The hands behind every delivery") ────────────── */
+.hw-team-card {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--hw-shadow-card);
+  height: 320px;
+}
+
+.hw-team-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s var(--hw-ease);
+}
+
+.hw-team-card:hover img {
+  transform: scale(1.06);
+}
+
+.hw-team-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(15, 23, 42, 0.9) 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 22px;
+  color: #ffffff;
+}
+
+.hw-team-name {
+  font-weight: 800;
+  font-size: 1.15rem;
+  margin-bottom: 2px;
+}
+
+.hw-team-role {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
+/* ─── Green Testimonials Container ("Voices of our community") ─────────── */
+.hw-testi-container {
+  background: linear-gradient(135deg, #16a34a 0%, #0f7a37 100%);
+  border-radius: 28px;
+  padding: 60px 40px;
+  color: #ffffff;
+  box-shadow: 0 25px 60px -15px rgba(22, 163, 74, 0.45);
+}
+
+.hw-testi-item-card {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  padding: 28px;
+  color: #ffffff;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* ─── Orange / Gold CTA Banner ─────────────────────────────────────────── */
+.hw-orange-cta-banner {
+  background: linear-gradient(135deg, #ea580c 0%, #d97706 50%, #b45309 100%);
+  border-radius: 24px;
+  padding: 55px 36px;
+  text-align: center;
+  color: #ffffff;
+  box-shadow: 0 20px 50px -12px rgba(217, 119, 6, 0.45);
+}
+
+.hw-orange-btn {
+  background: #ffffff;
+  color: #b45309 !important;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 13px 32px;
+  border-radius: var(--hw-radius-pill);
+  border: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s var(--hw-ease);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.hw-orange-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+/* ─── Contact Section ──────────────────────────────────────────────────── */
+.hw-contact-info-card {
+  background: #f0fdf4;
+  border-radius: 24px;
+  padding: 40px;
+  border: 1px solid #dcfce7;
+  height: 100%;
+}
+
+.hw-contact-form-card {
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 40px;
+  border: 1px solid #e2e8f0;
+  box-shadow: var(--hw-shadow-card);
+  height: 100%;
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────────── */
+.hw-footer-dark {
+  background: #09131a;
+  color: #94a3b8;
+  padding: 80px 0 35px;
+  border-top: 1px solid #1e293b;
+}
+
+.hw-footer-newsletter-box {
+  display: flex;
+  align-items: center;
+  background: #15222e;
+  border: 1px solid #243547;
+  border-radius: var(--hw-radius-pill);
+  padding: 5px 6px 5px 18px;
+}
+
+.hw-footer-newsletter-input {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 0.88rem;
+  width: 100%;
+  outline: none;
+}
+
+.hw-footer-newsletter-btn {
+  background: #16a34a;
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.hw-footer-newsletter-btn:hover {
+  background: #15803d;
+}
+
+@media (max-width: 991.98px) {
+  .hw-hero {
+    padding: 100px 0 50px;
+  }
+  .hw-stats-band-solid {
+    margin-top: 20px;
+  }
+  .hw-stat-item {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  .hw-stat-item:last-child {
+    border-bottom: none;
+  }
+  .hw-float-card-1 {
+    left: 0;
+  }
+  .hw-float-card-2 {
+    right: 0;
+  }
+  .hw-about-img-b {
+    position: static;
+    width: 100%;
+    margin-top: 15px;
+  }
+}
+
+/* ─── ERP UI Window & Mockup Preview Styles ──────────────────────────────── */
+.erp-window-frame {
+  background: #ffffff;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.erp-window-header {
+  background: #0f172a;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ffffff;
+  border-bottom: 1px solid #1e293b;
+}
+
+.erp-mac-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.erp-mac-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.erp-dot-red { background: #ef4444; }
+.erp-dot-yellow { background: #f59e0b; }
+.erp-dot-green { background: #10b981; }
+
+.erp-card-preview-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 16px;
+  position: relative;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #ffffff;
+}
+
+.erp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-family: monospace;
+  color: #fef3c7;
+  font-weight: 700;
+}
+

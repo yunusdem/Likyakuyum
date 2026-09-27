@@ -8,6 +8,7 @@ import {
   IconEyeOff,
   IconAlertCircle,
   IconArrowRight,
+  IconArrowLeft,
   IconDatabase,
   IconServer,
   IconBuildingStore,
@@ -311,6 +312,20 @@ export const LoginPage: React.FC = () => {
           box-shadow: 0 6px 16px rgba(184, 123, 25, 0.38) !important;
           transform: translateY(-1px) !important;
         }
+        .back-to-home-btn {
+          background-color: rgba(255, 255, 255, 0.92) !important;
+          backdrop-filter: blur(8px) !important;
+          border: 1px solid #e7dcce !important;
+          color: #784405 !important;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        .back-to-home-btn:hover {
+          background-color: #ffffff !important;
+          border-color: #c88f18 !important;
+          color: #9e640b !important;
+          box-shadow: 0 4px 15px rgba(200, 143, 24, 0.22) !important;
+          transform: translateX(-3px);
+        }
         @media (max-width: 991.98px) {
           .login-page-wrapper {
             padding-top: max(7.5rem, 15vh) !important;
@@ -339,6 +354,23 @@ export const LoginPage: React.FC = () => {
           }
         }
       `}</style>
+      {/* Top-Left Back to Home Button */}
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        className="btn d-inline-flex align-items-center gap-2 position-absolute top-0 start-0 m-3 m-md-4 z-3 shadow-sm rounded-pill back-to-home-btn"
+        style={{
+          fontSize: "0.86rem",
+          fontWeight: 600,
+          padding: "0.55rem 1.15rem",
+          cursor: "pointer",
+        }}
+        title="Tanıtım ve Ana Sayfaya Dön"
+      >
+        <IconArrowLeft size={19} style={{ color: "#c88f18" }} />
+        <span>Ana Sayfaya Dön</span>
+      </button>
+
       {/* Background Decorative Circles */}
       <div
         className="position-absolute rounded-circle"

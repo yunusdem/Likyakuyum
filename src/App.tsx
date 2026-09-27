@@ -68,6 +68,12 @@ import EBelgeMustahsilPage from "./pages/ebelge/EBelgeMustahsilPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import LoginPage from "./pages/auth/LoginPage";
 import LandingPage from "./pages/LandingPage";
+import LandingFeaturesPage from "./pages/landing/LandingFeaturesPage";
+import LandingModulesPage from "./pages/landing/LandingModulesPage";
+import LandingPanoPage from "./pages/landing/LandingPanoPage";
+import LandingSecurityPage from "./pages/landing/LandingSecurityPage";
+import LandingFaqPage from "./pages/landing/LandingFaqPage";
+import LandingAboutPage from "./pages/landing/LandingAboutPage";
 
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -135,6 +141,15 @@ export default function App() {
 
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
+        <Route path="/ozellikler" element={<LandingFeaturesPage />} />
+        <Route path="/moduller" element={<LandingModulesPage />} />
+        <Route path="/canli-pano" element={<LandingPanoPage />} />
+        <Route path="/canli-kur" element={<LandingPanoPage />} />
+        <Route path="/guvenlik" element={<LandingSecurityPage />} />
+        <Route path="/mevzuat" element={<LandingSecurityPage />} />
+        <Route path="/sss" element={<LandingFaqPage />} />
+        <Route path="/hakkimizda" element={<LandingAboutPage />} />
+        <Route path="/iletisim" element={<LandingAboutPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/sign-in" element={<Navigate to="/login" replace />} />
 

@@ -29,6 +29,8 @@ export interface ERPToolbarProps {
   onNext?: () => void;
   onLast?: () => void;
   onPrint?: () => void;
+  onDirectPrint?: () => void;
+  onSaveAndPrint?: () => void;
   onRefresh?: () => void;
   onClear?: () => void;
   onPreview?: () => void;
@@ -169,6 +171,8 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   onNext,
   onLast,
   onPrint,
+  onDirectPrint,
+  onSaveAndPrint,
   onRefresh,
   onClear,
   onPreview,
@@ -297,8 +301,19 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           e.preventDefault();
           onRefresh();
         }
+      } else if (e.key === "F9") {
+        if (onDirectPrint) {
+          e.preventDefault();
+          onDirectPrint();
+        } else if (!hidePrint && onPrint) {
+          e.preventDefault();
+          onPrint();
+        }
       } else if (e.key === "F10") {
-        if (!hidePrint && onPrint) {
+        if (onSaveAndPrint) {
+          e.preventDefault();
+          onSaveAndPrint();
+        } else if (!hidePrint && onPrint) {
           e.preventDefault();
           onPrint();
         }
@@ -307,7 +322,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, hidePrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete, shouldShowNew, shouldShowSave]);
+  }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, onDirectPrint, onSaveAndPrint, hidePrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete, shouldShowNew, shouldShowSave]);
 
   const defaultHandler = (actionName: string) => {
     if (actionName === "Ara/Bul") {
@@ -540,23 +555,45 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           <>
             <span className="erp-tb-divider" />
 
-            {/* 8. Yazdır (F10) */}
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onPrint || (() => window.print())}
-              className="erp-tb-btn"
-              title="Yazdır (F10)"
-              aria-label="Yazdır"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 9V3h12v6" />
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                <rect x="6" y="14" width="12" height="8" rx="0.5" fill="#f8fafc" stroke="#000000" strokeWidth="1.8" />
-                <line x1="9" y1="17" x2="15" y2="17" />
-                <line x1="9" y1="19.5" x2="13" y2="19.5" />
-              </svg>
-            </button>
+            {/* 8A. Doğrudan Yazdır (F9) */}
+            {onDirectPrint && (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={onDirectPrint}
+                className="erp-tb-btn"
+                title="Doğrudan Yazdır (F9)"
+                aria-label="Doğrudan Yazdır (F9)"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 9V3h12v6" />
+                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                  <rect x="6" y="14" width="12" height="8" rx="0.5" fill="#eff6ff" stroke="#2563eb" strokeWidth="1.8" />
+                  <line x1="9" y1="17" x2="15" y2="17" />
+                  <line x1="9" y1="19.5" x2="13" y2="19.5" />
+                </svg>
+              </button>
+            )}
+
+            {/* 8B. Kaydet / Yazdır (F10) */}
+            {(onSaveAndPrint || onPrint) && (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={onSaveAndPrint || onPrint || (() => window.print())}
+                className="erp-tb-btn"
+                title={onSaveAndPrint ? "Kaydet ve Yazdır (F10)" : "Yazdır (F10)"}
+                aria-label={onSaveAndPrint ? "Kaydet ve Yazdır (F10)" : "Yazdır (F10)"}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 9V3h12v6" />
+                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                  <rect x="6" y="14" width="12" height="8" rx="0.5" fill="#f8fafc" stroke="#000000" strokeWidth="1.8" />
+                  <line x1="9" y1="17" x2="15" y2="17" />
+                  <line x1="9" y1="19.5" x2="13" y2="19.5" />
+                </svg>
+              </button>
+            )}
           </>
         )}
       </div>

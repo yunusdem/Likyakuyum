@@ -53,6 +53,7 @@ import LookupModal from "../../components/common/LookupModal";
 import { useAuth } from "../../context/AuthContext";
 import { AuthService } from "../../services/authService";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
+import { PrinterService, YaziciItem } from "../../services/printerService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 
 
@@ -491,6 +492,8 @@ const UserDefinitionsPage: React.FC = () => {
   const [showEDocumentModal, setShowEDocumentModal] = useState<boolean>(false);
   const [showCashierModal, setShowCashierModal] = useState<boolean>(false);
   const [cashierList, setCashierList] = useState<{ id: number; kod: string; name: string }[]>([]);
+  const [showPrinterModal, setShowPrinterModal] = useState<boolean>(false);
+  const [printerList, setPrinterList] = useState<YaziciItem[]>([]);
 
   // İstatistik lookup state
   const [istatistikList, setIstatistikList] = useState<StatisticItem[]>([]);
@@ -512,6 +515,18 @@ const UserDefinitionsPage: React.FC = () => {
     return matched ? (matched.kod || String(matched.id)) : raw;
   }, [currentUser?.cashierCode, cashierList]);
 
+  // Selected printer matching helper
+  const selectedPrinter = useMemo(() => {
+    const raw = String(currentUser?.printerId || "").trim();
+    if (!raw) return null;
+    return printerList.find(
+      (p) =>
+        String(p.siraNo) === raw ||
+        String(p.id) === raw ||
+        p.ad.toLowerCase() === raw.toLowerCase()
+    );
+  }, [currentUser?.printerId, printerList]);
+
   // Consolidated Databases Modal State
   const [dbList, setDbList] = useState([
     { id: "1", name: `${activeDb} (Aktif SQL)`, server: activeServer, active: true },
@@ -532,6 +547,7 @@ const UserDefinitionsPage: React.FC = () => {
           }));
         }),
         StatisticService.getStatistics().then(setIstatistikList).catch(() => {}),
+        PrinterService.getYazicilar().then(setPrinterList).catch(() => {}),
       ]);
 
       const mappedCashiers = (cashiers || []).map((v: any) => ({
@@ -1175,30 +1191,63 @@ const UserDefinitionsPage: React.FC = () => {
 
                       {/* Yazıcı */}
                       <div className="p-2 bg-white rounded border">
-                        <div className="d-flex align-items-center gap-2">
+                        <div className="d-flex align-items-center justify-content-between gap-2">
                           <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
                             <IconPrinter size={16} /> Yazıcı:
                           </span>
-                          <InputGroup size="sm" className="flex-grow-1" style={{ minWidth: 0 }}>
-                            <Form.Control
-                              type="text"
-                              inputMode="numeric"
-                              data-numeric="true"
-                              value={currentUser.printerId || ""}
-                              onFocus={(e) => handleInputFocusOrClick(e, "printerId")}
-                              onClick={(e) => handleInputFocusOrClick(e, "printerId")}
-                              onChange={(e) => updateField("printerId", onlyDigits(e.target.value))}
-                              className="bg-light border fw-bold text-center"
-                              style={{ minWidth: 0 }}
-                            />
-                            <Button
-                              variant="outline-secondary"
-                              onClick={() => alert("Sistem yazıcıları")}
-                              className="flex-shrink-0"
-                            >
-                              <IconSearch size={15} />
-                            </Button>
-                          </InputGroup>
+                          <div className="d-flex align-items-center gap-2 flex-grow-1 justify-content-end" style={{ minWidth: 0 }}>
+                            {selectedPrinter && (
+                              <span
+                                className="px-2 py-0.5 bg-light rounded border text-truncate small text-primary fw-semibold"
+                                style={{ maxWidth: "160px", fontSize: "11.5px" }}
+                                title={`${selectedPrinter.ad}${selectedPrinter.cihazAdi ? ` (${selectedPrinter.cihazAdi})` : ""}`}
+                              >
+                                {selectedPrinter.ad}
+                              </span>
+                            )}
+                            <InputGroup size="sm" style={{ width: "130px", flexShrink: 0 }}>
+                              <Form.Control
+                                type="text"
+                                inputMode="numeric"
+                                data-numeric="true"
+                                value={currentUser.printerId || ""}
+                                onFocus={(e) => handleInputFocusOrClick(e, "printerId")}
+                                onClick={(e) => handleInputFocusOrClick(e, "printerId")}
+                                onDoubleClick={() => {
+                                  if (printerList.length === 0) {
+                                    PrinterService.getYazicilar().then(setPrinterList).catch(() => {});
+                                  }
+                                  setShowPrinterModal(true);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "F4" || e.key === "F3") {
+                                    e.preventDefault();
+                                    if (printerList.length === 0) {
+                                      PrinterService.getYazicilar().then(setPrinterList).catch(() => {});
+                                    }
+                                    setShowPrinterModal(true);
+                                  }
+                                }}
+                                onChange={(e) => updateField("printerId", onlyDigits(e.target.value))}
+                                className="bg-light border fw-bold text-center"
+                                placeholder="Yazıcı No"
+                                title={selectedPrinter ? `${selectedPrinter.ad}${selectedPrinter.cihazAdi ? ` (${selectedPrinter.cihazAdi})` : ""}` : "Yazıcı seçmek için dürbün ikonuna tıklayın veya F4 tuşuna basın"}
+                              />
+                              <Button
+                                variant="outline-secondary"
+                                onClick={() => {
+                                  if (printerList.length === 0) {
+                                    PrinterService.getYazicilar().then(setPrinterList).catch(() => {});
+                                  }
+                                  setShowPrinterModal(true);
+                                }}
+                                className="flex-shrink-0 d-flex align-items-center justify-content-center"
+                                title="Yazıcı Tanımları Listesinden Seç (Dürbün / F4)"
+                              >
+                                <IconBinoculars size={15} />
+                              </Button>
+                            </InputGroup>
+                          </div>
                         </div>
                       </div>
 
@@ -2267,6 +2316,71 @@ const UserDefinitionsPage: React.FC = () => {
           // Seçilen istatistiğin KODUNU ilgili stat kod alanına yaz
           updateField(istatistikModalConfig.field, (item.kod || "") as any);
           setIstatistikModalConfig((p) => ({ ...p, show: false }));
+        }}
+      />
+
+      {/* Modal 5: Yazıcı Tanımları & Seçim (LookupModal) */}
+      <LookupModal<YaziciItem>
+        show={showPrinterModal}
+        onHide={() => setShowPrinterModal(false)}
+        title="Yazıcı Tanımları Listesi & Seçim (F- Yazıcı Tanımları)"
+        items={printerList}
+        searchPlaceholder="Yazıcı tanım adı, cihaz adı, bağlantı noktası veya sıra no ile arayın..."
+        columns={[
+          {
+            header: "Sıra No",
+            width: "80px",
+            align: "center",
+            render: (p) => (
+              <span className="badge bg-light text-primary border font-monospace fw-bold px-2 py-1">
+                #{p.siraNo || p.id}
+              </span>
+            ),
+          },
+          {
+            header: "Yazıcı Tanım Adı",
+            render: (p) => (
+              <div>
+                <span className="fw-bold text-dark">{p.ad}</span>
+                {p.cihazAdi && (
+                  <span className="text-muted small ms-2">({p.cihazAdi})</span>
+                )}
+              </div>
+            ),
+          },
+          {
+            header: "Bağlantı Noktası",
+            width: "160px",
+            render: (p) => (
+              <span className="text-secondary small font-monospace">
+                {p.baglantiNoktasi || "-"}
+              </span>
+            ),
+          },
+          {
+            header: "Kopya",
+            width: "80px",
+            align: "center",
+            render: (p) => (
+              <span className="badge bg-secondary px-2 py-1">
+                {p.kopyaSayisi || 1} Kopya
+              </span>
+            ),
+          },
+        ]}
+        filterFn={(item, term) => {
+          const t = term.toLowerCase();
+          return (
+            (item.ad || "").toLowerCase().includes(t) ||
+            (item.cihazAdi || "").toLowerCase().includes(t) ||
+            (item.baglantiNoktasi || "").toLowerCase().includes(t) ||
+            String(item.siraNo || "").includes(t) ||
+            String(item.id || "").includes(t)
+          );
+        }}
+        onSelect={(item) => {
+          updateField("printerId", String(item.siraNo || item.id));
+          setShowPrinterModal(false);
         }}
       />
     </div>

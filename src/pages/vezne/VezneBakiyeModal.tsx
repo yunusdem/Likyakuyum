@@ -39,6 +39,8 @@ export const VezneBakiyeModal: React.FC<VezneBakiyeModalProps> = ({
       } else if (e.key === "F10") {
         e.preventDefault();
         handlePrint();
+      } else if (/^F([1-9]|1[1-2])$/.test(e.key)) {
+        onClose();
       }
     };
 

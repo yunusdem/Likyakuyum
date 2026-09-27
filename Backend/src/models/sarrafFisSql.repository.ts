@@ -28,6 +28,7 @@ export interface OdemeSatiriDto {
   odemeAraciTuru: number;
   paraId?: number | null;
   posCihaziId?: number | null;
+  adet?: number | null;
   miktar: number;
   milyem: number;
   hasGram: number;
@@ -505,10 +506,18 @@ export class SarrafFisSqlRepository {
       return `(@${p}_sId, @${p}_sNo, @${p}_uId, @${p}_mik, @${p}_mil, @${p}_hg, @${p}_ad, @${p}_im, @${p}_ihg, @${p}_ac, @${p}_ihs, @${p}_kur, @${p}_tut, @${p}_ut, @${p}_uop, @${p}_kar)`;
     });
 
-    let validOdemeler = (dto.odemeSatirlari || []).filter((o) => Number(o.miktar) > 0 || Number(o.tutar) > 0);
+    const parseNum = (val: any): number => {
+      if (val === null || val === undefined || val === "") return 0;
+      if (typeof val === "number") return isNaN(val) ? 0 : val;
+      const s = String(val).replace(/\s/g, "").replace(",", ".");
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : n;
+    };
+
+    let validOdemeler = (dto.odemeSatirlari || []).filter((o) => parseNum(o.miktar) > 0 || parseNum(o.tutar) > 0 || parseNum(o.adet) > 0 || (o.paraId && Number(o.paraId) > 0));
     if (validOdemeler.length === 0 && validLines.length > 0) {
-      const totTutar = validLines.reduce((s, l) => s + (l.tutar || 0), 0);
-      const totHas = validLines.reduce((s, l) => s + (l.hasGram || 0) + (l.iscilikHasGram || 0), 0);
+      const totTutar = validLines.reduce((s, l) => s + (parseNum(l.tutar) || 0), 0);
+      const totHas = validLines.reduce((s, l) => s + (parseNum(l.hasGram) || 0) + (parseNum(l.iscilikHasGram) || 0), 0);
       if (totTutar > 0) {
         validOdemeler.push({
           satirNo: 1,
@@ -531,11 +540,11 @@ export class SarrafFisSqlRepository {
       req.input(`${p}_oat`, sql.TinyInt, o.odemeAraciTuru || 0);
       req.input(`${p}_pid`, sql.Int, o.paraId ?? null);
       req.input(`${p}_pos`, sql.Int, o.posCihaziId ?? null);
-      req.input(`${p}_mik`, sql.Float, Number(o.miktar) || 0);
-      req.input(`${p}_mil`, sql.Float, Number(o.milyem) || 0);
-      req.input(`${p}_hg`, sql.Float, Number(o.hasGram) || 0);
-      req.input(`${p}_kur`, sql.Float, Number(o.kur) || 1);
-      req.input(`${p}_tut`, sql.Float, Number(o.tutar) || 0);
+      req.input(`${p}_mik`, sql.Float, parseNum(o.miktar));
+      req.input(`${p}_mil`, sql.Float, parseNum(o.milyem));
+      req.input(`${p}_hg`, sql.Float, parseNum(o.hasGram));
+      req.input(`${p}_kur`, sql.Float, parseNum(o.kur) > 0 ? parseNum(o.kur) : 1);
+      req.input(`${p}_tut`, sql.Float, parseNum(o.tutar) > 0 ? parseNum(o.tutar) : (parseNum(o.miktar) * (parseNum(o.kur) > 0 ? parseNum(o.kur) : 1)));
       req.input(`${p}_dg`, sql.Bit, o.degistirildi ? 1 : 0);
       return `(@${p}_sNo, @${p}_iy, @${p}_oat, COALESCE(@${p}_pid, @DEFAULT_TL_PARA_ID, 1), @${p}_pos, @${p}_mik, @${p}_mil, @${p}_hg, @${p}_kur, @${p}_tut, @${p}_dg)`;
     });

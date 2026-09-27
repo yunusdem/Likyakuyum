@@ -1,0 +1,519 @@
+/* ==========================================================================
+   LIKYA KUYUMCU ERP - FURNI LUXURY THEME
+   Dark Jewel Pine & Gold Accent Design System (Untree Furni Template Match)
+   ========================================================================== */
+
+:root {
+  --furni-primary: #3b5d50;
+  --furni-primary-dark: #2c4c41;
+  --furni-primary-deep: #1e352f;
+  
+  --furni-gold: #f9bf29;
+  --furni-gold-hover: #e5ab17;
+  --furni-gold-dark: #c88f18;
+  --furni-gold-light: #fef3c7;
+
+  --furni-dark: #2f2f2f;
+  --furni-gray: #6a6a6a;
+  --furni-light-bg: #eff2f1;
+  --furni-white: #ffffff;
+
+  --furni-font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --furni-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  --furni-radius-pill: 30px;
+  --furni-radius-card: 20px;
+  --furni-radius-sm: 10px;
+}
+
+.furni-wrapper {
+  font-family: var(--furni-font-body);
+  color: var(--furni-gray);
+  background-color: var(--furni-light-bg);
+  overflow-x: hidden;
+  line-height: 1.7;
+}
+
+.furni-wrapper h1,
+.furni-wrapper h2,
+.furni-wrapper h3,
+.furni-wrapper h4,
+.furni-wrapper h5,
+.furni-wrapper h6 {
+  font-family: var(--furni-font-heading);
+  color: #2f2f2f;
+  font-weight: 700;
+}
+
+/* ─── Header & Navigation (Single Horizontal Line with Balanced Spacing) ─── */
+.furni-navbar {
+  background-color: var(--furni-primary);
+  padding: 16px 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1050;
+  transition: all 0.3s ease;
+}
+
+.furni-navbar.scrolled {
+  padding: 10px 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  background-color: rgba(44, 76, 65, 0.98);
+  backdrop-filter: blur(12px);
+}
+
+.furni-brand-logo {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: #ffffff !important;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.furni-brand-logo span.dot {
+  color: var(--furni-gold);
+}
+
+.furni-nav-link {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-weight: 500;
+  font-size: 0.92rem;
+  text-decoration: none;
+  padding: 6px 14px !important;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  position: relative;
+}
+
+.furni-nav-link:hover,
+.furni-nav-link.active {
+  color: #ffffff !important;
+}
+
+.furni-nav-link.active::after,
+.furni-nav-link:hover::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+  height: 3px;
+  background-color: var(--furni-gold);
+  border-radius: 2px;
+}
+
+.furni-btn-login {
+  background-color: var(--furni-gold);
+  color: #2f2f2f !important;
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 8px 22px;
+  border-radius: var(--furni-radius-pill);
+  border: none;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.furni-btn-login:hover {
+  background-color: var(--furni-gold-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(249, 191, 41, 0.4);
+}
+
+/* ─── Hero Section ─────────────────────────────────────────────────────── */
+.furni-hero {
+  background-color: var(--furni-primary);
+  padding: 140px 0 90px;
+  position: relative;
+  overflow: hidden;
+}
+
+.furni-hero h1 {
+  font-size: clamp(2.4rem, 4.5vw, 3.6rem);
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.18;
+  margin-bottom: 24px;
+  letter-spacing: -0.5px;
+}
+
+.furni-hero p {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 1.05rem;
+  line-height: 1.75;
+  margin-bottom: 32px;
+  max-width: 520px;
+}
+
+.furni-btn-gold {
+  background-color: var(--furni-gold);
+  color: #2f2f2f !important;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 13px 32px;
+  border-radius: var(--furni-radius-pill);
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.furni-btn-gold:hover {
+  background-color: var(--furni-gold-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(249, 191, 41, 0.4);
+}
+
+.furni-btn-outline {
+  background: transparent;
+  color: #ffffff !important;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 12px 30px;
+  border-radius: var(--furni-radius-pill);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+  text-decoration: none;
+}
+
+.furni-btn-outline:hover {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.furni-hero-img-box {
+  position: relative;
+  z-index: 2;
+}
+
+.furni-hero-img-box img {
+  width: 100%;
+  max-height: 480px;
+  object-fit: cover;
+  border-radius: var(--furni-radius-card);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  border: 4px solid rgba(255, 255, 255, 0.15);
+}
+
+.furni-dots-pattern {
+  position: absolute;
+  top: -25px;
+  right: -25px;
+  width: 200px;
+  height: 200px;
+  background-image: radial-gradient(rgba(249, 191, 41, 0.4) 2px, transparent 2px);
+  background-size: 16px 16px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.furni-dots-pattern-green {
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  width: 180px;
+  height: 180px;
+  background-image: radial-gradient(rgba(59, 93, 80, 0.35) 2px, transparent 2px);
+  background-size: 16px 16px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ─── 4-Column Product Section ("Crafted with excellent material") ───────── */
+.furni-section-pad {
+  padding: 90px 0;
+}
+
+.furni-product-item {
+  text-align: center;
+  text-decoration: none;
+  display: block;
+  position: relative;
+  padding-bottom: 50px;
+  transition: all 0.3s ease;
+}
+
+.furni-product-thumbnail {
+  margin-bottom: 24px;
+  position: relative;
+  top: 0;
+  transition: all 0.3s ease;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--furni-radius-card);
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+}
+
+.furni-product-thumbnail img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.furni-product-item:hover .furni-product-thumbnail img {
+  transform: scale(1.06);
+}
+
+.furni-product-item:hover .furni-product-thumbnail {
+  box-shadow: 0 16px 40px -10px rgba(59, 93, 80, 0.2);
+}
+
+.furni-product-title {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: #2f2f2f;
+  margin-bottom: 4px;
+}
+
+.furni-product-price {
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--furni-primary);
+}
+
+.furni-btn-dark {
+  background-color: #2f2f2f;
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.92rem;
+  padding: 12px 28px;
+  border-radius: var(--furni-radius-pill);
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  transition: all 0.25s ease;
+}
+
+.furni-btn-dark:hover {
+  background-color: #000000;
+  transform: translateY(-2px);
+}
+
+/* ─── Why Choose Us Section ─────────────────────────────────────────────── */
+.furni-feature-icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgba(59, 93, 80, 0.1);
+  color: var(--furni-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  margin-bottom: 16px;
+  transition: all 0.25s ease;
+}
+
+.furni-feature-item:hover .furni-feature-icon-box {
+  background: var(--furni-primary);
+  color: #ffffff;
+}
+
+/* ─── We Help You Section (3-Image Collage) ─────────────────────────────── */
+.furni-imgs-grid {
+  display: grid;
+  grid-template-columns: repeat(27, 1fr);
+  position: relative;
+}
+
+.furni-grid-1 {
+  grid-column: 1 / span 18;
+  grid-row: 1 / span 27;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.15);
+}
+
+.furni-grid-2 {
+  grid-column: 19 / span 9;
+  grid-row: 1 / span 12;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.15);
+  margin-top: 20px;
+}
+
+.furni-grid-3 {
+  grid-column: 14 / span 14;
+  grid-row: 16 / span 16;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.2);
+  border: 4px solid #eff2f1;
+}
+
+.furni-imgs-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ─── Testimonials Carousel / Box ───────────────────────────────────────── */
+.furni-testi-box {
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.furni-testi-quote {
+  font-size: 1.12rem;
+  line-height: 1.8;
+  color: #555555;
+  margin-bottom: 30px;
+  font-style: italic;
+}
+
+.furni-testi-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  border: 3px solid #ffffff;
+}
+
+.furni-slider-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2f2f2f;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.furni-slider-btn:hover {
+  background: var(--furni-primary);
+  color: #ffffff;
+  border-color: var(--furni-primary);
+}
+
+/* ─── Recent Blog / Guides (3 Cards) ────────────────────────────────────── */
+.furni-blog-card {
+  background: #ffffff;
+  border-radius: var(--furni-radius-card);
+  overflow: hidden;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+  height: 100%;
+}
+
+.furni-blog-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 45px -12px rgba(59, 93, 80, 0.2);
+}
+
+.furni-blog-img {
+  height: 220px;
+  overflow: hidden;
+}
+
+.furni-blog-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.furni-blog-card:hover .furni-blog-img img {
+  transform: scale(1.06);
+}
+
+/* ─── Newsletter Floating Box ──────────────────────────────────────────── */
+.furni-newsletter-box {
+  background: #ffffff;
+  border-radius: var(--furni-radius-card);
+  padding: 40px;
+  box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+  margin-bottom: -50px;
+  position: relative;
+  z-index: 10;
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────────── */
+.furni-footer {
+  background-color: #ffffff;
+  padding: 100px 0 40px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.furni-footer-title {
+  color: #2f2f2f;
+  font-weight: 700;
+  font-size: 1.35rem;
+  margin-bottom: 20px;
+}
+
+.furni-footer-link {
+  color: #6a6a6a;
+  text-decoration: none;
+  font-size: 0.92rem;
+  transition: all 0.2s ease;
+  display: block;
+  padding: 4px 0;
+}
+
+.furni-footer-link:hover {
+  color: var(--furni-primary);
+  transform: translateX(3px);
+}
+
+.furni-social-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #eff2f1;
+  color: var(--furni-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.furni-social-circle:hover {
+  background: var(--furni-primary);
+  color: #ffffff;
+}
+
+@media (max-width: 991.98px) {
+  .furni-hero {
+    padding: 110px 0 60px;
+  }
+  .furni-newsletter-box {
+    margin-bottom: 20px;
+  }
+}

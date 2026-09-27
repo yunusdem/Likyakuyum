@@ -37,7 +37,7 @@ import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
 import MasakModal from "../../components/masak/MasakModal";
 import { DovizFisiPrintModal } from "./DovizFisiPrintModal";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
-import { MusteriSecimModal, SelectedCustomerResult } from "./MusteriSecimModal";
+import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "./MusteriSecimModal";
 import { KurListesiModal } from "./KurListesiModal";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { TlHesabiModal } from "./TlHesabiModal";
@@ -58,6 +58,8 @@ import {
 } from "../../services/dovizFisService";
 import { useAuth } from "../../context/AuthContext";
 import { printReportTable } from "../../utils/printReport";
+import { triggerSilentPrint } from "../../services/silentPrintService";
+import { generateDovizReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 
@@ -94,6 +96,56 @@ interface GridLineItem {
   kmv: number | string;
   tutar: number | string;
 }
+
+const parseDecimal = (val: any): number => {
+  if (val === null || val === undefined || val === "") return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  const s = String(val).trim().replace(/\s/g, "");
+  if (!s) return 0;
+  if (s.includes(".") && s.includes(",")) {
+    const clean = s.replace(/\./g, "").replace(",", ".");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+  const clean = s.replace(",", ".");
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
+};
+
+const parseMiktar = (val: any): number => {
+  if (val === null || val === undefined || val === "") return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  const s = String(val).trim().replace(/\s/g, "");
+  if (!s) return 0;
+  if (s.includes(".") && s.includes(",")) {
+    const clean = s.replace(/\./g, "").replace(",", ".");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+  if (s.includes(",")) {
+    const clean = s.replace(",", ".");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+  const dotCount = (s.match(/\./g) || []).length;
+  if (dotCount > 1) {
+    const clean = s.replace(/\./g, "");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+  const parts = s.split(".");
+  if (parts.length === 2 && parts[1].length === 3 && parseInt(parts[1], 10) === 0) {
+    const clean = s.replace(/\./g, "");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+  const num = parseFloat(s);
+  return isNaN(num) ? 0 : num;
+};
+
+const parseKur = (val: any): number => {
+  return parseDecimal(val);
+};
 
 const DEFAULT_POSTA_KODLARI = [
   { id: 34110, kod: "34110", ad: "Kapalıçarşı / Fatih", il: "İstanbul", ilce: "Fatih" },
@@ -369,6 +421,7 @@ export const DovizFisiPage: React.FC = () => {
   }, [companyDefinitions]);
   const [showCariModal, setShowCariModal] = useState<boolean>(false);
   const [cariSearchTerm, setCariSearchTerm] = useState<string>("");
+  const [cariSearchField, setCariSearchField] = useState<CustomerSearchField>("all");
   const [showVezneModal, setShowVezneModal] = useState<boolean>(false);
   const [showParaModal, setShowParaModal] = useState<boolean>(false);
   const [paraModalRowId, setParaModalRowId] = useState<string | null>(null);
@@ -381,6 +434,14 @@ export const DovizFisiPage: React.FC = () => {
   const cariKodRef = useRef<HTMLInputElement | null>(null);
   const vknRef = useRef<HTMLInputElement | null>(null);
   const unvanRef = useRef<HTMLInputElement | null>(null);
+  const istatistikRef = useRef<HTMLInputElement | null>(null);
+
+  const lastFocusedCariKodRef = useRef<string>("");
+  const lastFocusedUnvanRef = useRef<string>("");
+  const lastFocusedVknRef = useRef<string>("");
+  const lastFocusedIstatistikKodRef = useRef<string>("");
+  const lastModalCallerRef = useRef<"cariKod" | "unvan" | "vkn" | "istatistik" | "paraGrid" | null>(null);
+  const lastParaModalRowIndexRef = useRef<number | null>(null);
 
   // Common Search Lookup Modal State for Detay fields
   type DetayLookupType =
@@ -537,6 +598,7 @@ export const DovizFisiPage: React.FC = () => {
 
   const [lines, setLines] = useState<GridLineItem[]>([createEmptyRow(1)]);
   const [activeRowIndex, setActiveRowIndex] = useState<number>(0);
+  const [invalidRowIds, setInvalidRowIds] = useState<Record<string, boolean>>({});
 
   // Dynamic Vezne Balances fetched from backend
   const [topBalances, setTopBalances] = useState<{ tl: number; usd: number; eur: number }>({
@@ -817,6 +879,9 @@ export const DovizFisiPage: React.FC = () => {
     setKurTuru(0);
     setIstatistikId(null);
     setIstatistikKodu("");
+    lastFocusedCariKodRef.current = "";
+    lastFocusedUnvanRef.current = "İSİM BEYAN EDİLMEMİŞTİR";
+    lastFocusedVknRef.current = "";
     setDetayCariTipi("Şahıs");
     setDetayYetkiliKisi("");
     setDetayYetkiliKisiId(null);
@@ -1111,6 +1176,10 @@ export const DovizFisiPage: React.FC = () => {
       setIstatistikId(fis.istatistikId);
       setIstatistikKodu(fis.istatistikKodu || (fis.tip === 1 ? "10285" : "9249"));
 
+      lastFocusedCariKodRef.current = matchedCari;
+      lastFocusedUnvanRef.current = fis.unvan || "İSİM BEYAN EDİLMEMİŞTİR";
+      lastFocusedVknRef.current = fis.vergiKimlikNo || "";
+
       if (fis.pasaportNo) setDetayPasaportNo(fis.pasaportNo);
       if (fis.babaAdi) setDetayBabaAdi(fis.babaAdi);
       if (fis.adres) setDetayAdres(fis.adres);
@@ -1383,21 +1452,39 @@ export const DovizFisiPage: React.FC = () => {
   const isRowFilled = useCallback((row?: GridLineItem): boolean => {
     if (!row) return false;
     const hasPara = Boolean(row.paraId || (row.paraKodu && row.paraKodu.trim() !== ""));
-    const miktarNum = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/\./g, "").replace(/,/g, ".")) || 0;
-    const kurNum = typeof row.kur === "number" ? row.kur : parseFloat(String(row.kur).replace(/\./g, "").replace(/,/g, ".")) || 0;
+    const miktarNum = parseMiktar(row.miktar);
+    const kurNum = parseKur(row.kur);
     return hasPara && miktarNum > 0 && kurNum > 0;
   }, []);
 
+  // Satırın tamamen boş olup olmadığını kontrol eder
+  const isRowCompletelyEmpty = useCallback((row?: GridLineItem): boolean => {
+    if (!row) return true;
+    const hasCode = Boolean((row.paraKodu && row.paraKodu.trim() !== "") || row.paraId || (row.paraAdi && row.paraAdi.trim() !== ""));
+    const hasMiktar = Boolean(row.miktar !== "" && row.miktar !== null && row.miktar !== undefined && parseMiktar(row.miktar) > 0);
+    const hasKur = Boolean(row.kur !== "" && row.kur !== null && row.kur !== undefined && parseKur(row.kur) > 0);
+    const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && row.tutar !== undefined && Number(row.tutar) > 0);
+    return !hasCode && !hasMiktar && !hasKur && !hasTutar;
+  }, []);
+
+  // Boş ve odakta olmayan satırları otomatik temizler (İlk satır daima korunur)
+  const cleanupEmptyRows = useCallback((keepActiveIndex?: number | null) => {
+    setLines((prev) => {
+      if (prev.length <= 1) return prev;
+      const filtered = prev.filter((r, idx) => {
+        if (idx === 0) return true; // İlk satır daima korunur
+        if (keepActiveIndex !== undefined && keepActiveIndex !== null && idx === keepActiveIndex) return true;
+        return !isRowCompletelyEmpty(r);
+      });
+      if (filtered.length === prev.length) return prev;
+      const finalLines = filtered.length > 0 ? filtered : [createEmptyRow(1)];
+      return finalLines.map((r, i) => ({ ...r, satirNo: i + 1 }));
+    });
+  }, [isRowCompletelyEmpty]);
+
   const calculateRowTutar = useCallback((miktar: number | string, kur: number | string): number => {
-    const parseClean = (v: any) => {
-      if (typeof v === "number") return isNaN(v) ? 0 : v;
-      const s = String(v || "").trim().replace(/\s/g, "");
-      if (!s) return 0;
-      const clean = s.replace(/\./g, "").replace(",", ".");
-      return parseFloat(clean) || 0;
-    };
-    const m = parseClean(miktar);
-    const k = parseClean(kur);
+    const m = parseMiktar(miktar);
+    const k = parseKur(kur);
     const factor = Math.pow(10, tlKurusSayisi);
     return Math.round(m * k * factor) / factor;
   }, [tlKurusSayisi]);
@@ -1407,9 +1494,10 @@ export const DovizFisiPage: React.FC = () => {
     const lastRow = lines[lines.length - 1];
     if (!isRowFilled(lastRow)) {
       if (lastRow) {
+        setInvalidRowIds((prev) => ({ ...prev, [lastRow.id]: true }));
         if (!lastRow.paraId && !lastRow.paraKodu) {
           focusCell(lines.length - 1, "kod", "select");
-        } else if (!lastRow.miktar || Number(lastRow.miktar) <= 0) {
+        } else if (!lastRow.miktar || parseMiktar(lastRow.miktar) <= 0) {
           focusCell(lines.length - 1, "miktar", "select");
         } else {
           focusCell(lines.length - 1, "kur", "select");
@@ -1527,46 +1615,11 @@ export const DovizFisiPage: React.FC = () => {
       field === "kmvOrani"
     ) {
       let cleanVal = value.replace(/[^0-9.,]/g, "");
-      if (field === "miktar") {
-        // Binlik basamaklama (nokta) ve ondalık virgül desteği
-        let intPart = cleanVal;
-        let decPart: string | null = null;
-        let hasTrailingComma = false;
-
-        if (cleanVal.includes(",")) {
-          const parts = cleanVal.split(",");
-          intPart = parts[0];
-          decPart = parts.slice(1).join("");
-          if (cleanVal.endsWith(",")) hasTrailingComma = true;
-        } else if (cleanVal.includes(".")) {
-          const dotCount = (cleanVal.match(/\./g) || []).length;
-          if (dotCount === 1 && !cleanVal.startsWith(".")) {
-            const parts = cleanVal.split(".");
-            intPart = parts[0];
-            decPart = parts[1];
-            if (cleanVal.endsWith(".")) hasTrailingComma = true;
-          } else {
-            intPart = cleanVal.replace(/\./g, "");
-          }
-        }
-
-        const cleanInt = intPart.replace(/\D/g, "");
-        const formattedInt = cleanInt ? cleanInt.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "";
-
-        if (decPart !== null) {
-          cleanVal = `${formattedInt || "0"},${decPart}`;
-        } else if (hasTrailingComma) {
-          cleanVal = `${formattedInt || "0"},`;
-        } else {
-          cleanVal = formattedInt;
-        }
-      } else {
-        const firstSep = cleanVal.search(/[.,]/);
-        if (firstSep !== -1) {
-          const before = cleanVal.slice(0, firstSep + 1);
-          const after = cleanVal.slice(firstSep + 1).replace(/[.,]/g, "");
-          cleanVal = before + after;
-        }
+      const firstSep = cleanVal.search(/[.,]/);
+      if (firstSep !== -1) {
+        const before = cleanVal.slice(0, firstSep + 1);
+        const after = cleanVal.slice(firstSep + 1).replace(/[.,]/g, "");
+        cleanVal = before + after;
       }
       value = cleanVal;
     }
@@ -1601,7 +1654,7 @@ export const DovizFisiPage: React.FC = () => {
         const factor = Math.pow(10, tlKurusSayisi);
         if (field === "komisyon") {
           updated.komisyon = value;
-          const komVal = parseFloat(String(value).replace(/\./g, "").replace(/,/g, ".")) || 0;
+          const komVal = parseDecimal(value);
           if (tutar > 0 && komVal > 0) {
             updated.komisyonOrani = (Math.round((komVal / tutar) * 100 * 100) / 100).toString();
           } else if (!value) {
@@ -1609,14 +1662,14 @@ export const DovizFisiPage: React.FC = () => {
           }
         } else if (field === "komisyonOrani") {
           updated.komisyonOrani = value;
-          const komRate = parseFloat(String(value).replace(/\./g, "").replace(/,/g, ".")) || 0;
+          const komRate = parseDecimal(value);
           if (komRate > 0 && tutar > 0) {
             updated.komisyon = (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
           } else if (!value) {
             updated.komisyon = "";
           }
         } else {
-          const komRate = parseFloat(String(updated.komisyonOrani || "0").replace(/\./g, "").replace(/,/g, ".")) || 0;
+          const komRate = parseDecimal(updated.komisyonOrani || "0");
           if (komRate > 0 && tutar > 0) {
             updated.komisyon = (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
           }
@@ -1637,7 +1690,7 @@ export const DovizFisiPage: React.FC = () => {
 
         // 3. KMV Tutarı
         if (field === "kmvOrani") {
-          const kmvRate = parseFloat(String(value || "0").replace(/\./g, "").replace(/,/g, ".")) || 0;
+          const kmvRate = parseDecimal(value || "0");
           if (kmvRate > 0 && tutar > 0) {
             updated.kmv = (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
           } else if (!value) {
@@ -1656,12 +1709,12 @@ export const DovizFisiPage: React.FC = () => {
     setLines((prev) =>
       prev.map((row) => {
         if (row.id !== rowId) return row;
-        const m = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
+        const m = parseMiktar(row.miktar);
         const tutar = calculateRowTutar(m, autoKur);
         const factor = Math.pow(10, tlKurusSayisi);
         const bmvOrani = tip === 1 ? "0.2" : "0";
         const bmvVal = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
-        const komRate = parseFloat(String(row.komisyonOrani || "0").replace(/,/g, ".")) || 0;
+        const komRate = parseDecimal(row.komisyonOrani || "0");
         const komVal = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi) : row.komisyon;
         return {
           ...row,
@@ -1693,6 +1746,7 @@ export const DovizFisiPage: React.FC = () => {
     if (isLocked) return;
     setIstatistikId(item.id);
     setIstatistikKodu(item.kod);
+    lastFocusedIstatistikKodRef.current = item.kod;
     setShowIstatistikModal(false);
     setTimeout(() => {
       focusCell(0, "kod");
@@ -1700,7 +1754,8 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const handleSelectCustomer = (result: SelectedCustomerResult) => {
-    setUnvan(result.unvan || "İSİM BEYAN EDİLMEMİŞTİR");
+    const nextUnvan = result.unvan || "İSİM BEYAN EDİLMEMİŞTİR";
+    setUnvan(nextUnvan);
     const raw = result.raw as any;
     const resolvedKod = result.kod || (raw && (raw.kod || raw.cariKodu)) || "";
     setCariKod(resolvedKod);
@@ -1709,11 +1764,18 @@ export const DovizFisiPage: React.FC = () => {
     } else {
       setCariKartId(null);
     }
-    if (result.vergiKimlikNo) {
-      setVergiKimlikNo(result.vergiKimlikNo);
+    const nextVkn = result.vergiKimlikNo || "";
+    if (nextVkn) {
+      setVergiKimlikNo(nextVkn);
     }
     if (result.adres) setDetayAdres(result.adres);
     if (result.telefon) setDetayTelefon(result.telefon);
+
+    lastFocusedCariKodRef.current = resolvedKod;
+    lastFocusedUnvanRef.current = nextUnvan;
+    if (nextVkn) {
+      lastFocusedVknRef.current = nextVkn;
+    }
 
     if (raw) {
       if (raw.yetkiliKisi) setDetayYetkiliKisi(raw.yetkiliKisi);
@@ -1786,6 +1848,44 @@ export const DovizFisiPage: React.FC = () => {
     if (isMasakLimitExceeded) {
       setShowMasakCustomerWarningModal(true);
     }
+  };
+
+  const findMatchingCustomers = (
+    field: "kod" | "unvan" | "vkn",
+    query: string
+  ): { cariler: CariKartItem[]; kayitsizlar: KayitsizMusteriItem[]; totalCount: number } => {
+    const q = query.toLowerCase().trim();
+    if (!q) return { cariler: [], kayitsizlar: [], totalCount: 0 };
+
+    const matchedCariler = cariList.filter((c) => {
+      if (field === "kod") {
+        return (c.kod || "").toLowerCase().includes(q);
+      }
+      if (field === "unvan") {
+        return (c.ad || (c as any).unvan || "").toLowerCase().includes(q);
+      }
+      if (field === "vkn") {
+        return (c.vergiKimlikNo || "").toLowerCase().includes(q);
+      }
+      return false;
+    });
+
+    const matchedKayitsizlar = kayitsizMusteriList.filter((k) => {
+      if (field === "kod") return false;
+      if (field === "unvan") {
+        return (k.ad || k.unvan || "").toLowerCase().includes(q);
+      }
+      if (field === "vkn") {
+        return (k.vergiKimlikNo || "").toLowerCase().includes(q);
+      }
+      return false;
+    });
+
+    return {
+      cariler: matchedCariler,
+      kayitsizlar: matchedKayitsizlar,
+      totalCount: matchedCariler.length + matchedKayitsizlar.length,
+    };
   };
 
   const handleSelectFromKurListesi = (para: ParaItem) => {
@@ -1896,7 +1996,7 @@ export const DovizFisiPage: React.FC = () => {
   // Calculations for summary boxes
   const totalTutar = useMemo(() => {
     return lines.reduce((acc, row) => {
-      const t = typeof row.tutar === "number" ? row.tutar : parseFloat(String(row.tutar)) || 0;
+      const t = parseDecimal(row.tutar);
       return acc + t;
     }, 0);
   }, [lines]);
@@ -1904,14 +2004,14 @@ export const DovizFisiPage: React.FC = () => {
   const calculatedBsmv = useMemo(() => {
     if (tip !== 1) return 0;
     return lines.reduce((acc, row) => {
-      const b = typeof row.bmv === "number" ? row.bmv : parseFloat(String(row.bmv)) || 0;
+      const b = parseDecimal(row.bmv);
       return acc + b;
     }, 0);
   }, [lines, tip]);
 
   const totalKomisyon = useMemo(() => {
     return lines.reduce((acc, row) => {
-      const k = typeof row.komisyon === "number" ? row.komisyon : parseFloat(String(row.komisyon)) || 0;
+      const k = parseDecimal(row.komisyon);
       return acc + k;
     }, 0);
   }, [lines]);
@@ -1936,7 +2036,7 @@ export const DovizFisiPage: React.FC = () => {
   const isMasakLimitExceeded = useMemo(() => {
     // Fişteki geçerli döviz satırları
     const validLines = lines.filter((l) => {
-      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(l.miktar);
       return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
     });
 
@@ -1950,8 +2050,8 @@ export const DovizFisiPage: React.FC = () => {
 
     validLines.forEach((l) => {
       const kod = (l.paraKodu || "").trim().toUpperCase();
-      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
-      const k = typeof l.kur === "number" ? l.kur : parseFloat(String(l.kur).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(l.miktar);
+      const k = parseKur(l.kur);
 
       if (kod === "USD" || kod === "$") {
         totalUsdEquivalent += m;
@@ -2112,6 +2212,7 @@ export const DovizFisiPage: React.FC = () => {
       const fallbackKod = fisTipi === 0 ? "9249" : "10285";
       setIstatistikId(null);
       setIstatistikKodu(fallbackKod);
+      lastFocusedIstatistikKodRef.current = fallbackKod;
       return;
     }
 
@@ -2126,6 +2227,7 @@ export const DovizFisiPage: React.FC = () => {
         if (foundCompany) {
           setIstatistikId(foundCompany.id);
           setIstatistikKodu(foundCompany.kod || "");
+          lastFocusedIstatistikKodRef.current = foundCompany.kod || "";
           return;
         }
       }
@@ -2143,6 +2245,7 @@ export const DovizFisiPage: React.FC = () => {
       if (foundUser) {
         setIstatistikId(foundUser.id);
         setIstatistikKodu(foundUser.kod || "");
+        lastFocusedIstatistikKodRef.current = foundUser.kod || "";
         return;
       }
     }
@@ -2161,6 +2264,7 @@ export const DovizFisiPage: React.FC = () => {
       const firstItem = matchingList[0];
       setIstatistikId(firstItem.id);
       setIstatistikKodu(firstItem.kod || "");
+      lastFocusedIstatistikKodRef.current = firstItem.kod || "";
       return;
     }
 
@@ -2172,12 +2276,14 @@ export const DovizFisiPage: React.FC = () => {
     if (fallbackMatched) {
       setIstatistikId(fallbackMatched.id);
       setIstatistikKodu(fallbackMatched.kod || fallbackKod);
+      lastFocusedIstatistikKodRef.current = fallbackMatched.kod || fallbackKod;
       return;
     }
 
     // 5. Hiçbiri yoksa varsayılan kodu direkt yaz
     setIstatistikId(null);
     setIstatistikKodu(fallbackKod);
+    lastFocusedIstatistikKodRef.current = fallbackKod;
   };
 
   // Tip, İstatistik Listesi veya Firma Tanımları değiştiğinde varsayılan istatistik seç
@@ -2204,12 +2310,12 @@ export const DovizFisiPage: React.FC = () => {
             rate = resolveCurrencyRate(found, newTip, kurTuru);
           }
         }
-        const m = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
+        const m = parseMiktar(row.miktar);
         const tutar = calculateRowTutar(m, rate);
         const factor = Math.pow(10, tlKurusSayisi);
         const bmvOrani = newTip === 1 ? (row.paraId || row.paraKodu || m > 0 ? "0.2" : "") : "0";
         const bmv = newTip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
-        const komRate = parseFloat(String(row.komisyonOrani || "0").replace(/,/g, ".")) || 0;
+        const komRate = parseDecimal(row.komisyonOrani || "0");
         const komisyon = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi) : row.komisyon;
         return {
           ...row,
@@ -2236,12 +2342,12 @@ export const DovizFisiPage: React.FC = () => {
         );
         if (!found) return row;
         const newRate = resolveCurrencyRate(found, tip, newKurTuru);
-        const m = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
+        const m = parseMiktar(row.miktar);
         const tutar = calculateRowTutar(m, newRate);
         const factor = Math.pow(10, tlKurusSayisi);
         const bmvOrani = tip === 1 ? (row.paraId || row.paraKodu || m > 0 ? "0.2" : "") : "0";
         const bmv = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
-        const komRate = parseFloat(String(row.komisyonOrani || "0").replace(/,/g, ".")) || 0;
+        const komRate = parseDecimal(row.komisyonOrani || "0");
         const komisyon = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi) : row.komisyon;
         return {
           ...row,
@@ -2326,6 +2432,34 @@ export const DovizFisiPage: React.FC = () => {
       return;
     }
 
+    // ESC altındaki " tuşuna basınca üst satırdaki hücre değerini kopyala (Sadece tablolarda geçerli)
+    if (e.key === '"' || e.key === '“' || e.key === '”' || e.key === '„' || e.key === '«' || e.key === '»' || e.key === 'é' || e.key === 'É' || e.key === '`' || e.key === '´' || e.key === '§' || e.code === "Backquote" || (e.code === "Digit2" && e.shiftKey) || e.keyCode === 222 || e.keyCode === 192) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (rowIndex > 0) {
+        const prevRow = lines[rowIndex - 1];
+        const currentRow = lines[rowIndex];
+        if (field === "kod") {
+          const prevCode = (prevRow.paraKodu || "").trim();
+          handleLineFieldChange(currentRow.id, "paraKodu", prevCode);
+        } else if (field === "miktar") {
+          handleLineFieldChange(currentRow.id, "miktar", prevRow.miktar ? String(prevRow.miktar) : "");
+        } else if (field === "kur") {
+          handleLineFieldChange(currentRow.id, "kur", prevRow.kur ? String(prevRow.kur) : "");
+        } else if (field === "komisyonOrani") {
+          handleLineFieldChange(currentRow.id, "komisyonOrani", prevRow.komisyonOrani ? String(prevRow.komisyonOrani) : "");
+        } else if (field === "komisyon") {
+          handleLineFieldChange(currentRow.id, "komisyon", prevRow.komisyon ? String(prevRow.komisyon) : "");
+        } else if (field === "kmvOrani") {
+          handleLineFieldChange(currentRow.id, "kmvOrani", prevRow.kmvOrani ? String(prevRow.kmvOrani) : "");
+        } else if (field === "kmv") {
+          handleLineFieldChange(currentRow.id, "kmv", prevRow.kmv ? String(prevRow.kmv) : "");
+        }
+        setTimeout(() => focusCell(rowIndex, field, "select"), 20);
+      }
+      return;
+    }
+
     if (field !== "kod") {
       blockNonNumericKeys(e, true);
     }
@@ -2347,12 +2481,12 @@ export const DovizFisiPage: React.FC = () => {
     if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
       e.preventDefault();
       if (rowIndex >= lines.length - 1) {
-        if (isRowFilled(lines[rowIndex])) {
-          handleAddRow();
-        }
+        handleAddRow();
       } else {
-        setActiveRowIndex(rowIndex + 1);
-        focusCell(rowIndex + 1, "kod", "select");
+        const targetIdx = rowIndex + 1;
+        cleanupEmptyRows(targetIdx);
+        setActiveRowIndex(targetIdx);
+        focusCell(targetIdx, "kod", "select");
       }
       return;
     }
@@ -2361,17 +2495,37 @@ export const DovizFisiPage: React.FC = () => {
     if (e.key === "Enter") {
       e.preventDefault();
       if (field === "kod") {
-        const currentCode = (lines[rowIndex]?.paraKodu || "").trim().toUpperCase();
-        if (currentCode) {
-          const matched = paraList.find((p) => p.kod.toUpperCase() === currentCode);
-          if (matched) {
-            handleSelectCurrency(lines[rowIndex].id, matched);
-            focusCell(rowIndex, "miktar", "select");
-            return;
-          }
+        const currentCode = (lines[rowIndex]?.paraKodu || "").trim();
+        const currentRow = lines[rowIndex];
+
+        if (!currentCode) {
+          lastModalCallerRef.current = "paraGrid";
+          lastParaModalRowIndexRef.current = rowIndex;
+          setParaModalRowId(currentRow.id);
+          setParaSearchTerm("");
+          setShowParaModal(true);
+          return;
         }
-        // Tam eşleşme yoksa (örnek: "us", "çe" gibi kısmi yazımlarda) arama ekranına taşı ve aç
-        setParaModalRowId(lines[rowIndex].id);
+
+        const t = currentCode.toLowerCase();
+        // Arama yap: Sadece Para kodu ile eşleşenler
+        const matched = paraList.filter(
+          (p) => (p.kod || "").toLowerCase().includes(t)
+        );
+
+        // Yazılana göre tek veri var ise doğrudan seç ve miktar alanına geç
+        if (matched.length === 1) {
+          lastModalCallerRef.current = null;
+          lastParaModalRowIndexRef.current = null;
+          handleSelectCurrency(currentRow.id, matched[0]);
+          focusCell(rowIndex, "miktar", "select");
+          return;
+        }
+
+        // Birden fazla veri varsa veya hiç eşleşme yoksa modalı girilen terimle aç
+        lastModalCallerRef.current = "paraGrid";
+        lastParaModalRowIndexRef.current = rowIndex;
+        setParaModalRowId(currentRow.id);
         setParaSearchTerm(currentCode);
         setShowParaModal(true);
         return;
@@ -2380,14 +2534,13 @@ export const DovizFisiPage: React.FC = () => {
       if (isLastVisibleCol) {
         // Satırın son alanında Enter'a basıldı:
         if (rowIndex >= lines.length - 1) {
-          // Son satırsa ve DOLUYSA yeni satır aç
-          if (isRowFilled(lines[rowIndex])) {
-            handleAddRow();
-          }
+          handleAddRow();
         } else {
           // Altında zaten satır varsa bir alt satırın kod alanına geç
-          setActiveRowIndex(rowIndex + 1);
-          focusCell(rowIndex + 1, "kod", "select");
+          const targetIdx = rowIndex + 1;
+          cleanupEmptyRows(targetIdx);
+          setActiveRowIndex(targetIdx);
+          focusCell(targetIdx, "kod", "select");
         }
         return;
       } else {
@@ -2404,12 +2557,12 @@ export const DovizFisiPage: React.FC = () => {
     if (e.key === "Tab" && !e.shiftKey && isLastVisibleCol) {
       e.preventDefault();
       if (rowIndex >= lines.length - 1) {
-        if (isRowFilled(lines[rowIndex])) {
-          handleAddRow();
-        }
+        handleAddRow();
       } else {
-        setActiveRowIndex(rowIndex + 1);
-        focusCell(rowIndex + 1, "kod", "select");
+        const targetIdx = rowIndex + 1;
+        cleanupEmptyRows(targetIdx);
+        setActiveRowIndex(targetIdx);
+        focusCell(targetIdx, "kod", "select");
       }
       return;
     }
@@ -2431,9 +2584,10 @@ export const DovizFisiPage: React.FC = () => {
         // Satırın son sütunundayken sağa basınca bir sonraki satıra geçsin (eğer satır doluysa ve son satırsa yeni satır açsın)
         if (rowIndex < maxRow) {
           const nextIdx = rowIndex + 1;
+          cleanupEmptyRows(nextIdx);
           setActiveRowIndex(nextIdx);
           focusCell(nextIdx, "kod", "start");
-        } else if (isRowFilled(lines[rowIndex])) {
+        } else {
           handleAddRow();
         }
         return;
@@ -2456,6 +2610,7 @@ export const DovizFisiPage: React.FC = () => {
         // İlk sütunda (kod) sola basınca bir önceki satırın son görünür sütununa geçsin
         if (rowIndex > 0) {
           const prevIdx = rowIndex - 1;
+          cleanupEmptyRows(prevIdx);
           const lastVisible = visibleCols[visibleCols.length - 1];
           setActiveRowIndex(prevIdx);
           focusCell(prevIdx, lastVisible, "end");
@@ -2469,9 +2624,10 @@ export const DovizFisiPage: React.FC = () => {
       e.preventDefault();
       if (rowIndex < maxRow) {
         const targetIdx = rowIndex + 1;
+        cleanupEmptyRows(targetIdx);
         setActiveRowIndex(targetIdx);
         focusCell(targetIdx, field, "select");
-      } else if (isRowFilled(lines[rowIndex])) {
+      } else {
         handleAddRow();
       }
       return;
@@ -2481,6 +2637,7 @@ export const DovizFisiPage: React.FC = () => {
     if (e.key === "ArrowUp" && rowIndex > 0) {
       e.preventDefault();
       const targetIdx = rowIndex - 1;
+      cleanupEmptyRows(targetIdx);
       setActiveRowIndex(targetIdx);
       focusCell(targetIdx, field, "select");
       return;
@@ -2560,12 +2717,12 @@ export const DovizFisiPage: React.FC = () => {
       (r) =>
         r.paraKodu.trim() !== "" ||
         r.paraAdi.trim() !== "" ||
-        (typeof r.miktar === "number" ? r.miktar > 0 : (parseFloat(String(r.miktar).replace(/,/g, ".")) || 0) > 0)
+        parseMiktar(r.miktar) > 0
     );
 
     const validLines = lines.filter((row) => {
-      const m = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
-      const k = typeof row.kur === "number" ? row.kur : parseFloat(String(row.kur).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(row.miktar);
+      const k = parseKur(row.kur);
       return (row.paraId > 0 || row.paraKodu.trim() !== "") && m > 0 && k > 0;
     });
 
@@ -2581,8 +2738,8 @@ export const DovizFisiPage: React.FC = () => {
     for (let i = 0; i < lines.length; i++) {
       const row = lines[i];
       const hasCode = row.paraId > 0 || row.paraKodu.trim() !== "" || row.paraAdi.trim() !== "";
-      const m = typeof row.miktar === "number" ? row.miktar : parseFloat(String(row.miktar).replace(/,/g, ".")) || 0;
-      const k = typeof row.kur === "number" ? row.kur : parseFloat(String(row.kur).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(row.miktar);
+      const k = parseKur(row.kur);
 
       // If user typed some information in this row
       if (hasCode || m > 0 || k > 0) {
@@ -2615,13 +2772,6 @@ export const DovizFisiPage: React.FC = () => {
 
     // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolleri (Kaydetmede Kontrol)
     if (isMasakLimitExceeded) {
-      // Kaydederken limit aşıyorsa uyar: Yine de kaydedeyim mi vazgeçeyim mi
-      if (!forceMasakApprove) {
-        setIsPendingDirectPrint(andDirectPrint);
-        setShowMasakConfirmModal(true);
-        return;
-      }
-
       const isAnon = !unvan || !unvan.trim() ||
         unvan.trim().toLocaleUpperCase('tr-TR') === "İSİM BEYAN EDİLMEMİŞTİR" ||
         unvan.trim().toLocaleUpperCase('tr-TR') === "ISIM BEYAN EDILMEMISTIR";
@@ -2780,12 +2930,19 @@ export const DovizFisiPage: React.FC = () => {
 
       const finalUnvan = isAnonymous ? "İSİM BEYAN EDİLMEMİŞTİR" : unvan.trim();
 
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const liveTarih = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const liveSaat = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      const finalTarih = isDuzeltmeMode ? tarih : liveTarih;
+      const finalZaman = isDuzeltmeMode ? saat : liveSaat;
+
       const payload: SaveDovizFisPayload = {
         fisId: fisId || undefined,
         vezneId: activeVezneId,
         tip,
-        tarih,
-        zaman: saat,
+        tarih: finalTarih,
+        zaman: finalZaman,
         seriNo: seriNo.trim() || undefined,
         belgeNo: belgeNo.trim() || undefined,
         gelisNedeni: gelisNedeni.trim() || undefined,
@@ -2842,9 +2999,10 @@ export const DovizFisiPage: React.FC = () => {
             const match = paraList.find((p) => p.kod.toUpperCase() === (l.paraKodu || "").toUpperCase());
             pId = match ? match.id : 1;
           }
-          const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
-          const k = typeof l.kur === "number" ? l.kur : parseFloat(String(l.kur).replace(/,/g, ".")) || 0;
-          const bmvVal = tip === 1 ? Math.round(m * k * 0.002 * 100) / 100 : 0;
+          const m = parseMiktar(l.miktar);
+          const k = parseKur(l.kur);
+          const factor = Math.pow(10, tlKurusSayisi);
+          const bmvVal = tip === 1 ? Math.round(m * k * 0.002 * factor) / factor : 0;
 
           return {
             satirNo: idx,
@@ -2856,12 +3014,12 @@ export const DovizFisiPage: React.FC = () => {
             iscilik: 0,
             giseKuru: k,
             tutar: calculateRowTutar(m, k),
-            komisyonOrani: parseFloat(String(l.komisyonOrani || "0")) || 0,
-            komisyon: parseFloat(String(l.komisyon || "0")) || 0,
+            komisyonOrani: parseDecimal(l.komisyonOrani || "0"),
+            komisyon: parseDecimal(l.komisyon || "0"),
             bmvOrani: tip === 1 ? 0.2 : 0,
             bmv: bmvVal,
-            kmvOrani: parseFloat(String(l.kmvOrani || "0")) || 0,
-            kmv: parseFloat(String(l.kmv || "0")) || 0,
+            kmvOrani: parseDecimal(l.kmvOrani || "0"),
+            kmv: parseDecimal(l.kmv || "0"),
             kdvOrani: 0,
             kdv: 0,
           };
@@ -2878,8 +3036,8 @@ export const DovizFisiPage: React.FC = () => {
       const currentSnapshot = {
         fisId: saved.fisId || fisId,
         tip,
-        tarih,
-        saat,
+        tarih: finalTarih,
+        saat: finalZaman,
         seriNo: saved.seriNo || seriNo,
         belgeNo: saved.belgeNo || belgeNo,
         unvan: finalUnvan,
@@ -2910,8 +3068,15 @@ export const DovizFisiPage: React.FC = () => {
       setPrintSnapshot(currentSnapshot);
 
       if (andDirectPrint) {
-        setIsPendingDirectPrint(true);
-        setShowPrintModal(true);
+        const dovizHtml = generateDovizReceiptHtml({
+          fis: currentSnapshot,
+          company: companyDefinitions,
+        });
+        triggerSilentPrint({
+          html: dovizHtml,
+          isPos: true,
+          title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
+        });
       }
 
       if (isDuzeltmeMode) {
@@ -3136,63 +3301,70 @@ export const DovizFisiPage: React.FC = () => {
         return;
       }
 
-      const isAnyModalOpen =
-        showKurListesiModal ||
-        showVezneBakiyeModal ||
-        showTlHesabiModal ||
-        showDetayModal ||
-        showParaSaymaModal ||
-        showIstatistikModal ||
-        showSearchModal ||
-        showCariModal ||
-        showVezneModal ||
-        showParaModal ||
-        showGumrukModal ||
-        showPrintModal ||
-        activeLookupType !== null;
-
-      if (isAnyModalOpen) {
-        return;
-      }
+      const closeAllModals = () => {
+        setShowKurListesiModal(false);
+        setShowVezneBakiyeModal(false);
+        setShowTlHesabiModal(false);
+        setShowDetayModal(false);
+        setShowParaSaymaModal(false);
+        setShowIstatistikModal(false);
+        setShowSearchModal(false);
+        setShowCariModal(false);
+        setShowVezneModal(false);
+        setShowParaModal(false);
+        setShowGumrukModal(false);
+        setShowPrintModal(false);
+        setActiveLookupType(null);
+      };
 
       if (isF1) {
         e.preventDefault();
         e.stopPropagation();
+        closeAllModals();
         handleToolbarSave();
       } else if (isF2) {
         if (isDuzeltmeMode) {
           e.preventDefault();
           e.stopPropagation();
+          closeAllModals();
           handleToolbarDelete();
         }
       } else if (isF3) {
         e.preventDefault();
         e.stopPropagation();
+        closeAllModals();
         setShowIstatistikModal(true);
       } else if (isF4) {
         e.preventDefault();
         e.stopPropagation();
+        closeAllModals();
         setShowKurListesiModal(true);
       } else if (isF5) {
         e.preventDefault();
         e.stopPropagation();
+        closeAllModals();
         fetchVezneBalances(vezneId);
         setShowVezneBakiyeModal(true);
       } else if (isF6) {
         e.preventDefault();
         e.stopPropagation();
+        closeAllModals();
         setShowTlHesabiModal(true);
       } else if (isF7) {
         e.preventDefault();
         e.stopPropagation();
+        closeAllModals();
         setShowGumrukModal(true);
       } else if (isF9) {
         e.preventDefault();
         e.stopPropagation();
-        handleOpenBanknotSay();
+        closeAllModals();
+        setIsPendingDirectPrint(false);
+        setShowPrintModal(true);
       } else if (isF10) {
         e.preventDefault();
         e.stopPropagation();
+        closeAllModals();
         handleToolbarSave(false, true);
       }
     };
@@ -3556,14 +3728,14 @@ export const DovizFisiPage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Ana Form Kartı */}
+      {/* ─── 1. Üst Giriş Alanları Kartı (Ayrı Dış Dikdörtgen Kutu) ─── */}
       <Card
-        className={`shadow-sm rounded-2 overflow-hidden mt-1 ${isMasakBlocked ? "border-2 border-danger" : "border-0"}`}
-        style={isMasakBlocked ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" } : {}}
+        className={`shadow-sm rounded-2 overflow-hidden mt-1 mb-2 border ${isMasakBlocked ? "border-2 border-danger" : ""}`}
+        style={isMasakBlocked ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" } : { borderColor: "#cbd5e1" }}
       >
         <Card.Body className="p-0">
-          {/* En Üstteki 3 Alan (Ferah kenarlıklı, yazılara yapışmayan masaüstü ERP düzeni) */}
-          <div className="py-2.5 px-3 bg-light border-bottom">
+          {/* En Üstteki 3 Alan */}
+          <div className="py-2.5 px-3 bg-light">
             <Row className="g-3">
               {/* Sol Sütun: Tarih, Saat, Geliş Nedeni / Satış Dayanağı, Kur Türü */}
               <Col xs={12} md={4}>
@@ -3585,22 +3757,23 @@ export const DovizFisiPage: React.FC = () => {
                       <Form.Control
                         type="date"
                         size="sm"
-                        disabled={isLocked}
+                        disabled={!isDuzeltmeMode || isLocked}
                         value={tarih}
                         onChange={(e) => setTarih(e.target.value)}
-                        className="font-monospace px-2 py-1"
+                        className={`font-monospace px-2 py-1 ${!isDuzeltmeMode ? "bg-light text-muted" : ""}`}
                         style={{ minWidth: 0, flex: "1 1 auto", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
+                        title={!isDuzeltmeMode ? "Kayıt anında otomatik (anlık) tarih alınır" : "Fiş Tarihi (Düzenlenebilir)"}
                       />
                       <Form.Control
                         type="text"
                         size="sm"
                         autoComplete="off"
-                        disabled={isLocked}
+                        disabled={!isDuzeltmeMode || isLocked}
                         value={saat}
                         onChange={(e) => setSaat(e.target.value)}
-                        className="font-monospace text-center px-1 py-1"
+                        className={`font-monospace text-center px-1 py-1 ${!isDuzeltmeMode ? "bg-light text-muted" : ""}`}
                         style={{ minWidth: "68px", width: "68px", flex: "0 0 68px", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
-                        title="İşlem Saati (SS:DD)"
+                        title={!isDuzeltmeMode ? "Kayıt anında otomatik (anlık) saat alınır" : "İşlem Saati (SS:DD - Düzenlenebilir)"}
                       />
                     </div>
                   </div>
@@ -3727,29 +3900,53 @@ export const DovizFisiPage: React.FC = () => {
                           disabled={isLocked}
                           value={cariKod}
                           maxLength={30}
+                          onFocus={() => {
+                            lastFocusedCariKodRef.current = cariKod;
+                          }}
                           onChange={(e) => setCariKod(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
                               const val = cariKod.trim();
-                              if (val) {
-                                const matched = cariList.find((c) => (c.kod || "").trim().toLowerCase() === val.toLowerCase());
-                                if (matched) {
-                                  handleSelectCustomer({
-                                    type: "registered",
-                                    id: matched.id,
-                                    kod: matched.kod,
-                                    unvan: matched.ad || (matched as any).unvan || "",
-                                    vergiKimlikNo: matched.vergiKimlikNo || "",
-                                    adres: matched.adres || "",
-                                    telefon: matched.telefon || "",
-                                    raw: matched,
-                                  });
-                                  return;
-                                }
-                                setCariSearchTerm(val);
-                                setShowCariModal(true);
+                              const prevVal = (lastFocusedCariKodRef.current || "").trim();
+                              // Önceden dolu ise ve kullanıcı değiştirmeden Enter'a bastıysa sonraki inputa (Ünvan) geç
+                              if (val && val.toLowerCase() === prevVal.toLowerCase()) {
+                                unvanRef.current?.focus();
+                                unvanRef.current?.select();
+                                return;
                               }
+                              // Boş iken Enter'a basıldıysa doğrudan Cari Kod arama modalını aç
+                              if (!val) {
+                                lastModalCallerRef.current = "cariKod";
+                                setCariSearchTerm("");
+                                setCariSearchField("kod");
+                                setShowCariModal(true);
+                                return;
+                              }
+                              // Arama yap: Tek veri var ise doğrudan seç
+                              const { cariler, totalCount } = findMatchingCustomers("kod", val);
+                              if (totalCount === 1 && cariler.length === 1) {
+                                const single = cariler[0];
+                                handleSelectCustomer({
+                                  type: "registered",
+                                  id: single.id,
+                                  kod: single.kod,
+                                  unvan: single.ad || (single as any).unvan || "",
+                                  vergiKimlikNo: single.vergiKimlikNo || "",
+                                  adres: single.adres || "",
+                                  telefon: single.telefon || "",
+                                  raw: single,
+                                });
+                                lastFocusedCariKodRef.current = single.kod || "";
+                                unvanRef.current?.focus();
+                                unvanRef.current?.select();
+                                return;
+                              }
+                              // Birden fazla veri var ise veya hiç yoksa modalı sadece Cari Kod uyuşanlarla aç
+                              lastModalCallerRef.current = "cariKod";
+                              setCariSearchTerm(val);
+                              setCariSearchField("kod");
+                              setShowCariModal(true);
                             }
                           }}
                           className="font-monospace px-2.5 py-1"
@@ -3761,7 +3958,9 @@ export const DovizFisiPage: React.FC = () => {
                           className="px-2 py-0 d-flex align-items-center justify-content-center"
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => {
+                            lastModalCallerRef.current = "cariKod";
                             setCariSearchTerm(cariKod.trim());
+                            setCariSearchField("kod");
                             setShowCariModal(true);
                           }}
                           title="Cari Seç"
@@ -3788,6 +3987,9 @@ export const DovizFisiPage: React.FC = () => {
                           disabled={isLocked}
                           value={unvan}
                           maxLength={100}
+                          onFocus={() => {
+                            lastFocusedUnvanRef.current = unvan;
+                          }}
                           onChange={(e) => {
                             setUnvan(e.target.value.slice(0, 100));
                             if (cariKartId) setCariKartId(null);
@@ -3801,11 +4003,55 @@ export const DovizFisiPage: React.FC = () => {
                             if (e.key === "Enter") {
                               e.preventDefault();
                               const val = unvan.trim();
-                              if (val && !val.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
-                                setCariSearchTerm(val);
-                              } else {
-                                setCariSearchTerm("");
+                              const prevVal = (lastFocusedUnvanRef.current || "").trim();
+                              // Önceden dolu ise ve kullanıcı değiştirmeden Enter'a bastıysa sonraki inputa (Fiş Tipi) geç
+                              if (val && val.toLowerCase() === prevVal.toLowerCase() && val.toLocaleUpperCase("tr-TR") !== "İSİM BEYAN EDİLMEMİŞTİR") {
+                                tipSelectRef.current?.focus();
+                                return;
                               }
+                              // Boş iken veya varsayılan "İSİM BEYAN EDİLMEMİŞTİR" iken Enter'a basıldıysa arama modalını aç
+                              if (!val || val.toLocaleUpperCase("tr-TR") === "İSİM BEYAN EDİLMEMİŞTİR") {
+                                lastModalCallerRef.current = "unvan";
+                                setCariSearchTerm("");
+                                setCariSearchField("unvan");
+                                setShowCariModal(true);
+                                return;
+                              }
+                              // Arama yap: Tek veri var ise doğrudan seç
+                              const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("unvan", val);
+                              if (totalCount === 1) {
+                                if (cariler.length === 1) {
+                                  const single = cariler[0];
+                                  handleSelectCustomer({
+                                    type: "registered",
+                                    id: single.id,
+                                    kod: single.kod,
+                                    unvan: single.ad || (single as any).unvan || "",
+                                    vergiKimlikNo: single.vergiKimlikNo || "",
+                                    adres: single.adres || "",
+                                    telefon: single.telefon || "",
+                                    raw: single,
+                                  });
+                                } else if (kayitsizlar.length === 1) {
+                                  const singleK = kayitsizlar[0];
+                                  handleSelectCustomer({
+                                    type: "unregistered",
+                                    id: null,
+                                    kod: "",
+                                    unvan: singleK.ad || singleK.unvan || "",
+                                    vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                    adres: singleK.adres || "",
+                                    telefon: singleK.telefon || "",
+                                    raw: singleK,
+                                  });
+                                }
+                                tipSelectRef.current?.focus();
+                                return;
+                              }
+                              // Birden fazla veri var ise veya hiç yoksa modalı sadece Ünvan uyuşanlarla aç
+                              lastModalCallerRef.current = "unvan";
+                              setCariSearchTerm(val);
+                              setCariSearchField("unvan");
                               setShowCariModal(true);
                             }
                           }}
@@ -3819,12 +4065,10 @@ export const DovizFisiPage: React.FC = () => {
                           className="px-2 py-0 d-flex align-items-center justify-content-center"
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => {
+                            lastModalCallerRef.current = "unvan";
                             const val = unvan.trim();
-                            if (val && !val.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
-                              setCariSearchTerm(val);
-                            } else {
-                              setCariSearchTerm("");
-                            }
+                            setCariSearchTerm(val && !val.toLocaleUpperCase("tr-TR").includes("BEYAN") ? val : "");
+                            setCariSearchField("unvan");
                             setShowCariModal(true);
                           }}
                           title="Cari / Müşteri Seç (F4)"
@@ -3944,15 +4188,67 @@ export const DovizFisiPage: React.FC = () => {
                           disabled={isLocked}
                           value={vergiKimlikNo}
                           maxLength={11}
+                          onFocus={() => {
+                            lastFocusedVknRef.current = vergiKimlikNo;
+                          }}
                           onChange={(e) => setVergiKimlikNo(e.target.value.replace(/\D/g, "").slice(0, 11))}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
                               const val = vergiKimlikNo.trim();
-                              if (val) {
-                                setCariSearchTerm(val);
-                                setShowCariModal(true);
+                              const prevVal = (lastFocusedVknRef.current || "").trim();
+                              // Önceden dolu ise ve kullanıcı değiştirmeden Enter'a bastıysa sonraki inputa (İstatistik Kodu) geç
+                              if (val && val === prevVal) {
+                                istatistikRef.current?.focus();
+                                istatistikRef.current?.select();
+                                return;
                               }
+                              // Boş iken Enter'a basıldıysa doğrudan VKN / TCKN arama modalını aç
+                              if (!val) {
+                                lastModalCallerRef.current = "vkn";
+                                setCariSearchTerm("");
+                                setCariSearchField("vkn");
+                                setShowCariModal(true);
+                                return;
+                              }
+                              // Arama yap: Tek veri var ise doğrudan seç
+                              const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("vkn", val);
+                              if (totalCount === 1) {
+                                if (cariler.length === 1) {
+                                  const single = cariler[0];
+                                  handleSelectCustomer({
+                                    type: "registered",
+                                    id: single.id,
+                                    kod: single.kod,
+                                    unvan: single.ad || (single as any).unvan || "",
+                                    vergiKimlikNo: single.vergiKimlikNo || "",
+                                    adres: single.adres || "",
+                                    telefon: single.telefon || "",
+                                    raw: single,
+                                  });
+                                } else if (kayitsizlar.length === 1) {
+                                  const singleK = kayitsizlar[0];
+                                  handleSelectCustomer({
+                                    type: "unregistered",
+                                    id: null,
+                                    kod: "",
+                                    unvan: singleK.ad || singleK.unvan || "",
+                                    vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                    adres: singleK.adres || "",
+                                    telefon: singleK.telefon || "",
+                                    raw: singleK,
+                                  });
+                                }
+                                lastFocusedVknRef.current = val;
+                                istatistikRef.current?.focus();
+                                istatistikRef.current?.select();
+                                return;
+                              }
+                              // Birden fazla veri var ise veya hiç yoksa modalı sadece VKN / TCKN uyuşanlarla aç
+                              lastModalCallerRef.current = "vkn";
+                              setCariSearchTerm(val);
+                              setCariSearchField("vkn");
+                              setShowCariModal(true);
                             }
                           }}
                           className="font-monospace px-2.5 py-1"
@@ -3964,8 +4260,10 @@ export const DovizFisiPage: React.FC = () => {
                           className="px-2 py-0 d-flex align-items-center justify-content-center"
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => {
+                            lastModalCallerRef.current = "vkn";
                             const val = vergiKimlikNo.trim();
                             setCariSearchTerm(val);
+                            setCariSearchField("vkn");
                             setShowCariModal(true);
                           }}
                           title="Cari / Müşteri Ara (VKN / TCKN ile)"
@@ -3997,16 +4295,58 @@ export const DovizFisiPage: React.FC = () => {
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       <InputGroup size="sm">
                         <Form.Control
+                          ref={istatistikRef}
                           type="text"
                           size="sm"
                           autoComplete="off"
                           disabled={isLocked}
                           value={istatistikKodu}
                           maxLength={20}
+                          onFocus={() => {
+                            lastFocusedIstatistikKodRef.current = istatistikKodu;
+                          }}
                           onChange={(e) => setIstatistikKodu(e.target.value.slice(0, 20))}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === "F3") {
+                            if (e.key === "Enter") {
                               e.preventDefault();
+                              const val = (istatistikKodu || "").trim();
+                              const prevVal = (lastFocusedIstatistikKodRef.current || "").trim();
+                              // Önceden dolu ise ve kullanıcı değiştirmeden Enter'a bastıysa doğrudan detay gridinin ilk satırına (Para Kodu) geç
+                              if (val && val.toLowerCase() === prevVal.toLowerCase()) {
+                                focusCell(0, "kod");
+                                return;
+                              }
+                              // Boş iken Enter'a basıldıysa İstatistik modalını aç
+                              if (!val) {
+                                lastModalCallerRef.current = "istatistik";
+                                setIstatistikSearchTerm("");
+                                setShowIstatistikModal(true);
+                                return;
+                              }
+                              // Arama yap: Tip filtreli istatistiklerde tek veri varsa direkt seç
+                              const q = val.toLowerCase();
+                              const matched = statisticList.filter((s) => {
+                                const fType = Number(s.fisTipi);
+                                const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                                return typeMatch && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || "").toLowerCase().includes(q));
+                              });
+                              if (matched.length === 1) {
+                                const single = matched[0];
+                                setIstatistikId(single.id);
+                                setIstatistikKodu(single.kod);
+                                lastFocusedIstatistikKodRef.current = single.kod;
+                                setTimeout(() => {
+                                  focusCell(0, "kod");
+                                }, 50);
+                                return;
+                              }
+                              // Birden fazla veri var ise veya hiç yoksa modalı girilen terimle aç
+                              lastModalCallerRef.current = "istatistik";
+                              setIstatistikSearchTerm(val);
+                              setShowIstatistikModal(true);
+                            } else if (e.key === "F3") {
+                              e.preventDefault();
+                              lastModalCallerRef.current = "istatistik";
                               setIstatistikSearchTerm((istatistikKodu || "").trim());
                               setShowIstatistikModal(true);
                             }
@@ -4021,6 +4361,7 @@ export const DovizFisiPage: React.FC = () => {
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           disabled={isLocked}
                           onClick={() => {
+                            lastModalCallerRef.current = "istatistik";
                             setIstatistikSearchTerm((istatistikKodu || "").trim());
                             setShowIstatistikModal(true);
                           }}
@@ -4035,12 +4376,14 @@ export const DovizFisiPage: React.FC = () => {
               </Col>
             </Row>
           </div>
+        </Card.Body>
+      </Card>
 
-          {/* Döviz Kalemleri Tam Tablo Grid */}
-          <div className="px-2.5 py-1.5">
-
-            {/* Kolon Görünürlük Kontrol Şeridi */}
-            <div className="d-flex align-items-center justify-content-end mb-1 gap-1">
+      {/* ─── 2. Döviz Kalemleri Tablo ve Toplam Kartı (Ayrı Dış Dikdörtgen Kutu) ─── */}
+      <Card className="shadow-sm rounded-2 overflow-hidden mb-2 border" style={{ borderColor: "#cbd5e1" }}>
+        <Card.Body className="p-2.5">
+          {/* Kolon Görünürlük Kontrol Şeridi */}
+          <div className="d-flex align-items-center justify-content-end mb-1 gap-1">
               <Dropdown autoClose="outside">
                 <Dropdown.Toggle
                   variant="outline-secondary"
@@ -4089,6 +4432,11 @@ export const DovizFisiPage: React.FC = () => {
 
             <div
               className="table-responsive border rounded bg-white shadow-2xs"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  cleanupEmptyRows(null);
+                }
+              }}
               style={{
                 minHeight: "75px",
                 maxHeight: "220px",
@@ -4100,264 +4448,326 @@ export const DovizFisiPage: React.FC = () => {
                 <thead className="position-sticky top-0" style={{ backgroundColor: "#dbeafe", color: "#1e293b", zIndex: 5 }}>
                   <tr style={{ height: "30px", borderBottom: "1px solid #94a3b8", fontSize: "12.5px" }}>
                     <th style={{ width: "45px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>#</th>
-                    <th style={{ width: "100px", borderRight: "1px solid #cbd5e1" }}>Kod</th>
-                    <th style={{ width: "170px", borderRight: "1px solid #cbd5e1" }}>Ad</th>
-                    <th style={{ width: "120px", textAlign: "right", borderRight: "1px solid #cbd5e1" }}>Miktar</th>
-                    <th style={{ width: "120px", textAlign: "right", borderRight: "1px solid #cbd5e1" }}>
+                    <th style={{ width: "100px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Kod</th>
+                    <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>
+                    <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>
+                    <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
                       {tip === 1 ? "Satış kuru" : "Alış kuru"}
                     </th>
                     {colVisibility.komisyonOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                    {colVisibility.komisyon && <th style={{ width: "90px", textAlign: "right", borderRight: "1px solid #cbd5e1" }}>Komisyon</th>}
+                    {colVisibility.komisyon && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Komisyon</th>}
                     {colVisibility.bmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                    {colVisibility.bmv && <th style={{ width: "90px", textAlign: "right", borderRight: "1px solid #cbd5e1" }}>BMV</th>}
+                    {colVisibility.bmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>BMV</th>}
                     {colVisibility.kmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                    {colVisibility.kmv && <th style={{ width: "90px", textAlign: "right", borderRight: "1px solid #cbd5e1" }}>KMV</th>}
-                    <th style={{ width: "110px", textAlign: "right" }}>Tutar</th>
+                    {colVisibility.kmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>KMV</th>}
+                    <th style={{ width: "110px", textAlign: "center" }}>Tutar</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((row, idx) => (
-                    <tr
-                      key={row.id}
-                      data-row-id={row.id}
-                      draggable={!isLocked}
-                      onDragStart={(e) => handleDragStart(e, idx)}
-                      onDragOver={(e) => handleDragOver(e, idx)}
-                      onDrop={(e) => handleDrop(e, idx)}
-                      onDragEnd={handleDragEnd}
-                      style={{
-                        height: "32px",
-                        backgroundColor: dragOverRowIndex === idx
-                          ? "#e0f2fe"
-                          : activeRowIndex === idx
-                            ? "#f8fafc"
-                            : "transparent",
-                        borderTop: dragOverRowIndex === idx ? "2px solid #0284c7" : undefined,
-                        borderBottom: "1px solid #e2e8f0",
-                        opacity: draggedRowIndex === idx ? 0.4 : 1,
-                        transition: "background-color 0.15s ease",
-                      }}
-                    >
-                      {/* # (Sürükleme Tutamacı & Sıra No) */}
-                      <td
-                        className="text-center text-secondary small fw-semibold user-select-none"
-                        style={{ borderRight: "1px solid #e2e8f0", cursor: isLocked ? "default" : "grab", width: "45px" }}
-                        title="Satırı basılı tutarak yukarı/aşağı sürükleyebilirsiniz"
-                      >
-                        <div className="d-flex align-items-center justify-content-center gap-1">
-                          {!isLocked && <span style={{ fontSize: "11px", color: "#94a3b8", cursor: "grab" }}>⋮⋮</span>}
-                          <span>{idx + 1}</span>
-                        </div>
-                      </td>
+                  {lines.map((row, idx) => {
+                    const isRowEmpty = isRowCompletelyEmpty(row);
+                    const isRowValid = isRowFilled(row);
+                    const isAttempted = Boolean(invalidRowIds[row.id]);
+                    const shouldValidate = (!isRowEmpty && !isRowValid) || (isAttempted && !isRowValid);
 
-                      {/* Kod with Oklu Dürbün */}
-                      <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                        <div className="d-flex align-items-center w-100 px-1">
+                    const hasPara = Boolean(row.paraId || (row.paraKodu && row.paraKodu.trim() !== ""));
+                    const isKodMissing = shouldValidate && !hasPara;
+                    const isMiktarMissing = shouldValidate && (!row.miktar || parseMiktar(row.miktar) <= 0);
+                    const isKurMissing = shouldValidate && (!row.kur || parseKur(row.kur) <= 0);
+
+                    return (
+                      <tr
+                        key={row.id}
+                        data-row-id={row.id}
+                        draggable={!isLocked}
+                        onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDrop={(e) => handleDrop(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        style={{
+                          height: "32px",
+                          backgroundColor: dragOverRowIndex === idx
+                            ? "#e0f2fe"
+                            : activeRowIndex === idx
+                              ? "#f8fafc"
+                              : "transparent",
+                          borderTop: dragOverRowIndex === idx ? "2px solid #0284c7" : undefined,
+                          borderBottom: "1px solid #e2e8f0",
+                          opacity: draggedRowIndex === idx ? 0.4 : 1,
+                          transition: "background-color 0.15s ease",
+                        }}
+                      >
+                        {/* # (Sürükleme Tutamacı & Sıra No) */}
+                        <td
+                          className="text-center text-secondary small fw-semibold user-select-none"
+                          style={{ borderRight: "1px solid #e2e8f0", cursor: isLocked ? "default" : "grab", width: "45px" }}
+                          title="Satırı basılı tutarak yukarı/aşağı sürükleyebilirsiniz"
+                        >
+                          <div className="d-flex align-items-center justify-content-center gap-1">
+                            {!isLocked && <span style={{ fontSize: "11px", color: "#94a3b8", cursor: "grab" }}>⋮⋮</span>}
+                            <span>{idx + 1}</span>
+                          </div>
+                        </td>
+
+                        {/* Kod with Oklu Dürbün */}
+                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          <div
+                            className="d-flex align-items-center w-100 px-1"
+                            style={
+                              isKodMissing
+                                ? { backgroundColor: "#fee2e2", border: "1.5px solid #dc2626", borderRadius: "3px" }
+                                : {}
+                            }
+                          >
+                            <input
+                              id={`grid-input-${idx}-kod`}
+                              type="text"
+                              disabled={isLocked}
+                              autoComplete="off"
+                              autoCorrect="off"
+                              autoCapitalize="characters"
+                              spellCheck={false}
+                              className={`form-control form-control-sm border-0 p-0 shadow-none font-monospace fw-bold text-uppercase ${
+                                isKodMissing ? "text-danger" : ""
+                              }`}
+                              style={{ height: "26px", fontSize: "13px", backgroundColor: "transparent" }}
+                              value={row.paraKodu}
+                              onFocus={() => {
+                                setActiveRowIndex(idx);
+                                cleanupEmptyRows(idx);
+                              }}
+                              onChange={(e) => {
+                                const val = e.target.value.toUpperCase();
+                                handleLineFieldChange(row.id, "paraKodu", val);
+                              }}
+                              onKeyDown={(e) => handleCellKeyDown(e, idx, "kod")}
+                              title={isKodMissing ? "Lütfen para/döviz kodu seçiniz" : undefined}
+                            />
+                            <Button
+                              variant="link"
+                              className="p-0 px-1 text-secondary text-decoration-none"
+                              onClick={() => {
+                                lastModalCallerRef.current = "paraGrid";
+                                lastParaModalRowIndexRef.current = idx;
+                                setParaModalRowId(row.id);
+                                setParaSearchTerm((row.paraKodu || "").trim());
+                                if (paraList.length === 0) {
+                                  apiClient.get<ParaItem[]>("/para")
+                                    .then((r) => {
+                                      if (r.data && r.data.length > 0) setParaList(r.data);
+                                    })
+                                    .catch(() => { });
+                                }
+                                setShowParaModal(true);
+                              }}
+                              title="Para / Maden Seç (Dürbün)"
+                            >
+                              <IconBinoculars size={13} />
+                            </Button>
+                          </div>
+                        </td>
+
+                        {/* Ad */}
+                        <td className="p-0 px-2 text-dark small" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          {row.paraAdi || "-"}
+                        </td>
+
+                        {/* Miktar */}
+                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
-                            id={`grid-input-${idx}-kod`}
+                            id={`grid-input-${idx}-miktar`}
                             type="text"
-                            disabled={isLocked}
+                            inputMode="decimal"
                             autoComplete="off"
-                            autoCorrect="off"
-                            autoCapitalize="characters"
-                            spellCheck={false}
-                            className="form-control form-control-sm border-0 p-0 shadow-none font-monospace fw-bold text-uppercase"
-                            style={{ height: "26px", fontSize: "13px", backgroundColor: "transparent" }}
-                            value={row.paraKodu}
+                            disabled={isLocked}
+                            className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${
+                              isMiktarMissing ? "text-danger fw-bold" : ""
+                            }`}
+                            style={{
+                              height: "26px",
+                              fontSize: "13px",
+                              backgroundColor: isMiktarMissing ? "#fee2e2" : "transparent",
+                              border: isMiktarMissing ? "1.5px solid #dc2626" : "none",
+                              borderRadius: isMiktarMissing ? "3px" : undefined,
+                            }}
+                            value={row.miktar}
                             onFocus={() => {
                               setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
                             }}
-                            onChange={(e) => {
-                              const val = e.target.value.toUpperCase();
-                              handleLineFieldChange(row.id, "paraKodu", val);
-                            }}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kod")}
+                            onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "miktar")}
+                            title={isMiktarMissing ? "Lütfen geçerli bir miktar giriniz" : undefined}
                           />
-                          <Button
-                            variant="link"
-                            className="p-0 px-1 text-secondary text-decoration-none"
-                            onClick={() => {
-                              setParaModalRowId(row.id);
-                              if (paraList.length === 0) {
-                                apiClient.get<ParaItem[]>("/para")
-                                  .then((r) => {
-                                    if (r.data && r.data.length > 0) setParaList(r.data);
-                                  })
-                                  .catch(() => { });
+                        </td>
+
+                        {/* Kur */}
+                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          <input
+                            id={`grid-input-${idx}-kur`}
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            disabled={isLocked}
+                            className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${
+                              isKurMissing ? "text-danger fw-bold" : ""
+                            }`}
+                            style={{
+                              height: "26px",
+                              fontSize: "13px",
+                              backgroundColor: isKurMissing ? "#fee2e2" : "transparent",
+                              border: isKurMissing ? "1.5px solid #dc2626" : "none",
+                              borderRadius: isKurMissing ? "3px" : undefined,
+                            }}
+                            value={row.kur}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                            }}
+                            onChange={(e) => handleLineFieldChange(row.id, "kur", e.target.value)}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim();
+                              if (val !== "") {
+                                const num = parseFloat(val.replace(/,/g, "."));
+                                if (!isNaN(num)) {
+                                  handleLineFieldChange(row.id, "kur", num.toFixed(kurKurusSayisi));
+                                }
                               }
-                              setShowParaModal(true);
                             }}
-                            title="Para / Maden Seç (Dürbün)"
-                          >
-                            <IconBinoculars size={13} />
-                          </Button>
-                        </div>
-                      </td>
-
-                      {/* Ad */}
-                      <td className="p-0 px-2 text-dark small" style={{ borderRight: "1px solid #e2e8f0" }}>
-                        {row.paraAdi || "-"}
-                      </td>
-
-                      {/* Miktar */}
-                      <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                        <input
-                          id={`grid-input-${idx}-miktar`}
-                          type="text"
-                          inputMode="decimal"
-                          autoComplete="off"
-                          disabled={isLocked}
-                          className="form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end"
-                          style={{ height: "26px", fontSize: "13px", backgroundColor: "transparent" }}
-                          value={row.miktar}
-                          onFocus={() => setActiveRowIndex(idx)}
-                          onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
-                          onKeyDown={(e) => handleCellKeyDown(e, idx, "miktar")}
-                        />
-                      </td>
-
-                      {/* Kur */}
-                      <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                        <input
-                          id={`grid-input-${idx}-kur`}
-                          type="text"
-                          inputMode="decimal"
-                          autoComplete="off"
-                          disabled={isLocked}
-                          className="form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end"
-                          style={{ height: "26px", fontSize: "13px", backgroundColor: "transparent" }}
-                          value={row.kur}
-                          onFocus={() => setActiveRowIndex(idx)}
-                          onChange={(e) => handleLineFieldChange(row.id, "kur", e.target.value)}
-                          onBlur={(e) => {
-                            const val = e.target.value.trim();
-                            if (val !== "") {
-                              const num = parseFloat(val.replace(/,/g, "."));
-                              if (!isNaN(num)) {
-                                handleLineFieldChange(row.id, "kur", num.toFixed(kurKurusSayisi));
-                              }
-                            }
-                          }}
-                          onKeyDown={(e) => handleCellKeyDown(e, idx, "kur")}
-                        />
-                      </td>
-
-                      {/* % (Komisyon %) */}
-                      {colVisibility.komisyonOrani && (
-                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          <input
-                            id={`grid-input-${idx}-komisyonOrani`}
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            disabled={isLocked}
-                            className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                            value={row.komisyonOrani}
-                            onFocus={() => setActiveRowIndex(idx)}
-                            onChange={(e) => handleLineFieldChange(row.id, "komisyonOrani", e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyonOrani")}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kur")}
+                            title={isKurMissing ? "Lütfen geçerli bir kur giriniz" : undefined}
                           />
                         </td>
-                      )}
 
-                      {/* Komisyon */}
-                      {colVisibility.komisyon && (
-                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          <input
-                            id={`grid-input-${idx}-komisyon`}
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            disabled={isLocked}
-                            className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                            value={row.komisyon}
-                            onFocus={() => setActiveRowIndex(idx)}
-                            onChange={(e) => handleLineFieldChange(row.id, "komisyon", e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyon")}
-                          />
+                        {/* % (Komisyon %) */}
+                        {colVisibility.komisyonOrani && (
+                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                            <input
+                              id={`grid-input-${idx}-komisyonOrani`}
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              disabled={isLocked}
+                              className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
+                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                              value={row.komisyonOrani}
+                              onFocus={() => {
+                                setActiveRowIndex(idx);
+                                cleanupEmptyRows(idx);
+                              }}
+                              onChange={(e) => handleLineFieldChange(row.id, "komisyonOrani", e.target.value)}
+                              onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyonOrani")}
+                            />
+                          </td>
+                        )}
+
+                        {/* Komisyon */}
+                        {colVisibility.komisyon && (
+                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                            <input
+                              id={`grid-input-${idx}-komisyon`}
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              disabled={isLocked}
+                              className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
+                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                              value={row.komisyon}
+                              onFocus={() => {
+                                setActiveRowIndex(idx);
+                                cleanupEmptyRows(idx);
+                              }}
+                              onChange={(e) => handleLineFieldChange(row.id, "komisyon", e.target.value)}
+                              onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyon")}
+                            />
+                          </td>
+                        )}
+
+                        {/* % (BMV %) - Read-Only (Müdahale edilemez) */}
+                        {colVisibility.bmvOrani && (
+                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                            <input
+                              id={`grid-input-${idx}-bmvOrani`}
+                              type="text"
+                              readOnly
+                              tabIndex={-1}
+                              disabled={isLocked}
+                              className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
+                              style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
+                              value={row.bmvOrani}
+                            />
+                          </td>
+                        )}
+
+                        {/* BMV - Read-Only (Müdahale edilemez) */}
+                        {colVisibility.bmv && (
+                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                            <input
+                              id={`grid-input-${idx}-bmv`}
+                              type="text"
+                              readOnly
+                              tabIndex={-1}
+                              disabled={isLocked}
+                              className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
+                              style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
+                              value={row.bmv}
+                            />
+                          </td>
+                        )}
+
+                        {/* % (KMV %) */}
+                        {colVisibility.kmvOrani && (
+                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                            <input
+                              id={`grid-input-${idx}-kmvOrani`}
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              disabled={isLocked}
+                              className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
+                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                              value={row.kmvOrani}
+                              onFocus={() => {
+                                setActiveRowIndex(idx);
+                                cleanupEmptyRows(idx);
+                              }}
+                              onChange={(e) => handleLineFieldChange(row.id, "kmvOrani", e.target.value)}
+                              onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
+                            />
+                          </td>
+                        )}
+
+                        {/* KMV */}
+                        {colVisibility.kmv && (
+                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                            <input
+                              id={`grid-input-${idx}-kmv`}
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              disabled={isLocked}
+                              className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
+                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                              value={row.kmv}
+                              onFocus={() => {
+                                setActiveRowIndex(idx);
+                                cleanupEmptyRows(idx);
+                              }}
+                              onChange={(e) => handleLineFieldChange(row.id, "kmv", e.target.value)}
+                              onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
+                            />
+                          </td>
+                        )}
+
+                        {/* Tutar */}
+                        <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
+                          {row.tutar
+                            ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })
+                            : ""}
                         </td>
-                      )}
-
-                      {/* % (BMV %) - Read-Only (Müdahale edilemez) */}
-                      {colVisibility.bmvOrani && (
-                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          <input
-                            id={`grid-input-${idx}-bmvOrani`}
-                            type="text"
-                            readOnly
-                            tabIndex={-1}
-                            disabled={isLocked}
-                            className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
-                            value={row.bmvOrani}
-                          />
-                        </td>
-                      )}
-
-                      {/* BMV - Read-Only (Müdahale edilemez) */}
-                      {colVisibility.bmv && (
-                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          <input
-                            id={`grid-input-${idx}-bmv`}
-                            type="text"
-                            readOnly
-                            tabIndex={-1}
-                            disabled={isLocked}
-                            className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
-                            value={row.bmv}
-                          />
-                        </td>
-                      )}
-
-                      {/* % (KMV %) */}
-                      {colVisibility.kmvOrani && (
-                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          <input
-                            id={`grid-input-${idx}-kmvOrani`}
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            disabled={isLocked}
-                            className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                            value={row.kmvOrani}
-                            onFocus={() => setActiveRowIndex(idx)}
-                            onChange={(e) => handleLineFieldChange(row.id, "kmvOrani", e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kmvOrani")}
-                          />
-                        </td>
-                      )}
-
-                      {/* KMV */}
-                      {colVisibility.kmv && (
-                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          <input
-                            id={`grid-input-${idx}-kmv`}
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            disabled={isLocked}
-                            className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                            value={row.kmv}
-                            onFocus={() => setActiveRowIndex(idx)}
-                            onChange={(e) => handleLineFieldChange(row.id, "kmv", e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
-                          />
-                        </td>
-                      )}
-
-                      {/* Tutar */}
-                      <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
-                        {row.tutar
-                          ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })
-                          : ""}
-                      </td>
-                    </tr>
-                  ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </Table>
             </div>
@@ -4446,7 +4856,6 @@ export const DovizFisiPage: React.FC = () => {
                 </div>
               </Col>
             </Row>
-          </div>
         </Card.Body>
       </Card>
 
@@ -5187,16 +5596,38 @@ export const DovizFisiPage: React.FC = () => {
         onClose={() => {
           setShowCariModal(false);
           setCariSearchTerm("");
+          setCariSearchField("all");
+          const caller = lastModalCallerRef.current;
+          lastModalCallerRef.current = null;
+          if (caller === "cariKod") {
+            setTimeout(() => {
+              cariKodRef.current?.focus();
+              cariKodRef.current?.select();
+            }, 50);
+          } else if (caller === "unvan") {
+            setTimeout(() => {
+              unvanRef.current?.focus();
+              unvanRef.current?.select();
+            }, 50);
+          } else if (caller === "vkn") {
+            setTimeout(() => {
+              vknRef.current?.focus();
+              vknRef.current?.select();
+            }, 50);
+          }
         }}
         cariler={cariList}
         kayitsizMusteriler={kayitsizMusteriList}
         onSelectCustomer={(res) => {
+          lastModalCallerRef.current = null;
           handleSelectCustomer(res);
           setShowCariModal(false);
           setCariSearchTerm("");
+          setCariSearchField("all");
         }}
         currentUnvan={unvan}
         initialSearchTerm={cariSearchTerm}
+        initialSearchField={cariSearchField}
       />
 
       {/* Para / Currency Lookup Modal */}
@@ -5206,6 +5637,15 @@ export const DovizFisiPage: React.FC = () => {
           setShowParaModal(false);
           setParaModalRowId(null);
           setParaSearchTerm("");
+          const caller = lastModalCallerRef.current;
+          const rIdx = lastParaModalRowIndexRef.current;
+          lastModalCallerRef.current = null;
+          lastParaModalRowIndexRef.current = null;
+          if (caller === "paraGrid" && rIdx !== null && rIdx !== undefined) {
+            setTimeout(() => {
+              focusCell(rIdx, "kod", "select");
+            }, 50);
+          }
         }}
         title="Para / Maden Seçimi"
         items={paraList}
@@ -5213,12 +5653,11 @@ export const DovizFisiPage: React.FC = () => {
         initialSearchTerm={paraSearchTerm}
         filterFn={(item, term) => {
           const t = term.toLowerCase().trim();
-          return (
-            (item.kod || "").toLowerCase().includes(t) ||
-            (item.ad || "").toLowerCase().includes(t)
-          );
+          return (item.kod || "").toLowerCase().includes(t);
         }}
         onSelect={(item) => {
+          lastModalCallerRef.current = null;
+          lastParaModalRowIndexRef.current = null;
           if (paraModalRowId) {
             handleSelectCurrency(paraModalRowId, item);
           }
@@ -5648,6 +6087,7 @@ export const DovizFisiPage: React.FC = () => {
         detayMeslek={printSnapshot?.detayMeslek ?? detayMeslek}
         detayCariTipi={printSnapshot?.detayCariTipi ?? detayCariTipi}
         vezneKod={printSnapshot?.vezneKod ?? vezneKod}
+        vezne={vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null)}
         istatistikKodu={printSnapshot?.istatistikKodu ?? istatistikKodu}
         lines={printSnapshot?.lines ?? lines.map((l) => ({
           paraKodu: l.paraKodu,
@@ -5674,9 +6114,22 @@ export const DovizFisiPage: React.FC = () => {
       {/* F3) İstatistik Kodu Seçim Modalı */}
       <IstatistikSecimModal
         show={showIstatistikModal}
-        onClose={() => setShowIstatistikModal(false)}
+        onClose={() => {
+          setShowIstatistikModal(false);
+          const caller = lastModalCallerRef.current;
+          lastModalCallerRef.current = null;
+          if (caller === "istatistik") {
+            setTimeout(() => {
+              istatistikRef.current?.focus();
+              istatistikRef.current?.select();
+            }, 50);
+          }
+        }}
         tip={tip}
-        onSelect={handleSelectIstatistik}
+        onSelect={(item) => {
+          lastModalCallerRef.current = null;
+          handleSelectIstatistik(item);
+        }}
         currentKod={istatistikKodu}
         initialSearchTerm={istatistikSearchTerm}
       />

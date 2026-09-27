@@ -1,8 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Modal, Button } from "react-bootstrap";
+import { Modal, Button, Form } from "react-bootstrap";
 import { IconPrinter, IconX, IconCheck } from "@tabler/icons-react";
 import QRCode from "qrcode";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
+import { PrinterService, YaziciItem } from "../../services/printerService";
+import { VezneItem } from "../../services/cashDeskService";
+import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
+import { useAuth } from "../../context/AuthContext";
 
 export interface PrintLineItem {
   paraKodu: string;
@@ -34,6 +38,7 @@ export interface DovizFisiPrintModalProps {
   detayMeslek?: string;
   detayCariTipi?: string;
   vezneKod?: string;
+  vezne?: any;
   istatistikKodu?: string;
   guid?: string;
   lines: PrintLineItem[];
@@ -155,6 +160,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
   detayMeslek,
   detayCariTipi,
   vezneKod,
+  vezne,
   istatistikKodu,
   guid,
   lines,
@@ -168,8 +174,41 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
   tlKurusSayisi,
 }) => {
   const isSatis = tip === 1;
+  const { user } = useAuth();
   const [qrUrl, setQrUrl] = useState<string>("");
   const [company, setCompany] = useState<TodvzTanimDto | null>(null);
+  const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
+  const [resolvedResult, setResolvedResult] = useState<ResolvedPrinterResult | null>(null);
+
+  // Load printers and resolve effective printer based on vezne/user/tip
+  useEffect(() => {
+    if (show) {
+      PrinterService.getYazicilar()
+        .then((list) => {
+          setPrinters(list);
+          const resolved = resolveEffectivePrinter({
+            pageType: "doviz",
+            tip,
+            vezne,
+            user,
+            printers: list,
+          });
+          setResolvedResult(resolved);
+          setSelectedPrinterId(resolved.printerId);
+        })
+        .catch(() => {
+          const resolved = resolveEffectivePrinter({
+            pageType: "doviz",
+            tip,
+            vezne,
+            user,
+            printers: [],
+          });
+          setResolvedResult(resolved);
+        });
+    }
+  }, [show, tip, vezne, user]);
 
   const effMiktarKurus = dovizKurusSayisi ?? (company?.DOVIZ_KURUS_SAYISI !== undefined && company?.DOVIZ_KURUS_SAYISI !== null ? Number(company.DOVIZ_KURUS_SAYISI) : 2);
   const effKurKurus = kurKurusSayisi ?? (company?.KUR_KURUS_SAYISI !== undefined && company?.KUR_KURUS_SAYISI !== null ? Number(company.KUR_KURUS_SAYISI) : 4);
@@ -271,13 +310,30 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
     }
   }, [show, ettn, tarih, grandTotal]);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const slipEl = document.getElementById("thermal-print-slip");
-    if (!slipEl) {
-      window.print();
-      return;
+    if (!slipEl) return;
+    const contentHtml = slipEl.innerHTML;
+
+    // 1. Doğrudan donanım/ağ yazıcısına çıktı göndermeyi dene
+    try {
+      const res = await PrinterService.directPrint({
+        printerId: selectedPrinterId,
+        printerName: resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad,
+        documentTitle: `e-Döviz Fişi - ${currentBelgeNo}`,
+        htmlContent: contentHtml,
+        isPos: true,
+        copies: resolvedResult?.kopyaSayisi || 1,
+      });
+
+      if (res.success && !res.fallbackToBrowser) {
+        return;
+      }
+    } catch {
+      // Tarayıcı fallback akışına devam edilir
     }
 
+    // 2. Tarayıcı gizli iframe yazdırma motoru (Sadece fiş verilerini yazdırır, sayfayı asla yazdırmaz)
     let iframe = document.getElementById("thermal-print-iframe") as HTMLIFrameElement;
     if (!iframe) {
       iframe = document.createElement("iframe");
@@ -292,10 +348,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
     }
 
     const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      window.print();
-      return;
-    }
+    if (!doc) return;
 
     doc.open();
     doc.write(`
@@ -382,7 +435,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
     setTimeout(() => {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
-    }, 150);
+    }, 100);
   };
 
   // Auto print trigger when opened via F10 or direct-print
@@ -390,7 +443,8 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
     if (show && autoPrint) {
       const timer = setTimeout(() => {
         handlePrint();
-      }, 300);
+        onHide();
+      }, 50);
       return () => clearTimeout(timer);
     }
   }, [show, autoPrint]);
@@ -408,210 +462,48 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [show]);
 
-  return (
+  const renderSlipContent = () => (
     <>
-      {/* Global CSS for Screen Preview and Pure 80mm Monochrome Thermal Print */}
-      <style>{`
-        @media screen {
-          .thermal-modal-body {
-            background-color: #525659;
-            padding: 16px;
-            display: flex;
-            justify-content: center;
-            overflow: auto;
-          }
-          .thermal-paper {
-            background-color: #ffffff;
-            width: 80mm;
-            min-height: 120mm;
-            padding: 2.5mm 3mm;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
-            border-radius: 2px;
-            color: #000000;
-            font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
-            font-size: 10.5px;
-            line-height: 1.2;
-          }
-        }
+      {/* 1. Üst Başlık ve Karekod (GİB Logo + Belge Adı & QR Code) */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        {/* Sol: GİB Logo & Belge Başlığı */}
+        <div style={{ width: "58%", textAlign: "left" }}>
+          {/* Gelir İdaresi Başkanlığı Monochrome Vector Emblem */}
+          <div style={{ width: "52px", height: "52px", margin: "0 0 4px 0" }}>
+            <svg viewBox="0 0 100 100" width="52" height="52">
+              <circle cx="50" cy="50" r="47" fill="none" stroke="#000" strokeWidth="2.5" />
+              <circle cx="50" cy="50" r="43" fill="none" stroke="#000" strokeWidth="1" />
+              {/* Stylized GİB Emblem Arch & Crescent */}
+              <path
+                d="M 50 18 C 30 18 18 32 18 50 C 18 68 32 82 50 82 C 68 82 80 70 82 54 L 62 54 C 60 62 56 66 50 66 C 40 66 32 58 32 50 C 32 40 40 32 50 32 C 58 32 64 38 66 45 L 82 40 C 78 28 66 18 50 18 Z"
+                fill="#000"
+              />
+              <path
+                d="M 50 38 C 44 38 40 43 40 50 C 40 57 44 62 50 62 C 55 62 58 59 60 55 L 60 45 L 50 45 L 50 40 L 68 40 L 68 56 C 65 64 58 70 50 70 C 38 70 30 61 30 50 C 30 39 38 30 50 30 C 58 30 65 35 68 42 L 62 44 C 60 40 56 38 50 38 Z"
+                fill="#fff"
+              />
+            </svg>
+          </div>
 
-        @media print {
-          @page {
-            size: auto;
-            margin: 0mm !important;
-          }
-          html, body {
-            width: 100% !important;
-            max-width: 80mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            height: auto !important;
-            min-height: 0 !important;
-            overflow: visible !important;
-          }
-          /* Hide EVERYTHING else on page during print, including backdrop and root components */
-          #root,
-          .modal-backdrop,
-          .modal-header,
-          .modal-footer,
-          .btn,
-          .d-print-none {
-            display: none !important;
-          }
-          body > *:not(.modal) {
-            display: none !important;
-          }
-          .modal {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            display: block !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-            background: transparent !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
-            height: auto !important;
-            min-height: 0 !important;
-            transform: none !important;
-            overflow: visible !important;
-          }
-          .modal-dialog {
-            position: static !important;
-            display: block !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
-            height: auto !important;
-            min-height: 0 !important;
-            transform: none !important;
-          }
-          .modal-content {
-            position: static !important;
-            display: block !important;
-            border: none !important;
-            box-shadow: none !important;
-            background: transparent !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
-            height: auto !important;
-            min-height: 0 !important;
-          }
-          .modal-body,
-          .thermal-modal-body {
-            position: static !important;
-            display: block !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: transparent !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
-            height: auto !important;
-            min-height: 0 !important;
-            overflow: visible !important;
-          }
-          #thermal-print-slip {
-            position: static !important;
-            display: block !important;
-            width: 78mm !important;
-            max-width: 78mm !important;
-            margin: 0 auto !important;
-            padding: 1mm 2mm 2mm 2mm !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            font-family: 'Courier New', Courier, monospace, Arial, sans-serif !important;
-            font-size: 10px !important;
-            line-height: 1.18 !important;
-            page-break-after: avoid !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            overflow: visible !important;
-          }
-          #thermal-print-slip * {
-            visibility: visible !important;
-            color: #000000 !important;
-          }
-        }
+          <div style={{ fontWeight: 800, fontSize: "10.5px", lineHeight: "1.25", textTransform: "uppercase" }}>
+            e-DÖVİZ VE KIYMETLİ<br />
+            MADEN {isSatis ? "SATIM" : "ALIM"} BELGESİ
+          </div>
+        </div>
 
-        /* Thermal Elements */
-        .thermal-box {
-          border: 1px solid #000000;
-          margin: 3px 0;
-          padding: 1.5px 2.5px;
-          page-break-inside: avoid;
-          break-inside: avoid;
-        }
-        .thermal-box-title {
-          font-weight: 900;
-          text-align: center;
-          font-size: 10.5px;
-          text-transform: uppercase;
-          border-bottom: 1px solid #000000;
-          padding-bottom: 1px;
-          margin-bottom: 2px;
-        }
-        .dashed-line {
-          border-top: 1px dashed #000000;
-          margin: 4px 0;
-          height: 0;
-        }
-      `}</style>
-
-      <Modal show={show} onHide={onHide} size="lg" centered backdrop="static">
-        <Modal.Header closeButton className="bg-light py-2">
-          <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
-            <IconPrinter size={18} className="text-primary" />
-            e-Döviz Fişi Yazdırma Önizleme ({isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ"} - 80mm Termal)
-          </Modal.Title>
-        </Modal.Header>
-
-        <Modal.Body className="thermal-modal-body p-3">
-          <div id="thermal-print-slip" className="thermal-paper">
-            {/* 1. Üst Başlık ve Karekod (GİB Logo + Belge Adı & QR Code) */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              {/* Sol: GİB Logo & Belge Başlığı */}
-              <div style={{ width: "58%", textAlign: "left" }}>
-                {/* Gelir İdaresi Başkanlığı Monochrome Vector Emblem */}
-                <div style={{ width: "52px", height: "52px", margin: "0 0 4px 0" }}>
-                  <svg viewBox="0 0 100 100" width="52" height="52">
-                    <circle cx="50" cy="50" r="47" fill="none" stroke="#000" strokeWidth="2.5" />
-                    <circle cx="50" cy="50" r="43" fill="none" stroke="#000" strokeWidth="1" />
-                    {/* Stylized GİB Emblem Arch & Crescent */}
-                    <path
-                      d="M 50 18 C 30 18 18 32 18 50 C 18 68 32 82 50 82 C 68 82 80 70 82 54 L 62 54 C 60 62 56 66 50 66 C 40 66 32 58 32 50 C 32 40 40 32 50 32 C 58 32 64 38 66 45 L 82 40 C 78 28 66 18 50 18 Z"
-                      fill="#000"
-                    />
-                    <path
-                      d="M 50 38 C 44 38 40 43 40 50 C 40 57 44 62 50 62 C 55 62 58 59 60 55 L 60 45 L 50 45 L 50 40 L 68 40 L 68 56 C 65 64 58 70 50 70 C 38 70 30 61 30 50 C 30 39 38 30 50 30 C 58 30 65 35 68 42 L 62 44 C 60 40 56 38 50 38 Z"
-                      fill="#fff"
-                    />
-                  </svg>
-                </div>
-
-                <div style={{ fontWeight: 800, fontSize: "10.5px", lineHeight: "1.25", textTransform: "uppercase" }}>
-                  e-DÖVİZ VE KIYMETLİ<br />
-                  MADEN {isSatis ? "SATIM" : "ALIM"} BELGESİ
-                </div>
-              </div>
-
-              {/* Sağ: Karekod (QR Code) */}
-              <div style={{ width: "38%", textAlign: "right" }}>
-                {qrUrl ? (
-                  <img
-                    src={qrUrl}
-                    alt="e-Döviz Karekod"
-                    style={{ width: "88px", height: "88px", display: "inline-block", imageRendering: "pixelated" }}
-                  />
-                ) : (
-                  <div style={{ width: "88px", height: "88px", border: "1px dashed #000", display: "inline-block" }} />
-                )}
-              </div>
-            </div>
+        {/* Sağ: Karekod (QR Code) */}
+        <div style={{ width: "38%", textAlign: "right" }}>
+          {qrUrl ? (
+            <img
+              src={qrUrl}
+              alt="e-Döviz Karekod"
+              style={{ width: "88px", height: "88px", display: "inline-block", imageRendering: "pixelated" }}
+            />
+          ) : (
+            <div style={{ width: "88px", height: "88px", border: "1px dashed #000", display: "inline-block" }} />
+          )}
+        </div>
+      </div>
 
             {/* Ayrım Çizgisi */}
             <div className="dashed-line" />
@@ -834,6 +726,112 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
                 </>
               )}
             </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Global CSS for Screen Preview and Pure 80mm Monochrome Thermal Print */}
+      <style>{`
+        @media screen {
+          .thermal-modal-body {
+            background-color: #525659;
+            padding: 16px;
+            display: flex;
+            justify-content: center;
+            overflow: auto;
+          }
+          .thermal-paper {
+            background-color: #ffffff;
+            width: 80mm;
+            min-height: 120mm;
+            padding: 2.5mm 3mm;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
+            border-radius: 2px;
+            color: #000000;
+            font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
+            font-size: 10.5px;
+            line-height: 1.2;
+          }
+        }
+
+        /* Thermal Elements */
+        .thermal-box {
+          border: 1px solid #000000;
+          margin: 3px 0;
+          padding: 1.5px 2.5px;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .thermal-box-title {
+          font-weight: 900;
+          text-align: center;
+          font-size: 10.5px;
+          text-transform: uppercase;
+          border-bottom: 1px solid #000000;
+          padding-bottom: 1px;
+          margin-bottom: 2px;
+        }
+        .dashed-line {
+          border-top: 1px dashed #000000;
+          margin: 4px 0;
+          height: 0;
+        }
+      `}</style>
+
+      {/* Hidden off-screen slip for direct printing (F10) and robust DOM extraction */}
+      {show && (
+        <div
+          style={{
+            position: "fixed",
+            left: "-99999px",
+            top: "-99999px",
+            opacity: 0,
+            pointerEvents: "none",
+            zIndex: -1,
+          }}
+        >
+          <div id="thermal-print-slip" className="thermal-paper">
+            {renderSlipContent()}
+          </div>
+        </div>
+      )}
+
+      {/* Screen Preview Modal (F9 / Manual Preview) */}
+      <Modal show={show && !autoPrint} onHide={onHide} size="lg" centered backdrop="static">
+        <Modal.Header closeButton className="bg-light py-2 px-3">
+          <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">
+            <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2 mb-0">
+              <IconPrinter size={18} className="text-primary" />
+              e-Döviz Fişi ({isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ"} - 80mm)
+            </Modal.Title>
+            <div className="d-flex align-items-center gap-2">
+              <span className="text-secondary small fw-bold">Yazıcı:</span>
+              <Form.Select
+                size="sm"
+                value={selectedPrinterId || ""}
+                onChange={(e) => setSelectedPrinterId(e.target.value ? Number(e.target.value) : null)}
+                style={{ width: "200px", fontSize: "12px", fontWeight: 600 }}
+              >
+                {printers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.ad || p.cihazAdi || `Yazıcı #${p.id}`} {p.kopyaSayisi ? `(${p.kopyaSayisi} Kopya)` : ""}
+                  </option>
+                ))}
+                {printers.length === 0 && <option value="">Sistem Varsayılan Yazıcısı</option>}
+              </Form.Select>
+              {resolvedResult?.sourceLabel && (
+                <span className="badge bg-secondary bg-opacity-10 text-secondary border px-2 py-1" style={{ fontSize: "10px" }}>
+                  {resolvedResult.sourceLabel}
+                </span>
+              )}
+            </div>
+          </div>
+        </Modal.Header>
+
+        <Modal.Body className="thermal-modal-body p-3">
+          <div className="thermal-paper">
+            {renderSlipContent()}
           </div>
         </Modal.Body>
 

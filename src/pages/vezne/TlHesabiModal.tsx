@@ -130,6 +130,8 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
         e.preventDefault();
         e.stopPropagation();
         handleTamam();
+      } else if (/^F([2-9]|1[0-2])$/.test(e.key)) {
+        onClose();
       }
     };
 

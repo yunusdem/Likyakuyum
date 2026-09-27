@@ -19,12 +19,10 @@ import { initGlobalNumericInputInterceptor } from "./utils/numericInput";
 initGlobalNumericInputInterceptor();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <Provider store={store}>
-      <BrowserRouter>
-        <App />
-        <GlobalCalculator />
-      </BrowserRouter>
-    </Provider>
-  </React.StrictMode>
+  <Provider store={store}>
+    <BrowserRouter>
+      <App />
+      <GlobalCalculator />
+    </BrowserRouter>
+  </Provider>
 );

@@ -94,6 +94,12 @@ export const KurListesiModal: React.FC<KurListesiModalProps> = ({
     if (!show) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Herhangi bir F1..F12 tuşuna basıldığında açık modalı kapat ve eylemin üst sayfada işlenmesine izin ver
+      if (/^F([1-9]|1[0-2])$/.test(e.key)) {
+        onClose();
+        return;
+      }
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((prev) => {

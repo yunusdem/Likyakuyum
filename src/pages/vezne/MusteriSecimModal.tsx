@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Modal, Table, Button, Form, InputGroup, Badge, Nav, Spinner } from "react-bootstrap";
-import { IconUser, IconX, IconSearch, IconCheck, IconCornerDownLeft, IconUserOff, IconUsers } from "@tabler/icons-react";
+import { IconUser, IconX, IconSearch, IconCheck, IconCornerDownLeft, IconUserOff, IconUsers, IconPlus } from "@tabler/icons-react";
 import { CariKartItem, CariService } from "../../services/cariService";
 import { DovizFisService, KayitsizMusteriItem } from "../../services/dovizFisService";
+import { CariCardRegistrationPage } from "../cari/CariCardRegistrationPage";
 
 export type CustomerSelectionType = "registered" | "unregistered" | "anonymous";
 
@@ -17,6 +18,8 @@ export interface SelectedCustomerResult {
   raw?: CariKartItem | KayitsizMusteriItem;
 }
 
+export type CustomerSearchField = "all" | "kod" | "unvan" | "vkn";
+
 interface MusteriSecimModalProps {
   show: boolean;
   onClose: () => void;
@@ -25,6 +28,7 @@ interface MusteriSecimModalProps {
   onSelectCustomer: (result: SelectedCustomerResult) => void;
   currentUnvan?: string;
   initialSearchTerm?: string;
+  initialSearchField?: CustomerSearchField;
 }
 
 export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
@@ -35,13 +39,16 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
   onSelectCustomer,
   currentUnvan,
   initialSearchTerm = "",
+  initialSearchField = "all",
 }) => {
   const [activeTab, setActiveTab] = useState<"registered" | "unregistered">("registered");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [searchField, setSearchField] = useState<CustomerSearchField>(initialSearchField);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [internalCariler, setInternalCariler] = useState<CariKartItem[]>(cariler || []);
   const [internalKayitsizlar, setInternalKayitsizlar] = useState<KayitsizMusteriItem[]>(kayitsizMusteriler || []);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showNewCariModal, setShowNewCariModal] = useState<boolean>(false);
 
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -62,12 +69,13 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     }
   }, [kayitsizMusteriler]);
 
-  // Modal açıldığında arama terimini başlat ve verileri kontrol et
+  // Modal açıldığında arama terimini ve arama alanını başlat ve verileri kontrol et
   useEffect(() => {
     if (!show) return;
 
     const term = initialSearchTerm ? initialSearchTerm.trim() : "";
     setSearchTerm(term);
+    setSearchField(initialSearchField || "all");
     setSelectedIndex(0);
 
     const checkAndFetch = async () => {
@@ -111,14 +119,14 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     };
 
     checkAndFetch();
-  }, [show, initialSearchTerm]);
+  }, [show, initialSearchTerm, initialSearchField]);
 
   // Tab değiştiğinde seçimi koru ama satır seçimini sıfırla
   useEffect(() => {
     setSelectedIndex(0);
   }, [activeTab]);
 
-  // Filtrelenmiş liste
+  // Filtrelenmiş liste (Tüm alanlarda otomatik arama)
   const currentList = useMemo(() => {
     const list = activeTab === "registered" ? effectiveCariler : effectiveKayitsizlar;
     if (!searchTerm.trim()) return list;
@@ -130,8 +138,20 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
       const unvan = (item as any).unvan ? String((item as any).unvan).toLowerCase() : "";
       const vkn = item.vergiKimlikNo ? item.vergiKimlikNo.toLowerCase() : "";
       const tel = item.telefon ? item.telefon.toLowerCase() : "";
+      const adres = (item as any).adres ? String((item as any).adres).toLowerCase() : "";
+      const sehir = (item as any).il ? String((item as any).il).toLowerCase() : "";
+      const ilce = (item as any).ilce ? String((item as any).ilce).toLowerCase() : "";
 
-      return kod.includes(term) || ad.includes(term) || unvan.includes(term) || vkn.includes(term) || tel.includes(term);
+      return (
+        kod.includes(term) ||
+        ad.includes(term) ||
+        unvan.includes(term) ||
+        vkn.includes(term) ||
+        tel.includes(term) ||
+        adres.includes(term) ||
+        sehir.includes(term) ||
+        ilce.includes(term)
+      );
     });
   }, [activeTab, effectiveCariler, effectiveKayitsizlar, searchTerm]);
 
@@ -197,11 +217,17 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     }
   };
 
-  // Klavye navigasyonu (Yukarı/Aşağı Ok, Enter, Escape)
+  // Klavye navigasyonu (Yukarı/Aşağı Ok, Enter, Escape, F Tuşları)
   useEffect(() => {
-    if (!show) return;
+    if (!show || showNewCariModal) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Herhangi bir F1..F12 tuşuna basıldığında açık modalı kapat ve eylemin üst sayfada işlenmesine izin ver
+      if (/^F([1-9]|1[0-2])$/.test(e.key)) {
+        onClose();
+        return;
+      }
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
@@ -229,13 +255,14 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [show, selectedIndex, currentList, onClose]);
+  }, [show, showNewCariModal, selectedIndex, currentList, onClose]);
 
   return (
-    <Modal
-      show={show}
-      onHide={onClose}
-      centered
+    <>
+      <Modal
+        show={show}
+        onHide={onClose}
+        centered
       backdrop="static"
       dialogClassName="modal-musteri-secim-dialog"
       contentClassName="p-0 border-0 shadow-2xl rounded-2 overflow-hidden"
@@ -271,7 +298,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
           backgroundColor: "#ffffff",
           boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.45)",
           width: "100%",
-          maxWidth: "840px",
+          maxWidth: "920px",
           margin: "0 auto",
         }}
       >
@@ -374,7 +401,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
           </Nav>
         </div>
 
-        {/* Hızlı Arama Inputu */}
+        {/* Hızlı Arama Inputu (Otomatik Arama) */}
         <div className="px-3 pt-2 pb-2 bg-white border-bottom">
           <InputGroup size="sm">
             <InputGroup.Text className="bg-white border-end-0">
@@ -384,8 +411,8 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
               ref={searchInputRef}
               placeholder={
                 activeTab === "registered"
-                  ? "Cari kodu, ünvanı veya VKN/TCKN ile filtrele..."
-                  : "Müşteri adı/ünvanı veya VKN/TCKN ile filtrele..."
+                  ? "Cari kodu, ünvanı, VKN/TCKN veya telefon ile arayın..."
+                  : "Müşteri adı/ünvanı, VKN/TCKN veya telefon ile arayın..."
               }
               value={searchTerm}
               onChange={(e) => {
@@ -535,6 +562,85 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
           )}
         </div>
 
+        {/* ─── DETAY BÖLÜMÜ (Seçili Cari / Müşteri Detayları) ─── */}
+        {selectedIndex !== null && currentList[selectedIndex] && (() => {
+          const sel = currentList[selectedIndex] as any;
+          const kod = sel.kod || `#${sel.id || "-"}`;
+          const unvan = sel.ad || sel.unvan || "-";
+          const vkn = sel.vergiKimlikNo || "-";
+          const vd = sel.vergiDairesi || (sel.vergiDairesiId ? `VD #${sel.vergiDairesiId}` : "-");
+          const tel = sel.telefon || "-";
+          const email = sel.eposta || "-";
+          const yetkili = sel.yetkiliKisi || sel.babaAdi || "-";
+          const tipStr = sel.kisilikTipi === 1 ? "Tüzel Kişi (Şirket)" : sel.kisilikTipi === 2 ? "Yabancı Uyruklu" : "Gerçek Kişi (Şahıs)";
+          const adresStr = [sel.adres, sel.ilce, sel.il].filter(Boolean).join(" / ") || "-";
+
+          return (
+            <div className="px-3 py-2 bg-white border-top shadow-inner">
+              <div className="d-flex align-items-center justify-content-between mb-1">
+                <span className="fw-bold text-dark d-flex align-items-center gap-1.5" style={{ fontSize: "11.5px" }}>
+                  <IconUser size={14} className="text-primary" />
+                  <span>Cari Detay Bilgisi</span>
+                </span>
+                <div className="d-flex align-items-center gap-1">
+                  <span className="badge bg-light text-secondary border font-monospace px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>
+                    {tipStr}
+                  </span>
+                  <span className="badge bg-primary-subtle text-primary border border-primary-subtle px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>
+                    {activeTab === "registered" ? "Kayıtlı Cari" : "Kayıtsız Müşteri"}
+                  </span>
+                </div>
+              </div>
+              <div className="p-2 rounded bg-light border" style={{ fontSize: "11.5px" }}>
+                <div className="row g-1.5">
+                  <div className="col-12 col-md-4">
+                    <div className="text-muted" style={{ fontSize: "10px" }}>Ünvan / Ad Soyad:</div>
+                    <div className="fw-bold text-dark text-truncate" title={unvan}>
+                      {unvan}
+                    </div>
+                  </div>
+                  <div className="col-6 col-md-2">
+                    <div className="text-muted" style={{ fontSize: "10px" }}>Cari Kodu:</div>
+                    <div className="font-monospace fw-semibold text-primary text-truncate">
+                      {kod}
+                    </div>
+                  </div>
+                  <div className="col-6 col-md-3">
+                    <div className="text-muted" style={{ fontSize: "10px" }}>VKN / TCKN:</div>
+                    <div className="font-monospace fw-semibold text-dark text-truncate">
+                      {vkn}
+                    </div>
+                  </div>
+                  <div className="col-6 col-md-3">
+                    <div className="text-muted" style={{ fontSize: "10px" }}>Vergi Dairesi:</div>
+                    <div className="text-dark text-truncate" title={vd}>
+                      {vd}
+                    </div>
+                  </div>
+                  <div className="col-6 col-md-3">
+                    <div className="text-muted" style={{ fontSize: "10px" }}>Telefon:</div>
+                    <div className="text-dark text-truncate">
+                      {tel}
+                    </div>
+                  </div>
+                  <div className="col-6 col-md-3">
+                    <div className="text-muted" style={{ fontSize: "10px" }}>E-Posta / Yetkili:</div>
+                    <div className="text-dark text-truncate" title={email !== "-" ? email : yetkili}>
+                      {email !== "-" ? email : (yetkili !== "-" ? `Yetkili: ${yetkili}` : "-")}
+                    </div>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <div className="text-muted" style={{ fontSize: "10px" }}>Adres / Konum:</div>
+                    <div className="text-dark text-truncate" title={adresStr}>
+                      {adresStr}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Alt Bilgi ve Aksiyon Çubuğu */}
         <div
           className="d-flex align-items-center justify-content-between px-3 py-2 bg-light border-top"
@@ -545,6 +651,22 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
           </div>
 
           <div className="d-flex align-items-center gap-2">
+            <Button
+              variant="success"
+              size="sm"
+              onClick={() => setShowNewCariModal(true)}
+              className="px-3 py-1 d-flex align-items-center gap-1 fw-bold shadow-xs text-white"
+              style={{
+                fontSize: "12px",
+                height: "30px",
+                backgroundColor: "#16a34a",
+                borderColor: "#15803d",
+              }}
+              title="Yeni Cari Kart Ekle"
+            >
+              <IconPlus size={15} />
+              <span>Yeni Kayıt</span>
+            </Button>
             <Button
               variant="outline-secondary"
               size="sm"
@@ -574,5 +696,48 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
         </div>
       </div>
     </Modal>
+
+    {/* Yeni Cari Kayıt Modalı (Birebir Cari Kart Kayıt Sayfası) */}
+    {showNewCariModal && (
+      <Modal
+        show={showNewCariModal}
+        onHide={() => setShowNewCariModal(false)}
+        size="xl"
+        centered
+        backdrop="static"
+        dialogClassName="modal-95w"
+      >
+        <Modal.Header closeButton className="py-2 px-3 bg-light">
+          <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
+            <IconUsers size={20} className="text-primary" />
+            <span>Yeni Cari Kart Kaydı</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3" style={{ maxHeight: "80vh", overflowY: "auto" }}>
+          <CariCardRegistrationPage
+            isModal={true}
+            initialName={activeTab === "registered" ? searchTerm : undefined}
+            initialVkn={searchField === "vkn" ? searchTerm : undefined}
+            onSuccess={(newCari) => {
+              setInternalCariler((prev) => [newCari, ...prev]);
+              setShowNewCariModal(false);
+              onSelectCustomer({
+                type: "registered",
+                id: newCari.id,
+                kod: newCari.kod,
+                unvan: newCari.ad,
+                vergiKimlikNo: newCari.vergiKimlikNo,
+                adres: newCari.adres,
+                telefon: newCari.telefon,
+                raw: newCari,
+              });
+              onClose();
+            }}
+            onCancel={() => setShowNewCariModal(false)}
+          />
+        </Modal.Body>
+      </Modal>
+    )}
+    </>
   );
 };

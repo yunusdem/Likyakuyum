@@ -3,8 +3,9 @@ import { IconBackspace, IconCalculator, IconCheck, IconX } from "@tabler/icons-r
 
 /**
  * F11 ile programın her yerinden açılan hesap makinesi.
- * Yalnızca F11 ile açılır; X, Vazgeç veya Esc ile kapanır.
- * "Tamam" sonucu, açılmadan önce odakta olan alana yazar.
+ * Seçili input alanından başlangıç değerini alır,
+ * hesaplama yapılıp kapatıldığında veya Tamam/F11/Enter'a basıldığında
+ * sonucu seçili input alanına yazar.
  */
 
 type Op = "+" | "-" | "*" | "/" | null;
@@ -41,8 +42,6 @@ const GlobalCalculator: React.FC = () => {
     setEntry("0"); setAcc(null); setOp(null); setFresh(true); setHistory("");
   };
 
-  const close = useCallback(() => setOpen(false), []);
-
   const current = (): number => parseFloat(entry) || 0;
 
   const digit = (d: string) => {
@@ -61,7 +60,7 @@ const GlobalCalculator: React.FC = () => {
     let base = cur;
     if (acc !== null && op && !fresh) {
       base = compute(acc, cur, op);
-      setEntry(isFinite(base) ? String(base) : "Hata");
+      setEntry(isFinite(base) ? String(Math.round(base * 1e10) / 1e10) : "Hata");
     } else if (acc !== null && fresh) {
       base = acc; // operatör değiştirme
     }
@@ -99,52 +98,115 @@ const GlobalCalculator: React.FC = () => {
     setFresh(false);
   };
 
-  const commit = () => {
-    const el = targetRef.current;
-    let val = entry === "Hata" ? "" : entry;
+  const getFinalValue = (): string | null => {
+    let finalNum: number | null = null;
     if (acc !== null && op) {
       const r = compute(acc, current(), op);
-      val = isFinite(r) ? String(Math.round(r * 1e10) / 1e10) : "";
+      if (isFinite(r)) finalNum = Math.round(r * 1e10) / 1e10;
+    } else if (entry !== "Hata") {
+      const n = parseFloat(entry);
+      if (isFinite(n)) finalNum = Math.round(n * 1e10) / 1e10;
     }
-    if (el && val && document.contains(el) && !el.readOnly && !el.disabled) {
-      const out = el.type === "number" ? val : val.replace(".", ",");
-      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-      try {
-        setter?.call(el, out);
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      } catch { /* bu alan desteklemiyor */ }
-      setOpen(false);
-      setTimeout(() => el.focus(), 0);
-      return;
-    }
-    setOpen(false);
+    if (finalNum === null) return null;
+    return String(finalNum);
   };
 
-  // F11: aç/kapat (tarayıcı tam ekranını engeller)
+  const commitAndClose = useCallback(() => {
+    const finalVal = getFinalValue();
+    const el = targetRef.current;
+    if (el && finalVal !== null && document.contains(el) && !el.readOnly && !el.disabled) {
+      const out = el.type === "number" ? finalVal.replace(",", ".") : finalVal.replace(".", ",");
+      
+      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      const prototype = Object.getPrototypeOf(el);
+      const protoSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+
+      if (protoSetter && protoSetter !== setter) {
+        protoSetter.call(el, out);
+      } else if (setter) {
+        setter.call(el, out);
+      } else {
+        el.value = out;
+      }
+
+      // React controlled input tracker sıfırlama
+      const tracker = (el as any)._valueTracker;
+      if (tracker) {
+        tracker.setValue(null);
+      }
+
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+
+      setTimeout(() => {
+        if (document.contains(el)) {
+          el.focus();
+          try {
+            if (typeof el.select === "function") el.select();
+          } catch {}
+        }
+      }, 30);
+    }
+    setOpen(false);
+  }, [acc, entry, op]);
+
+  const cancelAndClose = useCallback(() => {
+    const el = targetRef.current;
+    setOpen(false);
+    if (el && document.contains(el)) {
+      setTimeout(() => {
+        el.focus();
+        try {
+          if (typeof el.select === "function") el.select();
+        } catch {}
+      }, 30);
+    }
+  }, []);
+
+  // F11: aç / kapat
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "F11") return;
       e.preventDefault();
       e.stopPropagation();
-      setOpen(prev => {
-        if (!prev) {
+
+      setOpen((isOpen) => {
+        if (!isOpen) {
           const a = document.activeElement;
-          targetRef.current =
+          const target =
             a instanceof HTMLInputElement && ["text", "number", "tel", "search", ""].includes(a.type)
               ? a
-              : a instanceof HTMLTextAreaElement ? a : null;
-          reset();
+              : a instanceof HTMLTextAreaElement
+              ? a
+              : null;
+          targetRef.current = target;
+
+          let initialEntry = "0";
+          if (target && target.value) {
+            const raw = target.value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+            const num = parseFloat(raw);
+            if (!isNaN(num) && isFinite(num)) {
+              initialEntry = String(num);
+            }
+          }
+          setEntry(initialEntry);
+          setAcc(null);
+          setOp(null);
+          setFresh(true);
+          setHistory("");
+          return true;
+        } else {
+          commitAndClose();
+          return false;
         }
-        return !prev;
       });
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  }, [commitAndClose]);
 
-  // Açıkken klavyeden kullanım (sayfadaki kısayollara sızmasın)
+  // Açıkken klavyeden kullanım
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -154,10 +216,16 @@ const GlobalCalculator: React.FC = () => {
       if (/^[0-9]$/.test(k)) digit(k);
       else if (k === "." || k === ",") digit(".");
       else if (k === "+" || k === "-" || k === "*" || k === "/") operator(k);
-      else if (k === "Enter" || k === "=") equals();
+      else if (k === "Enter" || k === "=") {
+        if (acc !== null && op) {
+          equals();
+        } else {
+          commitAndClose();
+        }
+      }
       else if (k === "Backspace") back();
       else if (k === "Delete") { setEntry("0"); setFresh(true); }
-      else if (k === "Escape") close();
+      else if (k === "Escape") commitAndClose();
       else if (k === "%") percent();
       else handled = false;
       if (handled) { e.preventDefault(); e.stopPropagation(); }
@@ -230,11 +298,11 @@ const GlobalCalculator: React.FC = () => {
         [data-bs-theme="dark"] .gc-root .gc-btn[class*="btn-outline-"]:not(:hover){background:#1e2227;}
         .gc-root .gc-foot{display:flex;gap:.5rem;justify-content:flex-end;padding:.6rem .75rem;border-top:1px solid var(--bs-border-color);}
       `}</style>
-      <div className="gc-backdrop" onMouseDown={close} />
+      <div className="gc-backdrop" onMouseDown={commitAndClose} />
       <div className="gc-box" ref={boxRef} style={style}>
         <div className="gc-head" onMouseDown={startDrag}>
           <span className="gc-title"><IconCalculator size={16} className="me-1" />Hesap makinesi</span>
-          <button type="button" className="btn-close" aria-label="Kapat" onClick={close} />
+          <button type="button" className="btn-close" aria-label="Kapat" onClick={commitAndClose} />
         </div>
         <div className="gc-screen">
           <div className="gc-hist">{history}</div>
@@ -259,10 +327,10 @@ const GlobalCalculator: React.FC = () => {
           {B("1/x", () => unary(x => 1 / x), "outline-secondary")}
         </div>
         <div className="gc-foot">
-          <button type="button" className="btn btn-sm btn-primary" onClick={commit} tabIndex={-1}>
+          <button type="button" className="btn btn-sm btn-primary" onClick={commitAndClose} tabIndex={-1}>
             <IconCheck size={16} className="me-1" />Tamam
           </button>
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={close} tabIndex={-1}>
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={cancelAndClose} tabIndex={-1}>
             <IconX size={16} className="me-1" />Vazgeç
           </button>
         </div>

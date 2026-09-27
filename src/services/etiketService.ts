@@ -29,6 +29,8 @@ export interface AltinUrunItem {
   hasKuru1?: number | null;
   hasKuru2?: number | null;
   altinKuru?: number | null;
+  usdKuru1?: number | null;
+  usdKuru2?: number | null;
   resim?: string | null;
   resimler?: string[];
   satildi: boolean;
@@ -66,6 +68,8 @@ export interface SaveAltinUrunPayload {
   hasKuru1?: number | null;
   hasKuru2?: number | null;
   altinKuru?: number | null;
+  usdKuru1?: number | null;
+  usdKuru2?: number | null;
   resim?: string | null;
   resimler?: string[];
   satildi?: boolean;

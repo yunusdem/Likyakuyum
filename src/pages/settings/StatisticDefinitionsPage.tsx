@@ -39,7 +39,19 @@ interface StatisticRowState {
   isDirty?: boolean;
 }
 
-export const StatisticDefinitionsPage: React.FC = () => {
+export interface StatisticDefinitionsPageProps {
+  isModal?: boolean;
+  onSuccess?: (item?: StatisticItem) => void;
+  onCancel?: () => void;
+  initialCode?: string;
+}
+
+export const StatisticDefinitionsPage: React.FC<StatisticDefinitionsPageProps> = ({
+  isModal = false,
+  onSuccess,
+  onCancel,
+  initialCode,
+}) => {
   const [rows, setRows] = useState<StatisticRowState[]>([]);
   const [activeCell, setActiveCell] = useState<{ clientId: string; col: string } | null>(null);
 
@@ -303,6 +315,10 @@ export const StatisticDefinitionsPage: React.FC = () => {
 
       setAlertSuccess(`✅ İstatistik tanımları başarıyla kaydedildi (${createdCount} yeni, ${updatedCount} güncellendi).`);
       await loadData();
+      if (isModal && onSuccess) {
+        onSuccess();
+        return;
+      }
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
       setAlertError(`❌ Kaydetme hatası: ${err?.message || "İstatistik tanımları kaydedilemedi."}`);

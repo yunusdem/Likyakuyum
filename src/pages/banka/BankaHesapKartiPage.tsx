@@ -39,7 +39,17 @@ const DEFAULT_BANKALAR = [
   { id: 102020, kod: "102.01.020", ad: "Anadolubank", unvan: "Anadolubank", bankaAdi: "Anadolubank", iban: "TR55 0013 5000 0020 1234 5678 90", hesapNo: "1350000-20" },
 ];
 
-export const BankaHesapKartiPage: React.FC = () => {
+export interface BankaHesapKartiPageProps {
+  isModal?: boolean;
+  onSuccess?: (item: BankaHesapItem) => void;
+  onCancel?: () => void;
+}
+
+export const BankaHesapKartiPage: React.FC<BankaHesapKartiPageProps> = ({
+  isModal = false,
+  onSuccess,
+  onCancel,
+}) => {
   // ─── State: Form Data (Tüm inputlar boş başlayacak) ─────────────────────────
   const [bankaId, setBankaId] = useState<number | null>(null);
   const [hesapNo, setHesapNo] = useState("");
@@ -195,12 +205,15 @@ export const BankaHesapKartiPage: React.FC = () => {
       setBankaId(saved.bankaId);
       const updatedList = await BankaService.getBankalar();
       setBankaList(updatedList);
+      if (isModal && onSuccess) {
+        onSuccess(saved);
+      }
     } catch (err: any) {
       showNotif("danger", err?.message || "Kayıt sırasında hata oluştu.");
     } finally {
       setIsSaving(false);
     }
-  }, [bankaId, hesapNo, hesapAdi, iban, subeAdi, bankaAdiId, eFaturadaGozuksun, muhHesapKodlari, devir, aktif]);
+  }, [bankaId, hesapNo, hesapAdi, iban, subeAdi, bankaAdiId, eFaturadaGozuksun, muhHesapKodlari, devir, aktif, isModal, onSuccess]);
 
   const handleDelete = useCallback(async () => {
     if (!bankaId) return;

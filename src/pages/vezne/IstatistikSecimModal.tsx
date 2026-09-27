@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Modal, Table, Button, Form, InputGroup, Badge, Spinner } from "react-bootstrap";
-import { IconChartBar, IconX, IconSearch, IconCheck, IconCornerDownLeft } from "@tabler/icons-react";
+import { IconChartBar, IconX, IconSearch, IconCheck, IconCornerDownLeft, IconPlus } from "@tabler/icons-react";
 import { DovizFisService, IstatistikSecimItem } from "../../services/dovizFisService";
 import { StatisticService } from "../../services/statisticService";
+import { StatisticDefinitionsPage } from "../settings/StatisticDefinitionsPage";
 
 interface IstatistikSecimModalProps {
   show: boolean;
@@ -25,70 +26,65 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [showNewStatisticModal, setShowNewStatisticModal] = useState<boolean>(false);
 
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const allStats = await StatisticService.getStatistics();
+      const filtered = allStats.filter((s) => {
+        const fType = Number(s.fisTipi);
+        if (tip === 0) {
+          // ALIŞ ekranı: 0 (Alış) ve 2 (Alış-Satış)
+          return fType === 0 || fType === 2;
+        } else if (tip === 1) {
+          // SATIŞ ekranı: 1 (Satış) ve 2 (Alış-Satış)
+          return fType === 1 || fType === 2;
+        }
+        return true;
+      });
+
+      const mapped = filtered.map((s) => ({
+        id: s.id,
+        kod: (s.kod || "").trim(),
+        ad: (s.aciklama || "").trim(),
+        aciklama: (s.aciklama || "").trim(),
+        tip: Number(s.fisTipi),
+        fisTipi: Number(s.fisTipi),
+        fisDizaynTipi: Number(s.fisDizaynTipi),
+        ciktiSatirSayisi: Number(s.ciktiSatirSayisi),
+      }));
+
+      setItems(mapped);
+      return mapped;
+    } catch (err) {
+      console.error("İstatistikler yüklenirken hata:", err);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, [tip]);
 
   // Verileri yükle
   useEffect(() => {
     if (!show) return;
 
-    let isMounted = true;
-    setLoading(true);
     const term = initialSearchTerm || "";
     setSearchTerm(term);
     setSelectedIndex(null);
 
-    const loadData = async () => {
-      try {
-        const allStats = await StatisticService.getStatistics();
-        const filtered = allStats.filter((s) => {
-          const fType = Number(s.fisTipi);
-          if (tip === 0) {
-            // ALIŞ ekranı: 0 (Alış) ve 2 (Alış-Satış)
-            return fType === 0 || fType === 2;
-          } else if (tip === 1) {
-            // SATIŞ ekranı: 1 (Satış) ve 2 (Alış-Satış)
-            return fType === 1 || fType === 2;
-          }
-          return true;
-        });
-
-        const mapped = filtered.map((s) => ({
-          id: s.id,
-          kod: (s.kod || "").trim(),
-          ad: (s.aciklama || "").trim(),
-          aciklama: (s.aciklama || "").trim(),
-          tip: Number(s.fisTipi),
-          fisTipi: Number(s.fisTipi),
-          fisDizaynTipi: Number(s.fisDizaynTipi),
-          ciktiSatirSayisi: Number(s.ciktiSatirSayisi),
-        }));
-
-        if (isMounted) {
-          setItems(mapped);
+    loadData().then(() => {
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+          if (term) searchInputRef.current.select();
         }
-      } catch (err) {
-        console.error("İstatistikler yüklenirken hata:", err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-          setTimeout(() => {
-            if (searchInputRef.current) {
-              searchInputRef.current.focus();
-              if (term) searchInputRef.current.select();
-            }
-          }, 100);
-        }
-      }
-    };
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [show, tip, initialSearchTerm]);
+      }, 100);
+    });
+  }, [show, tip, initialSearchTerm, loadData]);
 
   // Arama filtrelemesi
   const filteredItems = useMemo(() => {
@@ -155,11 +151,17 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
     }
   };
 
-  // Klavye navigasyonu (Yukarı/Aşağı, Enter, ESC)
+  // Klavye navigasyonu (Yukarı/Aşağı, Enter, ESC, F Tuşları)
   useEffect(() => {
-    if (!show) return;
+    if (!show || showNewStatisticModal) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Herhangi bir F1..F12 tuşuna basıldığında açık modalı kapat ve eylemin üst sayfada işlenmesine izin ver
+      if (/^F([1-9]|1[0-2])$/.test(e.key)) {
+        onClose();
+        return;
+      }
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((prev) => {
@@ -183,19 +185,20 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [show, selectedIndex, filteredItems, onClose]);
+  }, [show, showNewStatisticModal, selectedIndex, filteredItems, onClose]);
 
   const tipLabel = tip === 0 ? "Alış İstatistikleri" : "Satış İstatistikleri";
 
   return (
-    <Modal
-      show={show}
-      onHide={onClose}
-      centered
-      backdrop="static"
-      dialogClassName="modal-istatistik-secim-dialog"
-      contentClassName="p-0 border-0 shadow-2xl rounded-2 overflow-hidden"
-    >
+    <>
+      <Modal
+        show={show}
+        onHide={onClose}
+        centered
+        backdrop="static"
+        dialogClassName="modal-istatistik-secim-dialog"
+        contentClassName="p-0 border-0 shadow-2xl rounded-2 overflow-hidden"
+      >
       {/* Özel Vurgulama CSS - Diğer modallarla ve ERP standardıyla uyumlu */}
       <style>{`
         .istatistik-selected-row,
@@ -460,6 +463,22 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
 
           <div className="d-flex align-items-center gap-2">
             <Button
+              variant="success"
+              size="sm"
+              onClick={() => setShowNewStatisticModal(true)}
+              className="px-3 py-1 d-flex align-items-center gap-1 fw-bold text-white shadow-xs"
+              style={{
+                fontSize: "12px",
+                height: "30px",
+                backgroundColor: "#16a34a",
+                borderColor: "#15803d",
+              }}
+              title="Yeni İstatistik Tanımı Ekle"
+            >
+              <IconPlus size={15} />
+              <span>Yeni Kayıt</span>
+            </Button>
+            <Button
               variant="outline-secondary"
               size="sm"
               onClick={onClose}
@@ -488,5 +507,46 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
         </div>
       </div>
     </Modal>
+
+    {/* Yeni İstatistik Tanımı Modalı */}
+    {showNewStatisticModal && (
+      <Modal
+        show={showNewStatisticModal}
+        onHide={() => setShowNewStatisticModal(false)}
+        size="xl"
+        centered
+        backdrop="static"
+        dialogClassName="modal-95w"
+      >
+        <Modal.Header closeButton className="py-2 px-3 bg-light">
+          <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
+            <IconChartBar size={20} className="text-primary" />
+            <span>Yeni İstatistik Tanımı</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3" style={{ maxHeight: "80vh", overflowY: "auto" }}>
+          <StatisticDefinitionsPage
+            isModal={true}
+            initialCode={searchTerm}
+            onSuccess={async () => {
+              const freshList = await loadData();
+              setShowNewStatisticModal(false);
+              if (freshList && freshList.length > 0) {
+                // Seçilen veya en son eklenen istatistiği seç
+                const newlyAdded = searchTerm
+                  ? freshList.find((x) => x.kod.toLowerCase() === searchTerm.toLowerCase()) || freshList[freshList.length - 1]
+                  : freshList[freshList.length - 1];
+                if (newlyAdded) {
+                  onSelect(newlyAdded);
+                  onClose();
+                }
+              }
+            }}
+            onCancel={() => setShowNewStatisticModal(false)}
+          />
+        </Modal.Body>
+      </Modal>
+    )}
+    </>
   );
 };

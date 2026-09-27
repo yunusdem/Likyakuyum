@@ -79,7 +79,10 @@ import {
   EtiketSablonAlan,
   EtiketSekli,
   EtiketArkaPlan,
+  AltinUrunItem,
+  OzelUrunItem,
 } from "../../services/etiketService";
+import { triggerSilentPrint } from "../../services/silentPrintService";
 
 // ─── Yardımcı İkonlar ──────────────────────────────────────────────────────────
 const IconBinoculars = ({ size = 15, color = "currentColor", strokeWidth = 2 }: { size?: number; color?: string; strokeWidth?: number }) => (
@@ -3397,6 +3400,1589 @@ const UrunEtiketTasarimiPage: React.FC = () => {
     }
   };
 
+  // ─── Canlı Ürün & Barkod Seçimi (TODVZ_ALTIN_URUN & TODVZ_OZEL_URUN) ───────
+  const isOzelUrunRoute = location.pathname.includes("ozel-urun-etiket-tasarimi");
+  const [productType, setProductType] = useState<"altin" | "ozel">(isOzelUrunRoute ? "ozel" : "altin");
+  const [altinUrunlerList, setAltinUrunlerList] = useState<AltinUrunItem[]>([]);
+  const [ozelUrunlerList, setOzelUrunlerList] = useState<OzelUrunItem[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<AltinUrunItem | OzelUrunItem | null>(null);
+  const [productSearchTerm, setProductSearchTerm] = useState("");
+  const [productDraggableFilter, setProductDraggableFilter] = useState("");
+  const [showProductLookupModal, setShowProductLookupModal] = useState(false);
+  const [productLookupFilter, setProductLookupFilter] = useState("");
+  const [lookupSelectedIndex, setLookupSelectedIndex] = useState<number>(0);
+  const highlightedRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  const handleNextProduct = useCallback(() => {
+    const list = productType === "altin" ? altinUrunlerList : ozelUrunlerList;
+    if (list.length === 0) return;
+    if (!selectedProduct) {
+      setSelectedProduct(list[0]);
+      return;
+    }
+    const currId = "altinUrunId" in selectedProduct ? selectedProduct.altinUrunId : selectedProduct.ozelUrunId;
+    const currIdx = list.findIndex((p) => ("altinUrunId" in p ? p.altinUrunId : p.ozelUrunId) === currId);
+    const nextIdx = (currIdx + 1) % list.length;
+    setSelectedProduct(list[nextIdx]);
+  }, [productType, altinUrunlerList, ozelUrunlerList, selectedProduct]);
+
+  const handlePrevProduct = useCallback(() => {
+    const list = productType === "altin" ? altinUrunlerList : ozelUrunlerList;
+    if (list.length === 0) return;
+    if (!selectedProduct) {
+      setSelectedProduct(list[list.length - 1]);
+      return;
+    }
+    const currId = "altinUrunId" in selectedProduct ? selectedProduct.altinUrunId : selectedProduct.ozelUrunId;
+    const currIdx = list.findIndex((p) => ("altinUrunId" in p ? p.altinUrunId : p.ozelUrunId) === currId);
+    const prevIdx = (currIdx - 1 + list.length) % list.length;
+    setSelectedProduct(list[prevIdx]);
+  }, [productType, altinUrunlerList, ozelUrunlerList, selectedProduct]);
+
+  useEffect(() => {
+    setLookupSelectedIndex(0);
+  }, [productLookupFilter, productType, showProductLookupModal]);
+
+  useEffect(() => {
+    if (showProductLookupModal && highlightedRowRef.current) {
+      highlightedRowRef.current.scrollIntoView({ block: "nearest" });
+    }
+  }, [lookupSelectedIndex, showProductLookupModal]);
+
+  const loadProductsList = useCallback(async () => {
+    try {
+      setLoadingProducts(true);
+      const [altinData, ozelData] = await Promise.all([
+        EtiketService.getAltinUrunler({ limit: 500 }).catch(() => []),
+        EtiketService.getOzelUrunler({ limit: 500 }).catch(() => []),
+      ]);
+      setAltinUrunlerList(altinData || []);
+      setOzelUrunlerList(ozelData || []);
+    } catch {
+      // sessizce geç
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProductsList();
+  }, [loadProductsList]);
+
+  useEffect(() => {
+    if (location.pathname.includes("ozel-urun-etiket-tasarimi")) {
+      setProductType("ozel");
+    } else if (location.pathname.includes("altin-etiket-tasarimi")) {
+      setProductType("altin");
+    }
+  }, [location.pathname]);
+
+  // Sürüklenebilir Ürün Alanları (Tüm Ürün Bilgileri)
+  const productFields = useMemo(() => {
+    if (!selectedProduct) return [];
+    const isAltin = "altinUrunId" in selectedProduct;
+    const aItem = selectedProduct as AltinUrunItem;
+    const oItem = selectedProduct as OzelUrunItem;
+    const barcodeVal = selectedProduct.barkod || `${selectedProduct.grupKodu}${String(selectedProduct.urunNo).padStart(3, "0")}`;
+
+    if (isAltin) {
+      const ayarStr = aItem.ayar ? `${aItem.ayar} (${aItem.ayar.includes("22") ? "916" : aItem.ayar.includes("14") ? "585" : aItem.ayar.includes("18") ? "750" : aItem.ayar.includes("24") ? "995" : aItem.ayar.includes("8") ? "333" : "916"})` : "22K (916)";
+      const milyemVal = aItem.ayar?.includes("22") ? "916" : aItem.ayar?.includes("14") ? "585" : aItem.ayar?.includes("18") ? "750" : aItem.ayar?.includes("24") ? "995" : aItem.ayar?.includes("8") ? "333" : "916";
+      
+      const fields: Array<{
+        key: string;
+        label: string;
+        value: string;
+        badge: string;
+        icon: string;
+        category: string;
+        element: Partial<CanvasElement>;
+      }> = [
+        // ── 1. Barkod & Kodlar ──
+        {
+          key: "BARCODE_ELEM",
+          label: "Barkod Çizgisi (CODE128)",
+          value: barcodeVal,
+          badge: "BARKOD",
+          icon: "📊",
+          category: "Barkod & Kod",
+          element: {
+            type: "barcode",
+            barcodeValue: barcodeVal,
+            barcodeText: barcodeVal,
+            barcodeFormat: "CODE128",
+            showText: true,
+            width: 26,
+            height: 9,
+          },
+        },
+        {
+          key: "QRCODE_ELEM",
+          label: "Karekod / QR Kod",
+          value: barcodeVal,
+          badge: "QR",
+          icon: "📱",
+          category: "Barkod & Kod",
+          element: {
+            type: "qr",
+            barcodeValue: barcodeVal,
+            barcodeText: barcodeVal,
+            width: 10,
+            height: 10,
+          },
+        },
+        {
+          key: "BARKOD",
+          label: "Barkod No (Metin)",
+          value: barcodeVal,
+          badge: "METİN",
+          icon: "🏷️",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "BARKOD",
+            text: barcodeVal,
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "center",
+            width: 20,
+            height: 4.5,
+          },
+        },
+        {
+          key: "GRUP_KODU",
+          label: "Grup Kodu",
+          value: aItem.grupKodu || "-",
+          badge: "GRUP",
+          icon: "📁",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "GRUP_KODU",
+            text: aItem.grupKodu || "",
+            fontSize: 7,
+            fontWeight: "bold",
+            color: "#475569",
+            textAlign: "left",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "URUN_NO",
+          label: "Ürün No",
+          value: String(aItem.urunNo || 0),
+          badge: "NO",
+          icon: "🔢",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "URUN_NO",
+            text: String(aItem.urunNo || 0),
+            fontSize: 7,
+            fontWeight: "bold",
+            color: "#475569",
+            textAlign: "left",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "GRUP_URUN_NO",
+          label: "Grup & Ürün No",
+          value: `${aItem.grupKodu}-${String(aItem.urunNo).padStart(3, "0")}`,
+          badge: "KOD",
+          icon: "🆔",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "GRUP_URUN_NO",
+            text: `${aItem.grupKodu}-${String(aItem.urunNo).padStart(3, "0")}`,
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "left",
+            width: 16,
+            height: 4.5,
+          },
+        },
+        {
+          key: "ORJINAL_KOD",
+          label: "Orijinal / Atölye Kodu",
+          value: aItem.orjinalKod || "-",
+          badge: "KOD",
+          icon: "🔖",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "ORJINAL_KOD",
+            text: aItem.orjinalKod || "",
+            fontSize: 7,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+
+        // ── 2. Model, Ayar & Gramaj ──
+        {
+          key: "URUN_ADI",
+          label: "Model / Ürün Adı",
+          value: aItem.model || "Altın Ürün",
+          badge: "MODEL",
+          icon: "💍",
+          category: "Model & Ayar",
+          element: {
+            type: "field",
+            fieldKey: "URUN_ADI",
+            text: aItem.model || "Altın Ürün",
+            fontSize: 8,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "left",
+            width: 24,
+            height: 4.5,
+          },
+        },
+        {
+          key: "AYAR",
+          label: "Ayar",
+          value: aItem.ayar || "22K",
+          badge: "AYAR",
+          icon: "👑",
+          category: "Model & Ayar",
+          element: {
+            type: "field",
+            fieldKey: "AYAR",
+            text: aItem.ayar || "22K",
+            fontSize: 8,
+            fontWeight: "bold",
+            color: "#b45309",
+            textAlign: "left",
+            width: 14,
+            height: 4.5,
+          },
+        },
+        {
+          key: "MILYEM",
+          label: "Milyem / Saflık",
+          value: milyemVal,
+          badge: "MİLYEM",
+          icon: "✨",
+          category: "Model & Ayar",
+          element: {
+            type: "field",
+            fieldKey: "MILYEM",
+            text: milyemVal,
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#b45309",
+            textAlign: "left",
+            width: 12,
+            height: 4.5,
+          },
+        },
+        {
+          key: "AYAR_MILYEM",
+          label: "Ayar + Milyem",
+          value: ayarStr,
+          badge: "AYAR",
+          icon: "👑",
+          category: "Model & Ayar",
+          element: {
+            type: "field",
+            fieldKey: "AYAR_MILYEM",
+            text: ayarStr,
+            fontSize: 8,
+            fontWeight: "bold",
+            color: "#b45309",
+            textAlign: "left",
+            width: 18,
+            height: 4.5,
+          },
+        },
+        {
+          key: "GRAM",
+          label: "Miktar (Gramaj)",
+          value: `${aItem.miktar || 0} gr`,
+          badge: "GRAM",
+          icon: "⚖️",
+          category: "Gramaj & Fiyat",
+          element: {
+            type: "field",
+            fieldKey: "GRAM",
+            text: `${aItem.miktar || 0} gr`,
+            fontSize: 8.5,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "right",
+            width: 16,
+            height: 4.5,
+            isNumeric: true,
+          },
+        },
+        {
+          key: "HAS_GRAM",
+          label: "Has Gramaj",
+          value: `${aItem.hasGram ? Number(aItem.hasGram).toFixed(4) : "0.0000"} Has`,
+          badge: "HAS",
+          icon: "🪙",
+          category: "Gramaj & Fiyat",
+          element: {
+            type: "field",
+            fieldKey: "HAS_GRAM",
+            text: `${aItem.hasGram ? Number(aItem.hasGram).toFixed(4) : "0.0000"} Has`,
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#784405",
+            textAlign: "right",
+            width: 18,
+            height: 4.5,
+            isNumeric: true,
+          },
+        },
+
+        // ── 3. Fiyat, İşçilik & Kâr ──
+        {
+          key: "FIYAT",
+          label: "Satış Fiyatı",
+          value: aItem.satisFiyati ? `₺${Number(aItem.satisFiyati).toLocaleString("tr-TR")}` : "₺0.00",
+          badge: "FİYAT",
+          icon: "💰",
+          category: "Gramaj & Fiyat",
+          element: {
+            type: "field",
+            fieldKey: "FIYAT",
+            text: aItem.satisFiyati ? `₺${Number(aItem.satisFiyati).toLocaleString("tr-TR")}` : "₺0.00",
+            fontSize: 8.5,
+            fontWeight: "bold",
+            color: "#166534",
+            textAlign: "right",
+            width: 18,
+            height: 4.5,
+            isNumeric: true,
+          },
+        },
+        {
+          key: "SATIS_PARA_KODU",
+          label: "Satış Para Birimi",
+          value: aItem.satisParaKodu || "TL",
+          badge: "PARA",
+          icon: "💱",
+          category: "Gramaj & Fiyat",
+          element: {
+            type: "field",
+            fieldKey: "SATIS_PARA_KODU",
+            text: aItem.satisParaKodu || "TL",
+            fontSize: 7,
+            color: "#166534",
+            textAlign: "left",
+            width: 12,
+            height: 4,
+          },
+        },
+        {
+          key: "SATIS_KARI",
+          label: "Satış Kârı (%)",
+          value: `%${aItem.satisKariYuzde || 0}`,
+          badge: "KÂR",
+          icon: "📈",
+          category: "Gramaj & Fiyat",
+          element: {
+            type: "field",
+            fieldKey: "SATIS_KARI",
+            text: `%${aItem.satisKariYuzde || 0}`,
+            fontSize: 7,
+            color: "#15803d",
+            textAlign: "right",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "SATIS_ISCILIK_TUTARI",
+          label: "Satış İşçilik Tutarı",
+          value: aItem.satisIscilikTutari ? `₺${Number(aItem.satisIscilikTutari).toLocaleString("tr-TR")}` : `₺${aItem.satisIscilik || 0}`,
+          badge: "İŞÇİLİK",
+          icon: "🔨",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "SATIS_ISCILIK_TUTARI",
+            text: aItem.satisIscilikTutari ? `İşçilik: ₺${Number(aItem.satisIscilikTutari).toLocaleString("tr-TR")}` : `İşçilik: ₺${aItem.satisIscilik || 0}`,
+            fontSize: 7,
+            color: "#475569",
+            textAlign: "left",
+            width: 20,
+            height: 4,
+          },
+        },
+        {
+          key: "SATIS_ISCILIK_BIRIM",
+          label: "Satış İşçilik (₺/g)",
+          value: aItem.satisIscilik ? `₺${aItem.satisIscilik}/g` : "₺0/g",
+          badge: "İŞÇİLİK",
+          icon: "⚒️",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "SATIS_ISCILIK_BIRIM",
+            text: aItem.satisIscilik ? `₺${aItem.satisIscilik}/g` : "₺0/g",
+            fontSize: 7,
+            color: "#475569",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+        {
+          key: "ISCILIK_KARI",
+          label: "İşçilik Kârı",
+          value: aItem.iscilikKari ? `₺${Number(aItem.iscilikKari).toLocaleString("tr-TR")}` : "₺0",
+          badge: "KÂR",
+          icon: "💹",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "ISCILIK_KARI",
+            text: aItem.iscilikKari ? `İşçilik Kârı: ₺${Number(aItem.iscilikKari).toLocaleString("tr-TR")}` : "İşçilik Kârı: ₺0",
+            fontSize: 7,
+            color: "#15803d",
+            textAlign: "left",
+            width: 22,
+            height: 4,
+          },
+        },
+        {
+          key: "MALIYET",
+          label: "Maliyet Fiyatı",
+          value: aItem.maliyet ? `${Number(aItem.maliyet).toLocaleString("tr-TR")} ${aItem.maliyetParaKodu || "TL"}` : "0 TL",
+          badge: "MALİYET",
+          icon: "🏷️",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "MALIYET",
+            text: aItem.maliyet ? `Maliyet: ${Number(aItem.maliyet).toLocaleString("tr-TR")} ${aItem.maliyetParaKodu || "TL"}` : "Maliyet: 0 TL",
+            fontSize: 7,
+            color: "#b91c1c",
+            textAlign: "left",
+            width: 20,
+            height: 4,
+          },
+        },
+        {
+          key: "MALIYET_PARA_KODU",
+          label: "Maliyet Para Kodu",
+          value: aItem.maliyetParaKodu || "TL",
+          badge: "PARA",
+          icon: "💱",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "MALIYET_PARA_KODU",
+            text: aItem.maliyetParaKodu || "TL",
+            fontSize: 7,
+            color: "#64748b",
+            textAlign: "left",
+            width: 12,
+            height: 4,
+          },
+        },
+        {
+          key: "MALIYET_ISCILIK",
+          label: "Maliyet İşçilik",
+          value: aItem.maliyetIscilik ? `${aItem.maliyetIscilik} ${aItem.maliyetIscilikParaKodu || "USD"}` : "0",
+          badge: "İŞÇİLİK",
+          icon: "🛠️",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "MALIYET_ISCILIK",
+            text: aItem.maliyetIscilik ? `Mal. İşçilik: ${aItem.maliyetIscilik} ${aItem.maliyetIscilikParaKodu || "USD"}` : "Mal. İşçilik: 0",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 22,
+            height: 4,
+          },
+        },
+        {
+          key: "MALIYET_ISCILIK_TUTARI",
+          label: "Maliyet İşçilik Tutarı",
+          value: aItem.maliyetIscilikTutari ? `${aItem.maliyetIscilikTutari} ${aItem.maliyetIscilikParaKodu || "USD"}` : "0",
+          badge: "İŞÇİLİK",
+          icon: "💵",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "MALIYET_ISCILIK_TUTARI",
+            text: aItem.maliyetIscilikTutari ? `${aItem.maliyetIscilikTutari} ${aItem.maliyetIscilikParaKodu || "USD"}` : "0",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 18,
+            height: 4,
+          },
+        },
+        {
+          key: "MALIYET_ISCILIK_BIRIM",
+          label: "Maliyet İşçilik Birimi",
+          value: aItem.maliyetIscilikBirim || "gr",
+          badge: "BİRİM",
+          icon: "📐",
+          category: "İşçilik & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "MALIYET_ISCILIK_BIRIM",
+            text: aItem.maliyetIscilikBirim || "gr",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 12,
+            height: 4,
+          },
+        },
+
+        // ── 4. Firma, Konum, Tarih & Kurlar ──
+        {
+          key: "FIRMA",
+          label: "Üretici Firma / Atölye",
+          value: aItem.ureticiFirma || "Atölye",
+          badge: "FİRMA",
+          icon: "🏢",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "FIRMA",
+            text: aItem.ureticiFirma || "Atölye",
+            fontSize: 7,
+            color: "#64748b",
+            textAlign: "left",
+            width: 20,
+            height: 4,
+          },
+        },
+        {
+          key: "BANKO",
+          label: "Banko / Vitrin",
+          value: aItem.banko || "Vitrin",
+          badge: "KONUM",
+          icon: "📍",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "BANKO",
+            text: `Banko: ${aItem.banko || "-"}`,
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+        {
+          key: "TARIH",
+          label: "Kayıt Tarihi",
+          value: aItem.tarih ? new Date(aItem.tarih).toLocaleDateString("tr-TR") : new Date().toLocaleDateString("tr-TR"),
+          badge: "TARİH",
+          icon: "📅",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "TARIH",
+            text: aItem.tarih ? new Date(aItem.tarih).toLocaleDateString("tr-TR") : new Date().toLocaleDateString("tr-TR"),
+            fontSize: 6.5,
+            color: "#94a3b8",
+            textAlign: "left",
+            width: 16,
+            height: 3.5,
+          },
+        },
+        {
+          key: "HAS_KURU1",
+          label: "HAS Alış Kuru",
+          value: aItem.hasKuru1 ? `₺${Number(aItem.hasKuru1).toLocaleString("tr-TR")}` : "-",
+          badge: "KUR",
+          icon: "📊",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "HAS_KURU1",
+            text: aItem.hasKuru1 ? `HAS Alış: ₺${Number(aItem.hasKuru1).toLocaleString("tr-TR")}` : "-",
+            fontSize: 6.5,
+            color: "#475569",
+            textAlign: "left",
+            width: 20,
+            height: 3.5,
+          },
+        },
+        {
+          key: "HAS_KURU2",
+          label: "HAS Satış Kuru",
+          value: aItem.hasKuru2 ? `₺${Number(aItem.hasKuru2).toLocaleString("tr-TR")}` : "-",
+          badge: "KUR",
+          icon: "📊",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "HAS_KURU2",
+            text: aItem.hasKuru2 ? `HAS Satış: ₺${Number(aItem.hasKuru2).toLocaleString("tr-TR")}` : "-",
+            fontSize: 6.5,
+            color: "#475569",
+            textAlign: "left",
+            width: 20,
+            height: 3.5,
+          },
+        },
+        {
+          key: "ALTIN_KURU",
+          label: "Altın Kuru",
+          value: aItem.altinKuru ? `₺${Number(aItem.altinKuru).toLocaleString("tr-TR")}` : "-",
+          badge: "KUR",
+          icon: "🪙",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "ALTIN_KURU",
+            text: aItem.altinKuru ? `Altın Kuru: ₺${Number(aItem.altinKuru).toLocaleString("tr-TR")}` : "-",
+            fontSize: 6.5,
+            color: "#475569",
+            textAlign: "left",
+            width: 20,
+            height: 3.5,
+          },
+        },
+        {
+          key: "USD_KURU1",
+          label: "USD Alış Kuru",
+          value: aItem.usdKuru1 ? `₺${Number(aItem.usdKuru1).toLocaleString("tr-TR")}` : "-",
+          badge: "KUR",
+          icon: "💲",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "USD_KURU1",
+            text: aItem.usdKuru1 ? `USD Alış: ₺${Number(aItem.usdKuru1).toLocaleString("tr-TR")}` : "-",
+            fontSize: 6.5,
+            color: "#475569",
+            textAlign: "left",
+            width: 18,
+            height: 3.5,
+          },
+        },
+        {
+          key: "USD_KURU2",
+          label: "USD Satış Kuru",
+          value: aItem.usdKuru2 ? `₺${Number(aItem.usdKuru2).toLocaleString("tr-TR")}` : "-",
+          badge: "KUR",
+          icon: "💲",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "USD_KURU2",
+            text: aItem.usdKuru2 ? `USD Satış: ₺${Number(aItem.usdKuru2).toLocaleString("tr-TR")}` : "-",
+            fontSize: 6.5,
+            color: "#475569",
+            textAlign: "left",
+            width: 18,
+            height: 3.5,
+          },
+        },
+        {
+          key: "DURUM",
+          label: "Stok Durumu",
+          value: aItem.satildi ? "Satıldı" : "Stokta",
+          badge: "DURUM",
+          icon: "📦",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "DURUM",
+            text: aItem.satildi ? "Satıldı" : "Stokta",
+            fontSize: 6.5,
+            fontWeight: "bold",
+            color: aItem.satildi ? "#dc2626" : "#16a34a",
+            textAlign: "left",
+            width: 14,
+            height: 3.5,
+          },
+        },
+        {
+          key: "YAZDIRILDI",
+          label: "Yazdırma Durumu",
+          value: aItem.yazdirildi ? "Yazdırıldı" : "Yazdırılmadı",
+          badge: "DURUM",
+          icon: "🖨️",
+          category: "Kurlar & Detay",
+          element: {
+            type: "field",
+            fieldKey: "YAZDIRILDI",
+            text: aItem.yazdirildi ? "Yazdırıldı" : "Yazdırılmadı",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 3.5,
+          },
+        },
+      ];
+
+      if (aItem.resim || (aItem.resimler && aItem.resimler[0])) {
+        const img = aItem.resim || aItem.resimler![0];
+        fields.push({
+          key: "RESIM_ELEM",
+          label: "Ürün Fotoğrafı",
+          value: "Görsel",
+          badge: "FOTO",
+          icon: "🖼️",
+          category: "Kurlar & Detay",
+          element: {
+            type: "image",
+            imageData: img,
+            width: 14,
+            height: 10,
+            text: aItem.model || "Altın Görseli",
+          },
+        });
+      }
+      return fields;
+    } else {
+      const ayarStr = oItem.ayar || "18K (750)";
+      const fields: Array<{
+        key: string;
+        label: string;
+        value: string;
+        badge: string;
+        icon: string;
+        category: string;
+        element: Partial<CanvasElement>;
+      }> = [
+        // ── 1. Barkod & Kodlar ──
+        {
+          key: "BARCODE_ELEM",
+          label: "Barkod Çizgisi (CODE128)",
+          value: barcodeVal,
+          badge: "BARKOD",
+          icon: "📊",
+          category: "Barkod & Kod",
+          element: {
+            type: "barcode",
+            barcodeValue: barcodeVal,
+            barcodeText: barcodeVal,
+            barcodeFormat: "CODE128",
+            showText: true,
+            width: 26,
+            height: 9,
+          },
+        },
+        {
+          key: "QRCODE_ELEM",
+          label: "Karekod / QR Kod",
+          value: barcodeVal,
+          badge: "QR",
+          icon: "📱",
+          category: "Barkod & Kod",
+          element: {
+            type: "qr",
+            barcodeValue: barcodeVal,
+            barcodeText: barcodeVal,
+            width: 10,
+            height: 10,
+          },
+        },
+        {
+          key: "BARKOD",
+          label: "Barkod No (Metin)",
+          value: barcodeVal,
+          badge: "METİN",
+          icon: "🏷️",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "BARKOD",
+            text: barcodeVal,
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "center",
+            width: 20,
+            height: 4.5,
+          },
+        },
+        {
+          key: "GRUP_KODU",
+          label: "Grup Kodu",
+          value: oItem.grupKodu || "-",
+          badge: "GRUP",
+          icon: "📁",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "GRUP_KODU",
+            text: oItem.grupKodu || "",
+            fontSize: 7,
+            fontWeight: "bold",
+            color: "#475569",
+            textAlign: "left",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "URUN_NO",
+          label: "Ürün No",
+          value: String(oItem.urunNo || 0),
+          badge: "NO",
+          icon: "🔢",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "URUN_NO",
+            text: String(oItem.urunNo || 0),
+            fontSize: 7,
+            fontWeight: "bold",
+            color: "#475569",
+            textAlign: "left",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "GRUP_URUN_NO",
+          label: "Grup & Ürün No",
+          value: `${oItem.grupKodu}-${String(oItem.urunNo).padStart(3, "0")}`,
+          badge: "KOD",
+          icon: "🆔",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "GRUP_URUN_NO",
+            text: `${oItem.grupKodu}-${String(oItem.urunNo).padStart(3, "0")}`,
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "left",
+            width: 16,
+            height: 4.5,
+          },
+        },
+        {
+          key: "ORJINAL_KOD",
+          label: "Orijinal / Atölye Kodu",
+          value: oItem.orjinalKod || "-",
+          badge: "KOD",
+          icon: "🔖",
+          category: "Barkod & Kod",
+          element: {
+            type: "field",
+            fieldKey: "ORJINAL_KOD",
+            text: oItem.orjinalKod || "",
+            fontSize: 7,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+
+        // ── 2. Model & Montür Özellikleri ──
+        {
+          key: "MAMUL_TIPI",
+          label: "Mamül Tipi",
+          value: oItem.mamulTipi || "Mücevher",
+          badge: "TİP",
+          icon: "💎",
+          category: "Model & Montür",
+          element: {
+            type: "field",
+            fieldKey: "MAMUL_TIPI",
+            text: oItem.mamulTipi || "Mücevher",
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#0369a1",
+            textAlign: "left",
+            width: 18,
+            height: 4,
+          },
+        },
+        {
+          key: "MODEL_1",
+          label: "Model Özellik 1",
+          value: oItem.modelOzellik1 || "-",
+          badge: "MODEL",
+          icon: "💍",
+          category: "Model & Montür",
+          element: {
+            type: "field",
+            fieldKey: "MODEL_1",
+            text: oItem.modelOzellik1 || "",
+            fontSize: 7.5,
+            color: "#1e293b",
+            textAlign: "left",
+            width: 20,
+            height: 4,
+          },
+        },
+        {
+          key: "MODEL_2",
+          label: "Model Özellik 2",
+          value: oItem.modelOzellik2 || "-",
+          badge: "MODEL",
+          icon: "💍",
+          category: "Model & Montür",
+          element: {
+            type: "field",
+            fieldKey: "MODEL_2",
+            text: oItem.modelOzellik2 || "",
+            fontSize: 7.5,
+            color: "#1e293b",
+            textAlign: "left",
+            width: 20,
+            height: 4,
+          },
+        },
+        {
+          key: "URUN_ADI",
+          label: "Model / Tanım (Tam)",
+          value: oItem.modelOzellik1 || oItem.modelOzellik2 || oItem.mamulTipi || "Özel Ürün",
+          badge: "MODEL",
+          icon: "✨",
+          category: "Model & Montür",
+          element: {
+            type: "field",
+            fieldKey: "URUN_ADI",
+            text: oItem.modelOzellik1 || oItem.modelOzellik2 || oItem.mamulTipi || "Özel Ürün",
+            fontSize: 8,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "left",
+            width: 24,
+            height: 4.5,
+          },
+        },
+        {
+          key: "AYAR",
+          label: "Montür Ayarı",
+          value: ayarStr,
+          badge: "AYAR",
+          icon: "👑",
+          category: "Model & Montür",
+          element: {
+            type: "field",
+            fieldKey: "AYAR",
+            text: ayarStr,
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#b45309",
+            textAlign: "left",
+            width: 16,
+            height: 4.5,
+          },
+        },
+        {
+          key: "GRAM",
+          label: "Montür Gramajı",
+          value: `${oItem.miktar || 0} ${oItem.miktarBirimi || "gr"}`,
+          badge: "MONTÜR",
+          icon: "⚖️",
+          category: "Model & Montür",
+          element: {
+            type: "field",
+            fieldKey: "GRAM",
+            text: `${oItem.miktar || 0} ${oItem.miktarBirimi || "gr"}`,
+            fontSize: 8,
+            fontWeight: "bold",
+            color: "#000000",
+            textAlign: "right",
+            width: 16,
+            height: 4.5,
+            isNumeric: true,
+          },
+        },
+        {
+          key: "MIKTAR_BIRIMI",
+          label: "Miktar Birimi",
+          value: oItem.miktarBirimi || "gr",
+          badge: "BİRİM",
+          icon: "📐",
+          category: "Model & Montür",
+          element: {
+            type: "field",
+            fieldKey: "MIKTAR_BIRIMI",
+            text: oItem.miktarBirimi || "gr",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 12,
+            height: 3.5,
+          },
+        },
+
+        // ── 3. Taş & Pırlanta Özellikleri ──
+        {
+          key: "TAS_CINSI",
+          label: "Taş Cinsi",
+          value: oItem.tasCinsi || "Pırlanta",
+          badge: "TAŞ",
+          icon: "💎",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_CINSI",
+            text: oItem.tasCinsi || "Pırlanta",
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#0369a1",
+            textAlign: "left",
+            width: 18,
+            height: 4,
+          },
+        },
+        {
+          key: "TAS_MIKTAR",
+          label: "Taş Karatı (Miktar)",
+          value: `${oItem.tasMiktar || 0} ${oItem.tasBirim || "Ct"}`,
+          badge: "KARAT",
+          icon: "⚖️",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_MIKTAR",
+            text: `${oItem.tasMiktar || 0} ${oItem.tasBirim || "Ct"}`,
+            fontSize: 8,
+            fontWeight: "bold",
+            color: "#0284c7",
+            textAlign: "left",
+            width: 16,
+            height: 4.5,
+            isNumeric: true,
+          },
+        },
+        {
+          key: "TAS_BIRIMI",
+          label: "Karat Birimi",
+          value: oItem.tasBirim || "Ct",
+          badge: "BİRİM",
+          icon: "📐",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_BIRIMI",
+            text: oItem.tasBirim || "Ct",
+            fontSize: 6.5,
+            color: "#0284c7",
+            textAlign: "left",
+            width: 12,
+            height: 3.5,
+          },
+        },
+        {
+          key: "TAS_RENK",
+          label: "Taş Rengi",
+          value: oItem.tasRenk ? `Renk: ${oItem.tasRenk}` : "-",
+          badge: "RENK",
+          icon: "🎨",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_RENK",
+            text: oItem.tasRenk ? `Renk: ${oItem.tasRenk}` : "-",
+            fontSize: 7,
+            color: "#0369a1",
+            textAlign: "left",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "TAS_SAFLIK",
+          label: "Taş Saflığı (Berraklık)",
+          value: oItem.tasSaflik ? `Saflık: ${oItem.tasSaflik}` : "-",
+          badge: "BERRAKLIK",
+          icon: "🔍",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_SAFLIK",
+            text: oItem.tasSaflik ? `Saflık: ${oItem.tasSaflik}` : "-",
+            fontSize: 7,
+            color: "#0369a1",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+        {
+          key: "TAS_BERRAKLIK",
+          label: "Renk & Saflık",
+          value: `${oItem.tasRenk || "F"} / ${oItem.tasSaflik || "VS1"}`,
+          badge: "RENK/SAFLIK",
+          icon: "✨",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_BERRAKLIK",
+            text: `${oItem.tasRenk || "F"} / ${oItem.tasSaflik || "VS1"}`,
+            fontSize: 7,
+            fontWeight: "bold",
+            color: "#0284c7",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+        {
+          key: "TAS_DETAY",
+          label: "Taş Cinsi & Karat",
+          value: `${oItem.tasCinsi || "Pırlanta"} ${oItem.tasMiktar ? oItem.tasMiktar + " " + (oItem.tasBirim || "Ct") : ""}`.trim(),
+          badge: "TAŞ",
+          icon: "💎",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_DETAY",
+            text: `${oItem.tasCinsi || "Pırlanta"} ${oItem.tasMiktar ? oItem.tasMiktar + " " + (oItem.tasBirim || "Ct") : ""}`.trim(),
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#0369a1",
+            textAlign: "left",
+            width: 22,
+            height: 4.5,
+          },
+        },
+        {
+          key: "TAS_ADET",
+          label: "Taş Adedi",
+          value: `${oItem.tasAdet || 1} Adet`,
+          badge: "ADET",
+          icon: "🔢",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_ADET",
+            text: `${oItem.tasAdet || 1} Adet`,
+            fontSize: 7,
+            color: "#0369a1",
+            textAlign: "left",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "TAS_TUTAR",
+          label: "Taş Tutarı",
+          value: oItem.tasTutar ? `${oItem.tasTutar} ${oItem.tasTutarBirimi || "USD"}` : "-",
+          badge: "TUTAR",
+          icon: "💵",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_TUTAR",
+            text: oItem.tasTutar ? `${oItem.tasTutar} ${oItem.tasTutarBirimi || "USD"}` : "-",
+            fontSize: 7,
+            color: "#0369a1",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+        {
+          key: "TAS_OZET",
+          label: "Tam Taş Özeti",
+          value: `${oItem.tasCinsi || "Pırlanta"} ${oItem.tasMiktar || ""}${oItem.tasBirim || "Ct"} ${oItem.tasRenk || ""}/${oItem.tasSaflik || ""}`.trim(),
+          badge: "ÖZET",
+          icon: "💎",
+          category: "Taş Özellikleri",
+          element: {
+            type: "field",
+            fieldKey: "TAS_OZET",
+            text: `${oItem.tasCinsi || "Pırlanta"} ${oItem.tasMiktar || ""}${oItem.tasBirim || "Ct"} ${oItem.tasRenk || ""}/${oItem.tasSaflik || ""}`.trim(),
+            fontSize: 7.5,
+            fontWeight: "bold",
+            color: "#0284c7",
+            textAlign: "left",
+            width: 24,
+            height: 4.5,
+          },
+        },
+
+        // ── 4. Fiyat & Maliyet ──
+        {
+          key: "FIYAT",
+          label: "Satış Fiyatı",
+          value: oItem.satisFiyati ? `${oItem.satisParaKodu || "USD"} ${Number(oItem.satisFiyati).toLocaleString("tr-TR")}` : "0 USD",
+          badge: "FİYAT",
+          icon: "💰",
+          category: "Fiyat & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "FIYAT",
+            text: oItem.satisFiyati ? `${oItem.satisParaKodu || "USD"} ${Number(oItem.satisFiyati).toLocaleString("tr-TR")}` : "0 USD",
+            fontSize: 8.5,
+            fontWeight: "bold",
+            color: "#166534",
+            textAlign: "right",
+            width: 18,
+            height: 4.5,
+            isNumeric: true,
+          },
+        },
+        {
+          key: "SATIS_PARA_KODU",
+          label: "Satış Para Kodu",
+          value: oItem.satisParaKodu || "USD",
+          badge: "PARA",
+          icon: "💱",
+          category: "Fiyat & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "SATIS_PARA_KODU",
+            text: oItem.satisParaKodu || "USD",
+            fontSize: 7,
+            color: "#166534",
+            textAlign: "left",
+            width: 12,
+            height: 4,
+          },
+        },
+        {
+          key: "KAR_YUZDESI",
+          label: "Kâr Yüzdesi (%)",
+          value: `%${oItem.karYuzdesi || 0}`,
+          badge: "KÂR",
+          icon: "📈",
+          category: "Fiyat & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "KAR_YUZDESI",
+            text: `%${oItem.karYuzdesi || 0}`,
+            fontSize: 7,
+            color: "#15803d",
+            textAlign: "right",
+            width: 14,
+            height: 4,
+          },
+        },
+        {
+          key: "MALIYET",
+          label: "Maliyet Fiyatı",
+          value: oItem.maliyet ? `${oItem.maliyetParaKodu || "USD"} ${Number(oItem.maliyet).toLocaleString("tr-TR")}` : "0 USD",
+          badge: "MALİYET",
+          icon: "🏷️",
+          category: "Fiyat & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "MALIYET",
+            text: oItem.maliyet ? `Maliyet: ${oItem.maliyetParaKodu || "USD"} ${Number(oItem.maliyet).toLocaleString("tr-TR")}` : "Maliyet: 0 USD",
+            fontSize: 7,
+            color: "#b91c1c",
+            textAlign: "left",
+            width: 20,
+            height: 4,
+          },
+        },
+        {
+          key: "MALIYET_PARA_KODU",
+          label: "Maliyet Para Kodu",
+          value: oItem.maliyetParaKodu || "USD",
+          badge: "PARA",
+          icon: "💱",
+          category: "Fiyat & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "MALIYET_PARA_KODU",
+            text: oItem.maliyetParaKodu || "USD",
+            fontSize: 7,
+            color: "#64748b",
+            textAlign: "left",
+            width: 12,
+            height: 4,
+          },
+        },
+        {
+          key: "SABITLE",
+          label: "Fiyat Sabitleme",
+          value: oItem.sabitle ? "Fiyat Sabit" : "Dinamik",
+          badge: "DURUM",
+          icon: "🔒",
+          category: "Fiyat & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "SABITLE",
+            text: oItem.sabitle ? "Fiyat Sabit" : "Dinamik",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 3.5,
+          },
+        },
+        {
+          key: "HIZLI_GIRIS",
+          label: "Hızlı Giriş",
+          value: oItem.hizliGiris ? "Hızlı Giriş" : "Standart",
+          badge: "DURUM",
+          icon: "⚡",
+          category: "Fiyat & Maliyet",
+          element: {
+            type: "field",
+            fieldKey: "HIZLI_GIRIS",
+            text: oItem.hizliGiris ? "Hızlı Giriş" : "Standart",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 3.5,
+          },
+        },
+
+        // ── 5. Firma & Diğer Detaylar ──
+        {
+          key: "FIRMA",
+          label: "Üretici Firma",
+          value: oItem.ureticiFirma || "Atölye",
+          badge: "FİRMA",
+          icon: "🏢",
+          category: "Diğer Bilgiler",
+          element: {
+            type: "field",
+            fieldKey: "FIRMA",
+            text: oItem.ureticiFirma || "Atölye",
+            fontSize: 7,
+            color: "#64748b",
+            textAlign: "left",
+            width: 20,
+            height: 4,
+          },
+        },
+        {
+          key: "BANKO",
+          label: "Banko / Vitrin",
+          value: oItem.banko || "Vitrin",
+          badge: "KONUM",
+          icon: "📍",
+          category: "Diğer Bilgiler",
+          element: {
+            type: "field",
+            fieldKey: "BANKO",
+            text: `Banko: ${oItem.banko || "-"}`,
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 4,
+          },
+        },
+        {
+          key: "TARIH",
+          label: "Kayıt Tarihi",
+          value: oItem.tarih ? new Date(oItem.tarih).toLocaleDateString("tr-TR") : new Date().toLocaleDateString("tr-TR"),
+          badge: "TARİH",
+          icon: "📅",
+          category: "Diğer Bilgiler",
+          element: {
+            type: "field",
+            fieldKey: "TARIH",
+            text: oItem.tarih ? new Date(oItem.tarih).toLocaleDateString("tr-TR") : new Date().toLocaleDateString("tr-TR"),
+            fontSize: 6.5,
+            color: "#94a3b8",
+            textAlign: "left",
+            width: 16,
+            height: 3.5,
+          },
+        },
+        {
+          key: "DURUM",
+          label: "Stok Durumu",
+          value: oItem.satildi ? "Satıldı" : "Stokta",
+          badge: "DURUM",
+          icon: "📦",
+          category: "Diğer Bilgiler",
+          element: {
+            type: "field",
+            fieldKey: "DURUM",
+            text: oItem.satildi ? "Satıldı" : "Stokta",
+            fontSize: 6.5,
+            fontWeight: "bold",
+            color: oItem.satildi ? "#dc2626" : "#16a34a",
+            textAlign: "left",
+            width: 14,
+            height: 3.5,
+          },
+        },
+        {
+          key: "YAZDIRILDI",
+          label: "Yazdırma Durumu",
+          value: oItem.yazdirildi ? "Yazdırıldı" : "Yazdırılmadı",
+          badge: "DURUM",
+          icon: "🖨️",
+          category: "Diğer Bilgiler",
+          element: {
+            type: "field",
+            fieldKey: "YAZDIRILDI",
+            text: oItem.yazdirildi ? "Yazdırıldı" : "Yazdırılmadı",
+            fontSize: 6.5,
+            color: "#64748b",
+            textAlign: "left",
+            width: 16,
+            height: 3.5,
+          },
+        },
+      ];
+
+      if (oItem.resim || (oItem.resimler && oItem.resimler[0])) {
+        const img = oItem.resim || oItem.resimler![0];
+        fields.push({
+          key: "RESIM_ELEM",
+          label: "Ürün Fotoğrafı",
+          value: "Görsel",
+          badge: "FOTO",
+          icon: "🖼️",
+          category: "Diğer Bilgiler",
+          element: {
+            type: "image",
+            imageData: img,
+            width: 14,
+            height: 10,
+            text: oItem.modelOzellik1 || "Pırlanta Görseli",
+          },
+        });
+      }
+      return fields;
+    }
+  }, [selectedProduct]);
+
+  // Şablondaki tüm alanları seçili ürünün verileriyle güncelle
+  const handleApplyProductToTemplate = () => {
+    if (!selectedProduct) return;
+    const barcodeVal = selectedProduct.barkod || `${selectedProduct.grupKodu}${String(selectedProduct.urunNo).padStart(3, "0")}`;
+    const isAltin = "altinUrunId" in selectedProduct;
+    const aItem = selectedProduct as AltinUrunItem;
+    const oItem = selectedProduct as OzelUrunItem;
+
+    const ayarStr = isAltin
+      ? (aItem.ayar ? `${aItem.ayar} (${aItem.ayar.includes("22") ? "916" : aItem.ayar.includes("14") ? "585" : aItem.ayar.includes("18") ? "750" : "995"})` : "22K (916)")
+      : (oItem.ayar || "18K (750)");
+    const modelStr = isAltin
+      ? (aItem.model || "Altın Ürün")
+      : (oItem.modelOzellik1 || oItem.modelOzellik2 || oItem.mamulTipi || "Özel Ürün");
+    const gramStr = isAltin
+      ? `${aItem.miktar || 0} gr`
+      : `${oItem.miktar || 0} ${oItem.miktarBirimi || "gr"}`;
+    const hasGramStr = isAltin && aItem.hasGram
+      ? `${Number(aItem.hasGram).toFixed(4)} Has`
+      : "";
+    const fiyatStr = isAltin
+      ? (aItem.satisFiyati ? `₺${Number(aItem.satisFiyati).toLocaleString("tr-TR")}` : "₺0.00")
+      : (oItem.satisFiyati ? `${oItem.satisParaKodu || "USD"} ${Number(oItem.satisFiyati).toLocaleString("tr-TR")}` : "0 USD");
+    const iscilikStr = isAltin
+      ? (aItem.satisIscilik ? `₺${aItem.satisIscilik}/g` : aItem.maliyetIscilik ? `${aItem.maliyetIscilik} ${aItem.maliyetIscilikParaKodu || "USD"}` : "")
+      : (oItem.maliyet ? `Maliyet: ${oItem.maliyet} ${oItem.maliyetParaKodu || "USD"}` : "");
+    const firmaStr = (isAltin ? aItem.ureticiFirma : oItem.ureticiFirma) || "Atölye";
+    const bankoStr = (isAltin ? aItem.banko : oItem.banko) || "Vitrin";
+    const grupNoStr = `${selectedProduct.grupKodu}-${String(selectedProduct.urunNo).padStart(3, "0")}`;
+    const tarihStr = selectedProduct.tarih ? new Date(selectedProduct.tarih).toLocaleDateString("tr-TR") : new Date().toLocaleDateString("tr-TR");
+    const tasStr = !isAltin ? `${oItem.tasCinsi || "Pırlanta"} ${oItem.tasMiktar ? oItem.tasMiktar + " " + (oItem.tasBirim || "Ct") : ""}`.trim() : "";
+    const berraklikStr = !isAltin ? `${oItem.tasRenk || "F"} / ${oItem.tasSaflik || "VS1"}` : "";
+    const imgData = isAltin ? (aItem.resim || (aItem.resimler && aItem.resimler[0])) : (oItem.resim || (oItem.resimler && oItem.resimler[0]));
+
+    dispatch({ type: "PUSH_HISTORY" });
+    const updated = elements.map((el) => {
+      if (el.type === "barcode" || el.type === "qr") {
+        return {
+          ...el,
+          barcodeValue: barcodeVal,
+          barcodeText: barcodeVal,
+        };
+      }
+      if (el.type === "image" && imgData) {
+        return {
+          ...el,
+          imageData: imgData,
+        };
+      }
+      if (el.type === "field" || el.type === "text") {
+        const k = (el.fieldKey || "").toUpperCase();
+        const t = (el.text || "").toLowerCase().trim();
+
+        // 1. Barkod
+        if (k === "BARKOD" || k === "BARCODE" || k === "BARKOD_NO" || k === "BARCODE_NO" || t.includes("barkod") || /^[0-9]{8,15}$/.test(t)) {
+          return { ...el, text: barcodeVal, fieldKey: "BARKOD" };
+        }
+        // 2. Model / Ürün Adı
+        if (k === "URUN_ADI" || k === "MODEL" || k === "MAMUL" || k === "AD" || k === "TANIM" || t.includes("yüzük") || t.includes("bilezik") || t.includes("kolye") || t.includes("tektaş") || t.includes("set") || t.includes("küpe") || t.includes("zincir") || t.includes("ürün") || t.includes("model")) {
+          return { ...el, text: modelStr, fieldKey: "URUN_ADI" };
+        }
+        // 3. Ayar / Milyem
+        if (k === "AYAR" || k === "MILYEM" || k === "KARAT" || t.includes("ayar") || t.includes("14k") || t.includes("22k") || t.includes("18k") || t.includes("24k") || t.includes("8k") || t === "585" || t === "916" || t === "750" || t.includes("585") || t.includes("916") || t.includes("750")) {
+          return { ...el, text: ayarStr, fieldKey: "AYAR" };
+        }
+        // 4. Gramaj / Miktar
+        if (k === "GRAM" || k === "MIKTAR" || k === "AGIRLIK" || k === "WEIGHT" || t.includes("gr") || t.includes("gram") || /^[0-9]+[.,][0-9]+\s*(gr|g)?$/i.test(t)) {
+          return { ...el, text: gramStr, fieldKey: "GRAM" };
+        }
+        // 5. Has Gram
+        if (k === "HAS_GRAM" || k === "HAS" || t.includes("has")) {
+          return { ...el, text: hasGramStr || el.text, fieldKey: "HAS_GRAM" };
+        }
+        // 6. Satış Fiyatı
+        if (k === "FIYAT" || k === "SATIS_FIYATI" || k === "PRICE" || t.includes("₺") || t.includes("$") || t.includes("usd") || t.includes("eur") || t.includes("fiyat") || t.includes("tl")) {
+          return { ...el, text: fiyatStr, fieldKey: "FIYAT" };
+        }
+        // 7. İşçilik / Maliyet
+        if (k === "ISCILIK" || k === "MALIYET" || t.includes("işçilik") || t.includes("iscilik") || t.includes("maliyet")) {
+          return { ...el, text: iscilikStr || el.text, fieldKey: "ISCILIK" };
+        }
+        // 8. Taş Cinsi & Karat
+        if (k === "TAS_CINSI" || k === "TAS" || k === "KARAT" || k === "CT" || t.includes("ct") || t.includes("karat") || t.includes("pırlanta") || t.includes("elmas") || t.includes("zümrüt")) {
+          return { ...el, text: tasStr || el.text, fieldKey: "TAS_CINSI" };
+        }
+        // 9. Taş Berraklık & Renk
+        if (k === "TAS_BERRAKLIK" || k === "RENK" || k === "SAFLIK" || k === "BERRAKLIK" || t.includes("vs1") || t.includes("vs2") || t.includes("si1") || t.includes("vvs") || t.includes("f-vs") || t.includes("f / vs")) {
+          return { ...el, text: berraklikStr || el.text, fieldKey: "TAS_BERRAKLIK" };
+        }
+        // 10. Firma / Atölye
+        if (k === "FIRMA" || k === "URETICI" || k === "ATOLYE" || t.includes("atölye") || t.includes("firma") || t.includes("altınbaş") || t.includes("atasay")) {
+          return { ...el, text: firmaStr, fieldKey: "FIRMA" };
+        }
+        // 11. Banko
+        if (k === "BANKO" || k === "VITRIN" || k === "KONUM" || t.includes("banko") || t.includes("vitrin")) {
+          return { ...el, text: `Banko: ${bankoStr}`, fieldKey: "BANKO" };
+        }
+        // 12. Grup & Ürün No
+        if (k === "GRUP_URUN_NO" || k === "GRUP_NO" || k === "KOD" || /^[a-z0-9]+-[0-9]+$/i.test(t)) {
+          return { ...el, text: grupNoStr, fieldKey: "GRUP_URUN_NO" };
+        }
+        // 13. Tarih
+        if (k === "TARIH" || k === "DATE" || /^[0-9]{2}\.[0-9]{2}\.[0-9]{4}$/.test(t)) {
+          return { ...el, text: tarihStr, fieldKey: "TARIH" };
+        }
+      }
+      return el;
+    });
+    dispatch({ type: "SET_ELEMENTS", elements: updated });
+  };
+
+  // Filtrelenmiş Ürün Listesi (Lookup Modal İçin)
+  const filteredProductsForLookup = useMemo(() => {
+    const list = productType === "altin" ? altinUrunlerList : ozelUrunlerList;
+    if (!productLookupFilter.trim()) return list;
+    const q = productLookupFilter.toLowerCase().trim();
+    return list.filter((p) => {
+      const isA = "altinUrunId" in p;
+      const bc = (p.barkod || `${p.grupKodu}${String(p.urunNo).padStart(3, "0")}`).toLowerCase();
+      const model = isA ? (p.model || "").toLowerCase() : (p.modelOzellik1 || p.mamulTipi || "").toLowerCase();
+      const grup = `${p.grupKodu}-${p.urunNo}`.toLowerCase();
+      const ayar = (p.ayar || "").toLowerCase();
+      const firma = (p.ureticiFirma || "").toLowerCase();
+      return bc.includes(q) || model.includes(q) || grup.includes(q) || ayar.includes(q) || firma.includes(q);
+    });
+  }, [productType, altinUrunlerList, ozelUrunlerList, productLookupFilter]);
+
   // ─── Seçili Elemanlar ──────────────────────────────────────────────────────
 
   const selectedElements = useMemo(
@@ -4795,7 +6381,7 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
   const handleSave = handleQuickSave;
 
-  // ─── Kaydet ve Çıktı Al (Tek Tık: Önce Kaydet, Ardından Yazdır) ─────────────
+  // ─── Kaydet ve Çıktı Al (Tek Tık: Önce Kaydet, Ardından Yazdır / F10) ─────
   const handleSaveAndPrint = async () => {
     const nameToSave = sablonAdi.trim() || activeSablon?.ad || "";
     if (!nameToSave) {
@@ -4803,7 +6389,18 @@ const UrunEtiketTasarimiPage: React.FC = () => {
       return;
     }
     await handleQuickSave();
-    handleDirectPrint();
+
+    try {
+      const title = sablonAdi ? `${sablonAdi} - Etiket Baskı` : "Etiket Baskı";
+      const singleLabelHtml = await buildSingleLabelHtml(labelConfig, elements);
+      triggerSilentPrint({
+        html: singleLabelHtml,
+        isPos: true,
+        title: title,
+      });
+    } catch {
+      handleDirectPrint();
+    }
   };
 
   const handleSaveAndPrintRef = useRef(handleSaveAndPrint);
@@ -5688,6 +7285,239 @@ const UrunEtiketTasarimiPage: React.FC = () => {
                 {/* ── 2. BİLEŞENLER & ŞEKİLLER KATEGORİSİ ── */}
                 {canvaCategory === "elements" && (
                   <>
+                    {/* ── Ürün & Barkod Seçimi Bölümü ── */}
+                    <div className="product-picker-container" style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8, padding: 10, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 700, fontSize: 12, color: "#0f172a" }}>
+                          <span>📦</span>
+                          <span>Ürün & Barkod Seçimi</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 3 }}>
+                          <button
+                            type="button"
+                            className={`btn btn-xs ${productType === "altin" ? "btn-warning text-dark fw-bold" : "btn-light text-muted"}`}
+                            style={{ fontSize: 10, padding: "2px 6px" }}
+                            onClick={() => { setProductType("altin"); setSelectedProduct(null); }}
+                          >
+                            Altın
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-xs ${productType === "ozel" ? "btn-primary text-white fw-bold" : "btn-light text-muted"}`}
+                            style={{ fontSize: 10, padding: "2px 6px" }}
+                            onClick={() => { setProductType("ozel"); setSelectedProduct(null); }}
+                          >
+                            Özel / Pırlanta
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Arama Inputu ve Dürbün Butonu */}
+                      <div style={{ display: "flex", gap: 5, marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          className="toolbar-input"
+                          style={{ flex: 1, padding: "5px 8px", fontSize: 11 }}
+                          placeholder={productType === "altin" ? "Barkod veya Model ara (↓ / ↑ / Enter)..." : "Barkod veya Model ara (↓ / ↑ / Enter)..."}
+                          value={productSearchTerm}
+                          onChange={(e) => setProductSearchTerm(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              handleNextProduct();
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              handlePrevProduct();
+                            } else if (e.key === "Enter") {
+                              setShowProductLookupModal(true);
+                              setProductLookupFilter(productSearchTerm);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1"
+                          style={{ padding: "4px 10px", fontSize: 11, fontWeight: 700 }}
+                          title="Ürün Listesinden Seç (F3 / Dürbün)"
+                          onClick={() => {
+                            setProductLookupFilter(productSearchTerm);
+                            setShowProductLookupModal(true);
+                          }}
+                        >
+                          <IconBinoculars size={14} />
+                          <span>Dürbün</span>
+                        </button>
+                      </div>
+
+                      {/* Ürün Seçilmemişse Dürbün ile Seçim Butonu */}
+                      {!selectedProduct && (
+                        <button
+                          type="button"
+                          className="elem-btn"
+                          style={{
+                            width: "100%",
+                            background: "rgba(56, 189, 248, 0.1)",
+                            borderColor: "rgba(56, 189, 248, 0.4)",
+                            color: "#0284c7",
+                            padding: "7px 8px",
+                            marginBottom: 8,
+                          }}
+                          onClick={() => {
+                            setProductLookupFilter(productSearchTerm);
+                            setShowProductLookupModal(true);
+                          }}
+                        >
+                          <IconBinoculars size={15} color="#0284c7" />
+                          <div style={{ textAlign: "left", flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 11 }}>🔍 Ürün Listesinden Seç (Dürbün / F3)</div>
+                            <div style={{ fontSize: 9, color: "#64748b" }}>
+                              {productType === "altin" ? `Kayıtlı ${altinUrunlerList.length} altın ürün (↓ / ↑ ile gezebilirsiniz)` : `Kayıtlı ${ozelUrunlerList.length} özel ürün (↓ / ↑ ile gezebilirsiniz)`}
+                            </div>
+                          </div>
+                        </button>
+                      )}
+
+                      {/* Seçili Ürün Kartı */}
+                      {selectedProduct && (
+                        <div style={{ background: "linear-gradient(135deg, #fefce8 0%, #fef3c7 100%)", border: "1px solid #fde047", borderRadius: 6, padding: 8, marginBottom: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 5 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 11.5, color: "#854d0e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {"altinUrunId" in selectedProduct ? (selectedProduct.model || "Altın Ürün") : (selectedProduct.modelOzellik1 || selectedProduct.mamulTipi || "Özel Ürün")}
+                              </div>
+                              <div style={{ fontSize: 10, color: "#a16207" }}>
+                                Barkod: <strong>{selectedProduct.barkod || `${selectedProduct.grupKodu}${String(selectedProduct.urunNo).padStart(3, "0")}`}</strong>
+                                {" • "}{selectedProduct.ayar || ""}{" • "}{"altinUrunId" in selectedProduct ? `${selectedProduct.miktar || 0} gr` : `${selectedProduct.tasCinsi || ""} ${selectedProduct.tasMiktar || ""}`}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", padding: 2 }}
+                              title="Seçimi Kaldır"
+                              onClick={() => setSelectedProduct(null)}
+                            >
+                              <IconX size={14} />
+                            </button>
+                          </div>
+
+                          {/* Önceki / Sonraki Gezinme ve Doldurma Butonları */}
+                          <div style={{ display: "flex", gap: 4, marginTop: 6, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              className="btn btn-xs btn-outline-secondary d-flex align-items-center justify-content-center bg-white shadow-sm"
+                              style={{ padding: "3px 6px", fontSize: 10, fontWeight: 700 }}
+                              title="Önceki Ürüne Geç (Yukarı Ok)"
+                              onClick={handlePrevProduct}
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-xs btn-outline-secondary d-flex align-items-center justify-content-center bg-white shadow-sm"
+                              style={{ padding: "3px 6px", fontSize: 10, fontWeight: 700 }}
+                              title="Sonraki Ürüne Geç (Aşağı Ok)"
+                              onClick={handleNextProduct}
+                            >
+                              ▼
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-xs btn-warning text-dark fw-bold d-flex align-items-center justify-content-center gap-1 flex-fill shadow-sm"
+                              style={{ fontSize: 10, padding: "4px 6px" }}
+                              onClick={handleApplyProductToTemplate}
+                              title="Şablondaki tüm barkod ve alanları bu ürünün değerleriyle doldurur"
+                            >
+                              <span>⚡ Şablondaki Alanları Doldur</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sürüklenebilir Alanlar Listesi (Draggable Product Fields) */}
+                      {selectedProduct && (
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span>👇 Sürüklenebilir Alanlar ({productFields.length})</span>
+                            <span style={{ color: "#0284c7", fontSize: 9.5 }}>Tıkla / Sürükle</span>
+                          </div>
+
+                          {/* Hızlı Alan Arama */}
+                          <div style={{ marginBottom: 6 }}>
+                            <input
+                              type="text"
+                              className="form-control form-control-xs"
+                              placeholder="Alan ara (Ayar, Has, Fiyat, Taş...)"
+                              value={productDraggableFilter}
+                              onChange={(e) => setProductDraggableFilter(e.target.value)}
+                              style={{ fontSize: 10, padding: "3px 6px", background: "#f8fafc", borderRadius: 4 }}
+                            />
+                          </div>
+
+                          {/* Alanlar Listesi */}
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 4,
+                              maxHeight: 360,
+                              overflowY: "auto",
+                              paddingRight: 2,
+                            }}
+                          >
+                            {productFields
+                              .filter((f) => {
+                                if (!productDraggableFilter) return true;
+                                const q = productDraggableFilter.toLowerCase();
+                                return (
+                                  f.label.toLowerCase().includes(q) ||
+                                  f.value.toLowerCase().includes(q) ||
+                                  f.badge.toLowerCase().includes(q) ||
+                                  (f.category && f.category.toLowerCase().includes(q))
+                                );
+                              })
+                              .map((f) => (
+                                <div
+                                  key={f.key}
+                                  draggable={true}
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData("application/json", JSON.stringify(f.element));
+                                    e.dataTransfer.effectAllowed = "copy";
+                                  }}
+                                  onClick={() => addElement(f.element as any)}
+                                  className="product-field-drag-item"
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    padding: "5px 7px",
+                                    background: "#f8fafc",
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 5,
+                                    cursor: "grab",
+                                    fontSize: 10.5,
+                                    transition: "all 0.15s ease",
+                                  }}
+                                  title="Etikete sürükleyin veya tıklayarak ekleyin"
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                                    <span style={{ fontSize: 13 }}>{f.icon}</span>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontWeight: 600, color: "#1e293b", fontSize: 10 }}>{f.label}</div>
+                                      <div style={{ fontSize: 9.5, color: "#0284c7", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {f.value || "-"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span style={{ fontSize: 8.5, background: "#e0f2fe", color: "#0369a1", padding: "1px 5px", borderRadius: 3, fontWeight: 700, whiteSpace: "nowrap" }}>
+                                    {f.badge}
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="panel-section-title">
                       <span>🔷 Geometrik Şekiller</span>
                       <span className="drag-hint-pill">Tıkla / Sürükle</span>
@@ -8714,6 +10544,138 @@ const UrunEtiketTasarimiPage: React.FC = () => {
             Kapat
           </button>
         </Modal.Footer>
+      </Modal>
+      {/* ── 🔍 ÜRÜN SEÇİM MODALI (TODVZ_ALTIN_URUN & TODVZ_OZEL_URUN) ── */}
+      <Modal
+        show={showProductLookupModal}
+        onHide={() => setShowProductLookupModal(false)}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton style={{ background: "#0f172a", color: "#f8fafc" }}>
+          <Modal.Title style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}>
+            <IconBinoculars size={18} color="#38bdf8" />
+            <span>{productType === "altin" ? "Altın Ürün Listesi & Barkod Seçimi" : "Özel / Pırlanta Ürün Listesi & Barkod Seçimi"}</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={{ background: "#f8fafc" }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input
+              type="text"
+              className="form-control form-control-sm"
+              placeholder="Barkod, model, grup kodu veya ayar ile arayın (Aşağı/Yukarı Ok ile gezin, Enter ile seçin)..."
+              value={productLookupFilter}
+              onChange={(e) => setProductLookupFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setLookupSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, filteredProductsForLookup.length - 1)));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setLookupSelectedIndex((prev) => Math.max(prev - 1, 0));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (filteredProductsForLookup[lookupSelectedIndex]) {
+                    setSelectedProduct(filteredProductsForLookup[lookupSelectedIndex]);
+                    setShowProductLookupModal(false);
+                  }
+                }
+              }}
+              autoFocus
+            />
+            <div className="btn-group btn-group-sm">
+              <button
+                type="button"
+                className={`btn ${productType === "altin" ? "btn-warning text-dark fw-bold" : "btn-outline-secondary"}`}
+                onClick={() => setProductType("altin")}
+              >
+                Altın Ürünler
+              </button>
+              <button
+                type="button"
+                className={`btn ${productType === "ozel" ? "btn-primary text-white fw-bold" : "btn-outline-secondary"}`}
+                onClick={() => setProductType("ozel")}
+              >
+                Özel / Pırlanta
+              </button>
+            </div>
+          </div>
+
+          <div style={{ maxHeight: 380, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 6, background: "#ffffff" }}>
+            <Table hover responsive size="sm" className="mb-0" style={{ fontSize: 12 }}>
+              <thead style={{ background: "#f1f5f9", position: "sticky", top: 0, zIndex: 2 }}>
+                <tr>
+                  <th>Barkod</th>
+                  <th>Grup-No</th>
+                  <th>Model / Tanım</th>
+                  <th>Ayar</th>
+                  <th>Miktar / Gram</th>
+                  <th>Fiyat</th>
+                  <th>Firma / Atölye</th>
+                  <th>İşlem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProductsForLookup.map((p, idx) => {
+                  const id = "altinUrunId" in p ? p.altinUrunId : p.ozelUrunId;
+                  const bc = p.barkod || `${p.grupKodu}${String(p.urunNo).padStart(3, "0")}`;
+                  const isA = "altinUrunId" in p;
+                  const modelTitle = isA ? (p.model || "-") : (p.modelOzellik1 || p.mamulTipi || "-");
+                  const gram = isA ? `${p.miktar || 0} gr` : `${p.miktar || 0} ${p.miktarBirimi || "gr"}`;
+                  const fiyat = isA ? (p.satisFiyati ? `₺${Number(p.satisFiyati).toLocaleString("tr-TR")}` : "-") : (p.satisFiyati ? `${p.satisParaKodu || "USD"} ${Number(p.satisFiyati).toLocaleString("tr-TR")}` : "-");
+                  const isHighlighted = idx === lookupSelectedIndex;
+
+                  return (
+                    <tr
+                      key={id}
+                      ref={isHighlighted ? (node) => { highlightedRowRef.current = node; } : undefined}
+                      style={{
+                        cursor: "pointer",
+                        backgroundColor: isHighlighted ? "#dbeafe" : undefined,
+                        boxShadow: isHighlighted ? "inset 0 0 0 1px #2563eb" : undefined,
+                        fontWeight: isHighlighted ? 600 : "normal",
+                      }}
+                      onClick={() => {
+                        setSelectedProduct(p);
+                        setShowProductLookupModal(false);
+                      }}
+                      onMouseEnter={() => setLookupSelectedIndex(idx)}
+                    >
+                      <td><Badge bg={isHighlighted ? "primary" : "secondary"} style={{ fontFamily: "monospace" }}>{bc}</Badge></td>
+                      <td><strong>{p.grupKodu}-{p.urunNo}</strong></td>
+                      <td>{modelTitle}</td>
+                      <td><Badge bg="warning" text="dark">{p.ayar || "-"}</Badge></td>
+                      <td><strong>{gram}</strong></td>
+                      <td style={{ color: "#166534", fontWeight: 700 }}>{fiyat}</td>
+                      <td style={{ color: "#64748b" }}>{p.ureticiFirma || "-"}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={`btn btn-xs ${isHighlighted ? "btn-primary shadow-sm" : "btn-outline-primary"} py-0 px-2`}
+                          style={{ fontSize: 11 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedProduct(p);
+                            setShowProductLookupModal(false);
+                          }}
+                        >
+                          Seç
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredProductsForLookup.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="text-center py-4 text-muted">
+                      Arama kriterine uygun ürün bulunamadı.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
       </Modal>
     </div>
   );

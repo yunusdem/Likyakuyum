@@ -30,7 +30,17 @@ import {
 } from "../../services/iskontoService";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
-export const IskontoDefinitionsPage: React.FC = () => {
+export interface IskontoDefinitionsPageProps {
+  isModal?: boolean;
+  onSuccess?: (item?: IskontoItem) => void;
+  onCancel?: () => void;
+}
+
+export const IskontoDefinitionsPage: React.FC<IskontoDefinitionsPageProps> = ({
+  isModal = false,
+  onSuccess,
+  onCancel,
+}) => {
   const location = useLocation();
 
   // ─── State: İskonto Kartı (TODVZ_ISKONTO) ──────────────────────────────────
@@ -247,6 +257,10 @@ export const IskontoDefinitionsPage: React.FC = () => {
 
       // Kayıt eklendikten sonra tüm alanları sıfırla ve yeni kayda hazırla
       handleNew();
+
+      if (isModal && onSuccess) {
+        onSuccess(saved || undefined);
+      }
 
       return saved || null;
     } catch (err: any) {

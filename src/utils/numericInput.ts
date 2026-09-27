@@ -25,6 +25,45 @@ export function onlyDecimal(val: string | number | undefined | null): string {
 }
 
 /**
+ * Başında nokta veya virgül olan ondalık sayıların başına 0 ekler (,35 -> 0,35)
+ */
+export function normalizeDecimalInput(val: string | number | undefined | null): string {
+  if (val === undefined || val === null) return "";
+  const str = String(val).trim();
+  if (str.startsWith(",") || str.startsWith(".")) {
+    return "0" + str;
+  }
+  return str;
+}
+
+export const isDittoKey = (e: KeyboardEvent | React.KeyboardEvent): boolean => {
+  const k = e.key;
+  if (
+    k === '"' ||
+    k === '“' ||
+    k === '”' ||
+    k === '„' ||
+    k === '«' ||
+    k === '»' ||
+    k === 'é' ||
+    k === 'É' ||
+    k === '`' ||
+    k === '´' ||
+    k === '§'
+  ) {
+    return true;
+  }
+  const code = (e as any).code;
+  if (code === "Backquote") return true;
+  if (code === "Digit2" && e.shiftKey) return true;
+  const kc = (e as any).keyCode;
+  if ((kc === 222 || kc === 192) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    return true;
+  }
+  return false;
+};
+
+/**
  * onKeyDown olayında harf girilmesini doğrudan engeller.
  * Sadece rakam, Backspace, Tab, Delete, Arrow, Enter ve Ctrl/Cmd kombinasyonlarına izin verir.
  */
@@ -32,6 +71,8 @@ export function blockNonNumericKeys(
   e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   allowDecimal: boolean = false
 ) {
+  if (isDittoKey(e)) return;
+
   const allowedControlKeys = [
     "Backspace",
     "Tab",
@@ -132,6 +173,9 @@ export function initGlobalNumericInputInterceptor() {
       const { isNumeric, allowDecimal } = isNumericTarget(target);
       if (!isNumeric) return;
 
+      // Allow ditto key in tables without blocking
+      if (isDittoKey(e)) return;
+
       const allowedControlKeys = [
         "Backspace",
         "Tab",
@@ -212,6 +256,36 @@ export function initGlobalNumericInputInterceptor() {
         input.setSelectionRange(start + cleanText.length, start + cleanText.length);
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    },
+    true
+  );
+
+  // 3. Blur listener (e.g. ,35 or .35 becomes 0,35 or 0.35 when leaving the field)
+  window.addEventListener(
+    "blur",
+    (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+        return;
+      }
+      const { isNumeric, allowDecimal } = isNumericTarget(target);
+      if (!isNumeric || !allowDecimal) return;
+
+      const val = target.value;
+      if (!val) return;
+
+      const trimmed = val.trim();
+      if (trimmed.startsWith(",") || trimmed.startsWith(".")) {
+        const newVal = "0" + trimmed;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+        const tracker = (target as any)._valueTracker;
+        if (tracker) tracker.setValue("");
+        if (setter) setter.call(target, newVal);
+        else target.value = newVal;
+
+        target.dispatchEvent(new Event("input", { bubbles: true }));
+        target.dispatchEvent(new Event("change", { bubbles: true }));
       }
     },
     true

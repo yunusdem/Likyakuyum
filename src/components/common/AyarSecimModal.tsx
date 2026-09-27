@@ -16,6 +16,7 @@ interface AyarSecimModalProps {
   onHide: () => void;
   onSelect: (ayar: AyarItem) => void;
   selectedAyarKodu?: string;
+  initialSearch?: string;
 }
 
 export const AyarSecimModal: React.FC<AyarSecimModalProps> = ({
@@ -23,10 +24,11 @@ export const AyarSecimModal: React.FC<AyarSecimModalProps> = ({
   onHide,
   onSelect,
   selectedAyarKodu,
+  initialSearch = "",
 }) => {
   const [ayarlar, setAyarlar] = useState<AyarItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>(initialSearch || "");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   // Form State for Add / Edit
@@ -67,14 +69,18 @@ export const AyarSecimModal: React.FC<AyarSecimModalProps> = ({
 
   useEffect(() => {
     if (show) {
+      setSearchTerm(initialSearch || "");
       loadAyarlar();
       setShowForm(false);
       setAlertInfo(null);
       setTimeout(() => {
-        if (searchInputRef.current) searchInputRef.current.focus();
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+          if (initialSearch) searchInputRef.current.select();
+        }
       }, 150);
     }
-  }, [show]);
+  }, [show, initialSearch]);
 
   // Filtered Ayarlar
   const filteredAyarlar = useMemo(() => {

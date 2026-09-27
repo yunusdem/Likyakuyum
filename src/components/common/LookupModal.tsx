@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Modal, Form, InputGroup, Table, Button, Spinner, Badge } from "react-bootstrap";
-import { IconSearch, IconBinoculars, IconX, IconCheck } from "@tabler/icons-react";
+import { IconSearch, IconBinoculars, IconX, IconCheck, IconPlus } from "@tabler/icons-react";
 
 export interface LookupColumn<T> {
   header: string;
@@ -21,9 +21,15 @@ export interface LookupModalProps<T> {
   columns: LookupColumn<T>[];
   filterFn: (item: T, term: string) => boolean;
   onSelect: (item: T) => void;
+  onAddNew?: () => void;
+  addNewLabel?: string;
+  isItemDisabled?: (item: T) => boolean;
+  renderDetail?: (item: T) => React.ReactNode;
 }
 
-export function LookupModal<T extends Record<string, any>>({
+const MAX_DISPLAY_COUNT = 150;
+
+function LookupModalContent<T extends Record<string, any>>({
   show,
   onHide,
   title,
@@ -35,13 +41,23 @@ export function LookupModal<T extends Record<string, any>>({
   columns,
   filterFn,
   onSelect,
+  onAddNew,
+  addNewLabel = "Yeni Kayıt",
+  isItemDisabled,
+  renderDetail,
 }: LookupModalProps<T>) {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
-  const getItemId = (it: any): string => {
+  useEffect(() => {
+    if (show) {
+      setSearchTerm(initialSearchTerm || "");
+    }
+  }, [show, initialSearchTerm]);
+
+  const getItemId = useCallback((it: any): string => {
     if (!it) return "";
     if (it.sarrafFisiId !== undefined && it.sarrafFisiId !== null) return `sarraf-${it.sarrafFisiId}`;
     if (it.altinUrunId !== undefined && it.altinUrunId !== null) return `altin-${it.altinUrunId}`;
@@ -63,119 +79,131 @@ export function LookupModal<T extends Record<string, any>>({
     if (it.kod !== undefined && it.kod !== null) return `kod-${it.kod}`;
     if (it.code !== undefined && it.code !== null) return `code-${it.code}`;
     return "";
-  };
+  }, []);
 
   const filteredItems = useMemo(() => {
     if (!searchTerm.trim()) return items;
     return items.filter((item) => filterFn(item, searchTerm.trim()));
   }, [items, searchTerm, filterFn]);
 
-  const prevShowRef = useRef(false);
+  const displayItems = useMemo(() => {
+    return filteredItems.slice(0, MAX_DISPLAY_COUNT);
+  }, [filteredItems]);
 
-  // Reset search term and pre-select item matching selectedId only once when modal opens
+  // Initial selection and focus on modal open
   useEffect(() => {
-    if (show && !prevShowRef.current) {
-      const term = initialSearchTerm || "";
-      setSearchTerm(term);
-
-      const activeList = term.trim() ? items.filter((item) => filterFn(item, term.trim())) : items;
-      if (selectedId !== undefined && selectedId !== null && activeList && activeList.length > 0) {
-        const foundIdx = activeList.findIndex((it: any) => {
-          if (it.sarrafFisiId !== undefined && (it.sarrafFisiId === selectedId || String(it.sarrafFisiId) === String(selectedId))) return true;
-          if (it.id !== undefined && (it.id === selectedId || String(it.id) === String(selectedId))) return true;
-          if (it.hesapId !== undefined && (it.hesapId === selectedId || String(it.hesapId) === String(selectedId))) return true;
-          if (it.iskontoId !== undefined && (it.iskontoId === selectedId || String(it.iskontoId) === String(selectedId))) return true;
-          if (it.kod !== undefined && String(it.kod) === String(selectedId)) return true;
-          if (it.code !== undefined && String(it.code) === String(selectedId)) return true;
-          if (it.ID !== undefined && (it.ID === selectedId || String(it.ID) === String(selectedId))) return true;
-          return false;
-        });
-        setSelectedIndex(foundIdx >= 0 ? foundIdx : 0);
-      } else {
-        setSelectedIndex(0);
-      }
-
-      setTimeout(() => {
-        if (searchInputRef.current) {
-          searchInputRef.current.focus();
-          if (term) {
-            searchInputRef.current.select();
-          }
-        }
-      }, 60);
+    if (selectedId !== undefined && selectedId !== null && filteredItems.length > 0) {
+      const foundIdx = filteredItems.findIndex((it: any) => {
+        if (it.sarrafFisiId !== undefined && (it.sarrafFisiId === selectedId || String(it.sarrafFisiId) === String(selectedId))) return true;
+        if (it.id !== undefined && (it.id === selectedId || String(it.id) === String(selectedId))) return true;
+        if (it.hesapId !== undefined && (it.hesapId === selectedId || String(it.hesapId) === String(selectedId))) return true;
+        if (it.iskontoId !== undefined && (it.iskontoId === selectedId || String(it.iskontoId) === String(selectedId))) return true;
+        if (it.kod !== undefined && String(it.kod) === String(selectedId)) return true;
+        if (it.code !== undefined && String(it.code) === String(selectedId)) return true;
+        if (it.ID !== undefined && (it.ID === selectedId || String(it.ID) === String(selectedId))) return true;
+        return false;
+      });
+      setSelectedIndex(foundIdx >= 0 && foundIdx < MAX_DISPLAY_COUNT ? foundIdx : 0);
+    } else {
+      setSelectedIndex(0);
     }
-    prevShowRef.current = show;
-  }, [show, selectedId, initialSearchTerm, items, filterFn]);
 
-  // Scroll selected row into view automatically (using auto to avoid jumping animation)
+    const t = setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        if (searchTerm) {
+          searchInputRef.current.select();
+        }
+      }
+    }, 40);
+
+    return () => clearTimeout(t);
+  }, []);
+
+  // Scroll selected row into view
   useEffect(() => {
-    if (show && rowRefs.current[selectedIndex]) {
+    if (rowRefs.current[selectedIndex]) {
       rowRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest", behavior: "auto" });
     }
-  }, [selectedIndex, show]);
+  }, [selectedIndex]);
 
-  // Single click: Select row (highlight blue), do not close modal
+  // Single click: Select row (highlight blue)
   const handleRowClick = (index: number) => {
     setSelectedIndex(index);
   };
 
-  // Double click: Confirm selection, populate form fields and close modal
+  // Double click: Confirm selection
   const handleRowDoubleClick = (item: T) => {
+    if (isItemDisabled?.(item)) return;
     onSelect(item);
     onHide();
   };
 
-  // Click on "Seç" button: immediately confirms selection, populates form fields and closes modal
+  // Click on "Seç" button
   const handleSecButtonClick = (e: React.MouseEvent, item: T) => {
     e.stopPropagation();
+    if (isItemDisabled?.(item)) return;
     onSelect(item);
     onHide();
   };
 
   // Confirm currently selected item
-  const handleConfirm = () => {
-    if (filteredItems.length > 0 && selectedIndex >= 0 && selectedIndex < filteredItems.length) {
-      onSelect(filteredItems[selectedIndex]);
+  const handleConfirm = useCallback(() => {
+    if (displayItems.length > 0 && selectedIndex >= 0 && selectedIndex < displayItems.length) {
+      const selected = displayItems[selectedIndex];
+      if (isItemDisabled?.(selected)) return;
+      onSelect(selected);
       onHide();
-    } else if (filteredItems.length > 0) {
-      onSelect(filteredItems[0]);
-      onHide();
+    } else if (displayItems.length > 0) {
+      const firstAvailable = displayItems.find((it) => !isItemDisabled?.(it));
+      if (firstAvailable) {
+        onSelect(firstAvailable);
+        onHide();
+      }
     }
-  };
+  }, [displayItems, selectedIndex, isItemDisabled, onSelect, onHide]);
 
-  // Keyboard navigation handler (ArrowUp, ArrowDown, Enter, Escape)
+  // Keyboard navigation handler (ArrowUp, ArrowDown, Enter, Escape, F-keys)
   useEffect(() => {
-    if (!show) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Herhangi bir F1..F12 tuşuna basıldığında açık modalı kapat ve eylemin üst sayfada işlenmesine izin ver
+      if (/^F([1-9]|1[0-2])$/.test(e.key)) {
+        onHide();
+        return;
+      }
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         setSelectedIndex((prev) => {
-          if (filteredItems.length === 0) return 0;
-          return prev < filteredItems.length - 1 ? prev + 1 : prev;
+          if (displayItems.length === 0) return 0;
+          return prev < displayItems.length - 1 ? prev + 1 : prev;
         });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         setSelectedIndex((prev) => {
-          if (filteredItems.length === 0) return 0;
+          if (displayItems.length === 0) return 0;
           return prev > 0 ? prev - 1 : 0;
         });
       } else if (e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         handleConfirm();
       } else if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         onHide();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [show, selectedIndex, filteredItems, onHide]);
+  }, [displayItems, handleConfirm, onHide]);
 
   return (
     <Modal
@@ -186,7 +214,6 @@ export function LookupModal<T extends Record<string, any>>({
       backdrop="static"
       keyboard={false}
       onEntered={() => {
-        // Safe focus after modal animation completes to avoid focus-trap flicker
         searchInputRef.current?.focus();
       }}
     >
@@ -232,7 +259,7 @@ export function LookupModal<T extends Record<string, any>>({
           <span>
             💡 <strong>İpucu:</strong> Satıra çift tıklayarak, <strong>Enter</strong> basarak veya <strong>Seç</strong> butonuyla doğrudan forma aktarabilirsiniz. (Yukarı/Aşağı tuşları ile gezinebilirsiniz)
           </span>
-          {filteredItems.length > 0 && selectedIndex >= 0 && selectedIndex < filteredItems.length && (
+          {displayItems.length > 0 && selectedIndex >= 0 && selectedIndex < displayItems.length && (
             <Badge bg="primary" className="py-1 px-2">
               1 satır seçildi
             </Badge>
@@ -268,7 +295,7 @@ export function LookupModal<T extends Record<string, any>>({
               <Spinner animation="border" size="sm" className="me-2" />
               Yükleniyor...
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : displayItems.length === 0 ? (
             <div className="p-4 text-center text-muted">
               {items.length === 0 ? "Kayıtlı veri bulunamadı." : "Arama kriterine uygun kayıt bulunamadı."}
             </div>
@@ -290,35 +317,39 @@ export function LookupModal<T extends Record<string, any>>({
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map((item, index) => {
+                {displayItems.map((item, index) => {
                   const itemId = getItemId(item);
                   const isSelected = index === selectedIndex;
+                  const isDisabled = Boolean(isItemDisabled?.(item));
 
                   return (
                     <tr
                       key={`lookup-row-${index}-${itemId || "item"}`}
                       ref={(el) => { rowRefs.current[index] = el; }}
-                      onClick={() => handleRowClick(index)}
-                      onDoubleClick={() => handleRowDoubleClick(item)}
-                      className={isSelected ? "lookup-selected-row fw-semibold" : ""}
+                      onClick={() => !isDisabled && handleRowClick(index)}
+                      onDoubleClick={() => !isDisabled && handleRowDoubleClick(item)}
+                      className={isSelected && !isDisabled ? "lookup-selected-row fw-semibold" : isDisabled ? "text-muted" : ""}
                       style={{
-                        cursor: "pointer",
+                        cursor: isDisabled ? "not-allowed" : "pointer",
+                        opacity: isDisabled ? 0.45 : 1,
+                        backgroundColor: isDisabled ? "#f8fafc" : undefined,
                       }}
+                      title={isDisabled ? "Bu ürün bu tabloda seçilemez" : undefined}
                     >
                       <td
                         className="text-center small"
                         style={{
-                          color: isSelected ? "#0369a1" : "#64748b",
+                          color: isDisabled ? "#94a3b8" : (isSelected ? "#0369a1" : "#64748b"),
                         }}
                       >
-                        {isSelected ? <IconCheck size={16} className="text-primary fw-bold" /> : index + 1}
+                        {isSelected && !isDisabled ? <IconCheck size={16} className="text-primary fw-bold" /> : index + 1}
                       </td>
                       {columns.map((col, colIdx) => (
                         <td
                           key={colIdx}
                           className={col.align === "center" ? "text-center" : col.align === "right" ? "text-end" : "text-start"}
                           style={{
-                            color: isSelected ? "#0c4a6e" : undefined,
+                            color: isDisabled ? "#94a3b8" : (isSelected ? "#0c4a6e" : undefined),
                           }}
                         >
                           {col.render(item)}
@@ -327,12 +358,13 @@ export function LookupModal<T extends Record<string, any>>({
                       <td className="text-center">
                         <Button
                           size="sm"
-                          variant={isSelected ? "primary" : "outline-secondary"}
-                          className={`py-0 px-2 fs-7 ${isSelected ? "fw-bold shadow-sm" : ""}`}
-                          onClick={(e) => handleSecButtonClick(e, item)}
-                          title="Bu kaydı seç ve aktar"
+                          disabled={isDisabled}
+                          variant={isDisabled ? "secondary" : (isSelected ? "primary" : "outline-secondary")}
+                          className={`py-0 px-2 fs-7 ${isSelected && !isDisabled ? "fw-bold shadow-sm" : ""}`}
+                          onClick={(e) => !isDisabled && handleSecButtonClick(e, item)}
+                          title={isDisabled ? "Bu ürün bu tabloda seçilemez" : "Bu kaydı seç ve aktar"}
                         >
-                          Seç
+                          {isDisabled ? "Pasif" : "Seç"}
                         </Button>
                       </td>
                     </tr>
@@ -342,20 +374,50 @@ export function LookupModal<T extends Record<string, any>>({
             </Table>
           )}
         </div>
+
+        {/* Detay Bölümü (varsa) */}
+        {renderDetail && selectedIndex !== null && displayItems[selectedIndex] && (
+          <div className="mt-2 p-2 rounded bg-light border" style={{ fontSize: "11.5px" }}>
+            {renderDetail(displayItems[selectedIndex])}
+          </div>
+        )}
       </Modal.Body>
       <Modal.Footer className="py-2 bg-light d-flex justify-content-between align-items-center">
         <span className="small text-muted">
-          Toplam: {filteredItems.length} kayıt
+          Toplam: {filteredItems.length} kayıt {filteredItems.length > MAX_DISPLAY_COUNT && `(İlk ${MAX_DISPLAY_COUNT} listeleniyor)`}
         </span>
-        <div className="d-flex gap-2">
-          <Button variant="secondary" size="sm" onClick={onHide}>
-            Kapat
+        <div className="d-flex gap-2 align-items-center">
+          {onAddNew && (
+            <Button
+              variant="success"
+              size="sm"
+              onClick={onAddNew}
+              className="d-flex align-items-center gap-1 fw-bold text-white shadow-xs"
+              style={{
+                fontSize: "12px",
+                height: "30px",
+                backgroundColor: "#16a34a",
+                borderColor: "#15803d",
+              }}
+            >
+              <IconPlus size={15} />
+              <span>{addNewLabel}</span>
+            </Button>
+          )}
+          <Button
+            variant="outline-secondary"
+            size="sm"
+            onClick={onHide}
+            style={{ fontSize: "12px", height: "30px" }}
+          >
+            Vazgeç (ESC)
           </Button>
           <Button
             variant="primary"
             size="sm"
-            disabled={selectedIndex === null || !filteredItems[selectedIndex]}
+            disabled={selectedIndex === null || !displayItems[selectedIndex]}
             onClick={handleConfirm}
+            style={{ fontSize: "12px", height: "30px" }}
           >
             Seçimi Onayla
           </Button>
@@ -363,6 +425,11 @@ export function LookupModal<T extends Record<string, any>>({
       </Modal.Footer>
     </Modal>
   );
+}
+
+export function LookupModal<T extends Record<string, any>>(props: LookupModalProps<T>) {
+  if (!props.show) return null;
+  return <LookupModalContent {...props} />;
 }
 
 export default LookupModal;

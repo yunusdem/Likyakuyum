@@ -370,11 +370,34 @@ export const VezneTransferiPage: React.FC = () => {
     field: "kod" | "miktar"
   ) => {
     const el = e.currentTarget as HTMLInputElement;
-    const len = el.value.length;
-    const selStart = el.selectionStart ?? 0;
-    const selEnd = el.selectionEnd ?? 0;
+    const len = el?.value?.length ?? 0;
+    const selStart = el?.selectionStart ?? 0;
+    const selEnd = el?.selectionEnd ?? 0;
     const isAtStart = selStart === 0 && selEnd === 0;
     const isAtEnd = selStart === len && selEnd === len;
+
+    // ESC altındaki " tuşuna basınca üst satırdaki hücre değerini kopyala (Sadece tablolarda geçerli)
+    if (e.key === '"' || e.key === '“' || e.key === '”' || e.key === '„' || e.key === '«' || e.key === '»' || e.key === 'é' || e.key === 'É' || e.key === '`' || e.key === '´' || e.key === '§' || e.code === "Backquote" || (e.code === "Digit2" && e.shiftKey) || e.keyCode === 222 || e.keyCode === 192) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (idx > 0) {
+        const prevRow = lines[idx - 1];
+        if (field === "kod") {
+          const prevKod = (prevRow.paraKodu || "").trim();
+          handleLineChange(idx, "paraKodu", prevKod);
+        } else if (field === "miktar") {
+          handleLineChange(idx, "miktar", prevRow.miktar ?? "");
+        }
+        setTimeout(() => {
+          const input = rowInputRefs.current[`${field}-${idx}`];
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        }, 20);
+      }
+      return;
+    }
 
     // Right Arrow: transition to next input when cursor reaches end of text
     if (e.key === "ArrowRight") {

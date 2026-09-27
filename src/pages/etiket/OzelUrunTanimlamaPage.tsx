@@ -38,6 +38,7 @@ import { AyarService, AyarItem } from "../../services/ayarService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
+import { triggerSilentPrint } from "../../services/silentPrintService";
 import { envConfig } from "../../config/env.config";
 
 export interface TasSatiri {
@@ -293,6 +294,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const modelRef = useRef<HTMLInputElement | null>(null);
   const bankoRef = useRef<HTMLInputElement | null>(null);
   const monturGramRef = useRef<HTMLInputElement | null>(null);
+  const monturAyarRef = useRef<HTMLInputElement | null>(null);
+  const monturIscilikRef = useRef<HTMLInputElement | null>(null);
 
   // Sağ Tık (Context Menu) State
   const [contextMenu, setContextMenu] = useState<{
@@ -1131,12 +1134,15 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [isDuzeltmeMode, ozelList, location.pathname, location.search]);
 
-  // ─── F1 / F10 Klavye Kısayolları ────────────────────────────────────────
+  // ─── F1 / F9 / F10 Klavye Kısayolları ────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "F1") {
         e.preventDefault();
         handleSave();
+      } else if (e.key === "F9") {
+        e.preventDefault();
+        handleDirectPrint();
       } else if (e.key === "F10") {
         e.preventDefault();
         handleSaveAndPrint();
@@ -1226,6 +1232,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         const matches = ozelList.filter((u) => u.grupKodu && u.grupKodu.toUpperCase() === val);
         if (matches.length === 1) {
           handleSelectRecord(matches[0]);
+          urunNoRef.current?.focus();
         } else {
           setUrunLookupSearch(val);
           setShowLookup(true);
@@ -1297,6 +1304,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       } else if (isDuzeltmeMode) {
         setUrunLookupSearch(barkod.trim());
         setShowLookup(true);
+      } else {
+        mamulTipiRef.current?.focus();
       }
     }
   };
@@ -1350,6 +1359,29 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       } else {
         setBankoInitialSearch(banko || "");
         setShowBankoLookup(true);
+      }
+    }
+  };
+
+  const handleAyarKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (ayar || "").trim().toUpperCase();
+      if (!val) {
+        setShowAyarModal(true);
+        return;
+      }
+      const exact = ayarList.find(
+        (a) =>
+          (a.ayarKodu || "").toUpperCase() === val ||
+          (a.ayarAdi || "").toUpperCase() === val ||
+          String(a.standartAyar) === val
+      );
+      if (exact) {
+        handleAyarChange(exact.ayarKodu || exact.ayarAdi);
+        monturIscilikRef.current?.focus();
+      } else {
+        setShowAyarModal(true);
       }
     }
   };
@@ -1617,154 +1649,75 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       barcodeSvg = `<div style="font-size:11px;font-weight:bold;text-align:center;font-family:monospace;letter-spacing:1px;">${displayVal}</div>`;
     }
 
-    const printFrame = document.createElement("iframe");
-    printFrame.style.position = "fixed";
-    printFrame.style.right = "0";
-    printFrame.style.bottom = "0";
-    printFrame.style.width = "0";
-    printFrame.style.height = "0";
-    printFrame.style.border = "0";
-    document.body.appendChild(printFrame);
-
-    const doc = printFrame.contentWindow?.document || printFrame.contentDocument;
-    if (!doc) return;
-
     const formattedTarih = data.tarih
       ? new Date(data.tarih).toLocaleDateString("tr-TR")
       : new Date().toLocaleDateString("tr-TR");
 
-    doc.open();
-    doc.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Barkod Fişi - ${displayVal}</title>
-          <style>
-            @page {
-              size: auto;
-              margin: 0 !important;
-            }
-            *, *::before, *::after {
-              box-sizing: border-box !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-              color-adjust: exact !important;
-              -webkit-text-size-adjust: 100% !important;
-              text-size-adjust: 100% !important;
-            }
-            html, body {
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #ffffff !important;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-              color: #000000;
-              width: 100%;
-            }
-            .slip-card {
-              width: 58mm;
-              margin: 0 auto;
-              padding: 2.5mm 2.5mm;
-              font-size: 8pt;
-              line-height: 1.25;
-              background: #ffffff;
-            }
-            .slip-header {
-              text-align: center;
-              border-bottom: 0.5pt dashed #222;
-              padding-bottom: 1.5mm;
-              margin-bottom: 2mm;
-            }
-            .slip-brand {
-              font-size: 9.5pt;
-              font-weight: bold;
-              letter-spacing: 0.5px;
-            }
-            .slip-sub {
-              font-size: 7pt;
-              color: #444;
-            }
-            .slip-barcode-box {
-              text-align: center;
-              margin: 2mm 0;
-            }
-            .slip-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 1.5mm 0;
-            }
-            .slip-table td {
-              padding: 0.7mm 0;
-              font-size: 8pt;
-              border-bottom: 0.2pt dotted #e0e0e0;
-            }
-            .slip-table tr:last-child td {
-              border-bottom: none;
-            }
-            .slip-lbl {
-              color: #333;
-              font-weight: 500;
-              width: 45%;
-            }
-            .slip-val {
-              font-weight: bold;
-              text-align: right;
-              font-family: monospace;
-              font-size: 8.5pt;
-            }
-            .slip-footer {
-              text-align: center;
-              border-top: 0.5pt dashed #222;
-              padding-top: 1.5mm;
-              margin-top: 2mm;
-              font-size: 7pt;
-              color: #555;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="slip-card">
-            <div class="slip-header">
-              <div class="slip-brand">ÖZEL ÜRÜN BARKOD FİŞİ</div>
-              <div class="slip-sub">${formattedTarih}</div>
-            </div>
-            <div class="slip-barcode-box">
-              ${barcodeSvg}
-            </div>
-            <table class="slip-table">
-              <tr>
-                <td class="slip-lbl">Ürün No:</td>
-                <td class="slip-val">${data.grupKodu}-${format3Digits(data.urunNo)}</td>
-              </tr>
-              ${data.mamulTipi ? `<tr><td class="slip-lbl">Mamul:</td><td class="slip-val">${data.mamulTipi}</td></tr>` : ""}
-              ${data.ayar ? `<tr><td class="slip-lbl">Ayar:</td><td class="slip-val">${data.ayar} Ayar</td></tr>` : ""}
-              ${data.monturGram ? `<tr><td class="slip-lbl">Montür Gr:</td><td class="slip-val">${Number(data.monturGram).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Gr</td></tr>` : ""}
-              ${data.monturHas ? `<tr><td class="slip-lbl">Montür Has:</td><td class="slip-val">${Number(data.monturHas).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} Gr</td></tr>` : ""}
-              ${data.taslarSummary ? `<tr><td class="slip-lbl">Taş / Karat:</td><td class="slip-val">${data.taslarSummary}</td></tr>` : ""}
-              ${data.satisFiyati ? `<tr><td class="slip-lbl">Satış Fiyatı:</td><td class="slip-val">${Number(data.satisFiyati).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${data.satisParaKodu}</td></tr>` : ""}
-              ${data.model ? `<tr><td class="slip-lbl">Model:</td><td class="slip-val">${data.model}</td></tr>` : ""}
-              ${data.ureticiFirma ? `<tr><td class="slip-lbl">Üretici:</td><td class="slip-val">${data.ureticiFirma}</td></tr>` : ""}
-            </table>
-            <div class="slip-footer">
-              <div>Likya Kuyumculuk ERP</div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    doc.close();
+    const slipHtml = `
+      <div style="width: 58mm; margin: 0 auto; padding: 2.5mm; font-family: Arial, sans-serif; font-size: 8pt; color: #000; background: #fff;">
+        <div style="text-align: center; border-bottom: 0.5pt dashed #222; padding-bottom: 1.5mm; margin-bottom: 2mm;">
+          <div style="font-size: 9.5pt; font-weight: bold; letter-spacing: 0.5px;">ÖZEL ÜRÜN BARKOD FİŞİ</div>
+          <div style="font-size: 7pt; color: #444;">${formattedTarih}</div>
+        </div>
+        <div style="text-align: center; margin: 2mm 0;">
+          ${barcodeSvg}
+        </div>
+        <table style="width: 100%; border-collapse: collapse; margin: 1.5mm 0; font-size: 8pt;">
+          <tr>
+            <td style="color: #333; font-weight: 500; width: 45%; padding: 0.7mm 0;">Ürün No:</td>
+            <td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${data.grupKodu}-${format3Digits(data.urunNo)}</td>
+          </tr>
+          ${data.mamulTipi ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Mamul:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${data.mamulTipi}</td></tr>` : ""}
+          ${data.ayar ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Ayar:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${data.ayar} Ayar</td></tr>` : ""}
+          ${data.monturGram ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Montür Gr:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${Number(data.monturGram).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Gr</td></tr>` : ""}
+          ${data.monturHas ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Montür Has:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${Number(data.monturHas).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} Gr</td></tr>` : ""}
+          ${data.taslarSummary ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Taş / Karat:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${data.taslarSummary}</td></tr>` : ""}
+          ${data.satisFiyati ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Satış Fiyatı:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${Number(data.satisFiyati).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${data.satisParaKodu}</td></tr>` : ""}
+          ${data.model ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Model:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${data.model}</td></tr>` : ""}
+          ${data.ureticiFirma ? `<tr><td style="color: #333; font-weight: 500; padding: 0.7mm 0;">Üretici:</td><td style="font-weight: bold; text-align: right; font-family: monospace; font-size: 8.5pt;">${data.ureticiFirma}</td></tr>` : ""}
+        </table>
+        <div style="text-align: center; border-top: 0.5pt dashed #222; padding-top: 1.5mm; margin-top: 2mm; font-size: 7pt; color: #555;">
+          <div>Likya Kuyumculuk ERP</div>
+        </div>
+      </div>
+    `;
 
-    setTimeout(() => {
-      printFrame.contentWindow?.focus();
-      printFrame.contentWindow?.print();
-      setTimeout(() => {
-        try {
-          document.body.removeChild(printFrame);
-        } catch {}
-      }, 1500);
-    }, 250);
+    triggerSilentPrint({
+      html: slipHtml,
+      isPos: true,
+      title: `Barkod_${displayVal}`,
+    });
+  };
+
+  // ─── Doğrudan Yazdır (F9) ─────────────────────────────────────────────────────
+  const handleDirectPrint = () => {
+    if (!grupKodu.trim() || !urunNo) {
+      showNotif("warning", "Yazdırılacak ürün bulunamadı. Lütfen Grup ve Ürün No seçiniz.");
+      return;
+    }
+    const tasSummary = taslar
+      .filter((t) => t.tasCinsi)
+      .map((t) => `${t.tasCinsi} ${t.miktar ? t.miktar + " " + (t.birim || "Ct") : ""}`.trim())
+      .join(", ");
+
+    printDirectBarkod({
+      barkod: barkod || `${grupKodu}${format3Digits(urunNo)}`,
+      grupKodu,
+      urunNo,
+      mamulTipi,
+      ayar,
+      monturGram,
+      monturHas,
+      satisFiyati,
+      satisParaKodu,
+      model,
+      ureticiFirma,
+      tarih,
+      taslarSummary: tasSummary,
+    });
+    if (ozelUrunId) {
+      EtiketService.markOzelUrunYazdirildi([ozelUrunId], true).catch(() => {});
+    }
   };
 
   // ─── Kaydet ve Doğrudan Yazdır (F10) ──────────────────────────────────────────
@@ -2009,6 +1962,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         hideSearch={!isDuzeltmeMode}
         hideNavigation={!isDuzeltmeMode}
         onRefresh={loadAll}
+        onDirectPrint={handleDirectPrint}
+        onSaveAndPrint={handleSaveAndPrint}
         onPrint={handleSaveAndPrint}
         disabled={isSaving}
         modeText={ozelUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${ozelList.length})` : (isDuzeltmeMode ? "Düzeltme Modu" : "Yeni Kayıt Modu")}
@@ -2328,21 +2283,30 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     </div>
                     <div className="flex-grow-1 d-flex align-items-center gap-1.5" style={{ maxWidth: "270px" }}>
                       <Form.Control
+                        ref={monturGramRef}
                         type="text"
                         inputMode="decimal"
                         size="sm"
                         value={monturGram ?? ""}
                         onChange={(e) => handleMonturGramChange(cleanInputStr(e.target.value))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            monturAyarRef.current?.focus();
+                          }
+                        }}
                         className="fw-bold font-monospace text-end bg-white"
                         style={{ maxWidth: "105px" }}
                         placeholder="0.00"
                       />
                       <InputGroup size="sm" style={{ maxWidth: "160px" }}>
                         <Form.Control
+                          ref={monturAyarRef}
                           type="text"
                           list="ayarListesi"
                           value={ayar}
                           onChange={(e) => handleAyarChange(e.target.value)}
+                          onKeyDown={handleAyarKeyDown}
                           className="bg-white fw-bold font-monospace text-end"
                           placeholder="Ayar seçin / yazın"
                         />
@@ -2364,6 +2328,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     </div>
                     <div className="flex-grow-1 d-flex align-items-center gap-1.5">
                       <Form.Control
+                        ref={monturIscilikRef}
                         type="text"
                         inputMode="decimal"
                         size="sm"
@@ -3160,6 +3125,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   <span><strong className="text-dark">F3</strong> Ara</span>
                 </>
               )}
+              <span><strong className="text-dark">F9</strong> Yazdır</span>
               <span><strong className="text-dark">F10</strong> Kaydet / Yazdır</span>
             </div>
           </div>
@@ -3230,7 +3196,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         onSelect={(g) => {
           handleGrupSec(g.grupKodu);
           setShowGrupLookup(false);
-          mamulTipiRef.current?.focus();
+          setTimeout(() => {
+            mamulTipiRef.current?.focus();
+          }, 50);
         }}
         onHide={() => setShowGrupLookup(false)}
       />
@@ -3314,6 +3282,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         onSelect={(it) => {
           setUreticiFirma(it.ad || it.kod || "");
           setShowFirmaLookup(false);
+          setTimeout(() => {
+            orjinalKodRef.current?.focus();
+          }, 50);
         }}
         onHide={() => setShowFirmaLookup(false)}
       />
@@ -3350,7 +3321,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         onSelect={(b) => {
           setBanko(b.bankoAdi);
           setShowBankoLookup(false);
-          monturGramRef.current?.focus();
+          setTimeout(() => {
+            monturGramRef.current?.focus();
+          }, 50);
         }}
         onHide={() => setShowBankoLookup(false)}
       />
@@ -3724,6 +3697,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       {/* Ayar Seçim & Tanımlama Modalı (TODVZ_AYAR) */}
       <AyarSecimModal
         show={showAyarModal}
+        initialSearch={ayar}
         onHide={() => setShowAyarModal(false)}
         onSelect={(selected) => {
           AyarService.getAyarlar(false).then((freshList) => {
@@ -3731,6 +3705,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           }).catch(() => {});
           handleAyarChange(selected.ayarKodu || selected.ayarAdi);
           setShowAyarModal(false);
+          setTimeout(() => {
+            monturIscilikRef.current?.focus();
+          }, 50);
         }}
         selectedAyarKodu={ayar}
       />

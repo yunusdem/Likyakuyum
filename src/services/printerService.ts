@@ -21,6 +21,16 @@ export interface YaziciFormData {
   kopyaSayisi: number;
 }
 
+export interface DirectPrintPayload {
+  printerId?: number | string | null;
+  printerName?: string | null;
+  documentTitle?: string | null;
+  htmlContent?: string | null;
+  textContent?: string | null;
+  isPos?: boolean;
+  copies?: number;
+}
+
 export class PrinterService {
   public static async getYazicilar(): Promise<YaziciItem[]> {
     const res = await apiClient.get<YaziciItem[]>("/yazici");
@@ -45,5 +55,23 @@ export class PrinterService {
   public static async deleteYazici(id: number | string): Promise<boolean> {
     const res = await apiClient.delete<{ id: string }>(`/yazici/${id}`);
     return res.success;
+  }
+
+  public static async directPrint(
+    payload: DirectPrintPayload
+  ): Promise<{ success: boolean; message: string; fallbackToBrowser?: boolean }> {
+    try {
+      const res = await apiClient.post<{ success: boolean; message: string; fallbackToBrowser?: boolean }>(
+        "/yazici/direct-print",
+        payload
+      );
+      return res.data || { success: false, message: "Yazıcı yanıt vermedi.", fallbackToBrowser: true };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || "Yazıcıya doğrudan gönderilemedi.",
+        fallbackToBrowser: true,
+      };
+    }
   }
 }

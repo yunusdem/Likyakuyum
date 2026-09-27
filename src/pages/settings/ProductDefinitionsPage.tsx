@@ -71,13 +71,28 @@ const initialFormState: ProductFormData = {
   urunTipi: 0,
 };
 
-export const ProductDefinitionsPage: React.FC = () => {
+export interface ProductDefinitionsPageProps {
+  isModal?: boolean;
+  onSuccess?: (createdProduct?: ProductItem) => void;
+  onCancel?: () => void;
+  initialCode?: string;
+}
+
+export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
+  isModal = false,
+  onSuccess,
+  onCancel,
+  initialCode,
+}) => {
   // Data states
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
-  const [formData, setFormData] = useState<ProductFormData>(initialFormState);
-  const [isNewRecord, setIsNewRecord] = useState<boolean>(false);
+  const [formData, setFormData] = useState<ProductFormData>(() => ({
+    ...initialFormState,
+    kod: initialCode || "",
+  }));
+  const [isNewRecord, setIsNewRecord] = useState<boolean>(isModal || false);
   const [activeTab, setActiveTab] = useState<string>("general");
 
   // UI / Status states
@@ -262,20 +277,24 @@ export const ProductDefinitionsPage: React.FC = () => {
       ? parseInt(String(formData.muhasebeSiraNo), 10)
       : null;
 
+    const alisHas = parseFloat(String(formData.hasAlisKatsayisi)) || 0;
+    const satisHas = parseFloat(String(formData.hasSatisKatsayisi)) || 0;
+    const effectiveHasOrani = alisHas > 0 ? alisHas : (satisHas > 0 ? satisHas : (parseFloat(String(formData.hasOrani)) || 0));
+
     const payload: ProductFormData = {
       ...formData,
       kod: formData.kod.trim(),
       ad: formData.ad.trim(),
       siraNo: cleanSiraNo,
       gramaj: parseFloat(String(formData.gramaj)) || 0,
-      hasOrani: parseFloat(String(formData.hasOrani)) || 0,
+      hasOrani: effectiveHasOrani,
       iscilik: parseFloat(String(formData.iscilik)) || 0,
       dovizAlisHucreOrani: parseFloat(String(formData.dovizAlisHucreOrani)) || 1,
       dovizSatisHucreOrani: parseFloat(String(formData.dovizSatisHucreOrani)) || 1,
       efektifAlisHucreOrani: parseFloat(String(formData.efektifAlisHucreOrani)) || 1,
       efektifSatisHucreOrani: parseFloat(String(formData.efektifSatisHucreOrani)) || 1,
-      hasAlisKatsayisi: parseFloat(String(formData.hasAlisKatsayisi)) || 0,
-      hasSatisKatsayisi: parseFloat(String(formData.hasSatisKatsayisi)) || 0,
+      hasAlisKatsayisi: alisHas,
+      hasSatisKatsayisi: satisHas,
       alimSatimKurFarki: parseFloat(String(formData.alimSatimKurFarki)) || 0,
       muhasebeSiraNo: cleanMuhasebeSiraNo,
     };
@@ -294,10 +313,18 @@ export const ProductDefinitionsPage: React.FC = () => {
         if (updatedList && updatedList[targetIdx]) {
           handleSelectProduct(updatedList[targetIdx], targetIdx);
         }
+        if (isModal && onSuccess) {
+          onSuccess(created);
+          return;
+        }
         setIsNewRecord(false);
       } else {
         const updated = await ProductDefinitionService.updateProduct(selectedProduct.id, payload);
         setAlertSuccess(`✅ "${updated.ad}" [${updated.kod}] ürün bilgileri başarıyla güncellendi.`);
+        if (isModal && onSuccess) {
+          onSuccess(updated);
+          return;
+        }
         await loadData(selectedIndex);
       }
 
@@ -355,10 +382,16 @@ export const ProductDefinitionsPage: React.FC = () => {
           width: "12%",
         },
         {
-          header: "Milyem / Has Oranı",
-          render: (item) => (item.hasOrani ? item.hasOrani.toFixed(4) : "-"),
+          header: "Alış Has",
+          render: (item) => (item.hasAlisKatsayisi ? item.hasAlisKatsayisi.toFixed(4) : (item.hasOrani ? item.hasOrani.toFixed(4) : "-")),
           align: "right",
-          width: "14%",
+          width: "12%",
+        },
+        {
+          header: "Satış Has",
+          render: (item) => (item.hasSatisKatsayisi ? item.hasSatisKatsayisi.toFixed(4) : (item.hasOrani ? item.hasOrani.toFixed(4) : "-")),
+          align: "right",
+          width: "12%",
         },
         {
           header: "İşçilik",
@@ -710,17 +743,34 @@ export const ProductDefinitionsPage: React.FC = () => {
 
                       <Form.Group as={Row} className="mb-2 align-items-center g-2">
                         <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                          Has Oranı / Milyem
+                          Alış Has
                         </Form.Label>
                         <Col>
                           <Form.Control
                             type="number"
                             step="any"
-                            value={formData.hasOrani || ""}
+                            value={formData.hasAlisKatsayisi || ""}
                             onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleInputChange("hasOrani", e.target.value)}
-                            className="font-monospace text-end"
-                            style={{ maxWidth: "90px" }}
+                            onChange={(e) => handleInputChange("hasAlisKatsayisi", e.target.value)}
+                            className="font-monospace text-end text-dark"
+                            style={{ maxWidth: "90px", color: "#000" }}
+                          />
+                        </Col>
+                      </Form.Group>
+
+                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
+                          Satış Has
+                        </Form.Label>
+                        <Col>
+                          <Form.Control
+                            type="number"
+                            step="any"
+                            value={formData.hasSatisKatsayisi || ""}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("hasSatisKatsayisi", e.target.value)}
+                            className="font-monospace text-end text-dark"
+                            style={{ maxWidth: "90px", color: "#000" }}
                           />
                         </Col>
                       </Form.Group>
@@ -736,40 +786,6 @@ export const ProductDefinitionsPage: React.FC = () => {
                             value={formData.iscilik || ""}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("iscilik", e.target.value)}
-                            className="font-monospace text-end"
-                            style={{ maxWidth: "90px" }}
-                          />
-                        </Col>
-                      </Form.Group>
-
-                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                          Has Alış Katsayısı
-                        </Form.Label>
-                        <Col>
-                          <Form.Control
-                            type="number"
-                            step="any"
-                            value={formData.hasAlisKatsayisi || ""}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleInputChange("hasAlisKatsayisi", e.target.value)}
-                            className="font-monospace text-end"
-                            style={{ maxWidth: "90px" }}
-                          />
-                        </Col>
-                      </Form.Group>
-
-                      <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                        <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                          Has Satış Katsayısı
-                        </Form.Label>
-                        <Col>
-                          <Form.Control
-                            type="number"
-                            step="any"
-                            value={formData.hasSatisKatsayisi || ""}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleInputChange("hasSatisKatsayisi", e.target.value)}
                             className="font-monospace text-end"
                             style={{ maxWidth: "90px" }}
                           />
@@ -1062,8 +1078,13 @@ export const ProductDefinitionsPage: React.FC = () => {
             ),
           },
           {
-            header: "Milyem / Has",
-            render: (item) => (item.hasOrani > 0 ? item.hasOrani.toFixed(4) : "-"),
+            header: "Alış Has",
+            render: (item) => (item.hasAlisKatsayisi > 0 ? item.hasAlisKatsayisi.toFixed(4) : (item.hasOrani > 0 ? item.hasOrani.toFixed(4) : "-")),
+            align: "right",
+          },
+          {
+            header: "Satış Has",
+            render: (item) => (item.hasSatisKatsayisi > 0 ? item.hasSatisKatsayisi.toFixed(4) : (item.hasOrani > 0 ? item.hasOrani.toFixed(4) : "-")),
             align: "right",
           },
           {

@@ -35,7 +35,17 @@ interface CashDeskRowState {
   isDirty?: boolean;
 }
 
-export const CashDeskDefinitionsPage: React.FC = () => {
+export interface CashDeskDefinitionsPageProps {
+  isModal?: boolean;
+  onSuccess?: (createdVezne?: VezneItem) => void;
+  onCancel?: () => void;
+}
+
+export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = ({
+  isModal = false,
+  onSuccess,
+  onCancel,
+}) => {
   const [rows, setRows] = useState<CashDeskRowState[]>([]);
   const [printers, setPrinters] = useState<LookupPrinter[]>([]);
   const [currencies, setCurrencies] = useState<LookupCurrency[]>([]);
@@ -256,6 +266,9 @@ export const CashDeskDefinitionsPage: React.FC = () => {
 
       setAlertSuccess(`✅ Vezne tanımları başarıyla kaydedildi (${createdCount} yeni, ${updatedCount} güncellendi).`);
       await loadData();
+      if (isModal && onSuccess) {
+        onSuccess();
+      }
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
       setAlertError(`❌ Kaydetme hatası: ${err?.message || "Vezneler kaydedilemedi."}`);

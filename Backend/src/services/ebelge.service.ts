@@ -589,32 +589,59 @@ export class EbelgeService {
     dbContext?: DbContext
   ): Promise<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string }> {
     if (!/^\d{10}$|^\d{11}$/.test(vknTckn.trim())) {
-      throw ApiError.badRequest("VKN 10, TCKN 11 haneli rakam olmalıdır.");
+      return {
+        mukellefMi: false,
+        kullanicilar: [],
+        mesaj: "Geçersiz VKN/TCKN formatı.",
+      };
     }
 
-    const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
-    const sonuc = await getUserListEFatura(config, vknTckn.trim());
-    if (!sonuc.basarili) {
-      throw ApiError.unprocessable(sonuc.mesaj || "Mükellef sorgusu başarısız; belge türü belirlenemedi.");
+    let config;
+    try {
+      config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+    } catch {
+      // Entegratör ayarları tanımlı değilse hata fırlatmak yerine e-Arşiv olarak kabul et
+      return {
+        mukellefMi: false,
+        kullanicilar: [],
+        mesaj: "e-Belge entegratör ayarları henüz tanımlanmamış. e-Arşiv senaryosu uygulandı.",
+      };
     }
 
-    await EbelgeSqlRepository.writeLog(
-      {
-        metod: "getUserList_EFatura",
-        yon: "GIDEN",
-        basarili: sonuc.basarili,
-        kullanici,
-        istekOzet: `vkn=${vknTckn}`,
-        cevapOzet: `${sonuc.kullanicilar.length} etiket`,
-      },
-      dbContext
-    );
+    try {
+      const sonuc = await getUserListEFatura(config, vknTckn.trim());
+      if (!sonuc.basarili) {
+        return {
+          mukellefMi: false,
+          kullanicilar: [],
+          mesaj: sonuc.mesaj || "Mükellef sorgusu yapılamadı, e-Arşiv uygulandı.",
+        };
+      }
 
-    return {
-      mukellefMi: sonuc.kullanicilar.length > 0,
-      kullanicilar: sonuc.kullanicilar,
-      mesaj: sonuc.mesaj,
-    };
+      await EbelgeSqlRepository.writeLog(
+        {
+          metod: "getUserList_EFatura",
+          yon: "GIDEN",
+          basarili: sonuc.basarili,
+          kullanici,
+          istekOzet: `vkn=${vknTckn}`,
+          cevapOzet: `${sonuc.kullanicilar.length} etiket`,
+        },
+        dbContext
+      );
+
+      return {
+        mukellefMi: sonuc.kullanicilar.length > 0,
+        kullanicilar: sonuc.kullanicilar,
+        mesaj: sonuc.mesaj,
+      };
+    } catch {
+      return {
+        mukellefMi: false,
+        kullanicilar: [],
+        mesaj: "Mükellef sorgulanamadı, varsayılan e-Arşiv senaryosu uygulandı.",
+      };
+    }
   }
 
   /**

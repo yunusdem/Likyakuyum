@@ -695,8 +695,12 @@ export const ebelgeService = {
 
   /** Alıcı e-Fatura mükellefi mi? Değilse e-Arşiv kesilmeli. */
   async mukellefSorgula(vkn: string): Promise<EbelgeMukellefSonucu> {
-    const res = await apiClient.get<EbelgeMukellefSonucu>("/e-belge/mukellef", { vkn });
-    return res.data;
+    try {
+      const res = await apiClient.get<EbelgeMukellefSonucu>("/e-belge/mukellef", { vkn });
+      return res.data;
+    } catch {
+      return { mukellefMi: false, kullanicilar: [], mesaj: "e-Arşiv senaryosu uygulandı." };
+    }
   },
 
   async yerelTaslakListe(belgeTuru?: EbelgeYerelTaslakTuru): Promise<EbelgeYerelTaslak[]> {

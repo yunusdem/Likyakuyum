@@ -30,6 +30,8 @@ export const ComboboxInput: React.FC<ComboboxInputProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+
   // Dışarı tıklandığında dropdown menüyü kapat
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent | TouchEvent) => {
@@ -62,6 +64,61 @@ export const ComboboxInput: React.FC<ComboboxInputProps> = ({
     ? options.filter((opt) => opt.toLowerCase().includes(trimmed))
     : options;
   const displayOptions = filtered.length > 0 ? filtered : options;
+
+  useEffect(() => {
+    if (isOpen) {
+      const selectedIdx = displayOptions.findIndex((opt) => opt.trim() === (value || "").trim());
+      setHighlightedIndex(selectedIdx >= 0 ? selectedIdx : 0);
+    } else {
+      setHighlightedIndex(-1);
+    }
+  }, [isOpen, value, displayOptions.length]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === " " && (!isOpen || (value || "").trim() === "")) {
+      e.preventDefault();
+      setIsOpen(true);
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        setHighlightedIndex(0);
+      } else {
+        setHighlightedIndex((prev) => (prev + 1 < displayOptions.length ? prev + 1 : 0));
+      }
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        setHighlightedIndex(displayOptions.length - 1);
+      } else {
+        setHighlightedIndex((prev) => (prev - 1 >= 0 ? prev - 1 : displayOptions.length - 1));
+      }
+      return;
+    }
+
+    if (e.key === "Enter") {
+      if (isOpen && highlightedIndex >= 0 && highlightedIndex < displayOptions.length) {
+        e.preventDefault();
+        handleSelect(displayOptions[highlightedIndex]);
+      }
+      return;
+    }
+
+    if (e.key === "Escape") {
+      if (isOpen) {
+        e.preventDefault();
+        setIsOpen(false);
+      }
+      return;
+    }
+  };
 
   return (
     <div
@@ -125,6 +182,7 @@ export const ComboboxInput: React.FC<ComboboxInputProps> = ({
           onFocus={() => {
             if (!disabled) setIsOpen(true);
           }}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           autoComplete="off"
           className="w-100 h-100 border-0 bg-transparent px-1"
@@ -215,31 +273,23 @@ export const ComboboxInput: React.FC<ComboboxInputProps> = ({
 
           {/* Seçenekler Listesi */}
           <div className="d-flex flex-column gap-1">
-            {displayOptions.map((opt) => {
+            {displayOptions.map((opt, idx) => {
               const isSelected = value.trim() === opt.trim();
+              const isHighlighted = idx === highlightedIndex;
               return (
                 <button
                   key={opt}
                   type="button"
                   onClick={() => handleSelect(opt)}
+                  onMouseEnter={() => setHighlightedIndex(idx)}
                   className="w-100 text-start border-0 rounded-2 px-2.5 py-2 d-flex align-items-center justify-content-between"
                   style={{
                     fontSize: "0.85rem",
-                    backgroundColor: isSelected ? "#eff6ff" : "transparent",
-                    color: isSelected ? "#1d4ed8" : "#334155",
+                    backgroundColor: isSelected || isHighlighted ? "#eff6ff" : "transparent",
+                    color: isSelected || isHighlighted ? "#1d4ed8" : "#334155",
                     fontWeight: isSelected ? 600 : 500,
                     cursor: "pointer",
                     transition: "all 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = "#f8fafc";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }
                   }}
                 >
                   <span className="d-flex align-items-center gap-2">

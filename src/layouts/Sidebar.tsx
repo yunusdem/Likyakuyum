@@ -49,6 +49,7 @@ import {
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
+import { CashDeskService } from "../services/cashDeskService";
 
 // import required routes
 import { DashboardMenu } from "routes/DashboardRoute";
@@ -276,6 +277,32 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     pendingMenuIndexRef.current = idx;
     setPendingMenuIndex(idx);
   };
+
+  const [vezneName, setVezneName] = useState<string>("");
+
+  useEffect(() => {
+    let isMounted = true;
+    CashDeskService.getVezneler()
+      .then((list) => {
+        if (!isMounted || !list || list.length === 0) return;
+        const code = String(user?.cashierCode || "").trim();
+        const matched = list.find(
+          (v) =>
+            String(v.id) === code ||
+            (v.kod && v.kod.trim().toLowerCase() === code.toLowerCase())
+        );
+        if (matched) {
+          setVezneName(matched.ad || matched.kod);
+        } else if (list.length > 0) {
+          setVezneName(list[0].ad || list[0].kod);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.cashierCode]);
 
   const [currentDate, setCurrentDate] = useState<string>(() => {
     return new Date().toLocaleDateString("tr-TR", {
@@ -771,42 +798,52 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
               </span>
             </div>
 
-            {/* 3. Satır: Vezne Numarası */}
+            {/* 3. Satır: Vezne Adı */}
             <div
               className="d-flex align-items-center justify-content-center gap-1 w-100 mt-1"
               style={{ fontSize: "0.75rem" }}
             >
-              <span
-                className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-0.5 rounded-pill fw-semibold font-monospace d-inline-flex align-items-center gap-1 text-nowrap"
-                style={{ letterSpacing: "0.3px", fontSize: "0.72rem" }}
-                title={`Kullanıcı Vezne Numarası: ${user?.cashierCode || "01"}`}
-              >
-                <IconCash size={13} className="text-primary flex-shrink-0" />
-                <span>Vezne: {user?.cashierCode || "01"}</span>
-              </span>
+              {(() => {
+                const raw = (vezneName || user?.cashierCode || "Ana Vezne").trim();
+                const cleaned = raw.replace(/^(vezne\s*[:\-]?\s*)+/i, "").trim() || raw;
+                return (
+                  <span
+                    className="d-inline-flex align-items-center gap-1 text-nowrap font-monospace fw-semibold text-dark"
+                    style={{ letterSpacing: "0.2px", fontSize: "0.74rem", color: "#000" }}
+                    title={`Vezne: ${cleaned}`}
+                  >
+                    <IconCash size={14} className="text-dark flex-shrink-0" />
+                    <span className="text-dark" style={{ color: "#000" }}>Vezne: {cleaned}</span>
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => navigate("/sifre-degistir")}
-            className="btn btn-outline-secondary btn-sm p-1.5 d-flex align-items-center justify-content-center rounded-3 flex-shrink-0 shadow-xs me-1"
-            title="Şifre Değiştir"
-            style={{ width: "34px", height: "34px", transition: "all 0.2s ease" }}
-          >
-            <IconKey size={18} />
-          </button>
+          {/* Kilit ve Çıkış Butonları (Altlı Üstlü) */}
+          <div className="d-flex flex-column gap-1 flex-shrink-0 align-items-center justify-content-center">
+            {/* Anahtar / Şifre Değiştir */}
+            <button
+              type="button"
+              onClick={() => navigate("/sifre-degistir")}
+              className="btn btn-outline-secondary btn-sm p-0 d-flex align-items-center justify-content-center rounded-2 shadow-xs"
+              title="Şifre Değiştir"
+              style={{ width: "28px", height: "28px", transition: "all 0.2s ease" }}
+            >
+              <IconKey size={15} />
+            </button>
 
-          {/* Direct Logout Button */}
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="btn btn-outline-danger btn-sm p-1.5 d-flex align-items-center justify-content-center rounded-3 flex-shrink-0 shadow-xs"
-            title="Güvenli Çıkış Yap"
-            style={{ width: "34px", height: "34px", transition: "all 0.2s ease" }}
-          >
-            <IconLogin2 size={18} />
-          </button>
+            {/* Direct Logout Button */}
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="btn btn-outline-danger btn-sm p-0 d-flex align-items-center justify-content-center rounded-2 shadow-xs"
+              title="Güvenli Çıkış Yap"
+              style={{ width: "28px", height: "28px", transition: "all 0.2s ease" }}
+            >
+              <IconLogin2 size={15} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -144,11 +144,25 @@ const normalizeTr = (str: string): string => {
     .trim();
 };
 
-export const CariCardRegistrationPage: React.FC = () => {
+export interface CariCardRegistrationPageProps {
+  isModal?: boolean;
+  onSuccess?: (cari: CariKartItem) => void;
+  onCancel?: () => void;
+  initialName?: string;
+  initialVkn?: string;
+}
+
+export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> = ({
+  isModal = false,
+  onSuccess,
+  onCancel,
+  initialName,
+  initialVkn,
+}) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const isEditPage = location.pathname.includes("kart-duzeltme");
+  const isEditPage = !isModal && location.pathname.includes("kart-duzeltme");
   const pageTitleText = isEditPage ? "B- Cari Kart Düzeltme" : "A- Cari Kart Kayıt";
 
   // Data states
@@ -167,7 +181,11 @@ export const CariCardRegistrationPage: React.FC = () => {
   });
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [selectedCari, setSelectedCari] = useState<CariKartItem | null>(null);
-  const [formData, setFormData] = useState<CariKartFormData>(initialFormState);
+  const [formData, setFormData] = useState<CariKartFormData>(() => ({
+    ...initialFormState,
+    ad: initialName || "",
+    vergiKimlikNo: initialVkn || "",
+  }));
   const [isNewRecord, setIsNewRecord] = useState<boolean>(!isEditPage);
   const [activeTab, setActiveTab] = useState<string>("general");
 
@@ -853,10 +871,18 @@ export const CariCardRegistrationPage: React.FC = () => {
       if (isNewRecord || !selectedCari) {
         const created = await CariService.createCariKart(payload);
         setAlertSuccess(`✅ "${created.ad}" [${created.kod}] cari kartı başarıyla eklendi.`);
+        if (isModal && onSuccess) {
+          onSuccess(created);
+          return;
+        }
         await loadData(isEditPage ? cariList.length : undefined);
       } else {
         const updated = await CariService.updateCariKart(selectedCari.id, payload);
         setAlertSuccess(`✅ "${updated.ad}" [${updated.kod}] cari kart bilgileri başarıyla güncellendi.`);
+        if (isModal && onSuccess) {
+          onSuccess(updated);
+          return;
+        }
         await loadData(selectedIndex);
       }
     } catch (err: any) {

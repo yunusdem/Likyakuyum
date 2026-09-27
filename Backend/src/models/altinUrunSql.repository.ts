@@ -33,6 +33,8 @@ export interface AltinUrunModel {
   hasKuru1?: number | null;
   hasKuru2?: number | null;
   altinKuru?: number | null;
+  usdKuru1?: number | null;
+  usdKuru2?: number | null;
   resim?: string | null;
   resimler?: string[];
   satildi: boolean;
@@ -72,6 +74,8 @@ export interface SaveAltinUrunDto {
   hasKuru1?: number | null;
   hasKuru2?: number | null;
   altinKuru?: number | null;
+  usdKuru1?: number | null;
+  usdKuru2?: number | null;
   resim?: string | null;
   resimler?: string[];
   satildi?: boolean;
@@ -111,6 +115,8 @@ export class AltinUrunSqlRepository {
             [HAS_KURU_1] FLOAT NULL,
             [HAS_KURU_2] FLOAT NULL,
             [ALTIN_KURU] FLOAT NULL,
+            [USD_KURU_1] FLOAT NULL,
+            [USD_KURU_2] FLOAT NULL,
             [SATILDI] BIT NOT NULL DEFAULT 0,
             [RESIM] VARBINARY(MAX) NULL,
             [YAZDIRILDI] BIT NOT NULL DEFAULT 0,
@@ -129,6 +135,10 @@ export class AltinUrunSqlRepository {
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [YAZDIRILDI] BIT NOT NULL DEFAULT 0;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'YAZDIRILDI_ZAMANI')
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [YAZDIRILDI_ZAMANI] DATETIME NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'USD_KURU_1')
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_1] FLOAT NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'USD_KURU_2')
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_2] FLOAT NULL;
         END;
       `);
     } catch (err: any) {
@@ -167,6 +177,8 @@ export class AltinUrunSqlRepository {
             @HAS_KURU_1                 FLOAT = NULL,
             @HAS_KURU_2                 FLOAT = NULL,
             @ALTIN_KURU                 FLOAT = NULL,
+            @USD_KURU_1                 FLOAT = NULL,
+            @USD_KURU_2                 FLOAT = NULL,
             @SATILDI                    BIT = 0,
             @RESIM                      VARBINARY(MAX) = NULL,
             @KULLANICI_ID               INT = NULL,
@@ -202,14 +214,14 @@ export class AltinUrunSqlRepository {
                     MIKTAR, HAS_GRAM, MALIYET_ISCILIK, MALIYET_ISCILIK_PARA_KODU, MALIYET_ISCILIK_BIRIM,
                     MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK, SATIS_ISCILIK_TUTARI, ISCILIK_KARI, MALIYET,
                     MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
-                    ALTIN_KURU, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
+                    ALTIN_KURU, USD_KURU_1, USD_KURU_2, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
                 )
                 VALUES (
                     ISNULL(@TARIH, @SIMDIKI_ZAMAN), @GRUP_KODU, @URUN_NO, @BARKOD, @AYAR, @URETICI_FIRMA, @ORJINAL_KOD, @MODEL, @BANKO,
                     @MIKTAR, @HAS_GRAM, @MALIYET_ISCILIK, @MALIYET_ISCILIK_PARA_KODU, @MALIYET_ISCILIK_BIRIM,
                     @MALIYET_ISCILIK_TUTARI, @SATIS_ISCILIK, @SATIS_ISCILIK_TUTARI, @ISCILIK_KARI, @MALIYET,
                     @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
-                    @ALTIN_KURU, @SATILDI, @RESIM, @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN
+                    @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @SATILDI, @RESIM, @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN
                 );
 
                 IF @@ERROR <> 0
@@ -231,7 +243,7 @@ export class AltinUrunSqlRepository {
                     SATIS_ISCILIK_TUTARI = @SATIS_ISCILIK_TUTARI, ISCILIK_KARI = @ISCILIK_KARI, MALIYET = @MALIYET,
                     MALIYET_PARA_KODU = @MALIYET_PARA_KODU, SATIS_FIYATI = @SATIS_FIYATI, SATIS_PARA_KODU = @SATIS_PARA_KODU,
                     SATIS_KARI_YUZDE = @SATIS_KARI_YUZDE, HAS_KURU_1 = @HAS_KURU_1, HAS_KURU_2 = @HAS_KURU_2,
-                    ALTIN_KURU = @ALTIN_KURU, SATILDI = @SATILDI, RESIM = ISNULL(@RESIM, RESIM),
+                    ALTIN_KURU = @ALTIN_KURU, USD_KURU_1 = @USD_KURU_1, USD_KURU_2 = @USD_KURU_2, SATILDI = @SATILDI, RESIM = ISNULL(@RESIM, RESIM),
                     GUNCELLEYEN_ID = @KULLANICI_ID, GUNCELLEME_ZAMANI = @SIMDIKI_ZAMAN
                 WHERE ALTIN_URUN_ID = @ALTIN_URUN_ID;
 
@@ -344,6 +356,8 @@ export class AltinUrunSqlRepository {
       hasKuru1: r.HAS_KURU_1 !== null && r.HAS_KURU_1 !== undefined ? Number(r.HAS_KURU_1) : null,
       hasKuru2: r.HAS_KURU_2 !== null && r.HAS_KURU_2 !== undefined ? Number(r.HAS_KURU_2) : null,
       altinKuru: r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null,
+      usdKuru1: r.USD_KURU_1 !== null && r.USD_KURU_1 !== undefined ? Number(r.USD_KURU_1) : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null),
+      usdKuru2: r.USD_KURU_2 !== null && r.USD_KURU_2 !== undefined ? Number(r.USD_KURU_2) : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null),
       resim: r.RESIM ? (Buffer.isBuffer(r.RESIM) ? `data:image/jpeg;base64,${r.RESIM.toString("base64")}` : (typeof r.RESIM === "string" ? r.RESIM : null)) : null,
       satildi: Boolean(r.SATILDI),
       yazdirildi: Boolean(r.YAZDIRILDI),
@@ -561,7 +575,9 @@ export class AltinUrunSqlRepository {
     req.input("SATIS_KARI_YUZDE", sql.Float, safeFloat(dto.satisKariYuzde));
     req.input("HAS_KURU_1", sql.Float, safeNullableFloat(dto.hasKuru1));
     req.input("HAS_KURU_2", sql.Float, safeNullableFloat(dto.hasKuru2));
-    req.input("ALTIN_KURU", sql.Float, safeNullableFloat(dto.altinKuru));
+    req.input("ALTIN_KURU", sql.Float, safeNullableFloat(dto.altinKuru || dto.usdKuru2 || dto.usdKuru1));
+    req.input("USD_KURU_1", sql.Float, safeNullableFloat(dto.usdKuru1));
+    req.input("USD_KURU_2", sql.Float, safeNullableFloat(dto.usdKuru2));
     req.input("SATILDI", sql.Bit, dto.satildi ? 1 : 0);
     req.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
     req.input("KULLANICI_ID", sql.Int, kullaniciId || null);
