@@ -6,14 +6,19 @@
 import { apiClient } from "./apiClient";
 import { UserProfileDto } from "./userService";
 
+/** Giriş = Müşteri No + seçilen veritabanı (firmaId) + kullanıcı adı + şifre. DB bağlantısı sunucuda çözülür. */
 export interface LoginCredentials {
+  musteriNo: string;
+  firmaId: number;
   username: string;
-  password?: string;
-  mode?: "cloud" | "local";
-  dbServer?: string;
-  dbName?: string;
-  dbUser?: string;
-  dbPassword?: string;
+  password: string;
+}
+
+/** Müşteri noya bağlı veritabanı (giriş ekranındaki liste) */
+export interface MusteriVeritabani {
+  firmaId: number;
+  unvan: string;
+  dbName: string;
 }
 
 export interface AuthTokens {
@@ -25,6 +30,7 @@ export interface AuthTokens {
 export interface AuthResponse {
   user: UserProfileDto;
   tokens: AuthTokens;
+  baglanti?: { dbServer: string; dbName: string };
 }
 
 const ACCESS_TOKEN_KEY = "kuyumcu_erp_access_token";
@@ -34,45 +40,32 @@ const DB_NAME_KEY = "kuyumcu_erp_active_db";
 const DB_USER_KEY = "kuyumcu_erp_db_user";
 const DB_PASSWORD_KEY = "kuyumcu_erp_db_password";
 const CONNECTION_MODE_KEY = "kuyumcu_erp_connection_mode";
+const LAST_SERVER_KEY = "kuyumcu_erp_last_server";
+const LAST_DB_KEY = "kuyumcu_erp_last_db";
 
 export const AuthService = {
+  /**
+   * Giriş ekranı: müşteri no yazılınca o müşterinin veritabanları
+   */
+  async musteriVeritabanlari(musteriNo: string): Promise<MusteriVeritabani[]> {
+    const res = await apiClient.get<MusteriVeritabani[]>("/auth/musteri-veritabanlari", { musteriNo });
+    return res.data || [];
+  },
+
   /**
    * Performs user login via backend API
    */
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const mode = credentials.mode || "cloud";
-    const serverVal = credentials.dbServer?.trim() || (mode === "cloud" ? "127.0.0.1" : "");
-    const dbVal = credentials.dbName?.trim() || "R2016_dvz";
-    const userVal = credentials.dbUser?.trim() || "SA";
-    const passwordVal = credentials.dbPassword !== undefined && credentials.dbPassword !== null ? credentials.dbPassword : "";
-
     const payload = {
+      musteriNo: credentials.musteriNo.trim().toUpperCase(),
+      firmaId: credentials.firmaId,
       username: credentials.username?.trim() || "",
       password: credentials.password || "",
-      mode,
-      dbServer: serverVal,
-      server: serverVal,
-      serverName: serverVal,
-      host: serverVal,
-      dbName: dbVal,
-      database: dbVal,
-      dbUser: userVal,
-      user: userVal,
-      dbPassword: passwordVal,
-      passwordDb: passwordVal,
     };
 
     const res = await apiClient.post<AuthResponse>("/auth/login", payload);
     if (res.data && res.data.tokens?.accessToken) {
-      this.setSession(
-        res.data.tokens.accessToken,
-        res.data.user,
-        serverVal,
-        dbVal,
-        userVal,
-        passwordVal,
-        mode
-      );
+      this.setSession(res.data.tokens.accessToken, res.data.user, res.data.baglanti?.dbServer, res.data.baglanti?.dbName);
     }
     return res.data;
   },
@@ -111,22 +104,21 @@ export const AuthService = {
   /**
    * Sets token, user and active database in localStorage
    */
-  setSession(
-    token: string,
-    user: UserProfileDto,
-    dbServer?: string,
-    dbName?: string,
-    dbUser?: string,
-    dbPassword?: string,
-    mode?: "cloud" | "local"
-  ): void {
+  setSession(token: string, user: UserProfileDto, dbServer?: string, dbName?: string): void {
     localStorage.setItem(ACCESS_TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
-    if (dbServer) localStorage.setItem(DB_SERVER_KEY, dbServer);
-    if (dbName) localStorage.setItem(DB_NAME_KEY, dbName);
-    if (dbUser) localStorage.setItem(DB_USER_KEY, dbUser);
-    if (dbPassword !== undefined) localStorage.setItem(DB_PASSWORD_KEY, dbPassword);
-    if (mode) localStorage.setItem(CONNECTION_MODE_KEY, mode);
+    if (dbServer) {
+      localStorage.setItem(DB_SERVER_KEY, dbServer);
+      localStorage.setItem(LAST_SERVER_KEY, dbServer);
+    }
+    if (dbName) {
+      localStorage.setItem(DB_NAME_KEY, dbName);
+      localStorage.setItem(LAST_DB_KEY, dbName);
+    }
+    // DB kullanıcı adı / şifresi artık tarayıcıda tutulmaz (bağlantı sunucuda firma kaydından çözülür)
+    localStorage.removeItem(DB_USER_KEY);
+    localStorage.removeItem(DB_PASSWORD_KEY);
+    localStorage.setItem(CONNECTION_MODE_KEY, "cloud");
   },
 
   /**

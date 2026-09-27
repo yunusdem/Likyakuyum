@@ -1000,6 +1000,17 @@ export class EbelgeSqlRepository {
     return res.recordset.length > 0;
   }
 
+  /** Bu hesaptan kesilmiş belgelerin serileri (fatura no önerisi için), ör. ["ABC", "EAR"] */
+  public static async gidenSerileri(belgeTuru: string, dbContext?: DbContext): Promise<string[]> {
+    const pool = await this.getPool(dbContext);
+    const res = await pool
+      .request()
+      .input("belgeTuru", sql.VarChar(20), belgeTuru)
+      .query(`SELECT DISTINCT UPPER(LEFT([BELGE_NO], 3)) AS SERI FROM [dbo].[TODVZ_EBELGE_GIDEN]
+              WHERE [BELGE_TURU] = @belgeTuru AND LEN([BELGE_NO]) = 16`);
+    return res.recordset.map((r: any) => String(r.SERI)).filter((s) => /^[A-Z0-9]{3}$/.test(s));
+  }
+
   /** Giden belge listesi */
   public static async listGiden(
     filtre: { sayfa?: number; boyut?: number; arama?: string; durum?: string; belgeTuru?: string; baslangicTarihi?: string; bitisTarihi?: string },

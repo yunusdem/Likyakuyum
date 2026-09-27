@@ -1,5 +1,6 @@
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
+import { FATURA_NO_BICIMI, faturaNoUret } from "../utils/faturaNo.utils.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
 import {
   DbContext,
@@ -2516,6 +2517,63 @@ export class EbelgeService {
     dbContext?: DbContext
   ) {
     return EbelgeSqlRepository.listGiden(filtre, dbContext);
+  }
+
+  /**
+   * Fatura no önerileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10): fatura numarası elle yazılmaz. Seriler, bu hesaptan
+   * daha önce kesilmiş belgelerden bulunur (yerel giden kaydı + ICE'deki gönderilmiş belgeler: e-Fatura için GetInvoice
+   * OUT, e-Arşiv için GetEArchive). Her seri için ICE'deki son sıra (`Get_Son_Belge_ID`) alınır ve bir fazlası önerilir.
+   * `ekSeri` ile kullanıcının yazdığı yeni bir seri de sorgulanır (hesapta hiç belge yoksa).
+   */
+  public static async faturaNoOnerileri(
+    belgeTuru: "EFatura" | "EArsiv",
+    yil: number,
+    ekSeri: string | undefined,
+    dbContext?: DbContext
+  ): Promise<{ seri: string; sonSira: number; onerilenNo: string }[]> {
+    const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+    const seriler = new Set<string>();
+    const seriEkle = (no: unknown) => {
+      const s = String(no || "").trim().toUpperCase();
+      if (FATURA_NO_BICIMI.test(s)) seriler.add(s.slice(0, 3));
+    };
+
+    (await EbelgeSqlRepository.gidenSerileri(belgeTuru, dbContext).catch(() => [])).forEach((s) => seriler.add(s));
+
+    // ICE'den (portaldan elle kesilenler dahil) son iki yılın gönderilmiş belgeleri
+    const baslangic = new Date(yil - 1, 0, 1);
+    const bitis = new Date();
+    try {
+      if (belgeTuru === "EFatura") {
+        const { faturalar } = await getInvoices(
+          config,
+          { yon: "OUT", baslangicTarihi: baslangic, bitisTarihi: bitis, limit: 500, okunmuslarDahil: true, islenmislerDahil: true },
+          true
+        );
+        faturalar.forEach((f) => seriEkle(f.ID));
+      } else {
+        (await getEArchive(config, { baslangic, bitis, limit: 500 })).forEach((k) => seriEkle(k.ID));
+      }
+    } catch (err) {
+      logger.warn(`Fatura no önerisi: ICE ${belgeTuru} listesi alınamadı, yerel kayıtlarla devam ediliyor:`, err);
+    }
+
+    const ek = (ekSeri || "").trim().toUpperCase();
+    if (ek) {
+      if (!/^[A-Z0-9]{3}$/.test(ek)) throw ApiError.badRequest("Seri 3 karakter (harf/rakam) olmalıdır.");
+      seriler.add(ek);
+    }
+
+    const sonuc: { seri: string; sonSira: number; onerilenNo: string }[] = [];
+    for (const seri of [...seriler].sort().slice(0, 15)) {
+      const son = await getSonBelgeId(config, seri, belgeTuru, yil);
+      const sonSira = Number(son?.Son_Belge_ID);
+      if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sonSira) || sonSira < 0) {
+        throw ApiError.unprocessable(`ICE'den ${seri} serisinin son numarası alınamadı.`);
+      }
+      sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1) });
+    }
+    return sonuc;
   }
 
   /**

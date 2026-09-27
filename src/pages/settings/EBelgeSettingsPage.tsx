@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
+import EBelgeNaceKarti from "./EBelgeNaceKarti";
 import {
   EbelgeAyar,
   EbelgeAyarKaydet,
@@ -456,6 +457,8 @@ const EBelgeSettingsPage: React.FC = () => {
           )}
         </Card.Body>
       </Card>
+
+      <EBelgeNaceKarti />
 
       <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden">
         <Card.Body className="p-3 bg-body">

@@ -22,6 +22,11 @@ export class AuthController {
     return ApiResponse.ok(res, ResponseMessages.LOGIN_SUCCESS, result);
   });
 
+  public static musteriVeritabanlari = asyncHandler(async (req: Request, res: Response) => {
+    const liste = await AuthService.musteriVeritabanlari(String(req.query.musteriNo || ""));
+    return ApiResponse.ok(res, "Veritabanları listelendi.", liste);
+  });
+
   public static register = asyncHandler(async (req: Request, res: Response) => {
     const result = await AuthService.register(req.body);
 

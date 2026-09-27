@@ -11,9 +11,9 @@ export default function MasakMenu({ onUpdate, mobile = false }: { onUpdate: () =
       <IconShieldCheck size={mobile ? 16 : 18} strokeWidth={2} style={{ color: '#dc2626' }} />
       <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#dc2626', lineHeight: 1 }}>MASAK</span>
     </Dropdown.Toggle>
-    <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: 180 }}>
-      <Dropdown.Item onClick={onUpdate}>Liste güncelle</Dropdown.Item>
-      <Dropdown.Item as={Link} to="/ayarlar/masak-dondurulanlar">Sorgulama</Dropdown.Item>
+    <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: 200 }}>
+      <Dropdown.Item onClick={onUpdate}>MASAK'tan Liste Güncelle</Dropdown.Item>
+      <Dropdown.Item as={Link} to="/ayarlar/masak-dondurulanlar">MASAK'tan Sorgu</Dropdown.Item>
     </Dropdown.Menu>
   </Dropdown>;
 }

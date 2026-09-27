@@ -66,7 +66,7 @@ BEGIN
   CREATE TABLE [dbo].[ADM_FIRMA] (
     [FIRMA_ID]            INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     [FIRMA_KODU]          VARCHAR(20)    COLLATE Latin1_General_CI_AS NOT NULL, -- uygulama BUYUK harfle yazar
-    -- Firmanin musteri numarasi (or. D20AC0001). Admin yazar, uygulama BUYUK harfe cevirir; benzersizlik asagidaki filtreli indekste.
+    -- Firmanin musteri numarasi (or. D20AC0001). Admin yazar, uygulama BUYUK harfe cevirir; ayni no birden cok firmada (veritabaninda) olabilir.
     [MUSTERI_NO]          VARCHAR(20)    COLLATE Latin1_General_CI_AS NULL,
     [PRG_TUR]             INT            NOT NULL CONSTRAINT [DF_ADM_FIRMA_PRG_TUR] DEFAULT 0, -- program turu; simdilik yalniz 0
     [UNVAN]               NVARCHAR(200)  NOT NULL,
@@ -118,8 +118,13 @@ GO
 IF COL_LENGTH('dbo.ADM_FIRMA', 'PRG_TUR') IS NULL
   ALTER TABLE [dbo].[ADM_FIRMA] ADD [PRG_TUR] INT NOT NULL CONSTRAINT [DF_ADM_FIRMA_PRG_TUR] DEFAULT 0;
 GO
-IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UX_ADM_FIRMA_MUSTERI_NO')
-  CREATE UNIQUE INDEX [UX_ADM_FIRMA_MUSTERI_NO] ON [dbo].[ADM_FIRMA]([MUSTERI_NO]) WHERE [MUSTERI_NO] IS NOT NULL;
+-- Bir musterinin birden cok veritabani olabilir (her veritabani ayri firma kaydi): musteri no benzersiz DEGIL,
+-- giriste musteri no ile firmalar listelenir (docs/GIRIS_VE_EBELGE_DUZENLEME.md G2)
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'UX_ADM_FIRMA_MUSTERI_NO')
+  DROP INDEX [UX_ADM_FIRMA_MUSTERI_NO] ON [dbo].[ADM_FIRMA];
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ADM_FIRMA_MUSTERI_NO')
+  CREATE INDEX [IX_ADM_FIRMA_MUSTERI_NO] ON [dbo].[ADM_FIRMA]([MUSTERI_NO]) WHERE [MUSTERI_NO] IS NOT NULL;
 GO
 
 -- Onceki surumle kurulmus veritabanlari icin: e-posta dogrulama kolonlari (tekrar calistirilabilir)

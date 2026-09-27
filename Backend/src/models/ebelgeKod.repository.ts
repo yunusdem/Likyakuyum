@@ -15,6 +15,8 @@ type Tohum = [kod: string, ad: string, oran?: number];
 const TOHUM: Record<EbelgeKodTuru, Tohum[]> = {
   ISTISNA: [
     ["201", "17/1 Kültür ve eğitim amacı taşıyan işlemler"],
+    // Diğer işlem türü (UBL-TR Kod Listeleri 1.42): KDV'si pozitif satırda kullanılır, istisna değildir
+    ["555", "KDV Oran Kontrolüne Tabi Olmayan Satışlar (NACE'ye uygun oranı olmayan: demirbaş/taşıt satışı, masraf yansıtma)"],
     ["202", "17/2-a Sağlık, çevre ve sosyal yardım amaçlı işlemler"],
     ["204", "17/2-c Yabancı diplomatik organ ve hayır kurumlarının yapacakları bağışlarla ilgili mal ve hizmet alışları"],
     ["205", "17/2-d Taşınmaz kültür varlıklarına ilişkin teslimler ve mimarlık hizmetleri"],
@@ -38,9 +40,12 @@ const TOHUM: Record<EbelgeKodTuru, Tohum[]> = {
     ["226", "17/2-b Özel okullar, üniversite ve yüksekokullar tarafından verilen bedelsiz eğitim ve öğretim hizmetleri"],
     ["227", "17/2-b Kanunların gösterdiği gerek üzerine bedelsiz olarak yapılan teslim ve hizmetler"],
     ["228", "17/2-b Kanunun 17/1 maddesinde sayılan kurum ve kuruluşlara bedelsiz olarak yapılan teslimler"],
-    ["229", "17/4-g Külçe altın, külçe gümüş ve kıymetli taşların teslimi"],
-    ["230", "17/4-g Metal, plastik, lastik, kauçuk, kağıt, cam hurda ve atıkların teslimi"],
-    ["231", "17/4-g Döviz, para, damga pulu, değerli kağıtlar, hisse senedi ve tahvil teslimleri"],
+    // 229-232 GİB UBL-TR Kod Listeleri V1.43 ile düzeltildi (27.09.2026): önceki tohum bir kaymıştı (229 = külçe altın
+    // yazıyordu; resmi 229 gıda bankacılığı, 230 külçe altın). Mevcut veritabanlarındaki adlar DUZELTME ile güncellenir.
+    ["229", "Gıda bankacılığı faaliyetinde bulunan darülaceze, dernek ve vakıflara bağışlanan gıda, temizlik, giyecek ve yakacak maddeleri"],
+    ["230", "17/4-g Külçe altın, külçe gümüş ve kıymetli taşların teslimi"],
+    ["231", "17/4-g Metal, plastik, lastik, kauçuk, kağıt, cam hurda ve atıkların teslimi"],
+    ["232", "17/4-g Döviz, para, damga pulu, değerli kağıtlar, hisse senedi ve tahvil teslimleri"],
     ["250", "Diğerleri (kısmi istisna)"],
     ["301", "11/1-a Mal ihracatı"],
     ["302", "11/1-a Hizmet ihracatı"],
@@ -115,6 +120,9 @@ const TOHUM: Record<EbelgeKodTuru, Tohum[]> = {
   ],
 };
 
+/** Adı resmi listeyle çelişen eski sistem kayıtları: her açılışta (bir kez) TOHUM'daki adla düzeltilir. */
+const DUZELTME: [EbelgeKodTuru, string][] = [["ISTISNA", "229"], ["ISTISNA", "230"], ["ISTISNA", "231"]];
+
 const hazirlanan = new Set<string>();
 
 export class EbelgeKodRepository {
@@ -142,6 +150,13 @@ export class EbelgeKodRepository {
         .input("ad", sql.NVarChar(300), t.ad).input("oran", sql.Decimal(5, 2), t.oran)
         .query(`IF NOT EXISTS (SELECT 1 FROM dbo.TODVZ_EBELGE_KOD WHERE TUR=@tur AND KOD=@kod)
           INSERT INTO dbo.TODVZ_EBELGE_KOD (TUR, KOD, AD, ORAN, SISTEM) VALUES (@tur, @kod, @ad, @oran, 1);`);
+    }
+    // Resmi listeyle çelişen eski sistem kayıtlarının adları düzeltilir (kullanıcının eklediği SISTEM=0 kayıtlara dokunulmaz)
+    for (const [tur, kod] of DUZELTME) {
+      const t = TOHUM[tur].find(([k]) => k === kod);
+      if (!t) continue;
+      await pool.request().input("tur", sql.VarChar(12), tur).input("kod", sql.VarChar(10), kod).input("ad", sql.NVarChar(300), t[1])
+        .query(`UPDATE dbo.TODVZ_EBELGE_KOD SET AD = @ad WHERE TUR = @tur AND KOD = @kod AND SISTEM = 1 AND AD <> @ad;`);
     }
     hazirlanan.add(anahtar);
     return pool;

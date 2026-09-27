@@ -15,6 +15,7 @@ import { sifrele } from "../../utils/kripto.utils.js";
 import { firmaDbAnahtari } from "./firmaBaglanti.service.js";
 import { IzlemeSqlRepository } from "../../models/admin/izlemeSql.repository.js";
 import { OturumService } from "../oturum.service.js";
+import { MerkezGirisService } from "../merkezGiris.service.js";
 
 const bosIseNull = (v: string | null | undefined): string | null => {
   const t = (v ?? "").trim();
@@ -46,12 +47,11 @@ const yazimHazirla = (g: FirmaGirdi): FirmaYazim => {
 
 const cakismaHatasi = (err: any): ApiError => {
   const msg = String(err?.message || "");
-  if (msg.includes("UX_ADM_FIRMA_MUSTERI_NO")) return ApiError.conflict("Bu müşteri no başka bir firmada kullanılıyor.");
   if (msg.includes("UQ_ADM_FIRMA_KODU")) return ApiError.conflict("Bu firma kodu başka bir firmada kullanılıyor.");
   if (msg.includes("UQ_ADM_FIRMA_DB_ANAHTAR")) {
     return ApiError.conflict("Bu sunucu ve veritabanı başka bir firmaya tanımlı. Bir veritabanı yalnızca bir firmaya bağlanabilir.");
   }
-  return ApiError.conflict("Kayıt çakışması: firma kodu, müşteri no veya veritabanı başka bir firmada kullanılıyor.");
+  return ApiError.conflict("Kayıt çakışması: firma kodu veya veritabanı başka bir firmada kullanılıyor.");
 };
 
 /** Denetim izine yazılacak alanlar (şifre ASLA dahil edilmez). */
@@ -117,6 +117,7 @@ export class FirmaService {
       if (benzersizIhlalMi(err)) throw cakismaHatasi(err);
       throw err;
     }
+    MerkezGirisService.baglantiOnbelleginiTemizle(firmaId); // açık oturumlar yeni bağlantı bilgisini kullansın
 
     const eskiAlanlar = logAlanlari(eski);
     const yeniAlanlar = logAlanlari(yazim);

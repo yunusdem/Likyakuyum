@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { EbelgeYerelTaslakTuru, ebelgeService } from "../../services/ebelgeService";
 
 /**
@@ -8,6 +8,7 @@ import { EbelgeYerelTaslakTuru, ebelgeService } from "../../services/ebelgeServi
  */
 export function useYerelTaslak<T extends Record<string, unknown>>(belgeTuru: EbelgeYerelTaslakTuru, uygula: (icerik: T) => void) {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [taslakId, setTaslakId] = useState<number | null>(null);
   const [taslakMesaj, setTaslakMesaj] = useState("");
   const [taslakHata, setTaslakHata] = useState("");
@@ -30,7 +31,9 @@ export function useYerelTaslak<T extends Record<string, unknown>>(belgeTuru: Ebe
     try {
       const { id } = await ebelgeService.yerelTaslakKaydet({ id: taslakId ?? undefined, belgeTuru, ...ozet, icerik });
       setTaslakId(id);
-      setTaslakMesaj(`Taslaklara kaydedildi (yerel taslak #${id}). Belge GİB'e gönderilmedi ve numara kullanılmadı; Giden Kutusu › Taslak'tan yeniden açabilirsiniz.`);
+      // Taslak kaydedilince iş biter: e-Belge ana sayfasına dönülür (docs/GIRIS_VE_EBELGE_DUZENLEME.md E3)
+      window.dispatchEvent(new CustomEvent("erp-toast", { detail: { type: "success", message: `Taslak kaydedildi (#${id}). GİB'e gönderilmedi.` } }));
+      navigate("/e-belge");
     } catch (e: any) { setTaslakHata(e?.message || "Taslak kaydedilemedi."); }
     finally { setTaslakBusy(false); }
   };

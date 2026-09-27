@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Form, Button, Alert, Spinner, Row, Col, InputGroup, Modal } from "react-bootstrap";
 import {
   IconUser,
@@ -10,23 +10,16 @@ import {
   IconArrowRight,
   IconArrowLeft,
   IconDatabase,
-  IconServer,
+  IconId,
   IconBuildingStore,
   IconChartBar,
   IconReceipt2,
-  IconCheck,
-  IconCloud,
 } from "@tabler/icons-react";
-import { ComboboxInput } from "../../components/common/ComboboxInput";
 import { useAuth } from "../../context/AuthContext";
-import {
-  getConnectionMode,
-  setConnectionMode,
-  ConnectionMode,
-} from "../../services/apiClient";
+import { AuthService, MusteriVeritabani } from "../../services/authService";
 
-const PREDEFINED_SERVERS = ["localhost", "127.0.0.1"];
-const PREDEFINED_DBS = ["R2016_dvz"];
+const MUSTERI_NO_KEY = "kuyumcu_erp_musteri_no";
+const FIRMA_ID_KEY = "kuyumcu_erp_firma_id";
 
 // Yönetim panelinden gelen giriş engelleri açılır pencerede gösterilir (docs/ADMIN_PANEL_YOL_HARITASI.md K3)
 const ENGEL_BASLIKLARI: Record<string, string> = {
@@ -34,7 +27,12 @@ const ENGEL_BASLIKLARI: Record<string, string> = {
   LISANS_BITTI: "Hesabınız donduruldu",
   FIRMA_PASIF: "Hesap kullanımda değil",
   KULLANICI_PASIF: "Kullanıcı hesabı kapalı",
+  MUSTERI_NO_BULUNAMADI: "Müşteri no bulunamadı",
+  BAGLANTI_EKSIK: "Bağlantı bilgisi eksik",
 };
+
+/** Müşteri no yazımı: boşluksuz, büyük harf, yalnız harf-rakam (panelde de böyle kaydedilir) */
+const musteriNoTemizle = (v: string): string => v.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 export const LoginPage: React.FC = () => {
   const [rememberMe, setRememberMe] = useState<boolean>(() => {
@@ -53,43 +51,12 @@ export const LoginPage: React.FC = () => {
   // Şifre alanı her zaman kesinlikle boş olmalı
   const [password, setPassword] = useState<string>("");
 
-  // Çalışma Modu (Ekran görüntüsündeki gibi Yerel Veritabanı seçili ve aktif)
-  const [connectionMode, setConnectionModeState] = useState<ConnectionMode>(() => {
-    const saved = localStorage.getItem("kuyumcu_erp_connection_mode");
-    if (saved === "cloud" || saved === "local") return saved;
-    return "local";
-  });
-
-  // Bulut SQL Server adresi
-  const [cloudServer, setCloudServer] = useState<string>(() => {
-    const saved = localStorage.getItem("kuyumcu_erp_cloud_server") || localStorage.getItem("kuyumcu_erp_last_server");
-    if (saved && saved !== "test" && saved.trim()) return saved.trim();
-    return "localhost";
-  });
-
-  // Yerel SQL Server bağlantı bilgileri (Ekran görüntüsündeki gibi localhost)
-  const [localServer, setLocalServer] = useState<string>(() => {
-    const saved = localStorage.getItem("kuyumcu_erp_local_server");
-    if (saved && saved !== "test" && saved.trim()) return saved.trim();
-    return "localhost";
-  });
-
-  // Veritabanı (Ekran görüntüsündeki gibi R2016_dvz)
-  const [dbName, setDbName] = useState<string>(() => {
-    const saved = localStorage.getItem("kuyumcu_erp_local_db") || localStorage.getItem("kuyumcu_erp_last_db");
-    if (saved && saved !== "test" && saved.trim()) return saved.trim();
-    return "R2016_dvz";
-  });
-
-  // MSSQL Veritabanı Kullanıcı Adı ve Şifresi (DB_USER, DB_PASSWORD - Ekran görüntüsündeki gibi sa)
-  const [dbUser, setDbUser] = useState<string>(() => {
-    return localStorage.getItem("kuyumcu_erp_db_user") || "sa";
-  });
-  const [dbPassword, setDbPassword] = useState<string>(() => {
-    return localStorage.getItem("kuyumcu_erp_db_password") || "";
-  });
-  const [showDbPassword, setShowDbPassword] = useState<boolean>(false);
-  const [showOtherFields, setShowOtherFields] = useState<boolean>(false);
+  // Müşteri no → o müşterinin veritabanları (docs/GIRIS_VE_EBELGE_DUZENLEME.md G5)
+  const [musteriNo, setMusteriNo] = useState<string>(() => localStorage.getItem(MUSTERI_NO_KEY) || "");
+  const [veritabanlari, setVeritabanlari] = useState<MusteriVeritabani[]>([]);
+  const [firmaId, setFirmaId] = useState<number>(0);
+  const [dbAraniyor, setDbAraniyor] = useState<boolean>(false);
+  const [dbHata, setDbHata] = useState<string | null>(null);
 
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -104,17 +71,8 @@ export const LoginPage: React.FC = () => {
     return true;
   };
 
-  const handleConnectionModeChange = (mode: ConnectionMode) => {
-    setConnectionModeState(mode);
-    setConnectionMode(mode);
-    setErrorMsg(null);
-  };
-
   const { login } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const stateFrom = (location.state as any)?.from?.pathname;
-  const from = stateFrom && stateFrom !== "/" && stateFrom !== "/login" ? stateFrom : "/dashboard";
 
   // Tarayıcıların ve Google'ın şifreyi otomatik doldurmasını engellemek için açılışta sıfırla
   useEffect(() => {
@@ -125,32 +83,45 @@ export const LoginPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleCloudServerChange = (val: string) => {
-    setCloudServer(val);
-    localStorage.setItem("kuyumcu_erp_cloud_server", val);
-    localStorage.setItem("kuyumcu_erp_last_server", val);
-  };
+  // Müşteri no yazıldıkça (kısa bekleme ile) veritabanları listelenir
+  useEffect(() => {
+    const no = musteriNoTemizle(musteriNo);
+    setVeritabanlari([]);
+    setFirmaId(0);
+    setDbHata(null);
+    if (no.length < 3) return;
 
-  const handleLocalServerChange = (val: string) => {
-    setLocalServer(val);
-    localStorage.setItem("kuyumcu_erp_local_server", val);
-  };
-
-  const handleDbChange = (val: string) => {
-    setDbName(val);
-    localStorage.setItem("kuyumcu_erp_local_db", val);
-    localStorage.setItem("kuyumcu_erp_last_db", val);
-  };
-
-  const handleDbUserChange = (val: string) => {
-    setDbUser(val);
-    localStorage.setItem("kuyumcu_erp_db_user", val);
-  };
-
-  const handleDbPasswordChange = (val: string) => {
-    setDbPassword(val);
-    localStorage.setItem("kuyumcu_erp_db_password", val);
-  };
+    let iptal = false;
+    const timer = setTimeout(async () => {
+      setDbAraniyor(true);
+      try {
+        const liste = await AuthService.musteriVeritabanlari(no);
+        if (iptal) return;
+        setVeritabanlari(liste);
+        if (liste.length === 0) {
+          setDbHata("Bu müşteri noya ait veritabanı bulunamadı.");
+        } else if (liste.length === 1) {
+          setFirmaId(liste[0].firmaId);
+        } else {
+          const son = Number(localStorage.getItem(FIRMA_ID_KEY) || 0);
+          setFirmaId(liste.some((v) => v.firmaId === son) ? son : 0);
+        }
+      } catch (err: any) {
+        if (!iptal) {
+          const mesaj = String(err?.message || "");
+          setDbHata(!mesaj || /^HTTP Hata|ulaşılamadı|zaman aşımı/i.test(mesaj)
+            ? "Veritabanları alınamadı; sunucuya ulaşılamıyor. Biraz sonra tekrar deneyin."
+            : mesaj);
+        }
+      } finally {
+        if (!iptal) setDbAraniyor(false);
+      }
+    }, 400);
+    return () => {
+      iptal = true;
+      clearTimeout(timer);
+    };
+  }, [musteriNo]);
 
   const handleUsernameChange = (val: string) => {
     const clean = val.replace(/\s+/g, "");
@@ -174,107 +145,57 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setErrorMsg(null);
 
+    const no = musteriNoTemizle(musteriNo);
     const cleanUsername = username.trim().replace(/\s+/g, "");
+    if (!no) {
+      setErrorMsg("Lütfen müşteri numaranızı giriniz.");
+      return;
+    }
+    if (!firmaId) {
+      setErrorMsg(
+        veritabanlari.length > 1
+          ? "Lütfen giriş yapılacak veritabanını seçiniz."
+          : dbHata || "Müşteri noya ait veritabanı bulunamadı."
+      );
+      return;
+    }
     if (!cleanUsername) {
       setErrorMsg("Lütfen kullanıcı adınızı giriniz.");
       return;
     }
-
     if (!password) {
       setErrorMsg("Lütfen şifrenizi giriniz.");
       return;
     }
 
-    if (connectionMode === "local") {
-      const cleanServer = localServer.trim() || "localhost";
-      const cleanDb = dbName.trim() || "R2016_dvz";
-      const cleanDbUser = dbUser.trim() || "sa";
-
-      try {
-        setIsLoading(true);
-
-        localStorage.setItem("kuyumcu_erp_local_server", cleanServer);
-        localStorage.setItem("kuyumcu_erp_local_db", cleanDb);
-        localStorage.setItem("kuyumcu_erp_db_user", cleanDbUser);
-        localStorage.setItem("kuyumcu_erp_db_password", dbPassword);
-        localStorage.setItem("kuyumcu_erp_connection_mode", "local");
-
-        if (rememberMe) {
-          localStorage.setItem("kuyumcu_erp_remember_me", "true");
-          localStorage.setItem("kuyumcu_erp_remember_user", cleanUsername);
-        } else {
-          localStorage.setItem("kuyumcu_erp_remember_me", "false");
-          localStorage.removeItem("kuyumcu_erp_remember_user");
-        }
-
-        await login({
-          username: cleanUsername,
-          password,
-          mode: "local",
-          dbServer: cleanServer,
-          dbName: cleanDb,
-          dbUser: cleanDbUser,
-          dbPassword,
-        });
-
-        navigate("/dashboard", { replace: true });
-      } catch (err: any) {
-        if (engelGoster(err)) return;
-        const msg = err.message || "Giriş başarısız. Lütfen yerel SQL Server bağlantı bilgilerinizi kontrol ediniz.";
-        setErrorMsg(msg);
-        if (msg.toLowerCase().includes("sql") || msg.toLowerCase().includes("login failed") || msg.toLowerCase().includes("veritabanı")) {
-          setShowOtherFields(true);
-        }
-      } finally {
-        setIsLoading(false);
+    try {
+      setIsLoading(true);
+      localStorage.setItem(MUSTERI_NO_KEY, no);
+      localStorage.setItem(FIRMA_ID_KEY, String(firmaId));
+      if (rememberMe) {
+        localStorage.setItem("kuyumcu_erp_remember_me", "true");
+        localStorage.setItem("kuyumcu_erp_remember_user", cleanUsername);
+      } else {
+        localStorage.setItem("kuyumcu_erp_remember_me", "false");
+        localStorage.removeItem("kuyumcu_erp_remember_user");
       }
-    } else {
-      // Bulut Modu (Varsayılan)
-      const cleanServer = cloudServer.trim() || "localhost";
-      const cleanDb = dbName.trim() || "R2016_dvz";
-      const cleanDbUser = dbUser.trim() || "sa";
 
-      try {
-        setIsLoading(true);
-        localStorage.setItem("kuyumcu_erp_cloud_server", cleanServer);
-        localStorage.setItem("kuyumcu_erp_last_server", cleanServer);
-        localStorage.setItem("kuyumcu_erp_last_db", cleanDb);
-        localStorage.setItem("kuyumcu_erp_db_user", cleanDbUser);
-        localStorage.setItem("kuyumcu_erp_db_password", dbPassword);
-        localStorage.setItem("kuyumcu_erp_connection_mode", "cloud");
-
-        if (rememberMe) {
-          localStorage.setItem("kuyumcu_erp_remember_me", "true");
-          localStorage.setItem("kuyumcu_erp_remember_user", cleanUsername);
-        } else {
-          localStorage.setItem("kuyumcu_erp_remember_me", "false");
-          localStorage.removeItem("kuyumcu_erp_remember_user");
-        }
-
-        await login({
-          username: cleanUsername,
-          password,
-          mode: "cloud",
-          dbServer: cleanServer,
-          dbName: cleanDb,
-          dbUser: cleanDbUser,
-          dbPassword,
-        });
-
-        navigate("/dashboard", { replace: true });
-      } catch (err: any) {
-        if (engelGoster(err)) return;
-        const msg = err.message || "Giriş başarısız. Lütfen kullanıcı adı ve şifrenizi kontrol ediniz.";
-        setErrorMsg(msg);
-        if (msg.toLowerCase().includes("sql") || msg.toLowerCase().includes("login failed") || msg.toLowerCase().includes("veritabanı")) {
-          setShowOtherFields(true);
-        }
-      } finally {
-        setIsLoading(false);
-      }
+      await login({ musteriNo: no, firmaId, username: cleanUsername, password });
+      navigate("/dashboard", { replace: true });
+    } catch (err: any) {
+      if (engelGoster(err)) return;
+      // Kullanıcı seçilen veritabanında tanımlı değilse de aynı yanıt döner (kullanıcı adı sızdırılmaz)
+      setErrorMsg(
+        err?.status === 401
+          ? "Kullanıcı adı veya şifre hatalı ya da seçilen veritabanına giriş yetkiniz yok."
+          : err?.message || "Giriş başarısız. Lütfen bilgilerinizi kontrol ediniz."
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const secili = veritabanlari.find((v) => v.firmaId === firmaId);
 
   return (
     <div
@@ -509,164 +430,6 @@ export const LoginPage: React.FC = () => {
                 <h3 className="fw-bold mb-1" style={{ color: "#784405" }}>Giriş Yap</h3>
               </div>
 
-              {/* İleride düzenlenecek olan sunucu ve veritabanı seçim kısımları (Arka planda ekran görüntüsündeki gibi seçili ve aktif kalır) */}
-              <div style={{ display: "none" }}>
-                {/* 1. Çalışma Modu (Bulut / Yerel) */}
-                <div
-                  className="p-1 mb-4 rounded-3 d-flex align-items-center"
-                  style={{ backgroundColor: "#f3ede2", border: "1px solid #e7dcce" }}
-                >
-                  <button
-                    type="button"
-                    className="btn btn-sm flex-fill py-2 px-3 border-0 rounded-2 fw-semibold d-flex align-items-center justify-content-center gap-2"
-                    style={{
-                      backgroundColor: connectionMode === "cloud" ? "#ffffff" : "transparent",
-                      color: connectionMode === "cloud" ? "#9e640b" : "#78716c",
-                      boxShadow: connectionMode === "cloud" ? "0 2px 5px rgba(0,0,0,0.08)" : "none",
-                      fontSize: "0.85rem",
-                      transition: "all 0.2s ease",
-                    }}
-                    onClick={() => handleConnectionModeChange("cloud")}
-                  >
-                    <IconCloud size={18} className={connectionMode === "cloud" ? "text-warning" : ""} />
-                    <span>Bulut Veritabanı</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-sm flex-fill py-2 px-3 border-0 rounded-2 fw-semibold d-flex align-items-center justify-content-center gap-2"
-                    style={{
-                      backgroundColor: connectionMode === "local" ? "#ffffff" : "transparent",
-                      color: connectionMode === "local" ? "#9e640b" : "#78716c",
-                      boxShadow: connectionMode === "local" ? "0 2px 5px rgba(0,0,0,0.08)" : "none",
-                      fontSize: "0.85rem",
-                      transition: "all 0.2s ease",
-                    }}
-                    onClick={() => handleConnectionModeChange("local")}
-                  >
-                    <IconServer size={18} className={connectionMode === "local" ? "text-warning" : ""} />
-                    <span>Yerel Veritabanı</span>
-                  </button>
-                </div>
-
-                {/* 2. Mod Bilgilendirme Rozeti */}
-                <div
-                  className="p-2.5 px-3 mb-3 rounded-3 d-flex align-items-center justify-content-between border"
-                  style={{ backgroundColor: "#fdfbf7", borderColor: "#ede4d3" }}
-                >
-                  <div className="d-flex align-items-center gap-2">
-                    <div
-                      className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                      style={{
-                        width: "30px",
-                        height: "30px",
-                        backgroundColor: "rgba(200, 143, 24, 0.15)",
-                        color: "#854e0a",
-                      }}
-                    >
-                      <IconServer size={17} />
-                    </div>
-                    <div>
-                      <div className="fw-semibold text-dark small" style={{ fontSize: "0.82rem" }}>
-                        Dükkan Yerel SQL Server Bağlantısı
-                      </div>
-                      <div className="text-muted" style={{ fontSize: "0.7rem" }}>
-                        Dükkanınızın dış statik IP adresini (örn: 88.245.x.x,1433) yazınız.
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    className="badge px-2 py-0.5 rounded"
-                    style={{
-                      backgroundColor: "rgba(200, 143, 24, 0.15)",
-                      color: "#854e0a",
-                      fontSize: "10.5px",
-                    }}
-                  >
-                    Yerel Bağlantı
-                  </span>
-                </div>
-
-                {/* 3. Sunucu Adı / IP */}
-                <Form.Group as={Row} className="align-items-center mb-3">
-                  <Col xs={12} sm={4}>
-                    <Form.Label className="d-flex flex-column mb-0">
-                      <span className="small fw-semibold text-secondary">
-                        Sunucu Adı <span className="text-danger">*</span>
-                      </span>
-                    </Form.Label>
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <InputGroup>
-                      <InputGroup.Text className="bg-white border-end-0 text-muted px-2.5">
-                        <IconServer size={17} />
-                      </InputGroup.Text>
-                      <Form.Control
-                        type="text"
-                        value={localServer}
-                        disabled={isLoading}
-                        onChange={(e) => handleLocalServerChange(e.target.value)}
-                        placeholder="localhost"
-                        className="border-start-0 bg-white"
-                        style={{ height: "40px", fontSize: "0.85rem" }}
-                        autoComplete="off"
-                      />
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
-
-                {/* 4. Veritabanı */}
-                <Form.Group as={Row} className="align-items-center mb-3">
-                  <Col xs={12} sm={4}>
-                    <Form.Label className="d-flex flex-column mb-0">
-                      <span className="small fw-semibold text-secondary">
-                        Veritabanı <span className="text-danger">*</span>
-                      </span>
-                    </Form.Label>
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <ComboboxInput
-                      id="dbName"
-                      value={dbName}
-                      onChange={handleDbChange}
-                      options={PREDEFINED_DBS}
-                      placeholder="R2016_dvz"
-                      disabled={isLoading}
-                      icon={<IconDatabase size={17} />}
-                      headerTitle="Kayıtlı Veritabanları"
-                    />
-                  </Col>
-                </Form.Group>
-
-                {/* 5. SQL Kullanıcısı */}
-                <Form.Group as={Row} className="align-items-center mb-3">
-                  <Col xs={12} sm={4}>
-                    <Form.Label className="d-flex flex-column mb-0">
-                      <span className="small fw-semibold text-secondary">
-                        SQL Kullanıcısı <span className="text-danger">*</span>
-                      </span>
-                    </Form.Label>
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <InputGroup>
-                      <InputGroup.Text className="bg-white border-end-0 text-muted px-2.5">
-                        <IconUser size={17} />
-                      </InputGroup.Text>
-                      <Form.Control
-                        type="text"
-                        value={dbUser}
-                        disabled={isLoading}
-                        onChange={(e) => handleDbUserChange(e.target.value)}
-                        placeholder="sa"
-                        className="border-start-0 bg-white"
-                        style={{ height: "40px", fontSize: "0.85rem" }}
-                        autoComplete="off"
-                      />
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
-              </div>
-
               {/* Error Alert */}
               {errorMsg && (
                 <Alert
@@ -678,43 +441,88 @@ export const LoginPage: React.FC = () => {
                 </Alert>
               )}
 
-              {/* Login Form: SADECE SQL Şifresi, Kullanıcı Adı * ve Şifre * */}
+              {/* Giriş: Müşteri No → Veritabanı → Kullanıcı Adı → Şifre */}
               <Form onSubmit={handleSubmit} autoComplete="off">
-                {/* 1. SQL Şifresi */}
+                {/* Müşteri No */}
                 <Form.Group as={Row} className="align-items-center mb-3">
                   <Col xs={12} sm={4} className="mb-1 mb-sm-0">
-                    <Form.Label className="d-flex flex-column mb-0">
+                    <Form.Label className="d-flex flex-column mb-0" htmlFor="musteriNoInput">
                       <span className="small fw-semibold text-secondary">
-                        SQL Şifresi
+                        Müşteri No <span className="text-danger">*</span>
                       </span>
                     </Form.Label>
                   </Col>
                   <Col xs={12} sm={8}>
                     <InputGroup>
                       <InputGroup.Text className="bg-light border-end-0 text-muted px-2.5">
-                        <IconLock size={18} />
+                        <IconId size={18} />
                       </InputGroup.Text>
                       <Form.Control
-                        type={showDbPassword ? "text" : "password"}
-                        value={dbPassword}
+                        id="musteriNoInput"
+                        type="text"
+                        autoFocus={!musteriNo}
+                        value={musteriNo}
                         disabled={isLoading}
-                        onChange={(e) => handleDbPasswordChange(e.target.value)}
-                        placeholder="SQL Şifresi"
-                        className="border-start-0 border-end-0 bg-white"
-                        style={{ height: "42px", fontSize: "0.88rem" }}
-                        autoComplete="new-password"
-                        name="no_autofill_db_pwd"
+                        onChange={(e) => setMusteriNo(musteriNoTemizle(e.target.value))}
+                        placeholder="Örn: D20AC0001"
+                        className="border-start-0 bg-white"
+                        style={{ height: "42px", letterSpacing: "0.5px" }}
+                        autoComplete="off"
+                        maxLength={20}
                       />
-                      <Button
-                        variant="outline-secondary"
-                        tabIndex={-1}
-                        onClick={() => setShowDbPassword(!showDbPassword)}
-                        className="border-start-0 bg-light text-muted"
-                        title={showDbPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
-                      >
-                        {showDbPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
-                      </Button>
+                      {dbAraniyor && (
+                        <InputGroup.Text className="bg-white">
+                          <Spinner animation="border" size="sm" />
+                        </InputGroup.Text>
+                      )}
                     </InputGroup>
+                  </Col>
+                </Form.Group>
+
+                {/* Veritabanı: tek ise doğrudan gösterilir, birden çoksa seçilir */}
+                <Form.Group as={Row} className="align-items-center mb-3">
+                  <Col xs={12} sm={4} className="mb-1 mb-sm-0">
+                    <Form.Label className="d-flex flex-column mb-0" htmlFor="veritabaniSecim">
+                      <span className="small fw-semibold text-secondary">
+                        Veritabanı <span className="text-danger">*</span>
+                      </span>
+                    </Form.Label>
+                  </Col>
+                  <Col xs={12} sm={8}>
+                    <InputGroup>
+                      <InputGroup.Text className="bg-light border-end-0 text-muted px-2.5">
+                        <IconDatabase size={18} />
+                      </InputGroup.Text>
+                      {veritabanlari.length > 1 ? (
+                        <Form.Select
+                          id="veritabaniSecim"
+                          value={firmaId || ""}
+                          disabled={isLoading}
+                          onChange={(e) => setFirmaId(Number(e.target.value) || 0)}
+                          className="border-start-0 bg-white"
+                          style={{ height: "42px" }}
+                        >
+                          <option value="">Veritabanı seçiniz ({veritabanlari.length})</option>
+                          {veritabanlari.map((v) => (
+                            <option key={v.firmaId} value={v.firmaId}>
+                              {v.unvan} — {v.dbName}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      ) : (
+                        <Form.Control
+                          id="veritabaniSecim"
+                          type="text"
+                          readOnly
+                          tabIndex={-1}
+                          value={secili ? `${secili.unvan} — ${secili.dbName}` : ""}
+                          placeholder={dbAraniyor ? "Aranıyor..." : "Müşteri no yazınca gelir"}
+                          className={`border-start-0 bg-white ${dbHata ? "is-invalid" : ""}`}
+                          style={{ height: "42px" }}
+                        />
+                      )}
+                    </InputGroup>
+                    {dbHata && <div className="small text-danger mt-1">{dbHata}</div>}
                   </Col>
                 </Form.Group>
 
@@ -734,7 +542,7 @@ export const LoginPage: React.FC = () => {
                       </InputGroup.Text>
                       <Form.Control
                         type="text"
-                        autoFocus
+                        autoFocus={!!musteriNo}
                         value={username}
                         disabled={isLoading}
                         onChange={(e) => handleUsernameChange(e.target.value)}

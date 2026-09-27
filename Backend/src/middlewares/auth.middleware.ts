@@ -5,6 +5,7 @@ import { UserRoleType } from "../constants/roles.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { setDbCredentials, normalizeServerName } from "../config/mssql.config.js";
 import { OturumService } from "../services/oturum.service.js";
+import { MerkezGirisService } from "../services/merkezGiris.service.js";
 
 /**
  * Middleware to authenticate requests via JWT Bearer token in Authorization header or cookie.
@@ -42,7 +43,18 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     req.user = decoded;
     req.accessToken = token;
 
-    // Header ve token üzerinden veritabanı bilgilerini havuza kaydet
+    // Müşteri no ile açılan oturum: bağlantı firma kaydından sunucuda çözülür, istemci başlıklarına bakılmaz
+    if (decoded.firmaId) {
+      MerkezGirisService.firmaBaglantisi(decoded.firmaId)
+        .then((b) => {
+          setDbCredentials(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
+          return OturumService.dogrula(decoded, req.originalUrl);
+        })
+        .then(() => next(), next);
+      return;
+    }
+
+    // Eski token (firmaId'siz): header ve token üzerinden veritabanı bilgilerini havuza kaydet
     const rawSrv = decoded.dbServer || (req.headers["x-db-server"] as string) || "localhost";
     const srv = normalizeServerName(rawSrv);
     const db = decoded.dbName || (req.headers["x-db-name"] as string) || "R2016_dvz";
