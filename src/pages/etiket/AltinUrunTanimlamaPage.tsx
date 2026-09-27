@@ -479,11 +479,29 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         setMaliyetDoviz("");
       }
 
-      // 5. Satış Kârı % üzerinden Satış Fiyatı ve Satış İşçiliği (Satış Kârı % değişmez, sabit kalır)
-      const activeKarYuzdeVal = explicitSatisKariYuzde !== undefined ? explicitSatisKariYuzde : satisKariYuzde;
-      const mKarY = parseNum(activeKarYuzdeVal !== "" ? activeKarYuzdeVal : 100);
+      // 5. Satış İşçilik & Satış Fiyatı Hesabı
+      const mSatisIscNum = parseNum(curSatisIscilik);
 
-      if (calcToplamHasNum > 0 && (activeKarYuzdeVal !== "" || explicitSatisKariYuzde !== undefined)) {
+      if (mSatisIscNum > 0) {
+        // Kullanıcının girdiği veya mevcut Satış İşçilik üzerinden hesaplama
+        const rawSatisIscilikNum =
+          curMaliyetBirim === "Gram"
+            ? mSatisIscNum * (mMiktar > 0 ? mMiktar : 1)
+            : mSatisIscNum;
+        const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, curMaliyetIscilikPara, curKurRef, overrides);
+        setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : "");
+
+        const calcTopIsc = calcMaliyetIscilikHas + calcSatisIscilikHas;
+        setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
+        setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
+
+        const calcSatisHasNum = calcHasNum + calcSatisIscilikHas;
+        setSatisFiyati(calcSatisHasNum > 0 ? format5(calcSatisHasNum) : "");
+        setSatisDoviz(calcSatisHasNum > 0 ? format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)) : "");
+        // SATIŞ KÂRI % KESİNLİKLE VE KESİNLİKLE DEĞİŞMEZ!
+      } else if (explicitSatisKariYuzde !== undefined && explicitSatisKariYuzde !== "" && calcToplamHasNum > 0) {
+        // Yalnızca kullanıcı Satış Kârı % alanını değiştirdiğinde Satış İşçiliği türetilir
+        const mKarY = parseNum(explicitSatisKariYuzde);
         const calcSatisHasNum = calcToplamHasNum * (1 + (mKarY / 100));
         setSatisFiyati(format5(calcSatisHasNum));
         setSatisDoviz(format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)));
@@ -492,13 +510,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         setSatisIscilikTutari(derivedSatisIscilikHas > 0 ? format5(derivedSatisIscilikHas) : "");
 
         const calcTopIsc = calcMaliyetIscilikHas + derivedSatisIscilikHas;
-        if (calcTopIsc > 0) {
-          setToplamIscilik(format5(calcTopIsc));
-          setIscilikKari(calcTopIsc);
-        } else {
-          setToplamIscilik("");
-          setIscilikKari(0);
-        }
+        setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
+        setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
 
         const rawSatisIscilikVal = convertFromHas(derivedSatisIscilikHas, curMaliyetIscilikPara, curKurRef, overrides);
         const unitSatisIscilik =
@@ -506,6 +519,16 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
             ? rawSatisIscilikVal / mMiktar
             : rawSatisIscilikVal;
         setSatisIscilik(unitSatisIscilik > 0 ? format5(unitSatisIscilik) : "");
+      } else if (curSatisIscilik === "" || curSatisIscilik === 0) {
+        // Eğer Satış İşçilik silinmişse veya boşsa
+        setSatisIscilik("");
+        setSatisIscilikTutari("");
+        const calcTopIsc = calcMaliyetIscilikHas;
+        setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
+        setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
+        const calcSatisHasNum = calcHasNum;
+        setSatisFiyati(calcSatisHasNum > 0 ? format5(calcSatisHasNum) : "");
+        setSatisDoviz(calcSatisHasNum > 0 ? format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)) : "");
       } else {
         setSatisFiyati("");
         setSatisDoviz("");
@@ -535,48 +558,16 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
   const handleSatisKariYuzdeChange = (val: string) => {
     setSatisKariYuzde(val);
-    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, undefined, val);
+    if (val === "") {
+      recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, satisIscilik, kurRef, undefined, "");
+    } else {
+      recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, undefined, kurRef, undefined, val);
+    }
   };
 
   const handleSatisIscilikChange = (val: string) => {
     setSatisIscilik(val);
-    const mSatisIsc = parseNum(val);
-    const mMiktar = parseNum(miktar);
-    const milyem = getMilyemFromAyar(ayar);
-    const calcHasNum = mMiktar > 0 && milyem > 0 ? mMiktar * (milyem / 1000) : 0;
-    const mMaliyetIscilik = parseNum(maliyetIscilik);
-    const rawMaliyetIscilikNum =
-      mMaliyetIscilik > 0
-        ? maliyetIscilikBirim === "Gram"
-          ? mMaliyetIscilik * (mMiktar > 0 ? mMiktar : 1)
-          : mMaliyetIscilik
-        : 0;
-    const calcMaliyetIscilikHas = convertToHas(rawMaliyetIscilikNum, maliyetIscilikParaKodu, kurRef);
-    const calcToplamHasNum = calcHasNum + calcMaliyetIscilikHas;
-
-    if (mSatisIsc > 0) {
-      const rawSatisIscilikNum =
-        maliyetIscilikBirim === "Gram"
-          ? mSatisIsc * (mMiktar > 0 ? mMiktar : 1)
-          : mSatisIsc;
-      const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, maliyetIscilikParaKodu, kurRef);
-      setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : "");
-
-      const calcTopIsc = calcMaliyetIscilikHas + calcSatisIscilikHas;
-      setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
-      setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
-
-      const calcSatisHasNum = calcHasNum + calcSatisIscilikHas;
-      setSatisFiyati(format5(calcSatisHasNum));
-      setSatisDoviz(format2(convertFromHas(calcSatisHasNum, satisParaKodu, kurRef)));
-
-      if (calcToplamHasNum > 0) {
-        const derivedKar = ((calcSatisHasNum - calcToplamHasNum) / calcToplamHasNum) * 100;
-        setSatisKariYuzde(derivedKar.toFixed(2));
-      }
-    } else if (val === "") {
-      recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, "", kurRef);
-    }
+    recalculateAll(miktar, ayar, maliyetIscilik, maliyetIscilikParaKodu, maliyetIscilikBirim, val, kurRef);
   };
 
   const handleMaliyetBirimChange = (newBirim: string) => {
@@ -2220,7 +2211,9 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                             }
                           }}
                           onBlur={() => {
-                            if (miktar) setMiktar(format5(miktar));
+                            if (miktar && miktar.toString().trim() !== "" && parseNum(miktar) > 0) {
+                              setMiktar(format5(miktar));
+                            }
                           }}
                           className="fw-bold font-monospace text-end bg-white"
                           style={{ maxWidth: "145px" }}
@@ -2254,7 +2247,9 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                             }
                           }}
                           onBlur={() => {
-                            if (maliyetIscilik) setMaliyetIscilik(format5(maliyetIscilik));
+                            if (maliyetIscilik && maliyetIscilik.toString().trim() !== "" && parseNum(maliyetIscilik) > 0) {
+                              setMaliyetIscilik(format5(maliyetIscilik));
+                            }
                           }}
                           className="font-monospace text-end bg-white"
                           style={{ maxWidth: "145px" }}
@@ -2288,7 +2283,9 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                             }
                           }}
                           onBlur={() => {
-                            if (satisIscilik) setSatisIscilik(format5(satisIscilik));
+                            if (satisIscilik && satisIscilik.toString().trim() !== "" && parseNum(satisIscilik) > 0) {
+                              setSatisIscilik(format5(satisIscilik));
+                            }
                           }}
                           className="font-monospace text-end bg-white"
                           style={{ maxWidth: "145px" }}

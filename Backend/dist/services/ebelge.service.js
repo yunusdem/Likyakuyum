@@ -1,5 +1,6 @@
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
+import { FATURA_NO_BICIMI, faturaNoUret } from "../utils/faturaNo.utils.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
 import { EbelgeSqlRepository, } from "../models/ebelgeSql.repository.js";
 import { getInvoiceCount, getInvoiceHtml, getInvoicePdf, getInvoiceStatusDetail, getInvoices, getMusteriCariAdresleri, getOncekiBelgeAdresi, getSonBelgeId, getUserListEFatura, gonderimSatirlari, invoiceCheckValidate, invoiceRedKabul, parseAmount, parseCurrency, parseIceDate, sendDraftDocumentApproval, sendInvoice, sendInvoiceTaslak, setInvoiceStatus, } from "./ice/ice.efatura.js";
@@ -382,26 +383,54 @@ export class EbelgeService {
      */
     static async mukellefSorgula(vknTckn, kullanici, dbContext) {
         if (!/^\d{10}$|^\d{11}$/.test(vknTckn.trim())) {
-            throw ApiError.badRequest("VKN 10, TCKN 11 haneli rakam olmalıdır.");
+            return {
+                mukellefMi: false,
+                kullanicilar: [],
+                mesaj: "Geçersiz VKN/TCKN formatı.",
+            };
         }
-        const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
-        const sonuc = await getUserListEFatura(config, vknTckn.trim());
-        if (!sonuc.basarili) {
-            throw ApiError.unprocessable(sonuc.mesaj || "Mükellef sorgusu başarısız; belge türü belirlenemedi.");
+        let config;
+        try {
+            config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
         }
-        await EbelgeSqlRepository.writeLog({
-            metod: "getUserList_EFatura",
-            yon: "GIDEN",
-            basarili: sonuc.basarili,
-            kullanici,
-            istekOzet: `vkn=${vknTckn}`,
-            cevapOzet: `${sonuc.kullanicilar.length} etiket`,
-        }, dbContext);
-        return {
-            mukellefMi: sonuc.kullanicilar.length > 0,
-            kullanicilar: sonuc.kullanicilar,
-            mesaj: sonuc.mesaj,
-        };
+        catch {
+            // Entegratör ayarları tanımlı değilse hata fırlatmak yerine e-Arşiv olarak kabul et
+            return {
+                mukellefMi: false,
+                kullanicilar: [],
+                mesaj: "e-Belge entegratör ayarları henüz tanımlanmamış. e-Arşiv senaryosu uygulandı.",
+            };
+        }
+        try {
+            const sonuc = await getUserListEFatura(config, vknTckn.trim());
+            if (!sonuc.basarili) {
+                return {
+                    mukellefMi: false,
+                    kullanicilar: [],
+                    mesaj: sonuc.mesaj || "Mükellef sorgusu yapılamadı, e-Arşiv uygulandı.",
+                };
+            }
+            await EbelgeSqlRepository.writeLog({
+                metod: "getUserList_EFatura",
+                yon: "GIDEN",
+                basarili: sonuc.basarili,
+                kullanici,
+                istekOzet: `vkn=${vknTckn}`,
+                cevapOzet: `${sonuc.kullanicilar.length} etiket`,
+            }, dbContext);
+            return {
+                mukellefMi: sonuc.kullanicilar.length > 0,
+                kullanicilar: sonuc.kullanicilar,
+                mesaj: sonuc.mesaj,
+            };
+        }
+        catch {
+            return {
+                mukellefMi: false,
+                kullanicilar: [],
+                mesaj: "Mükellef sorgulanamadı, varsayılan e-Arşiv senaryosu uygulandı.",
+            };
+        }
     }
     /**
      * Alıcının ICE portalında kayıtlı adreslerini döndürür (doğrulama ekranında seçtirilir).
@@ -1764,6 +1793,53 @@ export class EbelgeService {
     /** Giden belge listesi */
     static async listGiden(filtre, dbContext) {
         return EbelgeSqlRepository.listGiden(filtre, dbContext);
+    }
+    /**
+     * Fatura no önerileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10): fatura numarası elle yazılmaz. Seriler, bu hesaptan
+     * daha önce kesilmiş belgelerden bulunur (yerel giden kaydı + ICE'deki gönderilmiş belgeler: e-Fatura için GetInvoice
+     * OUT, e-Arşiv için GetEArchive). Her seri için ICE'deki son sıra (`Get_Son_Belge_ID`) alınır ve bir fazlası önerilir.
+     * `ekSeri` ile kullanıcının yazdığı yeni bir seri de sorgulanır (hesapta hiç belge yoksa).
+     */
+    static async faturaNoOnerileri(belgeTuru, yil, ekSeri, dbContext) {
+        const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+        const seriler = new Set();
+        const seriEkle = (no) => {
+            const s = String(no || "").trim().toUpperCase();
+            if (FATURA_NO_BICIMI.test(s))
+                seriler.add(s.slice(0, 3));
+        };
+        (await EbelgeSqlRepository.gidenSerileri(belgeTuru, dbContext).catch(() => [])).forEach((s) => seriler.add(s));
+        // ICE'den (portaldan elle kesilenler dahil) son iki yılın gönderilmiş belgeleri
+        const baslangic = new Date(yil - 1, 0, 1);
+        const bitis = new Date();
+        try {
+            if (belgeTuru === "EFatura") {
+                const { faturalar } = await getInvoices(config, { yon: "OUT", baslangicTarihi: baslangic, bitisTarihi: bitis, limit: 500, okunmuslarDahil: true, islenmislerDahil: true }, true);
+                faturalar.forEach((f) => seriEkle(f.ID));
+            }
+            else {
+                (await getEArchive(config, { baslangic, bitis, limit: 500 })).forEach((k) => seriEkle(k.ID));
+            }
+        }
+        catch (err) {
+            logger.warn(`Fatura no önerisi: ICE ${belgeTuru} listesi alınamadı, yerel kayıtlarla devam ediliyor:`, err);
+        }
+        const ek = (ekSeri || "").trim().toUpperCase();
+        if (ek) {
+            if (!/^[A-Z0-9]{3}$/.test(ek))
+                throw ApiError.badRequest("Seri 3 karakter (harf/rakam) olmalıdır.");
+            seriler.add(ek);
+        }
+        const sonuc = [];
+        for (const seri of [...seriler].sort().slice(0, 15)) {
+            const son = await getSonBelgeId(config, seri, belgeTuru, yil);
+            const sonSira = Number(son?.Son_Belge_ID);
+            if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sonSira) || sonSira < 0) {
+                throw ApiError.unprocessable(`ICE'den ${seri} serisinin son numarası alınamadı.`);
+            }
+            sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1) });
+        }
+        return sonuc;
     }
     /**
      * ICE tarafındaki son belge numarasını sorar.

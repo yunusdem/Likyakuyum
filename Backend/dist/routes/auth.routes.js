@@ -3,10 +3,12 @@ import { AuthController } from "../controllers/auth.controller.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { authRateLimiter } from "../middlewares/rateLimiter.middleware.js";
-import { loginSchema, refreshTokenSchema, changePasswordSchema } from "../schemas/auth.schema.js";
+import { loginSchema, refreshTokenSchema, changePasswordSchema, musteriVeritabanlariSchema } from "../schemas/auth.schema.js";
 const router = Router();
 // Public Auth Endpoints
 router.post("/login", authRateLimiter, validate(loginSchema), AuthController.login);
+// Giriş ekranı: müşteri no yazılınca o müşterinin veritabanları (firma ünvanı + DB adı; bağlantı bilgisi dönmez)
+router.get("/musteri-veritabanlari", authRateLimiter, validate(musteriVeritabanlariSchema), AuthController.musteriVeritabanlari);
 // /register kapatıldı: kimlik doğrulaması olmadan kullanıcı açıyordu. Kullanıcılar Kullanıcı Tanımları ekranından
 // (firma yöneticisi) veya yönetim panelinden açılır (docs/ADMIN_PANEL_YOL_HARITASI.md 7.2).
 router.post("/refresh-token", validate(refreshTokenSchema), AuthController.refreshToken);

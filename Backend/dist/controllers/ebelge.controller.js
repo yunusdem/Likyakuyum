@@ -6,6 +6,8 @@ import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
 import { EbelgeKodRepository } from "../models/ebelgeKod.repository.js";
 import { EbelgeTaslakRepository } from "../models/ebelgeTaslak.repository.js";
+import { EbelgeNaceRepository } from "../models/ebelgeNace.repository.js";
+import { ebelgeNaceKaydetSchema } from "../schemas/ebelge.schema.js";
 import { EbelgeKnskRepository, KNSK_UYARI_GUN } from "../models/ebelgeKnsk.repository.js";
 import { ebelgeKnskVknSchema, ebelgeKnskListeSchema, ebelgeKnskOnaySchema } from "../schemas/ebelge.schema.js";
 import { ebelgeYerelTaslakListeSchema, ebelgeYerelTaslakKaydetSchema } from "../schemas/ebelge.schema.js";
@@ -85,6 +87,20 @@ export class EbelgeController {
         if (!parsed.success)
             throw ApiError.badRequest(parsed.error.issues[0]?.message || "Kod bilgisi geçersiz.", parsed.error.format());
         return ApiResponse.ok(res, "Kod eklendi.", await EbelgeKodRepository.ekle(parsed.data, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req)));
+    });
+    static naceListe = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "NACE kodları listelendi.", await EbelgeNaceRepository.listele(EbelgeController.getDbContext(req)));
+    });
+    static naceKaydet = asyncHandler(async (req, res) => {
+        const parsed = ebelgeNaceKaydetSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest(parsed.error.issues[0]?.message || "NACE bilgisi geçersiz.", parsed.error.format());
+        const kodlar = parsed.data.liste.map((n) => n.kod);
+        if (new Set(kodlar).size !== kodlar.length)
+            throw ApiError.badRequest("Aynı NACE kodu iki kez girilmiş.");
+        const liste = parsed.data.liste.map((n) => ({ ...n, oranlar: [...new Set(n.oranlar)].sort((a, b) => a - b) }));
+        await EbelgeNaceRepository.kaydet(liste, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "NACE kodları kaydedildi.", liste);
     });
     static yerelTaslakListe = asyncHandler(async (req, res) => {
         const parsed = ebelgeYerelTaslakListeSchema.safeParse(req.query);
@@ -315,6 +331,21 @@ export class EbelgeController {
             throw ApiError.badRequest("Seri bilgisi zorunludur.");
         const sonuc = await EbelgeService.getSonBelgeNo(seri, belgeTuru, yil, EbelgeController.getDbContext(req));
         return ApiResponse.ok(res, "Son belge numarası getirildi.", sonuc);
+    });
+    /**
+     * GET /api/v1/e-belge/giden/fatura-no-onerileri?belgeTuru=EFatura|EArsiv&yil=2026[&seri=ABC]
+     * Fatura formunun en üstündeki numara seçimi (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10).
+     */
+    static faturaNoOnerileri = asyncHandler(async (req, res) => {
+        const belgeTuru = String(req.query.belgeTuru || "").trim();
+        if (belgeTuru !== "EFatura" && belgeTuru !== "EArsiv")
+            throw ApiError.badRequest("Belge türü EFatura ya da EArsiv olmalıdır.");
+        const yil = Number(req.query.yil) || new Date().getFullYear();
+        if (!Number.isInteger(yil) || yil < 2000 || yil > 2100)
+            throw ApiError.badRequest("Yıl geçersiz.");
+        const seri = req.query.seri ? String(req.query.seri) : undefined;
+        const sonuc = await EbelgeService.faturaNoOnerileri(belgeTuru, yil, seri, EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "Fatura no önerileri getirildi.", sonuc);
     });
     /* ======================================================================
        Giden belge — taslak (Faz 6). GİB'e gönderim YOK.

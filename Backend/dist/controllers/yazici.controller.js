@@ -48,4 +48,12 @@ export class YaziciController {
         await YaziciService.deleteYazici(req.params.id, dbContext);
         return ApiResponse.ok(res, "Yazıcı tanımı başarıyla silindi.", { id: req.params.id });
     });
+    /**
+     * POST /api/v1/yazici/direct-print
+     */
+    static directPrint = asyncHandler(async (req, res) => {
+        const dbContext = YaziciController.getDbContext(req);
+        const result = await YaziciService.directPrint(req.body, dbContext);
+        return ApiResponse.ok(res, result.message, result);
+    });
 }

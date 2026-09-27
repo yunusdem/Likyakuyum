@@ -415,7 +415,7 @@ export const ebelgeKodEkleSchema = z.object({
     oran: z.coerce.number().min(0).max(100).nullish(),
 });
 /** Yerel taslak — docs/ebelge-revizyon.md K3. ICERIK formun hâlidir; gönderimde asıl şemalar yeniden doğrular. */
-const yerelTaslakTuru = z.enum(["EArsiv", "EIrsaliye", "EGiderPusulasi", "EMustahsil"]);
+const yerelTaslakTuru = z.enum(["EArsiv", "EFatura", "EIrsaliye", "EGiderPusulasi", "EMustahsil"]);
 export const ebelgeYerelTaslakListeSchema = z.object({ belgeTuru: yerelTaslakTuru.optional() });
 export const ebelgeYerelTaslakKaydetSchema = z.object({
     id: z.coerce.number().int().positive().optional(),
@@ -427,6 +427,16 @@ export const ebelgeYerelTaslakKaydetSchema = z.object({
     paraBirimi: z.string().trim().max(10).nullish(),
     icerik: z.record(z.string(), z.unknown()),
 }).refine((v) => JSON.stringify(v.icerik).length <= 500_000, "Taslak içeriği çok büyük.");
+/** Firma NACE kodları ve izin verilen KDV oranları — docs/GIRIS_VE_EBELGE_DUZENLEME.md N1 */
+export const EBELGE_KDV_ORANLARI = [0, 1, 8, 10, 18, 20];
+export const ebelgeNaceKaydetSchema = z.object({
+    liste: z.array(z.object({
+        kod: z.string().trim().regex(/^\d{2}(\.\d{1,2}){0,2}$/, "NACE kodu 47.77.01 biçiminde olmalıdır."),
+        aciklama: z.string().trim().max(200).default(""),
+        oranlar: z.array(z.number().int().refine((o) => EBELGE_KDV_ORANLARI.includes(o), "Geçersiz KDV oranı."))
+            .min(1, "Her NACE kodu için en az bir KDV oranı seçilmelidir.").max(6),
+    })).max(20, "En fazla 20 NACE kodu girilebilir."),
+});
 /** KNSK (kamu nüfuzuna sahip kişi) — docs/ebelge-revizyon.md K9 */
 const knskVkn = z.string().trim().regex(/^\d{10,11}$/, "VKN 10, TCKN 11 haneli olmalıdır.");
 export const ebelgeKnskVknSchema = z.object({ vkn: knskVkn });

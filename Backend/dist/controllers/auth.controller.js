@@ -17,6 +17,10 @@ export class AuthController {
         });
         return ApiResponse.ok(res, ResponseMessages.LOGIN_SUCCESS, result);
     });
+    static musteriVeritabanlari = asyncHandler(async (req, res) => {
+        const liste = await AuthService.musteriVeritabanlari(String(req.query.musteriNo || ""));
+        return ApiResponse.ok(res, "Veritabanları listelendi.", liste);
+    });
     static register = asyncHandler(async (req, res) => {
         const result = await AuthService.register(req.body);
         res.cookie("refreshToken", result.tokens.refreshToken, {

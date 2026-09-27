@@ -10,6 +10,7 @@ import { ResponseMessages } from "../constants/responseMessages.js";
 import { sahteSifreDogrula, sifreDogrula, sifreHashle, sifreKuralHatasi } from "../utils/sifre.utils.js";
 import { comparePassword, hashPassword } from "../utils/password.utils.js";
 import { baglantiSina, firmaDbAnahtari } from "./admin/firmaBaglanti.service.js";
+import { sifreCoz } from "../utils/kripto.utils.js";
 import { ModulSqlRepository } from "../models/admin/modulSql.repository.js";
 const RED_MESAJI = {
     FIRMA_KAYITSIZ: "Bu veritabanı sistemde kayıtlı bir firmaya ait değil. Lütfen hizmet sağlayıcınızla iletişime geçiniz.",
@@ -17,7 +18,13 @@ const RED_MESAJI = {
     FIRMA_PASIF: "Bu hesap kullanımda değil. Lütfen hizmet sağlayıcınızla iletişime geçiniz.",
     LISANS_BITTI: "Hesabınız donduruldu: lisans süreniz doldu. Lütfen hizmet sağlayıcınızla iletişime geçiniz.",
     KULLANICI_PASIF: "Kullanıcı hesabınız kapatılmış. Lütfen hizmet sağlayıcınızla iletişime geçiniz.",
+    MUSTERI_NO_BULUNAMADI: "Müşteri no veya seçilen veritabanı bulunamadı. Lütfen kontrol ediniz.",
+    BAGLANTI_EKSIK: "Firma veritabanı bağlantı bilgisi eksik. Lütfen hizmet sağlayıcınızla iletişime geçiniz.",
 };
+const BAGLANTI_ONBELLEK_MS = 5 * 60 * 1000;
+const baglantiOnbellegi = new Map();
+/** Müşteri no yazımı: boşluksuz, büyük harf (panelde de böyle kaydedilir). */
+export const musteriNoTemizle = (v) => String(v || "").replace(/\s+/g, "").toUpperCase();
 /** Giriş ekranı pencereyi yanıttaki errors.kod'a göre açar. */
 const redHatasi = (kod) => new ApiError(HttpStatus.FORBIDDEN, RED_MESAJI[kod], { kod });
 /** Firmanın şu an çalışmasına engel olan durum; yoksa null. Lisansı hiç tanımlanmamış firma engellenmez. */
@@ -51,6 +58,56 @@ export class MerkezGirisService {
             throw redHatasi(engel);
         }
         return firma;
+    }
+    /** Giriş ekranı: müşteri noya bağlı veritabanları (firma ünvanı + DB adı). */
+    static async musteriVeritabanlari(musteriNo) {
+        const no = musteriNoTemizle(musteriNo);
+        if (!no)
+            return [];
+        const liste = await FirmaSqlRepository.musteriNoIleListele(no);
+        return liste.map(({ firmaId, unvan, dbName }) => ({ firmaId, unvan, dbName }));
+    }
+    /**
+     * Müşteri no ile girişin 1. adımı: seçilen firma gerçekten bu müşteri noya ait mi, çalışabilir durumda mı.
+     * Müşteri no ile firma uyuşmazsa (başka müşterinin firmaId'si gönderilmişse) kayıtsız gibi reddedilir.
+     */
+    static async musteriFirmaKontrol(musteriNo, firmaId, kullaniciAdi, istemci) {
+        const no = musteriNoTemizle(musteriNo);
+        const firma = await FirmaSqlRepository.idIleBul(firmaId);
+        const eslesir = !!firma && !!no && (firma.musteriNo || "").toUpperCase() === no;
+        const engel = eslesir ? firmaEngeli(firma) : "MUSTERI_NO_BULUNAMADI";
+        if (engel) {
+            await AdminLogSqlRepository.girisLogu({
+                tur: "KULLANICI",
+                firmaId: eslesir ? firma.firmaId : null,
+                kullaniciAdi,
+                basarili: false,
+                redNedeni: eslesir ? engel : `${engel}: ${no} / ${firmaId}`,
+                ...istemci,
+            });
+            throw redHatasi(engel);
+        }
+        return firma;
+    }
+    /** Firmanın kayıtlı veritabanı bağlantısı; kullanıcı adı / şifre eksikse ya da çözülemiyorsa BAGLANTI_EKSIK. */
+    static async firmaBaglantisi(firmaId) {
+        const kayit = baglantiOnbellegi.get(firmaId);
+        if (kayit && Date.now() - kayit.zaman < BAGLANTI_ONBELLEK_MS)
+            return kayit.baglanti;
+        const b = await FirmaSqlRepository.baglantiBilgisi(firmaId);
+        const sifre = b ? sifreCoz(b.dbSifreEnc) : null;
+        if (!b || !b.dbUser || !sifre)
+            throw redHatasi("BAGLANTI_EKSIK");
+        const baglanti = { dbServer: b.dbServer, dbName: b.dbName, dbUser: b.dbUser, dbSifre: sifre };
+        baglantiOnbellegi.set(firmaId, { baglanti, zaman: Date.now() });
+        return baglanti;
+    }
+    /** Panelde firmanın bağlantı bilgisi değişince çağrılır. */
+    static baglantiOnbelleginiTemizle(firmaId) {
+        if (firmaId === undefined)
+            baglantiOnbellegi.clear();
+        else
+            baglantiOnbellegi.delete(firmaId);
     }
     /**
      * Kullanıcı tarafının paylaşılan bağlantı havuzu, hedefe bağlanamayınca başka bir firmanın açık bağlantısına

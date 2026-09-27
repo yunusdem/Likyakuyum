@@ -3,6 +3,7 @@ import { YaziciController } from "../controllers/yazici.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 const router = Router();
 router.use(authenticate);
+router.post("/direct-print", YaziciController.directPrint);
 router.get("/", YaziciController.listYazicilar);
 router.post("/", YaziciController.createYazici);
 router.get("/:id", YaziciController.getYaziciById);

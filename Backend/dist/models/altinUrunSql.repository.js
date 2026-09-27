@@ -38,6 +38,8 @@ export class AltinUrunSqlRepository {
             [HAS_KURU_1] FLOAT NULL,
             [HAS_KURU_2] FLOAT NULL,
             [ALTIN_KURU] FLOAT NULL,
+            [USD_KURU_1] FLOAT NULL,
+            [USD_KURU_2] FLOAT NULL,
             [SATILDI] BIT NOT NULL DEFAULT 0,
             [RESIM] VARBINARY(MAX) NULL,
             [YAZDIRILDI] BIT NOT NULL DEFAULT 0,
@@ -56,6 +58,10 @@ export class AltinUrunSqlRepository {
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [YAZDIRILDI] BIT NOT NULL DEFAULT 0;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'YAZDIRILDI_ZAMANI')
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [YAZDIRILDI_ZAMANI] DATETIME NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'USD_KURU_1')
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_1] FLOAT NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'USD_KURU_2')
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_2] FLOAT NULL;
         END;
       `);
         }
@@ -94,6 +100,8 @@ export class AltinUrunSqlRepository {
             @HAS_KURU_1                 FLOAT = NULL,
             @HAS_KURU_2                 FLOAT = NULL,
             @ALTIN_KURU                 FLOAT = NULL,
+            @USD_KURU_1                 FLOAT = NULL,
+            @USD_KURU_2                 FLOAT = NULL,
             @SATILDI                    BIT = 0,
             @RESIM                      VARBINARY(MAX) = NULL,
             @KULLANICI_ID               INT = NULL,
@@ -129,14 +137,14 @@ export class AltinUrunSqlRepository {
                     MIKTAR, HAS_GRAM, MALIYET_ISCILIK, MALIYET_ISCILIK_PARA_KODU, MALIYET_ISCILIK_BIRIM,
                     MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK, SATIS_ISCILIK_TUTARI, ISCILIK_KARI, MALIYET,
                     MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
-                    ALTIN_KURU, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
+                    ALTIN_KURU, USD_KURU_1, USD_KURU_2, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
                 )
                 VALUES (
                     ISNULL(@TARIH, @SIMDIKI_ZAMAN), @GRUP_KODU, @URUN_NO, @BARKOD, @AYAR, @URETICI_FIRMA, @ORJINAL_KOD, @MODEL, @BANKO,
                     @MIKTAR, @HAS_GRAM, @MALIYET_ISCILIK, @MALIYET_ISCILIK_PARA_KODU, @MALIYET_ISCILIK_BIRIM,
                     @MALIYET_ISCILIK_TUTARI, @SATIS_ISCILIK, @SATIS_ISCILIK_TUTARI, @ISCILIK_KARI, @MALIYET,
                     @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
-                    @ALTIN_KURU, @SATILDI, @RESIM, @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN
+                    @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @SATILDI, @RESIM, @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN
                 );
 
                 IF @@ERROR <> 0
@@ -158,7 +166,7 @@ export class AltinUrunSqlRepository {
                     SATIS_ISCILIK_TUTARI = @SATIS_ISCILIK_TUTARI, ISCILIK_KARI = @ISCILIK_KARI, MALIYET = @MALIYET,
                     MALIYET_PARA_KODU = @MALIYET_PARA_KODU, SATIS_FIYATI = @SATIS_FIYATI, SATIS_PARA_KODU = @SATIS_PARA_KODU,
                     SATIS_KARI_YUZDE = @SATIS_KARI_YUZDE, HAS_KURU_1 = @HAS_KURU_1, HAS_KURU_2 = @HAS_KURU_2,
-                    ALTIN_KURU = @ALTIN_KURU, SATILDI = @SATILDI, RESIM = ISNULL(@RESIM, RESIM),
+                    ALTIN_KURU = @ALTIN_KURU, USD_KURU_1 = @USD_KURU_1, USD_KURU_2 = @USD_KURU_2, SATILDI = @SATILDI, RESIM = ISNULL(@RESIM, RESIM),
                     GUNCELLEYEN_ID = @KULLANICI_ID, GUNCELLEME_ZAMANI = @SIMDIKI_ZAMAN
                 WHERE ALTIN_URUN_ID = @ALTIN_URUN_ID;
 
@@ -269,6 +277,8 @@ export class AltinUrunSqlRepository {
             hasKuru1: r.HAS_KURU_1 !== null && r.HAS_KURU_1 !== undefined ? Number(r.HAS_KURU_1) : null,
             hasKuru2: r.HAS_KURU_2 !== null && r.HAS_KURU_2 !== undefined ? Number(r.HAS_KURU_2) : null,
             altinKuru: r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null,
+            usdKuru1: r.USD_KURU_1 !== null && r.USD_KURU_1 !== undefined ? Number(r.USD_KURU_1) : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null),
+            usdKuru2: r.USD_KURU_2 !== null && r.USD_KURU_2 !== undefined ? Number(r.USD_KURU_2) : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null),
             resim: r.RESIM ? (Buffer.isBuffer(r.RESIM) ? `data:image/jpeg;base64,${r.RESIM.toString("base64")}` : (typeof r.RESIM === "string" ? r.RESIM : null)) : null,
             satildi: Boolean(r.SATILDI),
             yazdirildi: Boolean(r.YAZDIRILDI),
@@ -314,7 +324,7 @@ export class AltinUrunSqlRepository {
             query += ` AND (GRUP_KODU LIKE @SEARCH OR BARKOD LIKE @SEARCH OR MODEL LIKE @SEARCH OR ORJINAL_KOD LIKE @SEARCH OR URETICI_FIRMA LIKE @SEARCH)`;
             req.input("SEARCH", sql.VarChar(100), `%${filter.search.trim()}%`);
         }
-        query += ` ORDER BY ALTIN_URUN_ID DESC`;
+        query += ` ORDER BY ALTIN_URUN_ID ASC`;
         const res = await req.query(query);
         const items = (res.recordset || []).map((r) => this.mapRow(r));
         if (items.length > 0) {
@@ -424,64 +434,226 @@ export class AltinUrunSqlRepository {
             return isNaN(parsed) ? null : parsed;
         };
         const targetId = dto.altinUrunId && Number(dto.altinUrunId) > 0 ? Number(dto.altinUrunId) : null;
-        const req = pool.request();
-        req.output("ALTIN_URUN_ID", sql.Int, targetId || null);
         let parsedTarih = new Date();
         if (dto.tarih) {
             const d = new Date(dto.tarih);
             if (!isNaN(d.getTime()))
                 parsedTarih = d;
         }
-        req.input("TARIH", sql.DateTime, parsedTarih);
-        req.input("GRUP_KODU", sql.VarChar(50), (dto.grupKodu || "").trim().toUpperCase());
-        req.input("URUN_NO", sql.Int, safeFloat(dto.urunNo, 1));
-        req.input("BARKOD", sql.VarChar(50), dto.barkod ? dto.barkod.trim() : null);
-        req.input("AYAR", sql.VarChar(50), dto.ayar ? dto.ayar.trim() : null);
-        req.input("URETICI_FIRMA", sql.VarChar(150), dto.ureticiFirma ? dto.ureticiFirma.trim() : null);
-        req.input("ORJINAL_KOD", sql.VarChar(50), dto.orjinalKod ? dto.orjinalKod.trim() : null);
-        req.input("MODEL", sql.VarChar(100), dto.model ? dto.model.trim() : null);
-        req.input("BANKO", sql.VarChar(50), dto.banko ? dto.banko.trim() : null);
-        req.input("MIKTAR", sql.Float, safeFloat(dto.miktar));
-        req.input("HAS_GRAM", sql.Float, safeFloat(dto.hasGram));
-        req.input("MALIYET_ISCILIK", sql.Float, safeFloat(dto.maliyetIscilik));
-        req.input("MALIYET_ISCILIK_PARA_KODU", sql.VarChar(20), dto.maliyetIscilikParaKodu || "HAS");
-        req.input("MALIYET_ISCILIK_BIRIM", sql.VarChar(20), dto.maliyetIscilikBirim || "Gram");
-        req.input("MALIYET_ISCILIK_TUTARI", sql.Float, safeFloat(dto.maliyetIscilikTutari));
-        req.input("SATIS_ISCILIK", sql.Float, safeFloat(dto.satisIscilik));
-        req.input("SATIS_ISCILIK_TUTARI", sql.Float, safeFloat(dto.satisIscilikTutari));
-        req.input("ISCILIK_KARI", sql.Float, safeFloat(dto.iscilikKari));
-        req.input("MALIYET", sql.Float, safeFloat(dto.maliyet));
-        req.input("MALIYET_PARA_KODU", sql.VarChar(20), dto.maliyetParaKodu || "HAS");
-        req.input("SATIS_FIYATI", sql.Float, safeFloat(dto.satisFiyati));
-        req.input("SATIS_PARA_KODU", sql.VarChar(20), dto.satisParaKodu || "HAS");
-        req.input("SATIS_KARI_YUZDE", sql.Float, safeFloat(dto.satisKariYuzde));
-        req.input("HAS_KURU_1", sql.Float, safeNullableFloat(dto.hasKuru1));
-        req.input("HAS_KURU_2", sql.Float, safeNullableFloat(dto.hasKuru2));
-        req.input("ALTIN_KURU", sql.Float, safeNullableFloat(dto.altinKuru));
-        req.input("SATILDI", sql.Bit, dto.satildi ? 1 : 0);
-        req.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
-        req.input("KULLANICI_ID", sql.Int, kullaniciId || null);
-        req.output("YENI_KAYIT", sql.Bit);
-        let result = null;
+        const grupKoduVal = (dto.grupKodu || "").trim().toUpperCase();
+        const urunNoVal = safeFloat(dto.urunNo, 1);
+        const barkodVal = dto.barkod ? dto.barkod.trim() : null;
+        const ayarVal = dto.ayar ? dto.ayar.trim() : null;
+        const ureticiFirmaVal = dto.ureticiFirma ? dto.ureticiFirma.trim() : null;
+        const orjinalKodVal = dto.orjinalKod ? dto.orjinalKod.trim() : null;
+        const modelVal = dto.model ? dto.model.trim() : null;
+        const bankoVal = dto.banko ? dto.banko.trim() : null;
+        const miktarVal = safeFloat(dto.miktar);
+        const hasGramVal = safeFloat(dto.hasGram);
+        const maliyetIscilikVal = safeFloat(dto.maliyetIscilik);
+        const maliyetIscilikParaKoduVal = dto.maliyetIscilikParaKodu || "HAS";
+        const maliyetIscilikBirimVal = dto.maliyetIscilikBirim || "Gram";
+        const maliyetIscilikTutariVal = safeFloat(dto.maliyetIscilikTutari);
+        const satisIscilikVal = safeFloat(dto.satisIscilik);
+        const satisIscilikTutariVal = safeFloat(dto.satisIscilikTutari);
+        const iscilikKariVal = safeFloat(dto.iscilikKari);
+        const maliyetVal = safeFloat(dto.maliyet);
+        const maliyetParaKoduVal = dto.maliyetParaKodu || "HAS";
+        const satisFiyatiVal = safeFloat(dto.satisFiyati);
+        const satisParaKoduVal = dto.satisParaKodu || "HAS";
+        const satisKariYuzdeVal = safeFloat(dto.satisKariYuzde);
+        const hasKuru1Val = safeNullableFloat(dto.hasKuru1);
+        const hasKuru2Val = safeNullableFloat(dto.hasKuru2);
+        const altinKuruVal = safeNullableFloat(dto.altinKuru || dto.usdKuru2 || dto.usdKuru1);
+        const usdKuru1Val = safeNullableFloat(dto.usdKuru1);
+        const usdKuru2Val = safeNullableFloat(dto.usdKuru2);
+        const satildiVal = dto.satildi ? 1 : 0;
+        let savedId = targetId;
+        // Check parameters defined in stored procedure to avoid "too many arguments specified"
+        let acceptedParams = new Set();
         try {
-            result = await req.execute("SODVZ_ALTIN_URUN_KAYDET");
+            const spParams = await pool.request().query(`
+        SELECT PARAMETER_NAME 
+        FROM INFORMATION_SCHEMA.PARAMETERS 
+        WHERE SPECIFIC_NAME = 'SODVZ_ALTIN_URUN_KAYDET'
+      `);
+            if (spParams.recordset && spParams.recordset.length > 0) {
+                acceptedParams = new Set(spParams.recordset.map((r) => (r.PARAMETER_NAME || "").replace(/^@/, "").toUpperCase()));
+            }
         }
-        catch (err) {
-            logger.error("[AltinUrunSqlRepository.save] Error:", err);
-            const rawMsg = err.originalError?.message || err.message || "";
-            let friendlyMsg = "Altın ürün kaydedilemedi.";
-            if (rawMsg.includes("numaralı ürün kodu daha önce kaydedilmiş") || rawMsg.includes("daha önce kaydedilmiş")) {
-                friendlyMsg = `⚠️ [${(dto.grupKodu || "").trim().toUpperCase()}-${dto.urunNo}] numaralı ürün daha önce kaydedilmiş. Lütfen farklı bir ürün numarası giriniz veya mevcut kaydı seçiniz.`;
-            }
-            else if (rawMsg.includes("Validation failed for parameter")) {
-                friendlyMsg = `⚠️ Geçersiz veri biçimi: ${rawMsg}`;
-            }
-            else if (rawMsg) {
-                friendlyMsg = rawMsg;
-            }
-            throw ApiError.badRequest(friendlyMsg);
+        catch {
+            // ignore parameter lookup failure
         }
-        let savedId = Number(result?.output?.ALTIN_URUN_ID) || Number(req.parameters.ALTIN_URUN_ID?.value) || targetId;
+        let spSuccess = false;
+        if (acceptedParams.size > 0) {
+            try {
+                const req = pool.request();
+                req.output("ALTIN_URUN_ID", sql.Int, targetId || null);
+                req.input("TARIH", sql.DateTime, parsedTarih);
+                req.input("GRUP_KODU", sql.VarChar(50), grupKoduVal);
+                req.input("URUN_NO", sql.Int, urunNoVal);
+                req.input("BARKOD", sql.VarChar(50), barkodVal);
+                req.input("AYAR", sql.VarChar(50), ayarVal);
+                req.input("URETICI_FIRMA", sql.VarChar(150), ureticiFirmaVal);
+                req.input("ORJINAL_KOD", sql.VarChar(50), orjinalKodVal);
+                req.input("MODEL", sql.VarChar(100), modelVal);
+                req.input("BANKO", sql.VarChar(50), bankoVal);
+                req.input("MIKTAR", sql.Float, miktarVal);
+                req.input("HAS_GRAM", sql.Float, hasGramVal);
+                req.input("MALIYET_ISCILIK", sql.Float, maliyetIscilikVal);
+                req.input("MALIYET_ISCILIK_PARA_KODU", sql.VarChar(20), maliyetIscilikParaKoduVal);
+                req.input("MALIYET_ISCILIK_BIRIM", sql.VarChar(20), maliyetIscilikBirimVal);
+                req.input("MALIYET_ISCILIK_TUTARI", sql.Float, maliyetIscilikTutariVal);
+                req.input("SATIS_ISCILIK", sql.Float, satisIscilikVal);
+                req.input("SATIS_ISCILIK_TUTARI", sql.Float, satisIscilikTutariVal);
+                req.input("ISCILIK_KARI", sql.Float, iscilikKariVal);
+                req.input("MALIYET", sql.Float, maliyetVal);
+                req.input("MALIYET_PARA_KODU", sql.VarChar(20), maliyetParaKoduVal);
+                req.input("SATIS_FIYATI", sql.Float, satisFiyatiVal);
+                req.input("SATIS_PARA_KODU", sql.VarChar(20), satisParaKoduVal);
+                req.input("SATIS_KARI_YUZDE", sql.Float, satisKariYuzdeVal);
+                req.input("HAS_KURU_1", sql.Float, hasKuru1Val);
+                req.input("HAS_KURU_2", sql.Float, hasKuru2Val);
+                req.input("ALTIN_KURU", sql.Float, altinKuruVal);
+                if (acceptedParams.has("USD_KURU_1")) {
+                    req.input("USD_KURU_1", sql.Float, usdKuru1Val);
+                }
+                if (acceptedParams.has("USD_KURU_2")) {
+                    req.input("USD_KURU_2", sql.Float, usdKuru2Val);
+                }
+                req.input("SATILDI", sql.Bit, satildiVal);
+                req.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
+                req.input("KULLANICI_ID", sql.Int, kullaniciId || null);
+                req.output("YENI_KAYIT", sql.Bit);
+                const spRes = await req.execute("SODVZ_ALTIN_URUN_KAYDET");
+                savedId = Number(spRes?.output?.ALTIN_URUN_ID) || Number(req.parameters.ALTIN_URUN_ID?.value) || savedId;
+                spSuccess = true;
+            }
+            catch (spErr) {
+                logger.warn("[AltinUrunSqlRepository.save] SP Execution failed, attempting direct query fallback:", spErr.message);
+            }
+        }
+        if (!spSuccess) {
+            try {
+                const directReq = pool.request();
+                directReq.input("TARGET_ID", sql.Int, targetId || null);
+                directReq.input("TARIH", sql.DateTime, parsedTarih);
+                directReq.input("GRUP_KODU", sql.VarChar(50), grupKoduVal);
+                directReq.input("URUN_NO", sql.Int, urunNoVal);
+                directReq.input("BARKOD", sql.VarChar(50), barkodVal);
+                directReq.input("AYAR", sql.VarChar(50), ayarVal);
+                directReq.input("URETICI_FIRMA", sql.VarChar(150), ureticiFirmaVal);
+                directReq.input("ORJINAL_KOD", sql.VarChar(50), orjinalKodVal);
+                directReq.input("MODEL", sql.VarChar(100), modelVal);
+                directReq.input("BANKO", sql.VarChar(50), bankoVal);
+                directReq.input("MIKTAR", sql.Float, miktarVal);
+                directReq.input("HAS_GRAM", sql.Float, hasGramVal);
+                directReq.input("MALIYET_ISCILIK", sql.Float, maliyetIscilikVal);
+                directReq.input("MALIYET_ISCILIK_PARA_KODU", sql.VarChar(20), maliyetIscilikParaKoduVal);
+                directReq.input("MALIYET_ISCILIK_BIRIM", sql.VarChar(20), maliyetIscilikBirimVal);
+                directReq.input("MALIYET_ISCILIK_TUTARI", sql.Float, maliyetIscilikTutariVal);
+                directReq.input("SATIS_ISCILIK", sql.Float, satisIscilikVal);
+                directReq.input("SATIS_ISCILIK_TUTARI", sql.Float, satisIscilikTutariVal);
+                directReq.input("ISCILIK_KARI", sql.Float, iscilikKariVal);
+                directReq.input("MALIYET", sql.Float, maliyetVal);
+                directReq.input("MALIYET_PARA_KODU", sql.VarChar(20), maliyetParaKoduVal);
+                directReq.input("SATIS_FIYATI", sql.Float, satisFiyatiVal);
+                directReq.input("SATIS_PARA_KODU", sql.VarChar(20), satisParaKoduVal);
+                directReq.input("SATIS_KARI_YUZDE", sql.Float, satisKariYuzdeVal);
+                directReq.input("HAS_KURU_1", sql.Float, hasKuru1Val);
+                directReq.input("HAS_KURU_2", sql.Float, hasKuru2Val);
+                directReq.input("ALTIN_KURU", sql.Float, altinKuruVal);
+                directReq.input("USD_KURU_1", sql.Float, usdKuru1Val);
+                directReq.input("USD_KURU_2", sql.Float, usdKuru2Val);
+                directReq.input("SATILDI", sql.Bit, satildiVal);
+                directReq.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
+                directReq.input("KULLANICI_ID", sql.Int, kullaniciId || null);
+                const directRes = await directReq.query(`
+          DECLARE @ACTUAL_ID INT = @TARGET_ID;
+
+          IF (@ACTUAL_ID IS NULL OR @ACTUAL_ID = 0)
+          BEGIN
+            SELECT TOP 1 @ACTUAL_ID = ALTIN_URUN_ID
+            FROM dbo.TODVZ_ALTIN_URUN
+            WHERE GRUP_KODU = @GRUP_KODU AND URUN_NO = @URUN_NO;
+          END
+
+          IF (@ACTUAL_ID IS NOT NULL AND @ACTUAL_ID > 0)
+          BEGIN
+            UPDATE dbo.TODVZ_ALTIN_URUN
+            SET TARIH = ISNULL(@TARIH, TARIH),
+                GRUP_KODU = @GRUP_KODU,
+                URUN_NO = @URUN_NO,
+                BARKOD = @BARKOD,
+                AYAR = @AYAR,
+                URETICI_FIRMA = @URETICI_FIRMA,
+                ORJINAL_KOD = @ORJINAL_KOD,
+                MODEL = @MODEL,
+                BANKO = @BANKO,
+                MIKTAR = @MIKTAR,
+                HAS_GRAM = @HAS_GRAM,
+                MALIYET_ISCILIK = @MALIYET_ISCILIK,
+                MALIYET_ISCILIK_PARA_KODU = @MALIYET_ISCILIK_PARA_KODU,
+                MALIYET_ISCILIK_BIRIM = @MALIYET_ISCILIK_BIRIM,
+                MALIYET_ISCILIK_TUTARI = @MALIYET_ISCILIK_TUTARI,
+                SATIS_ISCILIK = @SATIS_ISCILIK,
+                SATIS_ISCILIK_TUTARI = @SATIS_ISCILIK_TUTARI,
+                ISCILIK_KARI = @ISCILIK_KARI,
+                MALIYET = @MALIYET,
+                MALIYET_PARA_KODU = @MALIYET_PARA_KODU,
+                SATIS_FIYATI = @SATIS_FIYATI,
+                SATIS_PARA_KODU = @SATIS_PARA_KODU,
+                SATIS_KARI_YUZDE = @SATIS_KARI_YUZDE,
+                HAS_KURU_1 = @HAS_KURU_1,
+                HAS_KURU_2 = @HAS_KURU_2,
+                ALTIN_KURU = @ALTIN_KURU,
+                USD_KURU_1 = @USD_KURU_1,
+                USD_KURU_2 = @USD_KURU_2,
+                SATILDI = @SATILDI,
+                RESIM = ISNULL(@RESIM, RESIM),
+                GUNCELLEYEN_ID = @KULLANICI_ID,
+                GUNCELLEME_ZAMANI = GETDATE()
+            WHERE ALTIN_URUN_ID = @ACTUAL_ID;
+
+            SELECT @ACTUAL_ID AS ALTIN_URUN_ID;
+          END
+          ELSE
+          BEGIN
+            INSERT INTO dbo.TODVZ_ALTIN_URUN (
+              TARIH, GRUP_KODU, URUN_NO, BARKOD, AYAR, URETICI_FIRMA, ORJINAL_KOD, MODEL, BANKO,
+              MIKTAR, HAS_GRAM, MALIYET_ISCILIK, MALIYET_ISCILIK_PARA_KODU, MALIYET_ISCILIK_BIRIM,
+              MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK, SATIS_ISCILIK_TUTARI, ISCILIK_KARI, MALIYET,
+              MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
+              ALTIN_KURU, USD_KURU_1, USD_KURU_2, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
+            )
+            VALUES (
+              ISNULL(@TARIH, GETDATE()), @GRUP_KODU, @URUN_NO, @BARKOD, @AYAR, @URETICI_FIRMA, @ORJINAL_KOD, @MODEL, @BANKO,
+              @MIKTAR, @HAS_GRAM, @MALIYET_ISCILIK, @MALIYET_ISCILIK_PARA_KODU, @MALIYET_ISCILIK_BIRIM,
+              @MALIYET_ISCILIK_TUTARI, @SATIS_ISCILIK, @SATIS_ISCILIK_TUTARI, @ISCILIK_KARI, @MALIYET,
+              @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
+              @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @SATILDI, @RESIM, @KULLANICI_ID, GETDATE(), @KULLANICI_ID, GETDATE()
+            );
+
+            SELECT SCOPE_IDENTITY() AS ALTIN_URUN_ID;
+          END
+        `);
+                if (directRes.recordset && directRes.recordset.length > 0) {
+                    savedId = Number(directRes.recordset[0].ALTIN_URUN_ID) || savedId;
+                }
+            }
+            catch (directErr) {
+                logger.error("[AltinUrunSqlRepository.save] Direct SQL Error:", directErr);
+                const rawMsg = directErr.originalError?.message || directErr.message || "";
+                let friendlyMsg = "Altın ürün kaydedilemedi.";
+                if (rawMsg.includes("UQ_TODVZ_ALTIN_URUN_GRUP_NO") || rawMsg.includes("Violation of UNIQUE KEY constraint") || rawMsg.includes("daha önce kaydedilmiş")) {
+                    friendlyMsg = `⚠️ [${grupKoduVal}-${urunNoVal}] numaralı ürün daha önce kaydedilmiş. Lütfen farklı bir ürün numarası giriniz veya mevcut kaydı seçiniz.`;
+                }
+                else if (rawMsg) {
+                    friendlyMsg = rawMsg;
+                }
+                throw ApiError.badRequest(friendlyMsg);
+            }
+        }
         if (!savedId) {
             const lookup = await pool.request()
                 .input("GRUP_KODU", sql.VarChar(50), (dto.grupKodu || "").trim().toUpperCase())
@@ -493,6 +665,22 @@ export class AltinUrunSqlRepository {
         }
         if (!savedId)
             throw ApiError.internal("Altın ürün kaydedildi ancak kimlik bilgisi alınamadı.");
+        // Update USD_KURU columns if available
+        try {
+            await pool.request()
+                .input("SAVED_ID", sql.Int, savedId)
+                .input("USD_1", sql.Float, usdKuru1Val)
+                .input("USD_2", sql.Float, usdKuru2Val)
+                .query(`
+          UPDATE dbo.TODVZ_ALTIN_URUN
+          SET USD_KURU_1 = COALESCE(@USD_1, USD_KURU_1),
+              USD_KURU_2 = COALESCE(@USD_2, USD_KURU_2)
+          WHERE ALTIN_URUN_ID = @SAVED_ID
+        `);
+        }
+        catch {
+            // Ignore if columns are not present
+        }
         // Sync multi images if provided
         if (dto.resimler && Array.isArray(dto.resimler)) {
             await UrunResimSqlRepository.syncResimlerForIslem(0, savedId, dto.resimler, dbContext);

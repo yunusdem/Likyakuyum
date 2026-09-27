@@ -7,6 +7,15 @@ export const ytbTipiMi = (t) => t === "YTBSATIS" || t === "YTBISTISNA" || t === 
 export const iadeTipiMi = (t) => t === "IADE" || t === "TEVKIFATIADE" || t === "YTBIADE";
 /** Tevkifatlı satır taşıyabilen tipler. */
 export const tevkifatTipiMi = (t) => t === "TEVKIFAT" || t === "TEVKIFATIADE";
+/**
+ * 555 "KDV Oran Kontrolüne Tabi Olmayan Satışlar" (NACE koduna uygun oranı olmayan satış: demirbaş/taşıt satışı,
+ * masraf yansıtma). GİB schematron'u (e-FaturaPaketi 27.07.2026, UBL-TR_Common_Schematron) ile birebir:
+ * yalnız TEMELFATURA / TICARIFATURA / EARSIVFATURA; ISTISNA, IHRACKAYITLI ve e-Arşiv'de YTB* tiplerinde kullanılamaz.
+ */
+export const kod555Kullanilabilir = (senaryo, faturaTipi) => ["TEMELFATURA", "TICARIFATURA", "EARSIVFATURA"].includes(senaryo) &&
+    faturaTipi !== "ISTISNA" &&
+    faturaTipi !== "IHRACKAYITLI" &&
+    !(senaryo === "EARSIVFATURA" && faturaTipi.startsWith("YTB"));
 /* ==========================================================================
    Yardımcılar
    ========================================================================== */
@@ -104,8 +113,9 @@ export const dogrulaGirdi = (girdi) => {
         if (istisnaKodu === "555" && satir.kdvOrani === 0) {
             throw ApiError.badRequest(`${no}. satırda 555 vergi muafiyet kodu KDV 0 ile kullanılamaz.`);
         }
-        if (istisnaKodu === "555" && (girdi.senaryo === "YATIRIMTESVIK" || girdi.senaryo === "KAMU")) {
-            throw ApiError.badRequest(`${no}. satırda 555 vergi muafiyet kodu özel senaryolu faturada kullanılamaz.`);
+        if (istisnaKodu === "555" && !kod555Kullanilabilir(girdi.senaryo, girdi.faturaTipi)) {
+            throw ApiError.badRequest(`${no}. satırda 555 kodu ${girdi.senaryo} senaryolu ${girdi.faturaTipi} faturada kullanılamaz ` +
+                "(yalnız Temel / Ticari / e-Arşiv faturada; İstisna, İhraç Kayıtlı ve e-Arşiv YTB tiplerinde kullanılamaz).");
         }
         if (istisnaKodu && istisnaKodu !== "555" && satir.kdvOrani !== 0) {
             throw ApiError.badRequest(`${no}. satırda KDV istisnası bildirilmiş ancak KDV oranı ${satir.kdvOrani}. İstisnalı satırda oran 0 olmalıdır.`);
