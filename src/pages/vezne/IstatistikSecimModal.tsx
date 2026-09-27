@@ -10,6 +10,7 @@ interface IstatistikSecimModalProps {
   tip: number; // 0: Alış, 1: Satış
   onSelect: (item: IstatistikSecimItem) => void;
   currentKod?: string;
+  initialSearchTerm?: string;
 }
 
 export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
@@ -18,6 +19,7 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
   tip,
   onSelect,
   currentKod,
+  initialSearchTerm = "",
 }) => {
   const [items, setItems] = useState<IstatistikSecimItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -33,7 +35,8 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
 
     let isMounted = true;
     setLoading(true);
-    setSearchTerm("");
+    const term = initialSearchTerm || "";
+    setSearchTerm(term);
     setSelectedIndex(null);
 
     const loadData = async () => {
@@ -42,11 +45,11 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
         const filtered = allStats.filter((s) => {
           const fType = Number(s.fisTipi);
           if (tip === 0) {
-            // ALIŞ ekranı: 2 (Alış) ve 0/3 (Alış-Satış)
-            return fType === 2 || fType === 0 || fType === 3;
+            // ALIŞ ekranı: 0 (Alış) ve 2 (Alış-Satış)
+            return fType === 0 || fType === 2;
           } else if (tip === 1) {
-            // SATIŞ ekranı: 1 (Satış) ve 0/3 (Alış-Satış)
-            return fType === 1 || fType === 0 || fType === 3;
+            // SATIŞ ekranı: 1 (Satış) ve 2 (Alış-Satış)
+            return fType === 1 || fType === 2;
           }
           return true;
         });
@@ -71,7 +74,10 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
         if (isMounted) {
           setLoading(false);
           setTimeout(() => {
-            searchInputRef.current?.focus();
+            if (searchInputRef.current) {
+              searchInputRef.current.focus();
+              if (term) searchInputRef.current.select();
+            }
           }, 100);
         }
       }
@@ -82,7 +88,7 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [show, tip]);
+  }, [show, tip, initialSearchTerm]);
 
   // Arama filtrelemesi
   const filteredItems = useMemo(() => {
@@ -95,28 +101,28 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
     });
   }, [items, searchTerm]);
 
-  // İlk açılışta veya liste değiştiğinde mevcut koda göre veya ilk satırı seç
+  const initialSelectedDoneRef = useRef(false);
+
+  // İlk açılışta mevcut koda göre veya ilk satırı seç (yalnızca 1 kez)
   useEffect(() => {
-    if (!show || loading || filteredItems.length === 0) {
-      if (filteredItems.length === 0) setSelectedIndex(null);
+    if (!show) {
+      initialSelectedDoneRef.current = false;
       return;
     }
 
-    if (currentKod) {
-      const foundIdx = filteredItems.findIndex(
-        (i) => i.kod.trim().toLowerCase() === currentKod.trim().toLowerCase()
-      );
-      if (foundIdx >= 0) {
-        setSelectedIndex(foundIdx);
-        return;
+    if (!loading && filteredItems.length > 0 && !initialSelectedDoneRef.current) {
+      initialSelectedDoneRef.current = true;
+      if (currentKod) {
+        const foundIdx = filteredItems.findIndex(
+          (i) => i.kod.trim().toLowerCase() === currentKod.trim().toLowerCase()
+        );
+        if (foundIdx >= 0) {
+          setSelectedIndex(foundIdx);
+          return;
+        }
       }
+      setSelectedIndex(0);
     }
-
-    // Default olarak ilk satırı seçili yap
-    setSelectedIndex((prev) => {
-      if (prev !== null && prev < filteredItems.length) return prev;
-      return 0;
-    });
   }, [show, loading, filteredItems, currentKod]);
 
   // Seçili satırı görünümde tut
@@ -124,7 +130,7 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
     if (show && selectedIndex !== null && rowRefs.current[selectedIndex]) {
       rowRefs.current[selectedIndex]?.scrollIntoView({
         block: "nearest",
-        behavior: "smooth",
+        behavior: "auto",
       });
     }
   }, [selectedIndex, show]);
@@ -211,7 +217,6 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
         }
         .istatistik-row {
           cursor: pointer;
-          user-select: none;
         }
       `}</style>
 
@@ -234,7 +239,6 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
             backgroundColor: "#e2e8f0",
             borderBottom: "1px solid #94a3b8",
             cursor: "default",
-            userSelect: "none",
           }}
         >
           <div className="d-flex align-items-center gap-2">
@@ -378,6 +382,9 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
                   <th style={{ width: "120px", textAlign: "center" }} className="px-3 py-2">
                     Fiş Dizayn Tipi
                   </th>
+                  <th style={{ width: "70px", textAlign: "center" }} className="px-2 py-2">
+                    Seçim
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -417,6 +424,21 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
                         ) : (
                           <span className="text-muted">-</span>
                         )}
+                      </td>
+
+                      {/* Seçim Butonu */}
+                      <td className="text-center align-middle px-2 py-1">
+                        <Button
+                          size="sm"
+                          variant={isSelected ? "primary" : "outline-secondary"}
+                          className={`py-0 px-2 fs-7 ${isSelected ? "fw-bold shadow-sm" : ""}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowDoubleClick(item);
+                          }}
+                        >
+                          Seç
+                        </Button>
                       </td>
                     </tr>
                   );

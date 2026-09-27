@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Row, Col, Card, Form, Button, Alert, InputGroup, Modal, Dropdown } from "react-bootstrap";
+import JsBarcode from "jsbarcode";
 import {
   IconBarcode,
   IconCheck,
@@ -176,9 +177,24 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const [yeniBankoAdi, setYeniBankoAdi] = useState("");
   const [yeniBankoAciklama, setYeniBankoAciklama] = useState("");
 
+  // Arama / Dürbün Başlangıç Filtreleri
+  const [firmaInitialSearch, setFirmaInitialSearch] = useState("");
+  const [urunLookupSearch, setUrunLookupSearch] = useState("");
+  const [grupInitialSearch, setGrupInitialSearch] = useState("");
+  const [bankoInitialSearch, setBankoInitialSearch] = useState("");
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const grupKoduRef = useRef<HTMLInputElement | null>(null);
+  const urunNoRef = useRef<HTMLInputElement | null>(null);
+  const barkodRef = useRef<HTMLInputElement | null>(null);
+  const ayarInputRef = useRef<HTMLInputElement | null>(null);
+  const ureticiFirmaRef = useRef<HTMLInputElement | null>(null);
+  const orjinalKodRef = useRef<HTMLInputElement | null>(null);
+  const modelRef = useRef<HTMLInputElement | null>(null);
+  const bankoRef = useRef<HTMLInputElement | null>(null);
+  const miktarRef = useRef<HTMLInputElement | null>(null);
+  const satisFiyatiRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -617,7 +633,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         PrinterService.getYazicilar().catch(() => []),
       ]);
 
-      setAltinList(urunler);
+      const sortedUrunler = (urunler || []).slice().sort((a, b) => (a.altinUrunId || 0) - (b.altinUrunId || 0));
+      setAltinList(sortedUrunler);
       setGrupList(gruplar);
       setBankoList(bankolar);
       setUreticiList(ureticiler);
@@ -688,12 +705,15 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [isDuzeltmeMode, altinList, location.pathname, location.search]);
 
-  // ─── F1 Klavye Kısayolu ──────────────────────────────────────────────
+  // ─── F1 / F10 Klavye Kısayolları ──────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "F1") {
         e.preventDefault();
         handleSave();
+      } else if (e.key === "F10") {
+        e.preventDefault();
+        handleSaveAndPrint();
       } else if (isDuzeltmeMode && e.key === "F2") {
         e.preventDefault();
         if (altinUrunId) {
@@ -708,7 +728,37 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [altinUrunId, grupKodu, urunNo, ayar, miktar, maliyet, satisFiyati, isDuzeltmeMode]);
+  }, [
+    altinUrunId,
+    grupKodu,
+    urunNo,
+    barkod,
+    ayar,
+    ureticiFirma,
+    orjinalKod,
+    model,
+    banko,
+    miktar,
+    hasGram,
+    maliyetIscilik,
+    maliyetIscilikParaKodu,
+    maliyetIscilikBirim,
+    maliyetIscilikTutari,
+    satisIscilik,
+    satisIscilikTutari,
+    toplamIscilik,
+    maliyet,
+    maliyetParaKodu,
+    satisFiyati,
+    satisParaKodu,
+    satisKariYuzde,
+    hasKuru1,
+    hasKuru2,
+    resim,
+    resimler,
+    seciliResimIndex,
+    isDuzeltmeMode,
+  ]);
 
   // ─── Grup Seçimi & Sıradaki Numarayı Alma (3 Haneli) ─────────────────────────
   const handleGrupSec = async (secilenKod: string) => {
@@ -743,7 +793,163 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     }
   };
 
-  // ─── Yeni Kayıt Modu (Temizle) ──────────────────────────────────────────────
+  // ─── Input Enter ile Dürbün / Arama / Eşleme İşleyicileri ──────────────────
+  const handleGrupKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (grupKodu || "").trim().toUpperCase();
+      if (isDuzeltmeMode) {
+        if (!val) {
+          setUrunLookupSearch("");
+          setShowLookup(true);
+          return;
+        }
+        const matches = altinList.filter((u) => u.grupKodu && u.grupKodu.toUpperCase() === val);
+        if (matches.length === 1) {
+          handleSelectRecord(matches[0]);
+        } else {
+          setUrunLookupSearch(val);
+          setShowLookup(true);
+        }
+        return;
+      }
+      if (!val) {
+        setGrupInitialSearch("");
+        setShowGrupLookup(true);
+        return;
+      }
+      const exact = grupList.find((g) => (g.grupKodu || "").trim().toUpperCase() === val);
+      if (exact) {
+        handleGrupSec(exact.grupKodu);
+        ayarInputRef.current?.focus();
+      } else {
+        setGrupInitialSearch(val);
+        setShowGrupLookup(true);
+      }
+    }
+  };
+
+  const handleUrunNoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (urunNo !== undefined && urunNo !== null) ? String(urunNo).trim() : "";
+      if (isDuzeltmeMode) {
+        if (val) {
+          const padded = format3Digits(val);
+          const fullBarcode = (grupKodu ? `${grupKodu}${padded}` : padded).toLowerCase();
+          const match = altinList.find(
+            (u) =>
+              (u.grupKodu && u.grupKodu.toUpperCase() === (grupKodu || "").toUpperCase() && format3Digits(u.urunNo) === padded) ||
+              (u.barkod && u.barkod.toLowerCase() === fullBarcode) ||
+              (format3Digits(u.urunNo) === padded)
+          );
+          if (match) {
+            handleSelectRecord(match);
+            return;
+          }
+        }
+        const searchVal = val ? (grupKodu ? `${grupKodu}-${format3Digits(val)}` : val) : (grupKodu || "");
+        setUrunLookupSearch(searchVal);
+        setShowLookup(true);
+      } else {
+        ayarInputRef.current?.focus();
+      }
+    }
+  };
+
+  const handleBarkodKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (barkod || "").trim().toLowerCase();
+      if (!val) {
+        if (isDuzeltmeMode) {
+          setUrunLookupSearch("");
+          setShowLookup(true);
+        }
+        return;
+      }
+      const match = altinList.find(
+        (u) =>
+          (u.barkod && u.barkod.toLowerCase() === val) ||
+          (`${u.grupKodu}${format3Digits(u.urunNo)}`.toLowerCase() === val)
+      );
+      if (match) {
+        handleSelectRecord(match);
+      } else if (isDuzeltmeMode) {
+        setUrunLookupSearch(barkod.trim());
+        setShowLookup(true);
+      }
+    }
+  };
+
+  const handleAyarKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (ayar || "").trim().toUpperCase();
+      if (!val) {
+        setShowAyarModal(true);
+        return;
+      }
+      const exact = ayarList.find(
+        (a) =>
+          (a.ayarKodu || "").toUpperCase() === val ||
+          (a.ayarAdi || "").toUpperCase() === val ||
+          String(a.standartAyar) === val
+      );
+      if (exact) {
+        handleAyarChange(exact.ayarKodu || exact.ayarAdi);
+        ureticiFirmaRef.current?.focus();
+      } else {
+        setShowAyarModal(true);
+      }
+    }
+  };
+
+  const handleFirmaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (ureticiFirma || "").trim().toLowerCase();
+      if (!val) {
+        setFirmaInitialSearch("");
+        setShowFirmaLookup(true);
+        return;
+      }
+      const matches = cariList.filter(
+        (c) => (c.ad && c.ad.toLowerCase().includes(val)) || (c.kod && c.kod.toLowerCase().includes(val))
+      );
+      if (matches.length === 1) {
+        setUreticiFirma(matches[0].ad || matches[0].kod || "");
+        orjinalKodRef.current?.focus();
+      } else {
+        setFirmaInitialSearch(ureticiFirma.trim());
+        setShowFirmaLookup(true);
+      }
+    }
+  };
+
+  const handleBankoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (banko || "").trim().toLowerCase();
+      if (!val) {
+        setShowBankoLookup(true);
+        return;
+      }
+      const matches = bankoList.filter(
+        (b) =>
+          (b.bankoAdi && b.bankoAdi.toLowerCase().includes(val)) ||
+          (b.bankoKodu && b.bankoKodu.toLowerCase().includes(val))
+      );
+      if (matches.length === 1) {
+        setBanko(matches[0].bankoAdi);
+        miktarRef.current?.focus();
+      } else {
+        setShowBankoLookup(true);
+      }
+    }
+  };
+
+  // ─── Yeni Kayıt Modu (Temizle & Barkodlamaya Yönlendir) ────────────────────
   const handleNew = () => {
     setAltinUrunId(null);
     setTarih(new Date().toISOString().slice(0, 10));
@@ -776,6 +982,14 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     setResim(null);
     setResimler([]);
     setSeciliResimIndex(0);
+
+    if (isDuzeltmeMode) {
+      navigate("/etiket/altin-urun-barkodlama");
+    } else {
+      setTimeout(() => {
+        grupKoduRef.current?.focus();
+      }, 50);
+    }
   };
 
   // ─── Kayıt Seçme ─────────────────────────────────────────────────────────────
@@ -1027,7 +1241,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       const finalBarkod = barkod.trim() || `${grupKodu.trim().toUpperCase()}${paddedUrunNo}`;
 
       const payload: SaveAltinUrunPayload = {
-        altinUrunId: altinUrunId || undefined,
+        altinUrunId: isDuzeltmeMode ? (altinUrunId || undefined) : undefined,
         tarih,
         grupKodu: grupKodu.trim().toUpperCase(),
         urunNo: finalUrunNo,
@@ -1062,11 +1276,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setAltinUrunId(saved.altinUrunId);
       setUrunNo(format3Digits(saved.urunNo));
       setBarkod(saved.barkod || `${saved.grupKodu}${format3Digits(saved.urunNo)}`);
-      showNotif("success", `Altın Ürün [${saved.grupKodu}-${format3Digits(saved.urunNo)}] başarıyla kaydedildi.`);
 
       // Listeyi tazele
       const updated = await EtiketService.getAltinUrunler({ limit: 500 });
-      setAltinList(updated);
+      const sortedUpdated = (updated || []).slice().sort((a, b) => (a.altinUrunId || 0) - (b.altinUrunId || 0));
+      setAltinList(sortedUpdated);
       return saved;
     } catch (err: any) {
       const errorMsg = extractApiErrorMessage(err, "Altın ürün kaydedilirken bir hata oluştu.");
@@ -1077,11 +1291,213 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     }
   };
 
-  // ─── Kaydet ve Yazdır ───────────────────────────────────────────────────────
+  // ─── Doğrudan Barkod / Fiş Yazdırma (Büyüt/Küçült Olmadan 1:1 Doğrudan Baskı) ─────
+  const printDirectBarkod = (data: {
+    barkod: string;
+    grupKodu: string;
+    urunNo: number | string;
+    ayar: string;
+    miktar: number | string;
+    hasGram: number | string;
+    satisFiyati: number | string;
+    satisParaKodu: string;
+    model?: string;
+    ureticiFirma?: string;
+    tarih?: string;
+  }) => {
+    let barcodeSvg = "";
+    const displayVal = (data.barkod || "").trim() || `${data.grupKodu}${format3Digits(data.urunNo)}`;
+    try {
+      const svgNode = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      JsBarcode(svgNode, displayVal, {
+        format: "CODE128",
+        width: 1.6,
+        height: 36,
+        displayValue: true,
+        fontSize: 10,
+        fontOptions: "bold",
+        margin: 2,
+        textMargin: 2,
+      });
+      const wAttr = svgNode.getAttribute("width") || "120";
+      const hAttr = svgNode.getAttribute("height") || "40";
+      svgNode.setAttribute("viewBox", `0 0 ${wAttr} ${hAttr}`);
+      svgNode.removeAttribute("width");
+      svgNode.removeAttribute("height");
+      svgNode.setAttribute("style", "max-width: 100%; height: auto; display: block; margin: 0 auto; shape-rendering: crispEdges;");
+      barcodeSvg = svgNode.outerHTML;
+    } catch {
+      barcodeSvg = `<div style="font-size:11px;font-weight:bold;text-align:center;font-family:monospace;letter-spacing:1px;">${displayVal}</div>`;
+    }
+
+    const printFrame = document.createElement("iframe");
+    printFrame.style.position = "fixed";
+    printFrame.style.right = "0";
+    printFrame.style.bottom = "0";
+    printFrame.style.width = "0";
+    printFrame.style.height = "0";
+    printFrame.style.border = "0";
+    document.body.appendChild(printFrame);
+
+    const doc = printFrame.contentWindow?.document || printFrame.contentDocument;
+    if (!doc) return;
+
+    const formattedTarih = data.tarih
+      ? new Date(data.tarih).toLocaleDateString("tr-TR")
+      : new Date().toLocaleDateString("tr-TR");
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Barkod Fişi - ${displayVal}</title>
+          <style>
+            @page {
+              size: auto;
+              margin: 0 !important;
+            }
+            *, *::before, *::after {
+              box-sizing: border-box !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+              -webkit-text-size-adjust: 100% !important;
+              text-size-adjust: 100% !important;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              color: #000000;
+              width: 100%;
+            }
+            .slip-card {
+              width: 58mm;
+              margin: 0 auto;
+              padding: 2.5mm 2.5mm;
+              font-size: 8pt;
+              line-height: 1.25;
+              background: #ffffff;
+            }
+            .slip-header {
+              text-align: center;
+              border-bottom: 0.5pt dashed #222;
+              padding-bottom: 1.5mm;
+              margin-bottom: 2mm;
+            }
+            .slip-brand {
+              font-size: 9.5pt;
+              font-weight: bold;
+              letter-spacing: 0.5px;
+            }
+            .slip-sub {
+              font-size: 7pt;
+              color: #444;
+            }
+            .slip-barcode-box {
+              text-align: center;
+              margin: 2mm 0;
+            }
+            .slip-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 1.5mm 0;
+            }
+            .slip-table td {
+              padding: 0.7mm 0;
+              font-size: 8pt;
+              border-bottom: 0.2pt dotted #e0e0e0;
+            }
+            .slip-table tr:last-child td {
+              border-bottom: none;
+            }
+            .slip-lbl {
+              color: #333;
+              font-weight: 500;
+              width: 45%;
+            }
+            .slip-val {
+              font-weight: bold;
+              text-align: right;
+              font-family: monospace;
+              font-size: 8.5pt;
+            }
+            .slip-footer {
+              text-align: center;
+              border-top: 0.5pt dashed #222;
+              padding-top: 1.5mm;
+              margin-top: 2mm;
+              font-size: 7pt;
+              color: #555;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="slip-card">
+            <div class="slip-header">
+              <div class="slip-brand">ALTIN ÜRÜN BARKOD FİŞİ</div>
+              <div class="slip-sub">${formattedTarih}</div>
+            </div>
+            <div class="slip-barcode-box">
+              ${barcodeSvg}
+            </div>
+            <table class="slip-table">
+              <tr>
+                <td class="slip-lbl">Ürün No:</td>
+                <td class="slip-val">${data.grupKodu}-${format3Digits(data.urunNo)}</td>
+              </tr>
+              ${data.ayar ? `<tr><td class="slip-lbl">Ayar:</td><td class="slip-val">${data.ayar} Ayar</td></tr>` : ""}
+              ${data.miktar ? `<tr><td class="slip-lbl">Gram:</td><td class="slip-val">${Number(data.miktar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Gr</td></tr>` : ""}
+              ${data.hasGram ? `<tr><td class="slip-lbl">Has Gram:</td><td class="slip-val">${Number(data.hasGram).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} Gr</td></tr>` : ""}
+              ${data.satisFiyati ? `<tr><td class="slip-lbl">Satış Fiyatı:</td><td class="slip-val">${Number(data.satisFiyati).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${data.satisParaKodu}</td></tr>` : ""}
+              ${data.model ? `<tr><td class="slip-lbl">Model:</td><td class="slip-val">${data.model}</td></tr>` : ""}
+              ${data.ureticiFirma ? `<tr><td class="slip-lbl">Üretici:</td><td class="slip-val">${data.ureticiFirma}</td></tr>` : ""}
+            </table>
+            <div class="slip-footer">
+              <div>Likya Kuyumculuk ERP</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      printFrame.contentWindow?.focus();
+      printFrame.contentWindow?.print();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(printFrame);
+        } catch {}
+      }, 1500);
+    }, 250);
+  };
+
+  // ─── Kaydet ve Doğrudan Yazdır (F10) ──────────────────────────────────────────
   const handleSaveAndPrint = async () => {
     const saved = await handleSave();
     if (saved) {
-      setShowPrintModal(true);
+      printDirectBarkod({
+        barkod: saved.barkod || barkod || `${saved.grupKodu || grupKodu}${format3Digits(saved.urunNo || urunNo)}`,
+        grupKodu: saved.grupKodu || grupKodu,
+        urunNo: saved.urunNo || urunNo,
+        ayar: saved.ayar || ayar,
+        miktar: saved.miktar !== undefined ? saved.miktar : miktar,
+        hasGram: saved.hasGram !== undefined ? saved.hasGram : hasGram,
+        satisFiyati: saved.satisFiyati !== undefined ? saved.satisFiyati : satisFiyati,
+        satisParaKodu: saved.satisParaKodu || satisParaKodu,
+        model: saved.model || model,
+        ureticiFirma: saved.ureticiFirma || ureticiFirma,
+        tarih: saved.tarih || tarih,
+      });
+      if (saved.altinUrunId) {
+        EtiketService.markAltinUrunYazdirildi([saved.altinUrunId], true).catch(() => {});
+      }
     }
   };
 
@@ -1095,7 +1511,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       setShowDeleteConfirm(false);
       handleNew();
       const updated = await EtiketService.getAltinUrunler({ limit: 500 });
-      setAltinList(updated);
+      const sortedUpdated = (updated || []).slice().sort((a, b) => (a.altinUrunId || 0) - (b.altinUrunId || 0));
+      setAltinList(sortedUpdated);
     } catch (err: any) {
       const errorMsg = extractApiErrorMessage(err, "Altın ürün silinirken bir hata oluştu.");
       showNotif("danger", errorMsg);
@@ -1237,7 +1654,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         hideSearch={!isDuzeltmeMode}
         hideNavigation={!isDuzeltmeMode}
         onRefresh={loadAll}
-        onPrint={() => (altinUrunId ? setShowPrintModal(true) : showNotif("warning", "Önce bir ürün seçiniz."))}
+        onPrint={handleSaveAndPrint}
         disabled={isSaving}
         modeText={altinUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${altinList.length})` : (isDuzeltmeMode ? "Düzeltme Modu" : "Yeni Kayıt Modu")}
       />
@@ -1279,13 +1696,15 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                         const val = e.target.value.toUpperCase();
                         setGrupKodu(val);
                       }}
+                      onKeyDown={handleGrupKeyDown}
                       onBlur={() => {
-                        if (grupKodu) handleGrupSec(grupKodu);
+                        if (!isDuzeltmeMode && grupKodu) handleGrupSec(grupKodu);
                       }}
                       style={{ maxWidth: "85px" }}
                       className="fw-bold text-primary font-monospace bg-white text-center"
                     />
                     <Form.Control
+                      ref={urunNoRef}
                       type="text"
                       value={urunNo}
                       onChange={(e) => {
@@ -1300,6 +1719,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           }
                         }
                       }}
+                      onKeyDown={handleUrunNoKeyDown}
                       onBlur={() => {
                         if (urunNo !== "") {
                           const padded = format3Digits(urunNo);
@@ -1315,10 +1735,15 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <Button
                       variant="outline-primary"
                       onClick={() => {
-                        setSelectedGrupItem(null);
-                        setShowGrupLookup(true);
+                        if (isDuzeltmeMode) {
+                          setUrunLookupSearch(grupKodu ? (urunNo ? `${grupKodu}-${format3Digits(urunNo)}` : grupKodu) : "");
+                          setShowLookup(true);
+                        } else {
+                          setGrupInitialSearch(grupKodu || "");
+                          setShowGrupLookup(true);
+                        }
                       }}
-                      title="Kayıtlı Gruplardan Seç (Dürbün)"
+                      title={isDuzeltmeMode ? "Kayıtlı Altın Ürünlerinden Seç (Dürbün)" : "Kayıtlı Gruplardan Seç (Dürbün)"}
                       className="px-2"
                     >
                       <IconBinoculars size={16} />
@@ -1334,10 +1759,12 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     Barkod Kodu :
                   </Form.Label>
                   <Form.Control
+                    ref={barkodRef}
                     type="text"
                     size="sm"
                     value={barkod || (grupKodu && urunNo ? `${grupKodu}${format3Digits(urunNo)}` : "")}
                     onChange={(e) => setBarkod(e.target.value)}
+                    onKeyDown={handleBarkodKeyDown}
                     className="font-monospace fw-bold text-dark bg-white"
                     style={{ maxWidth: "160px" }}
                   />
@@ -1366,10 +1793,12 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div style={{ maxWidth: "160px" }}>
                       <InputGroup size="sm">
                         <Form.Control
+                          ref={ayarInputRef}
                           type="text"
                           list="altinAyarListesi"
                           value={ayar}
                           onChange={(e) => handleAyarChange(e.target.value)}
+                          onKeyDown={handleAyarKeyDown}
                           className="fw-bold bg-white text-end font-monospace"
                           placeholder="Ayar seçin veya yazın"
                         />
@@ -1399,15 +1828,20 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div style={{ maxWidth: "200px" }}>
                       <InputGroup size="sm">
                         <Form.Control
+                          ref={ureticiFirmaRef}
                           type="text"
                           value={ureticiFirma}
                           onChange={(e) => setUreticiFirma(e.target.value)}
+                          onKeyDown={handleFirmaKeyDown}
                           className="fw-semibold bg-white"
                         />
                         <Button
                           variant="outline-secondary"
                           className="px-2"
-                          onClick={() => setShowFirmaLookup(true)}
+                          onClick={() => {
+                            setFirmaInitialSearch(ureticiFirma.trim());
+                            setShowFirmaLookup(true);
+                          }}
                           title="Kayıtlı Firmalardan Seç (Dürbün)"
                         >
                           <IconBinoculars size={15} />
@@ -1423,11 +1857,18 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </div>
                     <div style={{ maxWidth: "160px" }}>
                       <Form.Control
+                        ref={orjinalKodRef}
                         type="text"
                         size="sm"
                         value={orjinalKod}
                         onChange={(e) => setOrjinalKod(e.target.value)}
-                        className="font-monospace bg-white text-end"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            modelRef.current?.focus();
+                          }
+                        }}
+                        className="font-monospace bg-white text-start"
                       />
                     </div>
                   </div>
@@ -1439,10 +1880,17 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     </div>
                     <div style={{ maxWidth: "200px" }}>
                       <Form.Control
+                        ref={modelRef}
                         type="text"
                         size="sm"
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            bankoRef.current?.focus();
+                          }
+                        }}
                         className="bg-white"
                       />
                     </div>
@@ -1456,10 +1904,12 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     <div style={{ maxWidth: "200px" }}>
                       <InputGroup size="sm">
                         <Form.Control
+                          ref={bankoRef}
                           type="text"
                           list="altinBankoListesi"
                           value={banko}
                           onChange={(e) => setBanko(e.target.value)}
+                          onKeyDown={handleBankoKeyDown}
                           className="fw-semibold bg-white"
                         />
                         <datalist id="altinBankoListesi">
@@ -1481,7 +1931,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           variant="outline-secondary"
                           className="px-2"
                           onClick={() => {
-                            setSelectedBankoItem(null);
+                            setBankoInitialSearch(banko || "");
                             setShowBankoLookup(true);
                           }}
                           title="Kayıtlı Bankolardan Seç (Dürbün)"
@@ -2042,41 +2492,16 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Sağ Kısım: [F1 Kaydet], [Kaydet / Yazdır], [Vazgeç] Butonları */}
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                className="px-3 py-1 fw-bold d-flex align-items-center gap-1.5 shadow-sm"
-                onClick={handleSave}
-                disabled={isSaving}
-                title="Ürünü Kaydet (F1)"
-              >
-                <span className="badge bg-white text-primary font-monospace" style={{ fontSize: "10px" }}>F1</span>
-                <span>Kaydet</span>
-              </Button>
-
-              <Button
-                variant="success"
-                size="sm"
-                className="px-3 py-1 fw-bold d-flex align-items-center gap-1.5 shadow-sm"
-                onClick={handleSaveAndPrint}
-                disabled={isSaving}
-                title="Ürünü Kaydet ve Barkod Etiketi Yazdır"
-              >
-                <IconPrinter size={15} />
-                <span>Kaydet / Yazdır</span>
-              </Button>
-
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="px-3 py-1 fw-semibold"
-                onClick={handleNew}
-                disabled={isSaving}
-              >
-                Vazgeç
-              </Button>
+            {/* Sağ Kısım: Kısayol Bilgilendirme Metinleri */}
+            <div className="d-flex align-items-center gap-3 text-secondary user-select-none py-1" style={{ fontSize: "13px" }}>
+              <span><strong className="text-dark">F1</strong> Kaydet</span>
+              {isDuzeltmeMode && (
+                <>
+                  <span><strong className="text-dark">F2</strong> Sil</span>
+                  <span><strong className="text-dark">F3</strong> Ara</span>
+                </>
+              )}
+              <span><strong className="text-dark">F10</strong> Kaydet / Yazdır</span>
             </div>
           </div>
         </Card.Body>
@@ -2086,16 +2511,26 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       <LookupModal<AltinUrunItem>
         show={showLookup}
         title="Kayıtlı Altın Ürünleri (Arama / Seçim)"
+        initialSearchTerm={urunLookupSearch}
         columns={lookupColumns}
         items={altinList}
         filterFn={(it, term) => {
-          const t = term.toLowerCase();
+          const t = term.toLowerCase().trim();
+          const cleanT = t.replace(/[^a-z0-9]/gi, "");
+          const cleanBar = (it.barkod || "").toLowerCase().replace(/[^a-z0-9]/gi, "");
+          const fullCode = `${it.grupKodu || ""}-${format3Digits(it.urunNo)}`.toLowerCase();
+          const fullCodeAlt = `${it.grupKodu || ""}${format3Digits(it.urunNo)}`.toLowerCase();
           return (
-            it.grupKodu.toLowerCase().includes(t) ||
+            (it.grupKodu && it.grupKodu.toLowerCase().includes(t)) ||
             String(it.urunNo).includes(t) ||
+            format3Digits(it.urunNo).includes(t) ||
+            fullCode.includes(t) ||
+            fullCodeAlt.includes(t) ||
+            (cleanBar && cleanT ? cleanBar.includes(cleanT) : false) ||
             (it.barkod ? it.barkod.toLowerCase().includes(t) : false) ||
             (it.model ? it.model.toLowerCase().includes(t) : false) ||
-            (it.ureticiFirma ? it.ureticiFirma.toLowerCase().includes(t) : false)
+            (it.ureticiFirma ? it.ureticiFirma.toLowerCase().includes(t) : false) ||
+            (it.ayar ? it.ayar.toLowerCase().includes(t) : false)
           );
         }}
         onSelect={handleSelectRecord}
@@ -2103,90 +2538,43 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       />
 
       {/* ─── MODAL 2: Kayıtlı Grupları Listeleme & Seçme Modalı ─── */}
-      <Modal show={showGrupLookup} onHide={() => setShowGrupLookup(false)} centered size="lg">
-        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
-          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
-            <IconBinoculars size={18} className="text-primary" />
-            <span>Kayıtlı Ürün Grupları (Grup Seçimi)</span>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-3">
-          <div className="d-flex justify-content-between align-items-center mb-2.5">
-            <span className="small text-muted">Seçmek istediğiniz satıra tıklayıp Seç'e basabilir veya satıra çift tıklayabilirsiniz.</span>
-            <Button
-              variant="success"
-              size="sm"
-              onClick={() => {
-                setShowGrupLookup(false);
-                setShowGrupEkleModal(true);
-              }}
-              className="d-flex align-items-center gap-1"
-            >
-              <IconPlus size={15} />
-              <span>+ Yeni Grup Tanımla</span>
-            </Button>
-          </div>
-
-          <div className="table-responsive border rounded bg-white" style={{ maxHeight: "320px" }}>
-            <table className="table table-hover table-sm mb-0 align-middle">
-              <thead className="table-light sticky-top">
-                <tr className="small text-muted">
-                  <th style={{ width: "120px" }}>Grup Kodu</th>
-                  <th>Açıklama</th>
-                  <th style={{ width: "110px" }} className="text-center">Son Numara</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grupList.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="text-center py-3 text-muted small">
-                      Henüz kayıtlı grup bulunmamaktadır.
-                    </td>
-                  </tr>
-                ) : (
-                  grupList.map((g, i) => {
-                    const isSelected = selectedGrupItem?.grupKodu === g.grupKodu;
-                    return (
-                      <tr
-                        key={i}
-                        className={isSelected ? "table-primary fw-semibold" : ""}
-                        style={{ cursor: "pointer", userSelect: "none" }}
-                        onClick={() => setSelectedGrupItem(g)}
-                        onDoubleClick={() => {
-                          handleGrupSec(g.grupKodu);
-                          setShowGrupLookup(false);
-                        }}
-                      >
-                        <td className="fw-bold font-monospace text-primary">{g.grupKodu}</td>
-                        <td>{g.aciklama || "-"}</td>
-                        <td className="text-center font-monospace fw-bold">{g.sonNo}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Modal.Body>
-        <Modal.Footer className="bg-light py-2 px-3 border-top d-flex justify-content-end gap-2">
-          <Button variant="outline-secondary" size="sm" onClick={() => setShowGrupLookup(false)}>
-            Vazgeç
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={!selectedGrupItem}
-            onClick={() => {
-              if (selectedGrupItem) {
-                handleGrupSec(selectedGrupItem.grupKodu);
-                setShowGrupLookup(false);
-              }
-            }}
-          >
-            Seç
-          </Button>
-        </Modal.Footer>
-      </Modal>
+      <LookupModal<EtiketGrupItem>
+        show={showGrupLookup}
+        title="Kayıtlı Altın Ürün Grupları (Grup Seçimi)"
+        initialSearchTerm={grupInitialSearch}
+        columns={[
+          {
+            header: "Grup Kodu",
+            width: "140px",
+            render: (g) => <span className="fw-bold font-monospace text-primary">{g.grupKodu}</span>,
+          },
+          {
+            header: "Açıklama",
+            render: (g) => g.aciklama || "-",
+          },
+          {
+            header: "Son Numara",
+            width: "120px",
+            align: "center",
+            render: (g) => <span className="font-monospace fw-bold">{g.sonNo}</span>,
+          },
+        ]}
+        items={grupList}
+        filterFn={(g, term) => {
+          const t = term.toLowerCase().trim();
+          return (
+            (g.grupKodu && g.grupKodu.toLowerCase().includes(t)) ||
+            (g.aciklama ? g.aciklama.toLowerCase().includes(t) : false) ||
+            String(g.sonNo).includes(t)
+          );
+        }}
+        onSelect={(g) => {
+          handleGrupSec(g.grupKodu);
+          setShowGrupLookup(false);
+          ayarInputRef.current?.focus();
+        }}
+        onHide={() => setShowGrupLookup(false)}
+      />
 
       {/* ─── MODAL 3: Yeni Grup Ekleme Modalı (+ Yeni) ─── */}
       <Modal show={showGrupEkleModal} onHide={() => setShowGrupEkleModal(false)} centered>
@@ -2248,6 +2636,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       <LookupModal<CariKartItem>
         show={showFirmaLookup}
         title="Üretici Firma Seç"
+        initialSearchTerm={firmaInitialSearch}
         columns={[
           { header: "Kod", width: "100px", render: (it) => <span className="font-monospace fw-bold">{it.kod}</span> },
           { header: "Firma / Cari Adı", render: (it) => it.ad || it.kod || "-" },
@@ -2271,90 +2660,41 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       />
 
       {/* ─── MODAL 4B: Kayıtlı Bankoları Listeleme & Seçme Modalı ─── */}
-      <Modal show={showBankoLookup} onHide={() => setShowBankoLookup(false)} centered size="lg">
-        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
-          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
-            <IconBinoculars size={18} className="text-primary" />
-            <span>Kayıtlı Bankolar (Banko Seçimi)</span>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-3">
-          <div className="d-flex justify-content-between align-items-center mb-2.5">
-            <span className="small text-muted">Seçmek istediğiniz satıra tıklayıp Seç'e basabilir veya satıra çift tıklayabilirsiniz.</span>
-            <Button
-              variant="success"
-              size="sm"
-              onClick={() => {
-                setShowBankoLookup(false);
-                setShowBankoEkleModal(true);
-              }}
-              className="d-flex align-items-center gap-1"
-            >
-              <IconPlus size={15} />
-              <span>+ Yeni Banko Tanımla</span>
-            </Button>
-          </div>
-
-          <div className="table-responsive border rounded bg-white" style={{ maxHeight: "320px" }}>
-            <table className="table table-hover table-sm mb-0 align-middle">
-              <thead className="table-light sticky-top">
-                <tr className="small text-muted">
-                  <th style={{ width: "120px" }}>Banko Kodu</th>
-                  <th>Banko Adı</th>
-                  <th>Açıklama</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bankoList.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="text-center py-3 text-muted small">
-                      Henüz kayıtlı banko bulunmamaktadır.
-                    </td>
-                  </tr>
-                ) : (
-                  bankoList.map((b) => {
-                    const isSelected = selectedBankoItem?.bankoId === b.bankoId;
-                    return (
-                      <tr
-                        key={b.bankoId}
-                        className={isSelected ? "table-primary fw-semibold" : ""}
-                        style={{ cursor: "pointer", userSelect: "none" }}
-                        onClick={() => setSelectedBankoItem(b)}
-                        onDoubleClick={() => {
-                          setBanko(b.bankoAdi);
-                          setShowBankoLookup(false);
-                        }}
-                      >
-                        <td className="fw-bold font-monospace text-primary">{b.bankoKodu}</td>
-                        <td className="fw-semibold text-dark">{b.bankoAdi}</td>
-                        <td className="text-muted small">{b.aciklama || "-"}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Modal.Body>
-        <Modal.Footer className="bg-light py-2 px-3 border-top d-flex justify-content-end gap-2">
-          <Button variant="outline-secondary" size="sm" onClick={() => setShowBankoLookup(false)}>
-            Vazgeç
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={!selectedBankoItem}
-            onClick={() => {
-              if (selectedBankoItem) {
-                setBanko(selectedBankoItem.bankoAdi);
-                setShowBankoLookup(false);
-              }
-            }}
-          >
-            Seç
-          </Button>
-        </Modal.Footer>
-      </Modal>
+      <LookupModal<BankoItem>
+        show={showBankoLookup}
+        title="Kayıtlı Bankolar (Banko Seçimi)"
+        initialSearchTerm={bankoInitialSearch}
+        columns={[
+          {
+            header: "Banko Kodu",
+            width: "130px",
+            render: (b) => <span className="fw-bold font-monospace text-primary">{b.bankoKodu}</span>,
+          },
+          {
+            header: "Banko Adı",
+            render: (b) => <span className="fw-semibold text-dark">{b.bankoAdi}</span>,
+          },
+          {
+            header: "Açıklama",
+            render: (b) => <span className="text-muted small">{b.aciklama || "-"}</span>,
+          },
+        ]}
+        items={bankoList}
+        filterFn={(b, term) => {
+          const t = term.toLowerCase().trim();
+          return (
+            (b.bankoKodu && b.bankoKodu.toLowerCase().includes(t)) ||
+            (b.bankoAdi && b.bankoAdi.toLowerCase().includes(t)) ||
+            (b.aciklama ? b.aciklama.toLowerCase().includes(t) : false)
+          );
+        }}
+        onSelect={(b) => {
+          setBanko(b.bankoAdi);
+          setShowBankoLookup(false);
+          miktarRef.current?.focus();
+        }}
+        onHide={() => setShowBankoLookup(false)}
+      />
 
       {/* ─── MODAL 4C: Yeni Banko Tanımlama Modalı (+ Yeni Banko) ─── */}
       <Modal show={showBankoEkleModal} onHide={() => setShowBankoEkleModal(false)} centered>

@@ -404,7 +404,7 @@ export class AltinUrunSqlRepository {
       query += ` AND (GRUP_KODU LIKE @SEARCH OR BARKOD LIKE @SEARCH OR MODEL LIKE @SEARCH OR ORJINAL_KOD LIKE @SEARCH OR URETICI_FIRMA LIKE @SEARCH)`;
       req.input("SEARCH", sql.VarChar(100), `%${filter.search.trim()}%`);
     }
-    query += ` ORDER BY ALTIN_URUN_ID DESC`;
+    query += ` ORDER BY ALTIN_URUN_ID ASC`;
 
     const res = await req.query(query);
     const items = (res.recordset || []).map((r) => this.mapRow(r));

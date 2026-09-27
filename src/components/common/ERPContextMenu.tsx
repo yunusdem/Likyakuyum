@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   IconTrash,
   IconPlus,
+  IconCheck,
   IconRefresh,
   IconDeviceFloppy,
   IconFilePlus,
@@ -127,7 +128,11 @@ export const ERPContextMenu: React.FC = () => {
   const handleAction = (actionKey: string) => {
     closeMenu();
 
-    if (actionKey === "row-delete") {
+    if (actionKey === "row-kapat") {
+      window.dispatchEvent(
+        new CustomEvent("erp-grid-row-kapat", { detail: { rowId: menu.rowId, tableType: menu.tableType } })
+      );
+    } else if (actionKey === "row-delete") {
       window.dispatchEvent(
         new CustomEvent("erp-grid-row-delete", { detail: { rowId: menu.rowId, tableType: menu.tableType } })
       );
@@ -161,6 +166,14 @@ export const ERPContextMenu: React.FC = () => {
       {menu.targetType === "grid-row" && (
         <>
           <div className="erp-context-menu-header">Satır İşlemleri</div>
+          <button
+            type="button"
+            className="erp-context-menu-item text-primary fw-bold"
+            onClick={() => handleAction("row-kapat")}
+          >
+            <IconCheck size={16} className="text-primary" />
+            <span>Kalanı Kapat</span>
+          </button>
           <button
             type="button"
             className="erp-context-menu-item text-danger"

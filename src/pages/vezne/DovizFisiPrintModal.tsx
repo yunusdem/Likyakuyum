@@ -18,6 +18,7 @@ export interface PrintLineItem {
 export interface DovizFisiPrintModalProps {
   show: boolean;
   onHide: () => void;
+  autoPrint?: boolean;
   fisId?: number | null;
   tip: number; // 0: Alış, 1: Satış
   tarih: string;
@@ -138,6 +139,7 @@ export function tutarYaziyla(sayi: number, isSatis: boolean): string {
 export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
   show,
   onHide,
+  autoPrint = false,
   fisId,
   tip,
   tarih,
@@ -270,8 +272,141 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
   }, [show, ettn, tarih, grandTotal]);
 
   const handlePrint = () => {
-    window.print();
+    const slipEl = document.getElementById("thermal-print-slip");
+    if (!slipEl) {
+      window.print();
+      return;
+    }
+
+    let iframe = document.getElementById("thermal-print-iframe") as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "thermal-print-iframe";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>e-Döviz Fişi - ${currentBelgeNo}</title>
+          <style>
+            @page {
+              size: auto;
+              margin: 0mm !important;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            html, body {
+              width: 100%;
+              max-width: 80mm;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff;
+              font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
+              color: #000000;
+              height: auto !important;
+              overflow: visible !important;
+            }
+            .thermal-paper {
+              position: static !important;
+              width: 100%;
+              max-width: 78mm;
+              margin: 0 auto !important;
+              padding: 1.5mm 2.5mm 3mm 2.5mm !important;
+              background: #ffffff;
+              color: #000000;
+              font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
+              font-size: 10px;
+              line-height: 1.18;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              page-break-after: avoid !important;
+            }
+            .thermal-box {
+              border: 1px solid #000000;
+              margin: 2px 0;
+              padding: 1.5px 2.5px;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .thermal-box-title {
+              font-weight: 900;
+              text-align: center;
+              font-size: 10.5px;
+              text-transform: uppercase;
+              border-bottom: 1px solid #000000;
+              padding-bottom: 1px;
+              margin-bottom: 2px;
+            }
+            .dashed-line {
+              border-top: 1px dashed #000000;
+              margin: 3px 0;
+              height: 0;
+            }
+            table {
+              border-collapse: collapse;
+              width: 100%;
+            }
+            img {
+              max-width: 100%;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="thermal-paper">
+            ${slipEl.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 150);
   };
+
+  // Auto print trigger when opened via F10 or direct-print
+  useEffect(() => {
+    if (show && autoPrint) {
+      const timer = setTimeout(() => {
+        handlePrint();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [show, autoPrint]);
+
+  // F8 Shortcut for print when modal is open
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!show) return;
+      if (e.key === "F8") {
+        e.preventDefault();
+        handlePrint();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [show]);
 
   return (
     <>
@@ -280,78 +415,149 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = ({
         @media screen {
           .thermal-modal-body {
             background-color: #525659;
-            padding: 24px;
+            padding: 16px;
             display: flex;
             justify-content: center;
+            overflow: auto;
           }
           .thermal-paper {
             background-color: #ffffff;
             width: 80mm;
-            min-height: 140mm;
-            padding: 4mm 3mm;
+            min-height: 120mm;
+            padding: 2.5mm 3mm;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
             border-radius: 2px;
             color: #000000;
             font-family: 'Courier New', Courier, monospace, Arial, sans-serif;
-            font-size: 11px;
-            line-height: 1.22;
+            font-size: 10.5px;
+            line-height: 1.2;
           }
         }
 
         @media print {
-          /* Hide EVERYTHING else on page during print */
-          body * {
-            visibility: hidden !important;
+          @page {
+            size: auto;
+            margin: 0mm !important;
           }
-          .modal-backdrop, .modal {
+          html, body {
+            width: 100% !important;
+            max-width: 80mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+          }
+          /* Hide EVERYTHING else on page during print, including backdrop and root components */
+          #root,
+          .modal-backdrop,
+          .modal-header,
+          .modal-footer,
+          .btn,
+          .d-print-none {
+            display: none !important;
+          }
+          body > *:not(.modal) {
+            display: none !important;
+          }
+          .modal {
             position: absolute !important;
-            left: 0 !important;
             top: 0 !important;
+            left: 0 !important;
+            display: block !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            width: 80mm !important;
+            max-width: 80mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            transform: none !important;
+            overflow: visible !important;
+          }
+          .modal-dialog {
+            position: static !important;
+            display: block !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 80mm !important;
+            max-width: 80mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            transform: none !important;
+          }
+          .modal-content {
+            position: static !important;
+            display: block !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 80mm !important;
+            max-width: 80mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+          }
+          .modal-body,
+          .thermal-modal-body {
+            position: static !important;
+            display: block !important;
             margin: 0 !important;
             padding: 0 !important;
             background: transparent !important;
-          }
-          #thermal-print-slip, #thermal-print-slip * {
-            visibility: visible !important;
+            width: 80mm !important;
+            max-width: 80mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
           }
           #thermal-print-slip {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 76mm !important;
-            max-width: 76mm !important;
-            margin: 0 !important;
-            padding: 1mm 1.5mm !important;
+            position: static !important;
+            display: block !important;
+            width: 78mm !important;
+            max-width: 78mm !important;
+            margin: 0 auto !important;
+            padding: 1mm 2mm 2mm 2mm !important;
             background: #ffffff !important;
             color: #000000 !important;
             font-family: 'Courier New', Courier, monospace, Arial, sans-serif !important;
-            font-size: 10.5px !important;
-            line-height: 1.2 !important;
+            font-size: 10px !important;
+            line-height: 1.18 !important;
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            overflow: visible !important;
           }
-          @page {
-            size: 80mm auto;
-            margin: 0mm !important;
+          #thermal-print-slip * {
+            visibility: visible !important;
+            color: #000000 !important;
           }
         }
 
         /* Thermal Elements */
         .thermal-box {
           border: 1px solid #000000;
-          margin: 4px 0;
-          padding: 2px 3px;
+          margin: 3px 0;
+          padding: 1.5px 2.5px;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         .thermal-box-title {
           font-weight: 900;
           text-align: center;
-          font-size: 11px;
+          font-size: 10.5px;
           text-transform: uppercase;
           border-bottom: 1px solid #000000;
-          padding-bottom: 2px;
-          margin-bottom: 3px;
+          padding-bottom: 1px;
+          margin-bottom: 2px;
         }
         .dashed-line {
           border-top: 1px dashed #000000;
-          margin: 6px 0;
+          margin: 4px 0;
           height: 0;
         }
       `}</style>

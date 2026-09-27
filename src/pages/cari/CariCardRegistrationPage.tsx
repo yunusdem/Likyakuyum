@@ -387,11 +387,11 @@ export const CariCardRegistrationPage: React.FC = () => {
     setFormData((prev) => {
       let next = prev;
       if (next.alisIstatistikId === null) {
-        const alis = list.find((i) => Number(i.fisTipi) !== 1);
+        const alis = list.find((i) => Number(i.fisTipi) === 0 || Number(i.fisTipi) === 2);
         if (alis) next = { ...next, alisIstatistikId: alis.id };
       }
       if (next.satisIstatistikId === null) {
-        const satis = list.find((i) => Number(i.fisTipi) === 1);
+        const satis = list.find((i) => Number(i.fisTipi) === 1 || Number(i.fisTipi) === 2);
         if (satis) next = { ...next, satisIstatistikId: satis.id };
       }
       return next;
@@ -1770,7 +1770,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           onChange={(e) => handleInputChange("alisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) !== 1).map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 0 || Number(ist.fisTipi) === 2).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>
@@ -1789,7 +1789,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           onChange={(e) => handleInputChange("satisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 1).map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 1 || Number(ist.fisTipi) === 2).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>
@@ -1808,7 +1808,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           onChange={(e) => handleInputChange("arbitrajAlisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) !== 1).map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 0 || Number(ist.fisTipi) === 2).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>
@@ -1827,7 +1827,7 @@ export const CariCardRegistrationPage: React.FC = () => {
                           onChange={(e) => handleInputChange("arbitrajSatisIstatistikId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
                         >
                           <option value="">Seçilmedi</option>
-                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 1).map((ist) => (
+                          {lookups.istatistikList.filter((ist) => Number(ist.fisTipi) === 1 || Number(ist.fisTipi) === 2).map((ist) => (
                             <option key={ist.id} value={ist.id}>
                               [{ist.kod}] {ist.ad}
                             </option>

@@ -170,7 +170,8 @@ export interface EtiketSablonAlan {
   fontWeight?: "normal" | "bold" | "600" | "800";
   fontFamily?: string;
   fontStyle?: "normal" | "italic";
-  textDecoration?: "none" | "underline";
+  textDecoration?: "none" | "underline" | "line-through";
+  textTransform?: "none" | "uppercase" | "lowercase";
   color?: string;
   backgroundColor?: string;
   textAlign?: "left" | "center" | "right";
@@ -184,7 +185,10 @@ export interface EtiketSablonAlan {
   barkodFormat?: "CODE128" | "EAN13" | "CODE39" | "QR" | "RFID";
   barcodeFormat?: "CODE128" | "EAN13" | "CODE39" | "QR" | "RFID";
   barcodeValue?: string;
+  barcodeText?: string;
   showBarcodeText?: boolean;
+  fieldKey?: string;
+  showText?: boolean;
   borderWidth?: number;
   borderColor?: string;
   borderRadius?: number;
@@ -212,6 +216,8 @@ export interface EtiketSablonItem {
   kuyrukGenislikMm?: number;
   arkaPlanRengi?: EtiketArkaPlan;
   rfidDahili?: boolean;
+  yaziciUstKaydirmaMm?: number;
+  yaziciSolKaydirmaMm?: number;
 }
 
 export interface SaveEtiketSablonPayload {
@@ -231,6 +237,8 @@ export interface SaveEtiketSablonPayload {
   kuyrukGenislikMm?: number;
   arkaPlanRengi?: EtiketArkaPlan;
   rfidDahili?: boolean;
+  yaziciUstKaydirmaMm?: number;
+  yaziciSolKaydirmaMm?: number;
 }
 
 export interface EtiketGrupNoResult {
@@ -427,7 +435,32 @@ export const EtiketService = {
   async deleteSayimFisi(id: number): Promise<void> {
     await apiClient.delete(`/sayim/${id}`);
   },
+
+  // ─── Tablo Maddesi (TODVZ_TABLO_MADDESI & SODVZ_TABLO_MADDESI_KAYDET) ───
+  async getTabloMaddeleri(tur: number, search?: string): Promise<TabloMaddesiItem[]> {
+    const params: any = { tur };
+    if (search) params.q = search;
+    const res = await apiClient.get<TabloMaddesiItem[]>("/tanimlar/tablo-maddesi", params);
+    const data = (res.data as any)?.data ?? res.data;
+    return Array.isArray(data) ? data : [];
+  },
+
+  async saveTabloMaddesi(payload: { id?: number | null; tur: number; ad: string; kod?: string | null }): Promise<TabloMaddesiItem> {
+    const res = await apiClient.post<TabloMaddesiItem>("/tanimlar/tablo-maddesi", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+
+  async deleteTabloMaddesi(id: number): Promise<void> {
+    await apiClient.delete(`/tanimlar/tablo-maddesi/${id}`);
+  },
 };
+
+export interface TabloMaddesiItem {
+  id: number;
+  tur: number;
+  ad: string;
+  kod?: string | null;
+}
 
 export interface EtiketLogoItem {
   fotografId: number;

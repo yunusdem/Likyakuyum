@@ -414,7 +414,7 @@ export class OzelUrunSqlRepository {
       query += ` AND (GRUP_KODU LIKE @SEARCH OR BARKOD LIKE @SEARCH OR MAMUL_TIPI LIKE @SEARCH OR ORJINAL_KOD LIKE @SEARCH OR URETICI_FIRMA LIKE @SEARCH OR TAS_CINSI LIKE @SEARCH)`;
       req.input("SEARCH", sql.VarChar(150), `%${filter.search.trim()}%`);
     }
-    query += ` ORDER BY OZEL_URUN_ID DESC`;
+    query += ` ORDER BY OZEL_URUN_ID ASC`;
 
     const res = await req.query(query);
     const items = (res.recordset || []).map((r: any) => this.mapRow(r));
