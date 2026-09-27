@@ -55,7 +55,11 @@ router.post("/gelen/:uuid/statu", EbelgeController.gelenStatuIsle);
 // Giden belge doğrulama — belge GÖNDERİLMEZ, yalnızca şema/schematron kontrolü.
 router.post("/giden/dogrula", EbelgeController.dogrulaGidenBelge);
 router.get("/giden/son-belge-no", EbelgeController.getSonBelgeNo);
+router.get("/giden/fatura-no-onerileri", EbelgeController.faturaNoOnerileri);
 router.get("/mukellef", EbelgeController.mukellefSorgula);
+// Firma NACE kodları ve izin verilen KDV oranları (docs/GIRIS_VE_EBELGE_DUZENLEME.md N1)
+router.get("/nace", EbelgeController.naceListe);
+router.put("/nace", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.naceKaydet);
 router.get("/yerel-taslak", EbelgeController.yerelTaslakListe);
 router.get("/yerel-taslak/:id", EbelgeController.yerelTaslakGetir);
 router.post("/yerel-taslak", EbelgeController.yerelTaslakKaydet);

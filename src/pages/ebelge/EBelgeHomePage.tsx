@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
-import { EbelgeAyar, ebelgeService } from "../../services/ebelgeService";
+import { EbelgeAyar, EbelgeYerelTaslak, EBELGE_YEREL_TASLAK_FORMU, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
 import { KnskYaklasanlarKarti } from "./EBelgeKnsk";
 
 /**
@@ -101,12 +101,29 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
   const [sorgulaniyor, setSorgulaniyor] = useState(false);
   const [sonuc, setSonuc] = useState<{ mukellefMi: boolean; mesaj: string } | null>(null);
   const [hata, setHata] = useState<string | null>(null);
-  /** Sorgu sonuçsuzken "Forma geç": hangi formun açılacağı kullanıcıya sorulur. */
+  /** "Forma geç": e-Fatura / e-Arşiv / Taslaklar seçenekleri (docs/GIRIS_VE_EBELGE_DUZENLEME.md E1). */
   const [formSor, setFormSor] = useState(false);
+  /** Taslaklar seçildi: kayıtlı fatura taslakları (e-Fatura + e-Arşiv) listelenir. */
+  const [taslaklar, setTaslaklar] = useState<EbelgeYerelTaslak[] | null>(null);
+  const [taslakHata, setTaslakHata] = useState<string | null>(null);
+  const taslaklariGoster = async () => {
+    setTaslakHata(null);
+    setTaslaklar([]);
+    try {
+      const liste = await ebelgeService.yerelTaslakListe();
+      setTaslaklar(liste.filter((t) => t.belgeTuru === "EFatura" || t.belgeTuru === "EArsiv"));
+    } catch (e: any) {
+      setTaslaklar(null);
+      setTaslakHata(e?.message || "Taslaklar alınamadı.");
+    }
+  };
+  const taslakAc = (id: number) => { onHide(); navigate(`/e-belge/dogrula?taslak=${id}`); };
   const sira = useRef(0);
   const formaGec = (earsiv: boolean) => { onHide(); navigate(`/e-belge/dogrula?senaryo=${earsiv ? "EARSIVFATURA" : "TICARIFATURA"}${vkn ? `&vkn=${encodeURIComponent(vkn)}` : ""}`); };
   const yonlendir = (m: boolean, no: string) => { onHide(); navigate(`/e-belge/dogrula?vkn=${encodeURIComponent(no)}&senaryo=${m ? "TICARIFATURA" : "EARSIVFATURA"}`); };
-  useEffect(() => { if (show) { setVkn(""); setSonuc(null); setHata(null); setSorgulaniyor(false); setFormSor(false); } }, [show]);
+  useEffect(() => {
+    if (show) { setVkn(""); setSonuc(null); setHata(null); setSorgulaniyor(false); setFormSor(false); setTaslaklar(null); setTaslakHata(null); }
+  }, [show]);
   useEffect(() => {
     if (!/^\d{10,11}$/.test(vkn)) { setSonuc(null); setHata(null); return; }
     const no = vkn, s = ++sira.current;
@@ -141,11 +158,37 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
           {hata && <Alert variant="danger" className="py-2 mb-0 small">{hata}</Alert>}
         </div>
         {formSor && <Alert variant="light" className="border py-2 mt-2 mb-0 small">
-          <div className="fw-semibold mb-2">Hangi forma gitmek istiyorsunuz?</div>
-          <div className="d-flex gap-2">
+          <div className="fw-semibold mb-2">Nereye gitmek istiyorsunuz?</div>
+          <div className="d-flex flex-wrap gap-2">
             <Button size="sm" variant="primary" onClick={() => formaGec(false)}>e-Fatura formu</Button>
             <Button size="sm" variant="success" onClick={() => formaGec(true)}>e-Arşiv formu</Button>
+            <Button size="sm" variant={taslaklar ? "secondary" : "outline-secondary"} onClick={() => void taslaklariGoster()}>Taslaklar</Button>
           </div>
+          {taslakHata && <div className="text-danger mt-2">{taslakHata}</div>}
+          {taslaklar && (
+            <div className="mt-2 border rounded bg-body" style={{ maxHeight: 260, overflowY: "auto" }}>
+              {taslaklar.length === 0 ? (
+                <div className="text-secondary p-2">Kayıtlı fatura taslağı yok.</div>
+              ) : (
+                taslaklar.map((t) => (
+                  <button key={t.id} type="button" className="list-group-item list-group-item-action w-100 text-start border-0 border-bottom px-2 py-1"
+                    onClick={() => taslakAc(t.id)} title="Taslağı formda aç">
+                    <div className="d-flex justify-content-between gap-2">
+                      <span className="text-truncate">
+                        <Badge bg={t.belgeTuru === "EFatura" ? "primary" : "success"} className="me-1">{EBELGE_YEREL_TASLAK_FORMU[t.belgeTuru].ad}</Badge>
+                        {t.aliciUnvan || t.aliciVkn || "Alıcı yok"}
+                      </span>
+                      <span className="font-monospace text-nowrap">{t.tutar == null ? "" : ebelgeTutar(t.tutar, t.paraBirimi || "TRY")}</span>
+                    </div>
+                    <div className="text-secondary" style={{ fontSize: 11 }}>
+                      #{t.id} · {new Date(t.guncellemeTarihi).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" })}
+                      {t.olusturan ? ` · ${t.olusturan}` : ""}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </Alert>}
       </Modal.Body>
       <Modal.Footer className="py-2">

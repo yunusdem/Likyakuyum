@@ -7,129 +7,60 @@ import { AuthResponseData, TokenPair } from "../types/auth.types.js";
 import { UserModel, UserResponseDto } from "../types/user.types.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { setDbCredentials } from "../config/mssql.config.js";
-import { env } from "../config/env.config.js";
 import { Istemci, MerkezGirisService } from "./merkezGiris.service.js";
 import { ESKI_SIFRE_ISARETI, MerkezOturumBilgisi } from "../types/admin.types.js";
 import { sifreDogrula } from "../utils/sifre.utils.js";
 import { OturumService } from "./oturum.service.js";
 
 export class AuthService {
+  /**
+   * Müşteri no ile giriş (docs/GIRIS_VE_EBELGE_DUZENLEME.md G2-G7): firma, müşteri no + seçilen firmaId ile merkezde
+   * bulunur; veritabanı bağlantısı firma kaydından sunucuda çözülür. Kullanıcı ve şifre merkezde (ADM_KULLANICI)
+   * doğrulanır: kullanıcı o veritabanının firmasında tanımlı değilse giremez.
+   */
   public static async login(input: LoginInput, istemci: Istemci = { ip: "", tarayici: "" }): Promise<AuthResponseData> {
-    const mode = input.mode === "local" ? "local" : "cloud";
-    let targetServer = "";
-    let targetDb = "";
-    let targetDbUser = "";
-    let targetDbPassword = "";
+    const firma = await MerkezGirisService.musteriFirmaKontrol(input.musteriNo, input.firmaId, input.username, istemci);
+    const b = await MerkezGirisService.firmaBaglantisi(firma.firmaId);
 
-    const rawServer = (
-      input.dbServer ||
-      (input as any).server ||
-      (input as any).serverName ||
-      (input as any).host ||
-      ""
-    ).trim();
-    const rawDb = (input.dbName || (input as any).database || "").trim();
-    const rawDbUser = (input.dbUser || (input as any).user || "").trim();
-    const rawDbPassword =
-      input.dbPassword !== undefined && input.dbPassword !== null
-        ? input.dbPassword
-        : ((input as any).passwordDb !== undefined && (input as any).passwordDb !== null
-            ? (input as any).passwordDb
-            : "");
+    await MerkezGirisService.havuzDogrula(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
+    setDbCredentials(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
 
-    if (mode === "cloud") {
-      // Bulut Modu: Formdan gelen sunucu/vt/kullanıcı/şifre varsa kullanılır, boşsa .env merkezi ayarları kullanılır
-      targetServer = rawServer && rawServer !== "test" ? rawServer : (env.DB_SERVER || "127.0.0.1");
-      targetDb = rawDb || env.DB_NAME || "R2016_dvz";
-      targetDbUser = rawDbUser || env.DB_USER || "SA";
-      targetDbPassword =
-        rawDbPassword !== "" && rawDbPassword !== null && rawDbPassword !== undefined
-          ? rawDbPassword
-          : (env.DB_PASSWORD || "");
-    } else {
-      // Yerel Mod (Müşteri Dükkan SQL Server): Müşterinin statik IP/tünel adresi ve bağlantı bilgileri
-      if (!rawServer) {
-        throw ApiError.badRequest(
-          "Yerel veritabanı modu için lütfen sunucu IP adresini (örn: 88.245.x.x,1433) giriniz."
-        );
-      }
-
-      targetServer = rawServer;
-      targetDb = rawDb || "R2016_dvz";
-      targetDbUser = rawDbUser || "sa";
-      targetDbPassword = rawDbPassword;
-    }
-
-    // Merkez kontrolü (MERKEZ_GIRIS=zorunlu): firma kayıtlı, aktif ve lisanslı değilse veritabanına hiç gidilmez
-    const merkezFirma = MerkezGirisService.aktifMi()
-      ? await MerkezGirisService.firmaKontrol(targetServer, targetDb, input.username, istemci)
-      : null;
-
-    // Dinamik bağlantı havuzuna hedef sunucu kimlik bilgilerini kaydet
-    setDbCredentials(targetServer, targetDb, targetDbUser, targetDbPassword);
-
-    const dbContext = {
-      dbServer: targetServer,
-      dbName: targetDb,
-      dbUser: targetDbUser,
-      dbPassword: targetDbPassword,
-    };
-
-    if (merkezFirma) await MerkezGirisService.havuzDogrula(targetServer, targetDb, targetDbUser, targetDbPassword);
-
+    const dbContext = { dbServer: b.dbServer, dbName: b.dbName };
     const user = await UserSqlRepository.findByUsername(input.username, dbContext);
 
-    if (merkezFirma) {
-      // Şifre ve kullanıcı durumu merkezde doğrulanır; firma veritabanındaki satır yalnızca operasyonel alanlar içindir
-      const kullanici = await MerkezGirisService.kullaniciDogrula(
-        merkezFirma,
-        input.username,
-        input.password,
-        user?.passwordHash || user?.password || null,
-        istemci
-      );
-      if (!user) {
-        throw ApiError.unauthorized(
-          "Kullanıcı firma veritabanında bulunamadı. Lütfen hizmet sağlayıcınızla iletişime geçiniz."
-        );
-      }
-      const sid = await OturumService.ac(kullanici.kullaniciId, merkezFirma.firmaId, istemci);
-      return this.oturumAc(user, dbContext, await MerkezGirisService.oturumBilgisi({ firma: merkezFirma, kullanici }), sid);
-    }
-
+    const kullanici = await MerkezGirisService.kullaniciDogrula(
+      firma,
+      input.username,
+      input.password,
+      user?.passwordHash || user?.password || null,
+      istemci
+    );
     if (!user) {
-      throw ApiError.unauthorized(ResponseMessages.INVALID_CREDENTIALS);
+      throw ApiError.unauthorized(
+        "Kullanıcı firma veritabanında bulunamadı. Lütfen hizmet sağlayıcınızla iletişime geçiniz."
+      );
     }
+    const sid = await OturumService.ac(kullanici.kullaniciId, firma.firmaId, istemci);
+    return this.oturumAc(
+      user,
+      { ...dbContext, firmaId: firma.firmaId },
+      await MerkezGirisService.oturumBilgisi({ firma, kullanici }),
+      sid
+    );
+  }
 
-    if (!user.isActive) {
-      throw ApiError.forbidden("Kullanıcı hesabı pasif durumdadır. Lütfen sistem yöneticisi ile iletişime geçiniz.");
-    }
-
-    // Support both plaintext and bcrypt/HMAC hashed passwords from TODVZ_KULLANICI
-    let isPasswordValid = false;
-    if (user.password && user.password === input.password) {
-      isPasswordValid = true;
-    } else if (user.passwordHash) {
-      try {
-        isPasswordValid = await comparePassword(input.password, user.passwordHash);
-      } catch (err) {
-        isPasswordValid = user.passwordHash === input.password;
-      }
-    }
-
-    if (!isPasswordValid) {
-      throw ApiError.unauthorized(ResponseMessages.INVALID_CREDENTIALS);
-    }
-
-    return this.oturumAc(user, dbContext);
+  /** Giriş ekranı: müşteri noya bağlı veritabanları. */
+  public static musteriVeritabanlari(musteriNo: string) {
+    return MerkezGirisService.musteriVeritabanlari(musteriNo);
   }
 
   private static oturumAc(
     user: UserModel,
-    dbContext: { dbServer: string; dbName: string; dbUser: string; dbPassword: string },
+    dbContext: { dbServer: string; dbName: string; firmaId: number },
     merkez?: MerkezOturumBilgisi,
     sid?: string
   ): AuthResponseData {
+    // DB kullanıcı adı / şifresi token'a yazılmaz; authenticate bağlantıyı firmaId'den çözer
     const tokens = generateAuthTokens({
       userId: user.id,
       username: user.username,
@@ -137,14 +68,14 @@ export class AuthService {
       cashierCode: user.cashierCode,
       dbServer: dbContext.dbServer,
       dbName: dbContext.dbName,
-      dbUser: dbContext.dbUser,
-      dbPassword: dbContext.dbPassword,
+      firmaId: dbContext.firmaId,
       ...(sid && { sid }),
     });
 
     return {
       user: { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }) },
       tokens,
+      baglanti: { dbServer: dbContext.dbServer, dbName: dbContext.dbName },
     };
   }
 
@@ -252,6 +183,10 @@ export class AuthService {
   public static async refreshToken(input: RefreshTokenInput): Promise<TokenPair> {
     try {
       const decoded = verifyRefreshToken(input.refreshToken);
+      if (decoded.firmaId) {
+        const b = await MerkezGirisService.firmaBaglantisi(decoded.firmaId);
+        setDbCredentials(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
+      }
       const dbContext = { dbServer: decoded.dbServer, dbName: decoded.dbName };
       const user = await UserSqlRepository.findById(decoded.userId, dbContext);
 
@@ -266,6 +201,7 @@ export class AuthService {
         cashierCode: user.cashierCode,
         dbServer: decoded.dbServer,
         dbName: decoded.dbName,
+        ...(decoded.firmaId && { firmaId: decoded.firmaId }),
         ...(decoded.sid && { sid: decoded.sid }),
       });
 

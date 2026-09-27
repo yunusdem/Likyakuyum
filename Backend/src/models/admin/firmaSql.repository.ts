@@ -136,6 +136,19 @@ export class FirmaSqlRepository {
     return res.recordset[0] ? satirdan(res.recordset[0]) : null;
   }
 
+  /** Giriş ekranı: müşteri noya bağlı firmalar (her biri bir veritabanı). Pasif firmalar listelenmez. */
+  public static async musteriNoIleListele(
+    musteriNo: string
+  ): Promise<{ firmaId: number; unvan: string; dbName: string; durum: FirmaDurum }[]> {
+    const pool = await getAdminPool();
+    const res = await pool
+      .request()
+      .input("no", sql.VarChar(20), musteriNo)
+      .query(`SELECT FIRMA_ID, UNVAN, DB_NAME, DURUM FROM dbo.ADM_FIRMA
+              WHERE MUSTERI_NO = @no AND DURUM <> 'PASIF' ORDER BY UNVAN, DB_NAME`);
+    return res.recordset.map((r: any) => ({ firmaId: r.FIRMA_ID, unvan: r.UNVAN, dbName: r.DB_NAME, durum: r.DURUM }));
+  }
+
   public static async ekle(v: FirmaYazim, dbSifreEnc: string | null): Promise<number> {
     const pool = await getAdminPool();
     const res = await yazimGirdileri(pool.request(), v).input("dbSifreEnc", sql.VarChar(600), dbSifreEnc).query(`

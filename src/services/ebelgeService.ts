@@ -220,14 +220,35 @@ export type EbelgeKodTuru = "ISTISNA" | "TEVKIFAT" | "OZELMATRAH" | "IHRACKAYITL
 export interface EbelgeKod { tur: EbelgeKodTuru; kod: string; ad: string; oran: number | null; sistem: boolean }
 
 /** Yerel taslak (ICE'de taslak metodu olmayan belge türleri) — docs/ebelge-revizyon.md K3 */
-export type EbelgeYerelTaslakTuru = "EArsiv" | "EIrsaliye" | "EGiderPusulasi" | "EMustahsil";
+export type EbelgeYerelTaslakTuru = "EArsiv" | "EFatura" | "EIrsaliye" | "EGiderPusulasi" | "EMustahsil";
 export interface EbelgeYerelTaslak {
   id: number; belgeTuru: EbelgeYerelTaslakTuru; belgeNo: string | null; aliciVkn: string | null; aliciUnvan: string | null;
   tutar: number | null; paraBirimi: string | null; olusturan: string | null; olusturmaTarihi: string; guncellemeTarihi: string;
 }
+/**
+ * Faturada seçilebilen KDV oranları (docs/GIRIS_VE_EBELGE_DUZENLEME.md E4). Varsayılan %20.
+ * %8 ve %18 10.07.2023'ten beri yürürlükte değil; kullanıcı kararıyla listede duruyor.
+ */
+export const EBELGE_KDV_ORANLARI: number[] = [0, 1, 8, 10, 18, 20];
+
+/** Firma NACE kodu ve bu kod için faturada kullanılabilecek KDV oranları (docs/GIRIS_VE_EBELGE_DUZENLEME.md N1) */
+export interface EbelgeNaceKaydi {
+  kod: string;
+  aciklama: string;
+  oranlar: number[];
+}
+
+/** Fatura no önerisi: seri, ICE'deki son sıra ve bir sonraki numara */
+export interface EbelgeFaturaNoOnerisi {
+  seri: string;
+  sonSira: number;
+  onerilenNo: string;
+}
+
 /** Yerel taslağın açılacağı form */
 export const EBELGE_YEREL_TASLAK_FORMU: Record<EbelgeYerelTaslakTuru, { ad: string; yol: string }> = {
   EArsiv: { ad: "e-Arşiv", yol: "/e-belge/dogrula" },
+  EFatura: { ad: "e-Fatura", yol: "/e-belge/dogrula" },
   EIrsaliye: { ad: "e-İrsaliye", yol: "/e-belge/irsaliye" },
   EGiderPusulasi: { ad: "e-Gider", yol: "/e-belge/gider" },
   EMustahsil: { ad: "e-Müstahsil", yol: "/e-belge/mustahsil" },
@@ -896,6 +917,23 @@ export const ebelgeService = {
       filtre
     );
     return res.data;
+  },
+
+  async naceListe(): Promise<EbelgeNaceKaydi[]> {
+    return (await apiClient.get<EbelgeNaceKaydi[]>("/e-belge/nace")).data || [];
+  },
+  async naceKaydet(liste: EbelgeNaceKaydi[]): Promise<EbelgeNaceKaydi[]> {
+    return (await apiClient.put<EbelgeNaceKaydi[]>("/e-belge/nace", { liste })).data || [];
+  },
+
+  /** Fatura no önerileri: her seri için ICE'deki son sıra + 1 (formun en üstündeki seçim) */
+  async faturaNoOnerileri(belgeTuru: "EFatura" | "EArsiv", yil: number, seri?: string): Promise<EbelgeFaturaNoOnerisi[]> {
+    const res = await apiClient.get<EbelgeFaturaNoOnerisi[]>("/e-belge/giden/fatura-no-onerileri", {
+      belgeTuru,
+      yil,
+      ...(seri ? { seri } : {}),
+    });
+    return res.data || [];
   },
 
   /** ICE tarafındaki son belge numarası (numaratör çakışması kontrolü) */

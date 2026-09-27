@@ -193,7 +193,14 @@ export interface MerkezOturumBilgisi {
 }
 
 /** Giriş reddinde istemciye dönen kod (yanıtta errors.kod). Giriş ekranı pencereyi buna göre açar. */
-export type GirisRedKodu = "FIRMA_KAYITSIZ" | "FIRMA_DONDURULDU" | "FIRMA_PASIF" | "LISANS_BITTI" | "KULLANICI_PASIF";
+export type GirisRedKodu =
+  | "FIRMA_KAYITSIZ"
+  | "FIRMA_DONDURULDU"
+  | "FIRMA_PASIF"
+  | "LISANS_BITTI"
+  | "KULLANICI_PASIF"
+  | "MUSTERI_NO_BULUNAMADI"
+  | "BAGLANTI_EKSIK";
 
 export type ModulTuru = "ANA" | "ALT" | "UST_KISAYOL";
 

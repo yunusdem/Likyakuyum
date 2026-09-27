@@ -1,48 +1,22 @@
 import { z } from "zod";
 import { UserRole } from "../constants/roles.js";
 
+// Giriş = Müşteri No + seçilen veritabanı (firmaId) + kullanıcı adı + şifre. Sunucu / veritabanı / SQL kullanıcısı ve
+// şifresi artık istemciden alınmaz; firma kaydından (LIKYA_ADMIN) çözülür (docs/GIRIS_VE_EBELGE_DUZENLEME.md G3-G4).
 export const loginSchema = z.object({
-  body: z
-    .object({
-      username: z.string().min(1, "Kullanıcı adı girilmelidir"),
-      password: z.string().min(1, "Şifre girilmelidir"),
-      mode: z.enum(["cloud", "local"]).optional().default("cloud"),
-      dbServer: z.string().optional(),
-      server: z.string().optional(),
-      serverName: z.string().optional(),
-      host: z.string().optional(),
-      dbName: z.string().optional(),
-      database: z.string().optional(),
-      dbUser: z.string().optional(),
-      user: z.string().optional(),
-      dbPassword: z.string().optional(),
-      passwordDb: z.string().optional(),
-    })
-    .refine(
-      (data) => {
-        // Cloud modunda sunucu adı zorunlu değildir, merkezi sunucu kullanılır
-        if (data.mode === "cloud") return true;
-        return !!(data.dbServer || data.server || data.serverName || data.host);
-      },
-      {
-        message: "Lütfen yerel sunucu adını veya IP adresini (örn: 88.245.x.x,1433) giriniz",
-        path: ["dbServer"],
-      }
-    )
-    .refine(
-      (data) => {
-        // Cloud modunda veritabanı adı zorunlu değildir, merkezi veritabanı kullanılır
-        if (data.mode === "cloud") return true;
-        return !!(data.dbName || data.database);
-      },
-      {
-        message: "Lütfen yerel veritabanı adını (örn: R2016_dvz) giriniz",
-        path: ["dbName"],
-      }
-    ),
+  body: z.object({
+    musteriNo: z.string().trim().min(1, "Müşteri no girilmelidir").max(20),
+    firmaId: z.coerce.number().int().positive("Lütfen veritabanını seçiniz"),
+    username: z.string().min(1, "Kullanıcı adı girilmelidir"),
+    password: z.string().min(1, "Şifre girilmelidir"),
+  }),
 });
 
-
+export const musteriVeritabanlariSchema = z.object({
+  query: z.object({
+    musteriNo: z.string().trim().min(1, "Müşteri no girilmelidir").max(20),
+  }),
+});
 
 export const registerSchema = z.object({
   body: z.object({

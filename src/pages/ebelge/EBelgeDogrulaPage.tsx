@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Alert, Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
+import { Button, Card, Col, Form, Row, Spinner, Table } from "react-bootstrap";
 import {
   IconFileCheck,
   IconPlus,
   IconTrash,
-  IconShieldCheck,
-  IconAlertTriangle,
   IconSend,
   IconFolder,
   IconDeviceFloppy,
+  IconCloudUpload,
 } from "@tabler/icons-react";
+import { useToast } from "../../context/ToastContext";
+import { faturaTutari, kod555Kullanilabilir } from "./faturaHesap";
+import { KUYUMCU_KALEM_TURLERI, kalemFaturaTipiUyumlu } from "./kuyumcuKdv";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import EBelgeCariDurbun, { CariUnvanDurbun } from "./EBelgeCariDurbun";
@@ -21,6 +23,7 @@ import { gibAliasToEposta, gibTitleToAdSoyad } from "../../utils/gibKullanici";
 import {
   EBELGE_BIRIMLER,
   EBELGE_FATURA_TIPLERI,
+  EBELGE_KDV_ORANLARI,
   EBELGE_SENARYOLAR,
   ebelgeHalMi,
   ebelgeIdisMi,
@@ -33,6 +36,7 @@ import {
   EbelgeOkc,
   EbelgeDogrulamaSonucu,
   EbelgeFaturaTipi,
+  EbelgeFaturaNoOnerisi,
   EbelgeFormModu,
   ebelgeFormModu,
   EbelgeSatir,
@@ -81,6 +85,7 @@ const EBelgeDogrulaPage: React.FC = () => {
 
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { showSuccess, showToast } = useToast();
   // VKN pop-up'ı sorgu sonucunu (ya da sorgu yapılamadıysa kullanıcının seçtiği formu) ?senaryo= ile taşır.
   useEffect(() => {
     if ((searchParams.get("senaryo") || "").toUpperCase() === "EARSIVFATURA") setSenaryo("EARSIVFATURA");
@@ -113,7 +118,8 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [ekBelgeler, setEkBelgeler] = useState<EbelgeBelgeRef[]>([]);
   const [okc, setOkc] = useState<EbelgeOkc>({});
   const [ibanNo, setIbanNo] = useState<string>("");
-  const [ekBilgiAcik, setEkBilgiAcik] = useState<boolean>(true);
+  /** Varsayılan gizli; kullanıcı isterse açar (docs/GIRIS_VE_EBELGE_DUZENLEME.md E8) */
+  const [ekBilgiAcik, setEkBilgiAcik] = useState<boolean>(false);
 
   // Senaryoya özel bloklar (docs/ebelge-revizyon.md 2. tur Faz 10-12)
   const [ihracat, setIhracat] = useState<Record<string, string>>({});
@@ -133,6 +139,8 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [aliciEposta, setAliciEposta] = useState<string>("");
   /** Sorgu sonucu alıcı bilgileri dolduysa cari seçimi gizlenir; kullanıcı isterse yeniden açar (yönetici isteği 16.09.2026). */
   const [cariSecimAcik, setCariSecimAcik] = useState<boolean>(false);
+  /** Seyrek alıcı alanları (PK, ülke, bina, posta kodu, faks, web) — varsayılan gizli */
+  const [digerAdresAcik, setDigerAdresAcik] = useState<boolean>(false);
 
   const [satirlar, setSatirlar] = useState<EbelgeSatir[]>([{ ...BOS_SATIR }]);
 
@@ -286,7 +294,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       // Sorgu hatası "mükellef değil" demek değildir; tür seçimi belirsiz bırakılır.
       setSorgulananVkn("");
       setAlertInfo({ type: "danger", message: (err?.message || "Mükellef sorgulanamadı") +
-        " — belge türü belirlenemedi. Numarayı kontrol edip Mükellef Sorgula ile tekrar deneyin." });
+        " — belge türü belirlenemedi. Numarayı kontrol edip VKN yanındaki Sorgula ile tekrar deneyin." });
     } finally {
       if (sira === sorguSirasi.current) setMukellefSorgulaniyor(false);
     }
@@ -312,21 +320,82 @@ const EBelgeDogrulaPage: React.FC = () => {
   /** Numara değişti ve sorgu sonucu yok → tür seçimi güvenilmez. */
   const turBelirsiz = /^\d{10,11}$/.test(aliciVkn.trim()) && aliciVkn.trim() !== sorgulananVkn;
 
+  /**
+   * Mesajlar sayfada yer kaplamaz; ortada açılır pencere olarak gösterilir. Hata pencereleri kullanıcı kapatana kadar
+   * kalır, diğerleri kendiliğinden kapanır. Aynı anda gelen ek bilgiler tek pencerede birleşsin diye kısa bekleme var.
+   */
+  useEffect(() => {
+    if (!alertInfo) return;
+    const zaman = setTimeout(() => {
+      const sure = alertInfo.type === "danger" ? 0 : alertInfo.type === "warning" ? 7000 : 3500;
+      showToast(alertInfo.message, alertInfo.type, sure);
+      setAlertInfo(null);
+    }, 150);
+    return () => clearTimeout(zaman);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertInfo]);
+
+  /**
+   * Fatura no önerileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10): belge türü (e-Fatura / e-Arşiv) ve yıl belli olunca
+   * ICE'den gelir. Tek seri varsa kendiliğinden seçilir; birden çoksa kullanıcı seçer.
+   */
+  const [noOnerileri, setNoOnerileri] = useState<EbelgeFaturaNoOnerisi[]>([]);
+  const [noYukleniyor, setNoYukleniyor] = useState(false);
+  const [noHata, setNoHata] = useState<string | null>(null);
+  const [noYenile, setNoYenile] = useState(0);
+  const [yeniSeriAcik, setYeniSeriAcik] = useState(false);
+  const [yeniSeri, setYeniSeri] = useState("");
+  const noSirasi = useRef(0);
+  const noBelgeTuru: "EFatura" | "EArsiv" = senaryo === "EARSIVFATURA" ? "EArsiv" : "EFatura";
+  const noYili = Number((tarih || bugunISO()).slice(0, 4));
+
+  const faturaNolariGetir = async (ekSeri?: string) => {
+    const sira = ++noSirasi.current;
+    setNoYukleniyor(true);
+    setNoHata(null);
+    try {
+      const liste = await ebelgeService.faturaNoOnerileri(noBelgeTuru, noYili, ekSeri);
+      if (sira !== noSirasi.current) return;
+      setNoOnerileri(liste);
+      setBelgeNo((mevcut) => {
+        if (ekSeri) return liste.find((o) => o.seri === ekSeri)?.onerilenNo || mevcut;
+        if (liste.some((o) => o.onerilenNo === mevcut)) return mevcut;
+        return liste.length === 1 ? liste[0].onerilenNo : "";
+      });
+      if (ekSeri) { setYeniSeriAcik(false); setYeniSeri(""); }
+      if (!liste.length) setNoHata("Bu türde kesilmiş belge yok; + Yeni seri ile seriyi yazın.");
+    } catch (err: any) {
+      if (sira !== noSirasi.current) return;
+      setNoHata(err?.message || "Fatura numaraları ICE'den alınamadı.");
+    } finally {
+      if (sira === noSirasi.current) setNoYukleniyor(false);
+    }
+  };
+
+  // Tür (mükellef sorgusu sonucu) ya da yıl değişince numaralar yeniden alınır
+  useEffect(() => {
+    if (mukellefSorgulaniyor) return;
+    const zaman = setTimeout(() => void faturaNolariGetir(), 300);
+    return () => clearTimeout(zaman);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noBelgeTuru, noYili, mukellefSorgulaniyor, noYenile]);
+
   /** Yürüyen işlem (düğmedeki dönen simge için) */
-  const [islem, setIslem] = useState<"taslak" | "gonder" | "earsiv">("taslak");
+  const [islem, setIslem] = useState<"taslak" | "iceTaslak" | "gonder" | "earsiv">("taslak");
   const [taslakGonderiliyor, setTaslakGonderiliyor] = useState<boolean>(false);
   /** Çift tıkla çift fatura kesilmesini önler; state güncellemesini beklemeden kilitler. */
   const islemde = useRef(false);
 
   const tcknMi = aliciVkn.trim().length === 11;
+  const digerAdresDolu = [aliciPk, aliciBinaAdi, aliciBinaNo, aliciKapiNo, aliciPostaKodu, aliciFaks, aliciWeb].some((v) => v.trim())
+    || (aliciUlke.trim() !== "" && aliciUlke.trim() !== "Türkiye");
+  // Taslaktan / cariden dolu gelirse bölüm açılır; kullanıcı yine de gizleyebilir
+  useEffect(() => { if (digerAdresDolu) setDigerAdresAcik(true); }, [digerAdresDolu]);
+  const digerAdresGorunur = digerAdresAcik;
   const iadeMi = faturaTipi === "IADE" || faturaTipi === "TEVKIFATIADE";
   const tevkifatliMi = faturaTipi === "TEVKIFAT" || faturaTipi === "TEVKIFATIADE";
   const ozelMatrahMi = faturaTipi === "OZELMATRAH";
   const dovizliMi = paraBirimi !== "TRY";
-
-  /** Özel matrahlı satırda KDV, satır tutarı yerine girilen özel matrah üzerinden hesaplanır. */
-  const kdvMatrahi = (s: EbelgeSatir, satirMatrahi: number) =>
-    ozelMatrahMi && s.ozelMatrahKodu?.trim() ? Math.round((s.ozelMatrahTutari || 0) * 100) / 100 : satirMatrahi;
 
   /**
    * Gönderilecek satırlar: seçili fatura tipine ait olmayan alanlar (tip değiştirilince satırda kalmış tevkifat /
@@ -335,8 +404,9 @@ const EBelgeDogrulaPage: React.FC = () => {
   const gonderilecekSatirlar = (): EbelgeSatir[] => satirlar.map((s) => ({
     ...s,
     // Tevkifatlı satırda istisna kodu taşınmaz; KDV'si 0 olan satırda kod zorunlu olduğu için korunur.
-    istisnaKodu: istisnaTipiMi || (s.kdvOrani || 0) === 0 ? s.istisnaKodu : undefined,
-    istisnaGerekcesi: istisnaTipiMi || (s.kdvOrani || 0) === 0 ? s.istisnaGerekcesi : undefined,
+    // 555 (NACE oran kontrolü dışı) istisna değildir, KDV'si pozitif satırda da gider.
+    istisnaKodu: istisnaTipiMi || (s.kdvOrani || 0) === 0 || s.istisnaKodu?.trim() === "555" ? s.istisnaKodu : undefined,
+    istisnaGerekcesi: istisnaTipiMi || (s.kdvOrani || 0) === 0 || s.istisnaKodu?.trim() === "555" ? s.istisnaGerekcesi : undefined,
     tevkifatKodu: tevkifatliMi ? s.tevkifatKodu : undefined,
     tevkifatOrani: tevkifatliMi ? s.tevkifatOrani : undefined,
     ozelMatrahKodu: ozelMatrahMi ? s.ozelMatrahKodu?.trim() || undefined : undefined,
@@ -344,46 +414,89 @@ const EBelgeDogrulaPage: React.FC = () => {
     ozelMatrahTutari: ozelMatrahMi && s.ozelMatrahKodu?.trim() ? s.ozelMatrahTutari ?? 0 : undefined,
   }));
 
-  /** Ekranda anlık toplam — backend tutarları yeniden hesaplar, bu yalnızca önizleme */
-  const yerelToplam = useMemo(() => {
-    const yuvarla = (n: number) => Math.round(n * 100) / 100;
-    let matrah = 0;
-    let kdv = 0;
-    let iskonto = 0;
-    for (const s of satirlar) {
-      const brut = yuvarla((s.miktar || 0) * (s.birimFiyat || 0));
-      const ind = yuvarla((brut * (s.iskontoOrani || 0)) / 100);
-      const m = yuvarla(brut - ind);
-      iskonto = yuvarla(iskonto + ind);
-      matrah = yuvarla(matrah + m);
-      kdv = yuvarla(kdv + (kdvMatrahi(s, m) * (s.kdvOrani || 0)) / 100);
-    }
-    let tevkifat = 0;
-    for (const s of satirlar) {
-      if (!s.tevkifatOrani) continue;
-      const brut = yuvarla((s.miktar || 0) * (s.birimFiyat || 0));
-      const m = yuvarla(brut - (brut * (s.iskontoOrani || 0)) / 100);
-      const satirKdv = yuvarla((kdvMatrahi(s, m) * (s.kdvOrani || 0)) / 100);
-      tevkifat = yuvarla(tevkifat + (satirKdv * s.tevkifatOrani) / 100);
-    }
-    // KDV oranı kırılımı (ICE'deki Toplamlar bloğu): oran bazında matrah ve vergi
-    const kirilim = new Map<number, { oran: number; matrah: number; vergi: number }>();
-    for (const s of satirlar) {
-      const oran = s.kdvOrani || 0;
-      const brut = yuvarla((s.miktar || 0) * (s.birimFiyat || 0));
-      const m = yuvarla(brut - (brut * (s.iskontoOrani || 0)) / 100);
-      const vergiMatrahi = kdvMatrahi(s, m);
-      const mevcut = kirilim.get(oran) || { oran, matrah: 0, vergi: 0 };
-      kirilim.set(oran, {
-        oran,
-        matrah: yuvarla(mevcut.matrah + vergiMatrahi),
-        vergi: yuvarla(mevcut.vergi + (vergiMatrahi * oran) / 100),
+  /**
+   * Ekrandaki tutarlar — backend'in hesabıyla birebir aynı kurallar (faturaHesap.ts): elle iskonto tutarı,
+   * özel matrah ve tevkifat dahil. Kesilen faturadaki tutar ekranda görülen tutardır.
+   */
+  const yerelToplam = useMemo(
+    () => faturaTutari(satirlar, { tevkifatli: tevkifatliMi, ozelMatrahli: ozelMatrahMi }),
+    [satirlar, tevkifatliMi, ozelMatrahMi]
+  );
+
+  /** KDV açılır listesi; taslaktan gelen listede olmayan eski bir oran varsa kaybolmasın diye listeye eklenir. */
+  const kdvSecenekleri = (mevcut?: number): number[] =>
+    mevcut != null && !EBELGE_KDV_ORANLARI.includes(mevcut)
+      ? [...EBELGE_KDV_ORANLARI, mevcut].sort((a, b) => a - b)
+      : [...EBELGE_KDV_ORANLARI];
+
+  /**
+   * NACE (docs/GIRIS_VE_EBELGE_DUZENLEME.md N1): E-Belge Ayarları'nda firmanın NACE kodları ve oranları girildiyse
+   * KDV listesi "NACE'ye uygun" ve "NACE dışı" diye ayrılır; NACE dışı oran seçilince uyarılır. %0 istisna
+   * koduyla kullanıldığı için her zaman uygun sayılır. Liste boşsa kısıt yoktur.
+   */
+  const [naceOranlari, setNaceOranlari] = useState<number[]>([]);
+  const [naceKodlari, setNaceKodlari] = useState<string>("");
+  useEffect(() => {
+    ebelgeService.naceListe().then((liste) => {
+      setNaceOranlari([...new Set(liste.flatMap((n) => n.oranlar))].sort((a, b) => a - b));
+      setNaceKodlari(liste.map((n) => n.kod).join(", "));
+    }).catch(() => undefined);
+  }, []);
+  const naceUygunMu = (oran: number) => !naceOranlari.length || oran === 0 || naceOranlari.includes(oran);
+  const kdvSecenekleriniCiz = (mevcut?: number) => {
+    const hepsi = kdvSecenekleri(mevcut);
+    if (!naceOranlari.length) return hepsi.map((o) => <option key={o} value={o}>%{o}</option>);
+    const uygun = hepsi.filter(naceUygunMu);
+    const disi = hepsi.filter((o) => !naceUygunMu(o));
+    return (
+      <>
+        <optgroup label="NACE'ye uygun">
+          {uygun.map((o) => <option key={o} value={o}>%{o}</option>)}
+        </optgroup>
+        {disi.length > 0 && (
+          <optgroup label="NACE dışı">
+            {disi.map((o) => <option key={o} value={o}>%{o} (NACE dışı)</option>)}
+          </optgroup>
+        )}
+      </>
+    );
+  };
+  const kdvSec = (i: number, oran: number) => {
+    satirDegistir(i, "kdvOrani", oran);
+    if (!naceUygunMu(oran)) {
+      setAlertInfo({
+        type: "warning",
+        message: `%${oran} KDV firmanızın NACE kodlarına (${naceKodlari}) tanımlı değil; GİB NACE kontrolünü açtığında bu satır `
+          + "reddedilir. Satış faaliyet dışıysa (demirbaş/taşıt satışı, masraf yansıtma) satırın İstisna Kodu'na 555 yazın; "
+          + "değilse oranı düzeltin ya da E-Belge Ayarları'ndaki NACE kodlarını mali müşavirinizle kontrol edin.",
       });
     }
-    const kdvKirilim = [...kirilim.values()].sort((a, b) => a.oran - b.oran);
-    return { matrah, kdv, iskonto, tevkifat, kdvKirilim, toplam: yuvarla(matrah + kdv - tevkifat) };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [satirlar, faturaTipi]);
+  };
+
+  /**
+   * Kuyumcu kalemi ekle (docs/NACE_KDV_ANALIZ.md): KDV oranı, özel matrah / istisna kodu ve gerekçe mevzuattan gelir;
+   * fatura tipi gerekiyorsa (SATIS → OZELMATRAH / ISTISNA) değiştirilir. Tek boş satır varsa onun yerine yazılır.
+   */
+  const kuyumcuKalemiEkle = (kod: string) => {
+    const kalem = KUYUMCU_KALEM_TURLERI.find((k) => k.kod === kod);
+    if (!kalem) return;
+    if (!kalemFaturaTipiUyumlu(faturaTipi, kalem)) {
+      setAlertInfo({ type: "warning", message: `"${kalem.ad}" ${faturaTipi} tipindeki faturaya eklenemez: özel matrahlı ve `
+        + "istisnalı kalemler aynı faturada bulunamaz. Ayrı fatura kesin." });
+      return;
+    }
+    if (kalem.faturaTipi !== "SATIS" && faturaTipi === "SATIS") {
+      if (!EBELGE_FATURA_TIPLERI[senaryo].some((t) => t.kod === kalem.faturaTipi)) {
+        setAlertInfo({ type: "warning", message: `${senaryo} senaryosunda ${kalem.faturaTipi} fatura tipi yok; "${kalem.ad}" eklenemez.` });
+        return;
+      }
+      setFaturaTipi(kalem.faturaTipi);
+    }
+    const yeni: EbelgeSatir = { ...BOS_SATIR, ...kalem.satir };
+    setSatirlar((o) => (o.length === 1 && !o[0].ad.trim() && !o[0].birimFiyat ? [yeni] : [...o, yeni]));
+    setAlertInfo({ type: "info", message: `${kalem.ad}: ${kalem.aciklama} (${kalem.dayanak}). Mal/hizmet adını ve tutarı yazın`
+      + (kalem.satir.ozelMatrahKodu ? "; KDV matrahı sütununa bedelden has bedeli düşülmüş tutarı girin." : ".") });
+  };
 
   const satirDegistir = <K extends keyof EbelgeSatir>(i: number, alan: K, deger: EbelgeSatir[K]) => {
     setSatirlar((onceki) => onceki.map((s, idx) => (idx === i ? { ...s, [alan]: deger } : s)));
@@ -425,7 +538,9 @@ const EBelgeDogrulaPage: React.FC = () => {
    * "istisna kodu zorunludur" hatasını düzeltebileceği alanı bulamaz.
    */
   const istisnaTipiMi = faturaTipi === "ISTISNA" || faturaTipi === "YTBISTISNA" || faturaTipi === "IHRACKAYITLI";
-  const istisnaKolonuGorunur = istisnaTipiMi || sifirKdvliSatirVar;
+  // NACE dışı oran seçilmiş ya da 555 yazılmış satır varsa da açılır: 555 bu kolondan girilir (N1)
+  const istisnaKolonuGorunur = istisnaTipiMi || sifirKdvliSatirVar
+    || satirlar.some((s) => s.istisnaKodu?.trim() === "555" || !naceUygunMu(s.kdvOrani || 0));
 
   const ihracatMi = ebelgeIhracatMi(senaryo);
   const turistMi = ebelgeTuristMi(senaryo);
@@ -507,7 +622,7 @@ const EBelgeDogrulaPage: React.FC = () => {
     setAlertInfo(null);
 
     if (!belgeNo.trim()) {
-      setAlertInfo({ type: "danger", message: "Fatura numarası zorunludur." });
+      setAlertInfo({ type: "danger", message: "Fatura numarası seçilmedi. Formun en üstündeki Fatura No listesinden seçiniz." });
       return null;
     }
     if (!aliciVkn.trim()) {
@@ -537,8 +652,9 @@ const EBelgeDogrulaPage: React.FC = () => {
       setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu KDV 0 ile kullanılamaz." });
       return null;
     }
-    if (satirlar.some((s) => s.istisnaKodu?.trim() === "555") && ["YATIRIMTESVIK", "KAMU"].includes(senaryo)) {
-      setAlertInfo({ type: "danger", message: "555 vergi muafiyet kodu özel senaryolu faturada kullanılamaz." });
+    if (satirlar.some((s) => s.istisnaKodu?.trim() === "555") && !kod555Kullanilabilir(senaryo, faturaTipi)) {
+      setAlertInfo({ type: "danger", message: "555 kodu yalnız Temel / Ticari / e-Arşiv faturada kullanılabilir; İstisna, "
+        + "İhraç Kayıtlı ve e-Arşiv YTB tiplerinde kullanılamaz." });
       return null;
     }
     if (satirlar.some((s) => ["308", "339"].includes(s.istisnaKodu?.trim() || "")) && senaryo !== "YATIRIMTESVIK") {
@@ -611,16 +727,27 @@ const EBelgeDogrulaPage: React.FC = () => {
   const earsivMi = senaryo === "EARSIVFATURA";
   const formModu = ebelgeFormModu(senaryo);
 
-  /** Açık yerel taslak (e-Arşiv). Kaydet aynı taslağı günceller; belge gönderilince taslak silinir. */
+  /** Açık yerel taslak (e-Fatura / e-Arşiv). Kaydet aynı taslağı günceller; belge gönderilince taslak silinir. */
   const [yerelTaslakId, setYerelTaslakId] = useState<number | null>(null);
   useEffect(() => {
     const id = Number(searchParams.get("taslak"));
     if (!Number.isInteger(id) || id <= 0) return;
-    ebelgeService.yerelTaslakGetir<any>(id).then(({ icerik: t }) => {
+    ebelgeService.yerelTaslakGetir<any>(id).then(({ belgeTuru, icerik: t }) => {
+      if (belgeTuru !== "EArsiv" && belgeTuru !== "EFatura") {
+        setAlertInfo({ type: "danger", message: "Bu taslak fatura formuna ait değil." });
+        return;
+      }
       setYerelTaslakId(id);
-      setSenaryo("EARSIVFATURA");
+      const kayitliSenaryo = t.senaryo as EbelgeSenaryo | undefined;
+      const taslakSenaryo: EbelgeSenaryo =
+        belgeTuru === "EArsiv"
+          ? "EARSIVFATURA"
+          : kayitliSenaryo && kayitliSenaryo !== "EARSIVFATURA" && EBELGE_FATURA_TIPLERI[kayitliSenaryo]
+            ? kayitliSenaryo
+            : "TICARIFATURA";
+      setSenaryo(taslakSenaryo);
       setBelgeNo(t.belgeNo || ""); setTarih(t.tarih || bugunISO()); setParaBirimi(t.paraBirimi || "TRY"); setNot(t.not || "");
-      if (EBELGE_FATURA_TIPLERI.EARSIVFATURA.some((x) => x.kod === t.faturaTipi)) setFaturaTipi(t.faturaTipi);
+      if (EBELGE_FATURA_TIPLERI[taslakSenaryo].some((x) => x.kod === t.faturaTipi)) setFaturaTipi(t.faturaTipi);
       setAliciVkn(t.aliciVkn || ""); setAliciUnvan(t.aliciUnvan || ""); setAliciAd(t.aliciAd || ""); setAliciSoyad(t.aliciSoyad || "");
       setAliciVd(t.aliciVd || ""); setAliciIl(t.aliciIl || ""); setAliciIlce(t.aliciIlce || ""); setAliciAdres(t.aliciAdres || "");
       setAliciEposta(t.aliciEposta || "");
@@ -645,15 +772,20 @@ const EBelgeDogrulaPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** e-Arşiv'de ICE taslak metodu yoktur: form olduğu gibi yerelde saklanır, doğrulama gönderimde yapılır. */
+  /**
+   * Taslaklara Kaydet (docs/GIRIS_VE_EBELGE_DUZENLEME.md E2-E3): form hangi durumda olursa olsun, hiçbir alan kontrolü
+   * yapılmadan yerelde saklanır (ICE'ye / GİB'e gitmez, numara kullanılmaz); ardından e-Belge ana sayfasına dönülür.
+   */
   const yerelTaslakKaydet = async () => {
     if (islemde.current) return;
     islemde.current = true; setIslem("taslak"); setTaslakGonderiliyor(true); setAlertInfo(null);
+    let kaydedildi = false;
     try {
       const { id } = await ebelgeService.yerelTaslakKaydet({
-        id: yerelTaslakId ?? undefined, belgeTuru: "EArsiv", belgeNo: belgeNo.trim() || null, aliciVkn: aliciVkn.trim() || null,
-        aliciUnvan: aliciUnvan.trim() || `${aliciAd} ${aliciSoyad}`.trim() || null, tutar: yerelToplam.toplam, paraBirimi,
-        icerik: { belgeNo, tarih, faturaTipi, paraBirimi, not, aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciIl, aliciIlce,
+        id: yerelTaslakId ?? undefined, belgeTuru: earsivMi ? "EArsiv" : "EFatura", belgeNo: belgeNo.trim() || null,
+        aliciVkn: aliciVkn.trim() || null,
+        aliciUnvan: aliciUnvan.trim() || `${aliciAd} ${aliciSoyad}`.trim() || null, tutar: yerelToplam.odenecek, paraBirimi,
+        icerik: { belgeNo, tarih, senaryo, faturaTipi, paraBirimi, not, aliciVkn, aliciUnvan, aliciAd, aliciSoyad, aliciVd, aliciIl, aliciIlce,
           aliciAdres, aliciEposta, aliciPk, aliciTel, aliciFaks, aliciUlke, aliciBinaAdi, aliciBinaNo, aliciKapiNo,
           aliciPostaKodu, aliciWeb, siparisNo, siparisTarihi, irsaliyeler, ekBelgeler, okc, ibanNo,
           ihracat, turist, araciKurum, idisSevkiyatNo, ytbNo, ytbTarihi, muafiyetSebebi, halMasraflari,
@@ -661,10 +793,12 @@ const EBelgeDogrulaPage: React.FC = () => {
           satirlar, iadeFaturalar, dovizKuru },
       });
       setYerelTaslakId(id);
-      setAlertInfo({ type: "success", message: `Taslaklara kaydedildi (yerel taslak #${id}). Belge GİB'e gönderilmedi ve numara kullanılmadı; "Taslaklara Git" ile yeniden açabilirsiniz.` });
+      kaydedildi = true;
+      showSuccess(`Taslak kaydedildi (#${id}). GİB'e gönderilmedi, fatura numarası kullanılmadı.`);
     } catch (err: any) {
       setAlertInfo({ type: "danger", message: err?.message || "Taslak kaydedilemedi." });
     } finally { islemde.current = false; setTaslakGonderiliyor(false); }
+    if (kaydedildi) navigate("/e-belge");
   };
 
   /**
@@ -672,7 +806,7 @@ const EBelgeDogrulaPage: React.FC = () => {
    * ARA ONAY OLMADAN işlemi yapar. Doğrulama paneli, önizleme ve "Evet, gönder" adımı kaldırıldı.
    * Doğrulamada üretilen UUID ve saat gönderime taşınır ki doğrulanan ile gönderilen belge aynı olsun.
    */
-  const islemYap = async (tur: "taslak" | "gonder" | "earsiv") => {
+  const islemYap = async (tur: "iceTaslak" | "gonder" | "earsiv") => {
     if (islemde.current) return;
     if (turBelirsiz || mukellefSorgulaniyor) {
       setAlertInfo({ type: "warning", message: "Mükellef sorgusu tamamlanmadan işlem yapılamaz." });
@@ -707,10 +841,11 @@ const EBelgeDogrulaPage: React.FC = () => {
         ...senaryoGovdesi(),
       };
 
-      if (tur === "taslak") {
+      if (tur === "iceTaslak") {
         const cevap = await ebelgeService.taslakGonder(govde);
-        // Numara kullanıldı; aynı belgenin ikinci kez kaydedilmemesi için alan boşaltılır.
+        // Numara kullanıldı; aynı belgenin ikinci kez kaydedilmemesi için alan boşaltılır ve yeni numaralar alınır.
         setBelgeNo("");
+        setNoYenile((n) => n + 1);
         setAlertInfo({
           type: "success",
           message: `Taslaklara kaydedildi (${cevap.belgeNo}). Belge GİB'e gönderilmedi; "Taslaklara Git" ile gönderebilir veya iptal edebilirsiniz.`,
@@ -746,7 +881,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       <ERPToolbar
         pageTitle="e-Belge Doğrulama"
         pageIcon={<IconFileCheck size={22} className="text-primary" />}
-        onSave={() => void (earsivMi ? yerelTaslakKaydet() : islemYap("taslak"))}
+        onSave={() => void yerelTaslakKaydet()}
         onNew={() => {
           setBelgeNo("");
           setSatirlar([{ ...BOS_SATIR }]);
@@ -765,33 +900,8 @@ const EBelgeDogrulaPage: React.FC = () => {
         disabled={dogrulaniyor || taslakGonderiliyor || mukellefSorgulaniyor}
       />
 
-      {satirlar.some((s) => s.kdvOrani === 0) && (
-        <Alert variant="warning" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
-          <IconAlertTriangle size={15} className="me-1" />
-          KDV oranı <strong>0</strong> olan satır var. GİB istisna kodu zorunludur; doğru kodu
-          <strong> mali müşavirinizden</strong> teyit ediniz — uygulama kod önermez.
-        </Alert>
-      )}
-
-      <Alert variant="info" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
-        <IconShieldCheck size={15} className="me-1" />
-        <strong>Gönder</strong> düğmesi ara onay sormadan <strong>gerçek faturayı keser</strong>; fatura geri alınamaz.
-        Taslaklara Kaydet GİB'e göndermez. e-Arşiv gönderimi şu anda TRY cinsinden, pozitif KDV oranlı
-        SATIS belgeleriyle sınırlıdır.
-      </Alert>
-
+      {/* Üstteki bilgi bandı ve satır içi uyarılar kaldırıldı; hata/uyarılar açılır pencerede (docs/GIRIS_VE_EBELGE_DUZENLEME.md E6) */}
       <KnskFormUyarisi vknTckn={aliciVkn.trim()} />
-
-      {alertInfo && (
-        <Alert
-          variant={alertInfo.type}
-          dismissible
-          onClose={() => setAlertInfo(null)}
-          className="py-2 px-3 mb-3 border rounded shadow-2xs small fw-medium"
-        >
-          {alertInfo.message}
-        </Alert>
-      )}
 
       <fieldset disabled={dogrulaniyor || taslakGonderiliyor || mukellefSorgulaniyor}>
       <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
@@ -799,22 +909,48 @@ const EBelgeDogrulaPage: React.FC = () => {
           <div className="fw-semibold mb-2" style={{ fontSize: "13px" }}>
             Belge Bilgileri
           </div>
-          <Row className="g-2">
-            <Col xs={12} md={4} lg={3}>
-              <Form.Label className="small mb-1">Fatura No</Form.Label>
-              <Form.Control
-                size="sm"
-                value={belgeNo}
-                onChange={(e) => setBelgeNo(e.target.value.toUpperCase())}
-                placeholder="ABC2026000000001"
-                className="font-monospace"
-                maxLength={16}
-              />
-              <div className="text-secondary" style={{ fontSize: "11.5px" }}>
-                3 harf seri + 13 hane
-              </div>
+          <Row className="g-2 align-items-start">
+            <Col xs="auto" style={{ width: 255 }}>
+              {/* Fatura no elle yazılmaz: ICE'deki serilerin bir sonraki numarası seçilir (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10) */}
+              <Form.Label className="small mb-1 d-flex justify-content-between" htmlFor="fatura-no-secim">
+                <span>Fatura No <span className="text-danger">*</span></span>
+                {noYukleniyor ? (
+                  <Spinner animation="border" size="sm" />
+                ) : (
+                  <Button size="sm" variant="link" className="p-0" style={{ fontSize: "11.5px" }} onClick={() => setNoYenile((n) => n + 1)}
+                    title="Numaraları ICE'den yeniden al">yenile</Button>
+                )}
+              </Form.Label>
+              {yeniSeriAcik ? (
+                <div className="d-flex gap-1">
+                  <Form.Control size="sm" className="font-monospace" maxLength={3} placeholder="Seri (ör. ABC)" autoFocus
+                    value={yeniSeri} onChange={(e) => setYeniSeri(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} />
+                  <Button size="sm" variant="outline-primary" disabled={yeniSeri.length !== 3 || noYukleniyor}
+                    onClick={() => void faturaNolariGetir(yeniSeri)}>Getir</Button>
+                  <Button size="sm" variant="outline-secondary" onClick={() => setYeniSeriAcik(false)}>Vazgeç</Button>
+                </div>
+              ) : (
+                <Form.Select
+                  id="fatura-no-secim"
+                  size="sm"
+                  className="font-monospace"
+                  value={belgeNo}
+                  isInvalid={!belgeNo && !noYukleniyor}
+                  onChange={(e) => (e.target.value === "__yeni" ? setYeniSeriAcik(true) : setBelgeNo(e.target.value))}
+                >
+                  <option value="">
+                    {noYukleniyor ? "ICE'den alınıyor…" : noOnerileri.length ? "Fatura no seçiniz" : "Seri bulunamadı"}
+                  </option>
+                  {belgeNo && !noOnerileri.some((o) => o.onerilenNo === belgeNo) && <option value={belgeNo}>{belgeNo}</option>}
+                  {noOnerileri.map((o) => (
+                    <option key={o.seri} value={o.onerilenNo}>{o.onerilenNo}  ({o.seri} serisi)</option>
+                  ))}
+                  <option value="__yeni">+ Yeni seri…</option>
+                </Form.Select>
+              )}
+              {noHata && <div className="text-danger" style={{ fontSize: "11.5px" }}>{noHata}</div>}
             </Col>
-            <Col xs={6} md={3} lg={2}>
+            <Col xs="auto" style={{ width: 140 }}>
               <Form.Label className="small mb-1">Tarih</Form.Label>
               <Form.Control
                 size="sm"
@@ -824,8 +960,8 @@ const EBelgeDogrulaPage: React.FC = () => {
                 onChange={(e) => setTarih(e.target.value)}
               />
             </Col>
-            <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">Belge Türü</Form.Label>
+            <Col xs="auto" style={{ width: 115 }}>
+              <Form.Label className="small mb-1">Tür</Form.Label>
               {/* Tür mükellef sorgusuna göre kendiliğinden seçilir; kullanıcı yine de değiştirebilir, GİB sonucundan farklıysa uyarılır. */}
               <Form.Select
                 size="sm"
@@ -837,12 +973,12 @@ const EBelgeDogrulaPage: React.FC = () => {
                 <option value="EARSIV">e-Arşiv</option>
               </Form.Select>
               {sorgulananVkn && aliciVkn.trim() === sorgulananVkn && gibMukellefMi !== null && (formModu === "EFATURA") !== gibMukellefMi && (
-                <div className="small text-danger mt-1">
-                  {gibMukellefMi ? "GİB: alıcı e-Fatura mükellefi; e-Arşiv düzenlenemez." : "GİB: alıcı e-Fatura mükellefi değil; e-Fatura reddedilebilir."}
+                <div className="text-danger" style={{ fontSize: "11px" }}>
+                  {gibMukellefMi ? "Alıcı e-Fatura mükellefi" : "Alıcı mükellef değil"}
                 </div>
               )}
             </Col>
-            <Col xs={6} md={3} lg={2}>
+            <Col xs="auto" style={{ width: 175 }}>
               <Form.Label className="small mb-1">Senaryo</Form.Label>
               <Form.Select size="sm" value={senaryo} onChange={(e) => setSenaryo(e.target.value as EbelgeSenaryo)}>
                 {EBELGE_SENARYOLAR[formModu].map((x) => (
@@ -850,7 +986,7 @@ const EBelgeDogrulaPage: React.FC = () => {
                 ))}
               </Form.Select>
             </Col>
-            <Col xs={6} md={3} lg={2}>
+            <Col xs="auto" style={{ width: 170 }}>
               <Form.Label className="small mb-1">Fatura Tipi</Form.Label>
               <Form.Select
                 size="sm"
@@ -862,7 +998,7 @@ const EBelgeDogrulaPage: React.FC = () => {
                 ))}
               </Form.Select>
             </Col>
-            <Col xs={6} md={3} lg={1}>
+            <Col xs="auto" style={{ width: 85 }}>
               <Form.Label className="small mb-1">Döviz</Form.Label>
               <Form.Select size="sm" value={paraBirimi} onChange={(e) => setParaBirimi(e.target.value)}>
                 <option value="TRY">TRY</option>
@@ -870,10 +1006,37 @@ const EBelgeDogrulaPage: React.FC = () => {
                 <option value="EUR">EUR</option>
               </Form.Select>
             </Col>
-            <Col xs={12} lg={2}>
-              <Form.Label className="small mb-1">Not</Form.Label>
-              <Form.Control size="sm" value={not} onChange={(e) => setNot(e.target.value)} maxLength={200} />
-            </Col>
+            {/* e-Arşiv alanları aynı satırda (ayrı satır kaplamasın) */}
+            {earsivMi && (
+              <>
+                <Col xs="auto" style={{ width: 115 }}>
+                  <Form.Label className="small mb-1">e-Arşiv Tipi</Form.Label>
+                  <Form.Select size="sm" value={earsivTipi} onChange={(e) => setEarsivTipi(e.target.value as "NORMAL" | "INTERNET")}>
+                    <option value="NORMAL">Normal</option>
+                    <option value="INTERNET">İnternet</option>
+                  </Form.Select>
+                </Col>
+                <Col xs="auto" style={{ width: 120 }}>
+                  <Form.Label className="small mb-1">Gönderim</Form.Label>
+                  <Form.Select size="sm" value={earsivGonderimSekli}
+                    onChange={(e) => setEarsivGonderimSekli(e.target.value as "KAGIT" | "ELEKTRONIK")}>
+                    <option value="ELEKTRONIK">Elektronik</option>
+                    <option value="KAGIT">Kağıt</option>
+                  </Form.Select>
+                </Col>
+                <Col xs="auto" className="d-flex align-items-end" style={{ minHeight: 52 }}>
+                  <Form.Check
+                    type="checkbox"
+                    id="earsiv-mail-gonder"
+                    className="small mb-1"
+                    checked={earsivMailGonder}
+                    onChange={(e) => setEarsivMailGonder(e.target.checked)}
+                    label="E-posta ile ilet"
+                    title={aliciEposta.trim() ? `Fatura ${aliciEposta.trim()} adresine gönderilir` : "Alıcı e-postası boş; gönderilmez"}
+                  />
+                </Col>
+              </>
+            )}
           </Row>
 
           {(dovizliMi || iadeMi) && (
@@ -982,38 +1145,6 @@ const EBelgeDogrulaPage: React.FC = () => {
 
           {/* Senaryoya / fatura tipine göre açılan bloklar — ICE formundaki karşılıklarıyla
               (docs/ebelge-revizyon.md 2. tur Faz 10-12). */}
-          {earsivMi && (
-            <Row className="g-2 mt-1">
-              <Col xs={6} md={3} lg={2}>
-                <Form.Label className="small mb-1">E-arşiv Tipi</Form.Label>
-                <Form.Select size="sm" value={earsivTipi} onChange={(e) => setEarsivTipi(e.target.value as "NORMAL" | "INTERNET")}>
-                  <option value="NORMAL">Normal</option>
-                  <option value="INTERNET">İnternet</option>
-                </Form.Select>
-              </Col>
-              <Col xs={6} md={3} lg={2}>
-                <Form.Label className="small mb-1">Gönderim Şekli</Form.Label>
-                <Form.Select size="sm" value={earsivGonderimSekli}
-                  onChange={(e) => setEarsivGonderimSekli(e.target.value as "KAGIT" | "ELEKTRONIK")}>
-                  <option value="ELEKTRONIK">Elektronik</option>
-                  <option value="KAGIT">Kağıt</option>
-                </Form.Select>
-              </Col>
-              <Col xs={12} md={6} lg={4} className="d-flex align-items-end">
-                <Form.Check
-                  type="checkbox"
-                  id="earsiv-mail-gonder"
-                  className="small mb-1"
-                  checked={earsivMailGonder}
-                  onChange={(e) => setEarsivMailGonder(e.target.checked)}
-                  label={aliciEposta.trim()
-                    ? "E-arşiv faturası e-posta olarak iletilsin"
-                    : "E-arşiv faturası e-posta olarak iletilsin (alıcı e-postası boş)"}
-                />
-              </Col>
-            </Row>
-          )}
-
           {ihracatMi && (
             <>
               <div className="fw-semibold mt-3 mb-1" style={{ fontSize: "12.5px" }}>İhracat Yapılacak Firma Bilgileri</div>
@@ -1137,8 +1268,13 @@ const EBelgeDogrulaPage: React.FC = () => {
                   </Col>
                   <Col xs={6} md={3} lg={2}>
                     <Form.Label className="small mb-1">KDV %</Form.Label>
-                    <Form.Control size="sm" type="number" min={0} max={100} className="text-end font-monospace" value={m.kdvOrani ?? ""}
-                      onChange={(e) => setHalMasraflari((o) => o.map((r, j) => (j === i ? { ...r, kdvOrani: e.target.value === "" ? undefined : Number(e.target.value) } : r)))} />
+                    <Form.Select size="sm" className="text-end font-monospace" value={m.kdvOrani ?? ""}
+                      onChange={(e) => setHalMasraflari((o) => o.map((r, j) => (j === i ? { ...r, kdvOrani: e.target.value === "" ? undefined : Number(e.target.value) } : r)))}>
+                      <option value="">-</option>
+                      {kdvSecenekleri(m.kdvOrani).map((o) => (
+                        <option key={o} value={o}>%{o}</option>
+                      ))}
+                    </Form.Select>
                   </Col>
                   <Col xs="auto">
                     <Button size="sm" variant="link" className="p-0" style={{ color: "#dc2626" }} title="Masrafı sil"
@@ -1151,7 +1287,7 @@ const EBelgeDogrulaPage: React.FC = () => {
             </>
           )}
 
-          {/* ICE'de bu bloklar her belgede açık durur; biz de açık gösteriyoruz (yönetici isteği 20.09.2026). */}
+          {/* Varsayılan gizli (27.09.2026 kararı, 20.09'daki "açık dursun" isteğinin yerine geçti); doluysa özet görünür. */}
           <div className="d-flex align-items-center gap-2 mt-3 mb-2">
             <span className="fw-semibold" style={{ fontSize: "13px" }}>
               Sipariş · İrsaliye · ÖKC · EK Belge · IBAN
@@ -1271,24 +1407,32 @@ const EBelgeDogrulaPage: React.FC = () => {
             setAliciTel((cari.telefon || "").trim());
             setAliciPk((cari.eFaturaPostaKutusu || "").trim());
             setIceAdresler([]);
-            setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
+            setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip VKN yanındaki Sorgula ile belge türünü belirleyin." });
           }} />
             );
           })()}
           <Row className="g-2">
-            <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">VKN / TCKN</Form.Label>
-              <Button size="sm" variant="outline-primary" className="mb-1" disabled={mukellefSorgulaniyor}
-                onClick={() => { otomatikDenenen.current = ""; void mukellefSorgula(); }}>
-                {mukellefSorgulaniyor ? "Sorgulanıyor…" : "Mükellef Sorgula"}
-              </Button>
-              <Form.Control
-                size="sm"
-                value={aliciVkn}
-                onChange={(e) => setAliciVkn(e.target.value.replace(/\D/g, ""))}
-                maxLength={11}
-                className="font-monospace"
-              />
+            <Col xs={12} sm={6} md={3} lg={2}>
+              <Form.Label className="small mb-1" htmlFor="alici-vkn">VKN / TCKN</Form.Label>
+              <div className="input-group input-group-sm">
+                <Form.Control
+                  id="alici-vkn"
+                  size="sm"
+                  value={aliciVkn}
+                  onChange={(e) => setAliciVkn(e.target.value.replace(/\D/g, ""))}
+                  maxLength={11}
+                  className="font-monospace"
+                  isInvalid={turBelirsiz && !mukellefSorgulaniyor}
+                />
+                <Button size="sm" variant="outline-primary" disabled={mukellefSorgulaniyor}
+                  title="GİB mükellef listesini sorgular; sonuca göre e-Fatura / e-Arşiv seçilir"
+                  onClick={() => { otomatikDenenen.current = ""; void mukellefSorgula(); }}>
+                  {mukellefSorgulaniyor ? <Spinner animation="border" size="sm" /> : "Sorgula"}
+                </Button>
+              </div>
+              {turBelirsiz && !mukellefSorgulaniyor && (
+                <div className="text-danger" style={{ fontSize: "11.5px" }}>Tür belirlenmedi; Sorgula'ya basın.</div>
+              )}
             </Col>
             <Col xs={12} md={6} lg={4}>
               <Form.Label className="small mb-1">
@@ -1309,7 +1453,7 @@ const EBelgeDogrulaPage: React.FC = () => {
                 setAliciTel((cari.telefon || "").trim());
                 setAliciPk((cari.eFaturaPostaKutusu || "").trim());
                 setIceAdresler([]);
-                setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip Mükellef Sorgula ile belge türünü belirleyin." });
+                setAlertInfo({ type: "info", message: "Cari seçildi. Ad soyad ve adresi kontrol edip VKN yanındaki Sorgula ile belge türünü belirleyin." });
               }} />
             </Col>
             <Col xs={6} md={3} lg={2}>
@@ -1319,13 +1463,6 @@ const EBelgeDogrulaPage: React.FC = () => {
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">Soyad {tcknMi && <span className="text-danger">*</span>}</Form.Label>
               <Form.Control size="sm" value={aliciSoyad} onChange={(e) => setAliciSoyad(e.target.value)} />
-            </Col>
-            <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">PK (posta kutusu)</Form.Label>
-              <Form.Control size="sm" className="font-monospace" value={aliciPk} maxLength={150}
-                onChange={(e) => setAliciPk(e.target.value.trim())}
-                placeholder="boşsa GİB'den bulunur"
-                title="Alıcının GİB posta kutusu etiketi. Boş bırakılırsa mükellef sorgusundan bulunur." />
             </Col>
             <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">Vergi Dairesi</Form.Label>
@@ -1339,42 +1476,18 @@ const EBelgeDogrulaPage: React.FC = () => {
               <Form.Label className="small mb-1">İlçe <span className="text-danger">*</span></Form.Label>
               <Form.Control size="sm" value={aliciIlce} onChange={(e) => setAliciIlce(e.target.value)} />
             </Col>
-            <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">Ülke</Form.Label>
-              <Form.Control size="sm" value={aliciUlke} maxLength={100} onChange={(e) => setAliciUlke(e.target.value)} />
-            </Col>
             <Col xs={12} md={6} lg={4}>
               <Form.Label className="small mb-1">Mahalle / Cadde / Sokak</Form.Label>
               <Form.Control size="sm" value={aliciAdres} maxLength={300} onChange={(e) => setAliciAdres(e.target.value)} />
             </Col>
             <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">Bina Adı</Form.Label>
-              <Form.Control size="sm" value={aliciBinaAdi} maxLength={150} onChange={(e) => setAliciBinaAdi(e.target.value)} />
-            </Col>
-            <Col xs={6} md={3} lg={1}>
-              <Form.Label className="small mb-1">Bina No</Form.Label>
-              <Form.Control size="sm" value={aliciBinaNo} maxLength={50} onChange={(e) => setAliciBinaNo(e.target.value)} />
-            </Col>
-            <Col xs={6} md={3} lg={1}>
-              <Form.Label className="small mb-1">Kapı No</Form.Label>
-              <Form.Control size="sm" value={aliciKapiNo} maxLength={50} onChange={(e) => setAliciKapiNo(e.target.value)} />
-            </Col>
-            <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">Posta Kodu</Form.Label>
-              <Form.Control size="sm" className="font-monospace" value={aliciPostaKodu} maxLength={10}
-                onChange={(e) => setAliciPostaKodu(e.target.value.replace(/\D/g, ""))} />
-            </Col>
-            <Col xs={6} md={3} lg={2}>
               <Form.Label className="small mb-1">Telefon</Form.Label>
               <Form.Control size="sm" value={aliciTel} maxLength={50} onChange={(e) => setAliciTel(e.target.value)} />
             </Col>
-            <Col xs={6} md={3} lg={2}>
-              <Form.Label className="small mb-1">Faks</Form.Label>
-              <Form.Control size="sm" value={aliciFaks} maxLength={50} onChange={(e) => setAliciFaks(e.target.value)} />
-            </Col>
-            <Col xs={12} md={6} lg={3}>
-              <Form.Label className="small mb-1">Web Sitesi</Form.Label>
-              <Form.Control size="sm" value={aliciWeb} maxLength={200} onChange={(e) => setAliciWeb(e.target.value)} />
+            <Col xs={12} md={6} lg={4}>
+              <Form.Label className="small mb-1">E-posta</Form.Label>
+              <Form.Control size="sm" type="email" value={aliciEposta} onChange={(e) => setAliciEposta(e.target.value)}
+                placeholder="GİB / cari kartından bulunursa kendiliğinden dolar" />
             </Col>
             {iceAdresler.length > 1 && (
               <Col xs={12} md={6} lg={4}>
@@ -1392,12 +1505,54 @@ const EBelgeDogrulaPage: React.FC = () => {
                 </Form.Select>
               </Col>
             )}
-            <Col xs={12} md={6} lg={4}>
-              <Form.Label className="small mb-1">E-posta</Form.Label>
-              <Form.Control size="sm" type="email" value={aliciEposta} onChange={(e) => setAliciEposta(e.target.value)}
-                placeholder="GİB / cari kartından bulunursa kendiliğinden dolar" />
-            </Col>
           </Row>
+          {/* Seyrek kullanılan adres alanları varsayılan gizli; doluysa kendiliğinden açık görünür (E11) */}
+          <div className="d-flex align-items-center gap-2 mt-2">
+            <Button size="sm" variant="link" className="p-0" style={{ fontSize: "12.5px" }}
+              onClick={() => setDigerAdresAcik((a) => !a)}>
+              {digerAdresGorunur ? "Diğer adres bilgilerini gizle" : "Diğer adres bilgileri (PK, ülke, bina, posta kodu, faks, web)"}
+            </Button>
+          </div>
+          {digerAdresGorunur && (
+            <Row className="g-2 mt-0">
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">PK (posta kutusu)</Form.Label>
+              <Form.Control size="sm" className="font-monospace" value={aliciPk} maxLength={150}
+                onChange={(e) => setAliciPk(e.target.value.trim())}
+                placeholder="boşsa GİB'den bulunur"
+                title="Alıcının GİB posta kutusu etiketi. Boş bırakılırsa mükellef sorgusundan bulunur." />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Ülke</Form.Label>
+              <Form.Control size="sm" value={aliciUlke} maxLength={100} onChange={(e) => setAliciUlke(e.target.value)} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Bina Adı</Form.Label>
+              <Form.Control size="sm" value={aliciBinaAdi} maxLength={150} onChange={(e) => setAliciBinaAdi(e.target.value)} />
+            </Col>
+            <Col xs={4} md={2} lg={1}>
+              <Form.Label className="small mb-1">Bina No</Form.Label>
+              <Form.Control size="sm" value={aliciBinaNo} maxLength={50} onChange={(e) => setAliciBinaNo(e.target.value)} />
+            </Col>
+            <Col xs={4} md={2} lg={1}>
+              <Form.Label className="small mb-1">Kapı No</Form.Label>
+              <Form.Control size="sm" value={aliciKapiNo} maxLength={50} onChange={(e) => setAliciKapiNo(e.target.value)} />
+            </Col>
+            <Col xs={4} md={2} lg={1}>
+              <Form.Label className="small mb-1">Posta Kodu</Form.Label>
+              <Form.Control size="sm" className="font-monospace" value={aliciPostaKodu} maxLength={10}
+                onChange={(e) => setAliciPostaKodu(e.target.value.replace(/\D/g, ""))} />
+            </Col>
+            <Col xs={6} md={3} lg={2}>
+              <Form.Label className="small mb-1">Faks</Form.Label>
+              <Form.Control size="sm" value={aliciFaks} maxLength={50} onChange={(e) => setAliciFaks(e.target.value)} />
+            </Col>
+            <Col xs={12} md={6} lg={3}>
+              <Form.Label className="small mb-1">Web Sitesi</Form.Label>
+              <Form.Control size="sm" value={aliciWeb} maxLength={200} onChange={(e) => setAliciWeb(e.target.value)} />
+            </Col>
+            </Row>
+          )}
         </Card.Body>
       </Card>
 
@@ -1407,15 +1562,25 @@ const EBelgeDogrulaPage: React.FC = () => {
             <span className="fw-semibold" style={{ fontSize: "13px" }}>
               Mal / Hizmet Satırları
             </span>
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setSatirlar((o) => [...o, { ...BOS_SATIR }])}
-              className="d-flex align-items-center gap-1"
-            >
-              <IconPlus size={15} />
-              Satır Ekle
-            </Button>
+            <div className="d-flex gap-2">
+              {/* Mevzuattan türetilmiş kuyumcu kalemleri: oran, kod ve fatura tipi kendiliğinden gelir (kuyumcuKdv.ts) */}
+              <Form.Select size="sm" value="" style={{ width: 230 }} onChange={(e) => kuyumcuKalemiEkle(e.target.value)}
+                title="Seçilen kalemin KDV oranı, özel matrah / istisna kodu ve fatura tipi resmi mevzuata göre doldurulur">
+                <option value="">Kuyumcu kalemi ekle…</option>
+                {KUYUMCU_KALEM_TURLERI.map((k) => (
+                  <option key={k.kod} value={k.kod}>{k.ad} — {k.aciklama}</option>
+                ))}
+              </Form.Select>
+              <Button
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setSatirlar((o) => [...o, { ...BOS_SATIR }])}
+                className="d-flex align-items-center gap-1"
+              >
+                <IconPlus size={15} />
+                Satır Ekle
+              </Button>
+            </div>
           </div>
 
           <div className="table-responsive">
@@ -1438,17 +1603,14 @@ const EBelgeDogrulaPage: React.FC = () => {
                   {satirEkKolonlari.map((k) => (
                     <th key={k.alan} style={{ width: "130px" }}>{k.baslik}</th>
                   ))}
-                  <th style={{ width: "120px" }} className="text-end">KDV Tutarı</th>
-                  <th style={{ width: "130px" }} className="text-end">Tutar</th>
+                  <th style={{ width: "170px" }} className="text-end">Tutar</th>
                   <th style={{ width: "50px" }} />
                 </tr>
               </thead>
               <tbody>
                 {satirlar.map((satir, i) => {
-                  const brut = (satir.miktar || 0) * (satir.birimFiyat || 0);
-                  const satirIskonto = satir.iskontoTutari != null ? satir.iskontoTutari : (brut * (satir.iskontoOrani || 0)) / 100;
-                  const matrah = brut - satirIskonto;
-                  const satirKdv = (kdvMatrahi(satir, matrah) * (satir.kdvOrani || 0)) / 100;
+                  const t = yerelToplam.satirlar[i];
+                  const brut = t.brut;
                   return (
                     <tr key={i}>
                       <td className="text-secondary">{i + 1}</td>
@@ -1541,21 +1703,23 @@ const EBelgeDogrulaPage: React.FC = () => {
                         />
                       </td>
                       <td>
-                        <Form.Control
+                        {/* KDV oranı yalnızca listeden seçilir (docs/GIRIS_VE_EBELGE_DUZENLEME.md E4) */}
+                        <Form.Select
                           size="sm"
-                          type="number"
-                          min={0}
-                          max={100}
                           className="text-end font-monospace"
                           value={satir.kdvOrani}
-                          onChange={(e) => satirDegistir(i, "kdvOrani", Number(e.target.value))}
-                        />
+                          isInvalid={!naceUygunMu(satir.kdvOrani)}
+                          title={!naceUygunMu(satir.kdvOrani) ? "NACE kodlarınıza tanımlı oran değil" : undefined}
+                          onChange={(e) => kdvSec(i, Number(e.target.value))}
+                        >
+                          {kdvSecenekleriniCiz(satir.kdvOrani)}
+                        </Form.Select>
                       </td>
                       {istisnaKolonuGorunur && (
                         <td>
                           <EBelgeKodDurbun
                             tur="ISTISNA"
-                            placeholder={satir.kdvOrani === 0 ? "zorunlu" : "-"}
+                            placeholder={satir.kdvOrani === 0 ? "zorunlu" : !naceUygunMu(satir.kdvOrani) ? "555?" : "-"}
                             value={satir.istisnaKodu || ""}
                             disabled={ozelMatrahMi && !!satir.ozelMatrahKodu?.trim()}
                             isInvalid={satir.kdvOrani === 0 && !satir.istisnaKodu?.trim()}
@@ -1641,8 +1805,15 @@ const EBelgeDogrulaPage: React.FC = () => {
                           />
                         </td>
                       ))}
-                      <td className="text-end font-monospace text-secondary">{ebelgeTutar(satirKdv, paraBirimi)}</td>
-                      <td className="text-end font-monospace">{ebelgeTutar(matrah, paraBirimi)}</td>
+                      <td className="text-end font-monospace" style={{ fontSize: "12px", lineHeight: 1.35 }}>
+                        {/* Satır tutarları alt alta: tutar (KDV hariç) → KDV → KDV dahil (docs/GIRIS_VE_EBELGE_DUZENLEME.md E9) */}
+                        <div className="fw-semibold">{ebelgeTutar(t.matrah, paraBirimi)}</div>
+                        <div className="text-secondary">KDV %{t.kdvOrani}: {ebelgeTutar(t.kdv, paraBirimi)}</div>
+                        {t.tevkifat > 0 && (
+                          <div className="text-secondary">Tevkifat: {ebelgeTutar(t.tevkifat, paraBirimi)}</div>
+                        )}
+                        <div>Dahil: {ebelgeTutar(t.vergilerDahil, paraBirimi)}</div>
+                      </td>
                       <td className="text-center">
                         <Button
                           size="sm"
@@ -1663,37 +1834,70 @@ const EBelgeDogrulaPage: React.FC = () => {
             </Table>
           </div>
 
-          {/* KDV oranı kırılımı — ICE'deki "Toplamlar" bloğunun KDV(%1)…KDV(%20) satırlarının karşılığı */}
-          {yerelToplam.kdvKirilim.length > 1 && (
-            <div className="d-flex flex-wrap justify-content-end gap-3 mt-2 small text-secondary">
-              {yerelToplam.kdvKirilim.map((g) => (
-                <span key={g.oran}>
-                  KDV(%{g.oran}): <span className="font-monospace">{ebelgeTutar(g.vergi, paraBirimi)}</span>
-                  <span className="ms-1">(matrah {ebelgeTutar(g.matrah, paraBirimi)})</span>
-                </span>
-              ))}
-            </div>
-          )}
+          {/* Toplamlar alt alta, ICE'deki "Toplamlar" bloğunun sırasıyla (docs/GIRIS_VE_EBELGE_DUZENLEME.md E9).
+              Tevkifat eksi işaretiyle yazılmaz; "KDV'den düşülen" olarak ayrı satırda gösterilir. */}
+          <div className="d-flex justify-content-end mt-3 pt-2 border-top">
+            <table className="ebelge-toplamlar" style={{ fontSize: "13px", minWidth: "320px" }}>
+              <tbody>
+                <tr>
+                  <td className="text-secondary pe-4">Mal / Hizmet Toplamı</td>
+                  <td className="text-end font-monospace">{ebelgeTutar(yerelToplam.brut, paraBirimi)}</td>
+                </tr>
+                {yerelToplam.iskonto > 0 && (
+                  <tr>
+                    <td className="text-secondary pe-4">Toplam İskonto</td>
+                    <td className="text-end font-monospace">{ebelgeTutar(yerelToplam.iskonto, paraBirimi)}</td>
+                  </tr>
+                )}
+                <tr>
+                  <td className="text-secondary pe-4">Matrah (KDV hariç)</td>
+                  <td className="text-end font-monospace">{ebelgeTutar(yerelToplam.matrah, paraBirimi)}</td>
+                </tr>
+                {yerelToplam.kdvKirilim.map((g) => (
+                  <tr key={g.oran}>
+                    <td className="text-secondary pe-4">
+                      KDV %{g.oran}
+                      {yerelToplam.kdvKirilim.length > 1 && (
+                        <span className="ms-1" style={{ fontSize: "11.5px" }}>(matrah {ebelgeTutar(g.matrah, paraBirimi)})</span>
+                      )}
+                    </td>
+                    <td className="text-end font-monospace">{ebelgeTutar(g.vergi, paraBirimi)}</td>
+                  </tr>
+                ))}
+                <tr className="border-top">
+                  <td className="pe-4">Vergiler Dahil Toplam</td>
+                  <td className="text-end font-monospace">{ebelgeTutar(yerelToplam.vergilerDahil, paraBirimi)}</td>
+                </tr>
+                {yerelToplam.tevkifat > 0 && (
+                  <tr>
+                    <td className="text-secondary pe-4">Tevkifat (KDV'den düşülen)</td>
+                    <td className="text-end font-monospace">{ebelgeTutar(yerelToplam.tevkifat, paraBirimi)}</td>
+                  </tr>
+                )}
+                <tr className="fw-semibold border-top" style={{ fontSize: "14px" }}>
+                  <td className="pe-4 pt-1">Ödenecek Tutar</td>
+                  <td className="text-end font-monospace pt-1">{ebelgeTutar(yerelToplam.odenecek, paraBirimi)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-          <div className="d-flex flex-wrap justify-content-end gap-4 mt-3 pt-2 border-top" style={{ fontSize: "13px" }}>
-            <span className="text-secondary">
-              İskonto: <span className="font-monospace">{ebelgeTutar(yerelToplam.iskonto, paraBirimi)}</span>
-            </span>
-            <span className="text-secondary">
-              Matrah: <span className="font-monospace">{ebelgeTutar(yerelToplam.matrah, paraBirimi)}</span>
-            </span>
-            <span className="text-secondary">
-              KDV: <span className="font-monospace">{ebelgeTutar(yerelToplam.kdv, paraBirimi)}</span>
-            </span>
-            {yerelToplam.tevkifat > 0 && (
-              <span className="text-secondary">
-                Tevkifat:{" "}
-                <span className="font-monospace">-{ebelgeTutar(yerelToplam.tevkifat, paraBirimi)}</span>
-              </span>
-            )}
-            <span className="fw-semibold">
-              Ödenecek: <span className="font-monospace">{ebelgeTutar(yerelToplam.toplam, paraBirimi)}</span>
-            </span>
+          {/* Fatura notu en altta ve çok satırlı (docs/GIRIS_VE_EBELGE_DUZENLEME.md E7) */}
+          <div className="mt-3">
+            <Form.Label className="small mb-1 d-flex justify-content-between" htmlFor="fatura-notu">
+              <span>Not</span>
+              <span className="text-secondary">{not.length}/1000</span>
+            </Form.Label>
+            <Form.Control
+              id="fatura-notu"
+              as="textarea"
+              rows={3}
+              size="sm"
+              value={not}
+              maxLength={1000}
+              onChange={(e) => setNot(e.target.value)}
+              placeholder="Faturada görünecek not (isteğe bağlı)"
+            />
           </div>
 
           {/* Doğrula düğmesi kaldırıldı (yönetici isteği 16.09.2026): kaydet/gönder doğrulamayı içeride yapar */}
@@ -1701,16 +1905,27 @@ const EBelgeDogrulaPage: React.FC = () => {
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => void (earsivMi ? yerelTaslakKaydet() : islemYap("taslak"))}
+              onClick={() => void yerelTaslakKaydet()}
               disabled={dogrulaniyor || taslakGonderiliyor}
               className="d-flex align-items-center gap-1"
-              title={earsivMi
-                ? "Formu yerel taslak olarak saklar (ICE'ye ve GİB'e gitmez, numara kullanılmaz)"
-                : "Belgeyi doğrular ve entegratörde taslak olarak kaydeder (GİB'e gitmez)"}
+              title="Formu olduğu gibi taslak olarak saklar; hiçbir alan zorunlu değildir (ICE'ye ve GİB'e gitmez, numara kullanılmaz)"
             >
-              {(dogrulaniyor || taslakGonderiliyor) && islem === "taslak" ? <Spinner animation="border" size="sm" /> : <IconDeviceFloppy size={16} />}
+              {taslakGonderiliyor && islem === "taslak" ? <Spinner animation="border" size="sm" /> : <IconDeviceFloppy size={16} />}
               Taslaklara Kaydet
             </Button>
+            {!earsivMi && (
+              <Button
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => void islemYap("iceTaslak")}
+                disabled={dogrulaniyor || taslakGonderiliyor}
+                className="d-flex align-items-center gap-1"
+                title="Belgeyi doğrular ve entegratörde (ICE) taslak olarak kaydeder; GİB'e gitmez, fatura numarası kullanılır"
+              >
+                {(dogrulaniyor || taslakGonderiliyor) && islem === "iceTaslak" ? <Spinner animation="border" size="sm" /> : <IconCloudUpload size={16} />}
+                ICE'ye Taslak Gönder
+              </Button>
+            )}
             <Button
               size="sm"
               variant="success"
@@ -1719,7 +1934,7 @@ const EBelgeDogrulaPage: React.FC = () => {
               className="d-flex align-items-center gap-1"
               title={earsivMi ? "Belgeyi doğrular ve e-Arşiv faturası olarak gönderir" : "Belgeyi doğrular ve GİB'e gönderir"}
             >
-              {(dogrulaniyor || taslakGonderiliyor) && islem !== "taslak" ? <Spinner animation="border" size="sm" /> : <IconSend size={16} />}
+              {(dogrulaniyor || taslakGonderiliyor) && (islem === "gonder" || islem === "earsiv") ? <Spinner animation="border" size="sm" /> : <IconSend size={16} />}
               {earsivMi ? "e-Arşiv Gönder" : "Gönder"}
             </Button>
             <Button
@@ -1737,18 +1952,6 @@ const EBelgeDogrulaPage: React.FC = () => {
       </Card>
 
       </fieldset>
-      {mukellefSorgulaniyor && (
-        <Alert variant="info" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
-          Alıcının e-Fatura mükellefiyeti sorgulanıyor; belge türü sonuca göre seçilecek…
-        </Alert>
-      )}
-      {turBelirsiz && !mukellefSorgulaniyor && (
-        <Alert variant="warning" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
-          <IconAlertTriangle size={15} className="me-1" />
-          Bu numara için mükellef sorgusu sonuçlanmadı; <strong>e-Fatura mı e-Arşiv mi olduğu belirlenmedi</strong>.
-          Sorgu tamamlanmadan gönderim yapılamaz — <strong>Mükellef Sorgula</strong> ile tekrar deneyin.
-        </Alert>
-      )}
     </div>
   );
 };

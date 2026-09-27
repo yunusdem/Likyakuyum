@@ -99,7 +99,7 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
               maxLength={20}
               placeholder="ör. D20AC0001"
             />
-            <Form.Text muted>Benzersiz. Harf ve rakam.</Form.Text>
+            <Form.Text muted>Harf ve rakam. Aynı müşterinin her veritabanında aynı no yazılır.</Form.Text>
           </Form.Group>
         </Col>
         <Col md={2}>

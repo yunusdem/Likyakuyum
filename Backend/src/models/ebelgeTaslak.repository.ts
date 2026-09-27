@@ -9,7 +9,7 @@ import { ApiError } from "../utils/ApiError.js";
  * e-Müstahsil taslakları burada saklanır. Yerel taslak ICE'ye/GİB'e gitmez ve belge numarası yakmaz:
  * ICERIK, formun o anki hâlidir (JSON); gönderim yine formdaki Gönder düğmesiyle, tüm doğrulamalardan geçerek yapılır.
  */
-export type YerelTaslakTuru = "EArsiv" | "EIrsaliye" | "EGiderPusulasi" | "EMustahsil";
+export type YerelTaslakTuru = "EArsiv" | "EFatura" | "EIrsaliye" | "EGiderPusulasi" | "EMustahsil";
 export interface YerelTaslakOzet {
   id: number; belgeTuru: YerelTaslakTuru; belgeNo: string | null; aliciVkn: string | null; aliciUnvan: string | null;
   tutar: number | null; paraBirimi: string | null; olusturan: string | null; olusturmaTarihi: string; guncellemeTarihi: string;

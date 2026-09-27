@@ -5,8 +5,8 @@ import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { EBELGE_YEREL_TASLAK_FORMU, EbelgeYerelTaslak, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
 
 /**
- * Yerel taslaklar — docs/ebelge-revizyon.md K3. ICE'de taslak metodu olmayan belge türlerinin (e-Arşiv, e-İrsaliye,
- * e-Gider, e-Müstahsil) taslakları. Bu kayıtlar GİB'e gitmemiştir; "Aç" ilgili formu taslakla doldurur, gönderim oradan yapılır.
+ * Yerel taslaklar — docs/ebelge-revizyon.md K3. Tüm belge türlerinin (e-Fatura, e-Arşiv, e-İrsaliye, e-Gider,
+ * e-Müstahsil) formdan hiçbir kontrol yapılmadan saklanan taslakları. Bu kayıtlar GİB'e gitmemiştir; "Aç" ilgili formu taslakla doldurur, gönderim oradan yapılır.
  */
 const tarihSaat = (t: string) => new Date(t).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" });
 
