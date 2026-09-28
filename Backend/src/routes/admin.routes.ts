@@ -5,6 +5,7 @@ import { FirmaController } from "../controllers/admin/firma.controller.js";
 import { KullaniciController } from "../controllers/admin/kullanici.controller.js";
 import { ModulController } from "../controllers/admin/modul.controller.js";
 import { IzlemeController } from "../controllers/admin/izleme.controller.js";
+import { GibHesapController } from "../controllers/admin/gibHesap.controller.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import {
   adminKapisi,
@@ -35,6 +36,7 @@ import {
   oturumKapatSchema,
   epostaDogrulamaElleSchema,
   epostaOnaySchema,
+  gibHesapSchema,
 } from "../schemas/admin.schema.js";
 
 // Ana admin paneli API'si (docs/ADMIN_PANEL_YOL_HARITASI.md). Kullanıcı tarafının authenticate'i burada kullanılmaz.
@@ -96,6 +98,13 @@ router.get("/izleme/giris-log", validate(girisLogSchema), IzlemeController.giris
 router.get("/izleme/islem-log", validate(islemLogSchema), IzlemeController.islemLoglari);
 router.post("/izleme/oturumlar/:sid/kapat", validate(oturumKapatSchema), IzlemeController.oturumuKapat);
 router.post("/firmalar/:id/oturumlari-kapat", validate(adminIdSchema), IzlemeController.firmaOturumlariniKapat);
+
+// Merkezi GİB hesabı + VKN sorgusu (docs/GIB_VKN_SORGU_YOL_HARITASI.md)
+router.get("/gib-hesap", GibHesapController.durum);
+router.put("/gib-hesap", validate(gibHesapSchema), GibHesapController.kaydet);
+router.delete("/gib-hesap", GibHesapController.sil);
+router.post("/gib-hesap/dene", GibHesapController.dene);
+router.get("/vkn-sorgu", GibHesapController.vknSorgu);
 
 // Bilinmeyen admin yolları ve tüm admin hataları burada biter (genel hata işleyicisine düşmez)
 router.use((req, res, next) => next(ApiError.notFound("Endpoint bulunamadı.")));

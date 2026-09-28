@@ -267,3 +267,54 @@ BEGIN
   CREATE INDEX [IX_ADM_ISLEM_LOG_TARIH] ON [dbo].[ADM_ISLEM_LOG]([TARIH] DESC);
 END
 GO
+
+/* ------------------- GİB VKN / TCKN SORGU (docs/GIB_VKN_SORGU_YOL_HARITASI.md) ------------------- */
+
+-- Merkezi GİB (Dijital Vergi Dairesi) hesabı: tek satır. Kod ve şifre ADMIN_DB_ENC_KEY ile şifreli.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ADM_GIB_HESAP')
+BEGIN
+  CREATE TABLE [dbo].[ADM_GIB_HESAP] (
+    [HESAP_ID]             INT            NOT NULL PRIMARY KEY CHECK ([HESAP_ID] = 1),
+    [KULLANICI_KODU_ENC]   NVARCHAR(500)  NOT NULL,
+    [SIFRE_ENC]            NVARCHAR(1000) NOT NULL,
+    [SON_BASARILI_GIRIS]   DATETIME       NULL,
+    [SON_HATA]             NVARCHAR(500)  NULL,
+    [SON_HATA_TARIHI]      DATETIME       NULL,
+    [GUNCELLEYEN_ADMIN_ID] INT            NULL,
+    [GUNCELLEME_TARIHI]    DATETIME       NOT NULL DEFAULT GETDATE()
+  );
+END
+GO
+
+-- Sorgu sonuçları (bütün firmalar için ortak önbellek)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ADM_VKN_SORGU')
+BEGIN
+  CREATE TABLE [dbo].[ADM_VKN_SORGU] (
+    [NO]            VARCHAR(11)   NOT NULL PRIMARY KEY,
+    [TUR]           VARCHAR(4)    NOT NULL,   -- 'VKN' | 'TCKN'
+    [SONUC]         VARCHAR(10)   NOT NULL,   -- 'BULUNDU' | 'KAYIT_YOK'
+    [UNVAN]         NVARCHAR(300) NULL,
+    [AD]            NVARCHAR(100) NULL,
+    [SOYAD]         NVARCHAR(100) NULL,
+    [VERGI_DAIRESI] NVARCHAR(150) NULL,
+    [SORGU_TARIHI]  DATETIME      NOT NULL DEFAULT GETDATE()
+  );
+END
+GO
+
+-- Sorgu kaydı: kim, hangi firmadan, hangi numarayı, sonuç ve kaynak (GIB | ONBELLEK | ICE)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ADM_VKN_SORGU_LOG')
+BEGIN
+  CREATE TABLE [dbo].[ADM_VKN_SORGU_LOG] (
+    [LOG_ID]    BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [TARIH]     DATETIME      NOT NULL DEFAULT GETDATE(),
+    [FIRMA_ID]  INT           NULL,
+    [DB_ADI]    NVARCHAR(128) NULL,
+    [KULLANICI] NVARCHAR(100) NULL,
+    [NO]        VARCHAR(11)   NOT NULL,
+    [SONUC]     VARCHAR(12)   NOT NULL,   -- 'BULUNDU' | 'KAYIT_YOK' | 'HATA'
+    [KAYNAK]    VARCHAR(10)   NULL
+  );
+  CREATE INDEX [IX_ADM_VKN_SORGU_LOG_TARIH] ON [dbo].[ADM_VKN_SORGU_LOG]([TARIH] DESC);
+END
+GO

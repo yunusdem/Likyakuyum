@@ -16,6 +16,8 @@ import {
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
+import GibSorguButonu, { gibSorgula, useGibOtomatikSorgu } from "../../components/common/GibSorguButonu";
+import { GibDegerleri, GibDoldurmaSonucu } from "../../utils/gibSorgu";
 import {
   EBELGE_BIRIMLER,
   EbelgeIrsaliyeDogrulama,
@@ -234,6 +236,17 @@ const EBelgeIrsaliyePage: React.FC = () => {
     }
   };
 
+  // GİB'den unvan / ad-soyad (docs/GIB_VKN_SORGU_YOL_HARITASI.md): boşlar dolar, farklıysa sorulur
+  const gibMevcut = (no: string): GibDegerleri =>
+    no.replace(/\D/g, "").length === 11 ? { ad: aliciAd, soyad: aliciSoyad } : { unvan: aliciUnvan };
+  const gibUygula = (d: GibDegerleri) => {
+    if (d.unvan) setAliciUnvan(d.unvan);
+    if (d.ad) setAliciAd(d.ad);
+    if (d.soyad) setAliciSoyad(d.soyad);
+  };
+  const gibMesaj = (m: GibDoldurmaSonucu) => setAlertInfo({ type: m.tur, message: m.mesaj });
+  useGibOtomatikSorgu(aliciVkn, (no) => void gibSorgula({ no, mevcut: gibMevcut(no), uygula: gibUygula }).then(gibMesaj), kilitli);
+
   // Yerel taslak (docs/ebelge-revizyon.md K3): ICE'de irsaliye taslağı yoktur; form olduğu gibi saklanır.
   const taslak = useYerelTaslak<Record<string, any>>("EIrsaliye", (t) => {
     setBelgeNo(t.belgeNo || ""); setTarih(t.tarih || bugunISO()); setIrsaliyeTipi(t.irsaliyeTipi || "SEVK"); setNot(t.not || "");
@@ -403,6 +416,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
                 >
                   ?
                 </Button>
+                <GibSorguButonu size="sm" no={aliciVkn} mevcut={gibMevcut(aliciVkn)} uygula={gibUygula} onMesaj={gibMesaj} disabled={kilitli} />
               </div>
               {mukellefDurum && (
                 <div className="text-secondary" style={{ fontSize: "11.5px" }}>

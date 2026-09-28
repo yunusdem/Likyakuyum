@@ -14,6 +14,7 @@ import CevrimiciPage from "./pages/CevrimiciPage";
 import GirisGecmisiPage from "./pages/GirisGecmisiPage";
 import IslemKaydiPage from "./pages/IslemKaydiPage";
 import EpostaDogrulaPage from "./pages/EpostaDogrulaPage";
+import GibHesapPage from "./pages/GibHesapPage";
 
 /** Oturum yoksa girişe; geçici şifreyle girildiyse şifre belirleme ekranına kilitler. */
 const Korumali: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -53,6 +54,7 @@ const AdminApp: React.FC = () => (
       <Route path="/cevrimici" element={<CevrimiciPage />} />
       <Route path="/giris-gecmisi" element={<GirisGecmisiPage />} />
       <Route path="/islem-kaydi" element={<IslemKaydiPage />} />
+      <Route path="/gib-hesap" element={<GibHesapPage />} />
       <Route path="/adminler" element={<AdminlerPage />} />
       <Route path="/sifre-degistir" element={<SifreDegistirPage />} />
     </Route>

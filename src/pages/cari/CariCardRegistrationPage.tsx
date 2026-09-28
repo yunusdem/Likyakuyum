@@ -40,6 +40,9 @@ import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
+import GibSorguButonu from "../../components/common/GibSorguButonu";
+import { GibDegerleri, GibDoldurmaSonucu, vergiDairesiBul } from "../../utils/gibSorgu";
+import { VknSorguSonucu } from "../../services/gibService";
 import LookupModal from "../../components/common/LookupModal";
 import { printReportTable } from "../../utils/printReport";
 import {
@@ -202,6 +205,8 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
   const [isGibSorgulaniyor, setIsGibSorgulaniyor] = useState<boolean>(false);
+  // GİB'de kayıtlı olmadığı görülen numara: bu numarayla kayıt engellenir
+  const [gibKayitsizNo, setGibKayitsizNo] = useState<string>("");
   /** GİB birden fazla posta kutusu döndürdüğünde kullanıcıya seçtirilecek liste. */
   const [gibSecimListesi, setGibSecimListesi] = useState<GibKullanici[]>([]);
   const [postaKoduInput, setPostaKoduInput] = useState<string>("");
@@ -701,8 +706,40 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
     }
   };
 
+  /** GİB VKN/TCKN sorgusu: unvan → Cari Ünvan / Ad, vergi dairesi → listeden seçim (docs/GIB_VKN_SORGU_YOL_HARITASI.md) */
+  const gibSorguMevcut = (): GibDegerleri => ({
+    unvan: formData.ad || "",
+    vergiDairesi: lookups.vergiDairesiList.find((x) => x.id === formData.vergiDairesiId)?.ad || "",
+  });
+
+  const gibSorguUygula = (d: GibDegerleri, sonuc: VknSorguSonucu): string | void => {
+    let ek: string | undefined;
+    const vd = d.vergiDairesi ? vergiDairesiBul(d.vergiDairesi, lookups.vergiDairesiList) : null;
+    if (d.vergiDairesi && !vd) ek = `"${d.vergiDairesi}" vergi dairesi listede yok, listeden elle seçin`;
+    setFormData((prev) => ({
+      ...prev,
+      ...(d.unvan ? { ad: d.unvan } : {}),
+      ...(vd ? { vergiDairesiId: vd.id } : {}),
+      // TCKN her zaman gerçek kişidir
+      ...(sonuc.tur === "TCKN" && prev.kisilikTipi === 2 ? { kisilikTipi: 1 } : {}),
+    }));
+    if (d.unvan) setFieldErrors((prev) => { const c = { ...prev }; delete c.ad; return c; });
+    return ek;
+  };
+
+  const gibSorguMesaji = (m: GibDoldurmaSonucu) => {
+    setGibKayitsizNo(m.sonuc?.sonuc === "KAYIT_YOK" ? m.sonuc.no : "");
+    if (m.tur === "danger") setAlertError(`❌ ${m.mesaj}`);
+    else setAlertSuccess(`${m.tur === "warning" ? "⚠️" : "✅"} ${m.mesaj}`);
+  };
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    if (gibKayitsizNo && (formData.vergiKimlikNo || "").replace(/\D/g, "") === gibKayitsizNo) {
+      setAlertError(`❌ ${gibKayitsizNo} numarası GİB'de kayıtlı değil. Numarayı düzeltmeden kaydedilemez.`);
+      return;
+    }
 
     const errors: { [key: string]: string } = {};
     const kodErr = validateField("kod", formData.kod);
@@ -1170,16 +1207,25 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                         VKN / TCKN
                       </Form.Label>
                       <Col>
-                        <Form.Control
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={11}
-                          value={formData.vergiKimlikNo || ""}
-                          isInvalid={!!fieldErrors.vergiKimlikNo}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleInputChange("vergiKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                          className="font-monospace text-end"
-                        />
+                        <InputGroup>
+                          <Form.Control
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={11}
+                            value={formData.vergiKimlikNo || ""}
+                            isInvalid={!!fieldErrors.vergiKimlikNo}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleInputChange("vergiKimlikNo", e.target.value.replace(/\D/g, "").slice(0, 11))}
+                            className="font-monospace text-end"
+                          />
+                          <GibSorguButonu
+                            no={formData.vergiKimlikNo || ""}
+                            mevcut={gibSorguMevcut()}
+                            uygula={gibSorguUygula}
+                            onMesaj={gibSorguMesaji}
+                            tekAdAlani
+                          />
+                        </InputGroup>
                         {fieldErrors.vergiKimlikNo && (
                           <div className="text-danger small mt-1">{fieldErrors.vergiKimlikNo}</div>
                         )}

@@ -29,6 +29,7 @@ const ISLEM_ETIKETI: Record<string, string> = {
   EPOSTA_DOGRULAMA_GONDERILDI: "Doğrulama maili gönderildi",
   EPOSTA_DOGRULANDI: "E-posta doğrulandı",
   EPOSTA_DOGRULAMA_KALDIRILDI: "E-posta doğrulaması kaldırıldı",
+  GIB_HESAP_DEGISTI: "GİB hesabı değişti",
 };
 
 /** JSON değerini "alan: değer" satırları olarak yazar; çözülemezse olduğu gibi gösterir. */

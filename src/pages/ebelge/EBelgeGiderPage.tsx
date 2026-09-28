@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import EBelgeCariSec from "./EBelgeCariSec";
 import { EbelgeGiderIstegi, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
 import { useYerelTaslak } from "./useYerelTaslak";
+import GibSorguButonu, { gibSorgula, useGibOtomatikSorgu } from "../../components/common/GibSorguButonu";
+import { GibDegerleri, GibDoldurmaSonucu } from "../../utils/gibSorgu";
 
 const bosSatir = () => ({ ad: "", miktar: 1, birimKodu: "C62", birimFiyat: 0, vergiOrani: 0 });
 const bugun = () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
@@ -19,6 +21,13 @@ export default function EBelgeGiderPage() {
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf); }, [pdf]);
   const degistir = (patch: Partial<EbelgeGiderIstegi>) => { setGirdi(o => ({ ...o, ...patch })); setOnizleme(null); };
   const taslak = useYerelTaslak<EbelgeGiderIstegi & Record<string, unknown>>("EGiderPusulasi", (t) => setGirdi(t));
+  // GİB'den unvan / ad-soyad (docs/GIB_VKN_SORGU_YOL_HARITASI.md): boşlar dolar, farklıysa sorulur
+  const [gibMesaji, setGibMesaji] = useState<GibDoldurmaSonucu | null>(null);
+  const gibMevcut = (no: string): GibDegerleri => no.replace(/\D/g, "").length === 11
+    ? { ad: girdi.alici.ad || "", soyad: girdi.alici.soyad || "" } : { unvan: girdi.alici.unvan || "" };
+  const gibUygula = (d: GibDegerleri) => { setGirdi(o => ({ ...o, alici: { ...o.alici, ...d } })); setOnizleme(null); };
+  useGibOtomatikSorgu(girdi.alici.vknTckn, (no) => void gibSorgula({ no, mevcut: gibMevcut(no), uygula: gibUygula }).then(setGibMesaji),
+    busy || gonderimDenendi);
   const aliciAdi = girdi.alici.unvan || `${girdi.alici.ad || ""} ${girdi.alici.soyad || ""}`.trim();
   const taslakKaydet = () => taslak.kaydet({ belgeNo: girdi.belgeNo, aliciVkn: girdi.alici.vknTckn, aliciUnvan: aliciAdi, paraBirimi: "TRY",
     tutar: girdi.satirlar.reduce((t, s) => t + (s.miktar || 0) * (s.birimFiyat || 0) * (1 + (s.vergiOrani || 0) / 100), 0) }, girdi as EbelgeGiderIstegi & Record<string, unknown>);
@@ -40,6 +49,7 @@ export default function EBelgeGiderPage() {
   return <div className="w-100 pb-3">
     <div className="d-flex justify-content-between mb-3"><h5>e-Gider Pusulası Oluştur</h5><Link to="/e-belge/giden">Giden Kutusu</Link></div>
     {hata && <Alert variant="danger">{hata}</Alert>}
+    {gibMesaji && <Alert variant={gibMesaji.tur} dismissible onClose={() => setGibMesaji(null)}>{gibMesaji.mesaj}</Alert>}
     {taslak.taslakHata && <Alert variant="danger">{taslak.taslakHata}</Alert>}
     {taslak.taslakMesaj && !sonuc && <Alert variant="info">{taslak.taslakMesaj}</Alert>}
     {sonuc && <Alert variant="success">{sonuc.belgeNo}: Gönderildi. {sonuc.mesaj}
@@ -60,7 +70,10 @@ export default function EBelgeGiderPage() {
             il: l.ilList.find(x => x.id === c.ilId)?.ad || "", ilce: l.ilceList.find(x => x.id === c.ilceId)?.ad || "" } });
         }} />
         <Row className="g-2">{([['vknTckn','TC / VKN'],['unvan','Ünvan'],['ad','Ad'],['soyad','Soyad'],['il','İl'],['ilce','İlçe']] as const).map(([key,label]) =>
-          <Col md={4} key={key}><Form.Label>{label}</Form.Label><Form.Control value={girdi.alici[key] || ""} onChange={e => degistir({ alici: { ...girdi.alici, [key]: e.target.value } })} /></Col>)}</Row>
+          <Col md={4} key={key}><Form.Label>{label}</Form.Label>{key === "vknTckn"
+            ? <div className="input-group"><Form.Control value={girdi.alici.vknTckn || ""} maxLength={11} onChange={e => degistir({ alici: { ...girdi.alici, vknTckn: e.target.value.replace(/\D/g, "") } })} />
+                <GibSorguButonu no={girdi.alici.vknTckn || ""} mevcut={gibMevcut(girdi.alici.vknTckn || "")} uygula={gibUygula} onMesaj={setGibMesaji} /></div>
+            : <Form.Control value={girdi.alici[key] || ""} onChange={e => degistir({ alici: { ...girdi.alici, [key]: e.target.value } })} />}</Col>)}</Row>
         {girdi.iadeDayanak && <Row className="g-2 mt-2">
           <Col md={4}><Form.Label>İade dayanağı</Form.Label><Form.Select value={girdi.iadeDayanak.belgeTipi} onChange={e => degistir({ iadeDayanak: { ...girdi.iadeDayanak!, belgeTipi: e.target.value as "BELGESIZ" | "EARSIV_FATURA" | "SATIS_FISI" } })}><option value="BELGESIZ">Belgesiz</option><option value="EARSIV_FATURA">e-Arşiv fatura</option><option value="SATIS_FISI">Satış fişi</option></Form.Select></Col>
           <Col md={4}><Form.Label>Dayanak no</Form.Label><Form.Control value={girdi.iadeDayanak.belgeNo || ""} onChange={e => degistir({ iadeDayanak: { ...girdi.iadeDayanak!, belgeNo: e.target.value } })} /></Col>

@@ -20,6 +20,8 @@ import EBelgeKodDurbun from "./EBelgeKodDurbun";
 import { KnskFormUyarisi } from "./EBelgeKnsk";
 import { CariService } from "../../services/cariService";
 import { gibAliasToEposta, gibTitleToAdSoyad } from "../../utils/gibKullanici";
+import { GibDegerleri } from "../../utils/gibSorgu";
+import { gibSorgula } from "../../components/common/GibSorguButonu";
 import {
   EBELGE_BIRIMLER,
   EBELGE_FATURA_TIPLERI,
@@ -297,6 +299,38 @@ const EBelgeDogrulaPage: React.FC = () => {
     }
   };
 
+  // GİB sorgusu, önceki adımların (yerel cari, ICE) doldurduğu güncel değerlerle karşılaştırır
+  const aliciRef = useRef({ unvan: "", ad: "", soyad: "", vd: "" });
+  aliciRef.current = { unvan: aliciUnvan, ad: aliciAd, soyad: aliciSoyad, vd: aliciVd };
+
+  /** GİB'den unvan / ad-soyad / vergi dairesi: boşlar dolar, farklıysa sorulur (docs/GIB_VKN_SORGU_YOL_HARITASI.md) */
+  const gibdenDoldur = async (vkn: string, sira: number) => {
+    // Önceki adımların state güncellemeleri ekrana (ve aliciRef'e) yansısın
+    await new Promise((r) => setTimeout(r, 50));
+    if (sira !== sorguSirasi.current) return;
+    const a = aliciRef.current;
+    const mevcut: GibDegerleri = vkn.length === 11
+      ? { ad: a.ad, soyad: a.soyad, vergiDairesi: a.vd }
+      : { unvan: a.unvan, vergiDairesi: a.vd };
+    const m = await gibSorgula({
+      no: vkn,
+      mevcut,
+      uygula: (d) => {
+        if (sira !== sorguSirasi.current) return;
+        if (d.unvan) setAliciUnvan(d.unvan);
+        if (d.ad) setAliciAd(d.ad);
+        if (d.soyad) setAliciSoyad(d.soyad);
+        if (d.vergiDairesi) setAliciVd(d.vergiDairesi);
+      },
+    });
+    if (sira !== sorguSirasi.current) return;
+    const kayitYok = m.sonuc?.sonuc === "KAYIT_YOK";
+    setAlertInfo((o) => ({
+      type: kayitYok || o?.type === "danger" ? "danger" : m.tur === "success" ? o?.type || "success" : "warning",
+      message: `${o?.message || ""} ${m.mesaj}.`.trim(),
+    }));
+  };
+
   const mukellefSorgula = async (vknParam?: string, otomatik = false) => {
     const vkn = (vknParam ?? aliciVkn).trim();
     if (!/^\d{10,11}$/.test(vkn)) {
@@ -320,7 +354,7 @@ const EBelgeDogrulaPage: React.FC = () => {
         : "Alıcı e-Fatura mükellefi değil. e-Arşiv seçildi; belgeyi doğrulayarak devam edin.")
         + (doldurulan.length ? ` GİB: ${doldurulan.join(", ")}.` : "") });
       // Yerel cari önceliklidir: ICE adresi ondan SONRA, yalnızca boş kalan alanlara yazılır.
-      void yerelCaridenDoldur(vkn, sira).then(() => iceAdresleriGetir(vkn, sira));
+      void yerelCaridenDoldur(vkn, sira).then(() => iceAdresleriGetir(vkn, sira)).then(() => gibdenDoldur(vkn, sira));
     } catch (err: any) {
       if (sira !== sorguSirasi.current) return;
       // Sorgu hatası "mükellef değil" demek değildir; tür seçimi belirsiz bırakılır.
