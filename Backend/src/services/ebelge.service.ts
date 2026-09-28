@@ -864,12 +864,8 @@ export class EbelgeService {
     }
 
     const ayar = await EbelgeSqlRepository.getAyar(dbContext);
+    // Boşsa from_alias gönderilmez; ICE hesabın gönderici etiketini kullanır (WSDL minOccurs=0)
     const fromAlias = ayar?.firmaAlias?.trim() || "";
-    if (!fromAlias) {
-      throw ApiError.badRequest(
-        "Gönderici etiketi (alias) tanımlı değil. E-Belge ayarlarından firma alias bilgisini giriniz."
-      );
-    }
 
     const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
     const { xml, uuid, satirSayisi } = buildDespatchAdviceXml({ ...girdi, belgeNo, gonderici });
@@ -1177,8 +1173,10 @@ export class EbelgeService {
    */
   /**
    * Gönderici (kendi) etiketimiz — docs/GIRIS_VE_EBELGE_DUZENLEME.md R1. Ayarda varsa o kullanılır; yoksa firma VKN'si
-   * GİB e-Fatura kullanıcı listesinde sorgulanır, gönderici birim (GB) etiketi seçilir ve ayara yazılır.
-   * GB bulunamazsa bulunan etiketler hata mesajında listelenir (kullanıcı ayardan seçer).
+   * GİB e-Fatura kullanıcı listesinde sorgulanır, gönderici birim (GB) etiketi bulunursa ayara yazılır.
+   * Bulunamazsa BOŞ döner ve istek `from_alias` olmadan gider: ICE WSDL'inde alan isteğe bağlı (minOccurs=0) ve ICE'nin
+   * kendi örnek isteği bu alanı hiç göndermiyor — gönderici, oturum açan ICE hesabından belirlenir (28.09.2026).
+   * GİB listesi çoğu hesapta yalnız PK (alıcı) etiketlerini döndürür; GB etiketi entegratör hesabına tanımlıdır.
    */
   private static async gondericiAliasCoz(
     config: Awaited<ReturnType<typeof EbelgeSqlRepository.getConnectionConfig>>,
@@ -1190,22 +1188,25 @@ export class EbelgeService {
     const mevcut = ayardaki?.trim();
     if (mevcut) return mevcut;
 
-    const liste = await getUserListEFatura(config, gondericiVkn);
+    let liste: Awaited<ReturnType<typeof getUserListEFatura>>;
+    try {
+      liste = await getUserListEFatura(config, gondericiVkn);
+    } catch (err) {
+      logger.warn("Gönderici etiketi GİB listesinden sorgulanamadı; from_alias gönderilmeyecek:", err);
+      return "";
+    }
     if (!liste.basarili) {
-      throw ApiError.unprocessable(
-        `Gönderici etiketi GİB listesinden bulunamadı (${liste.mesaj || "sorgu başarısız"}). E-Belge Ayarları'ndan etiketi giriniz.`
-      );
+      logger.warn(`Gönderici etiketi sorgusu başarısız (${liste.mesaj}); from_alias gönderilmeyecek.`);
+      return "";
     }
     const etiketler = liste.kullanicilar.map((k) => ({ alias: String(k.Alias || "").trim(), birim: String(k.Unit || "").trim() }))
       .filter((k) => k.alias);
     const gb = etiketler.find((k) => k.birim.toUpperCase() === "GB")
       || etiketler.find((k) => /(^|[:._-])gb|defaultgb/i.test(k.alias));
     if (!gb) {
-      throw ApiError.badRequest(
-        `Firmanın (${gondericiVkn}) GİB listesinde gönderici (GB) etiketi bulunamadı.` +
-          (etiketler.length ? ` Bulunan etiketler: ${etiketler.map((k) => k.alias).join(", ")}.` : "") +
-          " E-Belge Ayarları'nda Gönderici Etiketi alanına doğru etiketi giriniz."
-      );
+      logger.info(`GİB listesinde GB etiketi yok (bulunan: ${etiketler.map((k) => k.alias).join(", ") || "-"}); `
+        + "from_alias gönderilmeyecek, ICE hesabın etiketini kullanacak.");
+      return "";
     }
     await EbelgeSqlRepository.firmaAliasYaz(gb.alias, kullanici, dbContext);
     logger.info(`Gönderici etiketi GİB'den bulundu ve ayara yazıldı: ${gb.alias}`);

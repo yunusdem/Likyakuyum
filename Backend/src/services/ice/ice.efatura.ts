@@ -491,7 +491,8 @@ export interface IceGonderimSonucu {
 
 export interface TaslakGonderimGirdisi {
   fromVknTckn: string;
-  fromAlias: string;
+  /** Boşsa `from_alias` gönderilmez; ICE oturum açan hesabın gönderici etiketini kullanır */
+  fromAlias?: string;
   toVknTckn: string;
   toAlias: string;
   /** Base64 UBL belgeleri — birden çok belge çoklanabilir */
@@ -520,7 +521,8 @@ export const buildSendInvoiceInnerXml = (
     `<sendInvoiceRequest>` +
     loginHeaderXml +
     `<from_vkn_tckn>${escapeXml(girdi.fromVknTckn)}</from_vkn_tckn>` +
-    `<from_alias>${escapeXml(girdi.fromAlias)}</from_alias>` +
+    // Gönderici etiketi isteğe bağlı (WSDL minOccurs=0; ICE örnek isteği göndermiyor): boşsa ICE hesabın etiketini kullanır
+    (girdi.fromAlias?.trim() ? `<from_alias>${escapeXml(girdi.fromAlias.trim())}</from_alias>` : "") +
     `<to_vkn_tckn>${escapeXml(girdi.toVknTckn)}</to_vkn_tckn>` +
     `<to_alias>${escapeXml(girdi.toAlias)}</to_alias>` +
     `<invoices>${invoicesXml}</invoices>` +
