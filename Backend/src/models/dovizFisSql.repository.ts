@@ -2173,10 +2173,12 @@ export class DovizFisSqlRepository {
       SELECT 
         F.*,
         V.KOD AS VEZNE_KOD, V.AD AS VEZNE_AD,
-        C.KOD AS CARI_KOD, C.AD AS CARI_AD
+        C.KOD AS CARI_KOD, C.AD AS CARI_AD,
+        IST.KOD AS ISTATISTIK_KOD
       FROM [dbo].[TODVZ_FIS] F
       LEFT JOIN [dbo].[TODVZ_VEZNE] V ON V.VEZNE_ID = F.VEZNE_ID
       LEFT JOIN [dbo].[TODVZ_CARI_KART] C ON C.CARI_KART_ID = F.CARI_KART_ID
+      LEFT JOIN [dbo].[TODVZ_ISTATISTIK] IST ON IST.ISTATISTIK_ID = F.ISTATISTIK_ID
       WHERE F.FIS_ID = @ID
     `);
 
@@ -2246,6 +2248,7 @@ export class DovizFisSqlRepository {
       kurTuru: Number(row.KUR_TURU) || 0,
       kurTuruLabel: (Number(row.KUR_TURU) || 0) === 0 ? "Efektif" : "Döviz",
       istatistikId: row.ISTATISTIK_ID || null,
+      istatistikKodu: (row.ISTATISTIK_KOD || row.ISTATISTIK_KODU || "").trim(),
       cariKartId: row.CARI_KART_ID || null,
       cariKod: (row.CARI_KOD || "").trim(),
       unvan: (row.UNVAN || row.CARI_AD || "İSİM BEYAN EDİLMEMİŞTİR").trim(),

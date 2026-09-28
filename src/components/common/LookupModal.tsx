@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Modal, Form, InputGroup, Table, Button, Spinner, Badge } from "react-bootstrap";
 import { IconSearch, IconBinoculars, IconX, IconCheck, IconPlus } from "@tabler/icons-react";
+import { highlightText } from "./HighlightText";
 
 export interface LookupColumn<T> {
   header: string;
   width?: string;
   align?: "left" | "center" | "right";
   render: (item: T) => React.ReactNode;
+  highlight?: boolean;
 }
 
 export interface LookupModalProps<T> {
@@ -25,6 +27,7 @@ export interface LookupModalProps<T> {
   addNewLabel?: string;
   isItemDisabled?: (item: T) => boolean;
   renderDetail?: (item: T) => React.ReactNode;
+  searchByCodeOnly?: boolean;
 }
 
 const MAX_DISPLAY_COUNT = 150;
@@ -45,6 +48,7 @@ function LookupModalContent<T extends Record<string, any>>({
   addNewLabel = "Yeni Kayıt",
   isItemDisabled,
   renderDetail,
+  searchByCodeOnly = false,
 }: LookupModalProps<T>) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
@@ -59,6 +63,7 @@ function LookupModalContent<T extends Record<string, any>>({
 
   const getItemId = useCallback((it: any): string => {
     if (!it) return "";
+    if (it.posCihaziId !== undefined && it.posCihaziId !== null) return `pos-${it.posCihaziId}`;
     if (it.sarrafFisiId !== undefined && it.sarrafFisiId !== null) return `sarraf-${it.sarrafFisiId}`;
     if (it.altinUrunId !== undefined && it.altinUrunId !== null) return `altin-${it.altinUrunId}`;
     if (it.ozelUrunId !== undefined && it.ozelUrunId !== null) return `ozel-${it.ozelUrunId}`;
@@ -91,34 +96,45 @@ function LookupModalContent<T extends Record<string, any>>({
   }, [filteredItems]);
 
   // Initial selection and focus on modal open
+  const isFirstMountRef = useRef(true);
+
   useEffect(() => {
-    if (selectedId !== undefined && selectedId !== null && filteredItems.length > 0) {
-      const foundIdx = filteredItems.findIndex((it: any) => {
-        if (it.sarrafFisiId !== undefined && (it.sarrafFisiId === selectedId || String(it.sarrafFisiId) === String(selectedId))) return true;
-        if (it.id !== undefined && (it.id === selectedId || String(it.id) === String(selectedId))) return true;
-        if (it.hesapId !== undefined && (it.hesapId === selectedId || String(it.hesapId) === String(selectedId))) return true;
-        if (it.iskontoId !== undefined && (it.iskontoId === selectedId || String(it.iskontoId) === String(selectedId))) return true;
-        if (it.kod !== undefined && String(it.kod) === String(selectedId)) return true;
-        if (it.code !== undefined && String(it.code) === String(selectedId)) return true;
-        if (it.ID !== undefined && (it.ID === selectedId || String(it.ID) === String(selectedId))) return true;
-        return false;
-      });
-      setSelectedIndex(foundIdx >= 0 && foundIdx < MAX_DISPLAY_COUNT ? foundIdx : 0);
-    } else {
-      setSelectedIndex(0);
+    if (!show) {
+      isFirstMountRef.current = true;
+      return;
     }
 
-    const t = setTimeout(() => {
-      if (searchInputRef.current) {
-        searchInputRef.current.focus();
-        if (searchTerm) {
-          searchInputRef.current.select();
-        }
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      if (selectedId !== undefined && selectedId !== null && selectedId !== "" && filteredItems.length > 0) {
+        const foundIdx = filteredItems.findIndex((it: any) => {
+          if (it.posCihaziId !== undefined && (it.posCihaziId === selectedId || String(it.posCihaziId) === String(selectedId))) return true;
+          if (it.sarrafFisiId !== undefined && (it.sarrafFisiId === selectedId || String(it.sarrafFisiId) === String(selectedId))) return true;
+          if (it.id !== undefined && (it.id === selectedId || String(it.id) === String(selectedId))) return true;
+          if (it.hesapId !== undefined && (it.hesapId === selectedId || String(it.hesapId) === String(selectedId))) return true;
+          if (it.iskontoId !== undefined && (it.iskontoId === selectedId || String(it.iskontoId) === String(selectedId))) return true;
+          if (it.kod !== undefined && (String(it.kod).trim().toLowerCase() === String(selectedId).trim().toLowerCase())) return true;
+          if (it.code !== undefined && (String(it.code).trim().toLowerCase() === String(selectedId).trim().toLowerCase())) return true;
+          if (it.ID !== undefined && (it.ID === selectedId || String(it.ID) === String(selectedId))) return true;
+          return false;
+        });
+        setSelectedIndex(foundIdx >= 0 && foundIdx < MAX_DISPLAY_COUNT ? foundIdx : 0);
+      } else {
+        setSelectedIndex(0);
       }
-    }, 40);
 
-    return () => clearTimeout(t);
-  }, []);
+      const t = setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+          if (searchTerm) {
+            searchInputRef.current.select();
+          }
+        }
+      }, 40);
+
+      return () => clearTimeout(t);
+    }
+  }, [show, selectedId, filteredItems, searchTerm]);
 
   // Scroll selected row into view
   useEffect(() => {
@@ -237,6 +253,31 @@ function LookupModalContent<T extends Record<string, any>>({
               setSearchTerm(e.target.value);
               setSelectedIndex(0);
             }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedIndex((prev) => {
+                  if (displayItems.length === 0) return 0;
+                  return prev < displayItems.length - 1 ? prev + 1 : prev;
+                });
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedIndex((prev) => {
+                  if (displayItems.length === 0) return 0;
+                  return prev > 0 ? prev - 1 : 0;
+                });
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                handleConfirm();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                onHide();
+              }
+            }}
             className="border-start-0"
           />
           {searchTerm && (
@@ -280,11 +321,15 @@ function LookupModalContent<T extends Record<string, any>>({
             box-shadow: inset 0 0 0 9999px #bae6fd !important;
             color: #0c4a6e !important;
           }
+          .lookup-table tbody tr:not(.lookup-selected-row):hover,
           .lookup-table tbody tr:not(.lookup-selected-row):hover > td,
           .lookup-table tbody tr:not(.lookup-selected-row):hover > th {
-            background-color: #f1f5f9 !important;
-            --bs-table-bg: #f1f5f9 !important;
-            --bs-table-accent-bg: #f1f5f9 !important;
+            background-color: #e0f2fe !important;
+            --bs-table-bg: #e0f2fe !important;
+            --bs-table-accent-bg: #e0f2fe !important;
+            --bs-table-hover-bg: #e0f2fe !important;
+            box-shadow: inset 0 0 0 9999px #e0f2fe !important;
+            color: #0369a1 !important;
           }
         `}</style>
 
@@ -344,17 +389,22 @@ function LookupModalContent<T extends Record<string, any>>({
                       >
                         {isSelected && !isDisabled ? <IconCheck size={16} className="text-primary fw-bold" /> : index + 1}
                       </td>
-                      {columns.map((col, colIdx) => (
-                        <td
-                          key={colIdx}
-                          className={col.align === "center" ? "text-center" : col.align === "right" ? "text-end" : "text-start"}
-                          style={{
-                            color: isDisabled ? "#94a3b8" : (isSelected ? "#0c4a6e" : undefined),
-                          }}
-                        >
-                          {col.render(item)}
-                        </td>
-                      ))}
+                      {columns.map((col, colIdx) => {
+                        const shouldHighlight = searchByCodeOnly
+                          ? (col.highlight === true || (colIdx === 0 && col.highlight !== false))
+                          : (col.highlight !== false);
+                        return (
+                          <td
+                            key={colIdx}
+                            className={col.align === "center" ? "text-center" : col.align === "right" ? "text-end" : "text-start"}
+                            style={{
+                              color: isDisabled ? "#94a3b8" : (isSelected ? "#0c4a6e" : undefined),
+                            }}
+                          >
+                            {shouldHighlight ? highlightText(col.render(item), searchTerm) : col.render(item)}
+                          </td>
+                        );
+                      })}
                       <td className="text-center">
                         <Button
                           size="sm"

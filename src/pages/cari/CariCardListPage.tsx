@@ -26,6 +26,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { printReportTable } from "../../utils/printReport";
+import { highlightText } from "../../components/common/HighlightText";
 
 const KISILIK_TIPI_LABELS: Record<number, string> = {
   0: "Bilinmiyor",
@@ -268,7 +269,7 @@ export const CariCardListPage: React.FC = () => {
                         <td className="text-center text-muted small">{idx + 1}</td>
                         <td>
                           <span className="badge bg-light text-primary border font-monospace fw-bold px-2 py-1">
-                            {item.kod}
+                            {highlightText(item.kod, searchTerm)}
                           </span>
                         </td>
                         <td>
@@ -278,11 +279,11 @@ export const CariCardListPage: React.FC = () => {
                             ) : (
                               <IconUser size={15} className="text-secondary flex-shrink-0" />
                             )}
-                            <span>{item.ad}</span>
+                            <span>{highlightText(item.ad, searchTerm)}</span>
                           </div>
                           {item.adres && (
                             <div className="text-muted small text-truncate" style={{ maxWidth: "320px", fontSize: "0.75rem" }}>
-                              {item.adres}
+                              {highlightText(item.adres, searchTerm)}
                             </div>
                           )}
                         </td>
@@ -299,7 +300,7 @@ export const CariCardListPage: React.FC = () => {
                         <td>
                           {item.vergiKimlikNo ? (
                             <span className="font-monospace small d-flex align-items-center gap-1 text-secondary">
-                              <IconId size={14} /> {item.vergiKimlikNo}
+                              <IconId size={14} /> {highlightText(item.vergiKimlikNo, searchTerm)}
                             </span>
                           ) : (
                             <span className="text-muted small">-</span>
@@ -308,7 +309,7 @@ export const CariCardListPage: React.FC = () => {
                         <td>
                           {item.telefon ? (
                             <span className="small d-flex align-items-center gap-1 text-secondary">
-                              <IconPhone size={13} /> {item.telefon}
+                              <IconPhone size={13} /> {highlightText(item.telefon, searchTerm)}
                             </span>
                           ) : (
                             <span className="text-muted small">-</span>

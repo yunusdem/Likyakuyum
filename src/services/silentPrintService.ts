@@ -14,6 +14,7 @@ export interface SilentPrintOptions {
   copies?: number;
   title?: string;
   isPos?: boolean;
+  allowBrowserFallback?: boolean;
 }
 
 export interface SilentPrintResult {
@@ -55,6 +56,7 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     copies = 1,
     title = "Likya_Fis",
     isPos = true,
+    allowBrowserFallback = false,
   } = options;
 
   if (!html && !text && !pdfBase64) {
@@ -92,20 +94,20 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       const data = await res.json();
       return {
         success: true,
-        message: data.message || "Fiş doğrudan yazıcıya gönderildi (Önizlemesiz).",
+        message: data.message || "Fiş tanımlı yazıcıya doğrudan gönderildi (Önizlemesiz).",
       };
     }
   } catch (err: any) {
     console.warn("[SilentPrint] Yerel servis (localhost:5050) yanıt vermedi:", err);
   }
 
-  // 2. Eğer yerel servis kapalıysa gizli iframe üzerinden yazdırmayı dene
-  if (html) {
+  // 2. Sadece açıkça izin verildiyse gizli iframe fallback'i kullan (Önizlemesiz modda popup açılmamalıdır)
+  if (allowBrowserFallback && html) {
     try {
       printViaHiddenIframe(html, title, isPos);
       return {
         success: true,
-        message: "Fiş yazıcıya gönderildi (Yerel servis kapalı olduğu için tarayıcı motoru kullanıldı).",
+        message: "Fiş yazıcıya gönderildi (Tarayıcı yazdırma motoru kullanıldı).",
         fallbackUsed: true,
       };
     } catch (fallbackErr: any) {

@@ -4,6 +4,7 @@ import { IconChartBar, IconX, IconSearch, IconCheck, IconCornerDownLeft, IconPlu
 import { DovizFisService, IstatistikSecimItem } from "../../services/dovizFisService";
 import { StatisticService } from "../../services/statisticService";
 import { StatisticDefinitionsPage } from "../settings/StatisticDefinitionsPage";
+import { highlightText } from "../../components/common/HighlightText";
 
 interface IstatistikSecimModalProps {
   show: boolean;
@@ -47,16 +48,19 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
         return true;
       });
 
-      const mapped = filtered.map((s) => ({
-        id: s.id,
-        kod: (s.kod || "").trim(),
-        ad: (s.aciklama || "").trim(),
-        aciklama: (s.aciklama || "").trim(),
-        tip: Number(s.fisTipi),
-        fisTipi: Number(s.fisTipi),
-        fisDizaynTipi: Number(s.fisDizaynTipi),
-        ciktiSatirSayisi: Number(s.ciktiSatirSayisi),
-      }));
+      const mapped = filtered.map((s) => {
+        const dizayn = parseInt(String(s.fisDizaynTipi ?? 0), 10);
+        return {
+          id: s.id,
+          kod: (s.kod || "").trim(),
+          ad: (s.aciklama || "").trim(),
+          aciklama: (s.aciklama || "").trim(),
+          tip: Number(s.fisTipi),
+          fisTipi: Number(s.fisTipi),
+          fisDizaynTipi: isNaN(dizayn) ? 0 : dizayn,
+          ciktiSatirSayisi: Number(s.ciktiSatirSayisi || 0),
+        };
+      });
 
       setItems(mapped);
       return mapped;
@@ -136,10 +140,9 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
     setSelectedIndex(idx);
   };
 
-  // Çift tık seçip onaylama
+  // Çift tık veya seçim butonu ile seçip onaylama
   const handleRowDoubleClick = (item: IstatistikSecimItem) => {
     onSelect(item);
-    onClose();
   };
 
   // Onaylama (Enter tuşu veya Seç butonu)
@@ -220,6 +223,16 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
         }
         .istatistik-row {
           cursor: pointer;
+        }
+        .istatistik-row:not(.istatistik-selected-row):hover,
+        .istatistik-row:not(.istatistik-selected-row):hover > td,
+        .istatistik-row:not(.istatistik-selected-row):hover > th {
+          background-color: #e0f2fe !important;
+          --bs-table-bg: #e0f2fe !important;
+          --bs-table-accent-bg: #e0f2fe !important;
+          --bs-table-hover-bg: #e0f2fe !important;
+          box-shadow: inset 0 0 0 9999px #e0f2fe !important;
+          color: #0369a1 !important;
         }
       `}</style>
 
@@ -407,12 +420,12 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
                     >
                       {/* İstatistik Kodu */}
                       <td className="px-3 py-2 font-monospace fw-bold text-start align-middle">
-                        {item.kod}
+                        {highlightText(item.kod, searchTerm)}
                       </td>
 
                       {/* Tanım / İstatistik Adı */}
                       <td className="px-3 py-2 text-start align-middle">
-                        <span className="fw-medium">{ad}</span>
+                        <span className="fw-medium">{highlightText(ad, searchTerm)}</span>
                       </td>
 
                       {/* Fiş Dizayn Tipi */}

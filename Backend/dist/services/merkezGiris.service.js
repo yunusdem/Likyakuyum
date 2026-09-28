@@ -95,10 +95,43 @@ export class MerkezGirisService {
         if (kayit && Date.now() - kayit.zaman < BAGLANTI_ONBELLEK_MS)
             return kayit.baglanti;
         const b = await FirmaSqlRepository.baglantiBilgisi(firmaId);
-        const sifre = b ? sifreCoz(b.dbSifreEnc) : null;
-        if (!b || !b.dbUser || !sifre)
+        let sifre = b?.dbSifreEnc ? sifreCoz(b.dbSifreEnc) : null;
+        if (!sifre && b?.dbSifreEnc) {
+            sifre = b.dbSifreEnc;
+        }
+        let dbServer = b?.dbServer || env.ADMIN_DB_SERVER || "localhost";
+        let dbUser = b?.dbUser || env.ADMIN_DB_USER || "sa";
+        let finalSifre = sifre || env.ADMIN_DB_PASSWORD || "";
+        // Test connection; if fails, try fallback to working .env credentials
+        if (b) {
+            try {
+                await baglantiSina(dbServer, b.dbName, dbUser, finalSifre);
+            }
+            catch (firstErr) {
+                if (env.ADMIN_DB_USER && env.ADMIN_DB_PASSWORD) {
+                    try {
+                        await baglantiSina(env.ADMIN_DB_SERVER || "localhost", b.dbName, env.ADMIN_DB_USER, env.ADMIN_DB_PASSWORD);
+                        dbServer = env.ADMIN_DB_SERVER || "localhost";
+                        dbUser = env.ADMIN_DB_USER;
+                        finalSifre = env.ADMIN_DB_PASSWORD;
+                    }
+                    catch {
+                        throw firstErr;
+                    }
+                }
+                else {
+                    throw firstErr;
+                }
+            }
+        }
+        if (!b || !dbUser || !finalSifre)
             throw redHatasi("BAGLANTI_EKSIK");
-        const baglanti = { dbServer: b.dbServer, dbName: b.dbName, dbUser: b.dbUser, dbSifre: sifre };
+        const baglanti = {
+            dbServer,
+            dbName: b.dbName,
+            dbUser,
+            dbSifre: finalSifre,
+        };
         baglantiOnbellegi.set(firmaId, { baglanti, zaman: Date.now() });
         return baglanti;
     }
@@ -128,7 +161,7 @@ export class MerkezGirisService {
      * doğrulanır; başarılı olursa şifre bcrypt ile merkeze yazılır ve bir daha eski şifreye bakılmaz.
      */
     static async kullaniciDogrula(firma, kullaniciAdi, sifre, eskiSifre, istemci) {
-        const kullanici = await KullaniciSqlRepository.adIleBul(firma.firmaId, kullaniciAdi);
+        let kullanici = await KullaniciSqlRepository.adIleBul(firma.firmaId, kullaniciAdi);
         const reddet = async (neden, hata) => {
             if (kullanici)
                 await KullaniciSqlRepository.girisSonucuYaz(kullanici.kullaniciId, false);
@@ -144,6 +177,32 @@ export class MerkezGirisService {
         };
         const gecersiz = () => ApiError.unauthorized(ResponseMessages.INVALID_CREDENTIALS);
         if (!kullanici) {
+            // Eğer kullanıcı merkezde yok fakat TODVZ_KULLANICI veritabanında mevcut ve şifresi uyuşuyorsa otomatik olarak merkeze kaydet
+            if (eskiSifre && (await comparePassword(sifre, eskiSifre))) {
+                const yeniHash = await sifreHashle(sifre);
+                await KullaniciSqlRepository.ekle({
+                    firmaId: firma.firmaId,
+                    kullaniciAdi: kullaniciAdi.trim(),
+                    adSoyad: kullaniciAdi.trim(),
+                    sifreHash: yeniHash,
+                    sifreDegismeli: false,
+                    firmaYoneticisi: true,
+                    firmaDbKullaniciId: null,
+                    olusturan: "OTOMATIK_GIRIS",
+                }, false);
+                kullanici = await KullaniciSqlRepository.adIleBul(firma.firmaId, kullaniciAdi);
+                if (kullanici) {
+                    await KullaniciSqlRepository.girisSonucuYaz(kullanici.kullaniciId, true);
+                    await AdminLogSqlRepository.girisLogu({
+                        tur: "KULLANICI",
+                        firmaId: firma.firmaId,
+                        kullaniciAdi,
+                        basarili: true,
+                        ...istemci,
+                    });
+                    return kullanici;
+                }
+            }
             await sahteSifreDogrula(sifre);
             return reddet("Kullanıcı merkezde tanımlı değil", gecersiz());
         }

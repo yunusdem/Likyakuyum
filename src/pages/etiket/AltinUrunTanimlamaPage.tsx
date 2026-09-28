@@ -480,26 +480,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       }
 
       // 5. Satış İşçilik & Satış Fiyatı Hesabı
-      const mSatisIscNum = parseNum(curSatisIscilik);
-
-      if (mSatisIscNum > 0) {
-        // Kullanıcının girdiği veya mevcut Satış İşçilik üzerinden hesaplama
-        const rawSatisIscilikNum =
-          curMaliyetBirim === "Gram"
-            ? mSatisIscNum * (mMiktar > 0 ? mMiktar : 1)
-            : mSatisIscNum;
-        const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, curMaliyetIscilikPara, curKurRef, overrides);
-        setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : "");
-
-        const calcTopIsc = calcMaliyetIscilikHas + calcSatisIscilikHas;
-        setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
-        setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
-
-        const calcSatisHasNum = calcHasNum + calcSatisIscilikHas;
-        setSatisFiyati(calcSatisHasNum > 0 ? format5(calcSatisHasNum) : "");
-        setSatisDoviz(calcSatisHasNum > 0 ? format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)) : "");
-        // SATIŞ KÂRI % KESİNLİKLE VE KESİNLİKLE DEĞİŞMEZ!
-      } else if (explicitSatisKariYuzde !== undefined && explicitSatisKariYuzde !== "" && calcToplamHasNum > 0) {
+      if (explicitSatisKariYuzde !== undefined && explicitSatisKariYuzde !== "" && calcToplamHasNum > 0) {
         // Yalnızca kullanıcı Satış Kârı % alanını değiştirdiğinde Satış İşçiliği türetilir
         const mKarY = parseNum(explicitSatisKariYuzde);
         const calcSatisHasNum = calcToplamHasNum * (1 + (mKarY / 100));
@@ -519,23 +500,35 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
             ? rawSatisIscilikVal / mMiktar
             : rawSatisIscilikVal;
         setSatisIscilik(unitSatisIscilik > 0 ? format5(unitSatisIscilik) : "");
-      } else if (curSatisIscilik === "" || curSatisIscilik === 0) {
-        // Eğer Satış İşçilik silinmişse veya boşsa
-        setSatisIscilik("");
-        setSatisIscilikTutari("");
-        const calcTopIsc = calcMaliyetIscilikHas;
-        setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
-        setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
-        const calcSatisHasNum = calcHasNum;
-        setSatisFiyati(calcSatisHasNum > 0 ? format5(calcSatisHasNum) : "");
-        setSatisDoviz(calcSatisHasNum > 0 ? format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)) : "");
       } else {
-        setSatisFiyati("");
-        setSatisDoviz("");
-        setSatisIscilikTutari("");
-        setSatisIscilik("");
-        setToplamIscilik("");
-        setIscilikKari(0);
+        const strVal = curSatisIscilik !== undefined && curSatisIscilik !== null ? String(curSatisIscilik).trim() : "";
+        if (strVal === "") {
+          // Eğer Satış İşçilik tamamen boşsa/silinmişse
+          setSatisIscilikTutari("");
+          const calcTopIsc = calcMaliyetIscilikHas;
+          setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
+          setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
+          const calcSatisHasNum = calcHasNum;
+          setSatisFiyati(calcSatisHasNum > 0 ? format5(calcSatisHasNum) : "");
+          setSatisDoviz(calcSatisHasNum > 0 ? format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)) : "");
+        } else {
+          // Kullanıcının girdiği ondalıklı / virgüllü sayı (0, 0,, 0.5, vb.)
+          const mSatisIscNum = parseNum(strVal);
+          const rawSatisIscilikNum =
+            curMaliyetBirim === "Gram"
+              ? mSatisIscNum * (mMiktar > 0 ? mMiktar : 1)
+              : mSatisIscNum;
+          const calcSatisIscilikHas = convertToHas(rawSatisIscilikNum, curMaliyetIscilikPara, curKurRef, overrides);
+          setSatisIscilikTutari(calcSatisIscilikHas > 0 ? format5(calcSatisIscilikHas) : (mSatisIscNum === 0 ? "0.00000" : ""));
+
+          const calcTopIsc = calcMaliyetIscilikHas + calcSatisIscilikHas;
+          setToplamIscilik(calcTopIsc > 0 ? format5(calcTopIsc) : "");
+          setIscilikKari(calcTopIsc > 0 ? calcTopIsc : 0);
+
+          const calcSatisHasNum = calcHasNum + calcSatisIscilikHas;
+          setSatisFiyati(calcSatisHasNum > 0 ? format5(calcSatisHasNum) : "");
+          setSatisDoviz(calcSatisHasNum > 0 ? format2(convertFromHas(calcSatisHasNum, activeSatisPara, curKurRef, overrides)) : "");
+        }
       }
     },
     [convertToHas, convertFromHas, getMilyemFromAyar, maliyetParaKodu, satisParaKodu, satisKariYuzde]

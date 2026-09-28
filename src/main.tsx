@@ -15,8 +15,10 @@ import "swiper/css/scrollbar";
 // Import main theme scss
 import "styles/theme.scss";
 import { initGlobalNumericInputInterceptor } from "./utils/numericInput";
+import { initGlobalSelectSpaceInterceptor } from "./utils/selectSpaceInterceptor";
 
 initGlobalNumericInputInterceptor();
+initGlobalSelectSpaceInterceptor();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <Provider store={store}>

@@ -29,7 +29,9 @@ function parseMssqlError(err: any): string | null {
 
   // 3. Check constraint
   if (msg.includes("CHECK constraint")) {
-    return "⚠️ Veri Kuralı Uyarısı: Girilen değerler sistemin doğrulama kurallarına uymuyor. Lütfen alanları kontrol ediniz.";
+    const match = msg.match(/constraint "([^"]+)"/i) || msg.match(/constraint '([^']+)'/i) || msg.match(/column '([^']+)'/i);
+    const constraintName = match ? ` (${match[1]})` : "";
+    return `⚠️ Veri Kuralı Uyarısı${constraintName}: Girilen değerler sistemin doğrulama kurallarına uymuyor. Lütfen alanları kontrol ediniz.`;
   }
 
   // 4. Data truncation / Max length

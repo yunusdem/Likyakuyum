@@ -56,6 +56,8 @@ import {
   OzelUrunItem,
 } from "../../services/etiketService";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
+import { PosCihaziService, PosCihaziItem } from "../../services/posCihaziService";
+import { BankaService, BankaHesapItem } from "../../services/bankaService";
 import {
   PerakendeService,
   PerakendeFaturaModel,
@@ -78,12 +80,16 @@ import {
   CustomerSearchField,
 } from "./MusteriSecimModal";
 import { PerakendeFisiPrintModal } from "./PerakendeFisiPrintModal";
+import { PrinterService, YaziciItem } from "../../services/printerService";
+import { CompanyService } from "../../services/companyService";
+import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generatePerakendeReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
 import { MasakService, MasakEslesme } from "../../services/masakService";
 import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
+import { StatisticService, StatisticItem } from "../../services/statisticService";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 
@@ -106,7 +112,8 @@ interface CartLineItem {
 
 export interface OdemeRow {
   id: string;
-  paraId?: number;
+  odemeAraciTuru?: number; // 0: Vezne, 1: Cari, 2: POS, 3: Hesap
+  paraId?: number | null;
   paraKodu: string;
   paraAdi: string;
   adet: number | string;
@@ -118,6 +125,9 @@ export interface OdemeRow {
   cariKartId?: number | null;
   cariUnvan?: string | null;
   cariKod?: string | null;
+  bankaId?: number | null;
+  posCihaziId?: number | null;
+  urunTipi?: number;
 }
 
 const DEFAULT_ODEME_URUNLER: UrunItem[] = [
@@ -152,6 +162,9 @@ const GRID_COLS = [
 type GridColKey = typeof GRID_COLS[number];
 
 const ODEME_GRID_COLS = [
+  "odemeAraciTuru",
+  "cariKod",
+  "paraAdi",
   "paraKodu",
   "adet",
   "miktar",
@@ -183,6 +196,7 @@ const createEmptyRow = (): CartLineItem => ({
 
 const createEmptyOdemeRow = (index: number = 1): OdemeRow => ({
   id: `odeme-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+  odemeAraciTuru: 0,
   paraKodu: "",
   paraAdi: "",
   adet: "",
@@ -191,6 +205,8 @@ const createEmptyOdemeRow = (index: number = 1): OdemeRow => ({
   hasGram: "",
   kur: "",
   tutar: "",
+  cariKartId: null,
+  bankaId: null,
 });
 
 const isRowEmpty = (row?: CartLineItem): boolean => {
@@ -274,6 +290,24 @@ const isPerakendeRowFilled = (row?: CartLineItem): boolean => {
   const hasMiktarOrGram = Boolean((row.miktar !== "" && Number(row.miktar) > 0) || (row.gram !== "" && Number(row.gram) > 0));
   const hasFiyatOrTutar = Boolean((row.birimFiyat !== "" && Number(row.birimFiyat) > 0) || (row.tutar !== "" && Number(row.tutar) > 0));
   return hasCodeOrName && hasMiktarOrGram && hasFiyatOrTutar;
+};
+
+export const isAnonymousCustomerName = (val?: string | null): boolean => {
+  if (!val) return true;
+  const s = val.trim().toLocaleUpperCase("tr-TR")
+    .replace(/İ/g, "I")
+    .replace(/Ğ/g, "G")
+    .replace(/Ü/g, "U")
+    .replace(/Ş/g, "S")
+    .replace(/Ö/g, "O")
+    .replace(/Ç/g, "C");
+  return (
+    s === "" ||
+    s === "ISIM BEYAN EDILMEMISTIR" ||
+    s === "ISIM BEYAN EDILMEDI" ||
+    s === "NIHAI TUKETICI" ||
+    s.includes("BEYAN EDILME")
+  );
 };
 
 export function detectScenario(
@@ -406,8 +440,59 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   const [vezneler, setVezneler] = useState<VezneItem[]>([]);
   const [selectedVezne, setSelectedVezne] = useState<VezneItem | null>(null);
+  const [posCihazlari, setPosCihazlari] = useState<PosCihaziItem[]>([]);
+  const [showPosModal, setShowPosModal] = useState<boolean>(false);
+  const [pendingPosRowId, setPendingPosRowId] = useState<string | null>(null);
+  const [posSearchTerm, setPosSearchTerm] = useState<string>("");
+
+  const [bankaHesaplari, setBankaHesaplari] = useState<BankaHesapItem[]>([]);
+  const [showBankaModal, setShowBankaModal] = useState<boolean>(false);
+  const [pendingBankaRowId, setPendingBankaRowId] = useState<string | null>(null);
+  const [bankaSearchTerm, setBankaSearchTerm] = useState<string>("");
+
+  const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [companyDefinitions, setCompanyDefinitions] = useState<any>(null);
+  const [statisticList, setStatisticList] = useState<StatisticItem[]>([]);
   const [faturaTipi, setFaturaTipi] = useState<number>(1); // 0: Alış, 1: Satış
   const [senaryo, setSenaryo] = useState<string>("EARSIVFATURA");
+
+  useEffect(() => {
+    PrinterService.getYazicilar().then(setPrinters).catch(() => { });
+    CompanyService.getDefinitions().then(setCompanyDefinitions).catch(() => { });
+    StatisticService.getStatistics().then(setStatisticList).catch(() => { });
+    PosCihaziService.getPosCihazlari().then(setPosCihazlari).catch(() => { });
+    BankaService.getBankalar().then(setBankaHesaplari).catch(() => { });
+  }, []);
+
+  // POS ve Banka cihazları/hesapları yüklendiğinde ödeme tablosundaki satırların kodlarını tamamla (sadece kod boşsa)
+  useEffect(() => {
+    if (posCihazlari.length > 0 || bankaHesaplari.length > 0) {
+      setOdemeRows((prev) =>
+        prev.map((r) => {
+          if (r.odemeAraciTuru === 2 && posCihazlari.length > 0 && r.bankaId && !r.cariKod) {
+            const match = posCihazlari.find((p) => p.posCihaziId === r.bankaId);
+            if (match) {
+              return {
+                ...r,
+                cariKod: match.kod,
+                paraAdi: r.paraAdi && r.paraAdi !== "KREDİ KARTI / POS" ? r.paraAdi : (match.ad || "KREDİ KARTI / POS"),
+              };
+            }
+          } else if (r.odemeAraciTuru === 3 && bankaHesaplari.length > 0 && r.bankaId && !r.cariKod) {
+            const match = bankaHesaplari.find((b) => b.bankaId === r.bankaId);
+            if (match) {
+              return {
+                ...r,
+                cariKod: match.hesapNo,
+                paraAdi: r.paraAdi && r.paraAdi !== "BANKA HAVALE / EFT" ? r.paraAdi : (match.hesapAdi || "BANKA HAVALE / EFT"),
+              };
+            }
+          }
+          return r;
+        })
+      );
+    }
+  }, [posCihazlari, bankaHesaplari]);
 
   // Customer State
   const [aliciVknTckn, setAliciVknTckn] = useState<string>("11111111111");
@@ -441,8 +526,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         if (res && res.mukellefMi) {
           // E-Fatura Mükellefi -> Doğrudan e-Fatura (TICARIFATURA)
           setSenaryo("TICARIFATURA");
-          const foundTitle = res.kullanicilar?.[0]?.Title || currentUnvan || clean;
-          showInfo(`e-Fatura Mükellefi (${foundTitle}) → Senaryo: e-Fatura`);
+          const foundTitle = (res.kullanicilar?.[0]?.Title || "").trim();
+          if (foundTitle) {
+            setAliciUnvan(foundTitle);
+            lastFocusedUnvanRef.current = foundTitle;
+          }
+          // ICE / e-Fatura kayıtlı adreslerini de getir
+          try {
+            const adrRes = await ebelgeService.aliciAdresleri(clean);
+            if (Array.isArray(adrRes) && adrRes.length > 0) {
+              const firstAdres = adrRes[0];
+              const combinedAdres = [firstAdres.adres, firstAdres.ilce, firstAdres.il].filter(Boolean).join(" ");
+              if (combinedAdres) {
+                setDetayAdres(combinedAdres);
+              }
+              if (firstAdres.vergiDairesi) {
+                setVergiDairesi(firstAdres.vergiDairesi);
+              }
+            }
+          } catch { }
+
+          showInfo(`✅ e-Fatura Mükellefi (${foundTitle || clean}) bilgileri getirildi → Senaryo: e-Fatura`);
           return "TICARIFATURA";
         } else {
           // E-Fatura Mükellefi değil -> e-Arşiv (EARSIVFATURA)
@@ -502,6 +606,36 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
     return [...odemeUrunList, ...iskontoUrunler];
   }, [odemeUrunList, iskontolar]);
+
+  const hasCariInOdeme = useMemo(() => {
+    return odemeRows.some((r) => r.odemeAraciTuru === 1 || Boolean(r.cariKartId));
+  }, [odemeRows]);
+
+  const currencyOptions = useMemo(() => {
+    const result: { kod: string; ad: string; paraId: number }[] = [];
+    result.push({ kod: "TL", ad: "TÜRK LİRASI", paraId: 1 });
+    (odemeUrunList || []).forEach((u) => {
+      const k = (u.kod || "").trim().toUpperCase();
+      if (!k || k === "TL" || k === "TRY") return;
+      if (
+        u.urunTipi === 0 ||
+        k === "USD" ||
+        k === "EUR" ||
+        k === "HAS" ||
+        k === "CHF" ||
+        k === "GBP" ||
+        (u.ad || "").toUpperCase().includes("LİRA") ||
+        (u.ad || "").toUpperCase().includes("DOLAR") ||
+        (u.ad || "").toUpperCase().includes("EURO") ||
+        (u.ad || "").toUpperCase().includes("ALTIN")
+      ) {
+        if (!result.some((r) => r.kod === k)) {
+          result.push({ kod: k, ad: u.ad || k, paraId: u.paraId || u.id });
+        }
+      }
+    });
+    return result;
+  }, [odemeUrunList]);
 
   const pendingVeresiyeRowIdRef = useRef<string | null>(null);
 
@@ -585,6 +719,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     searched: boolean;
   }>({ matches: [], searched: false });
   const [showMasakLimitWarningModal, setShowMasakLimitWarningModal] = useState<boolean>(false);
+  const [showMasakConfirmModal, setShowMasakConfirmModal] = useState<boolean>(false);
+  const [showOdemeFarkConfirmModal, setShowOdemeFarkConfirmModal] = useState<{ show: boolean; andPrint: boolean; rawDiffTL: number }>({ show: false, andPrint: false, rawDiffTL: 0 });
   const [isSearchingMasak, setIsSearchingMasak] = useState<boolean>(false);
   const [pendingSaveWithPrint, setPendingSaveWithPrint] = useState<boolean>(false);
 
@@ -820,12 +956,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       (gunlukRes?.satirlar || []).forEach((k) => {
         const cCode = (k.kod || "").toUpperCase().trim();
         if (cCode) mergedKurMap.set(cCode, k);
+        if (k.paraId) mergedKurMap.set(String(k.paraId), k);
+        if (k.ad) mergedKurMap.set(k.ad.toUpperCase().trim(), k);
       });
       (anlikRes?.satirlar || []).forEach((k) => {
         const cCode = (k.kod || "").toUpperCase().trim();
         if (cCode) {
           const existing = mergedKurMap.get(cCode);
-          mergedKurMap.set(cCode, {
+          const mergedItem = {
             ...existing,
             ...k,
             efektifAlis: k.efektifAlis ?? existing?.efektifAlis ?? null,
@@ -833,12 +971,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             dovizAlis: k.dovizAlis ?? existing?.dovizAlis ?? null,
             dovizSatis: k.dovizSatis ?? existing?.dovizSatis ?? null,
             parite: k.parite ?? existing?.parite ?? null,
-          });
+          };
+          mergedKurMap.set(cCode, mergedItem);
+          if (k.paraId) mergedKurMap.set(String(k.paraId), mergedItem);
+          if (k.ad) mergedKurMap.set(k.ad.toUpperCase().trim(), mergedItem);
         }
       });
       setKurMap(mergedKurMap);
       const allKurList = Array.from(mergedKurMap.values());
-      const hasKurItem = allKurList.find((k) => ["HAS", "ALTIN", "HAS ALTIN"].includes((k.kod || "").toUpperCase().trim()));
+      const hasKurItem = allKurList.find((k) => ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()));
       const rate = hasKurItem ? Number(hasKurItem.dovizAlis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifSatis) || 0 : 0;
       if (rate > 0) {
         setAltinHasKuru(rate);
@@ -980,10 +1121,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       };
     }
 
+    const isTL = row.paraKodu?.trim().toUpperCase() === "TL" || row.paraKodu?.trim().toUpperCase() === "TRY" || row.paraKodu?.trim().toUpperCase() === "TRL";
+    let effectiveKur = kur;
+    if (!isTL && effectiveKur <= 0) {
+      effectiveKur = Number(hasKuru) || 1;
+    }
+
     if (!isMetal) {
       // Döviz / Nakit / Veresiye: Sadece miktar ve kur çalışır, tutar = miktar * kur. Has Gr gözükmez (boş kalır).
       if (miktar > 0) {
-        tutar = kur > 0 ? miktar * kur : miktar;
+        tutar = isTL ? miktar : (effectiveKur > 0 ? miktar * effectiveKur : miktar);
       } else {
         tutar = 0;
       }
@@ -993,6 +1140,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         adet: "",
         milyem: "",
         hasGram: "",
+        kur: isTL ? "" : (row.kur ? row.kur : (effectiveKur > 0 ? effectiveKur : "")),
         tutar: tutar > 0 ? Number(tutar.toFixed(2)) : (row.tutar === "" ? "" : 0),
       };
     } else {
@@ -1008,6 +1156,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
       return {
         ...row,
+        kur: isTL ? "" : (row.kur ? row.kur : (hasKuru > 0 ? hasKuru : "")),
         hasGram: hasGram > 0 ? Number(hasGram.toFixed(4)) : (row.hasGram === "" ? "" : 0),
         tutar: tutar > 0 ? Number(tutar.toFixed(2)) : (row.tutar === "" ? "" : 0),
       };
@@ -1063,11 +1212,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Open Product Lookup Modal Helper
   const openProductLookup = (rowId: string, initialTerm?: string) => {
+    const row = items.find((r) => r.id === rowId);
+    const search = initialTerm !== undefined ? initialTerm.trim() : (String(row?.barkod || "")).trim();
     lastModalCallerRef.current = "productLookup";
     lastProductRowIdRef.current = rowId;
     activeProductRowIdRef.current = rowId;
     setActiveProductRowId(rowId);
-    setProductSearchTerm(initialTerm || "");
+    setProductSearchTerm(search);
     setShowProductLookup(true);
   };
 
@@ -1123,7 +1274,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       next[targetIdx] = { ...populated, id: existingRow.id };
 
       setActiveRowIndex(targetIdx);
-      setTimeout(() => focusGridCell(existingRow.id, "miktar", "select"), 50);
+      setTimeout(() => focusGridCell(existingRow.id, "birimFiyat", "select"), 50);
 
       return next;
     });
@@ -1212,10 +1363,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     iskontolar.find((x) => x.iskontoId === selectedIskontoId) ||
     (iskontoKodu.trim()
       ? iskontolar.find(
-          (x) =>
-            (x.kod && x.kod.toLowerCase() === iskontoKodu.trim().toLowerCase()) ||
-            (x.tanim && x.tanim.toLowerCase() === iskontoKodu.trim().toLowerCase())
-        )
+        (x) =>
+          (x.kod && x.kod.toLowerCase() === iskontoKodu.trim().toLowerCase()) ||
+          (x.tanim && x.tanim.toLowerCase() === iskontoKodu.trim().toLowerCase())
+      )
       : null) ||
     null;
 
@@ -1446,26 +1597,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setItems((prev) =>
       prev.map((r) => {
         if (r.id !== rowId) return r;
+        const isBarkodlu = Boolean((r.barkod && String(r.barkod).trim()) || r.altinUrunId);
+        // Barkodlu üründe sadece miktar değiştirilebilir; diğer alanlar sabittir
+        if (isBarkodlu && (field === "gram" || field === "hasGram" || field === "ayar" || field === "birim" || field === "urunAdi" || field === "birimFiyat" || field === "kdvOrani")) {
+          return r;
+        }
         const updated = { ...r, [field]: value };
+        if (field === "barkod" && !String(value).trim()) {
+          updated.altinUrunId = null;
+        }
         return recalculateLine(updated);
       })
     );
   };
 
-  // Insert Row Handler with validation check & red highlighting
+  // Insert Row Handler
   const handleAddPerakendeRow = useCallback((afterIndex?: number) => {
-    const lastRow = items[items.length - 1];
-    if (lastRow && !isPerakendeRowFilled(lastRow)) {
-      setInvalidRowIds((prev) => ({ ...prev, [lastRow.id]: true }));
-      if (!lastRow.barkod && !lastRow.urunAdi) {
-        focusGridCell(lastRow.id, "barkod", "select");
-      } else if ((!lastRow.miktar || Number(lastRow.miktar) <= 0) && (!lastRow.gram || Number(lastRow.gram) <= 0)) {
-        focusGridCell(lastRow.id, "gram", "select");
-      } else {
-        focusGridCell(lastRow.id, "birimFiyat", "select");
-      }
-      return false;
-    }
     const newRow = createEmptyRow();
     setItems((prev) => {
       if (typeof afterIndex === "number" && afterIndex >= 0) {
@@ -1480,7 +1627,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       focusGridCell(newRow.id, "barkod", "select");
     }, 50);
     return true;
-  }, [items]);
+  }, []);
 
   // Keyboard Navigation across Table Grid Cells
   const handleGridKeyDown = (
@@ -1543,7 +1690,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             });
           return;
         } else {
-          openProductLookup(rowId, "");
+          // Boş ise dürbün açılmaz, bir sonraki alana geçilir
+          focusGridCell(rowId, "urunAdi", "select");
           return;
         }
       }
@@ -1557,6 +1705,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           return;
         }
       }
+
+      const currentRow = items[rowIndex];
+      const isRowBarkodlu = Boolean((currentRow?.barkod && String(currentRow.barkod).trim()) || currentRow?.altinUrunId);
 
       // Next column in same row
       if (colIdx + 1 < totalCols) {
@@ -1575,7 +1726,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       }
     } else if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
-      if (colIdx > 0) {
+      const currentRow = items[rowIndex];
+      const isRowBarkodlu = Boolean((currentRow?.barkod && String(currentRow.barkod).trim()) || currentRow?.altinUrunId);
+
+      if ((colKey === "birimFiyat" || colKey === "kdvOrani") && isRowBarkodlu) {
+        focusGridCell(rowId, "miktar", "select");
+      } else if (colKey === "miktar" && isRowBarkodlu) {
+        focusGridCell(rowId, "barkod", "select");
+      } else if (colIdx > 0) {
         const pk = GRID_COLS[colIdx - 1];
         focusGridCell(rowId, pk, "select");
       } else if (rowIndex > 0) {
@@ -1662,6 +1820,63 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     );
   }, [altinHasKuru, odemeUrunList]);
 
+  // Helper: Ürün / Döviz / Maden için Güncel Alış/Satış Kurunu Çek
+  const getKurForProduct = useCallback((
+    urun: { paraId?: number | null; kod?: string; ad?: string; urunTipi?: number; alisFiyati?: number; satisFiyati?: number },
+    islemTip: 0 | 1 // 0: Alış, 1: Satış
+  ): number => {
+    const code = (urun.kod || "").toUpperCase().trim();
+    if (code === "TL" || code === "TRY" || code === "TRL") return 1;
+
+    const allList = Array.from(kurMap.values());
+    const found = allList.find((k) => 
+      (urun.paraId && k.paraId === urun.paraId) || 
+      (k.kod && k.kod.toUpperCase().trim() === code) ||
+      (urun.ad && k.tanim && k.tanim.toUpperCase().trim() === urun.ad.toUpperCase().trim())
+    );
+
+    if (found) {
+      const rate = islemTip === 0
+        ? (found.efektifAlis ?? found.dovizAlis ?? found.efektifSatis ?? found.dovizSatis ?? 0)
+        : (found.efektifSatis ?? found.dovizSatis ?? found.efektifAlis ?? found.dovizAlis ?? 0);
+      if (Number(rate) > 0) return Number(rate);
+    }
+
+    const isGumus = code.includes("GUMUS") || code.includes("GÜMÜŞ") || (urun.ad || "").toUpperCase().includes("GÜMÜŞ") || (urun.ad || "").toUpperCase().includes("GUMUS") || urun.urunTipi === 3;
+    if (isGumus) {
+      const gKur = allList.find((k) => ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes((k.kod || "").toUpperCase().trim()));
+      if (gKur) {
+        const rate = islemTip === 0 ? (gKur.efektifAlis ?? gKur.dovizAlis ?? 0) : (gKur.efektifSatis ?? gKur.dovizSatis ?? 0);
+        if (Number(rate) > 0) return Number(rate);
+      }
+      return 1;
+    }
+
+    const isAltin = isAltinOrGumusRow({ paraKodu: code, paraAdi: urun.ad || "" }, odemeUrunList) || urun.urunTipi === 2 || urun.urunTipi === 1;
+    if (isAltin) {
+      const hasKur = allList.find((k) => ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()));
+      if (hasKur) {
+        const rate = islemTip === 0 ? (hasKur.efektifAlis ?? hasKur.dovizAlis ?? 0) : (hasKur.efektifSatis ?? hasKur.dovizSatis ?? 0);
+        if (Number(rate) > 0) return Number(rate);
+      }
+      if (Number(altinHasKuru) > 0) return Number(altinHasKuru);
+    }
+
+    if (code) {
+      const curKur = allList.find((k) => (k.kod && k.kod.toUpperCase().trim() === code) || (urun.paraId && k.paraId === urun.paraId));
+      if (curKur) {
+        const rate = islemTip === 0 ? (curKur.efektifAlis ?? curKur.dovizAlis ?? 0) : (curKur.efektifSatis ?? curKur.dovizSatis ?? 0);
+        if (Number(rate) > 0) return Number(rate);
+      }
+    }
+
+    if (Number(urun.satisFiyati) > 0 || Number(urun.alisFiyati) > 0) {
+      return islemTip === 0 ? (Number(urun.alisFiyati) || Number(urun.satisFiyati) || 1) : (Number(urun.satisFiyati) || Number(urun.alisFiyati) || 1);
+    }
+
+    return 1;
+  }, [kurMap, odemeUrunList, altinHasKuru]);
+
   // Apply selected Currency / Product / Iskonto to Payment Row
   const applyProductToOdemeRow = useCallback((rowId: string, item: UrunItem) => {
     setOdemeRows((prev) =>
@@ -1740,24 +1955,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           const effAlis = Number(item.alisMilyem) > 0 ? Number(item.alisMilyem) : (Number((item as any).hasAlisKatsayisi) > 0 ? Number((item as any).hasAlisKatsayisi) : (Number(item.hasOrani) || 1000));
           const effSatis = Number(item.satisMilyem) > 0 ? Number(item.satisMilyem) : (Number((item as any).hasSatisKatsayisi) > 0 ? Number((item as any).hasSatisKatsayisi) : (Number(item.hasOrani) || 1000));
           if (faturaTipi === 1) {
-            milyemVal = String(effAlis);
-          } else {
             milyemVal = String(effSatis);
+          } else {
+            milyemVal = String(effAlis);
           }
-          kurVal = altinHasKuru > 0 ? altinHasKuru : 1;
+
+          kurVal = getKurForProduct(item, faturaTipi === 1 ? 1 : 0);
         } else if (isTL || isVeresiye) {
           kurVal = 1;
         } else {
-          // Döviz: USD, EUR, GBP vs.
-          const codeUpper = (item.kod || "").toUpperCase().trim();
-          const kurInfo = kurMap.get(codeUpper);
-          if (kurInfo) {
-            if (faturaTipi === 1) {
-              kurVal = Number(kurInfo.efektifAlis ?? kurInfo.dovizAlis ?? kurInfo.efektifSatis ?? kurInfo.dovizSatis) || 1;
-            } else {
-              kurVal = Number(kurInfo.efektifSatis ?? kurInfo.dovizSatis ?? kurInfo.efektifAlis ?? kurInfo.dovizAlis) || 1;
-            }
-          }
+          kurVal = getKurForProduct(item, faturaTipi === 1 ? 1 : 0);
         }
 
         let updated: OdemeRow = {
@@ -1768,7 +1975,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           adet: isMetal ? (r.adet || (item.gramaj && Number(item.gramaj) > 0 ? 1 : "")) : "",
           miktar: r.miktar || (isMetal && item.gramaj && Number(item.gramaj) > 0 ? item.gramaj : ""),
           milyem: milyemVal,
-          kur: kurVal > 0 ? kurVal : 1,
+          urunTipi: item.urunTipi || 0,
+          kur: (isTL || isVeresiye) ? "" : (kurVal > 0 ? kurVal : 1),
         };
 
         // Eğer veresiye seçildiyse ve kalan tutar varsa otomatik tutara ve miktara aktar
@@ -2038,12 +2246,20 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     [brutToplam, altinHasKuru, showError, showSuccess, focusOdemeGridCell]
   );
 
-  // Helper to determine navigable columns for payment rows (Tutar is readOnly/calculated)
+  // Helper to determine navigable columns for payment rows (Kur & Tutar are readOnly/calculated)
   const getNavigableOdemeCols = useCallback((row?: OdemeRow): OdemeGridColKey[] => {
-    if (isAltinOrGumusRow(row, odemeUrunList)) {
-      return ["paraKodu", "adet", "miktar", "milyem", "hasGram", "kur"];
+    const isHasCodeCol = row?.odemeAraciTuru === 1 || row?.odemeAraciTuru === 2 || row?.odemeAraciTuru === 3 || Boolean(row?.cariKartId);
+    const cols: OdemeGridColKey[] = ["odemeAraciTuru"];
+    if (isHasCodeCol) {
+      cols.push("cariKod");
     }
-    return ["paraKodu", "miktar", "kur"];
+    cols.push("paraKodu");
+    if (isAltinOrGumusRow(row, odemeUrunList)) {
+      cols.push("adet", "miktar", "milyem");
+      return cols;
+    }
+    cols.push("miktar");
+    return cols;
   }, [odemeUrunList]);
 
   // Keyboard navigation for Payment Grid
@@ -2075,39 +2291,168 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return;
     }
 
+    if (colKey === "odemeAraciTuru") {
+      if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+        e.preventDefault();
+        const nextCol = navCols[1] || "paraKodu";
+        focusOdemeGridCell(rowId, nextCol, "select");
+        return;
+      }
+    }
+
+    if (colKey === "cariKod") {
+      const typed = (String(odemeRows[rowIndex]?.cariKod) || "").trim();
+      const isPos = currentRow?.odemeAraciTuru === 2;
+      const isHesap = currentRow?.odemeAraciTuru === 3;
+
+      if (isPos) {
+        if (e.key === "Enter" || e.key === "F4" || e.key === "F3" || (e.key === "Tab" && !e.shiftKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!typed && e.key !== "F4" && e.key !== "F3") {
+            focusOdemeGridCell(rowId, "miktar", "select");
+            return;
+          }
+          const matches = posCihazlari.filter(
+            (p) =>
+              (p.kod || "").toLowerCase().includes(typed.toLowerCase()) ||
+              (p.ad || "").toLowerCase().includes(typed.toLowerCase())
+          );
+          if (matches.length === 1 && e.key !== "F4" && e.key !== "F3") {
+            const match = matches[0];
+            setOdemeRows((prev) =>
+              prev.map((r) =>
+                r.id === rowId
+                  ? {
+                      ...r,
+                      cariKod: match.kod,
+                      paraAdi: match.ad || "KREDİ KARTI / POS",
+                      bankaId: match.posCihaziId,
+                    }
+                  : r
+              )
+            );
+            focusOdemeGridCell(rowId, "miktar", "select");
+            return;
+          }
+          setPendingPosRowId(rowId);
+          setPosSearchTerm(typed);
+          setShowPosModal(true);
+          return;
+        }
+      } else if (isHesap) {
+        if (e.key === "Enter" || e.key === "F4" || e.key === "F3" || (e.key === "Tab" && !e.shiftKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!typed && e.key !== "F4" && e.key !== "F3") {
+            focusOdemeGridCell(rowId, "miktar", "select");
+            return;
+          }
+          const matches = bankaHesaplari.filter(
+            (b) =>
+              (b.hesapNo || "").toLowerCase().includes(typed.toLowerCase()) ||
+              (b.hesapAdi || "").toLowerCase().includes(typed.toLowerCase()) ||
+              (b.iban || "").toLowerCase().includes(typed.toLowerCase())
+          );
+          if (matches.length === 1 && e.key !== "F4" && e.key !== "F3") {
+            const match = matches[0];
+            setOdemeRows((prev) =>
+              prev.map((r) =>
+                r.id === rowId
+                  ? {
+                      ...r,
+                      cariKod: match.hesapNo,
+                      paraAdi: match.hesapAdi || "BANKA HAVALE / EFT",
+                      bankaId: match.bankaId,
+                    }
+                  : r
+              )
+            );
+            focusOdemeGridCell(rowId, "miktar", "select");
+            return;
+          }
+          setPendingBankaRowId(rowId);
+          setBankaSearchTerm(typed);
+          setShowBankaModal(true);
+          return;
+        }
+      } else {
+        if (e.key === "Enter" || e.key === "F4" || e.key === "F3" || (e.key === "Tab" && !e.shiftKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!typed) {
+            focusOdemeGridCell(rowId, "paraKodu", "select");
+            return;
+          }
+          const matches = cariler.filter((c) => (c.kod || "").toLowerCase().includes(typed.toLowerCase()) || (c.ad || "").toLowerCase().includes(typed.toLowerCase()));
+          if (matches.length === 1 && e.key !== "F4" && e.key !== "F3") {
+            const match = matches[0];
+            setOdemeRows((prev) => prev.map((r) => r.id === rowId ? {
+              ...r,
+              odemeAraciTuru: 1,
+              cariKartId: match.id,
+              cariKod: match.kod,
+              cariUnvan: match.ad || "",
+              paraId: null,
+              paraKodu: "",
+              paraAdi: "",
+              adet: "",
+              miktar: "",
+              milyem: "",
+              hasGram: "",
+              kur: "",
+              tutar: "",
+            } : r));
+            focusOdemeGridCell(rowId, "paraKodu", "select");
+            return;
+          }
+          pendingVeresiyeRowIdRef.current = rowId;
+          setMusteriSearchTerm(typed);
+          setCariSearchField("kod");
+          setShowMusteriModal(true);
+          return;
+        }
+      }
+    }
+
     if (colKey === "paraKodu") {
       const typed = (String(odemeRows[rowIndex]?.paraKodu) || "").trim();
-      const isVeresiyeRow =
-        currentRow?.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
-        currentRow?.paraAdi?.toUpperCase().includes("VERESİYE") ||
-        currentRow?.paraAdi?.toUpperCase().includes("AÇIK HESAP") ||
-        !!currentRow?.cariKartId;
+      const isCari = currentRow?.odemeAraciTuru === 1 || Boolean(currentRow?.cariKartId);
       const isIskontoRow =
         currentRow?.paraKodu?.trim().toUpperCase().startsWith("ISK") ||
         currentRow?.paraAdi?.toUpperCase().includes("İSKONTO") ||
         currentRow?.paraAdi?.toUpperCase().includes("ISKONTO") ||
         (currentRow?.paraId !== undefined && currentRow?.paraId !== null && Number(currentRow?.paraId) >= 100000);
 
-      if (e.key === "Enter" || e.key === "F4" || e.key === "F3") {
+      if (e.key === "Enter" || e.key === "F4" || e.key === "F3" || (e.key === "Tab" && !e.shiftKey)) {
         e.preventDefault();
-        if (isIskontoRow) {
+        e.stopPropagation();
+        if (isIskontoRow && (e.key === "F4" || e.key === "F3")) {
           setShowIskontoModal(true);
           return;
         }
-        const upper = typed.toUpperCase();
-        if (isVeresiyeRow || upper === "VERESIYE" || upper === "VERESİYE" || upper === "ACIKHESAP" || upper === "AÇIK HESAP" || upper === "ACIK HESAP") {
-          pendingVeresiyeRowIdRef.current = rowId;
-          const searchParam = (upper === "VERESIYE" || upper === "VERESİYE" || upper === "ACIKHESAP" || upper === "AÇIK HESAP" || upper === "ACIK HESAP")
-            ? (currentRow?.cariUnvan || currentRow?.cariKod || "")
-            : (currentRow?.cariKod || typed);
-          setMusteriSearchTerm(searchParam);
-          setShowMusteriModal(true);
+
+        if (isCari && !typed && e.key !== "F4" && e.key !== "F3") {
+          focusOdemeGridCell(rowId, "miktar", "select");
           return;
         }
-        if (!typed) {
+
+        const upper = typed.toUpperCase();
+        if ((!isCari && !typed) || upper === "TL" || upper === "TRY" || upper === "TRL") {
+          setOdemeRows((prev) =>
+            prev.map((r) =>
+              r.id === rowId
+                ? { ...r, paraKodu: "TL", paraAdi: "TÜRK LİRASI", kur: 1, milyem: "", adet: "", hasGram: "" }
+                : r
+            )
+          );
+          focusOdemeGridCell(rowId, "miktar", "select");
+          return;
+        }
+        if (e.key === "F4" || e.key === "F3") {
           lastModalCallerRef.current = "odemeLookup";
           lastOdemeRowIdRef.current = rowId;
-          setOdemeSearchTerm("");
+          setOdemeSearchTerm(typed);
           openOdemeUrunModal(rowId);
           return;
         }
@@ -2215,6 +2560,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   // Insert Row at specific index (Payment Table)
   const handleAddOdemeRow = useCallback((afterIndex?: number) => {
     const newRow = createEmptyOdemeRow(odemeRows.length + 1);
+    const newIdx = typeof afterIndex === "number" && afterIndex >= 0 ? afterIndex + 1 : odemeRows.length;
     setOdemeRows((prev) => {
       if (typeof afterIndex === "number" && afterIndex >= 0) {
         const next = [...prev];
@@ -2224,9 +2570,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return [...prev, newRow];
     });
 
+    setActiveOdemeRowIndex(newIdx);
+
     setTimeout(() => {
-      focusOdemeGridCell(newRow.id, "paraKodu", "select");
-    }, 50);
+      focusOdemeGridCell(newRow.id, "odemeAraciTuru", "select");
+    }, 20);
+    setTimeout(() => {
+      focusOdemeGridCell(newRow.id, "odemeAraciTuru", "select");
+    }, 80);
+    return true;
   }, [odemeRows.length]);
 
   // Delete Item Row
@@ -2251,7 +2603,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     });
   }, []);
 
-  const handleCompleteSaleRef = useRef<((withPrint?: boolean, bypassMasakWarning?: boolean) => Promise<void>) | null>(null);
+  const handleCompleteSaleRef = useRef<((withPrint?: boolean, bypassMasakWarning?: boolean, forceOdemeFarkApprove?: boolean) => Promise<void>) | null>(null);
 
   // Müşteri / MASAK Detay Modalını Aç
   const openMusteriDetayModal = useCallback(() => {
@@ -2299,7 +2651,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
       if (andCompleteSale) {
         setTimeout(() => {
-          handleCompleteSaleRef.current?.(pendingSaveWithPrint, true);
+          handleCompleteSaleRef.current?.(pendingSaveWithPrint, true, true);
         }, 120);
       }
     },
@@ -2331,11 +2683,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setShowAyarModal(false);
     setMasakModalOpen(false);
     setShowMasakLimitWarningModal(false);
+    setShowOdemeFarkConfirmModal({ show: false, andPrint: false, rawDiffTL: 0 });
   }, []);
 
   // Global Keyboard Shortcuts (F1, F2, F3, F4, F8, F9, F10)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Eğer ekranda açık bir modal varsa kısayolları çalıştırma
+      if (document.querySelector(".modal.show")) {
+        return;
+      }
+
       const activeEl = document.activeElement as HTMLElement | null;
       const isInput =
         activeEl &&
@@ -2355,31 +2713,37 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
       if (isF1) {
         e.preventDefault();
+        e.stopPropagation();
         closeAllModals();
         handleCompleteSale(false);
       } else if (isF2) {
         e.preventDefault();
+        e.stopPropagation();
         closeAllModals();
         if (isDuzeltmeMode && currentFaturaId) {
           handleDeleteCurrent();
         }
       } else if (isF3) {
         e.preventDefault();
+        e.stopPropagation();
         closeAllModals();
         if (isDuzeltmeMode) {
           handleOpenHistory();
         }
       } else if (isF4) {
         e.preventDefault();
+        e.stopPropagation();
         closeAllModals();
         setMusteriSearchTerm(aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan : cariKod);
         setShowMusteriModal(true);
       } else if (isF7) {
         e.preventDefault();
+        e.stopPropagation();
         closeAllModals();
         handleAutoVeresiye();
       } else if (isF8) {
         e.preventDefault();
+        e.stopPropagation();
         closeAllModals();
         openMusteriDetayModal();
       } else if (isF9) {
@@ -2394,6 +2758,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         handleCompleteSale(true);
       } else if (e.key === "Insert" && !isInput) {
         e.preventDefault();
+        e.stopPropagation();
         handleAddRow();
       }
     };
@@ -2588,8 +2953,28 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             const effMiktar = r.miktar && Number(r.miktar) > 0 ? r.miktar : (rem > 0 ? rem : "");
             const effTutar = r.tutar && Number(r.tutar) > 0 ? r.tutar : (rem > 0 ? rem : "");
 
+            if (targetRowId !== "auto") {
+              return {
+                ...r,
+                odemeAraciTuru: 1,
+                cariKartId: cariIdVal,
+                cariUnvan: cariUnvanVal,
+                cariKod: cariKodVal,
+                paraId: null,
+                paraKodu: "",
+                paraAdi: "",
+                adet: "",
+                miktar: "",
+                milyem: "",
+                hasGram: "",
+                kur: "",
+                tutar: "",
+              };
+            }
+
             return {
               ...r,
+              odemeAraciTuru: 1,
               paraId: 1,
               paraKodu: cariKodVal || "VERESIYE",
               paraAdi: cariUnvanVal || "VERESİYE",
@@ -2689,11 +3074,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     lastFocusedUnvanRef.current = res.unvan;
     lastFocusedVknRef.current = identVal;
 
-    const autoSenaryo = detectScenario(identVal, rawData, res.unvan);
+    const autoSenaryo = (res.isMukellef || res.eFaturaPostaKutusu || rawData?.eFatura) ? "TICARIFATURA" : detectScenario(identVal, rawData, res.unvan);
     setSenaryo(autoSenaryo);
     if (identVal && identVal !== "11111111111") {
       void checkAndApplyMukellefiyet(identVal, res.unvan, autoSenaryo);
     }
+
+    setOdemeRows((prev) =>
+      prev.map((r) => {
+        if (r.odemeAraciTuru === 1) {
+          return {
+            ...r,
+            paraKodu: resolvedKod || "VERESIYE",
+            paraAdi: res.unvan || "VERESİYE / AÇIK HESAP",
+            cariKartId: res.type === "registered" ? res.id : null,
+            cariUnvan: res.unvan,
+            cariKod: resolvedKod,
+          };
+        }
+        return r;
+      })
+    );
 
     let lookups = cariLookups;
     if (!lookups) {
@@ -2703,69 +3104,70 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       } catch { }
     }
 
+    const resolvedVd =
+      res.vergiDairesi ||
+      rawData?.vergiDairesi ||
+      lookups?.vergiDairesiList?.find((x) => x.id === rawData?.vergiDairesiId)?.ad ||
+      "";
+    const resolvedIl =
+      res.il ||
+      rawData?.il ||
+      lookups?.ilList?.find((x) => x.id === rawData?.ilId)?.ad ||
+      "";
+    const resolvedIlce =
+      res.ilce ||
+      rawData?.ilce ||
+      lookups?.ilceList?.find((x) => x.id === rawData?.ilceId)?.ad ||
+      "";
+    const resolvedAdres = res.adres || rawData?.adres || "";
+    const resolvedTelefon = res.telefon || rawData?.telefon || "";
+    const resolvedEposta = res.eFaturaPostaKutusu || res.eposta || rawData?.eposta || "";
+
+    setVergiDairesi(resolvedVd);
+    setDetayVergiDairesi(resolvedVd);
+    setIl(resolvedIl);
+    setDetayIl(resolvedIl);
+    setIlce(resolvedIlce);
+    setDetayIlce(resolvedIlce);
+    setAdres(resolvedAdres);
+    setDetayAdres(resolvedAdres);
+    setTelefon(resolvedTelefon);
+    setDetayTelefon(resolvedTelefon);
+    setEposta(resolvedEposta);
+    setDetayEposta(resolvedEposta);
+    setDetayUnvan(res.unvan);
+    setDetayVknTckn(identVal);
+
     if (res.type === "registered" && res.id) {
       setCariKartId(res.id);
-      const raw = res.raw as any;
-      if (raw) {
-        const vdName =
-          raw.vergiDairesi ||
-          lookups?.vergiDairesiList?.find((x) => x.id === raw.vergiDairesiId)?.ad ||
-          "";
-        const ilName =
-          raw.il ||
-          lookups?.ilList?.find((x) => x.id === raw.ilId)?.ad ||
-          "";
-        const ilceName =
-          raw.ilce ||
-          lookups?.ilceList?.find((x) => x.id === raw.ilceId)?.ad ||
-          "";
-
-        setVergiDairesi(vdName);
-        setIl(ilName);
-        setIlce(ilceName);
-        if (raw.adres) setAdres(raw.adres);
-        if (raw.telefon) setTelefon(raw.telefon);
-        if (raw.eposta) setEposta(raw.eposta);
-      }
-    } else if (res.type === "unregistered") {
-      setCariKartId(null);
-      const raw = res.raw as any;
-      if (raw) {
-        const vdName =
-          raw.vergiDairesi ||
-          lookups?.vergiDairesiList?.find((x) => x.id === raw.vergiDairesiId)?.ad ||
-          "";
-        const ilName =
-          raw.il ||
-          lookups?.ilList?.find((x) => x.id === raw.ilId)?.ad ||
-          "";
-        const ilceName =
-          raw.ilce ||
-          lookups?.ilceList?.find((x) => x.id === raw.ilceId)?.ad ||
-          "";
-
-        setVergiDairesi(vdName);
-        setIl(ilName);
-        setIlce(ilceName);
-        if (raw.adres) setAdres(raw.adres);
-        if (raw.telefon) setTelefon(raw.telefon);
-        if (raw.eposta) setEposta(raw.eposta);
-      }
     } else {
       setCariKartId(null);
-      setVergiDairesi("");
-      setIl("");
-      setIlce("");
-      setEposta("");
     }
+
     setShowMusteriModal(false);
     setMusteriSearchTerm("");
 
     // MASAK Kontrolü (1. Kontrol Noktası: Kişi Seçildiğinde / Sorgulandığında)
-    if (res.unvan && res.unvan !== "NİHAİ TÜKETİCİ") {
+    const activeStatId = faturaTipi === 0 ? companyDefinitions?.ALIS_ISTATISTIK_ID : companyDefinitions?.SATIS_ISTATISTIK_ID;
+    const activeStat = statisticList.find((s) => s.id === Number(activeStatId));
+    const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
+
+    if (!isGayriResmi && res.unvan && res.unvan !== "NİHAİ TÜKETİCİ") {
       void handleMasakQuery(res.unvan, res.vergiKimlikNo);
     } else {
       setMasakResult({ matches: [], searched: false });
+    }
+
+    if (genelToplam >= 185000 && !isGayriResmi) {
+      const cleanVkn = (res.vergiKimlikNo || "").trim();
+      const isMissingInfo =
+        !cleanVkn ||
+        cleanVkn === "11111111111" ||
+        res.unvan.trim().toUpperCase() === "NİHAİ TÜKETİCİ" ||
+        !res.adres?.trim();
+      if (isMissingInfo) {
+        setShowMasakLimitWarningModal(true);
+      }
     }
   };
 
@@ -2833,7 +3235,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   };
 
   // Complete Sale & Save Invoice
-  const handleCompleteSale = async (withPrint: boolean = false, bypassMasakWarning: boolean = false) => {
+  const handleCompleteSale = async (
+    withPrint: boolean = false,
+    bypassMasakWarning: boolean = false,
+    forceOdemeFarkApprove: boolean = false
+  ) => {
     handleCompleteSaleRef.current = handleCompleteSale;
     if (isSubmittingRef.current) return;
 
@@ -2877,10 +3283,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return;
     }
 
-    if (rawDiffTL > 0.05) {
-      showWarning(
-        `Fiş genel toplamı (${genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺) ile ödeme / tahsilat tutarı (${totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺) eşit değil! Aradaki ${rawDiffTL.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺ farkı kapatınız veya "Kalanı Veresiye Yaz" butonunu kullanınız.`
-      );
+    if (totalOdemeTutar > 0 && rawDiffTL > 0.05 && !forceOdemeFarkApprove) {
+      setShowOdemeFarkConfirmModal({ show: true, andPrint: withPrint, rawDiffTL });
       return;
     }
 
@@ -2902,17 +3306,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return;
     }
 
-    // MASAK Kontrolü (2. Kontrol Noktası: Kaydederken limit aşıyorsa uyarır)
+    // MASAK Kontrolü (2. Kontrol Noktası: Kaydederken limit aşıyorsa uyarır, Fiş Dizayn Tipi = 1 ise gayriresmi işlem olduğundan sınır ve kontrol çalışmaz)
+    const activeStatId = faturaTipi === 0 ? companyDefinitions?.ALIS_ISTATISTIK_ID : companyDefinitions?.SATIS_ISTATISTIK_ID;
+    const activeStat = statisticList.find((s) => s.id === Number(activeStatId));
+    const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
+
     const MASAK_LIMIT = 185000;
-    if (genelToplam >= MASAK_LIMIT && !bypassMasakWarning) {
+    if (genelToplam >= MASAK_LIMIT && !bypassMasakWarning && !isGayriResmi) {
       const isMissingInfo =
         cleanVkn === "11111111111" ||
         aliciUnvan.trim().toUpperCase() === "NİHAİ TÜKETİCİ" ||
         !adres.trim();
 
+      setPendingSaveWithPrint(withPrint);
       if (isMissingInfo) {
-        setPendingSaveWithPrint(withPrint);
         setShowMasakLimitWarningModal(true);
+        return;
+      } else {
+        setShowMasakConfirmModal(true);
         return;
       }
     }
@@ -2933,30 +3344,19 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         kdvOrani: Number(item.kdvOrani) || 0,
       }));
 
-      const payloadOdemeler: SavePerakendeFaturaOdemePayload[] = odemeRows
-        .filter((r) => r.paraKodu || Number(r.tutar) > 0 || r.cariKartId)
+      let payloadOdemeler: SavePerakendeFaturaOdemePayload[] = odemeRows
+        .filter((r) => Number(r.tutar) > 0 || Number(r.miktar) > 0 || r.cariKartId || (r.cariKod && r.cariKod.trim() !== ""))
         .map((r, idx) => {
-          const isVeresiyeRow =
-            Boolean(r.cariKartId) ||
-            Boolean(r.cariKod) ||
-            Boolean(r.cariUnvan) ||
-            r.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
-            r.paraAdi?.toUpperCase().includes("VERESİYE") ||
-            r.paraAdi?.toUpperCase().includes("AÇIK HESAP");
-
-          let resolvedKod = r.paraKodu || "TL";
-          let resolvedAdi = r.paraAdi || (r.paraKodu === "TL" ? "TÜRK LİRASI" : "");
-
-          if (isVeresiyeRow) {
-            resolvedKod = r.cariKod || (r.paraKodu && r.paraKodu !== "TL" ? r.paraKodu : "VERESIYE");
-            resolvedAdi = r.cariUnvan || (r.paraAdi && r.paraAdi !== "TÜRK LİRASI" ? r.paraAdi : "AÇIK HESAP");
-          }
-
           return {
             satirNo: idx + 1,
+            odemeAraciTuru: r.odemeAraciTuru || 0,
+            cariKartId: r.odemeAraciTuru === 1 ? (r.cariKartId || null) : null,
+            posCihaziId: r.odemeAraciTuru === 2 ? (r.posCihaziId || r.bankaId || null) : null,
+            cariKod: r.cariKod || null,
+            cariUnvan: r.cariUnvan || null,
             paraId: r.paraId ?? null,
-            paraKodu: resolvedKod,
-            paraAdi: resolvedAdi,
+            paraKodu: r.paraKodu || "TL",
+            paraAdi: r.paraAdi || (r.paraKodu === "TL" ? "TÜRK LİRASI" : ""),
             adet: r.adet !== "" && r.adet !== null && r.adet !== undefined ? Number(r.adet) : null,
             miktar: r.miktar !== "" && r.miktar !== null && r.miktar !== undefined ? Number(r.miktar) : null,
             milyem: r.milyem !== "" && r.milyem !== null && r.milyem !== undefined ? Number(r.milyem) : null,
@@ -2965,6 +3365,26 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             tutar: Number(r.tutar) || 0,
           };
         });
+
+      if (payloadOdemeler.length === 0 && genelToplam > 0) {
+        payloadOdemeler = [{
+          satirNo: 1,
+          odemeAraciTuru: 0,
+          cariKartId: null,
+          posCihaziId: null,
+          cariKod: null,
+          cariUnvan: null,
+          paraId: 1,
+          paraKodu: "TL",
+          paraAdi: "TÜRK LİRASI",
+          adet: null,
+          miktar: genelToplam,
+          milyem: null,
+          hasGram: null,
+          kur: 1,
+          tutar: genelToplam,
+        }];
+      }
 
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
@@ -3002,13 +3422,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
       if (withPrint) {
         // Önizlemesiz doğrudan yerel sessiz yazdırma servisine (localhost:5050) gönder
+        const resolved = resolveEffectivePrinter({
+          pageType: "perakende",
+          tip: faturaTipi,
+          vezne: selectedVezne,
+          user,
+          printers,
+        });
+        const isPos = resolved.recommendedPrintType === "POS";
         const receiptHtml = generatePerakendeReceiptHtml({
           fatura: result || payload,
-          isPos: true,
+          company: companyDefinitions,
+          isPos,
         });
-        triggerSilentPrint({
+        await triggerSilentPrint({
           html: receiptHtml,
-          isPos: true,
+          printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+          copies: resolved.kopyaSayisi || 1,
+          isPos,
           title: `Perakende_Fisi_${result?.faturaNo || payload?.faturaNo || "Yazdir"}`,
         });
       }
@@ -3301,50 +3732,47 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       if (rawOdemeler && rawOdemeler.length > 0) {
         const loadedOdemeler: OdemeRow[] = rawOdemeler.map((o: any, idx: number) => {
           const rawKod = (o.paraKodu || o.PARA_KODU || "").trim();
-          const rawAdi = (o.paraAdi || o.PARA_ADI || "").trim();
-          const invCariId = inv.cariKartId ?? inv.CARI_KART_ID ?? null;
-          const invCariKod = (inv.cariKod || inv.CARI_KOD || "").trim();
-          const invCariUnvan = (inv.aliciUnvan || inv.ALICI_UNVAN || inv.cariUnvan || inv.CARI_UNVAN || "").trim();
-
+          let rowParaAdi = (o.paraAdi || o.PARA_ADI || "").trim();
           const rowCariId = o.cariKartId ?? o.CARI_KART_ID ?? null;
-          const matchedCari =
-            (rowCariId ? cariler.find((c) => c.id === rowCariId) : null) ||
-            (rawKod && rawKod !== "TL" && rawKod !== "TRY" ? cariler.find((c) => c.kod && c.kod.trim().toLowerCase() === rawKod.toLowerCase()) : null) ||
-            (rawAdi && rawAdi !== "TÜRK LİRASI" ? cariler.find((c) => (c.ad && c.ad.trim().toLowerCase() === rawAdi.toLowerCase()) || ((c as any).unvan && (c as any).unvan.trim().toLowerCase() === rawAdi.toLowerCase())) : null) ||
-            (invCariId ? cariler.find((c) => c.id === invCariId) : null);
+          const rowPosId = o.posCihaziId ?? o.POS_CIHAZI_ID ?? o.bankaId ?? o.BANKA_ID ?? null;
+          let rowCariKod = (o.cariKod || o.CARI_KOD || "").trim();
+          let rowCariUnvan = (o.cariUnvan || o.CARI_UNVAN || "").trim();
 
-          const isVeresiye =
-            Boolean(rowCariId) ||
-            Boolean(o.cariKod || o.CARI_KOD) ||
-            Boolean(matchedCari && matchedCari.ad !== "NİHAİ TÜKETİCİ") ||
-            rawKod.toUpperCase() === "VERESIYE" ||
-            rawKod.toUpperCase() === "VERESİYE" ||
-            rawAdi.toUpperCase().includes("VERESİYE") ||
-            rawAdi.toUpperCase().includes("AÇIK HESAP") ||
-            rawAdi.toUpperCase().includes("ACIK HESAP") ||
-            (Boolean(invCariId) && invCariUnvan !== "NİHAİ TÜKETİCİ" && (rawKod === invCariKod || rawAdi === invCariUnvan || rawAdi.includes(invCariUnvan)));
+          const oat = o.odemeAraciTuru !== undefined && o.odemeAraciTuru !== null
+            ? Number(o.odemeAraciTuru)
+            : (rowPosId ? 2 : (rowCariId ? 1 : (rowParaAdi?.toUpperCase().includes("POS") || rowParaAdi?.toUpperCase().includes("KREDİ KARTI") ? 2 : 0)));
 
-          const resolvedCariKartId = rowCariId ?? (isVeresiye ? (matchedCari?.id ?? invCariId) : null);
-          const resolvedCariKod = o.cariKod ?? o.CARI_KOD ?? (isVeresiye ? (matchedCari?.kod || invCariKod || (rawKod !== "TL" && rawKod !== "TRY" && rawKod.toUpperCase() !== "VERESIYE" && rawKod.toUpperCase() !== "VERESİYE" ? rawKod : "")) : null);
-          const resolvedCariUnvan = o.cariUnvan ?? o.CARI_UNVAN ?? (isVeresiye ? (matchedCari?.ad || (matchedCari as any)?.unvan || invCariUnvan || (rawAdi !== "TÜRK LİRASI" && !rawAdi.toUpperCase().includes("VERESİYE") ? rawAdi : "")) : null);
-
-          const finalParaKodu = isVeresiye
-            ? (resolvedCariKod || (rawKod !== "TL" && rawKod !== "TRY" ? rawKod : "VERESIYE"))
-            : (rawKod || "TL");
-
-          const finalParaAdi = isVeresiye
-            ? (resolvedCariUnvan || rawAdi || "VERESİYE")
-            : (rawAdi || (finalParaKodu === "TL" ? "TÜRK LİRASI" : ""));
+          if (oat === 2) {
+            if (posCihazlari && posCihazlari.length > 0) {
+              const matchedPos = posCihazlari.find((p) =>
+                (rowPosId && p.posCihaziId === rowPosId) ||
+                (rowCariKod && (p.kod || "").trim().toLowerCase() === rowCariKod.toLowerCase()) ||
+                (rowParaAdi && (p.ad || "").trim().toLowerCase() === rowParaAdi.toLowerCase())
+              );
+              if (matchedPos) {
+                if (!rowCariKod) rowCariKod = matchedPos.kod || "";
+                if (!rowParaAdi || rowParaAdi === "KREDİ KARTI / POS") rowParaAdi = matchedPos.ad || "KREDİ KARTI / POS";
+              }
+            }
+          } else if (rowCariId && (!rowCariKod || !rowCariUnvan) && cariler.length > 0) {
+            const matchedC = cariler.find((c) => c.id === rowCariId);
+            if (matchedC) {
+              if (!rowCariKod) rowCariKod = matchedC.kod || "";
+              if (!rowCariUnvan) rowCariUnvan = matchedC.ad || "";
+            }
+          }
 
           return {
             id: `odeme-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`,
             satirNo: idx + 1,
-            paraId: o.paraId ?? o.PARA_ID ?? (isVeresiye ? 1 : null),
-            paraKodu: finalParaKodu,
-            paraAdi: finalParaAdi,
-            cariKartId: resolvedCariKartId,
-            cariKod: resolvedCariKod,
-            cariUnvan: resolvedCariUnvan,
+            odemeAraciTuru: oat,
+            bankaId: rowPosId || (oat === 2 ? rowCariId : null),
+            paraId: o.paraId ?? o.PARA_ID ?? null,
+            paraKodu: rawKod || "TL",
+            paraAdi: rowParaAdi || (rawKod === "TL" ? "TÜRK LİRASI" : ""),
+            cariKartId: oat === 1 ? rowCariId : null,
+            cariKod: rowCariKod,
+            cariUnvan: rowCariUnvan,
             adet: o.adet !== null && o.adet !== undefined && o.adet !== "" ? o.adet : (o.ADET !== null && o.ADET !== undefined ? o.ADET : ""),
             miktar: o.miktar !== null && o.miktar !== undefined && o.miktar !== "" ? o.miktar : (o.MIKTAR !== null && o.MIKTAR !== undefined ? o.MIKTAR : ""),
             milyem: o.milyem !== null && o.milyem !== undefined && o.milyem !== "" ? o.milyem : (o.MILYEM !== null && o.MILYEM !== undefined ? o.MILYEM : ""),
@@ -3553,12 +3981,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Payment Product Lookup Columns
   const odemeLookupColumns: LookupColumn<UrunItem>[] = [
-    { header: "Kod", width: "110px", render: (u) => <span className="fw-bold font-monospace text-primary">{u.kod}</span> },
-    { header: "Para / Ürün Tanımı", render: (u) => <span className="fw-semibold text-dark">{u.ad}</span> },
+    { header: "Kod", width: "110px", render: (u) => <span className="fw-bold font-monospace text-primary">{u.kod}</span>, highlight: true },
+    { header: "Para / Ürün Tanımı", render: (u) => <span className="fw-semibold text-dark">{u.ad}</span>, highlight: false },
     {
       header: "Tip",
       width: "105px",
       align: "center",
+      highlight: false,
       render: (u) => {
         const kod = (u.kod || "").toUpperCase().trim();
         const ad = (u.ad || "").toUpperCase().trim();
@@ -3575,7 +4004,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           display: "inline-block",
         };
 
-        if (kod === "VERESIYE" || kod === "VERESİYE" || kod === "ACIKHESAP" || kod === "AÇIK HESAP") {
+        // İskonto kontrolü (en önce)
+        const isIskontoItem =
+          (u as any).isIskonto === true ||
+          u.urunTipi === 99 ||
+          kod.startsWith("ISK") ||
+          ad.includes("İSKONTO") ||
+          ad.includes("ISKONTO");
+
+        if (isIskontoItem) {
+          tipLabel = "İskonto";
+          badgeStyle = {
+            backgroundColor: "#f0fdf4",
+            color: "#15803d",
+            border: "1px solid #86efac",
+            fontWeight: 600,
+            fontSize: "11px",
+            padding: "3px 8px",
+            borderRadius: "4px",
+            display: "inline-block",
+          };
+        } else if (kod === "VERESIYE" || kod === "VERESİYE" || kod === "ACIKHESAP" || kod === "AÇIK HESAP") {
           tipLabel = "Açık Hesap";
           badgeStyle = {
             backgroundColor: "#fef2f2",
@@ -3738,8 +4187,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               {senaryo === "EARSIVFATURA"
                 ? "e-Arşiv"
                 : senaryo === "TEMELFATURA"
-                ? "Temel Fatura"
-                : "e-Fatura"}
+                  ? "Temel Fatura"
+                  : "e-Fatura"}
             </Badge>
           </span>
         }
@@ -3867,6 +4316,20 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   PerakendeService.getNextFaturaNo(pfx).then(setFaturaNo).catch(console.error);
                 }
               }}
+              onKeyDown={(e) => {
+                if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const order = ["EARSIVFATURA", "TICARIFATURA", "TEMELFATURA"];
+                  const curIdx = order.indexOf(senaryo);
+                  const nextSenaryo = order[(curIdx + 1) % order.length];
+                  setSenaryo(nextSenaryo);
+                  if (faturaNo) {
+                    const pfx = (nextSenaryo === "TEMELFATURA" || nextSenaryo === "TICARIFATURA") ? "GIB" : "EAR";
+                    PerakendeService.getNextFaturaNo(pfx).then(setFaturaNo).catch(console.error);
+                  }
+                }
+              }}
             >
               <option value="EARSIVFATURA">e-Arşiv</option>
               <option value="TICARIFATURA">e-Fatura</option>
@@ -3896,6 +4359,23 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 return { ...r, milyem: milyemVal };
               }));
             }}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
+                e.preventDefault();
+                e.stopPropagation();
+                const newTip = (faturaTipi === 1 ? 0 : 1);
+                setFaturaTipi(newTip);
+                setOdemeRows((prev) => prev.map((r) => {
+                  if (!r.paraKodu || r.paraKodu === "TL" || r.paraKodu === "VERESIYE") return r;
+                  const found = odemeUrunList.find((u) => u.kod.toUpperCase() === r.paraKodu.toUpperCase());
+                  if (!found) return r;
+                  const effAlis = Number(found.alisMilyem) > 0 ? Number(found.alisMilyem) : (Number((found as any).hasAlisKatsayisi) > 0 ? Number((found as any).hasAlisKatsayisi) : (Number(found.hasOrani) || 1000));
+                  const effSatis = Number(found.satisMilyem) > 0 ? Number(found.satisMilyem) : (Number((found as any).hasSatisKatsayisi) > 0 ? Number((found as any).hasSatisKatsayisi) : (Number(found.hasOrani) || 1000));
+                  const milyemVal = newTip === 1 ? String(effAlis) : String(effSatis);
+                  return { ...r, milyem: milyemVal };
+                }));
+              }
+            }}
           >
             <option value={0}>ALIŞ</option>
             <option value={1}>SATIŞ</option>
@@ -3924,8 +4404,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     const newSenaryo = detectScenario(rawVal, undefined, aliciUnvan);
                     setSenaryo(newSenaryo);
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === "F4") {
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
                       e.preventDefault();
                       const val = (aliciVknTckn && aliciVknTckn !== "11111111111" ? aliciVknTckn : "").trim();
                       const prevVal = (lastFocusedVknRef.current || "").trim();
@@ -3935,10 +4415,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         return;
                       }
                       if (!val) {
-                        lastModalCallerRef.current = "vkn";
-                        setMusteriSearchTerm("");
-                        setCariSearchField("vkn");
-                        setShowMusteriModal(true);
+                        cariKodRef.current?.focus();
+                        cariKodRef.current?.select();
                         return;
                       }
                       const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("vkn", val);
@@ -3973,6 +4451,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         cariKodRef.current?.select();
                         return;
                       }
+                      if (totalCount === 0 && (val.length === 10 || val.length === 11)) {
+                        const senaryoRes = await checkAndApplyMukellefiyet(val, aliciUnvan);
+                        if (senaryoRes === "TICARIFATURA") {
+                          lastFocusedVknRef.current = val;
+                          cariKodRef.current?.focus();
+                          cariKodRef.current?.select();
+                          return;
+                        }
+                      }
                       lastModalCallerRef.current = "vkn";
                       setMusteriSearchTerm(val);
                       setCariSearchField("vkn");
@@ -3993,8 +4480,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   variant="outline-secondary"
                   className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => {
+                    const val = (aliciVknTckn && aliciVknTckn !== "11111111111" ? aliciVknTckn : "").trim();
                     lastModalCallerRef.current = "vkn";
-                    setMusteriSearchTerm(aliciVknTckn && aliciVknTckn !== "11111111111" ? aliciVknTckn : "");
+                    setMusteriSearchTerm(val);
                     setCariSearchField("vkn");
                     setShowMusteriModal(true);
                   }}
@@ -4042,10 +4530,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         return;
                       }
                       if (!val) {
-                        lastModalCallerRef.current = "cariKod";
-                        setMusteriSearchTerm("");
-                        setCariSearchField("kod");
-                        setShowMusteriModal(true);
+                        aliciUnvanRef.current?.focus();
+                        aliciUnvanRef.current?.select();
                         return;
                       }
                       const { cariler: mc, totalCount } = findMatchingCustomers("kod", val);
@@ -4079,8 +4565,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   variant="outline-secondary"
                   className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => {
+                    const val = (cariKod || "").trim();
                     lastModalCallerRef.current = "cariKod";
-                    setMusteriSearchTerm(cariKod.trim());
+                    setMusteriSearchTerm(val);
                     setCariSearchField("kod");
                     setShowMusteriModal(true);
                   }}
@@ -4110,19 +4597,19 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      const val = (aliciUnvan && aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan.trim() : "");
-                      const prevVal = (lastFocusedUnvanRef.current || "").trim();
-                      if (val && val.toLowerCase() === prevVal.toLowerCase()) {
+                      const raw = (aliciUnvan || "").trim();
+                      if (isAnonymousCustomerName(raw)) {
                         if (items.length > 0) {
                           focusGridCell(items[0].id, "barkod", "select");
                         }
                         return;
                       }
-                      if (!val) {
-                        lastModalCallerRef.current = "unvan";
-                        setMusteriSearchTerm("");
-                        setCariSearchField("unvan");
-                        setShowMusteriModal(true);
+                      const val = raw;
+                      const prevVal = (lastFocusedUnvanRef.current || "").trim();
+                      if (val && val.toLowerCase() === prevVal.toLowerCase()) {
+                        if (items.length > 0) {
+                          focusGridCell(items[0].id, "barkod", "select");
+                        }
                         return;
                       }
                       const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("unvan", val);
@@ -4170,8 +4657,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   variant="outline-secondary"
                   className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => {
+                    const raw = (aliciUnvan || "").trim();
+                    const val = isAnonymousCustomerName(raw) ? "" : raw;
                     lastModalCallerRef.current = "unvan";
-                    setMusteriSearchTerm(aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan.trim() : cariKod.trim());
+                    setMusteriSearchTerm(val);
                     setCariSearchField("unvan");
                     setShowMusteriModal(true);
                   }}
@@ -4296,320 +4785,364 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             className="table-responsive w-100"
             style={{ minHeight: "160px", overflowX: "auto" }}
           >
-        <Table
-          bordered
-          size="sm"
-          hover
-          className="mb-0 align-middle text-nowrap w-100"
-          style={{ fontSize: "11.5px", minWidth: "820px" }}
-        >
-          <thead style={{ background: "#d9e8fb", color: "#000" }}>
-            <tr className="text-center align-middle">
-              <th style={{ width: "3%", minWidth: "28px" }} className="text-center">#</th>
-              <th style={{ width: "13%", minWidth: "130px" }} className="text-center">Barkod</th>
-              <th style={{ width: "23%", minWidth: "180px" }} className="text-center">Ürün Açıklaması / Model</th>
-              <th style={{ width: "7%", minWidth: "65px" }} className="text-center">Ayar</th>
-              <th style={{ width: "6%", minWidth: "55px" }} className="text-center">Miktar</th>
-              <th style={{ width: "6%", minWidth: "55px" }} className="text-center">Birim</th>
-              <th style={{ width: "8%", minWidth: "70px" }} className="text-center">Gram</th>
-              <th style={{ width: "8%", minWidth: "70px" }} className="text-center">Has Gr</th>
-              <th style={{ width: "10%", minWidth: "85px" }} className="text-center">Birim Fiyat (₺)</th>
-              <th style={{ width: "5%", minWidth: "45px" }} className="text-center">KDV %</th>
-              <th style={{ width: "7%", minWidth: "70px" }} className="text-center">KDV (₺)</th>
-              <th style={{ width: "9%", minWidth: "85px" }} className="text-center">Satır Toplamı (₺)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, idx) => {
-              const isRowItemEmpty = isRowEmpty(item);
-              const isRowValid = isPerakendeRowFilled(item);
-              const isAttempted = Boolean(invalidRowIds[item.id]);
-              const shouldValidate = (!isRowItemEmpty && !isRowValid) || (isAttempted && !isRowValid);
-
-              const isBarkodMissing = shouldValidate && (!item.barkod || !String(item.barkod).trim()) && (!item.urunAdi || !String(item.urunAdi).trim());
-              const isMiktarMissing = shouldValidate && (!item.miktar || Number(item.miktar) <= 0) && (!item.gram || Number(item.gram) <= 0);
-              const isFiyatMissing = shouldValidate && (!item.birimFiyat || Number(item.birimFiyat) <= 0) && (!item.tutar || Number(item.tutar) <= 0);
-
-              return (
-                <tr
-                  key={item.id}
-                  data-row-id={item.id}
-                  data-table-type="kalemler"
-                  style={{
-                    backgroundColor: idx % 2 === 0 ? "#ffffff" : "#fdfdfd",
-                  }}
-                >
-                  {/* Satır Sıra No */}
-                  <td className="text-center text-muted fw-bold" style={{ fontSize: "11px" }}>
-                    {idx + 1}
-                  </td>
-
-                  {/* Barkod (+ Dürbün) */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <div className="input-group input-group-sm" style={isBarkodMissing ? { backgroundColor: "#fee2e2", border: "1.5px solid #dc2626", borderRadius: "3px" } : {}}>
-                      <input
-                        ref={(el) => {
-                          rowInputRefs.current[`${item.id}_barkod`] = el;
-                        }}
-                        type="text"
-                        className={`form-control form-control-sm font-monospace fw-bold p-1 ${isBarkodMissing ? "text-danger" : "text-primary"}`}
-                        style={{ fontSize: "12px", backgroundColor: isBarkodMissing ? "#fee2e2" : undefined }}
-                        value={item.barkod}
-                        onChange={(e) => handleUpdateItem(item.id, "barkod", e.target.value)}
-                        onKeyDown={(e) => handleGridKeyDown(e, idx, "barkod", item.id)}
-                        onFocus={() => {
-                          setActiveRowIndex(idx);
-                          cleanupEmptyRows(idx);
-                          cleanupEmptyOdemeRows(null);
-                        }}
-                        placeholder="Barkod Okut..."
-                        title={isBarkodMissing ? "Lütfen barkod veya ürün seçiniz" : undefined}
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        className="px-1.5 py-0 d-flex align-items-center"
-                        onClick={() => {
-                          openProductLookup(item.id, (String(item.barkod) || "").trim());
-                        }}
-                        title="Barkod Listesinden Seç (F4)"
-                      >
-                        <IconBinoculars size={13} />
-                      </Button>
-                    </div>
-                  </td>
-
-                  {/* Ürün Adı */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <input
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_urunAdi`] = el;
-                      }}
-                      type="text"
-                      className={`form-control form-control-sm p-1 ${isBarkodMissing ? "text-danger fw-bold" : ""}`}
-                      style={{
-                        fontSize: "12px",
-                        backgroundColor: isBarkodMissing ? "#fee2e2" : undefined,
-                        border: isBarkodMissing ? "1.5px solid #dc2626" : undefined,
-                      }}
-                      value={item.urunAdi}
-                      onChange={(e) => handleUpdateItem(item.id, "urunAdi", e.target.value)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "urunAdi", item.id)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        cleanupEmptyRows(idx);
-                        cleanupEmptyOdemeRows(null);
-                      }}
-                      placeholder="Ürün adı..."
-                    />
-                  </td>
-
-                  {/* Ayar */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <div className="input-group input-group-sm">
-                      <input
-                        ref={(el) => {
-                          rowInputRefs.current[`${item.id}_ayar`] = el;
-                        }}
-                        type="text"
-                        className="form-control form-control-sm text-center fw-bold p-1"
-                        style={{ fontSize: "11.5px" }}
-                        value={item.ayar}
-                        onChange={(e) => handleUpdateItem(item.id, "ayar", e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "F4" || (e.key === "Enter" && !item.ayar)) {
-                            e.preventDefault();
-                            setActiveAyarRowId(item.id);
-                            setShowAyarModal(true);
-                            return;
-                          }
-                          handleGridKeyDown(e, idx, "ayar", item.id);
-                        }}
-                        onFocus={() => {
-                          setActiveRowIndex(idx);
-                          cleanupEmptyRows(idx);
-                          cleanupEmptyOdemeRows(null);
-                        }}
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        className="px-1 py-0 d-flex align-items-center"
-                        onClick={() => {
-                          setActiveAyarRowId(item.id);
-                          setShowAyarModal(true);
-                        }}
-                        title="Ayar Seç (F4)"
-                      >
-                        <IconBinoculars size={12} />
-                      </Button>
-                    </div>
-                  </td>
-
-                  {/* Miktar */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <input
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_miktar`] = el;
-                      }}
-                      type="number"
-                      min={1}
-                      className={`form-control form-control-sm text-center font-monospace p-1 ${isMiktarMissing ? "text-danger fw-bold" : ""}`}
-                      style={{
-                        fontSize: "12px",
-                        backgroundColor: isMiktarMissing ? "#fee2e2" : undefined,
-                        border: isMiktarMissing ? "1.5px solid #dc2626" : undefined,
-                      }}
-                      value={item.miktar}
-                      onChange={(e) => handleUpdateItem(item.id, "miktar", e.target.value)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "miktar", item.id)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        cleanupEmptyRows(idx);
-                        cleanupEmptyOdemeRows(null);
-                      }}
-                      title={isMiktarMissing ? "Lütfen miktar veya gram giriniz" : undefined}
-                    />
-                  </td>
-
-                  {/* Birim */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <input
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_birim`] = el;
-                      }}
-                      type="text"
-                      className="form-control form-control-sm text-center p-1"
-                      style={{ fontSize: "11.5px" }}
-                      value={item.birim}
-                      onChange={(e) => handleUpdateItem(item.id, "birim", e.target.value)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "birim", item.id)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        cleanupEmptyRows(idx);
-                        cleanupEmptyOdemeRows(null);
-                      }}
-                    />
-                  </td>
-
-                  {/* Gram */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <input
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_gram`] = el;
-                      }}
-                      type="number"
-                      step="0.01"
-                      className={`form-control form-control-sm text-end font-monospace p-1 ${isMiktarMissing ? "text-danger fw-bold" : ""}`}
-                      style={{
-                        fontSize: "12px",
-                        backgroundColor: isMiktarMissing ? "#fee2e2" : undefined,
-                        border: isMiktarMissing ? "1.5px solid #dc2626" : undefined,
-                      }}
-                      value={item.gram}
-                      onChange={(e) => handleUpdateItem(item.id, "gram", e.target.value)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "gram", item.id)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        cleanupEmptyRows(idx);
-                        cleanupEmptyOdemeRows(null);
-                      }}
-                      title={isMiktarMissing ? "Lütfen miktar veya gram giriniz" : undefined}
-                    />
-                  </td>
-
-                  {/* Has Gram */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <input
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_hasGram`] = el;
-                      }}
-                      type="number"
-                      step="0.001"
-                      className="form-control form-control-sm text-end font-monospace p-1"
-                      style={{ fontSize: "12px" }}
-                      value={item.hasGram}
-                      onChange={(e) => handleUpdateItem(item.id, "hasGram", e.target.value)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "hasGram", item.id)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        cleanupEmptyRows(idx);
-                        cleanupEmptyOdemeRows(null);
-                      }}
-                    />
-                  </td>
-
-                  {/* Birim Fiyat */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <input
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_birimFiyat`] = el;
-                      }}
-                      type="number"
-                      step="0.01"
-                      className={`form-control form-control-sm text-end font-monospace fw-bold p-1 ${isFiyatMissing ? "text-danger" : "text-success"}`}
-                      style={{
-                        fontSize: "12px",
-                        backgroundColor: isFiyatMissing ? "#fee2e2" : undefined,
-                        border: isFiyatMissing ? "1.5px solid #dc2626" : undefined,
-                      }}
-                      value={item.birimFiyat}
-                      onChange={(e) => handleUpdateItem(item.id, "birimFiyat", e.target.value)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "birimFiyat", item.id)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        cleanupEmptyRows(idx);
-                        cleanupEmptyOdemeRows(null);
-                      }}
-                      placeholder="0.00"
-                      title={isFiyatMissing ? "Lütfen birim fiyat veya tutar giriniz" : undefined}
-                    />
-                  </td>
-
-                  {/* KDV % */}
-                  <td style={{ padding: "2px 4px" }}>
-                    <input
-                      ref={(el) => {
-                        rowInputRefs.current[`${item.id}_kdvOrani`] = el;
-                      }}
-                      type="number"
-                      className="form-control form-control-sm text-center font-monospace p-1"
-                      style={{ fontSize: "11.5px" }}
-                      value={item.kdvOrani}
-                      onChange={(e) => handleUpdateItem(item.id, "kdvOrani", e.target.value)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "kdvOrani", item.id)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        cleanupEmptyRows(idx);
-                        cleanupEmptyOdemeRows(null);
-                      }}
-                    />
-                  </td>
-
-                  {/* KDV Tutarı */}
-                  <td className="text-end font-monospace text-muted px-2" style={{ fontSize: "11.5px" }}>
-                    {typeof item.kdvTutari === "number" && item.kdvTutari > 0
-                      ? `${item.kdvTutari.toLocaleString("tr-TR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })} ₺`
-                      : "-"}
-                  </td>
-
-                  {/* Satır Toplamı */}
-                  <td className="text-end font-monospace fw-bold text-dark px-2" style={{ fontSize: "12px" }}>
-                    {typeof item.toplamTutar === "number" && item.toplamTutar > 0
-                      ? `${item.toplamTutar.toLocaleString("tr-TR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })} ₺`
-                      : "-"}
-                  </td>
+            <Table
+              bordered
+              size="sm"
+              hover
+              className="mb-0 align-middle text-nowrap w-100"
+              style={{ fontSize: "11.5px", minWidth: "820px" }}
+            >
+              <thead style={{ background: "#d9e8fb", color: "#000" }}>
+                <tr className="text-center align-middle">
+                  <th style={{ width: "3%", minWidth: "28px" }} className="text-center">#</th>
+                  <th style={{ width: "13%", minWidth: "130px" }} className="text-center">Barkod</th>
+                  <th style={{ width: "23%", minWidth: "180px" }} className="text-center">Ürün Açıklaması / Model</th>
+                  <th style={{ width: "7%", minWidth: "65px" }} className="text-center">Ayar</th>
+                  <th style={{ width: "6%", minWidth: "55px" }} className="text-center">Miktar</th>
+                  <th style={{ width: "6%", minWidth: "55px" }} className="text-center">Birim</th>
+                  <th style={{ width: "8%", minWidth: "70px" }} className="text-center">Gram</th>
+                  <th style={{ width: "8%", minWidth: "70px" }} className="text-center">Has Gr</th>
+                  <th style={{ width: "10%", minWidth: "85px" }} className="text-center">Birim Fiyat (₺)</th>
+                  <th style={{ width: "5%", minWidth: "45px" }} className="text-center">KDV %</th>
+                  <th style={{ width: "7%", minWidth: "70px" }} className="text-center">KDV (₺)</th>
+                  <th style={{ width: "9%", minWidth: "85px" }} className="text-center">Satır Toplamı (₺)</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </Table>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => {
+                  const isBarkodlu = Boolean((item.barkod && String(item.barkod).trim()) || item.altinUrunId);
+                  const isRowItemEmpty = isRowEmpty(item);
+                  const isRowValid = isPerakendeRowFilled(item);
+                  const isAttempted = Boolean(invalidRowIds[item.id]);
+                  const shouldValidate = (!isRowItemEmpty && !isRowValid) || (isAttempted && !isRowValid);
+
+                  const isBarkodMissing = shouldValidate && (!item.barkod || !String(item.barkod).trim()) && (!item.urunAdi || !String(item.urunAdi).trim());
+                  const isMiktarMissing = shouldValidate && (!item.miktar || Number(item.miktar) <= 0) && (!item.gram || Number(item.gram) <= 0);
+                  const isFiyatMissing = shouldValidate && (!item.birimFiyat || Number(item.birimFiyat) <= 0) && (!item.tutar || Number(item.tutar) <= 0);
+
+                  return (
+                    <tr
+                      key={item.id}
+                      data-row-id={item.id}
+                      data-table-type="kalemler"
+                      style={{
+                        backgroundColor: idx % 2 === 0 ? "#ffffff" : "#fdfdfd",
+                      }}
+                    >
+                      {/* Satır Sıra No */}
+                      <td className="text-center text-muted fw-bold" style={{ fontSize: "11px" }}>
+                        {idx + 1}
+                      </td>
+
+                      {/* Barkod (+ Dürbün) */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <div className="input-group input-group-sm" style={isBarkodMissing ? { backgroundColor: "#fee2e2", border: "1.5px solid #dc2626", borderRadius: "3px" } : {}}>
+                          <input
+                            ref={(el) => {
+                              rowInputRefs.current[`${item.id}_barkod`] = el;
+                            }}
+                            type="text"
+                            className={`form-control form-control-sm font-monospace fw-bold p-1 ${isBarkodMissing ? "text-danger" : "text-primary"}`}
+                            style={{ fontSize: "12px", backgroundColor: isBarkodMissing ? "#fee2e2" : undefined }}
+                            value={item.barkod}
+                            onChange={(e) => handleUpdateItem(item.id, "barkod", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, idx, "barkod", item.id)}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                              cleanupEmptyOdemeRows(null);
+                            }}
+                            placeholder="Barkod Okut..."
+                            title={isBarkodMissing ? "Lütfen barkod veya ürün seçiniz" : undefined}
+                          />
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            className="px-1.5 py-0 d-flex align-items-center"
+                            onClick={() => {
+                              openProductLookup(item.id, (String(item.barkod) || "").trim());
+                            }}
+                            title="Barkod Listesinden Seç (F4)"
+                          >
+                            <IconBinoculars size={13} />
+                          </Button>
+                        </div>
+                      </td>
+
+                      {/* Ürün Adı */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_urunAdi`] = el;
+                          }}
+                          type="text"
+                          readOnly={isBarkodlu}
+                          tabIndex={isBarkodlu ? -1 : 0}
+                          className={`form-control form-control-sm p-1 ${isBarkodMissing ? "text-danger fw-bold" : ""}`}
+                          style={{
+                            fontSize: "12px",
+                            backgroundColor: isBarkodlu ? "#f8fafc" : isBarkodMissing ? "#fee2e2" : undefined,
+                            border: isBarkodMissing ? "1.5px solid #dc2626" : undefined,
+                            cursor: isBarkodlu ? "not-allowed" : undefined,
+                            color: isBarkodlu ? "#475569" : undefined,
+                          }}
+                          value={item.urunAdi}
+                          onChange={(e) => handleUpdateItem(item.id, "urunAdi", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "urunAdi", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                          placeholder="Ürün adı..."
+                        />
+                      </td>
+
+                      {/* Ayar */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <div className="input-group input-group-sm">
+                          <input
+                            ref={(el) => {
+                              rowInputRefs.current[`${item.id}_ayar`] = el;
+                            }}
+                            type="text"
+                            readOnly={isBarkodlu}
+                            tabIndex={isBarkodlu ? -1 : 0}
+                            className="form-control form-control-sm text-center fw-bold p-1"
+                            style={{
+                              fontSize: "11.5px",
+                              backgroundColor: isBarkodlu ? "#f8fafc" : undefined,
+                              cursor: isBarkodlu ? "not-allowed" : undefined,
+                              color: isBarkodlu ? "#475569" : undefined,
+                            }}
+                            value={item.ayar}
+                            onChange={(e) => handleUpdateItem(item.id, "ayar", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (!isBarkodlu && (e.key === "F4" || (e.key === "Enter" && !item.ayar))) {
+                                e.preventDefault();
+                                setActiveAyarRowId(item.id);
+                                setShowAyarModal(true);
+                                return;
+                              }
+                              handleGridKeyDown(e, idx, "ayar", item.id);
+                            }}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                              cleanupEmptyOdemeRows(null);
+                            }}
+                          />
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            disabled={isBarkodlu}
+                            className="px-1 py-0 d-flex align-items-center"
+                            onClick={() => {
+                              if (!isBarkodlu) {
+                                setActiveAyarRowId(item.id);
+                                setShowAyarModal(true);
+                              }
+                            }}
+                            title={isBarkodlu ? "Barkodlu üründe ayar sabittir" : "Ayar Seç (F4)"}
+                          >
+                            <IconBinoculars size={12} />
+                          </Button>
+                        </div>
+                      </td>
+
+                      {/* Miktar */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_miktar`] = el;
+                          }}
+                          type="number"
+                          min={1}
+                          className={`form-control form-control-sm text-center font-monospace p-1 ${isMiktarMissing ? "text-danger fw-bold" : isBarkodlu ? "fw-bold text-primary" : ""}`}
+                          style={{
+                            fontSize: "12px",
+                            backgroundColor: isMiktarMissing ? "#fee2e2" : isBarkodlu ? "#f0f9ff" : undefined,
+                            border: isMiktarMissing ? "1.5px solid #dc2626" : isBarkodlu ? "1.5px solid #bae6fd" : undefined,
+                          }}
+                          value={item.miktar}
+                          onChange={(e) => handleUpdateItem(item.id, "miktar", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "miktar", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                          title={isMiktarMissing ? "Lütfen miktar giriniz" : isBarkodlu ? "Barkodlu üründe sadece miktar değiştirilebilir" : undefined}
+                        />
+                      </td>
+
+                      {/* Birim */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_birim`] = el;
+                          }}
+                          type="text"
+                          readOnly={isBarkodlu}
+                          tabIndex={isBarkodlu ? -1 : 0}
+                          className="form-control form-control-sm text-center p-1"
+                          style={{
+                            fontSize: "11.5px",
+                            backgroundColor: isBarkodlu ? "#f8fafc" : undefined,
+                            cursor: isBarkodlu ? "not-allowed" : undefined,
+                            color: isBarkodlu ? "#475569" : undefined,
+                          }}
+                          value={item.birim}
+                          onChange={(e) => handleUpdateItem(item.id, "birim", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "birim", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                        />
+                      </td>
+
+                      {/* Gram */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_gram`] = el;
+                          }}
+                          type="number"
+                          step="0.01"
+                          readOnly={isBarkodlu}
+                          tabIndex={isBarkodlu ? -1 : 0}
+                          className={`form-control form-control-sm text-end font-monospace p-1 ${isMiktarMissing ? "text-danger fw-bold" : ""}`}
+                          style={{
+                            fontSize: "12px",
+                            backgroundColor: isBarkodlu ? "#f8fafc" : isMiktarMissing ? "#fee2e2" : undefined,
+                            border: isMiktarMissing ? "1.5px solid #dc2626" : undefined,
+                            cursor: isBarkodlu ? "not-allowed" : undefined,
+                            color: isBarkodlu ? "#475569" : undefined,
+                          }}
+                          value={item.gram}
+                          onChange={(e) => handleUpdateItem(item.id, "gram", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "gram", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                          title={isBarkodlu ? "Barkodlu üründe gramaj sabittir" : isMiktarMissing ? "Lütfen miktar veya gram giriniz" : undefined}
+                        />
+                      </td>
+
+                      {/* Has Gram */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_hasGram`] = el;
+                          }}
+                          type="number"
+                          step="0.001"
+                          readOnly={isBarkodlu}
+                          tabIndex={isBarkodlu ? -1 : 0}
+                          className="form-control form-control-sm text-end font-monospace p-1"
+                          style={{
+                            fontSize: "12px",
+                            backgroundColor: isBarkodlu ? "#f8fafc" : undefined,
+                            cursor: isBarkodlu ? "not-allowed" : undefined,
+                            color: isBarkodlu ? "#475569" : undefined,
+                          }}
+                          value={item.hasGram}
+                          onChange={(e) => handleUpdateItem(item.id, "hasGram", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "hasGram", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                        />
+                      </td>
+
+                      {/* Birim Fiyat */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_birimFiyat`] = el;
+                          }}
+                          type="number"
+                          step="0.01"
+                          readOnly={isBarkodlu}
+                          tabIndex={isBarkodlu ? -1 : 0}
+                          className={`form-control form-control-sm text-end font-monospace fw-bold p-1 ${isFiyatMissing ? "text-danger" : "text-success"}`}
+                          style={{
+                            fontSize: "12px",
+                            backgroundColor: isBarkodlu ? "#f8fafc" : isFiyatMissing ? "#fee2e2" : undefined,
+                            border: isFiyatMissing ? "1.5px solid #dc2626" : undefined,
+                            cursor: isBarkodlu ? "not-allowed" : undefined,
+                          }}
+                          value={item.birimFiyat}
+                          onChange={(e) => handleUpdateItem(item.id, "birimFiyat", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "birimFiyat", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                          placeholder="0.00"
+                          title={isBarkodlu ? "Barkodlu üründe birim fiyat değiştirilemez" : isFiyatMissing ? "Lütfen birim fiyat giriniz" : undefined}
+                        />
+                      </td>
+
+                      {/* KDV % */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_kdvOrani`] = el;
+                          }}
+                          type="number"
+                          readOnly={isBarkodlu}
+                          tabIndex={isBarkodlu ? -1 : 0}
+                          className="form-control form-control-sm text-center font-monospace p-1"
+                          style={{
+                            fontSize: "11.5px",
+                            backgroundColor: isBarkodlu ? "#f8fafc" : undefined,
+                            cursor: isBarkodlu ? "not-allowed" : undefined,
+                            color: isBarkodlu ? "#475569" : undefined,
+                          }}
+                          value={item.kdvOrani}
+                          onChange={(e) => handleUpdateItem(item.id, "kdvOrani", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "kdvOrani", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                          title={isBarkodlu ? "Barkodlu üründe KDV oranı değiştirilemez" : undefined}
+                        />
+                      </td>
+
+                      {/* KDV Tutarı */}
+                      <td className="text-end font-monospace text-muted px-2" style={{ fontSize: "11.5px" }}>
+                        {typeof item.kdvTutari === "number" && item.kdvTutari > 0
+                          ? `${item.kdvTutari.toLocaleString("tr-TR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })} ₺`
+                          : "-"}
+                      </td>
+
+                      {/* Satır Toplamı */}
+                      <td className="text-end font-monospace fw-bold text-dark px-2" style={{ fontSize: "12px" }}>
+                        {typeof item.toplamTutar === "number" && item.toplamTutar > 0
+                          ? `${item.toplamTutar.toLocaleString("tr-TR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })} ₺`
+                          : "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
           </div>
         </Card.Body>
       </Card>
@@ -4623,41 +5156,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               <span className="fw-bold text-secondary" style={{ fontSize: "12px" }}>
                 ÖDEME / TAHSİLAT TABLOSU
               </span>
-              <div className="d-flex align-items-center gap-1">
-                <Button
-                  variant="outline-success"
-                  size="sm"
-                  className="py-0 px-2 fw-semibold d-flex align-items-center gap-1 shadow-2xs"
-                  style={{ fontSize: "11px", height: "22px" }}
-                  onClick={() => {
-                    setIskontoSearchTerm("");
-                    setShowIskontoModal(true);
-                  }}
-                  title="Ödeme Tablosuna İskonto / İndirim Ekle"
-                >
-                  <IconDiscount size={13} />
-                  İskonto Ekle
-                </Button>
-                <Button
-                  variant="outline-danger"
-                  size="sm"
-                  className="py-0 px-2 fw-semibold d-flex align-items-center gap-1 shadow-2xs"
-                  style={{ fontSize: "11px", height: "22px" }}
-                  onClick={() => handleAutoVeresiye()}
-                  title="Cari Karta Veresiye / Açık Hesap Ekle"
-                >
-                  <i className="bi bi-person-dash"></i>
-                  Veresiye Ekle
-                </Button>
-              </div>
             </div>
             <div style={{ overflowX: "auto" }}>
-              <Table bordered size="sm" hover className="mb-0 align-middle text-nowrap" style={{ fontSize: "11.5px", minWidth: 620 }}>
+              <Table bordered size="sm" hover className="mb-0 align-middle text-nowrap" style={{ fontSize: "11.5px", minWidth: 780 }}>
                 <thead style={{ background: "#d9e8fb", color: "#000" }}>
                   <tr className="text-center align-middle">
                     <th style={{ width: 25 }} className="text-center">#</th>
-                    <th style={{ width: 110 }} className="text-center">Para</th>
-                    <th style={{ width: 140 }} className="text-center">Para adı</th>
+                    <th style={{ width: 85 }} className="text-center">Tür</th>
+                    <th style={{ width: 110 }} className="text-center">Kod</th>
+                    <th style={{ width: 140 }} className="text-center">Açıklama</th>
+                    <th style={{ width: 110 }} className="text-center">Para / İskonto</th>
                     <th style={{ width: 55 }} className="text-center">Adet</th>
                     <th style={{ width: 75 }} className="text-center">Miktar</th>
                     <th style={{ width: 70 }} className="text-center">Milyem</th>
@@ -4669,12 +5177,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 <tbody>
                   {odemeRows.map((oRow, rowIndex) => {
                     const isMetal = isAltinOrGumusRow(oRow, odemeUrunList);
+                    const isPosRow = oRow.odemeAraciTuru === 2;
+                    const isHesapRow = oRow.odemeAraciTuru === 3;
                     const isVeresiyeRow =
-                      Boolean(oRow.cariKartId) ||
-                      Boolean(oRow.cariUnvan) ||
-                      oRow.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
-                      oRow.paraAdi?.toUpperCase().includes("VERESİYE") ||
-                      oRow.paraAdi?.toUpperCase().includes("AÇIK HESAP");
+                      oRow.odemeAraciTuru === 1 ||
+                      (!isPosRow &&
+                        !isHesapRow &&
+                        (oRow.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
+                          oRow.paraAdi?.toUpperCase().includes("VERESİYE") ||
+                          oRow.paraAdi?.toUpperCase().includes("AÇIK HESAP")));
 
                     const isIskontoRow =
                       oRow.paraKodu?.trim().toUpperCase().startsWith("ISK") ||
@@ -4683,120 +5194,579 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                       (oRow.paraId !== undefined && oRow.paraId !== null && Number(oRow.paraId) >= 100000);
 
                     const isOverpaidVeresiye = farkTL < -0.01 && isVeresiyeRow;
+                    const isOdemeRowTL = !isIskontoRow && !isMetal && (
+                      (oRow.paraKodu || "").trim().toUpperCase() === "TL" ||
+                      (oRow.paraKodu || "").trim().toUpperCase() === "TRY" ||
+                      (oRow.paraKodu || "").trim().toUpperCase() === "TRL" ||
+                      (!oRow.paraKodu && (oRow.odemeAraciTuru === 0 || oRow.odemeAraciTuru === 2 || oRow.odemeAraciTuru === 3))
+                    );
 
                     // Veresiye satırları açık kırmızı (#fee2e2 / #991b1b)
                     // İskonto satırları açık yeşil (#dcfce7 / #166534)
                     const rowBg = isVeresiyeRow
                       ? "#fee2e2"
                       : isIskontoRow
-                      ? "#dcfce7"
-                      : rowIndex === activeOdemeRowIndex
-                      ? "#edf5ff"
-                      : "#ffffff";
+                        ? "#dcfce7"
+                        : rowIndex === activeOdemeRowIndex
+                          ? "#edf5ff"
+                          : "#ffffff";
 
                     const rowTextColor = isVeresiyeRow
                       ? "#991b1b"
                       : isIskontoRow
-                      ? "#166534"
-                      : undefined;
+                        ? "#166534"
+                        : undefined;
 
                     const rowBorderColor = isVeresiyeRow
                       ? "#fca5a5"
                       : isIskontoRow
-                      ? "#86efac"
-                      : undefined;
+                        ? "#86efac"
+                        : undefined;
 
                     return (
-                    <tr
-                      key={oRow.id}
-                      data-row-id={oRow.id}
-                      data-table-type="odeme"
-                      className={isVeresiyeRow ? "table-danger" : isIskontoRow ? "table-success" : (rowIndex === activeOdemeRowIndex ? "table-primary" : "")}
-                      style={{
-                        backgroundColor: rowBg,
-                        "--bs-table-bg": rowBg,
-                        "--bs-table-accent-bg": rowBg,
-                        "--bs-table-hover-bg": isVeresiyeRow ? "#fecaca" : isIskontoRow ? "#bbf7d0" : "#dbeafe",
-                      } as any}
-                    >
-                      <td className="text-muted text-center" style={{ padding: "2px", fontSize: "10px", verticalAlign: "middle", backgroundColor: rowBg, color: rowTextColor, borderColor: rowBorderColor }}>
-                        {rowIndex + 1}
-                      </td>
+                      <tr
+                        key={oRow.id}
+                        data-row-id={oRow.id}
+                        data-table-type="odeme"
+                        className={isVeresiyeRow ? "table-danger" : isIskontoRow ? "table-success" : (rowIndex === activeOdemeRowIndex ? "table-primary" : "")}
+                        style={{
+                          backgroundColor: rowBg,
+                          "--bs-table-bg": rowBg,
+                          "--bs-table-accent-bg": rowBg,
+                          "--bs-table-hover-bg": isVeresiyeRow ? "#fecaca" : isIskontoRow ? "#bbf7d0" : "#dbeafe",
+                        } as any}
+                      >
+                        <td className="text-muted text-center" style={{ padding: "2px", fontSize: "10px", verticalAlign: "middle", backgroundColor: rowBg, color: rowTextColor, borderColor: rowBorderColor }}>
+                          {rowIndex + 1}
+                        </td>
 
-                      {/* Para Kodu (+ Dürbün / Cari Seç) */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <InputGroup size="sm">
-                          <Form.Control
-                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_paraKodu`] = el; }}
-                            value={
-                              isVeresiyeRow
-                                ? (oRow.cariKod || (oRow.cariKartId ? cariler.find((c) => c.id === oRow.cariKartId)?.kod : null) || (oRow.paraKodu && oRow.paraKodu !== "TL" && oRow.paraKodu !== "TRY" ? oRow.paraKodu : "VERESIYE"))
-                                : (oRow.paraKodu || "")
-                            }
+                        {/* Tür Seçimi (Vezne, Cari, POS, Hesap) */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Select
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_odemeAraciTuru`] = el; }}
+                            size="sm"
+                            value={oRow.odemeAraciTuru ?? 0}
                             onChange={(e) => {
-                              const val = e.target.value;
-                              updateOdemeRow(oRow.id, "paraKodu", val);
-                              const upper = val.trim().toUpperCase();
-                              if (upper === "TL" || upper === "TRY") {
-                                setOdemeRows((prev) =>
-                                  prev.map((r) =>
-                                    r.id === oRow.id
-                                      ? { ...r, paraKodu: "TL", paraAdi: "TÜRK LİRASI", kur: 1, milyem: "", adet: "", hasGram: "", cariKartId: null, cariUnvan: null, cariKod: null }
-                                      : r
-                                  )
-                                );
-                              } else if (
-                                upper === "VERESIYE" ||
-                                upper === "VERESİYE" ||
-                                upper === "ACIKHESAP" ||
-                                upper === "AÇIK HESAP" ||
-                                upper === "ACIK HESAP"
-                              ) {
-                                applyProductToOdemeRow(oRow.id, {
-                                  id: 99,
-                                  paraId: 99,
-                                  kod: "VERESIYE",
-                                  ad: oRow.cariUnvan || "VERESİYE",
-                                  urunTipi: 0,
-                                  gramaj: 0,
-                                  hasOrani: 0,
-                                  alisMilyem: 0,
-                                  satisMilyem: 0,
-                                });
-                              } else {
-                                const match = allOdemeUrunler.find((u) => u.kod.trim().toLowerCase() === val.trim().toLowerCase());
-                                if (match) {
-                                  applyProductToOdemeRow(oRow.id, match);
+                              const val = Number(e.target.value);
+                              setOdemeRows((prev) => prev.map((r) => {
+                                if (r.id !== oRow.id) return r;
+                                let defKod = "TL";
+                                let defAd = "TÜRK LİRASI";
+                                let defCariId = null;
+                                let defCariKod = "";
+                                let defCariUnvan = "";
+                                if (val === 1) {
+                                  defCariKod = (cariKod && cariKod.trim()) ? cariKod.trim() : "";
+                                  defCariUnvan = (aliciUnvan && aliciUnvan !== "NİHAİ TÜKETİCİ" && aliciUnvan !== "VERESİYE / AÇIK HESAP") ? aliciUnvan : "";
+                                  defKod = "";
+                                  defAd = "";
+                                  defCariId = cariKartId || null;
+                                } else if (val === 2) {
+                                  defKod = "TL";
+                                  defAd = "KREDİ KARTI / POS";
+                                } else if (val === 3) {
+                                  defKod = "TL";
+                                  defAd = "BANKA HAVALE / EFT";
                                 }
-                              }
-                            }}
-                            onDoubleClick={() => {
-                              if (isIskontoRow) {
-                                setShowIskontoModal(true);
-                              } else if (isVeresiyeRow) {
-                                pendingVeresiyeRowIdRef.current = oRow.id;
-                                setMusteriSearchTerm(oRow.cariUnvan || oRow.cariKod || (aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan : cariKod));
-                                setShowMusteriModal(true);
-                              } else {
-                                openOdemeUrunModal(oRow.id);
-                              }
+                                return {
+                                  ...r,
+                                  odemeAraciTuru: val,
+                                  paraKodu: val === 1 ? "" : (val === 0 ? (r.paraKodu || "TL") : defKod),
+                                  paraAdi: val === 1 ? "" : defAd,
+                                  paraId: null,
+                                  cariKartId: defCariId,
+                                  cariKod: defCariKod,
+                                  cariUnvan: defCariUnvan,
+                                  bankaId: null,
+                                  adet: "",
+                                  miktar: val === 1 ? "" : r.miktar,
+                                  milyem: "",
+                                  hasGram: "",
+                                  kur: val === 1 ? "" : 1,
+                                  tutar: val === 1 ? "" : r.tutar,
+                                };
+                              }));
                             }}
                             onKeyDown={(e) => {
-                              if (e.key === "F4" || e.key === "F3") {
+                              if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
                                 e.preventDefault();
-                                if (isIskontoRow) {
-                                  setShowIskontoModal(true);
-                                } else if (isVeresiyeRow) {
-                                  pendingVeresiyeRowIdRef.current = oRow.id;
-                                  setMusteriSearchTerm(oRow.cariUnvan || oRow.cariKod || (aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan : cariKod));
-                                  setShowMusteriModal(true);
-                                } else {
-                                  openOdemeUrunModal(oRow.id);
-                                }
+                                e.stopPropagation();
+                                const nextVal = ((oRow.odemeAraciTuru ?? 0) + 1) % 4;
+                                setOdemeRows((prev) => prev.map((r) => {
+                                  if (r.id !== oRow.id) return r;
+                                  let defKod = "TL";
+                                  let defAd = "TÜRK LİRASI";
+                                  let defCariId = null;
+                                  let defCariKod = "";
+                                  let defCariUnvan = "";
+                                  if (nextVal === 1) {
+                                    defCariKod = (cariKod && cariKod.trim()) ? cariKod.trim() : "";
+                                    defCariUnvan = (aliciUnvan && aliciUnvan !== "NİHAİ TÜKETİCİ" && aliciUnvan !== "VERESİYE / AÇIK HESAP") ? aliciUnvan : "";
+                                    defKod = "";
+                                    defAd = "";
+                                    defCariId = cariKartId || null;
+                                  } else if (nextVal === 2) {
+                                    defKod = "TL";
+                                    defAd = "KREDİ KARTI / POS";
+                                  } else if (nextVal === 3) {
+                                    defKod = "TL";
+                                    defAd = "BANKA HAVALE / EFT";
+                                  }
+                                  return {
+                                    ...r,
+                                    odemeAraciTuru: nextVal,
+                                    paraKodu: nextVal === 1 ? "" : (nextVal === 0 ? (r.paraKodu || "TL") : defKod),
+                                    paraAdi: nextVal === 1 ? "" : defAd,
+                                    paraId: null,
+                                    cariKartId: defCariId,
+                                    cariKod: defCariKod,
+                                    cariUnvan: defCariUnvan,
+                                    bankaId: null,
+                                    adet: "",
+                                    miktar: nextVal === 1 ? "" : r.miktar,
+                                    milyem: "",
+                                    hasGram: "",
+                                    kur: nextVal === 1 ? "" : 1,
+                                    tutar: nextVal === 1 ? "" : r.tutar,
+                                  };
+                                }));
                                 return;
                               }
-                              handleOdemeGridKeyDown(e, rowIndex, "paraKodu", oRow.id);
+                              handleOdemeGridKeyDown(e, rowIndex, "odemeAraciTuru", oRow.id);
                             }}
+                            onFocus={() => {
+                              setActiveOdemeRowIndex(rowIndex);
+                              cleanupEmptyOdemeRows(rowIndex);
+                              cleanupEmptyRows(null);
+                            }}
+                            style={{ fontSize: "11px", padding: "1px 2px", fontWeight: 600 }}
+                          >
+                            <option value={0}>Vezne</option>
+                            <option value={1}>Cari</option>
+                            <option value={2}>POS</option>
+                            <option value={3}>Hesap</option>
+                          </Form.Select>
+                        </td>
+
+                        {/* Kod (+ Dürbün / Seç) */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          {isVeresiyeRow ? (
+                            <InputGroup size="sm">
+                              <Form.Control
+                                ref={(el) => { odemeInputRefs.current[`${oRow.id}_cariKod`] = el; }}
+                                value={oRow.cariKod ?? ""}
+                                placeholder="Cari Kod / Dürbün"
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (!val) {
+                                    setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: "", cariKartId: null, cariUnvan: "" } : r));
+                                    return;
+                                  }
+                                  setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: val } : r));
+                                  const match = cariler.find((c) => (c.kod || "").trim().toLowerCase() === val.trim().toLowerCase());
+                                  if (match) {
+                                    setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKartId: match.id, cariKod: match.kod, cariUnvan: match.ad || "" } : r));
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  const val = e.target.value.trim();
+                                  if (val) {
+                                    const cMatch = cariler.find((c) => (c.kod || "").toLowerCase() === val.toLowerCase());
+                                    if (cMatch) {
+                                      setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKartId: cMatch.id, cariKod: cMatch.kod, cariUnvan: cMatch.ad || "" } : r));
+                                    }
+                                  }
+                                }}
+                                onDoubleClick={() => {
+                                  pendingVeresiyeRowIdRef.current = oRow.id;
+                                  setCariSearchField("kod");
+                                  setMusteriSearchTerm(oRow.cariKod || "");
+                                  setShowMusteriModal(true);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "F4" || e.key === "F3") {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    pendingVeresiyeRowIdRef.current = oRow.id;
+                                    setCariSearchField("kod");
+                                    setMusteriSearchTerm(oRow.cariKod || "");
+                                    setShowMusteriModal(true);
+                                    return;
+                                  }
+                                  handleOdemeGridKeyDown(e, rowIndex, "cariKod", oRow.id);
+                                }}
+                                onFocus={() => {
+                                  setActiveOdemeRowIndex(rowIndex);
+                                  cleanupEmptyOdemeRows(rowIndex);
+                                  cleanupEmptyRows(null);
+                                }}
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "1px 4px",
+                                  backgroundColor: rowBg,
+                                  color: rowTextColor,
+                                  borderColor: rowBorderColor,
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                tabIndex={-1}
+                                variant={isVeresiyeRow ? "outline-danger" : "outline-secondary"}
+                                className="px-1 py-0 d-flex align-items-center"
+                                onClick={() => {
+                                  pendingVeresiyeRowIdRef.current = oRow.id;
+                                  setCariSearchField("kod");
+                                  setMusteriSearchTerm(oRow.cariKod || "");
+                                  setShowMusteriModal(true);
+                                }}
+                                title="Cari Kart Seç (F3/F4)"
+                                style={{
+                                  borderColor: isVeresiyeRow ? "#fca5a5" : undefined,
+                                  color: isVeresiyeRow ? "#dc2626" : undefined,
+                                  backgroundColor: rowBg,
+                                }}
+                              >
+                                <IconBinoculars size={12} />
+                              </Button>
+                            </InputGroup>
+                          ) : isIskontoRow ? (
+                            <InputGroup size="sm">
+                              <Form.Control
+                                ref={(el) => { odemeInputRefs.current[`${oRow.id}_cariKod`] = el; }}
+                                value={oRow.paraKodu || "ISKONTO"}
+                                readOnly
+                                onDoubleClick={() => setShowIskontoModal(true)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "F4" || e.key === "F3") {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setShowIskontoModal(true);
+                                    return;
+                                  }
+                                  handleOdemeGridKeyDown(e, rowIndex, "cariKod", oRow.id);
+                                }}
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "1px 4px",
+                                  backgroundColor: rowBg,
+                                  color: rowTextColor,
+                                  borderColor: rowBorderColor,
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                tabIndex={-1}
+                                variant="outline-success"
+                                className="px-1 py-0 d-flex align-items-center"
+                                onClick={() => setShowIskontoModal(true)}
+                                title="İskonto Seç (F3/F4)"
+                              >
+                                <IconBinoculars size={12} />
+                              </Button>
+                            </InputGroup>
+                          ) : isPosRow ? (
+                            <InputGroup size="sm">
+                              <Form.Control
+                                ref={(el) => { odemeInputRefs.current[`${oRow.id}_cariKod`] = el; }}
+                                value={oRow.cariKod ?? ""}
+                                placeholder="POS Kodu / Dürbün"
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (!val) {
+                                    setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: "", bankaId: null, paraAdi: "" } : r));
+                                    return;
+                                  }
+                                  setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: val } : r));
+                                  const match = posCihazlari.find((p) => (p.kod || "").trim().toLowerCase() === val.trim().toLowerCase());
+                                  if (match) {
+                                    setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? {
+                                      ...r,
+                                      cariKod: match.kod,
+                                      paraAdi: match.ad || "KREDİ KARTI / POS",
+                                      bankaId: match.posCihaziId,
+                                    } : r));
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  const val = e.target.value.trim();
+                                  if (val) {
+                                    const match = posCihazlari.find((p) => (p.kod || "").toLowerCase() === val.toLowerCase());
+                                    if (match) {
+                                      setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? {
+                                        ...r,
+                                        cariKod: match.kod,
+                                        paraAdi: match.ad || "KREDİ KARTI / POS",
+                                        bankaId: match.posCihaziId,
+                                      } : r));
+                                    }
+                                  }
+                                }}
+                                onDoubleClick={() => {
+                                  setPendingPosRowId(oRow.id);
+                                  setPosSearchTerm(oRow.cariKod || "");
+                                  setShowPosModal(true);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "F4" || e.key === "F3") {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setPendingPosRowId(oRow.id);
+                                    setPosSearchTerm(oRow.cariKod || "");
+                                    setShowPosModal(true);
+                                    return;
+                                  }
+                                  handleOdemeGridKeyDown(e, rowIndex, "cariKod", oRow.id);
+                                }}
+                                onFocus={() => {
+                                  setActiveOdemeRowIndex(rowIndex);
+                                  cleanupEmptyOdemeRows(rowIndex);
+                                  cleanupEmptyRows(null);
+                                }}
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "1px 4px",
+                                  backgroundColor: rowBg,
+                                  color: rowTextColor,
+                                  borderColor: rowBorderColor,
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                tabIndex={-1}
+                                variant="outline-secondary"
+                                className="px-1 py-0 d-flex align-items-center"
+                                onClick={() => {
+                                  setPendingPosRowId(oRow.id);
+                                  setPosSearchTerm(oRow.cariKod || "");
+                                  setShowPosModal(true);
+                                }}
+                                title="POS Cihazı Seç (F3/F4)"
+                                style={{
+                                  backgroundColor: rowBg,
+                                }}
+                              >
+                                <IconBinoculars size={12} />
+                              </Button>
+                            </InputGroup>
+                          ) : isHesapRow ? (
+                            <InputGroup size="sm">
+                              <Form.Control
+                                ref={(el) => { odemeInputRefs.current[`${oRow.id}_cariKod`] = el; }}
+                                value={oRow.cariKod ?? ""}
+                                placeholder="Hesap No / Dürbün"
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (!val) {
+                                    setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: "", bankaId: null, paraAdi: "" } : r));
+                                    return;
+                                  }
+                                  setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: val } : r));
+                                  const match = bankaHesaplari.find((b) => (b.hesapNo || "").trim().toLowerCase() === val.trim().toLowerCase());
+                                  if (match) {
+                                    setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? {
+                                      ...r,
+                                      cariKod: match.hesapNo,
+                                      paraAdi: match.hesapAdi || "BANKA HAVALE / EFT",
+                                      bankaId: match.bankaId,
+                                    } : r));
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  const val = e.target.value.trim();
+                                  if (val) {
+                                    const match = bankaHesaplari.find((b) => (b.hesapNo || "").toLowerCase() === val.toLowerCase());
+                                    if (match) {
+                                      setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? {
+                                        ...r,
+                                        cariKod: match.hesapNo,
+                                        paraAdi: match.hesapAdi || "BANKA HAVALE / EFT",
+                                        bankaId: match.bankaId,
+                                      } : r));
+                                    }
+                                  }
+                                }}
+                                onDoubleClick={() => {
+                                  setPendingBankaRowId(oRow.id);
+                                  setBankaSearchTerm(oRow.cariKod || "");
+                                  setShowBankaModal(true);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "F4" || e.key === "F3") {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setPendingBankaRowId(oRow.id);
+                                    setBankaSearchTerm(oRow.cariKod || "");
+                                    setShowBankaModal(true);
+                                    return;
+                                  }
+                                  handleOdemeGridKeyDown(e, rowIndex, "cariKod", oRow.id);
+                                }}
+                                onFocus={() => {
+                                  setActiveOdemeRowIndex(rowIndex);
+                                  cleanupEmptyOdemeRows(rowIndex);
+                                  cleanupEmptyRows(null);
+                                }}
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "1px 4px",
+                                  backgroundColor: rowBg,
+                                  color: rowTextColor,
+                                  borderColor: rowBorderColor,
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                tabIndex={-1}
+                                variant="outline-secondary"
+                                className="px-1 py-0 d-flex align-items-center"
+                                onClick={() => {
+                                  setPendingBankaRowId(oRow.id);
+                                  setBankaSearchTerm(oRow.cariKod || "");
+                                  setShowBankaModal(true);
+                                }}
+                                title="Banka Hesabı Seç (F3/F4)"
+                                style={{
+                                  backgroundColor: rowBg,
+                                }}
+                              >
+                                <IconBinoculars size={12} />
+                              </Button>
+                            </InputGroup>
+                          ) : (
+                            <Form.Control
+                              ref={(el) => { odemeInputRefs.current[`${oRow.id}_cariKod`] = el; }}
+                              size="sm"
+                              value="-"
+                              readOnly
+                              disabled
+                              tabIndex={-1}
+                              style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed", textAlign: "center" }}
+                            />
+                          )}
+                        </td>
+
+                        {/* Para Adı / Cari Hesap Adı */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_paraAdi`] = el; }}
+                            size="sm"
+                            value={
+                              isVeresiyeRow
+                                ? (oRow.cariUnvan || aliciUnvan || "VERESİYE / AÇIK HESAP")
+                                : (oRow.paraAdi || (oRow.paraKodu === "TL" ? "TÜRK LİRASI" : ""))
+                            }
+                            readOnly
+                            tabIndex={-1}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "paraAdi", oRow.id)}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: rowBg,
+                              color: rowTextColor || undefined,
+                              fontWeight: (isVeresiyeRow || isIskontoRow) ? 600 : undefined,
+                              borderColor: rowBorderColor,
+                            }}
+                          />
+                        </td>
+
+                        {/* Para Kodu (+ Dürbün) */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <InputGroup size="sm">
+                            <Form.Control
+                              ref={(el) => { odemeInputRefs.current[`${oRow.id}_paraKodu`] = el; }}
+                              value={oRow.paraKodu || ""}
+                              placeholder="Para Kod / Dürbün"
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateOdemeRow(oRow.id, "paraKodu", val);
+                                const upper = val.trim().toUpperCase();
+                                if (upper === "TL" || upper === "TRY" || upper === "TRL") {
+                                  setOdemeRows((prev) =>
+                                    prev.map((r) =>
+                                      r.id === oRow.id
+                                        ? { ...r, paraKodu: "TL", paraAdi: "TÜRK LİRASI", kur: 1, milyem: "", adet: "", hasGram: "" }
+                                        : r
+                                    )
+                                  );
+                                } else {
+                                  const match = allOdemeUrunler.find((u) => u.kod.trim().toLowerCase() === val.trim().toLowerCase());
+                                  if (match) {
+                                    applyProductToOdemeRow(oRow.id, match);
+                                  }
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                if (val.toUpperCase() === "TL" || val.toUpperCase() === "TRY" || val.toUpperCase() === "TRL") {
+                                  setOdemeRows((prev) =>
+                                    prev.map((r) =>
+                                      r.id === oRow.id
+                                        ? { ...r, paraKodu: "TL", paraAdi: "TÜRK LİRASI", kur: 1, milyem: "", adet: "", hasGram: "" }
+                                        : r
+                                    )
+                                  );
+                                } else if (val) {
+                                  const match = allOdemeUrunler.find((u) => u.kod.trim().toLowerCase() === val.toLowerCase());
+                                  if (match) {
+                                    applyProductToOdemeRow(oRow.id, match);
+                                  }
+                                }
+                              }}
+                              onDoubleClick={() => openOdemeUrunModal(oRow.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "F4" || e.key === "F3") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  openOdemeUrunModal(oRow.id);
+                                  return;
+                                }
+                                handleOdemeGridKeyDown(e, rowIndex, "paraKodu", oRow.id);
+                              }}
+                              onFocus={() => {
+                                setActiveOdemeRowIndex(rowIndex);
+                                cleanupEmptyOdemeRows(rowIndex);
+                                cleanupEmptyRows(null);
+                              }}
+                              style={{
+                                fontSize: "11px",
+                                padding: "1px 4px",
+                                textTransform: "uppercase",
+                                fontWeight: 600,
+                                backgroundColor: rowBg,
+                                color: rowTextColor,
+                                borderColor: rowBorderColor,
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              tabIndex={-1}
+                              variant="outline-secondary"
+                              className="px-1 py-0 d-flex align-items-center"
+                              onClick={() => openOdemeUrunModal(oRow.id)}
+                              title="Para / Ürün Seç (F3/F4)"
+                              style={{
+                                borderColor: isVeresiyeRow ? "#fca5a5" : isIskontoRow ? "#86efac" : undefined,
+                                backgroundColor: rowBg,
+                              }}
+                            >
+                              <IconBinoculars size={12} />
+                            </Button>
+                          </InputGroup>
+                        </td>
+
+                        {/* Adet */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
+                            inputMode="numeric"
+                            size="sm"
+                            className="text-end font-monospace"
+                            value={oRow.adet || ""}
+                            readOnly={!isMetal}
+                            disabled={!isMetal}
+                            tabIndex={!isMetal ? -1 : undefined}
+                            onChange={(e) => updateOdemeRow(oRow.id, "adet", e.target.value)}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "adet", oRow.id)}
                             onFocus={() => {
                               setActiveOdemeRowIndex(rowIndex);
                               cleanupEmptyOdemeRows(rowIndex);
@@ -4805,219 +5775,138 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             style={{
                               fontSize: "11px",
                               padding: "1px 4px",
-                              textTransform: "uppercase",
-                              fontWeight: 600,
+                              backgroundColor: rowBg,
+                              color: rowTextColor || (!isMetal ? "#94a3b8" : undefined),
+                              borderColor: rowBorderColor,
+                            }}
+                          />
+                        </td>
+
+                        {/* Miktar */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_miktar`] = el; }}
+                            inputMode="decimal"
+                            size="sm"
+                            className="text-end font-monospace fw-semibold"
+                            value={oRow.miktar}
+                            onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "miktar", oRow.id)}
+                            onFocus={() => {
+                              setActiveOdemeRowIndex(rowIndex);
+                              cleanupEmptyOdemeRows(rowIndex);
+                              cleanupEmptyRows(null);
+                            }}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
                               backgroundColor: rowBg,
                               color: rowTextColor,
                               borderColor: rowBorderColor,
                             }}
                           />
-                          <Button
-                            type="button"
-                            tabIndex={-1}
-                            variant={isVeresiyeRow ? "outline-danger" : isIskontoRow ? "outline-success" : "outline-secondary"}
-                            className="px-1 py-0 d-flex align-items-center"
-                            onClick={() => {
-                              if (isIskontoRow) {
-                                setShowIskontoModal(true);
-                              } else if (isVeresiyeRow) {
-                                pendingVeresiyeRowIdRef.current = oRow.id;
-                                setMusteriSearchTerm(oRow.cariUnvan || oRow.cariKod || (aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan : cariKod));
-                                setShowMusteriModal(true);
-                              } else {
-                                openOdemeUrunModal(oRow.id);
-                              }
+                        </td>
+
+                        {/* Milyem */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_milyem`] = el; }}
+                            inputMode="decimal"
+                            size="sm"
+                            className="text-end font-monospace"
+                            value={oRow.milyem}
+                            readOnly={!isMetal}
+                            disabled={!isMetal}
+                            tabIndex={!isMetal ? -1 : undefined}
+                            onChange={(e) => updateOdemeRow(oRow.id, "milyem", e.target.value)}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "milyem", oRow.id)}
+                            onFocus={() => {
+                              setActiveOdemeRowIndex(rowIndex);
+                              cleanupEmptyOdemeRows(rowIndex);
+                              cleanupEmptyRows(null);
                             }}
-                            title={isIskontoRow ? "İskonto Seç (F3/F4)" : isVeresiyeRow ? "Cari Kart Seç (F3/F4)" : "Para / Ürün Seç (F3/F4)"}
                             style={{
-                              borderColor: isVeresiyeRow ? "#fca5a5" : isIskontoRow ? "#86efac" : undefined,
-                              color: isVeresiyeRow ? "#dc2626" : isIskontoRow ? "#16a34a" : undefined,
+                              fontSize: "11px",
+                              padding: "1px 4px",
                               backgroundColor: rowBg,
+                              color: rowTextColor || (!isMetal ? "#94a3b8" : undefined),
+                              borderColor: rowBorderColor,
                             }}
-                          >
-                            <IconBinoculars size={12} />
-                          </Button>
-                        </InputGroup>
-                      </td>
+                          />
+                        </td>
 
-                      {/* Para Adı / Cari Hesap Adı (Doğrudan Cari Adı Yazılır) */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <Form.Control
-                          size="sm"
-                          value={
-                            isVeresiyeRow
-                              ? (oRow.cariUnvan || oRow.paraAdi || "")
-                              : (oRow.paraAdi || (oRow.paraKodu === "TL" ? "TÜRK LİRASI" : ""))
-                          }
-                          readOnly
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: rowBg,
-                            color: rowTextColor || undefined,
-                            fontWeight: (isVeresiyeRow || isIskontoRow) ? 600 : undefined,
-                            borderColor: rowBorderColor,
-                          }}
-                        />
-                      </td>
+                        {/* Has Gr */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_hasGram`] = el; }}
+                            inputMode="decimal"
+                            size="sm"
+                            className="text-end font-monospace"
+                            value={isMetal ? (oRow.hasGram || "") : ""}
+                            readOnly={!isMetal}
+                            disabled={!isMetal}
+                            tabIndex={!isMetal ? -1 : undefined}
+                            onChange={(e) => updateOdemeRow(oRow.id, "hasGram", e.target.value)}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "hasGram", oRow.id)}
+                            onFocus={() => {
+                              setActiveOdemeRowIndex(rowIndex);
+                              cleanupEmptyOdemeRows(rowIndex);
+                              cleanupEmptyRows(null);
+                            }}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: rowBg,
+                              color: rowTextColor || (!isMetal ? "#94a3b8" : undefined),
+                              borderColor: rowBorderColor,
+                            }}
+                          />
+                        </td>
 
-                      {/* Adet */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <Form.Control
-                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
-                          inputMode="numeric"
-                          size="sm"
-                          className="text-end font-monospace"
-                          value={oRow.adet || ""}
-                          readOnly={!isMetal}
-                          disabled={!isMetal}
-                          tabIndex={!isMetal ? -1 : undefined}
-                          onChange={(e) => updateOdemeRow(oRow.id, "adet", e.target.value)}
-                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "adet", oRow.id)}
-                          onFocus={() => {
-                            setActiveOdemeRowIndex(rowIndex);
-                            cleanupEmptyOdemeRows(rowIndex);
-                            cleanupEmptyRows(null);
-                          }}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: rowBg,
-                            color: rowTextColor || (!isMetal ? "#94a3b8" : undefined),
-                            borderColor: rowBorderColor,
-                          }}
-                        />
-                      </td>
+                        {/* Kur - Kesinlikle Değiştirilemez / Salt Okunur */}
+                        <td style={{ padding: "2px 4px", backgroundColor: isOdemeRowTL ? "#e9ecef" : "#f8fafc", borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Control
+                            size="sm"
+                            readOnly
+                            disabled
+                            tabIndex={-1}
+                            className={`text-end font-monospace ${isOdemeRowTL ? "text-muted" : "fw-bold text-dark"}`}
+                            value={isOdemeRowTL ? "" : (oRow.kur !== "" && oRow.kur !== null && oRow.kur !== undefined && Number(oRow.kur) > 0 ? oRow.kur : (getKurForProduct({ paraId: oRow.paraId, kod: oRow.paraKodu, ad: oRow.paraAdi, urunTipi: oRow.urunTipi }, faturaTipi === 1 ? 0 : 1) || (Number(altinHasKuru) > 0 ? altinHasKuru : "")))}
+                            placeholder={isOdemeRowTL ? "-" : "Kur"}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: isOdemeRowTL ? "#e9ecef" : "#f8fafc",
+                              cursor: "not-allowed",
+                              borderColor: rowBorderColor,
+                            }}
+                            title="Ödeme kur değeri (Değiştirilemez)"
+                          />
+                        </td>
 
-                      {/* Miktar */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <Form.Control
-                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_miktar`] = el; }}
-                          inputMode="decimal"
-                          size="sm"
-                          className="text-end font-monospace fw-semibold"
-                          value={oRow.miktar}
-                          onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
-                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "miktar", oRow.id)}
-                          onFocus={() => {
-                            setActiveOdemeRowIndex(rowIndex);
-                            cleanupEmptyOdemeRows(rowIndex);
-                            cleanupEmptyRows(null);
-                          }}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: rowBg,
-                            color: rowTextColor,
-                            borderColor: rowBorderColor,
-                          }}
-                        />
-                      </td>
-
-                      {/* Milyem */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <Form.Control
-                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_milyem`] = el; }}
-                          inputMode="decimal"
-                          size="sm"
-                          className="text-end font-monospace"
-                          value={oRow.milyem}
-                          readOnly={!isMetal}
-                          disabled={!isMetal}
-                          tabIndex={!isMetal ? -1 : undefined}
-                          onChange={(e) => updateOdemeRow(oRow.id, "milyem", e.target.value)}
-                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "milyem", oRow.id)}
-                          onFocus={() => {
-                            setActiveOdemeRowIndex(rowIndex);
-                            cleanupEmptyOdemeRows(rowIndex);
-                            cleanupEmptyRows(null);
-                          }}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: rowBg,
-                            color: rowTextColor || (!isMetal ? "#94a3b8" : undefined),
-                            borderColor: rowBorderColor,
-                          }}
-                        />
-                      </td>
-
-                      {/* Has Gr */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <Form.Control
-                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_hasGram`] = el; }}
-                          inputMode="decimal"
-                          size="sm"
-                          className="text-end font-monospace"
-                          value={isMetal ? (oRow.hasGram || "") : ""}
-                          readOnly={!isMetal}
-                          disabled={!isMetal}
-                          tabIndex={!isMetal ? -1 : undefined}
-                          onChange={(e) => updateOdemeRow(oRow.id, "hasGram", e.target.value)}
-                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "hasGram", oRow.id)}
-                          onFocus={() => {
-                            setActiveOdemeRowIndex(rowIndex);
-                            cleanupEmptyOdemeRows(rowIndex);
-                            cleanupEmptyRows(null);
-                          }}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: rowBg,
-                            color: rowTextColor || (!isMetal ? "#94a3b8" : undefined),
-                            borderColor: rowBorderColor,
-                          }}
-                        />
-                      </td>
-
-                      {/* Kur */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <Form.Control
-                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_kur`] = el; }}
-                          inputMode="decimal"
-                          size="sm"
-                          className="text-end font-monospace"
-                          value={oRow.kur}
-                          onChange={(e) => updateOdemeRow(oRow.id, "kur", e.target.value)}
-                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}
-                          onFocus={() => {
-                            setActiveOdemeRowIndex(rowIndex);
-                            cleanupEmptyOdemeRows(rowIndex);
-                            cleanupEmptyRows(null);
-                          }}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: rowBg,
-                            color: rowTextColor,
-                            borderColor: rowBorderColor,
-                          }}
-                        />
-                      </td>
-
-                      {/* Tutar (TL) - Pasif / Salt Okunur */}
-                      <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
-                        <Form.Control
-                          ref={(el) => { odemeInputRefs.current[`${oRow.id}_tutar`] = el; }}
-                          size="sm"
-                          className="text-end font-monospace fw-bold"
-                          value={oRow.tutar}
-                          readOnly
-                          tabIndex={-1}
-                          onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: rowBg,
-                            color: rowTextColor || (isOverpaidVeresiye ? "#b91c1c" : isVeresiyeRow ? "#991b1b" : "#166534"),
-                            borderColor: rowBorderColor,
-                            cursor: "default",
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
+                        {/* Tutar (TL) - Pasif / Salt Okunur */}
+                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                          <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_tutar`] = el; }}
+                            size="sm"
+                            className="text-end font-monospace fw-bold"
+                            value={oRow.tutar}
+                            readOnly
+                            tabIndex={-1}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: rowBg,
+                              color: rowTextColor || (isOverpaidVeresiye ? "#b91c1c" : isVeresiyeRow ? "#991b1b" : "#166534"),
+                              borderColor: rowBorderColor,
+                              cursor: "default",
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 <tfoot style={{ background: "#f2f4f7", fontWeight: 600, fontSize: "11px" }}>
                   <tr>
@@ -5086,23 +5975,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                       </td>
                     </tr>
                   )}
-                  {farkTL > 0.01 && (
-                    <tr>
-                      <td colSpan={3} className="p-1.5 bg-light text-center">
-                        <Button
-                          variant="outline-warning"
-                          size="sm"
-                          className="w-100 py-1 fw-bold text-dark d-flex align-items-center justify-content-center gap-1 shadow-2xs"
-                          style={{ fontSize: "11.5px", borderColor: "#f59e0b", backgroundColor: "#fffbeb" }}
-                          onClick={() => handleAutoVeresiye()}
-                          title="Kalan farkı Cari Karta Veresiye / Açık Hesap olarak aktar"
-                        >
-                          <IconReportMoney size={16} className="text-warning" />
-                          <span>Kalanı Veresiye Yaz ({farkTL.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺)</span>
-                        </Button>
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </Table>
             </div>
@@ -5134,8 +6006,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     {selectedIskonto
                       ? `(${selectedIskonto.kod ? `${selectedIskonto.kod} - ` : ""}${selectedIskonto.tanim})`
                       : iskontoKodu
-                      ? `(${iskontoKodu})`
-                      : ""}{" "}
+                        ? `(${iskontoKodu})`
+                        : ""}{" "}
                     {calculatedIskontoOrani > 0 ? `(%${calculatedIskontoOrani})` : ""}:
                   </span>
                   <strong className="font-monospace">
@@ -5273,18 +6145,29 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         isLoading={isProductLoading}
         columns={productLookupColumns}
         initialSearchTerm={productSearchTerm}
-        onAddNew={() => setShowNewProductModal(true)}
-        addNewLabel="Yeni Kayıt"
         filterFn={(it, term) => {
-          const t = term.toLowerCase();
-          const barkod = (it.item.barkod || `${it.item.grupKodu}${it.item.urunNo}`).toLowerCase();
+          const t = (term || "").toLowerCase().trim();
+          if (!t) return true;
+          const barkod = (it.item.barkod || `${it.item.grupKodu || ""}${it.item.urunNo || ""}`).toLowerCase();
           const model = (
             (it.tip === "altin"
               ? (it.item as AltinUrunItem).model
               : (it.item as OzelUrunItem).mamulTipi) || ""
           ).toLowerCase();
           const ayar = (it.item.ayar || "").toLowerCase();
-          return barkod.includes(t) || model.includes(t) || ayar.includes(t);
+          const grupKodu = (it.item.grupKodu || "").toLowerCase();
+          const urunNo = String(it.item.urunNo || "").toLowerCase();
+          const aciklama = ((it.item as any).aciklama || (it.item as any).ad || "").toLowerCase();
+          const bankoKodu = ((it.item as any).bankoKodu || "").toLowerCase();
+          return (
+            barkod.includes(t) ||
+            model.includes(t) ||
+            ayar.includes(t) ||
+            grupKodu.includes(t) ||
+            urunNo.includes(t) ||
+            aciklama.includes(t) ||
+            bankoKodu.includes(t)
+          );
         }}
         onSelect={(item) => {
           lastModalCallerRef.current = null;
@@ -5296,6 +6179,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       {/* Ödeme / Para ve İskonto Seçim Modalı */}
       <LookupModal
         show={showOdemeUrunModal}
+        searchByCodeOnly={true}
         onHide={() => {
           setShowOdemeUrunModal(false);
           const caller = lastModalCallerRef.current;
@@ -5310,18 +6194,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             }, 50);
           }
         }}
-        title="Ödeme Para / Döviz / Altın Seçimi"
-        items={odemeUrunList.filter((u) => {
-          const k = (u.kod || "").toUpperCase().trim();
-          return k !== "VERESIYE" && k !== "VERESİYE" && k !== "ACIKHESAP" && k !== "AÇIK HESAP";
-        })}
+        title="Ödeme Para / İskonto Seçimi"
+        items={(() => {
+          const targetRow = odemeRows.find((r) => r.id === (activeOdemeRowIdForUrun || lastOdemeRowIdRef.current));
+          const isCari = targetRow?.odemeAraciTuru === 1 || Boolean(targetRow?.cariKartId);
+          const baseList = isCari ? allOdemeUrunler : odemeUrunList;
+          return baseList.filter((u) => {
+            const k = (u.kod || "").toUpperCase().trim();
+            return k !== "VERESIYE" && k !== "VERESİYE" && k !== "ACIKHESAP" && k !== "AÇIK HESAP";
+          });
+        })()}
         columns={odemeLookupColumns}
         initialSearchTerm={odemeSearchTerm}
         onAddNew={() => setShowNewProductModal(true)}
         addNewLabel="Yeni Kayıt"
         filterFn={(u, term) => {
-          const t = term.toLowerCase();
-          return (u.kod || "").toLowerCase().includes(t) || (u.ad || "").toLowerCase().includes(t);
+          const t = term.toLowerCase().trim();
+          if (!t) return true;
+          return (u.kod || "").toLowerCase().includes(t);
         }}
         onSelect={(selectedUrun) => {
           const targetRowId = activeOdemeRowIdForUrun || lastOdemeRowIdRef.current;
@@ -5352,6 +6242,99 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         onSelect={(v) => {
           setSelectedVezne(v);
           setShowVezneModal(false);
+        }}
+      />
+
+      {/* POS Cihazı Seçim Modalı */}
+      <LookupModal<PosCihaziItem>
+        show={showPosModal}
+        onHide={() => {
+          setShowPosModal(false);
+          setPosSearchTerm("");
+          setPendingPosRowId(null);
+        }}
+        title="POS Cihazı Seçimi"
+        items={posCihazlari}
+        initialSearchTerm={posSearchTerm}
+        selectedId={
+          posSearchTerm
+            ? posSearchTerm
+            : (odemeRows.find((r) => r.id === pendingPosRowId)?.bankaId ||
+               odemeRows.find((r) => r.id === pendingPosRowId)?.cariKod ||
+               undefined)
+        }
+        columns={[
+          { header: "Kod", width: "120px", render: (p) => <span className="fw-bold font-monospace text-primary">{p.kod}</span>, highlight: true },
+          { header: "POS Cihazı Adı", render: (p) => <span className="fw-semibold text-dark">{p.ad}</span>, highlight: false },
+        ]}
+        filterFn={(p, term) => {
+          const t = term.toLowerCase().trim();
+          return (p.kod || "").toLowerCase().includes(t) || (p.ad || "").toLowerCase().includes(t);
+        }}
+        onSelect={(pos) => {
+          if (pos && pendingPosRowId) {
+            const targetRowId = pendingPosRowId;
+            setOdemeRows((prev) => prev.map((r) => r.id === targetRowId ? {
+              ...r,
+              cariKod: pos.kod,
+              paraAdi: pos.ad || "KREDİ KARTI / POS",
+              bankaId: pos.posCihaziId,
+            } : r));
+            setTimeout(() => {
+              focusOdemeGridCell(targetRowId, "miktar", "select");
+            }, 50);
+          }
+          setShowPosModal(false);
+          setPosSearchTerm("");
+          setPendingPosRowId(null);
+        }}
+      />
+
+      {/* Banka Hesap Seçim Modalı */}
+      <LookupModal<BankaHesapItem>
+        show={showBankaModal}
+        onHide={() => {
+          setShowBankaModal(false);
+          setBankaSearchTerm("");
+          setPendingBankaRowId(null);
+        }}
+        title="Banka Hesabı Seçimi"
+        items={bankaHesaplari}
+        initialSearchTerm={bankaSearchTerm}
+        selectedId={
+          bankaSearchTerm
+            ? bankaSearchTerm
+            : (odemeRows.find((r) => r.id === pendingBankaRowId)?.bankaId ||
+               odemeRows.find((r) => r.id === pendingBankaRowId)?.cariKod ||
+               undefined)
+        }
+        columns={[
+          { header: "Hesap No", width: "130px", render: (b) => <span className="fw-bold font-monospace text-primary">{b.hesapNo}</span>, highlight: true },
+          { header: "Hesap Adı", render: (b) => <span className="fw-semibold text-dark">{b.hesapAdi}</span>, highlight: false },
+          { header: "IBAN", width: "220px", render: (b) => <span className="small text-muted font-monospace">{b.iban || "-"}</span>, highlight: false },
+        ]}
+        filterFn={(b, term) => {
+          const t = term.toLowerCase().trim();
+          return (b.hesapNo || "").toLowerCase().includes(t) ||
+                 (b.hesapAdi || "").toLowerCase().includes(t) ||
+                 (b.iban || "").toLowerCase().includes(t);
+        }}
+        onSelect={(banka) => {
+          if (banka && pendingBankaRowId) {
+            const targetRowId = pendingBankaRowId;
+            setOdemeRows((prev) => prev.map((r) => r.id === targetRowId ? {
+              ...r,
+              cariKod: banka.hesapNo,
+              paraAdi: banka.hesapAdi || "BANKA HAVALE / EFT",
+              bankaId: banka.bankaId,
+            } : r));
+            setTimeout(() => {
+              focusOdemeGridCell(targetRowId, "miktar", "select");
+            }, 50);
+          }
+          setShowBankaModal(false);
+          setBankaSearchTerm("");
+          setPendingBankaRowId(null);
         }}
       />
 
@@ -5448,6 +6431,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Button>
           <Button
             size="sm"
+            variant="outline-warning"
+            className="fw-bold"
+            onClick={() => {
+              setShowMasakLimitWarningModal(false);
+              void handleCompleteSale(pendingSaveWithPrint, true, true);
+            }}
+          >
+            Yine de Kaydet
+          </Button>
+          <Button
+            size="sm"
             variant="warning"
             className="fw-bold d-flex align-items-center gap-1 text-dark"
             onClick={() => {
@@ -5457,6 +6451,51 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           >
             <IconEdit size={16} />
             <span>Detaya Git (F8)</span>
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* MASAK Yasal Sınırı Kayıt Onay Modalı */}
+      <Modal
+        show={showMasakConfirmModal}
+        onHide={() => setShowMasakConfirmModal(false)}
+        centered
+        backdrop="static"
+      >
+        <Modal.Header closeButton className="py-2 bg-warning-subtle text-warning-emphasis">
+          <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
+            <IconAlertTriangle size={20} className="text-warning" />
+            MASAK Yasal Sınırı - Kayıt Onayı
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3 text-center">
+          <div className="mb-3">
+            <IconAlertTriangle size={48} className="text-warning" />
+          </div>
+          <h6 className="fw-bold mb-2">
+            İşlem MASAK Yasal Sınırını (≥185.000 TL) Aşmaktadır!
+          </h6>
+          <p className="small text-muted mb-3">
+            Müşteri kimlik ve adres bilgileri mevzuat gereğince işlemle birlikte kayıt altına alınacaktır.
+          </p>
+          <div className="alert alert-warning py-2 small mb-0 fw-semibold">
+            Fişi yine de kaydetmek istiyor musunuz?
+          </div>
+        </Modal.Body>
+        <Modal.Footer className="py-2 justify-content-center">
+          <Button size="sm" variant="secondary" className="px-3" onClick={() => setShowMasakConfirmModal(false)}>
+            Vazgeç
+          </Button>
+          <Button
+            size="sm"
+            variant="warning"
+            className="fw-bold px-3"
+            onClick={() => {
+              setShowMasakConfirmModal(false);
+              void handleCompleteSale(pendingSaveWithPrint, true, true);
+            }}
+          >
+            Yine de Kaydet
           </Button>
         </Modal.Footer>
       </Modal>
@@ -5979,6 +7018,54 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Modal.Body>
         </Modal>
       )}
+
+      {/* Ödeme / Tahsilat Farkı Onay Modalı */}
+      <Modal
+        show={showOdemeFarkConfirmModal.show}
+        onHide={() => setShowOdemeFarkConfirmModal({ show: false, andPrint: false, rawDiffTL: 0 })}
+        centered
+        backdrop="static"
+      >
+        <Modal.Header closeButton className="bg-warning-subtle text-dark py-2">
+          <Modal.Title style={{ fontSize: "15px", fontWeight: 700 }}>
+            ⚠️ Dikkat / Uyarı: Ödeme Tutarı Uyarısı
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          <div className="alert alert-warning mb-3 p-2.5" style={{ fontSize: "13px" }}>
+            <div className="fw-bold mb-1">
+              Fiş genel toplamı ({genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺) ile ödeme / tahsilat tutarı ({totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺) eşit değil!
+            </div>
+            <div className="mt-1">
+              Aradaki <strong>{showOdemeFarkConfirmModal.rawDiffTL.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</strong> fark kapatılmadı.
+            </div>
+          </div>
+          <p className="mb-0" style={{ fontSize: "13.5px" }}>
+            Fişi bu haliyle <strong>yine de kaydetmek istiyor musunuz?</strong>
+          </p>
+        </Modal.Body>
+        <Modal.Footer className="py-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowOdemeFarkConfirmModal({ show: false, andPrint: false, rawDiffTL: 0 })}
+          >
+            Vazgeç / Düzenle
+          </Button>
+          <Button
+            variant="warning"
+            size="sm"
+            className="fw-bold text-dark"
+            onClick={() => {
+              const andPrint = showOdemeFarkConfirmModal.andPrint;
+              setShowOdemeFarkConfirmModal({ show: false, andPrint: false, rawDiffTL: 0 });
+              void handleCompleteSale(andPrint, true, true);
+            }}
+          >
+            Yine de Kaydet
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };

@@ -532,10 +532,10 @@ export const VezneTransferiPage: React.FC = () => {
     };
   }, [lines]);
 
-  // Bildirimlerin 3.5 saniye sonra otomatik kapanması
+  // Bildirimlerin otomatik kapanması (1.75 sn)
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(() => setNotification(null), 3500);
+      const timer = setTimeout(() => setNotification(null), 1750);
       return () => clearTimeout(timer);
     }
   }, [notification]);
