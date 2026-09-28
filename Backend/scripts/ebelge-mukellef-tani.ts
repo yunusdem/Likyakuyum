@@ -16,8 +16,14 @@
  *
  * Kullanım (Backend klasöründe):
  *   npx tsx scripts/ebelge-mukellef-tani.ts <VKN_TCKN> ["UNVAN PARCASI"]
+ *
+ * Uygulama veritabanı bilgisini giriş ekranından aldığı için .env'de DB adı,
+ * kullanıcı ve şifre olmayabilir. O durumda aynı PowerShell penceresinde önce:
+ *   $env:DB_NAME="..."; $env:DB_USER="..."; $env:DB_PASSWORD="..."
  */
 import { EbelgeSqlRepository } from "../src/models/ebelgeSql.repository.js";
+import { getDbPool } from "../src/config/mssql.config.js";
+import { env } from "../src/config/env.config.js";
 import { callWithSession } from "../src/services/ice/ice.session.js";
 import { escapeXml } from "../src/services/ice/ice.client.js";
 
@@ -64,6 +70,12 @@ async function main() {
     return;
   }
 
+  adim("veritabanina baglaniliyor");
+  console.log(`Sunucu: ${env.DB_SERVER}  DB: ${env.DB_NAME || "(bos → R2016_dvz)"}  ` +
+    `Kullanici: ${env.DB_USER || "(bos → SA)"}  Sifre: ${env.DB_PASSWORD ? "var" : "YOK"}`);
+  await getDbPool();
+  console.log("Baglanti tamam.");
+
   adim("ICE baglanti ayari okunuyor");
   config = await EbelgeSqlRepository.getConnectionConfig();
   console.log(`ICE   : ${config.servisUrl}`);
@@ -89,7 +101,20 @@ async function main() {
   adim("bitti");
 }
 
-main().catch((e) => {
-  console.error("Tani calistirilamadi:", e?.message || e);
-  process.exitCode = 1;
-});
+// Bekleyen bir söz sessizce düşerse süreç çıktısız kapanmasın; 60 sn sonra nerede kaldığı görülür
+const bekci = setTimeout(() => {
+  console.error("Tani 60 sn icinde bitmedi; son yazilan adimda takildi.");
+  process.exit(1);
+}, 60_000);
+process.on("unhandledRejection", (e: any) => console.error("[yakalanmamis reddetme]", e?.message || e));
+
+main()
+  .catch((e) => {
+    console.error("Tani calistirilamadi:", e?.message || e);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    clearTimeout(bekci);
+    // Açık SQL havuzu süreci ayakta tutmasın
+    setTimeout(() => process.exit(), 100);
+  });
