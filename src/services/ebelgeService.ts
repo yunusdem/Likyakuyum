@@ -1022,6 +1022,11 @@ export const ebelgeService = {
     return ebelgeGoruntuBlob(`/e-belge/earsiv/${encodeURIComponent(uuid)}/pdf`);
   },
 
+  /** Giden belgenin önizlemesi (tarihe basınca) — kendi XML'imizden; kuyruktaki belgede de açılır */
+  async getGidenOnizleme(uuid: string): Promise<EbelgeGoruntu> {
+    return ebelgeGoruntuBlob(`/e-belge/giden/${encodeURIComponent(uuid)}/onizleme`);
+  },
+
   /** e-Fatura (taslak dahil) görüntüsü — ICE'deki belgenin PDF'i */
   async getEfaturaGoruntu(uuid: string): Promise<EbelgeGoruntu> {
     return ebelgeGoruntuBlob(`/e-belge/gelen/${encodeURIComponent(uuid)}/goruntu?format=pdf`);
@@ -1081,6 +1086,9 @@ export const ebelgeRedKabulRozet = (
   return { bg: "secondary-subtle", text: "secondary", etiket: "Cevap bekliyor" };
 };
 
+/** Sonucu arka planda kesinleşen giden durumları; kullanıcıya "Gönderildi" görünür */
+export const EBELGE_ASKIDAKI_DURUMLAR = ["KUYRUKTA", "GONDERILIYOR", "BELIRSIZ", "ONAYLANIYOR"];
+
 /** Giden belge durumuna göre rozet (§15.2 paleti) */
 export const ebelgeGidenDurumRozet = (
   durum?: string | null
@@ -1090,13 +1098,17 @@ export const ebelgeGidenDurumRozet = (
       return { bg: "secondary-subtle", text: "secondary", etiket: "Gönderilmedi" };
     case "KONTROL_GEREKLI":
       return { bg: "warning-subtle", text: "warning", etiket: "Kontrol gerekli" };
+    // Gönderim kuyruğu kullanıcıya görünmez (docs/EBELGE_KUYRUK_YOL_HARITASI.md): sonucu arka planda
+    // kesinleşen belge "Gönderildi", gönderilemeyen "Gönderilemedi" görünür.
+    case "KUYRUKTA":
     case "ONAYLANIYOR":
     case "GONDERILIYOR":
-    case "IPTAL_EDILIYOR":
-      return { bg: "warning-subtle", text: "warning", etiket: "İşlem sürüyor / kontrol gerekli" };
     case "BELIRSIZ":
+      return { bg: "info-subtle", text: "info", etiket: "Gönderildi" };
+    case "IPTAL_EDILIYOR":
+      return { bg: "secondary-subtle", text: "secondary", etiket: "İptal" };
     case "IPTAL_BELIRSIZ":
-      return { bg: "danger-subtle", text: "danger", etiket: "Sonuç belirsiz" };
+      return { bg: "danger-subtle", text: "danger", etiket: "İptal kontrol gerekli" };
     case "TASLAK":
       return { bg: "warning-subtle", text: "warning", etiket: "Taslak" };
     case "GONDERILDI":
@@ -1104,7 +1116,7 @@ export const ebelgeGidenDurumRozet = (
     case "IPTAL":
       return { bg: "secondary-subtle", text: "secondary", etiket: "İptal" };
     case "HATA":
-      return { bg: "danger-subtle", text: "danger", etiket: "Hata" };
+      return { bg: "danger-subtle", text: "danger", etiket: "Gönderilemedi" };
     default:
       return { bg: "secondary-subtle", text: "secondary", etiket: durum || "-" };
   }

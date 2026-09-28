@@ -7,6 +7,12 @@ import { EbelgeAyarView, IceConnectionConfig } from "../services/ice/ice.types.j
 
 export type DbContext = { dbServer?: string; dbName?: string };
 
+/** Giden kutusu filtresi → kayıt durumları (docs/EBELGE_KUYRUK_YOL_HARITASI.md Q1/Q2) */
+const GIDEN_DURUM_GRUPLARI: Record<string, string[]> = {
+  GONDERILDI: ["GONDERILDI", "KUYRUKTA", "GONDERILIYOR", "BELIRSIZ", "ONAYLANIYOR"],
+  IPTAL: ["IPTAL", "IPTAL_EDILIYOR"],
+};
+
 export interface EarsivArsivKaydi {
   uuid: string; belgeNo: string; aliciVkn: string | null; aliciUnvan: string | null;
   gondericiVkn: string | null; gondericiUnvan: string | null; tarih: Date;
@@ -119,7 +125,8 @@ export interface GidenBelgeKaydi {
   duzenlemeTarihi?: Date | null;
   tutar?: number | null;
   paraBirimi?: string | null;
-  gonderimDurumu: "HAZIRLANDI" | "DOGRULANDI" | "TASLAK" | "GONDERILDI" | "IPTAL" | "HATA" | "GONDERILIYOR" | "BELIRSIZ";
+  /** KUYRUKTA: gönderim kuyruğunda, henüz ICE'ye gitmedi (docs/EBELGE_KUYRUK_YOL_HARITASI.md) */
+  gonderimDurumu: "HAZIRLANDI" | "DOGRULANDI" | "TASLAK" | "GONDERILDI" | "IPTAL" | "HATA" | "GONDERILIYOR" | "BELIRSIZ" | "KUYRUKTA";
   semaGecerli?: boolean | null;
   schematronGecerli?: boolean | null;
   iceResponseCode?: string | null;
@@ -316,6 +323,11 @@ export class EbelgeSqlRepository {
       // Numara indeksi kurulamadıysa gönderim güvenliği sağlanamaz.
       throw err;
     }
+  }
+
+  /** e-Belge tabloları kurulmuş havuz — gönderim kuyruğu da aynı tabloları kullanır */
+  public static async havuzAl(dbContext?: DbContext): Promise<sql.ConnectionPool> {
+    return this.getPool(dbContext);
   }
 
   private static async getPool(dbContext?: DbContext): Promise<sql.ConnectionPool> {
@@ -1068,8 +1080,10 @@ export class EbelgeSqlRepository {
       request.input("arama", sql.NVarChar(200), `%${filtre.arama}%`);
     }
     if (filtre.durum && filtre.durum !== "TUMU") {
-      kosullar.push("[GONDERIM_DURUMU] = @durum");
-      request.input("durum", sql.VarChar(20), filtre.durum);
+      // Kuyruk kullanıcıya görünmez: sonucu beklenen belgeler "Gönderildi", iptali sürenler "İptal" filtresinde
+      const grup = GIDEN_DURUM_GRUPLARI[filtre.durum] ?? [filtre.durum];
+      kosullar.push(`[GONDERIM_DURUMU] IN (${grup.map((_, i) => `@durum${i}`).join(", ")})`);
+      grup.forEach((d, i) => request.input(`durum${i}`, sql.VarChar(20), d));
     }
     if (filtre.belgeTuru) {
       kosullar.push("[BELGE_TURU] = @belgeTuru");

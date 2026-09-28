@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EbelgeService } from "../services/ebelge.service.js";
 import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
+import { EbelgeKuyrukService } from "../services/ebelgeKuyruk.service.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
 import { EbelgeKodRepository } from "../models/ebelgeKod.repository.js";
 import { EbelgeTaslakRepository } from "../models/ebelgeTaslak.repository.js";
@@ -146,10 +147,13 @@ export class EbelgeController {
     return ApiResponse.ok(res, "KNSK işareti kaldırıldı.", { vknTckn: parsed.data.vkn });
   });
   private static getDbContext(req: Request) {
-    return {
+    const ctx = {
       dbServer: req.user?.dbServer || (req.query.dbServer as string) || (req.body?.dbServer as string),
       dbName: req.user?.dbName || (req.query.dbName as string) || (req.body?.dbName as string),
     };
+    // e-Belge kullanan firma, gönderim kuyruğunun izlediği veritabanlarına girer
+    EbelgeKuyrukService.baglamKaydet(ctx);
+    return ctx;
   }
 
   private static getKullanici(req: Request): string {
@@ -674,6 +678,21 @@ export class EbelgeController {
         : `${sonuc.gonderilen} alıcıya e-posta gönderildi.`,
       sonuc
     );
+  });
+
+  /**
+   * GET /api/v1/e-belge/giden/:uuid/onizleme — tarihe basınca açılan önizleme (kuyruktaki belgede de)
+   */
+  public static gidenOnizleme = asyncHandler(async (req: Request, res: Response) => {
+    const uuid = String(req.params.uuid || "").trim();
+    if (!uuid) throw ApiError.badRequest("Belge UUID bilgisi zorunludur.");
+    const goruntu = await EbelgeService.gidenOnizleme(uuid, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+    const html = goruntu.tur === "html";
+    res.setHeader("Content-Type", html ? "text/html; charset=utf-8" : "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${uuid}.${html ? "html" : "pdf"}"`);
+    res.setHeader("Content-Length", String(goruntu.veri.length));
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).end(goruntu.veri);
   });
 
   /**

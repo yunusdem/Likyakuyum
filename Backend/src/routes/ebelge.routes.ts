@@ -2,6 +2,10 @@ import { Router } from "express";
 import { EbelgeController } from "../controllers/ebelge.controller.js";
 import { authenticate, authorizeRoles } from "../middlewares/auth.middleware.js";
 import { UserRole } from "../constants/roles.js";
+import { EbelgeKuyrukService } from "../services/ebelgeKuyruk.service.js";
+
+// Gönderim kuyruğunun arka plan işi (server.ts'e dokunmadan; ice.session kapanış dinleyicisiyle aynı yaklaşım)
+EbelgeKuyrukService.baslat();
 
 const router = Router();
 
@@ -103,6 +107,7 @@ router.post(
   EbelgeController.taslakOnayla
 );
 router.get("/giden/:uuid/statu", EbelgeController.gidenStatuYenile);
+router.get("/giden/:uuid/onizleme", EbelgeController.gidenOnizleme);
 
 // Belgeyi alıcıya e-posta ile gönderir — tekrar çağrılırsa yeniden mail gider.
 router.post(
