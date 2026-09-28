@@ -37,6 +37,9 @@ export interface AktarimSozlukleri {
   tlId: number | null;
 }
 
+/** IBAN karşılaştırması boşluk ve harf büyüklüğünden bağımsız */
+export const ibanSade = (i: string | null | undefined): string => (i || "").replace(/\s/g, "").toUpperCase();
+
 const benzersiz = <T>(liste: (T | null | undefined)[]): T[] => [...new Set(liste.filter((x): x is T => x !== null && x !== undefined && x !== ""))];
 
 /**
@@ -46,7 +49,11 @@ const benzersiz = <T>(liste: (T | null | undefined)[]): T[] => [...new Set(liste
 export const planla = (h: AktarimAdayi, s: AktarimSozlukleri): AktarimPlani => {
   const islemTipi = h.tutar >= 0 ? HAVALE_ALMA : HAVALE_GONDERME;
   const paraId = s.paraKodlari.get((h.doviz || "TL").toUpperCase()) ?? null;
-  const taban = { islemTipi, cari: null, virman: false, paraId, tlMi: paraId !== null && paraId === s.tlId } as const;
+  // Karşı taraf bizim başka bir hesabımızsa virmandır. Aktarımı engelleyen eksikler (kartla eşlenmemiş hesap gibi) olsa da
+  // virman olduğu bilinsin: mutabakat bu hareket için fiş / fatura aramaz.
+  const karsiIbanlar = benzersiz([h.karsiIban, islemTipi === HAVALE_ALMA ? h.gonderenIban : h.aliciIban]);
+  const bizimHesap = karsiIbanlar.map((i) => s.bizimIbanlar.get(ibanSade(i))).find(Boolean);
+  const taban = { islemTipi, cari: null, virman: Boolean(bizimHesap), paraId, tlMi: paraId !== null && paraId === s.tlId } as const;
 
   if (h.tipKurali === 2) return { ...taban, karar: "aktarma", neden: "Bu hareket tipi aktarılmıyor" };
   if (!h.bankaId) return { ...taban, karar: "bekle", neden: "Hesap bir Banka Hesap Kartı ile eşleşmedi" };
@@ -54,16 +61,13 @@ export const planla = (h: AktarimAdayi, s: AktarimSozlukleri): AktarimPlani => {
   if (!h.tutar) return { ...taban, karar: "bekle", neden: "Tutar sıfır" };
   if (h.tipKurali === 1) return { ...taban, karar: "bekle", neden: "Bu hareket tipi elle aktarılır" };
 
+  if (bizimHesap) return { ...taban, karar: "aktar", neden: `Hesaplar arası virman (${bizimHesap})` };
+
   // Tipin varsayılan carisi (masraf, faiz, vergi…)
   if (h.tipCariId) {
     const cari = s.tipCarileri.get(h.tipCariId);
     if (cari) return { ...taban, karar: "aktar", neden: "Hareket tipinin varsayılan carisi", cari };
   }
-
-  // Karşı taraf bizim başka bir hesabımızsa cari aranmaz
-  const karsiIbanlar = benzersiz([h.karsiIban, islemTipi === HAVALE_ALMA ? h.gonderenIban : h.aliciIban]);
-  const bizimHesap = karsiIbanlar.map((i) => s.bizimIbanlar.get(i)).find(Boolean);
-  if (bizimHesap) return { ...taban, karar: "aktar", neden: `Hesaplar arası virman (${bizimHesap})`, virman: true };
 
   // Cari 3 kriterle bulunur, en az 2'si aynı cariyi göstermeli (M10–M13):
   //  (1) VKN/TC — bankanın alanları + açıklamaya yazılan numara, (2) gönderen / karşı taraf adı ↔ cari adı, (3) öğrenilmiş karşı IBAN
@@ -264,7 +268,7 @@ export class EBankaAktarimService {
 
     // Sonraki hareket kendiliğinden eşleşsin (E17). Kendi hesabımızın IBAN'ı cariye bağlanmaz.
     const karsiIban = h.karsiIban || (islemTipi === HAVALE_ALMA ? h.gonderenIban : h.aliciIban);
-    if (cariKartId && karsiIban && !(await EBankaAktarimSqlRepository.bizimIbanlar(dbContext)).has(karsiIban)) {
+    if (cariKartId && karsiIban && !(await EBankaAktarimSqlRepository.bizimIbanlar(dbContext)).has(ibanSade(karsiIban))) {
       await EBankaAktarimSqlRepository.ibanOgren(karsiIban, cariKartId, dbContext).catch(() => undefined);
     }
     return { bankaHareketId };

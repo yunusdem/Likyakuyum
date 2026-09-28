@@ -2,7 +2,7 @@ import { DbContext } from "../models/ebankaSql.repository.js";
 import { EBankaMutabakatSqlRepository, FisTuru, MutabakatFisi, MutabakatHareketi, Yon } from "../models/ebankaMutabakatSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EBankaAktarimSqlRepository } from "../models/ebankaAktarimSql.repository.js";
-import { EBankaAktarimService, planla } from "./ebankaAktarim.service.js";
+import { EBankaAktarimService, ibanSade, planla } from "./ebankaAktarim.service.js";
 import { aciklamaNumaralari } from "./ebankaCariEslesme.js";
 
 // F- e-Banka > Tahsilat / Ödeme Mutabakatı (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md, M1–M9)
@@ -277,7 +277,7 @@ export class EBankaMutabakatService {
     if (cariKartId) {
       const h = await EBankaAktarimSqlRepository.adayGetir(vomsisId, dbContext);
       const iban = h && (h.karsiIban || (h.tutar >= 0 ? h.gonderenIban : h.aliciIban));
-      if (iban && !(await EBankaAktarimSqlRepository.bizimIbanlar(dbContext)).has(iban)) await EBankaAktarimSqlRepository.ibanOgren(iban, cariKartId, dbContext).catch(() => undefined);
+      if (iban && !(await EBankaAktarimSqlRepository.bizimIbanlar(dbContext)).has(ibanSade(iban))) await EBankaAktarimSqlRepository.ibanOgren(iban, cariKartId, dbContext).catch(() => undefined);
     }
     return { cariKartId };
   }

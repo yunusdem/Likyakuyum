@@ -117,6 +117,7 @@ export function useEBankaFisKesimi(fisTuru: MutabakatFisTuru, hazir: boolean, do
         Banka hareketinden fiş kesiliyor
         {bilgi ? <> — {bilgi.tip === 1 ? "gelen" : "giden"} {bilgi.tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {bilgi.paraKodu}, {bilgi.tarih.split("-").reverse().join(".")}{bilgi.musteri ? ` — ${bilgi.musteri.unvan}` : ""}</> : null}
         . Kaydedince bu hareketle eşlenir.
+        {bilgi && !bilgi.musteri && <strong> Bankadan karşı taraf adı / VKN gelmedi; müşteriyi fiş ekranında seçin.</strong>}
       </span>
       <button type="button" className="btn btn-sm btn-link ms-auto p-0" onClick={() => navigate("/ebanka/mutabakat")}>Vazgeç</button>
     </div>

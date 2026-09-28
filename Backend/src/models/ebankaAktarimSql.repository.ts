@@ -123,7 +123,7 @@ export class EBankaAktarimSqlRepository {
       `)
     ).recordset;
     const m = new Map<string, string>();
-    for (const r of rows) for (const i of [r.IBAN, r.OZEL_IBAN]) if (i) m.set(String(i), kirp(r.ETIKET));
+    for (const r of rows) for (const i of [r.IBAN, r.OZEL_IBAN]) if (i) m.set(String(i).replace(/\s/g, "").toUpperCase(), kirp(r.ETIKET));
     return m;
   }
 
