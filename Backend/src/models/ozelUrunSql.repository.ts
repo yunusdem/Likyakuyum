@@ -135,8 +135,30 @@ export class OzelUrunSqlRepository {
             ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [YAZDIRILDI] BIT NOT NULL DEFAULT 0;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'YAZDIRILDI_ZAMANI')
             ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [YAZDIRILDI_ZAMANI] DATETIME NULL;
-          IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'MODEL_OZELLIK_2' AND CHARACTER_MAXIMUM_LENGTH <> -1)
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'MODEL_OZELLIK_1' AND CHARACTER_MAXIMUM_LENGTH <> -1)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [MODEL_OZELLIK_1] VARCHAR(MAX) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'MODEL_OZELLIK_2' AND CHARACTER_MAXIMUM_LENGTH <> -1)
             ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [MODEL_OZELLIK_2] VARCHAR(MAX) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'URETICI_FIRMA' AND CHARACTER_MAXIMUM_LENGTH < 500)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [URETICI_FIRMA] VARCHAR(500) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'MAMUL_TIPI' AND CHARACTER_MAXIMUM_LENGTH < 250)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [MAMUL_TIPI] VARCHAR(250) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'AYAR' AND CHARACTER_MAXIMUM_LENGTH < 250)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [AYAR] VARCHAR(250) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'ORJINAL_KOD' AND CHARACTER_MAXIMUM_LENGTH < 250)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [ORJINAL_KOD] VARCHAR(250) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'BANKO' AND CHARACTER_MAXIMUM_LENGTH < 250)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [BANKO] VARCHAR(250) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'BARKOD' AND CHARACTER_MAXIMUM_LENGTH < 100)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [BARKOD] VARCHAR(100) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'GRUP_KODU' AND CHARACTER_MAXIMUM_LENGTH < 100)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [GRUP_KODU] VARCHAR(100) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'TAS_CINSI' AND CHARACTER_MAXIMUM_LENGTH < 250)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [TAS_CINSI] VARCHAR(250) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'TAS_RENK' AND CHARACTER_MAXIMUM_LENGTH < 100)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [TAS_RENK] VARCHAR(100) NULL;
+          IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'TAS_SAFLIK' AND CHARACTER_MAXIMUM_LENGTH < 100)
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [TAS_SAFLIK] VARCHAR(100) NULL;
         END;
       `);
     } catch (err: any) {
@@ -150,33 +172,33 @@ export class OzelUrunSqlRepository {
         CREATE OR ALTER PROCEDURE [dbo].[SODVZ_OZEL_URUN_KAYDET]
             @OZEL_URUN_ID       INT OUTPUT,
             @TARIH              DATETIME,
-            @GRUP_KODU          VARCHAR(50),
+            @GRUP_KODU          VARCHAR(100),
             @URUN_NO            INT,
-            @BARKOD             VARCHAR(50) = NULL,
-            @MAMUL_TIPI         VARCHAR(50) = NULL,
-            @URETICI_FIRMA      VARCHAR(150) = NULL,
+            @BARKOD             VARCHAR(100) = NULL,
+            @MAMUL_TIPI         VARCHAR(250) = NULL,
+            @URETICI_FIRMA      VARCHAR(500) = NULL,
             @MIKTAR             FLOAT = 1.00,
-            @MIKTAR_BIRIMI      VARCHAR(20) = 'Adet',
-            @ORJINAL_KOD        VARCHAR(50) = NULL,
-            @AYAR               VARCHAR(20) = NULL,
-            @MODEL_OZELLIK_1    VARCHAR(100) = NULL,
+            @MIKTAR_BIRIMI      VARCHAR(50) = 'Adet',
+            @ORJINAL_KOD        VARCHAR(250) = NULL,
+            @AYAR               VARCHAR(250) = NULL,
+            @MODEL_OZELLIK_1    VARCHAR(MAX) = NULL,
             @MODEL_OZELLIK_2    VARCHAR(MAX) = NULL,
-            @BANKO              VARCHAR(50) = NULL,
+            @BANKO              VARCHAR(250) = NULL,
             @MALIYET            FLOAT = 0,
-            @MALIYET_PARA_KODU  VARCHAR(10) = 'USD',
+            @MALIYET_PARA_KODU  VARCHAR(50) = 'USD',
             @KAR_YUZDESI        FLOAT = 0,
             @SABITLE            BIT = 0,
             @SATIS_FIYATI       FLOAT = 0,
-            @SATIS_PARA_KODU    VARCHAR(10) = 'USD',
+            @SATIS_PARA_KODU    VARCHAR(50) = 'USD',
             @HIZLI_GIRIS        BIT = 0,
-            @TAS_CINSI          VARCHAR(50) = NULL,
+            @TAS_CINSI          VARCHAR(250) = NULL,
             @TAS_MIKTAR         FLOAT = NULL,
-            @TAS_BIRIM          VARCHAR(20) = 'Ct',
-            @TAS_RENK           VARCHAR(20) = NULL,
-            @TAS_SAFLIK         VARCHAR(20) = NULL,
+            @TAS_BIRIM          VARCHAR(50) = 'Ct',
+            @TAS_RENK           VARCHAR(100) = NULL,
+            @TAS_SAFLIK         VARCHAR(100) = NULL,
             @TAS_ADET           INT = NULL,
             @TAS_TUTAR          FLOAT = NULL,
-            @TAS_TUTAR_BIRIMI   VARCHAR(10) = 'USD',
+            @TAS_TUTAR_BIRIMI   VARCHAR(50) = 'USD',
             @SATILDI            BIT = 0,
             @RESIM              VARBINARY(MAX) = NULL,
             @KULLANICI_ID       INT = NULL,
@@ -529,33 +551,33 @@ export class OzelUrunSqlRepository {
     const req = pool.request();
     req.output("OZEL_URUN_ID", sql.Int, targetId);
     req.input("TARIH", sql.DateTime, dto.tarih ? new Date(dto.tarih) : new Date());
-    req.input("GRUP_KODU", sql.VarChar(50), (dto.grupKodu || "").trim().toUpperCase());
+    req.input("GRUP_KODU", sql.VarChar(100), (dto.grupKodu || "").trim().toUpperCase());
     req.input("URUN_NO", sql.Int, Number(dto.urunNo));
-    req.input("BARKOD", sql.VarChar(50), dto.barkod ? dto.barkod.trim() : null);
-    req.input("MAMUL_TIPI", sql.VarChar(50), dto.mamulTipi ? dto.mamulTipi.trim() : null);
-    req.input("URETICI_FIRMA", sql.VarChar(150), dto.ureticiFirma ? dto.ureticiFirma.trim() : null);
+    req.input("BARKOD", sql.VarChar(100), dto.barkod ? dto.barkod.trim() : null);
+    req.input("MAMUL_TIPI", sql.VarChar(250), dto.mamulTipi ? dto.mamulTipi.trim() : null);
+    req.input("URETICI_FIRMA", sql.VarChar(500), dto.ureticiFirma ? dto.ureticiFirma.trim() : null);
     req.input("MIKTAR", sql.Float, dto.miktar !== undefined ? Number(dto.miktar) : 1);
-    req.input("MIKTAR_BIRIMI", sql.VarChar(20), dto.miktarBirimi || "Adet");
-    req.input("ORJINAL_KOD", sql.VarChar(50), dto.orjinalKod ? dto.orjinalKod.trim() : null);
-    req.input("AYAR", sql.VarChar(20), dto.ayar ? dto.ayar.trim() : null);
-    req.input("MODEL_OZELLIK_1", sql.VarChar(100), dto.modelOzellik1 ? dto.modelOzellik1.trim() : null);
+    req.input("MIKTAR_BIRIMI", sql.VarChar(50), dto.miktarBirimi || "Adet");
+    req.input("ORJINAL_KOD", sql.VarChar(250), dto.orjinalKod ? dto.orjinalKod.trim() : null);
+    req.input("AYAR", sql.VarChar(250), dto.ayar ? dto.ayar.trim() : null);
+    req.input("MODEL_OZELLIK_1", sql.VarChar(sql.MAX), dto.modelOzellik1 ? dto.modelOzellik1.trim() : null);
     req.input("MODEL_OZELLIK_2", sql.VarChar(sql.MAX), dto.modelOzellik2 ? dto.modelOzellik2.trim() : null);
-    req.input("BANKO", sql.VarChar(50), dto.banko ? dto.banko.trim() : null);
+    req.input("BANKO", sql.VarChar(250), dto.banko ? dto.banko.trim() : null);
     req.input("MALIYET", sql.Float, Number(dto.maliyet) || 0);
-    req.input("MALIYET_PARA_KODU", sql.VarChar(10), dto.maliyetParaKodu || "USD");
+    req.input("MALIYET_PARA_KODU", sql.VarChar(50), dto.maliyetParaKodu || "USD");
     req.input("KAR_YUZDESI", sql.Float, Number(dto.karYuzdesi) || 0);
     req.input("SABITLE", sql.Bit, dto.sabitle ? 1 : 0);
     req.input("SATIS_FIYATI", sql.Float, Number(dto.satisFiyati) || 0);
-    req.input("SATIS_PARA_KODU", sql.VarChar(10), dto.satisParaKodu || "USD");
+    req.input("SATIS_PARA_KODU", sql.VarChar(50), dto.satisParaKodu || "USD");
     req.input("HIZLI_GIRIS", sql.Bit, dto.hizliGiris ? 1 : 0);
-    req.input("TAS_CINSI", sql.VarChar(50), dto.tasCinsi ? dto.tasCinsi.trim() : null);
+    req.input("TAS_CINSI", sql.VarChar(250), dto.tasCinsi ? dto.tasCinsi.trim() : null);
     req.input("TAS_MIKTAR", sql.Float, dto.tasMiktar ?? null);
-    req.input("TAS_BIRIM", sql.VarChar(20), dto.tasBirim || "Ct");
-    req.input("TAS_RENK", sql.VarChar(20), dto.tasRenk ? dto.tasRenk.trim() : null);
-    req.input("TAS_SAFLIK", sql.VarChar(20), dto.tasSaflik ? dto.tasSaflik.trim() : null);
+    req.input("TAS_BIRIM", sql.VarChar(50), dto.tasBirim || "Ct");
+    req.input("TAS_RENK", sql.VarChar(100), dto.tasRenk ? dto.tasRenk.trim() : null);
+    req.input("TAS_SAFLIK", sql.VarChar(100), dto.tasSaflik ? dto.tasSaflik.trim() : null);
     req.input("TAS_ADET", sql.Int, dto.tasAdet ?? null);
     req.input("TAS_TUTAR", sql.Float, dto.tasTutar ?? null);
-    req.input("TAS_TUTAR_BIRIMI", sql.VarChar(10), dto.tasTutarBirimi || "USD");
+    req.input("TAS_TUTAR_BIRIMI", sql.VarChar(50), dto.tasTutarBirimi || "USD");
     req.input("SATILDI", sql.Bit, dto.satildi ? 1 : 0);
     req.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
     req.input("KULLANICI_ID", sql.Int, kullaniciId || null);

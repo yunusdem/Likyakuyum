@@ -386,13 +386,13 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
   // Bildirimler belli bir süre sonra kendiliğinden kapanır (sayfada yer kaplamaz, sabit/taşan bildirim)
   useEffect(() => {
     if (!alertSuccess) return;
-    const t = setTimeout(() => setAlertSuccess(null), 4500);
+    const t = setTimeout(() => setAlertSuccess(null), 2000);
     return () => clearTimeout(t);
   }, [alertSuccess]);
 
   useEffect(() => {
     if (!alertError) return;
-    const t = setTimeout(() => setAlertError(null), 6000);
+    const t = setTimeout(() => setAlertError(null), 3000);
     return () => clearTimeout(t);
   }, [alertError]);
 
@@ -642,21 +642,37 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
   };
 
   /** Seçilen GİB kaydını forma işler: posta kutuları + (boşsa) unvan ve e-posta. */
-  const gibKaydiniUygula = (k: GibKullanici) => {
+  const gibKaydiniUygula = async (k: GibKullanici) => {
     const alias = k.Alias || k.Identifier || "";
     const eposta = gibAliasToEposta(alias);
     const unvan = (k.Title || "").trim();
     const doldurulan: string[] = [`posta kutusu: ${alias}`];
+    
+    let extraAdres: any = null;
+    const vkn = (formData.vergiKimlikNo || "").replace(/\D/g, "");
+    if (vkn) {
+      try {
+        const adrRes = await ebelgeService.aliciAdresleri(vkn);
+        if (Array.isArray(adrRes) && adrRes.length > 0) {
+          extraAdres = adrRes[0];
+        }
+      } catch { }
+    }
+
     setFormData((prev) => {
       const sonraki = { ...prev, eFaturaPostaKutusu: alias, eIrsaliyePostaKutusu: alias };
-      if (unvan && !(prev.ad || "").trim()) { sonraki.ad = unvan; doldurulan.push(`unvan: ${unvan}`); }
+      if (unvan) { sonraki.ad = unvan; doldurulan.push(`unvan: ${unvan}`); }
       if (eposta && !(prev.eposta || "").trim()) { sonraki.eposta = eposta; doldurulan.push(`e-posta: ${eposta}`); }
+      if (extraAdres) {
+        if (extraAdres.adres && !(prev.adres || "").trim()) sonraki.adres = extraAdres.adres;
+        if (extraAdres.telefon && !(prev.telefon || "").trim()) sonraki.telefon = extraAdres.telefon;
+        doldurulan.push("adres");
+      }
       return sonraki;
     });
     setGibSecimListesi([]);
-    // GİB e-posta alanı döndürmez; posta kutusu etiketi e-posta biçiminde değilse açıkça "yok" denir.
     const epostaNotu = eposta ? "" : " · GİB kaydında e-posta yok";
-    setAlertSuccess(`✅ GİB bilgileri dolduruldu — ${doldurulan.join(" · ")}${epostaNotu}`);
+    setAlertSuccess(`✅ e-Fatura bilgileri dolduruldu — ${doldurulan.join(" · ")}${epostaNotu}`);
   };
 
   const handleGibtenGetir = async () => {

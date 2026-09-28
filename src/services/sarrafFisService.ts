@@ -22,10 +22,16 @@ export interface SarrafFisSatiriItem {
 
 export interface OdemeSatiriItem {
   satirNo: number;
-  islemeYeri: number;
+  islemeYeri?: number;
   odemeAraciTuru: number;
+  cariKartId?: number | null;
+  cariKod?: string | null;
+  cariUnvan?: string | null;
+  bankaId?: number | null;
   paraId?: number | null;
   paraKodu?: string;
+  paraAdi?: string;
+  adet?: number | string | null;
   miktar: number | string;
   milyem: number | string;
   hasGram: number | string;
@@ -94,6 +100,8 @@ export interface SarrafFisModel {
   yetkiliKisiId?: number | null;
   kimlikGecerlilikTarihi?: string | null;
   masakListesindeVar?: boolean;
+  istatistikId?: number | null;
+  istatistikKodu?: string | null;
   satirlar: SarrafFisSatiriItem[];
   odemeSatirlari: OdemeSatiriItem[];
 }
@@ -111,6 +119,8 @@ export interface SaveSarrafFisPayload {
   irsaliyeNo?: string | null;
   tip: number;
   altinHasKuru: number;
+  istatistikId?: number | null;
+  istatistikKodu?: string | null;
   kdvOrani?: number | null;
   kdv?: number | null;
   kisilikTipi?: number | null;
@@ -170,9 +180,16 @@ export interface SaveSarrafFisPayload {
   }[];
   odemeSatirlari: {
     satirNo: number;
-    islemeYeri: number;
+    islemeYeri?: number;
     odemeAraciTuru: number;
+    cariKartId?: number | null;
+    cariKod?: string | null;
+    cariUnvan?: string | null;
+    bankaId?: number | null;
     paraId?: number | null;
+    paraKodu?: string | null;
+    paraAdi?: string | null;
+    adet?: number | string | null;
     miktar: number | string;
     milyem: number | string;
     hasGram: number | string;

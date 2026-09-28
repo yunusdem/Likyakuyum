@@ -28,7 +28,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback((message: string, type: ToastType = "info", duration = 3500) => {
+  const showToast = useCallback((message: string, type: ToastType = "info", duration = 1750) => {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: ToastItem = { id, message, type, duration };
 
@@ -41,16 +41,16 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [removeToast]);
 
-  const showSuccess = useCallback((msg: string, dur = 3500) => showToast(msg, "success", dur), [showToast]);
-  const showError = useCallback((msg: string, dur = 4000) => showToast(msg, "danger", dur), [showToast]);
-  const showWarning = useCallback((msg: string, dur = 3500) => showToast(msg, "warning", dur), [showToast]);
-  const showInfo = useCallback((msg: string, dur = 3500) => showToast(msg, "info", dur), [showToast]);
+  const showSuccess = useCallback((msg: string, dur = 1750) => showToast(msg, "success", dur), [showToast]);
+  const showError = useCallback((msg: string, dur = 2000) => showToast(msg, "danger", dur), [showToast]);
+  const showWarning = useCallback((msg: string, dur = 1750) => showToast(msg, "warning", dur), [showToast]);
+  const showInfo = useCallback((msg: string, dur = 1750) => showToast(msg, "info", dur), [showToast]);
 
   // Global event listener for non-React or cross-component triggers
   useEffect(() => {
     const handleCustomToast = (e: any) => {
       if (e.detail?.message) {
-        showToast(e.detail.message, e.detail.type || "info", e.detail.duration || 3500);
+        showToast(e.detail.message, e.detail.type || "info", e.detail.duration || 1750);
       }
     };
     window.addEventListener("erp-toast", handleCustomToast);
@@ -122,19 +122,19 @@ export const useToast = () => {
   if (!ctx) {
     // Fallback: trigger via window event if outside provider
     return {
-      showToast: (message: string, type: ToastType = "info", duration = 3500) => {
+      showToast: (message: string, type: ToastType = "info", duration = 1750) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type, duration } }));
       },
-      showSuccess: (message: string, duration = 3500) => {
+      showSuccess: (message: string, duration = 1750) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "success", duration } }));
       },
-      showError: (message: string, duration = 4000) => {
+      showError: (message: string, duration = 2000) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "danger", duration } }));
       },
-      showWarning: (message: string, duration = 3500) => {
+      showWarning: (message: string, duration = 1750) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "warning", duration } }));
       },
-      showInfo: (message: string, duration = 3500) => {
+      showInfo: (message: string, duration = 1750) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "info", duration } }));
       },
     };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Modal, Table, Button, Form, InputGroup, Badge } from "react-bootstrap";
 import { IconCoins, IconX, IconSearch, IconCheck } from "@tabler/icons-react";
+import { highlightText } from "../../components/common/HighlightText";
 
 export interface KurListItem {
   id: number;
@@ -157,6 +158,16 @@ export const KurListesiModal: React.FC<KurListesiModalProps> = ({
           --bs-table-bg: #7dd3fc !important;
           --bs-table-accent-bg: #7dd3fc !important;
           box-shadow: inset 0 0 0 9999px #7dd3fc !important;
+        }
+        .kur-row:not(.kur-selected-row):hover,
+        .kur-row:not(.kur-selected-row):hover > td,
+        .kur-row:not(.kur-selected-row):hover > th {
+          background-color: #e0f2fe !important;
+          --bs-table-bg: #e0f2fe !important;
+          --bs-table-accent-bg: #e0f2fe !important;
+          --bs-table-hover-bg: #e0f2fe !important;
+          box-shadow: inset 0 0 0 9999px #e0f2fe !important;
+          color: #0369a1 !important;
         }
       `}</style>
 
@@ -406,7 +417,7 @@ export const KurListesiModal: React.FC<KurListesiModalProps> = ({
                           borderBottom: "1px solid #cbd5e1",
                         }}
                       >
-                        {p.kod}
+                        {highlightText(p.kod, searchTerm)}
                       </td>
 
                       {/* Ad */}
@@ -421,7 +432,7 @@ export const KurListesiModal: React.FC<KurListesiModalProps> = ({
                           borderBottom: "1px solid #cbd5e1",
                         }}
                       >
-                        {p.ad}
+                        {highlightText(p.ad, searchTerm)}
                       </td>
 
                       {/* Döviz Alış */}

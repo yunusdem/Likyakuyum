@@ -107,6 +107,12 @@ export class PerakendeSqlRepository {
             [FATURA_ODEME_ID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
             [FATURA_ID] INT NOT NULL,
             [SATIR_NO] INT NOT NULL DEFAULT 1,
+            [ODEME_ARACI_TURU] TINYINT NULL DEFAULT 0,
+            [ISLEME_YERI] TINYINT NULL DEFAULT 0,
+            [CARI_KART_ID] INT NULL,
+            [POS_CIHAZI_ID] INT NULL,
+            [CARI_KOD] VARCHAR(50) NULL,
+            [CARI_UNVAN] VARCHAR(250) NULL,
             [PARA_ID] INT NULL,
             [PARA_KODU] VARCHAR(50) NULL,
             [PARA_ADI] VARCHAR(100) NULL,
@@ -119,6 +125,21 @@ export class PerakendeSqlRepository {
             [EKLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE()
           );
           CREATE NONCLUSTERED INDEX IX_TODVZ_FATURA_ODEME_FID ON dbo.TODVZ_FATURA_ODEME([FATURA_ID]);
+        END
+        ELSE
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AND name = 'ODEME_ARACI_TURU')
+            ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [ODEME_ARACI_TURU] TINYINT NULL DEFAULT 0;
+          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AND name = 'CARI_KART_ID')
+            ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [CARI_KART_ID] INT NULL;
+          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AND name = 'POS_CIHAZI_ID')
+            ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [POS_CIHAZI_ID] INT NULL;
+          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AND name = 'CARI_KOD')
+            ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [CARI_KOD] VARCHAR(50) NULL;
+          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AND name = 'CARI_UNVAN')
+            ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [CARI_UNVAN] VARCHAR(250) NULL;
+          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AND name = 'ISLEME_YERI')
+            ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [ISLEME_YERI] TINYINT NULL DEFAULT 0;
         END;
       `);
             // 3. Stored Procedure: SODVZ_FATURA_KAYDET
@@ -794,9 +815,21 @@ export class PerakendeSqlRepository {
                     const t = Number(oRow.tutar) || 0;
                     const k = Number(oRow.kur) || 1;
                     const paraKod = (oRow.paraKodu || "").trim();
-                    if (!paraKod && t === 0)
+                    if (!paraKod && t === 0 && !oRow.cariKod)
                         continue;
                     const odemeReq = new sql.Request(transaction);
+                    const oat = Number(oRow.odemeAraciTuru) || 0;
+                    let iy = oat === 1 ? 1 : (oat === 2 ? 3 : (oat === 3 ? 2 : (oRow.islemeYeri != null ? Number(oRow.islemeYeri) : 0)));
+                    const posCihaziId = oat === 2 ? (oRow.posCihaziId || oRow.cariKartId || null) : null;
+                    const cariKartId = (oat === 1 || oat === 3) ? (oRow.cariKartId || null) : null;
+                    const cariKod = (oRow.cariKod || "").trim();
+                    const cariUnvan = (oRow.cariUnvan || "").trim();
+                    odemeReq.input("ODEME_ARACI_TURU", sql.TinyInt, oat);
+                    odemeReq.input("ISLEME_YERI", sql.TinyInt, iy);
+                    odemeReq.input("CARI_KART_ID", sql.Int, cariKartId || null);
+                    odemeReq.input("POS_CIHAZI_ID", sql.Int, posCihaziId || null);
+                    odemeReq.input("CARI_KOD", sql.VarChar(50), cariKod || null);
+                    odemeReq.input("CARI_UNVAN", sql.VarChar(250), cariUnvan || null);
                     odemeReq.input("FATURA_ID", sql.Int, outFaturaId);
                     odemeReq.input("SATIR_NO", sql.Int, oRow.satirNo || odemeIdx++);
                     odemeReq.input("PARA_ID", sql.Int, oRow.paraId || null);
@@ -810,11 +843,16 @@ export class PerakendeSqlRepository {
                     odemeReq.input("TUTAR", sql.Float, t);
                     await odemeReq.query(`
             INSERT INTO dbo.TODVZ_FATURA_ODEME (
-              FATURA_ID, SATIR_NO, PARA_ID, PARA_KODU, PARA_ADI,
+              FATURA_ID, SATIR_NO, ODEME_ARACI_TURU, ISLEME_YERI, CARI_KART_ID, POS_CIHAZI_ID, CARI_KOD, CARI_UNVAN,
+              PARA_ID, PARA_KODU, PARA_ADI,
               ADET, MIKTAR, MILYEM, HAS_GRAM, KUR, TUTAR
             )
             VALUES (
-              @FATURA_ID, @SATIR_NO, @PARA_ID, @PARA_KODU, @PARA_ADI,
+              @FATURA_ID, @SATIR_NO, @ODEME_ARACI_TURU, @ISLEME_YERI, @CARI_KART_ID,
+              COALESCE(@POS_CIHAZI_ID, (SELECT TOP 1 POS_CIHAZI_ID FROM dbo.TODVZ_POS_CIHAZI WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@CARI_KOD)), NULL),
+              @CARI_KOD, @CARI_UNVAN,
+              COALESCE(@PARA_ID, (SELECT TOP 1 PARA_ID FROM TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@PARA_KODU)), 1),
+              @PARA_KODU, @PARA_ADI,
               @ADET, @MIKTAR, @MILYEM, @HAS_GRAM, @KUR, @TUTAR
             );
           `);
@@ -960,21 +998,29 @@ export class PerakendeSqlRepository {
         IF OBJECT_ID('dbo.TODVZ_FATURA_ODEME', 'U') IS NOT NULL
         BEGIN
           SELECT 
-            FATURA_ODEME_ID AS faturaOdemeId,
-            FATURA_ID AS faturaId,
-            SATIR_NO AS satirNo,
-            PARA_ID AS paraId,
-            ISNULL(PARA_KODU, '') AS paraKodu,
-            ISNULL(PARA_ADI, '') AS paraAdi,
-            ADET AS adet,
-            MIKTAR AS miktar,
-            MILYEM AS milyem,
-            HAS_GRAM AS hasGram,
-            ISNULL(KUR, 1) AS kur,
-            ISNULL(TUTAR, 0) AS tutar
-          FROM dbo.TODVZ_FATURA_ODEME
-          WHERE FATURA_ID = @FATURA_ID
-          ORDER BY SATIR_NO ASC;
+            O.FATURA_ODEME_ID AS faturaOdemeId,
+            O.FATURA_ID AS faturaId,
+            O.SATIR_NO AS satirNo,
+            O.ODEME_ARACI_TURU AS odemeAraciTuru,
+            O.ISLEME_YERI AS islemeYeri,
+            O.CARI_KART_ID AS cariKartId,
+            O.POS_CIHAZI_ID AS posCihaziId,
+            ISNULL(NULLIF(RTRIM(O.CARI_KOD), ''), ISNULL(RTRIM(PC.KOD), ISNULL(RTRIM(C.KOD), ''))) AS cariKod,
+            ISNULL(NULLIF(RTRIM(O.CARI_UNVAN), ''), ISNULL(RTRIM(PC.AD), ISNULL(RTRIM(C.AD), ''))) AS cariUnvan,
+            O.PARA_ID AS paraId,
+            ISNULL(O.PARA_KODU, '') AS paraKodu,
+            ISNULL(O.PARA_ADI, '') AS paraAdi,
+            O.ADET AS adet,
+            O.MIKTAR AS miktar,
+            O.MILYEM AS milyem,
+            O.HAS_GRAM AS hasGram,
+            ISNULL(O.KUR, 1) AS kur,
+            ISNULL(O.TUTAR, 0) AS tutar
+          FROM dbo.TODVZ_FATURA_ODEME O WITH (NOLOCK)
+            LEFT JOIN dbo.TODVZ_CARI_KART C WITH (NOLOCK) ON C.CARI_KART_ID = O.CARI_KART_ID
+            LEFT JOIN dbo.TODVZ_POS_CIHAZI PC WITH (NOLOCK) ON PC.POS_CIHAZI_ID = O.POS_CIHAZI_ID OR (O.ODEME_ARACI_TURU = 2 AND PC.KOD = O.CARI_KOD)
+          WHERE O.FATURA_ID = @FATURA_ID
+          ORDER BY O.SATIR_NO ASC;
         END
         ELSE
         BEGIN
@@ -985,6 +1031,12 @@ export class PerakendeSqlRepository {
                 faturaOdemeId: o.faturaOdemeId,
                 faturaId: o.faturaId,
                 satirNo: o.satirNo,
+                odemeAraciTuru: o.odemeAraciTuru ?? 0,
+                islemeYeri: o.islemeYeri ?? 0,
+                cariKartId: o.cariKartId ?? null,
+                posCihaziId: o.posCihaziId ?? null,
+                cariKod: (o.cariKod || "").trim(),
+                cariUnvan: o.cariUnvan || "",
                 paraId: o.paraId,
                 paraKodu: (o.paraKodu || "").trim(),
                 paraAdi: (o.paraAdi || "").trim(),

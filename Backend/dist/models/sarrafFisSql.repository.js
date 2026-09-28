@@ -117,7 +117,11 @@ export class SarrafFisSqlRepository {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             const h = (await pool.request().input("id", sql.Int, sarrafFisiId)
-                .query("SELECT * FROM [dbo].[TODVZ_SARRAF_FISI] WITH (NOLOCK) WHERE SARRAF_FISI_ID = @id")).recordset[0];
+                .query(`SELECT SF.*, 
+                       IST.KOD AS LOADED_ISTATISTIK_KODU
+                FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
+                  LEFT JOIN [dbo].[TODVZ_ISTATISTIK] IST WITH (NOLOCK) ON IST.ISTATISTIK_ID = SF.ISTATISTIK_ID
+                WHERE SF.SARRAF_FISI_ID = @id`)).recordset[0];
             if (!h)
                 return null;
             const satirlar = (await pool.request().input("id2", sql.Int, sarrafFisiId)
@@ -126,9 +130,21 @@ export class SarrafFisSqlRepository {
                   LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON P.PARA_ID = SFS.URUN_ID
                 WHERE SFS.SARRAF_FISI_ID = @id2 ORDER BY SFS.SATIR_NO`)).recordset;
             const odemeler = (await pool.request().input("id3", sql.Int, sarrafFisiId)
-                .query(`SELECT OS.*, ISNULL(RTRIM(P.KOD),'') AS PARA_KODU, ISNULL(P.HAS_ORANI, 0) AS PARA_HAS_ORANI
+                .query(`SELECT OS.*, 
+                       ISNULL(RTRIM(P.KOD),'') AS PARA_KODU, 
+                       ISNULL(P.AD,'') AS PARA_ADI, 
+                       ISNULL(P.HAS_ORANI, 0) AS PARA_HAS_ORANI,
+                       ISNULL(RTRIM(C.KOD),'') AS CARI_KOD,
+                       ISNULL(C.AD,'') AS CARI_UNVAN,
+                       ISNULL(RTRIM(POS.KOD),'') AS POS_KODU,
+                       ISNULL(POS.AD,'') AS POS_ADI,
+                       ISNULL(RTRIM(B.HESAP_NO), ISNULL(RTRIM(B.IBAN), '')) AS BANKA_HESAP_NO,
+                       ISNULL(B.HESAP_ADI, ISNULL(B.SUBE_ADI, '')) AS BANKA_HESAP_ADI
                 FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
                   LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON P.PARA_ID = OS.PARA_ID
+                  LEFT JOIN [dbo].[TODVZ_CARI_KART] C WITH (NOLOCK) ON C.CARI_KART_ID = OS.CARI_KART_ID
+                  LEFT JOIN [dbo].[TODVZ_POS_CIHAZI] POS WITH (NOLOCK) ON POS.POS_CIHAZI_ID = OS.POS_CIHAZI_ID
+                  LEFT JOIN [dbo].[TODVZ_BANKA] B WITH (NOLOCK) ON (B.BANKA_ID = OS.CARI_KART_ID OR B.BANKA_ID = OS.POS_CIHAZI_ID)
                 WHERE OS.SARRAF_FISI_ID = @id3 ORDER BY OS.SATIR_NO`)).recordset;
             const rawFisNo = (h.FIS_NO || "").trim();
             const rawIrsaliyeNo = (h.IRSALIYE_NO || "").trim();
@@ -139,6 +155,8 @@ export class SarrafFisSqlRepository {
                 fisNo: rawFisNo,
                 seriNo: seriNo,
                 belgeNo: belgeNo,
+                istatistikId: h.ISTATISTIK_ID ?? null,
+                istatistikKodu: (h.LOADED_ISTATISTIK_KODU || "").trim(),
                 tarih: h.TARIH ? h.TARIH.toISOString().split("T")[0] : "",
                 saat: h.SAAT ? h.SAAT.toISOString() : null,
                 tip: h.TIP, altinHasKuru: Number(h.ALTIN_HAS_KURU) || 0,
@@ -189,9 +207,23 @@ export class SarrafFisSqlRepository {
                             : (r.PARA_HAS_ORANI !== null && r.PARA_HAS_ORANI !== undefined && Number(r.PARA_HAS_ORANI) !== 0
                                 ? Number(r.PARA_HAS_ORANI)
                                 : (Number(r.MILYEM) || 0)));
+                    const rawOat = Number(r.ODEME_ARACI_TURU) || 0;
+                    let effectiveCariKod = (r.CARI_KOD || "").trim();
+                    let effectiveCariUnvan = r.CARI_UNVAN || "";
+                    if (rawOat === 2) {
+                        effectiveCariKod = (r.POS_KODU || effectiveCariKod || "").trim();
+                        effectiveCariUnvan = r.POS_ADI || effectiveCariUnvan || "";
+                    }
+                    else if (rawOat === 3) {
+                        effectiveCariKod = (r.BANKA_HESAP_NO || effectiveCariKod || "").trim();
+                        effectiveCariUnvan = r.BANKA_HESAP_ADI || effectiveCariUnvan || "";
+                    }
                     return {
-                        satirNo: r.SATIR_NO, islemeYeri: r.ISLEME_YERI, odemeAraciTuru: r.ODEME_ARACI_TURU,
-                        paraId: r.PARA_ID ?? null, paraKodu: (r.PARA_KODU || "").trim(),
+                        satirNo: r.SATIR_NO, islemeYeri: r.ISLEME_YERI, odemeAraciTuru: rawOat,
+                        cariKartId: r.CARI_KART_ID ?? null, cariKod: effectiveCariKod, cariUnvan: effectiveCariUnvan,
+                        bankaId: r.POS_CIHAZI_ID ?? r.BANKA_HESABI_ID ?? r.BANKA_ID ?? (rawOat === 3 ? r.CARI_KART_ID : null),
+                        posCihaziId: r.POS_CIHAZI_ID ?? (rawOat === 2 ? r.CARI_KART_ID : null),
+                        paraId: r.PARA_ID ?? null, paraKodu: (r.PARA_KODU || "").trim(), paraAdi: r.PARA_ADI || "",
                         miktar: Number(r.MIKTAR) || 0, milyem: mVal, hasGram: Number(r.HAS_GRAM) || 0,
                         kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0,
                     };
@@ -205,6 +237,21 @@ export class SarrafFisSqlRepository {
     }
     static async saveFis(dto, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        try {
+            const ckRes = await pool.request().query(`
+        SELECT cc.name, cc.definition 
+        FROM sys.check_constraints cc 
+        WHERE cc.name LIKE '%CKODVZ_ODEME_SATIRI%' OR OBJECT_NAME(cc.parent_object_id) = 'TODVZ_ODEME_SATIRI'
+      `);
+            logger.info(`[DEBUG CK] Constraints: ${JSON.stringify(ckRes.recordset)}`);
+            logger.info(`[DEBUG DTO ODEME] ${JSON.stringify(dto.odemeSatirlari)}`);
+        }
+        catch (e) {
+            logger.warn(`[DEBUG CK FAIL] ${e.message}`);
+        }
+        await pool.request().query(`
+      IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
+    `).catch(() => { });
         const req = pool.request();
         const safeDate = (val) => {
             if (!val)
@@ -325,6 +372,8 @@ export class SarrafFisSqlRepository {
         req.input("IN_GUID", sql.VarChar(40), dto.guid ?? null);
         req.input("IN_DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar ? 1 : 0);
         req.input("IN_YAZDIRILAN_BELGE_TIPI", sql.TinyInt, dto.yazdirilanBelgeTipi !== undefined && dto.yazdirilanBelgeTipi !== null ? dto.yazdirilanBelgeTipi : 0);
+        req.input("IN_ISTATISTIK_ID", sql.Int, dto.istatistikId ?? null);
+        req.input("IN_ISTATISTIK_KODU", sql.VarChar(50), dto.istatistikKodu ? dto.istatistikKodu.trim() : null);
         const validLines = (dto.satirlar || []).filter((s) => s.urunId && s.urunId > 0);
         const lineValuesSql = validLines.map((s, idx) => {
             const p = `s_${idx}`;
@@ -355,38 +404,68 @@ export class SarrafFisSqlRepository {
             const n = parseFloat(s);
             return isNaN(n) ? 0 : n;
         };
-        let validOdemeler = (dto.odemeSatirlari || []).filter((o) => parseNum(o.miktar) > 0 || parseNum(o.tutar) > 0 || parseNum(o.adet) > 0 || (o.paraId && Number(o.paraId) > 0));
+        let validOdemeler = (dto.odemeSatirlari || []).filter((o) => {
+            const m = parseNum(o.miktar);
+            const t = parseNum(o.tutar);
+            const h = parseNum(o.hasGram);
+            const a = parseNum(o.adet);
+            return m > 0 || t > 0 || h > 0 || a > 0;
+        });
         if (validOdemeler.length === 0 && validLines.length > 0) {
             const totTutar = validLines.reduce((s, l) => s + (parseNum(l.tutar) || 0), 0);
             const totHas = validLines.reduce((s, l) => s + (parseNum(l.hasGram) || 0) + (parseNum(l.iscilikHasGram) || 0), 0);
-            if (totTutar > 0) {
+            const effectiveHasKuru = parseNum(dto.altinHasKuru) > 0 ? parseNum(dto.altinHasKuru) : 1;
+            const effectiveTutar = totTutar > 0 ? totTutar : (totHas * effectiveHasKuru);
+            if (effectiveTutar > 0 || totHas > 0) {
                 validOdemeler.push({
                     satirNo: 1,
                     islemeYeri: 0,
                     odemeAraciTuru: 0,
                     paraId: null,
-                    miktar: totTutar,
+                    miktar: effectiveTutar > 0 ? effectiveTutar : totHas,
                     milyem: 0,
                     hasGram: totHas,
                     kur: 1,
-                    tutar: totTutar,
+                    tutar: effectiveTutar,
                 });
             }
         }
         const odemeValuesSql = validOdemeler.map((o, idx) => {
             const p = `o_${idx}`;
+            const rawOat = Number(o.odemeAraciTuru) || 0;
+            const posCihaziId = rawOat === 2 ? (o.posCihaziId ?? o.bankaId ?? o.cariKartId ?? null) : null;
+            const cariKartId = rawOat === 1 ? (o.cariKartId ?? dto.cariKartId ?? null) : (rawOat === 3 ? (o.cariKartId ?? o.bankaId ?? null) : null);
+            let oat = rawOat;
+            if (oat === 1 && !cariKartId)
+                oat = 0;
+            if (oat === 2 && !posCihaziId)
+                oat = 0;
+            let iy = oat === 1 ? 1 : (oat === 2 ? 3 : (oat === 3 ? 2 : (o.islemeYeri != null ? Number(o.islemeYeri) : 0)));
+            if (iy === 1 && !cariKartId)
+                iy = 0;
+            if (iy === 3 && !posCihaziId)
+                iy = 0;
+            const mik = parseNum(o.miktar) > 0 ? parseNum(o.miktar) : (parseNum(o.adet) > 0 ? parseNum(o.adet) : (parseNum(o.tutar) > 0 ? parseNum(o.tutar) : 0));
+            const kur = parseNum(o.kur) > 0 ? parseNum(o.kur) : 1;
+            const tut = parseNum(o.tutar) > 0 ? parseNum(o.tutar) : (mik * kur);
+            const isPos = Boolean(posCihaziId);
             req.input(`${p}_sNo`, sql.Int, o.satirNo || (idx + 1));
-            req.input(`${p}_iy`, sql.TinyInt, o.islemeYeri || 0);
-            req.input(`${p}_oat`, sql.TinyInt, o.odemeAraciTuru || 0);
-            req.input(`${p}_pid`, sql.Int, o.paraId ?? null);
-            req.input(`${p}_pos`, sql.Int, o.posCihaziId ?? null);
-            req.input(`${p}_mik`, sql.Float, parseNum(o.miktar));
+            req.input(`${p}_iy`, sql.TinyInt, iy);
+            req.input(`${p}_oat`, sql.TinyInt, oat);
+            req.input(`${p}_pid`, sql.Int, isPos ? null : (o.paraId ?? null));
+            req.input(`${p}_pkod`, sql.VarChar(50), (o.paraKodu || "").trim());
+            req.input(`${p}_ckId`, sql.Int, cariKartId);
+            req.input(`${p}_pos`, sql.Int, isPos ? posCihaziId : null);
+            req.input(`${p}_mik`, sql.Float, mik);
             req.input(`${p}_mil`, sql.Float, parseNum(o.milyem));
             req.input(`${p}_hg`, sql.Float, parseNum(o.hasGram));
-            req.input(`${p}_kur`, sql.Float, parseNum(o.kur) > 0 ? parseNum(o.kur) : 1);
-            req.input(`${p}_tut`, sql.Float, parseNum(o.tutar) > 0 ? parseNum(o.tutar) : (parseNum(o.miktar) * (parseNum(o.kur) > 0 ? parseNum(o.kur) : 1)));
+            req.input(`${p}_kur`, sql.Float, kur);
+            req.input(`${p}_tut`, sql.Float, tut);
             req.input(`${p}_dg`, sql.Bit, o.degistirildi ? 1 : 0);
-            return `(@${p}_sNo, @${p}_iy, @${p}_oat, COALESCE(@${p}_pid, @DEFAULT_TL_PARA_ID, 1), @${p}_pos, @${p}_mik, @${p}_mil, @${p}_hg, @${p}_kur, @${p}_tut, @${p}_dg)`;
+            const paraIdExpr = isPos
+                ? `NULL`
+                : `COALESCE(@${p}_pid, (SELECT TOP 1 PARA_ID FROM TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@${p}_pkod)), @DEFAULT_TL_PARA_ID, 1)`;
+            return `(@${p}_sNo, @${p}_iy, @${p}_oat, ${paraIdExpr}, @${p}_pos, @${p}_mik, @${p}_mil, @${p}_hg, @${p}_kur, @${p}_tut, @${p}_dg, @${p}_ckId)`;
         });
         const batchQuery = `
       SET NOCOUNT ON;
@@ -415,7 +494,8 @@ export class SarrafFisSqlRepository {
         ODEME_ARACI_TURU TINYINT NOT NULL DEFAULT 0, PARA_ID INT NULL,
         POS_CIHAZI_ID INT NULL, MIKTAR FLOAT NOT NULL DEFAULT 0,
         MILYEM FLOAT NOT NULL DEFAULT 0, HAS_GRAM FLOAT NOT NULL DEFAULT 0,
-        KUR FLOAT NOT NULL DEFAULT 1, TUTAR FLOAT NOT NULL DEFAULT 0, DEGISTIRILDI BIT NOT NULL DEFAULT 0
+        KUR FLOAT NOT NULL DEFAULT 1, TUTAR FLOAT NOT NULL DEFAULT 0, DEGISTIRILDI BIT NOT NULL DEFAULT 0,
+        CARI_KART_ID INT NULL
       );
 
       IF OBJECT_ID('tempdb..#TODVZ_ISKELE_URUN_OGESI_ISLEMI') IS NOT NULL DROP TABLE #TODVZ_ISKELE_URUN_OGESI_ISLEMI;
@@ -432,7 +512,7 @@ export class SarrafFisSqlRepository {
 
       ${odemeValuesSql.length > 0 ? `INSERT INTO #TODVZ_ISKELE_ODEME_SATIRI (
         SATIR_NO, ISLEME_YERI, ODEME_ARACI_TURU, PARA_ID, POS_CIHAZI_ID,
-        MIKTAR, MILYEM, HAS_GRAM, KUR, TUTAR, DEGISTIRILDI
+        MIKTAR, MILYEM, HAS_GRAM, KUR, TUTAR, DEGISTIRILDI, CARI_KART_ID
       ) VALUES ${odemeValuesSql.join(",\n")};` : ""}
 
       DECLARE @OUT_SARRAF_FISI_ID INT = @IN_SARRAF_FISI_ID;
@@ -775,6 +855,18 @@ export class SarrafFisSqlRepository {
       ELSE IF (@OUT_IRSALIYE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@OUT_IRSALIYE_NO))) > 0 AND @OUT_SARRAF_FISI_ID IS NOT NULL)
       BEGIN
         UPDATE [dbo].[TODVZ_SARRAF_FISI] SET IRSALIYE_NO = @OUT_IRSALIYE_NO WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
+      END;
+
+      IF (@OUT_SARRAF_FISI_ID IS NOT NULL AND @OUT_SARRAF_FISI_ID > 0)
+      BEGIN
+        IF (@IN_ISTATISTIK_ID IS NULL AND @IN_ISTATISTIK_KODU IS NOT NULL AND LEN(@IN_ISTATISTIK_KODU) > 0)
+        BEGIN
+          SELECT TOP 1 @IN_ISTATISTIK_ID = ISTATISTIK_ID FROM [dbo].[TODVZ_ISTATISTIK] WITH (NOLOCK) WHERE KOD = @IN_ISTATISTIK_KODU;
+        END;
+
+        UPDATE [dbo].[TODVZ_SARRAF_FISI]
+        SET ISTATISTIK_ID = @IN_ISTATISTIK_ID
+        WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
       END;
 
       SELECT 

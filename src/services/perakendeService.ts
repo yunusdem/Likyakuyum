@@ -102,6 +102,11 @@ export interface SavePerakendeFaturaSatiriPayload {
 
 export interface SavePerakendeFaturaOdemePayload {
   satirNo?: number;
+  odemeAraciTuru?: number;
+  cariKartId?: number | null;
+  posCihaziId?: number | null;
+  cariKod?: string | null;
+  cariUnvan?: string | null;
   paraId?: number | null;
   paraKodu: string;
   paraAdi?: string | null;
