@@ -989,9 +989,10 @@ export class EbelgeSqlRepository {
      * Adı e-Arşiv'den kalsa da bu geçiş e-Döviz ve e-Müstahsil için de kullanılır.
      * Filtre sabit 'EArsiv' iken diğer türlerde UPDATE 0 satır etkiliyor ve
      * gönderim ICE'ye ulaştığı halde "durum değişti" hatasıyla kayıt
-     * GONDERILIYOR'da takılı kalıyordu. Çağıran kendi türünü verir.
+     * GONDERILIYOR'da takılı kalıyordu. Çağıran kendi türünü verir. 28.09.2026: e-Fatura, e-İrsaliye, e-Gider ve
+     * taslak onayı da tür vermiyordu → aynı takılma; hepsine eklendi.
      */
-    belgeTuru: "EArsiv" | "EDoviz" | "EMustahsil" = "EArsiv"
+    belgeTuru: "EArsiv" | "EDoviz" | "EMustahsil" | "EFatura" | "EIrsaliye" | "EGiderPusulasi" = "EArsiv"
   ): Promise<void> {
     const pool = await this.getPool(dbContext);
     const res = await pool.request()

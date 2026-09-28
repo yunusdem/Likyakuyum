@@ -640,7 +640,7 @@ export const ebelgeService = {
     return (await apiClient.post<{ ozet: { malHizmetToplam: number; vergiToplam: number; odenecekTutar: number }; iceDogrulamasiYapildi: false }>("/e-belge/gider-pusulasi/onizle", girdi)).data;
   },
   async giderGonder(girdi: EbelgeGiderIstegi) {
-    return (await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>("/e-belge/gider-pusulasi/gonder", girdi)).data;
+    return (await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>("/e-belge/gider-pusulasi/gonder", girdi, { timeoutMs: 300_000 })).data;
   },
   async giderPdf(uuid: string) { return ebelgePdfBlobUrl(`/e-belge/gider-pusulasi/${encodeURIComponent(uuid)}/pdf`); },
   async listEarsivArsiv(sayfa = 1, arama = "") {
@@ -829,7 +829,8 @@ export const ebelgeService = {
     istek: EbelgeDogrulaIstegi & { aliciAlias?: string }
   ): Promise<EbelgeTaslakSonucu & { kontorKalan?: number | null; kontorUyari?: string | null }> {
     const { onizleme, ...govde } = istek;
-    const res = await apiClient.post<any>("/e-belge/giden/gonder", govde);
+    // Sunucu ICE'yi 120 sn'ye kadar bekler; varsayılan 15 sn'lik istemci süresi gönderim sürerken hata gösteriyordu
+    const res = await apiClient.post<any>("/e-belge/giden/gonder", govde, { timeoutMs: 300_000 });
     return res.data;
   },
 
@@ -839,7 +840,9 @@ export const ebelgeService = {
    */
   async taslakOnayla(uuid: string) {
     const res = await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>(
-      `/e-belge/giden/${encodeURIComponent(uuid)}/onayla`
+      `/e-belge/giden/${encodeURIComponent(uuid)}/onayla`,
+      undefined,
+      { timeoutMs: 300_000 }
     );
     return res.data;
   },
@@ -896,7 +899,7 @@ export const ebelgeService = {
       satirSayisi: number;
       kontorKalan: number | null;
       kontorUyari: string | null;
-    }>("/e-belge/irsaliye/gonder", govde);
+    }>("/e-belge/irsaliye/gonder", govde, { timeoutMs: 300_000 });
     return res.data;
   },
 

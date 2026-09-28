@@ -974,7 +974,7 @@ export class EbelgeService {
           mesaj:
             "ICE gönderim sonucu alınamadı. Aynı irsaliyeyi yeni numarayla da göndermeyiniz; ICE portalinden ETTN ile kontrol ediniz.",
         },
-        dbContext
+        dbContext, "EIrsaliye"
       ).catch(() => undefined);
       throw ApiError.conflict(
         `Gönderim sonucu belirsiz (ETTN: ${uuid}). Giden kutusu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`
@@ -1007,7 +1007,7 @@ export class EbelgeService {
             ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden ETTN ile kontrol ediniz."
             : ilk?.response_message || sonuc.response_message || durum,
       },
-      dbContext
+      dbContext, "EIrsaliye"
     );
 
     await EbelgeSqlRepository.writeLog(
@@ -1365,7 +1365,7 @@ export class EbelgeService {
           mesaj:
             "ICE gönderim sonucu alınamadı. Aynı belgeyi yeni numarayla da göndermeyiniz; ICE portalinden ETTN ile kontrol ediniz.",
         },
-        dbContext
+        dbContext, "EFatura"
       ).catch(() => undefined);
       throw ApiError.conflict(
         `Gönderim sonucu belirsiz (ETTN: ${uuid}). Giden kutusu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`
@@ -1400,7 +1400,7 @@ export class EbelgeService {
             ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden ETTN ile kontrol ediniz."
             : ilk?.response_message || sonuc.response_message || durum,
       },
-      dbContext
+      dbContext, "EFatura"
     );
 
     await EbelgeSqlRepository.writeLog(
@@ -1469,7 +1469,7 @@ export class EbelgeService {
       "TASLAK",
       "ONAYLANIYOR",
       { mesaj: "GİB'e gönderim onayı başlatıldı. Sonuç kesinleşmeden tekrar denemeyiniz." },
-      dbContext
+      dbContext, "EFatura"
     );
 
     let sonuc;
@@ -1484,7 +1484,7 @@ export class EbelgeService {
           mesaj:
             "Onay sonucu alınamadı. Belge GİB'e gitmiş olabilir; ICE portalinden kontrol etmeden tekrar denemeyiniz.",
         },
-        dbContext
+        dbContext, "EFatura"
       ).catch(() => undefined);
       throw ApiError.conflict(
         `Onay sonucu belirsiz (${kayit.belgeNo}). ICE portalinden kontrol ediniz; yeniden onaylamayınız.`
@@ -1503,7 +1503,7 @@ export class EbelgeService {
         mesaj:
           `${sonuc?.response_message ?? ""} ${sonuc?.response_message_detail ?? ""}`.trim() || durum,
       },
-      dbContext
+      dbContext, "EFatura"
     );
 
     await EbelgeSqlRepository.writeLog(
@@ -1945,7 +1945,7 @@ export class EbelgeService {
           mesaj:
             "ICE gönderim sonucu alınamadı. Aynı belgeyi yeni numarayla da göndermeyiniz; ICE portalinden kontrol ediniz.",
         },
-        dbContext
+        dbContext, "EGiderPusulasi"
       ).catch(() => undefined);
       throw ApiError.conflict(
         `Gönderim sonucu belirsiz (UUID: ${uuid}). Giden kutusu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`
@@ -1977,7 +1977,7 @@ export class EbelgeService {
             ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden kontrol ediniz."
             : ilk?.response_message || sonuc.response_message || durum,
       },
-      dbContext
+      dbContext, "EGiderPusulasi"
     );
 
     await EbelgeSqlRepository.writeLog(
