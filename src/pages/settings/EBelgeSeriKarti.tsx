@@ -101,7 +101,8 @@ const EBelgeSeriKarti: React.FC = () => {
         <div className="fw-semibold" style={{ fontSize: "13px" }}>Fatura Serileri</div>
         <div className="text-secondary mb-2" style={{ fontSize: "12px" }}>
           Fatura formundaki numara listesi yalnızca buradaki serilerden gelir; numara ICE'deki son numaranın bir fazlasıdır.
-          Varsayılan seri formda kendiliğinden seçilir.
+          Varsayılan seri formda kendiliğinden seçilir. Aynı seri hem e-Fatura hem e-Arşiv'de kullanılabilir: numara iki türün
+          en büyüğünden devam eder, çakışmaz.
         </div>
         {yukleniyor ? (
           <Spinner animation="border" size="sm" />

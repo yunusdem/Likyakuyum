@@ -1028,6 +1028,17 @@ export class EbelgeSqlRepository {
     return res.recordset.length > 0;
   }
 
+  /** Serinin o yıl yerel giden kaydındaki en büyük sırası (tür fark etmez; reddedilen de numarayı kilitler) */
+  public static async seriYerelSonSira(seri: string, yil: number, dbContext?: DbContext): Promise<number> {
+    const pool = await this.getPool(dbContext);
+    const res = await pool
+      .request()
+      .input("onEk", sql.VarChar(7), `${seri}${yil}`)
+      .query(`SELECT MAX(TRY_CAST(RIGHT([BELGE_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_EBELGE_GIDEN]
+              WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk`);
+    return Number(res.recordset[0]?.SIRA) || 0;
+  }
+
   /** Bu hesaptan kesilmiş belgelerin serileri (fatura no önerisi için), ör. ["ABC", "EAR"] */
   public static async gidenSerileri(belgeTuru: string, dbContext?: DbContext): Promise<string[]> {
     const pool = await this.getPool(dbContext);

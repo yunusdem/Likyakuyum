@@ -1307,19 +1307,12 @@ export class EbelgeService {
     // 2) Alıcı etiketi
     const aliciAlias = await this.aliciAliasCoz(config, girdi.alici.vknTckn, girdi.aliciAlias);
 
-    // 3) ICE'deki son sıra
-    const son = await getSonBelgeId(config, belgeNo.slice(0, 3), "EFatura", Number(belgeNo.slice(3, 7)));
-    const sonSira = Number(son?.Son_Belge_ID);
-    if (
-      son?.Son_Belge_ID == null ||
-      String(son.Son_Belge_ID).trim() === "" ||
-      !Number.isInteger(sonSira) ||
-      sonSira < 0
-    ) {
-      throw ApiError.unprocessable("ICE son belge numarası doğrulanamadı; gönderim durduruldu.");
-    }
+    // 3) Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
+    const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
     if (Number(belgeNo.slice(7)) <= sonSira) {
-      throw ApiError.conflict("Fatura numarası ICE'de kullanılan son sıradan büyük olmalıdır.");
+      throw ApiError.conflict(
+        `Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`
+      );
     }
 
     // 4) Kontör
@@ -2160,13 +2153,12 @@ export class EbelgeService {
     if (mukellef.kullanicilar.length) {
       throw ApiError.unprocessable("Alıcı e-Fatura mükellefi; bu akıştan e-Arşiv gönderilemez.");
     }
-    const son = await getSonBelgeId(config, belgeNo.slice(0, 3), "EArsiv", Number(belgeNo.slice(3, 7)));
-    const sonSira = Number(son?.Son_Belge_ID);
-    if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sonSira) || sonSira < 0) {
-      throw ApiError.unprocessable("ICE son belge numarası doğrulanamadı; gönderim durduruldu.");
-    }
+    // Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
+    const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
     if (Number(belgeNo.slice(7)) <= sonSira) {
-      throw ApiError.conflict("Fatura numarası ICE'de kullanılan son sıradan büyük olmalıdır.");
+      throw ApiError.conflict(
+        `Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`
+      );
     }
 
     // Kontör tükenmişse belge numarasını yakmadan dur
@@ -2634,14 +2626,37 @@ export class EbelgeService {
 
     const sonuc: { seri: string; sonSira: number; onerilenNo: string; varsayilan: boolean }[] = [];
     for (const { seri, varsayilan } of tanimli) {
-      const son = await getSonBelgeId(config, seri, belgeTuru, yil);
-      const sonSira = Number(son?.Son_Belge_ID);
-      if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sonSira) || sonSira < 0) {
-        throw ApiError.unprocessable(`ICE'den ${seri} serisinin son numarası alınamadı.`);
-      }
+      const sonSira = await this.seriSonSira(config, seri, yil, dbContext);
       sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1), varsayilan });
     }
     return sonuc;
+  }
+
+  /**
+   * Bir serinin o yıldaki son sırası (28.09.2026): ICE son numarayı belge türüne göre AYRI tutar (Get_Son_Belge_ID
+   * EFatura / EArsiv); aynı seri iki türde kullanılınca biri ilerlerken diğeri geride kalıp kullanılmış numarayı
+   * önerir. Fatura numarası firma içinde türden bağımsız tek olmalı → e-Fatura, e-Arşiv ve yerel giden kaydının en büyüğü.
+   */
+  private static async seriSonSira(
+    config: Awaited<ReturnType<typeof EbelgeSqlRepository.getConnectionConfig>>,
+    seri: string,
+    yil: number,
+    dbContext?: DbContext
+  ): Promise<number> {
+    const iceSon = async (tur: "EFatura" | "EArsiv") => {
+      const son = await getSonBelgeId(config, seri, tur, yil);
+      const sira = Number(son?.Son_Belge_ID);
+      if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sira) || sira < 0) {
+        throw ApiError.unprocessable(`ICE'den ${seri} serisinin ${tur} son numarası alınamadı; işlem durduruldu.`);
+      }
+      return sira;
+    };
+    const [efatura, earsiv, yerel] = await Promise.all([
+      iceSon("EFatura"),
+      iceSon("EArsiv"),
+      EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext),
+    ]);
+    return Math.max(efatura, earsiv, yerel);
   }
 
   /**
