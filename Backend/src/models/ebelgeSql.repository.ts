@@ -7,6 +7,12 @@ import { EbelgeAyarView, IceConnectionConfig } from "../services/ice/ice.types.j
 
 export type DbContext = { dbServer?: string; dbName?: string };
 
+/** Giden kutusu filtresi → kayıt durumları (docs/EBELGE_KUYRUK_YOL_HARITASI.md Q1/Q2) */
+const GIDEN_DURUM_GRUPLARI: Record<string, string[]> = {
+  GONDERILDI: ["GONDERILDI", "KUYRUKTA", "GONDERILIYOR", "BELIRSIZ", "ONAYLANIYOR"],
+  IPTAL: ["IPTAL", "IPTAL_EDILIYOR"],
+};
+
 export interface EarsivArsivKaydi {
   uuid: string; belgeNo: string; aliciVkn: string | null; aliciUnvan: string | null;
   gondericiVkn: string | null; gondericiUnvan: string | null; tarih: Date;
@@ -119,7 +125,8 @@ export interface GidenBelgeKaydi {
   duzenlemeTarihi?: Date | null;
   tutar?: number | null;
   paraBirimi?: string | null;
-  gonderimDurumu: "HAZIRLANDI" | "DOGRULANDI" | "TASLAK" | "GONDERILDI" | "IPTAL" | "HATA" | "GONDERILIYOR" | "BELIRSIZ";
+  /** KUYRUKTA: gönderim kuyruğunda, henüz ICE'ye gitmedi (docs/EBELGE_KUYRUK_YOL_HARITASI.md) */
+  gonderimDurumu: "HAZIRLANDI" | "DOGRULANDI" | "TASLAK" | "GONDERILDI" | "IPTAL" | "HATA" | "GONDERILIYOR" | "BELIRSIZ" | "KUYRUKTA";
   semaGecerli?: boolean | null;
   schematronGecerli?: boolean | null;
   iceResponseCode?: string | null;
@@ -318,6 +325,11 @@ export class EbelgeSqlRepository {
     }
   }
 
+  /** e-Belge tabloları kurulmuş havuz — gönderim kuyruğu da aynı tabloları kullanır */
+  public static async havuzAl(dbContext?: DbContext): Promise<sql.ConnectionPool> {
+    return this.getPool(dbContext);
+  }
+
   private static async getPool(dbContext?: DbContext): Promise<sql.ConnectionPool> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTablesExist(pool);
@@ -434,6 +446,34 @@ export class EbelgeSqlRepository {
       guncelleyen: kayit.guncelleyen,
       guncellemeTarihi: kayit.guncellemeTarihi,
     };
+  }
+
+  /**
+   * Bu alıcıya daha önce kestiğimiz son belgenin UBL'i (e-Fatura, e-Arşiv, irsaliye) — alıcı bilgilerini doldurmak için
+   * (docs/GIRIS_VE_EBELGE_DUZENLEME.md R2). Reddedilmiş belge de alıcı bilgisi taşır; yalnız XML'i olanlar.
+   */
+  public static async sonGidenXml(aliciVkn: string, dbContext?: DbContext): Promise<{ belgeNo: string; xml: string } | null> {
+    const pool = await this.getPool(dbContext);
+    const res = await pool
+      .request()
+      .input("vkn", sql.VarChar(11), aliciVkn)
+      .query(`SELECT TOP 1 [BELGE_NO] AS belgeNo, [XML_ICERIK] AS xml FROM [dbo].[TODVZ_EBELGE_GIDEN]
+              WHERE [ALICI_VKN] = @vkn AND [XML_ICERIK] IS NOT NULL
+              ORDER BY ISNULL([DUZENLEME_TARIHI], [OLUSTURMA_TARIHI]) DESC, [OLUSTURMA_TARIHI] DESC`);
+    const r = res.recordset[0];
+    return r?.xml ? { belgeNo: String(r.belgeNo || ""), xml: String(r.xml) } : null;
+  }
+
+  /** Yalnızca gönderici etiketini (FIRMA_ALIAS) yazar — GİB'den otomatik bulunduğunda (docs/GIRIS_VE_EBELGE_DUZENLEME.md R1). */
+  public static async firmaAliasYaz(alias: string, kullanici: string, dbContext?: DbContext): Promise<void> {
+    const pool = await this.getPool(dbContext);
+    await pool
+      .request()
+      .input("alias", sql.NVarChar(150), alias)
+      .input("kullanici", sql.NVarChar(50), kullanici.slice(0, 50))
+      .query(`UPDATE [dbo].[TODVZ_EBELGE_AYAR]
+              SET [FIRMA_ALIAS] = @alias, [GUNCELLEYEN] = @kullanici, [GUNCELLEME_TARIHI] = GETDATE()
+              WHERE LTRIM(RTRIM(ISNULL([FIRMA_ALIAS], ''))) = ''`);
   }
 
   /**
@@ -961,9 +1001,10 @@ export class EbelgeSqlRepository {
      * Adı e-Arşiv'den kalsa da bu geçiş e-Döviz ve e-Müstahsil için de kullanılır.
      * Filtre sabit 'EArsiv' iken diğer türlerde UPDATE 0 satır etkiliyor ve
      * gönderim ICE'ye ulaştığı halde "durum değişti" hatasıyla kayıt
-     * GONDERILIYOR'da takılı kalıyordu. Çağıran kendi türünü verir.
+     * GONDERILIYOR'da takılı kalıyordu. Çağıran kendi türünü verir. 28.09.2026: e-Fatura, e-İrsaliye, e-Gider ve
+     * taslak onayı da tür vermiyordu → aynı takılma; hepsine eklendi.
      */
-    belgeTuru: "EArsiv" | "EDoviz" | "EMustahsil" = "EArsiv"
+    belgeTuru: "EArsiv" | "EDoviz" | "EMustahsil" | "EFatura" | "EIrsaliye" | "EGiderPusulasi" = "EArsiv"
   ): Promise<void> {
     const pool = await this.getPool(dbContext);
     const res = await pool.request()
@@ -1000,6 +1041,17 @@ export class EbelgeSqlRepository {
     return res.recordset.length > 0;
   }
 
+  /** Serinin o yıl yerel giden kaydındaki en büyük sırası (tür fark etmez; reddedilen de numarayı kilitler) */
+  public static async seriYerelSonSira(seri: string, yil: number, dbContext?: DbContext): Promise<number> {
+    const pool = await this.getPool(dbContext);
+    const res = await pool
+      .request()
+      .input("onEk", sql.VarChar(7), `${seri}${yil}`)
+      .query(`SELECT MAX(TRY_CAST(RIGHT([BELGE_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_EBELGE_GIDEN]
+              WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk`);
+    return Number(res.recordset[0]?.SIRA) || 0;
+  }
+
   /** Bu hesaptan kesilmiş belgelerin serileri (fatura no önerisi için), ör. ["ABC", "EAR"] */
   public static async gidenSerileri(belgeTuru: string, dbContext?: DbContext): Promise<string[]> {
     const pool = await this.getPool(dbContext);
@@ -1028,8 +1080,10 @@ export class EbelgeSqlRepository {
       request.input("arama", sql.NVarChar(200), `%${filtre.arama}%`);
     }
     if (filtre.durum && filtre.durum !== "TUMU") {
-      kosullar.push("[GONDERIM_DURUMU] = @durum");
-      request.input("durum", sql.VarChar(20), filtre.durum);
+      // Kuyruk kullanıcıya görünmez: sonucu beklenen belgeler "Gönderildi", iptali sürenler "İptal" filtresinde
+      const grup = GIDEN_DURUM_GRUPLARI[filtre.durum] ?? [filtre.durum];
+      kosullar.push(`[GONDERIM_DURUMU] IN (${grup.map((_, i) => `@durum${i}`).join(", ")})`);
+      grup.forEach((d, i) => request.input(`durum${i}`, sql.VarChar(20), d));
     }
     if (filtre.belgeTuru) {
       kosullar.push("[BELGE_TURU] = @belgeTuru");

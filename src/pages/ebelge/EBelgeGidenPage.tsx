@@ -9,6 +9,7 @@ import EBelgeYerelTaslaklar from "./EBelgeYerelTaslaklar";
 import {
   EbelgeGidenSatiri,
   ebelgeGidenDurumRozet,
+  EBELGE_ASKIDAKI_DURUMLAR,
   ebelgeService,
   ebelgeTarihSaat,
   ebelgeTutar,
@@ -39,7 +40,7 @@ const EBelgeGidenPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [durum, setDurum] = useState<string>(() => {
     const d = (searchParams.get("durum") || "").toUpperCase();
-    return ["TASLAK", "GONDERILDI", "IPTAL", "HATALI"].includes(d) ? d : "TUMU";
+    return ["TASLAK", "GONDERILDI", "IPTAL", "HATA"].includes(d) ? d : "TUMU";
   });
   const [belgeTuru, setBelgeTuru] = useState("");
   const [baslangicTarihi, setBaslangicTarihi] = useState("");
@@ -171,6 +172,24 @@ const EBelgeGidenPage: React.FC = () => {
     } finally { setDetayYukleniyor(false); }
   };
 
+  /** Tarihe basınca: belgenin önizlemesi (e-Döviz'de ICE çıktısı / fiş önizlemesi) */
+  const onizlemeAc = async (satir: EbelgeGidenSatiri) => {
+    if (satir.belgeTuru === "EDoviz") return dovizGoruntule(satir, true);
+    setDetayYukleniyor(true);
+    setDetay(null);
+    setPdfUrl(null);
+    setGoruntuHtml(null);
+    try {
+      const g = await ebelgeService.getGidenOnizleme(satir.uuid);
+      setGoruntuBaslik(satir.belgeNo);
+      setGoruntuHtml(g.html === null ? null
+        : `${g.html}<script>addEventListener("message",function(e){if(e.data==="yazdir")print()})</script>`);
+      setPdfUrl(g.html ? null : g.url);
+    } catch (err: any) {
+      setAlertInfo({ type: "danger", message: err?.message || "Önizleme açılamadı." });
+    } finally { setDetayYukleniyor(false); }
+  };
+
   const earsivGoruntule = async (satir: EbelgeGidenSatiri, pdf: boolean) => {
     setDetayYukleniyor(true);
     setDetay(null);
@@ -238,10 +257,9 @@ const EBelgeGidenPage: React.FC = () => {
       />
 
       <Alert variant="info" className="py-2 px-3 mb-3 border rounded shadow-2xs small">
-        <strong>e-Fatura</strong> belgeleri entegratörde <strong>taslak</strong> olarak duruyor —
-        GİB'e gönderilmedi, iptal edilebilir. <strong>e-Arşiv</strong> için satırdaki gönderim
-        durumunu ve rapor sonucunu kontrol ediniz. Sonucu belirsiz veya işlem sürüyor görünen
-        belgeleri ICE portalinde ETTN ile kontrol etmeden yeniden göndermeyiniz.
+        <strong>Taslak</strong> e-Fatura belgeleri GİB'e gönderilmedi, iptal edilebilir. Gönderilemeyen
+        belgeleri Durum filtresinden <strong>Gönderilemedi</strong> seçerek görebilirsiniz. Tarihe basınca
+        belgenin önizlemesi açılır.
       </Alert>
 
       {alertInfo && (
@@ -365,7 +383,7 @@ const EBelgeGidenPage: React.FC = () => {
                 <option value="TASLAK">Taslak</option>
                 <option value="GONDERILDI">Gönderildi</option>
                 <option value="IPTAL">İptal</option>
-                <option value="HATA">Hatalı</option>
+                <option value="HATA">Gönderilemedi</option>
               </Form.Select>
             </Col>
             <Col xs={6} md={3} lg={2}>
@@ -447,7 +465,13 @@ const EBelgeGidenPage: React.FC = () => {
                       >
                         <td><Form.Check aria-label={`${satir.belgeNo} seç`} checked={secimler.includes(satir.uuid)} disabled={topluBusy}
                           onChange={e => setSecimler(o => e.target.checked ? [...o, satir.uuid] : o.filter(id => id !== satir.uuid))} /></td>
-                        <td>{ebelgeTarihSaat(satir.duzenlemeTarihi || satir.olusturmaTarihi).slice(0, 10)}</td>
+                        <td>
+                          {/* Tarihe basınca önizleme (kuyruktaki belgede de açılır) */}
+                          <Button variant="link" size="sm" className="p-0 align-baseline" disabled={detayYukleniyor}
+                            title="Önizlemeyi aç" onClick={(e) => { e.stopPropagation(); void onizlemeAc(satir); }}>
+                            {ebelgeTarihSaat(satir.duzenlemeTarihi || satir.olusturmaTarihi).slice(0, 10)}
+                          </Button>
+                        </td>
                         <td className="font-monospace">
                           {goruntulenebilir(satir)
                             ? <Button variant="link" size="sm" className="p-0 font-monospace align-baseline" disabled={detayYukleniyor}
@@ -472,7 +496,9 @@ const EBelgeGidenPage: React.FC = () => {
                           <Badge bg={rozet.bg} text={rozet.text}>
                             {rozet.etiket}
                           </Badge>
-                          {satir.iceResponseMesaj && <small className="d-block">{satir.iceResponseMesaj}</small>}
+                          {/* Kuyruk iç mesajları gösterilmez; yalnız sonuç (red sebebi vb.) */}
+                          {satir.iceResponseMesaj && !EBELGE_ASKIDAKI_DURUMLAR.includes(satir.gonderimDurumu) && satir.gonderimDurumu !== "IPTAL_EDILIYOR" &&
+                            <small className="d-block">{satir.iceResponseMesaj}</small>}
                           {islemSonuclari[satir.uuid] && <small className="d-block fw-semibold">{islemSonuclari[satir.uuid]}</small>}
                         </td>
                         <td className="text-center">
@@ -487,7 +513,8 @@ const EBelgeGidenPage: React.FC = () => {
                               <Button size="sm" variant="link" disabled={detayYukleniyor} onClick={() => dovizGoruntule(satir, true)}>PDF</Button>}
                           </>}
                           {/* E-posta ile gönder — yalnızca gönderimi kesinleşmiş belgelerde */}
-                          {satir.gonderimDurumu === "GONDERILDI" && !["EDoviz", "EMustahsil"].includes(satir.belgeTuru) && (
+                          {(satir.gonderimDurumu === "GONDERILDI" || EBELGE_ASKIDAKI_DURUMLAR.includes(satir.gonderimDurumu)) &&
+                            !["EDoviz", "EMustahsil"].includes(satir.belgeTuru) && (
                             <Button
                               size="sm"
                               variant="link"

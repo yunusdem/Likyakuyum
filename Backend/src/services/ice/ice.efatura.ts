@@ -252,24 +252,38 @@ export interface IceGibUser {
   Identifier?: string;
   Alias?: string;
   CreationTime?: string;
+  FirstCreationTime?: string;
+  /** Etiket GİB listesinden silindiyse dolu; silinmemişse xsi:nil gelir */
+  DeletionTime?: unknown;
   Title?: string;
   Unit?: string;
   Type?: string;
   AccountType?: string;
 }
 
+/** DeletionTime geçerli ve geçmiş bir tarihse etiket silinmiştir (xsi:nil / boş → silinmemiş) */
+const etiketSilinmisMi = (deger: unknown, simdi: number): boolean => {
+  if (typeof deger !== "string" || !deger.trim()) return false;
+  const zaman = Date.parse(deger);
+  return Number.isFinite(zaman) && new Date(zaman).getFullYear() > 1900 && zaman <= simdi;
+};
+
 /**
- * `getUserList_EFatura` — VKN/TCKN'nin e-Fatura mükellefi olup olmadığını,
+ * `getUserList_EFatura_Detail` — VKN/TCKN'nin e-Fatura mükellefi olup olmadığını,
  * mükellefse GİB posta kutusu etiketlerini (alias) döndürür.
+ *
+ * Detail sürümü silinme tarihini (DeletionTime) de verir; GİB listesinden silinmiş
+ * etiketler `kullanicilar`a alınmaz, `silinenler`de ayrıca döner. Etiketlerin hepsi
+ * silinmişse alıcı artık e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
  *
  * Sonuç boşsa alıcı e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
  */
 export const getUserListEFatura = async (
   config: IceConnectionConfig,
   vknTckn: string
-): Promise<{ basarili: boolean; mesaj: string; kullanicilar: IceGibUser[] }> => {
+): Promise<{ basarili: boolean; mesaj: string; kullanicilar: IceGibUser[]; silinenler: IceGibUser[] }> => {
   const { data } = await callWithSession<any>(config, {
-    method: "getUserList_EFatura",
+    method: "getUserList_EFatura_Detail",
     buildInnerXml: (loginHeaderXml) =>
       `<_getUserList_request>` +
       loginHeaderXml +
@@ -278,10 +292,16 @@ export const getUserListEFatura = async (
     authHatasindaTekrarla: true,
   });
 
+  // Detail yanıtında eleman adı `GIBUser` (WSDL: ArrayOfGIBUser); eski adı da kabul et
+  const liste = data?.GIB_User_List;
+  const tumu = toArray<IceGibUser>(liste?.GIBUser ?? liste?.GIB_User);
+  const simdi = Date.now();
+
   return {
     basarili: String(data?.success).toLowerCase() === "true",
     mesaj: data?.response_message ? String(data.response_message) : "",
-    kullanicilar: toArray<IceGibUser>(data?.GIB_User_List?.GIB_User),
+    kullanicilar: tumu.filter((k) => !etiketSilinmisMi(k.DeletionTime, simdi)),
+    silinenler: tumu.filter((k) => etiketSilinmisMi(k.DeletionTime, simdi)),
   };
 };
 
@@ -301,6 +321,12 @@ export interface IceCariAdres {
   Telefon?: string;
   /** Vergi dairesi: UBL'de PartyTaxScheme/TaxScheme/Name; ICE kayıtlı cari kaydında varsa oradan */
   VergiDairesi?: string;
+  /** Yalnız UBL'den (önceki belge): tüzel kişide unvan, gerçek kişide ad / soyad */
+  Unvan?: string;
+  Ad?: string;
+  Soyad?: string;
+  Faks?: string;
+  WebSitesi?: string;
 }
 
 /**
@@ -388,9 +414,11 @@ export const ublTarafAdresi = (xml: string, vknTckn: string, etiket: string): Ic
     if (!eslesti) continue;
 
     const adres = party.PostalAddress || {};
+    const kisi = party.Person || {};
     const sonuc: IceCariAdres = {
       AdresAdi: etiket,
-      MahalleCadde: [metin(adres.StreetName), metin(adres.BuildingName)].filter(Boolean).join(" "),
+      MahalleCadde: metin(adres.StreetName),
+      BinaAdi: metin(adres.BuildingName),
       BinaNo: metin(adres.BuildingNumber),
       DaireNo: metin(adres.Room),
       Ilce: metin(adres.CitySubdivisionName),
@@ -399,9 +427,14 @@ export const ublTarafAdresi = (xml: string, vknTckn: string, etiket: string): Ic
       Ulke: metin(adres.Country?.Name),
       Eposta: metin(party.Contact?.ElectronicMail),
       Telefon: metin(party.Contact?.Telephone),
+      Faks: metin(party.Contact?.Telefax),
+      WebSitesi: metin(party.WebsiteURI),
       VergiDairesi: metin(toArray<any>(party.PartyTaxScheme)[0]?.TaxScheme?.Name),
+      Unvan: metin(toArray<any>(party.PartyName)[0]?.Name),
+      Ad: metin(kisi.FirstName),
+      Soyad: metin(kisi.FamilyName),
     };
-    return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde ? sonuc : null;
+    return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde || sonuc.Eposta || sonuc.Telefon ? sonuc : null;
   }
   return null;
 };
@@ -478,7 +511,8 @@ export interface IceGonderimSonucu {
 
 export interface TaslakGonderimGirdisi {
   fromVknTckn: string;
-  fromAlias: string;
+  /** Boşsa `from_alias` gönderilmez; ICE oturum açan hesabın gönderici etiketini kullanır */
+  fromAlias?: string;
   toVknTckn: string;
   toAlias: string;
   /** Base64 UBL belgeleri — birden çok belge çoklanabilir */
@@ -507,7 +541,8 @@ export const buildSendInvoiceInnerXml = (
     `<sendInvoiceRequest>` +
     loginHeaderXml +
     `<from_vkn_tckn>${escapeXml(girdi.fromVknTckn)}</from_vkn_tckn>` +
-    `<from_alias>${escapeXml(girdi.fromAlias)}</from_alias>` +
+    // Gönderici etiketi isteğe bağlı (WSDL minOccurs=0; ICE örnek isteği göndermiyor): boşsa ICE hesabın etiketini kullanır
+    (girdi.fromAlias?.trim() ? `<from_alias>${escapeXml(girdi.fromAlias.trim())}</from_alias>` : "") +
     `<to_vkn_tckn>${escapeXml(girdi.toVknTckn)}</to_vkn_tckn>` +
     `<to_alias>${escapeXml(girdi.toAlias)}</to_alias>` +
     `<invoices>${invoicesXml}</invoices>` +

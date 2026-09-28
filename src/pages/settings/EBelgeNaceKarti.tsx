@@ -7,8 +7,8 @@ import { KUYUMCU_NACE_KODLARI, NACE_REFERANS_TARIHI, naceReferansBul } from "./n
 
 /**
  * Firma NACE (faaliyet) kodları ve her kod için faturada kullanılabilecek KDV oranları
- * (docs/GIRIS_VE_EBELGE_DUZENLEME.md N1). Fatura formundaki KDV listesi bu oranlara göre ayrılır; NACE dışı oran
- * seçilirse uyarılır. Liste boşsa kısıt yoktur. Kodlar vergi levhasındaki ana ve yan faaliyet kodlarıdır.
+ * (docs/GIRIS_VE_EBELGE_DUZENLEME.md N1). Fatura formundaki KDV listesinde yalnızca bu oranlar görünür (yönetici
+ * isteği 28.09.2026); 555 yazılı faaliyet dışı satırda tüm oranlar açılır. Liste boşsa kısıt yoktur. Kodlar vergi levhasındaki ana ve yan faaliyet kodlarıdır.
  */
 const EBelgeNaceKarti: React.FC = () => {
   const { showSuccess, showToast } = useToast();
@@ -69,8 +69,8 @@ const EBelgeNaceKarti: React.FC = () => {
             <div className="fw-semibold" style={{ fontSize: "13px" }}>NACE Kodları ve KDV Oranları</div>
             <div className="text-secondary" style={{ fontSize: "12px" }}>
               Vergi levhasındaki ana ve yan faaliyet kodlarınızı ve her kod için kullanılabilecek KDV oranlarını girin
-              (mali müşavirinizden teyit edin). Faturada bu oranlar önce gösterilir, NACE dışı oran seçilince uyarı çıkar.
-              Liste boşsa kısıt yoktur.
+              (mali müşavirinizden teyit edin). Faturada KDV listesinde yalnızca bu oranlar (ve istisna için %0) görünür;
+              faaliyet dışı satış için "Kuyumcu kalemi ekle › Faaliyet dışı satış (555)" kullanılır. Liste boşsa kısıt yoktur.
             </div>
           </div>
           <div className="d-flex gap-2 flex-shrink-0">

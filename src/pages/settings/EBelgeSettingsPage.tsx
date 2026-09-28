@@ -11,6 +11,7 @@ import {
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import EBelgeNaceKarti from "./EBelgeNaceKarti";
+import EBelgeSeriKarti from "./EBelgeSeriKarti";
 import {
   EbelgeAyar,
   EbelgeAyarKaydet,
@@ -457,6 +458,8 @@ const EBelgeSettingsPage: React.FC = () => {
           )}
         </Card.Body>
       </Card>
+
+      <EBelgeSeriKarti />
 
       <EBelgeNaceKarti />
 

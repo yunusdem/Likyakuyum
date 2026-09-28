@@ -85,7 +85,7 @@ export const EBankaBekleyenlerPage: React.FC = () => {
 
   const aktarPenceresiniAc = (h: EBankaBekleyen) => {
     setAktarilan(h);
-    setCari(h.plan.cari);
+    setCari(h.plan.cari || h.plan.oneri || null);
     setKur("");
   };
 

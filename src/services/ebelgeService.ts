@@ -243,6 +243,15 @@ export interface EbelgeFaturaNoOnerisi {
   seri: string;
   sonSira: number;
   onerilenNo: string;
+  /** Ayarlarda bu tür için varsayılan seri */
+  varsayilan?: boolean;
+}
+
+/** E-Belge Ayarları'nda tanımlı fatura serisi */
+export interface EbelgeSeriKaydi {
+  belgeTuru: "EFatura" | "EArsiv";
+  seri: string;
+  varsayilan: boolean;
 }
 
 /** Yerel taslağın açılacağı form */
@@ -421,6 +430,16 @@ export interface EbelgeAliciAdres {
   telefon: string;
   /** ICE'deki kayıttan ya da önceki belgeden; yoksa boş */
   vergiDairesi?: string;
+  /** Parçalı adres ve kişi bilgileri — bu alıcıya kestiğimiz son belgeden (docs/GIRIS_VE_EBELGE_DUZENLEME.md R2) */
+  mahalleCadde?: string;
+  binaAdi?: string;
+  binaNo?: string;
+  kapiNo?: string;
+  faks?: string;
+  webSitesi?: string;
+  unvan?: string;
+  ad?: string;
+  soyad?: string;
 }
 
 export interface EbelgeTaslakSonucu {
@@ -621,7 +640,7 @@ export const ebelgeService = {
     return (await apiClient.post<{ ozet: { malHizmetToplam: number; vergiToplam: number; odenecekTutar: number }; iceDogrulamasiYapildi: false }>("/e-belge/gider-pusulasi/onizle", girdi)).data;
   },
   async giderGonder(girdi: EbelgeGiderIstegi) {
-    return (await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>("/e-belge/gider-pusulasi/gonder", girdi)).data;
+    return (await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>("/e-belge/gider-pusulasi/gonder", girdi, { timeoutMs: 300_000 })).data;
   },
   async giderPdf(uuid: string) { return ebelgePdfBlobUrl(`/e-belge/gider-pusulasi/${encodeURIComponent(uuid)}/pdf`); },
   async listEarsivArsiv(sayfa = 1, arama = "") {
@@ -670,11 +689,17 @@ export const ebelgeService = {
   /* ---------- Gelen kutusu ---------- */
 
   /** ICE'den gelen belgeleri çekip yerel aynayı günceller */
-  async senkronizeGelen(gunSayisi = 30, limit = 200): Promise<EbelgeSenkronizasyonSonucu> {
+  /** `aralik` verilirse ICE'den o tarih aralığı çekilir (YYYY-MM-DD); verilmezse son `gunSayisi` gün */
+  async senkronizeGelen(
+    gunSayisi = 30,
+    limit = 200,
+    aralik?: { baslangic?: string; bitis?: string }
+  ): Promise<EbelgeSenkronizasyonSonucu> {
     const res = await apiClient.post<EbelgeSenkronizasyonSonucu>("/e-belge/gelen/senkronize", {
       gunSayisi,
       limit,
-    });
+      ...aralik,
+    }, { timeoutMs: 120_000 });
     return res.data;
   },
 
@@ -810,7 +835,8 @@ export const ebelgeService = {
     istek: EbelgeDogrulaIstegi & { aliciAlias?: string }
   ): Promise<EbelgeTaslakSonucu & { kontorKalan?: number | null; kontorUyari?: string | null }> {
     const { onizleme, ...govde } = istek;
-    const res = await apiClient.post<any>("/e-belge/giden/gonder", govde);
+    // Sunucu ICE'yi 120 sn'ye kadar bekler; varsayılan 15 sn'lik istemci süresi gönderim sürerken hata gösteriyordu
+    const res = await apiClient.post<any>("/e-belge/giden/gonder", govde, { timeoutMs: 300_000 });
     return res.data;
   },
 
@@ -820,7 +846,9 @@ export const ebelgeService = {
    */
   async taslakOnayla(uuid: string) {
     const res = await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>(
-      `/e-belge/giden/${encodeURIComponent(uuid)}/onayla`
+      `/e-belge/giden/${encodeURIComponent(uuid)}/onayla`,
+      undefined,
+      { timeoutMs: 300_000 }
     );
     return res.data;
   },
@@ -877,7 +905,7 @@ export const ebelgeService = {
       satirSayisi: number;
       kontorKalan: number | null;
       kontorUyari: string | null;
-    }>("/e-belge/irsaliye/gonder", govde);
+    }>("/e-belge/irsaliye/gonder", govde, { timeoutMs: 300_000 });
     return res.data;
   },
 
@@ -930,14 +958,22 @@ export const ebelgeService = {
     return (await apiClient.put<EbelgeNaceKaydi[]>("/e-belge/nace", { liste })).data || [];
   },
 
-  /** Fatura no önerileri: her seri için ICE'deki son sıra + 1 (formun en üstündeki seçim) */
-  async faturaNoOnerileri(belgeTuru: "EFatura" | "EArsiv", yil: number, seri?: string): Promise<EbelgeFaturaNoOnerisi[]> {
-    const res = await apiClient.get<EbelgeFaturaNoOnerisi[]>("/e-belge/giden/fatura-no-onerileri", {
-      belgeTuru,
-      yil,
-      ...(seri ? { seri } : {}),
-    });
+  /** Fatura no önerileri: ayarlarda tanımlı her seri için ICE'deki son sıra + 1 (formun en üstündeki seçim) */
+  async faturaNoOnerileri(belgeTuru: "EFatura" | "EArsiv", yil: number): Promise<EbelgeFaturaNoOnerisi[]> {
+    const res = await apiClient.get<EbelgeFaturaNoOnerisi[]>("/e-belge/giden/fatura-no-onerileri", { belgeTuru, yil });
     return res.data || [];
+  },
+
+  /** E-Belge Ayarları: fatura serileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md R3) */
+  async seriListe(): Promise<EbelgeSeriKaydi[]> {
+    return (await apiClient.get<EbelgeSeriKaydi[]>("/e-belge/seri")).data || [];
+  },
+  async seriKaydet(liste: EbelgeSeriKaydi[]): Promise<EbelgeSeriKaydi[]> {
+    return (await apiClient.put<EbelgeSeriKaydi[]>("/e-belge/seri", { liste })).data || [];
+  },
+  /** ICE'de kesilmiş belgelerden seri bulur (ayarlardaki düğme) */
+  async seriIceBul(belgeTuru: "EFatura" | "EArsiv"): Promise<string[]> {
+    return (await apiClient.get<string[]>("/e-belge/seri/ice-bul", { belgeTuru }, { timeoutMs: 120_000 })).data || [];
   },
 
   /** ICE tarafındaki son belge numarası (numaratör çakışması kontrolü) */
@@ -990,6 +1026,11 @@ export const ebelgeService = {
   /** Kesilmiş e-Arşiv faturasının görüntüsü (PDF ya da HTML) */
   async getEarsivGoruntu(uuid: string): Promise<EbelgeGoruntu> {
     return ebelgeGoruntuBlob(`/e-belge/earsiv/${encodeURIComponent(uuid)}/pdf`);
+  },
+
+  /** Giden belgenin önizlemesi (tarihe basınca) — kendi XML'imizden; kuyruktaki belgede de açılır */
+  async getGidenOnizleme(uuid: string): Promise<EbelgeGoruntu> {
+    return ebelgeGoruntuBlob(`/e-belge/giden/${encodeURIComponent(uuid)}/onizleme`);
   },
 
   /** e-Fatura (taslak dahil) görüntüsü — ICE'deki belgenin PDF'i */
@@ -1051,6 +1092,9 @@ export const ebelgeRedKabulRozet = (
   return { bg: "secondary-subtle", text: "secondary", etiket: "Cevap bekliyor" };
 };
 
+/** Sonucu arka planda kesinleşen giden durumları; kullanıcıya "Gönderildi" görünür */
+export const EBELGE_ASKIDAKI_DURUMLAR = ["KUYRUKTA", "GONDERILIYOR", "BELIRSIZ", "ONAYLANIYOR"];
+
 /** Giden belge durumuna göre rozet (§15.2 paleti) */
 export const ebelgeGidenDurumRozet = (
   durum?: string | null
@@ -1060,13 +1104,17 @@ export const ebelgeGidenDurumRozet = (
       return { bg: "secondary-subtle", text: "secondary", etiket: "Gönderilmedi" };
     case "KONTROL_GEREKLI":
       return { bg: "warning-subtle", text: "warning", etiket: "Kontrol gerekli" };
+    // Gönderim kuyruğu kullanıcıya görünmez (docs/EBELGE_KUYRUK_YOL_HARITASI.md): sonucu arka planda
+    // kesinleşen belge "Gönderildi", gönderilemeyen "Gönderilemedi" görünür.
+    case "KUYRUKTA":
     case "ONAYLANIYOR":
     case "GONDERILIYOR":
-    case "IPTAL_EDILIYOR":
-      return { bg: "warning-subtle", text: "warning", etiket: "İşlem sürüyor / kontrol gerekli" };
     case "BELIRSIZ":
+      return { bg: "info-subtle", text: "info", etiket: "Gönderildi" };
+    case "IPTAL_EDILIYOR":
+      return { bg: "secondary-subtle", text: "secondary", etiket: "İptal" };
     case "IPTAL_BELIRSIZ":
-      return { bg: "danger-subtle", text: "danger", etiket: "Sonuç belirsiz" };
+      return { bg: "danger-subtle", text: "danger", etiket: "İptal kontrol gerekli" };
     case "TASLAK":
       return { bg: "warning-subtle", text: "warning", etiket: "Taslak" };
     case "GONDERILDI":
@@ -1074,7 +1122,7 @@ export const ebelgeGidenDurumRozet = (
     case "IPTAL":
       return { bg: "secondary-subtle", text: "secondary", etiket: "İptal" };
     case "HATA":
-      return { bg: "danger-subtle", text: "danger", etiket: "Hata" };
+      return { bg: "danger-subtle", text: "danger", etiket: "Gönderilemedi" };
     default:
       return { bg: "secondary-subtle", text: "secondary", etiket: durum || "-" };
   }

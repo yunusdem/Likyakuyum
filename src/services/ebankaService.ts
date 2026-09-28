@@ -58,6 +58,8 @@ export interface MutabakatFisi {
   otomatik?: boolean;
   fark?: number;
   baskaHarekette?: boolean;
+  /** tam: kuruşu kuruşuna · yakin: ±%1 · uzak: elle seçilebilir */
+  uyum?: "tam" | "yakin" | "uzak";
 }
 
 export interface MutabakatSatiri {
@@ -68,11 +70,16 @@ export interface MutabakatSatiri {
   doviz: string | null;
   yon: "gelen" | "giden";
   tutar: number;
+  tlKarsilik: number | null;
+  kur: number | null;
+  bankaId: number | null;
+  karsiNo: string | null;
   tipAdi: string | null;
   karsiTaraf: string | null;
   aciklama: string | null;
   cari: { cariKartId: number; ad: string } | null;
   cariNedeni: string | null;
+  oneriCari: { cariKartId: number; ad: string } | null;
   durum: MutabakatDurumu;
   fark: number | null;
   faturaGerekmez: boolean;
@@ -251,6 +258,8 @@ export interface EBankaBekleyen {
     virman: boolean;
     tlMi: boolean;
     cari: EBankaCari | null;
+    /** Yalnız bir kriter tutan cari: otomatik atanmaz, elle aktarımda seçili gelir */
+    oneri?: EBankaCari | null;
   };
 }
 
@@ -523,6 +532,10 @@ export const EBankaService = {
 
   async mutabakatEslemeKaldir(vomsisId: number, fisTuru: MutabakatFisTuru, fisId: number): Promise<void> {
     await apiClient.post("/ebanka/mutabakat/esle-kaldir", { vomsisId, fisTuru, fisId });
+  },
+
+  async mutabakatCariOnayla(vomsisId: number, cariKartId: number | null): Promise<void> {
+    await apiClient.post("/ebanka/mutabakat/cari-onayla", { vomsisId, cariKartId });
   },
 
   async mutabakatFaturaGerekmez(vomsisId: number, deger: boolean, not?: string): Promise<void> {

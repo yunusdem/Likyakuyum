@@ -145,6 +145,13 @@ export class EBankaAktarimSqlRepository {
     return m;
   }
 
+  /** Tüm cariler (id, kod, ad): isim eşleşmesi için (M10). */
+  public static async cariAdlari(dbContext?: DbContext): Promise<CariOzeti[]> {
+    const pool = await EBankaVeriSqlRepository.pool(dbContext);
+    const rows = (await pool.request().query(`SELECT CARI_KART_ID, KOD, AD FROM TODVZ_CARI_KART WHERE LEN(LTRIM(RTRIM(ISNULL(AD, '')))) > 0`)).recordset;
+    return rows.map((r: any) => ({ cariKartId: r.CARI_KART_ID, kod: kirp(r.KOD), ad: kirp(r.AD) }));
+  }
+
   /** Elle aktarımlarda öğrenilen karşı IBAN → cari. */
   public static async ibanSozlugu(dbContext?: DbContext): Promise<Map<string, CariOzeti>> {
     const pool = await EBankaVeriSqlRepository.pool(dbContext);

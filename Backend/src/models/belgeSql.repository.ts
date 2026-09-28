@@ -192,11 +192,12 @@ export class BelgeSqlRepository {
         LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID${faturaSql}
       )
       SELECT K.*, G.GONDERIM_DURUMU gonderimDurumu,
-        CASE WHEN K.iptal=1 THEN 'IPTAL' ELSE COALESCE(G.GONDERIM_DURUMU, R.DURUM,
+        -- Gönderim kuyruğu görünmez (docs/EBELGE_KUYRUK_YOL_HARITASI.md): sonucu beklenen belge "Gönderildi"
+        CASE WHEN K.iptal=1 THEN 'IPTAL' ELSE COALESCE(CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN 'GONDERILDI' ELSE G.GONDERIM_DURUMU END, R.DURUM,
           CASE WHEN NULLIF(RTRIM(K.eskiHata),'') IS NOT NULL THEN 'HATA'
                WHEN ISNULL(K.eskiDurum,0)=0 AND (K.kaynak='DOVIZ' OR NULLIF(K.ettn,'') IS NULL) THEN 'GONDERILMEDI'
                ELSE 'KONTROL_GEREKLI' END) END durum,
-        COALESCE(G.ICE_RESPONSE_MESAJ, R.HATA, K.eskiHata) hata
+        CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ, R.HATA, K.eskiHata) END hata
       INTO #F
       FROM K${kaynakApply}${gidenApply}
       WHERE (@kaynak IS NULL OR (@kaynak='DOVIZ' AND K.kaynak='DOVIZ')

@@ -473,6 +473,15 @@ export const ebelgeYerelTaslakKaydetSchema = z.object({
   icerik: z.record(z.string(), z.unknown()),
 }).refine((v) => JSON.stringify(v.icerik).length <= 500_000, "Taslak içeriği çok büyük.");
 
+/** Fatura serileri — E-Belge Ayarları (docs/GIRIS_VE_EBELGE_DUZENLEME.md R3) */
+export const ebelgeSeriKaydetSchema = z.object({
+  liste: z.array(z.object({
+    belgeTuru: z.enum(["EFatura", "EArsiv"]),
+    seri: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{3}$/, "Seri 3 karakter (harf/rakam) olmalıdır."),
+    varsayilan: z.boolean().default(false),
+  })).max(30, "En fazla 30 seri tanımlanabilir."),
+});
+
 /** Firma NACE kodları ve izin verilen KDV oranları — docs/GIRIS_VE_EBELGE_DUZENLEME.md N1 */
 export const EBELGE_KDV_ORANLARI = [0, 1, 8, 10, 18, 20] as const;
 export const ebelgeNaceKaydetSchema = z.object({

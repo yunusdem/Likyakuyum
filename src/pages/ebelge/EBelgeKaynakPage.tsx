@@ -32,6 +32,9 @@ export default function EBelgeKaynakPage() {
   const [detay, setDetay] = useState<EbelgeKaynakDetay | null>(null);
   const [pdf, setPdf] = useState<{ url: string; no: string } | null>(null);
   const requestId = useRef(0);
+  // ?sec=<evrakTuru>:<belgeId>: mutabakattan gelinen fiş listede bulunup seçili gelir (bir kez)
+  const pSec = /^\d+:\d+$/.test(parametreler.get('sec') || '') ? parametreler.get('sec')! : '';
+  const secUygulandi = useRef(false); const [secBilgi, setSecBilgi] = useState<{ tur: 'info' | 'warning'; metin: string } | null>(null);
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf.url); }, [pdf]);
   // Dışarıdan süzgeçle açıldıysa liste kendiliğinden gelir
   useEffect(() => { if (pKaynak || pTarih || parametreler.get('ara')) void yukle(); /* yalnızca açılışta */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -44,7 +47,11 @@ export default function EBelgeKaynakPage() {
       kaynak: kaynak || undefined, belgeTuru: kaynak === 'DOVIZ' && dovizTipi ? Number(dovizTipi) : undefined,
       // Tam belge numarası (3 harf + 13 hane) yazıldıysa tarih aralığına bakılmadan doğrudan bulunur.
       ...(/^[A-Za-z0-9]{3}\d{13}$/.test(arama.trim()) ? {} : { baslangicTarihi: ilk || undefined, bitisTarihi: son || undefined }) });
-      if (id === requestId.current) { setKayitlar(data.kayitlar); setToplam(data.toplam); setSayfa(p); }
+      if (id === requestId.current) { setKayitlar(data.kayitlar); setToplam(data.toplam); setSayfa(p);
+        if (pSec && !secUygulandi.current) { secUygulandi.current = true;
+          const k = data.kayitlar.find(r => `${r.evrakTuru}:${r.belgeId}` === pSec);
+          if (k && k.secilebilir) { setSecili([key(k)]); setSecBilgi({ tur: 'info', metin: `${k.belgeNo} fişi seçildi (${k.unvan}, ${ebelgeTutar(k.tutar, k.paraBirimi)}). Fatura fişin bilgileriyle oluşturulur; kontrol edip Gönder'e basın.` }); }
+          else setSecBilgi({ tur: 'warning', metin: k ? `${k.belgeNo} fişi gönderilemez: ${k.engel || k.hata || 'seçilemiyor'}` : 'Banka hareketinin fişi bu listede bulunamadı; tarih ve kaynak süzgecini kontrol edin.' }); } }
     } catch (e: any) { if (id === requestId.current) { setKayitlar([]); setToplam(0); setHata(e.message || 'Kaynak belgeler alınamadı.'); } }
     finally { if (id === requestId.current) setBusy(false); }
   };
@@ -81,12 +88,13 @@ export default function EBelgeKaynakPage() {
   const secilebilir = kayitlar.filter(k => k.secilebilir);
   return <div className="w-100 pb-3 ebelge-kaynak">
     {hata && <Alert variant="danger">{hata}</Alert>}
+    {secBilgi && <Alert variant={secBilgi.tur} className="py-2">{secBilgi.metin}</Alert>}
     <Card className="mb-3"><Card.Body className="p-3"><Form onSubmit={e => { e.preventDefault(); void yukle(); }}><fieldset disabled={busy} className="kaynak-filtre">
       <Form.Group controlId="kaynak-arama"><Form.Label>Belge no / ünvan</Form.Label><Form.Control size="sm" value={arama} onChange={e => setArama(e.target.value)} /></Form.Group>
       <Form.Group controlId="kaynak-ilk"><Form.Label>İlk tarih</Form.Label><Form.Control size="sm" type="date" value={ilk} onChange={e => setIlk(e.target.value)} /></Form.Group>
       <Form.Group controlId="kaynak-son"><Form.Label>Son tarih</Form.Label><Form.Control size="sm" type="date" value={son} onChange={e => setSon(e.target.value)} /></Form.Group>
       <Form.Group controlId="kaynak-tur"><Form.Label>Kaynak</Form.Label><Form.Select size="sm" value={kaynak} onChange={e => setKaynak(e.target.value as Kaynak)}><option value="">Tümü</option><option value="FATURA">Fatura</option><option value="IRSALIYE">e-İrsaliye</option><option value="GIDER">e-Gider pusulası</option><option value="DOVIZ">e-Döviz fişi</option></Form.Select></Form.Group>
-      <Form.Group controlId="kaynak-durum"><Form.Label>Durum</Form.Label><Form.Select size="sm" value={durum} onChange={e => setDurum(e.target.value)}><option value="">Tümü</option><option value="GONDERILMEDI">Gönderilmedi</option><option value="GONDERILDI">Gönderildi</option><option value="HATA">Hatalı</option></Form.Select></Form.Group>
+      <Form.Group controlId="kaynak-durum"><Form.Label>Durum</Form.Label><Form.Select size="sm" value={durum} onChange={e => setDurum(e.target.value)}><option value="">Tümü</option><option value="GONDERILMEDI">Gönderilmedi</option><option value="GONDERILDI">Gönderildi</option><option value="HATA">Gönderilemedi</option></Form.Select></Form.Group>
       {kaynak === 'DOVIZ' && <Form.Group controlId="kaynak-doviz-tipi"><Form.Label>Alış / Satış</Form.Label><Form.Select size="sm" value={dovizTipi} onChange={e => setDovizTipi(e.target.value)}><option value="">Tümü</option><option value="0">Alış</option><option value="1">Satış</option></Form.Select></Form.Group>}
       <Button size="sm" type="submit">{busy ? 'Bekleyin…' : 'Listele'}</Button><Link className="text-nowrap pb-1" to="/e-belge/giden">Giden Kutusu</Link>
     </fieldset></Form></Card.Body></Card>

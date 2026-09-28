@@ -1609,6 +1609,18 @@ export const DovizFisiPage: React.FC = () => {
     }
   }, [notification]);
 
+  // e-Banka'dan fiş kesiliyorsa banka tutarı: döviz seçilince miktar boşsa kalan tutardan kurla hesaplanır (satışta BSMV dahil)
+  const ebHedefRef = useRef<{ tutarTl: number; paraKodu: string; tutar: number } | null>(null);
+  const ebMiktar = (rows: GridLineItem[], rowId: string, paraKodu: string, kur: number): string | null => {
+    const h = ebHedefRef.current;
+    if (!h || !(kur > 0)) return null;
+    const hesapDovizi = h.paraKodu.toUpperCase();
+    if (!["TL", "TRY"].includes(hesapDovizi) && paraKodu.toUpperCase() === hesapDovizi) return String(h.tutar);
+    const carpan = tip === 1 ? 1.002 : 1;
+    const kalan = h.tutarTl - rows.filter((r) => r.id !== rowId).reduce((t, r) => t + parseDecimal(r.tutar) * carpan, 0);
+    return kalan > 0 ? (kalan / (kur * carpan)).toFixed(2) : null;
+  };
+
   const handleLineFieldChange = (
     id: string,
     field: keyof GridLineItem,
@@ -1657,6 +1669,8 @@ export const DovizFisiPage: React.FC = () => {
                 updated.kur = autoKur.toFixed(kurKurusSayisi);
               }
             }
+            const em = parseMiktar(updated.miktar) > 0 ? null : ebMiktar(prev, id, matched.kod, parseKur(updated.kur));
+            if (em) updated.miktar = em;
           } else if (upper === "") {
             updated.paraId = 0;
             updated.paraAdi = "";
@@ -1728,8 +1742,14 @@ export const DovizFisiPage: React.FC = () => {
     setLines((prev) =>
       prev.map((row) => {
         if (row.id !== rowId) return row;
+<<<<<<< HEAD
         const m = parseMiktar(row.miktar);
         const tutar = calculateRowTutar(m, autoKur, para.kod);
+=======
+        const em = parseMiktar(row.miktar) > 0 ? null : ebMiktar(prev, rowId, para.kod, autoKur);
+        const m = em ? parseMiktar(em) : parseMiktar(row.miktar);
+        const tutar = calculateRowTutar(m, autoKur);
+>>>>>>> 6c3c3693c6d80e84d0daca80e28a63f04f97f7c2
         const factor = Math.pow(10, tlKurusSayisi);
         const bmvOrani = tip === 1 ? "0.2" : "0";
         const bmvVal = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
@@ -1740,7 +1760,12 @@ export const DovizFisiPage: React.FC = () => {
           paraId: para.id,
           paraKodu: para.kod,
           paraAdi: para.ad,
+<<<<<<< HEAD
           kur: isTL ? "" : (autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : ""),
+=======
+          ...(em ? { miktar: em } : {}),
+          kur: autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : "",
+>>>>>>> 6c3c3693c6d80e84d0daca80e28a63f04f97f7c2
           tutar: tutar > 0 ? tutar : "",
           bmvOrani,
           bmv: bmvVal,
@@ -3628,10 +3653,20 @@ export const DovizFisiPage: React.FC = () => {
   ];
 
   // e-Banka mutabakatından "Fiş kes" ile gelindiyse cari / tarih / yön dolu açılır
+  // Döviz hesabından gelen parada ilk satır o dövizle dolu gelir; tip değişikliği işlendikten sonra (güncel kurla) uygulanır
+  const ebDovizSatiriRef = useRef<() => void>(() => {});
+  ebDovizSatiriRef.current = () => {
+    const h = ebHedefRef.current;
+    if (!h || ["TL", "TRY"].includes(h.paraKodu.toUpperCase())) return;
+    const para = paraList.find((p) => (p.kod || "").toUpperCase() === h.paraKodu.toUpperCase());
+    if (para && lines[0] && !lines[0].paraId) handleSelectCurrency(lines[0].id, para);
+  };
   const ebFis = useEBankaFisKesimi("doviz", !isLoadingLookups && !isDuzeltmeMode, (b) => {
     handleTipChange(b.tip);
     if (b.musteri) handleSelectCustomer(b.musteri);
     setTarih(b.tarih);
+    ebHedefRef.current = { tutarTl: b.tutarTl, paraKodu: b.paraKodu, tutar: b.tutar };
+    setTimeout(() => ebDovizSatiriRef.current(), 100);
   });
 
   return (
