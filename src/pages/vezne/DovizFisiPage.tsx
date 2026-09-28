@@ -1742,14 +1742,8 @@ export const DovizFisiPage: React.FC = () => {
     setLines((prev) =>
       prev.map((row) => {
         if (row.id !== rowId) return row;
-<<<<<<< HEAD
         const m = parseMiktar(row.miktar);
-        const tutar = calculateRowTutar(m, autoKur, para.kod);
-=======
-        const em = parseMiktar(row.miktar) > 0 ? null : ebMiktar(prev, rowId, para.kod, autoKur);
-        const m = em ? parseMiktar(em) : parseMiktar(row.miktar);
         const tutar = calculateRowTutar(m, autoKur);
->>>>>>> 6c3c3693c6d80e84d0daca80e28a63f04f97f7c2
         const factor = Math.pow(10, tlKurusSayisi);
         const bmvOrani = tip === 1 ? "0.2" : "0";
         const bmvVal = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
@@ -1760,12 +1754,7 @@ export const DovizFisiPage: React.FC = () => {
           paraId: para.id,
           paraKodu: para.kod,
           paraAdi: para.ad,
-<<<<<<< HEAD
-          kur: isTL ? "" : (autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : ""),
-=======
-          ...(em ? { miktar: em } : {}),
           kur: autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : "",
->>>>>>> 6c3c3693c6d80e84d0daca80e28a63f04f97f7c2
           tutar: tutar > 0 ? tutar : "",
           bmvOrani,
           bmv: bmvVal,
