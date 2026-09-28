@@ -252,24 +252,38 @@ export interface IceGibUser {
   Identifier?: string;
   Alias?: string;
   CreationTime?: string;
+  FirstCreationTime?: string;
+  /** Etiket GİB listesinden silindiyse dolu; silinmemişse xsi:nil gelir */
+  DeletionTime?: unknown;
   Title?: string;
   Unit?: string;
   Type?: string;
   AccountType?: string;
 }
 
+/** DeletionTime geçerli ve geçmiş bir tarihse etiket silinmiştir (xsi:nil / boş → silinmemiş) */
+const etiketSilinmisMi = (deger: unknown, simdi: number): boolean => {
+  if (typeof deger !== "string" || !deger.trim()) return false;
+  const zaman = Date.parse(deger);
+  return Number.isFinite(zaman) && new Date(zaman).getFullYear() > 1900 && zaman <= simdi;
+};
+
 /**
- * `getUserList_EFatura` — VKN/TCKN'nin e-Fatura mükellefi olup olmadığını,
+ * `getUserList_EFatura_Detail` — VKN/TCKN'nin e-Fatura mükellefi olup olmadığını,
  * mükellefse GİB posta kutusu etiketlerini (alias) döndürür.
+ *
+ * Detail sürümü silinme tarihini (DeletionTime) de verir; GİB listesinden silinmiş
+ * etiketler `kullanicilar`a alınmaz, `silinenler`de ayrıca döner. Etiketlerin hepsi
+ * silinmişse alıcı artık e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
  *
  * Sonuç boşsa alıcı e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
  */
 export const getUserListEFatura = async (
   config: IceConnectionConfig,
   vknTckn: string
-): Promise<{ basarili: boolean; mesaj: string; kullanicilar: IceGibUser[] }> => {
+): Promise<{ basarili: boolean; mesaj: string; kullanicilar: IceGibUser[]; silinenler: IceGibUser[] }> => {
   const { data } = await callWithSession<any>(config, {
-    method: "getUserList_EFatura",
+    method: "getUserList_EFatura_Detail",
     buildInnerXml: (loginHeaderXml) =>
       `<_getUserList_request>` +
       loginHeaderXml +
@@ -278,10 +292,16 @@ export const getUserListEFatura = async (
     authHatasindaTekrarla: true,
   });
 
+  // Detail yanıtında eleman adı `GIBUser` (WSDL: ArrayOfGIBUser); eski adı da kabul et
+  const liste = data?.GIB_User_List;
+  const tumu = toArray<IceGibUser>(liste?.GIBUser ?? liste?.GIB_User);
+  const simdi = Date.now();
+
   return {
     basarili: String(data?.success).toLowerCase() === "true",
     mesaj: data?.response_message ? String(data.response_message) : "",
-    kullanicilar: toArray<IceGibUser>(data?.GIB_User_List?.GIB_User),
+    kullanicilar: tumu.filter((k) => !etiketSilinmisMi(k.DeletionTime, simdi)),
+    silinenler: tumu.filter((k) => etiketSilinmisMi(k.DeletionTime, simdi)),
   };
 };
 
