@@ -437,6 +437,34 @@ export class EbelgeSqlRepository {
   }
 
   /**
+   * Bu alıcıya daha önce kestiğimiz son belgenin UBL'i (e-Fatura, e-Arşiv, irsaliye) — alıcı bilgilerini doldurmak için
+   * (docs/GIRIS_VE_EBELGE_DUZENLEME.md R2). Reddedilmiş belge de alıcı bilgisi taşır; yalnız XML'i olanlar.
+   */
+  public static async sonGidenXml(aliciVkn: string, dbContext?: DbContext): Promise<{ belgeNo: string; xml: string } | null> {
+    const pool = await this.getPool(dbContext);
+    const res = await pool
+      .request()
+      .input("vkn", sql.VarChar(11), aliciVkn)
+      .query(`SELECT TOP 1 [BELGE_NO] AS belgeNo, [XML_ICERIK] AS xml FROM [dbo].[TODVZ_EBELGE_GIDEN]
+              WHERE [ALICI_VKN] = @vkn AND [XML_ICERIK] IS NOT NULL
+              ORDER BY ISNULL([DUZENLEME_TARIHI], [OLUSTURMA_TARIHI]) DESC, [OLUSTURMA_TARIHI] DESC`);
+    const r = res.recordset[0];
+    return r?.xml ? { belgeNo: String(r.belgeNo || ""), xml: String(r.xml) } : null;
+  }
+
+  /** Yalnızca gönderici etiketini (FIRMA_ALIAS) yazar — GİB'den otomatik bulunduğunda (docs/GIRIS_VE_EBELGE_DUZENLEME.md R1). */
+  public static async firmaAliasYaz(alias: string, kullanici: string, dbContext?: DbContext): Promise<void> {
+    const pool = await this.getPool(dbContext);
+    await pool
+      .request()
+      .input("alias", sql.NVarChar(150), alias)
+      .input("kullanici", sql.NVarChar(50), kullanici.slice(0, 50))
+      .query(`UPDATE [dbo].[TODVZ_EBELGE_AYAR]
+              SET [FIRMA_ALIAS] = @alias, [GUNCELLEYEN] = @kullanici, [GUNCELLEME_TARIHI] = GETDATE()
+              WHERE LTRIM(RTRIM(ISNULL([FIRMA_ALIAS], ''))) = ''`);
+  }
+
+  /**
    * Ayarı kaydeder. Şifre boş bırakılırsa mevcut şifre korunur.
    */
   public static async saveAyar(

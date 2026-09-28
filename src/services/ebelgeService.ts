@@ -243,6 +243,15 @@ export interface EbelgeFaturaNoOnerisi {
   seri: string;
   sonSira: number;
   onerilenNo: string;
+  /** Ayarlarda bu tür için varsayılan seri */
+  varsayilan?: boolean;
+}
+
+/** E-Belge Ayarları'nda tanımlı fatura serisi */
+export interface EbelgeSeriKaydi {
+  belgeTuru: "EFatura" | "EArsiv";
+  seri: string;
+  varsayilan: boolean;
 }
 
 /** Yerel taslağın açılacağı form */
@@ -421,6 +430,16 @@ export interface EbelgeAliciAdres {
   telefon: string;
   /** ICE'deki kayıttan ya da önceki belgeden; yoksa boş */
   vergiDairesi?: string;
+  /** Parçalı adres ve kişi bilgileri — bu alıcıya kestiğimiz son belgeden (docs/GIRIS_VE_EBELGE_DUZENLEME.md R2) */
+  mahalleCadde?: string;
+  binaAdi?: string;
+  binaNo?: string;
+  kapiNo?: string;
+  faks?: string;
+  webSitesi?: string;
+  unvan?: string;
+  ad?: string;
+  soyad?: string;
 }
 
 export interface EbelgeTaslakSonucu {
@@ -930,14 +949,22 @@ export const ebelgeService = {
     return (await apiClient.put<EbelgeNaceKaydi[]>("/e-belge/nace", { liste })).data || [];
   },
 
-  /** Fatura no önerileri: her seri için ICE'deki son sıra + 1 (formun en üstündeki seçim) */
-  async faturaNoOnerileri(belgeTuru: "EFatura" | "EArsiv", yil: number, seri?: string): Promise<EbelgeFaturaNoOnerisi[]> {
-    const res = await apiClient.get<EbelgeFaturaNoOnerisi[]>("/e-belge/giden/fatura-no-onerileri", {
-      belgeTuru,
-      yil,
-      ...(seri ? { seri } : {}),
-    });
+  /** Fatura no önerileri: ayarlarda tanımlı her seri için ICE'deki son sıra + 1 (formun en üstündeki seçim) */
+  async faturaNoOnerileri(belgeTuru: "EFatura" | "EArsiv", yil: number): Promise<EbelgeFaturaNoOnerisi[]> {
+    const res = await apiClient.get<EbelgeFaturaNoOnerisi[]>("/e-belge/giden/fatura-no-onerileri", { belgeTuru, yil });
     return res.data || [];
+  },
+
+  /** E-Belge Ayarları: fatura serileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md R3) */
+  async seriListe(): Promise<EbelgeSeriKaydi[]> {
+    return (await apiClient.get<EbelgeSeriKaydi[]>("/e-belge/seri")).data || [];
+  },
+  async seriKaydet(liste: EbelgeSeriKaydi[]): Promise<EbelgeSeriKaydi[]> {
+    return (await apiClient.put<EbelgeSeriKaydi[]>("/e-belge/seri", { liste })).data || [];
+  },
+  /** ICE'de kesilmiş belgelerden seri bulur (ayarlardaki düğme) */
+  async seriIceBul(belgeTuru: "EFatura" | "EArsiv"): Promise<string[]> {
+    return (await apiClient.get<string[]>("/e-belge/seri/ice-bul", { belgeTuru }, { timeoutMs: 120_000 })).data || [];
   },
 
   /** ICE tarafındaki son belge numarası (numaratör çakışması kontrolü) */

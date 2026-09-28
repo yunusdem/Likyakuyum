@@ -59,6 +59,10 @@ router.get("/giden/fatura-no-onerileri", EbelgeController.faturaNoOnerileri);
 router.get("/mukellef", EbelgeController.mukellefSorgula);
 // Firma NACE kodları ve izin verilen KDV oranları (docs/GIRIS_VE_EBELGE_DUZENLEME.md N1)
 router.get("/nace", EbelgeController.naceListe);
+// Fatura serileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md R3)
+router.get("/seri", EbelgeController.seriListe);
+router.get("/seri/ice-bul", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.seriIceBul);
+router.put("/seri", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.seriKaydet);
 router.put("/nace", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.naceKaydet);
 router.get("/yerel-taslak", EbelgeController.yerelTaslakListe);
 router.get("/yerel-taslak/:id", EbelgeController.yerelTaslakGetir);

@@ -106,12 +106,19 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
   /** Taslaklar seçildi: kayıtlı fatura taslakları (e-Fatura + e-Arşiv) listelenir. */
   const [taslaklar, setTaslaklar] = useState<EbelgeYerelTaslak[] | null>(null);
   const [taslakHata, setTaslakHata] = useState<string | null>(null);
+  /** e-Fatura ve e-Arşiv taslakları ayrı listelenir (docs/GIRIS_VE_EBELGE_DUZENLEME.md R4) */
+  const [taslakSekme, setTaslakSekme] = useState<"EFatura" | "EArsiv">("EFatura");
   const taslaklariGoster = async () => {
     setTaslakHata(null);
     setTaslaklar([]);
     try {
       const liste = await ebelgeService.yerelTaslakListe();
-      setTaslaklar(liste.filter((t) => t.belgeTuru === "EFatura" || t.belgeTuru === "EArsiv"));
+      const faturaTaslaklari = liste.filter((t) => t.belgeTuru === "EFatura" || t.belgeTuru === "EArsiv");
+      setTaslaklar(faturaTaslaklari);
+      // e-Fatura taslağı yoksa ama e-Arşiv varsa e-Arşiv sekmesi açılır
+      if (!faturaTaslaklari.some((t) => t.belgeTuru === "EFatura") && faturaTaslaklari.some((t) => t.belgeTuru === "EArsiv")) {
+        setTaslakSekme("EArsiv");
+      }
     } catch (e: any) {
       setTaslaklar(null);
       setTaslakHata(e?.message || "Taslaklar alınamadı.");
@@ -166,11 +173,21 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
           </div>
           {taslakHata && <div className="text-danger mt-2">{taslakHata}</div>}
           {taslaklar && (
+            <div className="d-flex gap-1 mt-2">
+              {(["EFatura", "EArsiv"] as const).map((tur) => (
+                <Button key={tur} size="sm" variant={taslakSekme === tur ? (tur === "EFatura" ? "primary" : "success") : "outline-secondary"}
+                  onClick={() => setTaslakSekme(tur)}>
+                  {EBELGE_YEREL_TASLAK_FORMU[tur].ad} taslakları ({taslaklar.filter((t) => t.belgeTuru === tur).length})
+                </Button>
+              ))}
+            </div>
+          )}
+          {taslaklar && (
             <div className="mt-2 border rounded bg-body" style={{ maxHeight: 260, overflowY: "auto" }}>
-              {taslaklar.length === 0 ? (
-                <div className="text-secondary p-2">Kayıtlı fatura taslağı yok.</div>
+              {taslaklar.filter((t) => t.belgeTuru === taslakSekme).length === 0 ? (
+                <div className="text-secondary p-2">Kayıtlı {EBELGE_YEREL_TASLAK_FORMU[taslakSekme].ad} taslağı yok.</div>
               ) : (
-                taslaklar.map((t) => (
+                taslaklar.filter((t) => t.belgeTuru === taslakSekme).map((t) => (
                   <button key={t.id} type="button" className="list-group-item list-group-item-action w-100 text-start border-0 border-bottom px-2 py-1"
                     onClick={() => taslakAc(t.id)} title="Taslağı formda aç">
                     <div className="d-flex justify-content-between gap-2">

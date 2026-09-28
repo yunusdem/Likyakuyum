@@ -1,6 +1,7 @@
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
 import { FATURA_NO_BICIMI, faturaNoUret } from "../utils/faturaNo.utils.js";
+import { EbelgeSeriRepository, SeriBelgeTuru } from "../models/ebelgeSeri.repository.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
 import {
   DbContext,
@@ -20,6 +21,7 @@ import {
   getInvoices,
   getMusteriCariAdresleri,
   getOncekiBelgeAdresi,
+  ublTarafAdresi,
   getSonBelgeId,
   getUserListEFatura,
   gonderimSatirlari,
@@ -115,6 +117,19 @@ const cevapKilitleri = new Set<string>();
  * e-Belge servis katmanı: bağlantı ayarları, bağlantı testi, kontör,
  * gelen kutusu okuma ve kabul/red cevabı.
  */
+/**
+ * Alıcının posta kutusu (PK) etiketi: GİB listesinde aynı VKN için GB (gönderici birim) etiketi de dönebilir; fatura
+ * PK'ya gönderilir. Birim bilgisi ya da etiket adı PK olanı seçer, yoksa ilk etiketi (eski davranış) kullanır.
+ */
+export const pkEtiketiSec = (kullanicilar: { Alias?: string; Unit?: string }[]): string => {
+  const etiketler = kullanicilar.map((k) => ({ alias: String(k.Alias || "").trim(), birim: String(k.Unit || "").trim() }))
+    .filter((k) => k.alias);
+  const pk = etiketler.find((k) => k.birim.toUpperCase() === "PK")
+    || etiketler.find((k) => /(^|[:._-])pk|defaultpk/i.test(k.alias))
+    || etiketler.find((k) => k.birim.toUpperCase() !== "GB" && !/(^|[:._-])gb|defaultgb/i.test(k.alias));
+  return (pk || etiketler[0])?.alias || "";
+};
+
 export class EbelgeService {
   /**
    * Ayarları getirir. Kayıt yoksa TODVZ_TANIM'daki VKN ile ön doldurulmuş
@@ -666,6 +681,16 @@ export class EbelgeService {
     const ozet: string[] = [];
     let hataSayisi = 0;
 
+    // 0) Bu alıcıya daha önce kestiğimiz son belge (e-Arşiv dahil) — kendi kaydımız, ICE'ye gitmeden (R2)
+    try {
+      const son = await EbelgeSqlRepository.sonGidenXml(vkn, dbContext);
+      const a = son ? ublTarafAdresi(son.xml, vkn, `Son belgemiz ${son.belgeNo}`.trim()) : null;
+      if (a) ham.push(a);
+      ozet.push(`son belgemiz: ${a ? 1 : 0}`);
+    } catch (err: any) {
+      ozet.push(`son belgemiz: ${err?.message || err}`);
+    }
+
     try {
       const cari = await getMusteriCariAdresleri(config, vkn);
       ham.push(...cari.adresler);
@@ -701,6 +726,7 @@ export class EbelgeService {
       },
       dbContext
     );
+    // Kendi kaydımızdan bilgi geldiyse ICE sorgularının hatası belgeyi durdurmaz
     if (!ham.length && hataSayisi === 2) {
       throw ApiError.unprocessable(`Alıcı adresi ICE'den sorgulanamadı (${ozet.join(" | ").slice(0, 300)}).`);
     }
@@ -715,15 +741,25 @@ export class EbelgeService {
           m(a.BinaNo) && `No:${m(a.BinaNo)}`,
           m(a.DaireNo) && `D:${m(a.DaireNo)}`,
         ].filter(Boolean).join(" "),
+        // Parça parça da döner: form Mahalle/Cadde, Bina Adı, Bina No, Kapı No alanlarını ayrı doldurur (R2)
+        mahalleCadde: m(a.MahalleCadde),
+        binaAdi: m(a.BinaAdi),
+        binaNo: m(a.BinaNo),
+        kapiNo: m(a.DaireNo),
         il: m(a.Sehir),
         ilce: m(a.Ilce),
         ulke: m(a.Ulke),
         postaKodu: m(a.PostaKodu),
         eposta: m(a.Eposta),
         telefon: m(a.Telefon),
+        faks: m(a.Faks),
+        webSitesi: m(a.WebSitesi),
         vergiDairesi: m(a.VergiDairesi),
+        unvan: m(a.Unvan),
+        ad: m(a.Ad),
+        soyad: m(a.Soyad),
       }))
-      .filter((a) => a.adres || a.il || a.ilce);
+      .filter((a) => a.adres || a.il || a.ilce || a.eposta || a.telefon);
 
     return { adresler };
   }
@@ -1139,6 +1175,43 @@ export class EbelgeService {
    * Alıcının GİB posta kutusu etiketini (alias) çözer.
    * e-Fatura gönderimi için alıcının **mükellef olması zorunludur**.
    */
+  /**
+   * Gönderici (kendi) etiketimiz — docs/GIRIS_VE_EBELGE_DUZENLEME.md R1. Ayarda varsa o kullanılır; yoksa firma VKN'si
+   * GİB e-Fatura kullanıcı listesinde sorgulanır, gönderici birim (GB) etiketi seçilir ve ayara yazılır.
+   * GB bulunamazsa bulunan etiketler hata mesajında listelenir (kullanıcı ayardan seçer).
+   */
+  private static async gondericiAliasCoz(
+    config: Awaited<ReturnType<typeof EbelgeSqlRepository.getConnectionConfig>>,
+    ayardaki: string | null | undefined,
+    gondericiVkn: string,
+    kullanici: string,
+    dbContext?: DbContext
+  ): Promise<string> {
+    const mevcut = ayardaki?.trim();
+    if (mevcut) return mevcut;
+
+    const liste = await getUserListEFatura(config, gondericiVkn);
+    if (!liste.basarili) {
+      throw ApiError.unprocessable(
+        `Gönderici etiketi GİB listesinden bulunamadı (${liste.mesaj || "sorgu başarısız"}). E-Belge Ayarları'ndan etiketi giriniz.`
+      );
+    }
+    const etiketler = liste.kullanicilar.map((k) => ({ alias: String(k.Alias || "").trim(), birim: String(k.Unit || "").trim() }))
+      .filter((k) => k.alias);
+    const gb = etiketler.find((k) => k.birim.toUpperCase() === "GB")
+      || etiketler.find((k) => /(^|[:._-])gb|defaultgb/i.test(k.alias));
+    if (!gb) {
+      throw ApiError.badRequest(
+        `Firmanın (${gondericiVkn}) GİB listesinde gönderici (GB) etiketi bulunamadı.` +
+          (etiketler.length ? ` Bulunan etiketler: ${etiketler.map((k) => k.alias).join(", ")}.` : "") +
+          " E-Belge Ayarları'nda Gönderici Etiketi alanına doğru etiketi giriniz."
+      );
+    }
+    await EbelgeSqlRepository.firmaAliasYaz(gb.alias, kullanici, dbContext);
+    logger.info(`Gönderici etiketi GİB'den bulundu ve ayara yazıldı: ${gb.alias}`);
+    return gb.alias;
+  }
+
   private static async aliciAliasCoz(
     config: Awaited<ReturnType<typeof EbelgeSqlRepository.getConnectionConfig>>,
     aliciVkn: string,
@@ -1154,7 +1227,7 @@ export class EbelgeService {
         mukellef.mesaj || "Alıcının mükellef durumu doğrulanamadı; gönderim durduruldu."
       );
     }
-    const alias = mukellef.kullanicilar[0]?.Alias?.trim() || "";
+    const alias = pkEtiketiSec(mukellef.kullanicilar);
     if (!alias) {
       throw ApiError.badRequest(
         "Alıcı e-Fatura mükellefi görünmüyor (GİB posta kutusu etiketi bulunamadı). " +
@@ -1212,16 +1285,12 @@ export class EbelgeService {
     }
 
     const ayar = await EbelgeSqlRepository.getAyar(dbContext);
-    const fromAlias = ayar?.firmaAlias?.trim() || "";
-    if (!fromAlias) {
-      throw ApiError.badRequest(
-        "Gönderici etiketi (alias) tanımlı değil. E-Belge ayarlarından firma alias bilgisini giriniz."
-      );
-    }
 
     const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
     const { xml, uuid, ozet } = buildInvoiceXml({ ...girdi, belgeNo, gonderici });
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+    // Ayarda boşsa GİB listesinden bulunur ve ayara yazılır (R1)
+    const fromAlias = await this.gondericiAliasCoz(config, ayar?.firmaAlias, gonderici.vknTckn, kullanici, dbContext);
 
     // 1) Doğrulama — geçmezse GİB'e hiç gitmesin
     const dogrulama = await invoiceCheckValidate(config, toBase64(xml), { html: false, pdf: false });
@@ -1561,7 +1630,7 @@ export class EbelgeService {
     let aliciAlias = girdi.aliciAlias?.trim() || "";
     if (!aliciAlias) {
       const mukellef = await getUserListEFatura(config, girdi.alici.vknTckn);
-      aliciAlias = mukellef.kullanicilar[0]?.Alias?.trim() || "";
+      aliciAlias = pkEtiketiSec(mukellef.kullanicilar);
       if (!aliciAlias) {
         throw ApiError.badRequest(
           "Alıcı e-Fatura mükellefi görünmüyor (GİB posta kutusu etiketi bulunamadı). " +
@@ -1570,12 +1639,7 @@ export class EbelgeService {
       }
     }
 
-    const fromAlias = ayar?.firmaAlias?.trim() || "";
-    if (!fromAlias) {
-      throw ApiError.badRequest(
-        "Gönderici etiketi (alias) tanımlı değil. E-Belge ayarlarından firma alias bilgisini giriniz."
-      );
-    }
+    const fromAlias = await this.gondericiAliasCoz(config, ayar?.firmaAlias, gonderici.vknTckn, kullanici, dbContext);
 
     // 3) Taslak gönder — GİB'e gitmez
     const sonuc = await sendInvoiceTaslak(config, {
@@ -2520,27 +2584,20 @@ export class EbelgeService {
   }
 
   /**
-   * Fatura no önerileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10): fatura numarası elle yazılmaz. Seriler, bu hesaptan
-   * daha önce kesilmiş belgelerden bulunur (yerel giden kaydı + ICE'deki gönderilmiş belgeler: e-Fatura için GetInvoice
-   * OUT, e-Arşiv için GetEArchive). Her seri için ICE'deki son sıra (`Get_Son_Belge_ID`) alınır ve bir fazlası önerilir.
-   * `ekSeri` ile kullanıcının yazdığı yeni bir seri de sorgulanır (hesapta hiç belge yoksa).
+   * ICE'den seri bulma — yalnızca E-Belge Ayarları'ndaki "ICE'den serileri bul" düğmesi için (R3). Seriler bu hesaptan
+   * daha önce kesilmiş belgelerden bulunur: yerel giden kaydı + ICE'deki gönderilmiş belgeler (e-Fatura: GetInvoice OUT,
+   * e-Arşiv: GetEArchive, son iki yıl).
    */
-  public static async faturaNoOnerileri(
-    belgeTuru: "EFatura" | "EArsiv",
-    yil: number,
-    ekSeri: string | undefined,
-    dbContext?: DbContext
-  ): Promise<{ seri: string; sonSira: number; onerilenNo: string }[]> {
+  public static async iceSerileriBul(belgeTuru: SeriBelgeTuru, dbContext?: DbContext): Promise<string[]> {
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
     const seriler = new Set<string>();
     const seriEkle = (no: unknown) => {
       const s = String(no || "").trim().toUpperCase();
       if (FATURA_NO_BICIMI.test(s)) seriler.add(s.slice(0, 3));
     };
-
     (await EbelgeSqlRepository.gidenSerileri(belgeTuru, dbContext).catch(() => [])).forEach((s) => seriler.add(s));
 
-    // ICE'den (portaldan elle kesilenler dahil) son iki yılın gönderilmiş belgeleri
+    const yil = new Date().getFullYear();
     const baslangic = new Date(yil - 1, 0, 1);
     const bitis = new Date();
     try {
@@ -2554,24 +2611,34 @@ export class EbelgeService {
       } else {
         (await getEArchive(config, { baslangic, bitis, limit: 500 })).forEach((k) => seriEkle(k.ID));
       }
-    } catch (err) {
-      logger.warn(`Fatura no önerisi: ICE ${belgeTuru} listesi alınamadı, yerel kayıtlarla devam ediliyor:`, err);
+    } catch (err: any) {
+      if (!seriler.size) throw ApiError.unprocessable(`ICE'den ${belgeTuru} belgeleri alınamadı: ${err?.message || err}`);
+      logger.warn(`Seri bulma: ICE ${belgeTuru} listesi alınamadı, yerel kayıtlarla devam ediliyor:`, err);
     }
+    return [...seriler].sort();
+  }
 
-    const ek = (ekSeri || "").trim().toUpperCase();
-    if (ek) {
-      if (!/^[A-Z0-9]{3}$/.test(ek)) throw ApiError.badRequest("Seri 3 karakter (harf/rakam) olmalıdır.");
-      seriler.add(ek);
-    }
+  /**
+   * Fatura no önerileri (R3): YALNIZCA E-Belge Ayarları'nda bu tür için tanımlı seriler. Her seri için ICE'deki son sıra
+   * (`Get_Son_Belge_ID`) alınır ve bir fazlası önerilir; varsayılan seri işaretlenir. Tanımlı seri yoksa boş liste.
+   */
+  public static async faturaNoOnerileri(
+    belgeTuru: SeriBelgeTuru,
+    yil: number,
+    dbContext?: DbContext
+  ): Promise<{ seri: string; sonSira: number; onerilenNo: string; varsayilan: boolean }[]> {
+    const tanimli = await EbelgeSeriRepository.listele(belgeTuru, dbContext);
+    if (!tanimli.length) return [];
+    const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
 
-    const sonuc: { seri: string; sonSira: number; onerilenNo: string }[] = [];
-    for (const seri of [...seriler].sort().slice(0, 15)) {
+    const sonuc: { seri: string; sonSira: number; onerilenNo: string; varsayilan: boolean }[] = [];
+    for (const { seri, varsayilan } of tanimli) {
       const son = await getSonBelgeId(config, seri, belgeTuru, yil);
       const sonSira = Number(son?.Son_Belge_ID);
       if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sonSira) || sonSira < 0) {
         throw ApiError.unprocessable(`ICE'den ${seri} serisinin son numarası alınamadı.`);
       }
-      sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1) });
+      sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1), varsayilan });
     }
     return sonuc;
   }

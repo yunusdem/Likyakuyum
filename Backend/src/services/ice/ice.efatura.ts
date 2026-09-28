@@ -301,6 +301,12 @@ export interface IceCariAdres {
   Telefon?: string;
   /** Vergi dairesi: UBL'de PartyTaxScheme/TaxScheme/Name; ICE kayıtlı cari kaydında varsa oradan */
   VergiDairesi?: string;
+  /** Yalnız UBL'den (önceki belge): tüzel kişide unvan, gerçek kişide ad / soyad */
+  Unvan?: string;
+  Ad?: string;
+  Soyad?: string;
+  Faks?: string;
+  WebSitesi?: string;
 }
 
 /**
@@ -388,9 +394,11 @@ export const ublTarafAdresi = (xml: string, vknTckn: string, etiket: string): Ic
     if (!eslesti) continue;
 
     const adres = party.PostalAddress || {};
+    const kisi = party.Person || {};
     const sonuc: IceCariAdres = {
       AdresAdi: etiket,
-      MahalleCadde: [metin(adres.StreetName), metin(adres.BuildingName)].filter(Boolean).join(" "),
+      MahalleCadde: metin(adres.StreetName),
+      BinaAdi: metin(adres.BuildingName),
       BinaNo: metin(adres.BuildingNumber),
       DaireNo: metin(adres.Room),
       Ilce: metin(adres.CitySubdivisionName),
@@ -399,9 +407,14 @@ export const ublTarafAdresi = (xml: string, vknTckn: string, etiket: string): Ic
       Ulke: metin(adres.Country?.Name),
       Eposta: metin(party.Contact?.ElectronicMail),
       Telefon: metin(party.Contact?.Telephone),
+      Faks: metin(party.Contact?.Telefax),
+      WebSitesi: metin(party.WebsiteURI),
       VergiDairesi: metin(toArray<any>(party.PartyTaxScheme)[0]?.TaxScheme?.Name),
+      Unvan: metin(toArray<any>(party.PartyName)[0]?.Name),
+      Ad: metin(kisi.FirstName),
+      Soyad: metin(kisi.FamilyName),
     };
-    return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde ? sonuc : null;
+    return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde || sonuc.Eposta || sonuc.Telefon ? sonuc : null;
   }
   return null;
 };

@@ -68,6 +68,10 @@ const BOS_SATIR: EbelgeSatir = {
   kdvOrani: 20,
 };
 
+/** Yeni satırın KDV'si: %20 NACE'de varsa (ya da NACE yoksa) %20, değilse NACE'nin ilk pozitif oranı */
+const naceVarsayilanKdv = (oranlar: number[]): number =>
+  !oranlar.length || oranlar.includes(20) ? 20 : oranlar.find((o) => o > 0) ?? 20;
+
 const EBelgeDogrulaPage: React.FC = () => {
   const [belgeNo, setBelgeNo] = useState<string>("");
   const [tarih, setTarih] = useState<string>(bugunISO());
@@ -177,6 +181,10 @@ const EBelgeDogrulaPage: React.FC = () => {
     }
     if (eposta && !aliciEposta.trim()) { setAliciEposta(eposta); doldurulan.push("e-posta"); }
     else if (!eposta) doldurulan.push("e-posta yok");
+    // GİB posta kutusu (PK) etiketi PK alanına yazılır (R2); GB etiketi alıcı için kullanılmaz
+    const pk = kullanicilar.find((k) => /(^|[:._-])pk|defaultpk/i.test(k.Alias || ""))
+      || kullanicilar.find((k) => k.Alias && !/(^|[:._-])gb|defaultgb/i.test(k.Alias));
+    if (pk?.Alias && !aliciPk.trim()) { setAliciPk(pk.Alias.trim()); doldurulan.push("PK"); }
     return doldurulan;
   };
 
@@ -233,11 +241,29 @@ const EBelgeDogrulaPage: React.FC = () => {
       if (!deger) return;
       set((o) => { if (!uzerineYaz && o.trim()) return o; doldurulan.push(etiket); return deger; });
     };
-    yaz(a.adres, "adres", setAliciAdres);
+    // Parçalı adres geldiyse (önceki belge UBL'i) alanlara ayrı yazılır; yoksa birleşik adres Mahalle/Cadde'ye (R2)
+    const parcali = !!(a.mahalleCadde || a.binaAdi || a.binaNo || a.kapiNo);
+    yaz(parcali ? a.mahalleCadde || "" : a.adres, "adres", setAliciAdres);
+    if (parcali) {
+      yaz(a.binaAdi || "", "bina adı", setAliciBinaAdi);
+      yaz(a.binaNo || "", "bina no", setAliciBinaNo);
+      yaz(a.kapiNo || "", "kapı no", setAliciKapiNo);
+    }
     yaz(a.il, "il", setAliciIl);
     yaz(a.ilce, "ilçe", setAliciIlce);
     yaz(a.vergiDairesi || "", "vergi dairesi", setAliciVd);
+    yaz(a.postaKodu || "", "posta kodu", setAliciPostaKodu);
+    yaz(a.telefon || "", "telefon", setAliciTel);
+    yaz(a.faks || "", "faks", setAliciFaks);
+    yaz(a.webSitesi || "", "web", setAliciWeb);
+    if (a.ulke && a.ulke !== "Türkiye") {
+      setAliciUlke((o) => { if (!uzerineYaz && o.trim() && o.trim() !== "Türkiye") return o; doldurulan.push("ülke"); return a.ulke; });
+    }
     if (a.eposta) setAliciEposta((o) => { if (o.trim()) return o; doldurulan.push("e-posta"); return a.eposta; });
+    // Ad / unvan yalnız boşsa (önceki belgeden)
+    if (a.unvan) setAliciUnvan((o) => { if (o.trim()) return o; doldurulan.push("unvan"); return a.unvan!; });
+    if (a.ad) setAliciAd((o) => { if (o.trim()) return o; doldurulan.push("ad"); return a.ad!; });
+    if (a.soyad) setAliciSoyad((o) => (o.trim() ? o : a.soyad!));
     return doldurulan;
   };
 
@@ -251,7 +277,13 @@ const EBelgeDogrulaPage: React.FC = () => {
       setIceAdresler(adresler);
       if (!adresler.length) return;
       if (adresler.length > 1) {
-        ekMesaj(`ICE'de ${adresler.length} kayıtlı adres var; Kayıtlı Adres listesinden seçin.`);
+        // İlki (varsa bu alıcıya kestiğimiz son belge) boş alanlara yazılır; diğerleri listeden seçilebilir (R2)
+        const doldurulanIlk = iceAdresiUygula(adresler[0], false);
+        setTimeout(() => {
+          if (sira !== sorguSirasi.current) return;
+          ekMesaj(`${adresler[0].adresAdi || "Kayıtlı adres"} bilgileriyle dolduruldu${doldurulanIlk.length ? ` (${doldurulanIlk.join(", ")})` : ""}; `
+            + `${adresler.length} adres var, farklıysa Kayıtlı Adres listesinden seçin.`);
+        }, 0);
         return;
       }
       const doldurulan = iceAdresiUygula(adresler[0], false);
@@ -343,27 +375,26 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [noYukleniyor, setNoYukleniyor] = useState(false);
   const [noHata, setNoHata] = useState<string | null>(null);
   const [noYenile, setNoYenile] = useState(0);
-  const [yeniSeriAcik, setYeniSeriAcik] = useState(false);
-  const [yeniSeri, setYeniSeri] = useState("");
   const noSirasi = useRef(0);
   const noBelgeTuru: "EFatura" | "EArsiv" = senaryo === "EARSIVFATURA" ? "EArsiv" : "EFatura";
   const noYili = Number((tarih || bugunISO()).slice(0, 4));
 
-  const faturaNolariGetir = async (ekSeri?: string) => {
+  /** Seriler E-Belge Ayarları'ndan gelir (R3); varsayılan seri kendiliğinden seçilir. */
+  const faturaNolariGetir = async () => {
     const sira = ++noSirasi.current;
     setNoYukleniyor(true);
     setNoHata(null);
     try {
-      const liste = await ebelgeService.faturaNoOnerileri(noBelgeTuru, noYili, ekSeri);
+      const liste = await ebelgeService.faturaNoOnerileri(noBelgeTuru, noYili);
       if (sira !== noSirasi.current) return;
       setNoOnerileri(liste);
       setBelgeNo((mevcut) => {
-        if (ekSeri) return liste.find((o) => o.seri === ekSeri)?.onerilenNo || mevcut;
         if (liste.some((o) => o.onerilenNo === mevcut)) return mevcut;
-        return liste.length === 1 ? liste[0].onerilenNo : "";
+        return (liste.find((o) => o.varsayilan) || (liste.length === 1 ? liste[0] : undefined))?.onerilenNo || "";
       });
-      if (ekSeri) { setYeniSeriAcik(false); setYeniSeri(""); }
-      if (!liste.length) setNoHata("Bu türde kesilmiş belge yok; + Yeni seri ile seriyi yazın.");
+      if (!liste.length) {
+        setNoHata(`${noBelgeTuru === "EArsiv" ? "e-Arşiv" : "e-Fatura"} için seri tanımlı değil. E-Belge Ayarları › Fatura Serileri'nden ekleyin.`);
+      }
     } catch (err: any) {
       if (sira !== noSirasi.current) return;
       setNoHata(err?.message || "Fatura numaraları ICE'den alınamadı.");
@@ -438,32 +469,35 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [naceKodlari, setNaceKodlari] = useState<string>("");
   useEffect(() => {
     ebelgeService.naceListe().then((liste) => {
-      setNaceOranlari([...new Set(liste.flatMap((n) => n.oranlar))].sort((a, b) => a - b));
+      const oranlar = [...new Set(liste.flatMap((n) => n.oranlar))].sort((a, b) => a - b);
+      setNaceOranlari(oranlar);
       setNaceKodlari(liste.map((n) => n.kod).join(", "));
+      // Dokunulmamış ilk satırın oranı NACE'ye uymuyorsa NACE'nin oranına çekilir
+      const varsayilan = naceVarsayilanKdv(oranlar);
+      setSatirlar((o) => o.map((s) => (!s.ad.trim() && !s.birimFiyat && !s.istisnaKodu && oranlar.length && s.kdvOrani !== 0
+        && !oranlar.includes(s.kdvOrani) ? { ...s, kdvOrani: varsayilan } : s)));
     }).catch(() => undefined);
   }, []);
   const naceUygunMu = (oran: number) => !naceOranlari.length || oran === 0 || naceOranlari.includes(oran);
-  const kdvSecenekleriniCiz = (mevcut?: number) => {
-    const hepsi = kdvSecenekleri(mevcut);
-    if (!naceOranlari.length) return hepsi.map((o) => <option key={o} value={o}>%{o}</option>);
-    const uygun = hepsi.filter(naceUygunMu);
-    const disi = hepsi.filter((o) => !naceUygunMu(o));
-    return (
-      <>
-        <optgroup label="NACE'ye uygun">
-          {uygun.map((o) => <option key={o} value={o}>%{o}</option>)}
-        </optgroup>
-        {disi.length > 0 && (
-          <optgroup label="NACE dışı">
-            {disi.map((o) => <option key={o} value={o}>%{o} (NACE dışı)</option>)}
-          </optgroup>
-        )}
-      </>
-    );
+  /** 555 (faaliyet dışı satış) satırı NACE oran kontrolüne tabi değildir */
+  const satirNaceUygun = (s: EbelgeSatir) => s.istisnaKodu?.trim() === "555" || naceUygunMu(s.kdvOrani || 0);
+  /**
+   * KDV listesi (yönetici isteği 28.09.2026): NACE kodları tanımlıysa YALNIZCA NACE'ye uygun oranlar ve istisna için %0
+   * görünür; uymayan oranlar listede hiç çıkmaz. 555 yazılmış (faaliyet dışı) satırda tüm oranlar açılır. Taslaktan
+   * uymayan bir oranla gelen satırda o oran kaybolmasın diye "(NACE dışı)" etiketiyle gösterilir; gönderilemez.
+   */
+  const kdvSecenekleriniCiz = (s: EbelgeSatir) => {
+    const hepsi = kdvSecenekleri(s.kdvOrani);
+    if (!naceOranlari.length || s.istisnaKodu?.trim() === "555") {
+      return hepsi.map((o) => <option key={o} value={o}>%{o}</option>);
+    }
+    return hepsi
+      .filter((o) => naceUygunMu(o) || o === s.kdvOrani)
+      .map((o) => <option key={o} value={o}>%{o}{naceUygunMu(o) ? "" : " (NACE dışı)"}</option>);
   };
   const kdvSec = (i: number, oran: number) => {
     satirDegistir(i, "kdvOrani", oran);
-    if (!naceUygunMu(oran)) {
+    if (!naceUygunMu(oran) && satirlar[i]?.istisnaKodu?.trim() !== "555") {
       setAlertInfo({
         type: "warning",
         message: `%${oran} KDV firmanızın NACE kodlarına (${naceKodlari}) tanımlı değil; GİB NACE kontrolünü açtığında bu satır `
@@ -540,7 +574,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   const istisnaTipiMi = faturaTipi === "ISTISNA" || faturaTipi === "YTBISTISNA" || faturaTipi === "IHRACKAYITLI";
   // NACE dışı oran seçilmiş ya da 555 yazılmış satır varsa da açılır: 555 bu kolondan girilir (N1)
   const istisnaKolonuGorunur = istisnaTipiMi || sifirKdvliSatirVar
-    || satirlar.some((s) => s.istisnaKodu?.trim() === "555" || !naceUygunMu(s.kdvOrani || 0));
+    || satirlar.some((s) => s.istisnaKodu?.trim() === "555" || !satirNaceUygun(s));
 
   const ihracatMi = ebelgeIhracatMi(senaryo);
   const turistMi = ebelgeTuristMi(senaryo);
@@ -635,6 +669,11 @@ const EBelgeDogrulaPage: React.FC = () => {
     }
     if (satirlar.some((s) => !s.ad.trim())) {
       setAlertInfo({ type: "danger", message: "Her satırda mal/hizmet adı bulunmalıdır." });
+      return null;
+    }
+    if (satirlar.some((s) => !satirNaceUygun(s))) {
+      setAlertInfo({ type: "danger", message: `Firmanın NACE kodlarına (${naceKodlari}) uygun olmayan KDV oranı var. Oranı düzeltin; `
+        + "faaliyet dışı satışsa (demirbaş, masraf yansıtma) satırın İstisna Kodu'na 555 yazın." });
       return null;
     }
     if (satirlar.some((s) => s.kdvOrani === 0 && !s.istisnaKodu?.trim())) {
@@ -921,34 +960,31 @@ const EBelgeDogrulaPage: React.FC = () => {
                     title="Numaraları ICE'den yeniden al">yenile</Button>
                 )}
               </Form.Label>
-              {yeniSeriAcik ? (
-                <div className="d-flex gap-1">
-                  <Form.Control size="sm" className="font-monospace" maxLength={3} placeholder="Seri (ör. ABC)" autoFocus
-                    value={yeniSeri} onChange={(e) => setYeniSeri(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} />
-                  <Button size="sm" variant="outline-primary" disabled={yeniSeri.length !== 3 || noYukleniyor}
-                    onClick={() => void faturaNolariGetir(yeniSeri)}>Getir</Button>
-                  <Button size="sm" variant="outline-secondary" onClick={() => setYeniSeriAcik(false)}>Vazgeç</Button>
+              <Form.Select
+                id="fatura-no-secim"
+                size="sm"
+                className="font-monospace"
+                value={belgeNo}
+                isInvalid={!belgeNo && !noYukleniyor}
+                onChange={(e) => setBelgeNo(e.target.value)}
+              >
+                <option value="">
+                  {noYukleniyor ? "ICE'den alınıyor…" : noOnerileri.length ? "Fatura no seçiniz" : "Seri tanımlı değil"}
+                </option>
+                {belgeNo && !noOnerileri.some((o) => o.onerilenNo === belgeNo) && <option value={belgeNo}>{belgeNo}</option>}
+                {noOnerileri.map((o) => (
+                  <option key={o.seri} value={o.onerilenNo}>{o.onerilenNo}  ({o.seri}{o.varsayilan ? ", varsayılan" : ""})</option>
+                ))}
+              </Form.Select>
+              {noHata && (
+                <div className="text-danger" style={{ fontSize: "11.5px" }}>
+                  {noHata}{" "}
+                  {!noOnerileri.length && (
+                    <Button size="sm" variant="link" className="p-0 align-baseline" style={{ fontSize: "11.5px" }}
+                      onClick={() => navigate("/ayarlar/e-belge")}>Ayarlara git</Button>
+                  )}
                 </div>
-              ) : (
-                <Form.Select
-                  id="fatura-no-secim"
-                  size="sm"
-                  className="font-monospace"
-                  value={belgeNo}
-                  isInvalid={!belgeNo && !noYukleniyor}
-                  onChange={(e) => (e.target.value === "__yeni" ? setYeniSeriAcik(true) : setBelgeNo(e.target.value))}
-                >
-                  <option value="">
-                    {noYukleniyor ? "ICE'den alınıyor…" : noOnerileri.length ? "Fatura no seçiniz" : "Seri bulunamadı"}
-                  </option>
-                  {belgeNo && !noOnerileri.some((o) => o.onerilenNo === belgeNo) && <option value={belgeNo}>{belgeNo}</option>}
-                  {noOnerileri.map((o) => (
-                    <option key={o.seri} value={o.onerilenNo}>{o.onerilenNo}  ({o.seri} serisi)</option>
-                  ))}
-                  <option value="__yeni">+ Yeni seri…</option>
-                </Form.Select>
               )}
-              {noHata && <div className="text-danger" style={{ fontSize: "11.5px" }}>{noHata}</div>}
             </Col>
             <Col xs="auto" style={{ width: 140 }}>
               <Form.Label className="small mb-1">Tarih</Form.Label>
@@ -1574,7 +1610,7 @@ const EBelgeDogrulaPage: React.FC = () => {
               <Button
                 size="sm"
                 variant="outline-secondary"
-                onClick={() => setSatirlar((o) => [...o, { ...BOS_SATIR }])}
+                onClick={() => setSatirlar((o) => [...o, { ...BOS_SATIR, kdvOrani: naceVarsayilanKdv(naceOranlari) }])}
                 className="d-flex align-items-center gap-1"
               >
                 <IconPlus size={15} />
@@ -1708,18 +1744,18 @@ const EBelgeDogrulaPage: React.FC = () => {
                           size="sm"
                           className="text-end font-monospace"
                           value={satir.kdvOrani}
-                          isInvalid={!naceUygunMu(satir.kdvOrani)}
-                          title={!naceUygunMu(satir.kdvOrani) ? "NACE kodlarınıza tanımlı oran değil" : undefined}
+                          isInvalid={!satirNaceUygun(satir)}
+                          title={!satirNaceUygun(satir) ? "NACE kodlarınıza tanımlı oran değil" : undefined}
                           onChange={(e) => kdvSec(i, Number(e.target.value))}
                         >
-                          {kdvSecenekleriniCiz(satir.kdvOrani)}
+                          {kdvSecenekleriniCiz(satir)}
                         </Form.Select>
                       </td>
                       {istisnaKolonuGorunur && (
                         <td>
                           <EBelgeKodDurbun
                             tur="ISTISNA"
-                            placeholder={satir.kdvOrani === 0 ? "zorunlu" : !naceUygunMu(satir.kdvOrani) ? "555?" : "-"}
+                            placeholder={satir.kdvOrani === 0 ? "zorunlu" : !satirNaceUygun(satir) ? "555?" : "-"}
                             value={satir.istisnaKodu || ""}
                             disabled={ozelMatrahMi && !!satir.ozelMatrahKodu?.trim()}
                             isInvalid={satir.kdvOrani === 0 && !satir.istisnaKodu?.trim()}

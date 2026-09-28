@@ -14,7 +14,7 @@ import type { EbelgeFaturaTipi, EbelgeSatir } from "../../services/ebelgeService
  * Kod numaraları GİB UBL-TR Kod Listeleri V1.43 (27.07.2026) ile koordinat doğrulamalı olarak karşılaştırıldı.
  */
 export interface KuyumcuKalemTuru {
-  kod: "ALTIN_ZIYNET" | "GUMUS_ZIYNET" | "KULCE_KIYMETLI_TAS" | "GENEL";
+  kod: "ALTIN_ZIYNET" | "GUMUS_ZIYNET" | "KULCE_KIYMETLI_TAS" | "GENEL" | "FAALIYET_DISI";
   ad: string;
   aciklama: string;
   faturaTipi: EbelgeFaturaTipi;
@@ -70,6 +70,20 @@ export const KUYUMCU_KALEM_TURLERI: KuyumcuKalemTuru[] = [
     satir: { kdvOrani: 20, birimKodu: "C62" },
     dayanak: "KDVK 28; I ve II sayılı listelerde yok",
   },
+  {
+    // NACE'ye uymayan oranla yapılacak faaliyet dışı satış: satırda 555 yazılı olunca tüm KDV oranları açılır
+    kod: "FAALIYET_DISI",
+    ad: "Faaliyet dışı satış (demirbaş, masraf yansıtma)",
+    aciklama: "555 — KDV oranı NACE kontrolüne tabi değil, oranı satırda seçin",
+    faturaTipi: "SATIS",
+    satir: {
+      kdvOrani: 20,
+      birimKodu: "C62",
+      istisnaKodu: "555",
+      istisnaGerekcesi: "KDV Oran Kontrolüne Tabi Olmayan Satışlar",
+    },
+    dayanak: "UBL-TR Kod Listeleri, diğer işlem türü 555",
+  },
 ];
 
 /** Kuyumculuk NACE kodlarında kullanılabilecek oranlar: yukarıdaki kalemlerin oranları (%0 yalnız istisna koduyla). */
@@ -82,6 +96,8 @@ export const KUYUMCU_IZINLI_ORANLAR = [...new Set(KUYUMCU_KALEM_TURLERI.map((k) 
  * olamaz, fatura tipi tektir. Genel %20 satır özel matrahlı faturada olabilir (kodsuz satır), istisna faturasında olamaz.
  */
 export const kalemFaturaTipiUyumlu = (mevcutTip: EbelgeFaturaTipi, kalem: KuyumcuKalemTuru): boolean => {
+  // 555, ISTISNA / IHRACKAYITLI tipinde kullanılamaz (GİB schematron)
+  if (kalem.kod === "FAALIYET_DISI") return mevcutTip !== "ISTISNA" && mevcutTip !== "IHRACKAYITLI";
   if (kalem.faturaTipi === "SATIS") return mevcutTip === "SATIS" || mevcutTip === "OZELMATRAH";
   return mevcutTip === kalem.faturaTipi || mevcutTip === "SATIS";
 };
