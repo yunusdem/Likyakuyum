@@ -73,6 +73,7 @@ export interface MutabakatSatiri {
   tlKarsilik: number | null;
   kur: number | null;
   bankaId: number | null;
+  karsiNo: string | null;
   tipAdi: string | null;
   karsiTaraf: string | null;
   aciklama: string | null;

@@ -3231,6 +3231,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         kur: tl ? 1 : parseFloat((b.tutarTl / b.tutar).toFixed(4)),
       };
       setOdemeRows([recomputeOdemeRow(satir, Number(altinHasKuru) || 0)]);
+    } else if (b.tutarTl > 0) {
+      showNotif("warning", "Bu e-Banka hesabı bir Banka Hesap Kartı ile eşlenmemiş; ödeme tablosunda Kart satırına bankayı elle seçin (e-Banka > Hesaplar'dan eşleyebilirsiniz).");
     }
   });
 

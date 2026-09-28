@@ -3,6 +3,7 @@ import { EBankaMutabakatSqlRepository, FisTuru, MutabakatFisi, MutabakatHareketi
 import { ApiError } from "../utils/ApiError.js";
 import { EBankaAktarimSqlRepository } from "../models/ebankaAktarimSql.repository.js";
 import { EBankaAktarimService, planla } from "./ebankaAktarim.service.js";
+import { aciklamaNumaralari } from "./ebankaCariEslesme.js";
 
 // F- e-Banka > Tahsilat / Ödeme Mutabakatı (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md, M1–M9)
 // Bankaya giren / bankadan çıkan her para için: karşılığında fiş var mı, fişin faturası kesilmiş / gelmiş mi.
@@ -48,6 +49,8 @@ export interface MutabakatSatiri {
   kur: number | null;
   /** Hareketin bağlı olduğu Banka Hesap Kartı (fiş kesmede ödeme satırı için) */
   bankaId: number | null;
+  /** Karşı tarafın bankadan gelen VKN/TC'si (alanlar ya da açıklamadaki numara): cari yoksa fişe kayıtsız müşteri olarak yazılır */
+  karsiNo: string | null;
   tipAdi: string | null;
   karsiTaraf: string | null;
   aciklama: string | null;
@@ -222,7 +225,8 @@ export class EBankaMutabakatService {
         tutar: Math.abs(h.tutar),
         tlKarsilik: tl,
         kur: tlMi(h) ? null : kurlar.get(h.vomsisId) ?? null,
-        bankaId: h.bankaId,
+        bankaId: h.fisBankaId ?? h.bankaId,
+        karsiNo: [h.karsiVkn, h.gonderenVkn, h.gonderenTckn, h.odeyenVkn].map((n) => (n || "").trim()).find((n) => /^\d{10,11}$/.test(n)) || aciklamaNumaralari(h.aciklama)[0] || null,
         tipAdi: h.tipAdi,
         karsiTaraf: karsiTaraf(h),
         aciklama: h.aciklama,

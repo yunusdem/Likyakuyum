@@ -424,7 +424,7 @@ export const EBankaMutabakatPage: React.FC = () => {
                       onClick={() => navigate(fisKesimAdresi(k.yol, {
                         vomsisId: secili.vomsisId, cariId: secili.cari?.cariKartId ?? null, tarih: (secili.tarih || bugun()).slice(0, 10),
                         tip: secili.yon === "gelen" ? 1 : 0, tutar: secili.tutar, paraKodu: secili.doviz || "TL", baslangic, bitis,
-                        bankaId: secili.bankaId, tutarTl: secili.tlKarsilik,
+                        bankaId: secili.bankaId, tutarTl: secili.tlKarsilik, karsiAd: secili.karsiTaraf, karsiNo: secili.karsiNo,
                       }))}>
                       <IconReceipt size={14} className="me-1" />
                       {k.ad}

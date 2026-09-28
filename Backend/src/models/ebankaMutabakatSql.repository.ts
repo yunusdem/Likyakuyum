@@ -16,6 +16,8 @@ export interface MutabakatHareketi extends AktarimAdayi {
   aktarilanCariId: number | null;
   /** Mutabakat ekranında kullanıcının onayladığı / seçtiği cari (M11) */
   onayliCariId: number | null;
+  /** Fiş kesmede ödeme satırına yazılacak Banka Hesap Kartı: e-Banka hesabı kartla eşlenmemişse IBAN'ı tutan kart */
+  fisBankaId: number | null;
   faturaGerekmez: boolean;
   not: string | null;
 }
@@ -121,7 +123,9 @@ export class EBankaMutabakatSqlRepository {
     const rows = (
       await req.query(`
         SELECT t.*, k.BANKA_ID AS KART_BANKA_ID, h.HESAP_NO, b.BANKA_ADI, p.TIP_ADI, ISNULL(p.KURAL, 0) AS KURAL, p.CARI_KART_ID AS TIP_CARI_ID,
-               i.FATURA_GEREKMEZ, i.NOTU, i.CARI_KART_ID AS ONAYLI_CARI_ID
+               i.FATURA_GEREKMEZ, i.NOTU, i.CARI_KART_ID AS ONAYLI_CARI_ID,
+               COALESCE(k.BANKA_ID, (SELECT TOP 1 kb.BANKA_ID FROM TODVZ_BANKA kb
+                 WHERE LEN(ISNULL(h.IBAN, '')) > 0 AND REPLACE(kb.IBAN, ' ', '') IN (REPLACE(h.IBAN, ' ', ''), REPLACE(ISNULL(h.OZEL_IBAN, ''), ' ', '')))) AS FIS_BANKA_ID
         FROM TODVZ_EBANKA_HAREKET t
         LEFT JOIN TODVZ_EBANKA_HESAP h ON h.VOMSIS_HESAP_ID = t.VOMSIS_HESAP_ID
         LEFT JOIN TODVZ_BANKA k ON k.BANKA_ID = h.BANKA_ID
@@ -160,6 +164,7 @@ export class EBankaMutabakatSqlRepository {
       odeyenVkn: r.ODEYEN_VKN ?? null,
       aktarilanCariId: r.CARI_KART_ID ?? null,
       onayliCariId: r.ONAYLI_CARI_ID ?? null,
+      fisBankaId: r.FIS_BANKA_ID ?? null,
       faturaGerekmez: Boolean(r.FATURA_GEREKMEZ),
       not: r.NOTU ?? null,
     }));

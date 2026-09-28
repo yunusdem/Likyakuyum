@@ -23,7 +23,7 @@ export interface EBankaFisKesimBilgisi {
 /** Mutabakat ekranının fiş ekranını açacağı adres. */
 export function fisKesimAdresi(yol: string, p: {
   vomsisId: number; cariId: number | null; tarih: string; tip: 0 | 1; tutar: number; paraKodu: string; baslangic: string; bitis: string;
-  bankaId?: number | null; tutarTl?: number | null;
+  bankaId?: number | null; tutarTl?: number | null; karsiAd?: string | null; karsiNo?: string | null;
 }): string {
   const q = new URLSearchParams({
     ebh: String(p.vomsisId), tarih: p.tarih, tip: String(p.tip), tutar: String(p.tutar), pk: p.paraKodu, db: p.baslangic, de: p.bitis,
@@ -31,6 +31,9 @@ export function fisKesimAdresi(yol: string, p: {
   if (p.cariId) q.set("cari", String(p.cariId));
   if (p.bankaId) q.set("bk", String(p.bankaId));
   if (p.tutarTl) q.set("ttl", String(p.tutarTl));
+  // Cari bulunamadıysa fiş, bankanın verdiği ad ve VKN/TC ile kayıtsız müşteri olarak dolar
+  if (!p.cariId && p.karsiAd) q.set("kt", p.karsiAd.slice(0, 120));
+  if (!p.cariId && p.karsiNo) q.set("kn", p.karsiNo);
   return `${yol}?${q.toString()}`;
 }
 
@@ -64,6 +67,13 @@ export function useEBankaFisKesimi(fisTuru: MutabakatFisTuru, hazir: boolean, do
             };
           }
         } catch { /* cari bulunamazsa kullanıcı kendisi seçer */ }
+      }
+      if (!musteri && (searchParams.get("kt") || searchParams.get("kn"))) {
+        musteri = {
+          type: "anonymous", id: null,
+          unvan: (searchParams.get("kt") || "").toLocaleUpperCase("tr-TR"),
+          vergiKimlikNo: (searchParams.get("kn") || "").replace(/\D/g, "").slice(0, 11),
+        };
       }
       const b: EBankaFisKesimBilgisi = {
         vomsisId, musteri,
