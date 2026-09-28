@@ -689,11 +689,17 @@ export const ebelgeService = {
   /* ---------- Gelen kutusu ---------- */
 
   /** ICE'den gelen belgeleri çekip yerel aynayı günceller */
-  async senkronizeGelen(gunSayisi = 30, limit = 200): Promise<EbelgeSenkronizasyonSonucu> {
+  /** `aralik` verilirse ICE'den o tarih aralığı çekilir (YYYY-MM-DD); verilmezse son `gunSayisi` gün */
+  async senkronizeGelen(
+    gunSayisi = 30,
+    limit = 200,
+    aralik?: { baslangic?: string; bitis?: string }
+  ): Promise<EbelgeSenkronizasyonSonucu> {
     const res = await apiClient.post<EbelgeSenkronizasyonSonucu>("/e-belge/gelen/senkronize", {
       gunSayisi,
       limit,
-    });
+      ...aralik,
+    }, { timeoutMs: 120_000 });
     return res.data;
   },
 

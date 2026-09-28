@@ -229,6 +229,8 @@ export class EbelgeController {
         gunSayisi: req.body?.gunSayisi != null ? Number(req.body.gunSayisi) : undefined,
         limit: req.body?.limit != null ? Number(req.body.limit) : undefined,
         okunmuslarDahil: req.body?.okunmuslarDahil !== false,
+        baslangic: typeof req.body?.baslangic === "string" ? req.body.baslangic : undefined,
+        bitis: typeof req.body?.bitis === "string" ? req.body.bitis : undefined,
       },
       EbelgeController.getDbContext(req)
     );

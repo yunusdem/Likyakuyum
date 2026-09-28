@@ -16,7 +16,7 @@ import {
 /**
  * E-Belge Gelen Kutusu (Faz 3 — okuma)
  *
- * Liste yerel aynadan (TODVZ_EBELGE_GELEN) okunur; "Senkronize Et" ICE'ye çıkar.
+ * Liste yerel aynadan (TODVZ_EBELGE_GELEN) okunur; "Getir" önce ICE'den tarih aralığını çeker, sonra süzer.
  * Böylece ekran her açılışta entegratöre yük bindirmez ve internet yokken de çalışır.
  *
  * Arayüz kuralları: docs/ice-baglanti.md §15
@@ -75,20 +75,26 @@ const EBelgeGelenPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const senkronizeEt = async () => {
+  /**
+   * Tek düğme: önce ICE'den ekrandaki tarih aralığının belgeleri çekilir, sonra liste aynı tarih, arama ve
+   * cevap durumuyla süzülür. ICE'ye ulaşılamazsa yerel kayıtlar yine listelenir.
+   */
+  const getir = async () => {
     setSenkronEdiliyor(true);
     setAlertInfo(null);
     try {
-      const sonuc = await ebelgeService.senkronizeGelen(30, 200);
-      setAlertInfo({
-        type: "success",
-        message:
-          `Senkronizasyon tamamlandı: ${sonuc.yazilan} belge güncellendi ` +
-          `(entegratörde toplam ${sonuc.toplamIce}, çekilen ${sonuc.cekilen}, ${sonuc.sureMs} ms).`,
+      await ebelgeService.senkronizeGelen(30, 1000, {
+        baslangic: baslangicTarihi || undefined,
+        bitis: bitisTarihi || undefined,
       });
-      await listeYukle(1);
     } catch (err: any) {
-      setAlertInfo({ type: "danger", message: err?.message || "Senkronizasyon yapılamadı." });
+      setAlertInfo({
+        type: "warning",
+        message: `Entegratörden yeni belgeler alınamadı; kayıtlı belgeler listelendi. (${err?.message || "bağlantı hatası"})`,
+      });
+    }
+    try {
+      await listeYukle(1);
     } finally {
       setSenkronEdiliyor(false);
     }
@@ -181,19 +187,16 @@ const EBelgeGelenPage: React.FC = () => {
               </Form.Select>
             </Col>
             <Col xs={6} md={8} lg={2} className="d-flex gap-2">
-              <Button size="sm" variant="primary" onClick={() => listeYukle(1)} disabled={yukleniyor}>
-                Filtrele
-              </Button>
               <Button
                 size="sm"
-                variant="outline-secondary"
-                onClick={senkronizeEt}
-                disabled={senkronEdiliyor}
+                variant="primary"
+                onClick={() => void getir()}
+                disabled={senkronEdiliyor || yukleniyor}
                 className="d-flex align-items-center gap-1 flex-shrink-0"
-                title="Entegratörden son 30 günün belgelerini çeker"
+                title="Seçili tarih aralığının belgelerini entegratörden çeker ve filtreye göre listeler"
               >
                 {senkronEdiliyor ? <Spinner animation="border" size="sm" /> : <IconCloudDownload size={16} />}
-                Senkronize Et
+                Getir
               </Button>
             </Col>
           </Row>
@@ -237,7 +240,7 @@ const EBelgeGelenPage: React.FC = () => {
                 ) : kayitlar.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center text-secondary py-4 small">
-                      Kayıt yok. Entegratörden belge çekmek için <strong>Senkronize Et</strong> düğmesini kullanın.
+                      Kayıt yok. Entegratörden belge çekmek için <strong>Getir</strong> düğmesini kullanın.
                     </td>
                   </tr>
                 ) : (

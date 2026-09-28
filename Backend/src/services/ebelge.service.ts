@@ -361,15 +361,30 @@ export class EbelgeService {
    */
   public static async senkronizeGelen(
     kullanici: string,
-    filtre: { gunSayisi?: number; limit?: number; okunmuslarDahil?: boolean },
+    filtre: { gunSayisi?: number; limit?: number; okunmuslarDahil?: boolean; baslangic?: string; bitis?: string },
     dbContext?: DbContext
   ): Promise<{ toplamIce: number; cekilen: number; yazilan: number; sureMs: number }> {
     const started = Date.now();
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
 
-    const gunSayisi = Math.min(Math.max(filtre.gunSayisi ?? 30, 1), 365);
-    const bitis = new Date();
-    const baslangic = new Date(bitis.getTime() - gunSayisi * 24 * 60 * 60 * 1000);
+    // Ekrandaki tarih aralığı (YYYY-MM-DD, Türkiye saati) verildiyse o aralık; yoksa son N gün
+    const gun = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    let baslangic: Date;
+    let bitis: Date;
+    if (gun(filtre.baslangic) || gun(filtre.bitis)) {
+      bitis = gun(filtre.bitis) ? new Date(`${filtre.bitis}T23:59:59+03:00`) : new Date();
+      baslangic = gun(filtre.baslangic)
+        ? new Date(`${filtre.baslangic}T00:00:00+03:00`)
+        : new Date(bitis.getTime() - 30 * 86_400_000);
+      if (baslangic > bitis) throw ApiError.badRequest("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+      if (bitis.getTime() - baslangic.getTime() > 366 * 86_400_000) {
+        throw ApiError.badRequest("Tarih aralığı en çok 1 yıl olabilir.");
+      }
+    } else {
+      bitis = new Date();
+      baslangic = new Date(bitis.getTime() - Math.min(Math.max(filtre.gunSayisi ?? 30, 1), 365) * 86_400_000);
+    }
+    const gunSayisi = Math.ceil((bitis.getTime() - baslangic.getTime()) / 86_400_000);
 
     const iceFiltre: GelenFaturaFiltre = {
       limit: Math.min(Math.max(filtre.limit ?? 200, 1), 1000),
