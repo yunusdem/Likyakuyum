@@ -1592,6 +1592,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     return Number(altinHasKuru) || 0;
   }, [kurSatirlar, altinHasKuru, gumusHasKuru]);
 
+  // e-Banka'dan fiş kesiliyorsa banka tutarı (TL); miktarı boş ürün satırında miktar bu tutarın kalanından hesaplanır
+  const ebHedefRef = useRef(0);
+
   // Ürün seçildiğinde veya kodu girildiğinde satırı otomatik doldurma & hesaplama yardımcısı
   const applyProductToRow = useCallback((
     rowId: string,
@@ -1642,6 +1645,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         urunTipi: item.urunTipi ?? 0,
         kur: autoKur > 0 ? autoKur : (curHasKuru > 0 ? curHasKuru : (r.kur || "")),
       };
+      // e-Banka: miktar boşsa banka tutarının kalanı / (kur × milyem)
+      if (ebHedefRef.current > 0 && !(parseDecimal(updated.miktar) > 0)) {
+        const kalan = ebHedefRef.current - prev.filter((x) => x.id !== rowId).reduce((t, x) => t + parseDecimal(x.tutar), 0);
+        const kurN = parseDecimal(updated.kur);
+        const ham = parseDecimal(updated.milyem);
+        const mil = isPara ? 1 : (ham > 1 ? (ham <= 100 ? ham / 100 : ham / 1000) : (ham > 0 ? ham : 1));
+        if (kalan > 0 && kurN > 0) updated.miktar = parseFloat((kalan / (kurN * mil)).toFixed(isPara ? 2 : 3));
+      }
       return recomputeRow(updated, curHasKuru);
     }));
   }, [tip, getKurForProduct, altinHasKuru, gumusHasKuru]);
@@ -3204,6 +3215,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (gRate > 0) setGumusHasKuru(gRate);
     if (b.musteri) handleSelectCustomer(b.musteri);
     setTarih(b.tarih);
+    // Ödeme kısmı: banka hesabı + banka tutarı (döviz hesapta döviz miktarı × o günün kuru)
+    ebHedefRef.current = b.tutarTl;
+    const hesap = b.bankaId ? bankaList.find((x) => x.bankaId === b.bankaId) : undefined;
+    if (hesap && b.tutarTl > 0) {
+      const tl = ["TL", "TRY"].includes(b.paraKodu.toUpperCase());
+      const satir: OdemeRow = {
+        ...createEmptyOdemeRow(1),
+        odemeAraciTuru: 2,
+        bankaId: hesap.bankaId,
+        paraKodu: hesap.hesapNo || hesap.iban || "",
+        paraAdi: hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap.bankaAdi || ""),
+        urunTipi: 0,
+        miktar: tl ? b.tutarTl : b.tutar,
+        kur: tl ? 1 : parseFloat((b.tutarTl / b.tutar).toFixed(4)),
+      };
+      setOdemeRows([recomputeOdemeRow(satir, Number(altinHasKuru) || 0)]);
+    }
   });
 
   return (

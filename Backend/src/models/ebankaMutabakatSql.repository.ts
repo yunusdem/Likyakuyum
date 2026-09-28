@@ -14,6 +14,8 @@ export type Yon = "gelen" | "giden";
 
 export interface MutabakatHareketi extends AktarimAdayi {
   aktarilanCariId: number | null;
+  /** Mutabakat ekranında kullanıcının onayladığı / seçtiği cari (M11) */
+  onayliCariId: number | null;
   faturaGerekmez: boolean;
   not: string | null;
 }
@@ -76,10 +78,14 @@ export class EBankaMutabakatSqlRepository {
               [VOMSIS_ID] BIGINT NOT NULL PRIMARY KEY,
               [FATURA_GEREKMEZ] BIT NOT NULL DEFAULT 0,
               [NOTU] NVARCHAR(250) NULL,
+              [CARI_KART_ID] INT NULL,
               [GUNCELLEYEN_ID] INT NULL,
               [GUNCELLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE()
             );
           END;
+
+          IF COL_LENGTH('TODVZ_EBANKA_MUTABAKAT_ISARET', 'CARI_KART_ID') IS NULL
+            ALTER TABLE [dbo].[TODVZ_EBANKA_MUTABAKAT_ISARET] ADD [CARI_KART_ID] INT NULL;
         `);
       } catch (err: any) {
         logger.warn(`[EBankaMutabakatSqlRepository.ensureTables] Warning: ${err.message}`);
@@ -115,7 +121,7 @@ export class EBankaMutabakatSqlRepository {
     const rows = (
       await req.query(`
         SELECT t.*, k.BANKA_ID AS KART_BANKA_ID, h.HESAP_NO, b.BANKA_ADI, p.TIP_ADI, ISNULL(p.KURAL, 0) AS KURAL, p.CARI_KART_ID AS TIP_CARI_ID,
-               i.FATURA_GEREKMEZ, i.NOTU
+               i.FATURA_GEREKMEZ, i.NOTU, i.CARI_KART_ID AS ONAYLI_CARI_ID
         FROM TODVZ_EBANKA_HAREKET t
         LEFT JOIN TODVZ_EBANKA_HESAP h ON h.VOMSIS_HESAP_ID = t.VOMSIS_HESAP_ID
         LEFT JOIN TODVZ_BANKA k ON k.BANKA_ID = h.BANKA_ID
@@ -153,6 +159,7 @@ export class EBankaMutabakatSqlRepository {
       aliciIban: r.ALICI_IBAN ?? null,
       odeyenVkn: r.ODEYEN_VKN ?? null,
       aktarilanCariId: r.CARI_KART_ID ?? null,
+      onayliCariId: r.ONAYLI_CARI_ID ?? null,
       faturaGerekmez: Boolean(r.FATURA_GEREKMEZ),
       not: r.NOTU ?? null,
     }));
@@ -334,6 +341,23 @@ export class EBankaMutabakatSqlRepository {
     await req.query(`
       UPDATE TODVZ_EBANKA_MUTABAKAT_ISARET SET FATURA_GEREKMEZ = @GEREKMEZ, NOTU = @NOT, GUNCELLEYEN_ID = @KUL, GUNCELLEME_ZAMANI = GETDATE() WHERE VOMSIS_ID = @ID;
       IF @@ROWCOUNT = 0 INSERT INTO TODVZ_EBANKA_MUTABAKAT_ISARET (VOMSIS_ID, FATURA_GEREKMEZ, NOTU, GUNCELLEYEN_ID) VALUES (@ID, @GEREKMEZ, @NOT, @KUL);
+    `);
+    return true;
+  }
+
+  /** Hareketin carisini onaylar / seçer (null: onayı kaldırır). Fatura gerektirmez işareti korunur. */
+  public static async cariOnayla(vomsisId: number, cariKartId: number | null, kullaniciId?: number, dbContext?: DbContext): Promise<boolean> {
+    const pool = await this.pool(dbContext);
+    const var_ = pool.request();
+    var_.input("ID", sql.BigInt, vomsisId);
+    if (!(await var_.query(`SELECT 1 AS X FROM TODVZ_EBANKA_HAREKET WHERE VOMSIS_ID = @ID`)).recordset.length) return false;
+    const req = pool.request();
+    req.input("ID", sql.BigInt, vomsisId);
+    req.input("CARI", sql.Int, cariKartId);
+    req.input("KUL", sql.Int, kullaniciId ?? null);
+    await req.query(`
+      UPDATE TODVZ_EBANKA_MUTABAKAT_ISARET SET CARI_KART_ID = @CARI, GUNCELLEYEN_ID = @KUL, GUNCELLEME_ZAMANI = GETDATE() WHERE VOMSIS_ID = @ID;
+      IF @@ROWCOUNT = 0 INSERT INTO TODVZ_EBANKA_MUTABAKAT_ISARET (VOMSIS_ID, FATURA_GEREKMEZ, CARI_KART_ID, GUNCELLEYEN_ID) VALUES (@ID, 0, @CARI, @KUL);
     `);
     return true;
   }

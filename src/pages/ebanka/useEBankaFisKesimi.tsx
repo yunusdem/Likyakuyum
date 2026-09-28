@@ -12,6 +12,10 @@ export interface EBankaFisKesimBilgisi {
   tip: 0 | 1;
   tutar: number;
   paraKodu: string;
+  /** Hareketin Banka Hesap Kartı: fişin ödeme satırına yazılır (M16) */
+  bankaId: number | null;
+  /** Fişe yazılacak TL tutar (döviz hesapta o günün kuruyla karşılığı) */
+  tutarTl: number;
   donusBaslangic: string;
   donusBitis: string;
 }
@@ -19,11 +23,14 @@ export interface EBankaFisKesimBilgisi {
 /** Mutabakat ekranının fiş ekranını açacağı adres. */
 export function fisKesimAdresi(yol: string, p: {
   vomsisId: number; cariId: number | null; tarih: string; tip: 0 | 1; tutar: number; paraKodu: string; baslangic: string; bitis: string;
+  bankaId?: number | null; tutarTl?: number | null;
 }): string {
   const q = new URLSearchParams({
     ebh: String(p.vomsisId), tarih: p.tarih, tip: String(p.tip), tutar: String(p.tutar), pk: p.paraKodu, db: p.baslangic, de: p.bitis,
   });
   if (p.cariId) q.set("cari", String(p.cariId));
+  if (p.bankaId) q.set("bk", String(p.bankaId));
+  if (p.tutarTl) q.set("ttl", String(p.tutarTl));
   return `${yol}?${q.toString()}`;
 }
 
@@ -64,6 +71,8 @@ export function useEBankaFisKesimi(fisTuru: MutabakatFisTuru, hazir: boolean, do
         tip: searchParams.get("tip") === "0" ? 0 : 1,
         tutar: Number(searchParams.get("tutar")) || 0,
         paraKodu: searchParams.get("pk") || "TL",
+        bankaId: Number(searchParams.get("bk")) || null,
+        tutarTl: Number(searchParams.get("ttl")) || (["TL", "TRY"].includes((searchParams.get("pk") || "TL").toUpperCase()) ? Number(searchParams.get("tutar")) || 0 : 0),
         donusBaslangic: searchParams.get("db") || "",
         donusBitis: searchParams.get("de") || "",
       };

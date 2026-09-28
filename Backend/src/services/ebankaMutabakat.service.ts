@@ -1,6 +1,7 @@
 import { DbContext } from "../models/ebankaSql.repository.js";
 import { EBankaMutabakatSqlRepository, FisTuru, MutabakatFisi, MutabakatHareketi, Yon } from "../models/ebankaMutabakatSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
+import { EBankaAktarimSqlRepository } from "../models/ebankaAktarimSql.repository.js";
 import { EBankaAktarimService, planla } from "./ebankaAktarim.service.js";
 
 // F- e-Banka > Tahsilat / Ödeme Mutabakatı (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md, M1–M9)
@@ -10,6 +11,17 @@ import { EBankaAktarimService, planla } from "./ebankaAktarim.service.js";
 const ONCE_GUN = 7;
 const SONRA_GUN = 3;
 const KURUS = 0.01;
+/** Bu oran içindeki tutar farkı "yakın" sayılır, fiş önerilir (M14) */
+const TOLERANS = 0.01;
+
+/** tam: kuruşu kuruşuna · yakin: ±%1 (döviz hesapta kur yaklaşık olduğu için tam da yakın sayılır) · uzak: elle seçilebilir */
+export type TutarUyumu = "tam" | "yakin" | "uzak";
+
+export const tutarUyumu = (bankaTl: number, fisTutari: number, tl: boolean): TutarUyumu => {
+  const fark = Math.abs(bankaTl - fisTutari);
+  if (tl && fark < KURUS) return "tam";
+  return fark <= Math.abs(bankaTl) * TOLERANS + KURUS / 2 ? "yakin" : "uzak";
+};
 
 export type MutabakatDurumu = "faturalandi" | "faturasiz" | "fissiz" | "oneri" | "gerekmez" | "virman";
 
@@ -19,6 +31,7 @@ export interface FisOzeti extends MutabakatFisi {
   fark?: number;
   /** Aday listesinde: fiş başka bir banka hareketine zaten eşlenmiş */
   baskaHarekette?: boolean;
+  uyum?: TutarUyumu;
 }
 
 export interface MutabakatSatiri {
@@ -28,13 +41,20 @@ export interface MutabakatSatiri {
   hesapNo: string | null;
   doviz: string | null;
   yon: Yon;
-  /** Mutlak tutar */
+  /** Mutlak tutar (hesabın döviz cinsinden) */
   tutar: number;
+  /** Döviz hesapta o günün kuruyla TL karşılığı (kur yoksa null); TL hesapta tutarın kendisi */
+  tlKarsilik: number | null;
+  kur: number | null;
+  /** Hareketin bağlı olduğu Banka Hesap Kartı (fiş kesmede ödeme satırı için) */
+  bankaId: number | null;
   tipAdi: string | null;
   karsiTaraf: string | null;
   aciklama: string | null;
   cari: { cariKartId: number; ad: string } | null;
   cariNedeni: string | null;
+  /** Yalnız bir kriter tutan cari: atanmadı, onay bekliyor (M11) */
+  oneriCari: { cariKartId: number; ad: string } | null;
   durum: MutabakatDurumu;
   /** Banka tutarı − eşlenen fişlerin tutar toplamı (eşleşme yoksa null) */
   fark: number | null;
@@ -87,8 +107,32 @@ export class EBankaMutabakatService {
     const cariBul = (h: MutabakatHareketi) => {
       const p = planlar.get(h.vomsisId)!;
       if (h.aktarilanCariId) return { cariKartId: h.aktarilanCariId, neden: "Fişe aktarılan cari" };
+      if (h.onayliCariId) return { cariKartId: h.onayliCariId, neden: "Kullanıcı onayladı" };
       if (p.cari) return { cariKartId: p.cari.cariKartId, neden: p.neden };
       return null;
+    };
+
+    // Döviz hesap: TL karşılığı o günün kur tablosundan (M15). Kur bulunamazsa karşılaştırılamaz.
+    const tlMi = (h: MutabakatHareketi) => ["TL", "TRY", ""].includes((h.doviz || "").toUpperCase());
+    const kurlar = new Map<number, number | null>();
+    const kurOnbellek = new Map<string, number>();
+    for (const h of hareketler) {
+      if (tlMi(h)) continue;
+      const paraId = s.paraKodlari.get((h.doviz || "").toUpperCase());
+      const gun = (h.sistemTarihi || "").slice(0, 10);
+      if (!paraId || !gun) {
+        kurlar.set(h.vomsisId, null);
+        continue;
+      }
+      const a = `${paraId}|${gun}|${h.tutar > 0}`;
+      if (!kurOnbellek.has(a)) kurOnbellek.set(a, await EBankaAktarimSqlRepository.kurGetir(paraId, gun, h.tutar > 0, dbContext).catch(() => 0));
+      const kur = kurOnbellek.get(a) || 0;
+      kurlar.set(h.vomsisId, kur > 0 ? kur : null);
+    }
+    const bankaTl = (h: MutabakatHareketi): number | null => {
+      if (tlMi(h)) return Math.abs(h.tutar);
+      const k = kurlar.get(h.vomsisId);
+      return k ? yuvarla(Math.abs(h.tutar) * k) : null;
     };
 
     // Eşlenmiş fişler
@@ -110,21 +154,26 @@ export class EBankaMutabakatService {
         const gun = (h.sistemTarihi || "").slice(0, 10);
         const yon: Yon = h.tutar > 0 ? "gelen" : "giden";
         const cariId = cariBul(h)!.cariKartId;
+        const tl = bankaTl(h);
         const adaylar = havuz
           .filter((f) => f.cariKartId === cariId && f.yon === yon && f.tarih !== null && f.tarih >= gunEkle(gun, -ONCE_GUN) && f.tarih <= gunEkle(gun, SONRA_GUN))
-          .map((f) => ({ ...f, fark: yuvarla(Math.abs(h.tutar) - f.tutar), baskaHarekette: baskaYerde.has(anahtar(f)) }))
-          .sort((a, b) => Number(a.baskaHarekette) - Number(b.baskaHarekette) || Math.abs(a.fark!) - Math.abs(b.fark!) || String(b.tarih).localeCompare(String(a.tarih)));
+          .map((f): FisOzeti => ({
+            ...f,
+            fark: tl === null ? undefined : yuvarla(tl - f.tutar),
+            uyum: tl === null ? "uzak" : tutarUyumu(tl, f.tutar, tlMi(h)),
+            baskaHarekette: baskaYerde.has(anahtar(f)),
+          }))
+          .sort((a, b) => Number(a.baskaHarekette) - Number(b.baskaHarekette) || Math.abs(a.fark ?? Infinity) - Math.abs(b.fark ?? Infinity) || String(b.tarih).localeCompare(String(a.tarih)));
         adaylarByHareket.set(h.vomsisId, adaylar);
       }
 
       // Otomatik eşleştirme iki yönden de tek olmalı: hareketin tam tutan tek fişi var VE o fiş tam tutan tek hareketin adayı.
       // Aynı müşteriden aynı tutar birkaç gün üst üste gelebilir; o durumda hangisinin hangisi olduğunu kullanıcı seçer.
-      const tlMi = (h: MutabakatHareketi) => ["TL", "TRY", ""].includes((h.doviz || "").toUpperCase());
       const tamlar = new Map<number, FisOzeti[]>();
       const fisinTamHareketleri = new Map<string, number>();
       for (const h of aranacak) {
         if (!tlMi(h)) continue;
-        const tam = (adaylarByHareket.get(h.vomsisId) || []).filter((f) => !f.baskaHarekette && Math.abs(f.fark!) < KURUS && !reddedilen.has(`${h.vomsisId}|${anahtar(f)}`));
+        const tam = (adaylarByHareket.get(h.vomsisId) || []).filter((f) => !f.baskaHarekette && f.uyum === "tam" && !reddedilen.has(`${h.vomsisId}|${anahtar(f)}`));
         tamlar.set(h.vomsisId, tam);
         for (const f of tam) fisinTamHareketleri.set(anahtar(f), (fisinTamHareketleri.get(anahtar(f)) || 0) + 1);
       }
@@ -144,6 +193,11 @@ export class EBankaMutabakatService {
     for (const c of [...s.vknSozlugu.values()].flat()) cariAdlari.set(c.cariKartId, c.ad);
     for (const c of s.ibanSozlugu.values()) cariAdlari.set(c.cariKartId, c.ad);
     for (const c of s.tipCarileri.values()) cariAdlari.set(c.cariKartId, c.ad);
+    const eksikCariler = [...new Set(hareketler.map((h) => h.onayliCariId).filter((id): id is number => !!id && !cariAdlari.has(id)))];
+    for (const id of eksikCariler) {
+      const c = await EBankaAktarimSqlRepository.cariGetir(id, dbContext);
+      if (c) cariAdlari.set(id, c.ad);
+    }
 
     const satirlar: MutabakatSatiri[] = hareketler.map((h) => {
       const p = planlar.get(h.vomsisId)!;
@@ -154,7 +208,9 @@ export class EBankaMutabakatService {
           return f ? [{ ...f, otomatik: e.otomatik }] : [];
         });
       const adaylar = fisler.length ? [] : adaylarByHareket.get(h.vomsisId) || [];
-      const { durum, fark } = durumBelirle(h, p.virman, fisler, adaylar.length);
+      const tl = bankaTl(h);
+      // Yalnız tam / ±%1 tutan aday "Eşleşme bekliyor" yapar; uzak fişler elle seçilebilir (M14). Fark TL karşılığıyla (M15).
+      const { durum, fark } = durumBelirle({ ...h, tutar: tl ?? Math.abs(h.tutar) }, p.virman, fisler, adaylar.filter((a) => a.uyum !== "uzak").length);
       const c = cariBul(h);
       return {
         vomsisId: h.vomsisId,
@@ -164,11 +220,15 @@ export class EBankaMutabakatService {
         doviz: h.doviz,
         yon: h.tutar > 0 ? "gelen" : "giden",
         tutar: Math.abs(h.tutar),
+        tlKarsilik: tl,
+        kur: tlMi(h) ? null : kurlar.get(h.vomsisId) ?? null,
+        bankaId: h.bankaId,
         tipAdi: h.tipAdi,
         karsiTaraf: karsiTaraf(h),
         aciklama: h.aciklama,
         cari: c ? { cariKartId: c.cariKartId, ad: cariAdlari.get(c.cariKartId) || `#${c.cariKartId}` } : null,
         cariNedeni: c ? c.neden : p.neden,
+        oneriCari: !c && p.oneri ? { cariKartId: p.oneri.cariKartId, ad: p.oneri.ad } : null,
         durum,
         fark,
         faturaGerekmez: h.faturaGerekmez,
@@ -201,6 +261,21 @@ export class EBankaMutabakatService {
     if (!fis) throw ApiError.notFound("Fiş bulunamadı (silinmiş ya da iptal edilmiş olabilir).");
     await EBankaMutabakatSqlRepository.esle({ vomsisId, fisTuru, fisId, otomatik: false }, kullaniciId, dbContext);
     return { eslendi: true };
+  }
+
+  /** Önerilen / seçilen cariyi harekete bağlar (M11); karşı IBAN bu cariye öğrenilir, sonraki harekette IBAN kriteri tutar. */
+  public static async cariOnayla(girdi: { vomsisId?: unknown; cariKartId?: unknown }, kullaniciId?: number, dbContext?: DbContext) {
+    const vomsisId = Number(girdi.vomsisId);
+    if (!Number.isSafeInteger(vomsisId) || vomsisId <= 0) throw ApiError.badRequest("Geçersiz hareket.");
+    const cariKartId = girdi.cariKartId ? Number(girdi.cariKartId) : null;
+    if (cariKartId !== null && (!Number.isSafeInteger(cariKartId) || !(await EBankaAktarimSqlRepository.cariGetir(cariKartId, dbContext)))) throw ApiError.badRequest("Seçilen cari bulunamadı.");
+    if (!(await EBankaMutabakatSqlRepository.cariOnayla(vomsisId, cariKartId, kullaniciId, dbContext))) throw ApiError.notFound("Hareket bulunamadı.");
+    if (cariKartId) {
+      const h = await EBankaAktarimSqlRepository.adayGetir(vomsisId, dbContext);
+      const iban = h && (h.karsiIban || (h.tutar >= 0 ? h.gonderenIban : h.aliciIban));
+      if (iban && !(await EBankaAktarimSqlRepository.bizimIbanlar(dbContext)).has(iban)) await EBankaAktarimSqlRepository.ibanOgren(iban, cariKartId, dbContext).catch(() => undefined);
+    }
+    return { cariKartId };
   }
 
   public static async eslemeyiKaldir(girdi: { vomsisId?: unknown; fisTuru?: unknown; fisId?: unknown }, dbContext?: DbContext) {

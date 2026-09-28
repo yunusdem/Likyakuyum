@@ -4,7 +4,7 @@ import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } fro
 import { IconCheck, IconFileInvoice, IconLink, IconReceipt, IconSearch, IconUnlink, IconX } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { EBankaService, MutabakatDurumu, MutabakatFisi, MutabakatListesi, MutabakatSatiri } from "../../services/ebankaService";
-import { bugun, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
+import { bugun, CariSecModal, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
 import { fisKesimAdresi } from "./useEBankaFisKesimi";
 
 // F- e-Banka > J- Tahsilat / Ödeme Mutabakatı (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md)
@@ -26,7 +26,11 @@ const gunYaz = (g: string | null) => (g ? g.slice(0, 10).split("-").reverse().jo
 /** Fişin faturası e-Belge kaynak listesinden kesilir; perakende faturası kendi ekranında kesildiği için oraya yönlendirilmez. */
 const faturaAdresi = (f: MutabakatFisi): string | null => {
   if (f.fisTuru === "perakende") return null;
-  const q = new URLSearchParams({ kaynak: f.fisTuru === "doviz" ? "DOVIZ" : "FATURA", ...(f.tarih ? { tarih: f.tarih.slice(0, 10) } : {}), ...(f.fisNo ? { ara: f.fisNo } : {}) });
+  // sec: listede bulunup seçili gelecek kaynak belge (evrak türü: döviz 99, sarraf 0) — M17
+  const q = new URLSearchParams({
+    kaynak: f.fisTuru === "doviz" ? "DOVIZ" : "FATURA", ...(f.tarih ? { tarih: f.tarih.slice(0, 10) } : {}), ...(f.fisNo ? { ara: f.fisNo } : {}),
+    sec: `${f.fisTuru === "doviz" ? 99 : 0}:${f.fisId}`,
+  });
   return `/e-belge/kaynak?${q.toString()}`;
 };
 
@@ -52,6 +56,7 @@ export const EBankaMutabakatPage: React.FC = () => {
   const [secili, setSecili] = useState<MutabakatSatiri | null>(null);
   const [calisiyor, setCalisiyor] = useState(false);
   const [gerekmezNotu, setGerekmezNotu] = useState("");
+  const [cariSec, setCariSec] = useState(false);
   const { bildir, bildirimKutusu } = useBildirim();
 
   const listele = useCallback(async () => {
@@ -114,7 +119,12 @@ export const EBankaMutabakatPage: React.FC = () => {
           {paraYaz(f.tutar)}
           {Math.abs(f.fisToplami - f.tutar) >= 0.01 && <div className="text-muted small">fiş toplamı {paraYaz(f.fisToplami)}</div>}
         </td>
-        {!eslenmis && <td className={`text-end font-monospace text-nowrap ${f.fark ? "text-danger fw-bold" : "text-success"}`}>{f.fark ? paraYaz(f.fark) : "Tutuyor"}</td>}
+        {!eslenmis && (
+          <td className={`text-end font-monospace text-nowrap ${f.uyum === "tam" ? "text-success" : f.uyum === "yakin" ? "text-warning-emphasis fw-bold" : "text-danger"}`}>
+            {f.fark === undefined ? "-" : f.uyum === "tam" ? "Tutuyor" : paraYaz(f.fark)}
+            {f.uyum === "yakin" && <div className="small fw-normal">±%1 içinde</div>}
+          </td>
+        )}
         <td>
           {f.faturali ? (
             <Badge bg="success">{f.faturaBilgisi || "Faturalı"}</Badge>
@@ -256,6 +266,7 @@ export const EBankaMutabakatPage: React.FC = () => {
                   <td>
                     {s.karsiTaraf || "-"}
                     {s.cari && <div className="text-muted">{s.cari.ad}</div>}
+                    {!s.cari && s.oneriCari && <div className="text-info-emphasis fst-italic">Önerilen: {s.oneriCari.ad}</div>}
                   </td>
                   <td className="text-truncate" style={{ maxWidth: "260px" }} title={s.aciklama || ""}>
                     {s.aciklama || ""}
@@ -308,13 +319,44 @@ export const EBankaMutabakatPage: React.FC = () => {
               <Col md={4} className={`font-monospace fw-bold ${secili.yon === "giden" ? "text-danger" : "text-success"}`}>
                 {secili.yon === "giden" ? "Giden -" : "Gelen +"}
                 {paraYaz(secili.tutar)} {secili.doviz}
+                {secili.kur !== null && secili.tlKarsilik !== null && (
+                  <span className="text-muted fw-normal ms-2">≈ {paraYaz(secili.tlKarsilik)} TL (kur {secili.kur.toLocaleString("tr-TR", { maximumFractionDigits: 4 })})</span>
+                )}
               </Col>
               <Col md={2} className="text-secondary fw-bold">Hesap</Col>
               <Col md={4}>{secili.bankaAdi} {secili.doviz} - {secili.hesapNo}</Col>
               <Col md={2} className="text-secondary fw-bold">Karşı taraf</Col>
               <Col md={4}>{secili.karsiTaraf || "-"}</Col>
               <Col md={2} className="text-secondary fw-bold">Cari</Col>
-              <Col md={4}>{secili.cari ? secili.cari.ad : <span className="text-muted">Bulunamadı ({secili.cariNedeni})</span>}</Col>
+              <Col md={4}>
+                {secili.cari ? (
+                  <>
+                    {secili.cari.ad} <span className="text-muted">({secili.cariNedeni})</span>
+                    {secili.cariNedeni === "Kullanıcı onayladı" && (
+                      <Button size="sm" variant="link" className="p-0 ms-2 align-baseline" disabled={calisiyor}
+                        onClick={() => islem(() => EBankaService.mutabakatCariOnayla(secili.vomsisId, null), "Cari onayı kaldırıldı.")}>
+                        kaldır
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted">{secili.oneriCari ? secili.cariNedeni : `Bulunamadı (${secili.cariNedeni})`}</span>
+                )}
+                {!secili.cari && secili.durum !== "virman" && (
+                  <div className="d-flex gap-2 mt-1">
+                    {secili.oneriCari && (
+                      <Button size="sm" variant="outline-success" className="py-0" disabled={calisiyor}
+                        onClick={() => islem(() => EBankaService.mutabakatCariOnayla(secili.vomsisId, secili.oneriCari!.cariKartId), "Cari onaylandı.")}>
+                        <IconCheck size={14} className="me-1" />
+                        {secili.oneriCari.ad} — Onayla
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline-secondary" className="py-0" disabled={calisiyor} onClick={() => setCariSec(true)}>
+                      Cari seç
+                    </Button>
+                  </div>
+                )}
+              </Col>
               <Col md={2} className="text-secondary fw-bold">Açıklama</Col>
               <Col md={4}>{secili.aciklama || "-"}</Col>
               <Col md={2} className="text-secondary fw-bold">Durum</Col>
@@ -339,6 +381,10 @@ export const EBankaMutabakatPage: React.FC = () => {
               <>
                 <div className="fw-bold text-secondary mb-1">Aday fişler</div>
                 {secili.adaylar.length ? (
+                  <>
+                  {secili.adaylar.every((f) => f.uyum === "uzak") && (
+                    <div className="text-muted mb-1">Tutarı tutan (±%1) fiş yok; carinin bu tarihlere yakın diğer fişleri aşağıda, elle eşleyebilirsiniz.</div>
+                  )}
                   <Table size="sm" className="mb-3 align-middle">
                     <thead>
                       <tr className="text-muted">
@@ -354,11 +400,12 @@ export const EBankaMutabakatPage: React.FC = () => {
                     </thead>
                     <tbody>{secili.adaylar.map((f) => fisSatiri(secili, f, false))}</tbody>
                   </Table>
+                  </>
                 ) : (
                   <Alert variant="light" className="border py-2">
                     {secili.cari
                       ? "Bu carinin bu tarihe yakın (7 gün önce – 3 gün sonra) uygun fişi yok."
-                      : "Karşı taraf bir cariyle eşleşmediği için fiş aranamadı. e-Banka > Bekleyenler'de cariyi belirleyin."}
+                      : "Karşı taraf bir cariyle eşleşmediği için fiş aranamadı. Yukarıdan cariyi onaylayın ya da seçin."}
                   </Alert>
                 )}
               </>
@@ -368,7 +415,7 @@ export const EBankaMutabakatPage: React.FC = () => {
               <div className="border rounded p-2 mb-2">
                 <div className="fw-bold text-secondary mb-1">Fiş kes</div>
                 <div className="text-muted mb-2">
-                  Fiş ekranı {secili.cari ? "cari, " : ""}tarih ve {secili.yon === "gelen" ? "satış" : "alış"} işlemi dolu açılır; tutarı satırlara girip kaydedince fiş bu banka hareketiyle eşlenir.
+                  Fiş ekranı {secili.cari ? "cari, " : ""}tarih, {secili.yon === "gelen" ? "satış" : "alış"} işlemi ve ödeme kısmına banka hesabı + tutar dolu açılır; ürün seçildiğinde miktar tutardan hesaplanır. Kaydedince fiş bu banka hareketiyle eşlenir.
                   {!secili.cari && " Cari bulunamadığı için fiş ekranında seçmeniz gerekir."}
                 </div>
                 <div className="d-flex flex-wrap gap-2">
@@ -377,6 +424,7 @@ export const EBankaMutabakatPage: React.FC = () => {
                       onClick={() => navigate(fisKesimAdresi(k.yol, {
                         vomsisId: secili.vomsisId, cariId: secili.cari?.cariKartId ?? null, tarih: (secili.tarih || bugun()).slice(0, 10),
                         tip: secili.yon === "gelen" ? 1 : 0, tutar: secili.tutar, paraKodu: secili.doviz || "TL", baslangic, bitis,
+                        bankaId: secili.bankaId, tutarTl: secili.tlKarsilik,
                       }))}>
                       <IconReceipt size={14} className="me-1" />
                       {k.ad}
@@ -411,6 +459,16 @@ export const EBankaMutabakatPage: React.FC = () => {
           </Modal.Body>
         )}
       </Modal>
+
+      <CariSecModal
+        show={cariSec}
+        ilkArama={(secili?.karsiTaraf || "").split(" ")[0]}
+        onHide={() => setCariSec(false)}
+        onSec={(c) => {
+          setCariSec(false);
+          if (secili) islem(() => EBankaService.mutabakatCariOnayla(secili.vomsisId, c.cariKartId), `Cari kaydedildi: ${c.ad}`);
+        }}
+      />
     </div>
   );
 };
