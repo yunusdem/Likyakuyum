@@ -74,6 +74,7 @@ interface OdemeRow {
   cariUnvan?: string;
   bankaId?: number | null;
   posCihaziId?: number | null;
+  iskontoId?: number | null;
   paraId: number | null;
   paraKodu: string;
   paraAdi?: string;
@@ -112,15 +113,20 @@ const createEmptyRow = (satirNo = 1): GridRow => ({
   iscilikiMiktari: "", iscilikHasGram: "", kur: "", tutar: "", urunTipi: 0, karat: "", aciklama: "",
 });
 const createEmptyOdemeRow = (satirNo: number): OdemeRow => ({
-  id: makeId(), satirNo, odemeAraciTuru: 0, cariKartId: null, cariKod: "", cariUnvan: "", bankaId: null, paraId: null, paraKodu: "", paraAdi: "",
+  id: makeId(), satirNo, odemeAraciTuru: 0, cariKartId: null, cariKod: "", cariUnvan: "", bankaId: null, posCihaziId: null, iskontoId: null, paraId: null, paraKodu: "TL", paraAdi: "TÜRK LİRASI",
   adet: "", miktar: "", milyem: "", hasGram: "", kur: "", tutar: "", urunTipi: 0,
 });
 
 const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField?: keyof OdemeRow): OdemeRow => {
   const isTL = (r.paraKodu || "").trim().toUpperCase() === "TL" || (r.paraKodu || "").trim().toUpperCase() === "TRY" || (r.paraKodu || "").trim().toUpperCase() === "TRL";
   const isKart = r.odemeAraciTuru === 2;
-  const isKurFixed = isTL || isKart;
-  const isPara = (r.urunTipi === 0 || isTL);
+  const isIskonto = Boolean(
+    r.iskontoId ||
+    (r.paraKodu && r.paraKodu.trim().toUpperCase().startsWith("ISK")) ||
+    (r.paraAdi && (r.paraAdi.toUpperCase().includes("İSKONTO") || r.paraAdi.toUpperCase().includes("ISKONTO")))
+  );
+  const isKurFixed = isTL || isKart || isIskonto;
+  const isPara = (r.urunTipi === 0 || isTL || isIskonto);
 
   const adet = parseDecimal(r.adet);
   const miktar = parseDecimal(r.miktar);
@@ -130,8 +136,22 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   let hasGram: number | string = r.hasGram;
   let tutar: number | string = r.tutar;
   const kurNum = parseDecimal(r.kur);
-  const kur = isKurFixed ? "" : (kurNum > 0 ? kurNum : (r.kur !== "" && r.kur !== null && r.kur !== undefined ? r.kur : (defaultHasKuru > 0 ? defaultHasKuru : "")));
+  const kur = isKurFixed ? (isIskonto ? (r.kur || "") : "") : (kurNum > 0 ? kurNum : (r.kur !== "" && r.kur !== null && r.kur !== undefined ? r.kur : (defaultHasKuru > 0 ? defaultHasKuru : "")));
   const effectiveKur = isKurFixed ? 1 : (kurNum > 0 ? kurNum : parseDecimal(kur));
+
+  if (isIskonto) {
+    if (changedField !== "tutar") {
+      tutar = miktar > 0 ? miktar : (parseDecimal(r.tutar) > 0 ? parseDecimal(r.tutar) : "");
+    }
+    return {
+      ...r,
+      adet: "",
+      milyem: r.milyem || "",
+      hasGram: r.hasGram || "",
+      tutar,
+      kur: r.kur !== undefined && r.kur !== null && r.kur !== "" ? r.kur : 1,
+    };
+  }
 
   if (isPara) {
     if (changedField !== "tutar") {
@@ -1022,6 +1042,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             }
           }
           const matchedUrun = urunList.find((u) => (o.paraId && u.paraId === o.paraId) || (u.kod && o.paraKodu && u.kod.trim().toLowerCase() === o.paraKodu.trim().toLowerCase()));
+          const matchedIskonto = iskontoList.find((isk) => (o.iskontoId && isk.iskontoId === o.iskontoId) || (isk.kod && o.paraKodu && isk.kod.trim().toLowerCase() === o.paraKodu.trim().toLowerCase()));
           let calcAdet: number | string = o.adet != null && o.adet !== "" ? o.adet : "";
           if (!calcAdet && matchedUrun && Number(matchedUrun.gramaj) > 0 && Number(o.miktar) > 0) {
             calcAdet = Math.round(Number(o.miktar) / Number(matchedUrun.gramaj));
@@ -1064,6 +1085,21 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             }
           }
 
+          let resolvedParaKodu = (o.paraKodu || "").trim();
+          let resolvedParaAdi = (o.paraAdi || "").trim();
+          if (!resolvedParaKodu) {
+            if (matchedIskonto) {
+              resolvedParaKodu = (matchedIskonto.kod || `ISK-${matchedIskonto.iskontoId}`).toUpperCase().trim();
+              resolvedParaAdi = matchedIskonto.tanim;
+            } else if (matchedUrun) {
+              resolvedParaKodu = matchedUrun.kod;
+              resolvedParaAdi = matchedUrun.ad;
+            } else if (oat === 2 || oat === 3 || oat === 0) {
+              resolvedParaKodu = "TL";
+              resolvedParaAdi = "TÜRK LİRASI";
+            }
+          }
+
           const oRow: OdemeRow = {
             id: makeId(),
             satirNo: o.satirNo,
@@ -1073,9 +1109,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             cariUnvan: cUnv,
             bankaId: o.bankaId || (oat === 3 ? o.cariKartId : null),
             posCihaziId: o.posCihaziId || (oat === 2 ? o.cariKartId : null),
+            iskontoId: o.iskontoId || matchedIskonto?.iskontoId || null,
             paraId: o.paraId ?? null,
-            paraKodu: o.paraKodu || (matchedUrun ? matchedUrun.kod : ""),
-            paraAdi: o.paraAdi || matchedUrun?.ad || (o.paraKodu === "TL" ? "TÜRK LİRASI" : ""),
+            paraKodu: resolvedParaKodu,
+            paraAdi: resolvedParaAdi || matchedUrun?.ad || (resolvedParaKodu === "TL" ? "TÜRK LİRASI" : ""),
             adet: calcAdet,
             miktar: o.miktar != null ? o.miktar : "",
             milyem: oMilyem,
@@ -1547,10 +1584,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               cariKod: o.cariKod || null,
               cariUnvan: o.cariUnvan || null,
               bankaId: o.bankaId || null,
-              posCihaziId: o.posCihaziId || (o.odemeAraciTuru === 2 ? o.cariKartId : null),
+              posCihaziId: o.posCihaziId || (o.odemeAraciTuru === 2 ? (o.bankaId || o.cariKartId) : null),
               paraId: o.paraId || null,
-              paraKodu: o.paraKodu || null,
+              paraKodu: o.paraKodu || (o.odemeAraciTuru === 2 || o.odemeAraciTuru === 3 ? "TL" : null),
               paraAdi: o.paraAdi || null,
+              iskontoId: o.iskontoId || null,
               adet: ad,
               miktar: effectiveMik,
               milyem: parseDecimal(o.milyem),
@@ -2593,6 +2631,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         cariKod: item.kod || "",
         cariUnvan: item.ad || "",
         bankaId: null,
+        posCihaziId: null,
+        iskontoId: null,
         paraId: null,
         paraKodu: "",
         paraAdi: "",
@@ -2645,21 +2685,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const iskKod = (item.kod || `ISK-${item.iskontoId}`).toUpperCase().trim();
     const iskAd = item.tanim ? (item.tanim.toUpperCase().includes("İSKONTO") || item.tanim.toUpperCase().includes("ISKONTO") ? item.tanim : `İSKONTO - ${item.tanim}`) : "İSKONTO";
+    const finalAmount = discountAmount > 0 ? discountAmount : (item.tutar || item.oran || "");
 
     setOdemeRows((prev) => prev.map((r) => {
       if (r.id !== rowId) return r;
       const updated: OdemeRow = {
         ...r,
         odemeAraciTuru: 1,
+        iskontoId: item.iskontoId || null,
         paraId: null,
         paraKodu: iskKod,
         paraAdi: iskAd,
         adet: "",
-        miktar: discountAmount > 0 ? discountAmount : (item.tutar || item.oran || ""),
+        miktar: finalAmount,
         milyem: item.oran ? String(item.oran) : "",
         hasGram: item.hasTutar ? String(item.hasTutar) : "",
         kur: iskKurVal,
-        tutar: discountAmount > 0 ? discountAmount : (item.tutar || ""),
+        tutar: finalAmount,
       };
       return updated;
     }));
@@ -2680,9 +2722,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const updated: OdemeRow = {
         ...r,
         odemeAraciTuru: 2,
+        posCihaziId: item.posCihaziId || null,
         bankaId: item.posCihaziId || null,
         cariKartId: null,
         cariKod: item.kod || "",
+        iskontoId: null,
         paraId: null,
         paraKodu: "TL",
         paraAdi: item.ad || "KREDİ KARTI / POS",

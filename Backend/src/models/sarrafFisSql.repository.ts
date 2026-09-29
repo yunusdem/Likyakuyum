@@ -32,6 +32,7 @@ export interface OdemeSatiriDto {
   paraId?: number | null;
   paraKodu?: string | null;
   paraAdi?: string | null;
+  iskontoId?: number | null;
   posCihaziId?: number | null;
   bankaId?: number | null;
   adet?: number | null;
@@ -278,9 +279,22 @@ export class SarrafFisSqlRepository {
     }
   }
 
+  public static async ensureSchema(pool: sql.ConnectionPool): Promise<void> {
+    try {
+      await pool.request().query(`
+        IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ISKONTO_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
+      `).catch(() => {});
+    } catch {}
+  }
+
   public static async getFisById(sarrafFisiId: number, dbContext?: { dbServer?: string; dbName?: string }): Promise<any | null> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      await this.ensureSchema(pool);
+
       const h = (await pool.request().input("id", sql.Int, sarrafFisiId)
         .query(`SELECT SF.*, 
                        IST.KOD AS LOADED_ISTATISTIK_KODU
@@ -295,8 +309,8 @@ export class SarrafFisSqlRepository {
                 WHERE SFS.SARRAF_FISI_ID = @id2 ORDER BY SFS.SATIR_NO`)).recordset;
       const odemeler = (await pool.request().input("id3", sql.Int, sarrafFisiId)
         .query(`SELECT OS.*, 
-                       ISNULL(RTRIM(P.KOD),'') AS PARA_KODU, 
-                       ISNULL(P.AD,'') AS PARA_ADI, 
+                       ISNULL(RTRIM(P.KOD),'') AS P_PARA_KODU, 
+                       ISNULL(P.AD,'') AS P_PARA_ADI, 
                        ISNULL(P.HAS_ORANI, 0) AS PARA_HAS_ORANI,
                        ISNULL(RTRIM(C.KOD),'') AS CARI_KOD,
                        ISNULL(C.AD,'') AS CARI_UNVAN,
@@ -314,6 +328,8 @@ export class SarrafFisSqlRepository {
       const rawIrsaliyeNo = (h.IRSALIYE_NO || "").trim();
       const seriNo = rawFisNo;
       const belgeNo = rawIrsaliyeNo;
+
+      const iskontolar = (await pool.request().query(`SELECT ISKONTO_ID, RTRIM(KOD) AS KOD, TANIM FROM dbo.TODVZ_ISKONTO WITH (NOLOCK)`).catch(() => ({ recordset: [] }))).recordset || [];
 
       return {
         sarrafFisiId: h.SARRAF_FISI_ID,
@@ -383,12 +399,30 @@ export class SarrafFisSqlRepository {
             effectiveCariUnvan = r.BANKA_HESAP_ADI || effectiveCariUnvan || "";
           }
 
+          let effectiveParaKodu = (r.PARA_KODU || r.P_PARA_KODU || "").trim();
+          let effectiveParaAdi = r.PARA_ADI || r.P_PARA_ADI || "";
+
+          if (r.ISKONTO_ID && iskontolar.length > 0) {
+            const matchIsk = iskontolar.find((isk: any) => isk.ISKONTO_ID === r.ISKONTO_ID);
+            if (matchIsk) {
+              if (!effectiveParaKodu || effectiveParaKodu === "TL") effectiveParaKodu = (matchIsk.KOD || `ISK-${matchIsk.ISKONTO_ID}`).trim();
+              if (!effectiveParaAdi || effectiveParaAdi === "TÜRK LİRASI") effectiveParaAdi = matchIsk.TANIM || "İSKONTO";
+            }
+          }
+
+          // If POS or Banka and paraKodu is empty, default to "TL"
+          if ((rawOat === 2 || rawOat === 3) && !effectiveParaKodu) {
+            effectiveParaKodu = "TL";
+            effectiveParaAdi = "TÜRK LİRASI";
+          }
+
           return {
             satirNo: r.SATIR_NO, islemeYeri: r.ISLEME_YERI, odemeAraciTuru: rawOat,
             cariKartId: r.CARI_KART_ID ?? null, cariKod: effectiveCariKod, cariUnvan: effectiveCariUnvan,
             bankaId: r.POS_CIHAZI_ID ?? r.BANKA_HESABI_ID ?? r.BANKA_ID ?? (rawOat === 3 ? r.CARI_KART_ID : null),
             posCihaziId: r.POS_CIHAZI_ID ?? (rawOat === 2 ? r.CARI_KART_ID : null),
-            paraId: r.PARA_ID ?? null, paraKodu: (r.PARA_KODU || "").trim(), paraAdi: r.PARA_ADI || "",
+            paraId: r.PARA_ID ?? null, paraKodu: effectiveParaKodu, paraAdi: effectiveParaAdi,
+            iskontoId: r.ISKONTO_ID ?? null,
             miktar: Number(r.MIKTAR) || 0, milyem: mVal, hasGram: Number(r.HAS_GRAM) || 0,
             kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0,
           };
@@ -402,6 +436,7 @@ export class SarrafFisSqlRepository {
 
   public static async saveFis(dto: SaveSarrafFisDto, dbContext?: { dbServer?: string; dbName?: string }): Promise<{ sarrafFisiId: number; fisNo: string; seriNo?: string; belgeNo?: string; yeniKayit: boolean }> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    await this.ensureSchema(pool);
 
     try {
       const ckRes = await pool.request().query(`
@@ -417,6 +452,9 @@ export class SarrafFisSqlRepository {
 
     await pool.request().query(`
       IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ISKONTO_ID] INT NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
     `).catch(() => {});
 
     const req = pool.request();
@@ -625,6 +663,8 @@ export class SarrafFisSqlRepository {
       req.input(`${p}_oat`, sql.TinyInt, oat);
       req.input(`${p}_pid`, sql.Int, isPos ? null : (o.paraId ?? null));
       req.input(`${p}_pkod`, sql.VarChar(50), (o.paraKodu || "").trim());
+      req.input(`${p}_pad`, sql.VarChar(100), (o.paraAdi || "").trim());
+      req.input(`${p}_iskId`, sql.Int, o.iskontoId ?? null);
       req.input(`${p}_ckId`, sql.Int, cariKartId);
       req.input(`${p}_pos`, sql.Int, isPos ? posCihaziId : null);
       req.input(`${p}_mik`, sql.Float, mik);
@@ -1041,6 +1081,14 @@ export class SarrafFisSqlRepository {
         UPDATE [dbo].[TODVZ_SARRAF_FISI]
         SET ISTATISTIK_ID = @IN_ISTATISTIK_ID
         WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
+
+        ${validOdemeler.map((o, idx) => `
+        UPDATE [dbo].[TODVZ_ODEME_SATIRI]
+        SET ISKONTO_ID = COALESCE(@o_${idx}_iskId, (SELECT TOP 1 ISKONTO_ID FROM [dbo].[TODVZ_ISKONTO] WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@o_${idx}_pkod) OR UPPER(LTRIM(RTRIM(TANIM))) = UPPER(@o_${idx}_pad))),
+            PARA_KODU = NULLIF(@o_${idx}_pkod, ''),
+            PARA_ADI = NULLIF(@o_${idx}_pad, '')
+        WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID AND SATIR_NO = @o_${idx}_sNo;
+        `).join("\n")}
       END;
 
       SELECT 
