@@ -107,8 +107,10 @@ export class UrunStokService {
     r: UrunStokSatirHam, varsayilan: string, guncel: Map<number, number>, gunKurlari: Map<string, Map<number, number>>,
     kurOf: (m: Map<number, number>, kod: string) => number, tlId: number,
   ): UrunStokSatir {
-    const birim = (r.MALIYET_PARA_KODU || varsayilan).trim().toUpperCase();
-    const satisParaKodu = (r.SATIS_PARA_KODU || birim).trim().toUpperCase();
+    // Altın ürün kaydı MALIYET ve SATIS_FIYATI'nı daima HAS saklar (para kodu kolonları yalnızca ekrandaki döviz karşılığının kodudur)
+    const altin = varsayilan === "HAS";
+    const birim = altin ? "HAS" : (r.MALIYET_PARA_KODU || varsayilan).trim().toUpperCase();
+    const satisParaKodu = altin ? "HAS" : (r.SATIS_PARA_KODU || birim).trim().toUpperCase();
     const satisGunu = gun(r.SATIS_TARIHI);
     const satildi = !!r.SATILDI || r.FATURA_ID != null;
     const kurTablosu = satisGunu ? gunKurlari.get(satisGunu) || guncel : guncel;

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Alert, Badge, Button, Card, Col, Form, InputGroup, Modal, Row, Spinner, Table } from "react-bootstrap";
 import {
   IconCoin, IconDiamond, IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconSearch, IconX, IconTrendingUp, IconTrendingDown,
-  IconPackage, IconCash, IconScale, IconUserSearch,
+  IconPackage, IconCash, IconScale, IconUserSearch, IconFilter,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -11,7 +11,7 @@ import { UrunStokService, UrunStokFiltre, UrunStokSecenekler, UrunStokSonuc, Uru
 
 /**
  * I- Etiket İşlemleri › I- Altın Ürün Stoğu / J- Özel Ürün Stoğu.
- * Filtreler değişince anında yeniden yüklenir; stok + alış (maliyet) + satış + kâr/zarar; PDF / Excel sunucuda üretilir.
+ * Sayfa açılışında liste boştur; "Filtrele" ile yüklenir (hiçbir filtre seçilmezse tümü). Stok + alış (maliyet) + satış + kâr/zarar; PDF / Excel sunucuda üretilir.
  */
 
 interface Props { tip: UrunStokTipi }
@@ -27,8 +27,9 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
   const baslik = altin ? "I- Altın Ürün Stoğu" : "J- Özel Ürün Stoğu";
   const dosyaAdi = altin ? "altin-urun-stogu" : "ozel-urun-stogu";
 
-  const [filtre, setFiltre] = useState<UrunStokFiltre>({ baslangic: bugun(), bitis: bugun(), tarihTuru: "satis", durum: "tumu" });
-  const [search, setSearch] = useState("");
+  const varsayilanFiltre = (): UrunStokFiltre => ({ baslangic: bugun(), bitis: bugun(), tarihTuru: "satis", durum: "tumu" });
+  const [filtre, setFiltre] = useState<UrunStokFiltre>(varsayilanFiltre);   // ekrandaki seçim
+  const [uygulanan, setUygulanan] = useState<UrunStokFiltre | null>(null); // Filtrele'ye basılan son filtre (PDF/Excel bunu kullanır)
   const [secenekler, setSecenekler] = useState<UrunStokSecenekler>({ ayarlar: [], gruplar: [], ureticiler: [], bankolar: [] });
   const [veri, setVeri] = useState<UrunStokSonuc | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -41,32 +42,28 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
   const [cariModal, setCariModal] = useState(false);
   const istekNo = useRef(0);
 
-  // Arama kutusu gecikmeli
   useEffect(() => {
-    const t = setTimeout(() => setFiltre((f) => (f.search === (search || undefined) ? f : { ...f, search: search || undefined })), 350);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  useEffect(() => {
-    setVeri(null); setCariAdi(""); setSearch("");
-    setFiltre({ baslangic: bugun(), bitis: bugun(), tarihTuru: "satis", durum: "tumu" });
+    setVeri(null); setUygulanan(null); setCariAdi(""); setHata(null);
+    setFiltre(varsayilanFiltre());
     UrunStokService.secenekler(tip).then(setSecenekler).catch(() => undefined);
   }, [tip]);
 
-  const yukle = useCallback(async () => {
+  const yukle = useCallback(async (f: UrunStokFiltre) => {
     const no = ++istekNo.current;
     setYukleniyor(true); setHata(null);
     try {
-      const v = await UrunStokService.veri(tip, filtre);
-      if (no === istekNo.current) setVeri(v);
+      const v = await UrunStokService.veri(tip, f);
+      if (no === istekNo.current) { setVeri(v); setUygulanan(f); }
     } catch (e: any) {
       if (no === istekNo.current) setHata(e?.response?.data?.message || e?.message || "Liste alınamadı.");
     } finally {
       if (no === istekNo.current) setYukleniyor(false);
     }
-  }, [tip, filtre]);
+  }, [tip]);
 
-  useEffect(() => { void yukle(); }, [yukle]);
+  const filtrele = () => { void yukle(filtre); };
+  const yenile = () => { if (uygulanan) void yukle(uygulanan); };
+  const temizle = () => { setFiltre(varsayilanFiltre()); setCariAdi(""); };
 
   const guncelle = (k: keyof UrunStokFiltre, v: any) => setFiltre((f) => ({ ...f, [k]: v === "" || v === "all" ? undefined : v }));
 
@@ -89,19 +86,19 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
 
   const pdfOnizle = async () => {
     setDosyaIsi(true); setHata(null);
-    try { setPdfUrl(await UrunStokService.pdfBlobUrl(tip, filtre)); }
+    try { setPdfUrl(await UrunStokService.pdfBlobUrl(tip, uygulanan || filtre)); }
     catch (e: any) { setHata(e?.message || "PDF üretilemedi."); }
     finally { setDosyaIsi(false); }
   };
   const pdfIndir = async () => {
     setDosyaIsi(true); setHata(null);
-    try { await UrunStokService.pdfIndir(tip, filtre, `${dosyaAdi}-${filtre.baslangic || ""}-${filtre.bitis || ""}`); }
+    try { const f = uygulanan || filtre; await UrunStokService.pdfIndir(tip, f, `${dosyaAdi}-${f.baslangic || ""}-${f.bitis || ""}`); }
     catch (e: any) { setHata(e?.message || "PDF indirilemedi."); }
     finally { setDosyaIsi(false); }
   };
   const excelIndir = async () => {
     setDosyaIsi(true); setHata(null);
-    try { await UrunStokService.excelIndir(tip, filtre, `${dosyaAdi}-${filtre.baslangic || ""}-${filtre.bitis || ""}`); }
+    try { const f = uygulanan || filtre; await UrunStokService.excelIndir(tip, f, `${dosyaAdi}-${f.baslangic || ""}-${f.bitis || ""}`); }
     catch (e: any) { setHata(e?.message || "Excel indirilemedi."); }
     finally { setDosyaIsi(false); }
   };
@@ -116,7 +113,7 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
       <ERPToolbar
         pageTitle={baslik}
         pageIcon={altin ? <IconCoin size={20} /> : <IconDiamond size={20} />}
-        onRefresh={yukle}
+        onRefresh={yenile}
         hideNew hideSave hideDelete hideSearch hideNavigation hidePrint
         rightContent={
           <div className="d-flex gap-1">
@@ -253,9 +250,15 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
               <Form.Label className="small text-muted mb-1 fw-bold">Ara</Form.Label>
               <InputGroup size="sm">
                 <InputGroup.Text><IconSearch size={14} /></InputGroup.Text>
-                <Form.Control value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Barkod, ürün adı, orijinal kod, grup" />
-                {search && <Button variant="outline-secondary" onClick={() => setSearch("")}><IconX size={14} /></Button>}
+                <Form.Control value={filtre.search || ""} onChange={(e) => guncelle("search", e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") filtrele(); }} placeholder="Barkod, ürün adı, orijinal kod, grup" />
+                {filtre.search && <Button variant="outline-secondary" onClick={() => guncelle("search", "")}><IconX size={14} /></Button>}
               </InputGroup>
+            </Col>
+            <Col xs={12} sm={6} md={4} lg={2} className="d-flex gap-1">
+              <Button size="sm" variant="primary" onClick={filtrele} disabled={yukleniyor} className="flex-grow-1">
+                {yukleniyor ? <Spinner animation="border" size="sm" /> : <IconFilter size={15} />} Filtrele
+              </Button>
+              <Button size="sm" variant="outline-secondary" onClick={temizle} title="Filtreleri sıfırla"><IconX size={15} /></Button>
             </Col>
           </Row>
           {veri?.kurAciklama && <div className="small text-muted mt-2">{veri.kurAciklama} · Satılanlarda fatura günü kuru, stoktakilerde güncel kur.</div>}
@@ -294,6 +297,8 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
               <tbody>
                 {yukleniyor && !veri ? (
                   <tr><td colSpan={20} className="text-center py-4"><Spinner animation="border" size="sm" /> Yükleniyor…</td></tr>
+                ) : !veri ? (
+                  <tr><td colSpan={20} className="text-center text-muted py-5">Filtreleri seçip <b>Filtrele</b>'ye basın. Hiçbir şey seçilmezse tüm ürünler listelenir.</td></tr>
                 ) : satirlar.length === 0 ? (
                   <tr><td colSpan={20} className="text-center text-muted py-4">Bu filtrelerle kayıt bulunamadı.</td></tr>
                 ) : satirlar.map((s) => (
