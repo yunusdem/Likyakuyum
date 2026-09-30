@@ -52,6 +52,13 @@ export interface CariKartItem {
   whatsappAdi: string | null;
   eFaturaPostaKutusu: string | null;
   eIrsaliyePostaKutusu: string | null;
+  borcBakiye?: number;
+  alacakBakiye?: number;
+  netBakiye?: number;
+  bakiyeYon?: "B" | "A" | "-";
+  hasBakiye?: number;
+  hasYon?: "B" | "A" | "-";
+  bakiyeOzet?: string;
 }
 
 export interface CariKartFormData {

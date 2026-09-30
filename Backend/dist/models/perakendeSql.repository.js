@@ -1097,6 +1097,63 @@ export class PerakendeSqlRepository {
               ELSE (ISNULL((SELECT SUM(TOPLAM_TUTAR) FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID), 0) - ISNULL(ISKONTO_TUTARI, 0))
             END
         WHERE FATURA_ID = @FATURA_ID;
+
+        -- İşçilik Hareketini TODVZ_HESAP_HAREKETI tablosuna işleme (Firma Tanımlarındaki ISCILIK_HESABI)
+        DECLARE @ISCILIK_HESAP_KODU VARCHAR(50) = NULL;
+        DECLARE @TARGET_ISCILIK_HESAP_ID INT = NULL;
+        
+        SELECT TOP 1 @ISCILIK_HESAP_KODU = LTRIM(RTRIM(ISCILIK_HESABI))
+        FROM [dbo].[TODVZ_TANIM] WITH (NOLOCK);
+
+        IF (@ISCILIK_HESAP_KODU IS NOT NULL AND LEN(@ISCILIK_HESAP_KODU) > 0)
+        BEGIN
+          SELECT TOP 1 @TARGET_ISCILIK_HESAP_ID = HESAP_ID 
+          FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
+          WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@ISCILIK_HESAP_KODU) 
+             OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@ISCILIK_HESAP_KODU)
+             OR (ISNUMERIC(@ISCILIK_HESAP_KODU) = 1 AND HESAP_ID = CAST(@ISCILIK_HESAP_KODU AS INT));
+        END;
+
+        IF (@TARGET_ISCILIK_HESAP_ID IS NOT NULL)
+        BEGIN
+          DECLARE @F_NO VARCHAR(50);
+          DECLARE @F_TARIH DATETIME;
+          DECLARE @F_TIP TINYINT;
+          DECLARE @F_VEZNE INT;
+          DECLARE @F_EKLEYEN INT;
+          DECLARE @F_KDV_ORANI FLOAT;
+          DECLARE @F_KDV_TUTAR FLOAT;
+          DECLARE @F_ARA_TOPLAM FLOAT;
+
+          SELECT 
+            @F_NO = FATURA_NO,
+            @F_TARIH = TARIH,
+            @F_TIP = FATURA_TIPI,
+            @F_VEZNE = VEZNE_ID,
+            @F_EKLEYEN = EKLEYEN_ID,
+            @F_KDV_TUTAR = TOPLAM_KDV,
+            @F_ARA_TOPLAM = ARA_TOPLAM
+          FROM dbo.TODVZ_FATURA 
+          WHERE FATURA_ID = @FATURA_ID;
+
+          DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] 
+          WHERE ACIKLAMA LIKE '%Perakende Fişi İşçilik%' AND ACIKLAMA LIKE '%' + LTRIM(RTRIM(@F_NO)) + '%';
+
+          IF (@F_ARA_TOPLAM > 0)
+          BEGIN
+            DECLARE @HH_ACIKLAMA VARCHAR(200) = 'Perakende Fişi İşçilik - Fatura No: ' + LTRIM(RTRIM(@F_NO));
+            DECLARE @HH_TIP TINYINT = CASE WHEN @F_TIP = 1 THEN 0 ELSE 1 END; -- Satış: 0 (Gelir Girişi), İade: 1 (Çıkış)
+            
+            INSERT INTO [dbo].[TODVZ_HESAP_HAREKETI] (
+              HESAP_ID, TARIH, ACIKLAMA, PARA_ID, MEBLAG, KDV_ORANI, KDV, TIP, VEZNE_ID,
+              EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
+            ) VALUES (
+              @TARGET_ISCILIK_HESAP_ID, @F_TARIH, @HH_ACIKLAMA, 1, @F_ARA_TOPLAM, 
+              0, ISNULL(@F_KDV_TUTAR, 0), @HH_TIP, @F_VEZNE,
+              @F_EKLEYEN, GETDATE(), @F_EKLEYEN, GETDATE()
+            );
+          END;
+        END;
       `);
             await transaction.commit();
             const result = await this.getInvoiceById(outFaturaId, dbContext);

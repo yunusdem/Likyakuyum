@@ -626,6 +626,34 @@ export const CompanyDefinitionsPage: React.FC = () => {
     }
   };
 
+  const openIscilikHesabiLookup = async () => {
+    try {
+      const list = await ensureHesaplar();
+      setLookupModalConfig({
+        show: true,
+        title: "İşçilik Hesabı (Hesap Kartı - A- Hesap Kayıt) Seçimi",
+        items: list,
+        selectedId: formData.ISCILIK_HESABI,
+        columns: [
+          { header: "ID", render: (it) => <span className="font-monospace fw-semibold">{it.hesapId}</span>, width: "70px" },
+          { header: "Hesap Kodu", render: (it) => <Badge bg="primary" className="font-monospace">{it.kod}</Badge>, width: "120px" },
+          { header: "Hesap Tanımı / Adı", render: (it) => <span className="fw-medium">{it.ad}</span> },
+          { header: "KDV %", render: (it) => <span className="font-monospace">{it.kdvOrani ?? 0}%</span>, width: "80px", align: "right" },
+        ],
+        filterFn: (it, term) => {
+          const t = term.toLowerCase();
+          return (it.kod && it.kod.toLowerCase().includes(t)) || (it.ad && it.ad.toLowerCase().includes(t)) || String(it.hesapId).includes(t);
+        },
+        onSelect: (it) => {
+          handleChange("ISCILIK_HESABI", (it.kod || it.ad || "").trim());
+          setLookupModalConfig((prev) => ({ ...prev, show: false }));
+        },
+      });
+    } catch (err) {
+      console.error("İşçilik hesabı lookup hatası:", err);
+    }
+  };
+
   const openIskontoLookup = async () => {
     try {
       const list = await ensureIskontolar();
@@ -1979,13 +2007,23 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İşçilik Hesabı:</Form.Label>
                               <Col>
-                                <Form.Control
-                                  type="text"
-                                  value={formData.ISCILIK_HESABI || ""}
-                                  onChange={(e) => handleChange("ISCILIK_HESABI", e.target.value)}
-                                  className="bg-white border font-monospace text-start"
-                                  style={{ maxWidth: "110px" }}
-                                />
+                                <InputGroup size="sm" style={{ maxWidth: "260px" }}>
+                                  <Form.Control
+                                    type="text"
+                                    value={formData.ISCILIK_HESABI || ""}
+                                    onChange={(e) => handleChange("ISCILIK_HESABI", e.target.value)}
+                                    placeholder="İşçilik Hesabı (A- Hesap Kayıt)"
+                                    className="bg-white border font-monospace text-start"
+                                  />
+                                  <Button
+                                    variant="outline-secondary"
+                                    className="bg-white border-start-0 px-2.5 d-flex align-items-center justify-content-center"
+                                    onClick={openIscilikHesabiLookup}
+                                    title="İşçilik Hesabı Seç (A- Hesap Kayıt)"
+                                  >
+                                    <IconBinoculars size={16} />
+                                  </Button>
+                                </InputGroup>
                               </Col>
                             </Form.Group>
                           </Col>

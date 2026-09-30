@@ -338,7 +338,8 @@ export class CompanySqlRepository {
             @YETKILI_MUESSESE_TIPI  TINYINT = 0,
             @E_DEFTER_MUKELLEFI     BIT = 0,
             @URETIM_HESABI_ID       INT = NULL,
-            @ISKONTO_ID             INT = NULL
+            @ISKONTO_ID             INT = NULL,
+            @ISCILIK_HESABI         VARCHAR(20) = NULL
           AS
           BEGIN
             SET NOCOUNT ON;
@@ -367,7 +368,8 @@ export class CompanySqlRepository {
               [YETKILI_MUESSESE_TIPI] = @YETKILI_MUESSESE_TIPI,
               [E_DEFTER_MUKELLEFI]    = @E_DEFTER_MUKELLEFI,
               [URETIM_HESABI_ID]      = @URETIM_HESABI_ID,
-              [ISKONTO_ID]            = @ISKONTO_ID;
+              [ISKONTO_ID]            = @ISKONTO_ID,
+              [ISCILIK_HESABI]        = @ISCILIK_HESABI;
           END;
         `);
             }

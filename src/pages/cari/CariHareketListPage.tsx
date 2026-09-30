@@ -44,10 +44,10 @@ export const CariHareketListPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters
+  // Filters - default to empty to show all existing records
   const today = new Date().toISOString().split("T")[0];
-  const [startDate, setStartDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [selectedCariId, setSelectedCariId] = useState<string>("all");
   const [selectedVezneId, setSelectedVezneId] = useState<string>("all");
   const [selectedTip, setSelectedTip] = useState<string>("all"); // all, 0: Borç, 1: Alacak
@@ -99,16 +99,14 @@ export const CariHareketListPage: React.FC = () => {
   };
 
   const handleResetFilter = () => {
-    const curToday = new Date().toISOString().split("T")[0];
-    setStartDate(curToday);
-    setEndDate(curToday);
+    setStartDate("");
+    setEndDate("");
     setSelectedCariId("all");
     setSelectedVezneId("all");
     setSelectedTip("all");
     setSelectedHareketTipi("all");
     setSearchTerm("");
-    // Re-fetch with today filters
-    CariHareketService.list({ startDate: curToday, endDate: curToday }).then((items) => setHareketList(items || []));
+    CariHareketService.list().then((items) => setHareketList(items || []));
   };
 
   const toggleRowExpand = (id: number) => {
@@ -142,18 +140,25 @@ export const CariHareketListPage: React.FC = () => {
     }
   };
 
-  const handleEditClick = (id: number, e: React.MouseEvent) => {
+  const handleEditClick = (item: CariHareketItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/cari/hareket-duzeltme?id=${id}`);
+    if (item.hareketTipi === 10) {
+      navigate(`/vezne/sarraf-fisi-duzeltme?id=${item.id}`);
+    } else if (item.hareketTipi === 11) {
+      navigate(`/vezne/doviz-fisi-duzeltme?id=${item.id}`);
+    } else if (item.hareketTipi === 12) {
+      navigate(`/vezne/perakende-fisi-duzeltme?id=${item.id}`);
+    } else {
+      navigate(`/cari/hareket-duzeltme?id=${item.id}`);
+    }
   };
 
   const handlePrintItem = (item: CariHareketItem, e: React.MouseEvent) => {
     e.stopPropagation();
     printReportTable({
       title: "Cari Hareket Makbuzu",
-      subtitle: `${item.cariKod} - ${item.cariAd} | Fiş No: #${item.id} | Tarih: ${
-        item.tarih ? new Date(item.tarih).toLocaleDateString("tr-TR") : "-"
-      } | ${item.tip === 0 ? "BORÇ" : "ALACAK"}`,
+      subtitle: `${item.cariKod} - ${item.cariAd} | Fiş No: #${item.id} | Tarih: ${item.tarih ? new Date(item.tarih).toLocaleDateString("tr-TR") : "-"
+        } | ${item.tip === 0 ? "BORÇ" : "ALACAK"}`,
       data: item.satirlar.map((l, i) => ({
         satir: i + 1,
         paraKodu: l.paraKodu,
@@ -217,7 +222,7 @@ export const CariHareketListPage: React.FC = () => {
     <div className="cari-hareket-list-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* ERP Toolbar */}
       <ERPToolbar
-        pageTitle="E- Cari Hareket Listesi"
+        pageTitle="G- Cari Hareket Listesi"
         onNew={() => navigate("/cari/hareket-kayit")}
         onPrint={handlePrintList}
         onRefresh={loadData}
@@ -329,12 +334,15 @@ export const CariHareketListPage: React.FC = () => {
                 onChange={(e) => setSelectedHareketTipi(e.target.value)}
               >
                 <option value="all">Tüm Tipler</option>
-                <option value="0">Nakit</option>
-                <option value="1">Banka / Havale</option>
-                <option value="2">POS</option>
-                <option value="3">Dekont</option>
-                <option value="4">Virman</option>
-                <option value="5">Devir</option>
+                <option value="0">0 - Nakit</option>
+                <option value="1">1 - Banka / Havale</option>
+                <option value="2">2 - POS</option>
+                <option value="3">3 - Dekont</option>
+                <option value="4">4 - Virman</option>
+                <option value="5">5 - Devir</option>
+                <option value="10">10 - Sarraf Fişi</option>
+                <option value="11">11 - Döviz Fişi</option>
+                <option value="12">12 - Perakende Faturası</option>
               </Form.Select>
             </Col>
 
@@ -374,20 +382,123 @@ export const CariHareketListPage: React.FC = () => {
 
       {/* Main Table Card */}
       <Card className="border shadow-sm bg-white">
-        <Card.Header className="bg-light py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
-          <span className="fw-bold text-dark fs-6 d-flex align-items-center gap-2">
-            <IconCash size={18} className="text-primary" />
-            Cari Hareket Kayıtları ({hareketList.length})
-          </span>
-          <Button
-            size="sm"
-            variant="outline-secondary"
-            className="py-1 px-2.5 fs-7 d-flex align-items-center gap-1"
-            onClick={handlePrintList}
-          >
-            <IconPrinter size={15} />
-            Yazdır
-          </Button>
+        <Card.Header className="bg-light py-2 px-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="fw-bold text-dark fs-6 d-flex align-items-center gap-1.5 me-2">
+              <IconCash size={18} className="text-primary" />
+              Cari Hareket Kayıtları ({hareketList.length})
+            </span>
+
+            {/* Quick Source Filter Buttons */}
+            <div className="btn-group btn-group-sm">
+              <Button
+                variant={selectedHareketTipi === "all" ? "primary" : "outline-secondary"}
+                size="sm"
+                className="py-0.5 px-2 small"
+                onClick={() => {
+                  setSelectedHareketTipi("all");
+                  CariHareketService.list({
+                    startDate: startDate || undefined,
+                    endDate: endDate || undefined,
+                    cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
+                    vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
+                    tip: selectedTip !== "all" ? Number(selectedTip) : undefined,
+                    search: searchTerm || undefined,
+                  }).then((items) => setHareketList(items || []));
+                }}
+              >
+                Tümü
+              </Button>
+              <Button
+                variant={["0", "1", "2", "3", "4", "5"].includes(selectedHareketTipi) ? "secondary" : "outline-secondary"}
+                size="sm"
+                className="py-0.5 px-2 small"
+                onClick={() => {
+                  setSelectedHareketTipi("0");
+                  CariHareketService.list({
+                    startDate: startDate || undefined,
+                    endDate: endDate || undefined,
+                    cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
+                    vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
+                    tip: selectedTip !== "all" ? Number(selectedTip) : undefined,
+                    hareketTipi: 0,
+                    search: searchTerm || undefined,
+                  }).then((items) => setHareketList(items || []));
+                }}
+              >
+                Cari Hareket Kaydı
+              </Button>
+              <Button
+                variant={selectedHareketTipi === "10" ? "warning" : "outline-warning"}
+                size="sm"
+                className="py-0.5 px-2 small text-dark"
+                onClick={() => {
+                  setSelectedHareketTipi("10");
+                  CariHareketService.list({
+                    startDate: startDate || undefined,
+                    endDate: endDate || undefined,
+                    cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
+                    vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
+                    tip: selectedTip !== "all" ? Number(selectedTip) : undefined,
+                    hareketTipi: 10,
+                    search: searchTerm || undefined,
+                  }).then((items) => setHareketList(items || []));
+                }}
+              >
+                Sarraf Fişleri
+              </Button>
+              <Button
+                variant={selectedHareketTipi === "11" ? "info" : "outline-info"}
+                size="sm"
+                className="py-0.5 px-2 small text-dark"
+                onClick={() => {
+                  setSelectedHareketTipi("11");
+                  CariHareketService.list({
+                    startDate: startDate || undefined,
+                    endDate: endDate || undefined,
+                    cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
+                    vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
+                    tip: selectedTip !== "all" ? Number(selectedTip) : undefined,
+                    hareketTipi: 11,
+                    search: searchTerm || undefined,
+                  }).then((items) => setHareketList(items || []));
+                }}
+              >
+                Döviz Fişleri
+              </Button>
+              <Button
+                variant={selectedHareketTipi === "12" ? "primary" : "outline-primary"}
+                size="sm"
+                className="py-0.5 px-2 small"
+                onClick={() => {
+                  setSelectedHareketTipi("12");
+                  CariHareketService.list({
+                    startDate: startDate || undefined,
+                    endDate: endDate || undefined,
+                    cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
+                    vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
+                    tip: selectedTip !== "all" ? Number(selectedTip) : undefined,
+                    hareketTipi: 12,
+                    search: searchTerm || undefined,
+                  }).then((items) => setHareketList(items || []));
+                }}
+              >
+                Perakende Fişleri
+              </Button>
+            </div>
+          </div>
+
+          <div className="d-flex align-items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              className="py-1 px-2.5 fs-7 d-flex align-items-center gap-1"
+              onClick={handlePrintList}
+            >
+              <IconPrinter size={15} />
+              Yazdır
+            </Button>
+          </div>
         </Card.Header>
 
         <Card.Body className="p-0">
@@ -412,7 +523,7 @@ export const CariHareketListPage: React.FC = () => {
                     <th style={{ width: "100px" }} className="py-2">Tarih</th>
                     <th className="py-2">Cari Kart</th>
                     <th style={{ width: "80px" }} className="py-2">Vezne</th>
-                    <th style={{ width: "100px" }} className="py-2">Hareket Tipi</th>
+                    <th style={{ width: "120px" }} className="py-2">Hareket Tipi</th>
                     <th style={{ width: "90px" }} className="text-center py-2">İşlem</th>
                     <th className="py-2">Açıklama</th>
                     <th className="py-2">Satırlar Özeti</th>
@@ -422,8 +533,12 @@ export const CariHareketListPage: React.FC = () => {
                 <tbody>
                   {hareketList.map((item) => {
                     const isExpanded = expandedRows.has(item.id);
+                    const isSarraf = item.hareketTipi === 10;
+                    const isDoviz = item.hareketTipi === 11;
+                    const isFatura = item.hareketTipi === 12;
+
                     return (
-                      <React.Fragment key={item.id}>
+                      <React.Fragment key={`${item.hareketTipi}-${item.id}`}>
                         <tr
                           onClick={() => toggleRowExpand(item.id)}
                           style={{ cursor: "pointer" }}
@@ -446,7 +561,26 @@ export const CariHareketListPage: React.FC = () => {
                             {item.vezneKod || "-"}
                           </td>
                           <td className="py-2 small">
-                            <Badge bg="light" text="dark" className="border">
+                            <Badge
+                              bg={
+                                isSarraf
+                                  ? "warning-subtle"
+                                  : isDoviz
+                                  ? "info-subtle"
+                                  : isFatura
+                                  ? "primary-subtle"
+                                  : "light"
+                              }
+                              className={`border px-2 py-1 ${
+                                isSarraf
+                                  ? "text-warning-emphasis border-warning-subtle"
+                                  : isDoviz
+                                  ? "text-info-emphasis border-info-subtle"
+                                  : isFatura
+                                  ? "text-primary-emphasis border-primary-subtle"
+                                  : "text-dark"
+                              }`}
+                            >
                               {item.hareketTipiLabel}
                             </Badge>
                           </td>
@@ -467,7 +601,7 @@ export const CariHareketListPage: React.FC = () => {
                                 size="sm"
                                 variant="outline-primary"
                                 className="py-0.5 px-1.5"
-                                onClick={(e) => handleEditClick(item.id, e)}
+                                onClick={(e) => handleEditClick(item, e)}
                                 title="Düzelt / Görüntüle"
                               >
                                 <IconEdit size={14} />

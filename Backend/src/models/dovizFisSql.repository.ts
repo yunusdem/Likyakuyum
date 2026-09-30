@@ -2018,6 +2018,48 @@ export class DovizFisSqlRepository {
             TIP = @TIP,
             GUNCELLEME_ZAMANI = GETDATE()
           WHERE FIS_ID = @P_FIS_ID;
+
+          -- İşçilik Hareketini TODVZ_HESAP_HAREKETI tablosuna işleme (Firma Tanımlarındaki ISCILIK_HESABI)
+          DECLARE @ISCILIK_HESAP_KODU VARCHAR(50) = NULL;
+          DECLARE @TARGET_ISCILIK_HESAP_ID INT = NULL;
+          
+          SELECT TOP 1 @ISCILIK_HESAP_KODU = LTRIM(RTRIM(ISCILIK_HESABI))
+          FROM [dbo].[TODVZ_TANIM] WITH (NOLOCK);
+
+          IF (@ISCILIK_HESAP_KODU IS NOT NULL AND LEN(@ISCILIK_HESAP_KODU) > 0)
+          BEGIN
+            SELECT TOP 1 @TARGET_ISCILIK_HESAP_ID = HESAP_ID 
+            FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
+            WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@ISCILIK_HESAP_KODU) 
+               OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@ISCILIK_HESAP_KODU)
+               OR (ISNUMERIC(@ISCILIK_HESAP_KODU) = 1 AND HESAP_ID = CAST(@ISCILIK_HESAP_KODU AS INT));
+          END;
+
+          IF (@TARGET_ISCILIK_HESAP_ID IS NOT NULL)
+          BEGIN
+            DECLARE @TOPLAM_ISCILIK_TUTARI FLOAT = 0;
+            SELECT @TOPLAM_ISCILIK_TUTARI = ISNULL(SUM(ISNULL(ISCILIK, 0)), 0)
+            FROM [dbo].[TODVZ_FIS_SATIRI] WITH (NOLOCK)
+            WHERE FIS_ID = @P_FIS_ID;
+
+            DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] 
+            WHERE ACIKLAMA LIKE '%Döviz Fişi İşçilik%' AND ACIKLAMA LIKE '%' + LTRIM(RTRIM(@P_SERI_NO)) + '%';
+
+            IF (@TOPLAM_ISCILIK_TUTARI > 0)
+            BEGIN
+              DECLARE @HH_ACIKLAMA VARCHAR(200) = 'Döviz Fişi İşçilik - Fiş No: ' + LTRIM(RTRIM(@P_SERI_NO));
+              DECLARE @HH_TIP TINYINT = CASE WHEN @TIP = 1 THEN 0 ELSE 1 END; -- Satış: 0 (Gelir Girişi), Alış: 1 (Çıkış)
+              
+              INSERT INTO [dbo].[TODVZ_HESAP_HAREKETI] (
+                HESAP_ID, TARIH, ACIKLAMA, PARA_ID, MEBLAG, KDV_ORANI, KDV, TIP, VEZNE_ID,
+                EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
+              ) VALUES (
+                @TARGET_ISCILIK_HESAP_ID, @TARIH, @HH_ACIKLAMA, 1, @TOPLAM_ISCILIK_TUTARI, 
+                0, 0, @HH_TIP, @VEZNE_ID,
+                @EFF_KULLANICI_ID, GETDATE(), @EFF_KULLANICI_ID, GETDATE()
+              );
+            END;
+          END;
         END
 
         IF OBJECT_ID('tempdb..#TODVZ_ISKELE_FIS_SATIRI') IS NOT NULL
