@@ -28,6 +28,8 @@ export interface UrunStokSatir {
   miktar: number;
   miktarBirimi: string;
   hasGram: number | null;
+  iscilikMaliyet: number;   // ürün birimi (altın: HAS, özel: USD)
+  satisIscilik: number;     // altın: ürün kartındaki satış işçiliği; özel: montür işçiliği (kartta tek işçilik var)
   birim: string;            // maliyet/satış/kâr birimi (HAS, USD, ...)
   maliyet: number;
   maliyetTl: number;
@@ -46,7 +48,7 @@ export interface UrunStokSatir {
 }
 
 export interface UrunStokOzetSatiri {
-  durum: string; adet: number; miktar: number; hasGram: number;
+  durum: string; adet: number; miktar: number; hasGram: number; iscilikMaliyet: number; satisIscilik: number;
   birim: string; maliyet: number; maliyetTl: number; satis: number; satisTl: number; kar: number; karTl: number; karYuzde: number | null;
 }
 
@@ -68,6 +70,16 @@ const gun = (d: Date | string | null | undefined) => {
 const trTarih = (g: string | null) => (g ? g.split("-").reverse().join(".") : "");
 const y2 = (n: number) => Math.round(n * 100) / 100;
 const y4 = (n: number) => Math.round(n * 10000) / 10000;
+const sayiOku = (v: any) => { const n = parseFloat(String(v ?? "").replace(/,/g, ".")); return Number.isNaN(n) ? 0 : n; };
+/** Özel ürün: MODEL_OZELLIK_2 JSON'undan montür has gramı ve montür işçiliği (kendi para kodunda) */
+function ozelEkBilgi(ham: string | null) {
+  try {
+    const e = ham ? JSON.parse(ham) : null;
+    if (!e) return null;
+    const gram = sayiOku(e.monturGram), iscilik = sayiOku(e.monturIscilik);
+    return { has: sayiOku(e.monturHas), iscilik: String(e.monturIscilikBirim || "Gram") === "Gram" ? iscilik * gram : iscilik, paraKodu: String(e.monturIscilikParaKodu || "USD").trim().toUpperCase() };
+  } catch { return null; }
+}
 
 export class UrunStokService {
   static varsayilanBirim(tip: UrunStokTipi) { return tip === "altin" ? "HAS" : "USD"; }
@@ -135,6 +147,13 @@ export class UrunStokService {
 
     const kar = satis - maliyet;
     const karTl = satisTl - maliyetTl;
+
+    // Has ve işçilik: altında ürün kartından (HAS); özelde montür bilgisinden (işçilik ürün birimine çevrilir)
+    const ek = altin ? null : ozelEkBilgi(r.EK_BILGI);
+    const hasGram = altin ? (r.HAS_GRAM == null ? null : Number(r.HAS_GRAM)) : ek ? ek.has : null;
+    const ozelIscilik = ek ? (ek.paraKodu === birim ? ek.iscilik : kur > 0 ? (ek.iscilik * kurOf(kurTablosu, ek.paraKodu)) / kur : 0) : 0;
+    const iscilikMaliyet = altin ? Number(r.MALIYET_ISCILIK_TUTARI || 0) : ozelIscilik;
+    const satisIscilik = altin ? Number(r.SATIS_ISCILIK_TUTARI || 0) : ozelIscilik;
     const karYuzde = maliyet > 0 ? y2((kar / maliyet) * 100) : null;
     const grupKodu = (r.GRUP_KODU || "").trim();
 
@@ -152,7 +171,9 @@ export class UrunStokService {
       banko: (r.BANKO || "").trim(),
       miktar: Number(r.MIKTAR || 0),
       miktarBirimi: (r.MIKTAR_BIRIMI || "").trim(),
-      hasGram: r.HAS_GRAM == null ? null : Number(r.HAS_GRAM),
+      hasGram: hasGram == null ? null : y4(hasGram),
+      iscilikMaliyet: y4(iscilikMaliyet),
+      satisIscilik: y4(satisIscilik),
       birim,
       maliyet: y4(maliyet),
       maliyetTl: y2(maliyetTl),
@@ -173,17 +194,17 @@ export class UrunStokService {
 
   /** Stokta / Satıldı / Toplam. Birim toplamları yalnızca varsayılan birimdeki satırları kapsar; TL toplamları tümünü. */
   private static ozetYap(satirlar: UrunStokSatir[], birim: string): UrunStokOzetSatiri[] {
-    const bos = (durum: string): UrunStokOzetSatiri => ({ durum, adet: 0, miktar: 0, hasGram: 0, birim, maliyet: 0, maliyetTl: 0, satis: 0, satisTl: 0, kar: 0, karTl: 0, karYuzde: null });
+    const bos = (durum: string): UrunStokOzetSatiri => ({ durum, adet: 0, miktar: 0, hasGram: 0, iscilikMaliyet: 0, satisIscilik: 0, birim, maliyet: 0, maliyetTl: 0, satis: 0, satisTl: 0, kar: 0, karTl: 0, karYuzde: null });
     const stokta = bos("Stokta"), satildi = bos("Satıldı"), toplam = bos("Toplam");
     for (const s of satirlar) {
       for (const o of [s.satildi ? satildi : stokta, toplam]) {
         o.adet += 1; o.miktar += s.miktar; o.hasGram += s.hasGram || 0;
         o.maliyetTl += s.maliyetTl; o.satisTl += s.satisTl; o.karTl += s.karTl;
-        if (s.birim === birim) { o.maliyet += s.maliyet; o.satis += s.satis; o.kar += s.kar; }
+        if (s.birim === birim) { o.maliyet += s.maliyet; o.satis += s.satis; o.kar += s.kar; o.iscilikMaliyet += s.iscilikMaliyet; o.satisIscilik += s.satisIscilik; }
       }
     }
     for (const o of [stokta, satildi, toplam]) {
-      o.miktar = y4(o.miktar); o.hasGram = y4(o.hasGram);
+      o.miktar = y4(o.miktar); o.hasGram = y4(o.hasGram); o.iscilikMaliyet = y4(o.iscilikMaliyet); o.satisIscilik = y4(o.satisIscilik);
       o.maliyet = y4(o.maliyet); o.satis = y4(o.satis); o.kar = y4(o.kar);
       o.maliyetTl = y2(o.maliyetTl); o.satisTl = y2(o.satisTl); o.karTl = y2(o.karTl);
       o.karYuzde = o.maliyetTl > 0 ? y2((o.karTl / o.maliyetTl) * 100) : null;
@@ -217,7 +238,9 @@ export class UrunStokService {
       { anahtar: "urunAdi", baslik: altin ? "Model" : "Mamul", g: 2 },
       { anahtar: "ayar", baslik: "Ayar", g: 0.7, hiza: "center" },
       { anahtar: "miktar", baslik: altin ? "Gram" : "Miktar", g: 1, bicim: "sayi", toplam: true },
-      ...(altin ? [{ anahtar: "hasGram", baslik: "Has gr", g: 1, bicim: "sayi4" as const, toplam: true }] : []),
+      { anahtar: "hasGram", baslik: "Has gr", g: 1, bicim: "sayi4", toplam: true },
+      { anahtar: "iscilikMaliyet", baslik: `İşç. mal. ${birim}`, g: 1.1, bicim: "sayi4", toplam: true },
+      ...(altin ? [{ anahtar: "satisIscilik", baslik: `Satış işç. ${birim}`, g: 1.1, bicim: "sayi4" as const, toplam: true }] : []),
       { anahtar: "maliyet", baslik: `Maliyet ${birim}`, g: 1.2, bicim: "sayi4", toplam: true },
       { anahtar: "maliyetTl", baslik: "Maliyet TL", g: 1.3, bicim: "sayi", toplam: true },
       { anahtar: "satis", baslik: `Satış ${birim}`, g: 1.2, bicim: "sayi4", toplam: true },
@@ -245,7 +268,9 @@ export class UrunStokService {
           { anahtar: "durum", baslik: "Durum", g: 1.2 },
           { anahtar: "adet", baslik: "Adet", g: 0.8, bicim: "tam" },
           { anahtar: "miktar", baslik: altin ? "Gram" : "Miktar", g: 1, bicim: "sayi" },
-          ...(altin ? [{ anahtar: "hasGram", baslik: "Has gr", g: 1, bicim: "sayi4" as const }] : []),
+          { anahtar: "hasGram", baslik: "Has toplam", g: 1.1, bicim: "sayi4" },
+          { anahtar: "iscilikMaliyet", baslik: `İşç. maliyet ${birim}`, g: 1.2, bicim: "sayi4" },
+          { anahtar: "satisIscilik", baslik: `Satış işç. ${birim}`, g: 1.2, bicim: "sayi4" },
           { anahtar: "maliyet", baslik: `Maliyet ${birim}`, g: 1.2, bicim: "sayi4" },
           { anahtar: "maliyetTl", baslik: "Maliyet TL", g: 1.3, bicim: "sayi" },
           { anahtar: "satis", baslik: `Satış ${birim}`, g: 1.2, bicim: "sayi4" },
