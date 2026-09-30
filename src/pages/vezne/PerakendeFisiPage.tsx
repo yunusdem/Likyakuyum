@@ -456,6 +456,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [faturaTipi, setFaturaTipi] = useState<number>(1); // 0: Alış, 1: Satış
   const [senaryo, setSenaryo] = useState<string>("EARSIVFATURA");
 
+  // Alış / Satış başlığı renk teması
+  const activeFisThemeBg = useMemo(() => {
+    let buyBg = user?.appearance?.buyHeaderBgColor;
+    let sellBg = user?.appearance?.sellHeaderBgColor;
+    if (!buyBg || !sellBg) {
+      try {
+        const cached = localStorage.getItem("kuyumcu_active_appearance");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!buyBg && parsed.buyHeaderBgColor) buyBg = parsed.buyHeaderBgColor;
+          if (!sellBg && parsed.sellHeaderBgColor) sellBg = parsed.sellHeaderBgColor;
+        }
+      } catch {}
+    }
+    if (faturaTipi === 0) {
+      return buyBg || "var(--user-buy-header-bg, #e2e8f0)";
+    } else {
+      return sellBg || "var(--user-sell-header-bg, #e2e8f0)";
+    }
+  }, [faturaTipi, user?.appearance?.buyHeaderBgColor, user?.appearance?.sellHeaderBgColor]);
+
   useEffect(() => {
     PrinterService.getYazicilar().then(setPrinters).catch(() => { });
     CompanyService.getDefinitions().then(setCompanyDefinitions).catch(() => { });
@@ -2707,7 +2728,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const isF2 = key === "F2" || e.code === "F2" || e.keyCode === 113;
       const isF3 = key === "F3" || e.code === "F3" || e.keyCode === 114;
       const isF4 = key === "F4" || e.code === "F4" || e.keyCode === 115;
-      const isF7 = key === "F7" || e.code === "F7" || e.keyCode === 118;
       const isF8 = key === "F8" || e.code === "F8" || e.keyCode === 119;
       const isF9 = key === "F9" || e.code === "F9" || e.keyCode === 120;
 
@@ -2736,11 +2756,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         closeAllModals();
         setMusteriSearchTerm(aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan : cariKod);
         setShowMusteriModal(true);
-      } else if (isF7) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeAllModals();
-        handleAutoVeresiye();
       } else if (isF8) {
         e.preventDefault();
         e.stopPropagation();
@@ -4147,7 +4162,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         boxShadow: isMasakBlocked ? "inset 0 0 16px rgba(220, 38, 38, 0.4)" : "none",
         backgroundColor: isMasakBlocked ? "#fff5f5" : undefined,
         transition: "all 0.3s ease",
-      }}
+        "--active-fis-theme-bg": activeFisThemeBg,
+      } as React.CSSProperties}
     >
       {ebFis.bant}
 
@@ -4384,8 +4400,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       </div>
 
       {/* ─── 3. Header Panel: Müşteri & Cari Bilgileri (2 Düzenli Satır) ─── */}
-      <Card className="shadow-sm mb-2 border">
-        <Card.Body className="p-2">
+      <Card className="shadow-sm mb-2 border fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           {/* 1. Satır: TCKN / VKN / Pasaport | Cari Kodu | Müşteri Adı (+ Dürbün + Nihai Tüketici) */}
           <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
             {/* TCKN / VKN / Pasaport (+ Dürbün + MASAK Butonu) */}
@@ -4779,8 +4795,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       </Card>
 
       {/* ─── 4. Satış Kalemleri Grid Tablosu (Ayrı Dış Dikdörtgen Kutu) ─── */}
-      <Card className="shadow-sm mb-2 border rounded-2 bg-white">
-        <Card.Body className="p-2">
+      <Card className="shadow-sm mb-2 border rounded-2 fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           <div
             className="table-responsive w-100"
             style={{ minHeight: "160px", overflowX: "auto" }}
@@ -5148,15 +5164,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       </Card>
 
       {/* ─── 5. Bottom Sections: ÖDEME TABLOSU (Solda) | TL/HAS Özet (Sağda) ─── */}
-      <Row className="g-2 align-items-start mb-2">
-        {/* SOLDA: Ödeme / Tahsilat Tablosu (Sarraf Fişi ile Birebir Aynı Tasarım) */}
-        <Col xs={12} lg={8} md={7}>
-          <div className="border rounded bg-white shadow-sm overflow-hidden">
-            <div className="bg-light px-2 py-1 border-bottom d-flex justify-content-between align-items-center">
-              <span className="fw-bold text-secondary" style={{ fontSize: "12px" }}>
-                ÖDEME / TAHSİLAT TABLOSU
-              </span>
-            </div>
+      <Card className="shadow-sm mb-2 border rounded-2 fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+          <Row className="g-2 align-items-start mb-0">
+            {/* SOLDA: Ödeme / Tahsilat Tablosu (Sarraf Fişi ile Birebir Aynı Tasarım) */}
+            <Col xs={12} lg={8} md={7}>
+              <div className="border rounded bg-white shadow-sm overflow-hidden">
+                <div className="bg-light px-2 py-1 border-bottom d-flex justify-content-between align-items-center">
+                  <span className="fw-bold text-secondary" style={{ fontSize: "12px" }}>
+                    ÖDEME / TAHSİLAT TABLOSU
+                  </span>
+                </div>
             <div style={{ overflowX: "auto" }}>
               <Table bordered size="sm" hover className="mb-0 align-middle text-nowrap" style={{ fontSize: "11.5px", minWidth: 780 }}>
                 <thead style={{ background: "#d9e8fb", color: "#000" }}>
@@ -6024,6 +6042,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </div>
         </Col>
       </Row>
+        </Card.Body>
+      </Card>
 
       {/* ─── 6. Kısayol Bilgilendirme Çubuğu (Footer Notu) ────────────── */}
       <div
@@ -6061,16 +6081,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           >
             <kbd className="bg-secondary text-white px-1.5 py-0.5 rounded me-1 fw-bold">F4</kbd>
             <strong className="text-dark">Cari Seç</strong>
-          </span>
-          <span className="text-secondary">•</span>
-          <span
-            className="user-select-none"
-            onClick={() => handleAutoVeresiye()}
-            style={{ cursor: "pointer" }}
-            title="Kalan Tutarı Cari Karta Veresiye Ekle (F7)"
-          >
-            <kbd className="bg-danger text-white px-1.5 py-0.5 rounded me-1 fw-bold">F7</kbd>
-            <strong className="text-dark">Veresiye</strong>
           </span>
           <span className="text-secondary">•</span>
           <span

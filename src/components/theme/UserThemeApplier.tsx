@@ -218,19 +218,27 @@ export const UserThemeApplier: React.FC = () => {
       }
 
       /* 3. Cards, Windows, Panels & Modals */
-      .card,
-      .card-body,
+      .card:not(.fis-theme-card):not([data-fis-theme="active"]),
+      .card-body:not(.fis-theme-card-body):not([data-fis-theme="active"]),
       .modal-content, 
       .modal-body,
       .modal-header,
       .modal-footer,
       .offcanvas,
       .dropdown-menu,
-      .bg-white,
+      .bg-white:not(.fis-theme-panel):not([data-fis-theme="active"]),
       .bg-body {
         background-color: var(--user-window-bg, #ffffff) !important;
         color: var(--user-window-text, #0f172a) !important;
         font-family: var(--user-program-font, inherit) !important;
+      }
+
+      /* Fiş Alış & Satış Kartları ve Dış Dikdörtgen Alanları */
+      .fis-theme-card,
+      .fis-theme-card-body,
+      .fis-theme-panel,
+      [data-fis-theme="active"] {
+        background-color: var(--active-fis-theme-bg) !important;
       }
 
       /* Headings & Text within Windows */

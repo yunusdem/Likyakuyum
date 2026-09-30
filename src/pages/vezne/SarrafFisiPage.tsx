@@ -4,6 +4,7 @@ import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
 import {
   IconCheck, IconBinoculars, IconAlertTriangle, IconPlus, IconShieldExclamation, IconShieldCheck, IconPrinter, IconClock, IconCoins, IconUsers, IconBuildingBank, IconBuildingStore,
+  IconArrowsExchange,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -33,6 +34,7 @@ import { IskontoDefinitionsPage } from "../settings/IskontoDefinitionsPage";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { NumeratorService, NumeratorItem } from "../../services/numeratorService";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
+import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import SarrafFisiPrintModal from "./SarrafFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
@@ -537,6 +539,28 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     return () => clearInterval(timer);
   }, [isDuzeltmeMode]);
   const [tip, setTip] = useState<0 | 1>(0);
+
+  // Alış / Satış başlığı renk teması
+  const activeFisThemeBg = useMemo(() => {
+    let buyBg = user?.appearance?.buyHeaderBgColor;
+    let sellBg = user?.appearance?.sellHeaderBgColor;
+    if (!buyBg || !sellBg) {
+      try {
+        const cached = localStorage.getItem("kuyumcu_active_appearance");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!buyBg && parsed.buyHeaderBgColor) buyBg = parsed.buyHeaderBgColor;
+          if (!sellBg && parsed.sellHeaderBgColor) sellBg = parsed.sellHeaderBgColor;
+        }
+      } catch {}
+    }
+    if (tip === 0) {
+      return buyBg || "var(--user-buy-header-bg, #e2e8f0)";
+    } else {
+      return sellBg || "var(--user-sell-header-bg, #e2e8f0)";
+    }
+  }, [tip, user?.appearance?.buyHeaderBgColor, user?.appearance?.sellHeaderBgColor]);
+
   const [belgeTuru, setBelgeTuru] = useState(0);
   const [unvan, setUnvan] = useState(DEFAULT_CUSTOMER_NAME);
   const [cariKartId, setCariKartId] = useState<number | null>(null);
@@ -667,6 +691,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
+  const [showArbitrajModal, setShowArbitrajModal] = useState<boolean>(false);
+  const [arbitrajActiveInfo, setArbitrajActiveInfo] = useState<{ girisKod: string; cikisKod: string; parite: number; islemYonu: string } | null>(null);
   const prevTipRef = useRef<number>(tip);
 
   useEffect(() => {
@@ -700,6 +726,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     showDetayModal ||
     showPrintModal ||
     showIstatistikModal ||
+    showArbitrajModal ||
     showFarkConfirmModal.show ||
     masakModalOpen ||
     masakManagementOpen ||
@@ -1145,6 +1172,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setBelgeTuru(0);
     setUnvan(DEFAULT_CUSTOMER_NAME);
     setCariKartId(null);
+    setArbitrajActiveInfo(null);
 
     // Varsayılan HAS Altın ve Gümüş kurları
     let defaultHas: number | string = "";
@@ -3712,8 +3740,172 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowDetayModal(false);
     setShowPrintModal(false);
     setShowIstatistikModal(false);
+    setShowArbitrajModal(false);
     setShowFarkConfirmModal({ show: false, andPrint: false });
   }, []);
+
+  // ─── Arbitraj Sonucunu Sarraf Fişine Aktarma (F7) ──────────────────────────
+  const handleApplyArbitrajToSarrafFis = useCallback(
+    (result: ArbitrajApplyResult) => {
+      const isGirisGold =
+        result.girisPara.isMaden ||
+        result.girisPara.kod.toUpperCase() === "HAS" ||
+        result.girisPara.kod.toUpperCase() === "ALTIN";
+      const isCikisGold =
+        result.cikisPara.isMaden ||
+        result.cikisPara.kod.toUpperCase() === "HAS" ||
+        result.cikisPara.kod.toUpperCase() === "ALTIN";
+
+      if (isGirisGold || isCikisGold) {
+        if (isGirisGold) {
+          // Müşteri Maden getirir, karşılığında Döviz ister (Alış):
+          setTip(0);
+          const goldUrun =
+            urunList.find(
+              (u) => (u.kod || "").toUpperCase() === result.girisPara.kod.toUpperCase()
+            ) || urunList[0];
+
+          if (goldUrun) {
+            const newGridRow: GridRow = {
+              id: String(Date.now()),
+              satirNo: 1,
+              urunId: goldUrun.id,
+              urunKodu: goldUrun.kod,
+              urunAdi: goldUrun.ad,
+              adet: 1,
+              miktar: result.girisMiktar,
+              milyem: goldUrun.hasOrani || goldUrun.alisMilyem || 1000,
+              hasGram: result.girisMiktar,
+              iscilikHesaplamaSekli: 0,
+              iscilikiMiktari: 0,
+              iscilikHasGram: 0,
+              kur: result.parite,
+              tutar: result.cikisMiktar,
+              urunTipi: goldUrun.urunTipi || 0,
+              karat: "",
+              aciklama: result.aciklama || "Arbitraj Alış",
+            };
+            setLines([newGridRow]);
+          }
+
+          // Ödeme / Tahsilat Tablosu: Döviz Nakit Ödeme (Çıkış Bacağı)
+          const newOdemeRow: OdemeRow = {
+            id: String(Date.now() + 1),
+            satirNo: 1,
+            odemeAraciTuru: 0, // Nakit Vezne
+            bankaId: null,
+            posCihaziId: null,
+            cariKartId: null,
+            cariKod: "",
+            cariUnvan: "",
+            iskontoId: null,
+            paraId: result.cikisPara.id || 1,
+            paraKodu: result.cikisPara.kod,
+            paraAdi: result.cikisPara.ad,
+            adet: 1,
+            miktar: result.cikisMiktar,
+            milyem: 0,
+            hasGram: 0,
+            kur: 1.0,
+            tutar: result.cikisMiktar,
+            urunTipi: 0,
+          };
+          setOdemeRows([newOdemeRow]);
+        } else {
+          // Müşteri Döviz (USD vb.) ödeyerek Maden (Has vb.) satın alır (Satış):
+          setTip(1);
+          const goldUrun =
+            urunList.find(
+              (u) => (u.kod || "").toUpperCase() === result.cikisPara.kod.toUpperCase()
+            ) || urunList[0];
+
+          if (goldUrun) {
+            const newGridRow: GridRow = {
+              id: String(Date.now()),
+              satirNo: 1,
+              urunId: goldUrun.id,
+              urunKodu: goldUrun.kod,
+              urunAdi: goldUrun.ad,
+              adet: 1,
+              miktar: result.cikisMiktar,
+              milyem: goldUrun.hasOrani || goldUrun.satisMilyem || 1000,
+              hasGram: result.cikisMiktar,
+              iscilikHesaplamaSekli: 0,
+              iscilikiMiktari: 0,
+              iscilikHasGram: 0,
+              kur: result.parite,
+              tutar: result.girisMiktar,
+              urunTipi: goldUrun.urunTipi || 0,
+              karat: "",
+              aciklama: result.aciklama || "Arbitraj Satış",
+            };
+            setLines([newGridRow]);
+          }
+
+          // Ödeme / Tahsilat Tablosu: Döviz Nakit Tahsilat (Giriş Bacağı)
+          const newOdemeRow: OdemeRow = {
+            id: String(Date.now() + 1),
+            satirNo: 1,
+            odemeAraciTuru: 0, // Nakit Vezne
+            bankaId: null,
+            posCihaziId: null,
+            cariKartId: null,
+            cariKod: "",
+            cariUnvan: "",
+            iskontoId: null,
+            paraId: result.girisPara.id || 1,
+            paraKodu: result.girisPara.kod,
+            paraAdi: result.girisPara.ad,
+            adet: 1,
+            miktar: result.girisMiktar,
+            milyem: 0,
+            hasGram: 0,
+            kur: 1.0,
+            tutar: result.girisMiktar,
+            urunTipi: 0,
+          };
+          setOdemeRows([newOdemeRow]);
+        }
+      } else {
+        // Döviz - Döviz Takası
+        const newOdemeRow: OdemeRow = {
+          id: String(Date.now()),
+          satirNo: 1,
+          odemeAraciTuru: 0,
+          bankaId: null,
+          posCihaziId: null,
+          cariKartId: null,
+          cariKod: "",
+          cariUnvan: "",
+          iskontoId: null,
+          paraId: result.cikisPara.id || 1,
+          paraKodu: result.cikisPara.kod,
+          paraAdi: result.cikisPara.ad,
+          adet: 1,
+          miktar: result.cikisMiktar,
+          milyem: 0,
+          hasGram: 0,
+          kur: result.parite,
+          tutar: result.girisMiktar,
+          urunTipi: 0,
+        };
+        setOdemeRows([newOdemeRow]);
+      }
+
+      setArbitrajActiveInfo({
+        girisKod: result.girisPara.kod,
+        cikisKod: result.cikisPara.kod,
+        parite: result.parite,
+        islemYonu: result.islemYonu,
+      });
+
+      setNotification({
+        type: "success",
+        message: `Arbitraj işlemi (${result.girisPara.kod} -> ${result.cikisPara.kod}) fiş satırlarına başarıyla aktarıldı.`,
+      });
+    },
+    [urunList]
+  );
 
   // ─── Global F-key shortcuts ──────────────────────────────────────────────────
   useEffect(() => {
@@ -3724,12 +3916,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       const activeEl = document.activeElement as HTMLElement | null;
       if (["INPUT", "TEXTAREA", "SELECT"].includes(activeEl?.tagName || "") &&
-        !["F1", "F3", "F4", "F8", "F9", "F10"].includes(e.key)) {
+        !["F1", "F3", "F4", "F7", "F8", "F9", "F10"].includes(e.key)) {
         return;
       }
       if (e.key === "F1") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleSave(false, false); }
       else if (e.key === "F3") { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowIstatistikModal(true); }
       else if (e.key === "F4") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleNew(); }
+      else if (e.key === "F7") { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowArbitrajModal(true); }
       else if (e.key === "F8") { e.preventDefault(); e.stopPropagation(); closeAllModals(); openDetayModal(); }
       else if (e.key === "F9") {
         e.preventDefault();
@@ -3849,16 +4042,21 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   });
 
   return (
-    <div className="sarraf-fisi-page w-100 pb-3" style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px" }}>
+    <div className="sarraf-fisi-page w-100 pb-3" style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px", "--active-fis-theme-bg": activeFisThemeBg } as React.CSSProperties}>
       {ebFis.bant}
       <ERPToolbar
         disableShortcuts
         pageTitle={
-          <span style={{ fontWeight: 700, fontSize: "14px" }}>
+          <span style={{ fontWeight: 700, fontSize: "14px" }} className="d-flex align-items-center gap-2">
             {displayTitle}{" "}
             <Badge bg={tip === 0 ? "primary" : "success"} style={{ fontSize: "11px" }}>
               {tip === 0 ? "ALIŞ" : "SATIŞ"}
             </Badge>
+            {arbitrajActiveInfo && (
+              <Badge bg="warning" className="text-dark fw-bold px-2 py-0.5 d-inline-flex align-items-center gap-1 shadow-2xs" style={{ fontSize: "11px" }}>
+                <IconArrowsExchange size={14} /> ARBİTRAJ ({arbitrajActiveInfo.girisKod} ⇄ {arbitrajActiveInfo.cikisKod})
+              </Badge>
+            )}
           </span>
         }
         onNew={handleNew}
@@ -3973,10 +4171,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       )}
 
       <Card
-        className={`shadow-sm mb-2 ${isMasakBlocked ? "border-2 border-danger" : ""}`}
-        style={isMasakBlocked ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" } : {}}
+        className={`shadow-sm mb-2 fis-theme-card ${isMasakBlocked ? "border-2 border-danger" : ""}`}
+        data-fis-theme="active"
+        style={
+          isMasakBlocked
+            ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" }
+            : { backgroundColor: activeFisThemeBg }
+        }
       >
-        <Card.Body className="p-2">
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           {/* ─── Header Form: 2 Düzenli Satır ─────────────────────────────────── */}
 
           {/* 1. Satır: İşlem | TC/VKN (+Dürbün +MASAK) | Cari Kodu | Adı (+Dürbün +MASAK) | Zaman (En Sağda) */}
@@ -4403,8 +4606,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       </Card>
 
       {/* ─── 2. Satır Tablosu (Kalemler) (Ayrı Dış Dikdörtgen Kutu) ─── */}
-      <Card className="shadow-sm mb-2 border rounded-2 bg-white">
-        <Card.Body className="p-2">
+      <Card className="shadow-sm mb-2 border rounded-2 fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           <div style={{ overflowX: "auto" }}>
             <Table bordered size="sm" hover className="mb-0" style={{ fontSize: "11.5px", minWidth: 960 }}>
               <thead style={{ background: "#d9e8fb", color: "#000" }}>
@@ -4795,8 +4998,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       </Card>
 
       {/* ─── 3. Alt Bölüm (Ödeme / Tahsilat Tablosu ve Özet) ─── */}
-      <Card className="shadow-sm mb-2 border rounded-2 bg-white">
-        <Card.Body className="p-2">
+      <Card className="shadow-sm mb-2 border rounded-2 fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           <Row className="g-2 align-items-start">
             {/* SOLDA: Ödeme / Tahsilat Tablosu (Üstteki tablo ile birebir aynı tasarım) */}
             <Col xs={12} lg={8} md={7}>
@@ -5599,7 +5802,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             </Col>
           </Row>
 
-          {/* ─── Alt Kısayol Çubuğu (Kaydet, F8 Detay ve Sağda Belge Türü) ───────── */}
+          {/* ─── Alt Kısayol Çubuğu (Kaydet, F7 Arbitraj, F8 Detay ve Sağda Belge Türü) ───────── */}
           <div className="d-flex gap-3 flex-wrap mt-2 pt-2 border-top align-items-center justify-content-between">
             <div className="d-flex align-items-center gap-2">
               <span
@@ -5610,6 +5813,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               >
                 <Badge bg="primary" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F1</Badge>
                 <span className="fw-bold text-dark">Kaydet</span>
+              </span>
+              <span
+                className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                style={{ fontSize: "11.5px", cursor: "pointer" }}
+                onClick={() => setShowArbitrajModal(true)}
+                title="Arbitraj İşlemi Aç (F7)"
+              >
+                <Badge bg="warning" className="text-dark px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F7</Badge>
+                <span className="fw-bold text-dark">Arbitraj</span>
               </span>
               <span
                 className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
@@ -6726,6 +6938,34 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* F7) Arbitraj Modalı */}
+      <ArbitrajModal
+        show={showArbitrajModal}
+        onClose={() => setShowArbitrajModal(false)}
+        paralar={kurSatirlar.map((k) => ({
+          id: k.paraId,
+          kod: k.kod,
+          ad: k.ad,
+          isMaden: false,
+          dovizAlis: k.dovizAlis ?? undefined,
+          dovizSatis: k.dovizSatis ?? undefined,
+          efektifAlis: k.efektifAlis ?? undefined,
+          efektifSatis: k.efektifSatis ?? undefined,
+          parite: k.parite ?? undefined,
+        }))}
+        kurSatirlar={kurSatirlar}
+        urunler={urunList}
+        vezneId={vezneId}
+        vezneKod={vezneKod}
+        vezneAd={vezneAd}
+        selectedCariId={cariKartId}
+        selectedUnvan={unvan || detayUnvan}
+        cariList={cariList}
+        pageType="sarraf"
+        fisTip={tip}
+        onApplyToFis={handleApplyArbitrajToSarrafFis}
+      />
     </div>
   );
 };
