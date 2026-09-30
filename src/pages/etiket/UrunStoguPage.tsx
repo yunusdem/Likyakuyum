@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Col, Form, InputGroup, Modal, Row, Spinner, Table } from "react-bootstrap";
 import {
-  IconCoin, IconDiamond, IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconSearch, IconX, IconTrendingUp, IconTrendingDown,
+  IconCoin, IconDiamond, IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconSearch, IconX, 
   IconPackage, IconCash, IconScale, IconUserSearch, IconFilter,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -126,29 +126,17 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
 
       {hata && <Alert variant="danger" dismissible onClose={() => setHata(null)} className="py-2 mb-2">{hata}</Alert>}
 
-      {/* Özet kartları */}
+      {/* Özet kartları: stok has / stok işçilik maliyeti / satış has / satış işçiliği */}
       <Row className="g-2 mb-2">
         <Col xs={12} sm={6} md={3}>
           <Card className="border-0 shadow-xs bg-primary bg-opacity-10 h-100">
             <Card.Body className="p-2 d-flex align-items-center justify-content-between">
               <div>
-                <div className="text-muted small fw-semibold">Stokta</div>
-                <div className="fs-6 fw-bold text-primary">{ozet.stokta?.adet ?? 0} adet · {sayi(ozet.stokta?.miktar)} {altin ? "gr" : ""}</div>
-                <div className="small text-muted">Maliyet {sayi(ozet.stokta?.maliyet, 4)} {birim} · {sayi(ozet.stokta?.maliyetTl)} TL</div>
+                <div className="text-muted small fw-semibold">Stok Has Toplamı</div>
+                <div className="fs-6 fw-bold text-primary">{sayi(ozet.stokta?.hasGram, 4)} HAS</div>
+                <div className="small text-muted">{ozet.stokta?.adet ?? 0} adet · {sayi(ozet.stokta?.miktar)} {altin ? "gr" : ""}</div>
               </div>
               <div className="p-2 bg-primary text-white rounded-3"><IconPackage size={22} /></div>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col xs={12} sm={6} md={3}>
-          <Card className="border-0 shadow-xs bg-warning bg-opacity-10 h-100">
-            <Card.Body className="p-2 d-flex align-items-center justify-content-between">
-              <div>
-                <div className="text-muted small fw-semibold">Satıldı</div>
-                <div className="fs-6 fw-bold text-warning-emphasis">{ozet.satildi?.adet ?? 0} adet · {sayi(ozet.satildi?.miktar)} {altin ? "gr" : ""}</div>
-                <div className="small text-muted">Satış {sayi(ozet.satildi?.satis, 4)} {birim} · {sayi(ozet.satildi?.satisTl)} TL</div>
-              </div>
-              <div className="p-2 bg-warning text-dark rounded-3"><IconScale size={22} /></div>
             </Card.Body>
           </Card>
         </Col>
@@ -156,25 +144,35 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
           <Card className="border-0 shadow-xs bg-secondary bg-opacity-10 h-100">
             <Card.Body className="p-2 d-flex align-items-center justify-content-between">
               <div>
-                <div className="text-muted small fw-semibold">Satış Maliyeti</div>
-                <div className="fs-6 fw-bold text-dark">{sayi(ozet.satildi?.maliyet, 4)} {birim}</div>
-                <div className="small text-muted">{sayi(ozet.satildi?.maliyetTl)} TL</div>
+                <div className="text-muted small fw-semibold">Stok İşçilik Maliyet Toplamı</div>
+                <div className="fs-6 fw-bold text-dark">{sayi(ozet.stokta?.iscilikMaliyet, 4)} {birim}</div>
+                <div className="small text-muted">Stok maliyeti {sayi(ozet.stokta?.maliyet, 4)} {birim} · {sayi(ozet.stokta?.maliyetTl)} TL</div>
               </div>
               <div className="p-2 bg-secondary text-white rounded-3"><IconCash size={22} /></div>
             </Card.Body>
           </Card>
         </Col>
         <Col xs={12} sm={6} md={3}>
-          <Card className={`border-0 shadow-xs ${(ozet.satildi?.karTl ?? 0) < 0 ? "bg-danger" : "bg-success"} bg-opacity-10 h-100`}>
+          <Card className="border-0 shadow-xs bg-warning bg-opacity-10 h-100">
             <Card.Body className="p-2 d-flex align-items-center justify-content-between">
               <div>
-                <div className="text-muted small fw-semibold">Satış Kâr / Zarar</div>
-                <div className={`fs-6 fw-bold ${karRenk(ozet.satildi?.karTl ?? 0)}`}>{sayi(ozet.satildi?.kar, 4)} {birim} · {sayi(ozet.satildi?.karTl)} TL</div>
-                <div className="small text-muted">Kâr %{ozet.satildi?.karYuzde === null || ozet.satildi?.karYuzde === undefined ? "-" : sayi(ozet.satildi.karYuzde)}</div>
+                <div className="text-muted small fw-semibold">Satış Has Toplamı</div>
+                <div className="fs-6 fw-bold text-warning-emphasis">{sayi(ozet.satildi?.hasGram, 4)} HAS</div>
+                <div className="small text-muted">{ozet.satildi?.adet ?? 0} adet · {sayi(ozet.satildi?.miktar)} {altin ? "gr" : ""}</div>
               </div>
-              <div className={`p-2 ${(ozet.satildi?.karTl ?? 0) < 0 ? "bg-danger" : "bg-success"} text-white rounded-3`}>
-                {(ozet.satildi?.karTl ?? 0) < 0 ? <IconTrendingDown size={22} /> : <IconTrendingUp size={22} />}
+              <div className="p-2 bg-warning text-dark rounded-3"><IconScale size={22} /></div>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col xs={12} sm={6} md={3}>
+          <Card className="border-0 shadow-xs bg-success bg-opacity-10 h-100">
+            <Card.Body className="p-2 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold">Satış İşçilik Toplamı</div>
+                <div className="fs-6 fw-bold text-success">{sayi(ozet.satildi?.satisIscilik, 4)} {birim}</div>
+                <div className={`small ${karRenk(ozet.satildi?.karTl ?? 0) || "text-muted"}`}>Kâr {sayi(ozet.satildi?.kar, 4)} {birim} · {sayi(ozet.satildi?.karTl)} TL</div>
               </div>
+              <div className="p-2 bg-success text-white rounded-3"><IconCoin size={22} /></div>
             </Card.Body>
           </Card>
         </Col>
@@ -278,7 +276,9 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
                   <th>{altin ? "Model" : "Mamul"}</th>
                   <th className="text-center">Ayar</th>
                   <th className="text-end">{altin ? "Gram" : "Miktar"}</th>
-                  {altin && <th className="text-end">Has gr</th>}
+                  <th className="text-end">Has gr</th>
+                  <th className="text-end">İşç. mal. {birim}</th>
+                  {altin && <th className="text-end">Satış işç. {birim}</th>}
                   <th className="text-end">Maliyet {birim}</th>
                   <th className="text-end">Maliyet TL</th>
                   <th className="text-end">Satış {birim}</th>
@@ -296,11 +296,11 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
               </thead>
               <tbody>
                 {yukleniyor && !veri ? (
-                  <tr><td colSpan={20} className="text-center py-4"><Spinner animation="border" size="sm" /> Yükleniyor…</td></tr>
+                  <tr><td colSpan={22} className="text-center py-4"><Spinner animation="border" size="sm" /> Yükleniyor…</td></tr>
                 ) : !veri ? (
-                  <tr><td colSpan={20} className="text-center text-muted py-5">Filtreleri seçip <b>Filtrele</b>'ye basın. Hiçbir şey seçilmezse tüm ürünler listelenir.</td></tr>
+                  <tr><td colSpan={22} className="text-center text-muted py-5">Filtreleri seçip <b>Filtrele</b>'ye basın. Hiçbir şey seçilmezse tüm ürünler listelenir.</td></tr>
                 ) : satirlar.length === 0 ? (
-                  <tr><td colSpan={20} className="text-center text-muted py-4">Bu filtrelerle kayıt bulunamadı.</td></tr>
+                  <tr><td colSpan={22} className="text-center text-muted py-4">Bu filtrelerle kayıt bulunamadı.</td></tr>
                 ) : satirlar.map((s) => (
                   <tr key={s.urunId}>
                     <td>{tarihTr(s.tarih)}</td>
@@ -309,7 +309,9 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
                     <td>{s.urunAdi}</td>
                     <td className="text-center">{s.ayar}</td>
                     <td className="text-end">{sayi(s.miktar)}{!altin && s.miktarBirimi ? ` ${s.miktarBirimi}` : ""}</td>
-                    {altin && <td className="text-end">{sayi(s.hasGram, 4)}</td>}
+                    <td className="text-end">{sayi(s.hasGram, 4)}</td>
+                    <td className="text-end">{sayi(s.iscilikMaliyet, 4)}</td>
+                    {altin && <td className="text-end">{sayi(s.satisIscilik, 4)}</td>}
                     <td className="text-end">{sayi(s.maliyet, 4)}{s.birim !== birim ? ` ${s.birim}` : ""}</td>
                     <td className="text-end">{sayi(s.maliyetTl)}</td>
                     <td className={`text-end ${s.satildi ? "" : "text-muted"}`} title={s.satildi ? "Fatura satırı (KDV hariç)" : "Etiket satış fiyatı"}>{sayi(s.satis, 4)}</td>
@@ -331,7 +333,9 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
                   <tr>
                     <td colSpan={5}>Toplam ({ozet.toplam.adet} adet)</td>
                     <td className="text-end">{sayi(ozet.toplam.miktar)}</td>
-                    {altin && <td className="text-end">{sayi(ozet.toplam.hasGram, 4)}</td>}
+                    <td className="text-end">{sayi(ozet.toplam.hasGram, 4)}</td>
+                    <td className="text-end">{sayi(ozet.toplam.iscilikMaliyet, 4)}</td>
+                    {altin && <td className="text-end">{sayi(ozet.toplam.satisIscilik, 4)}</td>}
                     <td className="text-end">{sayi(ozet.toplam.maliyet, 4)}</td>
                     <td className="text-end">{sayi(ozet.toplam.maliyetTl)}</td>
                     <td className="text-end">{sayi(ozet.toplam.satis, 4)}</td>
