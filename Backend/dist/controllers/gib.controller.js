@@ -1,15 +1,34 @@
 import { VknSorguService } from "../services/gib/vknSorgu.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+/** GİB VKN/TCKN sorgusu ve firmanın kendi GİB hesabı (docs/GIB_VKN_SORGU_YOL_HARITASI.md) */
 export class GibController {
-    /** GET /api/v1/gib/vkn-sorgu?no= — GİB'den unvan / ad-soyad / vergi dairesi (docs/GIB_VKN_SORGU_YOL_HARITASI.md) */
+    static ctx(req) {
+        return { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
+    }
+    static kullanici(req) {
+        return req.user?.username || req.user?.userId || "bilinmiyor";
+    }
+    /** GET /api/v1/gib/vkn-sorgu?no= */
     static vknSorgu = asyncHandler(async (req, res) => {
-        const sonuc = await VknSorguService.sorgula(String(req.query.no ?? ""), {
-            firmaId: req.user?.firmaId ?? null,
-            dbAdi: req.user?.dbName ?? null,
-            kullanici: req.user?.username || req.user?.userId || "bilinmiyor",
-            dbContext: { dbServer: req.user?.dbServer, dbName: req.user?.dbName },
-        });
+        const sonuc = await VknSorguService.sorgula(String(req.query.no ?? ""), GibController.ctx(req), GibController.kullanici(req));
         return ApiResponse.ok(res, sonuc.sonuc === "BULUNDU" ? "GİB kaydı bulundu." : "Bu numara GİB'de kayıtlı değil.", sonuc);
+    });
+    /** GET /api/v1/gib/hesap — şifre dönmez */
+    static hesap = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "GİB hesabı getirildi.", await VknSorguService.hesapDurumu(GibController.ctx(req)));
+    });
+    /** PUT /api/v1/gib/hesap { kullaniciKodu, sifre } */
+    static hesapKaydet = asyncHandler(async (req, res) => {
+        const sonuc = await VknSorguService.hesapKaydet(GibController.ctx(req), String(req.body?.kullaniciKodu ?? ""), String(req.body?.sifre ?? ""), GibController.kullanici(req));
+        return ApiResponse.ok(res, "GİB hesabı kaydedildi.", sonuc);
+    });
+    /** DELETE /api/v1/gib/hesap */
+    static hesapSil = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "GİB hesabı silindi.", await VknSorguService.hesapSil(GibController.ctx(req)));
+    });
+    /** POST /api/v1/gib/hesap/dene */
+    static hesapDene = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "GİB portalına giriş başarılı.", await VknSorguService.hesapDene(GibController.ctx(req)));
     });
 }
