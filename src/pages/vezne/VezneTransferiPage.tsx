@@ -862,7 +862,7 @@ export const VezneTransferiPage: React.FC = () => {
         onLast={() => handleNavigate("last")}
         onPrint={() => setShowPrintModal(true)}
         onRefresh={handleRefresh}
-        pageTitle={isDuzeltmeMode ? "F- Vezne Transferi Düzeltme" : "E- Vezne Transferi Kayıt"}
+        pageTitle={isDuzeltmeMode ? "H- Vezne Transferi Düzeltme" : "G- Vezne Transferi Kayıt"}
         pageIcon={<IconCash size={20} className="text-primary" />}
         hideSearch={!isDuzeltmeMode}
         hideDelete={!isDuzeltmeMode}
@@ -1100,149 +1100,149 @@ export const VezneTransferiPage: React.FC = () => {
 
           {/* Lines Grid Table */}
           <div className="table-responsive" style={{ minHeight: "160px", maxHeight: "280px", overflowY: "auto" }}>
-          <Table bordered hover size="sm" className="mb-0 text-nowrap" style={{ fontSize: "12.5px" }}>
-            <thead
-              style={{
-                backgroundColor: "#bfdbfe",
-                color: "#1e3a8a",
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-              }}
-            >
-              <tr>
-                <th style={{ width: "120px", padding: "4px 8px" }}>Kod</th>
-                <th style={{ padding: "4px 8px" }}>Para adı</th>
-                <th style={{ width: "220px", padding: "4px 8px" }} className="text-end">
-                  Miktar
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, idx) => (
-                <tr
-                  key={line.id}
-                  className={activeRowIndex === idx ? "table-active" : ""}
-                  onClick={() => setActiveRowIndex(idx)}
-                >
-                  {/* Kod with quick search button */}
-                  <td style={{ padding: "3px 4px" }}>
-                    <InputGroup size="sm">
-                      <Form.Control
-                        type="text"
-                        value={line.paraKodu}
-                        onChange={(e) => handleLineChange(idx, "paraKodu", e.target.value)}
-                        placeholder=""
-                        className="fw-bold text-primary text-uppercase p-1 text-center"
-                        style={{ height: "26px", fontSize: "12px" }}
-                        ref={(el) => {
-                          rowInputRefs.current[`kod-${idx}`] = el;
-                        }}
-                        onKeyDown={(e) => handleGridKeyDown(e, idx, "kod")}
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        className="px-1.5 py-0 d-flex align-items-center justify-content-center"
-                        style={{ height: "26px" }}
-                        onClick={() => {
-                          setActiveRowIdForPara(line.id);
-                          setShowParaModal(true);
-                        }}
-                        title="Para Seç"
-                      >
-                        <IconBinoculars size={13} />
-                      </Button>
-                    </InputGroup>
-                  </td>
-
-                  {/* Para adı */}
-                  <td style={{ padding: "4px 8px", verticalAlign: "middle" }}>
-                    <span className="fw-medium text-dark">{line.paraAdi || ""}</span>
-                  </td>
-
-                  {/* Miktar */}
-                  <td style={{ padding: "3px 4px" }}>
-                    <Form.Control
-                      ref={(el) => {
-                        rowInputRefs.current[`miktar-${idx}`] = el;
-                      }}
-                      type="text"
-                      inputMode="decimal"
-                      data-decimal="true"
-                      className="text-end fw-bold p-1"
-                      style={{ height: "26px", fontSize: "13px" }}
-                      value={line.miktar}
-                      onChange={(e) => handleLineChange(idx, "miktar", e.target.value)}
-                      onKeyDown={(e) => {
-                        blockNonNumericKeys(e, true);
-                        handleGridKeyDown(e, idx, "miktar");
-                      }}
-                    />
-                  </td>
-
-                  {/* Delete row action */}
-                  <td style={{ padding: "2px", textAlign: "center", verticalAlign: "middle" }}>
-                    {lines.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="p-0 text-muted hover-danger border-0"
-                        onClick={() => handleRemoveLine(idx)}
-                        title="Satırı Sil"
-                      >
-                        <IconTrash size={14} />
-                      </Button>
-                    )}
-                  </td>
+            <Table bordered hover size="sm" className="mb-0 text-nowrap" style={{ fontSize: "12.5px" }}>
+              <thead
+                style={{
+                  backgroundColor: "#bfdbfe",
+                  color: "#1e3a8a",
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 2,
+                }}
+              >
+                <tr>
+                  <th style={{ width: "120px", padding: "4px 8px" }}>Kod</th>
+                  <th style={{ padding: "4px 8px" }}>Para adı</th>
+                  <th style={{ width: "220px", padding: "4px 8px" }} className="text-end">
+                    Miktar
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
-        </div>
+              </thead>
+              <tbody>
+                {lines.map((line, idx) => (
+                  <tr
+                    key={line.id}
+                    className={activeRowIndex === idx ? "table-active" : ""}
+                    onClick={() => setActiveRowIndex(idx)}
+                  >
+                    {/* Kod with quick search button */}
+                    <td style={{ padding: "3px 4px" }}>
+                      <InputGroup size="sm">
+                        <Form.Control
+                          type="text"
+                          value={line.paraKodu}
+                          onChange={(e) => handleLineChange(idx, "paraKodu", e.target.value)}
+                          placeholder=""
+                          className="fw-bold text-primary text-uppercase p-1 text-center"
+                          style={{ height: "26px", fontSize: "12px" }}
+                          ref={(el) => {
+                            rowInputRefs.current[`kod-${idx}`] = el;
+                          }}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "kod")}
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          className="px-1.5 py-0 d-flex align-items-center justify-content-center"
+                          style={{ height: "26px" }}
+                          onClick={() => {
+                            setActiveRowIdForPara(line.id);
+                            setShowParaModal(true);
+                          }}
+                          title="Para Seç"
+                        >
+                          <IconBinoculars size={13} />
+                        </Button>
+                      </InputGroup>
+                    </td>
 
-        {/* F1, F5, F9, F10 Bottom Bar matching reference screenshot */}
-        <div
-          className="d-flex align-items-center justify-content-center gap-4 py-1.5 px-3 border-top user-select-none"
-          style={{
-            backgroundColor: "#d1fae5", // Soft cyan/mint strip as shown in user screenshot
-            color: "#065f46",
-            fontSize: "13px",
-            fontWeight: 600,
-          }}
-        >
-          <span
-            onClick={handleSave}
-            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-            role="button"
-            title="Transferi Kaydet (F1)"
+                    {/* Para adı */}
+                    <td style={{ padding: "4px 8px", verticalAlign: "middle" }}>
+                      <span className="fw-medium text-dark">{line.paraAdi || ""}</span>
+                    </td>
+
+                    {/* Miktar */}
+                    <td style={{ padding: "3px 4px" }}>
+                      <Form.Control
+                        ref={(el) => {
+                          rowInputRefs.current[`miktar-${idx}`] = el;
+                        }}
+                        type="text"
+                        inputMode="decimal"
+                        data-decimal="true"
+                        className="text-end fw-bold p-1"
+                        style={{ height: "26px", fontSize: "13px" }}
+                        value={line.miktar}
+                        onChange={(e) => handleLineChange(idx, "miktar", e.target.value)}
+                        onKeyDown={(e) => {
+                          blockNonNumericKeys(e, true);
+                          handleGridKeyDown(e, idx, "miktar");
+                        }}
+                      />
+                    </td>
+
+                    {/* Delete row action */}
+                    <td style={{ padding: "2px", textAlign: "center", verticalAlign: "middle" }}>
+                      {lines.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-0 text-muted hover-danger border-0"
+                          onClick={() => handleRemoveLine(idx)}
+                          title="Satırı Sil"
+                        >
+                          <IconTrash size={14} />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+
+          {/* F1, F5, F9, F10 Bottom Bar matching reference screenshot */}
+          <div
+            className="d-flex align-items-center justify-content-center gap-4 py-1.5 px-3 border-top user-select-none"
+            style={{
+              backgroundColor: "#d1fae5", // Soft cyan/mint strip as shown in user screenshot
+              color: "#065f46",
+              fontSize: "13px",
+              fontWeight: 600,
+            }}
           >
-            F1) Kayıt
-          </span>
-          <span
-            onClick={handleTopluTransfer}
-            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-            role="button"
-            title="Veren Veznedeki Tüm Bakiyeleri Aktar (F5)"
-          >
-            F5) Toplu Transfer
-          </span>
-          <span
-            onClick={handleOpenParaSay}
-            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-            role="button"
-            title="Banknot Sayımı Yap (F9)"
-          >
-            F9) Say
-          </span>
-          <span
-            onClick={() => setShowPrintModal(true)}
-            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-            role="button"
-            title="Transfer Makbuzunu Yazdır / Kes (F10)"
-          >
-            F10) Kes
-          </span>
-        </div>
+            <span
+              onClick={handleSave}
+              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
+              role="button"
+              title="Transferi Kaydet (F1)"
+            >
+              F1) Kayıt
+            </span>
+            <span
+              onClick={handleTopluTransfer}
+              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
+              role="button"
+              title="Veren Veznedeki Tüm Bakiyeleri Aktar (F5)"
+            >
+              F5) Toplu Transfer
+            </span>
+            <span
+              onClick={handleOpenParaSay}
+              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
+              role="button"
+              title="Banknot Sayımı Yap (F9)"
+            >
+              F9) Say
+            </span>
+            <span
+              onClick={() => setShowPrintModal(true)}
+              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
+              role="button"
+              title="Transfer Makbuzunu Yazdır / Kes (F10)"
+            >
+              F10) Kes
+            </span>
+          </div>
         </Card.Body>
       </Card>
 
@@ -1454,6 +1454,33 @@ export const VezneTransferiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* Kayıt / İşlem Sırasında Yüklenme Spinner Rozeti & Katmanı */}
+      {isSaving && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(3px)",
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#ffffff",
+          }}
+        >
+          <div className="spinner-border text-success mb-3" style={{ width: "3.5rem", height: "3.5rem" }} role="status">
+            <span className="visually-hidden">Yükleniyor...</span>
+          </div>
+          <h5 className="fw-bold tracking-wide text-white mb-1">Vezne Transferi Kaydediliyor...</h5>
+          <p className="small text-white-50 mb-0">Bakiyeler vezneler arasında aktarılıyor, lütfen bekleyiniz.</p>
+        </div>
+      )}
     </div>
   );
 };

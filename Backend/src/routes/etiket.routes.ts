@@ -34,6 +34,7 @@ router.get("/:tip(altin|ozel)-urun-stogu/excel", UrunStokController.excel);
 
 // Altın Ürün (TODVZ_ALTIN_URUN)
 router.get("/altin-urun", EtiketController.listAltinUrun);
+router.get("/altin-urun/stok", EtiketController.getAltinUrunStok);
 router.get("/altin-urun/next-no", EtiketController.getNextAltinUrunNo);
 router.get("/altin-urun/barkod/:barkod", EtiketController.getAltinUrunByBarkod);
 router.get("/altin-urun/:id", EtiketController.getAltinUrunById);

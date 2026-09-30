@@ -29,6 +29,7 @@ import {
   IconShield,
   IconSearch,
   IconAlertCircle,
+  IconArrowsExchange,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -43,6 +44,7 @@ import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "
 import { KurListesiModal } from "./KurListesiModal";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { TlHesabiModal } from "./TlHesabiModal";
+import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { CariService, CariKartItem } from "../../services/cariService";
@@ -408,7 +410,7 @@ export const DovizFisiPage: React.FC = () => {
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
 
   useEffect(() => {
-    PrinterService.getYazicilar().then(setPrinters).catch(() => {});
+    PrinterService.getYazicilar().then(setPrinters).catch(() => { });
   }, []);
 
   // Kuruş ve ondalık basamak sayıları (Firma Tanımlarından alınır)
@@ -438,6 +440,8 @@ export const DovizFisiPage: React.FC = () => {
   const [paraSearchTerm, setParaSearchTerm] = useState<string>("");
   const [showDetayModal, setShowDetayModal] = useState<boolean>(false);
   const [showGumrukModal, setShowGumrukModal] = useState<boolean>(false);
+  const [showArbitrajModal, setShowArbitrajModal] = useState<boolean>(false);
+  const [arbitrajActiveInfo, setArbitrajActiveInfo] = useState<{ girisKod: string; cikisKod: string; parite: number; islemYonu: string } | null>(null);
   const [istatistikSearchTerm, setIstatistikSearchTerm] = useState<string>("");
   const [tcknDogrulandi, setTcknDogrulandi] = useState<boolean | null>(null);
   const tipSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -503,6 +507,27 @@ export const DovizFisiPage: React.FC = () => {
   const [vezneKod, setVezneKod] = useState<string>("01");
   const [vezneAd, setVezneAd] = useState<string>("Ana Vezne");
   const [tip, setTip] = useState<number>(0); // 0: Alış, 1: Satış
+
+  // Alış / Satış başlığı renk teması
+  const activeFisThemeBg = useMemo(() => {
+    let buyBg = user?.appearance?.buyHeaderBgColor;
+    let sellBg = user?.appearance?.sellHeaderBgColor;
+    if (!buyBg || !sellBg) {
+      try {
+        const cached = localStorage.getItem("kuyumcu_active_appearance");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!buyBg && parsed.buyHeaderBgColor) buyBg = parsed.buyHeaderBgColor;
+          if (!sellBg && parsed.sellHeaderBgColor) sellBg = parsed.sellHeaderBgColor;
+        }
+      } catch { }
+    }
+    if (tip === 0) {
+      return buyBg || "var(--user-buy-header-bg, #e2e8f0)";
+    } else {
+      return sellBg || "var(--user-sell-header-bg, #e2e8f0)";
+    }
+  }, [tip, user?.appearance?.buyHeaderBgColor, user?.appearance?.sellHeaderBgColor]);
   const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [saat, setSaat] = useState<string>(() => {
     const d = new Date();
@@ -1932,22 +1957,22 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const isAnonymousCustomerName = (val?: string | null): boolean => {
-  if (!val) return true;
-  const s = val.trim().toLocaleUpperCase("tr-TR")
-    .replace(/İ/g, "I")
-    .replace(/Ğ/g, "G")
-    .replace(/Ü/g, "U")
-    .replace(/Ş/g, "S")
-    .replace(/Ö/g, "O")
-    .replace(/Ç/g, "C");
-  return (
-    s === "" ||
-    s === "ISIM BEYAN EDILMEMISTIR" ||
-    s === "ISIM BEYAN EDILMEDI" ||
-    s === "NIHAI TUKETICI" ||
-    s.includes("BEYAN EDILME")
-  );
-};
+    if (!val) return true;
+    const s = val.trim().toLocaleUpperCase("tr-TR")
+      .replace(/İ/g, "I")
+      .replace(/Ğ/g, "G")
+      .replace(/Ü/g, "U")
+      .replace(/Ş/g, "S")
+      .replace(/Ö/g, "O")
+      .replace(/Ç/g, "C");
+    return (
+      s === "" ||
+      s === "ISIM BEYAN EDILMEMISTIR" ||
+      s === "ISIM BEYAN EDILMEDI" ||
+      s === "NIHAI TUKETICI" ||
+      s.includes("BEYAN EDILME")
+    );
+  };
 
   const findMatchingCustomers = (
     field: "kod" | "unvan" | "vkn",
@@ -2693,6 +2718,7 @@ export const DovizFisiPage: React.FC = () => {
       navigate("/vezne/doviz-fisi-kayit");
     } else {
       resetForm();
+      setArbitrajActiveInfo(null);
       applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
     }
   };
@@ -3277,7 +3303,82 @@ export const DovizFisiPage: React.FC = () => {
     await loadFisById(savedFisList[idx].fisId);
   };
 
-  // Keyboard shortcut listener (F1..F10, ESC)
+  // ─── Arbitraj Sonucunu Döviz Fişine Aktarma (F7) ──────────────────────────
+  const handleApplyArbitrajToDovizFis = useCallback(
+    (result: ArbitrajApplyResult) => {
+      if (result.islemYonu === "alis") {
+        setTip(0); // Alış
+        const targetPara =
+          paraList.find((p) => p.kod.toUpperCase() === result.girisPara.kod.toUpperCase()) || paraList[0];
+
+        if (targetPara) {
+          const m = result.girisMiktar;
+          const liveKur = targetPara.efektifAlis || targetPara.dovizAlis || result.girisKur;
+          const k = liveKur > 0 ? liveKur : (result.parite > 0 ? result.parite : 1.0);
+          setLines([
+            {
+              id: String(Date.now()),
+              satirNo: 1,
+              paraId: targetPara.id,
+              paraKodu: targetPara.kod,
+              paraAdi: targetPara.ad,
+              miktar: m,
+              kur: k,
+              komisyonOrani: 0,
+              komisyon: 0,
+              bmvOrani: 0,
+              bmv: 0,
+              kmvOrani: 0,
+              kmv: 0,
+              tutar: m * k,
+            },
+          ]);
+        }
+      } else {
+        setTip(1); // Satış
+        const targetPara =
+          paraList.find((p) => p.kod.toUpperCase() === result.cikisPara.kod.toUpperCase()) || paraList[0];
+
+        if (targetPara) {
+          const m = result.cikisMiktar;
+          const liveKur = targetPara.efektifSatis || targetPara.dovizSatis || result.cikisKur;
+          const k = liveKur > 0 ? liveKur : (result.parite > 0 ? result.parite : 1.0);
+          setLines([
+            {
+              id: String(Date.now()),
+              satirNo: 1,
+              paraId: targetPara.id,
+              paraKodu: targetPara.kod,
+              paraAdi: targetPara.ad,
+              miktar: m,
+              kur: k,
+              komisyonOrani: 0,
+              komisyon: 0,
+              bmvOrani: 0,
+              bmv: 0,
+              kmvOrani: 0,
+              kmv: 0,
+              tutar: m * k,
+            },
+          ]);
+        }
+      }
+
+      setArbitrajActiveInfo({
+        girisKod: result.girisPara.kod,
+        cikisKod: result.cikisPara.kod,
+        parite: result.parite,
+        islemYonu: result.islemYonu,
+      });
+
+      setNotification({
+        type: "success",
+        message: `Arbitraj işlemi (${result.girisPara.kod} -> ${result.cikisPara.kod}) fiş satırlarına aktarıldı.`,
+      });
+    },
+    [paraList]
+  );
+
   // Keyboard shortcut listener (F1..F10, ESC)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -3344,6 +3445,11 @@ export const DovizFisiPage: React.FC = () => {
           setShowIstatistikModal(false);
           return;
         }
+        if (showArbitrajModal) {
+          e.preventDefault();
+          setShowArbitrajModal(false);
+          return;
+        }
         if (showGumrukModal) {
           e.preventDefault();
           setShowGumrukModal(false);
@@ -3374,6 +3480,7 @@ export const DovizFisiPage: React.FC = () => {
         setShowDetayModal(false);
         setShowParaSaymaModal(false);
         setShowIstatistikModal(false);
+        setShowArbitrajModal(false);
         setShowSearchModal(false);
         setShowCariModal(false);
         setShowVezneModal(false);
@@ -3420,7 +3527,7 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        setShowGumrukModal(true);
+        setShowArbitrajModal(true);
       } else if (isF9) {
         e.preventDefault();
         e.stopPropagation();
@@ -3441,21 +3548,22 @@ export const DovizFisiPage: React.FC = () => {
     handleToolbarDelete,
     isDuzeltmeMode,
     vezneId,
-    fetchVezneBalances,
-    showIstatistikModal,
+    showDetayModal,
+    activeLookupType,
     showKurListesiModal,
     showVezneBakiyeModal,
     showTlHesabiModal,
-    showDetayModal,
     showParaSaymaModal,
-    showSearchModal,
+    showIstatistikModal,
+    showArbitrajModal,
+    showPrintModal,
     showCariModal,
+    showSearchModal,
     showVezneModal,
     showParaModal,
-    showGumrukModal,
-    showPrintModal,
-    activeLookupType,
+    handleOpenDetayModal,
     handleOpenBanknotSay,
+    fetchVezneBalances,
   ]);
 
   // Detay Modal Field KeyDown Navigation (Enter, ArrowDown, ArrowUp, F4)
@@ -3643,7 +3751,7 @@ export const DovizFisiPage: React.FC = () => {
 
   // e-Banka mutabakatından "Fiş kes" ile gelindiyse cari / tarih / yön dolu açılır
   // Döviz hesabından gelen parada ilk satır o dövizle dolu gelir; tip değişikliği işlendikten sonra (güncel kurla) uygulanır
-  const ebDovizSatiriRef = useRef<() => void>(() => {});
+  const ebDovizSatiriRef = useRef<() => void>(() => { });
   ebDovizSatiriRef.current = () => {
     const h = ebHedefRef.current;
     if (!h || ["TL", "TRY"].includes(h.paraKodu.toUpperCase())) return;
@@ -3668,7 +3776,8 @@ export const DovizFisiPage: React.FC = () => {
         border: isMasakBlocked ? "4px solid #dc2626" : "none",
         boxShadow: isMasakBlocked ? "inset 0 0 16px rgba(220, 38, 38, 0.4)" : "none",
         transition: "all 0.3s ease",
-      }}
+        '--active-fis-theme-bg': activeFisThemeBg,
+      } as React.CSSProperties}
     >
       {ebFis.bant}
       {/* Top ERP Toolbar with Refresh Icon on right and Dynamic Balances */}
@@ -3690,6 +3799,11 @@ export const DovizFisiPage: React.FC = () => {
             >
               {tip === 1 ? "SATIŞ FİŞİ" : "ALIŞ FİŞİ"}
             </span>
+            {arbitrajActiveInfo && (
+              <Badge bg="warning" className="text-dark fw-bold px-2 py-0.5 d-inline-flex align-items-center gap-1 shadow-2xs" style={{ fontSize: "11px" }}>
+                <IconArrowsExchange size={14} /> ARBİTRAJ ({arbitrajActiveInfo.girisKod} ⇄ {arbitrajActiveInfo.cikisKod})
+              </Badge>
+            )}
           </div>
         }
         onNew={handleToolbarNew}
@@ -3806,20 +3920,27 @@ export const DovizFisiPage: React.FC = () => {
 
       {/* ─── 1. Üst Giriş Alanları Kartı (Ayrı Dış Dikdörtgen Kutu) ─── */}
       <Card
-        className={`shadow-sm rounded-2 overflow-hidden mt-1 mb-2 border ${isMasakBlocked ? "border-2 border-danger" : ""}`}
-        style={isMasakBlocked ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" } : { borderColor: "#cbd5e1" }}
+        className={`shadow-sm rounded-2 overflow-hidden mt-1 mb-2 border fis-theme-card ${isMasakBlocked ? "border-2 border-danger" : ""}`}
+        data-fis-theme="active"
+        style={
+          isMasakBlocked
+            ? { boxShadow: "0 0 0 4px rgba(220, 53, 69, 0.4)", backgroundColor: "#fff5f5" }
+            : { borderColor: "#cbd5e1", backgroundColor: activeFisThemeBg }
+        }
       >
-        <Card.Body className="p-0">
+        <Card.Body className="p-0 fis-theme-card-body" data-fis-theme="active">
           {/* En Üstteki 3 Alan */}
-          <div className="py-2.5 px-3 bg-light">
+          <div className="py-2.5 px-3 fis-theme-panel" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
             <Row className="g-3">
               {/* Sol Sütun: Tarih, Saat, Geliş Nedeni / Satış Dayanağı, Kur Türü */}
               <Col xs={12} md={4}>
                 <div
-                  className="border rounded-2 bg-white shadow-sm h-100 d-flex flex-column gap-2"
+                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-2 fis-theme-panel"
+                  data-fis-theme="active"
                   style={{
                     borderColor: "#cbd5e1",
                     padding: "14px 18px",
+                    backgroundColor: activeFisThemeBg,
                   }}
                 >
                   <div className="d-flex flex-row align-items-center gap-2">
@@ -3912,10 +4033,12 @@ export const DovizFisiPage: React.FC = () => {
               {/* Orta Sütun: Seri No, Cari Kodu, Ünvan, Fiş Tipi */}
               <Col xs={12} md={4}>
                 <div
-                  className="border rounded-2 bg-white shadow-sm h-100 d-flex flex-column gap-2"
+                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-2 fis-theme-panel"
+                  data-fis-theme="active"
                   style={{
                     borderColor: "#cbd5e1",
                     padding: "14px 18px",
+                    backgroundColor: activeFisThemeBg,
                   }}
                 >
                   <div className="d-flex flex-row align-items-center gap-2">
@@ -4199,10 +4322,12 @@ export const DovizFisiPage: React.FC = () => {
               {/* Sağ Sütun: Belge No, VKN/TCKN, İstatistik Kodu */}
               <Col xs={12} md={4}>
                 <div
-                  className="border rounded-2 bg-white shadow-sm h-100 d-flex flex-column gap-2"
+                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-2 fis-theme-panel"
+                  data-fis-theme="active"
                   style={{
                     borderColor: "#cbd5e1",
                     padding: "14px 18px",
+                    backgroundColor: activeFisThemeBg,
                   }}
                 >
                   <div className="d-flex flex-row align-items-center gap-2">
@@ -4483,503 +4608,500 @@ export const DovizFisiPage: React.FC = () => {
       </Card>
 
       {/* ─── 2. Döviz Kalemleri Tablo ve Toplam Kartı (Ayrı Dış Dikdörtgen Kutu) ─── */}
-      <Card className="shadow-sm rounded-2 overflow-hidden mb-2 border" style={{ borderColor: "#cbd5e1" }}>
-        <Card.Body className="p-2.5">
+      <Card className="shadow-sm rounded-2 overflow-hidden mb-2 border fis-theme-card" data-fis-theme="active" style={{ borderColor: "#cbd5e1", backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2.5 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           {/* Kolon Görünürlük Kontrol Şeridi */}
           <div className="d-flex align-items-center justify-content-end mb-1 gap-1">
-              <Dropdown autoClose="outside">
-                <Dropdown.Toggle
-                  variant="outline-secondary"
-                  size="sm"
-                  className="d-flex align-items-center gap-1 py-0 px-2"
-                  style={{ fontSize: "12px", height: "24px" }}
-                  id="grid-col-toggle"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
-                  Kolonlar
-                </Dropdown.Toggle>
-                <Dropdown.Menu style={{ minWidth: "170px", fontSize: "13px", padding: "6px 4px" }}>
-                  <div className="px-2 pb-1 text-muted" style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.5px" }}>GÖRÜNÜRLEBİLİR KOLONLAR</div>
-                  {([
-                    { key: "komisyonOrani", label: "Komisyon %" },
-                    { key: "komisyon", label: "Komisyon" },
-                    { key: "bmvOrani", label: "BMV %" },
-                    { key: "bmv", label: "BMV" },
-                    { key: "kmvOrani", label: "KMV %" },
-                    { key: "kmv", label: "KMV" },
-                  ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
-                    <Dropdown.Item
-                      key={key}
-                      as="button"
-                      className="d-flex align-items-center gap-2 py-1"
-                      onClick={() => toggleCol(key)}
+            <Dropdown autoClose="outside">
+              <Dropdown.Toggle
+                variant="outline-secondary"
+                size="sm"
+                className="d-flex align-items-center gap-1 py-0 px-2"
+                style={{ fontSize: "12px", height: "24px" }}
+                id="grid-col-toggle"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+                Kolonlar
+              </Dropdown.Toggle>
+              <Dropdown.Menu style={{ minWidth: "170px", fontSize: "13px", padding: "6px 4px" }}>
+                <div className="px-2 pb-1 text-muted" style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.5px" }}>GÖRÜNÜRLEBİLİR KOLONLAR</div>
+                {([
+                  { key: "komisyonOrani", label: "Komisyon %" },
+                  { key: "komisyon", label: "Komisyon" },
+                  { key: "bmvOrani", label: "BMV %" },
+                  { key: "bmv", label: "BMV" },
+                  { key: "kmvOrani", label: "KMV %" },
+                  { key: "kmv", label: "KMV" },
+                ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
+                  <Dropdown.Item
+                    key={key}
+                    as="button"
+                    className="d-flex align-items-center gap-2 py-1"
+                    onClick={() => toggleCol(key)}
+                  >
+                    <span
+                      style={{
+                        width: "14px", height: "14px", border: "1.5px solid #6c757d",
+                        borderRadius: "3px", display: "inline-flex", alignItems: "center",
+                        justifyContent: "center", flexShrink: 0,
+                        backgroundColor: colVisibility[key] ? "#0d6efd" : "transparent",
+                      }}
                     >
-                      <span
-                        style={{
-                          width: "14px", height: "14px", border: "1.5px solid #6c757d",
-                          borderRadius: "3px", display: "inline-flex", alignItems: "center",
-                          justifyContent: "center", flexShrink: 0,
-                          backgroundColor: colVisibility[key] ? "#0d6efd" : "transparent",
-                        }}
+                      {colVisibility[key] && (
+                        <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="1,6 4,9 11,2" /></svg>
+                      )}
+                    </span>
+                    <span style={{ color: colVisibility[key] ? "#212529" : "#adb5bd" }}>{label}</span>
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown>
+          </div>
+
+          <div
+            className="table-responsive border rounded bg-white shadow-2xs"
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                cleanupEmptyRows(null);
+              }
+            }}
+            style={{
+              minHeight: "75px",
+              maxHeight: "220px",
+              overflowY: "auto",
+              borderColor: "#cbd5e1",
+            }}
+          >
+            <Table size="sm" className="mb-0 align-middle" style={{ borderCollapse: "collapse" }}>
+              <thead className="position-sticky top-0" style={{ backgroundColor: "#dbeafe", color: "#1e293b", zIndex: 5 }}>
+                <tr style={{ height: "30px", borderBottom: "1px solid #94a3b8", fontSize: "12.5px" }}>
+                  <th style={{ width: "45px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>#</th>
+                  <th style={{ width: "100px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Kod</th>
+                  <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>
+                  <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>
+                  <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
+                    {tip === 1 ? "Satış kuru" : "Alış kuru"}
+                  </th>
+                  {colVisibility.komisyonOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
+                  {colVisibility.komisyon && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Komisyon</th>}
+                  {colVisibility.bmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
+                  {colVisibility.bmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>BMV</th>}
+                  {colVisibility.kmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
+                  {colVisibility.kmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>KMV</th>}
+                  <th style={{ width: "110px", textAlign: "center" }}>Tutar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((row, idx) => {
+                  const isRowEmpty = isRowCompletelyEmpty(row);
+                  const isRowValid = isRowFilled(row);
+                  const isAttempted = Boolean(invalidRowIds[row.id]);
+                  const shouldValidate = (!isRowEmpty && !isRowValid) || (isAttempted && !isRowValid);
+
+                  const hasPara = Boolean(row.paraId || (row.paraKodu && row.paraKodu.trim() !== ""));
+                  const isTL = row.paraKodu?.trim().toUpperCase() === "TL" || row.paraKodu?.trim().toUpperCase() === "TRY" || row.paraKodu?.trim().toUpperCase() === "TRL";
+                  const isKodMissing = shouldValidate && !hasPara;
+                  const isMiktarMissing = shouldValidate && (!row.miktar || parseMiktar(row.miktar) <= 0);
+                  const isKurMissing = shouldValidate && !isTL && (!row.kur || parseKur(row.kur) <= 0);
+
+                  return (
+                    <tr
+                      key={row.id}
+                      data-row-id={row.id}
+                      draggable={!isLocked}
+                      onDragStart={(e) => handleDragStart(e, idx)}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDrop={(e) => handleDrop(e, idx)}
+                      onDragEnd={handleDragEnd}
+                      style={{
+                        height: "32px",
+                        backgroundColor: dragOverRowIndex === idx
+                          ? "#e0f2fe"
+                          : activeRowIndex === idx
+                            ? "#f8fafc"
+                            : "transparent",
+                        borderTop: dragOverRowIndex === idx ? "2px solid #0284c7" : undefined,
+                        borderBottom: "1px solid #e2e8f0",
+                        opacity: draggedRowIndex === idx ? 0.4 : 1,
+                        transition: "background-color 0.15s ease",
+                      }}
+                    >
+                      {/* # (Sürükleme Tutamacı & Sıra No) */}
+                      <td
+                        className="text-center text-secondary small fw-semibold user-select-none"
+                        style={{ borderRight: "1px solid #e2e8f0", cursor: isLocked ? "default" : "grab", width: "45px" }}
+                        title="Satırı basılı tutarak yukarı/aşağı sürükleyebilirsiniz"
                       >
-                        {colVisibility[key] && (
-                          <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="1,6 4,9 11,2" /></svg>
-                        )}
-                      </span>
-                      <span style={{ color: colVisibility[key] ? "#212529" : "#adb5bd" }}>{label}</span>
-                    </Dropdown.Item>
-                  ))}
-                </Dropdown.Menu>
-              </Dropdown>
-            </div>
+                        <div className="d-flex align-items-center justify-content-center gap-1">
+                          {!isLocked && <span style={{ fontSize: "11px", color: "#94a3b8", cursor: "grab" }}>⋮⋮</span>}
+                          <span>{idx + 1}</span>
+                        </div>
+                      </td>
 
-            <div
-              className="table-responsive border rounded bg-white shadow-2xs"
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                  cleanupEmptyRows(null);
-                }
-              }}
-              style={{
-                minHeight: "75px",
-                maxHeight: "220px",
-                overflowY: "auto",
-                borderColor: "#cbd5e1",
-              }}
-            >
-              <Table size="sm" className="mb-0 align-middle" style={{ borderCollapse: "collapse" }}>
-                <thead className="position-sticky top-0" style={{ backgroundColor: "#dbeafe", color: "#1e293b", zIndex: 5 }}>
-                  <tr style={{ height: "30px", borderBottom: "1px solid #94a3b8", fontSize: "12.5px" }}>
-                    <th style={{ width: "45px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>#</th>
-                    <th style={{ width: "100px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Kod</th>
-                    <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>
-                    <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>
-                    <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
-                      {tip === 1 ? "Satış kuru" : "Alış kuru"}
-                    </th>
-                    {colVisibility.komisyonOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                    {colVisibility.komisyon && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Komisyon</th>}
-                    {colVisibility.bmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                    {colVisibility.bmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>BMV</th>}
-                    {colVisibility.kmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                    {colVisibility.kmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>KMV</th>}
-                    <th style={{ width: "110px", textAlign: "center" }}>Tutar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((row, idx) => {
-                    const isRowEmpty = isRowCompletelyEmpty(row);
-                    const isRowValid = isRowFilled(row);
-                    const isAttempted = Boolean(invalidRowIds[row.id]);
-                    const shouldValidate = (!isRowEmpty && !isRowValid) || (isAttempted && !isRowValid);
-
-                    const hasPara = Boolean(row.paraId || (row.paraKodu && row.paraKodu.trim() !== ""));
-                    const isTL = row.paraKodu?.trim().toUpperCase() === "TL" || row.paraKodu?.trim().toUpperCase() === "TRY" || row.paraKodu?.trim().toUpperCase() === "TRL";
-                    const isKodMissing = shouldValidate && !hasPara;
-                    const isMiktarMissing = shouldValidate && (!row.miktar || parseMiktar(row.miktar) <= 0);
-                    const isKurMissing = shouldValidate && !isTL && (!row.kur || parseKur(row.kur) <= 0);
-
-                    return (
-                      <tr
-                        key={row.id}
-                        data-row-id={row.id}
-                        draggable={!isLocked}
-                        onDragStart={(e) => handleDragStart(e, idx)}
-                        onDragOver={(e) => handleDragOver(e, idx)}
-                        onDrop={(e) => handleDrop(e, idx)}
-                        onDragEnd={handleDragEnd}
-                        style={{
-                          height: "32px",
-                          backgroundColor: dragOverRowIndex === idx
-                            ? "#e0f2fe"
-                            : activeRowIndex === idx
-                              ? "#f8fafc"
-                              : "transparent",
-                          borderTop: dragOverRowIndex === idx ? "2px solid #0284c7" : undefined,
-                          borderBottom: "1px solid #e2e8f0",
-                          opacity: draggedRowIndex === idx ? 0.4 : 1,
-                          transition: "background-color 0.15s ease",
-                        }}
-                      >
-                        {/* # (Sürükleme Tutamacı & Sıra No) */}
-                        <td
-                          className="text-center text-secondary small fw-semibold user-select-none"
-                          style={{ borderRight: "1px solid #e2e8f0", cursor: isLocked ? "default" : "grab", width: "45px" }}
-                          title="Satırı basılı tutarak yukarı/aşağı sürükleyebilirsiniz"
+                      {/* Kod with Oklu Dürbün */}
+                      <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                        <div
+                          className="d-flex align-items-center w-100 px-1"
+                          style={
+                            isKodMissing
+                              ? { backgroundColor: "#fee2e2", border: "1.5px solid #dc2626", borderRadius: "3px" }
+                              : {}
+                          }
                         >
-                          <div className="d-flex align-items-center justify-content-center gap-1">
-                            {!isLocked && <span style={{ fontSize: "11px", color: "#94a3b8", cursor: "grab" }}>⋮⋮</span>}
-                            <span>{idx + 1}</span>
-                          </div>
-                        </td>
-
-                        {/* Kod with Oklu Dürbün */}
-                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          <div
-                            className="d-flex align-items-center w-100 px-1"
-                            style={
-                              isKodMissing
-                                ? { backgroundColor: "#fee2e2", border: "1.5px solid #dc2626", borderRadius: "3px" }
-                                : {}
-                            }
-                          >
-                            <input
-                              id={`grid-input-${idx}-kod`}
-                              type="text"
-                              disabled={isLocked}
-                              autoComplete="off"
-                              autoCorrect="off"
-                              autoCapitalize="characters"
-                              spellCheck={false}
-                              className={`form-control form-control-sm border-0 p-0 shadow-none font-monospace fw-bold text-uppercase ${
-                                isKodMissing ? "text-danger" : ""
+                          <input
+                            id={`grid-input-${idx}-kod`}
+                            type="text"
+                            disabled={isLocked}
+                            autoComplete="off"
+                            autoCorrect="off"
+                            autoCapitalize="characters"
+                            spellCheck={false}
+                            className={`form-control form-control-sm border-0 p-0 shadow-none font-monospace fw-bold text-uppercase ${isKodMissing ? "text-danger" : ""
                               }`}
-                              style={{ height: "26px", fontSize: "13px", backgroundColor: "transparent" }}
-                              value={row.paraKodu}
-                              onFocus={() => {
-                                setActiveRowIndex(idx);
-                                cleanupEmptyRows(idx);
-                              }}
-                              onChange={(e) => {
-                                const val = e.target.value.toUpperCase();
-                                handleLineFieldChange(row.id, "paraKodu", val);
-                              }}
-                              onDoubleClick={() => {
-                                const term = (row.paraKodu || "").trim();
-                                lastModalCallerRef.current = "paraGrid";
-                                lastParaModalRowIndexRef.current = idx;
-                                setParaModalRowId(row.id);
-                                setParaSearchTerm(term);
-                                if (paraList.length === 0) {
-                                  apiClient.get<ParaItem[]>("/para")
-                                    .then((r) => {
-                                      if (r.data && r.data.length > 0) setParaList(r.data);
-                                    })
-                                    .catch(() => { });
-                                }
-                                setShowParaModal(true);
-                              }}
-                              onKeyDown={(e) => handleCellKeyDown(e, idx, "kod")}
-                              title={isKodMissing ? "Lütfen para/döviz kodu seçiniz" : undefined}
-                            />
-                            <Button
-                              variant="link"
-                              className="p-0 px-1 text-secondary text-decoration-none"
-                              onClick={() => {
-                                const term = (row.paraKodu || "").trim();
-                                lastModalCallerRef.current = "paraGrid";
-                                lastParaModalRowIndexRef.current = idx;
-                                setParaModalRowId(row.id);
-                                setParaSearchTerm(term);
-                                if (paraList.length === 0) {
-                                  apiClient.get<ParaItem[]>("/para")
-                                    .then((r) => {
-                                      if (r.data && r.data.length > 0) setParaList(r.data);
-                                    })
-                                    .catch(() => { });
-                                }
-                                setShowParaModal(true);
-                              }}
-                              title="Para / Maden Seç (Dürbün)"
-                            >
-                              <IconBinoculars size={13} />
-                            </Button>
-                          </div>
-                        </td>
+                            style={{ height: "26px", fontSize: "13px", backgroundColor: "transparent" }}
+                            value={row.paraKodu}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                            }}
+                            onChange={(e) => {
+                              const val = e.target.value.toUpperCase();
+                              handleLineFieldChange(row.id, "paraKodu", val);
+                            }}
+                            onDoubleClick={() => {
+                              const term = (row.paraKodu || "").trim();
+                              lastModalCallerRef.current = "paraGrid";
+                              lastParaModalRowIndexRef.current = idx;
+                              setParaModalRowId(row.id);
+                              setParaSearchTerm(term);
+                              if (paraList.length === 0) {
+                                apiClient.get<ParaItem[]>("/para")
+                                  .then((r) => {
+                                    if (r.data && r.data.length > 0) setParaList(r.data);
+                                  })
+                                  .catch(() => { });
+                              }
+                              setShowParaModal(true);
+                            }}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kod")}
+                            title={isKodMissing ? "Lütfen para/döviz kodu seçiniz" : undefined}
+                          />
+                          <Button
+                            variant="link"
+                            className="p-0 px-1 text-secondary text-decoration-none"
+                            onClick={() => {
+                              const term = (row.paraKodu || "").trim();
+                              lastModalCallerRef.current = "paraGrid";
+                              lastParaModalRowIndexRef.current = idx;
+                              setParaModalRowId(row.id);
+                              setParaSearchTerm(term);
+                              if (paraList.length === 0) {
+                                apiClient.get<ParaItem[]>("/para")
+                                  .then((r) => {
+                                    if (r.data && r.data.length > 0) setParaList(r.data);
+                                  })
+                                  .catch(() => { });
+                              }
+                              setShowParaModal(true);
+                            }}
+                            title="Para / Maden Seç (Dürbün)"
+                          >
+                            <IconBinoculars size={13} />
+                          </Button>
+                        </div>
+                      </td>
 
-                        {/* Ad */}
-                        <td className="p-0 px-2 text-dark small" style={{ borderRight: "1px solid #e2e8f0" }}>
-                          {row.paraAdi || "-"}
-                        </td>
+                      {/* Ad */}
+                      <td className="p-0 px-2 text-dark small" style={{ borderRight: "1px solid #e2e8f0" }}>
+                        {row.paraAdi || "-"}
+                      </td>
 
-                        {/* Miktar */}
+                      {/* Miktar */}
+                      <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                        <input
+                          id={`grid-input-${idx}-miktar`}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          disabled={isLocked}
+                          className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${isMiktarMissing ? "text-danger fw-bold" : ""
+                            }`}
+                          style={{
+                            height: "26px",
+                            fontSize: "13px",
+                            backgroundColor: isMiktarMissing ? "#fee2e2" : "transparent",
+                            border: isMiktarMissing ? "1.5px solid #dc2626" : "none",
+                            borderRadius: isMiktarMissing ? "3px" : undefined,
+                          }}
+                          value={row.miktar}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                          }}
+                          onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
+                          onKeyDown={(e) => handleCellKeyDown(e, idx, "miktar")}
+                          title={isMiktarMissing ? "Lütfen geçerli bir miktar giriniz" : undefined}
+                        />
+                      </td>
+
+                      {/* Kur */}
+                      <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                        <input
+                          id={`grid-input-${idx}-kur`}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          disabled={isLocked || isTL}
+                          readOnly={isTL}
+                          tabIndex={isTL ? -1 : undefined}
+                          className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${isTL ? "text-muted" : (isKurMissing ? "text-danger fw-bold" : "")
+                            }`}
+                          style={{
+                            height: "26px",
+                            fontSize: "13px",
+                            backgroundColor: isTL ? "#e9ecef" : (isKurMissing ? "#fee2e2" : "transparent"),
+                            border: isKurMissing ? "1.5px solid #dc2626" : "none",
+                            borderRadius: isKurMissing ? "3px" : undefined,
+                            cursor: isTL ? "not-allowed" : undefined,
+                          }}
+                          value={isTL ? "" : row.kur}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                          }}
+                          onChange={(e) => !isTL && handleLineFieldChange(row.id, "kur", e.target.value)}
+                          onBlur={(e) => {
+                            if (isTL) return;
+                            const val = e.target.value.trim();
+                            if (val !== "") {
+                              const num = parseFloat(val.replace(/,/g, "."));
+                              if (!isNaN(num)) {
+                                handleLineFieldChange(row.id, "kur", num.toFixed(kurKurusSayisi));
+                              }
+                            }
+                          }}
+                          onKeyDown={(e) => handleCellKeyDown(e, idx, "kur")}
+                          title={isTL ? "TL için kur girilmez" : isKurMissing ? "Lütfen geçerli bir kur giriniz" : undefined}
+                        />
+                      </td>
+
+                      {/* % (Komisyon %) */}
+                      {colVisibility.komisyonOrani && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
-                            id={`grid-input-${idx}-miktar`}
+                            id={`grid-input-${idx}-komisyonOrani`}
                             type="text"
                             inputMode="decimal"
                             autoComplete="off"
                             disabled={isLocked}
-                            className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${
-                              isMiktarMissing ? "text-danger fw-bold" : ""
-                            }`}
-                            style={{
-                              height: "26px",
-                              fontSize: "13px",
-                              backgroundColor: isMiktarMissing ? "#fee2e2" : "transparent",
-                              border: isMiktarMissing ? "1.5px solid #dc2626" : "none",
-                              borderRadius: isMiktarMissing ? "3px" : undefined,
-                            }}
-                            value={row.miktar}
+                            className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                            value={row.komisyonOrani}
                             onFocus={() => {
                               setActiveRowIndex(idx);
                               cleanupEmptyRows(idx);
                             }}
-                            onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "miktar")}
-                            title={isMiktarMissing ? "Lütfen geçerli bir miktar giriniz" : undefined}
+                            onChange={(e) => handleLineFieldChange(row.id, "komisyonOrani", e.target.value)}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyonOrani")}
                           />
                         </td>
+                      )}
 
-                        {/* Kur */}
+                      {/* Komisyon */}
+                      {colVisibility.komisyon && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
-                            id={`grid-input-${idx}-kur`}
+                            id={`grid-input-${idx}-komisyon`}
                             type="text"
                             inputMode="decimal"
                             autoComplete="off"
-                            disabled={isLocked || isTL}
-                            readOnly={isTL}
-                            tabIndex={isTL ? -1 : undefined}
-                            className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${
-                              isTL ? "text-muted" : (isKurMissing ? "text-danger fw-bold" : "")
-                            }`}
-                            style={{
-                              height: "26px",
-                              fontSize: "13px",
-                              backgroundColor: isTL ? "#e9ecef" : (isKurMissing ? "#fee2e2" : "transparent"),
-                              border: isKurMissing ? "1.5px solid #dc2626" : "none",
-                              borderRadius: isKurMissing ? "3px" : undefined,
-                              cursor: isTL ? "not-allowed" : undefined,
-                            }}
-                            value={isTL ? "" : row.kur}
+                            disabled={isLocked}
+                            className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                            value={row.komisyon}
                             onFocus={() => {
                               setActiveRowIndex(idx);
                               cleanupEmptyRows(idx);
                             }}
-                            onChange={(e) => !isTL && handleLineFieldChange(row.id, "kur", e.target.value)}
-                            onBlur={(e) => {
-                              if (isTL) return;
-                              const val = e.target.value.trim();
-                              if (val !== "") {
-                                const num = parseFloat(val.replace(/,/g, "."));
-                                if (!isNaN(num)) {
-                                  handleLineFieldChange(row.id, "kur", num.toFixed(kurKurusSayisi));
-                                }
-                              }
-                            }}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kur")}
-                            title={isTL ? "TL için kur girilmez" : isKurMissing ? "Lütfen geçerli bir kur giriniz" : undefined}
+                            onChange={(e) => handleLineFieldChange(row.id, "komisyon", e.target.value)}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyon")}
                           />
                         </td>
+                      )}
 
-                        {/* % (Komisyon %) */}
-                        {colVisibility.komisyonOrani && (
-                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                            <input
-                              id={`grid-input-${idx}-komisyonOrani`}
-                              type="text"
-                              inputMode="decimal"
-                              autoComplete="off"
-                              disabled={isLocked}
-                              className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
-                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                              value={row.komisyonOrani}
-                              onFocus={() => {
-                                setActiveRowIndex(idx);
-                                cleanupEmptyRows(idx);
-                              }}
-                              onChange={(e) => handleLineFieldChange(row.id, "komisyonOrani", e.target.value)}
-                              onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyonOrani")}
-                            />
-                          </td>
-                        )}
-
-                        {/* Komisyon */}
-                        {colVisibility.komisyon && (
-                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                            <input
-                              id={`grid-input-${idx}-komisyon`}
-                              type="text"
-                              inputMode="decimal"
-                              autoComplete="off"
-                              disabled={isLocked}
-                              className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
-                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                              value={row.komisyon}
-                              onFocus={() => {
-                                setActiveRowIndex(idx);
-                                cleanupEmptyRows(idx);
-                              }}
-                              onChange={(e) => handleLineFieldChange(row.id, "komisyon", e.target.value)}
-                              onKeyDown={(e) => handleCellKeyDown(e, idx, "komisyon")}
-                            />
-                          </td>
-                        )}
-
-                        {/* % (BMV %) - Read-Only (Müdahale edilemez) */}
-                        {colVisibility.bmvOrani && (
-                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                            <input
-                              id={`grid-input-${idx}-bmvOrani`}
-                              type="text"
-                              readOnly
-                              tabIndex={-1}
-                              disabled={isLocked}
-                              className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
-                              style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
-                              value={row.bmvOrani}
-                            />
-                          </td>
-                        )}
-
-                        {/* BMV - Read-Only (Müdahale edilemez) */}
-                        {colVisibility.bmv && (
-                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                            <input
-                              id={`grid-input-${idx}-bmv`}
-                              type="text"
-                              readOnly
-                              tabIndex={-1}
-                              disabled={isLocked}
-                              className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
-                              style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
-                              value={row.bmv}
-                            />
-                          </td>
-                        )}
-
-                        {/* % (KMV %) */}
-                        {colVisibility.kmvOrani && (
-                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                            <input
-                              id={`grid-input-${idx}-kmvOrani`}
-                              type="text"
-                              inputMode="decimal"
-                              autoComplete="off"
-                              disabled={isLocked}
-                              className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
-                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                              value={row.kmvOrani}
-                              onFocus={() => {
-                                setActiveRowIndex(idx);
-                                cleanupEmptyRows(idx);
-                              }}
-                              onChange={(e) => handleLineFieldChange(row.id, "kmvOrani", e.target.value)}
-                              onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
-                            />
-                          </td>
-                        )}
-
-                        {/* KMV */}
-                        {colVisibility.kmv && (
-                          <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
-                            <input
-                              id={`grid-input-${idx}-kmv`}
-                              type="text"
-                              inputMode="decimal"
-                              autoComplete="off"
-                              disabled={isLocked}
-                              className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
-                              style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                              value={row.kmv}
-                              onFocus={() => {
-                                setActiveRowIndex(idx);
-                                cleanupEmptyRows(idx);
-                              }}
-                              onChange={(e) => handleLineFieldChange(row.id, "kmv", e.target.value)}
-                              onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
-                            />
-                          </td>
-                        )}
-
-                        {/* Tutar */}
-                        <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
-                          {row.tutar
-                            ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })
-                            : ""}
+                      {/* % (BMV %) - Read-Only (Müdahale edilemez) */}
+                      {colVisibility.bmvOrani && (
+                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          <input
+                            id={`grid-input-${idx}-bmvOrani`}
+                            type="text"
+                            readOnly
+                            tabIndex={-1}
+                            disabled={isLocked}
+                            className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
+                            value={row.bmvOrani}
+                          />
                         </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            </div>
+                      )}
 
-            {/* Calculations & Totals Area */}
-            <Row className="mt-3 g-3 align-items-center">
-              {/* Sol Alt: Toplam tutar & Toplam masraf */}
-              <Col md={3}>
-                <div className="d-flex align-items-center mb-2">
-                  <span className="small fw-semibold text-secondary text-nowrap" style={{ minWidth: "100px" }}>
-                    Toplam tutar
-                  </span>
-                  <input
-                    type="text"
-                    readOnly
-                    className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                    value={totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
-                  />
-                </div>
-                <div className="d-flex align-items-center">
-                  <span className="small fw-semibold text-secondary text-nowrap" style={{ minWidth: "100px" }}>
-                    Toplam masraf
-                  </span>
-                  <input
-                    type="text"
-                    readOnly
-                    className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                    value={totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
-                  />
-                </div>
-              </Col>
+                      {/* BMV - Read-Only (Müdahale edilemez) */}
+                      {colVisibility.bmv && (
+                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          <input
+                            id={`grid-input-${idx}-bmv`}
+                            type="text"
+                            readOnly
+                            tabIndex={-1}
+                            disabled={isLocked}
+                            className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
+                            value={row.bmv}
+                          />
+                        </td>
+                      )}
 
-              {/* Orta Alt: Fonksiyon Tuşları Şeridi */}
-              <Col md={6}>
-                <div
-                  className="p-1.5 rounded d-flex flex-wrap align-items-center justify-content-center gap-1.5 border shadow-2xs"
-                  style={{ backgroundColor: "#e0f2fe", color: "#0369a1" }}
-                >
-                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowIstatistikModal(true)}>
-                    F3) İst.
-                  </Button>
-                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowKurListesiModal(true)}>
-                    F4) Kur
-                  </Button>
-                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => { fetchVezneBalances(vezneId); setShowVezneBakiyeModal(true); }}>
-                    F5) Vezne
-                  </Button>
-                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowTlHesabiModal(true)}>
-                    F6) TL Hesabı
-                  </Button>
-                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowGumrukModal(true)}>
-                    F7) Gümrük
-                  </Button>
-                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenDetayModal}>
-                    F8) Detay
-                  </Button>
-                  <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenBanknotSay}>
-                    F9) Banknot Say
-                  </Button>
-                </div>
-              </Col>
+                      {/* % (KMV %) */}
+                      {colVisibility.kmvOrani && (
+                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          <input
+                            id={`grid-input-${idx}-kmvOrani`}
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            disabled={isLocked}
+                            className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                            value={row.kmvOrani}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                            }}
+                            onChange={(e) => handleLineFieldChange(row.id, "kmvOrani", e.target.value)}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
+                          />
+                        </td>
+                      )}
 
-              {/* Sağ Alt: Son toplam & Ödenecek / Alınacak TL */}
-              <Col md={3}>
-                <div className="d-flex align-items-center mb-2">
-                  <span className="small fw-semibold text-secondary text-nowrap" style={{ minWidth: "100px" }}>
-                    Son toplam
-                  </span>
-                  <input
-                    type="text"
-                    readOnly
-                    className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                    value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
-                  />
-                </div>
-                <div className="d-flex align-items-center">
-                  <span className="small fw-bold text-dark text-nowrap" style={{ minWidth: "100px" }}>
-                    {tip === 1 ? "Alınacak TL" : "Ödenecek TL"}
-                  </span>
-                  <input
-                    type="text"
-                    readOnly
-                    className="form-control form-control-sm text-end font-monospace fw-bold text-primary bg-light"
-                    value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
-                  />
-                </div>
-              </Col>
-            </Row>
+                      {/* KMV */}
+                      {colVisibility.kmv && (
+                        <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          <input
+                            id={`grid-input-${idx}-kmv`}
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            disabled={isLocked}
+                            className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
+                            value={row.kmv}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                            }}
+                            onChange={(e) => handleLineFieldChange(row.id, "kmv", e.target.value)}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
+                          />
+                        </td>
+                      )}
+
+                      {/* Tutar */}
+                      <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
+                        {row.tutar
+                          ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })
+                          : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </div>
+
+          {/* Calculations & Totals Area */}
+          <Row className="mt-3 g-3 align-items-center">
+            {/* Sol Alt: Toplam tutar & Toplam masraf */}
+            <Col md={3}>
+              <div className="d-flex align-items-center mb-2">
+                <span className="small fw-semibold text-secondary text-nowrap" style={{ minWidth: "100px" }}>
+                  Toplam tutar
+                </span>
+                <input
+                  type="text"
+                  readOnly
+                  className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
+                  value={totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                />
+              </div>
+              <div className="d-flex align-items-center">
+                <span className="small fw-semibold text-secondary text-nowrap" style={{ minWidth: "100px" }}>
+                  Toplam masraf
+                </span>
+                <input
+                  type="text"
+                  readOnly
+                  className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
+                  value={totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                />
+              </div>
+            </Col>
+
+            {/* Orta Alt: Fonksiyon Tuşları Şeridi */}
+            <Col md={6}>
+              <div
+                className="p-1.5 rounded d-flex flex-wrap align-items-center justify-content-center gap-1.5 border shadow-2xs"
+                style={{ backgroundColor: "#e0f2fe", color: "#0369a1" }}
+              >
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowIstatistikModal(true)}>
+                  F3) İst.
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowKurListesiModal(true)}>
+                  F4) Kur
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => { fetchVezneBalances(vezneId); setShowVezneBakiyeModal(true); }}>
+                  F5) Vezne
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowTlHesabiModal(true)}>
+                  F6) TL Hesabı
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowArbitrajModal(true)}>
+                  F7) Arbitraj
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenDetayModal}>
+                  F8) Detay
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenBanknotSay}>
+                  F9) Banknot Say
+                </Button>
+              </div>
+            </Col>
+
+            {/* Sağ Alt: Son toplam & Ödenecek / Alınacak TL */}
+            <Col md={3}>
+              <div className="d-flex align-items-center mb-2">
+                <span className="small fw-semibold text-secondary text-nowrap" style={{ minWidth: "100px" }}>
+                  Son toplam
+                </span>
+                <input
+                  type="text"
+                  readOnly
+                  className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
+                  value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                />
+              </div>
+              <div className="d-flex align-items-center">
+                <span className="small fw-bold text-dark text-nowrap" style={{ minWidth: "100px" }}>
+                  {tip === 1 ? "Alınacak TL" : "Ödenecek TL"}
+                </span>
+                <input
+                  type="text"
+                  readOnly
+                  className="form-control form-control-sm text-end font-monospace fw-bold text-primary bg-light"
+                  value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                />
+              </div>
+            </Col>
+          </Row>
         </Card.Body>
       </Card>
 
@@ -4988,6 +5110,7 @@ export const DovizFisiPage: React.FC = () => {
         <span><strong>F1</strong> Kaydet</span>
         <span><strong>F2</strong> Sil</span>
         <span><strong>F3</strong> Ara</span>
+        <span><strong>F7</strong> Arbitraj</span>
         <span><strong>F10</strong> Kaydet / Yazdır</span>
       </div>
 
@@ -6062,6 +6185,23 @@ export const DovizFisiPage: React.FC = () => {
           }
           setActiveLookupType(null);
         }}
+      />
+
+      {/* F7) Arbitraj Modalı */}
+      <ArbitrajModal
+        show={showArbitrajModal}
+        onClose={() => setShowArbitrajModal(false)}
+        paralar={paraList}
+        kurSatirlar={kurSatirlar}
+        vezneId={vezneId}
+        vezneKod={vezneKod}
+        vezneAd={vezneAd}
+        selectedCariId={cariKartId}
+        selectedUnvan={unvan}
+        cariList={cariList}
+        pageType="doviz"
+        fisTip={tip}
+        onApplyToFis={handleApplyArbitrajToDovizFis}
       />
 
       {/* Gümrük Beyanname Modal */}

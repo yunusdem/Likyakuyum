@@ -54,6 +54,17 @@ export class EtiketController {
     return ApiResponse.ok(res, "Altın ürün getirildi.", data);
   });
 
+  public static getAltinUrunStok = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const vezneId = Number(req.query.vezneId);
+    const ayar = String(req.query.ayar || "");
+    if (!vezneId || isNaN(vezneId)) {
+      return ApiResponse.ok(res, "Vezne seçilmedi.", { paraId: null, paraKodu: null, paraAdi: null, bakiye: 0 });
+    }
+    const data = await EtiketService.getAltinUrunStok(vezneId, ayar, dbContext);
+    return ApiResponse.ok(res, "Stok bilgisi getirildi.", data);
+  });
+
   public static saveAltinUrun = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = EtiketController.getDbContext(req);
     const data = await EtiketService.saveAltinUrun(req.body, EtiketController.getKullaniciId(req), dbContext);

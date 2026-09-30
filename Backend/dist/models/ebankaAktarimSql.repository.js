@@ -68,7 +68,7 @@ export class EBankaAktarimSqlRepository {
         for (const r of rows)
             for (const i of [r.IBAN, r.OZEL_IBAN])
                 if (i)
-                    m.set(String(i), kirp(r.ETIKET));
+                    m.set(String(i).replace(/\s/g, "").toUpperCase(), kirp(r.ETIKET));
         return m;
     }
     /** Vergi / TC kimlik no → o numarayı taşıyan cariler. */
@@ -85,6 +85,12 @@ export class EBankaAktarimSqlRepository {
             m.set(r.VKN, liste);
         }
         return m;
+    }
+    /** Tüm cariler (id, kod, ad): isim eşleşmesi için (M10). */
+    static async cariAdlari(dbContext) {
+        const pool = await EBankaVeriSqlRepository.pool(dbContext);
+        const rows = (await pool.request().query(`SELECT CARI_KART_ID, KOD, AD FROM TODVZ_CARI_KART WHERE LEN(LTRIM(RTRIM(ISNULL(AD, '')))) > 0`)).recordset;
+        return rows.map((r) => ({ cariKartId: r.CARI_KART_ID, kod: kirp(r.KOD), ad: kirp(r.AD) }));
     }
     /** Elle aktarımlarda öğrenilen karşı IBAN → cari. */
     static async ibanSozlugu(dbContext) {

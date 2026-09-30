@@ -23,6 +23,9 @@ export class EtiketService {
             throw ApiError.notFound("Bu barkoda ait altın ürün bulunamadı.");
         return item;
     }
+    static getAltinUrunStok(vezneId, ayar, dbContext) {
+        return AltinUrunSqlRepository.getStok(vezneId, ayar, dbContext);
+    }
     static saveAltinUrun(dto, kullaniciId, dbContext) {
         if (!dto.grupKodu || !dto.grupKodu.trim()) {
             throw ApiError.badRequest("Grup kodu zorunludur.");

@@ -38,6 +38,9 @@ import { AyarService, AyarItem } from "../../services/ayarService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
+import { CashDeskService, VezneItem } from "../../services/cashDeskService";
+import { SarrafFisService } from "../../services/sarrafFisService";
+import { useAuth } from "../../context/AuthContext";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { envConfig } from "../../config/env.config";
 
@@ -151,6 +154,7 @@ const TOTAL_GRID_COLS = 9;
 export const OzelUrunTanimlamaPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const isDuzeltmeMode = location.pathname.includes("duzeltme");
 
   // ─── Form State (TODVZ_OZEL_URUN) ───────────────────────────────────────────
@@ -231,6 +235,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const [sablonlar, setSablonlar] = useState<EtiketSablonItem[]>([]);
   const [kurRows, setKurRows] = useState<KurRowItem[]>([]);
   const [yaziciList, setYaziciList] = useState<YaziciItem[]>([]);
+  const [vezneList, setVezneList] = useState<VezneItem[]>([]);
+  const [vezneId, setVezneId] = useState<number | null>(null);
+  const [vezneStok, setVezneStok] = useState<number | null>(null);
+  const [vezneStokParaKodu, setVezneStokParaKodu] = useState<string | null>(null);
+  const [loadingStok, setLoadingStok] = useState<boolean>(false);
 
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
@@ -681,6 +690,26 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     [getMilyemFromAyar, getHasGramUsdRate, convertToUSD, convertFromUSD, convertCurrency]
   );
 
+  const fetchStok = useCallback(async (vId: number | null, ayarVal: string) => {
+    if (!vId) {
+      setVezneStok(null);
+      setVezneStokParaKodu(null);
+      return;
+    }
+    setLoadingStok(true);
+    try {
+      const res = await EtiketService.getAltinUrunStok(vId, ayarVal || "22");
+      setVezneStok(res.bakiye ?? 0);
+      setVezneStokParaKodu(res.paraKodu || res.paraAdi || ayarVal || "22");
+    } catch (e) {
+      console.error("Vezne stok sorgulama hatası:", e);
+      setVezneStok(null);
+      setVezneStokParaKodu(null);
+    } finally {
+      setLoadingStok(false);
+    }
+  }, []);
+
   // ─── Montür Alanları Değişimleri ───────────────────────────────────────────
   const handleMonturGramChange = (val: string) => {
     setMonturGram(val);
@@ -690,6 +719,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const handleAyarChange = (newAyar: string) => {
     setAyar(newAyar);
     recalculateAll(monturGram, newAyar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, kurRef);
+    if (vezneId) {
+      fetchStok(vezneId, newAyar);
+    }
   };
 
   const handleMonturIscilikChange = (val: string) => {
@@ -1058,7 +1090,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
-      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar, ayarlar, yazicilar] = await Promise.all([
+      const [urunler, gruplar, ureticiler, cariler, sabl, kurlar, bankolar, ayarlar, yazicilar, vezneler] = await Promise.all([
         EtiketService.getOzelUrunler({ limit: 500 }),
         EtiketService.getGruplar(1).catch(() => []),
         EtiketService.getUreticiFirmalar().catch(() => []),
@@ -1068,6 +1100,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         EtiketService.getBankolar().catch(() => []),
         AyarService.getAyarlar(false).catch(() => []),
         PrinterService.getYazicilar().catch(() => []),
+        CashDeskService.getVezneler().catch(() => []),
       ]);
 
       const sortedUrunler = (urunler || []).slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
@@ -1080,6 +1113,25 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       setKurRows(kurlar);
       setAyarList(ayarlar);
       setYaziciList(yazicilar);
+      setVezneList(vezneler);
+
+      // Giriş yapan kullanıcının veznesini arka planda otomatik belirle
+      let userVezneId: number | null = null;
+      if (user?.id) {
+        userVezneId = await SarrafFisService.getUserVezneId(Number(user.id)).catch(() => null);
+      }
+      let targetVezne = (vezneler as VezneItem[]).find((v) => v.id === userVezneId);
+      if (!targetVezne && user?.cashierCode) {
+        targetVezne = (vezneler as VezneItem[]).find((v) => (v.kod || "").toUpperCase() === user.cashierCode.toUpperCase());
+      }
+      if (!targetVezne && vezneler.length > 0) {
+        targetVezne = vezneler[0];
+      }
+      const finalVezneId = targetVezne?.id || null;
+      setVezneId(finalVezneId);
+      if (finalVezneId && ayar) {
+        fetchStok(finalVezneId, ayar);
+      }
 
       if (kurlar.length > 0) {
         const hasKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
@@ -1108,7 +1160,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       const errorMsg = extractApiErrorMessage(err, "Özel ürün ve etiket tanımlama verileri yüklenirken bir hata oluştu.");
       showNotif("danger", errorMsg);
     }
-  }, []);
+  }, [fetchStok, user?.id, user?.cashierCode, ayar]);
 
   useEffect(() => {
     loadAll();
@@ -1439,12 +1491,20 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         grupKoduRef.current?.focus();
       }, 50);
     }
+    if (vezneId && ayar) {
+      fetchStok(vezneId, ayar);
+    }
   };
 
   // ─── Kayıt Seçme ─────────────────────────────────────────────────────────────
   const handleSelectRecord = (it: OzelUrunItem) => {
     setOzelUrunId(it.ozelUrunId);
     setTarih(it.tarih ? it.tarih.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    const selectedVId = it.vezneId || vezneId || (vezneList.length > 0 ? vezneList[0].id : null);
+    setVezneId(selectedVId);
+    if (selectedVId && (it.ayar || ayar)) {
+      fetchStok(selectedVId, it.ayar || ayar);
+    }
     setGrupKodu(it.grupKodu);
     const paddedNo = format3Digits(it.urunNo);
     setUrunNo(paddedNo);
@@ -1509,6 +1569,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
   // ─── Kaydet / Güncelle (F1) ──────────────────────────────────────────────────
   const handleSave = async () => {
+    if (!vezneId) {
+      showNotif("warning", "Lütfen ürünün düşüleceği Vezneyi seçiniz.");
+      return;
+    }
     if (!grupKodu.trim()) {
       showNotif("warning", "Lütfen Grup Kodu seçiniz.");
       return;
@@ -1523,6 +1587,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     }
     if (parseNum(monturGram) <= 0) {
       showNotif("warning", "Lütfen Montür Gramajını (0'dan büyük) giriniz.");
+      return;
+    }
+
+    if (!isDuzeltmeMode && vezneStok !== null && parseNum(monturGram) > vezneStok) {
+      showNotif("danger", `Seçilen veznede yeterli ${ayar} stok bulunmamaktadır! (Vezne Bakiye: ${vezneStok.toFixed(3)} gr, İstenen: ${parseNum(monturGram).toFixed(3)} gr)`);
       return;
     }
 
@@ -1557,6 +1626,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
       const payload: SaveOzelUrunPayload = {
         ozelUrunId: isDuzeltmeMode ? (ozelUrunId || undefined) : undefined,
+        vezneId: vezneId || undefined,
         tarih,
         grupKodu: grupKodu.trim().toUpperCase(),
         urunNo: finalUrunNo,
@@ -1594,6 +1664,12 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       setOzelUrunId(saved.ozelUrunId);
       setUrunNo(format3Digits(saved.urunNo));
       setBarkod(saved.barkod || `${saved.grupKodu}${format3Digits(saved.urunNo)}`);
+
+      if (vezneId) {
+        fetchStok(vezneId, ayar);
+      }
+
+      showNotif("success", `Özel ürün "${saved.grupKodu}-${format3Digits(saved.urunNo)}" başarıyla kaydedildi ve vezne stoğundan düşüldü.`);
 
       const updated = await EtiketService.getOzelUrunler({ limit: 500 });
       const sortedUpdated = (updated || []).slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
@@ -1756,9 +1832,12 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setIsSaving(true);
     try {
       await EtiketService.deleteOzelUrun(ozelUrunId);
-      showNotif("success", "Özel ürün kaydı başarıyla silindi.");
+      showNotif("success", "Özel ürün kaydı başarıyla silindi ve montür stoğu vezneye iade edildi.");
       setShowDeleteConfirm(false);
       handleNew();
+      if (vezneId && ayar) {
+        fetchStok(vezneId, ayar);
+      }
       const updated = await EtiketService.getOzelUrunler({ limit: 500 });
       const sortedUpdated = (updated || []).slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
       setOzelList(sortedUpdated);
@@ -2277,7 +2356,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   </div>
 
                   {/* Montür Gramajı & Ayar (Kullanıcı Kendi Yazar / Seçer, başlangıçta boş) */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                  <div className="d-flex align-items-center mb-2 gap-1.5 flex-wrap">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Montür Gr / Ayar :
                     </div>
@@ -2295,7 +2374,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                             monturAyarRef.current?.focus();
                           }
                         }}
-                        className="fw-bold font-monospace text-end bg-white"
+                        className={`fw-bold font-monospace text-end bg-white ${
+                          !isDuzeltmeMode && vezneStok !== null && parseNum(monturGram) > vezneStok ? "is-invalid border-danger text-danger" : ""
+                        }`}
                         style={{ maxWidth: "105px" }}
                         placeholder="0.00"
                       />
@@ -2319,6 +2400,16 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         </Button>
                       </InputGroup>
                     </div>
+                    {vezneStok !== null && (
+                      <Badge 
+                        bg={vezneStok <= 0 ? "danger" : parseNum(monturGram) > vezneStok ? "danger" : "light"}
+                        text={vezneStok > 0 && parseNum(monturGram) <= vezneStok ? "dark" : "white"}
+                        className="border ms-1 py-1 px-2 text-nowrap font-monospace"
+                        style={{ fontSize: "11px" }}
+                      >
+                        Vezne Stoğu ({vezneStokParaKodu || ayar || "22"}): {vezneStok.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} gr
+                      </Badge>
+                    )}
                   </div>
 
                   {/* Montür İşçilik & Dürbünlü Para Tablosu Seçimi */}
@@ -3721,6 +3812,33 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         initialSearchTerm={tabloMaddesiModal.initialSearch}
         onSelect={handleTabloMaddesiSelect}
       />
+
+      {/* Kayıt / İşlem Sırasında Yüklenme Spinner Rozeti & Katmanı */}
+      {isSaving && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(3px)",
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#ffffff",
+          }}
+        >
+          <div className="spinner-border text-info mb-3" style={{ width: "3.5rem", height: "3.5rem" }} role="status">
+            <span className="visually-hidden">Yükleniyor...</span>
+          </div>
+          <h5 className="fw-bold tracking-wide text-white mb-1">Özel Ürün Kaydediliyor...</h5>
+          <p className="small text-white-50 mb-0">Stok kontrolü yapılıyor ve vezne bakiyesi güncelleniyor, lütfen bekleyiniz.</p>
+        </div>
+      )}
     </div>
   );
 };

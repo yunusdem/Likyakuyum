@@ -108,7 +108,13 @@ export class VezneSqlRepository {
         LEFT JOIN [dbo].[TODVZ_PARA] p ON v.[PARA_ID] = p.[PARA_ID]
         LEFT JOIN [dbo].[TODVZ_YAZICI] y1 ON v.[ALIS_FISI_YAZICI_ID] = y1.[YAZICI_ID]
         LEFT JOIN [dbo].[TODVZ_YAZICI] y2 ON v.[SATIS_FISI_YAZICI_ID] = y2.[YAZICI_ID]
-        ORDER BY v.[KOD] ASC, v.[VEZNE_ID] ASC;
+        ORDER BY 
+          CASE 
+            WHEN LOWER(LTRIM(RTRIM(v.[AD]))) LIKE '%ana%' OR LOWER(LTRIM(RTRIM(v.[KOD]))) = 'ana' OR LTRIM(RTRIM(v.[KOD])) = '00' THEN 0 
+            ELSE 1 
+          END ASC,
+          v.[KOD] ASC, 
+          v.[VEZNE_ID] ASC;
       `;
       const result = await pool.request().query<TodvzVezneEntity>(query);
       return result.recordset.map(VezneSqlRepository.mapEntityToModel);

@@ -2,12 +2,15 @@ import { EBankaAktarimSqlRepository } from "../models/ebankaAktarimSql.repositor
 import { EBankaSqlRepository } from "../models/ebankaSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
 import { BankaService } from "./banka.service.js";
+import { aciklamaNumaralari, isimAnahtari, isimKelimeleri, isimTutar } from "./ebankaCariEslesme.js";
 // F- e-Banka Faz 2 — Vomsis hareketinin banka fişine aktarımı (docs/EBANKA_VOMSIS_YOL_HARITASI.md, E5–E8, E13–E17, E19, E23, E26–E30)
 //  - alacaklı hareket → "0- Havale Alma", borçlu hareket → "1- Havale/EFT Gönderme"
 //  - kendi hesaplarımız arası virman: her bacak kendi hesabına carisiz fiş olur (mevcut "4- Virman" fişi bakiyelere yansımadığı için)
 //  - Test (örnek veri) modunda hiçbir zaman fiş kesilmez; yalnızca ne yapılacağı gösterilir
 const HAVALE_ALMA = 0;
 const HAVALE_GONDERME = 1;
+/** IBAN karşılaştırması boşluk ve harf büyüklüğünden bağımsız */
+export const ibanSade = (i) => (i || "").replace(/\s/g, "").toUpperCase();
 const benzersiz = (liste) => [...new Set(liste.filter((x) => x !== null && x !== undefined && x !== ""))];
 /**
  * Bir hareketin otomatik aktarımda ne olacağına karar verir. Veritabanına dokunmaz (kur hariç her şey sözlüklerden gelir).
@@ -16,7 +19,11 @@ const benzersiz = (liste) => [...new Set(liste.filter((x) => x !== null && x !==
 export const planla = (h, s) => {
     const islemTipi = h.tutar >= 0 ? HAVALE_ALMA : HAVALE_GONDERME;
     const paraId = s.paraKodlari.get((h.doviz || "TL").toUpperCase()) ?? null;
-    const taban = { islemTipi, cari: null, virman: false, paraId, tlMi: paraId !== null && paraId === s.tlId };
+    // Karşı taraf bizim başka bir hesabımızsa virmandır. Aktarımı engelleyen eksikler (kartla eşlenmemiş hesap gibi) olsa da
+    // virman olduğu bilinsin: mutabakat bu hareket için fiş / fatura aramaz.
+    const karsiIbanlar = benzersiz([h.karsiIban, islemTipi === HAVALE_ALMA ? h.gonderenIban : h.aliciIban]);
+    const bizimHesap = karsiIbanlar.map((i) => s.bizimIbanlar.get(ibanSade(i))).find(Boolean);
+    const taban = { islemTipi, cari: null, virman: Boolean(bizimHesap), paraId, tlMi: paraId !== null && paraId === s.tlId };
     if (h.tipKurali === 2)
         return { ...taban, karar: "aktarma", neden: "Bu hareket tipi aktarılmıyor" };
     if (!h.bankaId)
@@ -27,42 +34,66 @@ export const planla = (h, s) => {
         return { ...taban, karar: "bekle", neden: "Tutar sıfır" };
     if (h.tipKurali === 1)
         return { ...taban, karar: "bekle", neden: "Bu hareket tipi elle aktarılır" };
+    if (bizimHesap)
+        return { ...taban, karar: "aktar", neden: `Hesaplar arası virman (${bizimHesap})` };
     // Tipin varsayılan carisi (masraf, faiz, vergi…)
     if (h.tipCariId) {
         const cari = s.tipCarileri.get(h.tipCariId);
         if (cari)
             return { ...taban, karar: "aktar", neden: "Hareket tipinin varsayılan carisi", cari };
     }
-    // Karşı taraf bizim başka bir hesabımızsa cari aranmaz
-    const karsiIbanlar = benzersiz([h.karsiIban, islemTipi === HAVALE_ALMA ? h.gonderenIban : h.aliciIban]);
-    const bizimHesap = karsiIbanlar.map((i) => s.bizimIbanlar.get(i)).find(Boolean);
-    if (bizimHesap)
-        return { ...taban, karar: "aktar", neden: `Hesaplar arası virman (${bizimHesap})`, virman: true };
-    // Vergi / TC kimlik no
-    const numaralar = benzersiz([h.karsiVkn, h.gonderenVkn, h.gonderenTckn, h.odeyenVkn].map((n) => (n || "").trim()));
-    const vknAdaylari = new Map();
+    // Cari 3 kriterle bulunur, en az 2'si aynı cariyi göstermeli (M10–M13):
+    //  (1) VKN/TC — bankanın alanları + açıklamaya yazılan numara, (2) gönderen / karşı taraf adı ↔ cari adı, (3) öğrenilmiş karşı IBAN
+    const numaralar = benzersiz([h.karsiVkn, h.gonderenVkn, h.gonderenTckn, h.odeyenVkn].map((n) => (n || "").trim()).concat(aciklamaNumaralari(h.aciklama)));
+    const adlar = benzersiz(islemTipi === HAVALE_ALMA ? [h.karsiUnvan, h.gonderenUnvan, h.gonderenAd] : [h.karsiUnvan]);
+    const puanlar = new Map();
+    const isaretle = (c, k) => {
+        const p = puanlar.get(c.cariKartId) || { cari: c, vkn: false, isim: false, iban: false };
+        p[k] = true;
+        puanlar.set(c.cariKartId, p);
+    };
     for (const n of numaralar)
         for (const c of s.vknSozlugu.get(n) || [])
-            vknAdaylari.set(c.cariKartId, c);
-    if (vknAdaylari.size === 1)
-        return { ...taban, karar: "aktar", neden: "Vergi / TC kimlik no ile eşleşti", cari: [...vknAdaylari.values()][0] };
-    if (vknAdaylari.size > 1)
-        return { ...taban, karar: "bekle", neden: `Aynı vergi / TC kimlik no ${vknAdaylari.size} caride var` };
-    // Daha önce elle aktarımda öğrenilen IBAN
-    for (const i of karsiIbanlar) {
-        const cari = s.ibanSozlugu.get(i);
-        if (cari)
-            return { ...taban, karar: "aktar", neden: "Karşı IBAN daha önce bu cariyle eşlenmişti", cari };
+            isaretle(c, "vkn");
+    for (const ad of adlar) {
+        const k = isimKelimeleri(ad);
+        const anahtar = isimAnahtari(k);
+        for (const c of (anahtar && s.isimSozlugu.get(anahtar)) || [])
+            if (isimTutar(k, c.kelimeler))
+                isaretle(c.cari, "isim");
     }
-    return { ...taban, karar: "bekle", neden: numaralar.length || karsiIbanlar.length ? "Cari bulunamadı" : "Karşı taraf bilgisi yok" };
+    for (const i of karsiIbanlar) {
+        const c = s.ibanSozlugu.get(i);
+        if (c)
+            isaretle(c, "iban");
+    }
+    const tutanlar = (p) => [p.vkn && "VKN/TC", p.isim && "isim", p.iban && "IBAN"].filter(Boolean).join(" + ");
+    const hepsi = [...puanlar.values()];
+    const ikili = hepsi.filter((p) => Number(p.vkn) + Number(p.isim) + Number(p.iban) >= 2);
+    if (ikili.length === 1)
+        return { ...taban, karar: "aktar", neden: `${tutanlar(ikili[0])} tuttu`, cari: ikili[0].cari };
+    if (ikili.length > 1)
+        return { ...taban, karar: "bekle", neden: `${ikili.length} cari iki kritere uyuyor; cariyi seçin` };
+    // Tek kriter: cari atanmaz, öneri olarak gösterilir (M11). Öncelik VKN/TC → IBAN → isim, o kriterde tek cari olmalı.
+    const tek = (k) => {
+        const l = hepsi.filter((p) => p[k]);
+        return l.length === 1 ? l[0] : null;
+    };
+    const o = tek("vkn") || tek("iban") || tek("isim");
+    if (o)
+        return { ...taban, karar: "bekle", neden: `Önerilen cari: ${o.cari.ad} (yalnız ${tutanlar(o)} tuttu)`, oneri: o.cari };
+    if (hepsi.length)
+        return { ...taban, karar: "bekle", neden: `Tek kritere uyan ${hepsi.length} cari var; cariyi seçin` };
+    return { ...taban, karar: "bekle", neden: numaralar.length || karsiIbanlar.length || adlar.length ? "Cari bulunamadı" : "Karşı taraf bilgisi yok" };
 };
 const gun = (h) => (h.sistemTarihi || "").slice(0, 10);
 export class EBankaAktarimService {
     static async sozlukler(dbContext) {
-        const [bizimIbanlar, vknSozlugu, ibanSozlugu, para, kurallar] = await Promise.all([
+        const [bizimIbanlar, vknSozlugu, ibanSozlugu, cariler, para, kurallar] = await Promise.all([
             EBankaAktarimSqlRepository.bizimIbanlar(dbContext),
             EBankaAktarimSqlRepository.vknSozlugu(dbContext),
             EBankaAktarimSqlRepository.ibanSozlugu(dbContext),
+            EBankaAktarimSqlRepository.cariAdlari(dbContext),
             EBankaAktarimSqlRepository.paraSozlugu(dbContext),
             EBankaAktarimSqlRepository.tipKurallari(dbContext),
         ]);
@@ -70,7 +101,14 @@ export class EBankaAktarimService {
         for (const k of kurallar)
             if (k.cariKartId && k.cariAdi !== null)
                 tipCarileri.set(k.cariKartId, { cariKartId: k.cariKartId, kod: k.cariKod || "", ad: k.cariAdi });
-        return { bizimIbanlar, vknSozlugu, ibanSozlugu, tipCarileri, paraKodlari: para.kodlar, tlId: para.tlId };
+        const isimSozlugu = new Map();
+        for (const c of cariler) {
+            const kelimeler = isimKelimeleri(c.ad);
+            const a = isimAnahtari(kelimeler);
+            if (a)
+                isimSozlugu.set(a, [...(isimSozlugu.get(a) || []), { cari: c, kelimeler }]);
+        }
+        return { bizimIbanlar, vknSozlugu, ibanSozlugu, isimSozlugu, tipCarileri, paraKodlari: para.kodlar, tlId: para.tlId };
     }
     /** Bekleyenler ekranı: karara bağlanmamış hareketler + otomatik aktarımda her birine ne olacağı. */
     static async bekleyenler(dbContext) {
@@ -85,7 +123,7 @@ export class EBankaAktarimService {
             aktarimBaslangic: baslangic,
             satirlar: adaylar.map((h) => {
                 const p = planla(h, s);
-                return { ...h, plan: { karar: p.karar, neden: p.neden, islemTipi: p.islemTipi, virman: p.virman, tlMi: p.tlMi, cari: p.cari } };
+                return { ...h, plan: { karar: p.karar, neden: p.neden, islemTipi: p.islemTipi, virman: p.virman, tlMi: p.tlMi, cari: p.cari, oneri: p.oneri ?? null } };
             }),
         };
     }
@@ -198,7 +236,7 @@ export class EBankaAktarimService {
         const bankaHareketId = await this.fisKes(h, { islemTipi, cariKartId, paraId, kur }, kullaniciId, dbContext);
         // Sonraki hareket kendiliğinden eşleşsin (E17). Kendi hesabımızın IBAN'ı cariye bağlanmaz.
         const karsiIban = h.karsiIban || (islemTipi === HAVALE_ALMA ? h.gonderenIban : h.aliciIban);
-        if (cariKartId && karsiIban && !(await EBankaAktarimSqlRepository.bizimIbanlar(dbContext)).has(karsiIban)) {
+        if (cariKartId && karsiIban && !(await EBankaAktarimSqlRepository.bizimIbanlar(dbContext)).has(ibanSade(karsiIban))) {
             await EBankaAktarimSqlRepository.ibanOgren(karsiIban, cariKartId, dbContext).catch(() => undefined);
         }
         return { bankaHareketId };

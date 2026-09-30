@@ -45,6 +45,16 @@ export class EtiketController {
         const data = await EtiketService.getAltinUrunByBarkod(String(req.params.barkod), dbContext);
         return ApiResponse.ok(res, "Altın ürün getirildi.", data);
     });
+    static getAltinUrunStok = asyncHandler(async (req, res) => {
+        const dbContext = EtiketController.getDbContext(req);
+        const vezneId = Number(req.query.vezneId);
+        const ayar = String(req.query.ayar || "");
+        if (!vezneId || isNaN(vezneId)) {
+            return ApiResponse.ok(res, "Vezne seçilmedi.", { paraId: null, paraKodu: null, paraAdi: null, bakiye: 0 });
+        }
+        const data = await EtiketService.getAltinUrunStok(vezneId, ayar, dbContext);
+        return ApiResponse.ok(res, "Stok bilgisi getirildi.", data);
+    });
     static saveAltinUrun = asyncHandler(async (req, res) => {
         const dbContext = EtiketController.getDbContext(req);
         const data = await EtiketService.saveAltinUrun(req.body, EtiketController.getKullaniciId(req), dbContext);

@@ -28,6 +28,8 @@ export interface OdemeSatiriItem {
   cariKod?: string | null;
   cariUnvan?: string | null;
   bankaId?: number | null;
+  posCihaziId?: number | null;
+  iskontoId?: number | null;
   paraId?: number | null;
   paraKodu?: string;
   paraAdi?: string;
@@ -213,6 +215,8 @@ export interface UrunItem {
   iscilik?: number;
   birim?: number;
   urunTipi?: number;
+  alisFiyati?: number;
+  satisFiyati?: number;
 }
 
 export interface VezneBakiyeItem {

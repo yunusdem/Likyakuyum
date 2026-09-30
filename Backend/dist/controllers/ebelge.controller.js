@@ -3,11 +3,13 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EbelgeService } from "../services/ebelge.service.js";
 import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
+import { EbelgeKuyrukService } from "../services/ebelgeKuyruk.service.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
 import { EbelgeKodRepository } from "../models/ebelgeKod.repository.js";
 import { EbelgeTaslakRepository } from "../models/ebelgeTaslak.repository.js";
 import { EbelgeNaceRepository } from "../models/ebelgeNace.repository.js";
-import { ebelgeNaceKaydetSchema } from "../schemas/ebelge.schema.js";
+import { EbelgeSeriRepository } from "../models/ebelgeSeri.repository.js";
+import { ebelgeNaceKaydetSchema, ebelgeSeriKaydetSchema } from "../schemas/ebelge.schema.js";
 import { EbelgeKnskRepository, KNSK_UYARI_GUN } from "../models/ebelgeKnsk.repository.js";
 import { ebelgeKnskVknSchema, ebelgeKnskListeSchema, ebelgeKnskOnaySchema } from "../schemas/ebelge.schema.js";
 import { ebelgeYerelTaslakListeSchema, ebelgeYerelTaslakKaydetSchema } from "../schemas/ebelge.schema.js";
@@ -156,10 +158,13 @@ export class EbelgeController {
         return ApiResponse.ok(res, "KNSK işareti kaldırıldı.", { vknTckn: parsed.data.vkn });
     });
     static getDbContext(req) {
-        return {
+        const ctx = {
             dbServer: req.user?.dbServer || req.query.dbServer || req.body?.dbServer,
             dbName: req.user?.dbName || req.query.dbName || req.body?.dbName,
         };
+        // e-Belge kullanan firma, gönderim kuyruğunun izlediği veritabanlarına girer
+        EbelgeKuyrukService.baglamKaydet(ctx);
+        return ctx;
     }
     static getKullanici(req) {
         return req.user?.username || req.user?.userId || "bilinmiyor";
@@ -213,6 +218,8 @@ export class EbelgeController {
             gunSayisi: req.body?.gunSayisi != null ? Number(req.body.gunSayisi) : undefined,
             limit: req.body?.limit != null ? Number(req.body.limit) : undefined,
             okunmuslarDahil: req.body?.okunmuslarDahil !== false,
+            baslangic: typeof req.body?.baslangic === "string" ? req.body.baslangic : undefined,
+            bitis: typeof req.body?.bitis === "string" ? req.body.bitis : undefined,
         }, EbelgeController.getDbContext(req));
         return ApiResponse.ok(res, `${sonuc.yazilan} belge güncellendi.`, sonuc);
     });
@@ -333,8 +340,8 @@ export class EbelgeController {
         return ApiResponse.ok(res, "Son belge numarası getirildi.", sonuc);
     });
     /**
-     * GET /api/v1/e-belge/giden/fatura-no-onerileri?belgeTuru=EFatura|EArsiv&yil=2026[&seri=ABC]
-     * Fatura formunun en üstündeki numara seçimi (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10).
+     * GET /api/v1/e-belge/giden/fatura-no-onerileri?belgeTuru=EFatura|EArsiv&yil=2026
+     * Fatura formunun en üstündeki numara seçimi — yalnızca ayarlarda tanımlı seriler (R3).
      */
     static faturaNoOnerileri = asyncHandler(async (req, res) => {
         const belgeTuru = String(req.query.belgeTuru || "").trim();
@@ -343,9 +350,40 @@ export class EbelgeController {
         const yil = Number(req.query.yil) || new Date().getFullYear();
         if (!Number.isInteger(yil) || yil < 2000 || yil > 2100)
             throw ApiError.badRequest("Yıl geçersiz.");
-        const seri = req.query.seri ? String(req.query.seri) : undefined;
-        const sonuc = await EbelgeService.faturaNoOnerileri(belgeTuru, yil, seri, EbelgeController.getDbContext(req));
+        const sonuc = await EbelgeService.faturaNoOnerileri(belgeTuru, yil, EbelgeController.getDbContext(req));
         return ApiResponse.ok(res, "Fatura no önerileri getirildi.", sonuc);
+    });
+    /** GET /api/v1/e-belge/seri — ayarlarda tanımlı seriler */
+    static seriListe = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Seriler listelendi.", await EbelgeSeriRepository.listele(undefined, EbelgeController.getDbContext(req)));
+    });
+    /** PUT /api/v1/e-belge/seri — listenin tamamını kaydeder; tür başına en fazla bir varsayılan */
+    static seriKaydet = asyncHandler(async (req, res) => {
+        const parsed = ebelgeSeriKaydetSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest(parsed.error.issues[0]?.message || "Seri bilgisi geçersiz.", parsed.error.format());
+        const liste = parsed.data.liste;
+        const anahtarlar = liste.map((s) => `${s.belgeTuru}:${s.seri}`);
+        if (new Set(anahtarlar).size !== anahtarlar.length)
+            throw ApiError.badRequest("Aynı seri aynı türde iki kez girilmiş.");
+        for (const tur of ["EFatura", "EArsiv"]) {
+            const turdekiler = liste.filter((s) => s.belgeTuru === tur);
+            const varsayilanSayisi = turdekiler.filter((s) => s.varsayilan).length;
+            if (varsayilanSayisi > 1)
+                throw ApiError.badRequest(`${tur} için yalnızca bir varsayılan seri seçilebilir.`);
+            // Tek seri varsa kendiliğinden varsayılan olur
+            if (turdekiler.length === 1)
+                turdekiler[0].varsayilan = true;
+        }
+        await EbelgeSeriRepository.kaydet(liste, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "Seriler kaydedildi.", liste);
+    });
+    /** GET /api/v1/e-belge/seri/ice-bul?belgeTuru= — ICE'de kesilmiş belgelerden seri bulur (ayarlardaki düğme) */
+    static seriIceBul = asyncHandler(async (req, res) => {
+        const belgeTuru = String(req.query.belgeTuru || "").trim();
+        if (belgeTuru !== "EFatura" && belgeTuru !== "EArsiv")
+            throw ApiError.badRequest("Belge türü EFatura ya da EArsiv olmalıdır.");
+        return ApiResponse.ok(res, "Seriler bulundu.", await EbelgeService.iceSerileriBul(belgeTuru, EbelgeController.getDbContext(req)));
     });
     /* ======================================================================
        Giden belge — taslak (Faz 6). GİB'e gönderim YOK.
@@ -508,6 +546,21 @@ export class EbelgeController {
         return ApiResponse.ok(res, sonuc.basarisiz > 0
             ? `${sonuc.gonderilen} alıcıya gönderildi, ${sonuc.basarisiz} alıcıda hata oluştu.`
             : `${sonuc.gonderilen} alıcıya e-posta gönderildi.`, sonuc);
+    });
+    /**
+     * GET /api/v1/e-belge/giden/:uuid/onizleme — tarihe basınca açılan önizleme (kuyruktaki belgede de)
+     */
+    static gidenOnizleme = asyncHandler(async (req, res) => {
+        const uuid = String(req.params.uuid || "").trim();
+        if (!uuid)
+            throw ApiError.badRequest("Belge UUID bilgisi zorunludur.");
+        const goruntu = await EbelgeService.gidenOnizleme(uuid, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        const html = goruntu.tur === "html";
+        res.setHeader("Content-Type", html ? "text/html; charset=utf-8" : "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="${uuid}.${html ? "html" : "pdf"}"`);
+        res.setHeader("Content-Length", String(goruntu.veri.length));
+        res.setHeader("Cache-Control", "no-store");
+        return res.status(200).end(goruntu.veri);
     });
     /**
      * GET /api/v1/e-belge/earsiv/:uuid/pdf

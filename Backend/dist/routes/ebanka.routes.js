@@ -17,6 +17,7 @@ router.get("/mutabakat", EBankaController.mutabakat);
 router.post("/mutabakat/esle", EBankaController.mutabakatEsle);
 router.post("/mutabakat/esle-kaldir", EBankaController.mutabakatEslemeKaldir);
 router.post("/mutabakat/fatura-gerekmez", EBankaController.mutabakatFaturaGerekmez);
+router.post("/mutabakat/cari-onayla", EBankaController.mutabakatCariOnayla);
 // Eşitleme (yalnızca elle)
 router.post("/esitle", EBankaController.esitle);
 // Özet / Hesaplar / Hareketler

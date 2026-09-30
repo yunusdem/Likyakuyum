@@ -38,7 +38,8 @@ export const sendDespatchAdvice = async (config, girdi) => {
         buildInnerXml: (header) => `<sendDespatchAdviceRequest>` +
             header +
             `<from_vkn_tckn>${escapeXml(girdi.fromVknTckn)}</from_vkn_tckn>` +
-            `<from_alias>${escapeXml(girdi.fromAlias)}</from_alias>` +
+            // Gönderici etiketi isteğe bağlı (WSDL minOccurs=0; ICE örnek isteği göndermiyor): boşsa ICE hesabın etiketini kullanır
+            (girdi.fromAlias?.trim() ? `<from_alias>${escapeXml(girdi.fromAlias.trim())}</from_alias>` : "") +
             `<to_vkn_tckn>${escapeXml(girdi.toVknTckn)}</to_vkn_tckn>` +
             `<to_alias>${escapeXml(girdi.toAlias)}</to_alias>` +
             `<DespatchAdvices>${belgelerXml}</DespatchAdvices>` +

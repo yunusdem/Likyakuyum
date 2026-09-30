@@ -49,6 +49,9 @@ export class EBankaController {
     static mutabakatEslemeKaldir = asyncHandler(async (req, res) => {
         return ApiResponse.ok(res, "Eşleşme kaldırıldı.", await EBankaMutabakatService.eslemeyiKaldir(req.body || {}, EBankaController.getDbContext(req)));
     });
+    static mutabakatCariOnayla = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Cari kaydedildi.", await EBankaMutabakatService.cariOnayla(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
+    });
     static mutabakatFaturaGerekmez = asyncHandler(async (req, res) => {
         return ApiResponse.ok(res, "İşaret kaydedildi.", await EBankaMutabakatService.faturaGerekmez(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
     });

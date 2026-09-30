@@ -1,18 +1,21 @@
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
 import { FATURA_NO_BICIMI, faturaNoUret } from "../utils/faturaNo.utils.js";
+import { EbelgeSeriRepository } from "../models/ebelgeSeri.repository.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
 import { EbelgeSqlRepository, } from "../models/ebelgeSql.repository.js";
-import { getInvoiceCount, getInvoiceHtml, getInvoicePdf, getInvoiceStatusDetail, getInvoices, getMusteriCariAdresleri, getOncekiBelgeAdresi, getSonBelgeId, getUserListEFatura, gonderimSatirlari, invoiceCheckValidate, invoiceRedKabul, parseAmount, parseCurrency, parseIceDate, sendDraftDocumentApproval, sendInvoice, sendInvoiceTaslak, setInvoiceStatus, } from "./ice/ice.efatura.js";
-import { getGiderPusulasiCikti, sendGiderPusulasi, } from "./ice/ice.giderpusulasi.js";
-import { despatchAdviceCheckValidate, getDespatchAdviceCikti, getDespatchAdviceStatus, getDespatchAdvices, getUserListDespatchAdvice, irsaliyeGonderimSatirlari, sendDespatchAdvice, } from "./ice/ice.irsaliye.js";
+import { getInvoiceCount, getInvoiceHtml, getInvoicePdf, getInvoiceStatusDetail, getInvoices, getMusteriCariAdresleri, getOncekiBelgeAdresi, ublTarafAdresi, getSonBelgeId, getUserListEFatura, gonderimSatirlari, invoiceCheckValidate, invoiceRedKabul, parseAmount, parseCurrency, parseIceDate, sendDraftDocumentApproval, sendInvoiceTaslak, setInvoiceStatus, } from "./ice/ice.efatura.js";
+import { getGiderPusulasiCikti, } from "./ice/ice.giderpusulasi.js";
+import { despatchAdviceCheckValidate, getDespatchAdviceCikti, getDespatchAdviceStatus, getDespatchAdvices, getUserListDespatchAdvice, } from "./ice/ice.irsaliye.js";
 import { buildDespatchAdviceXml, } from "./ice/ubl/despatchAdviceBuilder.js";
 import { buildGiderPusulasiXml, } from "./ice/ubl/giderPusulasiBuilder.js";
 import { buildMustahsilXml } from "./ice/ubl/mustahsilBuilder.js";
-import { cancelMustahsil, getProducerReceipts, sendMustahsil, setProducerReceiptStatus, validateMustahsil } from "./ice/ice.mustahsil.js";
-import { getEarsivMailStatu, getEArchive, setEArchiveStatus, getEarsivRaporStatu, previewInvoice, sendDocumentEmail, sendEarsiv, sendEarsivIptal, } from "./ice/ice.earsiv.js";
+import { getProducerReceipts, setProducerReceiptStatus, validateMustahsil } from "./ice/ice.mustahsil.js";
+import { getEarsivMailStatu, getEArchive, setEArchiveStatus, getEarsivRaporStatu, previewInvoice, sendDocumentEmail, } from "./ice/ice.earsiv.js";
 import { buildInvoiceXml, toBase64, } from "./ice/ubl/invoiceBuilder.js";
 import { assertAllowedServiceUrl } from "./ice/ice.client.js";
+import { ASKIDAKI_DURUMLAR, EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
+import { goruntuCoz } from "./ice/ice.earsiv.js";
 import { callWithSession, clearSession, health, logout, registerSessionShutdown, } from "./ice/ice.session.js";
 registerSessionShutdown();
 /**
@@ -24,6 +27,18 @@ const cevapKilitleri = new Set();
  * e-Belge servis katmanı: bağlantı ayarları, bağlantı testi, kontör,
  * gelen kutusu okuma ve kabul/red cevabı.
  */
+/**
+ * Alıcının posta kutusu (PK) etiketi: GİB listesinde aynı VKN için GB (gönderici birim) etiketi de dönebilir; fatura
+ * PK'ya gönderilir. Birim bilgisi ya da etiket adı PK olanı seçer, yoksa ilk etiketi (eski davranış) kullanır.
+ */
+export const pkEtiketiSec = (kullanicilar) => {
+    const etiketler = kullanicilar.map((k) => ({ alias: String(k.Alias || "").trim(), birim: String(k.Unit || "").trim() }))
+        .filter((k) => k.alias);
+    const pk = etiketler.find((k) => k.birim.toUpperCase() === "PK")
+        || etiketler.find((k) => /(^|[:._-])pk|defaultpk/i.test(k.alias))
+        || etiketler.find((k) => k.birim.toUpperCase() !== "GB" && !/(^|[:._-])gb|defaultgb/i.test(k.alias));
+    return (pk || etiketler[0])?.alias || "";
+};
 export class EbelgeService {
     /**
      * Ayarları getirir. Kayıt yoksa TODVZ_TANIM'daki VKN ile ön doldurulmuş
@@ -209,9 +224,26 @@ export class EbelgeService {
     static async senkronizeGelen(kullanici, filtre, dbContext) {
         const started = Date.now();
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
-        const gunSayisi = Math.min(Math.max(filtre.gunSayisi ?? 30, 1), 365);
-        const bitis = new Date();
-        const baslangic = new Date(bitis.getTime() - gunSayisi * 24 * 60 * 60 * 1000);
+        // Ekrandaki tarih aralığı (YYYY-MM-DD, Türkiye saati) verildiyse o aralık; yoksa son N gün
+        const gun = (v) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+        let baslangic;
+        let bitis;
+        if (gun(filtre.baslangic) || gun(filtre.bitis)) {
+            bitis = gun(filtre.bitis) ? new Date(`${filtre.bitis}T23:59:59+03:00`) : new Date();
+            baslangic = gun(filtre.baslangic)
+                ? new Date(`${filtre.baslangic}T00:00:00+03:00`)
+                : new Date(bitis.getTime() - 30 * 86_400_000);
+            if (baslangic > bitis)
+                throw ApiError.badRequest("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+            if (bitis.getTime() - baslangic.getTime() > 366 * 86_400_000) {
+                throw ApiError.badRequest("Tarih aralığı en çok 1 yıl olabilir.");
+            }
+        }
+        else {
+            bitis = new Date();
+            baslangic = new Date(bitis.getTime() - Math.min(Math.max(filtre.gunSayisi ?? 30, 1), 365) * 86_400_000);
+        }
+        const gunSayisi = Math.ceil((bitis.getTime() - baslangic.getTime()) / 86_400_000);
         const iceFiltre = {
             limit: Math.min(Math.max(filtre.limit ?? 200, 1), 1000),
             baslangicTarihi: baslangic,
@@ -411,17 +443,21 @@ export class EbelgeService {
                 };
             }
             await EbelgeSqlRepository.writeLog({
-                metod: "getUserList_EFatura",
+                metod: "getUserList_EFatura_Detail",
                 yon: "GIDEN",
                 basarili: sonuc.basarili,
                 kullanici,
                 istekOzet: `vkn=${vknTckn}`,
-                cevapOzet: `${sonuc.kullanicilar.length} etiket`,
+                cevapOzet: `${sonuc.kullanicilar.length} etiket`
+                    + (sonuc.silinenler.length ? `, ${sonuc.silinenler.length} silinmiş etiket` : ""),
             }, dbContext);
+            const tumuSilinmis = sonuc.kullanicilar.length === 0 && sonuc.silinenler.length > 0;
             return {
                 mukellefMi: sonuc.kullanicilar.length > 0,
                 kullanicilar: sonuc.kullanicilar,
-                mesaj: sonuc.mesaj,
+                mesaj: tumuSilinmis
+                    ? "Alıcının e-Fatura kaydı GİB listesinden silinmiş; e-Arşiv uygulandı."
+                    : sonuc.mesaj,
             };
         }
         catch {
@@ -446,6 +482,17 @@ export class EbelgeService {
         const ham = [];
         const ozet = [];
         let hataSayisi = 0;
+        // 0) Bu alıcıya daha önce kestiğimiz son belge (e-Arşiv dahil) — kendi kaydımız, ICE'ye gitmeden (R2)
+        try {
+            const son = await EbelgeSqlRepository.sonGidenXml(vkn, dbContext);
+            const a = son ? ublTarafAdresi(son.xml, vkn, `Son belgemiz ${son.belgeNo}`.trim()) : null;
+            if (a)
+                ham.push(a);
+            ozet.push(`son belgemiz: ${a ? 1 : 0}`);
+        }
+        catch (err) {
+            ozet.push(`son belgemiz: ${err?.message || err}`);
+        }
         try {
             const cari = await getMusteriCariAdresleri(config, vkn);
             ham.push(...cari.adresler);
@@ -480,6 +527,7 @@ export class EbelgeService {
             istekOzet: `vkn=${vkn}`,
             cevapOzet: ozet.join(" | ").slice(0, 400),
         }, dbContext);
+        // Kendi kaydımızdan bilgi geldiyse ICE sorgularının hatası belgeyi durdurmaz
         if (!ham.length && hataSayisi === 2) {
             throw ApiError.unprocessable(`Alıcı adresi ICE'den sorgulanamadı (${ozet.join(" | ").slice(0, 300)}).`);
         }
@@ -493,15 +541,25 @@ export class EbelgeService {
                 m(a.BinaNo) && `No:${m(a.BinaNo)}`,
                 m(a.DaireNo) && `D:${m(a.DaireNo)}`,
             ].filter(Boolean).join(" "),
+            // Parça parça da döner: form Mahalle/Cadde, Bina Adı, Bina No, Kapı No alanlarını ayrı doldurur (R2)
+            mahalleCadde: m(a.MahalleCadde),
+            binaAdi: m(a.BinaAdi),
+            binaNo: m(a.BinaNo),
+            kapiNo: m(a.DaireNo),
             il: m(a.Sehir),
             ilce: m(a.Ilce),
             ulke: m(a.Ulke),
             postaKodu: m(a.PostaKodu),
             eposta: m(a.Eposta),
             telefon: m(a.Telefon),
+            faks: m(a.Faks),
+            webSitesi: m(a.WebSitesi),
             vergiDairesi: m(a.VergiDairesi),
+            unvan: m(a.Unvan),
+            ad: m(a.Ad),
+            soyad: m(a.Soyad),
         }))
-            .filter((a) => a.adres || a.il || a.ilce);
+            .filter((a) => a.adres || a.il || a.ilce || a.eposta || a.telefon);
         return { adresler };
     }
     /**
@@ -565,10 +623,8 @@ export class EbelgeService {
             throw ApiError.conflict(`${belgeNo} numaralı belge daha önce oluşturulmuş. Aynı numara ikinci kez kullanılamaz.`);
         }
         const ayar = await EbelgeSqlRepository.getAyar(dbContext);
+        // Boşsa from_alias gönderilmez; ICE hesabın gönderici etiketini kullanır (WSDL minOccurs=0)
         const fromAlias = ayar?.firmaAlias?.trim() || "";
-        if (!fromAlias) {
-            throw ApiError.badRequest("Gönderici etiketi (alias) tanımlı değil. E-Belge ayarlarından firma alias bilgisini giriniz.");
-        }
         const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
         const { xml, uuid, satirSayisi } = buildDespatchAdviceXml({ ...girdi, belgeNo, gonderici });
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
@@ -610,7 +666,7 @@ export class EbelgeService {
         }
         // 4) Kontör
         const kontor = await this.kontorOnKontrol(config, dbContext, kullanici);
-        // 5) ICE yazma çağrısından ÖNCE kalıcı yer tut
+        // 5) Numarayı kalıcı olarak tut, gönderimi kuyruğa al (docs/EBELGE_KUYRUK_YOL_HARITASI.md)
         await EbelgeSqlRepository.insertGiden({
             uuid,
             belgeNo,
@@ -625,69 +681,29 @@ export class EbelgeService {
             // İrsaliyede tutar yoktur
             tutar: null,
             paraBirimi: null,
-            gonderimDurumu: "GONDERILIYOR",
+            gonderimDurumu: "KUYRUKTA",
             semaGecerli,
             schematronGecerli,
-            iceResponseMesaj: "Gönderim başlatıldı. Sonuç kesinleşmeden yeniden göndermeyiniz.",
+            iceResponseMesaj: "Gönderim kuyruğunda.",
             xmlIcerik: xml,
             olusturan: kullanici,
             gonderen: kullanici,
             gonderimTarihi: new Date(),
         }, dbContext);
-        // 6) Gönder
-        let sonuc;
-        try {
-            sonuc = await sendDespatchAdvice(config, {
-                fromVknTckn: gonderici.vknTckn,
-                fromAlias,
-                toVknTckn: girdi.alici.vknTckn,
-                toAlias: aliciAlias,
-                despatchAdvicesBase64: [toBase64(xml)],
-            });
-        }
-        catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", "BELIRSIZ", {
-                mesaj: "ICE gönderim sonucu alınamadı. Aynı irsaliyeyi yeni numarayla da göndermeyiniz; ICE portalinden ETTN ile kontrol ediniz.",
-            }, dbContext).catch(() => undefined);
-            throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uuid}). Giden kutusu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`);
-        }
-        // 7) Belge bazında doğrula
-        const satirlar = irsaliyeGonderimSatirlari(sonuc);
-        const ilk = satirlar[0];
-        const dogru = (v) => String(v).toLowerCase() === "true";
-        const basarili = dogru(sonuc.success) &&
-            satirlar.length === 1 &&
-            dogru(ilk?.success) &&
-            String(ilk?.ettn || "").toLowerCase() === uuid.toLowerCase() &&
-            ilk?.ID === belgeNo;
-        const acikRed = String(sonuc.success).toLowerCase() === "false" ||
-            (satirlar.length === 1 && String(ilk?.success).toLowerCase() === "false");
-        const durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", durum, {
-            kod: String(sonuc.response_code ?? ""),
-            mesaj: durum === "BELIRSIZ"
-                ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden ETTN ile kontrol ediniz."
-                : ilk?.response_message || sonuc.response_message || durum,
-        }, dbContext);
-        await EbelgeSqlRepository.writeLog({
-            metod: "send_DespatchAdvice",
-            yon: "GIDEN",
-            basarili,
+        // 6) Gönder — sonuç arka planda kesinleşir
+        await EbelgeKuyrukService.kuyrugaAl({
+            uuid,
+            belgeTuru: "EIrsaliye",
+            islem: "GONDER",
             kullanici,
-            ilgiliUuid: uuid,
-            istekOzet: `belgeNo=${belgeNo} alici=${girdi.alici.vknTckn} satır=${satirSayisi}`,
-            cevapOzet: `durum=${durum} ${sonuc.response_message || ""}`,
+            veri: { fromVkn: gonderici.vknTckn, fromAlias, toVkn: girdi.alici.vknTckn, toAlias: aliciAlias },
         }, dbContext);
-        if (!basarili) {
-            throw ApiError.conflict(durum === "BELIRSIZ"
-                ? "Gönderim sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz."
-                : ilk?.response_message || sonuc.response_message || "e-İrsaliye gönderimi reddedildi.");
-        }
+        const sonuc = await this.kuyrukSonucu(uuid, "e-İrsaliye gönderimi reddedildi.", dbContext);
         return {
             uuid,
             belgeNo,
-            durum: "GONDERILDI",
-            mesaj: sonuc.response_message?.trim() || "",
+            durum: sonuc.durum,
+            mesaj: sonuc.mesaj,
             satirSayisi,
             kontorKalan: kontor.kalan,
             kontorUyari: kontor.uyari,
@@ -777,6 +793,42 @@ export class EbelgeService {
      * Alıcının GİB posta kutusu etiketini (alias) çözer.
      * e-Fatura gönderimi için alıcının **mükellef olması zorunludur**.
      */
+    /**
+     * Gönderici (kendi) etiketimiz — docs/GIRIS_VE_EBELGE_DUZENLEME.md R1. Ayarda varsa o kullanılır; yoksa firma VKN'si
+     * GİB e-Fatura kullanıcı listesinde sorgulanır, gönderici birim (GB) etiketi bulunursa ayara yazılır.
+     * Bulunamazsa BOŞ döner ve istek `from_alias` olmadan gider: ICE WSDL'inde alan isteğe bağlı (minOccurs=0) ve ICE'nin
+     * kendi örnek isteği bu alanı hiç göndermiyor — gönderici, oturum açan ICE hesabından belirlenir (28.09.2026).
+     * GİB listesi çoğu hesapta yalnız PK (alıcı) etiketlerini döndürür; GB etiketi entegratör hesabına tanımlıdır.
+     */
+    static async gondericiAliasCoz(config, ayardaki, gondericiVkn, kullanici, dbContext) {
+        const mevcut = ayardaki?.trim();
+        if (mevcut)
+            return mevcut;
+        let liste;
+        try {
+            liste = await getUserListEFatura(config, gondericiVkn);
+        }
+        catch (err) {
+            logger.warn("Gönderici etiketi GİB listesinden sorgulanamadı; from_alias gönderilmeyecek:", err);
+            return "";
+        }
+        if (!liste.basarili) {
+            logger.warn(`Gönderici etiketi sorgusu başarısız (${liste.mesaj}); from_alias gönderilmeyecek.`);
+            return "";
+        }
+        const etiketler = liste.kullanicilar.map((k) => ({ alias: String(k.Alias || "").trim(), birim: String(k.Unit || "").trim() }))
+            .filter((k) => k.alias);
+        const gb = etiketler.find((k) => k.birim.toUpperCase() === "GB")
+            || etiketler.find((k) => /(^|[:._-])gb|defaultgb/i.test(k.alias));
+        if (!gb) {
+            logger.info(`GİB listesinde GB etiketi yok (bulunan: ${etiketler.map((k) => k.alias).join(", ") || "-"}); `
+                + "from_alias gönderilmeyecek, ICE hesabın etiketini kullanacak.");
+            return "";
+        }
+        await EbelgeSqlRepository.firmaAliasYaz(gb.alias, kullanici, dbContext);
+        logger.info(`Gönderici etiketi GİB'den bulundu ve ayara yazıldı: ${gb.alias}`);
+        return gb.alias;
+    }
     static async aliciAliasCoz(config, aliciVkn, verilenAlias) {
         const verilen = verilenAlias?.trim();
         if (verilen)
@@ -786,7 +838,7 @@ export class EbelgeService {
         if (!mukellef.basarili) {
             throw ApiError.unprocessable(mukellef.mesaj || "Alıcının mükellef durumu doğrulanamadı; gönderim durduruldu.");
         }
-        const alias = mukellef.kullanicilar[0]?.Alias?.trim() || "";
+        const alias = pkEtiketiSec(mukellef.kullanicilar);
         if (!alias) {
             throw ApiError.badRequest("Alıcı e-Fatura mükellefi görünmüyor (GİB posta kutusu etiketi bulunamadı). " +
                 "Bu alıcıya e-Arşiv fatura kesilmelidir.");
@@ -804,7 +856,7 @@ export class EbelgeService {
      * ICE son sıra kontrolü → kontör → **rezervasyon** → `send_invoice` →
      * sonucu belge bazında doğrula → durum geçişi.
      */
-    static async faturaGonder(girdi, kullanici, dbContext) {
+    static async faturaGonder(girdi, kullanici, dbContext, secenek = {}) {
         const belgeNo = girdi.belgeNo.trim().toUpperCase();
         const tarih = girdi.tarih || new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
         girdi = { ...girdi, belgeNo, tarih };
@@ -818,13 +870,11 @@ export class EbelgeService {
             throw ApiError.conflict(`${belgeNo} numaralı belge daha önce oluşturulmuş. Aynı numara ikinci kez kullanılamaz.`);
         }
         const ayar = await EbelgeSqlRepository.getAyar(dbContext);
-        const fromAlias = ayar?.firmaAlias?.trim() || "";
-        if (!fromAlias) {
-            throw ApiError.badRequest("Gönderici etiketi (alias) tanımlı değil. E-Belge ayarlarından firma alias bilgisini giriniz.");
-        }
         const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
         const { xml, uuid, ozet } = buildInvoiceXml({ ...girdi, belgeNo, gonderici });
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+        // Ayarda boşsa GİB listesinden bulunur ve ayara yazılır (R1)
+        const fromAlias = await this.gondericiAliasCoz(config, ayar?.firmaAlias, gonderici.vknTckn, kullanici, dbContext);
         // 1) Doğrulama — geçmezse GİB'e hiç gitmesin
         const dogrulama = await invoiceCheckValidate(config, toBase64(xml), { html: false, pdf: false });
         const semaGecerli = String(dogrulama?.shema_validate).toLowerCase() === "true";
@@ -835,21 +885,14 @@ export class EbelgeService {
         }
         // 2) Alıcı etiketi
         const aliciAlias = await this.aliciAliasCoz(config, girdi.alici.vknTckn, girdi.aliciAlias);
-        // 3) ICE'deki son sıra
-        const son = await getSonBelgeId(config, belgeNo.slice(0, 3), "EFatura", Number(belgeNo.slice(3, 7)));
-        const sonSira = Number(son?.Son_Belge_ID);
-        if (son?.Son_Belge_ID == null ||
-            String(son.Son_Belge_ID).trim() === "" ||
-            !Number.isInteger(sonSira) ||
-            sonSira < 0) {
-            throw ApiError.unprocessable("ICE son belge numarası doğrulanamadı; gönderim durduruldu.");
-        }
+        // 3) Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
+        const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
         if (Number(belgeNo.slice(7)) <= sonSira) {
-            throw ApiError.conflict("Fatura numarası ICE'de kullanılan son sıradan büyük olmalıdır.");
+            throw ApiError.conflict(`Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`);
         }
         // 4) Kontör
         const kontor = await this.kontorOnKontrol(config, dbContext, kullanici);
-        // 5) ICE yazma çağrısından ÖNCE kalıcı yer tut
+        // 5) Numarayı kalıcı olarak tut, gönderimi kuyruğa al (docs/EBELGE_KUYRUK_YOL_HARITASI.md)
         await EbelgeSqlRepository.insertGiden({
             uuid,
             belgeNo,
@@ -863,75 +906,66 @@ export class EbelgeService {
             duzenlemeTarihi: new Date(tarih),
             tutar: ozet.odenecekTutar,
             paraBirimi: girdi.paraBirimi || "TRY",
-            gonderimDurumu: "GONDERILIYOR",
+            gonderimDurumu: "KUYRUKTA",
             semaGecerli,
             schematronGecerli,
-            iceResponseMesaj: "Gönderim başlatıldı. Sonuç kesinleşmeden yeniden göndermeyiniz.",
+            iceResponseMesaj: "Gönderim kuyruğunda.",
+            kaynakFisId: secenek.kaynakFisId ?? null,
             xmlIcerik: xml,
             olusturan: kullanici,
             gonderen: kullanici,
             gonderimTarihi: new Date(),
         }, dbContext);
-        // 6) Gönder
-        let sonuc;
-        try {
-            sonuc = await sendInvoice(config, {
-                fromVknTckn: gonderici.vknTckn,
-                fromAlias,
-                toVknTckn: girdi.alici.vknTckn,
-                toAlias: aliciAlias,
-                invoicesBase64: [toBase64(xml)],
-            });
-        }
-        catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", "BELIRSIZ", {
-                mesaj: "ICE gönderim sonucu alınamadı. Aynı belgeyi yeni numarayla da göndermeyiniz; ICE portalinden ETTN ile kontrol ediniz.",
-            }, dbContext).catch(() => undefined);
-            throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uuid}). Giden kutusu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`);
-        }
-        // 7) Sonucu belge bazında doğrula
-        const satirlar = gonderimSatirlari(sonuc);
-        const ilk = satirlar[0];
-        const dogru = (v) => String(v).toLowerCase() === "true";
-        const basarili = dogru(sonuc.success) &&
-            satirlar.length === 1 &&
-            dogru(ilk?.success) &&
-            dogru(ilk?.shema_is_validate) &&
-            dogru(ilk?.schematron_is_validate) &&
-            String(ilk?.ettn || "").toLowerCase() === uuid.toLowerCase() &&
-            ilk?.ID === belgeNo;
-        const acikRed = String(sonuc.success).toLowerCase() === "false" ||
-            (satirlar.length === 1 && String(ilk?.success).toLowerCase() === "false");
-        const durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", durum, {
-            kod: String(sonuc.response_code ?? ""),
-            mesaj: durum === "BELIRSIZ"
-                ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden ETTN ile kontrol ediniz."
-                : ilk?.response_message || sonuc.response_message || durum,
-        }, dbContext);
-        await EbelgeSqlRepository.writeLog({
-            metod: "send_invoice",
-            yon: "GIDEN",
-            basarili,
+        // 6) Gönder — sonuç arka planda kesinleşir
+        await EbelgeKuyrukService.kuyrugaAl({
+            uuid,
+            belgeTuru: "EFatura",
+            islem: "GONDER",
             kullanici,
-            ilgiliUuid: uuid,
-            istekOzet: `belgeNo=${belgeNo} alici=${girdi.alici.vknTckn} tutar=${ozet.odenecekTutar}`,
-            cevapOzet: `durum=${durum} ${sonuc.response_message || ""}`,
+            veri: { fromVkn: gonderici.vknTckn, fromAlias, toVkn: girdi.alici.vknTckn, toAlias: aliciAlias },
         }, dbContext);
-        if (!basarili) {
-            throw ApiError.conflict(durum === "BELIRSIZ"
-                ? "Gönderim sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz."
-                : ilk?.response_message || sonuc.response_message || "e-Fatura gönderimi reddedildi.");
-        }
+        const sonuc = await this.kuyrukSonucu(uuid, "e-Fatura gönderimi reddedildi.", dbContext);
         return {
             uuid,
             belgeNo,
             ettn: uuid,
-            durum: "GONDERILDI",
-            mesaj: sonuc.response_message?.trim() || "",
+            durum: sonuc.durum,
+            mesaj: sonuc.mesaj,
             tutar: ozet.odenecekTutar,
             kontorKalan: kontor.kalan,
             kontorUyari: kontor.uyari,
+        };
+    }
+    /**
+     * Kuyruğa alınan gönderimin kullanıcıya dönen sonucu (docs/EBELGE_KUYRUK_YOL_HARITASI.md Q1): ICE kısa
+     * bekleme içinde açıkça reddettiyse hata; aksi halde "Gönderildi" — sonuç arka planda kesinleşir,
+     * gönderilemezse giden kutusunda "Gönderilemedi" görünür.
+     */
+    static async kuyrukSonucu(uuid, redMesaji, dbContext) {
+        const kayit = await EbelgeSqlRepository.getGiden(uuid, dbContext);
+        if (kayit?.gonderimDurumu === "HATA") {
+            throw ApiError.conflict(String(kayit.ICE_RESPONSE_MESAJ || "").trim() || redMesaji);
+        }
+        return {
+            durum: "GONDERILDI",
+            mesaj: kayit?.gonderimDurumu === "GONDERILDI" ? String(kayit.ICE_RESPONSE_MESAJ || "").trim() : "Gönderildi.",
+        };
+    }
+    /**
+     * İptal kuyruğu (Q5): iptal isteği kuyruğa alınır ve kısa süre sonucu beklenir; ICE yetişmezse
+     * arka planda tamamlanır. Açık ret belgeyi GONDERILDI'ye geri çeker ve hata olarak döner.
+     */
+    static async iptalKuyrugu(kayit, iptalTarihi, kullanici, dbContext) {
+        await EbelgeSqlRepository.earsivDurumGecir(kayit.uuid, "GONDERILDI", "IPTAL_EDILIYOR", { mesaj: "İptal ediliyor." }, dbContext, kayit.belgeTuru);
+        await EbelgeKuyrukService.kuyrugaAl({ uuid: kayit.uuid, belgeTuru: kayit.belgeTuru, islem: "IPTAL", kullanici, veri: { iptalTarihi: iptalTarihi.toISOString() } }, dbContext);
+        const son = await EbelgeSqlRepository.getGiden(kayit.uuid, dbContext);
+        if (son?.gonderimDurumu === "GONDERILDI") {
+            throw ApiError.badRequest(String(son.ICE_RESPONSE_MESAJ || "").trim() || "İptal bildirimi kabul edilmedi.");
+        }
+        return {
+            uuid: kayit.uuid,
+            durum: "IPTAL",
+            mesaj: son?.gonderimDurumu === "IPTAL" ? String(son.ICE_RESPONSE_MESAJ || "").trim() || "İptal edildi." : "İptal edildi.",
         };
     }
     /**
@@ -954,44 +988,18 @@ export class EbelgeService {
         }
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
         const kontor = await this.kontorOnKontrol(config, dbContext, kullanici);
-        // ICE çağrısından ÖNCE atomik geçiş — ikinci istek buradan geçemez
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "TASLAK", "ONAYLANIYOR", { mesaj: "GİB'e gönderim onayı başlatıldı. Sonuç kesinleşmeden tekrar denemeyiniz." }, dbContext);
-        let sonuc;
-        try {
-            sonuc = await sendDraftDocumentApproval(config, kayit.belgeNo, "EFatura", "DraftApproval");
-        }
-        catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uuid, "ONAYLANIYOR", "BELIRSIZ", {
-                mesaj: "Onay sonucu alınamadı. Belge GİB'e gitmiş olabilir; ICE portalinden kontrol etmeden tekrar denemeyiniz.",
-            }, dbContext).catch(() => undefined);
-            throw ApiError.conflict(`Onay sonucu belirsiz (${kayit.belgeNo}). ICE portalinden kontrol ediniz; yeniden onaylamayınız.`);
-        }
-        const basarili = String(sonuc?.success).toLowerCase() === "true";
-        const acikRed = String(sonuc?.success).toLowerCase() === "false";
-        const durum = basarili ? "GONDERILDI" : acikRed ? "TASLAK" : "BELIRSIZ";
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "ONAYLANIYOR", durum, {
-            mesaj: `${sonuc?.response_message ?? ""} ${sonuc?.response_message_detail ?? ""}`.trim() || durum,
-        }, dbContext);
-        await EbelgeSqlRepository.writeLog({
-            metod: "send_draft_document_approval",
-            yon: "GIDEN",
-            basarili,
-            kullanici,
-            ilgiliUuid: uuid,
-            istekOzet: `processType=DraftApproval belgeNo=${kayit.belgeNo}`,
-            cevapOzet: `${sonuc?.response_message ?? ""} ${sonuc?.response_message_detail ?? ""}`.trim(),
-        }, dbContext);
-        if (!basarili) {
-            if (!acikRed)
-                throw ApiError.conflict("Onay sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz.");
-            throw ApiError.badRequest(sonuc?.response_message?.trim() || "Taslak onaylanamadı; belge taslak olarak kaldı.");
+        // Atomik geçiş — ikinci istek buradan geçemez; onay çağrısı kuyrukta (docs/EBELGE_KUYRUK_YOL_HARITASI.md)
+        await EbelgeSqlRepository.earsivDurumGecir(uuid, "TASLAK", "ONAYLANIYOR", { mesaj: "Onay kuyruğunda." }, dbContext, "EFatura");
+        await EbelgeKuyrukService.kuyrugaAl({ uuid, belgeTuru: "EFatura", islem: "ONAY", kullanici }, dbContext);
+        const son = await EbelgeSqlRepository.getGiden(uuid, dbContext);
+        if (son?.gonderimDurumu === "TASLAK") {
+            throw ApiError.badRequest(String(son.ICE_RESPONSE_MESAJ || "").trim() || "Taslak onaylanamadı; belge taslak olarak kaldı.");
         }
         return {
             uuid,
             belgeNo: kayit.belgeNo,
             durum: "GONDERILDI",
-            mesaj: (sonuc?.response_message?.trim() || "Taslak onaylandı ve GİB'e gönderildi.") +
-                (kontor.uyari ? ` (${kontor.uyari})` : ""),
+            mesaj: "Taslak onaylandı ve GİB'e gönderildi." + (kontor.uyari ? ` (${kontor.uyari})` : ""),
         };
     }
     /**
@@ -1048,16 +1056,13 @@ export class EbelgeService {
         let aliciAlias = girdi.aliciAlias?.trim() || "";
         if (!aliciAlias) {
             const mukellef = await getUserListEFatura(config, girdi.alici.vknTckn);
-            aliciAlias = mukellef.kullanicilar[0]?.Alias?.trim() || "";
+            aliciAlias = pkEtiketiSec(mukellef.kullanicilar);
             if (!aliciAlias) {
                 throw ApiError.badRequest("Alıcı e-Fatura mükellefi görünmüyor (GİB posta kutusu etiketi bulunamadı). " +
                     "Bu alıcıya e-Arşiv fatura kesilmelidir.");
             }
         }
-        const fromAlias = ayar?.firmaAlias?.trim() || "";
-        if (!fromAlias) {
-            throw ApiError.badRequest("Gönderici etiketi (alias) tanımlı değil. E-Belge ayarlarından firma alias bilgisini giriniz.");
-        }
+        const fromAlias = await this.gondericiAliasCoz(config, ayar?.firmaAlias, gonderici.vknTckn, kullanici, dbContext);
         // 3) Taslak gönder — GİB'e gitmez
         const sonuc = await sendInvoiceTaslak(config, {
             fromVknTckn: gonderici.vknTckn,
@@ -1254,7 +1259,7 @@ export class EbelgeService {
         }
         // Kontör tükenmişse belge numarasını yakmadan dur
         const kontor = await this.kontorOnKontrol(config, dbContext, kullanici);
-        // ICE yazma çağrısından ÖNCE kalıcı yer tut.
+        // Numarayı kalıcı olarak tut, gönderimi kuyruğa al (docs/EBELGE_KUYRUK_YOL_HARITASI.md)
         await EbelgeSqlRepository.insertGiden({
             uuid,
             belgeNo,
@@ -1270,62 +1275,23 @@ export class EbelgeService {
             duzenlemeTarihi: new Date(tarih),
             tutar: ozet.odenecekTutar,
             paraBirimi: girdi.paraBirimi || "TRY",
-            gonderimDurumu: "GONDERILIYOR",
+            gonderimDurumu: "KUYRUKTA",
             // Ön doğrulama ucu olmadığı için bu bayraklar bilinmiyor — false değil, NULL
             semaGecerli: null,
             schematronGecerli: null,
-            iceResponseMesaj: "Gönderim başlatıldı (ön doğrulama ucu yok). Sonuç kesinleşmeden yeniden göndermeyiniz.",
+            iceResponseMesaj: "Gönderim kuyruğunda.",
             xmlIcerik: xml,
             olusturan: kullanici,
             gonderen: kullanici,
             gonderimTarihi: new Date(),
         }, dbContext);
-        let sonuc;
-        try {
-            sonuc = await sendGiderPusulasi(config, [toBase64(xml)]);
-        }
-        catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", "BELIRSIZ", {
-                mesaj: "ICE gönderim sonucu alınamadı. Aynı belgeyi yeni numarayla da göndermeyiniz; ICE portalinden kontrol ediniz.",
-            }, dbContext).catch(() => undefined);
-            throw ApiError.conflict(`Gönderim sonucu belirsiz (UUID: ${uuid}). Giden kutusu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`);
-        }
-        const satirlar = gonderimSatirlari(sonuc);
-        const ilk = satirlar[0];
-        const dogru = (v) => String(v).toLowerCase() === "true";
-        const basarili = dogru(sonuc.success) &&
-            satirlar.length === 1 &&
-            dogru(ilk?.success) &&
-            String(ilk?.ettn || "").toLowerCase() === uuid.toLowerCase() &&
-            ilk?.ID === belgeNo;
-        const acikRed = String(sonuc.success).toLowerCase() === "false" ||
-            (satirlar.length === 1 && String(ilk?.success).toLowerCase() === "false");
-        const durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", durum, {
-            kod: String(sonuc.response_code ?? ""),
-            mesaj: durum === "BELIRSIZ"
-                ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden kontrol ediniz."
-                : ilk?.response_message || sonuc.response_message || durum,
-        }, dbContext);
-        await EbelgeSqlRepository.writeLog({
-            metod: "send_egider_pusulasi",
-            yon: "GIDEN",
-            basarili,
-            kullanici,
-            ilgiliUuid: uuid,
-            istekOzet: `belgeNo=${belgeNo} tip=${girdi.belgeTipi} tutar=${ozet.odenecekTutar}`,
-            cevapOzet: `durum=${durum} ${sonuc.response_message || ""}`,
-        }, dbContext);
-        if (!basarili) {
-            throw ApiError.conflict(durum === "BELIRSIZ"
-                ? "Gönderim sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz."
-                : ilk?.response_message || sonuc.response_message || "Gider pusulası gönderimi reddedildi.");
-        }
+        await EbelgeKuyrukService.kuyrugaAl({ uuid, belgeTuru: "EGiderPusulasi", islem: "GONDER", kullanici }, dbContext);
+        const sonuc = await this.kuyrukSonucu(uuid, "Gider pusulası gönderimi reddedildi.", dbContext);
         return {
             uuid,
             belgeNo,
-            durum: "GONDERILDI",
-            mesaj: sonuc.response_message?.trim() || "",
+            durum: sonuc.durum,
+            mesaj: sonuc.mesaj,
             tutar: ozet.odenecekTutar,
             onDogrulamaYapildi: false,
             kontorKalan: kontor.kalan,
@@ -1374,25 +1340,13 @@ export class EbelgeService {
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext), kontrol = await validateMustahsil(config, toBase64(uretilen.xml), false);
         if (String(kontrol.shema_validate).toLowerCase() !== "true" || String(kontrol.shematron_validate).toLowerCase() !== "true")
             throw ApiError.unprocessable(kontrol.response_message || "e-Müstahsil doğrulanamadı; gönderilmedi.");
+        // XML saklanır: kuyruk belirsiz sonuçta aynı belgeyi yeniden gönderebilsin (docs/EBELGE_KUYRUK_YOL_HARITASI.md)
         await EbelgeSqlRepository.insertGiden({ uuid: uretilen.uuid, belgeNo, belgeTuru: "EMustahsil", profil: "EARSIVBELGE", faturaTipi: "MUSTAHSILMAKBUZ", taslakMi: false,
             aliciVkn: girdi.uretici.vknTckn, aliciUnvan: girdi.uretici.unvan || [girdi.uretici.ad, girdi.uretici.soyad].filter(Boolean).join(" "), duzenlemeTarihi: new Date(girdi.tarih || new Date()),
-            tutar: uretilen.ozet.netOdenecek, paraBirimi: "TRY", gonderimDurumu: "GONDERILIYOR", iceResponseMesaj: "Gönderim başlatıldı; sonuç kesinleşmeden tekrarlamayın.", olusturan: kullanici, gonderen: kullanici, gonderimTarihi: new Date() }, dbContext);
-        let sonuc;
-        try {
-            sonuc = await sendMustahsil(config, toBase64(uretilen.xml));
-        }
-        catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", "BELIRSIZ", { mesaj: "ICE sonucu alınamadı; portalden kontrol edin." }, dbContext, "EMustahsil").catch(() => undefined);
-            throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uretilen.uuid}); yeniden göndermeyiniz.`);
-        }
-        const ss = gonderimSatirlari(sonuc), ilk = ss[0], dogru = (v) => String(v).toLowerCase() === "true";
-        const basarili = dogru(sonuc.success) && ss.length === 1 && dogru(ilk?.success) && dogru(ilk?.shema_is_validate) && dogru(ilk?.schematron_is_validate) && String(ilk?.ettn || "").toLowerCase() === uretilen.uuid.toLowerCase() && ilk?.ID === belgeNo;
-        const acikRed = String(sonuc.success).toLowerCase() === "false" || (ss.length === 1 && String(ilk?.success).toLowerCase() === "false"), durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
-        await EbelgeSqlRepository.earsivDurumGecir(uretilen.uuid, "GONDERILIYOR", durum, { kod: String(sonuc.response_code ?? ""), mesaj: ilk?.response_message || sonuc.response_message || durum }, dbContext, "EMustahsil");
-        await EbelgeSqlRepository.writeLog({ metod: "send_emustahsil", yon: "GIDEN", basarili, kullanici, ilgiliUuid: uretilen.uuid, istekOzet: `belgeNo=${belgeNo} net=${uretilen.ozet.netOdenecek}`, cevapOzet: `durum=${durum}` }, dbContext);
-        if (!basarili)
-            throw ApiError.conflict(durum === "BELIRSIZ" ? "Gönderim sonucu belirsiz; yeniden göndermeyiniz." : ilk?.response_message || sonuc.response_message || "e-Müstahsil reddedildi.");
-        return { uuid: uretilen.uuid, belgeNo, durum, mesaj: sonuc.response_message || "", ozet: uretilen.ozet };
+            tutar: uretilen.ozet.netOdenecek, paraBirimi: "TRY", gonderimDurumu: "KUYRUKTA", iceResponseMesaj: "Gönderim kuyruğunda.", xmlIcerik: uretilen.xml, olusturan: kullanici, gonderen: kullanici, gonderimTarihi: new Date() }, dbContext);
+        await EbelgeKuyrukService.kuyrugaAl({ uuid: uretilen.uuid, belgeTuru: "EMustahsil", islem: "GONDER", kullanici }, dbContext);
+        const sonuc = await this.kuyrukSonucu(uretilen.uuid, "e-Müstahsil reddedildi.", dbContext);
+        return { uuid: uretilen.uuid, belgeNo, durum: sonuc.durum, mesaj: sonuc.mesaj, ozet: uretilen.ozet };
     }
     static async mustahsilIptal(uuid, tarih, kullanici, dbContext) {
         const k = await EbelgeSqlRepository.getGiden(uuid, dbContext);
@@ -1400,22 +1354,13 @@ export class EbelgeService {
             throw ApiError.notFound("e-Müstahsil bulunamadı.");
         if (k.gonderimDurumu !== "GONDERILDI")
             throw ApiError.conflict("Yalnız gönderilmiş e-Müstahsil iptal edilebilir.");
-        let s;
-        try {
-            s = await cancelMustahsil(await EbelgeSqlRepository.getConnectionConfig(dbContext), k.belgeNo, tarih.toISOString());
-        }
-        catch {
-            throw ApiError.conflict("İptal sonucu belirsiz; tekrar iptal göndermeyiniz.");
-        }
-        if (!s.basarili)
-            throw ApiError.conflict(s.mesaj || "İptal reddedildi.");
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL", { mesaj: s.mesaj, kullanici, iptalTarihi: tarih }, dbContext, "EMustahsil");
-        return { uuid, durum: "IPTAL", mesaj: s.mesaj };
+        // İptal kuyruktan geçer (Q5)
+        return this.iptalKuyrugu(k, tarih, kullanici, dbContext);
     }
     static async mustahsilGelen(f, kullanici, dbContext) { const x = await getProducerReceipts(await EbelgeSqlRepository.getConnectionConfig(dbContext), f); await EbelgeSqlRepository.writeLog({ metod: "GetProducerReceipt", yon: "GELEN", basarili: true, kullanici, cevapOzet: `adet=${x.length}` }, dbContext); return x; }
     static async mustahsilGelenStatu(uuid, statu, kullanici, dbContext) { const ok = await setProducerReceiptStatus(await EbelgeSqlRepository.getConnectionConfig(dbContext), uuid, statu); if (!ok)
         throw ApiError.unprocessable("ICE durum değişikliğini kabul etmedi."); await EbelgeSqlRepository.writeLog({ metod: "Set_ProducerReceipt_Status", yon: "GELEN", basarili: true, kullanici, ilgiliUuid: uuid, istekOzet: `statu=${statu}` }, dbContext); return { uuid, statu }; }
-    static async earsivGonder(girdi, kullanici, dbContext) {
+    static async earsivGonder(girdi, kullanici, dbContext, secenek = {}) {
         const belgeNo = girdi.belgeNo.trim().toUpperCase();
         girdi = { ...girdi, belgeNo, tarih: girdi.tarih || new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" }) };
         // Üreteç istisna, tevkifat, iade referansı, döviz kuru ve özel matrahı destekliyor (docs/ebelge-revizyon.md K4).
@@ -1454,17 +1399,14 @@ export class EbelgeService {
         if (mukellef.kullanicilar.length) {
             throw ApiError.unprocessable("Alıcı e-Fatura mükellefi; bu akıştan e-Arşiv gönderilemez.");
         }
-        const son = await getSonBelgeId(config, belgeNo.slice(0, 3), "EArsiv", Number(belgeNo.slice(3, 7)));
-        const sonSira = Number(son?.Son_Belge_ID);
-        if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sonSira) || sonSira < 0) {
-            throw ApiError.unprocessable("ICE son belge numarası doğrulanamadı; gönderim durduruldu.");
-        }
+        // Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
+        const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
         if (Number(belgeNo.slice(7)) <= sonSira) {
-            throw ApiError.conflict("Fatura numarası ICE'de kullanılan son sıradan büyük olmalıdır.");
+            throw ApiError.conflict(`Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`);
         }
         // Kontör tükenmişse belge numarasını yakmadan dur
         const kontor = await this.kontorOnKontrol(config, dbContext, kullanici);
-        // ICE yazma çağrısından ÖNCE kalıcı yer tut. UNIQUE indeks yarışan isteği durdurur.
+        // Numarayı kalıcı olarak tut (UNIQUE indeks yarışan isteği durdurur), gönderimi kuyruğa al
         await EbelgeSqlRepository.insertGiden({
             uuid,
             belgeNo,
@@ -1478,54 +1420,24 @@ export class EbelgeService {
             duzenlemeTarihi: girdi.tarih ? new Date(girdi.tarih) : new Date(),
             tutar: ozet.odenecekTutar,
             paraBirimi: girdi.paraBirimi || "TRY",
-            gonderimDurumu: "GONDERILIYOR",
+            gonderimDurumu: "KUYRUKTA",
             semaGecerli,
             schematronGecerli,
-            iceResponseMesaj: "Gönderim başlatıldı. Sonuç kesinleşmeden yeniden göndermeyiniz.",
+            iceResponseMesaj: "Gönderim kuyruğunda.",
+            kaynakFisId: secenek.kaynakFisId ?? null,
             xmlIcerik: xml,
             olusturan: kullanici,
             gonderen: kullanici,
             gonderimTarihi: new Date(),
         }, dbContext);
-        let sonuc;
-        try {
-            sonuc = await sendEarsiv(config, [toBase64(xml)]);
-        }
-        catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", "BELIRSIZ", {
-                mesaj: "ICE gönderim sonucu alınamadı. Aynı belgeyi yeni numarayla da göndermeyiniz; ICE portalinden ETTN ile kontrol ediniz.",
-            }, dbContext).catch(() => undefined);
-            throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${uuid}). Giden kutusu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`);
-        }
-        const satirlar = gonderimSatirlari(sonuc);
-        const ilk = satirlar[0];
-        const dogru = (v) => String(v).toLowerCase() === "true";
-        const basarili = dogru(sonuc.success) && satirlar.length === 1 && dogru(ilk?.success) &&
-            dogru(ilk?.shema_is_validate) && dogru(ilk?.schematron_is_validate) &&
-            String(ilk?.ettn || "").toLowerCase() === uuid.toLowerCase() && ilk?.ID === belgeNo;
-        const acikRed = String(sonuc.success).toLowerCase() === "false" ||
-            (satirlar.length === 1 && String(ilk?.success).toLowerCase() === "false");
-        const durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILIYOR", durum, {
-            kod: String(sonuc.response_code ?? ""),
-            mesaj: durum === "BELIRSIZ" ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden ETTN ile kontrol ediniz." :
-                ilk?.response_message || sonuc.response_message || durum,
-        }, dbContext);
-        await EbelgeSqlRepository.writeLog({
-            metod: "send_earsiv", yon: "GIDEN", basarili, kullanici, ilgiliUuid: uuid,
-            istekOzet: `belgeNo=${belgeNo} tutar=${ozet.odenecekTutar}`,
-            cevapOzet: `durum=${durum} ${sonuc.response_message || ""}`,
-        }, dbContext);
-        if (!basarili) {
-            throw ApiError.conflict(durum === "BELIRSIZ" ? "Gönderim sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz." :
-                ilk?.response_message || sonuc.response_message || "e-Arşiv gönderimi reddedildi.");
-        }
+        await EbelgeKuyrukService.kuyrugaAl({ uuid, belgeTuru: "EArsiv", islem: "GONDER", kullanici }, dbContext);
+        const sonuc = await this.kuyrukSonucu(uuid, "e-Arşiv gönderimi reddedildi.", dbContext);
         return {
             uuid,
             belgeNo,
             ettn: uuid,
-            durum: "GONDERILDI",
-            mesaj: sonuc?.response_message?.trim() || "",
+            durum: sonuc.durum,
+            mesaj: sonuc.mesaj,
             tutar: ozet.odenecekTutar,
             kontorKalan: kontor.kalan,
             kontorUyari: kontor.uyari,
@@ -1555,37 +1467,8 @@ export class EbelgeService {
             iptalTarihi.toISOString().slice(0, 10) > new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" })) {
             throw ApiError.badRequest("İptal tarihi düzenleme tarihinden önce veya bugünden sonra olamaz.");
         }
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL_EDILIYOR", {}, dbContext);
-        let sonuc;
-        try {
-            sonuc = await sendEarsivIptal(config, kayit.belgeNo, iptalTarihi);
-        }
-        catch {
-            await EbelgeSqlRepository.earsivDurumGecir(uuid, "IPTAL_EDILIYOR", "IPTAL_BELIRSIZ", {
-                mesaj: "İptal sonucu alınamadı. ICE portalinden kontrol edilmeden tekrar iptal göndermeyiniz.",
-            }, dbContext).catch(() => undefined);
-            throw ApiError.conflict("İptal sonucu belirsiz; ICE portalinden kontrol ediniz. Tekrar iptal göndermeyiniz.");
-        }
-        const basarili = String(sonuc?.success).toLowerCase() === "true";
-        const acikRed = String(sonuc?.success).toLowerCase() === "false";
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "IPTAL_EDILIYOR", basarili ? "IPTAL" : acikRed ? "GONDERILDI" : "IPTAL_BELIRSIZ", { mesaj: sonuc.response_message, kullanici, iptalTarihi }, dbContext);
-        await EbelgeSqlRepository.writeLog({
-            metod: "send_earsiv_iptal",
-            yon: "GIDEN",
-            basarili,
-            kullanici,
-            ilgiliUuid: uuid,
-            istekOzet: `belgeNo=${kayit.belgeNo} iptalTarihi=${iptalTarihi.toISOString().slice(0, 10)}`,
-            cevapOzet: sonuc?.response_message || undefined,
-        }, dbContext);
-        if (!basarili) {
-            throw ApiError.badRequest(sonuc?.response_message?.trim() || "İptal bildirimi gönderilemedi.");
-        }
-        return {
-            uuid,
-            durum: "IPTAL",
-            mesaj: sonuc?.response_message?.trim() || "İptal bildirimi gönderildi.",
-        };
+        // İptal kuyruktan geçer (Q5)
+        return this.iptalKuyrugu(kayit, iptalTarihi, kullanici, dbContext);
     }
     /**
      * e-Arşiv raporlanma ve e-posta durumunu sorgular.
@@ -1682,8 +1565,10 @@ export class EbelgeService {
         const kayit = await EbelgeSqlRepository.getGiden(uuid, dbContext);
         if (!kayit)
             throw ApiError.notFound("Giden belge kaydı bulunamadı.");
-        if (kayit.gonderimDurumu !== "GONDERILDI") {
-            throw ApiError.badRequest(`Yalnızca gönderimi kesinleşmiş belgeler için mail gönderilebilir. Durum: ${kayit.gonderimDurumu}`);
+        // Gönderimi henüz kesinleşmemiş belgede mail kuyruğa alınır, belge kesinleşince gider (Q4)
+        const askida = ASKIDAKI_DURUMLAR.includes(String(kayit.gonderimDurumu));
+        if (kayit.gonderimDurumu !== "GONDERILDI" && !askida) {
+            throw ApiError.badRequest(`Yalnızca gönderilmiş belgeler için mail gönderilebilir. Durum: ${kayit.gonderimDurumu}`);
         }
         const temizAlicilar = (alicilar || [])
             .map((a) => ({ unvan: a.unvan?.trim(), eposta: a.eposta?.trim() || "" }))
@@ -1694,6 +1579,10 @@ export class EbelgeService {
         const gecersiz = temizAlicilar.find((a) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.eposta));
         if (gecersiz) {
             throw ApiError.badRequest(`Geçersiz e-posta adresi: ${gecersiz.eposta}`);
+        }
+        if (askida) {
+            await EbelgeKuyrukService.kuyrugaAl({ uuid, belgeTuru: kayit.belgeTuru, islem: "MAIL", kullanici, veri: { alicilar: temizAlicilar } }, dbContext, 0);
+            return { uuid, gonderilen: temizAlicilar.length, basarisiz: 0, sonuclar: [] };
         }
         // Belge türünü ICE'nin mail enum'una eşle
         const belgeTuru = kayit.belgeTuru === "EArsiv"
@@ -1762,6 +1651,57 @@ export class EbelgeService {
         return goruntu;
     }
     /**
+     * Giden belgenin önizlemesi (Q6: tarihe basınca). Kendi sakladığımız XML'den ICE'nin doğrulama ucu
+     * ile üretilir — belge kuyruktayken de açılır, hiçbir şey göndermez. XML'i olmayanlarda ICE çıktısı.
+     */
+    static async gidenOnizleme(uuid, kullanici, dbContext) {
+        const kayit = await EbelgeSqlRepository.getGiden(uuid, dbContext);
+        if (!kayit)
+            throw ApiError.notFound("Giden belge kaydı bulunamadı.");
+        const xml = String(kayit.XML_ICERIK || "");
+        const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+        const b64Goruntu = (pdf, html) => {
+            const temiz = typeof pdf === "string" ? pdf.replace(/\s/g, "") : "";
+            if (temiz)
+                return goruntuCoz(Buffer.from(temiz, "base64"));
+            if (typeof html === "string" && html.trim())
+                return { tur: "html", veri: Buffer.from(html, "utf8") };
+            return null;
+        };
+        let goruntu = null;
+        const tur = kayit.belgeTuru;
+        if (xml && (tur === "EFatura" || tur === "EArsiv")) {
+            const d = await invoiceCheckValidate(config, toBase64(xml), { html: true, pdf: true });
+            goruntu = b64Goruntu(d?.invoice_pdf, d?.invoice_html);
+        }
+        else if (xml && tur === "EIrsaliye") {
+            const d = await despatchAdviceCheckValidate(config, toBase64(xml), { html: true, pdf: true });
+            goruntu = b64Goruntu(d?.despatchadvice_pdf, d?.despatchadvice_html);
+        }
+        else if (xml && tur === "EMustahsil") {
+            const d = await validateMustahsil(config, toBase64(xml), true);
+            goruntu = b64Goruntu(undefined, d?.producerreceipt_html);
+        }
+        else if (tur === "EGiderPusulasi") {
+            if (kayit.gonderimDurumu !== "GONDERILDI" && kayit.gonderimDurumu !== "IPTAL") {
+                throw ApiError.badRequest("Gider pusulası görüntüsü birkaç dakika içinde hazır olur; tekrar deneyiniz.");
+            }
+            const c = await getGiderPusulasiCikti(config, uuid, { pdf: true, html: true });
+            goruntu = c.pdf ? { tur: "pdf", veri: c.pdf } : b64Goruntu(undefined, c.html ?? undefined);
+        }
+        await EbelgeSqlRepository.writeLog({
+            metod: "GIDEN_ONIZLEME",
+            yon: "GIDEN",
+            basarili: !!goruntu?.veri.length,
+            kullanici,
+            ilgiliUuid: uuid,
+            cevapOzet: goruntu ? `${goruntu.tur} · ${goruntu.veri.length} bayt` : "görüntü yok",
+        }, dbContext);
+        if (!goruntu?.veri.length)
+            throw ApiError.notFound("Belgenin önizlemesi alınamadı.");
+        return goruntu;
+    }
+    /**
      * Taslağı iptal eder (`DraftCancel`).
      * Bu çağrı GİB'e bir şey göndermez; ICE'deki taslağı siler.
      */
@@ -1795,12 +1735,11 @@ export class EbelgeService {
         return EbelgeSqlRepository.listGiden(filtre, dbContext);
     }
     /**
-     * Fatura no önerileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md E10): fatura numarası elle yazılmaz. Seriler, bu hesaptan
-     * daha önce kesilmiş belgelerden bulunur (yerel giden kaydı + ICE'deki gönderilmiş belgeler: e-Fatura için GetInvoice
-     * OUT, e-Arşiv için GetEArchive). Her seri için ICE'deki son sıra (`Get_Son_Belge_ID`) alınır ve bir fazlası önerilir.
-     * `ekSeri` ile kullanıcının yazdığı yeni bir seri de sorgulanır (hesapta hiç belge yoksa).
+     * ICE'den seri bulma — yalnızca E-Belge Ayarları'ndaki "ICE'den serileri bul" düğmesi için (R3). Seriler bu hesaptan
+     * daha önce kesilmiş belgelerden bulunur: yerel giden kaydı + ICE'deki gönderilmiş belgeler (e-Fatura: GetInvoice OUT,
+     * e-Arşiv: GetEArchive, son iki yıl).
      */
-    static async faturaNoOnerileri(belgeTuru, yil, ekSeri, dbContext) {
+    static async iceSerileriBul(belgeTuru, dbContext) {
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
         const seriler = new Set();
         const seriEkle = (no) => {
@@ -1809,7 +1748,7 @@ export class EbelgeService {
                 seriler.add(s.slice(0, 3));
         };
         (await EbelgeSqlRepository.gidenSerileri(belgeTuru, dbContext).catch(() => [])).forEach((s) => seriler.add(s));
-        // ICE'den (portaldan elle kesilenler dahil) son iki yılın gönderilmiş belgeleri
+        const yil = new Date().getFullYear();
         const baslangic = new Date(yil - 1, 0, 1);
         const bitis = new Date();
         try {
@@ -1822,24 +1761,48 @@ export class EbelgeService {
             }
         }
         catch (err) {
-            logger.warn(`Fatura no önerisi: ICE ${belgeTuru} listesi alınamadı, yerel kayıtlarla devam ediliyor:`, err);
+            if (!seriler.size)
+                throw ApiError.unprocessable(`ICE'den ${belgeTuru} belgeleri alınamadı: ${err?.message || err}`);
+            logger.warn(`Seri bulma: ICE ${belgeTuru} listesi alınamadı, yerel kayıtlarla devam ediliyor:`, err);
         }
-        const ek = (ekSeri || "").trim().toUpperCase();
-        if (ek) {
-            if (!/^[A-Z0-9]{3}$/.test(ek))
-                throw ApiError.badRequest("Seri 3 karakter (harf/rakam) olmalıdır.");
-            seriler.add(ek);
-        }
+        return [...seriler].sort();
+    }
+    /**
+     * Fatura no önerileri (R3): YALNIZCA E-Belge Ayarları'nda bu tür için tanımlı seriler. Her seri için ICE'deki son sıra
+     * (`Get_Son_Belge_ID`) alınır ve bir fazlası önerilir; varsayılan seri işaretlenir. Tanımlı seri yoksa boş liste.
+     */
+    static async faturaNoOnerileri(belgeTuru, yil, dbContext) {
+        const tanimli = await EbelgeSeriRepository.listele(belgeTuru, dbContext);
+        if (!tanimli.length)
+            return [];
+        const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
         const sonuc = [];
-        for (const seri of [...seriler].sort().slice(0, 15)) {
-            const son = await getSonBelgeId(config, seri, belgeTuru, yil);
-            const sonSira = Number(son?.Son_Belge_ID);
-            if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sonSira) || sonSira < 0) {
-                throw ApiError.unprocessable(`ICE'den ${seri} serisinin son numarası alınamadı.`);
-            }
-            sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1) });
+        for (const { seri, varsayilan } of tanimli) {
+            const sonSira = await this.seriSonSira(config, seri, yil, dbContext);
+            sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1), varsayilan });
         }
         return sonuc;
+    }
+    /**
+     * Bir serinin o yıldaki son sırası (28.09.2026): ICE son numarayı belge türüne göre AYRI tutar (Get_Son_Belge_ID
+     * EFatura / EArsiv); aynı seri iki türde kullanılınca biri ilerlerken diğeri geride kalıp kullanılmış numarayı
+     * önerir. Fatura numarası firma içinde türden bağımsız tek olmalı → e-Fatura, e-Arşiv ve yerel giden kaydının en büyüğü.
+     */
+    static async seriSonSira(config, seri, yil, dbContext) {
+        const iceSon = async (tur) => {
+            const son = await getSonBelgeId(config, seri, tur, yil);
+            const sira = Number(son?.Son_Belge_ID);
+            if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sira) || sira < 0) {
+                throw ApiError.unprocessable(`ICE'den ${seri} serisinin ${tur} son numarası alınamadı; işlem durduruldu.`);
+            }
+            return sira;
+        };
+        const [efatura, earsiv, yerel] = await Promise.all([
+            iceSon("EFatura"),
+            iceSon("EArsiv"),
+            EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext),
+        ]);
+        return Math.max(efatura, earsiv, yerel);
     }
     /**
      * ICE tarafındaki son belge numarasını sorar.

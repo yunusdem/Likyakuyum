@@ -2,6 +2,9 @@ import { Router } from "express";
 import { EbelgeController } from "../controllers/ebelge.controller.js";
 import { authenticate, authorizeRoles } from "../middlewares/auth.middleware.js";
 import { UserRole } from "../constants/roles.js";
+import { EbelgeKuyrukService } from "../services/ebelgeKuyruk.service.js";
+// Gönderim kuyruğunun arka plan işi (server.ts'e dokunmadan; ice.session kapanış dinleyicisiyle aynı yaklaşım)
+EbelgeKuyrukService.baslat();
 const router = Router();
 router.use(authenticate);
 router.get("/kaynak", EbelgeController.kaynakListe);
@@ -47,6 +50,10 @@ router.get("/giden/fatura-no-onerileri", EbelgeController.faturaNoOnerileri);
 router.get("/mukellef", EbelgeController.mukellefSorgula);
 // Firma NACE kodları ve izin verilen KDV oranları (docs/GIRIS_VE_EBELGE_DUZENLEME.md N1)
 router.get("/nace", EbelgeController.naceListe);
+// Fatura serileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md R3)
+router.get("/seri", EbelgeController.seriListe);
+router.get("/seri/ice-bul", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.seriIceBul);
+router.put("/seri", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.seriKaydet);
 router.put("/nace", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.naceKaydet);
 router.get("/yerel-taslak", EbelgeController.yerelTaslakListe);
 router.get("/yerel-taslak/:id", EbelgeController.yerelTaslakGetir);
@@ -69,6 +76,7 @@ router.post("/giden/:uuid/iptal", authorizeRoles(UserRole.ADMIN, UserRole.MANAGE
 router.post("/giden/gonder", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.faturaGonder);
 router.post("/giden/:uuid/onayla", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.taslakOnayla);
 router.get("/giden/:uuid/statu", EbelgeController.gidenStatuYenile);
+router.get("/giden/:uuid/onizleme", EbelgeController.gidenOnizleme);
 // Belgeyi alıcıya e-posta ile gönderir — tekrar çağrılırsa yeniden mail gider.
 router.post("/giden/:uuid/mail", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.belgeMailGonder);
 /* ------------------------------------------------------------------ e-İrsaliye (Faz 9) */

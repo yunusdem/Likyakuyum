@@ -3,6 +3,11 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { decryptSecret, encryptSecret, isEncryptionConfigured } from "../utils/crypto.utils.js";
+/** Giden kutusu filtresi → kayıt durumları (docs/EBELGE_KUYRUK_YOL_HARITASI.md Q1/Q2) */
+const GIDEN_DURUM_GRUPLARI = {
+    GONDERILDI: ["GONDERILDI", "KUYRUKTA", "GONDERILIYOR", "BELIRSIZ", "ONAYLANIYOR"],
+    IPTAL: ["IPTAL", "IPTAL_EDILIYOR"],
+};
 /**
  * e-Belge (ICE entegratör) veritabanı erişim katmanı.
  *
@@ -175,6 +180,10 @@ export class EbelgeSqlRepository {
             throw err;
         }
     }
+    /** e-Belge tabloları kurulmuş havuz — gönderim kuyruğu da aynı tabloları kullanır */
+    static async havuzAl(dbContext) {
+        return this.getPool(dbContext);
+    }
     static async getPool(dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTablesExist(pool);
@@ -285,6 +294,32 @@ export class EbelgeSqlRepository {
             guncelleyen: kayit.guncelleyen,
             guncellemeTarihi: kayit.guncellemeTarihi,
         };
+    }
+    /**
+     * Bu alıcıya daha önce kestiğimiz son belgenin UBL'i (e-Fatura, e-Arşiv, irsaliye) — alıcı bilgilerini doldurmak için
+     * (docs/GIRIS_VE_EBELGE_DUZENLEME.md R2). Reddedilmiş belge de alıcı bilgisi taşır; yalnız XML'i olanlar.
+     */
+    static async sonGidenXml(aliciVkn, dbContext) {
+        const pool = await this.getPool(dbContext);
+        const res = await pool
+            .request()
+            .input("vkn", sql.VarChar(11), aliciVkn)
+            .query(`SELECT TOP 1 [BELGE_NO] AS belgeNo, [XML_ICERIK] AS xml FROM [dbo].[TODVZ_EBELGE_GIDEN]
+              WHERE [ALICI_VKN] = @vkn AND [XML_ICERIK] IS NOT NULL
+              ORDER BY ISNULL([DUZENLEME_TARIHI], [OLUSTURMA_TARIHI]) DESC, [OLUSTURMA_TARIHI] DESC`);
+        const r = res.recordset[0];
+        return r?.xml ? { belgeNo: String(r.belgeNo || ""), xml: String(r.xml) } : null;
+    }
+    /** Yalnızca gönderici etiketini (FIRMA_ALIAS) yazar — GİB'den otomatik bulunduğunda (docs/GIRIS_VE_EBELGE_DUZENLEME.md R1). */
+    static async firmaAliasYaz(alias, kullanici, dbContext) {
+        const pool = await this.getPool(dbContext);
+        await pool
+            .request()
+            .input("alias", sql.NVarChar(150), alias)
+            .input("kullanici", sql.NVarChar(50), kullanici.slice(0, 50))
+            .query(`UPDATE [dbo].[TODVZ_EBELGE_AYAR]
+              SET [FIRMA_ALIAS] = @alias, [GUNCELLEYEN] = @kullanici, [GUNCELLEME_TARIHI] = GETDATE()
+              WHERE LTRIM(RTRIM(ISNULL([FIRMA_ALIAS], ''))) = ''`);
     }
     /**
      * Ayarı kaydeder. Şifre boş bırakılırsa mevcut şifre korunur.
@@ -745,7 +780,8 @@ export class EbelgeSqlRepository {
      * Adı e-Arşiv'den kalsa da bu geçiş e-Döviz ve e-Müstahsil için de kullanılır.
      * Filtre sabit 'EArsiv' iken diğer türlerde UPDATE 0 satır etkiliyor ve
      * gönderim ICE'ye ulaştığı halde "durum değişti" hatasıyla kayıt
-     * GONDERILIYOR'da takılı kalıyordu. Çağıran kendi türünü verir.
+     * GONDERILIYOR'da takılı kalıyordu. Çağıran kendi türünü verir. 28.09.2026: e-Fatura, e-İrsaliye, e-Gider ve
+     * taslak onayı da tür vermiyordu → aynı takılma; hepsine eklendi.
      */
     belgeTuru = "EArsiv") {
         const pool = await this.getPool(dbContext);
@@ -781,6 +817,16 @@ export class EbelgeSqlRepository {
             .query(`SELECT TOP 1 1 AS v FROM [dbo].[TODVZ_EBELGE_GIDEN] WHERE [BELGE_NO] = @belgeNo`);
         return res.recordset.length > 0;
     }
+    /** Serinin o yıl yerel giden kaydındaki en büyük sırası (tür fark etmez; reddedilen de numarayı kilitler) */
+    static async seriYerelSonSira(seri, yil, dbContext) {
+        const pool = await this.getPool(dbContext);
+        const res = await pool
+            .request()
+            .input("onEk", sql.VarChar(7), `${seri}${yil}`)
+            .query(`SELECT MAX(TRY_CAST(RIGHT([BELGE_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_EBELGE_GIDEN]
+              WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk`);
+        return Number(res.recordset[0]?.SIRA) || 0;
+    }
     /** Bu hesaptan kesilmiş belgelerin serileri (fatura no önerisi için), ör. ["ABC", "EAR"] */
     static async gidenSerileri(belgeTuru, dbContext) {
         const pool = await this.getPool(dbContext);
@@ -803,8 +849,10 @@ export class EbelgeSqlRepository {
             request.input("arama", sql.NVarChar(200), `%${filtre.arama}%`);
         }
         if (filtre.durum && filtre.durum !== "TUMU") {
-            kosullar.push("[GONDERIM_DURUMU] = @durum");
-            request.input("durum", sql.VarChar(20), filtre.durum);
+            // Kuyruk kullanıcıya görünmez: sonucu beklenen belgeler "Gönderildi", iptali sürenler "İptal" filtresinde
+            const grup = GIDEN_DURUM_GRUPLARI[filtre.durum] ?? [filtre.durum];
+            kosullar.push(`[GONDERIM_DURUMU] IN (${grup.map((_, i) => `@durum${i}`).join(", ")})`);
+            grup.forEach((d, i) => request.input(`durum${i}`, sql.VarChar(20), d));
         }
         if (filtre.belgeTuru) {
             kosullar.push("[BELGE_TURU] = @belgeTuru");

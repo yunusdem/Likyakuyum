@@ -456,6 +456,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [faturaTipi, setFaturaTipi] = useState<number>(1); // 0: Alış, 1: Satış
   const [senaryo, setSenaryo] = useState<string>("EARSIVFATURA");
 
+  // Alış / Satış başlığı renk teması
+  const activeFisThemeBg = useMemo(() => {
+    let buyBg = user?.appearance?.buyHeaderBgColor;
+    let sellBg = user?.appearance?.sellHeaderBgColor;
+    if (!buyBg || !sellBg) {
+      try {
+        const cached = localStorage.getItem("kuyumcu_active_appearance");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!buyBg && parsed.buyHeaderBgColor) buyBg = parsed.buyHeaderBgColor;
+          if (!sellBg && parsed.sellHeaderBgColor) sellBg = parsed.sellHeaderBgColor;
+        }
+      } catch {}
+    }
+    if (faturaTipi === 0) {
+      return buyBg || "var(--user-buy-header-bg, #e2e8f0)";
+    } else {
+      return sellBg || "var(--user-sell-header-bg, #e2e8f0)";
+    }
+  }, [faturaTipi, user?.appearance?.buyHeaderBgColor, user?.appearance?.sellHeaderBgColor]);
+
   useEffect(() => {
     PrinterService.getYazicilar().then(setPrinters).catch(() => { });
     CompanyService.getDefinitions().then(setCompanyDefinitions).catch(() => { });
@@ -1223,18 +1244,47 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   };
 
   // Product Selection from Dürbün (LookupModal)
-  const handleSelectFromProductLookup = async (
-    item: { tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }
-  ) => {
-    const raw = item.item;
-    const barcode = raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`;
-    const urunAdi =
-      item.tip === "altin"
-        ? (raw as AltinUrunItem).model || "Altın Takı / Ziynet"
-        : (raw as OzelUrunItem).mamulTipi || "Özel Ürün";
+  type ProductLookupType = "altin" | "ozel" | "para";
+  type ProductLookupEntry = { tip: ProductLookupType; item: AltinUrunItem | OzelUrunItem | UrunItem };
 
-    const hasGram = Number((raw as any).hasGram) || 0;
-    const gram = Number((raw as any).gram) || (hasGram > 0 ? Number((hasGram * 1.05).toFixed(2)) : (Number(raw.miktar) || 1));
+  const handleSelectFromProductLookup = async (
+    item: ProductLookupEntry
+  ) => {
+    let barcode = "";
+    let urunAdi = "";
+    let ayar = "14K";
+    let miktar = 1;
+    let birim = "Adet";
+    let gram = 0;
+    let hasGram = 0;
+    let birimFiyat = 0;
+
+    if (item.tip === "para") {
+      const rawPara = item.item as UrunItem;
+      barcode = ""; // Barkodsuz ürün
+      urunAdi = rawPara.ad || rawPara.kod;
+      ayar = rawPara.kod;
+      const isGramType = Number(rawPara.urunTipi) === 0 || (Number(rawPara.urunTipi) === 2 && (!rawPara.gramaj || rawPara.gramaj === 1));
+      birim = isGramType ? "Gram" : "Adet";
+      gram = Number(rawPara.gramaj) || (isGramType ? 1 : 0);
+      hasGram = Number(rawPara.hasOrani) || 0;
+
+      const kur = getKurForProduct(rawPara, faturaTipi === 2 ? 0 : 1);
+      birimFiyat = Number(rawPara.satisFiyati) || (kur > 0 ? kur : 0);
+    } else {
+      const raw = item.item as AltinUrunItem | OzelUrunItem;
+      barcode = raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`;
+      urunAdi =
+        item.tip === "altin"
+          ? (raw as AltinUrunItem).model || "Altın Takı / Ziynet"
+          : (raw as OzelUrunItem).mamulTipi || "Özel Ürün";
+
+      hasGram = Number((raw as any).hasGram) || 0;
+      gram = Number((raw as any).gram) || (hasGram > 0 ? Number((hasGram * 1.05).toFixed(2)) : (Number(raw.miktar) || 1));
+      ayar = raw.ayar || "14K";
+      birim = (raw as any).birim || "Adet";
+      birimFiyat = Number(raw.satisFiyati) || 0;
+    }
 
     const targetRowId = activeProductRowIdRef.current || activeProductRowId || lastProductRowIdRef.current;
 
@@ -1258,15 +1308,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const existingRow = prev[targetIdx] || createEmptyRow();
       const populated = recalculateLine({
         ...existingRow,
-        altinUrunId: (raw as any).altinUrunId ?? null,
+        altinUrunId: item.tip === "para" ? null : ((item.item as any).altinUrunId ?? null),
         barkod: barcode,
         urunAdi,
-        ayar: raw.ayar || "14K",
-        miktar: raw.miktar || 1,
-        birim: (raw as any).birim || "Adet",
+        ayar,
+        miktar: miktar || 1,
+        birim,
         gram,
         hasGram,
-        birimFiyat: Number(raw.satisFiyati) || 0,
+        birimFiyat,
         kdvOrani: 0,
       });
 
@@ -1274,7 +1324,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       next[targetIdx] = { ...populated, id: existingRow.id };
 
       setActiveRowIndex(targetIdx);
-      setTimeout(() => focusGridCell(existingRow.id, "birimFiyat", "select"), 50);
+      setTimeout(() => focusGridCell(existingRow.id, item.tip === "para" ? "miktar" : "birimFiyat", "select"), 50);
 
       return next;
     });
@@ -1286,62 +1336,125 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setProductSearchTerm("");
   };
 
-  // Combined Lookup Items for Product Search Modal
-  const combinedLookupItems: { tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }[] = [
+  // Merchandise para/döviz/sarrafiye listesi (TL / Nakit para ve banka/pos ödeme araçları hariç)
+  const paraMerchandiseList = (odemeUrunList || []).filter(
+    (u) =>
+      u.kod &&
+      !["TL", "TRY", "TRL", "TÜRK LİRASI", "TURK LIRASI", "POS", "HAVALE", "EFT", "KREDİ KARTI", "KREDI KARTI"].includes(
+        u.kod.toUpperCase().trim()
+      )
+  );
+
+  // Combined Lookup Items for Product Search Modal (Barkodlu Altın, Özel Ürün ve Barkodsuz Para/Döviz/Sarrafiye)
+  const combinedLookupItems: ProductLookupEntry[] = [
     ...altinList.map((it) => ({ tip: "altin" as const, item: it })),
     ...ozelList.map((it) => ({ tip: "ozel" as const, item: it })),
+    ...paraMerchandiseList.map((it) => ({ tip: "para" as const, item: it })),
   ];
 
-  const productLookupColumns: LookupColumn<{ tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }>[] = [
+  const productLookupColumns: LookupColumn<ProductLookupEntry>[] = [
     {
       header: "Tip",
-      width: "70px",
+      width: "85px",
       align: "center",
       render: (it) => (
-        <Badge bg={it.tip === "altin" ? "warning" : "info"} className="text-dark fw-bold">
-          {it.tip === "altin" ? "Altın" : "Özel"}
+        <Badge
+          bg={it.tip === "altin" ? "warning" : it.tip === "ozel" ? "info" : "success"}
+          className="text-dark fw-bold"
+        >
+          {it.tip === "altin" ? "Altın" : it.tip === "ozel" ? "Özel" : "Para/Sarraf"}
         </Badge>
       ),
     },
     {
-      header: "Barkod",
-      width: "120px",
-      render: (it) => (
-        <span className="font-monospace fw-bold text-primary">{it.item.barkod || "-"}</span>
-      ),
+      header: "Barkod / Kod",
+      width: "125px",
+      render: (it) => {
+        if (it.tip === "para") {
+          return (
+            <span className="font-monospace fw-bold text-success">
+              {(it.item as UrunItem).kod || "-"}
+            </span>
+          );
+        }
+        return (
+          <span className="font-monospace fw-bold text-primary">
+            {(it.item as AltinUrunItem | OzelUrunItem).barkod || "-"}
+          </span>
+        );
+      },
     },
     {
-      header: "Açıklama / Model",
-      render: (it) =>
-        (it.tip === "altin"
-          ? (it.item as AltinUrunItem).model
-          : (it.item as OzelUrunItem).mamulTipi) || "-",
+      header: "Açıklama / Model / Tanım",
+      render: (it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return p.ad || p.kod || "-";
+        }
+        return (
+          (it.tip === "altin"
+            ? (it.item as AltinUrunItem).model
+            : (it.item as OzelUrunItem).mamulTipi) || "-"
+        );
+      },
     },
     {
       header: "Ayar",
-      width: "80px",
+      width: "85px",
       align: "center",
-      render: (it) => <Badge bg="light" text="dark" className="border">{it.item.ayar || "-"}</Badge>,
+      render: (it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return (
+            <Badge bg="light" text="dark" className="border">
+              {p.hasOrani ? `${p.hasOrani} Has` : p.kod}
+            </Badge>
+          );
+        }
+        return <Badge bg="light" text="dark" className="border">{(it.item as any).ayar || "-"}</Badge>;
+      },
     },
     {
-      header: "Gram",
-      width: "90px",
+      header: "Gram / Miktar",
+      width: "100px",
       align: "right",
-      render: (it) => (
-        <span className="font-monospace">
-          {it.tip === "altin" ? (it.item as AltinUrunItem).miktar || "-" : (it.item as OzelUrunItem).miktar || "-"}
-        </span>
-      ),
+      render: (it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return (
+            <span className="font-monospace">
+              {Number(p.gramaj) > 0
+                ? `${Number(p.gramaj).toFixed(2)} gr`
+                : (p.urunTipi === 0 ? "1.00 gr" : "1 Adet")}
+            </span>
+          );
+        }
+        return (
+          <span className="font-monospace">
+            {it.tip === "altin" ? (it.item as AltinUrunItem).miktar || "-" : (it.item as OzelUrunItem).miktar || "-"}
+          </span>
+        );
+      },
     },
     {
       header: "Fiyat",
-      width: "110px",
+      width: "115px",
       align: "right",
-      render: (it) => (
-        <strong className="text-success font-monospace">
-          {Number(it.item.satisFiyati || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
-        </strong>
-      ),
+      render: (it) => {
+        let price = 0;
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          const kur = getKurForProduct(p, faturaTipi === 2 ? 0 : 1);
+          price = Number(p.satisFiyati) || (kur > 0 ? kur : 0);
+        } else {
+          price = Number((it.item as any).satisFiyati || 0);
+        }
+        return (
+          <strong className="text-success font-monospace">
+            {price > 0 ? `${price.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺` : "-"}
+          </strong>
+        );
+      },
     },
   ];
 
@@ -2707,7 +2820,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const isF2 = key === "F2" || e.code === "F2" || e.keyCode === 113;
       const isF3 = key === "F3" || e.code === "F3" || e.keyCode === 114;
       const isF4 = key === "F4" || e.code === "F4" || e.keyCode === 115;
-      const isF7 = key === "F7" || e.code === "F7" || e.keyCode === 118;
       const isF8 = key === "F8" || e.code === "F8" || e.keyCode === 119;
       const isF9 = key === "F9" || e.code === "F9" || e.keyCode === 120;
 
@@ -2736,11 +2848,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         closeAllModals();
         setMusteriSearchTerm(aliciUnvan !== "NİHAİ TÜKETİCİ" ? aliciUnvan : cariKod);
         setShowMusteriModal(true);
-      } else if (isF7) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeAllModals();
-        handleAutoVeresiye();
       } else if (isF8) {
         e.preventDefault();
         e.stopPropagation();
@@ -4147,7 +4254,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         boxShadow: isMasakBlocked ? "inset 0 0 16px rgba(220, 38, 38, 0.4)" : "none",
         backgroundColor: isMasakBlocked ? "#fff5f5" : undefined,
         transition: "all 0.3s ease",
-      }}
+        "--active-fis-theme-bg": activeFisThemeBg,
+      } as React.CSSProperties}
     >
       {ebFis.bant}
 
@@ -4384,8 +4492,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       </div>
 
       {/* ─── 3. Header Panel: Müşteri & Cari Bilgileri (2 Düzenli Satır) ─── */}
-      <Card className="shadow-sm mb-2 border">
-        <Card.Body className="p-2">
+      <Card className="shadow-sm mb-2 border fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           {/* 1. Satır: TCKN / VKN / Pasaport | Cari Kodu | Müşteri Adı (+ Dürbün + Nihai Tüketici) */}
           <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
             {/* TCKN / VKN / Pasaport (+ Dürbün + MASAK Butonu) */}
@@ -4779,8 +4887,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       </Card>
 
       {/* ─── 4. Satış Kalemleri Grid Tablosu (Ayrı Dış Dikdörtgen Kutu) ─── */}
-      <Card className="shadow-sm mb-2 border rounded-2 bg-white">
-        <Card.Body className="p-2">
+      <Card className="shadow-sm mb-2 border rounded-2 fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           <div
             className="table-responsive w-100"
             style={{ minHeight: "160px", overflowX: "auto" }}
@@ -5148,15 +5256,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       </Card>
 
       {/* ─── 5. Bottom Sections: ÖDEME TABLOSU (Solda) | TL/HAS Özet (Sağda) ─── */}
-      <Row className="g-2 align-items-start mb-2">
-        {/* SOLDA: Ödeme / Tahsilat Tablosu (Sarraf Fişi ile Birebir Aynı Tasarım) */}
-        <Col xs={12} lg={8} md={7}>
-          <div className="border rounded bg-white shadow-sm overflow-hidden">
-            <div className="bg-light px-2 py-1 border-bottom d-flex justify-content-between align-items-center">
-              <span className="fw-bold text-secondary" style={{ fontSize: "12px" }}>
-                ÖDEME / TAHSİLAT TABLOSU
-              </span>
-            </div>
+      <Card className="shadow-sm mb-2 border rounded-2 fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+          <Row className="g-2 align-items-start mb-0">
+            {/* SOLDA: Ödeme / Tahsilat Tablosu (Sarraf Fişi ile Birebir Aynı Tasarım) */}
+            <Col xs={12} lg={8} md={7}>
+              <div className="border rounded bg-white shadow-sm overflow-hidden">
+                <div className="bg-light px-2 py-1 border-bottom d-flex justify-content-between align-items-center">
+                  <span className="fw-bold text-secondary" style={{ fontSize: "12px" }}>
+                    ÖDEME / TAHSİLAT TABLOSU
+                  </span>
+                </div>
             <div style={{ overflowX: "auto" }}>
               <Table bordered size="sm" hover className="mb-0 align-middle text-nowrap" style={{ fontSize: "11.5px", minWidth: 780 }}>
                 <thead style={{ background: "#d9e8fb", color: "#000" }}>
@@ -6024,6 +6134,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </div>
         </Col>
       </Row>
+        </Card.Body>
+      </Card>
 
       {/* ─── 6. Kısayol Bilgilendirme Çubuğu (Footer Notu) ────────────── */}
       <div
@@ -6061,16 +6173,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           >
             <kbd className="bg-secondary text-white px-1.5 py-0.5 rounded me-1 fw-bold">F4</kbd>
             <strong className="text-dark">Cari Seç</strong>
-          </span>
-          <span className="text-secondary">•</span>
-          <span
-            className="user-select-none"
-            onClick={() => handleAutoVeresiye()}
-            style={{ cursor: "pointer" }}
-            title="Kalan Tutarı Cari Karta Veresiye Ekle (F7)"
-          >
-            <kbd className="bg-danger text-white px-1.5 py-0.5 rounded me-1 fw-bold">F7</kbd>
-            <strong className="text-dark">Veresiye</strong>
           </span>
           <span className="text-secondary">•</span>
           <span
@@ -6140,7 +6242,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             }, 50);
           }
         }}
-        title="Barkodlu Ürün Seçimi"
+        title="Barkodlu / Barkodsuz Ürün ve Para Tablosu Seçimi"
         items={combinedLookupItems}
         isLoading={isProductLoading}
         columns={productLookupColumns}
@@ -6148,17 +6250,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         filterFn={(it, term) => {
           const t = (term || "").toLowerCase().trim();
           if (!t) return true;
-          const barkod = (it.item.barkod || `${it.item.grupKodu || ""}${it.item.urunNo || ""}`).toLowerCase();
+          if (it.tip === "para") {
+            const p = it.item as UrunItem;
+            const kod = (p.kod || "").toLowerCase();
+            const ad = (p.ad || "").toLowerCase();
+            return kod.includes(t) || ad.includes(t);
+          }
+          const raw = it.item as AltinUrunItem | OzelUrunItem;
+          const barkod = (raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`).toLowerCase();
           const model = (
             (it.tip === "altin"
-              ? (it.item as AltinUrunItem).model
-              : (it.item as OzelUrunItem).mamulTipi) || ""
+              ? (raw as AltinUrunItem).model
+              : (raw as OzelUrunItem).mamulTipi) || ""
           ).toLowerCase();
-          const ayar = (it.item.ayar || "").toLowerCase();
-          const grupKodu = (it.item.grupKodu || "").toLowerCase();
-          const urunNo = String(it.item.urunNo || "").toLowerCase();
-          const aciklama = ((it.item as any).aciklama || (it.item as any).ad || "").toLowerCase();
-          const bankoKodu = ((it.item as any).bankoKodu || "").toLowerCase();
+          const ayar = (raw.ayar || "").toLowerCase();
+          const grupKodu = (raw.grupKodu || "").toLowerCase();
+          const urunNo = String(raw.urunNo || "").toLowerCase();
+          const aciklama = ((raw as any).aciklama || (raw as any).ad || "").toLowerCase();
+          const bankoKodu = ((raw as any).bankoKodu || "").toLowerCase();
           return (
             barkod.includes(t) ||
             model.includes(t) ||
