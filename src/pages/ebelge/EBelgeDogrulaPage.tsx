@@ -46,6 +46,7 @@ import {
   ebelgeService,
   ebelgeTutar,
 } from "../../services/ebelgeService";
+import "./ebelgeForm.css";
 
 /**
  * E-Belge — Belge Doğrulama (Faz 5)
@@ -976,7 +977,7 @@ const EBelgeDogrulaPage: React.FC = () => {
       {/* Üstteki bilgi bandı ve satır içi uyarılar kaldırıldı; hata/uyarılar açılır pencerede (docs/GIRIS_VE_EBELGE_DUZENLEME.md E6) */}
       <KnskFormUyarisi vknTckn={aliciVkn.trim()} />
 
-      <fieldset disabled={dogrulaniyor || taslakGonderiliyor || mukellefSorgulaniyor}>
+      <fieldset className="eb-yatay" disabled={dogrulaniyor || taslakGonderiliyor || mukellefSorgulaniyor}>
       <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
         <Card.Body className="p-3 bg-body">
           <div className="fw-semibold mb-2" style={{ fontSize: "13px" }}>

@@ -40,7 +40,7 @@ globalThis.fetch = async (_url, init) => {
   const defaults: Record<string, string> = {
     Login: '<isSuccecss>true</isSuccecss><Login_Request_Header><Session_ID>offline</Session_ID><IP_Number>127.0.0.1</IP_Number><Security_Key>offline</Security_Key></Login_Request_Header>',
     invoice_check_validate: '<shema_validate>true</shema_validate><shematron_validate>true</shematron_validate>',
-    getUserList_EFatura: '<success>true</success>',
+    getUserList_EFatura_Detail: '<success>true</success>',
     Get_Son_Belge_ID: '<Son_Belge_ID>0</Son_Belge_ID>',
     send_earsiv: successRow(), send_earsiv_iptal: '<success>true</success>',
     GetInvoice_Rapor_Statu: '<Earsiv_Rapor_Status><Earsiv_Rapor_Statu><ETTN>' + uuid + '</ETTN><Raporlandi>false</Raporlandi></Earsiv_Rapor_Statu></Earsiv_Rapor_Status>',
@@ -132,11 +132,11 @@ test('Doğrulama geçmezse kayıt ve gönderim yok', async () => {
   assert.equal(rows.size, 0); assert.ok(!calls.some((c) => c.method === 'send_earsiv'));
 });
 test('Mükellef sorgu hatası mükellef değil sayılmaz', async () => {
-  overrides.getUserList_EFatura = '<success>false</success>';
+  overrides.getUserList_EFatura_Detail = '<success>false</success>';
   await assert.rejects(service.earsivGonder(input(), 'a')); assert.equal(rows.size, 0);
 });
 test('e-Fatura mükellefine e-Arşiv gönderilmez', async () => {
-  overrides.getUserList_EFatura = '<success>true</success><GIB_User_List><GIB_User><Identifier>9876543210</Identifier></GIB_User></GIB_User_List>';
+  overrides.getUserList_EFatura_Detail = '<success>true</success><GIB_User_List><GIBUser><Identifier>9876543210</Identifier><Alias>urn:mail:defaultpk@x.com</Alias><DeletionTime xsi:nil="true" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"/></GIBUser></GIB_User_List>';
   await assert.rejects(service.earsivGonder(input(), 'a'), /mükellefi/); assert.equal(rows.size, 0);
 });
 test('ICE son numarasıyla çakışma engellenir', async () => {

@@ -1,0 +1,19 @@
+/* e-Belge formları: etiket alanın üstünde değil solunda durur (yalnız .eb-yatay içindeki satırlar). */
+.eb-yatay .row > [class*="col"]:has(> .form-label) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  align-content: start;
+}
+.eb-yatay .row > [class*="col"]:has(> .form-label) > .form-label {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0 !important;
+  white-space: nowrap;
+  gap: 6px;
+}
+.eb-yatay .row > [class*="col"]:has(> .form-label) > :not(.form-label) { grid-column: 2; }
+.eb-yatay .row > .col-auto:has(> .form-label) { width: auto !important; }
+.eb-yatay .row > .col-auto:has(> .form-label) > .form-select,
+.eb-yatay .row > .col-auto:has(> .form-label) > .form-control { min-width: 110px; }

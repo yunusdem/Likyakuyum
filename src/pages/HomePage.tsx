@@ -21,9 +21,9 @@ const STIL = `
 .lk-dash .lk-panel-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid rgba(15,23,42,.06); }
 .lk-dash .lk-ikon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: var(--lk-altin); background: var(--lk-yesil); }
 .lk-dash .lk-link { margin-left: auto; font-size: 12px; color: var(--lk-yesil); background: none; border: none; font-weight: 600; }
-.lk-dash .lk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; padding: 16px 18px; }
-.lk-dash .lk-kart { position: relative; border-radius: 12px; padding: 12px 14px; background: linear-gradient(160deg, #fffdf6 0%, #fff 60%); border: 1px solid rgba(212,175,55,.35); cursor: pointer; transition: transform .15s, box-shadow .15s; }
-.lk-dash .lk-kart:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(212,175,55,.2); }
+.lk-dash .lk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 124px; gap: 12px; padding: 14px 18px; max-height: 152px; overflow-y: auto; }
+.lk-dash .lk-kart { position: relative; border-radius: 12px; padding: 12px 14px; background: linear-gradient(160deg, #fffdf6 0%, #fff 60%); border: 1px solid rgba(212,175,55,.35); cursor: pointer; overflow-y: auto; transition: box-shadow .15s; }
+.lk-dash .lk-kart:hover { box-shadow: 0 8px 18px rgba(212,175,55,.2); }
 .lk-dash .lk-kart::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--lk-altin); }
 .lk-dash .lk-birim { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #64748b; }
 .lk-dash .lk-tutar { font-size: 20px; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.25; word-break: break-all; }
@@ -80,15 +80,12 @@ const HomePage: React.FC = () => {
     <div className="lk-dash w-100 pb-3">
       <style>{STIL}</style>
 
-      <div className="lk-hero d-flex align-items-center flex-wrap gap-3 px-4 py-3 mb-3">
-        <div>
-          <div style={{ fontSize: 12, letterSpacing: ".12em", color: ALTIN, fontWeight: 700 }}>GENEL DURUM</div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>Kasa ve Banka Bakiyeleri</div>
-        </div>
-        <div className="ms-auto d-flex align-items-center gap-3">
-          {saat && <span style={{ fontSize: 12, opacity: 0.8 }}>Son güncelleme {saat.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>}
-          <button type="button" className="lk-hero-btn btn btn-sm px-3" disabled={yukleniyor} onClick={yenile}>
-            {yukleniyor ? <Spinner size="sm" /> : <IconRefresh size={16} />} <span className="ms-1">Yenile</span>
+      <div className="lk-hero d-flex align-items-center gap-3 px-3 py-2 mb-3">
+        <div style={{ fontSize: 13, letterSpacing: ".12em", color: ALTIN, fontWeight: 700 }}>GENEL DURUM</div>
+        <div className="ms-auto d-flex align-items-center gap-2">
+          {saat && <span style={{ fontSize: 11, opacity: 0.8 }}>Son güncelleme {saat.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>}
+          <button type="button" className="lk-hero-btn btn btn-sm py-0 px-2" style={{ fontSize: 12 }} disabled={yukleniyor} onClick={yenile}>
+            {yukleniyor ? <Spinner size="sm" /> : <IconRefresh size={14} />} <span className="ms-1">Yenile</span>
           </button>
         </div>
       </div>

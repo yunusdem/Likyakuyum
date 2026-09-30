@@ -6,6 +6,7 @@ import { EbelgeGiderIstegi, ebelgeService, ebelgeTutar } from "../../services/eb
 import { useYerelTaslak } from "./useYerelTaslak";
 import GibSorguButonu, { gibSorgula, useGibOtomatikSorgu } from "../../components/common/GibSorguButonu";
 import { GibDegerleri, GibDoldurmaSonucu } from "../../utils/gibSorgu";
+import "./ebelgeForm.css";
 
 const bosSatir = () => ({ ad: "", miktar: 1, birimKodu: "C62", birimFiyat: 0, vergiOrani: 0 });
 const bugun = () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
@@ -55,7 +56,7 @@ export default function EBelgeGiderPage() {
     {sonuc && <Alert variant="success">{sonuc.belgeNo}: Gönderildi. {sonuc.mesaj}
       <Button size="sm" className="ms-2" onClick={async () => { try { setPdf(await ebelgeService.giderPdf(sonuc.uuid)); } catch (e: any) { setHata(e.message); } }}>PDF aç</Button></Alert>}
     {pdf && <iframe title="e-Gider PDF" src={pdf} width="100%" height="600" />}
-    <fieldset disabled={busy || gonderimDenendi}>
+    <fieldset className="eb-yatay" disabled={busy || gonderimDenendi}>
       <Card className="mb-3"><Card.Body>
         <Row className="g-2 mb-3">
           <Col md={4}><Form.Label>Belge no</Form.Label><Form.Control value={girdi.belgeNo} maxLength={16} placeholder="GIP2026000000001" onChange={e => degistir({ belgeNo: e.target.value.toUpperCase() })} /></Col>

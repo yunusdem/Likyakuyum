@@ -285,30 +285,6 @@ async function istek<T>(yontem: string, yol: string, govde?: unknown): Promise<T
   return json?.data as T;
 }
 
-/** Merkezi GİB hesabı (şifre hiçbir zaman dönmez) */
-export interface GibHesapDurumu {
-  tanimli: boolean;
-  kullaniciKodu: string | null;
-  sonBasariliGiris: string | null;
-  sonHata: string | null;
-  sonHataTarihi: string | null;
-  guncellemeTarihi: string | null;
-}
-
-/** GİB VKN/TCKN sorgusu sonucu (kullanıcı uygulamasındaki gibService ile aynı biçim) */
-export interface VknSorguSonucu {
-  no: string;
-  tur: "VKN" | "TCKN";
-  sonuc: "BULUNDU" | "KAYIT_YOK";
-  unvan: string | null;
-  ad: string | null;
-  soyad: string | null;
-  vergiDairesi: string | null;
-  kaynak: "GIB" | "ONBELLEK" | "ICE";
-  sorguTarihi: string;
-  uyari: string | null;
-}
-
 export const adminApi = {
   giris: (kullaniciAdi: string, sifre: string) =>
     istek<{ token: string; admin: AdminDto }>("POST", "/auth/login", { kullaniciAdi, sifre }),
@@ -373,11 +349,4 @@ export const adminApi = {
     istek<{ geciciSifre: string; firmaDbEsitlendi: boolean }>("POST", `/kullanicilar/${kullaniciId}/sifre-sifirla`),
   kullanicilariIceAktar: (firmaId: number) =>
     istek<{ eklenen: string[]; zatenVar: number; atlanan: number }>("POST", `/firmalar/${firmaId}/kullanicilar/ice-aktar`),
-
-  gibHesap: () => istek<GibHesapDurumu>("GET", "/gib-hesap"),
-  gibHesapKaydet: (kullaniciKodu: string, sifre: string) =>
-    istek<GibHesapDurumu>("PUT", "/gib-hesap", { kullaniciKodu, sifre }),
-  gibHesapSil: () => istek<GibHesapDurumu>("DELETE", "/gib-hesap"),
-  gibHesapDene: () => istek<GibHesapDurumu>("POST", "/gib-hesap/dene"),
-  vknSorgu: (no: string) => istek<VknSorguSonucu>("GET", `/vkn-sorgu?no=${encodeURIComponent(no)}`),
 };

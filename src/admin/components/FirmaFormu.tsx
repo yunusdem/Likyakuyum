@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { Alert, Button, Col, Form, InputGroup, Row, Spinner } from "react-bootstrap";
-import { adminApi, FirmaDto, FirmaGirdi } from "../services/adminApi";
-import { GibDoldurmaSonucu, gibSorgulaVeDoldur } from "../../utils/gibSorgu";
+import { Alert, Button, Col, Form, Row, Spinner } from "react-bootstrap";
+import { FirmaDto, FirmaGirdi } from "../services/adminApi";
 
 interface Props {
   /** Verilirse düzenleme, verilmezse yeni kayıt */
@@ -48,31 +47,6 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
   const [dbSifre, setDbSifre] = useState("");
   const [hata, setHata] = useState<string | null>(null);
   const [bekliyor, setBekliyor] = useState(false);
-  const [gibSorguluyor, setGibSorguluyor] = useState(false);
-  const [gibMesaj, setGibMesaj] = useState<GibDoldurmaSonucu | null>(null);
-
-  /** GİB'den unvan + vergi dairesi (docs/GIB_VKN_SORGU_YOL_HARITASI.md): boşlar dolar, farklıysa sorulur */
-  const gibSorgula = async () => {
-    setGibSorguluyor(true);
-    try {
-      setGibMesaj(
-        await gibSorgulaVeDoldur({
-          no: veri.vknTckn ?? "",
-          sorgu: adminApi.vknSorgu,
-          mevcut: { unvan: veri.unvan ?? "", vergiDairesi: veri.vergiDairesi ?? "" },
-          tekAdAlani: true,
-          uygula: (d) =>
-            setVeri((v) => ({
-              ...v,
-              ...(d.unvan ? { unvan: d.unvan.slice(0, 200) } : {}),
-              ...(d.vergiDairesi ? { vergiDairesi: d.vergiDairesi.slice(0, 100) } : {}),
-            })),
-        })
-      );
-    } finally {
-      setGibSorguluyor(false);
-    }
-  };
 
   const alan = <K extends keyof FirmaGirdi>(ad: K) => ({
     value: (veri[ad] ?? "") as string,
@@ -97,11 +71,6 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
   return (
     <Form onSubmit={gonder} autoComplete="off">
       {hata && <Alert variant="danger">{hata}</Alert>}
-      {gibMesaj && (
-        <Alert variant={gibMesaj.tur} dismissible onClose={() => setGibMesaj(null)}>
-          {gibMesaj.mesaj}
-        </Alert>
-      )}
 
       <h6 className="text-muted mb-3">Firma Bilgileri</h6>
       <Row className="g-3 mb-4">
@@ -154,17 +123,7 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec }) => {
         <Col md={3}>
           <Form.Group controlId="frmVkn">
             <Form.Label>VKN / TCKN</Form.Label>
-            <InputGroup>
-              <Form.Control {...alan("vknTckn")} inputMode="numeric" pattern="(\d{10}|\d{11})?" maxLength={11} />
-              <Button
-                variant="outline-primary"
-                onClick={() => void gibSorgula()}
-                disabled={gibSorguluyor || ![10, 11].includes((veri.vknTckn ?? "").length)}
-                title="Unvan ve vergi dairesini GİB'den getir"
-              >
-                {gibSorguluyor ? <Spinner size="sm" animation="border" /> : "GİB"}
-              </Button>
-            </InputGroup>
+            <Form.Control {...alan("vknTckn")} inputMode="numeric" pattern="(\d{10}|\d{11})?" maxLength={11} />
           </Form.Group>
         </Col>
         <Col md={4}>

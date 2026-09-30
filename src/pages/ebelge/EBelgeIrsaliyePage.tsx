@@ -26,6 +26,7 @@ import {
   EbelgePlakaTuru,
   ebelgeService,
 } from "../../services/ebelgeService";
+import "./ebelgeForm.css";
 
 /**
  * E-İrsaliye (Faz 9)
@@ -336,7 +337,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
         </Alert>
       )}
 
-      <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
+      <Card className="eb-yatay shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
         <Card.Body className="p-3 bg-body">
           <div className="fw-semibold mb-2" style={{ fontSize: "13px" }}>
             Belge Bilgileri
@@ -607,7 +608,7 @@ const EBelgeIrsaliyePage: React.FC = () => {
         </Card.Body>
       </Card>
 
-      <Card className="shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
+      <Card className="eb-yatay shadow-sm border border-secondary-subtle rounded-3 overflow-hidden mb-3">
         <Card.Body className="p-3 bg-body">
           <div className="d-flex align-items-center justify-content-between mb-2">
             <span className="fw-semibold" style={{ fontSize: "13px" }}>

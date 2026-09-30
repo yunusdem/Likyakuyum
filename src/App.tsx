@@ -57,6 +57,7 @@ import BarkodluSayimFisiPage from "./pages/etiket/BarkodluSayimFisiPage";
 import TopluEtiketYazdirmaPage from "./pages/etiket/TopluEtiketYazdirmaPage";
 import YuzukBilezikEtiketiPage from "./pages/etiket/YuzukBilezikEtiketiPage";
 import FiyatAyarEtiketleriPage from "./pages/etiket/FiyatAyarEtiketleriPage";
+import UrunStoguPage from "./pages/etiket/UrunStoguPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -66,6 +67,7 @@ import EBelgeGiderPage from "./pages/ebelge/EBelgeGiderPage";
 import EBelgeKaynakPage from "./pages/ebelge/EBelgeKaynakPage";
 import EBelgeMustahsilPage from "./pages/ebelge/EBelgeMustahsilPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
+import GibHesapSettingsPage from "./pages/settings/GibHesapSettingsPage";
 import LoginPage from "./pages/auth/LoginPage";
 import LandingPage from "./pages/LandingPage";
 import LandingFeaturesPage from "./pages/landing/LandingFeaturesPage";
@@ -192,6 +194,7 @@ export default function App() {
             <Route path="e-belge/kaynak" element={<EBelgeKaynakPage />} />
             <Route path="e-belge/mustahsil" element={<EBelgeMustahsilPage />} />
             <Route path="ayarlar/e-belge" element={<EBelgeSettingsPage />} />
+            <Route path="ayarlar/gib-sorgu" element={<GibHesapSettingsPage />} />
             <Route path="tanimlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
             <Route path="cari/kart-kayit" element={<CariCardRegistrationPage />} />
@@ -297,6 +300,8 @@ export default function App() {
             <Route path="etiket/fiyat-etiketi" element={<FiyatAyarEtiketleriPage />} />
             <Route path="etiket/sayim-fisi" element={<BarkodluSayimFisiPage />} />
             <Route path="etiket/barkodlu-sayim-fisi" element={<BarkodluSayimFisiPage />} />
+            <Route path="etiket/altin-urun-stogu" element={<UrunStoguPage tip="altin" />} />
+            <Route path="etiket/ozel-urun-stogu" element={<UrunStoguPage tip="ozel" />} />
             <Route path=":section/*" element={<ModulePage />} />
 
 

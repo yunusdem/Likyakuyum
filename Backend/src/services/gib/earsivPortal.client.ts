@@ -5,8 +5,9 @@ import { logger } from "../../utils/logger.js";
  * GİB e-Arşiv Portalı istemcisi — yalnız VKN/TCKN'den unvan / ad-soyad / vergi dairesi sorgusu
  * (docs/GIB_VKN_SORGU_YOL_HARITASI.md). Portalın belgelenmemiş iç servisidir; GİB değiştirirse düzeltme bu dosyadadır.
  *
- * - Token bellekte tutulur, her sorguda yeniden giriş yapılmaz; oturum hatasında bir kez yeniden girilir.
- * - İstekler tek sıradan gider (aynı anda tek istek + kısa bekleme); merkezi hesap GİB'de kilitlenmesin.
+ * - Her firma kendi GİB hesabıyla sorgular. Token hesap başına bellekte tutulur, her sorguda yeniden giriş yapılmaz;
+ *   oturum hatasında bir kez yeniden girilir.
+ * - İstekler tek sıradan gider (aynı anda tek istek + kısa bekleme); hesaplar GİB'de kilitlenmesin.
  */
 
 const PORTAL = "https://earsivportal.efatura.gov.tr";
@@ -82,9 +83,8 @@ const post = async (yol: string, alanlar: Record<string, string>): Promise<any> 
   }
 };
 
-let token: string | null = null;
-let tokenZamani = 0;
-let tokenHesabi = "";
+/** Hesap (kullanıcı kodu + şifre) başına açık oturum */
+const oturumlar = new Map<string, { token: string; zaman: number }>();
 let sira: Promise<unknown> = Promise.resolve();
 
 const bekle = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -114,9 +114,7 @@ const girisYap = async (hesap: GibHesap): Promise<string> => {
   if (hata) throw new GibPortalHatasi("GIRIS", hata);
   const t = temiz(veri?.token);
   if (!t) throw new GibPortalHatasi("GIRIS", "GİB portalı giriş cevabında oturum anahtarı yok.");
-  token = t;
-  tokenZamani = Date.now();
-  tokenHesabi = hesapAnahtari(hesap);
+  oturumlar.set(hesapAnahtari(hesap), { token: t, zaman: Date.now() });
   return t;
 };
 
@@ -128,13 +126,18 @@ const cikisYap = async (t: string): Promise<void> => {
   }
 };
 
+/** Hesabın bellekteki oturumunu bırakır (varsa çıkış yapar). */
+const oturumuKapat = async (anahtar: string): Promise<void> => {
+  const o = oturumlar.get(anahtar);
+  oturumlar.delete(anahtar);
+  if (o) await cikisYap(o.token);
+};
+
 const gecerliToken = async (hesap: GibHesap): Promise<string> => {
-  if (token && tokenHesabi === hesapAnahtari(hesap) && Date.now() - tokenZamani < TOKEN_OMRU_MS) return token;
-  if (token) {
-    const eski = token;
-    token = null;
-    await cikisYap(eski);
-  }
+  const anahtar = hesapAnahtari(hesap);
+  const o = oturumlar.get(anahtar);
+  if (o && Date.now() - o.zaman < TOKEN_OMRU_MS) return o.token;
+  await oturumuKapat(anahtar);
   return girisYap(hesap);
 };
 
@@ -153,7 +156,7 @@ export class EarsivPortalClient {
       let veri = await dispatch(await gecerliToken(hesap), cmd, sayfa, { vknTcknn: no });
       let hata = hataMetni(veri);
       if (hata && oturumHatasiMi(hata)) {
-        token = null;
+        oturumlar.delete(hesapAnahtari(hesap));
         veri = await dispatch(await girisYap(hesap), cmd, sayfa, { vknTcknn: no });
         hata = hataMetni(veri);
       }
@@ -167,27 +170,22 @@ export class EarsivPortalClient {
   }
 
   /**
-   * Admin panelindeki "Bağlantıyı Dene": giriş + çıkış. GİB yeni girişte eski oturumu düşürebileceği için
-   * bellekteki oturum da bırakılır; sonraki sorgu yeniden giriş yapar.
+   * Ayarlardaki "Bağlantıyı Dene": giriş + çıkış. GİB yeni girişte eski oturumu düşürebileceği için
+   * hesabın bellekteki oturumu da bırakılır; sonraki sorgu yeniden giriş yapar.
    */
   public static girisDene(hesap: GibHesap): Promise<void> {
     return siraya(async () => {
-      const eski = token;
-      token = null;
-      tokenHesabi = "";
-      if (eski) await cikisYap(eski);
+      const anahtar = hesapAnahtari(hesap);
+      await oturumuKapat(anahtar);
       const t = await girisYap(hesap);
-      token = null;
-      tokenHesabi = "";
+      oturumlar.delete(anahtar);
       await cikisYap(t);
     });
   }
 
-  /** Hesap değişince bellekteki oturum bırakılır. */
-  public static oturumuBirak(): void {
-    const eski = token;
-    token = null;
-    tokenHesabi = "";
-    if (eski) siraya(() => cikisYap(eski)).catch((e) => logger.warn(`[GIB] Çıkış yapılamadı: ${e?.message}`));
+  /** Hesap değişince ya da silinince eski hesabın oturumu bırakılır. */
+  public static oturumuBirak(hesap: GibHesap | null): void {
+    if (!hesap) return;
+    siraya(() => oturumuKapat(hesapAnahtari(hesap))).catch((e) => logger.warn(`[GIB] Çıkış yapılamadı: ${e?.message}`));
   }
 }

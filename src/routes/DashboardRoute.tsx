@@ -195,6 +195,8 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "F- Altın Etiket Tasarımı", link: "etiket/altin-etiket-tasarimi" },
       { id: uuid(), name: "G- Özel Ürün Etiket Tasarımı", link: "etiket/ozel-urun-etiket-tasarimi" },
       { id: uuid(), name: "H- Barkodlu Ürün Sayım Fişi", link: "etiket/sayim-fisi" },
+      { id: uuid(), name: "I- Altın Ürün Stoğu", link: "etiket/altin-urun-stogu" },
+      { id: uuid(), name: "J- Özel Ürün Stoğu", link: "etiket/ozel-urun-stogu" },
     ],
   },
 
@@ -233,6 +235,7 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "J- Servis İşlemleri", link: "ayarlar/servis-islemleri" },
       { id: uuid(), name: "K- MASAK Malvarlıkları Dondurulanlar", link: "ayarlar/masak-dondurulanlar" },
       { id: uuid(), name: "L- Firma Tanımları", link: "ayarlar/firma-tanimlari" },
+      { id: uuid(), name: "M- GİB Sorgu Ayarları", link: "ayarlar/gib-sorgu" },
     ],
   },
 ];

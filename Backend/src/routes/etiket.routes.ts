@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { EtiketController } from "../controllers/etiket.controller.js";
+import { UrunStokController } from "../controllers/urunStok.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 
 const router = Router();
@@ -24,6 +25,12 @@ router.get("/bankolar", EtiketController.listBankolar);
 router.get("/bankolar/:id", EtiketController.getBankoById);
 router.post("/bankolar", EtiketController.saveBanko);
 router.delete("/bankolar/:id", EtiketController.deleteBanko);
+
+// Altın Ürün Stoğu / Özel Ürün Stoğu (I / J) — stok + kâr/zarar, PDF / Excel
+router.get("/:tip(altin|ozel)-urun-stogu", UrunStokController.veri);
+router.get("/:tip(altin|ozel)-urun-stogu/secenekler", UrunStokController.secenekler);
+router.get("/:tip(altin|ozel)-urun-stogu/pdf", UrunStokController.pdf);
+router.get("/:tip(altin|ozel)-urun-stogu/excel", UrunStokController.excel);
 
 // Altın Ürün (TODVZ_ALTIN_URUN)
 router.get("/altin-urun", EtiketController.listAltinUrun);
