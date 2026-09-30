@@ -3313,7 +3313,8 @@ export const DovizFisiPage: React.FC = () => {
 
         if (targetPara) {
           const m = result.girisMiktar;
-          const k = result.parite > 0 ? result.parite : 1.0;
+          const liveKur = targetPara.efektifAlis || targetPara.dovizAlis || result.girisKur;
+          const k = liveKur > 0 ? liveKur : (result.parite > 0 ? result.parite : 1.0);
           setLines([
             {
               id: String(Date.now()),
@@ -3340,7 +3341,8 @@ export const DovizFisiPage: React.FC = () => {
 
         if (targetPara) {
           const m = result.cikisMiktar;
-          const k = result.parite > 0 ? result.parite : 1.0;
+          const liveKur = targetPara.efektifSatis || targetPara.dovizSatis || result.cikisKur;
+          const k = liveKur > 0 ? liveKur : (result.parite > 0 ? result.parite : 1.0);
           setLines([
             {
               id: String(Date.now()),

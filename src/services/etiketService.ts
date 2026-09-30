@@ -33,6 +33,9 @@ export interface AltinUrunItem {
   usdKuru2?: number | null;
   resim?: string | null;
   resimler?: string[];
+  vezneId?: number | null;
+  vezneKod?: string | null;
+  vezneAd?: string | null;
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -72,6 +75,7 @@ export interface SaveAltinUrunPayload {
   usdKuru2?: number | null;
   resim?: string | null;
   resimler?: string[];
+  vezneId?: number | null;
   satildi?: boolean;
 }
 
@@ -108,6 +112,9 @@ export interface OzelUrunItem {
   tasTutarBirimi: string;
   resim?: string | null;
   resimler?: string[];
+  vezneId?: number | null;
+  vezneKod?: string | null;
+  vezneAd?: string | null;
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -147,6 +154,7 @@ export interface SaveOzelUrunPayload {
   tasTutarBirimi?: string;
   resim?: string | null;
   resimler?: string[];
+  vezneId?: number | null;
   satildi?: boolean;
 }
 
@@ -293,6 +301,25 @@ export const EtiketService = {
   },
   async getAltinUrunByBarkod(barkod: string): Promise<AltinUrunItem> {
     const res = await apiClient.get<AltinUrunItem>(`/etiket/altin-urun/barkod/${encodeURIComponent(barkod)}`);
+    return (res.data as any)?.data ?? res.data;
+  },
+  async getAltinUrunStok(vezneId: number, ayar: string): Promise<{ 
+    paraId: number | null; 
+    paraKodu: string | null; 
+    paraAdi: string | null; 
+    bakiye: number;
+    tumBakiyeler?: Record<string, number>;
+  }> {
+    const res = await apiClient.get<{ 
+      paraId: number | null; 
+      paraKodu: string | null; 
+      paraAdi: string | null; 
+      bakiye: number;
+      tumBakiyeler?: Record<string, number>;
+    }>("/etiket/altin-urun/stok", {
+      vezneId,
+      ayar,
+    });
     return (res.data as any)?.data ?? res.data;
   },
   async saveAltinUrun(payload: SaveAltinUrunPayload): Promise<AltinUrunItem> {

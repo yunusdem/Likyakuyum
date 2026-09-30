@@ -215,6 +215,8 @@ export interface UrunItem {
   iscilik?: number;
   birim?: number;
   urunTipi?: number;
+  alisFiyati?: number;
+  satisFiyati?: number;
 }
 
 export interface VezneBakiyeItem {

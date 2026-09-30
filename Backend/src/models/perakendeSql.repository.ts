@@ -159,10 +159,13 @@ export type CreateInvoiceOdemeDto = CreateFaturaOdemeDto;
 export type InvoiceFilterDto = FaturaFilterDto;
 
 export class PerakendeSqlRepository {
+  private static ensuredPools = new WeakSet<sql.ConnectionPool>();
+
   /**
    * Ensures tables and stored procedures exist in the database
    */
   public static async ensureTablesAndProcedures(pool: sql.ConnectionPool): Promise<void> {
+    if (this.ensuredPools.has(pool)) return;
     try {
       // 1. TODVZ_FATURA Header Table
       await pool.request().batch(`
@@ -487,15 +490,60 @@ export class PerakendeSqlRepository {
 
             BEGIN TRAN;
 
-            -- Satılan altın ürünleri tekrar stoğa iade et
+            -- 1. Satılan altın ve özel ürünleri tekrar stoğa iade et
             IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN') IS NOT NULL
             BEGIN
                 UPDATE u
                 SET u.SATILDI = 0,
                     u.GUNCELLEME_ZAMANI = GETDATE()
                 FROM dbo.TODVZ_ALTIN_URUN u
-                INNER JOIN dbo.TODVZ_FATURA_SATIRI s ON u.ALTIN_URUN_ID = s.ALTIN_URUN_ID
+                INNER JOIN dbo.TODVZ_FATURA_SATIRI s ON u.ALTIN_URUN_ID = s.ALTIN_URUN_ID OR (s.BARKOD IS NOT NULL AND u.BARKOD = s.BARKOD)
                 WHERE s.FATURA_ID = @FATURA_ID;
+            END;
+
+            IF OBJECT_ID('dbo.TODVZ_OZEL_URUN') IS NOT NULL
+            BEGIN
+                UPDATE u
+                SET u.SATILDI = 0,
+                    u.GUNCELLEME_ZAMANI = GETDATE()
+                FROM dbo.TODVZ_OZEL_URUN u
+                INNER JOIN dbo.TODVZ_FATURA_SATIRI s ON (s.BARKOD IS NOT NULL AND u.BARKOD = s.BARKOD)
+                WHERE s.FATURA_ID = @FATURA_ID;
+            END;
+
+            -- 2. Barkodsuz ürünlerin vezne bakiyelerini geri al
+            DECLARE @DEL_VEZNE_ID INT, @DEL_TIPI INT;
+            SELECT @DEL_VEZNE_ID = VEZNE_ID, @DEL_TIPI = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FATURA_ID;
+
+            IF @DEL_VEZNE_ID IS NOT NULL
+            BEGIN
+              DECLARE curDel CURSOR LOCAL FAST_FORWARD FOR
+                SELECT s.AYAR, s.URUN_ADI, ISNULL(CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END, 0) AS MIKTAR
+                FROM dbo.TODVZ_FATURA_SATIRI s
+                WHERE s.FATURA_ID = @FATURA_ID AND (s.ALTIN_URUN_ID IS NULL OR s.ALTIN_URUN_ID = 0) AND (s.BARKOD IS NULL OR LEN(LTRIM(RTRIM(s.BARKOD))) = 0);
+              
+              OPEN curDel;
+              DECLARE @D_AYAR VARCHAR(50), @D_NAME VARCHAR(200), @D_MIKTAR FLOAT;
+              FETCH NEXT FROM curDel INTO @D_AYAR, @D_NAME, @D_MIKTAR;
+              WHILE @@FETCH_STATUS = 0
+              BEGIN
+                IF @D_MIKTAR > 0
+                BEGIN
+                  DECLARE @DEL_P_ID INT = NULL;
+                  SELECT TOP 1 @DEL_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
+                  WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@D_AYAR))) 
+                     OR UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@D_NAME))) 
+                     OR UPPER(LTRIM(RTRIM(AD))) = UPPER(LTRIM(RTRIM(@D_NAME)));
+                  IF @DEL_P_ID IS NOT NULL
+                  BEGIN
+                    DECLARE @REV_M_DEL FLOAT = CASE WHEN @DEL_TIPI = 1 THEN @D_MIKTAR ELSE -@D_MIKTAR END;
+                    UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @REV_M_DEL WHERE VEZNE_ID = @DEL_VEZNE_ID AND PARA_ID = @DEL_P_ID;
+                  END;
+                END;
+                FETCH NEXT FROM curDel INTO @D_AYAR, @D_NAME, @D_MIKTAR;
+              END;
+              CLOSE curDel;
+              DEALLOCATE curDel;
             END;
 
             -- Satırları, ödemeleri ve başlığı kaldır
@@ -510,6 +558,7 @@ export class PerakendeSqlRepository {
             RETURN 0;
         END;
       `);
+      this.ensuredPools.add(pool);
     } catch (err: any) {
       logger.warn("PerakendeSqlRepository.ensureTablesAndProcedures warning:", err.message);
     }
@@ -613,7 +662,7 @@ export class PerakendeSqlRepository {
   }
 
   /**
-   * Query product by barcode from TODVZ_ALTIN_URUN (where SATILDI = 0)
+   * Query product by barcode or currency code from TODVZ_ALTIN_URUN, TODVZ_OZEL_URUN, or TODVZ_PARA
    */
   public static async getProductByBarcode(
     barcode: string,
@@ -626,7 +675,8 @@ export class PerakendeSqlRepository {
     const req = pool.request();
     req.input("BARKOD", sql.VarChar(50), cleanBarcode);
 
-    const query = `
+    // 1. Check TODVZ_ALTIN_URUN
+    const altinRes = await req.query(`
       SELECT TOP 1 
         u.[ALTIN_URUN_ID],
         u.[BARKOD],
@@ -644,37 +694,118 @@ export class PerakendeSqlRepository {
       FROM [dbo].[TODVZ_ALTIN_URUN] u
       WHERE u.[BARKOD] = @BARKOD
          OR CAST(u.[ALTIN_URUN_ID] AS VARCHAR(50)) = @BARKOD;
-    `;
+    `);
 
-    const res = await req.query(query);
+    if (altinRes.recordset && altinRes.recordset.length > 0) {
+      const row = altinRes.recordset[0];
+      if (row.SATILDI === true || row.SATILDI === 1) {
+        throw ApiError.badRequest(
+          `'${cleanBarcode}' barkodlu altın ürün (${row.MODEL || row.GRUP_KODU || "Altın Ürün"}) daha önce satılmıştır ve stokta mevcut değildir.`
+        );
+      }
 
-    if (!res.recordset || res.recordset.length === 0) {
-      throw ApiError.notFound(`'${cleanBarcode}' barkoduna ait altın ürün bulunamadı.`);
+      return {
+        altinUrunId: row.ALTIN_URUN_ID,
+        barkod: row.BARKOD || cleanBarcode,
+        grupKodu: row.GRUP_KODU,
+        urunNo: row.URUN_NO,
+        urunAdi: row.MODEL || `${row.GRUP_KODU || "Altın"} ${row.AYAR || ""} Ürün`,
+        ayar: row.AYAR || "24K",
+        miktar: 1,
+        birim: "Adet",
+        gram: Number(row.MIKTAR) || 0,
+        hasGram: Number(row.HAS_GRAM) || 0,
+        satisFiyati: Number(row.SATIS_FIYATI) || 0,
+        satisParaKodu: row.SATIS_PARA_KODU || "TL",
+        satildi: false,
+        isBarkodlu: true,
+      };
     }
 
-    const row = res.recordset[0];
+    // 2. Check TODVZ_OZEL_URUN
+    const ozelRes = await req.query(`
+      SELECT TOP 1 
+        u.[OZEL_URUN_ID],
+        u.[BARKOD],
+        u.[GRUP_KODU],
+        u.[URUN_NO],
+        u.[AYAR],
+        u.[MODEL_OZELLIK_1] AS [MODEL],
+        u.[MAMUL_TIPI],
+        u.[ORJINAL_KOD],
+        u.[URETICI_FIRMA],
+        u.[MIKTAR],
+        u.[MIKTAR_BIRIMI],
+        u.[SATIS_FIYATI],
+        u.[SATIS_PARA_KODU],
+        u.[SATILDI]
+      FROM [dbo].[TODVZ_OZEL_URUN] u
+      WHERE u.[BARKOD] = @BARKOD
+         OR CAST(u.[OZEL_URUN_ID] AS VARCHAR(50)) = @BARKOD;
+    `);
 
-    if (row.SATILDI === true || row.SATILDI === 1) {
-      throw ApiError.badRequest(
-        `'${cleanBarcode}' barkodlu ürün (${row.MODEL || row.GRUP_KODU || "Altın Ürün"}) daha önce satılmıştır ve stokta mevcut değildir.`
-      );
+    if (ozelRes.recordset && ozelRes.recordset.length > 0) {
+      const row = ozelRes.recordset[0];
+      if (row.SATILDI === true || row.SATILDI === 1) {
+        throw ApiError.badRequest(
+          `'${cleanBarcode}' barkodlu özel ürün (${row.MODEL || row.MAMUL_TIPI || row.GRUP_KODU || "Özel Ürün"}) daha önce satılmıştır ve stokta mevcut değildir.`
+        );
+      }
+
+      return {
+        altinUrunId: null,
+        barkod: row.BARKOD || cleanBarcode,
+        grupKodu: row.GRUP_KODU,
+        urunNo: row.URUN_NO,
+        urunAdi: row.MODEL || row.MAMUL_TIPI || `${row.GRUP_KODU || "Özel"} ${row.AYAR || ""} Ürün`,
+        ayar: row.AYAR || "24K",
+        miktar: 1,
+        birim: row.MIKTAR_BIRIMI || "Adet",
+        gram: Number(row.MIKTAR) || 0,
+        hasGram: 0,
+        satisFiyati: Number(row.SATIS_FIYATI) || 0,
+        satisParaKodu: row.SATIS_PARA_KODU || "USD",
+        satildi: false,
+        isBarkodlu: true,
+      };
     }
 
-    return {
-      altinUrunId: row.ALTIN_URUN_ID,
-      barkod: row.BARKOD || cleanBarcode,
-      grupKodu: row.GRUP_KODU,
-      urunNo: row.URUN_NO,
-      urunAdi: row.MODEL || `${row.GRUP_KODU || "Altın"} ${row.AYAR || ""} Ürün`,
-      ayar: row.AYAR || "24K",
-      miktar: 1,
-      birim: "Adet",
-      gram: Number(row.MIKTAR) || 0,
-      hasGram: Number(row.HAS_GRAM) || 0,
-      satisFiyati: Number(row.SATIS_FIYATI) || 0,
-      satisParaKodu: row.SATIS_PARA_KODU || "TL",
-      satildi: false,
-    };
+    // 3. Check TODVZ_PARA (Döviz, Sarrafiye, Gram Altın vb. Örn: USD, EUR, ÇEY, 22, 14, 18, 24, HAS, TAM, YAR, ATA)
+    const paraRes = await req.query(`
+      SELECT TOP 1 
+        p.[PARA_ID],
+        p.[KOD],
+        p.[AD],
+        p.[HAS_ORANI],
+        p.[URUN_TIPI]
+      FROM [dbo].[TODVZ_PARA] p
+      WHERE (UPPER(LTRIM(RTRIM(p.[KOD]))) = UPPER(LTRIM(RTRIM(@BARKOD)))
+          OR UPPER(LTRIM(RTRIM(p.[AD]))) = UPPER(LTRIM(RTRIM(@BARKOD))))
+        AND UPPER(LTRIM(RTRIM(p.[KOD]))) NOT IN ('TL', 'TRY', 'TRL', 'POS', 'HAVALE', 'EFT', 'KREDI KARTI');
+    `);
+
+    if (paraRes.recordset && paraRes.recordset.length > 0) {
+      const row = paraRes.recordset[0];
+      const isGram = Number(row.URUN_TIPI) === 0;
+      return {
+        altinUrunId: null,
+        barkod: "",
+        grupKodu: "",
+        urunNo: 0,
+        urunAdi: (row.AD || row.KOD).trim(),
+        ayar: (row.KOD || "").trim(),
+        miktar: 1,
+        birim: isGram ? "Gram" : "Adet",
+        gram: isGram ? 1 : 0,
+        hasGram: Number(row.HAS_ORANI) || 0,
+        satisFiyati: 0,
+        satisParaKodu: "TL",
+        satildi: false,
+        isBarkodlu: false,
+      };
+    }
+
+    throw ApiError.notFound(`'${cleanBarcode}' kod veya barkoduna ait ürün veya para tanımı bulunamadı.`);
   }
 
   /**
@@ -941,11 +1072,67 @@ export class PerakendeSqlRepository {
         throw new Error("Fatura başlığı oluşturulamadı.");
       }
 
-      // 3. Clear lines if updating
+      // 3. Clear lines if updating and revert previous stocks
       if (dto.faturaId && dto.faturaId > 0) {
-        const delReq = new sql.Request(transaction);
-        delReq.input("FATURA_ID", sql.Int, outFaturaId);
-        await delReq.query("DELETE FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID");
+        const revertReq = new sql.Request(transaction);
+        revertReq.input("FATURA_ID", sql.Int, outFaturaId);
+        await revertReq.query(`
+          -- Revert previous barcode products
+          IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN') IS NOT NULL
+          BEGIN
+            UPDATE u
+            SET u.SATILDI = 0, u.GUNCELLEME_ZAMANI = GETDATE()
+            FROM dbo.TODVZ_ALTIN_URUN u
+            INNER JOIN dbo.TODVZ_FATURA_SATIRI s ON u.ALTIN_URUN_ID = s.ALTIN_URUN_ID OR (s.BARKOD IS NOT NULL AND u.BARKOD = s.BARKOD)
+            WHERE s.FATURA_ID = @FATURA_ID;
+          END;
+
+          IF OBJECT_ID('dbo.TODVZ_OZEL_URUN') IS NOT NULL
+          BEGIN
+            UPDATE u
+            SET u.SATILDI = 0, u.GUNCELLEME_ZAMANI = GETDATE()
+            FROM dbo.TODVZ_OZEL_URUN u
+            INNER JOIN dbo.TODVZ_FATURA_SATIRI s ON (s.BARKOD IS NOT NULL AND u.BARKOD = s.BARKOD)
+            WHERE s.FATURA_ID = @FATURA_ID;
+          END;
+
+          -- Revert previous non-barcode rows from TODVZ_VEZNE_BAKIYE
+          DECLARE @PREV_VEZNE_ID INT, @PREV_TIPI INT;
+          SELECT @PREV_VEZNE_ID = VEZNE_ID, @PREV_TIPI = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FATURA_ID;
+
+          IF @PREV_VEZNE_ID IS NOT NULL
+          BEGIN
+            DECLARE curPrev CURSOR LOCAL FAST_FORWARD FOR
+              SELECT s.AYAR, s.URUN_ADI, ISNULL(CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END, 0) AS MIKTAR
+              FROM dbo.TODVZ_FATURA_SATIRI s
+              WHERE s.FATURA_ID = @FATURA_ID AND (s.ALTIN_URUN_ID IS NULL OR s.ALTIN_URUN_ID = 0) AND (s.BARKOD IS NULL OR LEN(LTRIM(RTRIM(s.BARKOD))) = 0);
+            
+            OPEN curPrev;
+            DECLARE @P_AYAR VARCHAR(50), @P_NAME VARCHAR(200), @P_MIKTAR FLOAT;
+            FETCH NEXT FROM curPrev INTO @P_AYAR, @P_NAME, @P_MIKTAR;
+            WHILE @@FETCH_STATUS = 0
+            BEGIN
+              IF @P_MIKTAR > 0
+              BEGIN
+                DECLARE @REV_P_ID INT = NULL;
+                SELECT TOP 1 @REV_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
+                WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@P_AYAR))) 
+                   OR UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@P_NAME))) 
+                   OR UPPER(LTRIM(RTRIM(AD))) = UPPER(LTRIM(RTRIM(@P_NAME)));
+                IF @REV_P_ID IS NOT NULL
+                BEGIN
+                  DECLARE @REV_M FLOAT = CASE WHEN @PREV_TIPI = 1 THEN @P_MIKTAR ELSE -@P_MIKTAR END;
+                  UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @REV_M WHERE VEZNE_ID = @PREV_VEZNE_ID AND PARA_ID = @REV_P_ID;
+                END;
+              END;
+              FETCH NEXT FROM curPrev INTO @P_AYAR, @P_NAME, @P_MIKTAR;
+            END;
+            CLOSE curPrev;
+            DEALLOCATE curPrev;
+          END;
+
+          DELETE FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID;
+        `);
       }
 
       // 4. Insert Detail Lines (TODVZ_FATURA_SATIRI)
@@ -961,22 +1148,30 @@ export class PerakendeSqlRepository {
           const tutar = Math.round(m * f * 100) / 100;
           const kdvTutari = Math.round(tutar * (kdvRate / 100) * 100) / 100;
           const toplamTutar = Math.round((tutar + kdvTutari) * 100) / 100;
+          const gramVal = Number(row.gram) || 0;
+          const hasGramVal = Number(row.hasGram) || 0;
+          const cleanBarkod = (row.barkod || "").trim() || null;
+          const isBarkodlu = Boolean(row.altinUrunId || cleanBarkod);
 
           lineReq.input("FATURA_ID", sql.Int, outFaturaId);
+          lineReq.input("VEZNE_ID", sql.Int, vezneId);
+          lineReq.input("FATURA_TIPI", sql.TinyInt, faturaTipi);
           lineReq.input("SATIR_NO", sql.Int, satirNo);
           lineReq.input("ALTIN_URUN_ID", sql.Int, row.altinUrunId || null);
-          lineReq.input("BARKOD", sql.VarChar(50), (row.barkod || "").trim() || null);
+          lineReq.input("BARKOD", sql.VarChar(50), cleanBarkod);
           lineReq.input("URUN_ADI", sql.VarChar(200), (row.urunAdi || "Altın Ürün").trim());
           lineReq.input("AYAR", sql.VarChar(50), (row.ayar || "").trim() || null);
           lineReq.input("MIKTAR", sql.Float, m);
           lineReq.input("BIRIM", sql.VarChar(20), (row.birim || "Adet").trim());
-          lineReq.input("GRAM", sql.Float, Number(row.gram) || 0);
-          lineReq.input("HAS_GRAM", sql.Float, Number(row.hasGram) || 0);
+          lineReq.input("GRAM", sql.Float, gramVal);
+          lineReq.input("HAS_GRAM", sql.Float, hasGramVal);
           lineReq.input("BIRIM_FIYAT", sql.Float, f);
           lineReq.input("TUTAR", sql.Float, tutar);
           lineReq.input("KDV_ORANI", sql.Float, kdvRate);
           lineReq.input("KDV_TUTARI", sql.Float, kdvTutari);
           lineReq.input("TOPLAM_TUTAR", sql.Float, toplamTutar);
+          lineReq.input("IS_BARKODLU", sql.Bit, isBarkodlu ? 1 : 0);
+          lineReq.input("STOK_MIKTAR", sql.Float, gramVal > 0 ? gramVal : m);
 
           const lineInsertQuery = `
             INSERT INTO dbo.TODVZ_FATURA_SATIRI (
@@ -990,19 +1185,56 @@ export class PerakendeSqlRepository {
               @BIRIM_FIYAT, @TUTAR, @KDV_ORANI, @KDV_TUTARI, @TOPLAM_TUTAR
             );
 
-            IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN') IS NOT NULL
+            -- 1. Barkodlu ürün durumu (TODVZ_ALTIN_URUN & TODVZ_OZEL_URUN)
+            IF (@IS_BARKODLU = 1)
             BEGIN
-              IF (@ALTIN_URUN_ID IS NOT NULL AND @ALTIN_URUN_ID > 0)
+              DECLARE @NEW_SATILDI BIT = CASE WHEN @FATURA_TIPI = 1 THEN 1 ELSE 0 END;
+
+              IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN') IS NOT NULL
               BEGIN
-                UPDATE dbo.TODVZ_ALTIN_URUN
-                SET SATILDI = 1, GUNCELLEME_ZAMANI = GETDATE()
-                WHERE ALTIN_URUN_ID = @ALTIN_URUN_ID;
-              END
-              ELSE IF (@BARKOD IS NOT NULL AND LEN(LTRIM(RTRIM(@BARKOD))) > 0)
+                IF (@ALTIN_URUN_ID IS NOT NULL AND @ALTIN_URUN_ID > 0)
+                  UPDATE dbo.TODVZ_ALTIN_URUN SET SATILDI = @NEW_SATILDI, GUNCELLEME_ZAMANI = GETDATE() WHERE ALTIN_URUN_ID = @ALTIN_URUN_ID;
+                ELSE IF (@BARKOD IS NOT NULL AND LEN(LTRIM(RTRIM(@BARKOD))) > 0)
+                  UPDATE dbo.TODVZ_ALTIN_URUN SET SATILDI = @NEW_SATILDI, GUNCELLEME_ZAMANI = GETDATE() WHERE BARKOD = @BARKOD;
+              END;
+
+              IF OBJECT_ID('dbo.TODVZ_OZEL_URUN') IS NOT NULL
               BEGIN
-                UPDATE dbo.TODVZ_ALTIN_URUN
-                SET SATILDI = 1, GUNCELLEME_ZAMANI = GETDATE()
-                WHERE BARKOD = @BARKOD;
+                IF (@BARKOD IS NOT NULL AND LEN(LTRIM(RTRIM(@BARKOD))) > 0)
+                  UPDATE dbo.TODVZ_OZEL_URUN SET SATILDI = @NEW_SATILDI, GUNCELLEME_ZAMANI = GETDATE() WHERE BARKOD = @BARKOD;
+              END;
+            END
+            ELSE
+            BEGIN
+              -- 2. Barkodsuz ürün / Para Tablosu Maddesi (USD, EUR, ÇEY, 22, 14, 18, 24, HAS vb.)
+              IF (@VEZNE_ID IS NOT NULL AND @VEZNE_ID > 0 AND @STOK_MIKTAR > 0)
+              BEGIN
+                DECLARE @LINE_P_ID INT = NULL;
+                DECLARE @CLEAN_AY VARCHAR(50) = UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(@AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))));
+                DECLARE @CLEAN_NM VARCHAR(100) = UPPER(LTRIM(RTRIM(ISNULL(@URUN_ADI, ''))));
+
+                SELECT TOP 1 @LINE_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
+                WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@AYAR)))
+                   OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_AY
+                   OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_NM
+                   OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_NM;
+
+                IF @LINE_P_ID IS NULL
+                BEGIN
+                  SELECT TOP 1 @LINE_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
+                  WHERE (UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY + ' AYAR'
+                     OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY + ' AYAR ALTIN'
+                     OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY);
+                END;
+
+                IF @LINE_P_ID IS NOT NULL
+                BEGIN
+                  DECLARE @DIFF_STK FLOAT = CASE WHEN @FATURA_TIPI = 1 THEN -@STOK_MIKTAR ELSE @STOK_MIKTAR END;
+                  IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID)
+                    UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @DIFF_STK WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID;
+                  ELSE
+                    INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @LINE_P_ID, @DIFF_STK);
+                END;
               END;
             END;
           `;

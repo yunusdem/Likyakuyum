@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EbelgeKaynakRepository, dovizMi, kaynakAnahtar, kaynakKimlikCoz } from "../models/ebelgeKaynak.repository.js";
-import { getEDovizCikti, getEDovizStatus, previewEDoviz, sendEDoviz, sendEDovizIptal } from "./ice/ice.edoviz.js";
+import { getEDovizCikti, getEDovizStatus, previewEDoviz } from "./ice/ice.edoviz.js";
+import { EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
 import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { EbelgeService } from "./ebelge.service.js";
 import { hesapla } from "./ice/ubl/invoiceBuilder.js";
@@ -116,7 +117,7 @@ export class EbelgeKaynakService {
         // Gönderim sonucu kesinleşmemiş (GONDERILIYOR/BELIRSIZ) kayıtlar için ICE'nin
         // belgeyi tanıması sonucun kendisidir: belge ICE'de kayıtlı → GONDERILDI.
         // Kaynak fişin durumu da aynı şekilde kapatılır ki liste bir daha göstermesin.
-        const askida = ["GONDERILIYOR", "BELIRSIZ"].includes(String(giden.gonderimDurumu || ""));
+        const askida = ["KUYRUKTA", "GONDERILIYOR", "BELIRSIZ"].includes(String(giden.gonderimDurumu || ""));
         if (askida && sonuc) {
             const mesaj = temiz(sonuc.STATUS_DESCRIPTION || sonuc.STATUS) || "ICE durum sorgusu belgeyi doğruladı.";
             await EbelgeSqlRepository.earsivDurumGecir(uuid, giden.gonderimDurumu, "GONDERILDI", { mesaj, kod: temiz(sonuc.STATUS) || undefined }, ctx, "EDoviz");
@@ -125,26 +126,10 @@ export class EbelgeKaynakService {
                 await EbelgeKaynakRepository.sonuc(k, "GONDERILDI", mesaj, ctx).catch(() => undefined);
             return sonuc;
         }
-        // ICE ETTN'yi tanımıyorsa (isSuccecss=false, yalnız UUID yankısı) belge ICE'de
-        // oluşmamıştır: ya istek ulaşmadı ya reddedildi. Askıdaki kayıt HATA'ya çekilir
-        // ki kaynak yeniden gönderilebilsin. ICE'nin gecikmeli işleme ihtimaline karşı
-        // yalnızca 5 dakikadan eski gönderimler kapatılır; tazeler dokunulmadan bekler.
+        // ICE ETTN'yi henüz tanımıyorsa karar gönderim kuyruğundadır (docs/EBELGE_KUYRUK_YOL_HARITASI.md):
+        // kuyruk yeniden dener, olmazsa "Gönderilemedi" yapar. Buradan HATA'ya çekmek denemeleri keserdi.
         if (askida && !sonuc) {
-            const baslangic = new Date(giden.GONDERIM_TARIHI || giden.gonderimTarihi || giden.OLUSTURMA_TARIHI || 0).getTime();
-            const eskiMi = Number.isFinite(baslangic) && baslangic > 0 && Date.now() - baslangic > 5 * 60 * 1000;
-            // ICE reddettiği belgenin numarasını da kaydeder; aynı numara o tarihte bir daha
-            // gönderilemez. Bu yüzden "yeniden gönderilebilir" denmez: düzeltme yeni fişle yapılır.
-            const mesaj = eskiMi
-                ? "ICE bu ETTN için geçerli belge tanımıyor; gönderim reddedilmiş veya tamamlanmamış. Belge numarası ICE'de kayıtlı kaldığı için aynı numara yeniden gönderilemez; fişi düzeltip yeni numarayla kesiniz."
-                : "ICE bu ETTN'yi henüz tanımıyor; gönderim yeni. Birkaç dakika sonra durumu yeniden sorgulayınız.";
-            if (eskiMi) {
-                await EbelgeSqlRepository.earsivDurumGecir(uuid, giden.gonderimDurumu, "HATA", { mesaj }, ctx, "EDoviz");
-                const k = kaynakKimlikCoz(temiz(giden.KAYNAK_FIS_ID || giden.kaynakFisId));
-                if (k)
-                    await EbelgeKaynakRepository.sonuc(k, "HATA", mesaj, ctx).catch(() => undefined);
-            }
-            // Ekran STATUS_DESCRIPTION'ı gösterir; boş cevabı "kayıt alındı" diye sunmak yanıltıcıydı.
-            return { isSuccecss: false, UUID: uuid, STATUS: eskiMi ? "BULUNAMADI" : "BEKLIYOR", STATUS_DESCRIPTION: mesaj };
+            return { isSuccecss: false, UUID: uuid, STATUS: "BEKLIYOR", STATUS_DESCRIPTION: "Gönderildi; ICE kaydı birkaç dakika içinde oluşur." };
         }
         return sonuc;
     }
@@ -162,21 +147,16 @@ export class EbelgeKaynakService {
         const kayit = await this.dovizGiden(uuid, ctx);
         if (kayit.gonderimDurumu !== "GONDERILDI")
             throw ApiError.conflict("Yalnız gönderilmiş e-Döviz belgesi iptal edilebilir.");
-        const gun = iptalTarihi.toISOString().slice(0, 10);
-        const config = await EbelgeSqlRepository.getConnectionConfig(ctx);
-        let sonuc;
-        try {
-            sonuc = await sendEDovizIptal(config, kayit.belgeNo, iptalTarihi.toISOString());
-        }
-        catch {
-            throw ApiError.conflict("İptal sonucu belirsiz; ICE portalinden kontrol ediniz. Tekrar iptal göndermeyiniz.");
-        }
-        await EbelgeSqlRepository.writeLog({ metod: "send_edoviz_iptal", yon: "GIDEN", basarili: sonuc.basarili,
-            kullanici, ilgiliUuid: uuid, istekOzet: `belgeNo=${kayit.belgeNo} iptalTarihi=${gun}`, cevapOzet: sonuc.mesaj }, ctx);
-        if (!sonuc.basarili)
-            throw ApiError.conflict(sonuc.mesaj || "e-Döviz iptali reddedildi.");
-        await EbelgeSqlRepository.earsivDurumGecir(uuid, "GONDERILDI", "IPTAL", { mesaj: sonuc.mesaj, kullanici, iptalTarihi }, ctx, "EDoviz");
-        return { uuid, durum: "IPTAL", mesaj: sonuc.mesaj };
+        // İptal kuyruktan geçer (docs/EBELGE_KUYRUK_YOL_HARITASI.md Q5)
+        return EbelgeService.iptalKuyrugu(kayit, iptalTarihi, kullanici, ctx);
+    }
+    /**
+     * Kuyruktaki gönderimin kaynağa yazılacak durumu: kuyruk sonucu kaynağa kendisi işler; burada yalnızca
+     * o arada kesinleşmiş HATA'nın "Gönderildi" ile ezilmemesi sağlanır.
+     */
+    static async kuyrukKaynakDurumu(uuid, ctx) {
+        const g = await EbelgeSqlRepository.getGiden(uuid, ctx).catch(() => null);
+        return g?.gonderimDurumu === "HATA" ? "HATA" : "GONDERILDI";
     }
     static async hazirla(k, kullanici, ctx) {
         if (dovizMi(k))
@@ -211,10 +191,12 @@ export class EbelgeKaynakService {
             const guncel = await EbelgeKaynakRepository.detay(k, ctx);
             if (kaynakParmakizi(guncel) !== parmakizi)
                 throw ApiError.conflict("Kaynak belge değişmiş; gönderim durduruldu.");
+            // Kaynak anahtarı giden kaydına yazılır: kuyruk sonucu (Gönderilemedi) kaynağa da işlenir
+            const secenek = { kaynakFisId: kaynakAnahtar(k) };
             const sonuc = mukellef.mukellefMi
-                ? await EbelgeService.faturaGonder(girdi, kullanici, ctx)
-                : await EbelgeService.earsivGonder(girdi, kullanici, ctx);
-            await EbelgeKaynakRepository.sonuc(k, "GONDERILDI", sonuc.mesaj, ctx);
+                ? await EbelgeService.faturaGonder(girdi, kullanici, ctx, secenek)
+                : await EbelgeService.earsivGonder(girdi, kullanici, ctx, secenek);
+            await EbelgeKaynakRepository.sonuc(k, await this.kuyrukKaynakDurumu(sonuc.uuid, ctx), sonuc.mesaj, ctx);
             return sonuc;
         }
         catch (e) {
@@ -287,59 +269,29 @@ export class EbelgeKaynakService {
                 duzenlemeTarihi: new Date(girdi.duzenlemeTarihi),
                 tutar: girdi.tutar.payableAmount,
                 paraBirimi: temiz(kaynak.baslik.PayableAmountCurrency) || girdi.tutar.kod,
-                gonderimDurumu: "GONDERILIYOR",
-                iceResponseMesaj: "Gönderim başlatıldı. Sonuç kesinleşmeden yeniden göndermeyiniz.",
+                gonderimDurumu: "KUYRUKTA",
+                iceResponseMesaj: "Gönderim kuyruğunda.",
                 kaynakFisId: kaynakAnahtar(k),
                 olusturan: kullanici,
                 gonderen: kullanici,
                 gonderimTarihi: new Date(),
             }, ctx);
-            let sonuc;
-            try {
-                sonuc = await sendEDoviz(config, girdi);
+            // Gönderim ve sonucun kesinleşmesi kuyrukta (docs/EBELGE_KUYRUK_YOL_HARITASI.md). XML saklanmadığı için
+            // yeniden gönderimde aynı girdi kullanılır.
+            await EbelgeKuyrukService.kuyrugaAl({ uuid: girdi.uuid, belgeTuru: "EDoviz", islem: "GONDER", kullanici, veri: { dovizGirdi: girdi } }, ctx);
+            const son = await EbelgeSqlRepository.getGiden(girdi.uuid, ctx);
+            if (son?.gonderimDurumu === "HATA") {
+                throw ApiError.conflict(String(son.ICE_RESPONSE_MESAJ || "").trim() || "e-Döviz gönderimi reddedildi.");
             }
-            catch {
-                await EbelgeSqlRepository.earsivDurumGecir(girdi.uuid, "GONDERILIYOR", "BELIRSIZ", {
-                    mesaj: "ICE gönderim sonucu alınamadı. Yeniden göndermeyiniz; ICE portalinden ETTN ile kontrol ediniz.",
-                }, ctx, "EDoviz").catch(() => undefined);
-                throw ApiError.conflict(`Gönderim sonucu belirsiz (ETTN: ${girdi.uuid}). Giden kutusunu ve ICE portalini kontrol ediniz; yeniden göndermeyiniz.`);
-            }
-            const dogru = (v) => String(v).toLowerCase() === "true";
-            const satirlar = (() => {
-                const ham = sonuc.CreditNoteType_responseTypes?.CreditNoteType_responseType;
-                return Array.isArray(ham) ? ham : ham ? [ham] : [];
-            })();
-            const ilk = satirlar.length === 1 ? satirlar[0] : undefined;
-            const basarili = dogru(sonuc.success) && !!ilk && dogru(ilk.success) &&
-                dogru(ilk.shema_is_validate) && dogru(ilk.schematron_is_validate) &&
-                String(ilk.ettn || "").toLowerCase() === girdi.uuid.toLowerCase() && ilk.ID === girdi.belgeNo;
-            const acikRed = String(sonuc.success).toLowerCase() === "false" ||
-                (!!ilk && String(ilk.success).toLowerCase() === "false");
-            const durum = basarili ? "GONDERILDI" : acikRed ? "HATA" : "BELIRSIZ";
-            await EbelgeSqlRepository.earsivDurumGecir(girdi.uuid, "GONDERILIYOR", durum, {
-                kod: String(sonuc.response_code ?? ""),
-                mesaj: durum === "BELIRSIZ"
-                    ? "ICE cevabı belgeyi kesin olarak doğrulamıyor; portalden ETTN ile kontrol ediniz."
-                    : ilk?.response_message || sonuc.response_message || durum,
-            }, ctx, "EDoviz");
-            await EbelgeSqlRepository.writeLog({
-                metod: "send_edoviz_basic", yon: "GIDEN", basarili, kullanici, ilgiliUuid: girdi.uuid,
-                istekOzet: `belgeNo=${girdi.belgeNo} tutar=${girdi.tutar.payableAmount}`,
-                cevapOzet: `durum=${durum} ${sonuc.response_message || ""}`,
-            }, ctx);
-            if (!basarili) {
-                throw ApiError.conflict(durum === "BELIRSIZ"
-                    ? "Gönderim sonucu belirsiz; ICE portalinden kontrol ediniz. Yeniden göndermeyiniz."
-                    : `${ilk?.response_message || sonuc.response_message || "e-Döviz gönderimi reddedildi."} ` +
-                        "ICE bu belge numarasını kaydetti; aynı numara bu tarihte yeniden gönderilemez. Fişi düzeltip yeni numarayla kesiniz.");
-            }
-            await EbelgeKaynakRepository.sonuc(k, "GONDERILDI", sonuc.response_message || "Gönderildi", ctx);
-            return { uuid: girdi.uuid, belgeNo: girdi.belgeNo, durum: "GONDERILDI", mesaj: sonuc.response_message || "" };
+            await EbelgeKaynakRepository.sonuc(k, "GONDERILDI", "Gönderildi", ctx);
+            return { uuid: girdi.uuid, belgeNo: girdi.belgeNo, durum: "GONDERILDI", mesaj: "Gönderildi." };
         }
         catch (e) {
             // Giden kaydı oluştuysa ICE belgeyi görmüş olabilir; hak talebini yeniden açma.
-            const mevcut = await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx).catch(() => true);
-            await EbelgeKaynakRepository.sonuc(k, mevcut ? "KONTROL_GEREKLI" : "HATA", e.message || "İşlem tamamlanamadı.", ctx).catch(() => undefined);
+            // Kuyruğun kesinleştirdiği ret (HATA) ise kaynağa HATA yazılır.
+            const g = await EbelgeSqlRepository.getGiden(girdi.uuid, ctx).catch(() => null);
+            const mevcut = g ? true : await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx).catch(() => true);
+            await EbelgeKaynakRepository.sonuc(k, g?.gonderimDurumu === "HATA" ? "HATA" : mevcut ? "KONTROL_GEREKLI" : "HATA", e.message || "İşlem tamamlanamadı.", ctx).catch(() => undefined);
             throw e;
         }
     }

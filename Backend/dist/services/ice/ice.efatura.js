@@ -112,25 +112,41 @@ export const getSonBelgeId = async (config, seri, belgeTuru, yil) => {
     });
     return data;
 };
+/** DeletionTime geçerli ve geçmiş bir tarihse etiket silinmiştir (xsi:nil / boş → silinmemiş) */
+const etiketSilinmisMi = (deger, simdi) => {
+    if (typeof deger !== "string" || !deger.trim())
+        return false;
+    const zaman = Date.parse(deger);
+    return Number.isFinite(zaman) && new Date(zaman).getFullYear() > 1900 && zaman <= simdi;
+};
 /**
- * `getUserList_EFatura` — VKN/TCKN'nin e-Fatura mükellefi olup olmadığını,
+ * `getUserList_EFatura_Detail` — VKN/TCKN'nin e-Fatura mükellefi olup olmadığını,
  * mükellefse GİB posta kutusu etiketlerini (alias) döndürür.
+ *
+ * Detail sürümü silinme tarihini (DeletionTime) de verir; GİB listesinden silinmiş
+ * etiketler `kullanicilar`a alınmaz, `silinenler`de ayrıca döner. Etiketlerin hepsi
+ * silinmişse alıcı artık e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
  *
  * Sonuç boşsa alıcı e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
  */
 export const getUserListEFatura = async (config, vknTckn) => {
     const { data } = await callWithSession(config, {
-        method: "getUserList_EFatura",
+        method: "getUserList_EFatura_Detail",
         buildInnerXml: (loginHeaderXml) => `<_getUserList_request>` +
             loginHeaderXml +
             `<search_Identifier>${escapeXml(vknTckn)}</search_Identifier>` +
             `</_getUserList_request>`,
         authHatasindaTekrarla: true,
     });
+    // Detail yanıtında eleman adı `GIBUser` (WSDL: ArrayOfGIBUser); eski adı da kabul et
+    const liste = data?.GIB_User_List;
+    const tumu = toArray(liste?.GIBUser ?? liste?.GIB_User);
+    const simdi = Date.now();
     return {
         basarili: String(data?.success).toLowerCase() === "true",
         mesaj: data?.response_message ? String(data.response_message) : "",
-        kullanicilar: toArray(data?.GIB_User_List?.GIB_User),
+        kullanicilar: tumu.filter((k) => !etiketSilinmisMi(k.DeletionTime, simdi)),
+        silinenler: tumu.filter((k) => etiketSilinmisMi(k.DeletionTime, simdi)),
     };
 };
 /**
@@ -208,9 +224,11 @@ export const ublTarafAdresi = (xml, vknTckn, etiket) => {
         if (!eslesti)
             continue;
         const adres = party.PostalAddress || {};
+        const kisi = party.Person || {};
         const sonuc = {
             AdresAdi: etiket,
-            MahalleCadde: [metin(adres.StreetName), metin(adres.BuildingName)].filter(Boolean).join(" "),
+            MahalleCadde: metin(adres.StreetName),
+            BinaAdi: metin(adres.BuildingName),
             BinaNo: metin(adres.BuildingNumber),
             DaireNo: metin(adres.Room),
             Ilce: metin(adres.CitySubdivisionName),
@@ -219,9 +237,14 @@ export const ublTarafAdresi = (xml, vknTckn, etiket) => {
             Ulke: metin(adres.Country?.Name),
             Eposta: metin(party.Contact?.ElectronicMail),
             Telefon: metin(party.Contact?.Telephone),
+            Faks: metin(party.Contact?.Telefax),
+            WebSitesi: metin(party.WebsiteURI),
             VergiDairesi: metin(toArray(party.PartyTaxScheme)[0]?.TaxScheme?.Name),
+            Unvan: metin(toArray(party.PartyName)[0]?.Name),
+            Ad: metin(kisi.FirstName),
+            Soyad: metin(kisi.FamilyName),
         };
-        return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde ? sonuc : null;
+        return sonuc.Sehir || sonuc.Ilce || sonuc.MahalleCadde || sonuc.Eposta || sonuc.Telefon ? sonuc : null;
     }
     return null;
 };
@@ -282,7 +305,8 @@ export const buildSendInvoiceInnerXml = (loginHeaderXml, girdi) => {
     return (`<sendInvoiceRequest>` +
         loginHeaderXml +
         `<from_vkn_tckn>${escapeXml(girdi.fromVknTckn)}</from_vkn_tckn>` +
-        `<from_alias>${escapeXml(girdi.fromAlias)}</from_alias>` +
+        // Gönderici etiketi isteğe bağlı (WSDL minOccurs=0; ICE örnek isteği göndermiyor): boşsa ICE hesabın etiketini kullanır
+        (girdi.fromAlias?.trim() ? `<from_alias>${escapeXml(girdi.fromAlias.trim())}</from_alias>` : "") +
         `<to_vkn_tckn>${escapeXml(girdi.toVknTckn)}</to_vkn_tckn>` +
         `<to_alias>${escapeXml(girdi.toAlias)}</to_alias>` +
         `<invoices>${invoicesXml}</invoices>` +

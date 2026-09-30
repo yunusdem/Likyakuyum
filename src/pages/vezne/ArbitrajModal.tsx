@@ -83,8 +83,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   dovizKurusSayisi = 2,
   tlKurusSayisi = 2,
 }) => {
-  // Alış Fişi seçili ise -> Sadece Arbitraj Satış; Satış Fişi seçili ise -> Sadece Arbitraj Alış
-  const targetIslemYonu: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
+  // fisTip === 0: Alış Fişi -> Arbitraj Alış; fisTip === 1: Satış Fişi -> Arbitraj Satış
+  const targetIslemYonu: "alis" | "satis" = fisTip === 0 ? "alis" : "satis";
 
   // ─── State ─────────────────────────────────────────────────────────────
   const [islemYonu, setIslemYonu] = useState<"alis" | "satis">(targetIslemYonu);
@@ -337,15 +337,15 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     if (show && !prevShowRef.current) {
       setSaveMessage(null);
       setIsSaving(false);
-      const determinedYonu = fisTip === 0 ? "satis" : "alis";
+      const determinedYonu = fisTip === 0 ? "alis" : "satis";
       setIslemYonu(determinedYonu);
 
       // Default currencies based on direction and page
-      const defaultGiris = pageType === "sarraf" ? (determinedYonu === "satis" ? "USD" : "HAS") : "EUR";
-      const defaultCikis = pageType === "sarraf" ? (determinedYonu === "satis" ? "HAS" : "USD") : "USD";
+      const defaultGiris = pageType === "sarraf" ? (determinedYonu === "alis" ? "HAS" : "USD") : (determinedYonu === "alis" ? "EUR" : "USD");
+      const defaultCikis = pageType === "sarraf" ? (determinedYonu === "alis" ? "USD" : "HAS") : (determinedYonu === "alis" ? "USD" : "EUR");
       setGirisKod(defaultGiris);
       setCikisKod(defaultCikis);
-      setGirisMiktarStr(pageType === "sarraf" ? (determinedYonu === "satis" ? "8500" : "100") : "1000");
+      setGirisMiktarStr(pageType === "sarraf" ? (determinedYonu === "alis" ? "100" : "8500") : "1000");
 
       const { parity, calcType } = calculateMarketParity(defaultGiris, defaultCikis);
       setPariteStr(parity.toFixed(kurKurusSayisi));
@@ -353,7 +353,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       setAciklama(`${defaultGiris}/${defaultCikis} Arbitraj`);
 
       lastEditedField.current = "giris";
-      const gMiktar = pageType === "sarraf" ? (determinedYonu === "satis" ? 8500 : 100) : 1000;
+      const gMiktar = pageType === "sarraf" ? (determinedYonu === "alis" ? 100 : 8500) : 1000;
       const calculatedC = calcType === "carp" ? gMiktar * parity : gMiktar / parity;
       setCikisMiktarStr(calculatedC.toFixed(dovizKurusSayisi));
 
@@ -460,14 +460,35 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       return;
     }
 
+    const srcKur = kurSatirlar.find((k) => k.kod.toUpperCase() === selectedGirisItem.kod.toUpperCase());
+    const tgtKur = kurSatirlar.find((k) => k.kod.toUpperCase() === selectedCikisItem.kod.toUpperCase());
+
+    const girisRate =
+      selectedGirisItem.kod === "TL" || selectedGirisItem.kod === "TRY"
+        ? 1
+        : Number(
+            islemYonu === "alis"
+              ? (srcKur?.efektifAlis || srcKur?.dovizAlis || selectedGirisItem.efektifAlis || selectedGirisItem.dovizAlis)
+              : (srcKur?.efektifSatis || srcKur?.dovizSatis || selectedGirisItem.efektifSatis || selectedGirisItem.dovizSatis)
+          ) || 0;
+
+    const cikisRate =
+      selectedCikisItem.kod === "TL" || selectedCikisItem.kod === "TRY"
+        ? 1
+        : Number(
+            islemYonu === "alis"
+              ? (tgtKur?.efektifSatis || tgtKur?.dovizSatis || selectedCikisItem.efektifSatis || selectedCikisItem.dovizSatis)
+              : (tgtKur?.efektifAlis || tgtKur?.dovizAlis || selectedCikisItem.efektifAlis || selectedCikisItem.dovizAlis)
+          ) || 0;
+
     const result: ArbitrajApplyResult = {
       islemYonu,
       girisPara: selectedGirisItem,
       girisMiktar: girisMiktarNum,
-      girisKur: 1.0,
+      girisKur: girisRate > 0 ? girisRate : 1.0,
       cikisPara: selectedCikisItem,
       cikisMiktar: cikisMiktarNum,
-      cikisKur: 1.0,
+      cikisKur: cikisRate > 0 ? cikisRate : 1.0,
       parite: pariteNum,
       pariteYonu,
       aciklama: aciklama || `${girisKod}/${cikisKod} Arbitraj`,

@@ -79,11 +79,12 @@ export class EbelgeKaynakRepository {
       )
       SELECT K.evrakTuru,K.belgeId,K.belgeTuru,K.kaynak,K.belgeNo,K.tarih,K.unvan,K.tutar,K.paraBirimi,
         K.eskiEttn,K.eskiDurum,K.eskiHata,
-        COALESCE(G.GONDERIM_DURUMU,R.DURUM,
+        -- Gönderim kuyruğu görünmez (docs/EBELGE_KUYRUK_YOL_HARITASI.md): sonucu beklenen belge "Gönderildi"
+        COALESCE(CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN 'GONDERILDI' ELSE G.GONDERIM_DURUMU END,R.DURUM,
           CASE WHEN NULLIF(RTRIM(K.eskiHata),'') IS NOT NULL THEN 'HATA'
             WHEN ISNULL(K.eskiDurum,0)=0 AND (K.kaynak='DOVIZ' OR NULLIF(K.eskiEttn,'') IS NULL) THEN 'GONDERILMEDI'
             ELSE 'KONTROL_GEREKLI' END) durum,
-        COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA,K.eskiHata) hata,
+        CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA,K.eskiHata) END hata,
         G.UUID uuid
       INTO #Kaynak
       FROM Kaynaklar K

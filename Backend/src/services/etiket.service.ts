@@ -27,6 +27,10 @@ export class EtiketService {
     return item;
   }
 
+  public static getAltinUrunStok(vezneId: number, ayar: string, dbContext?: DbCtx) {
+    return AltinUrunSqlRepository.getStok(vezneId, ayar, dbContext);
+  }
+
   public static saveAltinUrun(dto: SaveAltinUrunDto, kullaniciId?: number, dbContext?: DbCtx): Promise<AltinUrunModel> {
     if (!dto.grupKodu || !dto.grupKodu.trim()) {
       throw ApiError.badRequest("Grup kodu zorunludur.");

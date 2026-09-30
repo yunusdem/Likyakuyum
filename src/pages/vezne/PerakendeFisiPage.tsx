@@ -1244,18 +1244,47 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   };
 
   // Product Selection from Dürbün (LookupModal)
-  const handleSelectFromProductLookup = async (
-    item: { tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }
-  ) => {
-    const raw = item.item;
-    const barcode = raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`;
-    const urunAdi =
-      item.tip === "altin"
-        ? (raw as AltinUrunItem).model || "Altın Takı / Ziynet"
-        : (raw as OzelUrunItem).mamulTipi || "Özel Ürün";
+  type ProductLookupType = "altin" | "ozel" | "para";
+  type ProductLookupEntry = { tip: ProductLookupType; item: AltinUrunItem | OzelUrunItem | UrunItem };
 
-    const hasGram = Number((raw as any).hasGram) || 0;
-    const gram = Number((raw as any).gram) || (hasGram > 0 ? Number((hasGram * 1.05).toFixed(2)) : (Number(raw.miktar) || 1));
+  const handleSelectFromProductLookup = async (
+    item: ProductLookupEntry
+  ) => {
+    let barcode = "";
+    let urunAdi = "";
+    let ayar = "14K";
+    let miktar = 1;
+    let birim = "Adet";
+    let gram = 0;
+    let hasGram = 0;
+    let birimFiyat = 0;
+
+    if (item.tip === "para") {
+      const rawPara = item.item as UrunItem;
+      barcode = ""; // Barkodsuz ürün
+      urunAdi = rawPara.ad || rawPara.kod;
+      ayar = rawPara.kod;
+      const isGramType = Number(rawPara.urunTipi) === 0 || (Number(rawPara.urunTipi) === 2 && (!rawPara.gramaj || rawPara.gramaj === 1));
+      birim = isGramType ? "Gram" : "Adet";
+      gram = Number(rawPara.gramaj) || (isGramType ? 1 : 0);
+      hasGram = Number(rawPara.hasOrani) || 0;
+
+      const kur = getKurForProduct(rawPara, faturaTipi === 2 ? 0 : 1);
+      birimFiyat = Number(rawPara.satisFiyati) || (kur > 0 ? kur : 0);
+    } else {
+      const raw = item.item as AltinUrunItem | OzelUrunItem;
+      barcode = raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`;
+      urunAdi =
+        item.tip === "altin"
+          ? (raw as AltinUrunItem).model || "Altın Takı / Ziynet"
+          : (raw as OzelUrunItem).mamulTipi || "Özel Ürün";
+
+      hasGram = Number((raw as any).hasGram) || 0;
+      gram = Number((raw as any).gram) || (hasGram > 0 ? Number((hasGram * 1.05).toFixed(2)) : (Number(raw.miktar) || 1));
+      ayar = raw.ayar || "14K";
+      birim = (raw as any).birim || "Adet";
+      birimFiyat = Number(raw.satisFiyati) || 0;
+    }
 
     const targetRowId = activeProductRowIdRef.current || activeProductRowId || lastProductRowIdRef.current;
 
@@ -1279,15 +1308,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const existingRow = prev[targetIdx] || createEmptyRow();
       const populated = recalculateLine({
         ...existingRow,
-        altinUrunId: (raw as any).altinUrunId ?? null,
+        altinUrunId: item.tip === "para" ? null : ((item.item as any).altinUrunId ?? null),
         barkod: barcode,
         urunAdi,
-        ayar: raw.ayar || "14K",
-        miktar: raw.miktar || 1,
-        birim: (raw as any).birim || "Adet",
+        ayar,
+        miktar: miktar || 1,
+        birim,
         gram,
         hasGram,
-        birimFiyat: Number(raw.satisFiyati) || 0,
+        birimFiyat,
         kdvOrani: 0,
       });
 
@@ -1295,7 +1324,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       next[targetIdx] = { ...populated, id: existingRow.id };
 
       setActiveRowIndex(targetIdx);
-      setTimeout(() => focusGridCell(existingRow.id, "birimFiyat", "select"), 50);
+      setTimeout(() => focusGridCell(existingRow.id, item.tip === "para" ? "miktar" : "birimFiyat", "select"), 50);
 
       return next;
     });
@@ -1307,62 +1336,125 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setProductSearchTerm("");
   };
 
-  // Combined Lookup Items for Product Search Modal
-  const combinedLookupItems: { tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }[] = [
+  // Merchandise para/döviz/sarrafiye listesi (TL / Nakit para ve banka/pos ödeme araçları hariç)
+  const paraMerchandiseList = (odemeUrunList || []).filter(
+    (u) =>
+      u.kod &&
+      !["TL", "TRY", "TRL", "TÜRK LİRASI", "TURK LIRASI", "POS", "HAVALE", "EFT", "KREDİ KARTI", "KREDI KARTI"].includes(
+        u.kod.toUpperCase().trim()
+      )
+  );
+
+  // Combined Lookup Items for Product Search Modal (Barkodlu Altın, Özel Ürün ve Barkodsuz Para/Döviz/Sarrafiye)
+  const combinedLookupItems: ProductLookupEntry[] = [
     ...altinList.map((it) => ({ tip: "altin" as const, item: it })),
     ...ozelList.map((it) => ({ tip: "ozel" as const, item: it })),
+    ...paraMerchandiseList.map((it) => ({ tip: "para" as const, item: it })),
   ];
 
-  const productLookupColumns: LookupColumn<{ tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }>[] = [
+  const productLookupColumns: LookupColumn<ProductLookupEntry>[] = [
     {
       header: "Tip",
-      width: "70px",
+      width: "85px",
       align: "center",
       render: (it) => (
-        <Badge bg={it.tip === "altin" ? "warning" : "info"} className="text-dark fw-bold">
-          {it.tip === "altin" ? "Altın" : "Özel"}
+        <Badge
+          bg={it.tip === "altin" ? "warning" : it.tip === "ozel" ? "info" : "success"}
+          className="text-dark fw-bold"
+        >
+          {it.tip === "altin" ? "Altın" : it.tip === "ozel" ? "Özel" : "Para/Sarraf"}
         </Badge>
       ),
     },
     {
-      header: "Barkod",
-      width: "120px",
-      render: (it) => (
-        <span className="font-monospace fw-bold text-primary">{it.item.barkod || "-"}</span>
-      ),
+      header: "Barkod / Kod",
+      width: "125px",
+      render: (it) => {
+        if (it.tip === "para") {
+          return (
+            <span className="font-monospace fw-bold text-success">
+              {(it.item as UrunItem).kod || "-"}
+            </span>
+          );
+        }
+        return (
+          <span className="font-monospace fw-bold text-primary">
+            {(it.item as AltinUrunItem | OzelUrunItem).barkod || "-"}
+          </span>
+        );
+      },
     },
     {
-      header: "Açıklama / Model",
-      render: (it) =>
-        (it.tip === "altin"
-          ? (it.item as AltinUrunItem).model
-          : (it.item as OzelUrunItem).mamulTipi) || "-",
+      header: "Açıklama / Model / Tanım",
+      render: (it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return p.ad || p.kod || "-";
+        }
+        return (
+          (it.tip === "altin"
+            ? (it.item as AltinUrunItem).model
+            : (it.item as OzelUrunItem).mamulTipi) || "-"
+        );
+      },
     },
     {
       header: "Ayar",
-      width: "80px",
+      width: "85px",
       align: "center",
-      render: (it) => <Badge bg="light" text="dark" className="border">{it.item.ayar || "-"}</Badge>,
+      render: (it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return (
+            <Badge bg="light" text="dark" className="border">
+              {p.hasOrani ? `${p.hasOrani} Has` : p.kod}
+            </Badge>
+          );
+        }
+        return <Badge bg="light" text="dark" className="border">{(it.item as any).ayar || "-"}</Badge>;
+      },
     },
     {
-      header: "Gram",
-      width: "90px",
+      header: "Gram / Miktar",
+      width: "100px",
       align: "right",
-      render: (it) => (
-        <span className="font-monospace">
-          {it.tip === "altin" ? (it.item as AltinUrunItem).miktar || "-" : (it.item as OzelUrunItem).miktar || "-"}
-        </span>
-      ),
+      render: (it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return (
+            <span className="font-monospace">
+              {Number(p.gramaj) > 0
+                ? `${Number(p.gramaj).toFixed(2)} gr`
+                : (p.urunTipi === 0 ? "1.00 gr" : "1 Adet")}
+            </span>
+          );
+        }
+        return (
+          <span className="font-monospace">
+            {it.tip === "altin" ? (it.item as AltinUrunItem).miktar || "-" : (it.item as OzelUrunItem).miktar || "-"}
+          </span>
+        );
+      },
     },
     {
       header: "Fiyat",
-      width: "110px",
+      width: "115px",
       align: "right",
-      render: (it) => (
-        <strong className="text-success font-monospace">
-          {Number(it.item.satisFiyati || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
-        </strong>
-      ),
+      render: (it) => {
+        let price = 0;
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          const kur = getKurForProduct(p, faturaTipi === 2 ? 0 : 1);
+          price = Number(p.satisFiyati) || (kur > 0 ? kur : 0);
+        } else {
+          price = Number((it.item as any).satisFiyati || 0);
+        }
+        return (
+          <strong className="text-success font-monospace">
+            {price > 0 ? `${price.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺` : "-"}
+          </strong>
+        );
+      },
     },
   ];
 
@@ -6150,7 +6242,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             }, 50);
           }
         }}
-        title="Barkodlu Ürün Seçimi"
+        title="Barkodlu / Barkodsuz Ürün ve Para Tablosu Seçimi"
         items={combinedLookupItems}
         isLoading={isProductLoading}
         columns={productLookupColumns}
@@ -6158,17 +6250,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         filterFn={(it, term) => {
           const t = (term || "").toLowerCase().trim();
           if (!t) return true;
-          const barkod = (it.item.barkod || `${it.item.grupKodu || ""}${it.item.urunNo || ""}`).toLowerCase();
+          if (it.tip === "para") {
+            const p = it.item as UrunItem;
+            const kod = (p.kod || "").toLowerCase();
+            const ad = (p.ad || "").toLowerCase();
+            return kod.includes(t) || ad.includes(t);
+          }
+          const raw = it.item as AltinUrunItem | OzelUrunItem;
+          const barkod = (raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`).toLowerCase();
           const model = (
             (it.tip === "altin"
-              ? (it.item as AltinUrunItem).model
-              : (it.item as OzelUrunItem).mamulTipi) || ""
+              ? (raw as AltinUrunItem).model
+              : (raw as OzelUrunItem).mamulTipi) || ""
           ).toLowerCase();
-          const ayar = (it.item.ayar || "").toLowerCase();
-          const grupKodu = (it.item.grupKodu || "").toLowerCase();
-          const urunNo = String(it.item.urunNo || "").toLowerCase();
-          const aciklama = ((it.item as any).aciklama || (it.item as any).ad || "").toLowerCase();
-          const bankoKodu = ((it.item as any).bankoKodu || "").toLowerCase();
+          const ayar = (raw.ayar || "").toLowerCase();
+          const grupKodu = (raw.grupKodu || "").toLowerCase();
+          const urunNo = String(raw.urunNo || "").toLowerCase();
+          const aciklama = ((raw as any).aciklama || (raw as any).ad || "").toLowerCase();
+          const bankoKodu = ((raw as any).bankoKodu || "").toLowerCase();
           return (
             barkod.includes(t) ||
             model.includes(t) ||

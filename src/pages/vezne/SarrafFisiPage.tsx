@@ -3747,131 +3747,50 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // ─── Arbitraj Sonucunu Sarraf Fişine Aktarma (F7) ──────────────────────────
   const handleApplyArbitrajToSarrafFis = useCallback(
     (result: ArbitrajApplyResult) => {
-      const isGirisGold =
-        result.girisPara.isMaden ||
-        result.girisPara.kod.toUpperCase() === "HAS" ||
-        result.girisPara.kod.toUpperCase() === "ALTIN";
-      const isCikisGold =
-        result.cikisPara.isMaden ||
-        result.cikisPara.kod.toUpperCase() === "HAS" ||
-        result.cikisPara.kod.toUpperCase() === "ALTIN";
+      const isAlis = result.islemYonu === "alis";
 
-      if (isGirisGold || isCikisGold) {
-        if (isGirisGold) {
-          // Müşteri Maden getirir, karşılığında Döviz ister (Alış):
-          setTip(0);
-          const goldUrun =
-            urunList.find(
-              (u) => (u.kod || "").toUpperCase() === result.girisPara.kod.toUpperCase()
-            ) || urunList[0];
+      if (isAlis) {
+        // ALIŞ FİŞİ (tip = 0): Müşteriden Alınan (Giriş) -> Kalemler, Müşteriye Verilen (Çıkış) -> Ödeme
+        setTip(0);
+        const mainUrun =
+          urunList.find(
+            (u) => (u.kod || "").toUpperCase() === result.girisPara.kod.toUpperCase()
+          ) || urunList[0];
 
-          if (goldUrun) {
-            const newGridRow: GridRow = {
-              id: String(Date.now()),
-              satirNo: 1,
-              urunId: goldUrun.id,
-              urunKodu: goldUrun.kod,
-              urunAdi: goldUrun.ad,
-              adet: 1,
-              miktar: result.girisMiktar,
-              milyem: goldUrun.hasOrani || goldUrun.alisMilyem || 1000,
-              hasGram: result.girisMiktar,
-              iscilikHesaplamaSekli: 0,
-              iscilikiMiktari: 0,
-              iscilikHasGram: 0,
-              kur: result.parite,
-              tutar: result.cikisMiktar,
-              urunTipi: goldUrun.urunTipi || 0,
-              karat: "",
-              aciklama: result.aciklama || "Arbitraj Alış",
-            };
-            setLines([newGridRow]);
-          }
+        const mainKur = getKurForProduct(mainUrun, 0) || (result.girisKur > 0 ? result.girisKur : (result.parite > 0 ? result.parite : 1));
+        const mainMilyem = mainUrun?.hasOrani || mainUrun?.alisMilyem || (result.girisPara.isMaden ? 1000 : 0);
 
-          // Ödeme / Tahsilat Tablosu: Döviz Nakit Ödeme (Çıkış Bacağı)
-          const newOdemeRow: OdemeRow = {
-            id: String(Date.now() + 1),
-            satirNo: 1,
-            odemeAraciTuru: 0, // Nakit Vezne
-            bankaId: null,
-            posCihaziId: null,
-            cariKartId: null,
-            cariKod: "",
-            cariUnvan: "",
-            iskontoId: null,
-            paraId: result.cikisPara.id || 1,
-            paraKodu: result.cikisPara.kod,
-            paraAdi: result.cikisPara.ad,
-            adet: 1,
-            miktar: result.cikisMiktar,
-            milyem: 0,
-            hasGram: 0,
-            kur: 1.0,
-            tutar: result.cikisMiktar,
-            urunTipi: 0,
-          };
-          setOdemeRows([newOdemeRow]);
-        } else {
-          // Müşteri Döviz (USD vb.) ödeyerek Maden (Has vb.) satın alır (Satış):
-          setTip(1);
-          const goldUrun =
-            urunList.find(
-              (u) => (u.kod || "").toUpperCase() === result.cikisPara.kod.toUpperCase()
-            ) || urunList[0];
+        const cikisUrun = urunList.find(
+          (u) => (u.kod || "").toUpperCase() === result.cikisPara.kod.toUpperCase()
+        );
+        const cikisKur = cikisUrun ? getKurForProduct(cikisUrun, 1) : (result.cikisKur > 0 ? result.cikisKur : 1);
 
-          if (goldUrun) {
-            const newGridRow: GridRow = {
-              id: String(Date.now()),
-              satirNo: 1,
-              urunId: goldUrun.id,
-              urunKodu: goldUrun.kod,
-              urunAdi: goldUrun.ad,
-              adet: 1,
-              miktar: result.cikisMiktar,
-              milyem: goldUrun.hasOrani || goldUrun.satisMilyem || 1000,
-              hasGram: result.cikisMiktar,
-              iscilikHesaplamaSekli: 0,
-              iscilikiMiktari: 0,
-              iscilikHasGram: 0,
-              kur: result.parite,
-              tutar: result.girisMiktar,
-              urunTipi: goldUrun.urunTipi || 0,
-              karat: "",
-              aciklama: result.aciklama || "Arbitraj Satış",
-            };
-            setLines([newGridRow]);
-          }
-
-          // Ödeme / Tahsilat Tablosu: Döviz Nakit Tahsilat (Giriş Bacağı)
-          const newOdemeRow: OdemeRow = {
-            id: String(Date.now() + 1),
-            satirNo: 1,
-            odemeAraciTuru: 0, // Nakit Vezne
-            bankaId: null,
-            posCihaziId: null,
-            cariKartId: null,
-            cariKod: "",
-            cariUnvan: "",
-            iskontoId: null,
-            paraId: result.girisPara.id || 1,
-            paraKodu: result.girisPara.kod,
-            paraAdi: result.girisPara.ad,
-            adet: 1,
-            miktar: result.girisMiktar,
-            milyem: 0,
-            hasGram: 0,
-            kur: 1.0,
-            tutar: result.girisMiktar,
-            urunTipi: 0,
-          };
-          setOdemeRows([newOdemeRow]);
-        }
-      } else {
-        // Döviz - Döviz Takası
-        const newOdemeRow: OdemeRow = {
+        const newGridRow: GridRow = {
           id: String(Date.now()),
           satirNo: 1,
-          odemeAraciTuru: 0,
+          urunId: mainUrun?.id || result.girisPara.id || 1,
+          urunKodu: mainUrun?.kod || result.girisPara.kod,
+          urunAdi: mainUrun?.ad || result.girisPara.ad || result.girisPara.kod,
+          adet: 1,
+          miktar: result.girisMiktar,
+          milyem: mainMilyem,
+          hasGram: mainMilyem > 0 ? (result.girisMiktar * mainMilyem) / 1000 : result.girisMiktar,
+          iscilikHesaplamaSekli: 0,
+          iscilikiMiktari: 0,
+          iscilikHasGram: 0,
+          kur: mainKur,
+          tutar: mainKur > 0 ? parseFloat((result.girisMiktar * mainKur).toFixed(2)) : result.cikisMiktar,
+          urunTipi: mainUrun?.urunTipi || 0,
+          karat: "",
+          aciklama: result.aciklama || "Arbitraj Alış",
+        };
+        setLines([recomputeRow(newGridRow, Number(altinHasKuru) || 0)]);
+
+        // Ödeme Tablosu: Verilen Çıkış Bacağı
+        const newOdemeRow: OdemeRow = {
+          id: String(Date.now() + 1),
+          satirNo: 1,
+          odemeAraciTuru: 0, // Nakit Vezne
           bankaId: null,
           posCihaziId: null,
           cariKartId: null,
@@ -3885,11 +3804,71 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           miktar: result.cikisMiktar,
           milyem: 0,
           hasGram: 0,
-          kur: result.parite,
-          tutar: result.girisMiktar,
+          kur: cikisKur,
+          tutar: cikisKur > 0 ? parseFloat((result.cikisMiktar * cikisKur).toFixed(2)) : result.cikisMiktar,
           urunTipi: 0,
         };
-        setOdemeRows([newOdemeRow]);
+        setOdemeRows([recomputeOdemeRow(newOdemeRow, Number(altinHasKuru) || 0)]);
+      } else {
+        // SATIŞ FİŞİ (tip = 1): Müşteriye Satılan (Çıkış) -> Kalemler, Müşteriden Alınan (Giriş) -> Tahsilat
+        setTip(1);
+        const mainUrun =
+          urunList.find(
+            (u) => (u.kod || "").toUpperCase() === result.cikisPara.kod.toUpperCase()
+          ) || urunList[0];
+
+        const mainKur = getKurForProduct(mainUrun, 1) || (result.cikisKur > 0 ? result.cikisKur : (result.parite > 0 ? result.parite : 1));
+        const mainMilyem = mainUrun?.hasOrani || mainUrun?.satisMilyem || (result.cikisPara.isMaden ? 1000 : 0);
+
+        const girisUrun = urunList.find(
+          (u) => (u.kod || "").toUpperCase() === result.girisPara.kod.toUpperCase()
+        );
+        const girisKur = girisUrun ? getKurForProduct(girisUrun, 0) : (result.girisKur > 0 ? result.girisKur : 1);
+
+        const newGridRow: GridRow = {
+          id: String(Date.now()),
+          satirNo: 1,
+          urunId: mainUrun?.id || result.cikisPara.id || 1,
+          urunKodu: mainUrun?.kod || result.cikisPara.kod,
+          urunAdi: mainUrun?.ad || result.cikisPara.ad || result.cikisPara.kod,
+          adet: 1,
+          miktar: result.cikisMiktar,
+          milyem: mainMilyem,
+          hasGram: mainMilyem > 0 ? (result.cikisMiktar * mainMilyem) / 1000 : result.cikisMiktar,
+          iscilikHesaplamaSekli: 0,
+          iscilikiMiktari: 0,
+          iscilikHasGram: 0,
+          kur: mainKur,
+          tutar: mainKur > 0 ? parseFloat((result.cikisMiktar * mainKur).toFixed(2)) : result.girisMiktar,
+          urunTipi: mainUrun?.urunTipi || 0,
+          karat: "",
+          aciklama: result.aciklama || "Arbitraj Satış",
+        };
+        setLines([recomputeRow(newGridRow, Number(altinHasKuru) || 0)]);
+
+        // Tahsilat Tablosu: Alınan Giriş Bacağı
+        const newOdemeRow: OdemeRow = {
+          id: String(Date.now() + 1),
+          satirNo: 1,
+          odemeAraciTuru: 0, // Nakit Vezne
+          bankaId: null,
+          posCihaziId: null,
+          cariKartId: null,
+          cariKod: "",
+          cariUnvan: "",
+          iskontoId: null,
+          paraId: result.girisPara.id || 1,
+          paraKodu: result.girisPara.kod,
+          paraAdi: result.girisPara.ad,
+          adet: 1,
+          miktar: result.girisMiktar,
+          milyem: 0,
+          hasGram: 0,
+          kur: girisKur,
+          tutar: girisKur > 0 ? parseFloat((result.girisMiktar * girisKur).toFixed(2)) : result.girisMiktar,
+          urunTipi: 0,
+        };
+        setOdemeRows([recomputeOdemeRow(newOdemeRow, Number(altinHasKuru) || 0)]);
       }
 
       setArbitrajActiveInfo({
