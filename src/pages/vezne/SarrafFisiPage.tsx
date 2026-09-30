@@ -3871,6 +3871,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         setOdemeRows([recomputeOdemeRow(newOdemeRow, Number(altinHasKuru) || 0)]);
       }
 
+      if (result.cariId !== undefined && result.cariId !== null) {
+        setCariKartId(result.cariId);
+      }
+      if (result.cariKodu) {
+        setCariKod(result.cariKodu);
+      }
+      if (result.cariUnvan) {
+        setUnvan(result.cariUnvan);
+        setDetayUnvan(result.cariUnvan);
+      }
+      if (result.vknTckn) {
+        setDetayVergiKimlikNo(result.vknTckn);
+      }
+      if (result.istatistikKodu) {
+        setIstatistikKodu(result.istatistikKodu);
+      }
+
       setArbitrajActiveInfo({
         girisKod: result.girisPara.kod,
         cikisKod: result.cikisPara.kod,
@@ -6940,7 +6957,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         vezneAd={vezneAd}
         selectedCariId={cariKartId}
         selectedUnvan={unvan || detayUnvan}
+        selectedCariKod={cariKod}
+        vknTckn={detayVergiKimlikNo || detayPasaportNo || ""}
+        istatistikKodu={istatistikKodu}
+        hedefTlTutar={totalTutar || 0}
         cariList={cariList}
+        statisticList={statisticList}
         pageType="sarraf"
         fisTip={tip}
         onApplyToFis={handleApplyArbitrajToSarrafFis}

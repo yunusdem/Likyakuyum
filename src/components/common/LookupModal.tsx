@@ -181,6 +181,7 @@ function LookupModalContent<T extends Record<string, any>>({
 
   // Keyboard navigation handler (ArrowUp, ArrowDown, Enter, Escape, F-keys)
   useEffect(() => {
+    if (!show) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Herhangi bir F1..F12 tuşuna basıldığında açık modalı kapat ve eylemin üst sayfada işlenmesine izin ver
       if (/^F([1-9]|1[0-2])$/.test(e.key)) {
@@ -219,7 +220,7 @@ function LookupModalContent<T extends Record<string, any>>({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [displayItems, handleConfirm, onHide]);
+  }, [show, displayItems, handleConfirm, onHide]);
 
   return (
     <Modal
@@ -229,6 +230,8 @@ function LookupModalContent<T extends Record<string, any>>({
       centered
       backdrop="static"
       keyboard={false}
+      enforceFocus={false}
+      restoreFocus={false}
       onEntered={() => {
         searchInputRef.current?.focus();
       }}

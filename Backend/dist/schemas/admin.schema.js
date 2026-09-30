@@ -162,10 +162,3 @@ export const lisansEkleSchema = z.object({
         notlar: secmeli(1000),
     }),
 });
-// ------------------------------------------------------------- GİB hesabı ---
-export const gibHesapSchema = z.object({
-    body: z.object({
-        kullaniciKodu: z.string().trim().min(1, "Kullanıcı kodu zorunludur").max(50),
-        sifre: z.string().min(1, "Şifre zorunludur").max(100),
-    }),
-});

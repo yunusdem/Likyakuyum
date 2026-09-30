@@ -3364,6 +3364,22 @@ export const DovizFisiPage: React.FC = () => {
         }
       }
 
+      if (result.cariId !== undefined && result.cariId !== null) {
+        setCariKartId(result.cariId);
+      }
+      if (result.cariKodu) {
+        setCariKod(result.cariKodu);
+      }
+      if (result.cariUnvan) {
+        setUnvan(result.cariUnvan);
+      }
+      if (result.vknTckn) {
+        setVergiKimlikNo(result.vknTckn);
+      }
+      if (result.istatistikKodu) {
+        setIstatistikKodu(result.istatistikKodu);
+      }
+
       setArbitrajActiveInfo({
         girisKod: result.girisPara.kod,
         cikisKod: result.cikisPara.kod,
@@ -6198,7 +6214,12 @@ export const DovizFisiPage: React.FC = () => {
         vezneAd={vezneAd}
         selectedCariId={cariKartId}
         selectedUnvan={unvan}
+        selectedCariKod={cariKod}
+        vknTckn={vergiKimlikNo}
+        istatistikKodu={istatistikKodu}
+        hedefTlTutar={sonToplam || 0}
         cariList={cariList}
+        statisticList={statisticList}
         pageType="doviz"
         fisTip={tip}
         onApplyToFis={handleApplyArbitrajToDovizFis}
