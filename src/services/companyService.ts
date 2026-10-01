@@ -267,20 +267,39 @@ export const defaultCompanyTanim: TodvzTanimDto = {
 };
 
 export class CompanyService {
+  private static cachedDefinitions: TodvzTanimDto | null = null;
+  private static fetchPromise: Promise<TodvzTanimDto> | null = null;
+
   /**
-   * Fetches company definitions from active DB via backend API
+   * Fetches company definitions from active DB via backend API (cached in-memory for instant page loads)
    */
-  public static async getDefinitions(): Promise<TodvzTanimDto> {
-    const response = await apiClient.get<TodvzTanimDto>("/company/definitions");
-    const data = response.data || defaultCompanyTanim;
-    if (data && typeof data === "object") {
-      for (const [k, v] of Object.entries(data)) {
-        if (typeof v === "string") {
-          (data as any)[k] = v.trim();
-        }
-      }
+  public static async getDefinitions(forceRefresh = false): Promise<TodvzTanimDto> {
+    if (!forceRefresh && CompanyService.cachedDefinitions) {
+      return CompanyService.cachedDefinitions;
     }
-    return data;
+    if (!forceRefresh && CompanyService.fetchPromise) {
+      return CompanyService.fetchPromise;
+    }
+
+    CompanyService.fetchPromise = (async () => {
+      try {
+        const response = await apiClient.get<TodvzTanimDto>("/company/definitions");
+        const data = response.data || defaultCompanyTanim;
+        if (data && typeof data === "object") {
+          for (const [k, v] of Object.entries(data)) {
+            if (typeof v === "string") {
+              (data as any)[k] = v.trim();
+            }
+          }
+        }
+        CompanyService.cachedDefinitions = data;
+        return data;
+      } finally {
+        CompanyService.fetchPromise = null;
+      }
+    })();
+
+    return CompanyService.fetchPromise;
   }
 
   /**
@@ -288,6 +307,7 @@ export class CompanyService {
    */
   public static async updateDefinitions(data: Partial<TodvzTanimDto>): Promise<TodvzTanimDto> {
     const response = await apiClient.put<TodvzTanimDto>("/company/definitions", data);
+    CompanyService.cachedDefinitions = null;
     return response.data;
   }
 }

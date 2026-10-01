@@ -16,7 +16,6 @@ import {
   IconFileCertificate,
   IconRefresh,
   IconEye,
-  IconChartCandle,
 } from "@tabler/icons-react";
 import { Container, ListGroup, Button } from "react-bootstrap";
 
@@ -36,47 +35,47 @@ const quickActions = [
   {
     title: "Kur",
     to: "/kur/anlik-fiyat-listesi",
-    icon: <IconChartLine size={18} strokeWidth={2} className="text-primary" />,
+    icon: <IconChartLine size={19} strokeWidth={2.2} style={{ color: "#1d4ed8" }} />,
   },
   {
     title: "Vezne İzleme",
     to: "/vezne/izleme",
-    icon: <IconEye size={18} strokeWidth={2} style={{ color: "#0891b2" }} />,
+    icon: <IconEye size={19} strokeWidth={2.2} style={{ color: "#0e7490" }} />,
   },
   {
     title: "Fiyat",
     to: "/etiket/barkod-basimi",
-    icon: <IconScan size={18} strokeWidth={2} className="text-success" />,
+    icon: <IconScan size={19} strokeWidth={2.2} style={{ color: "#047857" }} />,
   },
   {
     title: "Sarraf",
     to: "/vezne/genel-sarraf-fisi",
-    icon: <IconDiamond size={18} strokeWidth={2} className="text-warning" />,
+    icon: <IconDiamond size={19} strokeWidth={2.2} style={{ color: "#b45309" }} />,
   },
   {
     title: "Döviz",
     to: "/vezne/doviz-fisi",
-    icon: <IconReceipt2 size={18} strokeWidth={2} className="text-info" />,
+    icon: <IconReceipt2 size={19} strokeWidth={2.2} style={{ color: "#0369a1" }} />,
   },
   {
     title: "Perakende",
     to: "/vezne/perakende-fisi-kayit",
-    icon: <IconShoppingCart size={18} strokeWidth={2} className="text-danger" />,
+    icon: <IconShoppingCart size={19} strokeWidth={2.2} style={{ color: "#b91c1c" }} />,
   },
   {
     title: "Banka",
     to: "/banka/hareketler",
-    icon: <IconBuildingBank size={18} strokeWidth={2} className="text-secondary" />,
+    icon: <IconBuildingBank size={19} strokeWidth={2.2} style={{ color: "#334155" }} />,
   },
   {
     title: "C. Hareket",
     to: "/cari/hareket-kayit",
-    icon: <IconArrowsExchange size={18} strokeWidth={2} className="text-purple" style={{ color: "#7c3aed" }} />,
+    icon: <IconArrowsExchange size={19} strokeWidth={2.2} style={{ color: "#6d28d9" }} />,
   },
   {
     title: "e-Belge",
     to: "/e-belge",
-    icon: <IconFileCertificate size={18} strokeWidth={2} className="text-primary" />,
+    icon: <IconFileCertificate size={19} strokeWidth={2.2} style={{ color: "#1e3a8a" }} />,
   },
 ];
 
@@ -198,11 +197,12 @@ const Header: React.FC = () => {
                     </span>
                     <span
                       style={{
-                        fontSize: "10.5px",
-                        fontWeight: 600,
-                        color: "#64748b",
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        color: "#000000",
                         lineHeight: 1,
                         whiteSpace: "nowrap",
+                        letterSpacing: "-0.1px",
                       }}
                     >
                       {action.title}
@@ -212,23 +212,6 @@ const Header: React.FC = () => {
 
                 {/* MASAK Quick Action Dropdown (Beside E-Belge) */}
                 {masakAcik && <MasakMenu onUpdate={() => setIsMasakModalOpen(true)} />}
-
-                {/* Piyasa: herkese açık, modül kataloğunda yok (kapatılamaz) */}
-                <Link
-                  to="/piyasa"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigateWithDashboardHop("/piyasa");
-                  }}
-                  className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
-                >
-                  <span className="d-flex align-items-center justify-content-center" style={{ marginBottom: "2px" }}>
-                    <IconChartCandle size={18} strokeWidth={2} style={{ color: "#b8860b" }} />
-                  </span>
-                  <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#b8860b", lineHeight: 1, whiteSpace: "nowrap" }}>
-                    Piyasa
-                  </span>
-                </Link>
               </div>
             </div>
 
@@ -312,8 +295,8 @@ const Header: React.FC = () => {
                 <span
                   style={{
                     fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#475569",
+                    fontWeight: 500,
+                    color: "#000000",
                   }}
                 >
                   {action.title}
@@ -322,18 +305,6 @@ const Header: React.FC = () => {
             ))}
 
             {masakAcik && <MasakMenu mobile onUpdate={() => setIsMasakModalOpen(true)} />}
-
-            <Link
-              to="/piyasa"
-              onClick={(e) => {
-                e.preventDefault();
-                navigateWithDashboardHop("/piyasa");
-              }}
-              className="d-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill"
-            >
-              <IconChartCandle size={16} strokeWidth={2} style={{ color: "#b8860b" }} />
-              <span style={{ fontSize: "11px", fontWeight: 700, color: "#b8860b" }}>Piyasa</span>
-            </Link>
           </div>
         </Container>
       </header>

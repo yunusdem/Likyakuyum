@@ -359,6 +359,152 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     return upper;
   };
 
+  // Helper to normalize URL paths for comparison
+  const normalizePath = (p?: string): string => {
+    if (!p) return "";
+    let clean = p.split("?")[0].split("#")[0].trim();
+    if (!clean.startsWith("/")) clean = `/${clean}`;
+    if (clean.length > 1 && clean.endsWith("/")) clean = clean.slice(0, -1);
+    return clean.toLowerCase();
+  };
+
+  // Helper to check if a menu link matches the current route (including aliases and subroutes)
+  const isRouteMatch = (itemLink?: string, current = location.pathname): boolean => {
+    if (!itemLink) return false;
+    const linkNorm = normalizePath(itemLink);
+    const curNorm = normalizePath(current);
+    if (!linkNorm || !curNorm) return false;
+    if (linkNorm === curNorm) return true;
+
+    // Direct alias mappings (exact sets of aliases for specific pages)
+    const sarrafKayitAliases = ["/vezne/sarraf-fisi-kayit", "/vezne/sarraf-fisi", "/vezne/genel-sarraf-fisi"];
+    if (sarrafKayitAliases.includes(curNorm) && sarrafKayitAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const sarrafDuzeltmeAliases = ["/vezne/sarraf-fisi-duzeltme"];
+    if (sarrafDuzeltmeAliases.includes(curNorm) && sarrafDuzeltmeAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const dovizKayitAliases = ["/vezne/doviz-fisi-kayit", "/vezne/doviz-fisi"];
+    if (dovizKayitAliases.includes(curNorm) && dovizKayitAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const dovizDuzeltmeAliases = ["/vezne/doviz-fisi-duzeltme"];
+    if (dovizDuzeltmeAliases.includes(curNorm) && dovizDuzeltmeAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const perakendeKayitAliases = [
+      "/vezne/perakende-fisi-kayit",
+      "/vezne/perakende-fisi",
+      "/vezne/perakende-fis",
+      "/vezne/perakende",
+      "/perakende/perakende-fisi-kayit",
+      "/perakende/satis",
+    ];
+    if (perakendeKayitAliases.includes(curNorm) && perakendeKayitAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const perakendeDuzeltmeAliases = [
+      "/vezne/perakende-fisi-duzeltme",
+      "/vezne/perakende-duzeltme",
+      "/perakende/perakende-fisi-duzeltme",
+    ];
+    if (perakendeDuzeltmeAliases.includes(curNorm) && perakendeDuzeltmeAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const transferKayitAliases = ["/vezne/transfer-kayit", "/vezne/vezne-transferi-kayit", "/vezne/vezne-transferi", "/vezne/transfer"];
+    if (transferKayitAliases.includes(curNorm) && transferKayitAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const transferDuzeltmeAliases = ["/vezne/transfer-duzeltme", "/vezne/vezne-transferi-duzeltme"];
+    if (transferDuzeltmeAliases.includes(curNorm) && transferDuzeltmeAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const vezneIzlemeAliases = ["/vezne/izleme", "/vezne/vezne-izleme"];
+    if (vezneIzlemeAliases.includes(curNorm) && vezneIzlemeAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const barkodBasimiAliases = ["/etiket/barkod-basimi", "/etiket/barkod-fiyat"];
+    if (barkodBasimiAliases.includes(curNorm) && barkodBasimiAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const bankaHesapKartlariAliases = ["/banka/hesap-kartlari", "/banka/hesap-karti"];
+    if (bankaHesapKartlariAliases.includes(curNorm) && bankaHesapKartlariAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const posTanimlariAliases = ["/banka/pos-tanimlari", "/banka/pos-cihazi-tanimlari"];
+    if (posTanimlariAliases.includes(curNorm) && posTanimlariAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    const bankaHareketlerAliases = ["/banka/hareketler", "/banka/hesap-hareketleri", "/ebanka/hareketler"];
+    if (bankaHareketlerAliases.includes(curNorm) && bankaHareketlerAliases.includes(linkNorm)) {
+      return true;
+    }
+
+    // e-Belge alt sayfaları (/e-belge/...)
+    if (curNorm.startsWith("/e-belge") && (linkNorm === "/e-belge" || linkNorm.startsWith("/e-belge"))) {
+      return true;
+    }
+
+    // Alt sayfalar için prefix eşleşmesi (örn: /raporlar/careks1)
+    if (linkNorm !== "/" && curNorm.startsWith(`${linkNorm}/`)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Whenever the active route/page changes (from Header quick actions, direct URL, etc.):
+  // Automatically find and open the corresponding menu accordion in the sidebar
+  useEffect(() => {
+    if (!currentPath || currentPath === "/" || currentPath === "/dashboard") {
+      setActiveMenuKey("");
+      return;
+    }
+
+    const matchedIndex = gorunenMenu.findIndex((menu) => {
+      // 1. Direct top-level menu link
+      if (menu.link && isRouteMatch(menu.link, currentPath)) {
+        return true;
+      }
+      // 2. Child level 1 or level 2 links
+      if (menu.children) {
+        return menu.children.some((c1) => {
+          if (c1.link && isRouteMatch(c1.link, currentPath)) {
+            return true;
+          }
+          if (c1.children) {
+            return c1.children.some((c2) => c2.link && isRouteMatch(c2.link, currentPath));
+          }
+          return false;
+        });
+      }
+      return false;
+    });
+
+    if (matchedIndex !== -1) {
+      setActiveMenuKey(matchedIndex.toString());
+      setTimeout(() => {
+        const activeLinkEl = document.querySelector("#miniSidebar .sidebar-sub-link.active, #miniSidebar .nav-link.active");
+        if (activeLinkEl) {
+          activeLinkEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }, 120);
+    }
+  }, [currentPath, gorunenMenu]);
+
   // Reset pending state on route change
   useEffect(() => {
     setPending(null);
@@ -425,6 +571,10 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             setPending(null);
             if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
             const to = matchedChild.link.startsWith("/") ? matchedChild.link : `/${matchedChild.link}`;
+            if (to === "/kur/pano" || to.startsWith("/kur/pano?")) {
+              window.open(to, "_blank", "noopener,noreferrer");
+              return;
+            }
             navigateWithDashboardHop(to);
             return;
           }
@@ -480,6 +630,11 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     e.preventDefault();
     if (collapsed === "collapsed") {
       handleCollapsed("expanded");
+    }
+    const cleanTo = to.startsWith("/") ? to : `/${to}`;
+    if (cleanTo === "/kur/pano" || cleanTo.startsWith("/kur/pano?")) {
+      window.open(cleanTo, "_blank", "noopener,noreferrer");
+      return;
     }
     navigateWithDashboardHop(to);
   };
@@ -606,7 +761,16 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                               >
                                 {/* Nested Level 2 Accordion */}
                                 <Accordion
-                                  defaultActiveKey=""
+                                  activeKey={
+                                    menuLevel1Item.children.some((c2) => isRouteMatch(c2.link, currentPath))
+                                      ? `sub-${menuLevel1Index}`
+                                      : undefined
+                                  }
+                                  defaultActiveKey={
+                                    menuLevel1Item.children.some((c2) => isRouteMatch(c2.link, currentPath))
+                                      ? `sub-${menuLevel1Index}`
+                                      : ""
+                                  }
                                   className="nav flex-column w-100 p-0 m-0"
                                 >
                                   <CustomToggleLevel2
@@ -627,6 +791,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                         const to2 = menuLevel2Item.link?.startsWith("/")
                                           ? menuLevel2Item.link
                                           : `/${menuLevel2Item.link}`;
+                                        const isActive2 = isRouteMatch(to2, currentPath);
                                         return (
                                           <ListGroup.Item
                                             key={menuLevel2Index}
@@ -637,7 +802,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                               to={to2}
                                               onClick={(e) => handleLinkClick(e, to2)}
                                               className={`nav-link sidebar-sub-link py-1 px-2.5 ${
-                                                currentPath === to2 ? "active" : ""
+                                                isActive2 ? "active" : ""
                                               }`}
                                             >
                                               {getSubmenuIcon(menuLevel2Item.name || menuLevel2Item.title || "")}
@@ -657,6 +822,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                             const to1 = menuLevel1Item.link?.startsWith("/")
                               ? menuLevel1Item.link
                               : `/${menuLevel1Item.link}`;
+                            const isActive1 = isRouteMatch(to1, currentPath);
                             return (
                               <ListGroup.Item
                                 as="li"
@@ -668,7 +834,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                                   to={to1}
                                   onClick={(e) => handleLinkClick(e, to1)}
                                   className={`nav-link sidebar-sub-link py-1 px-2.5 ${
-                                    currentPath === to1 ? "active" : ""
+                                    isActive1 ? "active" : ""
                                   }`}
                                 >
                                   {getSubmenuIcon(menuLevel1Item.name || menuLevel1Item.title || "")}
@@ -690,6 +856,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                   : menu.link
                   ? `/${menu.link}`
                   : "#";
+                const isTopActive = isRouteMatch(to, currentPath);
                 return (
                   <div key={index} className="sidebar-menu-section">
                     <Nav.Item as="li" className="sidebar-parent-item">
@@ -697,7 +864,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                         to={to}
                         onClick={(e) => handleLinkClick(e, to)}
                         className={`sidebar-menu-btn nav-link d-flex align-items-center ${
-                          currentPath === to ? "active" : ""
+                          isTopActive ? "active" : ""
                         }`}
                       >
                         {menu.icon && (

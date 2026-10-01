@@ -10,6 +10,11 @@ export interface KurRowItem {
   efektifAlis: number | null;
   efektifSatis: number | null;
   parite: number | null;
+  hasOrani?: number | null;
+  hasAlisKatsayisi?: number | null;
+  hasSatisKatsayisi?: number | null;
+  gramaj?: number | null;
+  urunTipi?: number | null;
 }
 
 export interface KurTablosuItem {

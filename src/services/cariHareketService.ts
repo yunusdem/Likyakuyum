@@ -87,6 +87,8 @@ export class CariHareketService {
     tip?: number;
     hareketTipi?: number;
     search?: string;
+    onlyCariHareket?: boolean;
+    kaynak?: string;
   }): Promise<CariHareketItem[]> {
     const params = new URLSearchParams();
     if (filters?.startDate) params.append("startDate", filters.startDate);
@@ -100,6 +102,8 @@ export class CariHareketService {
       params.append("hareketTipi", String(filters.hareketTipi));
     }
     if (filters?.search) params.append("search", filters.search);
+    if (filters?.onlyCariHareket !== undefined) params.append("onlyCariHareket", String(filters.onlyCariHareket));
+    if (filters?.kaynak) params.append("kaynak", filters.kaynak);
 
     const queryStr = params.toString() ? `?${params.toString()}` : "";
     const res = await apiClient.get<CariHareketItem[]>(`/cari-hareket${queryStr}`);
@@ -151,7 +155,7 @@ export class CariHareketService {
         satirlar: [],
         netHasBakiye: 0,
         netHasYon: "-",
-        headerLabel: "HAS 0.00",
+        headerLabel: "0,00 HAS",
       }
     );
   }

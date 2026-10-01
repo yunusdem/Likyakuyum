@@ -587,13 +587,25 @@ export const CariHareketPage: React.FC = () => {
     }
   };
 
-  const handleSelectCariSuggest = (c: CariKartItem) => {
+  const handleSelectCariSuggest = async (c: CariKartItem) => {
     setCariKod(c.kod);
     setCariAd(c.ad); // Seçilince Ad alanını doldur
     setCariKartId(c.id);
     loadCariBakiye(c.id);
     setShowCariSuggest(false);
     setCariSuggestItems([]);
+
+    if (isEditMode) {
+      try {
+        const cariHareketler = await CariHareketService.list({ cariKartId: c.id });
+        if (cariHareketler && cariHareketler.length > 0) {
+          await loadRecordById(cariHareketler[0].id);
+        }
+      } catch (e) {
+        console.error("Cari son hareket yükleme hatası:", e);
+      }
+    }
+
     setTimeout(() => {
       tarihInputRef.current?.focus();
     }, 50);
@@ -643,13 +655,25 @@ export const CariHareketPage: React.FC = () => {
   };
 
   // Selection from modals
-  const handleSelectCari = (c: CariKartItem) => {
+  const handleSelectCari = async (c: CariKartItem) => {
     setCariKartId(c.id);
     setCariKod(c.kod);
     setCariAd(c.ad);
     loadCariBakiye(c.id);
     setShowCariSuggest(false);
     setShowCariModal(false);
+
+    if (isEditMode) {
+      try {
+        const cariHareketler = await CariHareketService.list({ cariKartId: c.id });
+        if (cariHareketler && cariHareketler.length > 0) {
+          await loadRecordById(cariHareketler[0].id);
+        }
+      } catch (e) {
+        console.error("Cari son hareket yükleme hatası:", e);
+      }
+    }
+
     setTimeout(() => {
       tarihInputRef.current?.focus();
     }, 50);
@@ -1443,7 +1467,7 @@ export const CariHareketPage: React.FC = () => {
                 Net Cari Durumu
               </div>
               <h3 className="mb-0 fw-bold font-monospace" style={{ letterSpacing: "-0.5px" }}>
-                {bakiyeSummary?.headerLabel || "HAS 0.00"}
+                {bakiyeSummary?.headerLabel?.replace(/\s*HAS/gi, "").trim() || "0,00"}
               </h3>
               {cariKartId && (
                 <div className="mt-1 small text-secondary">
@@ -1521,6 +1545,33 @@ export const CariHareketPage: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot
+                      style={{
+                        backgroundColor: "#f8fafc",
+                        fontWeight: "bold",
+                        borderTop: "2px solid #e2e8f0",
+                      }}
+                    >
+                      <tr>
+                        <td className="py-2 px-3 text-dark fw-bold">Toplam</td>
+                        <td className="py-2 px-3 text-end font-monospace text-danger fw-bold">
+                          {new Intl.NumberFormat("tr-TR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }).format(
+                            bakiyeSummary.satirlar.reduce((acc, r) => acc + (r.borcBakiye || 0), 0)
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-end font-monospace text-success fw-bold">
+                          {new Intl.NumberFormat("tr-TR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }).format(
+                            bakiyeSummary.satirlar.reduce((acc, r) => acc + (r.alacakBakiye || 0), 0)
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </Table>
                 </div>
               )}

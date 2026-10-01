@@ -111,12 +111,43 @@ export class PosCihaziSqlRepository {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       await this.ensureTables(pool);
 
+      const query = `
+        DECLARE @devir FLOAT = 0;
+        SELECT @devir = ISNULL(DEVIR, 0) FROM dbo.TODVZ_POS_CIHAZI WHERE POS_CIHAZI_ID = @POS_CIHAZI_ID;
+
+        DECLARE @giris FLOAT = 0;
+        SELECT @giris = ISNULL((
+          SELECT SUM(os.TUTAR)
+          FROM dbo.TODVZ_ODEME_SATIRI os
+          JOIN dbo.TODVZ_SARRAF_FISI sf ON os.SARRAF_FISI_ID = sf.SARRAF_FISI_ID
+          WHERE os.POS_CIHAZI_ID = @POS_CIHAZI_ID AND os.ODEME_ARACI_TURU = 2 AND sf.TIP = 1
+        ), 0) + ISNULL((
+          SELECT SUM(fo.TUTAR)
+          FROM dbo.TODVZ_FATURA_ODEME fo
+          JOIN dbo.TODVZ_FATURA fat ON fo.FATURA_ID = fat.FATURA_ID
+          WHERE fo.POS_CIHAZI_ID = @POS_CIHAZI_ID AND fo.ODEME_ARACI_TURU = 2 AND fat.FATURA_TIPI = 1
+        ), 0);
+
+        DECLARE @cikis FLOAT = 0;
+        SELECT @cikis = ISNULL((
+          SELECT SUM(os.TUTAR)
+          FROM dbo.TODVZ_ODEME_SATIRI os
+          JOIN dbo.TODVZ_SARRAF_FISI sf ON os.SARRAF_FISI_ID = sf.SARRAF_FISI_ID
+          WHERE os.POS_CIHAZI_ID = @POS_CIHAZI_ID AND os.ODEME_ARACI_TURU = 2 AND sf.TIP = 0
+        ), 0) + ISNULL((
+          SELECT SUM(fo.TUTAR)
+          FROM dbo.TODVZ_FATURA_ODEME fo
+          JOIN dbo.TODVZ_FATURA fat ON fo.FATURA_ID = fat.FATURA_ID
+          WHERE fo.POS_CIHAZI_ID = @POS_CIHAZI_ID AND fo.ODEME_ARACI_TURU = 2 AND fat.FATURA_TIPI = 2
+        ), 0);
+
+        SELECT (@devir + @giris - @cikis) AS BAKIYE;
+      `;
+
       const req = pool.request();
       req.input("POS_CIHAZI_ID", sql.Int, posCihaziId);
-      req.output("BAKIYE", sql.Float);
-
-      const result = await req.execute("dbo.SODVZ_POS_CIHAZI_BAKIYEYI_SOYLE");
-      return Number(result.output?.BAKIYE || 0);
+      const res = await req.query(query);
+      return Number(res.recordset?.[0]?.BAKIYE || 0);
     } catch (err) {
       logger.error("[PosCihaziSqlRepository.getBakiye] Error:", err);
       return 0;

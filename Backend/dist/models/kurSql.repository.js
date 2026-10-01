@@ -3,10 +3,14 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 export class KurSqlRepository {
+    static hazirHavuzlar = new WeakSet();
     /**
      * Automatically ensure tables TODVZ_KUR_TABLOSU, TODVZ_KUR and procedure SODVZ_KUR_TABLOSU_KAYDET exist
      */
     static async ensureTablesAndProceduresExist(pool) {
+        if (KurSqlRepository.hazirHavuzlar.has(pool)) {
+            return;
+        }
         const checkQuery = `
       IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TODVZ_KUR_TABLOSU')
       BEGIN
@@ -122,6 +126,7 @@ export class KurSqlRepository {
     `;
         try {
             await pool.request().query(checkQuery);
+            KurSqlRepository.hazirHavuzlar.add(pool);
         }
         catch (err) {
             logger.warn("KurSqlRepository.ensureTablesAndProceduresExist warning:", err);
@@ -159,6 +164,7 @@ export class KurSqlRepository {
         await KurSqlRepository.ensureTablesAndProceduresExist(pool);
         const { tur, tarih, id } = params;
         let header = null;
+        let kapanisId = null;
         if (id) {
             const res = await pool
                 .request()
@@ -168,7 +174,6 @@ export class KurSqlRepository {
                 header = res.recordset[0];
         }
         else if (tur === 0 || tur === 1) {
-            // TUR 0 and TUR 1 have only one active record
             const res = await pool
                 .request()
                 .input("tur", sql.TinyInt, tur)
@@ -177,7 +182,6 @@ export class KurSqlRepository {
                 header = res.recordset[0];
             }
             else {
-                // Automatically initialize the first record using procedure
                 const initReq = pool.request();
                 initReq.output("KUR_TABLOSU_ID", sql.Int, null);
                 initReq.input("TUR", sql.TinyInt, tur);
@@ -193,15 +197,27 @@ export class KurSqlRepository {
                 if (createdRes.recordset.length > 0)
                     header = createdRes.recordset[0];
             }
+            if (tur === 0) {
+                const kapRes = await pool.request().query(`
+          SELECT TOP 1 [KUR_TABLOSU_ID]
+          FROM [dbo].[TODVZ_KUR_TABLOSU]
+          WHERE [TUR] = 2 
+            AND [TARIH] >= CAST(GETDATE() AS DATE) 
+            AND [TARIH] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
+          ORDER BY [KUR_TABLOSU_ID] DESC
+        `);
+                if (kapRes.recordset.length > 0) {
+                    kapanisId = kapRes.recordset[0].KUR_TABLOSU_ID;
+                }
+            }
         }
         else {
-            // TUR 2 or 3 (Saklanan): query by tarih or latest
             const req = pool.request();
             req.input("tur", sql.TinyInt, tur);
             let q = "SELECT TOP 1 * FROM [dbo].[TODVZ_KUR_TABLOSU] WHERE [TUR] = @tur";
             if (tarih) {
                 req.input("tarih", sql.Date, new Date(tarih));
-                q += " AND CAST([TARIH] AS DATE) = CAST(@tarih AS DATE)";
+                q += " AND [TARIH] >= @tarih AND [TARIH] < DATEADD(DAY, 1, @tarih)";
             }
             q += " ORDER BY [ZAMAN] DESC, [KUR_TABLOSU_ID] DESC";
             const res = await req.query(q);
@@ -209,8 +225,6 @@ export class KurSqlRepository {
                 header = res.recordset[0];
             }
         }
-        // Now fetch rates joined with TODVZ_PARA
-        // All currencies from TODVZ_PARA are fetched so any active currency is represented
         const kurTablosuId = header ? header.KUR_TABLOSU_ID : 0;
         const ratesQuery = `
       SELECT 
@@ -218,6 +232,11 @@ export class KurSqlRepository {
         LTRIM(RTRIM(ISNULL(P.[KOD], ''))) AS [PARA_KOD],
         LTRIM(RTRIM(ISNULL(P.[AD], ''))) AS [PARA_AD],
         ISNULL(P.[SIRA_NO], 0) AS [SIRA_NO],
+        P.[HAS_ORANI],
+        P.[HAS_ALIS_KATSAYISI],
+        P.[HAS_SATIS_KATSAYISI],
+        P.[GRAMAJ],
+        P.[URUN_TIPI],
         K.[DOVIZ_ALIS],
         K.[DOVIZ_SATIS],
         K.[EFEKTIF_ALIS],
@@ -245,19 +264,12 @@ export class KurSqlRepository {
             efektifAlis: r.EFEKTIF_ALIS !== null && r.EFEKTIF_ALIS !== undefined && Number(r.EFEKTIF_ALIS) !== 0 ? Number(r.EFEKTIF_ALIS) : null,
             efektifSatis: r.EFEKTIF_SATIS !== null && r.EFEKTIF_SATIS !== undefined && Number(r.EFEKTIF_SATIS) !== 0 ? Number(r.EFEKTIF_SATIS) : null,
             parite: r.PARITE !== null && r.PARITE !== undefined && Number(r.PARITE) !== 0 ? Number(r.PARITE) : null,
+            hasOrani: r.HAS_ORANI !== null && r.HAS_ORANI !== undefined ? Number(r.HAS_ORANI) : null,
+            hasAlisKatsayisi: r.HAS_ALIS_KATSAYISI !== null && r.HAS_ALIS_KATSAYISI !== undefined ? Number(r.HAS_ALIS_KATSAYISI) : null,
+            hasSatisKatsayisi: r.HAS_SATIS_KATSAYISI !== null && r.HAS_SATIS_KATSAYISI !== undefined ? Number(r.HAS_SATIS_KATSAYISI) : null,
+            gramaj: r.GRAMAJ !== null && r.GRAMAJ !== undefined ? Number(r.GRAMAJ) : null,
+            urunTipi: r.URUN_TIPI !== null && r.URUN_TIPI !== undefined ? Number(r.URUN_TIPI) : null,
         }));
-        let kapanisId = null;
-        if (tur === 0) {
-            const kapRes = await pool.request().query(`
-        SELECT TOP 1 [KUR_TABLOSU_ID]
-        FROM [dbo].[TODVZ_KUR_TABLOSU]
-        WHERE [TUR] = 2 AND CAST([TARIH] AS DATE) = CAST(GETDATE() AS DATE)
-        ORDER BY [KUR_TABLOSU_ID] DESC
-      `);
-            if (kapRes.recordset.length > 0) {
-                kapanisId = kapRes.recordset[0].KUR_TABLOSU_ID;
-            }
-        }
         if (!header) {
             return {
                 id: 0,
