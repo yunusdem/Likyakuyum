@@ -297,19 +297,7 @@ export class CariSqlRepository {
 
             UNION ALL
 
-            -- 2. TODVZ_SARRAF_FISI (Ödeme satırları)
-            SELECT 
-              ISNULL(OS.[CARI_KART_ID], SF.[CARI_KART_ID]) AS [CARI_KART_ID],
-              OS.[PARA_ID],
-              CASE WHEN SF.[TIP] = 1 THEN OS.[TUTAR] ELSE 0 END AS [BORC],
-              CASE WHEN SF.[TIP] = 0 THEN OS.[TUTAR] ELSE 0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
-            INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
-            WHERE (OS.[CARI_KART_ID] IS NOT NULL OR (SF.[CARI_KART_ID] IS NOT NULL AND OS.[ODEME_ARACI_TURU] = 1))
-
-            UNION ALL
-
-            -- 2b. TODVZ_SARRAF_FISI (Doğrudan fiş satırları)
+            -- 2a. TODVZ_SARRAF_FISI (Ana fiş kalemleri / altın-maden)
             SELECT 
               SF.[CARI_KART_ID],
               ISNULL(SFS.[URUN_ID], 1) AS [PARA_ID],
@@ -317,8 +305,21 @@ export class CariSqlRepository {
               CASE WHEN SF.[TIP] = 0 THEN ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) ELSE 0 END AS [ALACAK]
             FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] SFS WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON SFS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
-            WHERE SF.[CARI_KART_ID] IS NOT NULL
-              AND NOT EXISTS (SELECT 1 FROM [dbo].[TODVZ_ODEME_SATIRI] WHERE SARRAF_FISI_ID = SF.SARRAF_FISI_ID)
+            WHERE SF.[CARI_KART_ID] IS NOT NULL AND SF.[CARI_KART_ID] > 0
+
+            UNION ALL
+
+            -- 2b. TODVZ_SARRAF_FISI (Ödeme / Tahsilat satırları)
+            -- Satışta (TIP=1) ödeme satırı müşterinin yaptığı tahsilattır (ALACAK), Alışta (TIP=0) yapılan ödemedir (BORÇ)
+            SELECT 
+              COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
+              ISNULL(OS.[PARA_ID], 1) AS [PARA_ID],
+              CASE WHEN SF.[TIP] = 0 THEN OS.[TUTAR] ELSE 0 END AS [BORC],
+              CASE WHEN SF.[TIP] = 1 THEN OS.[TUTAR] ELSE 0 END AS [ALACAK]
+            FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
+            WHERE (OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0)
+               OR (SF.[CARI_KART_ID] IS NOT NULL AND SF.[CARI_KART_ID] > 0 AND (OS.[ODEME_ARACI_TURU] = 1 OR OS.[CARI_KART_ID] IS NOT NULL))
 
             UNION ALL
 
@@ -330,19 +331,31 @@ export class CariSqlRepository {
               CASE WHEN F.[TIP] = 0 THEN FS.[TUTAR] ELSE 0 END AS [ALACAK]
             FROM [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_FIS] F WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
-            WHERE F.[CARI_KART_ID] IS NOT NULL AND ISNULL(F.[IPTAL], 0) = 0
+            WHERE F.[CARI_KART_ID] IS NOT NULL AND F.[CARI_KART_ID] > 0 AND ISNULL(F.[IPTAL], 0) = 0
 
             UNION ALL
 
-            -- 4. TODVZ_FATURA (Perakende Faturası)
+            -- 4a. TODVZ_FATURA (Perakende Faturası Ana Kalemleri)
             SELECT 
-              ISNULL(FO.[CARI_KART_ID], FAT.[CARI_KART_ID]) AS [CARI_KART_ID],
+              FAT.[CARI_KART_ID],
               1 AS [PARA_ID], -- TL
               CASE WHEN FAT.[FATURA_TIPI] = 1 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [BORC],
               CASE WHEN FAT.[FATURA_TIPI] = 2 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [ALACAK]
             FROM [dbo].[TODVZ_FATURA] FAT WITH (NOLOCK)
-            LEFT JOIN [dbo].[TODVZ_FATURA_ODEME] FO WITH (NOLOCK) ON FO.[FATURA_ID] = FAT.[FATURA_ID] AND (FO.[ODEME_ARACI_TURU] = 1 OR FO.[CARI_KART_ID] IS NOT NULL)
-            WHERE (FAT.[CARI_KART_ID] IS NOT NULL OR FO.[CARI_KART_ID] IS NOT NULL)
+            WHERE FAT.[CARI_KART_ID] IS NOT NULL AND FAT.[CARI_KART_ID] > 0
+
+            UNION ALL
+
+            -- 4b. TODVZ_FATURA (Perakende Faturası Ödeme Satırları)
+            SELECT 
+              COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
+              1 AS [PARA_ID], -- TL
+              CASE WHEN FAT.[FATURA_TIPI] = 2 THEN FO.[TUTAR] ELSE 0 END AS [BORC],
+              CASE WHEN FAT.[FATURA_TIPI] = 1 THEN FO.[TUTAR] ELSE 0 END AS [ALACAK]
+            FROM [dbo].[TODVZ_FATURA_ODEME] FO WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_FATURA] FAT WITH (NOLOCK) ON FO.[FATURA_ID] = FAT.[FATURA_ID]
+            WHERE (FO.[CARI_KART_ID] IS NOT NULL AND FO.[CARI_KART_ID] > 0)
+               OR (FAT.[CARI_KART_ID] IS NOT NULL AND FAT.[CARI_KART_ID] > 0 AND (FO.[ODEME_ARACI_TURU] = 1 OR FO.[CARI_KART_ID] IS NOT NULL))
           )
           SELECT 
             M.[CARI_KART_ID],

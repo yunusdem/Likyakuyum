@@ -177,7 +177,7 @@ export const PanoPage: React.FC = () => {
   }, [activePano, fetchLiveBoard]);
 
   // Fullscreen Handler
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
@@ -187,15 +187,34 @@ export const PanoPage: React.FC = () => {
       }
       setIsFullscreen(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const handleFsChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
     };
     document.addEventListener("fullscreenchange", handleFsChange);
-    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    document.addEventListener("mozfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+      document.removeEventListener("mozfullscreenchange", handleFsChange);
+    };
   }, []);
+
+  // Keyboard Shortcuts for TV Display: F = Fullscreen toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleFullscreen]);
 
   // Parsed Styles
   const firmaStyle = parseStyleToCss(activePano?.firmaAdiOzellikleri || "", "28px");
@@ -213,43 +232,115 @@ export const PanoPage: React.FC = () => {
 
   return (
     <div
-      className="pano-live-page min-vh-100 d-flex flex-column"
+      className="pano-live-page min-vh-100 d-flex flex-column user-select-none"
+      onDoubleClick={toggleFullscreen}
+      title="Tam ekran yapmak veya çıkmak için çift tıklayabilirsiniz (veya F tuşuna basabilirsiniz)"
       style={{
         backgroundColor: effectiveBgColor,
         color: "#ffffff",
         paddingLeft: `${activePano?.boslukSayisi || 0}px`,
         paddingRight: `${activePano?.boslukSayisi || 0}px`,
         transition: "background-color 0.3s ease",
+        cursor: "default",
       }}
     >
-      {/* 1. Standard Top ERP Action Toolbar */}
+      {/* 1. Standalone Top Bar Controls (Non-Fullscreen) */}
       {!isFullscreen && (
-        <div className="print-none">
-          <ERPToolbar
-            pageTitle={activePano ? `C- Pano (${activePano.panoNo})` : "C- Pano"}
-            pageIcon={<IconDeviceTv size={20} className="text-warning" />}
-            onNew={() => navigate("/kur/pano-tanimi")}
-            onSave={fetchLiveBoard}
-            onSearch={() => setShowSearchModal(true)}
-            onFirst={handleFirst}
-            onPrev={handlePrev}
-            onNext={handleNext}
-            onLast={handleLast}
-            onRefresh={fetchLiveBoard}
-            onPrint={() => window.print()}
-            disabled={loading}
-            rightContent={
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={toggleFullscreen}
-                className="d-flex align-items-center gap-1 py-1 px-2.5 fw-bold shadow-xs"
-              >
-                {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
-                <span>{isFullscreen ? "Çık" : "TV Tam Ekran"}</span>
-              </Button>
-            }
-          />
+        <div className="print-none bg-dark bg-opacity-75 border-bottom border-secondary px-3 py-2 d-flex align-items-center justify-content-between flex-wrap gap-2 shadow-sm">
+          <div className="d-flex align-items-center gap-2">
+            <IconDeviceTv size={22} className="text-warning" />
+            <span className="fw-bold text-light font-monospace fs-6">
+              CANLI DİJİTAL PANO {activePano ? `(${activePano.panoNo})` : ""}
+            </span>
+            <Badge bg="warning" text="dark" className="fw-bold ms-1">
+              TV / Tablet Modu
+            </Badge>
+          </div>
+
+          <div className="d-flex align-items-center gap-2">
+            <Button
+              variant="outline-light"
+              size="sm"
+              onClick={() => setShowSearchModal(true)}
+              className="d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs"
+              title="Pano Seç (Dürbün)"
+            >
+              <IconBinoculars size={16} className="text-warning" />
+              <span>Pano Seç ({activePano?.panoNo || "Dürbün"})</span>
+            </Button>
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              onClick={fetchLiveBoard}
+              disabled={loading}
+              className="d-flex align-items-center gap-1 py-1 px-2.5 text-light border-secondary"
+              title="Canlı Fiyatları Yenile"
+            >
+              <IconRefresh size={16} />
+              <span>Yenile</span>
+            </Button>
+            <Button
+              variant="outline-info"
+              size="sm"
+              onClick={() => navigate("/kur/pano-tanimi")}
+              className="d-flex align-items-center gap-1 py-1 px-2.5 shadow-xs"
+              title="Pano Tanımlarına Git"
+            >
+              <IconSettings size={16} />
+              <span>Pano Tanımları</span>
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={toggleFullscreen}
+              className="d-flex align-items-center gap-1.5 py-1 px-3 fw-bold shadow-xs ms-1"
+              title="TV Tam Ekran Modunu Başlat (F tuşu)"
+            >
+              <IconMaximize size={16} />
+              <span>TV Tam Ekran</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Hover Controls in Fullscreen Mode */}
+      {isFullscreen && (
+        <div
+          className="position-fixed top-0 end-0 m-3 d-flex align-items-center gap-2 print-none"
+          style={{ zIndex: 9999 }}
+        >
+          <Button
+            variant="dark"
+            size="sm"
+            onClick={() => setShowSearchModal(true)}
+            className="rounded-pill px-3 py-1.5 shadow-lg border border-secondary d-flex align-items-center gap-1.5 text-white"
+            style={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(15, 23, 42, 0.85)" }}
+            title="Pano Seç"
+          >
+            <IconBinoculars size={16} className="text-warning" />
+            <span className="small fw-semibold">{activePano?.panoNo || "Pano Seç"}</span>
+          </Button>
+          <Button
+            variant="dark"
+            size="sm"
+            onClick={fetchLiveBoard}
+            className="rounded-circle p-2 shadow-lg border border-secondary text-white"
+            style={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(15, 23, 42, 0.85)" }}
+            title="Fiyatları Yenile"
+          >
+            <IconRefresh size={16} />
+          </Button>
+          <Button
+            variant="dark"
+            size="sm"
+            onClick={toggleFullscreen}
+            className="rounded-pill px-3 py-1.5 shadow-lg border border-secondary d-flex align-items-center gap-1.5 text-white"
+            style={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(15, 23, 42, 0.85)" }}
+            title="Tam Ekrandan Çık (Esc veya F)"
+          >
+            <IconMinimize size={16} />
+            <span className="small fw-semibold">Tam Ekrandan Çık</span>
+          </Button>
         </div>
       )}
 

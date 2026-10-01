@@ -16,12 +16,115 @@ export function onlyDigits(val: string | number | undefined | null, maxLength?: 
  */
 export function onlyDecimal(val: string | number | undefined | null): string {
   if (val === undefined || val === null) return "";
-  let sanitized = String(val).replace(/[^0-9.,]/g, "");
-  const parts = sanitized.split(/[.,]/);
-  if (parts.length > 2) {
-    sanitized = parts[0] + "." + parts.slice(1).join("");
+  return String(val).replace(/[^0-9.,\-]/g, "");
+}
+
+/**
+ * Değer girildikten sonra tüm binlik basamakları (yüzler, binler, milyonlar, milyarlar) nokta '.' ile ayırır.
+ * Örnek: "1000000" -> "1.000.000", "500000" -> "500.000", "5000" -> "5.000"
+ * Kullanıcı virgül girmeden ASLA otomatik virgül veya kuruş (,00) koymaz.
+ */
+export function formatWithThousandDot(val: string | number | undefined | null): string {
+  if (val === undefined || val === null || val === "") return "";
+  const s = String(val).trim().replace(/\s/g, "");
+  if (!s) return "";
+
+  // 1. Kullanıcı virgül girmişse: virgül ondalık ayırıcıdır, tam kısmı binlik nokta ile formatla, virgül ve sonrasını koru
+  if (s.includes(",")) {
+    const parts = s.split(",");
+    const intDigits = parts[0].replace(/\D/g, "");
+    const formattedInt = intDigits ? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "0";
+    const decPart = parts.slice(1).join("").replace(/[^0-9]/g, "");
+    return parts.length > 1 ? `${formattedInt},${decPart}` : formattedInt;
   }
-  return sanitized;
+
+  // 2. "0.5", "0.25" gibi 0 ile başlayan küçük ondalık sayılar
+  if (s.startsWith("0.") || s.startsWith(".")) {
+    return s;
+  }
+
+  // 3. Tüm tam sayılar ve binlikler (1000 -> 1.000, 1000000 -> 1.000.000)
+  const rawDigits = s.replace(/\D/g, "");
+  if (!rawDigits) return "";
+  return rawDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/**
+ * Miktar alanları için temizleme ve metin yönetimi.
+ * Kullanıcı girdisini kesmez, sınırlandırmaz ve nokta (.) ile basamakları ayırır.
+ * Kullanıcı virgül girmeden ASLA otomatik virgül koymaz.
+ */
+export function formatMiktar(val: string | number | undefined | null): string {
+  if (val === undefined || val === null || val === "") return "";
+  if (typeof val === "number") {
+    if (isNaN(val)) return "";
+    const str = String(val);
+    if (str.includes(".")) {
+      const parts = str.split(".");
+      const formattedInt = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+      return `${formattedInt},${parts[1]}`;
+    }
+    return str.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
+  return formatWithThousandDot(val);
+}
+
+/**
+ * Binlik basamaklı ve/veya virgüllü metinleri doğru sayıya çevirir.
+ * 1.000.000 -> 1000000, 5.000 -> 5000, 5000 -> 5000, 5000.50 -> 5000.5, 5000,50 -> 5000.5
+ */
+export function parseDecimal(val: any): number {
+  if (val === null || val === undefined || val === "") return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  const str = String(val).trim().replace(/\s/g, "");
+  if (!str) return 0;
+
+  // 1. Hem nokta hem virgül içeriyorsa
+  if (str.includes(",") && str.includes(".")) {
+    const lastComma = str.lastIndexOf(",");
+    const lastDot = str.lastIndexOf(".");
+    if (lastComma > lastDot) {
+      // Türkçe: "500.000,50" -> noktalar binlik, virgül ondalık
+      const clean = str.replace(/\./g, "").replace(",", ".");
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : num;
+    } else {
+      // İngilizce: "500,000.50" -> virgüller binlik, nokta ondalık
+      const clean = str.replace(/,/g, "");
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : num;
+    }
+  }
+
+  // 2. Sadece virgül içeriyorsa
+  if (str.includes(",")) {
+    const parts = str.split(",");
+    if (parts.length > 2) {
+      // Çoklu virgül ("1,000,000") -> binlik
+      const clean = str.replace(/,/g, "");
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : num;
+    }
+    const clean = str.replace(",", ".");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+
+  // 3. Sadece nokta içeriyorsa
+  if (str.includes(".")) {
+    // "0.5", "0.25", ".75" gibi 0 ile başlayan küçük ondalık sayılar
+    if (str.startsWith("0.") || str.startsWith(".")) {
+      const num = parseFloat(str);
+      return isNaN(num) ? 0 : num;
+    }
+    // "500.000", "5.000", "1.000.000" gibi tüm sayılarda nokta binlik ayraçtır:
+    const clean = str.replace(/\./g, "");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
 }
 
 /**
@@ -104,21 +207,7 @@ export function blockNonNumericKeys(
   if (allowedControlKeys.includes(e.key)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-  if (allowDecimal && (e.key === "." || e.key === ",")) {
-    const target = e.target as HTMLInputElement;
-    const currentVal = target.value || "";
-    // If text is selected and contains the dot/comma, replacement is allowed
-    const hasSelection = target.selectionStart !== null && target.selectionEnd !== null && target.selectionStart !== target.selectionEnd;
-    if (!currentVal.includes(".") && !currentVal.includes(",")) {
-      return;
-    }
-    if (hasSelection) {
-      const selectedText = currentVal.substring(target.selectionStart!, target.selectionEnd!);
-      if (selectedText.includes(".") || selectedText.includes(",")) {
-        return;
-      }
-    }
-    e.preventDefault();
+  if (allowDecimal && (e.key === "." || e.key === "," || e.key === "-")) {
     return;
   }
 
@@ -207,21 +296,7 @@ export function initGlobalNumericInputInterceptor() {
       if (allowedControlKeys.includes(e.key)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (allowDecimal && (e.key === "." || e.key === ",")) {
-        const input = target as HTMLInputElement;
-        const currentVal = input.value || "";
-        const hasSelection = input.selectionStart !== null && input.selectionEnd !== null && input.selectionStart !== input.selectionEnd;
-        if (!currentVal.includes(".") && !currentVal.includes(",")) {
-          return;
-        }
-        if (hasSelection) {
-          const selectedText = currentVal.substring(input.selectionStart!, input.selectionEnd!);
-          if (selectedText.includes(".") || selectedText.includes(",")) {
-            return;
-          }
-        }
-        e.preventDefault();
-        e.stopPropagation();
+      if (allowDecimal && (e.key === "." || e.key === "," || e.key === "-")) {
         return;
       }
 

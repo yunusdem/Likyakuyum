@@ -16,6 +16,8 @@ export class CariHareketService {
       tip?: number;
       hareketTipi?: number;
       search?: string;
+      onlyCariHareket?: boolean;
+      kaynak?: string;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<CariHareketModel[]> {

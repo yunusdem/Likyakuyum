@@ -147,8 +147,8 @@ export class CariHareketSqlRepository {
             if (filters?.vezneId)
                 sfWhere.push("SF.[VEZNE_ID] = @vezneId");
             if (filters?.tip !== undefined && filters?.tip !== null && String(filters?.tip) !== "-1") {
-                // SF.TIP: 0 Alış (Alacak=1), 1 Satış (Borç=0)
-                sfWhere.push("(CASE WHEN SF.[TIP] = 1 THEN 0 ELSE 1 END) = @tip");
+                // SF.TIP: 0 Alış (Borç=0 / Para Çıkışı), 1 Satış (Alacak=1 / Para Girişi)
+                sfWhere.push("(CASE WHEN SF.[TIP] = 0 THEN 0 ELSE 1 END) = @tip");
             }
             if (filters?.hareketTipi !== undefined && filters?.hareketTipi !== null && String(filters?.hareketTipi) !== "-1") {
                 // Sarraf fişleri hareketTipi = 10
@@ -165,8 +165,8 @@ export class CariHareketSqlRepository {
           ISNULL(OS.[CARI_KART_ID], SF.[CARI_KART_ID]) AS [CARI_KART_ID],
           SF.[TARIH],
           10 AS [HAREKET_TIPI],
-          CASE WHEN SF.[TIP] = 1 THEN 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
-          CASE WHEN SF.[TIP] = 1 THEN 0 ELSE 1 END AS [TIP],
+          CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
+          CASE WHEN SF.[TIP] = 0 THEN 0 ELSE 1 END AS [TIP],
           1 AS [EKLEYEN_ID],
           ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
           1 AS [GUNCELLEYEN_ID],
@@ -194,8 +194,8 @@ export class CariHareketSqlRepository {
             if (filters?.vezneId)
                 dfWhere.push("F.[VEZNE_ID] = @vezneId");
             if (filters?.tip !== undefined && filters?.tip !== null && String(filters?.tip) !== "-1") {
-                // F.TIP: 0 Alış (Alacak=1), 1 Satış (Borç=0), 2 Arbitraj
-                dfWhere.push("(CASE WHEN F.[TIP] = 1 THEN 0 ELSE 1 END) = @tip");
+                // F.TIP: 0 Alış (Borç=0), 1 Satış (Alacak=1), 2 Arbitraj
+                dfWhere.push("(CASE WHEN F.[TIP] = 0 THEN 0 ELSE 1 END) = @tip");
             }
             if (filters?.hareketTipi !== undefined && filters?.hareketTipi !== null && String(filters?.hareketTipi) !== "-1") {
                 if (Number(filters.hareketTipi) !== 11)
@@ -216,7 +216,7 @@ export class CariHareketSqlRepository {
             WHEN F.[TIP] = 1 THEN 'Döviz Satış Fişi #' + ISNULL(F.[BELGE_NO], CAST(F.[FIS_ID] AS VARCHAR))
             ELSE 'Döviz Arbitraj Fişi #' + ISNULL(F.[BELGE_NO], CAST(F.[FIS_ID] AS VARCHAR))
           END AS [ACIKLAMA],
-          CASE WHEN F.[TIP] = 1 THEN 0 ELSE 1 END AS [TIP],
+          CASE WHEN F.[TIP] = 0 THEN 0 ELSE 1 END AS [TIP],
           ISNULL(F.[EKLEYEN_ID], 1) AS [EKLEYEN_ID],
           ISNULL(F.[EKLEME_ZAMANI], F.[TARIH]) AS [EKLEME_ZAMANI],
           ISNULL(F.[GUNCELLEYEN_ID], 1) AS [GUNCELLEYEN_ID],
@@ -243,8 +243,8 @@ export class CariHareketSqlRepository {
             if (filters?.vezneId)
                 fatWhere.push("FAT.[VEZNE_ID] = @vezneId");
             if (filters?.tip !== undefined && filters?.tip !== null && String(filters?.tip) !== "-1") {
-                // FAT.FATURA_TIPI: 1 Satış (Borç=0), 2 İade (Alacak=1)
-                fatWhere.push("(CASE WHEN FAT.[FATURA_TIPI] = 1 THEN 0 ELSE 1 END) = @tip");
+                // FAT.FATURA_TIPI: 1 Satış (Alacak=1), 2 İade (Borç=0)
+                fatWhere.push("(CASE WHEN FAT.[FATURA_TIPI] = 2 THEN 0 ELSE 1 END) = @tip");
             }
             if (filters?.hareketTipi !== undefined && filters?.hareketTipi !== null && String(filters?.hareketTipi) !== "-1") {
                 if (Number(filters.hareketTipi) !== 12)
@@ -260,8 +260,8 @@ export class CariHareketSqlRepository {
           ISNULL(FO.[CARI_KART_ID], FAT.[CARI_KART_ID]) AS [CARI_KART_ID],
           FAT.[TARIH],
           12 AS [HAREKET_TIPI],
-          CASE WHEN FAT.[FATURA_TIPI] = 1 THEN 'Perakende Satış Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) ELSE 'Perakende İade Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) END AS [ACIKLAMA],
-          CASE WHEN FAT.[FATURA_TIPI] = 1 THEN 0 ELSE 1 END AS [TIP],
+          CASE WHEN FAT.[FATURA_TIPI] = 2 THEN 'Perakende İade Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) ELSE 'Perakende Satış Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) END AS [ACIKLAMA],
+          CASE WHEN FAT.[FATURA_TIPI] = 2 THEN 0 ELSE 1 END AS [TIP],
           1 AS [EKLEYEN_ID],
           FAT.[TARIH] AS [EKLEME_ZAMANI],
           1 AS [GUNCELLEYEN_ID],
@@ -806,8 +806,8 @@ export class CariHareketSqlRepository {
           -- 2. TODVZ_SARRAF_FISI (Ödeme satırları - Cari Açık Hesap)
           SELECT 
             OS.[PARA_ID],
-            CASE WHEN SF.[TIP] = 1 THEN OS.[TUTAR] ELSE 0 END AS [BORC],
-            CASE WHEN SF.[TIP] = 0 THEN OS.[TUTAR] ELSE 0 END AS [ALACAK]
+            CASE WHEN SF.[TIP] = 0 THEN OS.[TUTAR] ELSE 0 END AS [BORC],
+            CASE WHEN SF.[TIP] = 1 THEN OS.[TUTAR] ELSE 0 END AS [ALACAK]
           FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
           INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
           WHERE (OS.[CARI_KART_ID] = @id OR (SF.[CARI_KART_ID] = @id AND OS.[ODEME_ARACI_TURU] = 1))
@@ -817,8 +817,8 @@ export class CariHareketSqlRepository {
           -- 2b. TODVZ_SARRAF_FISI (Doğrudan fiş satırları eğer ödeme satırı yoksa)
           SELECT 
             ISNULL(SFS.[URUN_ID], 1) AS [PARA_ID],
-            CASE WHEN SF.[TIP] = 1 THEN ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) ELSE 0 END AS [BORC],
-            CASE WHEN SF.[TIP] = 0 THEN ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) ELSE 0 END AS [ALACAK]
+            CASE WHEN SF.[TIP] = 0 THEN ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) ELSE 0 END AS [BORC],
+            CASE WHEN SF.[TIP] = 1 THEN ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) ELSE 0 END AS [ALACAK]
           FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] SFS WITH (NOLOCK)
           INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON SFS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
           WHERE SF.[CARI_KART_ID] = @id
@@ -829,8 +829,8 @@ export class CariHareketSqlRepository {
           -- 3. TODVZ_FIS (Döviz Fişi)
           SELECT 
             FS.[PARA_ID],
-            CASE WHEN F.[TIP] = 1 THEN FS.[TUTAR] ELSE 0 END AS [BORC],
-            CASE WHEN F.[TIP] = 0 THEN FS.[TUTAR] ELSE 0 END AS [ALACAK]
+            CASE WHEN F.[TIP] = 0 THEN FS.[TUTAR] ELSE 0 END AS [BORC],
+            CASE WHEN F.[TIP] = 1 THEN FS.[TUTAR] ELSE 0 END AS [ALACAK]
           FROM [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK)
           INNER JOIN [dbo].[TODVZ_FIS] F WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
           WHERE F.[CARI_KART_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
@@ -840,8 +840,8 @@ export class CariHareketSqlRepository {
           -- 4. TODVZ_FATURA (Perakende Faturası)
           SELECT 
             1 AS [PARA_ID], -- TL
-            CASE WHEN FAT.[FATURA_TIPI] = 1 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [BORC],
-            CASE WHEN FAT.[FATURA_TIPI] = 2 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [ALACAK]
+            CASE WHEN FAT.[FATURA_TIPI] = 2 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [BORC],
+            CASE WHEN FAT.[FATURA_TIPI] = 1 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [ALACAK]
           FROM [dbo].[TODVZ_FATURA] FAT WITH (NOLOCK)
           WHERE (FAT.[CARI_KART_ID] = @id OR EXISTS (SELECT 1 FROM [dbo].[TODVZ_FATURA_ODEME] WHERE FATURA_ID = FAT.FATURA_ID AND CARI_KART_ID = @id))
         )
@@ -906,7 +906,7 @@ export class CariHareketSqlRepository {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
             }).format(absHas);
-            const headerLabel = absHas > 0.001 ? `${formattedHas} HAS ${netHasYon}` : "HAS 0.00";
+            const headerLabel = absHas > 0.001 ? `${formattedHas} HAS` : "0,00 HAS";
             return {
                 cariKartId: id,
                 kod: cari.KOD,
@@ -926,7 +926,7 @@ export class CariHareketSqlRepository {
                 satirlar: [],
                 netHasBakiye: 0,
                 netHasYon: "-",
-                headerLabel: "HAS 0.00",
+                headerLabel: "0,00 HAS",
             };
         }
     }

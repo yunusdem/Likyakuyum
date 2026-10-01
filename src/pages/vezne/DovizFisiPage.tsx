@@ -61,10 +61,9 @@ import {
   KayitsizMusteriItem,
 } from "../../services/dovizFisService";
 import { useAuth } from "../../context/AuthContext";
-import { printReportTable } from "../../utils/printReport";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generateDovizReceiptHtml } from "../../utils/receiptHtmlGenerator";
-import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import { onlyDecimal, blockNonNumericKeys, parseDecimal, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
 
@@ -102,55 +101,8 @@ interface GridLineItem {
   tutar: number | string;
 }
 
-const parseDecimal = (val: any): number => {
-  if (val === null || val === undefined || val === "") return 0;
-  if (typeof val === "number") return isNaN(val) ? 0 : val;
-  const s = String(val).trim().replace(/\s/g, "");
-  if (!s) return 0;
-  if (s.includes(".") && s.includes(",")) {
-    const clean = s.replace(/\./g, "").replace(",", ".");
-    const num = parseFloat(clean);
-    return isNaN(num) ? 0 : num;
-  }
-  const clean = s.replace(",", ".");
-  const num = parseFloat(clean);
-  return isNaN(num) ? 0 : num;
-};
-
-const parseMiktar = (val: any): number => {
-  if (val === null || val === undefined || val === "") return 0;
-  if (typeof val === "number") return isNaN(val) ? 0 : val;
-  const s = String(val).trim().replace(/\s/g, "");
-  if (!s) return 0;
-  if (s.includes(".") && s.includes(",")) {
-    const clean = s.replace(/\./g, "").replace(",", ".");
-    const num = parseFloat(clean);
-    return isNaN(num) ? 0 : num;
-  }
-  if (s.includes(",")) {
-    const clean = s.replace(",", ".");
-    const num = parseFloat(clean);
-    return isNaN(num) ? 0 : num;
-  }
-  const dotCount = (s.match(/\./g) || []).length;
-  if (dotCount > 1) {
-    const clean = s.replace(/\./g, "");
-    const num = parseFloat(clean);
-    return isNaN(num) ? 0 : num;
-  }
-  const parts = s.split(".");
-  if (parts.length === 2 && parts[1].length === 3 && parseInt(parts[1], 10) === 0) {
-    const clean = s.replace(/\./g, "");
-    const num = parseFloat(clean);
-    return isNaN(num) ? 0 : num;
-  }
-  const num = parseFloat(s);
-  return isNaN(num) ? 0 : num;
-};
-
-const parseKur = (val: any): number => {
-  return parseDecimal(val);
-};
+const parseMiktar = (val: any): number => parseDecimal(val);
+const parseKur = (val: any): number => parseDecimal(val);
 
 const DEFAULT_POSTA_KODLARI = [
   { id: 34110, kod: "34110", ad: "Kapalıçarşı / Fatih", il: "İstanbul", ilce: "Fatih" },
@@ -1664,14 +1616,7 @@ export const DovizFisiPage: React.FC = () => {
       field === "kmv" ||
       field === "kmvOrani"
     ) {
-      let cleanVal = value.replace(/[^0-9.,]/g, "");
-      const firstSep = cleanVal.search(/[.,]/);
-      if (firstSep !== -1) {
-        const before = cleanVal.slice(0, firstSep + 1);
-        const after = cleanVal.slice(firstSep + 1).replace(/[.,]/g, "");
-        cleanVal = before + after;
-      }
-      value = cleanVal;
+      value = onlyDecimal(value);
     }
 
     setLines((prev) =>

@@ -27,6 +27,8 @@ import {
   IconArchive,
   IconDeviceFloppy,
   IconRefresh,
+  IconCalculator,
+  IconSparkles,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal from "../../components/common/LookupModal";
@@ -889,6 +891,204 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     }
   };
 
+  // HAS Altın Fiyatına Göre Diğer Altın Kurlarını Otomatik Hesaplama
+  const handleAutoCalculateGoldRates = () => {
+    try {
+      setAlertError(null);
+      setAlertSuccess(null);
+
+      // 1. Listedeki HAS altın satırını bul (kod === 'HAS' veya adı HAS ALTIN)
+      let hasRowIdx = rows.findIndex((r) => r.kod?.trim().toUpperCase() === "HAS");
+      if (hasRowIdx === -1) {
+        hasRowIdx = rows.findIndex(
+          (r) =>
+            r.ad?.trim().toUpperCase() === "HAS ALTIN" ||
+            r.ad?.trim().toUpperCase() === "HAS" ||
+            r.kod?.trim().toUpperCase().startsWith("HAS")
+        );
+      }
+      if (hasRowIdx === -1) {
+        hasRowIdx = rows.findIndex(
+          (r) =>
+            r.kod?.trim().toUpperCase().includes("HAS") ||
+            r.ad?.trim().toUpperCase().includes("HAS")
+        );
+      }
+
+      if (hasRowIdx === -1) {
+        setAlertError("Listede HAS altın (kod: HAS) bulunamadı. Lütfen ürün tanımlarını kontrol ediniz.");
+        return;
+      }
+
+      // 2. HAS Fiyatlarını al (rawInputs veya row nesnesinden)
+      const getVal = (rowIdx: number, col: EditableCol, fallback?: number | null): number | null => {
+        const raw = rawInputs[getCellKey(rowIdx, col)];
+        if (raw !== undefined && raw !== null && raw.trim() !== "") {
+          const p = parseFloat(raw.replace(",", "."));
+          if (!isNaN(p) && p > 0) return p;
+        }
+        if (fallback !== undefined && fallback !== null && !isNaN(fallback) && fallback > 0) {
+          return fallback;
+        }
+        return null;
+      };
+
+      const hasRow = rows[hasRowIdx];
+      const hasEfektifAlis = getVal(hasRowIdx, "efektifAlis", hasRow.efektifAlis);
+      const hasEfektifSatis = getVal(hasRowIdx, "efektifSatis", hasRow.efektifSatis);
+      const hasDovizAlis = getVal(hasRowIdx, "dovizAlis", hasRow.dovizAlis);
+      const hasDovizSatis = getVal(hasRowIdx, "dovizSatis", hasRow.dovizSatis);
+
+      const baseAlisEfektif = hasEfektifAlis ?? hasDovizAlis;
+      const baseSatisEfektif = hasEfektifSatis ?? hasDovizSatis;
+      const baseAlisDoviz = hasDovizAlis ?? hasEfektifAlis;
+      const baseSatisDoviz = hasDovizSatis ?? hasEfektifSatis;
+
+      if (!baseAlisEfektif && !baseSatisEfektif && !baseAlisDoviz && !baseSatisDoviz) {
+        setAlertError("Lütfen önce Kayıtlı HAS altın için Alış veya Satış fiyatı giriniz.");
+        return;
+      }
+
+      // Çarpan / Katsayı dönüştürücü:
+      // Değer 10'dan büyükse (ör: 916, 585, 995, 1000) -> 1000'e bölünür (0.916, 0.585)
+      // Değer 10 veya altındaysa (ör: 1.605, 0.916) -> doğrudan katsayı olarak kullanılır
+      const getMultiplier = (val: number | null | undefined): number | null => {
+        if (val === null || val === undefined || isNaN(val) || val <= 0) return null;
+        return val > 10 ? val / 1000 : val;
+      };
+
+      const updatedRows = [...rows];
+      const updatedRawInputs = { ...rawInputs };
+
+      // HAS satırını güncel girilen fiyatlarla güncelle
+      const currentHasRow = { ...hasRow };
+      if (hasEfektifAlis) currentHasRow.efektifAlis = hasEfektifAlis;
+      if (hasEfektifSatis) currentHasRow.efektifSatis = hasEfektifSatis;
+      if (hasDovizAlis) currentHasRow.dovizAlis = hasDovizAlis;
+      if (hasDovizSatis) currentHasRow.dovizSatis = hasDovizSatis;
+      updatedRows[hasRowIdx] = currentHasRow;
+
+      const usdRow = updatedRows.find((r) => r.kod.trim().toUpperCase() === "USD");
+      const usdRate = usdRow ? usdRow.efektifAlis || usdRow.dovizAlis : null;
+
+      let calculatedCount = 0;
+
+      updatedRows.forEach((r, idx) => {
+        // HAS altın satırının kendisini atla
+        if (idx === hasRowIdx) return;
+
+        // 1. Sadece Ürün Tipi Altın (urunTipi === 1) olan ürünler hesaplanır
+        const isAltin =
+          Number(r.urunTipi) === 1 ||
+          (r.urunTipi === null || r.urunTipi === undefined
+            ? (r.kod?.toUpperCase().includes("AYAR") ||
+               r.kod?.toUpperCase().includes("ALT") ||
+               r.ad?.toUpperCase().includes("ALTIN") ||
+               r.ad?.toUpperCase().includes("BİLEZİK") ||
+               r.ad?.toUpperCase().includes("BILEZIK") ||
+               r.ad?.toUpperCase().includes("ÇEYREK") ||
+               r.ad?.toUpperCase().includes("CEYREK") ||
+               r.ad?.toUpperCase().includes("YARIM") ||
+               r.ad?.toUpperCase().includes("TAM") ||
+               r.ad?.toUpperCase().includes("ATA") ||
+               r.ad?.toUpperCase().includes("GREMSE") ||
+               r.ad?.toUpperCase().includes("ZİYNET") ||
+               r.ad?.toUpperCase().includes("ZIYNET") ||
+               r.ad?.toUpperCase().includes("HURDA"))
+            : false);
+
+        if (!isAltin) {
+          return;
+        }
+
+        // 2. Alış Has ve Satış Has değerleri kontrolü
+        const rawAlis =
+          r.hasAlisKatsayisi !== null && r.hasAlisKatsayisi !== undefined && Number(r.hasAlisKatsayisi) > 0
+            ? Number(r.hasAlisKatsayisi)
+            : r.hasOrani !== null && r.hasOrani !== undefined && Number(r.hasOrani) > 0
+            ? Number(r.hasOrani)
+            : null;
+
+        const rawSatis =
+          r.hasSatisKatsayisi !== null && r.hasSatisKatsayisi !== undefined && Number(r.hasSatisKatsayisi) > 0
+            ? Number(r.hasSatisKatsayisi)
+            : r.hasOrani !== null && r.hasOrani !== undefined && Number(r.hasOrani) > 0
+            ? Number(r.hasOrani)
+            : null;
+
+        const alisMult = getMultiplier(rawAlis);
+        const satisMult = getMultiplier(rawSatis);
+
+        // Eğer Alış Has ve Satış Has yok ise bu satır hesaplanmaz, boş geçilir
+        if (alisMult === null && satisMult === null) {
+          return;
+        }
+
+        const newRow = { ...r };
+        let isRowUpdated = false;
+
+        // Alış hesaplama: (Alış Has / 1000) * HAS Efektif/Döviz Alış
+        if (alisMult !== null) {
+          if (baseAlisEfektif) {
+            newRow.efektifAlis = Number((baseAlisEfektif * alisMult).toFixed(kurDecimals));
+            updatedRawInputs[getCellKey(idx, "efektifAlis")] = newRow.efektifAlis.toFixed(kurDecimals);
+            isRowUpdated = true;
+          }
+          if (baseAlisDoviz) {
+            newRow.dovizAlis = Number((baseAlisDoviz * alisMult).toFixed(kurDecimals));
+            updatedRawInputs[getCellKey(idx, "dovizAlis")] = newRow.dovizAlis.toFixed(kurDecimals);
+            isRowUpdated = true;
+          }
+        }
+
+        // Satış hesaplama: (Satış Has / 1000) * HAS Efektif/Döviz Satış
+        if (satisMult !== null) {
+          if (baseSatisEfektif) {
+            newRow.efektifSatis = Number((baseSatisEfektif * satisMult).toFixed(kurDecimals));
+            updatedRawInputs[getCellKey(idx, "efektifSatis")] = newRow.efektifSatis.toFixed(kurDecimals);
+            isRowUpdated = true;
+          }
+          if (baseSatisDoviz) {
+            newRow.dovizSatis = Number((baseSatisDoviz * satisMult).toFixed(kurDecimals));
+            updatedRawInputs[getCellKey(idx, "dovizSatis")] = newRow.dovizSatis.toFixed(kurDecimals);
+            isRowUpdated = true;
+          }
+        }
+
+        // Parite hesaplama (USD varsa)
+        if (usdRate && usdRate > 0) {
+          const rowRate = newRow.efektifAlis || newRow.dovizAlis;
+          if (rowRate && rowRate > 0) {
+            newRow.parite = Number((rowRate / usdRate).toFixed(6));
+            updatedRawInputs[getCellKey(idx, "parite")] = newRow.parite.toFixed(6);
+          }
+        }
+
+        if (isRowUpdated) {
+          updatedRows[idx] = newRow;
+          calculatedCount++;
+        }
+      });
+
+      if (calculatedCount === 0) {
+        setAlertError("Hesaplanacak altın katsayısına (Alış/Satış Has) sahip ürün bulunamadı.");
+        return;
+      }
+
+      setRows(updatedRows);
+      setRawInputs(updatedRawInputs);
+      setIsDirty(true);
+      setStatusText("Altın kurları hesaplandı (Kaydedilmedi)");
+      setAlertSuccess(
+        `${calculatedCount} adet altın kuru HAS fiyatına göre başarıyla hesaplandı. F1 veya sol üstteki 'Kaydet' butonuna basarak kaydedebilirsiniz.`
+      );
+      setTimeout(() => setAlertSuccess(null), 5000);
+    } catch (err: any) {
+      console.error("Altın kurları hesaplama hatası:", err);
+      setAlertError("Altın kurları hesaplanırken bir hata oluştu: " + (err?.message || ""));
+    }
+  };
+
   // Copy to Clipboard (F9 Pano)
   const handleCopyPano = () => {
     const summary = rows
@@ -1445,6 +1645,24 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
           {/* Hotkey Buttons on Right */}
           <div className="d-flex flex-wrap align-items-center gap-1">
+            {effectivePageType === "anlik" && (
+              <Button
+                variant="warning"
+                size="sm"
+                className="px-2.5 py-0 border text-dark fw-bold small d-inline-flex align-items-center gap-1 shadow-xs"
+                style={{
+                  backgroundColor: "#fef08a",
+                  borderColor: "#eab308",
+                  color: "#713f12",
+                }}
+                onClick={handleAutoCalculateGoldRates}
+                title="HAS altın fiyatına ve ürünlerin Alış/Satış Has oranlarına göre altın kurlarını otomatik hesaplar"
+              >
+                <IconCalculator size={14} className="text-warning-emphasis" />
+                <span>Altın Hesapla</span>
+              </Button>
+            )}
+
             <Button
               variant="light"
               size="sm"

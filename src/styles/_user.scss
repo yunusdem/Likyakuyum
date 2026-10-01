@@ -315,14 +315,26 @@
     transition: background-color 0.12s ease, border-color 0.12s ease;
     border: 1px solid transparent;
 
+    span:last-child {
+      color: #000000 !important;
+      font-weight: 500 !important;
+    }
+
     &:hover {
       background-color: var(--#{$prefix}gray-100, rgba(0, 0, 0, 0.05));
       border-color: var(--#{$prefix}gray-200, rgba(0, 0, 0, 0.08));
       transform: none !important;
 
-      span {
-        color: var(--#{$prefix}primary, #0284c7) !important;
+      span:last-child {
+        color: #000000 !important;
       }
+    }
+  }
+
+  .quick-action-mobile-pill {
+    span:last-child {
+      color: #000000 !important;
+      font-weight: 500 !important;
     }
   }
 

@@ -92,6 +92,7 @@ import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { formatMiktar, parseDecimal, onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 
 interface CartLineItem {
   id: string;
@@ -1072,9 +1073,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Recalculate Totals for single Cart line item
   const recalculateLine = (line: Partial<CartLineItem>): CartLineItem => {
-    const miktar = Number(line.miktar) || 0;
-    const birimFiyat = Number(line.birimFiyat) || 0;
-    const kdvOrani = Number(line.kdvOrani) || 0;
+    const miktar = parseDecimal(line.miktar);
+    const birimFiyat = parseDecimal(line.birimFiyat);
+    const kdvOrani = parseDecimal(line.kdvOrani);
     const tutar = Math.round(miktar * birimFiyat * 100) / 100;
     const kdvTutari = Math.round(tutar * (kdvOrani / 100) * 100) / 100;
     const toplamTutar = Math.round((tutar + kdvTutari) * 100) / 100;
@@ -1085,10 +1086,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       barkod: line.barkod || "",
       urunAdi: line.urunAdi || "",
       ayar: line.ayar || "14K",
-      miktar: line.miktar === "" ? "" : miktar,
+      miktar: line.miktar === "" ? "" : (line.miktar !== undefined && line.miktar !== null ? line.miktar : (miktar || 1)),
       birim: line.birim || "Adet",
-      gram: line.gram === "" ? "" : (Number(line.gram) || 0),
-      hasGram: line.hasGram === "" ? "" : (Number(line.hasGram) || 0),
+      gram: line.gram === "" ? "" : (parseDecimal(line.gram) || 0),
+      hasGram: line.hasGram === "" ? "" : (parseDecimal(line.hasGram) || 0),
       birimFiyat: line.birimFiyat === "" ? "" : birimFiyat,
       tutar: tutar > 0 ? tutar : (line.tutar === "" ? "" : 0),
       kdvOrani: line.kdvOrani === "" ? "" : kdvOrani,
@@ -1106,11 +1107,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       row.paraAdi?.toUpperCase().includes("ISKONTO") ||
       (row.paraId !== undefined && row.paraId !== null && Number(row.paraId) >= 100000);
 
-    const miktar = Number(row.miktar) || 0;
-    const kur = Number(row.kur) || 0;
+    const miktar = parseDecimal(row.miktar);
+    const kur = parseDecimal(row.kur);
 
-    let tutar = Number(row.tutar) || 0;
-    let hasGram = Number(row.hasGram) || 0;
+    let tutar = parseDecimal(row.tutar);
+    let hasGram = parseDecimal(row.hasGram);
 
     if (isIskonto) {
       // İskonto satırında Kur: Değer / Oran
@@ -1166,7 +1167,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       };
     } else {
       // Altın / Gümüş: Adet, Miktar, Milyem, Has Gr, Kur, Tutar aktif
-      const milyem = Number(row.milyem) || 0;
+      const milyem = parseDecimal(row.milyem);
       if (milyem > 0 && miktar > 0) {
         hasGram = miktar * (milyem / 1000);
         tutar = kur > 0 ? miktar * kur : (hasKuru > 0 ? hasGram * hasKuru : 0);
@@ -1464,7 +1465,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   );
 
   // Grand totals calculation
-  const totalQuantity = validItems.reduce((acc, i) => acc + (Number(i.miktar) || 0), 0);
+  const totalQuantity = validItems.reduce((acc, i) => acc + (parseDecimal(i.miktar) || 0), 0);
   const totalGrams = validItems.reduce((acc, i) => acc + (Number(i.gram) || 0), 0);
   const totalHasGrams = validItems.reduce((acc, i) => acc + (Number(i.hasGram) || 0), 0);
   const araToplam = validItems.reduce((acc, i) => acc + (Number(i.tutar) || 0), 0);
@@ -1535,10 +1536,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const genelToplam = Math.max(0, Math.round((brutToplam - calculatedIskontoTutari) * 100) / 100);
 
   // Payment totals calculation
-  const totalOdemeAdet = odemeRows.reduce((s, r) => s + (Number(r.adet) || 0), 0);
-  const totalOdemeMiktar = odemeRows.reduce((s, r) => s + (Number(r.miktar) || 0), 0);
-  const totalOdemeHas = odemeRows.reduce((s, r) => s + (Number(r.hasGram) || 0), 0);
-  const totalOdemeTutar = odemeRows.reduce((s, r) => s + (Number(r.tutar) || 0), 0);
+  const totalOdemeAdet = odemeRows.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
+  const totalOdemeMiktar = odemeRows.reduce((s, r) => s + (parseDecimal(r.miktar) || 0), 0);
+  const totalOdemeHas = odemeRows.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
+  const totalOdemeTutar = odemeRows.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
 
   const farkTL = genelToplam - totalOdemeTutar;
   const farkHas = totalHasGrams - totalOdemeHas;
@@ -1715,7 +1716,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         if (isBarkodlu && (field === "gram" || field === "hasGram" || field === "ayar" || field === "birim" || field === "urunAdi" || field === "birimFiyat" || field === "kdvOrani")) {
           return r;
         }
-        const updated = { ...r, [field]: value };
+        let valToSet = value;
+        if (field === "miktar") {
+          valToSet = formatMiktar(value);
+        }
+        const updated = { ...r, [field]: valToSet };
         if (field === "barkod" && !String(value).trim()) {
           updated.altinUrunId = null;
         }
@@ -1918,14 +1923,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         let sanitizedValue = value;
         if (field === "adet") {
           sanitizedValue = value.replace(/\D/g, "");
+        } else if (field === "miktar") {
+          sanitizedValue = formatMiktar(value);
         }
         const updated = { ...r, [field]: sanitizedValue };
         if (field === "tutar") {
-          const tVal = Number(sanitizedValue) || 0;
-          const kVal = Number(r.kur) || 1;
+          const tVal = parseDecimal(sanitizedValue);
+          const kVal = parseDecimal(r.kur) || 1;
           const isMetal = isAltinOrGumusRow(r, odemeUrunList);
           if (!isMetal && tVal > 0 && kVal > 0) {
-            updated.miktar = Number((tVal / kVal).toFixed(4));
+            updated.miktar = formatMiktar(Number((tVal / kVal).toFixed(4)));
           }
         }
         return recomputeOdemeRow(updated, altinHasKuru);
@@ -3443,16 +3450,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         barkod: item.barkod,
         urunAdi: item.urunAdi || "Altın Ürün",
         ayar: item.ayar,
-        miktar: Number(item.miktar) || 1,
+        miktar: parseDecimal(item.miktar) || 1,
         birim: item.birim,
-        gram: Number(item.gram) || 0,
-        hasGram: Number(item.hasGram) || 0,
-        birimFiyat: Number(item.birimFiyat) || 0,
-        kdvOrani: Number(item.kdvOrani) || 0,
+        gram: parseDecimal(item.gram) || 0,
+        hasGram: parseDecimal(item.hasGram) || 0,
+        birimFiyat: parseDecimal(item.birimFiyat) || 0,
+        kdvOrani: parseDecimal(item.kdvOrani) || 0,
       }));
 
       let payloadOdemeler: SavePerakendeFaturaOdemePayload[] = odemeRows
-        .filter((r) => Number(r.tutar) > 0 || Number(r.miktar) > 0 || r.cariKartId || (r.cariKod && r.cariKod.trim() !== ""))
+        .filter((r) => parseDecimal(r.tutar) > 0 || parseDecimal(r.miktar) > 0 || r.cariKartId || (r.cariKod && r.cariKod.trim() !== ""))
         .map((r, idx) => {
           return {
             satirNo: idx + 1,
@@ -3464,12 +3471,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             paraId: r.paraId ?? null,
             paraKodu: r.paraKodu || "TL",
             paraAdi: r.paraAdi || (r.paraKodu === "TL" ? "TÜRK LİRASI" : ""),
-            adet: r.adet !== "" && r.adet !== null && r.adet !== undefined ? Number(r.adet) : null,
-            miktar: r.miktar !== "" && r.miktar !== null && r.miktar !== undefined ? Number(r.miktar) : null,
-            milyem: r.milyem !== "" && r.milyem !== null && r.milyem !== undefined ? Number(r.milyem) : null,
-            hasGram: r.hasGram !== "" && r.hasGram !== null && r.hasGram !== undefined ? Number(r.hasGram) : null,
-            kur: Number(r.kur) || 1,
-            tutar: Number(r.tutar) || 0,
+            adet: r.adet !== "" && r.adet !== null && r.adet !== undefined ? parseDecimal(r.adet) : null,
+            miktar: r.miktar !== "" && r.miktar !== null && r.miktar !== undefined ? parseDecimal(r.miktar) : null,
+            milyem: r.milyem !== "" && r.milyem !== null && r.milyem !== undefined ? parseDecimal(r.milyem) : null,
+            hasGram: r.hasGram !== "" && r.hasGram !== null && r.hasGram !== undefined ? parseDecimal(r.hasGram) : null,
+            kur: parseDecimal(r.kur) || 1,
+            tutar: parseDecimal(r.tutar) || 0,
           };
         });
 
@@ -3776,15 +3783,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const rawSatirlar: any[] = inv.satirlar || inv.SATIRLAR || [];
       if (rawSatirlar && rawSatirlar.length > 0) {
         const loadedItems: CartLineItem[] = rawSatirlar.map((s: any) => {
-          const miktar = Number(s.miktar ?? s.MIKTAR) || 1;
-          const birimFiyat = Number(s.birimFiyat ?? s.BIRIM_FIYAT) || 0;
-          const tutar = Number(s.tutar ?? s.TUTAR) || Math.round(miktar * birimFiyat * 100) / 100;
-          const kdvOrani = Number(s.kdvOrani ?? s.KDV_ORANI) || 0;
+          const rawMiktar = s.miktar ?? s.MIKTAR;
+          const miktar = parseDecimal(rawMiktar) || 1;
+          const birimFiyat = parseDecimal(s.birimFiyat ?? s.BIRIM_FIYAT) || 0;
+          const tutar = parseDecimal(s.tutar ?? s.TUTAR) || Math.round(miktar * birimFiyat * 100) / 100;
+          const kdvOrani = parseDecimal(s.kdvOrani ?? s.KDV_ORANI) || 0;
           const kdvTutari =
-            Number(s.kdvTutari ?? s.KDV_TUTARI) ||
+            parseDecimal(s.kdvTutari ?? s.KDV_TUTARI) ||
             Math.round(tutar * (kdvOrani / 100) * 100) / 100;
           const toplamTutar =
-            Number(s.toplamTutar ?? s.TOPLAM_TUTAR ?? s.grandTotal) ||
+            parseDecimal(s.toplamTutar ?? s.TOPLAM_TUTAR ?? s.grandTotal) ||
             Math.round((tutar + kdvTutari) * 100) / 100;
 
           return {
@@ -3793,10 +3801,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             barkod: s.barkod || s.BARKOD || "",
             urunAdi: s.urunAdi || s.URUN_ADI || "Altın Ürün",
             ayar: s.ayar || s.AYAR || "14K",
-            miktar,
+            miktar: formatMiktar(rawMiktar != null ? rawMiktar : miktar),
             birim: s.birim || s.BIRIM || "Adet",
-            gram: Number(s.gram ?? s.GRAM) || 0,
-            hasGram: Number(s.hasGram ?? s.HAS_GRAM) || 0,
+            gram: parseDecimal(s.gram ?? s.GRAM) || 0,
+            hasGram: parseDecimal(s.hasGram ?? s.HAS_GRAM) || 0,
             birimFiyat,
             tutar,
             kdvOrani,
@@ -3869,6 +3877,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             }
           }
 
+          const rawMiktar = o.miktar !== null && o.miktar !== undefined && o.miktar !== "" ? o.miktar : (o.MIKTAR !== null && o.MIKTAR !== undefined ? o.MIKTAR : "");
+
           return {
             id: `odeme-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`,
             satirNo: idx + 1,
@@ -3881,11 +3891,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             cariKod: rowCariKod,
             cariUnvan: rowCariUnvan,
             adet: o.adet !== null && o.adet !== undefined && o.adet !== "" ? o.adet : (o.ADET !== null && o.ADET !== undefined ? o.ADET : ""),
-            miktar: o.miktar !== null && o.miktar !== undefined && o.miktar !== "" ? o.miktar : (o.MIKTAR !== null && o.MIKTAR !== undefined ? o.MIKTAR : ""),
+            miktar: rawMiktar !== "" ? formatMiktar(rawMiktar) : "",
             milyem: o.milyem !== null && o.milyem !== undefined && o.milyem !== "" ? o.milyem : (o.MILYEM !== null && o.MILYEM !== undefined ? o.MILYEM : ""),
             hasGram: o.hasGram !== null && o.hasGram !== undefined && o.hasGram !== "" ? o.hasGram : (o.HAS_GRAM !== null && o.HAS_GRAM !== undefined ? o.HAS_GRAM : ""),
-            kur: Number(o.kur ?? o.KUR) || 1,
-            tutar: Number(o.tutar ?? o.TUTAR) || 0,
+            kur: parseDecimal(o.kur ?? o.KUR) || 1,
+            tutar: parseDecimal(o.tutar ?? o.TUTAR) || 0,
           };
         });
         setOdemeRows(loadedOdemeler);
@@ -5064,16 +5074,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           ref={(el) => {
                             rowInputRefs.current[`${item.id}_miktar`] = el;
                           }}
-                          type="number"
-                          min={1}
+                          type="text"
+                          inputMode="decimal"
                           className={`form-control form-control-sm text-center font-monospace p-1 ${isMiktarMissing ? "text-danger fw-bold" : isBarkodlu ? "fw-bold text-primary" : ""}`}
                           style={{
                             fontSize: "12px",
                             backgroundColor: isMiktarMissing ? "#fee2e2" : isBarkodlu ? "#f0f9ff" : undefined,
                             border: isMiktarMissing ? "1.5px solid #dc2626" : isBarkodlu ? "1.5px solid #bae6fd" : undefined,
                           }}
-                          value={item.miktar}
+                          value={formatMiktar(item.miktar)}
                           onChange={(e) => handleUpdateItem(item.id, "miktar", e.target.value)}
+                          onBlur={() => handleUpdateItem(item.id, "miktar", formatMiktar(item.miktar))}
                           onKeyDown={(e) => handleGridKeyDown(e, idx, "miktar", item.id)}
                           onFocus={() => {
                             setActiveRowIndex(idx);
@@ -5899,8 +5910,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             inputMode="decimal"
                             size="sm"
                             className="text-end font-monospace fw-semibold"
-                            value={oRow.miktar}
+                            value={formatMiktar(oRow.miktar)}
                             onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
+                            onBlur={() => updateOdemeRow(oRow.id, "miktar", formatMiktar(oRow.miktar))}
                             onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "miktar", oRow.id)}
                             onFocus={() => {
                               setActiveOdemeRowIndex(rowIndex);
@@ -6000,7 +6012,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             ref={(el) => { odemeInputRefs.current[`${oRow.id}_tutar`] = el; }}
                             size="sm"
                             className="text-end font-monospace fw-bold"
-                            value={oRow.tutar}
+                            value={oRow.tutar !== "" && !isNaN(Number(oRow.tutar)) ? Number(oRow.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : oRow.tutar}
                             readOnly
                             tabIndex={-1}
                             onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}
@@ -6022,7 +6034,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   <tr>
                     <td colSpan={3} className="text-end small">Toplam</td>
                     <td style={{ textAlign: "right" }}>{totalOdemeAdet || ""}</td>
-                    <td style={{ textAlign: "right" }}>{totalOdemeMiktar ? Number(totalOdemeMiktar).toFixed(3) : ""}</td>
+                    <td style={{ textAlign: "right" }}>{totalOdemeMiktar ? Number(totalOdemeMiktar).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>
                     <td></td>
                     <td style={{ textAlign: "right" }}>{totalOdemeHas ? Number(totalOdemeHas).toFixed(4) : ""}</td>
                     <td></td>
