@@ -13,6 +13,9 @@ export class UrunStokSqlRepository {
         const adKolon = altin ? "U.MODEL" : "U.MAMUL_TIPI";
         const birimKolon = altin ? "'GR'" : "U.MIKTAR_BIRIMI";
         const hasGramKolon = altin ? "U.HAS_GRAM" : "NULL";
+        const iscilikKolonlari = altin
+            ? "U.MALIYET_ISCILIK_TUTARI, U.SATIS_ISCILIK_TUTARI, CAST(NULL AS varchar(max)) EK_BILGI"
+            : "CAST(NULL AS float) MALIYET_ISCILIK_TUTARI, CAST(NULL AS float) SATIS_ISCILIK_TUTARI, U.MODEL_OZELLIK_2 EK_BILGI";
         // Altın: fatura satırı ALTIN_URUN_ID ile, yoksa barkodla; özel: yalnızca barkodla (satırda özel ürün id'si yok)
         const eslesme = altin
             ? "(S.ALTIN_URUN_ID = U.ALTIN_URUN_ID OR (ISNULL(S.ALTIN_URUN_ID,0) = 0 AND S.BARKOD IS NOT NULL AND S.BARKOD = U.BARKOD))"
@@ -88,7 +91,7 @@ export class UrunStokSqlRepository {
         const sorgu = `
       SELECT TOP (${top})
         U.${idKolon} URUN_ID, U.TARIH, U.GRUP_KODU, U.URUN_NO, U.BARKOD, ${adKolon} URUN_ADI, U.AYAR, U.URETICI_FIRMA, U.ORJINAL_KOD, U.BANKO,
-        U.MIKTAR, ${birimKolon} MIKTAR_BIRIMI, ${hasGramKolon} HAS_GRAM,
+        U.MIKTAR, ${birimKolon} MIKTAR_BIRIMI, ${hasGramKolon} HAS_GRAM, ${iscilikKolonlari},
         U.MALIYET, U.MALIYET_PARA_KODU, U.SATIS_FIYATI, U.SATIS_PARA_KODU, U.SATILDI,
         SAT.FATURA_ID, SAT.FATURA_NO, SAT.SATIS_TARIHI, SAT.CARI_KART_ID, SAT.MUSTERI, SAT.SATIS_TUTAR, SAT.SATIS_TOPLAM_TUTAR, SAT.FATURA_PARA_ID, SAT.FATURA_KUR
       FROM dbo.${tablo} U

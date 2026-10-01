@@ -65,6 +65,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
   const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
 
   const [showLookup, setShowLookup] = useState(false);
+  const [lookupInitialTerm, setLookupInitialTerm] = useState("");
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showFotoModal, setShowFotoModal] = useState(false);
 
@@ -75,11 +76,16 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const openLookup = (initialTerm = "") => {
+    setLookupInitialTerm(initialTerm);
+    setShowLookup(true);
+  };
+
   const loadAll = useCallback(async () => {
     try {
       const [altin, ozel, sabl, yzc] = await Promise.all([
-        EtiketService.getAltinUrunler({ limit: 500 }),
-        EtiketService.getOzelUrunler({ limit: 500 }),
+        EtiketService.getAltinUrunler({ limit: 1000 }),
+        EtiketService.getOzelUrunler({ limit: 1000 }),
         EtiketService.getSablonlar(),
         PrinterService.getYazicilar().catch(() => []),
       ]);
@@ -100,11 +106,12 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
   const handleAra = useCallback(async () => {
     const kod = barkodInput.trim();
     if (!kod) {
-      showNotif("warning", "Lütfen barkod okutunuz veya yazınız.");
+      openLookup("");
       return;
     }
     setAraniyor(true);
     try {
+      // 1. Önce API üzerinden birebir barkod/kod araması yap
       const altin = await EtiketService.getAltinUrunByBarkod(kod).catch(() => null);
       if (altin) {
         setBulunan({ tip: "altin", urun: altin });
@@ -119,12 +126,65 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
         showNotif("success", `Bulundu: ${ozel.grupKodu}-${ozel.urunNo} (${ozel.mamulTipi || "Özel Ürün"})`);
         return;
       }
-      setBulunan(null);
-      showNotif("danger", `"${kod}" barkoduna ait ürün bulunamadı.`);
+
+      // 2. Hafızadaki listede tam eşleşen var mı kontrol et
+      const cleanKod = kod.toLowerCase();
+      const exactAltin = altinList.find(
+        (a) =>
+          (a.barkod && a.barkod.toLowerCase() === cleanKod) ||
+          `${a.grupKodu}${a.urunNo}`.toLowerCase() === cleanKod ||
+          `${a.grupKodu}-${a.urunNo}`.toLowerCase() === cleanKod ||
+          (a.orjinalKod && a.orjinalKod.toLowerCase() === cleanKod)
+      );
+      if (exactAltin) {
+        setBulunan({ tip: "altin", urun: exactAltin });
+        setSeciliFotoIndex(0);
+        showNotif("success", `Bulundu: ${exactAltin.grupKodu}-${exactAltin.urunNo} (${exactAltin.model || "Sarrafiye"})`);
+        return;
+      }
+
+      const exactOzel = ozelList.find(
+        (o) =>
+          (o.barkod && o.barkod.toLowerCase() === cleanKod) ||
+          `${o.grupKodu}${o.urunNo}`.toLowerCase() === cleanKod ||
+          `${o.grupKodu}-${o.urunNo}`.toLowerCase() === cleanKod ||
+          (o.orjinalKod && o.orjinalKod.toLowerCase() === cleanKod)
+      );
+      if (exactOzel) {
+        setBulunan({ tip: "ozel", urun: exactOzel });
+        setSeciliFotoIndex(0);
+        showNotif("success", `Bulundu: ${exactOzel.grupKodu}-${exactOzel.urunNo} (${exactOzel.mamulTipi || "Özel Ürün"})`);
+        return;
+      }
+
+      // 3. Birebir uyuşmuyorsa: Arka plandan sunucudan eşleşenleri de çekip listeyi güncelle ve arama modalını aç
+      try {
+        const [searchAltin, searchOzel] = await Promise.all([
+          EtiketService.getAltinUrunler({ search: kod, limit: 300 }).catch(() => []),
+          EtiketService.getOzelUrunler({ search: kod, limit: 300 }).catch(() => []),
+        ]);
+        if (searchAltin.length > 0) {
+          setAltinList((prev) => {
+            const map = new Map(prev.map((x) => [x.altinUrunId, x]));
+            searchAltin.forEach((x) => map.set(x.altinUrunId, x));
+            return Array.from(map.values());
+          });
+        }
+        if (searchOzel.length > 0) {
+          setOzelList((prev) => {
+            const map = new Map(prev.map((x) => [x.ozelUrunId, x]));
+            searchOzel.forEach((x) => map.set(x.ozelUrunId, x));
+            return Array.from(map.values());
+          });
+        }
+      } catch {}
+
+      // Birebir eşleşmediği için o koda ait aramaları modalda aç
+      openLookup(kod);
     } finally {
       setAraniyor(false);
     }
-  }, [barkodInput]);
+  }, [barkodInput, altinList, ozelList]);
 
   const handleSelectFromLookup = (item: AltinUrunItem | OzelUrunItem, tip: "altin" | "ozel") => {
     if (tip === "altin") setBulunan({ tip: "altin", urun: item as AltinUrunItem });
@@ -132,12 +192,14 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
     setSeciliFotoIndex(0);
     setBarkodInput((item as any).barkod || `${item.grupKodu}${item.urunNo}`);
     setShowLookup(false);
+    setLookupInitialTerm("");
   };
 
   const handleClear = () => {
     setBulunan(null);
     setSeciliFotoIndex(0);
     setBarkodInput("");
+    setLookupInitialTerm("");
     setTimeout(() => barkodRef.current?.focus(), 50);
   };
 
@@ -147,12 +209,93 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
   ];
 
   const lookupColumns: LookupColumn<{ tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }>[] = [
-    { header: "Tip", width: "90px", render: (it) => <Badge bg={it.tip === "altin" ? "warning" : "info"}>{it.tip === "altin" ? "Altın" : "Özel"}</Badge> },
-    { header: "Barkod", width: "120px", render: (it) => <span className="font-monospace fw-bold text-primary">{it.item.barkod || "-"}</span> },
-    { header: "Grup-No", width: "100px", render: (it) => `${it.item.grupKodu}-${it.item.urunNo}` },
-    { header: "Açıklama", render: (it) => (it.tip === "altin" ? (it.item as AltinUrunItem).model : (it.item as OzelUrunItem).mamulTipi) || "-" },
-    { header: "Üretici", render: (it) => it.item.ureticiFirma || "-" },
+    {
+      header: "Tip",
+      width: "85px",
+      render: (it) => (
+        <Badge bg={it.tip === "altin" ? "warning" : "info"} className="text-dark fw-bold">
+          {it.tip === "altin" ? "Altın" : "Özel"}
+        </Badge>
+      ),
+    },
+    {
+      header: "Barkod",
+      width: "130px",
+      render: (it) => <span className="font-monospace fw-bold text-primary">{it.item.barkod || "-"}</span>,
+    },
+    {
+      header: "Grup-No",
+      width: "110px",
+      render: (it) => (
+        <span className="fw-semibold font-monospace">
+          {it.item.grupKodu}-{it.item.urunNo}
+        </span>
+      ),
+    },
+    {
+      header: "Açıklama / Model",
+      render: (it) => (it.tip === "altin" ? (it.item as AltinUrunItem).model : (it.item as OzelUrunItem).mamulTipi) || "-",
+    },
+    {
+      header: "Ayar",
+      width: "80px",
+      render: (it) => it.item.ayar || "-",
+    },
+    {
+      header: "Miktar / Gram",
+      width: "110px",
+      align: "right",
+      render: (it) => (
+        <span className="fw-bold">
+          {it.tip === "altin"
+            ? `${(it.item as AltinUrunItem).miktar || 0} gr`
+            : `${(it.item as OzelUrunItem).miktar || 0} ${(it.item as OzelUrunItem).miktarBirimi || "Adet"}`}
+        </span>
+      ),
+    },
+    {
+      header: "Satış Fiyatı",
+      width: "125px",
+      align: "right",
+      render: (it) => (
+        <span className="fw-bold text-success">
+          {Number(it.item.satisFiyati || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {it.item.satisParaKodu || "TL"}
+        </span>
+      ),
+    },
+    {
+      header: "Üretici Firma",
+      render: (it) => it.item.ureticiFirma || "-",
+    },
   ];
+
+  const filterLookupItem = (it: { tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }, term: string) => {
+    const t = term.toLowerCase().trim();
+    if (!t) return true;
+    const itm = it.item;
+    const barkod = (itm.barkod || "").toLowerCase();
+    const grupKodu = (itm.grupKodu || "").toLowerCase();
+    const urunNo = String(itm.urunNo || "");
+    const grupNoJoined = `${grupKodu}${urunNo}`;
+    const grupNoHyphen = `${grupKodu}-${urunNo}`;
+    const uretici = (itm.ureticiFirma || "").toLowerCase();
+    const orjinalKod = (itm.orjinalKod || "").toLowerCase();
+    const ayar = (itm.ayar || "").toLowerCase();
+    const desc = (it.tip === "altin" ? (itm as AltinUrunItem).model : (itm as OzelUrunItem).mamulTipi) || "";
+    const descLower = desc.toLowerCase();
+
+    return (
+      barkod.includes(t) ||
+      grupKodu.includes(t) ||
+      urunNo.includes(t) ||
+      grupNoJoined.includes(t) ||
+      grupNoHyphen.includes(t) ||
+      uretici.includes(t) ||
+      orjinalKod.includes(t) ||
+      ayar.includes(t) ||
+      descLower.includes(t)
+    );
+  };
 
   const varsayilanSablon = sablonlar.find((s) => s.varsayilan) || sablonlar[0] || null;
 
@@ -224,7 +367,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
         }
         hideDelete
         hideNavigation
-        onSearch={() => setShowLookup(true)}
+        onSearch={() => openLookup(barkodInput.trim())}
         onRefresh={loadAll}
         onPrint={() => (bulunan ? setShowPrintModal(true) : showNotif("warning", "Önce bir ürün bulun veya seçin."))}
         modeText="Barkod Okutma / Etiket Basım Ekranı"
@@ -321,7 +464,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
                   <Button
                     variant="light"
                     className="border-start text-secondary px-3"
-                    onClick={() => setShowLookup(true)}
+                    onClick={() => openLookup(barkodInput.trim())}
                     title="Listeden Çağır (Dürbün)"
                   >
                     <IconBinoculars size={19} className="text-primary" />
@@ -735,20 +878,17 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
 
       <LookupModal<{ tip: "altin" | "ozel"; item: AltinUrunItem | OzelUrunItem }>
         show={showLookup}
-        title="Ürün Çağır (Ekrandan Seçim)"
+        title="Ürün Çağır & Arama (Ekrandan Seçim)"
+        searchPlaceholder="Barkod, grup kodu, model, üretici, ayar veya ürün no ile arayın..."
+        initialSearchTerm={lookupInitialTerm}
         columns={lookupColumns}
         items={combinedLookupItems}
-        filterFn={(it, term) => {
-          const t = term.toLowerCase();
-          return (
-            (it.item.barkod ? it.item.barkod.toLowerCase().includes(t) : false) ||
-            it.item.grupKodu.toLowerCase().includes(t) ||
-            String(it.item.urunNo).includes(t) ||
-            (it.item.ureticiFirma ? it.item.ureticiFirma.toLowerCase().includes(t) : false)
-          );
-        }}
+        filterFn={filterLookupItem}
         onSelect={(selected) => handleSelectFromLookup(selected.item, selected.tip)}
-        onHide={() => setShowLookup(false)}
+        onHide={() => {
+          setShowLookup(false);
+          setLookupInitialTerm("");
+        }}
       />
 
       <EtiketYazdirModal

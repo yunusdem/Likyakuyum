@@ -112,9 +112,6 @@ export class AltinUrunSqlRepository {
 
         IF NOT EXISTS (SELECT 1 FROM dbo.TODVZ_PARA WHERE KOD = '24')
           INSERT INTO dbo.TODVZ_PARA (KOD, AD, PARITE_ISLEMI, SIRA_NO, HAS_ORANI, URUN_TIPI) VALUES ('24', '24 Ayar Altın', 0, 34, 1.000, 0);
-
-        IF NOT EXISTS (SELECT 1 FROM dbo.TODVZ_PARA WHERE KOD = '22 FANTAZI')
-          INSERT INTO dbo.TODVZ_PARA (KOD, AD, PARITE_ISLEMI, SIRA_NO, HAS_ORANI, URUN_TIPI) VALUES ('22 FANTAZI', '22 Ayar Fantazi', 0, 35, 0.956, 0);
       `);
             this.ensuredPools.add(pool);
         }
@@ -629,6 +626,9 @@ export class AltinUrunSqlRepository {
         FROM TODVZ_ALTIN_URUN u
         LEFT JOIN TODVZ_VEZNE v ON v.VEZNE_ID = u.VEZNE_ID
         WHERE u.BARKOD = @BARKOD
+           OR (u.GRUP_KODU + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
+           OR (u.GRUP_KODU + '-' + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
+           OR u.ORJINAL_KOD = @BARKOD
       `);
         if (!res.recordset || res.recordset.length === 0)
             return null;
