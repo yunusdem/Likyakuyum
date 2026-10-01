@@ -938,6 +938,27 @@ export class DovizFisSqlRepository {
                 GOTO UNDO;
               END;
 
+              -- Düzeltme: fişin eski vezne etkisi geri alınır, yenisi aşağıda uygulanır (rapor denetimi 01.10.2026 — önceden geri alınmadığı için
+              -- her düzeltme bakiyeyi ikinci kez işliyordu). Kural uygulama kuralıyla aynı: satırda banka hesabı yoksa döviz, başlıkta banka hesabı yoksa TL ödemesi.
+              DECLARE @E_VEZNE_ID INT, @E_TIP TINYINT, @E_IPTAL BIT, @E_BANKA INT, @E_ODEME FLOAT;
+              SELECT @E_VEZNE_ID = VEZNE_ID, @E_TIP = TIP, @E_IPTAL = ISNULL(IPTAL, 0), @E_BANKA = BANKA_HESABI_ID, @E_ODEME = ISNULL(ODEME_TUTARI, 0)
+                FROM TODVZ_FIS WHERE FIS_ID = @FIS_ID;
+              IF @E_IPTAL = 0 AND @E_VEZNE_ID IS NOT NULL
+              BEGIN
+                DECLARE @E_ETKI TABLE (PARA_ID INT, M FLOAT);
+                INSERT INTO @E_ETKI (PARA_ID, M)
+                  SELECT PARA_ID, SUM(CASE @E_TIP WHEN 0 THEN MIKTAR ELSE -MIKTAR END) FROM TODVZ_FIS_SATIRI
+                  WHERE FIS_ID = @FIS_ID AND BANKA_HESABI_ID IS NULL GROUP BY PARA_ID;
+                IF @E_BANKA IS NULL AND @E_ODEME <> 0
+                  INSERT INTO @E_ETKI (PARA_ID, M) VALUES (1, CASE @E_TIP WHEN 1 THEN @E_ODEME ELSE -@E_ODEME END);
+                UPDATE B SET MIKTAR = B.MIKTAR - E.M
+                  FROM TODVZ_VEZNE_BAKIYE B JOIN (SELECT PARA_ID, SUM(M) M FROM @E_ETKI GROUP BY PARA_ID) E ON E.PARA_ID = B.PARA_ID
+                  WHERE B.VEZNE_ID = @E_VEZNE_ID;
+                INSERT INTO TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR)
+                  SELECT @E_VEZNE_ID, E.PARA_ID, -E.M FROM (SELECT PARA_ID, SUM(M) M FROM @E_ETKI GROUP BY PARA_ID) E
+                  WHERE NOT EXISTS (SELECT 1 FROM TODVZ_VEZNE_BAKIYE B WHERE B.VEZNE_ID = @E_VEZNE_ID AND B.PARA_ID = E.PARA_ID);
+              END;
+
               UPDATE TODVZ_FIS SET 
                 VEZNE_ID = @VEZNE_ID, TIP = @TIP, TARIH = @TARIH, ZAMAN = @ZAMAN,
                 SERI_NO = @SERI_NO, BELGE_NO = @BELGE_NO, GELIS_NEDENI = @GELIS_NEDENI,
@@ -1117,7 +1138,13 @@ export class DovizFisSqlRepository {
     };
 
     const parsedTarih = parseDate(dto.tarih);
-    const parsedZaman = parseDate(dto.zaman || dto.tarih);
+    // Ekran fiş saatini tek başına "SS:DD" (düzeltmede "SS:DD:SS") gönderir; tarih olarak okunamadığından önceden her kayıtta ve düzeltmede "şimdi"
+    // yazılıyordu (rapor denetimi 01.10.2026). Saat, fişin tarihiyle birleştirilip sunucu saatine göre okunur.
+    const saatParcalari = String(dto.zaman ?? "").trim().split(":");
+    const tarihMetni = String(dto.tarih ?? "").trim().slice(0, 10);
+    const saatliZaman = saatParcalari.length >= 2 && saatParcalari.length <= 3 && saatParcalari.every((x) => /^\d{1,2}$/.test(x)) && /^\d{4}-\d{2}-\d{2}$/.test(tarihMetni)
+      ? new Date(`${tarihMetni}T${saatParcalari.map((x) => x.padStart(2, "0")).join(":")}`) : null;
+    const parsedZaman = saatliZaman && !isNaN(saatliZaman.getTime()) ? saatliZaman : parseDate(dto.zaman || dto.tarih);
     const currentYear = parsedTarih.getFullYear();
 
     // User provided sequential numbers or leave empty for stored procedure auto-generation
@@ -2418,6 +2445,14 @@ export class DovizFisSqlRepository {
     kullaniciId: number = 1
   ): Promise<boolean> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    // Fişin işçilik hesabına yazılmış kasa kaydı (kayıtta "Döviz Fişi İşçilik - Fiş No: <seri no>") fiş silinince kalmasın (rapor denetimi 01.10.2026)
+    const seriNo = String((await pool.request().input("ID", sql.Int, id).query(`SELECT RTRIM(ISNULL(SERI_NO,'')) s FROM [dbo].[TODVZ_FIS] WHERE FIS_ID = @ID`)).recordset[0]?.s || "");
+    const iscilikKaydiniSil = async () => {
+      if (!seriNo) return;
+      await pool.request().input("A", sql.VarChar(200), `Döviz Fişi İşçilik - Fiş No: ${seriNo}`)
+        .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A`)
+        .catch((e: any) => logger.warn("Döviz fişi işçilik kaydı silinemedi:", e?.message));
+    };
 
     try {
       const procCheck = await pool.request().query(`
@@ -2436,6 +2471,7 @@ export class DovizFisSqlRepository {
             @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR,
             @IPTAL_ET = @IPTAL_ET;
         `);
+        await iscilikKaydiniSil();
         return true;
       }
     } catch (procErr: any) {
@@ -2444,10 +2480,24 @@ export class DovizFisSqlRepository {
       throw ApiError.badRequest(msg);
     }
 
+    // Yedek yol (eski silme yordamı yoksa): fişin vezne etkisi kaydetme kuralıyla geri alınır, sonra satırlar ve başlık silinir
     await pool.request().input("ID", sql.Int, id).query(`
+      SET XACT_ABORT ON;
+      BEGIN TRAN;
+      DECLARE @V INT, @T TINYINT, @I BIT, @BH INT, @O FLOAT;
+      SELECT @V = VEZNE_ID, @T = TIP, @I = ISNULL(IPTAL, 0), @BH = BANKA_HESABI_ID, @O = ISNULL(ODEME_TUTARI, 0) FROM [dbo].[TODVZ_FIS] WHERE FIS_ID = @ID;
+      IF @I = 0 AND @V IS NOT NULL
+      BEGIN
+        DECLARE @ETKI TABLE (PARA_ID INT, M FLOAT);
+        INSERT INTO @ETKI (PARA_ID, M) SELECT PARA_ID, SUM(CASE @T WHEN 0 THEN MIKTAR ELSE -MIKTAR END) FROM [dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @ID AND BANKA_HESABI_ID IS NULL GROUP BY PARA_ID;
+        IF @BH IS NULL AND @O <> 0 INSERT INTO @ETKI (PARA_ID, M) VALUES (1, CASE @T WHEN 1 THEN @O ELSE -@O END);
+        UPDATE B SET MIKTAR = B.MIKTAR - E.M FROM [dbo].[TODVZ_VEZNE_BAKIYE] B JOIN (SELECT PARA_ID, SUM(M) M FROM @ETKI GROUP BY PARA_ID) E ON E.PARA_ID = B.PARA_ID WHERE B.VEZNE_ID = @V;
+      END;
       DELETE FROM [dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @ID;
       DELETE FROM [dbo].[TODVZ_FIS] WHERE FIS_ID = @ID;
+      COMMIT TRAN;
     `);
+    await iscilikKaydiniSil();
 
     return true;
   }

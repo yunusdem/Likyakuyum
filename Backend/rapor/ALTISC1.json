@@ -1,7 +1,7 @@
 {
   "kod": "ALTISC1",
   "ad": "Altın İşçilik Raporu",
-  "aciklama": "Genel sarraf fişlerindeki işçilik: ürün bazında adet, gram, işçilik has gramı ve TL karşılığı.",
+  "aciklama": "Sarraf fişlerindeki işçilik (ürün bazında adet, gram, işçilik has gramı, TL karşılığı) ve döviz fişi satırlarındaki işçilik / KDV.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -33,6 +33,11 @@
       "baslik": "Tarih",
       "g": 1.5,
       "bicim": "tarih"
+    },
+    {
+      "anahtar": "belge",
+      "baslik": "Belge",
+      "g": 1.3
     },
     {
       "anahtar": "belgeNo",
@@ -111,6 +116,12 @@
       "g": 1.6,
       "bicim": "sayi4",
       "toplam": true
+    },
+    {
+      "anahtar": "iscilikBirimFiyati",
+      "baslik": "İşçilik / birim fiyatı",
+      "g": 1.6,
+      "bicim": "sayi"
     },
     {
       "anahtar": "hasKuru",

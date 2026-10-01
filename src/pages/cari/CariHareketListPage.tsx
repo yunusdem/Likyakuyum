@@ -123,6 +123,12 @@ export const CariHareketListPage: React.FC = () => {
 
   const handleDeleteClick = (item: CariHareketItem, e: React.MouseEvent) => {
     e.stopPropagation();
+    // Sarraf / döviz / perakende fişinden gelen satırın numarası fişin numarasıdır; cari hareket silme ucu aynı numaralı başka bir cari hareketi siler
+    if (item.hareketTipi === 10 || item.hareketTipi === 11 || item.hareketTipi === 12) {
+      const belge = item.hareketTipi === 10 ? "sarraf fişinden" : item.hareketTipi === 11 ? "döviz fişinden" : "perakende fişinden";
+      setError(`Bu satır ${belge} geliyor; silmek için fişi kendi ekranında açıp oradan silin.`);
+      return;
+    }
     setItemToDelete(item);
   };
 

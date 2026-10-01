@@ -1260,10 +1260,15 @@ export class SarrafFisSqlRepository {
   public static async deleteFis(sarrafFisiId: number, kullaniciId: number, dbContext?: { dbServer?: string; dbName?: string }): Promise<void> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      // Fişin işçilik hesabına yazılmış kasa kaydı ("Sarraf Fişi İşçilik - Fiş No: <fiş no>") fiş silinince kalmasın (rapor denetimi 01.10.2026)
+      const fisNo = String((await pool.request().input("ID", sql.Int, sarrafFisiId).query(`SELECT RTRIM(ISNULL(FIS_NO,'')) f FROM [dbo].[TODVZ_SARRAF_FISI] WHERE SARRAF_FISI_ID = @ID`)).recordset[0]?.f || "");
       const req = pool.request();
       req.output("SARRAF_FISI_ID", sql.Int, sarrafFisiId);
       req.input("KULLANICI_ID", sql.Int, kullaniciId);
       await req.execute("SODVZ_SARRAF_FISI_SIL");
+      if (fisNo) await pool.request().input("A", sql.VarChar(200), `Sarraf Fişi İşçilik - Fiş No: ${fisNo}`)
+        .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A`)
+        .catch((e: any) => logger.warn("Sarraf fişi işçilik kaydı silinemedi:", e?.message));
     } catch (err: any) {
       logger.error("deleteFis error:", err);
       throw ApiError.internal("Sarraf fişi silinemedi: " + (err?.message || ""));

@@ -1,7 +1,7 @@
 {
   "kod": "POSEKS1",
   "ad": "POS Ekstre",
-  "aciklama": "POS / kredi kartı türündeki cari hareketler; POS cihazı ve para bazında gruplu.",
+  "aciklama": "POS cihazı devri, POS ile yapılan cari hareketler sarraf ve perakende fişi kartlı tahsilatları; POS cihazı ve para bazında gruplu.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -33,6 +33,11 @@
       "baslik": "Tarih",
       "g": 1.5,
       "bicim": "tarih"
+    },
+    {
+      "anahtar": "islem",
+      "baslik": "İşlem tipi",
+      "g": 1.6
     },
     {
       "anahtar": "fisNo",

@@ -2,7 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { BelgeSqlRepository, type DbContext } from "./belgeSql.repository.js";
-import type { RaporSecimKaynagi } from "../services/rapor/raporTanim.js";
+import type { RaporSecenekKaynagi, RaporSecimKaynagi } from "../services/rapor/raporTanim.js";
 
 /**
  * Rapor modülü veri erişimi. Şablon meta'sı `TODVZ_BELGE_SABLON` (TUR='RAPOR') tablosunda;
@@ -44,6 +44,10 @@ export const RAPOR_SEED: { kod: string; ad: string; kagit: string }[] = [
   { kod: "LONSHO1", ad: "Long / Short Denge Analizi", kagit: "A4-yatay" },
   { kod: "KNSKLOG1", ad: "KNSK Sorgulama Log Listesi", kagit: "A4-yatay" },
   { kod: "KURKON2", ad: "Kur Kontrolü", kagit: "A4-yatay" },
+  // Barkodlu altın raporları (I- Etiket İşlemleri; docs/BARKODLU_ALTIN_RAPORLARI.md)
+  { kod: "BALURE1", ad: "Barkodlu Altın Üretim Raporu", kagit: "A4-yatay" },
+  { kod: "BALSAT1", ad: "Barkodlu Altın Satış Raporu", kagit: "A4-yatay" },
+  { kod: "BALSTK1", ad: "Barkodlu Altın Stok Raporu", kagit: "A4-yatay" },
 ];
 
 export interface RaporArama { aramaId: number; raporKod: string; ozet: string; parametreler: Record<string, any>; zaman: string }
@@ -148,6 +152,18 @@ export class RaporSqlRepository {
     };
     const res = await pool.request().query(SORGU[kaynak]);
     return res.recordset.map((r: any) => ({ id: Number(r.id), kod: String(r.kod ?? "").trim(), ad: String(r.ad ?? "").trim() }));
+  }
+
+  /** `secim` parametrelerinin veritabanından gelen seçenekleri: barkodlu altın ürün kartındaki farklı değerler (tablo yoksa boş) */
+  static async secenekListesi(kaynak: RaporSecenekKaynagi, ctx?: DbContext): Promise<string[]> {
+    const pool = await this.pool(ctx);
+    const KOLON: Record<RaporSecenekKaynagi, string> = {
+      altinAyar: "RTRIM(AYAR)", altinGrup: "UPPER(RTRIM(GRUP_KODU))", altinUretici: "RTRIM(URETICI_FIRMA)", altinBanko: "RTRIM(BANKO)",
+    };
+    const k = KOLON[kaynak];
+    const res = await pool.request().query(`IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN','U') IS NOT NULL
+      SELECT DISTINCT ${k} v FROM dbo.TODVZ_ALTIN_URUN WHERE ${k} IS NOT NULL AND ${k}<>'' ORDER BY 1`);
+    return (res.recordset || []).map((r: any) => String(r.v));
   }
 
   static async sablonlar(ctx?: DbContext) {

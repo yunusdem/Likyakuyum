@@ -1,0 +1,297 @@
+{
+  "kod": "BALSTK1",
+  "ad": "Barkodlu Altın Stok Raporu",
+  "aciklama": "Seçilen tarih itibarıyla stokta olan barkodlu altınlar (o güne kadar barkodlanmış, satılmamış): gram, has, işçilik, maliyet ve satış fiyatı (HAS ve seçilen kurla TL), stokta bekleme günü.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "tarih",
+      "etiket": "Tarih itibarıyla",
+      "tip": "tarih",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "urunAyar",
+      "etiket": "Ayar",
+      "tip": "secim",
+      "secenekKaynagi": "altinAyar",
+      "secenekler": [
+        {
+          "deger": "",
+          "ad": "Tümü"
+        }
+      ],
+      "varsayilan": ""
+    },
+    {
+      "ad": "urunGrup",
+      "etiket": "Grup kodu",
+      "tip": "secim",
+      "secenekKaynagi": "altinGrup",
+      "secenekler": [
+        {
+          "deger": "",
+          "ad": "Tümü"
+        }
+      ],
+      "varsayilan": ""
+    },
+    {
+      "ad": "urunUretici",
+      "etiket": "Üretici firma",
+      "tip": "secim",
+      "secenekKaynagi": "altinUretici",
+      "secenekler": [
+        {
+          "deger": "",
+          "ad": "Tümü"
+        }
+      ],
+      "varsayilan": ""
+    },
+    {
+      "ad": "urunBanko",
+      "etiket": "Banko",
+      "tip": "secim",
+      "secenekKaynagi": "altinBanko",
+      "secenekler": [
+        {
+          "deger": "",
+          "ad": "Tümü"
+        }
+      ],
+      "varsayilan": ""
+    },
+    {
+      "ad": "arama",
+      "etiket": "Barkod / ürün",
+      "tip": "metin",
+      "not": "Barkod, model, orijinal kod veya grup-no'nun bir parçası"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Gruplama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "ayar",
+          "ad": "Ayar"
+        },
+        {
+          "deger": "banko",
+          "ad": "Banko"
+        },
+        {
+          "deger": "grup",
+          "ad": "Grup kodu"
+        }
+      ],
+      "varsayilan": "ayar"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "grupNo",
+      "baslik": "Grup-No",
+      "g": 1.1
+    },
+    {
+      "anahtar": "barkod",
+      "baslik": "Barkod",
+      "g": 1.3
+    },
+    {
+      "anahtar": "model",
+      "baslik": "Model",
+      "g": 1.7
+    },
+    {
+      "anahtar": "ayar",
+      "baslik": "Ayar",
+      "g": 0.6,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "uretici",
+      "baslik": "Üretici",
+      "g": 1.3
+    },
+    {
+      "anahtar": "banko",
+      "baslik": "Banko",
+      "g": 0.9
+    },
+    {
+      "anahtar": "orjinalKod",
+      "baslik": "Orijinal kod",
+      "g": 1.1,
+      "pdf": false
+    },
+    {
+      "anahtar": "tarih",
+      "baslik": "Kayıt",
+      "g": 1,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "bekleme",
+      "baslik": "Gün",
+      "g": 0.5,
+      "bicim": "tam"
+    },
+    {
+      "anahtar": "gram",
+      "baslik": "Gram",
+      "g": 0.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "hasGram",
+      "baslik": "Has",
+      "g": 0.9,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "iscilikMaliyet",
+      "baslik": "Mal. işç. HAS",
+      "g": 1.1,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "maliyet",
+      "baslik": "Maliyet HAS",
+      "g": 1,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "maliyetTl",
+      "baslik": "Maliyet TL",
+      "g": 1.2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "satisFiyati",
+      "baslik": "Satış fiy. HAS",
+      "g": 1.1,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "satisFiyatiTl",
+      "baslik": "Satış fiy. TL",
+      "g": 1.2,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "hasKuru",
+      "baslik": "HAS kuru",
+      "g": 1,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "maliyetTlSatis",
+      "baslik": "Maliyet TL (satış kuru)",
+      "g": 1.2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi",
+      "pdf": false
+    },
+    {
+      "anahtar": "satisFiyatiTlSatis",
+      "baslik": "Satış fiyatı TL (satış kuru)",
+      "g": 1.2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi",
+      "pdf": false
+    },
+    {
+      "anahtar": "vezne",
+      "baslik": "Vezne",
+      "g": 1.3,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "grup",
+    "baslik": "{{grupBaslik}}",
+    "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Ayar bazında",
+    "kolonlar": [
+      {
+        "anahtar": "ayar",
+        "baslik": "Ayar",
+        "g": 1.2
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Adet",
+        "g": 0.8,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "gram",
+        "baslik": "Gram",
+        "g": 1.1,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "hasGram",
+        "baslik": "Has",
+        "g": 1.1,
+        "bicim": "sayi4"
+      },
+      {
+        "anahtar": "iscilikMaliyet",
+        "baslik": "İşç. maliyet HAS",
+        "g": 1.2,
+        "bicim": "sayi4"
+      },
+      {
+        "anahtar": "maliyet",
+        "baslik": "Maliyet HAS",
+        "g": 1.2,
+        "bicim": "sayi4"
+      },
+      {
+        "anahtar": "maliyetTl",
+        "baslik": "Maliyet TL",
+        "g": 1.4,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "satisFiyati",
+        "baslik": "Satış fiyatı HAS",
+        "g": 1.2,
+        "bicim": "sayi4"
+      },
+      {
+        "anahtar": "satisFiyatiTl",
+        "baslik": "Satış fiyatı TL",
+        "g": 1.4,
+        "bicim": "sayi"
+      }
+    ]
+  }
+}

@@ -5,6 +5,7 @@ import {
   type RaporParametreler, tarihTr, HAREKET_TIPI, KISILIK, kurCoz, hedefPara, gunOnce, kurTarihte, sinirla, TL_PARA_SQL, aralikOzeti, filtreler, paraKumesi, ozetEk,
   vezneBakiyeleri, VEZNE_BAKIYE_DIPNOT,
 } from "./raporOrtak.js";
+import { CARI_EVRAK, CARI_HAREKET_KOLONLARI, VEZNE_BELGE, VEZNE_HAREKET_KOLONLARI, belgeTablolari, cariHareketleriSql, saatTr, vezneHareketleriSql } from "./kaynak.js";
 export type { RaporParametreler } from "./raporOrtak.js";
 import { KASA_SORGULARI } from "./veri/kasa.js";
 import { VEZNE_SORGULARI } from "./veri/vezne.js";
@@ -13,12 +14,16 @@ import { FIS_SORGULARI } from "./veri/fis.js";
 import { ANALIZ_SORGULARI } from "./veri/analiz.js";
 import { MASAK_SORGULARI } from "./veri/masak.js";
 import { YONETICI_SORGULARI } from "./veri/yonetici.js";
+import { ETIKET_SORGULARI } from "./veri/etiket.js";
 
 /**
  * Rapor veri katmanı — yalnızca SELECT. Hiçbir tabloya yazılmaz, SP çağrılmaz.
  * Tablolar: TODVZ_CARI_KART, TODVZ_CARI_HAREKET(+_SATIRI), TODVZ_FIS(+_SATIRI), TODVZ_VEZNE, TODVZ_PARA,
  * TODVZ_KUR_TABLOSU / TODVZ_KUR. Kolon adları mevcut repository'lerden alındı (bkz. docs/raporlar.md Bölüm 2).
  */
+
+/** Cari satırının hareket tipi adı: cari hareketlerde HAREKET_TIPI, belgelerden gelenlerde belge türü (virman dekontu, döviz fişi, sarraf fişi) */
+const hareketAdi = (r: any) => (Number(r.evrakTipi) ? CARI_EVRAK[Number(r.evrakTipi)] : HAREKET_TIPI[Number(r.hareketTipi)]) || "Diğer";
 
 export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: RaporParametreler, t: RaporTanim) => Promise<RaporSonucVeri>> = {
   // 2. dalga raporları alan dosyalarında (veri/*.ts) — docs/raporlar-faz2.md
@@ -29,6 +34,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
   ...ANALIZ_SORGULARI,
   ...MASAK_SORGULARI,
   ...YONETICI_SORGULARI,
+  ...ETIKET_SORGULARI,
 
   /** R1 Cari bakiye raporu — tarih aralığı (yönetici 14.09.2026): borç/alacak aralıktaki hareketler, bakiye bitiş tarihi itibarıyla; para ve has bazında; sıfır bakiyeliler hariç (kullanıcı kararı 19.09.2026) */
   async CARBAK1(pool, p, t) {
@@ -38,13 +44,15 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || bit });
     const req = pool.request().input("bas", sql.Date, bas).input("t", sql.Date, bit);
     const f = filtreler(req, p, { cari: "C", para: "B.PARA_ID" });
+    // Kaynak: cari hareketler + virman dekontu + bankadan ödenen döviz fişi + sarraf fişi cari ödemesi (eski VODVZR_CARI_BAKIYE_RAPORU kapsamı; kaynak.ts)
     const res = await req.query(`
-      ;WITH B AS (
-        SELECT H.CARI_KART_ID, S.PARA_ID,
-          SUM(CASE WHEN H.TIP=0 AND CAST(H.TARIH AS date)>=@bas THEN S.MEBLAG ELSE 0 END) BORC, SUM(CASE WHEN H.TIP=1 AND CAST(H.TARIH AS date)>=@bas THEN S.MEBLAG ELSE 0 END) ALACAK,
-          SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE -S.MEBLAG END) BAKIYE
-        FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
-        WHERE CAST(H.TARIH AS date)<=@t GROUP BY H.CARI_KART_ID, S.PARA_ID)
+      ;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (
+       ${cariHareketleriSql(await belgeTablolari(pool))}
+      ), B AS (
+        SELECT CH.cariKartId CARI_KART_ID, CH.paraId PARA_ID,
+          SUM(CASE WHEN CH.tip=0 AND CAST(CH.tarih AS date)>=@bas THEN CH.meblag ELSE 0 END) BORC, SUM(CASE WHEN CH.tip=1 AND CAST(CH.tarih AS date)>=@bas THEN CH.meblag ELSE 0 END) ALACAK,
+          SUM(CASE WHEN CH.tip=1 THEN CH.meblag ELSE -CH.meblag END) BAKIYE
+        FROM CH WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.cariKartId, CH.paraId)
       SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd,
         B.PARA_ID paraId, ISNULL(RTRIM(P.KOD),'-') paraKod, ISNULL(B.BORC,0) borc, ISNULL(B.ALACAK,0) alacak,
         ISNULL(B.BAKIYE,0) bakiye, ISNULL(P.HAS_ORANI,0) hasOrani
@@ -77,21 +85,25 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     if (!p.cariKartId && !p.cariIdler?.length && !p.cariSonId && !p.cariBaslangic && !p.cariBitis) throw ApiError.badRequest("En az bir cari seçilmelidir.");
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
-    const f = filtreler(req, p, { cari: "C", para: "S.PARA_ID" });
+    const f = filtreler(req, p, { cari: "C", para: "CH.paraId" });
     const cariAlan = `RTRIM(ISNULL(C.ADRES,'')) cariAdres, RTRIM(ISNULL(C.TELEFON,'')) cariTelefon, RTRIM(ISNULL(C.VERGI_KIMLIK_NO,'')) cariVergiNo`;
+    // Kaynak: cari hareketler + virman dekontu + bankadan ödenen döviz fişi + sarraf fişi cari ödemesi (eski VODVZR_CARI_EMANET_DEKONT_EKSTRE kapsamı; kaynak.ts)
+    const ch = `;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (
+       ${cariHareketleriSql(await belgeTablolari(pool))}
+      )`;
     const res = await req.query(`
-      SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, ${cariAlan}, S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(P.HAS_ORANI,0) hasOrani,
-        SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE 0 END) borc, SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE 0 END) alacak
-      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
-      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID
-      WHERE CAST(H.TARIH AS date)<@bas ${f} GROUP BY C.CARI_KART_ID, C.KOD, C.AD, C.ADRES, C.TELEFON, C.VERGI_KIMLIK_NO, S.PARA_ID, P.KOD, P.SIRA_NO, P.HAS_ORANI;
-      SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, ${cariAlan}, H.CARI_HAREKET_ID fisNo, H.TARIH tarih, H.HAREKET_TIPI hareketTipi, H.TIP tip,
-        CONVERT(varchar(5), CASE WHEN CAST(H.TARIH AS time)='00:00' THEN CAST(H.EKLEME_ZAMANI AS time) ELSE CAST(H.TARIH AS time) END, 108) saat,
-        RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(P.HAS_ORANI,0) hasOrani, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
-      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
-      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID
-      WHERE CAST(H.TARIH AS date) BETWEEN @bas AND @bit ${f}
-      ORDER BY C.KOD, ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
+      ${ch}
+      SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, ${cariAlan}, CH.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(P.HAS_ORANI,0) hasOrani,
+        SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE 0 END) borc, SUM(CASE WHEN CH.tip=1 THEN CH.meblag ELSE 0 END) alacak
+      FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=CH.cariKartId
+      WHERE CAST(CH.tarih AS date)<@bas ${f} GROUP BY C.CARI_KART_ID, C.KOD, C.AD, C.ADRES, C.TELEFON, C.VERGI_KIMLIK_NO, CH.paraId, P.KOD, P.SIRA_NO, P.HAS_ORANI;
+      ${ch}
+      SELECT C.CARI_KART_ID cariId, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, ${cariAlan}, CH.belgeNo fisNo, CH.evrakTipi, CH.tarih, CH.hareketTipi, CH.tip,
+        CONVERT(varchar(5), CASE WHEN CAST(CH.tarih AS time)='00:00' THEN CAST(CH.eklemeZamani AS time) ELSE CAST(CH.tarih AS time) END, 108) saat,
+        CH.aciklama, CH.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(P.HAS_ORANI,0) hasOrani, CH.meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
+      FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=CH.cariKartId LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=CH.vezneId
+      WHERE CAST(CH.tarih AS date) BETWEEN @bas AND @bit ${f}
+      ORDER BY C.KOD, ISNULL(P.SIRA_NO,99), P.KOD, CH.tarih, CH.eklemeZamani, CH.evrakTipi, CH.hareketId, CH.satirNo;`);
     const sets = res.recordsets as any[];
     const anahtar = (r: any) => `${r.cariKod}|${r.paraKod}`;
     type Grup = { cariKod: string; cariAd: string; cariAdres: string; cariTelefon: string; cariVergiNo: string; paraKod: string; siraNo: number; hasOrani: number; devir: number; hareketler: any[] };
@@ -116,7 +128,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
         const meblag = Number(h.meblag) || 0;
         bakiye += Number(h.tip) === 1 ? meblag : -meblag;
         if (Number(h.tip) === 0) tBorc += meblag; else tAlacak += meblag;
-        satirlar.push(satir({ fisNo: String(h.fisNo ?? ""), tarih: h.tarih, saat: h.saat || "", hareketTipi: HAREKET_TIPI[Number(h.hareketTipi)] || "Diğer", aciklama: h.aciklama, vezneKod: h.vezneKod,
+        satirlar.push(satir({ fisNo: String(h.fisNo ?? ""), tarih: h.tarih, saat: h.saat || "", hareketTipi: hareketAdi(h), aciklama: h.aciklama, vezneKod: h.vezneKod,
           borc: Number(h.tip) === 0 ? meblag : 0, alacak: Number(h.tip) === 1 ? meblag : 0 }));
       }
       // Eski "Para toplamı" alt raporunun karşılığı: cari × para toplamı + kapanış bakiyesi + B/A (devir dahil)
@@ -139,15 +151,18 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     htler.forEach((h, i) => req.input(`htl${i}`, sql.Int, h));
     // Sıralama (.rpt parametresi: Ad / Kod); para grubu içinde uygulanır — yalnızca sabit listeden SQL parçası
     const siraSql = p.siralama === "ad" ? "C.AD, " : p.siralama === "kod" ? "C.KOD, " : "";
-    const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" }) + (htler.length ? ` AND H.HAREKET_TIPI IN (${htler.map((_, i) => `@htl${i}`).join(",")})` : "");
+    // Belgelerden gelen satırların hareket tipi eski görünümdeki gibi 0 (nakit) sayılır; "Nakit" seçimi onları da kapsar
+    const f = filtreler(req, p, { cari: "C", vezne: "V", para: "CH.paraId" }) + (htler.length ? ` AND CH.hareketTipi IN (${htler.map((_, i) => `@htl${i}`).join(",")})` : "");
     const res = await req.query(`
-      SELECT H.CARI_HAREKET_ID fisNo, H.TARIH tarih, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, H.HAREKET_TIPI hareketTipiKod, H.TIP tipKod,
-        RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, RTRIM(P.KOD) paraKod, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
-      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
-      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID
-      WHERE CAST(H.TARIH AS date) BETWEEN @bas AND @bit AND (@ht IS NULL OR H.HAREKET_TIPI=@ht) ${f}
-      ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, ${siraSql}H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
-    const satirlar = res.recordset.map((r: any) => ({ ...r, fisNo: String(r.fisNo ?? ""), meblag: Number(r.meblag), hareketTipi: HAREKET_TIPI[Number(r.hareketTipiKod)] || "Diğer",
+      ;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (
+       ${cariHareketleriSql(await belgeTablolari(pool))}
+      )
+      SELECT CH.belgeNo fisNo, CH.evrakTipi, CH.tarih, RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, CH.hareketTipi, CH.hareketTipi hareketTipiKod, CH.tip tipKod,
+        CH.aciklama, RTRIM(P.KOD) paraKod, CH.meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod
+      FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=CH.cariKartId LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=CH.vezneId
+      WHERE CAST(CH.tarih AS date) BETWEEN @bas AND @bit AND (@ht IS NULL OR CH.hareketTipi=@ht) ${f}
+      ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, ${siraSql}CH.tarih, CH.eklemeZamani, CH.evrakTipi, CH.hareketId, CH.satirNo;`);
+    const satirlar = res.recordset.map((r: any) => ({ ...r, fisNo: String(r.fisNo ?? ""), meblag: Number(r.meblag), hareketTipi: hareketAdi(r),
       tip: Number(r.tipKod) === 1 ? "Alacak" : "Borç", borc: Number(r.tipKod) === 0 ? Number(r.meblag) : 0, alacak: Number(r.tipKod) === 1 ? Number(r.meblag) : 0 }));
     // Eski "CARİ HAREKET LİSTESİ" metrikleri: S.No (grup içinde sıfırlanır) ve net toplam = |Σ(borç − alacak)| + B/A (eski @GrupToplam / @GenelToplam). Net toplam para bazında verilir.
     const sayac = new Map<string, number>(), net = new Map<string, { paraKod: string; borc: number; alacak: number }>();
@@ -187,11 +202,12 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     const satirlar: any[] = vezneler.filter(v => Math.abs(v.miktar) > 0.000001 && paraUygun(Number(v.paraId))).map(v => ({
       kaynak: `Vezne ${v.vezneKod} — ${v.vezneAd}`, grup: "1-Vezneler", paraKod: v.paraKod, miktar: Number(v.miktar), kur: kur.kurlar.get(v.paraId) ?? 0,
       tlKarsiligi: Number(v.miktar) * (kur.kurlar.get(v.paraId) ?? 0), kurSatis: kur.satisKurlari.get(v.paraId) ?? 0, tlSatis: Number(v.miktar) * (kur.satisKurlari.get(v.paraId) ?? 0) }));
-    const cari = await pool.request().input("t", sql.Date, p.tarih).query(`
-      SELECT S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
-        SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE 0 END) borc, SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE 0 END) alacak
-      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID
-      WHERE CAST(H.TARIH AS date)<=@t GROUP BY S.PARA_ID, P.KOD, P.SIRA_NO ORDER BY ISNULL(P.SIRA_NO,99), P.KOD;`);
+    const ch = `;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (${cariHareketleriSql(await belgeTablolari(pool))})`;
+    const cari = await pool.request().input("t", sql.Date, p.tarih).query(`${ch}
+      SELECT CH.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
+        SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE 0 END) borc, SUM(CASE WHEN CH.tip=1 THEN CH.meblag ELSE 0 END) alacak
+      FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId
+      WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD, P.SIRA_NO ORDER BY ISNULL(P.SIRA_NO,99), P.KOD;`);
     for (const r of cari.recordset) {
       if (!paraUygun(Number(r.paraId))) continue;
       const k = kur.kurlar.get(Number(r.paraId)) ?? 0, ks = kur.satisKurlari.get(Number(r.paraId)) ?? 0;
@@ -203,8 +219,8 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     // Varlık = vezne mevcudu + cari alacaklarımız − cari borçlarımız. Borç / alacak net harekettir (eski yordam brüt veriyor olabilir — canlıda karşılaştırılacak).
     const net = async (gun: string) => { const m = new Map<string, { paraId: number; paraKod: string; miktar: number }>();
       for (const v of await vezneBakiyeleri(pool, gun, p)) { if (!paraUygun(Number(v.paraId))) continue; const o = m.get(v.paraKod) || { paraId: Number(v.paraId), paraKod: v.paraKod, miktar: 0 }; o.miktar += Number(v.miktar) || 0; m.set(v.paraKod, o); }
-      const c = await pool.request().input("t", sql.Date, gun).query(`SELECT S.PARA_ID paraId, RTRIM(P.KOD) paraKod, SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE -S.MEBLAG END) net
-        FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID WHERE CAST(H.TARIH AS date)<=@t GROUP BY S.PARA_ID, P.KOD`);
+      const c = await pool.request().input("t", sql.Date, gun).query(`${ch} SELECT CH.paraId, RTRIM(P.KOD) paraKod, SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE -CH.meblag END) net
+        FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD`);
       for (const r of c.recordset) { if (!paraUygun(Number(r.paraId))) continue; const o = m.get(r.paraKod) || { paraId: Number(r.paraId), paraKod: r.paraKod, miktar: 0 }; o.miktar += Number(r.net) || 0; m.set(r.paraKod, o); }
       return m; };
     const devirGun = gunOnce(p.tarih), devirler = await net(devirGun), devredenler = await net(p.tarih), devirKur = await kurTarihte(pool, devirGun), hedef = await hedefPara(pool, p, kur);
@@ -324,71 +340,51 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
   },
 
   /**
-   * R9 Vezne hareket listesi — eski "VEZNE HAREKET LİSTESİ" gibi tam vezne defteri: fiş (döviz ayağı + TL ödeme ayağı), vezne transferi, nakit cari hareket ve
-   * kasa hesap hareketi (KDV TL'ye); her satırda Giriş / Çıkış miktarı. Kapsam `vezneBakiyeleri` ile aynıdır (vezne bakiyesini değiştiren her hareket).
-   * Fiş satırlarında önceki kolonlar (belge no, ünvan, TL tutar, komisyon, BSMV, seçilen kurla TL) korunur. Fiş tipi seçilirse yalnızca o tipteki fişler listelenir.
+   * R9 Vezne hareket listesi — eski "VEZNE HAREKET LİSTESİ" (SODVZCR_VEZNE_HAREKET_LISTESI) gibi tam vezne defteri: döviz fişi (döviz ayağı + TL ödeme ayağı),
+   * sarraf fişi (ürün satırları + vezneden ödemeler), vezne transferi, nakit cari hareket, kasa hesap hareketi (KDV TL'ye), emanet dekontu; her satırda Giriş / Çıkış.
+   * Kaynak `kaynak.ts` vezneHareketleriSql — `vezneBakiyeleri` ile aynı. Gün belgenin tarihidir (fişin kayıt saati değil). Fiş tipi seçilirse yalnızca o tipteki
+   * döviz ve sarraf fişleri listelenir.
    */
   async VEZHAR1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || p.bitis });
-    const var_ = (await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NULL THEN 0 ELSE 1 END kasa, CASE WHEN OBJECT_ID('dbo.TODVZ_BANKA','U') IS NULL THEN 0 ELSE 1 END banka,
-      CASE WHEN OBJECT_ID('dbo.TODVZ_VEZNE_TRANSFERI','U') IS NULL OR OBJECT_ID('dbo.TODVZ_VEZNE_TRANSFERI_SATIRI','U') IS NULL THEN 0 ELSE 1 END transfer`)).recordset[0] || {};
+    const d = await belgeTablolari(pool);
+    const bankaVar = (await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_BANKA','U') IS NULL THEN 0 ELSE 1 END v`)).recordset[0]?.v;
     const yalnizFis = p.fisTipi === 0 || p.fisTipi === 1;
-    const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
-      .input("sbas", sql.VarChar(8), p.baslangicSaat || "00:00:00").input("sbit", sql.VarChar(8), p.bitisSaat || "23:59:59")
-      .input("tip", sql.Int, yalnizFis ? p.fisTipi : null);
+    const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).input("tip", sql.Int, yalnizFis ? p.fisTipi : null);
     const f = filtreler(req, p, { vezne: "V", para: "X.paraId" });
-    const bos = `CAST(NULL AS int), '', '', CAST(NULL AS int), 0, 0, 0, 0, ''`;
-    const bankaAd = var_.banka ? `RTRIM(ISNULL((SELECT TOP 1 BN.HESAP_ADI FROM dbo.TODVZ_BANKA BN WHERE BN.BANKA_ID=F.BANKA_HESABI_ID),''))` : `''`;
-    const transferSql = var_.transfer ? `
-        UNION ALL
-        SELECT 1, T.ALAN_VEZNE_ID, T.TARIH, TS.PARA_ID, TS.MIKTAR, 0, RTRIM(ISNULL(T.REF_NO,''))+' '+RTRIM(ISNULL(T.ACIKLAMA,'')), ${bos}
-        FROM dbo.TODVZ_VEZNE_TRANSFERI T JOIN dbo.TODVZ_VEZNE_TRANSFERI_SATIRI TS ON TS.VEZNE_TRANSFERI_ID=T.VEZNE_TRANSFERI_ID
-        UNION ALL
-        SELECT 1, T.VEREN_VEZNE_ID, T.TARIH, TS.PARA_ID, 0, TS.MIKTAR, RTRIM(ISNULL(T.REF_NO,''))+' '+RTRIM(ISNULL(T.ACIKLAMA,'')), ${bos}
-        FROM dbo.TODVZ_VEZNE_TRANSFERI T JOIN dbo.TODVZ_VEZNE_TRANSFERI_SATIRI TS ON TS.VEZNE_TRANSFERI_ID=T.VEZNE_TRANSFERI_ID` : "";
-    const kasaSql = var_.kasa ? `
-        UNION ALL
-        SELECT 3, KH.VEZNE_ID, KH.TARIH, KH.PARA_ID, CASE WHEN KH.TIP=0 THEN KH.MEBLAG ELSE 0 END, CASE WHEN KH.TIP=0 THEN 0 ELSE KH.MEBLAG END, RTRIM(ISNULL(KH.ACIKLAMA,'')), ${bos}
-        FROM dbo.TODVZ_HESAP_HAREKETI KH
-        UNION ALL
-        SELECT 3, KH.VEZNE_ID, KH.TARIH, ${TL_PARA_SQL}, CASE WHEN KH.TIP=0 THEN KH.KDV ELSE 0 END, CASE WHEN KH.TIP=0 THEN 0 ELSE KH.KDV END, 'KDV — '+RTRIM(ISNULL(KH.ACIKLAMA,'')), ${bos}
-        FROM dbo.TODVZ_HESAP_HAREKETI KH WHERE ISNULL(KH.KDV,0)>0` : "";
-    const digerleri = yalnizFis ? "" : `
-        UNION ALL
-        SELECT 2, CH.VEZNE_ID, CH.TARIH, CS.PARA_ID, CASE WHEN CH.TIP=1 THEN CS.MEBLAG ELSE 0 END, CASE WHEN CH.TIP=1 THEN 0 ELSE CS.MEBLAG END, RTRIM(ISNULL(CH.ACIKLAMA,'')), ${bos}
-        FROM dbo.TODVZ_CARI_HAREKET CH JOIN dbo.TODVZ_CARI_HAREKET_SATIRI CS ON CS.CARI_HAREKET_ID=CH.CARI_HAREKET_ID WHERE CH.HAREKET_TIPI=0${transferSql}${kasaSql}`;
-    const belge = `RTRIM(ISNULL(F.SERI_NO,''))+RTRIM(ISNULL(F.BELGE_NO,''))`;
+    // Fişin banka hesabı bir cari karttır (döviz fişi ekranı cari listesinden seçtirir); adı oradan, yoksa banka kartından
+    const bankaAd = `RTRIM(COALESCE((SELECT TOP 1 BC.AD FROM dbo.TODVZ_CARI_KART BC WHERE BC.CARI_KART_ID=X.bankaHesabiId)${bankaVar ? ", (SELECT TOP 1 BN.HESAP_ADI FROM dbo.TODVZ_BANKA BN WHERE BN.BANKA_ID=X.bankaHesabiId)" : ""}, ''))`;
+    // Gün: belgenin tarihi (fişin TARIH'i; eski rapor gibi). Saat: fiş / sarraf fişinin kayıt saati — süzgeç İstanbul saatiyle JS'de uygulanır
     const res = await req.query(`
-      ;WITH X (belgeTipi, vezneId, zaman, paraId, giris, cikis, aciklama, fisId, belgeNo, unvan, fisTip, kur, tutar, komisyon, bmv, bankaHesabi) AS (
-        SELECT 0, F.VEZNE_ID, ISNULL(F.ZAMAN,F.TARIH), S.PARA_ID, CASE WHEN F.TIP=0 THEN S.MIKTAR ELSE 0 END, CASE WHEN F.TIP=0 THEN 0 ELSE S.MIKTAR END,
-          ${belge}, F.FIS_ID, ${belge}, RTRIM(ISNULL(F.UNVAN,'')), CAST(F.TIP AS int), S.KUR, S.TUTAR, S.KOMISYON, S.BMV, ${bankaAd}
-        FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID WHERE ISNULL(F.IPTAL,0)=0 AND (@tip IS NULL OR F.TIP=@tip)
-        UNION ALL
-        SELECT 0, F.VEZNE_ID, ISNULL(F.ZAMAN,F.TARIH), ${TL_PARA_SQL}, CASE WHEN F.TIP=1 THEN F.ODEME_TUTARI ELSE 0 END, CASE WHEN F.TIP=1 THEN 0 ELSE F.ODEME_TUTARI END,
-          ${belge}+' — ödeme', F.FIS_ID, ${belge}, RTRIM(ISNULL(F.UNVAN,'')), CAST(F.TIP AS int), 0, 0, 0, 0, ${bankaAd}
-        FROM dbo.TODVZ_FIS F WHERE ISNULL(F.IPTAL,0)=0 AND (@tip IS NULL OR F.TIP=@tip) AND ISNULL(F.ODEME_TUTARI,0)<>0${digerleri}
+      ;WITH X (${VEZNE_HAREKET_KOLONLARI}) AS (
+       ${vezneHareketleriSql(d, yalnizFis)}
       )
-      SELECT X.*, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, RTRIM(ISNULL(P.KOD,'')) paraKod, CASE WHEN X.paraId=${TL_PARA_SQL} THEN 9999999 ELSE ISNULL(P.SIRA_NO,99) END paraSira
+      SELECT X.*, ${bankaAd} bankaHesabi, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, RTRIM(ISNULL(P.KOD,'')) paraKod,
+        CASE WHEN X.paraId=${TL_PARA_SQL} THEN 9999999 ELSE ISNULL(P.SIRA_NO,99) END paraSira
       FROM X LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=X.vezneId LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=X.paraId
-      WHERE CAST(X.zaman AS date) BETWEEN @bas AND @bit AND CAST(X.zaman AS time) BETWEEN CAST(@sbas AS time) AND CAST(@sbit AS time) ${f}
-      ORDER BY V.KOD, X.zaman, X.belgeTipi, paraSira, X.aciklama;`);
-    const BELGE = ["Fiş", "Transfer", "Cari", "Hesap"];
-    const satirlar = res.recordset.map((r: any) => { const id = Number(r.paraId), giris = Number(r.giris) || 0, cikis = Number(r.cikis) || 0, miktar = giris || cikis;
-      const secilenKur = kur.kurlar.get(id) ?? 0, ks = kur.satisKurlari.get(id) ?? 0, fis = Number(r.belgeTipi) === 0;
-      // Fişin TL ödeme ayağı: döviz satırının karşılığıdır; miktar ve "seçilen kurla TL" kolonlarına yazılırsa aynı fiş iki kez toplanır
-      const odeme = fis && String(r.aciklama || "").endsWith("— ödeme");
-      if (odeme) return { ...r, belgeTipi: BELGE[0], yon: giris ? "<<" : ">>", tip: Number(r.fisTip) === 1 ? "Satış" : "Alış", giris, cikis, miktar: null, kur: null, tutar: 0, komisyon: 0, bmv: 0,
-        secilenKur: null, secilenTl: 0, kurSatis: null, tlSatis: 0, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` };
-      return { ...r, belgeTipi: BELGE[Number(r.belgeTipi)] || "", yon: giris ? "<<" : ">>", tip: fis ? (Number(r.fisTip) === 1 ? "Satış" : "Alış") : "", giris, cikis, miktar,
-        kur: Number(r.kur) || 0, tutar: Number(r.tutar) || 0, komisyon: Number(r.komisyon) || 0, bmv: Number(r.bmv) || 0,
-        secilenKur, secilenTl: miktar * secilenKur, kurSatis: ks, tlSatis: miktar * ks, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` }; });
+      WHERE CAST(X.tarih AS date) BETWEEN @bas AND @bit AND (ABS(ISNULL(X.giris,0))>0.0000001 OR ABS(ISNULL(X.cikis,0))>0.0000001) ${f}
+      ORDER BY V.KOD, CAST(X.tarih AS date), X.belgeTipi, X.belgeId, paraSira, X.aciklama;`);
+    // Saat aralığı (eski @İlkSaat / @SonSaat): son saat dakika olarak girildiyse o dakikanın sonuna kadar dahil; saati olmayan belgeler 00:00 sayılır
+    const sb = (p.baslangicSaat || "00:00").slice(0, 5), se = (p.bitisSaat || "23:59").slice(0, 5), saatSuz = sb !== "00:00" || se !== "23:59";
+    const satirlar = res.recordset.map((r: any) => ({ ...r, saat: saatTr(r.zaman) }))
+      .filter((r: any) => !saatSuz || ((r.saat || "00:00") >= sb && (r.saat || "00:00") <= se))
+      .sort((a: any, b: any) => a.vezneKod.localeCompare(b.vezneKod) || new Date(a.tarih).getTime() - new Date(b.tarih).getTime() || (a.saat || "").localeCompare(b.saat || "")
+        || a.belgeTipi - b.belgeTipi || a.belgeId - b.belgeId || a.paraSira - b.paraSira)
+      .map((r: any) => { const id = Number(r.paraId), giris = Number(r.giris) || 0, cikis = Number(r.cikis) || 0, miktar = giris || cikis;
+        const secilenKur = kur.kurlar.get(id) ?? 0, ks = kur.satisKurlari.get(id) ?? 0, belgeli = [0, 5, 6].includes(Number(r.belgeTipi));
+        const ortak = { ...r, belgeTipi: VEZNE_BELGE[Number(r.belgeTipi)] || "", yon: giris ? "<<" : ">>", tip: belgeli ? (Number(r.fisTip) === 1 ? "Satış" : "Alış") : "", giris, cikis,
+          belgeNo: r.belgeNo || r.aciklama, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` };
+        // Fişin ödeme ayağı (döviz fişinin TL ödemesi, sarraf fişinin vezneden ödemesi): satırların karşılığıdır; miktar ve "seçilen kurla TL" kolonlarına yazılırsa aynı fiş iki kez toplanır
+        if (Number(r.ayak) === 1) return { ...ortak, aciklama: `${r.aciklama} — ödeme`, miktar: null, kur: null, tutar: 0, komisyon: 0, bmv: 0, secilenKur: null, secilenTl: 0, kurSatis: null, tlSatis: 0 };
+        return { ...ortak, miktar, kur: Number(r.kur) || 0, tutar: Number(r.tutar) || 0, komisyon: Number(r.komisyon) || 0, bmv: Number(r.bmv) || 0,
+          secilenKur, secilenTl: miktar * secilenKur, kurSatis: ks, tlSatis: miktar * ks }; });
     // Vezne × para giriş / çıkış toplamı (eski raporda gizli genel toplam; paralar karışmasın diye para başına)
     const oz = new Map<string, any>();
     for (const x of satirlar) { const k = `${x.vezneKod}|${x.paraKod}`; const o = oz.get(k) || { vezne: x.vezneBaslik, paraKod: x.paraKod, giris: 0, cikis: 0 }; o.giris += x.giris; o.cikis += x.cikis; oz.set(k, o); }
     const ozet = [...oz.values()].map(o => ({ ...o, net: o.giris - o.cikis }));
     return sinirla(satirlar, t, `${aralikOzeti(p)} · ${(p.baslangicSaat || "00:00").slice(0, 5)}–${(p.bitisSaat || "23:59").slice(0, 5)}${ozetEk(p) || " · Tüm vezneler"}${p.fisTipi === 0 ? " · Yalnız alış fişleri" : p.fisTipi === 1 ? " · Yalnız satış fişleri" : ""} · ${kur.aciklama}`,
-      `Vezne bakiyesini değiştiren tüm hareketler listelenir: fişler (döviz ayağı ve TL ödeme ayağı ayrı satır), vezne transferleri, nakit cari hareketler ve kasa hesap hareketleri (KDV TL'ye). << giriş, >> çıkış. İptal edilmiş fişler listelenmez. "Seçilen kur / TL" kolonları parametrede seçilen kurla hesaplanır (${kur.aciklama}).`,
+      `Seçilen aralıkta vezne hareketi yok. ${VEZNE_BAKIYE_DIPNOT}`,
       ozet);
   },
 };

@@ -108,8 +108,9 @@ export const raporSayisalMi = (b?: RaporBicim) => b === "sayi" || b === "sayi4" 
  *    o menüde aynı adlı madde zaten varsa madde bu rapora bağlanır (src/routes/DashboardRoute.tsx).
  *  - G- Raporlar altında yalnızca "raporlar" klasöründekiler + açılır "MASAK" grubu bulunur.
  *  - "gizli": menüde gösterilmez (aynı işi yapan ekran menüde zaten var); adresle açılır.
+ *  - "etiket": I- Etiket İşlemleri altında (barkodlu altın raporları; docs/BARKODLU_ALTIN_RAPORLARI.md).
  */
-export type RaporGrubu = "cari" | "kasa" | "vezne" | "yonetici" | "raporlar" | "masak" | "gizli";
+export type RaporGrubu = "cari" | "kasa" | "vezne" | "yonetici" | "raporlar" | "masak" | "gizli" | "etiket";
 export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrubu }[] = [
   { kod: "CARBAK1", yol: "cari-bakiye", ad: "Cari Bakiye Raporu", grup: "cari" },
   { kod: "CAREKS1", yol: "cari-ekstre", ad: "Cari Ekstre", grup: "cari" },
@@ -146,6 +147,9 @@ export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrub
   { kod: "LONSHO1", yol: "long-short-denge", ad: "Long / Short Denge Analizi", grup: "yonetici" },
   { kod: "KNSKLOG1", yol: "knsk-sorgulama-listesi", ad: "KNSK Sorgulama Log Listesi", grup: "masak" },
   { kod: "KURKON2", yol: "kur-kontrolu", ad: "Kur Kontrolü", grup: "vezne" },
+  { kod: "BALURE1", yol: "barkodlu-altin-uretim", ad: "Barkodlu Altın Üretim Raporu", grup: "etiket" },
+  { kod: "BALSAT1", yol: "barkodlu-altin-satis", ad: "Barkodlu Altın Satış Raporu", grup: "etiket" },
+  { kod: "BALSTK1", yol: "barkodlu-altin-stok", ad: "Barkodlu Altın Stok Raporu", grup: "etiket" },
 ];
 const HARF = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 /** Bir rapor kodunun menü linki ("raporlar/<yol>") */
