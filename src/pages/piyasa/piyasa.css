@@ -52,6 +52,11 @@
 }
 
 /* ---------- Tam ekran ---------- */
+/* sabit yükseklikli kapta (tam ekran) bölümler sıkışıp kırpılmasın */
+.pz > * {
+  flex-shrink: 0;
+}
+
 .pz-tam-ekran {
   background: var(--pz-bg);
   padding: 18px 22px;

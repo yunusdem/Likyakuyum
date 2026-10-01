@@ -178,8 +178,6 @@ const PiyasaPage: React.FC = () => {
                 <span className="pz-nokta" />
                 {veri ? `${canliSayisi}/${tumKaynaklar.length} kaynak canlı` : "Bağlanıyor"}
               </span>
-              <span className="pz-ayrac-nokta" />
-              <span>{tazelemeSn} sn'de bir yenilenir</span>
               {sonYenileme && (
                 <>
                   <span className="pz-ayrac-nokta" />

@@ -18,6 +18,7 @@ const OzetSeridi: React.FC<Props> = ({ referans, dizin, enIyiler, parlat }) => (
   <div className="pz-serit">
     {SERIT_KALEMLERI.map((kod) => {
       const kalem = ORTAK_KALEMLER.find((k) => k.kod === kod)!;
+      // Referans kaynakta kalem yoksa boş kalır (başka kaynaktan alınmaz — kullanıcı kararı)
       const s = referans ? dizin.get(referans.kod)?.get(kod) : undefined;
       const e = enIyiler.get(kod);
       const aralik = e && e.minSatis !== null && e.maxSatis !== null && e.sayi >= 2 ? e.maxSatis - e.minSatis : 0;
