@@ -14,6 +14,8 @@ export interface BelgeTablolari {
   kasa: boolean; transfer: boolean; dekont: boolean; sarraf: boolean; odemeCari: boolean; pos: boolean;
   /** Uygulamaya özgü belgeler (eski programda yok): perakende fişi (TODVZ_FATURA*), barkodlu altın / özel ürün tanımı; saklanan stok kolonları ve TODVZ_AYAR */
   perakende: boolean; perakendeStok: boolean; altinUrun: boolean; altinStok: boolean; ozelUrun: boolean; ozelStok: boolean; ayar: boolean;
+  /** Vezne bakiye düzeltmeleri (Vezne İzleme'den elle değiştirilen bakiye + ilk kurulumdaki açılış farkı; vezneBakiyeDuzeltmeSql.repository.ts) */
+  duzeltme: boolean;
 }
 
 export async function belgeTablolari(pool: sql.ConnectionPool): Promise<BelgeTablolari> {
@@ -30,10 +32,11 @@ export async function belgeTablolari(pool: sql.ConnectionPool): Promise<BelgeTab
     CASE WHEN COL_LENGTH('dbo.TODVZ_ALTIN_URUN','STOK_PARA_ID') IS NULL THEN 0 ELSE 1 END altinStok,
     CASE WHEN OBJECT_ID('dbo.TODVZ_OZEL_URUN','U') IS NULL THEN 0 ELSE 1 END ozelUrun,
     CASE WHEN COL_LENGTH('dbo.TODVZ_OZEL_URUN','STOK_PARA_ID') IS NULL THEN 0 ELSE 1 END ozelStok,
-    CASE WHEN OBJECT_ID('dbo.TODVZ_AYAR','U') IS NULL THEN 0 ELSE 1 END ayar`)).recordset[0] || {};
+    CASE WHEN OBJECT_ID('dbo.TODVZ_AYAR','U') IS NULL THEN 0 ELSE 1 END ayar,
+    CASE WHEN OBJECT_ID('dbo.TODVZ_VEZNE_BAKIYE_DUZELTME','U') IS NULL THEN 0 ELSE 1 END duzeltme`)).recordset[0] || {};
   return { kasa: !!r.kasa, transfer: !!r.transfer, dekont: !!r.dekont, sarraf: !!r.sarraf, odemeCari: !!r.sarraf && !!r.odemeCari, pos: !!r.pos,
     perakende: !!r.perakende, perakendeStok: !!r.perakende && !!r.perakendeStok, altinUrun: !!r.altinUrun, altinStok: !!r.altinUrun && !!r.altinStok,
-    ozelUrun: !!r.ozelUrun, ozelStok: !!r.ozelUrun && !!r.ozelStok, ayar: !!r.ayar };
+    ozelUrun: !!r.ozelUrun, ozelStok: !!r.ozelUrun && !!r.ozelStok, ayar: !!r.ayar, duzeltme: !!r.duzeltme };
 }
 
 /**
@@ -45,7 +48,7 @@ export const ISCILIK_KAYDI = (a: string) =>
   `(${a}.ACIKLAMA LIKE 'Sarraf Fişi İşçilik - %' OR ${a}.ACIKLAMA LIKE 'Döviz Fişi İşçilik - %' OR ${a}.ACIKLAMA LIKE 'Perakende Fişi İşçilik - %')`;
 
 /** Vezne hareketi belge tipleri — eski BELGE_TIPI kodlarıyla aynı */
-export const VEZNE_BELGE: Record<number, string> = { 0: "Fiş", 1: "Transfer", 2: "Cari", 3: "Hesap", 4: "Dekont", 5: "Sarraf", 6: "Perakende", 7: "Ürün tanımı" };
+export const VEZNE_BELGE: Record<number, string> = { 0: "Fiş", 1: "Transfer", 2: "Cari", 3: "Hesap", 4: "Dekont", 5: "Sarraf", 6: "Perakende", 7: "Ürün tanımı", 8: "Bakiye düzeltme" };
 
 /**
  * Perakende fişi / ürün tanımı tarihleri ekrandan saatli gelir ve uygulama bunları UTC olarak yazar (Türkiye saatinin 3 saat gerisi);
@@ -100,6 +103,8 @@ const URUN_PARASI = `COALESCE(U1.PARA_ID, U2.PARA_ID, U3.PARA_ID, U4.PARA_ID, U5
  *    (STOK_PARA_ID / STOK_MIKTAR), 01.10.2026 öncesi satırlarda kaydetmedeki kural (gram varsa gram, yoksa miktar; ayar / ad eşleştirmesi). Barkodlu satır vezne
  *    stoğunu değiştirmez (ürün tanımında düşülmüştür). Vezneden tahsilat satışta giriş, alışta çıkış (belgeden; 01.10.2026 öncesi tahsilatlar vezne bakiyesine işlenmemişti).
  *  - Ürün tanımı (barkodlu altın / özel ürün): ürünün veznesinden ayar parası çıkış (STOK_* saklıysa o; yoksa kayıttaki eşleştirme). Silinen ürün düşer.
+ *  - Bakiye düzeltme: Vezne İzleme'den elle değiştirilen bakiyenin farkı ve tablo ilk kurulurken anlık bakiye ile belgeler arasındaki açılış farkı
+ *    (artı giriş, eksi çıkış). Bunlar olmadan anlık bakiye belgesiz değişikliklerle belgelerden ayrışıyordu (canlı test 01.10.2026).
  * `tipFiltresi` true ise yalnızca döviz, sarraf ve perakende fişi satırları (`@tip` parametresine göre alış / satış) döner.
  */
 export function vezneHareketleriSql(d: BelgeTablolari, tipFiltresi = false): string {
@@ -167,6 +172,10 @@ export function vezneHareketleriSql(d: BelgeTablolari, tipFiltresi = false): str
        FROM dbo.TODVZ_${T}_URUN U ${URUN_AYAR_PARASI("U", d.ayar)}
        WHERE ${v} IS NOT NULL AND ${m}>0 AND ${stok ? `COALESCE(U.STOK_PARA_ID, ${URUN_PARASI})` : URUN_PARASI} IS NOT NULL`);
     }
+    if (d.duzeltme) parcalar.push(
+      `SELECT 8, BD.VEZNE_BAKIYE_DUZELTME_ID, 0, 0, BD.VEZNE_ID, BD.TARIH, NULL, BD.PARA_ID, CASE WHEN BD.MIKTAR>0 THEN BD.MIKTAR ELSE 0 END, CASE WHEN BD.MIKTAR<0 THEN -BD.MIKTAR ELSE 0 END,
+         0, RTRIM(ISNULL(BD.ACIKLAMA,'')), NULL, ${bos}
+       FROM dbo.TODVZ_VEZNE_BAKIYE_DUZELTME BD WHERE BD.MIKTAR<>0`);
   }
   return parcalar.join("\n     UNION ALL\n     ");
 }

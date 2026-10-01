@@ -114,19 +114,20 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
             giris: alacak ? m : 0, cikis: alacak ? 0 : m, kdv: 0, sira: 8 }); } }
       // 4) Sarraf fişi, perakende fişi ve ürün tanımı — kendi ibareleriyle gün × belge × fiş tipi × para toplu (vezne hareketiyle aynı kural; kullanıcı kararı 01.10.2026)
       { const d = await belgeTablolari(pool);
-        if (d.sarraf || d.perakende || d.altinUrun || d.ozelUrun) { const req = istek(); const f = filtreler(req, p, { vezne: "V" });
+        if (d.sarraf || d.perakende || d.altinUrun || d.ozelUrun || d.duzeltme) { const req = istek(); const f = filtreler(req, p, { vezne: "V" });
           const res = await req.query(`
             ;WITH X (${VEZNE_HAREKET_KOLONLARI}) AS (${vezneHareketleriSql(d)})
             SELECT CAST(X.tarih AS date) gun, X.belgeTipi, X.fisTip tip, X.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, SUM(X.giris) giris, SUM(X.cikis) cikis,
               MIN(X.aciklama) ilkSeri, MAX(X.aciklama) sonSeri, COUNT(DISTINCT X.belgeId) adet, CASE WHEN CAST(X.tarih AS date)<@bas THEN 1 ELSE 0 END onceki
             FROM X JOIN dbo.TODVZ_PARA P ON P.PARA_ID=X.paraId LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=X.vezneId
-            WHERE X.belgeTipi IN (5,6,7) AND CAST(X.tarih AS date)<=@bit ${f}
+            WHERE X.belgeTipi IN (5,6,7,8) AND CAST(X.tarih AS date)<=@bit ${f}
             GROUP BY CAST(X.tarih AS date), X.belgeTipi, X.fisTip, X.paraId, P.KOD, P.SIRA_NO;`);
-          const AD: Record<number, string> = { 5: "Sarraf fişi", 6: "Perakende fişi", 7: "Ürün tanımı" };
+          const AD: Record<number, string> = { 5: "Sarraf fişi", 6: "Perakende fişi", 7: "Ürün tanımı", 8: "Bakiye düzeltme" };
           for (const r of res.recordset) { const bt = Number(r.belgeTipi), alis = Number(r.tip) === 0;
-            satirlarHam.push({ paraId: Number(r.paraId), paraKod: r.paraKod, siraNo: Number(r.siraNo), tarih: r.gun, hesapKod: AD[bt], hesapAd: bt === 7 ? "" : alis ? "Alış" : "Satış",
-              aciklama: bt === 7 ? `${r.adet} ürün` : `Seri : ${r.ilkSeri} - ${r.sonSeri}`, giris: Number(r.giris) || 0, cikis: Number(r.cikis) || 0, kdv: 0, vezneKod: "", kaydeden: "",
-              onceki: r.onceki, sira: bt === 7 ? 7.5 : bt === 6 ? (alis ? 7.2 : 7.1) : (alis ? 7 : 6) }); } } }
+            satirlarHam.push({ paraId: Number(r.paraId), paraKod: r.paraKod, siraNo: Number(r.siraNo), tarih: r.gun, hesapKod: AD[bt], hesapAd: bt >= 7 ? "" : alis ? "Alış" : "Satış",
+              aciklama: bt === 8 ? (Number(r.adet) === 1 ? r.ilkSeri : `${r.adet} düzeltme`) : bt === 7 ? `${r.adet} ürün` : `Seri : ${r.ilkSeri} - ${r.sonSeri}`,
+              giris: Number(r.giris) || 0, cikis: Number(r.cikis) || 0, kdv: 0, vezneKod: "", kaydeden: "",
+              onceki: r.onceki, sira: bt === 8 ? 7.6 : bt === 7 ? 7.5 : bt === 6 ? (alis ? 7.2 : 7.1) : (alis ? 7 : 6) }); } } }
     }
     const secili = paraSecimi(p);
     const paraAdlari = new Map<number, string>((await pool.request().query(`SELECT PARA_ID id, RTRIM(ISNULL(AD,'')) ad FROM dbo.TODVZ_PARA`)).recordset.map((x: any) => [Number(x.id), String(x.ad || "")]));

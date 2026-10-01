@@ -1,4 +1,6 @@
 import { RaporSqlRepository } from "../../models/raporSql.repository.js";
+import { VezneBakiyeDuzeltmeSqlRepository } from "../../models/vezneBakiyeDuzeltmeSql.repository.js";
+import { logger } from "../../utils/logger.js";
 import { EbelgeSqlRepository } from "../../models/ebelgeSql.repository.js";
 import type { DbContext } from "../../models/belgeSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
@@ -34,6 +36,9 @@ export class RaporService {
   static async veri(kod: string, p: RaporParametreler, ctx?: DbContext): Promise<RaporSonucVeri & { tanim: RaporTanim }> {
     const tanim = this.tanim(kod);
     const pool = await RaporSqlRepository.pool(ctx);
+    // Vezne bakiye düzeltme tablosu ilk raporda kurulur ve açılış farkı bir kez yazılır (anlık bakiye = belgeler); hata raporu durdurmaz
+    await VezneBakiyeDuzeltmeSqlRepository.ensure(pool, `${ctx?.dbServer || ""}|${ctx?.dbName || ""}`)
+      .catch((e: any) => logger.warn("Vezne bakiye düzeltme tablosu kurulamadı:", e?.message || e));
     const sonuc = await RAPOR_SORGULARI[tanim.kod](pool, p, tanim);
     return { ...sonuc, tanim: kosulUygula(kmtUygula(tanim, p.kmt), p) };
   }

@@ -23,16 +23,18 @@ export class VezneIzlemeService {
     vezneId: number,
     paraId: number,
     miktar: number,
-    dbContext?: { dbServer?: string; dbName?: string }
+    dbContext?: { dbServer?: string; dbName?: string },
+    kullaniciId?: number | null
   ): Promise<void> {
-    return await VezneIzlemeSqlRepository.updateBakiye(vezneId, paraId, miktar, dbContext);
+    return await VezneIzlemeSqlRepository.updateBakiye(vezneId, paraId, miktar, dbContext, kullaniciId);
   }
 
   public static async updateAllBakiyeler(
     items: { vezneId: number; paraId: number; miktar: number }[],
-    dbContext?: { dbServer?: string; dbName?: string }
+    dbContext?: { dbServer?: string; dbName?: string },
+    kullaniciId?: number | null
   ): Promise<void> {
-    return await VezneIzlemeSqlRepository.updateAllBakiyeler(items, dbContext);
+    return await VezneIzlemeSqlRepository.updateAllBakiyeler(items, dbContext, kullaniciId);
   }
 }
 

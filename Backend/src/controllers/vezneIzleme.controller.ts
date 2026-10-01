@@ -65,7 +65,8 @@ export class VezneIzlemeController {
       Number(vezneId),
       Number(paraId),
       Number(miktar) || 0,
-      dbContext
+      dbContext,
+      Number((req as any).user?.id) || null
     );
 
     return ApiResponse.ok(res, "Vezne bakiyesi başarıyla güncellendi.");
@@ -89,7 +90,7 @@ export class VezneIzlemeController {
       miktar: Number(it.miktar) || 0,
     }));
 
-    await VezneIzlemeService.updateAllBakiyeler(cleanItems, dbContext);
+    await VezneIzlemeService.updateAllBakiyeler(cleanItems, dbContext, Number((req as any).user?.id) || null);
     return ApiResponse.ok(res, "Tablo bakiyeleri başarıyla kaydedildi.");
   });
 }
