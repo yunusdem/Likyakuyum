@@ -704,6 +704,28 @@ export class CariHareketSqlRepository {
     }
   }
 
+  /**
+   * Nakit (HAREKET_TIPI 0) cari hareketin vezne etkisi: alacak (TIP 1) veznede giriş, borç (TIP 0) çıkış. `isaret` 1 = uygula, -1 = geri al.
+   * Eski programdaki gibi nakit tahsilat / ödeme vezne bakiyesini değiştirir; raporlar (Vezne Hareket Listesi, Vezne Bakiye) da böyle sayar.
+   * Önceden yazılmadığından anlık vezne bakiyesi rapordan sapıyordu (rapor denetimi 01.10.2026). Hareketin veritabanındaki hâli kullanılır.
+   */
+  private static async nakitVezneEtkisi(transaction: sql.Transaction, hareketId: number, isaret: 1 | -1): Promise<void> {
+    const req = new sql.Request(transaction);
+    req.input("ID", sql.Int, hareketId).input("ISARET", sql.Int, isaret);
+    await req.query(`
+      DECLARE @ETKI TABLE (VEZNE_ID INT, PARA_ID INT, M FLOAT);
+      INSERT INTO @ETKI (VEZNE_ID, PARA_ID, M)
+        SELECT H.VEZNE_ID, S.PARA_ID, SUM(CASE WHEN H.TIP = 1 THEN S.MEBLAG ELSE -S.MEBLAG END) * @ISARET
+        FROM [dbo].[TODVZ_CARI_HAREKET] H JOIN [dbo].[TODVZ_CARI_HAREKET_SATIRI] S ON S.CARI_HAREKET_ID = H.CARI_HAREKET_ID
+        WHERE H.CARI_HAREKET_ID = @ID AND H.HAREKET_TIPI = 0 AND H.VEZNE_ID IS NOT NULL
+        GROUP BY H.VEZNE_ID, S.PARA_ID;
+      UPDATE B SET MIKTAR = B.MIKTAR + E.M FROM [dbo].[TODVZ_VEZNE_BAKIYE] B JOIN @ETKI E ON E.VEZNE_ID = B.VEZNE_ID AND E.PARA_ID = B.PARA_ID;
+      INSERT INTO [dbo].[TODVZ_VEZNE_BAKIYE] (VEZNE_ID, PARA_ID, MIKTAR)
+        SELECT E.VEZNE_ID, E.PARA_ID, E.M FROM @ETKI E
+        WHERE NOT EXISTS (SELECT 1 FROM [dbo].[TODVZ_VEZNE_BAKIYE] B WHERE B.VEZNE_ID = E.VEZNE_ID AND B.PARA_ID = E.PARA_ID);
+    `);
+  }
+
   public static async create(
     data: CariHareketInputDto,
     userId: number = 1,
@@ -763,6 +785,7 @@ export class CariHareketSqlRepository {
         `);
       }
 
+      await CariHareketSqlRepository.nakitVezneEtkisi(transaction, newId, 1);
       await transaction.commit();
 
       const created = await CariHareketSqlRepository.findById(newId, dbContext);
@@ -791,6 +814,7 @@ export class CariHareketSqlRepository {
       await transaction.begin();
 
       const numId = parseInt(String(id), 10);
+      await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
       const headerRequest = new sql.Request(transaction);
       headerRequest.input("CARI_HAREKET_ID", sql.Int, numId);
       headerRequest.input("CARI_KART_ID", sql.Int, data.cariKartId);
@@ -838,6 +862,7 @@ export class CariHareketSqlRepository {
         `);
       }
 
+      await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, 1);
       await transaction.commit();
 
       const updated = await CariHareketSqlRepository.findById(numId, dbContext);
@@ -863,6 +888,7 @@ export class CariHareketSqlRepository {
     try {
       await transaction.begin();
       const numId = parseInt(String(id), 10);
+      await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
 
       const delLines = new sql.Request(transaction);
       delLines.input("CARI_HAREKET_ID", sql.Int, numId);

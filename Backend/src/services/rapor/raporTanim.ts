@@ -26,6 +26,8 @@ export type RaporParametreTipi =
   | "metin";         // serbest arama
 
 export type RaporSecimKaynagi = "hesap" | "istatistik" | "meslek" | "sektor" | "kullanici" | "banka";
+/** Barkodlu altın ürün kartındaki farklı değerler (docs/BARKODLU_ALTIN_RAPORLARI.md) */
+export type RaporSecenekKaynagi = "altinAyar" | "altinGrup" | "altinUretici" | "altinBanko";
 
 export interface RaporParametre {
   ad: string;                 // sorgu parametresi adı (ör. "vezneId")
@@ -38,6 +40,8 @@ export interface RaporParametre {
   secenekler?: { deger: string; ad: string }[];
   /** tip "listeCoklu": liste kaynağı ve dürbün başlığında kullanılan tekil ad ("hesap", "istatistik") */
   kaynak?: RaporSecimKaynagi;
+  /** tip "secim": seçenekler tanım isteğinde veritabanından doldurulur (ilk seçenek "Tümü"); değer metin olarak saklanır */
+  secenekKaynagi?: RaporSecenekKaynagi;
   /** Alan altındaki kısa açıklama */
   not?: string;
 }

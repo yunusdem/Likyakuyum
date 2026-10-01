@@ -19,6 +19,18 @@ export class RaporService {
     return t;
   }
 
+  /** Ekrana giden tanım: `secenekKaynagi` olan seçim parametrelerinin seçenekleri veritabanından doldurulur (ilk seçenek "Tümü") */
+  static async tanimSecenekli(kod: string, ctx?: DbContext): Promise<RaporTanim> {
+    const t = this.tanim(kod);
+    if (!t.parametreler.some(p => p.secenekKaynagi)) return t;
+    const parametreler = await Promise.all(t.parametreler.map(async p => {
+      if (!p.secenekKaynagi) return p;
+      const degerler = await RaporSqlRepository.secenekListesi(p.secenekKaynagi, ctx).catch(() => [] as string[]);
+      return { ...p, secenekler: [{ deger: "", ad: "Tümü" }, ...degerler.map(d => ({ deger: d, ad: d }))] };
+    }));
+    return { ...t, parametreler };
+  }
+
   static async veri(kod: string, p: RaporParametreler, ctx?: DbContext): Promise<RaporSonucVeri & { tanim: RaporTanim }> {
     const tanim = this.tanim(kod);
     const pool = await RaporSqlRepository.pool(ctx);

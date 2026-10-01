@@ -27,6 +27,10 @@ const varsayilanDeger = (v?: string | number | null): string => {
   if (typeof v === "string" && /^-\d+g$/.test(v)) return gun(-Number(v.slice(1, -1)));
   return v === null || v === undefined ? "" : String(v);
 };
+/** Parametre kontrollerinin genişliği (px) — kompakt düzen */
+const GENISLIK = { tarih: 135, saat: 95, durbun: 220, metin: 190, sayi: 110, fisTipi: 110, kmt: 160 };
+/** Alt alta parametre satırlarında etiket sütunu (kutular aynı hizadan başlar) */
+const ETIKET_GENISLIGI = 95;
 const HAREKET_TIPLERI: { kod: string; ad: string }[] = [
   { kod: "0", ad: "Nakit" }, { kod: "1", ad: "Banka / Havale" }, { kod: "2", ad: "POS / Kredi Kartı" }, { kod: "3", ad: "Dekont" }, { kod: "4", ad: "Virman" }, { kod: "5", ad: "Devir" },
 ];
@@ -196,23 +200,30 @@ export const RaporPage: React.FC = () => {
   const cariAd = (id: string | number | undefined) => { const x = cariler.find(v => String(v.id) === String(id ?? "")); return x ? `${x.kod} — ${x.ad}` : id ? String(id) : ""; };
   const meslek = yukleniyor || dosyaIsi;
 
-  /** Dikey parametre satırı: sol etiket, sağ kontrol (Crystal parametre penceresi düzeni, yönetici isteği 14.09.2026) */
-  const satir = (key: string, etiket: React.ReactNode, kontrol: React.ReactNode, not?: React.ReactNode) => (
-    <Row key={key} className="g-0 align-items-center border-bottom" style={{ minHeight: 40 }}>
-      <Col md={3} className="px-3 py-1 small fw-semibold text-secondary" style={{ background: "#eef4fb" }}>{etiket}</Col>
-      <Col md={7} lg={6} className="px-3 py-1">{kontrol}{not && <div className="form-text mt-0">{not}</div>}</Col>
-    </Row>
+  /**
+   * Kompakt parametre listesi (kullanıcı isteği 01.10.2026): her parametre bir satır, alt alta; yalnızca başı / sonu olanlar (ilk–son tarih, saat, cari)
+   * aynı satırda yan yana. Etiketler aynı genişlikte (kutular hizalı), kutular türüne göre kısa. Metin notlar ipucunda (title);
+   * işlem içeren not (Tümü / Temizle) kutunun yanında.
+   */
+  const ipucu = (not?: React.ReactNode) => (typeof not === "string" ? not : undefined);
+  const ekNot = (not?: React.ReactNode) => (not && typeof not !== "string" ? <span className="small text-muted text-nowrap">{not}</span> : null);
+  // Etiket uzunsa (ör. "Hareket tipi (seçilmezse tümü)") iki satıra kırılır; kutu dar ekranda küçülür (taşma olmaz)
+  const etiketYazi = (e: React.ReactNode, hizali = true) => <span className="small fw-semibold text-secondary" style={{ minWidth: hizali ? ETIKET_GENISLIGI : undefined, maxWidth: 170, flexShrink: 0 }}>{e}</span>;
+  const kutu = (w: number | "auto", icerik: React.ReactNode, title?: string) => <div style={{ width: w, minWidth: 0, flexShrink: 1 }} title={title}>{icerik}</div>;
+  const satir = (key: string, etiket: React.ReactNode, kontrol: React.ReactNode, not?: React.ReactNode, w: number | "auto" = GENISLIK.durbun) => (
+    <div key={key} className="d-flex align-items-center gap-2" style={{ maxWidth: "100%" }} title={ipucu(not)}>
+      {etiketYazi(etiket)}{kutu(w, kontrol)}{ekNot(not)}
+    </div>
   );
-  /** Çift parametre satırı: iki etiket|değer çifti yan yana (ilk/son tarih, ilk/son cari) — arada boşluk bırakılır (yönetici isteği 16.09.2026) */
-  const ciftSatir = (key: string, sol: [React.ReactNode, React.ReactNode, React.ReactNode?], sag: [React.ReactNode, React.ReactNode, React.ReactNode?]) => (
-    <Row key={key} className="g-0 align-items-center border-bottom" style={{ minHeight: 40 }}>
-      <Col md={3} className="px-3 py-1 small fw-semibold text-secondary align-self-stretch d-flex align-items-center" style={{ background: "#eef4fb" }}>{sol[0]}</Col>
-      <Col md={3} className="px-3 py-1">{sol[1]}{sol[2] && <div className="form-text mt-0">{sol[2]}</div>}</Col>
-      <Col md={1} className="d-none d-md-block" />
-      <Col md={2} className="px-3 py-1 small fw-semibold text-secondary align-self-stretch d-flex align-items-center" style={{ background: "#eef4fb" }}>{sag[0]}</Col>
-      <Col md={3} className="px-3 py-1">{sag[1]}{sag[2] && <div className="form-text mt-0">{sag[2]}</div>}</Col>
-    </Row>
+  /** Başı / sonu olan çift (ilk / son tarih, saat, cari): aynı satırda yan yana; ikinci etiket hizalanmaz, ilk kutunun hemen ardından gelir */
+  const ciftSatir = (key: string, sol: [React.ReactNode, React.ReactNode, React.ReactNode?], sag: [React.ReactNode, React.ReactNode, React.ReactNode?], w: number = GENISLIK.durbun) => (
+    <div key={key} className="d-flex align-items-center flex-wrap" style={{ gap: "6px 14px", maxWidth: "100%" }}>
+      <div className="d-flex align-items-center gap-2" style={{ maxWidth: "100%" }}>{etiketYazi(sol[0])}{kutu(w, sol[1], ipucu(sol[2]))}{ekNot(sol[2])}</div>
+      <div className="d-flex align-items-center gap-2" style={{ maxWidth: "100%" }}>{etiketYazi(sag[0], false)}{kutu(w, sag[1], ipucu(sag[2]))}{ekNot(sag[2])}</div>
+    </div>
   );
+  /** Seçim kutusu genişliği: en uzun seçeneğe göre (120–260 px) */
+  const secimGenisligi = (secenekler?: { ad: string }[]) => Math.min(260, Math.max(120, Math.max(0, ...(secenekler || []).map(o => o.ad.length)) * 7.5 + 40));
   const zorunluIsareti = (p: RaporParametre) => p.zorunlu ? <span className="text-danger"> *</span> : null;
   const tarihKutu = (ad: string) => <Form.Control size="sm" type="date" value={String(degerler[ad] ?? "")} onChange={e => set(ad, e.target.value)} />;
   const saatKutu = (ad: string, vars: string) => <Form.Control size="sm" type="time" value={String(degerler[ad] ?? vars)} onChange={e => set(ad, e.target.value)} />;
@@ -224,10 +235,10 @@ export const RaporPage: React.FC = () => {
     const secili = secimler(ad);
     const kodu = (id: string | number | undefined) => items.find(v => String(v.id) === String(id ?? ""))?.kod || (id ? String(id) : "");
     return satir(ad, <>{tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)}{zorunluIsareti(p)}</>,
-      <DurbunAlan<T> value={secili.map(kodu).join(", ")} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `Dürbünden ${tur} seçin…` : `Tüm ${tur}ler (dürbünden seçin)`} title={`${tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)} seçimi — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
+      <DurbunAlan<T> value={secili.map(kodu).join(", ")} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `${tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)} seçin…` : `Tüm ${tur}ler`} title={`${tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)} seçimi — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
         kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek} coklu secili={secili} onSelect={() => undefined}
         onCokluSec={sec => set(ad, sec.map(x => String(x.id)).join(","))} />,
-      secili.length ? <>{secili.length} {tur} seçili (yalnızca bunlar) · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(ad, "")}>Tümü</Button></>
+      secili.length ? <>{secili.length} seçili · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(ad, "")}>Tümü</Button></>
         : p.zorunlu ? `En az bir ${tur} seçin` : `Hiçbiri seçilmezse tüm ${tur}ler`);
   };
   /** Cari: İlk kod (çoklu) + Son kod (tek). Son boşsa yalnızca seçilenler; son seçiliyse ilk seçimin en küçük kodundan son koda aralık; yalnız son seçiliyse baştan son koda kadar */
@@ -237,33 +248,33 @@ export const RaporPage: React.FC = () => {
     const son = degerler[sonAd];
     const ilkKod = secili.map(kodu).filter(Boolean).sort()[0] || "";
     const aciklama = son
-      ? `${ilkKod || "(baştan)"} → ${kodu(son)} aralığındaki ${tur}ler`
-      : secili.length ? `${secili.length} ${tur} seçili (yalnızca bunlar)` : p.zorunlu ? `En az bir ${tur} seçin` : `Hiçbiri seçilmezse tüm ${tur}ler`;
+      ? `${ilkKod || "(baştan)"} → ${kodu(son)} aralığı`
+      : secili.length ? `${secili.length} seçili` : p.zorunlu ? `En az bir ${tur} seçin` : `Hiçbiri seçilmezse tüm ${tur}ler`;
     return ciftSatir(`${ilkAd}-${sonAd}`,
-      [<>İlk {tur} kodu{zorunluIsareti(p)}</>,
-        <DurbunAlan<T> value={secili.map(kodu).join(", ")} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `Dürbünden ${tur} seçin…` : `Tüm ${tur}ler (dürbünden seçin)`} title={`İlk ${tur} kodu — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
+      [<>İlk {tur}{zorunluIsareti(p)}</>,
+        <DurbunAlan<T> value={secili.map(kodu).join(", ")} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `${tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)} seçin…` : `Tüm ${tur}ler`} title={`İlk ${tur} kodu — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
           kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek} coklu secili={secili} onSelect={() => undefined}
           onCokluSec={sec => set(ilkAd, sec.map(x => String(x.id)).join(","))} />,
-        <>{aciklama}{(secili.length || son) ? <> · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => { set(ilkAd, ""); set(sonAd, ""); }}>Temizle</Button></> : null}</>],
-      [<>Son {tur} kodu</>,
-        <DurbunAlan<T> value={kodu(son)} saltOkunur onChange={() => undefined} placeholder="Boş bırakılırsa yalnızca ilk kodda seçilenler" title={`Son ${tur} kodu`} items={items} yukleniyor={listeYukleniyor}
+        (secili.length || son) ? <>{aciklama} · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => { set(ilkAd, ""); set(sonAd, ""); }}>Temizle</Button></> : aciklama],
+      [<>Son {tur}</>,
+        <DurbunAlan<T> value={kodu(son)} saltOkunur onChange={() => undefined} placeholder="İsteğe bağlı" title={`Son ${tur} kodu`} items={items} yukleniyor={listeYukleniyor}
           kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek} onSelect={v => set(sonAd, v.id)} />,
-        son ? <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(sonAd, "")}>Son kodu kaldır</Button> : "Seçilirse ilk koddan bu koda kadar aralık gelir"]);
+        son ? <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(sonAd, "")}>Kaldır</Button> : "Seçilirse ilk koddan bu koda kadar aralık gelir"]);
   };
 
   const alan = (p: RaporParametre): React.ReactNode => {
     const etiket = <>{p.etiket}{zorunluIsareti(p)}</>;
     switch (p.tip) {
-      case "tarih": return satir(p.ad, etiket, tarihKutu(p.ad));
+      case "tarih": return satir(p.ad, etiket, tarihKutu(p.ad), p.not, GENISLIK.tarih);
       case "tarihAralik": { const [b, s] = aralikAnahtarlari(p); const ana = p.ad === "baslangic" && p.etiket === "Tarih aralığı";
-        return ciftSatir(`tarihAralik-${p.ad}`, [<>{ana ? "İlk tarih" : `${p.etiket} — ilk`}{zorunluIsareti(p)}</>, tarihKutu(b), p.not], [ana ? "Son tarih" : `${p.etiket} — son`, tarihKutu(s)]); }
+        return ciftSatir(`tarihAralik-${p.ad}`, [<>{ana ? "İlk tarih" : `${p.etiket} — ilk`}{zorunluIsareti(p)}</>, tarihKutu(b), p.not], [ana ? "Son tarih" : `${p.etiket} — son`, tarihKutu(s)], GENISLIK.tarih); }
       case "secim": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
-        {(p.secenekler || []).map(o => <option key={o.deger} value={o.deger}>{o.ad}</option>)}</Form.Select>, p.not);
-      case "sayi": return satir(p.ad, etiket, <Form.Control size="sm" type="number" min={0} step="any" inputMode="decimal" style={{ maxWidth: 200 }} value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not);
+        {(p.secenekler || []).map(o => <option key={o.deger} value={o.deger}>{o.ad}</option>)}</Form.Select>, p.not, secimGenisligi(p.secenekler));
+      case "sayi": return satir(p.ad, etiket, <Form.Control size="sm" type="number" min={0} step="any" inputMode="decimal" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not, GENISLIK.sayi);
       case "listeCoklu": return p.kaynak
         ? coklu<RaporSecimKaydi>(p, KAYNAK_ADI[p.kaynak], p.ad, listeler[p.kaynak] || [], secimKolonlar, secimArama, "Kod veya adla arayın…")
         : null;
-      case "saatAralik": return [satir("baslangicSaat", "İlk saat", saatKutu("baslangicSaat", "00:00")), satir("bitisSaat", "Son saat", saatKutu("bitisSaat", "23:59"))];
+      case "saatAralik": return ciftSatir("saatAralik", ["İlk saat", saatKutu("baslangicSaat", "00:00")], ["Son saat", saatKutu("bitisSaat", "23:59")], GENISLIK.saat);
       case "vezne": return satir(p.ad, etiket, <DurbunAlan<VezneItem> value={vezneAd(degerler[p.ad]) || ""} saltOkunur onChange={() => undefined} placeholder="Tüm vezneler" title="Vezne seçimi" items={vezneler} yukleniyor={listeYukleniyor}
           kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} aramaYerTutucu="Vezne kodu veya adıyla arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />,
         degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Tümü</Button> : null);
@@ -274,20 +285,20 @@ export const RaporPage: React.FC = () => {
           kolonlar={cariKolonlar} aramaAlanlari={cariArama} anahtar={v => String(v.id)} aramaYerTutucu="Cari kodu, ünvan, telefon veya vergi no ile arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />,
         degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Temizle</Button> : null);
       case "fisTipi": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
-        <option value="">Tümü</option><option value="0">Alış</option><option value="1">Satış</option></Form.Select>);
+        <option value="">Tümü</option><option value="0">Alış</option><option value="1">Satış</option></Form.Select>, undefined, GENISLIK.fisTipi);
       case "hareketTipi": {
         const secili = secimler(p.ad);
         const degistir = (k: string, ac: boolean) => set(p.ad, (ac ? [...secili, k] : secili.filter(x => x !== k)).join(","));
-        return satir(p.ad, etiket, <div className="d-flex flex-wrap gap-3 pt-1">
+        return satir(p.ad, etiket, <div className="d-flex flex-wrap gap-3">
           {HAREKET_TIPLERI.map(h => <Form.Check key={h.kod} inline type="checkbox" id={`${p.ad}-${h.kod}`} className="small me-0" label={h.ad} checked={secili.includes(h.kod)} onChange={e => degistir(h.kod, e.target.checked)} />)}
-        </div>, secili.length ? <>{secili.length} tip seçili · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(p.ad, "")}>Tümü</Button></> : "Hiçbiri seçilmezse tüm hareket tipleri");
+        </div>, secili.length ? <>{secili.length} seçili · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(p.ad, "")}>Tümü</Button></> : "Hiçbiri seçilmezse tüm hareket tipleri", "auto");
       }
       case "kurSecimi": return [
         satir("kurTuru", etiket, <Form.Select size="sm" value={String(degerler.kurTuru ?? 0)} onChange={e => set("kurTuru", Number(e.target.value))}>
-          <option value={0}>Anlık gişe kuru</option><option value={2}>Saklanan kur (tarihli)</option></Form.Select>),
-        ...(Number(degerler.kurTuru) === 2 ? [satir("kurTarihi", "Kur tarihi", tarihKutu("kurTarihi"))] : []),
+          <option value={0}>Anlık gişe kuru</option><option value={2}>Saklanan kur (tarihli)</option></Form.Select>, undefined, 175),
+        ...(Number(degerler.kurTuru) === 2 ? [satir("kurTarihi", "Kur tarihi", tarihKutu("kurTarihi"), undefined, GENISLIK.tarih)] : []),
         satir("kurAlani", "Kur alanı", <Form.Select size="sm" value={String(degerler.kurAlani ?? "alis")} onChange={e => set("kurAlani", e.target.value)}>
-          <option value="alis">Alış</option><option value="satis">Satış</option><option value="ikisi">Alış + Satış (iki kurla TL)</option></Form.Select>),
+          <option value="alis">Alış</option><option value="satis">Satış</option><option value="ikisi">Alış + Satış (iki kurla TL)</option></Form.Select>, undefined, 200),
       ];
       // Eski aralık tipleri (tanımlarda artık yok; geriye uyumluluk)
       case "cariAralik": return [
@@ -304,8 +315,8 @@ export const RaporPage: React.FC = () => {
       case "vezneCoklu": return coklu<VezneItem>(p, "vezne", "vezneIdler", vezneler, vezneKolonlar, vezneArama, "Vezne kodu veya adıyla arayın…");
       case "paraCoklu": return coklu<ProductItem>(p, "para", "paraIdler", paralar, paraKolonlar, paraArama, "Para kodu veya adıyla arayın…");
       case "kmt": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} title="Kur / Miktar / TL gösterimi: yalnızca seçilen gruptaki kolonlar listelenir">
-        <option value="">Kur + Miktar + TL</option><option value="K">Kur</option><option value="M">Miktar</option><option value="T">TL</option></Form.Select>);
-      default: return satir(p.ad, etiket, <Form.Control size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not);
+        <option value="">Kur + Miktar + TL</option><option value="K">Kur</option><option value="M">Miktar</option><option value="T">TL</option></Form.Select>, undefined, GENISLIK.kmt);
+      default: return satir(p.ad, etiket, <Form.Control size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not, GENISLIK.metin);
     }
   };
 
@@ -353,43 +364,33 @@ export const RaporPage: React.FC = () => {
       )}
 
       <Card className="border shadow-sm my-2 w-100 bg-white">
-        {/* Parametreler açıkken başlık kutunun sağında (alan kazanmak için); kapalıyken tek satır şerit (yönetici isteği 16.09.2026) */}
-        {!parametreAcik && (
-          <Card.Header className="d-flex align-items-center gap-2 py-2 bg-white">
-            <IconReportAnalytics size={18} className="text-primary" /><strong>{menu.ad}</strong>
-            {veri && <span className="text-muted small text-truncate" style={{ maxWidth: "50%" }} title={veri.filtreOzeti}>· {veri.filtreOzeti}</span>}
-            <span className="text-muted small ms-auto">{tanim ? `${tanim.kagit === "A4-yatay" ? "A4 yatay" : "A4 dikey"}${veri ? ` · ${veri.toplamKayit.toLocaleString("tr-TR")} kayıt` : ""}` : "Tanım yükleniyor…"}</span>
-            <Button size="sm" variant="outline-primary" onClick={() => setParametreAcik(true)} disabled={!tanim} title="Parametreleri göster"><IconAdjustments size={15} /> Parametreler</Button>
-            <Button size="sm" variant="light" onClick={temizle} disabled={meslek || !tanim} title="Parametreleri sıfırla"><IconRefresh size={15} /></Button>
-          </Card.Header>
-        )}
-        <Card.Body className={parametreAcik ? "p-3" : "p-2"}>
+        {/* Tek başlık satırı: rapor adı + (kapalıyken) filtre özeti + işlem düğmeleri; parametreler açıkken altında kompakt alan kutusu.
+            Kullanıcı isteği 01.10.2026: kısa olsun, ekranın küçük bölümünü kaplasın. Uygula'dan sonra kutu kapanır (yönetici isteği 14.09.2026). */}
+        <Card.Body className="p-2">
           {!tanim ? <Spinner size="sm" animation="border" /> : (
             <Form onSubmit={e => { e.preventDefault(); void uygula(); }}>
               <fieldset disabled={meslek}>
-                {/* Dikey parametre listesi (etiket | değer); Uygula'dan sonra kapanır, rapor tam gelir (yönetici isteği 14.09.2026) */}
-                {parametreAcik && (
-                  <Row className="g-3 align-items-start">
-                    <Col xs={12} lg={9}><div className="border rounded overflow-hidden">{tanim.parametreler.map(alan)}</div></Col>
-                    <Col xs={12} lg={3}>
-                      <div className="d-flex flex-column gap-2 ps-lg-2">
-                        <div className="d-flex align-items-center gap-2"><IconReportAnalytics size={18} className="text-primary" /><strong>{menu.ad}</strong></div>
-                        <span className="text-muted small">{`${tanim.kagit === "A4-yatay" ? "A4 yatay" : "A4 dikey"}${veri ? ` · ${veri.toplamKayit.toLocaleString("tr-TR")} kayıt` : ""}`}</span>
-                        <div className="d-flex gap-2">
-                          <Button size="sm" variant="light" onClick={() => setParametreAcik(false)} title="Parametreleri gizle"><IconChevronUp size={15} /></Button>
-                          <Button size="sm" variant="light" onClick={temizle} disabled={meslek || !tanim} title="Parametreleri sıfırla"><IconRefresh size={15} /></Button>
-                        </div>
-                      </div>
-                    </Col>
-                  </Row>
-                )}
-                <div className={`d-flex flex-wrap gap-2 ${parametreAcik ? "mt-3 pt-2 border-top" : ""}`}>
-                  <Button type="submit" size="sm" variant="primary" title="Seçilen parametrelerle raporu oluştur"><IconSearch size={15} /> Uygula</Button>
-                  <Button size="sm" variant="outline-danger" onClick={pdfOnizle} disabled={!veri || veri.sinirAsildi} title="A4 PDF önizlemesini pencerede aç"><IconFileTypePdf size={15} /> PDF</Button>
-                  <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={!veri || veri.sinirAsildi} title="PDF indir"><IconDownload size={15} /> İndir</Button>
-                  <Button size="sm" variant="outline-success" onClick={excelIndir} disabled={!veri || veri.sinirAsildi} title="Excel indir"><IconFileSpreadsheet size={15} /> Excel</Button>
-                  <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={!veri || veri.sinirAsildi} title="Yazdır"><IconPrinter size={15} /> Yazdır</Button>
+                <div className="d-flex flex-wrap align-items-center gap-2 px-1">
+                  <IconReportAnalytics size={18} className="text-primary" /><strong className="text-nowrap">{menu.ad}</strong>
+                  <span className="text-muted small text-nowrap">{`· ${tanim.kagit === "A4-yatay" ? "A4 yatay" : "A4 dikey"}${veri ? ` · ${veri.toplamKayit.toLocaleString("tr-TR")} kayıt` : ""}`}</span>
+                  {!parametreAcik && veri && <span className="text-muted small text-truncate" style={{ maxWidth: "40%" }} title={veri.filtreOzeti}>· {veri.filtreOzeti}</span>}
+                  <div className="d-flex flex-wrap gap-2 ms-auto">
+                    <Button type="submit" size="sm" variant="primary" title="Seçilen parametrelerle raporu oluştur"><IconSearch size={15} /> Uygula</Button>
+                    <Button size="sm" variant="outline-danger" onClick={pdfOnizle} disabled={!veri || veri.sinirAsildi} title="A4 PDF önizlemesini pencerede aç"><IconFileTypePdf size={15} /> PDF</Button>
+                    <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={!veri || veri.sinirAsildi} title="PDF indir"><IconDownload size={15} /> İndir</Button>
+                    <Button size="sm" variant="outline-success" onClick={excelIndir} disabled={!veri || veri.sinirAsildi} title="Excel indir"><IconFileSpreadsheet size={15} /> Excel</Button>
+                    <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={!veri || veri.sinirAsildi} title="Yazdır"><IconPrinter size={15} /> Yazdır</Button>
+                    {parametreAcik
+                      ? <Button size="sm" variant="light" onClick={() => setParametreAcik(false)} title="Parametreleri gizle"><IconChevronUp size={15} /></Button>
+                      : <Button size="sm" variant="outline-primary" onClick={() => setParametreAcik(true)} title="Parametreleri göster"><IconAdjustments size={15} /> Parametreler</Button>}
+                    <Button size="sm" variant="light" onClick={temizle} title="Parametreleri sıfırla"><IconRefresh size={15} /></Button>
+                  </div>
                 </div>
+                {parametreAcik && (
+                  <div className="mt-2"><div className="d-inline-flex flex-column align-items-start border rounded px-3 py-2" style={{ gap: 6, background: "#f8fafc", maxWidth: "100%" }}>
+                    {tanim.parametreler.map(alan)}
+                  </div></div>
+                )}
               </fieldset>
             </Form>
           )}

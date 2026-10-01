@@ -1,7 +1,7 @@
 {
   "kod": "VEZHAR1",
   "ad": "Vezne Hareket Listesi",
-  "aciklama": "Vezne defteri: fiş, transfer, nakit cari ve kasa hesap hareketleri; vezne bazında giriş / çıkış miktarları.",
+  "aciklama": "Vezne defteri: döviz, sarraf ve perakende fişi, ürün tanımı, transfer, nakit cari, kasa hesap hareketleri ve emanet dekontları; vezne bazında giriş / çıkış miktarları.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -39,10 +39,16 @@
   ],
   "kolonlar": [
     {
-      "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 2,
-      "bicim": "tarihSaat"
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.4,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "hiza": "center"
     },
     {
       "anahtar": "belgeTipi",

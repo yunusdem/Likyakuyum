@@ -180,6 +180,13 @@ export class OzelUrunSqlRepository {
 
   private static async ensureProcedures(pool: sql.ConnectionPool): Promise<void> {
     try {
+      // Vezneden düşülen stok (vezne / para / miktar) üründe saklanır: düzeltme ve silme aynısını geri alır, raporlar ("Ürün tanımı") bunu okur
+      // (rapor denetimi 01.10.2026 — önceden düzeltme / silme parayı kayıttan farklı bir eşleştirmeyle buluyordu)
+      await pool.request().query(`
+        IF COL_LENGTH('dbo.TODVZ_OZEL_URUN', 'STOK_VEZNE_ID') IS NULL ALTER TABLE dbo.TODVZ_OZEL_URUN ADD [STOK_VEZNE_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_OZEL_URUN', 'STOK_PARA_ID') IS NULL ALTER TABLE dbo.TODVZ_OZEL_URUN ADD [STOK_PARA_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_OZEL_URUN', 'STOK_MIKTAR') IS NULL ALTER TABLE dbo.TODVZ_OZEL_URUN ADD [STOK_MIKTAR] FLOAT NULL;
+      `);
       await pool.request().query(`
         CREATE OR ALTER PROCEDURE [dbo].[SODVZ_OZEL_URUN_KAYDET]
             @OZEL_URUN_ID       INT OUTPUT,
@@ -305,6 +312,7 @@ export class OzelUrunSqlRepository {
             END
 
             BEGIN TRAN;
+            DECLARE @STOK_DUSTU BIT = 0;
 
             -- Stok Kontrolü & Vezne Bakiyesinden Düşme (Montür Gramajı / MIKTAR)
             IF (@VEZNE_ID IS NOT NULL AND @PARA_ID IS NOT NULL AND @MIKTAR > 0)
@@ -329,6 +337,7 @@ export class OzelUrunSqlRepository {
                         UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
                     ELSE
                         INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @PARA_ID, -@MIKTAR);
+                    SET @STOK_DUSTU = 1;
                 END
                 ELSE
                 BEGIN
@@ -338,13 +347,15 @@ export class OzelUrunSqlRepository {
                     DECLARE @ESKI_MIKTAR FLOAT = 0;
                     DECLARE @ESKI_PARA_ID INT = NULL;
 
-                    SELECT @ESKI_VEZNE_ID = VEZNE_ID, @ESKI_AYAR = AYAR, @ESKI_MIKTAR = ISNULL(MIKTAR, 0)
+                    DECLARE @ESKI_STOK_PARA_ID INT = NULL;
+                    SELECT @ESKI_VEZNE_ID = COALESCE(STOK_VEZNE_ID, VEZNE_ID), @ESKI_AYAR = AYAR, @ESKI_MIKTAR = COALESCE(STOK_MIKTAR, ISNULL(MIKTAR, 0)), @ESKI_STOK_PARA_ID = STOK_PARA_ID
                     FROM dbo.TODVZ_OZEL_URUN
                     WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
 
                     IF (@ESKI_VEZNE_ID IS NOT NULL AND @ESKI_MIKTAR > 0)
                     BEGIN
-                        SELECT TOP 1 @ESKI_PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@ESKI_AYAR)));
+                        SET @ESKI_PARA_ID = @ESKI_STOK_PARA_ID;
+                        IF @ESKI_PARA_ID IS NULL SELECT TOP 1 @ESKI_PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@ESKI_AYAR)));
                         IF @ESKI_PARA_ID IS NULL
                             SELECT TOP 1 @ESKI_PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(AD))) LIKE '%' + UPPER(LTRIM(RTRIM(@ESKI_AYAR))) + '%';
                         IF @ESKI_PARA_ID IS NULL
@@ -372,6 +383,7 @@ export class OzelUrunSqlRepository {
                         UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
                     ELSE
                         INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @PARA_ID, -@MIKTAR);
+                    SET @STOK_DUSTU = 1;
                 END
             END
 
@@ -421,6 +433,9 @@ export class OzelUrunSqlRepository {
                 END
             END
 
+            IF @STOK_DUSTU = 1
+                UPDATE dbo.TODVZ_OZEL_URUN SET STOK_VEZNE_ID = @VEZNE_ID, STOK_PARA_ID = @PARA_ID, STOK_MIKTAR = @MIKTAR WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
+
             COMMIT TRAN;
             RETURN 0;
 
@@ -458,15 +473,17 @@ export class OzelUrunSqlRepository {
 
             -- Stoğu vezneye iade et
             DECLARE @VEZNE_ID INT, @AYAR VARCHAR(250), @MIKTAR FLOAT;
-            SELECT @VEZNE_ID = VEZNE_ID, @AYAR = AYAR, @MIKTAR = ISNULL(MIKTAR, 0)
+            DECLARE @SIL_STOK_PARA_ID INT = NULL;
+            SELECT @VEZNE_ID = COALESCE(STOK_VEZNE_ID, VEZNE_ID), @AYAR = AYAR, @MIKTAR = COALESCE(STOK_MIKTAR, ISNULL(MIKTAR, 0)), @SIL_STOK_PARA_ID = STOK_PARA_ID
             FROM dbo.TODVZ_OZEL_URUN
             WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
 
             IF (@VEZNE_ID IS NOT NULL AND @MIKTAR > 0)
             BEGIN
-                DECLARE @PARA_ID INT = NULL;
+                DECLARE @PARA_ID INT = @SIL_STOK_PARA_ID;
                 DECLARE @CLEAN_AYAR VARCHAR(50) = UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(@AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))));
-                SELECT TOP 1 @PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@AYAR))) OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_AYAR;
+                IF @PARA_ID IS NULL
+                    SELECT TOP 1 @PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@AYAR))) OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_AYAR;
                 IF @PARA_ID IS NULL
                     SELECT TOP 1 @PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(AD))) LIKE '%' + @CLEAN_AYAR + '%';
                 IF @PARA_ID IS NULL

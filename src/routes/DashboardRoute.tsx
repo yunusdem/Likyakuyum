@@ -197,6 +197,9 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "H- Barkodlu Ürün Sayım Fişi", link: "etiket/sayim-fisi" },
       { id: uuid(), name: "I- Altın Ürün Stoğu", link: "etiket/altin-urun-stogu" },
       { id: uuid(), name: "J- Özel Ürün Stoğu", link: "etiket/ozel-urun-stogu" },
+      { id: uuid(), name: "K- Barkodlu Altın Üretim Raporu", link: raporLinki("BALURE1") },
+      { id: uuid(), name: "L- Barkodlu Altın Satış Raporu", link: raporLinki("BALSAT1") },
+      { id: uuid(), name: "M- Barkodlu Altın Stok Raporu", link: raporLinki("BALSTK1") },
     ],
   },
 
