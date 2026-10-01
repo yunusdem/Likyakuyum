@@ -1509,7 +1509,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     setIsSaving(true);
     try {
-      const calculatedKdv = (Number(kdvOrani) || 0) * (Number(altinHasKuru) || 0) * totalIscilikHasGram / 100;
+      const calculatedKdv = (parseDecimal(kdvOrani) || 0) * (parseDecimal(altinHasKuru) || 0) * totalIscilikHasGram / 100;
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const liveTarih = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -1528,13 +1528,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         belgeNo: fisNo.trim() || null,
         irsaliyeNo: fisNo.trim() || null,
         tip,
-        altinHasKuru: Number(altinHasKuru) || 0,
+        altinHasKuru: parseDecimal(altinHasKuru) || 0,
         istatistikId: istatistikId || null,
         istatistikKodu: (istatistikKodu || "").trim() || null,
-        alisKuru: Number(alisKuru) || 0,
-        satisKuru: Number(satisKuru) || 0,
-        gumusHasKuru: Number(gumusHasKuru) || 0,
-        kdvOrani: kdvOrani !== "" && !isNaN(Number(kdvOrani)) ? Number(kdvOrani) : null,
+        alisKuru: parseDecimal(alisKuru) || 0,
+        satisKuru: parseDecimal(satisKuru) || 0,
+        gumusHasKuru: parseDecimal(gumusHasKuru) || 0,
+        kdvOrani: kdvOrani !== "" && !isNaN(parseDecimal(kdvOrani)) ? parseDecimal(kdvOrani) : null,
         kdv: parseFloat(calculatedKdv.toFixed(2)),
         belgeTuru,
         unvan: unvan || detayUnvan || null,
@@ -1574,7 +1574,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           karat: l.karat && parseDecimal(l.karat) > 0 ? parseDecimal(l.karat) : null,
         })),
         odemeSatirlari: odemeRows
-          .map((r) => recomputeOdemeRow(r, Number(altinHasKuru) || 0))
+          .map((r) => recomputeOdemeRow(r, parseDecimal(altinHasKuru) || 0))
           .filter((o) => {
             const mik = parseDecimal(o.miktar);
             const tut = parseDecimal(o.tutar);
