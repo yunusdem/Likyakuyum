@@ -43,7 +43,7 @@ import {
 import { CariService, CariKartItem, CariLookups } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import { onlyDecimal, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 
 interface VezneItem {
   id: number;
@@ -304,7 +304,7 @@ export const CariHareketPage: React.FC = () => {
             id: `line-${idx + 1}-${Date.now()}`,
             paraId: s.paraId,
             paraKodu: s.paraKodu,
-            meblag: s.meblag,
+            meblag: s.meblag != null ? formatMiktar(s.meblag) : "",
           }));
           setLines(loaded);
         } else {
@@ -1467,7 +1467,7 @@ export const CariHareketPage: React.FC = () => {
                 Net Cari Durumu
               </div>
               <h3 className="mb-0 fw-bold font-monospace" style={{ letterSpacing: "-0.5px" }}>
-                {bakiyeSummary?.headerLabel?.replace(/\s*HAS/gi, "").trim() || "0,00"}
+                {bakiyeSummary?.headerLabel || "0,00"}
               </h3>
               {cariKartId && (
                 <div className="mt-1 small text-secondary">

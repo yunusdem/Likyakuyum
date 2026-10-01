@@ -143,9 +143,14 @@ function LookupModalContent<T extends Record<string, any>>({
     }
   }, [selectedIndex]);
 
-  // Single click: Select row (highlight blue)
-  const handleRowClick = (index: number) => {
+  // Single click: Select row (and confirm if no renderDetail)
+  const handleRowClick = (index: number, item: T) => {
     setSelectedIndex(index);
+    if (!renderDetail) {
+      if (isItemDisabled?.(item)) return;
+      onSelect(item);
+      onHide();
+    }
   };
 
   // Double click: Confirm selection
@@ -374,7 +379,7 @@ function LookupModalContent<T extends Record<string, any>>({
                     <tr
                       key={`lookup-row-${index}-${itemId || "item"}`}
                       ref={(el) => { rowRefs.current[index] = el; }}
-                      onClick={() => !isDisabled && handleRowClick(index)}
+                      onClick={() => !isDisabled && handleRowClick(index, item)}
                       onDoubleClick={() => !isDisabled && handleRowDoubleClick(item)}
                       className={isSelected && !isDisabled ? "lookup-selected-row fw-semibold" : isDisabled ? "text-muted" : ""}
                       style={{
