@@ -28,6 +28,7 @@ import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
 import DovizFisiPage from "./pages/vezne/DovizFisiPage";
 import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
+import PiyasaPage from "./pages/piyasa/PiyasaPage";
 import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
 import PerakendeFisiPage from "./pages/vezne/PerakendeFisiPage";
 import VitrinStokTakibiPage from "./pages/perakende/VitrinStokTakibiPage";
@@ -227,6 +228,7 @@ export default function App() {
             <Route path="vezne/vezne-transferi-duzeltme" element={<VezneTransferiPage />} />
             <Route path="vezne/vezne-transferi" element={<VezneTransferiPage />} />
             <Route path="vezne/transfer" element={<VezneTransferiPage />} />
+            <Route path="piyasa" element={<PiyasaPage />} />
             <Route path="vezne/izleme" element={<VezneIzlemePage />} />
             <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
             <Route path="vezne/sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
