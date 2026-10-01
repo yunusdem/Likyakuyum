@@ -278,7 +278,10 @@ export class CariHareketSqlRepository {
           SF.[TARIH],
           10 AS [HAREKET_TIPI],
           CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
-          CASE WHEN SF.[TIP] = 0 THEN 1 ELSE 0 END AS [TIP],
+          CASE WHEN OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0 THEN 0
+               WHEN SF.[TIP] = 0 THEN 1 
+               ELSE 0 
+          END AS [TIP],
           1 AS [EKLEYEN_ID],
           ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
           1 AS [GUNCELLEYEN_ID],
@@ -655,7 +658,10 @@ export class CariHareketSqlRepository {
             SF.[TARIH],
             10 AS [HAREKET_TIPI],
             CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
-            CASE WHEN SF.[TIP] = 0 THEN 1 ELSE 0 END AS [TIP],
+            CASE WHEN OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0 THEN 0
+               WHEN SF.[TIP] = 0 THEN 1 
+               ELSE 0 
+          END AS [TIP],
             1 AS [EKLEYEN_ID],
             ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
             1 AS [GUNCELLEYEN_ID],
@@ -735,7 +741,7 @@ export class CariHareketSqlRepository {
             hareketTipiLabel: "Sarraf Fişi",
             aciklama: (sf.ACIKLAMA || "").trim(),
             tip: sf.TIP,
-            tipLabel: sf.TIP === 1 ? "Alacak" : "Borç",
+            tipLabel: sf.TIP === 0 ? "Borç" : "Alacak",
             ekleyenId: sf.EKLEYEN_ID || 1,
             eklemeZamani: CariHareketSqlRepository.formatIsoDate(sf.EKLEME_ZAMANI),
             guncelleyenId: sf.GUNCELLEYEN_ID || 1,
@@ -1334,8 +1340,8 @@ export class CariHareketSqlRepository {
             -- 6. Sarraf Fişi Ödeme Satırı
             SELECT 
               ISNULL(S.[PARA_ID], 1) AS [PARA_ID],
-              CASE WHEN F.[TIP] = 1 THEN S.[MIKTAR] ELSE 0.0 END AS [BORC],
-              CASE WHEN F.[TIP] = 0 THEN S.[MIKTAR] ELSE 0.0 END AS [ALACAK]
+              ISNULL(NULLIF(S.[TUTAR], 0), S.[MIKTAR]) AS [BORC],
+              0.0 AS [ALACAK]
             FROM [dbo].[TODVZ_SARRAF_FISI] F WITH (NOLOCK)
               INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] S WITH (NOLOCK) ON S.[SARRAF_FISI_ID] = F.[SARRAF_FISI_ID]
             WHERE S.[CARI_KART_ID] = @id OR (F.[CARI_KART_ID] = @id AND S.[ISLEME_YERI] = 1)

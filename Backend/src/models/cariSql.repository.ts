@@ -310,12 +310,12 @@ export class CariSqlRepository {
             UNION ALL
 
             -- 2b. TODVZ_SARRAF_FISI (Ödeme / Tahsilat satırları)
-            -- Satışta (TIP=1) ödeme satırı müşterinin yaptığı tahsilattır (ALACAK), Alışta (TIP=0) yapılan ödemedir (BORÇ)
+            -- Ödeme / Tahsilat tablosunda seçilen cari doğrudan borçlu olur (BORÇ)
             SELECT 
               COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
               ISNULL(OS.[PARA_ID], 1) AS [PARA_ID],
-              CASE WHEN SF.[TIP] = 0 THEN OS.[TUTAR] ELSE 0 END AS [BORC],
-              CASE WHEN SF.[TIP] = 1 THEN OS.[TUTAR] ELSE 0 END AS [ALACAK]
+              ISNULL(NULLIF(OS.[TUTAR], 0), OS.[MIKTAR]) AS [BORC],
+              0.0 AS [ALACAK]
             FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
             WHERE (OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0)
