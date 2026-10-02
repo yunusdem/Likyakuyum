@@ -63,6 +63,8 @@ export interface MutabakatSatiri {
   fark: number | null;
   faturaGerekmez: boolean;
   not: string | null;
+  /** Banka girişi eşlenen fişin Hesap satırında: bu hareket için banka fişi kesilmez, kesilmişse iptal edilmiştir (M18) */
+  fisleKarsilandi: boolean;
   fisler: FisOzeti[];
   adaylar: FisOzeti[];
 }
@@ -189,6 +191,10 @@ export class EBankaMutabakatService {
       }
     }
 
+    // Fişin Hesap satırı bankayı taşıyorsa banka fişi olmaz (M18); fiş sonradan değişmiş olabileceği için her listelemede bakılır
+    await EBankaAktarimService.kapsamiDene(hareketler.map((h) => h.vomsisId), kullaniciId, dbContext);
+    const fisleKarsilanan = await EBankaMutabakatSqlRepository.fisleKarsilananlar(hareketler.map((h) => h.vomsisId), dbContext);
+
     // Eşlenmiş fişlerin güncel bilgisi (faturası sonradan kesilmiş olabilir; fiş silinmişse eşleşme görünmez)
     const eslenenFisler = eslesmeler.length ? await EBankaMutabakatSqlRepository.fisler({ kimlikler: eslesmeler }, dbContext) : [];
     const fisSozlugu = new Map(eslenenFisler.map((f) => [anahtar(f), f]));
@@ -237,6 +243,7 @@ export class EBankaMutabakatService {
         fark,
         faturaGerekmez: h.faturaGerekmez,
         not: h.not,
+        fisleKarsilandi: fisleKarsilanan.has(h.vomsisId),
         fisler,
         adaylar,
       };
@@ -264,6 +271,7 @@ export class EBankaMutabakatService {
     const [fis] = await EBankaMutabakatSqlRepository.fisler({ kimlikler: [{ fisTuru, fisId }] }, dbContext);
     if (!fis) throw ApiError.notFound("Fiş bulunamadı (silinmiş ya da iptal edilmiş olabilir).");
     await EBankaMutabakatSqlRepository.esle({ vomsisId, fisTuru, fisId, otomatik: false }, kullaniciId, dbContext);
+    await EBankaAktarimService.kapsamiDene([vomsisId], kullaniciId, dbContext);
     return { eslendi: true };
   }
 
@@ -282,9 +290,11 @@ export class EBankaMutabakatService {
     return { cariKartId };
   }
 
-  public static async eslemeyiKaldir(girdi: { vomsisId?: unknown; fisTuru?: unknown; fisId?: unknown }, dbContext?: DbContext) {
+  public static async eslemeyiKaldir(girdi: { vomsisId?: unknown; fisTuru?: unknown; fisId?: unknown }, kullaniciId?: number, dbContext?: DbContext) {
     const { vomsisId, fisTuru, fisId } = this.dogrula(girdi);
-    return { kaldirilan: await EBankaMutabakatSqlRepository.eslemeyiKaldir(vomsisId, fisTuru, fisId, dbContext) };
+    const kaldirilan = await EBankaMutabakatSqlRepository.eslemeyiKaldir(vomsisId, fisTuru, fisId, dbContext);
+    await EBankaAktarimService.kapsamiDene([vomsisId], kullaniciId, dbContext);
+    return { kaldirilan };
   }
 
   public static async faturaGerekmez(girdi: { vomsisId?: unknown; deger?: unknown; not?: unknown }, kullaniciId?: number, dbContext?: DbContext) {

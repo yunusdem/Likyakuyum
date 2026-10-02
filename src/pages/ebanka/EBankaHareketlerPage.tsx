@@ -13,6 +13,8 @@ const AKTARIM: Record<number, { ad: string; renk: string }> = {
   0: { ad: "Bekliyor", renk: "secondary" },
   1: { ad: "Aktarıldı", renk: "success" },
   2: { ad: "Aktarılmayacak", renk: "light" },
+  // Banka girişi, mutabakatta eşlenen fişin Hesap satırında: banka fişi kesilmez, kesilmişse iptal edilmiştir
+  3: { ad: "Fişle karşılandı", renk: "primary" },
 };
 
 const DetaySatiri: React.FC<{ ad: string; deger?: React.ReactNode; mono?: boolean }> = ({ ad, deger, mono }) =>
@@ -178,6 +180,7 @@ export const EBankaHareketlerPage: React.FC = () => {
                   <option value="0">Bekliyor</option>
                   <option value="1">Aktarıldı</option>
                   <option value="2">Aktarılmayacak</option>
+                  <option value="3">Fişle karşılandı</option>
                 </Form.Select>
               </Col>
               <Col xl={10} md={9}>
@@ -316,13 +319,13 @@ export const EBankaHareketlerPage: React.FC = () => {
                 <DetaySatiri ad="Servis Notu" deger={secili.notu} />
                 <DetaySatiri ad="Servis Etiketleri" deger={secili.etiketler} />
                 <DetaySatiri ad="Hareket No" deger={secili.vomsisId} mono />
-                <DetaySatiri ad="Aktarım" deger={AKTARIM[secili.aktarimDurumu].ad + (secili.bankaHareketId ? ` — Banka fişi #${secili.bankaHareketId}` : "")} />
+                <DetaySatiri ad="Aktarım" deger={AKTARIM[secili.aktarimDurumu].ad + (secili.bankaHareketId ? ` — Banka fişi #${secili.bankaHareketId}${secili.aktarimDurumu === 3 ? " (iptal edildi)" : ""}` : "")} />
               </tbody>
             </Table>
           )}
         </Modal.Body>
         {/* Fişi olmayan "aktarılmayacak" hareket yeniden kuyruğa alınabilir; fişi iptal edilmiş olan alınamaz (önce fiş silinmeli) */}
-        {secili && secili.aktarimDurumu !== 1 && !secili.bankaHareketId && (
+        {secili && (secili.aktarimDurumu === 0 || secili.aktarimDurumu === 2) && !secili.bankaHareketId && (
           <Modal.Footer className="py-2">
             <Button size="sm" variant="outline-secondary" onClick={() => durumDegistir(secili, secili.aktarimDurumu === 0)}>
               {secili.aktarimDurumu === 0 ? "Aktarılmayacak İşaretle" : "Bekleyenlere Geri Al"}

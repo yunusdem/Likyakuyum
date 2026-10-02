@@ -93,8 +93,8 @@ export interface EBankaHesap {
   guncellemeZamani: string | null;
 }
 
-/** 0 bekliyor · 1 aktarıldı · 2 aktarılmayacak (Faz 2'de kullanılır) */
-export type AktarimDurumu = 0 | 1 | 2;
+/** 0 bekliyor · 1 aktarıldı · 2 aktarılmayacak · 3 fişle karşılandı (banka girişi eşlenen fişin Hesap satırında; banka fişi kesilmez / iptal) */
+export type AktarimDurumu = 0 | 1 | 2 | 3;
 
 export interface EBankaHareket {
   vomsisId: number;
@@ -658,7 +658,7 @@ export class EBankaVeriSqlRepository {
       kosullar.push("t.TUR = @TUR");
       girdiler.push(["TUR", sql.VarChar(10), f.tur]);
     }
-    if (f.aktarimDurumu !== undefined && [0, 1, 2].includes(f.aktarimDurumu)) {
+    if (f.aktarimDurumu !== undefined && [0, 1, 2, 3].includes(f.aktarimDurumu)) {
       kosullar.push("t.AKTARIM_DURUMU = @DURUM");
       girdiler.push(["DURUM", sql.TinyInt, f.aktarimDurumu]);
     }

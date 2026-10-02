@@ -5,6 +5,7 @@ import { adminApi, FirmaDto, FirmaDurum, gunYaz, LisansDto, LisansGirdi, tarihYa
 import FirmaFormu from "../components/FirmaFormu";
 import FirmaKullanicilari from "../components/FirmaKullanicilari";
 import FirmaModulleri from "../components/FirmaModulleri";
+import FirmaPos from "../components/FirmaPos";
 import FirmaEpostaDogrulama from "../components/FirmaEpostaDogrulama";
 import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
 
@@ -339,6 +340,10 @@ const FirmaDetayPage: React.FC = () => {
 
             <Tab eventKey="moduller" title="Modüller" mountOnEnter>
               <FirmaModulleri firma={firma} />
+            </Tab>
+
+            <Tab eventKey="pos" title="POS" mountOnEnter>
+              <FirmaPos firma={firma} />
             </Tab>
 
             <Tab eventKey="lisans" title="Lisans">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
+import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
 import {
   IconCheck, IconBinoculars, IconAlertTriangle, IconPlus, IconShieldExclamation, IconShieldCheck, IconPrinter, IconClock, IconCoins, IconUsers, IconBuildingBank, IconBuildingStore,
@@ -1507,6 +1508,27 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
     }
 
+    // POS cihazı tahsilatı (docs/POS_ENTEGRASYON_YOL_HARITASI.md): satışta POS satırları fiş kaydedilmeden önce cihazdan çekilir.
+    // Entegrasyon kapalıysa ya da veznenin cihazı yoksa hiçbir şey sormadan geçer.
+    const posSonuc =
+      tip === 1
+        ? await pos.tahsilEt({
+            belgeTuru: "sarraf",
+            belgeNo: fisNo.trim() || null,
+            belgeTipi: belgeTuru === 1 ? "efatura" : "earsiv",
+            belgeId: fisId,
+            vezneId,
+            aliciAd: (unvan || detayUnvan || "").trim() || null,
+            satirlar: odemeRows
+              .filter((r) => r.odemeAraciTuru === 2)
+              .map((r) => {
+                const o = recomputeOdemeRow(r, parseDecimal(altinHasKuru) || 0);
+                return { kimlik: r.id, tutar: parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : parseDecimal(o.miktar) || 0, posCihaziId: r.posCihaziId || r.bankaId || null };
+              }),
+          })
+        : { tamam: true, kartlar: {} as Record<string, PosKarti> };
+    if (!posSonuc.tamam) return;
+
     setIsSaving(true);
     try {
       const calculatedKdv = (parseDecimal(kdvOrani) || 0) * (parseDecimal(altinHasKuru) || 0) * totalIscilikHasGram / 100;
@@ -1588,18 +1610,20 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             const effectiveMik = mik > 0 ? mik : (ad > 0 ? ad : 0);
             const effKur = parseDecimal(o.kur) > 0 ? parseDecimal(o.kur) : 1;
             const effTut = parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : (effectiveMik * effKur);
+            // Cihazdan dönen bankaya göre belirlenen muhasebe POS kartı (yalnızca seçili olandan farklıysa dolu gelir)
+            const posKarti = posSonuc.kartlar[o.id];
             return {
               satirNo: i + 1,
               islemeYeri: o.odemeAraciTuru === 1 ? 1 : (o.odemeAraciTuru === 2 ? 3 : (o.odemeAraciTuru === 3 ? 2 : 0)),
               odemeAraciTuru: o.odemeAraciTuru || 0,
               cariKartId: o.cariKartId || null,
-              cariKod: o.cariKod || null,
+              cariKod: posKarti?.kod || o.cariKod || null,
               cariUnvan: o.cariUnvan || null,
-              bankaId: o.bankaId || null,
-              posCihaziId: o.posCihaziId || (o.odemeAraciTuru === 2 ? (o.bankaId || o.cariKartId) : null),
+              bankaId: posKarti?.posCihaziId || o.bankaId || null,
+              posCihaziId: posKarti?.posCihaziId || o.posCihaziId || (o.odemeAraciTuru === 2 ? (o.bankaId || o.cariKartId) : null),
               paraId: o.paraId || null,
               paraKodu: o.paraKodu || (o.odemeAraciTuru === 2 || o.odemeAraciTuru === 3 ? "TL" : null),
-              paraAdi: o.paraAdi || null,
+              paraAdi: posKarti?.ad || o.paraAdi || null,
               iskontoId: o.iskontoId || null,
               adet: ad,
               miktar: effectiveMik,
@@ -1611,6 +1635,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           }),
       };
       const result = await SarrafFisService.saveFis(payload);
+      await pos.kaydedildi("sarraf", result.sarrafFisiId, result.fisNo || fisNo.trim() || null);
       showNotif("success", `Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} — ${result.fisNo || result.sarrafFisiId}${andPrint ? " (Yazıcıya gönderiliyor...)" : ""}`);
       if (andPrint) {
         const snapObj = {
@@ -4016,26 +4041,38 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     ebHedefRef.current = b.tutarTl;
     const hesap = b.bankaId ? bankaList.find((x) => x.bankaId === b.bankaId) : undefined;
     if (hesap && b.tutarTl > 0) {
-      const tl = ["TL", "TRY"].includes(b.paraKodu.toUpperCase());
+      // Hesap (3) satırı: banka bankaId'de, hesap no cariKod'da, para birimi paraKodu'nda taşınır (applyHesapToOdemeRow ile aynı)
+      const kod = b.paraKodu.trim().toUpperCase();
+      const doviz = ["TL", "TRY"].includes(kod) || !(b.tutar > 0)
+        ? undefined
+        : (urunList.find((u) => (u.urunTipi ?? 0) === 0 && (u.kod || "").trim().toUpperCase() === kod) || kurSatirlar.find((k) => (k.kod || "").trim().toUpperCase() === kod));
       const satir: OdemeRow = {
         ...createEmptyOdemeRow(1),
-        odemeAraciTuru: 2,
+        odemeAraciTuru: 3,
         bankaId: hesap.bankaId,
-        paraKodu: hesap.hesapNo || hesap.iban || "",
-        paraAdi: hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap.bankaAdi || ""),
+        cariKod: hesap.hesapNo || "",
+        cariUnvan: hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap.bankaAdi || "BANKA HAVALE / EFT"),
+        // Döviz kodu para listesinde yoksa satır TL karşılığıyla yazılır
+        paraId: doviz?.paraId ?? null,
+        paraKodu: doviz ? (doviz.kod || kod) : "TL",
+        paraAdi: doviz ? (doviz.ad || kod) : "TÜRK LİRASI",
         urunTipi: 0,
-        miktar: tl ? b.tutarTl : b.tutar,
-        kur: tl ? 1 : parseFloat((b.tutarTl / b.tutar).toFixed(4)),
+        miktar: doviz ? b.tutar : b.tutarTl,
+        kur: doviz ? parseFloat((b.tutarTl / b.tutar).toFixed(4)) : "",
       };
       setOdemeRows([recomputeOdemeRow(satir, Number(altinHasKuru) || 0)]);
     } else if (b.tutarTl > 0) {
-      showNotif("warning", "Bu e-Banka hesabı bir Banka Hesap Kartı ile eşlenmemiş; ödeme tablosunda Kart satırına bankayı elle seçin (e-Banka > Hesaplar'dan eşleyebilirsiniz).");
+      showNotif("warning", "Bu e-Banka hesabı bir Banka Hesap Kartı ile eşlenmemiş; ödeme tablosunda Hesap satırına bankayı elle seçin (e-Banka > Hesaplar'dan eşleyebilirsiniz).");
     }
   });
+
+  // POS cihazı tahsilatı: handleSave içinde kullanılır (docs/POS_ENTEGRASYON_YOL_HARITASI.md)
+  const pos = usePosTahsilat();
 
   return (
     <div className="sarraf-fisi-page w-100 pb-3" style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px", "--active-fis-theme-bg": activeFisThemeBg } as React.CSSProperties}>
       {ebFis.bant}
+      {pos.pencere}
       <ERPToolbar
         disableShortcuts
         pageTitle={

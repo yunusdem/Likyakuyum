@@ -184,6 +184,110 @@ export interface Sayfali<T> {
   toplam: number;
 }
 
+// POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5)
+export type PosMod = "kapali" | "test" | "canli";
+export type PosDogrulamaSonucu = "GECTI" | "KALDI";
+
+/** Şifre sunucudan hiçbir zaman geri dönmez; yalnızca tanımlı olup olmadığı bilinir. */
+export interface PosMerkezAyar {
+  /** false: merkez veritabanında POS tabloları kurulmamış (docs/sql/LIKYA_ADMIN_POS.sql) */
+  tablolarKurulu: boolean;
+  tokenClientId: string;
+  tokenClientSecretTanimli: boolean;
+  tokenAuthUrl: string;
+  tokenApiUrl: string;
+  donusKok: string;
+  inposUygulamaNo: string;
+  guncellemeTarihi: string | null;
+}
+
+export interface PosMerkezAyarGirdi {
+  tokenClientId: string;
+  /** Boş → kayıtlı şifre korunur */
+  tokenClientSecret?: string;
+  tokenAuthUrl: string;
+  tokenApiUrl: string;
+  donusKok: string;
+  inposUygulamaNo: string;
+}
+
+export interface PosSenaryo {
+  no: number;
+  ad: string;
+  gecmeSarti: string;
+  /** Test konsolundaki denemenin bu senaryoda vermesi gereken sonuç; elle değerlendirilen senaryoda null */
+  beklenen: string | null;
+  sonuc: PosDogrulamaSonucu | null;
+  notu: string | null;
+  admin: string | null;
+  tarih: string | null;
+}
+
+export interface PosDogrulamaModeli {
+  model: string;
+  entegrasyon: "beko" | "inpos";
+  ad: string;
+  senaryolar: PosSenaryo[];
+  gecenAdet: number;
+  dogrulandi: boolean;
+  dogrulamaTarihi: string | null;
+}
+
+export interface PosKonsolFirma {
+  firmaId: number;
+  firmaKodu: string;
+  unvan: string;
+  mod: PosMod;
+}
+
+export interface PosKonsolTerminal {
+  posTerminalId: number;
+  ad: string;
+  entegrasyon: "yok" | "beko" | "inpos";
+  model: string | null;
+  terminalKimlik: string | null;
+  aktif: boolean;
+}
+
+export interface PosDenemeIslemi {
+  posIslemId: number;
+  terminalAd: string | null;
+  mod: "test" | "canli";
+  tutar: number;
+  durum: "BEKLIYOR" | "ONAY" | "RET" | "IPTAL" | "BELIRSIZ";
+  elle: boolean;
+  bankaAdi: string | null;
+  taksit: number | null;
+  onayKodu: string | null;
+  kartNo: string | null;
+  cihazFisNo: string | null;
+  zNo: string | null;
+  hata: string | null;
+  gecenSaniye: number | null;
+}
+
+export interface PosDenemeGirdi {
+  istekKimlik: string;
+  posTerminalId: number;
+  tutar: number;
+  belgeTipi: "earsiv" | "efatura";
+  belgeNo?: string;
+  /** true: gerçek cihaz servisi (kart okutulursa PARA ÇEKİLİR) · false: örnek cihaz */
+  gercek: boolean;
+}
+
+export interface PosLogu {
+  logId: number;
+  tarih: string;
+  tur: "ISTEK" | "DONUS";
+  firmaId: number | null;
+  firmaKodu: string | null;
+  ozet: string;
+  istek: string | null;
+  yanit: string | null;
+  basarili: boolean;
+}
+
 const sorgu = (p: Record<string, string | number | boolean | undefined>): string => {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== "") q.set(k, String(v));
@@ -336,6 +440,25 @@ export const adminApi = {
     istek<Sayfali<IslemLogu>>("GET", `/izleme/islem-log${sorgu(p)}`),
   oturumuKapat: (sid: string) => istek<void>("POST", `/izleme/oturumlar/${sid}/kapat`),
   firmaOturumlariniKapat: (firmaId: number) => istek<{ kapanan: number }>("POST", `/firmalar/${firmaId}/oturumlari-kapat`),
+
+  posAyar: () => istek<PosMerkezAyar>("GET", "/pos/ayar"),
+  posAyarKaydet: (veri: PosMerkezAyarGirdi) => istek<PosMerkezAyar>("PUT", "/pos/ayar", veri),
+  posDogrulama: () => istek<{ modeller: PosDogrulamaModeli[] }>("GET", "/pos/dogrulama"),
+  posDogrulamaYaz: (veri: { model: string; senaryoNo: number; sonuc: PosDogrulamaSonucu | null; notu?: string }) =>
+    istek<{ modeller: PosDogrulamaModeli[] }>("PUT", "/pos/dogrulama", veri),
+  posLog: (limit = 100) => istek<PosLogu[]>("GET", `/pos/log${sorgu({ limit })}`),
+  posKimlikTesti: () => istek<{ ayrinti: string }>("POST", "/pos/kimlik-testi"),
+  posFirmalar: () => istek<PosKonsolFirma[]>("GET", "/pos/firmalar"),
+  firmaPosModu: (firmaId: number) => istek<{ mod: PosMod; tablolarKurulu: boolean }>("GET", `/firmalar/${firmaId}/pos`),
+  firmaPosModuYaz: (firmaId: number, mod: PosMod) => istek<{ mod: PosMod; tablolarKurulu: boolean }>("PUT", `/firmalar/${firmaId}/pos`, { mod }),
+  posTerminaller: (firmaId: number) => istek<PosKonsolTerminal[]>("GET", `/firmalar/${firmaId}/pos/terminaller`),
+  posBaglantiTesti: (firmaId: number, posTerminalId: number, gercek: boolean) =>
+    istek<{ mod: PosMod; ayrinti: string }>("POST", `/firmalar/${firmaId}/pos/baglanti-testi`, { posTerminalId, gercek }),
+  posDeneme: (firmaId: number, veri: PosDenemeGirdi) => istek<PosDenemeIslemi>("POST", `/firmalar/${firmaId}/pos/deneme`, veri),
+  posDenemeIslemi: (firmaId: number, posIslemId: number) => istek<PosDenemeIslemi>("GET", `/firmalar/${firmaId}/pos/deneme/${posIslemId}`),
+  posDenemeIptal: (firmaId: number, posIslemId: number) => istek<PosDenemeIslemi>("POST", `/firmalar/${firmaId}/pos/deneme/${posIslemId}/iptal`),
+  posDenemeElle: (firmaId: number, posIslemId: number, alindi: boolean) =>
+    istek<PosDenemeIslemi>("POST", `/firmalar/${firmaId}/pos/deneme/${posIslemId}/elle`, { alindi }),
 
   kullanicilar: () => istek<KullaniciDto[]>("GET", "/kullanicilar"),
   firmaKullanicilari: (firmaId: number) => istek<KullaniciDto[]>("GET", `/firmalar/${firmaId}/kullanicilar`),

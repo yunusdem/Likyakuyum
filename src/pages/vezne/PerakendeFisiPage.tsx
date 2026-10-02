@@ -36,6 +36,7 @@ import {
 } from "@tabler/icons-react";
 import { ERPToolbar } from "../../components/common/ERPToolbar";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
+import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { LookupModal, LookupColumn } from "../../components/common/LookupModal";
 import { ProductDefinitionsPage } from "../settings/ProductDefinitionsPage";
 import { CashDeskDefinitionsPage } from "../settings/CashDeskDefinitionsPage";
@@ -3442,6 +3443,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       }
     }
 
+    // POS cihazı tahsilatı (docs/POS_ENTEGRASYON_YOL_HARITASI.md): satışta POS satırları fiş kaydedilmeden önce cihazdan çekilir.
+    // Entegrasyon kapalıysa ya da veznenin cihazı yoksa hiçbir şey sormadan geçer.
+    const posSonuc =
+      faturaTipi === 1
+        ? await pos.tahsilEt({
+            belgeTuru: "perakende",
+            belgeNo: faturaNo.trim() || null,
+            belgeTipi: senaryo === "EARSIVFATURA" ? "earsiv" : "efatura",
+            belgeId: currentFaturaId,
+            vezneId: selectedVezne?.id ?? null,
+            aliciAd: aliciUnvan.trim(),
+            satirlar: odemeRows
+              .filter((r) => r.odemeAraciTuru === 2)
+              .map((r) => ({ kimlik: r.id, tutar: parseDecimal(r.tutar) || 0, posCihaziId: r.posCihaziId || r.bankaId || null })),
+          })
+        : { tamam: true, kartlar: {} as Record<string, PosKarti> };
+    if (!posSonuc.tamam) return;
+
     isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
@@ -3461,16 +3480,18 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       let payloadOdemeler: SavePerakendeFaturaOdemePayload[] = odemeRows
         .filter((r) => parseDecimal(r.tutar) > 0 || parseDecimal(r.miktar) > 0 || r.cariKartId || (r.cariKod && r.cariKod.trim() !== ""))
         .map((r, idx) => {
+          // Cihazdan dönen bankaya göre belirlenen muhasebe POS kartı (yalnızca seçili olandan farklıysa dolu gelir)
+          const posKarti = posSonuc.kartlar[r.id];
           return {
             satirNo: idx + 1,
             odemeAraciTuru: r.odemeAraciTuru || 0,
             cariKartId: r.odemeAraciTuru === 1 ? (r.cariKartId || null) : null,
-            posCihaziId: r.odemeAraciTuru === 2 ? (r.posCihaziId || r.bankaId || null) : null,
-            cariKod: r.cariKod || null,
+            posCihaziId: r.odemeAraciTuru === 2 ? (posKarti?.posCihaziId || r.posCihaziId || r.bankaId || null) : null,
+            cariKod: posKarti?.kod || r.cariKod || null,
             cariUnvan: r.cariUnvan || null,
             paraId: r.paraId ?? null,
             paraKodu: r.paraKodu || "TL",
-            paraAdi: r.paraAdi || (r.paraKodu === "TL" ? "TÜRK LİRASI" : ""),
+            paraAdi: posKarti?.ad || r.paraAdi || (r.paraKodu === "TL" ? "TÜRK LİRASI" : ""),
             adet: r.adet !== "" && r.adet !== null && r.adet !== undefined ? parseDecimal(r.adet) : null,
             miktar: r.miktar !== "" && r.miktar !== null && r.miktar !== undefined ? parseDecimal(r.miktar) : null,
             milyem: r.milyem !== "" && r.milyem !== null && r.milyem !== undefined ? parseDecimal(r.milyem) : null,
@@ -3533,6 +3554,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       };
 
       const result = await PerakendeService.createInvoice(payload);
+      await pos.kaydedildi("perakende", result?.faturaId, result?.faturaNo || payload.faturaNo);
 
       if (withPrint) {
         // Önizlemesiz doğrudan yerel sessiz yazdırma servisine (localhost:5050) gönder
@@ -4253,6 +4275,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setTarih(b.tarih);
   });
 
+  // POS cihazı tahsilatı: handleCompleteSale içinde kullanılır (docs/POS_ENTEGRASYON_YOL_HARITASI.md)
+  const pos = usePosTahsilat();
+
   return (
     <div
       className="perakende-fisi-page w-100 pb-3"
@@ -4268,6 +4293,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       } as React.CSSProperties}
     >
       {ebFis.bant}
+      {pos.pencere}
 
       {/* MASAK Malvarlığı Dondurulanlar Kırmızı Bloke Uyarısı */}
       {isMasakBlocked && (

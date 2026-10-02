@@ -84,6 +84,8 @@ export interface MutabakatSatiri {
   fark: number | null;
   faturaGerekmez: boolean;
   not: string | null;
+  /** Banka girişi eşlenen fişin Hesap satırında: banka fişi kesilmez, kesilmişse iptal edilmiştir */
+  fisleKarsilandi: boolean;
   fisler: MutabakatFisi[];
   adaylar: MutabakatFisi[];
 }
@@ -134,8 +136,8 @@ export interface EBankaOzet {
   sonHareket: string | null;
 }
 
-/** 0 bekliyor · 1 aktarıldı · 2 aktarılmayacak */
-export type AktarimDurumu = 0 | 1 | 2;
+/** 0 bekliyor · 1 aktarıldı · 2 aktarılmayacak · 3 fişle karşılandı (banka girişi eşlenen fişin Hesap satırında) */
+export type AktarimDurumu = 0 | 1 | 2 | 3;
 
 export interface EBankaHareket {
   vomsisId: number;

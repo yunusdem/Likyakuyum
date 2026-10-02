@@ -58,7 +58,11 @@ export type AdminIslem =
   | "OTURUM_KAPATILDI"
   | "EPOSTA_DOGRULAMA_GONDERILDI"
   | "EPOSTA_DOGRULANDI"
-  | "EPOSTA_DOGRULAMA_KALDIRILDI";
+  | "EPOSTA_DOGRULAMA_KALDIRILDI"
+  | "POS_AYAR_DEGISTI"
+  | "POS_MOD_DEGISTI"
+  | "POS_DOGRULAMA"
+  | "POS_DENEME";
 
 export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF";
 export type BaglantiModu = "cloud" | "local";

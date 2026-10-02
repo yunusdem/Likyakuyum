@@ -38,6 +38,8 @@ import SatisListesiPage from "./pages/perakende/SatisListesiPage";
 import BankaHesapKartiPage from "./pages/banka/BankaHesapKartiPage";
 import BankaHareketiPage from "./pages/banka/BankaHareketiPage";
 import PosCihaziTanimlariPage from "./pages/banka/PosCihaziTanimlariPage";
+import PosCihazlariPage from "./pages/banka/PosCihazlariPage";
+import PosIslemleriPage from "./pages/banka/PosIslemleriPage";
 import EBankaAyarlarPage from "./pages/ebanka/EBankaAyarlarPage";
 import EBankaMutabakatPage from "./pages/ebanka/EBankaMutabakatPage";
 import EBankaOzetPage from "./pages/ebanka/EBankaOzetPage";
@@ -272,6 +274,8 @@ export default function App() {
             <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />
             <Route path="banka/pos-tanimlari" element={<PosCihaziTanimlariPage />} />
             <Route path="banka/pos-cihazi-tanimlari" element={<PosCihaziTanimlariPage />} />
+            <Route path="banka/pos-cihazlari" element={<PosCihazlariPage />} />
+            <Route path="banka/pos-islemleri" element={<PosIslemleriPage />} />
             <Route path="banka/hareketler" element={<BankaHareketiPage />} />
             <Route path="banka/hesap-hareketleri" element={<BankaHareketiPage />} />
             <Route path="ebanka/ozet" element={<EBankaOzetPage />} />

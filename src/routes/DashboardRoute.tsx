@@ -138,7 +138,8 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "A- Banka Hesap Kartları", link: "banka/hesap-kartlari" },
       { id: uuid(), name: "B- POS Cihazı Tanımları", link: "banka/pos-tanimlari" },
       { id: uuid(), name: "C- Banka Hesap Hareketleri", link: "banka/hareketler" },
-      // Vomsis açık bankacılık (docs/EBANKA_VOMSIS_YOL_HARITASI.md). Grup kodu "banka:#f-e-banka" kalıcıdır — başlığı değiştirmeyin.
+      // Vomsis açık bankacılık (docs/EBANKA_VOMSIS_YOL_HARITASI.md). Grup kodu başlıktan türer: "banka:#d-e-banka" (eski başlıkla
+      // "banka:#f-e-banka" idi). Başlığı değiştirmeyin; değişirse Backend modul.service.ts API_MODULLERI["/ebanka"] listesine yeni kodu ekleyin.
       {
         id: uuid(),
         title: "D- e-Banka",
@@ -155,6 +156,9 @@ export const DashboardMenu: MenuItemType[] = [
           { id: uuid(), name: "J- Tahsilat / Ödeme Mutabakatı", link: "ebanka/mutabakat" },
         ],
       },
+      // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md): fiziksel cihaz tanımları ve cihazdan alınan tahsilatlar
+      { id: uuid(), name: "E- POS Cihazları", link: "banka/pos-cihazlari" },
+      { id: uuid(), name: "F- POS İşlemleri", link: "banka/pos-islemleri" },
     ],
   },
 
