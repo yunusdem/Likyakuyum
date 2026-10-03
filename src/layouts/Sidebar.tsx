@@ -46,6 +46,7 @@ import {
   IconChartBar,
   IconCoins,
   IconShieldCheck,
+  IconNfc,
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
@@ -173,6 +174,11 @@ export const getSubmenuIcon = (name: string) => {
   // 10. Firma Tanımları -> IconBuildingStore
   if (n.includes("firma")) {
     return <IconBuildingStore size={16} className="sidebar-sub-icon flex-shrink-0" />;
+  }
+
+  // 11. RFID İşlemleri -> IconNfc
+  if (n.includes("rfid")) {
+    return <IconNfc size={16} className="sidebar-sub-icon flex-shrink-0 text-amber-500" />;
   }
 
   if (

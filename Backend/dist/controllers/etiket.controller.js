@@ -45,6 +45,26 @@ export class EtiketController {
         const data = await EtiketService.getAltinUrunByBarkod(String(req.params.barkod), dbContext);
         return ApiResponse.ok(res, "Altın ürün getirildi.", data);
     });
+    static getRfidProductDetail = asyncHandler(async (req, res) => {
+        const dbContext = EtiketController.getDbContext(req);
+        const data = await EtiketService.getRfidProductDetail(String(req.params.epc), dbContext);
+        return ApiResponse.ok(res, "RFID ürün detayları getirildi.", data);
+    });
+    static generateRfidEpc = asyncHandler(async (req, res) => {
+        const { id, tip, ayar, grupKodu } = req.body;
+        const epc = EtiketService.generateEpcCode(id || 1, tip || "altin", ayar, grupKodu);
+        return ApiResponse.ok(res, "Benzersiz EPC üretildi.", { epc });
+    });
+    static encodeAndPrintRfid = asyncHandler(async (req, res) => {
+        const dbContext = EtiketController.getDbContext(req);
+        const data = await EtiketService.encodeAndPrintRfid(req.body, EtiketController.getKullaniciId(req), dbContext);
+        return ApiResponse.ok(res, data.message, data);
+    });
+    static bulkEncodeRfid = asyncHandler(async (req, res) => {
+        const dbContext = EtiketController.getDbContext(req);
+        const data = await EtiketService.bulkEncodeRfid(req.body, EtiketController.getKullaniciId(req), dbContext);
+        return ApiResponse.ok(res, "Toplu RFID kodlama ve baskı emri oluşturuldu.", data);
+    });
     static getAltinUrunStok = asyncHandler(async (req, res) => {
         const dbContext = EtiketController.getDbContext(req);
         const vezneId = Number(req.query.vezneId);

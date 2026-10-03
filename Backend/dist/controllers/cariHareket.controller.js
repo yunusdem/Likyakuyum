@@ -25,6 +25,8 @@ export class CariHareketController {
             tip: req.query.tip !== undefined ? Number(req.query.tip) : undefined,
             hareketTipi: req.query.hareketTipi !== undefined ? Number(req.query.hareketTipi) : undefined,
             search: req.query.search,
+            onlyCariHareket: String(req.query.onlyCariHareket) === "true",
+            kaynak: req.query.kaynak,
         };
         const list = await CariHareketService.list(filters, dbContext);
         return ApiResponse.ok(res, "Cari hareketler başarıyla listelendi.", list);

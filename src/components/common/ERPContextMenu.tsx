@@ -46,6 +46,10 @@ export const ERPContextMenu: React.FC = () => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
+      if (target.closest("[data-no-erp-context='true']") || target.closest(".rfid-sayim-container")) {
+        return;
+      }
+
       e.preventDefault();
 
       let targetType: "grid-row" | "sidebar" | "page" = "page";

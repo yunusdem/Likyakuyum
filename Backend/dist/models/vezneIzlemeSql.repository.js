@@ -2,6 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { VezneBakiyeDuzeltmeSqlRepository } from "./vezneBakiyeDuzeltmeSql.repository.js";
 export class VezneIzlemeSqlRepository {
     static spEnsured = false;
     /**
@@ -197,21 +198,33 @@ export class VezneIzlemeSqlRepository {
         }
     }
     /**
+     * Bakiyeyi yazar; elle yapılan değişikliğin farkı (yeni − eski) "Bakiye düzeltme" kaydı olarak saklanır — raporlar bunu vezne hareketi olarak okur,
+     * anlık bakiye belgelerden ayrışmaz (rapor denetimi 01.10.2026). Parametreler: @vezneId, @paraId, @miktar, @kullaniciId.
+     */
+    static BAKIYE_YAZ_SQL = `
+    DECLARE @eski FLOAT = (SELECT SUM(MIKTAR) FROM [dbo].[TODVZ_VEZNE_BAKIYE] WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId);
+    IF EXISTS (SELECT 1 FROM [dbo].[TODVZ_VEZNE_BAKIYE] WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId)
+      UPDATE [dbo].[TODVZ_VEZNE_BAKIYE] SET MIKTAR = @miktar WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId
+    ELSE
+      INSERT INTO [dbo].[TODVZ_VEZNE_BAKIYE] (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@vezneId, @paraId, @miktar);
+    DECLARE @yeni FLOAT = (SELECT SUM(MIKTAR) FROM [dbo].[TODVZ_VEZNE_BAKIYE] WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId);
+    IF OBJECT_ID('dbo.TODVZ_VEZNE_BAKIYE_DUZELTME','U') IS NOT NULL AND ABS(ISNULL(@yeni,0) - ISNULL(@eski,0)) >= 0.00005
+      INSERT INTO [dbo].[TODVZ_VEZNE_BAKIYE_DUZELTME] (VEZNE_ID, PARA_ID, MIKTAR, ESKI_MIKTAR, YENI_MIKTAR, TARIH, KAYNAK, ACIKLAMA, EKLEYEN_ID)
+      VALUES (@vezneId, @paraId, ISNULL(@yeni,0) - ISNULL(@eski,0), @eski, @yeni, CAST(DATEADD(hour, 3, GETUTCDATE()) AS date), 1, 'Vezne İzleme — elle düzeltme', @kullaniciId);`;
+    /**
      * Updates balance for a specific vezne and para in TODVZ_VEZNE_BAKIYE
      */
-    static async updateBakiye(vezneId, paraId, miktar, dbContext) {
+    static async updateBakiye(vezneId, paraId, miktar, dbContext, kullaniciId) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         try {
+            // Düzeltme tablosu ilk kez kuruluyorsa açılış farkı bu değişiklikten önce yazılır
+            await VezneBakiyeDuzeltmeSqlRepository.ensure(pool, `${dbContext?.dbServer || ""}|${dbContext?.dbName || ""}`);
             const req = pool.request();
             req.input("vezneId", sql.Int, vezneId);
             req.input("paraId", sql.Int, paraId);
             req.input("miktar", sql.Decimal(18, 4), miktar);
-            await req.query(`
-        IF EXISTS (SELECT 1 FROM [dbo].[TODVZ_VEZNE_BAKIYE] WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId)
-          UPDATE [dbo].[TODVZ_VEZNE_BAKIYE] SET MIKTAR = @miktar WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId
-        ELSE
-          INSERT INTO [dbo].[TODVZ_VEZNE_BAKIYE] (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@vezneId, @paraId, @miktar)
-      `);
+            req.input("kullaniciId", sql.Int, kullaniciId || null);
+            await req.query(`SET XACT_ABORT ON; BEGIN TRAN; ${VezneIzlemeSqlRepository.BAKIYE_YAZ_SQL} COMMIT TRAN;`);
         }
         catch (error) {
             logger.error(`VezneIzlemeSqlRepository.updateBakiye(${vezneId}, ${paraId}, ${miktar}) error:`, error);
@@ -221,10 +234,12 @@ export class VezneIzlemeSqlRepository {
     /**
      * Batch updates balances for all provided vezne-para pairs in TODVZ_VEZNE_BAKIYE
      */
-    static async updateAllBakiyeler(items, dbContext) {
+    static async updateAllBakiyeler(items, dbContext, kullaniciId) {
         if (!items || items.length === 0)
             return;
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        // Düzeltme tablosu ilk kez kuruluyorsa açılış farkı bu değişikliklerden önce yazılır
+        await VezneBakiyeDuzeltmeSqlRepository.ensure(pool, `${dbContext?.dbServer || ""}|${dbContext?.dbName || ""}`);
         const transaction = new sql.Transaction(pool);
         try {
             await transaction.begin();
@@ -233,12 +248,8 @@ export class VezneIzlemeSqlRepository {
                 req.input("vezneId", sql.Int, item.vezneId);
                 req.input("paraId", sql.Int, item.paraId);
                 req.input("miktar", sql.Decimal(18, 4), item.miktar || 0);
-                await req.query(`
-          IF EXISTS (SELECT 1 FROM [dbo].[TODVZ_VEZNE_BAKIYE] WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId)
-            UPDATE [dbo].[TODVZ_VEZNE_BAKIYE] SET MIKTAR = @miktar WHERE VEZNE_ID = @vezneId AND PARA_ID = @paraId
-          ELSE
-            INSERT INTO [dbo].[TODVZ_VEZNE_BAKIYE] (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@vezneId, @paraId, @miktar)
-        `);
+                req.input("kullaniciId", sql.Int, kullaniciId || null);
+                await req.query(VezneIzlemeSqlRepository.BAKIYE_YAZ_SQL);
             }
             await transaction.commit();
         }

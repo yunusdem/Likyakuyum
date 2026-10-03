@@ -2,6 +2,7 @@ import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import { gunOnce, hedefPara, kurCoz, kurTarihte, ozetEk, paraKumesi, sinirla, tarihTr, vezneBakiyeleri, VEZNE_BAKIYE_DIPNOT } from "../raporOrtak.js";
 import { maliyetYurut } from "./analiz.js";
+import { CARI_HAREKET_KOLONLARI, belgeTablolari, cariHareketleriSql } from "../kaynak.js";
 const tabloVar = async (pool, ...adlar) => !!(await pool.request().query(`SELECT CASE WHEN ${adlar.map(a => `OBJECT_ID('dbo.${a}','U') IS NOT NULL`).join(" AND ")} THEN 1 ELSE 0 END v`)).recordset[0]?.v;
 /** Para bazında pozisyon bileşenleri (tarih dahil): vezne mevcudu, banka, cari alacak / borç, açık vadeli dekontlar */
 async function pozisyonlar(pool, p, secenek) {
@@ -17,10 +18,13 @@ async function pozisyonlar(pool, p, secenek) {
     const PARA = `S.PARA_ID paraId, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo`;
     for (const v of await vezneBakiyeleri(pool, tarih, p))
         al({ ...v, siraNo: v.siraNo }).vezne += Number(v.miktar) || 0;
+    // Cari: cari hareketler + virman dekontu + bankadan ödenen döviz fişi + sarraf fişi cari ödemesi (kaynak.ts — Cari Bakiye ile aynı kapsam)
     const cari = await pool.request().input("t", sql.Date, tarih).query(`
-    SELECT ${PARA}, SUM(CASE WHEN H.TIP=0 THEN S.MEBLAG ELSE 0 END) borc, SUM(CASE WHEN H.TIP=1 THEN S.MEBLAG ELSE 0 END) alacak
-    FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID
-    WHERE CAST(H.TARIH AS date)<=@t GROUP BY S.PARA_ID, P.KOD, P.AD, P.SIRA_NO;`);
+    ;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (${cariHareketleriSql(await belgeTablolari(pool))})
+    SELECT CH.paraId, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo,
+      SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE 0 END) borc, SUM(CASE WHEN CH.tip=1 THEN CH.meblag ELSE 0 END) alacak
+    FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId
+    WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD, P.AD, P.SIRA_NO;`);
     // Carilerin bize borcu = bizim alacağımız; carilerin alacağı = bizim borcumuz
     for (const r of cari.recordset) {
         const o = al(r);

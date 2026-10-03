@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import { aralikOzeti, filtreler, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
+import { POS_HAREKET_KOLONLARI, belgeTablolari, posHareketleriSql } from "../kaynak.js";
 const DEKONT_TIPI = { 0: "Emanet alma", 1: "Emanet verme", 2: "Dekont (virman)" };
 /** Vadeye kalan gün (negatif = vadesi geçmiş). Tarihler YYYY-AA-GG gün başı olarak karşılaştırılır. Saf fonksiyon. */
 export function kalanGun(vade, bugun) {
@@ -9,40 +10,44 @@ export function kalanGun(vade, bugun) {
 }
 export const CARI2_SORGULARI = {
     /**
-     * POS ekstre — POS / kredi kartı türündeki cari hareketler (HAREKET_TIPI = 2), POS cihazı × para bazında.
-     * Eski "POS EKSTRE RAPORU" metrikleri: grup başlığında cihaz kodu + adı, yürüyen bakiye (@Bakiye = Σborç − Σalacak), başlangıç öncesi hareketler "POS Devir"
-     * satırında (borç ve alacak brüt — eski raporda grup toplamına dahildir), grup altında son bakiye (@SonBakiye). Cihaz tanımındaki DEVIR alanı ve eski görünümün
-     * ISLEM_KODU alanı kullanılmaz: kaynağı şifreli görünümde kaldı ve veritabanında doğrulanacak POS kaydı yok (19.09.2026).
+     * POS ekstre — eski "POS EKSTRE RAPORU" (VODVZR_POS_EKSTRESI) kapsamı, POS cihazı × para bazında (kaynak.ts posHareketleriSql):
+     * cihaz tanımındaki devir, POS'lu cari hareketler (cari alacak → POS borç "Cari tahsilat", cari borç → POS alacak "Banka hesabına aktarım") ve
+     * sarraf fişinin kartlı tahsilatı ("Fiş tahsilat", POS borç). Eski @BORC / @ALACAK / @Bakiye formülleri: bakiye = Σborç − Σalacak (yürüyen);
+     * başlangıç öncesi hareketler ve cihaz devri "POS Devir" satırında (borç ve alacak brüt — grup toplamına dahil), grup altında son bakiye.
+     * Doğrulama: test veritabanında eski görünümle karşılaştırıldı (01.10.2026, docs/rapor-denetim.md).
      */
     async POSEKS1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
         const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
-        const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" });
+        // Cari süzgeci cihaz devrine uygulanmaz (devrin carisi yoktur); vezne ve para süzgeçleri satırlara uygulanır
+        const cariSecili = !!(p.cariKartId || p.cariIdler?.length || p.cariSonId || p.cariBaslangic || p.cariBitis);
+        const fCariVezne = filtreler(req, p, { cari: "C", vezne: "V" }), fPara = filtreler(req, p, { para: "X.paraId" });
+        const fx = ` AND (${cariSecili ? "" : "X.devir=1 OR "}(1=1${fCariVezne}))${fPara}`;
         const res = await req.query(`
-      SELECT H.CARI_HAREKET_ID fisNo, H.TARIH tarih, ISNULL(H.POS_CIHAZI_ID,0) posId, RTRIM(ISNULL(PC.KOD,'')) cihazKod, RTRIM(ISNULL(PC.AD,'')) cihazAd,
-        RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, H.TIP tipKod,
-        RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, RTRIM(P.KOD) paraKod, S.MEBLAG meblag, RTRIM(ISNULL(V.KOD,'')) vezneKod, CASE WHEN CAST(H.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
-      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID
-      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=H.CARI_KART_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID
-      LEFT JOIN dbo.TODVZ_POS_CIHAZI PC ON PC.POS_CIHAZI_ID=H.POS_CIHAZI_ID
-      WHERE H.HAREKET_TIPI=2 AND CAST(H.TARIH AS date)<=@bit ${f}
-      ORDER BY ISNULL(PC.KOD,''), ISNULL(H.POS_CIHAZI_ID,0), ISNULL(P.SIRA_NO,99), P.KOD, H.TARIH, H.CARI_HAREKET_ID, S.SATIR_NO;`);
+      ;WITH X (${POS_HAREKET_KOLONLARI}) AS (
+       ${posHareketleriSql(await belgeTablolari(pool))}
+      )
+      SELECT X.hareketNo fisNo, X.tarih, ISNULL(X.posCihaziId,0) posId, RTRIM(ISNULL(PC.KOD,'')) cihazKod, RTRIM(ISNULL(PC.AD,'')) cihazAd,
+        RTRIM(ISNULL(C.KOD,'')) cariKod, RTRIM(ISNULL(C.AD,'')) cariAd, X.islem, X.aciklama, RTRIM(ISNULL(P.KOD,'')) paraKod, ISNULL(X.borc,0) borc, ISNULL(X.alacak,0) alacak,
+        RTRIM(ISNULL(V.KOD,'')) vezneKod, CASE WHEN CAST(X.tarih AS date)<@bas THEN 1 ELSE 0 END onceki
+      FROM X LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=X.paraId LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID=X.cariKartId LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=X.vezneId
+      LEFT JOIN dbo.TODVZ_POS_CIHAZI PC ON PC.POS_CIHAZI_ID=X.posCihaziId
+      WHERE CAST(X.tarih AS date)<=@bit ${fx}
+      ORDER BY ISNULL(PC.KOD,''), ISNULL(X.posCihaziId,0), ISNULL(P.SIRA_NO,99), P.KOD, X.tarih, X.devir DESC, X.hareketNo;`);
         const gruplar = new Map();
         for (const r of res.recordset) {
-            const k = `${r.posId}|${r.paraKod}`, m = Number(r.meblag) || 0, borc = Number(r.tipKod) === 0;
+            const k = `${r.posId}|${r.paraKod}`, borc = Number(r.borc) || 0, alacak = Number(r.alacak) || 0;
             const pos = Number(r.posId) ? [r.cihazKod, r.cihazAd].filter(Boolean).join(" — ") || `POS cihazı ${r.posId}` : "POS cihazı belirtilmemiş";
             if (!gruplar.has(k))
                 gruplar.set(k, { devirBorc: 0, devirAlacak: 0, hareketler: [], ortak: { grupAnahtar: k, grupBaslik: `CİHAZ: ${pos} · ${r.paraKod}`, posCihazi: Number(r.posId) ? (r.cihazKod || String(r.posId)) : "-", paraKod: r.paraKod } });
             const g = gruplar.get(k);
             if (r.onceki) {
-                if (borc)
-                    g.devirBorc += m;
-                else
-                    g.devirAlacak += m;
+                g.devirBorc += borc;
+                g.devirAlacak += alacak;
             }
             else
-                g.hareketler.push({ ...r, fisNo: String(r.fisNo ?? ""), borc: borc ? m : 0, alacak: borc ? 0 : m });
+                g.hareketler.push({ ...r, fisNo: String(r.fisNo ?? ""), aciklama: r.aciklama || r.islem, borc, alacak });
         }
         const satirlar = [], sonBakiyeler = [];
         for (const g of gruplar.values()) {
@@ -58,7 +63,7 @@ export const CARI2_SORGULARI = {
             if (g.hareketler.length || g.devirBorc || g.devirAlacak)
                 sonBakiyeler.push({ cihaz: g.ortak.grupBaslik, borc, alacak, sonBakiye: bakiye });
         }
-        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm cariler"}`, "Yalnızca hareket tipi \"POS / Kredi Kartı\" olan cari hareketler listelenir; POS cihazı ve para birimi bazında gruplanır. Borç = carinin borçlandığı, Alacak = cariden POS ile tahsil edilen tutar; bakiye = borç − alacak (yürüyen). Başlangıç tarihinden önceki hareketler \"POS Devir\" satırında toplanır ve grup toplamına dahildir.", sonBakiyeler);
+        return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm cariler"}`, "Seçilen aralıkta POS hareketi yok. POS ekstresi POS'lu cari hareketleri, sarraf fişlerinin kartlı tahsilatlarını ve cihaz devrini kapsar; borç = POS'tan tahsil edilecek, alacak = bankaya aktarılan.", sonBakiyeler);
     },
     /** Vadeli işlem listesi — vadesi olan cari dekontlar (emanet alma / verme, virman); iptal edilenler hariç */
     async VADISL1(pool, p, t) {

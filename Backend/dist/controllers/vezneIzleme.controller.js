@@ -50,7 +50,7 @@ export class VezneIzlemeController {
         if (!vezneId || !paraId) {
             throw ApiError.badRequest("Vezne ID ve Para ID zorunludur.");
         }
-        await VezneIzlemeService.updateBakiye(Number(vezneId), Number(paraId), Number(miktar) || 0, dbContext);
+        await VezneIzlemeService.updateBakiye(Number(vezneId), Number(paraId), Number(miktar) || 0, dbContext, Number(req.user?.id) || null);
         return ApiResponse.ok(res, "Vezne bakiyesi başarıyla güncellendi.");
     });
     /**
@@ -68,7 +68,7 @@ export class VezneIzlemeController {
             paraId: Number(it.paraId),
             miktar: Number(it.miktar) || 0,
         }));
-        await VezneIzlemeService.updateAllBakiyeler(cleanItems, dbContext);
+        await VezneIzlemeService.updateAllBakiyeler(cleanItems, dbContext, Number(req.user?.id) || null);
         return ApiResponse.ok(res, "Tablo bakiyeleri başarıyla kaydedildi.");
     });
 }

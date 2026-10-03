@@ -217,7 +217,8 @@ export class CariDekontSqlRepository {
         const isUpdate = dto.cariDekontId !== undefined && dto.cariDekontId !== null && Number(dto.cariDekontId) > 0;
         const targetDekontId = isUpdate ? Number(dto.cariDekontId) : null;
         const guid = crypto.randomUUID();
-        const tip = dto.tip === 1 ? 1 : 0;
+        // 0 Emanet alma, 1 Emanet verme, 2 Dekont / Virman — virman önceden 0'a çevriliyordu (emanet alma olarak kaydediliyor, cari raporlarına girmiyordu; rapor denetimi 01.10.2026)
+        const tip = dto.tip === 1 ? 1 : dto.tip === 2 ? 2 : 0;
         const parseDate = (d, label = "Tarih") => {
             if (!d)
                 return null;

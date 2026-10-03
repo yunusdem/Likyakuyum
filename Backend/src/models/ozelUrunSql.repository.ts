@@ -43,6 +43,9 @@ export interface OzelUrunModel {
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
+  rfidEpc?: string | null;
+  rfidStatus?: number | null;
+  etiketBasimTarihi?: string | null;
   ekleyenId?: number | null;
   eklemeZamani?: string | null;
   guncelleyenId?: number | null;
@@ -51,6 +54,8 @@ export interface OzelUrunModel {
 
 export interface SaveOzelUrunDto {
   ozelUrunId?: number | null;
+  rfidEpc?: string | null;
+  rfidStatus?: number | null;
   tarih?: string | null;
   grupKodu: string;
   urunNo: number;
@@ -578,6 +583,9 @@ export class OzelUrunSqlRepository {
       satildi: Boolean(r.SATILDI),
       yazdirildi: Boolean(r.YAZDIRILDI),
       yazdirildiZamani: r.YAZDIRILDI_ZAMANI ? new Date(r.YAZDIRILDI_ZAMANI).toISOString() : null,
+      rfidEpc: r.RFID_EPC ? r.RFID_EPC.trim() : null,
+      rfidStatus: r.RFID_STATUS !== null && r.RFID_STATUS !== undefined ? Number(r.RFID_STATUS) : null,
+      etiketBasimTarihi: r.ETIKET_BASIM_TARIHI ? new Date(r.ETIKET_BASIM_TARIHI).toISOString() : null,
       ekleyenId: r.EKLEYEN_ID,
       eklemeZamani: r.EKLEME_ZAMANI ? new Date(r.EKLEME_ZAMANI).toISOString() : null,
       guncelleyenId: r.GUNCELLEYEN_ID,

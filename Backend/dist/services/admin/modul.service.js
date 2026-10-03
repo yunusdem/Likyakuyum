@@ -26,7 +26,7 @@ export const API_MODULLERI = {
     "/e-belge": ["ebelge", "ust:e-belge", "vezne", "perakende", "ayarlar"],
     "/masak": ["ust:masak", "vezne", "cari", "perakende", "raporlar"],
     "/etiket": ["etiket", "ust:fiyat", "perakende"],
-    "/rapor": ["raporlar", "vezne", "kasa", "kur", "cari", "yonetici", "banka", "ust:masak"],
+    "/rapor": ["raporlar", "vezne", "kasa", "kur", "cari", "yonetici", "banka", "ust:masak", "etiket"],
 };
 /**
  * Ağaç kuralları: ana modül kapalıysa altındakiler de kapalıdır; alt öğesi olan bir ana modülün hiçbir alt öğesi

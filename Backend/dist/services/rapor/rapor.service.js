@@ -1,4 +1,6 @@
 import { RaporSqlRepository } from "../../models/raporSql.repository.js";
+import { VezneBakiyeDuzeltmeSqlRepository } from "../../models/vezneBakiyeDuzeltmeSql.repository.js";
+import { logger } from "../../utils/logger.js";
 import { EbelgeSqlRepository } from "../../models/ebelgeSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { raporTanimOku, raporPdf } from "./raporMotor.js";
@@ -15,9 +17,25 @@ export class RaporService {
             throw ApiError.notFound(`Rapor sorgusu tanımlı değil: ${t.kod}`);
         return t;
     }
+    /** Ekrana giden tanım: `secenekKaynagi` olan seçim parametrelerinin seçenekleri veritabanından doldurulur (ilk seçenek "Tümü") */
+    static async tanimSecenekli(kod, ctx) {
+        const t = this.tanim(kod);
+        if (!t.parametreler.some(p => p.secenekKaynagi))
+            return t;
+        const parametreler = await Promise.all(t.parametreler.map(async (p) => {
+            if (!p.secenekKaynagi)
+                return p;
+            const degerler = await RaporSqlRepository.secenekListesi(p.secenekKaynagi, ctx).catch(() => []);
+            return { ...p, secenekler: [{ deger: "", ad: "Tümü" }, ...degerler.map(d => ({ deger: d, ad: d }))] };
+        }));
+        return { ...t, parametreler };
+    }
     static async veri(kod, p, ctx) {
         const tanim = this.tanim(kod);
         const pool = await RaporSqlRepository.pool(ctx);
+        // Vezne bakiye düzeltme tablosu ilk raporda kurulur ve açılış farkı bir kez yazılır (anlık bakiye = belgeler); hata raporu durdurmaz
+        await VezneBakiyeDuzeltmeSqlRepository.ensure(pool, `${ctx?.dbServer || ""}|${ctx?.dbName || ""}`)
+            .catch((e) => logger.warn("Vezne bakiye düzeltme tablosu kurulamadı:", e?.message || e));
         const sonuc = await RAPOR_SORGULARI[tanim.kod](pool, p, tanim);
         return { ...sonuc, tanim: kosulUygula(kmtUygula(tanim, p.kmt), p) };
     }
