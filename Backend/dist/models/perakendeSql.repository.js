@@ -2,6 +2,45 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+/**
+ * Perakende fişinin vezne etkisini geri alan SQL (@FID faturası, veritabanındaki hâlinden) — düzeltmede başlık güncellenmeden önce ve silmede kullanılır.
+ * Barkodsuz satır: satırda saklanan stok parası / miktarı (STOK_PARA_ID / STOK_MIKTAR); 01.10.2026 öncesi satırlarda kaydetmedeki eski kural ve eşleştirme.
+ * Vezneden tahsilat: yalnızca vezneye işlenmiş (VEZNE_ISLENDI = 1) ödeme satırları. Rapor denetimi 01.10.2026 — önceden düzeltme yeni başlığın veznesi / tipiyle
+ * ve farklı bir para eşleştirmesiyle geri alıyor, tahsilatı hiç işlemiyordu.
+ */
+const PERAKENDE_VEZNE_GERI_AL = `
+  DECLARE @GA_VEZNE INT, @GA_TIPI INT;
+  SELECT @GA_VEZNE = VEZNE_ID, @GA_TIPI = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FID;
+  IF @GA_VEZNE IS NOT NULL AND @GA_VEZNE > 0
+  BEGIN
+    DECLARE @GA TABLE (PARA_ID INT, M FLOAT);
+    INSERT INTO @GA (PARA_ID, M)
+      SELECT COALESCE(s.STOK_PARA_ID, E1.PARA_ID, E2.PARA_ID),
+        CASE WHEN @GA_TIPI = 1 THEN 1 ELSE -1 END * COALESCE(s.STOK_MIKTAR, CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END)
+      FROM dbo.TODVZ_FATURA_SATIRI s
+      OUTER APPLY (SELECT TOP 1 P.PARA_ID FROM dbo.TODVZ_PARA P
+        WHERE UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(s.AYAR)))
+           OR UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(s.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))))
+           OR UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(ISNULL(s.URUN_ADI, ''))))
+           OR UPPER(LTRIM(RTRIM(P.AD))) = UPPER(LTRIM(RTRIM(ISNULL(s.URUN_ADI, ''))))) E1
+      OUTER APPLY (SELECT TOP 1 P.PARA_ID FROM dbo.TODVZ_PARA P
+        WHERE E1.PARA_ID IS NULL AND (UPPER(LTRIM(RTRIM(P.AD))) IN (
+          UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(s.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', '')))) + ' AYAR',
+          UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(s.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', '')))) + ' AYAR ALTIN',
+          UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(s.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))))))) E2
+      WHERE s.FATURA_ID = @FID AND ISNULL(s.ALTIN_URUN_ID, 0) = 0 AND LEN(LTRIM(RTRIM(ISNULL(s.BARKOD, '')))) = 0
+        AND COALESCE(s.STOK_MIKTAR, CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END) > 0;
+    IF COL_LENGTH('dbo.TODVZ_FATURA_ODEME', 'VEZNE_ISLENDI') IS NOT NULL
+      INSERT INTO @GA (PARA_ID, M)
+        SELECT O.PARA_ID, CASE WHEN @GA_TIPI = 1 THEN -1 ELSE 1 END * ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0))
+        FROM dbo.TODVZ_FATURA_ODEME O WHERE O.FATURA_ID = @FID AND ISNULL(O.VEZNE_ISLENDI, 0) = 1;
+    UPDATE B SET MIKTAR = B.MIKTAR + G.M
+      FROM dbo.TODVZ_VEZNE_BAKIYE B JOIN (SELECT PARA_ID, SUM(M) M FROM @GA WHERE PARA_ID IS NOT NULL GROUP BY PARA_ID) G ON G.PARA_ID = B.PARA_ID
+      WHERE B.VEZNE_ID = @GA_VEZNE;
+    INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR)
+      SELECT @GA_VEZNE, G.PARA_ID, G.M FROM (SELECT PARA_ID, SUM(M) M FROM @GA WHERE PARA_ID IS NOT NULL GROUP BY PARA_ID) G
+      WHERE NOT EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE B WHERE B.VEZNE_ID = @GA_VEZNE AND B.PARA_ID = G.PARA_ID);
+  END;`;
 export class PerakendeSqlRepository {
     static ensuredPools = new WeakSet();
     /**
@@ -101,6 +140,9 @@ export class PerakendeSqlRepository {
           IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'KDV_TUTARI') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [KDV_TUTARI] FLOAT NOT NULL DEFAULT 0;
           IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'TOPLAM_TUTAR') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [TOPLAM_TUTAR] FLOAT NOT NULL DEFAULT 0;
         END;
+        -- Barkodsuz satırın vezne stoğundan düşen parası ve miktarı (düzeltme / silme aynısını geri alır; raporlar da bunu okur)
+        IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_PARA_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_PARA_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_MIKTAR') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_MIKTAR] FLOAT NULL;
       `);
             // 2.b TODVZ_FATURA_ODEME Detail Table
             await pool.request().batch(`
@@ -144,6 +186,8 @@ export class PerakendeSqlRepository {
           IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AND name = 'ISLEME_YERI')
             ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [ISLEME_YERI] TINYINT NULL DEFAULT 0;
         END;
+        -- Vezneden tahsilatın vezne bakiyesine işlendiği satırlar (01.10.2026 öncesi tahsilatlar işlenmemişti; geri alma yalnız bunlara uygulanır)
+        IF COL_LENGTH('dbo.TODVZ_FATURA_ODEME', 'VEZNE_ISLENDI') IS NULL ALTER TABLE dbo.TODVZ_FATURA_ODEME ADD [VEZNE_ISLENDI] BIT NULL;
       `);
             // 3. Stored Procedure: SODVZ_FATURA_KAYDET
             await pool.request().batch(`
@@ -350,40 +394,14 @@ export class PerakendeSqlRepository {
                 WHERE s.FATURA_ID = @FATURA_ID;
             END;
 
-            -- 2. Barkodsuz ürünlerin vezne bakiyelerini geri al
-            DECLARE @DEL_VEZNE_ID INT, @DEL_TIPI INT;
-            SELECT @DEL_VEZNE_ID = VEZNE_ID, @DEL_TIPI = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FATURA_ID;
+            -- 2. Barkodsuz ürünlerin ve vezneden tahsilatın vezne etkisini geri al (kaydetmedeki kuralla; rapor denetimi 01.10.2026)
+            DECLARE @FID INT = @FATURA_ID;
+            ${PERAKENDE_VEZNE_GERI_AL}
 
-            IF @DEL_VEZNE_ID IS NOT NULL
-            BEGIN
-              DECLARE curDel CURSOR LOCAL FAST_FORWARD FOR
-                SELECT s.AYAR, s.URUN_ADI, ISNULL(CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END, 0) AS MIKTAR
-                FROM dbo.TODVZ_FATURA_SATIRI s
-                WHERE s.FATURA_ID = @FATURA_ID AND (s.ALTIN_URUN_ID IS NULL OR s.ALTIN_URUN_ID = 0) AND (s.BARKOD IS NULL OR LEN(LTRIM(RTRIM(s.BARKOD))) = 0);
-              
-              OPEN curDel;
-              DECLARE @D_AYAR VARCHAR(50), @D_NAME VARCHAR(200), @D_MIKTAR FLOAT;
-              FETCH NEXT FROM curDel INTO @D_AYAR, @D_NAME, @D_MIKTAR;
-              WHILE @@FETCH_STATUS = 0
-              BEGIN
-                IF @D_MIKTAR > 0
-                BEGIN
-                  DECLARE @DEL_P_ID INT = NULL;
-                  SELECT TOP 1 @DEL_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
-                  WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@D_AYAR))) 
-                     OR UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@D_NAME))) 
-                     OR UPPER(LTRIM(RTRIM(AD))) = UPPER(LTRIM(RTRIM(@D_NAME)));
-                  IF @DEL_P_ID IS NOT NULL
-                  BEGIN
-                    DECLARE @REV_M_DEL FLOAT = CASE WHEN @DEL_TIPI = 1 THEN @D_MIKTAR ELSE -@D_MIKTAR END;
-                    UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @REV_M_DEL WHERE VEZNE_ID = @DEL_VEZNE_ID AND PARA_ID = @DEL_P_ID;
-                  END;
-                END;
-                FETCH NEXT FROM curDel INTO @D_AYAR, @D_NAME, @D_MIKTAR;
-              END;
-              CLOSE curDel;
-              DEALLOCATE curDel;
-            END;
+            -- 2.b Faturanın işçilik hesabına yazılmış kasa kaydı ("Perakende Fişi İşçilik - Fatura No: …") fatura silinince kalmasın
+            IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI', 'U') IS NOT NULL
+              DELETE H FROM dbo.TODVZ_HESAP_HAREKETI H JOIN dbo.TODVZ_FATURA F ON H.ACIKLAMA = 'Perakende Fişi İşçilik - Fatura No: ' + LTRIM(RTRIM(F.FATURA_NO))
+              WHERE F.FATURA_ID = @FATURA_ID;
 
             -- Satırları, ödemeleri ve başlığı kaldır
             IF OBJECT_ID('dbo.TODVZ_FATURA_ODEME', 'U') IS NOT NULL
@@ -773,6 +791,10 @@ export class PerakendeSqlRepository {
                 const pfx = senaryo === "EARSIVFATURA" ? "EAR" : "GIB";
                 finalFaturaNo = `${pfx}${year}000000001`;
             }
+            // 1.b Düzeltme: faturanın eski vezne etkisi (barkodsuz satırlar + vezneden tahsilat) başlık güncellenmeden, eski vezne / tiple geri alınır
+            if (dto.faturaId && dto.faturaId > 0) {
+                await new sql.Request(transaction).input("FID", sql.Int, dto.faturaId).query(PERAKENDE_VEZNE_GERI_AL);
+            }
             // 2. Insert or Update Header (TODVZ_FATURA)
             const saveHeadReq = new sql.Request(transaction);
             saveHeadReq.input("FATURA_ID", sql.Int, dto.faturaId || 0);
@@ -886,40 +908,7 @@ export class PerakendeSqlRepository {
             WHERE s.FATURA_ID = @FATURA_ID;
           END;
 
-          -- Revert previous non-barcode rows from TODVZ_VEZNE_BAKIYE
-          DECLARE @PREV_VEZNE_ID INT, @PREV_TIPI INT;
-          SELECT @PREV_VEZNE_ID = VEZNE_ID, @PREV_TIPI = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FATURA_ID;
-
-          IF @PREV_VEZNE_ID IS NOT NULL
-          BEGIN
-            DECLARE curPrev CURSOR LOCAL FAST_FORWARD FOR
-              SELECT s.AYAR, s.URUN_ADI, ISNULL(CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END, 0) AS MIKTAR
-              FROM dbo.TODVZ_FATURA_SATIRI s
-              WHERE s.FATURA_ID = @FATURA_ID AND (s.ALTIN_URUN_ID IS NULL OR s.ALTIN_URUN_ID = 0) AND (s.BARKOD IS NULL OR LEN(LTRIM(RTRIM(s.BARKOD))) = 0);
-            
-            OPEN curPrev;
-            DECLARE @P_AYAR VARCHAR(50), @P_NAME VARCHAR(200), @P_MIKTAR FLOAT;
-            FETCH NEXT FROM curPrev INTO @P_AYAR, @P_NAME, @P_MIKTAR;
-            WHILE @@FETCH_STATUS = 0
-            BEGIN
-              IF @P_MIKTAR > 0
-              BEGIN
-                DECLARE @REV_P_ID INT = NULL;
-                SELECT TOP 1 @REV_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
-                WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@P_AYAR))) 
-                   OR UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@P_NAME))) 
-                   OR UPPER(LTRIM(RTRIM(AD))) = UPPER(LTRIM(RTRIM(@P_NAME)));
-                IF @REV_P_ID IS NOT NULL
-                BEGIN
-                  DECLARE @REV_M FLOAT = CASE WHEN @PREV_TIPI = 1 THEN @P_MIKTAR ELSE -@P_MIKTAR END;
-                  UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @REV_M WHERE VEZNE_ID = @PREV_VEZNE_ID AND PARA_ID = @REV_P_ID;
-                END;
-              END;
-              FETCH NEXT FROM curPrev INTO @P_AYAR, @P_NAME, @P_MIKTAR;
-            END;
-            CLOSE curPrev;
-            DEALLOCATE curPrev;
-          END;
+          -- Barkodsuz satırların ve tahsilatın vezne etkisi başlık güncellenmeden önce geri alındı (1.b)
 
           DELETE FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @FATURA_ID;
         `);
@@ -1015,6 +1004,10 @@ export class PerakendeSqlRepository {
 
                 IF @LINE_P_ID IS NOT NULL
                 BEGIN
+                  -- Adet birimli üründe (TODVZ_PARA.BIRIM 0) stok adetle düşer (sarraf fişiyle aynı); diğerlerinde gram, yoksa miktar (rapor denetimi 01.10.2026 —
+                  -- önceden 2 çeyreklik satırda birim gramajı düşüyordu). Düşen para ve miktar satırda saklanır.
+                  IF (SELECT BIRIM FROM dbo.TODVZ_PARA WHERE PARA_ID = @LINE_P_ID) = 0 SET @STOK_MIKTAR = @MIKTAR;
+                  UPDATE dbo.TODVZ_FATURA_SATIRI SET STOK_PARA_ID = @LINE_P_ID, STOK_MIKTAR = @STOK_MIKTAR WHERE FATURA_ID = @FATURA_ID AND SATIR_NO = @SATIR_NO;
                   DECLARE @DIFF_STK FLOAT = CASE WHEN @FATURA_TIPI = 1 THEN -@STOK_MIKTAR ELSE @STOK_MIKTAR END;
                   IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID)
                     UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @DIFF_STK WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID;
@@ -1085,6 +1078,24 @@ export class PerakendeSqlRepository {
           `);
                 }
             }
+            // 4.c Vezneden tahsilat (ödeme aracı vezne, işleme yeri vezne, geçerli para): satışta veznede giriş, alışta çıkış — vezne bakiyesine işlenir ve işaretlenir
+            // (rapor denetimi 01.10.2026 — önceden hiçbir tahsilat vezneye yazılmıyordu; anlık vezne bakiyesi raporlardan sapıyordu)
+            await new sql.Request(transaction).input("FID", sql.Int, outFaturaId).query(`
+        DECLARE @TV INT, @TT INT;
+        SELECT @TV = VEZNE_ID, @TT = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FID;
+        IF @TV IS NOT NULL AND @TV > 0
+        BEGIN
+          UPDATE O SET VEZNE_ISLENDI = 1 FROM dbo.TODVZ_FATURA_ODEME O JOIN dbo.TODVZ_PARA P ON P.PARA_ID = O.PARA_ID
+            WHERE O.FATURA_ID = @FID AND ISNULL(O.ODEME_ARACI_TURU, 0) = 0 AND ISNULL(O.ISLEME_YERI, 0) = 0 AND ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0)) <> 0;
+          DECLARE @TE TABLE (PARA_ID INT, M FLOAT);
+          INSERT INTO @TE (PARA_ID, M)
+            SELECT O.PARA_ID, SUM(CASE WHEN @TT = 1 THEN 1 ELSE -1 END * ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0)))
+            FROM dbo.TODVZ_FATURA_ODEME O WHERE O.FATURA_ID = @FID AND ISNULL(O.VEZNE_ISLENDI, 0) = 1 GROUP BY O.PARA_ID;
+          UPDATE B SET MIKTAR = B.MIKTAR + E.M FROM dbo.TODVZ_VEZNE_BAKIYE B JOIN @TE E ON E.PARA_ID = B.PARA_ID WHERE B.VEZNE_ID = @TV;
+          INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR)
+            SELECT @TV, E.PARA_ID, E.M FROM @TE E WHERE NOT EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE B WHERE B.VEZNE_ID = @TV AND B.PARA_ID = E.PARA_ID);
+        END;
+      `);
             // 5. Update header summary amounts from lines taking stored discount into account
             const summaryReq = new sql.Request(transaction);
             summaryReq.input("FATURA_ID", sql.Int, outFaturaId);
@@ -1111,7 +1122,7 @@ export class PerakendeSqlRepository {
           FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
           WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@ISCILIK_HESAP_KODU) 
              OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@ISCILIK_HESAP_KODU)
-             OR (ISNUMERIC(@ISCILIK_HESAP_KODU) = 1 AND HESAP_ID = CAST(@ISCILIK_HESAP_KODU AS INT));
+             OR (TRY_CAST(@ISCILIK_HESAP_KODU AS INT) IS NOT NULL AND HESAP_ID = TRY_CAST(@ISCILIK_HESAP_KODU AS INT));
         END;
 
         IF (@TARGET_ISCILIK_HESAP_ID IS NOT NULL)

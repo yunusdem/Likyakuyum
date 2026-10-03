@@ -59,6 +59,8 @@ import TopluEtiketYazdirmaPage from "./pages/etiket/TopluEtiketYazdirmaPage";
 import YuzukBilezikEtiketiPage from "./pages/etiket/YuzukBilezikEtiketiPage";
 import FiyatAyarEtiketleriPage from "./pages/etiket/FiyatAyarEtiketleriPage";
 import UrunStoguPage from "./pages/etiket/UrunStoguPage";
+import RfidEtiketUretimPage from "./pages/etiket/RfidEtiketUretimPage";
+import RfidSayimPage from "./pages/etiket/RfidSayimPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -308,6 +310,9 @@ export default function App() {
             <Route path="etiket/barkodlu-sayim-fisi" element={<BarkodluSayimFisiPage />} />
             <Route path="etiket/altin-urun-stogu" element={<UrunStoguPage tip="altin" />} />
             <Route path="etiket/ozel-urun-stogu" element={<UrunStoguPage tip="ozel" />} />
+            <Route path="etiket/rfid" element={<RfidEtiketUretimPage />} />
+            <Route path="etiket/rfid-etiket-uretim" element={<RfidEtiketUretimPage />} />
+            <Route path="etiket/rfid-sayim" element={<RfidSayimPage />} />
             <Route path=":section/*" element={<ModulePage />} />
 
 

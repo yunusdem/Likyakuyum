@@ -32,6 +32,12 @@ router.get("/:tip(altin|ozel)-urun-stogu/secenekler", UrunStokController.secenek
 router.get("/:tip(altin|ozel)-urun-stogu/pdf", UrunStokController.pdf);
 router.get("/:tip(altin|ozel)-urun-stogu/excel", UrunStokController.excel);
 
+// RFID Etiket Kodlama, Eşleştirme & ZPL Baskı API
+router.post("/rfid/generate-epc", EtiketController.generateRfidEpc);
+router.post("/rfid/encode-and-print", EtiketController.encodeAndPrintRfid);
+router.post("/rfid/bulk-encode", EtiketController.bulkEncodeRfid);
+router.get("/rfid/urun-detay/:epc", EtiketController.getRfidProductDetail);
+
 // Altın Ürün (TODVZ_ALTIN_URUN)
 router.get("/altin-urun", EtiketController.listAltinUrun);
 router.get("/altin-urun/stok", EtiketController.getAltinUrunStok);

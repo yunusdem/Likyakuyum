@@ -42,6 +42,10 @@ export const RAPOR_SEED = [
     { kod: "LONSHO1", ad: "Long / Short Denge Analizi", kagit: "A4-yatay" },
     { kod: "KNSKLOG1", ad: "KNSK Sorgulama Log Listesi", kagit: "A4-yatay" },
     { kod: "KURKON2", ad: "Kur Kontrolü", kagit: "A4-yatay" },
+    // Barkodlu altın raporları (I- Etiket İşlemleri; docs/BARKODLU_ALTIN_RAPORLARI.md)
+    { kod: "BALURE1", ad: "Barkodlu Altın Üretim Raporu", kagit: "A4-yatay" },
+    { kod: "BALSAT1", ad: "Barkodlu Altın Satış Raporu", kagit: "A4-yatay" },
+    { kod: "BALSTK1", ad: "Barkodlu Altın Stok Raporu", kagit: "A4-yatay" },
 ];
 const ARAMA_UST_SINIR = 10;
 export class RaporSqlRepository {
@@ -148,6 +152,17 @@ export class RaporSqlRepository {
         };
         const res = await pool.request().query(SORGU[kaynak]);
         return res.recordset.map((r) => ({ id: Number(r.id), kod: String(r.kod ?? "").trim(), ad: String(r.ad ?? "").trim() }));
+    }
+    /** `secim` parametrelerinin veritabanından gelen seçenekleri: barkodlu altın ürün kartındaki farklı değerler (tablo yoksa boş) */
+    static async secenekListesi(kaynak, ctx) {
+        const pool = await this.pool(ctx);
+        const KOLON = {
+            altinAyar: "RTRIM(AYAR)", altinGrup: "UPPER(RTRIM(GRUP_KODU))", altinUretici: "RTRIM(URETICI_FIRMA)", altinBanko: "RTRIM(BANKO)",
+        };
+        const k = KOLON[kaynak];
+        const res = await pool.request().query(`IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN','U') IS NOT NULL
+      SELECT DISTINCT ${k} v FROM dbo.TODVZ_ALTIN_URUN WHERE ${k} IS NOT NULL AND ${k}<>'' ORDER BY 1`);
+        return (res.recordset || []).map((r) => String(r.v));
     }
     static async sablonlar(ctx) {
         const pool = await this.pool(ctx);

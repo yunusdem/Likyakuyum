@@ -36,6 +36,7 @@ export interface AltinUrunItem {
   vezneId?: number | null;
   vezneKod?: string | null;
   vezneAd?: string | null;
+  rfidEpc?: string | null;
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -49,6 +50,7 @@ export interface SaveAltinUrunPayload {
   grupKodu: string;
   urunNo: number;
   barkod?: string | null;
+  rfidEpc?: string | null;
   ayar?: string | null;
   ureticiFirma?: string | null;
   orjinalKod?: string | null;
@@ -86,6 +88,7 @@ export interface OzelUrunItem {
   grupKodu: string;
   urunNo: number;
   barkod?: string | null;
+  rfidEpc?: string | null;
   mamulTipi?: string | null;
   ureticiFirma?: string | null;
   miktar: number;
@@ -128,6 +131,7 @@ export interface SaveOzelUrunPayload {
   grupKodu: string;
   urunNo: number;
   barkod?: string | null;
+  rfidEpc?: string | null;
   mamulTipi?: string | null;
   ureticiFirma?: string | null;
   miktar?: number;
@@ -156,6 +160,63 @@ export interface SaveOzelUrunPayload {
   resimler?: string[];
   vezneId?: number | null;
   satildi?: boolean;
+}
+
+// ─── RFID Veri Yapıları ──────────────────────────────────────────────────────
+export interface RfidTagItem {
+  sira: number;
+  epc: string;
+  tid?: string;
+  stokKodu: string;
+  urunAdi: string;
+  ayar: string;
+  milyem: number;
+  brutGram: number;
+  hasGram: number;
+  iscilikGram?: number;
+  iscilikTutari?: number;
+  satisFiyati?: number;
+  satisParaKodu?: string;
+  banko?: string;
+  durum: "KAYITLI" | "BILINMEYEN" | "EKSIK" | "ETIKETSIZ";
+  okunmaZamani: string;
+  hitCount: number;
+  rssi?: number;
+  rawItem?: any;
+}
+
+export interface RfidScanItem {
+  id: string;
+  epc: string;
+  tid?: string;
+  barkod?: string;
+  urunId?: number;
+  urunTipi?: "altin" | "ozel";
+  urunAdi: string;
+  ayar?: string;
+  miktar: number;
+  birim: string;
+  banko?: string;
+  satisFiyati?: number;
+  satisParaKodu?: string;
+  durum: "eslesti" | "eksik" | "fazla_tanimsiz";
+  okunmaSayisi: number;
+  rssi: number;
+  sonOkunmaZamani: string;
+  antenNo?: number;
+  resim?: string | null;
+}
+
+export interface RfidAyarConfig {
+  cihazTipi: "simulator" | "webserial" | "webbluetooth" | "keyboard_wedge";
+  baudRate: number;
+  frekansBolgesi: "ETSI_TR" | "FCC_US" | "CHINA";
+  okumaGucuDbm: number;
+  antennas: number[];
+  qFactor: "dynamic" | "fixed_4" | "fixed_5" | "fixed_6";
+  session: "S0" | "S1" | "S2" | "S3";
+  sesliUyari: boolean;
+  bipSesTipi: "classic" | "subtle" | "chime";
 }
 
 // ─── Etiket Şablonları ────────────────────────────────────────────────────────
@@ -363,6 +424,40 @@ export const EtiketService = {
   },
   async getNextOzelUrunNo(grupKodu: string, uzunluk = 5): Promise<EtiketGrupNoResult> {
     const res = await apiClient.get<EtiketGrupNoResult>("/etiket/ozel-urun/next-no", { grupKodu, uzunluk });
+    return (res.data as any)?.data ?? res.data;
+  },
+
+  // ─── RFID API Uç Noktaları ────────────────────────────────────────────────
+  async generateRfidEpc(payload: { id?: number; tip?: string; ayar?: string; grupKodu?: string }): Promise<{ epc: string }> {
+    const res = await apiClient.post<{ epc: string }>("/etiket/rfid/generate-epc", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+
+  async encodeAndPrintRfid(payload: { id: number; tip: "altin" | "ozel"; epc?: string; designType?: string }): Promise<{
+    success: boolean;
+    id: number;
+    tip: string;
+    epc: string;
+    zpl: string;
+    message: string;
+  }> {
+    const res = await apiClient.post<any>("/etiket/rfid/encode-and-print", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+
+  async bulkEncodeRfid(payload: { items: Array<{ id: number; tip: "altin" | "ozel"; epc?: string; designType?: string }> }): Promise<{
+    success: boolean;
+    totalCount: number;
+    successCount: number;
+    results: any[];
+    combinedZpl: string;
+  }> {
+    const res = await apiClient.post<any>("/etiket/rfid/bulk-encode", payload);
+    return (res.data as any)?.data ?? res.data;
+  },
+
+  async getRfidProductDetail(epc: string): Promise<any> {
+    const res = await apiClient.get<any>(`/etiket/rfid/urun-detay/${encodeURIComponent(epc)}`);
     return (res.data as any)?.data ?? res.data;
   },
 

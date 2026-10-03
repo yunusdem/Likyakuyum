@@ -55,8 +55,8 @@ function getBarcodeSvgString(
       margin: 1,
       textMargin: 1,
     });
-    const wAttr = svgNode.getAttribute("width") || "100";
-    const hAttr = svgNode.getAttribute("height") || "40";
+    const wAttr = parseFloat(svgNode.getAttribute("width") || "100") || 100;
+    const hAttr = parseFloat(svgNode.getAttribute("height") || "40") || 40;
     svgNode.setAttribute("viewBox", `0 0 ${wAttr} ${hAttr}`);
     svgNode.removeAttribute("width");
     svgNode.removeAttribute("height");
@@ -90,8 +90,8 @@ const BarcodeSvg: React.FC<{ value: string; tip: string }> = ({ value, tip }) =>
           textMargin: 1,
         });
         const svg = svgRef.current;
-        const wAttr = svg.getAttribute("width") || "100";
-        const hAttr = svg.getAttribute("height") || "40";
+        const wAttr = parseFloat(svg.getAttribute("width") || "100") || 100;
+        const hAttr = parseFloat(svg.getAttribute("height") || "40") || 40;
         svg.setAttribute("viewBox", `0 0 ${wAttr} ${hAttr}`);
         svg.removeAttribute("width");
         svg.removeAttribute("height");

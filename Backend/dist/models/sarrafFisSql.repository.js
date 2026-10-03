@@ -287,6 +287,24 @@ export class SarrafFisSqlRepository {
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
     `).catch(() => { });
         const req = pool.request();
+        const parseNum = (val) => {
+            if (val === null || val === undefined || val === "")
+                return 0;
+            if (typeof val === "number")
+                return isNaN(val) ? 0 : val;
+            let s = String(val).trim().replace(/\s/g, "");
+            if (s.includes(".") && s.includes(",")) {
+                s = s.replace(/\./g, "").replace(",", ".");
+            }
+            else if (s.includes(",")) {
+                s = s.replace(",", ".");
+            }
+            else if ((s.match(/\./g) || []).length > 1) {
+                s = s.replace(/\./g, "");
+            }
+            const n = parseFloat(s);
+            return isNaN(n) ? 0 : n;
+        };
         const safeDate = (val) => {
             if (!val)
                 return null;
@@ -298,7 +316,7 @@ export class SarrafFisSqlRepository {
                     return null;
                 return val;
             }
-            const str = String(val).trim();
+            let str = String(val).trim();
             if (!str ||
                 str === "null" ||
                 str === "undefined" ||
@@ -309,6 +327,10 @@ export class SarrafFisSqlRepository {
                 str.startsWith("1899-12-30") ||
                 str.startsWith("1900-01-01")) {
                 return null;
+            }
+            if (/^\d{2}\.\d{2}\.\d{4}/.test(str)) {
+                const parts = str.split(".");
+                str = `${parts[2].slice(0, 4)}-${parts[1]}-${parts[0]}`;
             }
             const dt = new Date(str);
             if (isNaN(dt.getTime()))
@@ -338,106 +360,97 @@ export class SarrafFisSqlRepository {
         else {
             effectiveBelgeNo = null;
         }
-        let effectiveKdv = dto.kdv != null && !isNaN(Number(dto.kdv)) ? Number(dto.kdv) : null;
+        let effectiveKdv = dto.kdv != null && !isNaN(parseNum(dto.kdv)) ? parseNum(dto.kdv) : null;
         if (effectiveKdv === null) {
-            if (dto.kdvOrani != null && Number(dto.kdvOrani) > 0) {
-                const totIscilik = (dto.satirlar || []).reduce((s, r) => s + (Number(r.iscilikHasGram) || 0), 0);
-                effectiveKdv = (Number(dto.kdvOrani) * (Number(dto.altinHasKuru) || 0) * totIscilik) / 100;
+            if (dto.kdvOrani != null && parseNum(dto.kdvOrani) > 0) {
+                const totIscilik = (dto.satirlar || []).reduce((s, r) => s + (parseNum(r.iscilikHasGram) || 0), 0);
+                effectiveKdv = (parseNum(dto.kdvOrani) * (parseNum(dto.altinHasKuru) || 0) * totIscilik) / 100;
             }
             else {
                 effectiveKdv = 0;
             }
         }
-        req.input("IN_SARRAF_FISI_ID", sql.Int, dto.sarrafFisiId ?? null);
-        req.input("IN_VEZNE_ID", sql.Int, dto.vezneId);
-        req.input("IN_CARI_KART_ID", sql.Int, dto.cariKartId ?? null);
+        req.input("IN_SARRAF_FISI_ID", sql.Int, dto.sarrafFisiId ? Number(dto.sarrafFisiId) : null);
+        req.input("IN_VEZNE_ID", sql.Int, Number(dto.vezneId) || 1);
+        req.input("IN_CARI_KART_ID", sql.Int, dto.cariKartId ? Number(dto.cariKartId) : null);
         req.input("IN_TARIH", sql.DateTime, parseDate(dto.tarih));
         req.input("IN_SAAT", sql.DateTime, dto.saat ? (safeDate(dto.saat) || parseDate(dto.tarih)) : new Date());
         req.input("IN_FIS_NO", sql.Char(20), effectiveSeriNo);
         req.input("IN_IRSALIYE_NO", sql.Char(20), effectiveBelgeNo);
-        req.input("IN_TIP", sql.TinyInt, Number(dto.tip) || 0);
-        req.input("IN_ALTIN_HAS_KURU", sql.Float, Number(dto.altinHasKuru) || 0);
-        req.input("IN_KDV_ORANI", sql.Float, dto.kdvOrani != null && !isNaN(Number(dto.kdvOrani)) ? Number(dto.kdvOrani) : null);
-        req.input("IN_KDV", sql.Float, Number(effectiveKdv) || 0);
+        req.input("IN_TIP", sql.TinyInt, parseNum(dto.tip));
+        req.input("IN_ALTIN_HAS_KURU", sql.Float, parseNum(dto.altinHasKuru));
+        req.input("IN_KDV_ORANI", sql.Float, dto.kdvOrani != null && !isNaN(parseNum(dto.kdvOrani)) ? parseNum(dto.kdvOrani) : null);
+        req.input("IN_KDV", sql.Float, parseNum(effectiveKdv));
         req.input("IN_E_FATURA_POSTA", sql.VarChar(200), dto.eFaturaPosta ?? null);
         req.input("IN_E_IRSALIYE_POSTA", sql.VarChar(200), dto.eIrsaliyePosta ?? null);
         req.input("IN_IRSALIYE_ZAMANI", sql.DateTime, safeDate(dto.irsaliyeZamani));
-        req.input("IN_KISILIK_TIPI", sql.TinyInt, dto.kisilikTipi !== undefined && dto.kisilikTipi !== null ? Number(dto.kisilikTipi) : 0);
-        req.input("IN_UYRUK_ID", sql.Int, dto.uyrukId ?? null);
-        req.input("IN_ULKE_ID", sql.Int, dto.ulkeId ?? null);
+        req.input("IN_KISILIK_TIPI", sql.TinyInt, dto.kisilikTipi !== undefined && dto.kisilikTipi !== null ? parseNum(dto.kisilikTipi) : 0);
+        req.input("IN_UYRUK_ID", sql.Int, dto.uyrukId ? Number(dto.uyrukId) : null);
+        req.input("IN_ULKE_ID", sql.Int, dto.ulkeId ? Number(dto.ulkeId) : null);
         req.input("IN_PASAPORT_NO", sql.Char(20), dto.pasaportNo ?? null);
-        req.input("IN_HUKUKI_YAPI_ID", sql.Int, dto.hukukiYapiId ?? null);
-        req.input("IN_VERGI_DAIRESI_ID", sql.Int, dto.vergiDairesiId ?? null);
+        req.input("IN_HUKUKI_YAPI_ID", sql.Int, dto.hukukiYapiId ? Number(dto.hukukiYapiId) : null);
+        req.input("IN_VERGI_DAIRESI_ID", sql.Int, dto.vergiDairesiId ? Number(dto.vergiDairesiId) : null);
         req.input("IN_VERGI_KIMLIK_NO", sql.Char(20), dto.vergiKimlikNo ?? null);
         req.input("IN_BABA_ADI", sql.VarChar(200), dto.babaAdi ?? null);
         req.input("IN_ADRES", sql.VarChar(100), dto.adres ?? null);
-        req.input("IN_ILCE_ID", sql.Int, dto.ilceId ?? null);
-        req.input("IN_POSTA_KODU_ID", sql.Int, dto.postaKoduId ?? null);
-        req.input("IN_IL_ID", sql.Int, dto.ilId ?? null);
-        req.input("IN_VEKIL_TURU", sql.TinyInt, dto.vekilTuru ?? null);
-        req.input("IN_VEKIL_KISILIK_TIPI", sql.TinyInt, dto.vekilKisilikTipi ?? null);
+        req.input("IN_ILCE_ID", sql.Int, dto.ilceId ? Number(dto.ilceId) : null);
+        req.input("IN_POSTA_KODU_ID", sql.Int, dto.postaKoduId ? Number(dto.postaKoduId) : null);
+        req.input("IN_IL_ID", sql.Int, dto.ilId ? Number(dto.ilId) : null);
+        req.input("IN_VEKIL_TURU", sql.TinyInt, dto.vekilTuru !== undefined && dto.vekilTuru !== null ? parseNum(dto.vekilTuru) : null);
+        req.input("IN_VEKIL_KISILIK_TIPI", sql.TinyInt, dto.vekilKisilikTipi !== undefined && dto.vekilKisilikTipi !== null ? parseNum(dto.vekilKisilikTipi) : null);
         req.input("IN_VEKIL_ADI", sql.VarChar(200), dto.vekilAdi ?? null);
         req.input("IN_VEKIL_KIMLIK_NO", sql.Char(20), dto.vekilKimlikNo ?? null);
         req.input("IN_EPOSTA", sql.VarChar(100), dto.eposta ?? null);
         req.input("IN_TELEFON_NO", sql.VarChar(20), dto.telefonNo ?? null);
-        req.input("IN_MESLEK_ID", sql.Int, dto.meslekId ?? null);
+        req.input("IN_MESLEK_ID", sql.Int, dto.meslekId ? Number(dto.meslekId) : null);
         req.input("IN_DOGUM_TARIHI", sql.DateTime, safeDate(dto.dogumTarihi));
         req.input("IN_DOGUM_YERI", sql.VarChar(100), dto.dogumYeri ?? null);
         req.input("IN_KIMLIK_SERI_NO", sql.Char(20), dto.kimlikSeriNo ?? null);
         req.input("IN_ANNE_ADI", sql.VarChar(200), dto.anneAdi ?? null);
         req.input("IN_MASAK_LISTESINDE_VAR", sql.Bit, dto.masakListesindeVar ? 1 : 0);
-        req.input("IN_SUPHELI_ISLEMLER_YETKILI_ID", sql.Int, dto.supheliIslemlerYetkiliId ?? null);
-        req.input("IN_YETKILI_KISI_ID", sql.Int, dto.yetkiliKisiId ?? null);
-        req.input("IN_SIRKET_TURU", sql.TinyInt, dto.sirketTuru ?? null);
+        req.input("IN_SUPHELI_ISLEMLER_YETKILI_ID", sql.Int, dto.supheliIslemlerYetkiliId ? Number(dto.supheliIslemlerYetkiliId) : null);
+        req.input("IN_YETKILI_KISI_ID", sql.Int, dto.yetkiliKisiId ? Number(dto.yetkiliKisiId) : null);
+        req.input("IN_SIRKET_TURU", sql.TinyInt, dto.sirketTuru !== undefined && dto.sirketTuru !== null ? parseNum(dto.sirketTuru) : null);
         req.input("IN_KIMLIK_GECERLILIK_TARIHI", sql.DateTime, safeDate(dto.kimlikGecerlilikTarihi));
-        req.input("IN_KIMLIK_BELGE_TURU", sql.TinyInt, dto.kimlikBelgeTuru ?? null);
+        req.input("IN_KIMLIK_BELGE_TURU", sql.TinyInt, dto.kimlikBelgeTuru !== undefined && dto.kimlikBelgeTuru !== null ? parseNum(dto.kimlikBelgeTuru) : null);
         req.input("IN_DERNEK_AMACI", sql.VarChar(200), dto.dernekAmaci ?? null);
         req.input("IN_YETKILI_KISI", sql.VarChar(200), dto.yetkiliKisi ?? null);
-        req.input("IN_BELGE_TURU", sql.TinyInt, dto.belgeTuru ?? 0);
-        req.input("IN_SOFOR_ID", sql.Int, dto.soforId ?? null);
+        req.input("IN_BELGE_TURU", sql.TinyInt, parseNum(dto.belgeTuru));
+        req.input("IN_SOFOR_ID", sql.Int, dto.soforId ? Number(dto.soforId) : null);
         const rawUnvan = (dto.unvan || "").trim();
         const finalUnvan = rawUnvan && rawUnvan.length > 0 ? rawUnvan : "İsim beyan edilmemiştir";
         req.input("IN_UNVAN", sql.VarChar(200), finalUnvan);
-        req.input("IN_FAVORI_PARA_ID", sql.Int, dto.favoriParaId ?? null);
-        req.input("IN_ALIS_KURU", sql.Float, Number(dto.alisKuru) || 0);
-        req.input("IN_SATIS_KURU", sql.Float, Number(dto.satisKuru) || 0);
-        req.input("IN_GUMUS_HAS_KURU", sql.Float, Number(dto.gumusHasKuru) || 0);
-        req.input("IN_KULLANICI_ID", sql.Int, dto.kullaniciId || 1);
+        req.input("IN_FAVORI_PARA_ID", sql.Int, dto.favoriParaId ? Number(dto.favoriParaId) : null);
+        req.input("IN_ALIS_KURU", sql.Float, parseNum(dto.alisKuru));
+        req.input("IN_SATIS_KURU", sql.Float, parseNum(dto.satisKuru));
+        req.input("IN_GUMUS_HAS_KURU", sql.Float, parseNum(dto.gumusHasKuru));
+        req.input("IN_KULLANICI_ID", sql.Int, parseNum(dto.kullaniciId) || 1);
         req.input("IN_GUID", sql.VarChar(40), dto.guid ?? null);
         req.input("IN_DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar ? 1 : 0);
-        req.input("IN_YAZDIRILAN_BELGE_TIPI", sql.TinyInt, dto.yazdirilanBelgeTipi !== undefined && dto.yazdirilanBelgeTipi !== null ? dto.yazdirilanBelgeTipi : 0);
-        req.input("IN_ISTATISTIK_ID", sql.Int, dto.istatistikId ?? null);
+        req.input("IN_YAZDIRILAN_BELGE_TIPI", sql.TinyInt, dto.yazdirilanBelgeTipi !== undefined && dto.yazdirilanBelgeTipi !== null ? parseNum(dto.yazdirilanBelgeTipi) : 0);
+        req.input("IN_ISTATISTIK_ID", sql.Int, dto.istatistikId ? Number(dto.istatistikId) : null);
         req.input("IN_ISTATISTIK_KODU", sql.VarChar(50), dto.istatistikKodu ? dto.istatistikKodu.trim() : null);
-        const validLines = (dto.satirlar || []).filter((s) => s.urunId && s.urunId > 0);
+        const validLines = (dto.satirlar || []).filter((s) => s.urunId && Number(s.urunId) > 0);
         const lineValuesSql = validLines.map((s, idx) => {
             const p = `s_${idx}`;
-            req.input(`${p}_sId`, sql.Int, s.satirId ?? null);
-            req.input(`${p}_sNo`, sql.Int, s.satirNo || (idx + 1));
-            req.input(`${p}_uId`, sql.Int, s.urunId);
-            req.input(`${p}_mik`, sql.Float, Number(s.miktar) || 0);
-            req.input(`${p}_mil`, sql.Float, Number(s.milyem) || 0);
-            req.input(`${p}_hg`, sql.Float, Number(s.hasGram) || 0);
-            req.input(`${p}_ad`, sql.Int, s.adet != null && !isNaN(Number(s.adet)) ? Number(s.adet) : 0);
-            req.input(`${p}_im`, sql.Int, Number(s.iscilikiMiktari) || 0);
-            req.input(`${p}_ihg`, sql.Float, Number(s.iscilikHasGram) || 0);
+            req.input(`${p}_sId`, sql.Int, s.satirId ? Number(s.satirId) : null);
+            req.input(`${p}_sNo`, sql.Int, parseNum(s.satirNo) || (idx + 1));
+            req.input(`${p}_uId`, sql.Int, Number(s.urunId));
+            req.input(`${p}_mik`, sql.Float, parseNum(s.miktar));
+            req.input(`${p}_mil`, sql.Float, parseNum(s.milyem));
+            req.input(`${p}_hg`, sql.Float, parseNum(s.hasGram));
+            req.input(`${p}_ad`, sql.Int, Math.round(parseNum(s.adet)));
+            req.input(`${p}_im`, sql.Int, Math.round(parseNum(s.iscilikiMiktari)));
+            req.input(`${p}_ihg`, sql.Float, parseNum(s.iscilikHasGram));
             req.input(`${p}_ac`, sql.VarChar(100), s.aciklama || null);
-            req.input(`${p}_ihs`, sql.TinyInt, s.iscilikHesaplamaSekli != null ? Number(s.iscilikHesaplamaSekli) : 0);
-            req.input(`${p}_kur`, sql.Float, Number(s.kur) || 0);
-            req.input(`${p}_tut`, sql.Float, Number(s.tutar) || 0);
-            req.input(`${p}_ut`, sql.TinyInt, Number(s.urunTipi) || 0);
-            req.input(`${p}_uop`, sql.Int, s.urunOgesiParaId ?? null);
-            req.input(`${p}_kar`, sql.Float, s.karat != null && !isNaN(Number(s.karat)) ? Number(s.karat) : null);
+            req.input(`${p}_ihs`, sql.TinyInt, parseNum(s.iscilikHesaplamaSekli));
+            req.input(`${p}_kur`, sql.Float, parseNum(s.kur));
+            req.input(`${p}_tut`, sql.Float, parseNum(s.tutar));
+            req.input(`${p}_ut`, sql.TinyInt, parseNum(s.urunTipi));
+            req.input(`${p}_uop`, sql.Int, s.urunOgesiParaId ? Number(s.urunOgesiParaId) : null);
+            req.input(`${p}_kar`, sql.Float, s.karat != null && !isNaN(parseNum(s.karat)) && parseNum(s.karat) > 0 ? parseNum(s.karat) : null);
             return `(@${p}_sId, @${p}_sNo, @${p}_uId, @${p}_mik, @${p}_mil, @${p}_hg, @${p}_ad, @${p}_im, @${p}_ihg, @${p}_ac, @${p}_ihs, @${p}_kur, @${p}_tut, @${p}_ut, @${p}_uop, @${p}_kar)`;
         });
-        const parseNum = (val) => {
-            if (val === null || val === undefined || val === "")
-                return 0;
-            if (typeof val === "number")
-                return isNaN(val) ? 0 : val;
-            const s = String(val).replace(/\s/g, "").replace(",", ".");
-            const n = parseFloat(s);
-            return isNaN(n) ? 0 : n;
-        };
         let validOdemeler = (dto.odemeSatirlari || []).filter((o) => {
             const m = parseNum(o.miktar);
             const t = parseNum(o.tutar);
@@ -466,7 +479,7 @@ export class SarrafFisSqlRepository {
         }
         const odemeValuesSql = validOdemeler.map((o, idx) => {
             const p = `o_${idx}`;
-            const rawOat = Number(o.odemeAraciTuru) || 0;
+            const rawOat = parseNum(o.odemeAraciTuru);
             const posCihaziId = rawOat === 2 ? (o.posCihaziId ?? o.bankaId ?? o.cariKartId ?? null) : null;
             const cariKartId = rawOat === 1 ? (o.cariKartId ?? dto.cariKartId ?? null) : (rawOat === 3 ? (o.cariKartId ?? o.bankaId ?? null) : null);
             let oat = rawOat;
@@ -474,7 +487,7 @@ export class SarrafFisSqlRepository {
                 oat = 0;
             if (oat === 2 && !posCihaziId)
                 oat = 0;
-            let iy = oat === 1 ? 1 : (oat === 2 ? 3 : (oat === 3 ? 2 : (o.islemeYeri != null ? Number(o.islemeYeri) : 0)));
+            let iy = oat === 1 ? 1 : (oat === 2 ? 3 : (oat === 3 ? 2 : (o.islemeYeri != null ? parseNum(o.islemeYeri) : 0)));
             if (iy === 1 && !cariKartId)
                 iy = 0;
             if (iy === 3 && !posCihaziId)
@@ -483,15 +496,15 @@ export class SarrafFisSqlRepository {
             const kur = parseNum(o.kur) > 0 ? parseNum(o.kur) : 1;
             const tut = parseNum(o.tutar) > 0 ? parseNum(o.tutar) : (mik * kur);
             const isPos = Boolean(posCihaziId);
-            req.input(`${p}_sNo`, sql.Int, o.satirNo || (idx + 1));
+            req.input(`${p}_sNo`, sql.Int, parseNum(o.satirNo) || (idx + 1));
             req.input(`${p}_iy`, sql.TinyInt, iy);
             req.input(`${p}_oat`, sql.TinyInt, oat);
-            req.input(`${p}_pid`, sql.Int, isPos ? null : (o.paraId ?? null));
+            req.input(`${p}_pid`, sql.Int, isPos ? null : (o.paraId ? Number(o.paraId) : null));
             req.input(`${p}_pkod`, sql.VarChar(50), (o.paraKodu || "").trim());
             req.input(`${p}_pad`, sql.VarChar(100), (o.paraAdi || "").trim());
-            req.input(`${p}_iskId`, sql.Int, o.iskontoId ?? null);
-            req.input(`${p}_ckId`, sql.Int, cariKartId);
-            req.input(`${p}_pos`, sql.Int, isPos ? posCihaziId : null);
+            req.input(`${p}_iskId`, sql.Int, o.iskontoId ? Number(o.iskontoId) : null);
+            req.input(`${p}_ckId`, sql.Int, cariKartId ? Number(cariKartId) : null);
+            req.input(`${p}_pos`, sql.Int, isPos && posCihaziId ? Number(posCihaziId) : null);
             req.input(`${p}_mik`, sql.Float, mik);
             req.input(`${p}_mil`, sql.Float, parseNum(o.milyem));
             req.input(`${p}_hg`, sql.Float, parseNum(o.hasGram));
@@ -723,7 +736,7 @@ export class SarrafFisSqlRepository {
               SET @N_PAD_LEN = @N_PAD_LEN - LEN(RTRIM(@N_ONEK));
             IF @N_PAD_LEN < 1 SET @N_PAD_LEN = 1;
 
-            DECLARE @N_NUM_STR VARCHAR(20) = CAST(@N_BASLANGIC AS VARCHAR(20));
+            DECLARE @N_NUM_STR VARCHAR(20) = ISNULL(TRY_CAST(@N_BASLANGIC AS VARCHAR(20)), '');
             IF @N_SIFIR = 1 AND LEN(@N_NUM_STR) < @N_PAD_LEN
               SET @N_NUM_STR = REPLICATE('0', @N_PAD_LEN - LEN(@N_NUM_STR)) + @N_NUM_STR;
 
@@ -760,8 +773,8 @@ export class SarrafFisSqlRepository {
             END;
             IF LEN(@DIGITS) > 0
             BEGIN
-              DECLARE @NEXT_VAL BIGINT = CAST(@DIGITS AS BIGINT) + 1;
-              DECLARE @NEXT_STR VARCHAR(30) = CAST(@NEXT_VAL AS VARCHAR(30));
+              DECLARE @NEXT_VAL BIGINT = ISNULL(TRY_CAST(@DIGITS AS BIGINT), 0) + 1;
+              DECLARE @NEXT_STR VARCHAR(30) = ISNULL(TRY_CAST(@NEXT_VAL AS VARCHAR(30)), '');
               IF LEN(@NEXT_STR) < LEN(@DIGITS)
                 SET @NEXT_STR = REPLICATE('0', LEN(@DIGITS) - LEN(@NEXT_STR)) + @NEXT_STR;
               SET @GEN_FIS_NO = (CASE WHEN LEN(@PREFIX) > 0 THEN @PREFIX ELSE @DEF_ONEK END) + @NEXT_STR;
@@ -829,7 +842,7 @@ export class SarrafFisSqlRepository {
               SET @BN_PAD_LEN = @BN_PAD_LEN - LEN(RTRIM(@BN_ONEK));
             IF @BN_PAD_LEN < 1 SET @BN_PAD_LEN = 1;
 
-            DECLARE @BN_NUM_STR VARCHAR(20) = CAST(@BN_BASLANGIC AS VARCHAR(20));
+            DECLARE @BN_NUM_STR VARCHAR(20) = ISNULL(TRY_CAST(@BN_BASLANGIC AS VARCHAR(20)), '');
             IF @BN_SIFIR = 1 AND LEN(@BN_NUM_STR) < @BN_PAD_LEN
               SET @BN_NUM_STR = REPLICATE('0', @BN_PAD_LEN - LEN(@BN_NUM_STR)) + @BN_NUM_STR;
 
@@ -865,8 +878,8 @@ export class SarrafFisSqlRepository {
             END;
             IF LEN(@B_DIGITS) > 0
             BEGIN
-              DECLARE @NEXT_BVAL BIGINT = CAST(@B_DIGITS AS BIGINT) + 1;
-              DECLARE @NEXT_BSTR VARCHAR(30) = CAST(@NEXT_BVAL AS VARCHAR(30));
+              DECLARE @NEXT_BVAL BIGINT = ISNULL(TRY_CAST(@B_DIGITS AS BIGINT), 0) + 1;
+              DECLARE @NEXT_BSTR VARCHAR(30) = ISNULL(TRY_CAST(@NEXT_BVAL AS VARCHAR(30)), '');
               IF LEN(@NEXT_BSTR) < LEN(@B_DIGITS)
                 SET @NEXT_BSTR = REPLICATE('0', LEN(@B_DIGITS) - LEN(@NEXT_BSTR)) + @NEXT_BSTR;
               SET @GEN_BELGE_NO = (CASE WHEN LEN(@B_PREFIX) > 0 THEN @B_PREFIX ELSE @DEF_B_ONEK END) + @NEXT_BSTR;
@@ -925,7 +938,7 @@ export class SarrafFisSqlRepository {
           FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
           WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@ISCILIK_HESAP_KODU) 
              OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@ISCILIK_HESAP_KODU)
-             OR (ISNUMERIC(@ISCILIK_HESAP_KODU) = 1 AND HESAP_ID = CAST(@ISCILIK_HESAP_KODU AS INT));
+             OR (TRY_CAST(@ISCILIK_HESAP_KODU AS INT) IS NOT NULL AND HESAP_ID = TRY_CAST(@ISCILIK_HESAP_KODU AS INT));
         END;
 
         IF (@TARGET_ISCILIK_HESAP_ID IS NOT NULL)
@@ -1076,10 +1089,16 @@ export class SarrafFisSqlRepository {
     static async deleteFis(sarrafFisiId, kullaniciId, dbContext) {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+            // Fişin işçilik hesabına yazılmış kasa kaydı ("Sarraf Fişi İşçilik - Fiş No: <fiş no>") fiş silinince kalmasın (rapor denetimi 01.10.2026)
+            const fisNo = String((await pool.request().input("ID", sql.Int, sarrafFisiId).query(`SELECT RTRIM(ISNULL(FIS_NO,'')) f FROM [dbo].[TODVZ_SARRAF_FISI] WHERE SARRAF_FISI_ID = @ID`)).recordset[0]?.f || "");
             const req = pool.request();
             req.output("SARRAF_FISI_ID", sql.Int, sarrafFisiId);
             req.input("KULLANICI_ID", sql.Int, kullaniciId);
             await req.execute("SODVZ_SARRAF_FISI_SIL");
+            if (fisNo)
+                await pool.request().input("A", sql.VarChar(200), `Sarraf Fişi İşçilik - Fiş No: ${fisNo}`)
+                    .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A`)
+                    .catch((e) => logger.warn("Sarraf fişi işçilik kaydı silinemedi:", e?.message));
         }
         catch (err) {
             logger.error("deleteFis error:", err);

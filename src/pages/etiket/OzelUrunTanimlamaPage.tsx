@@ -1714,8 +1714,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         margin: 2,
         textMargin: 2,
       });
-      const wAttr = svgNode.getAttribute("width") || "120";
-      const hAttr = svgNode.getAttribute("height") || "40";
+      const wAttr = parseFloat(svgNode.getAttribute("width") || "120") || 120;
+      const hAttr = parseFloat(svgNode.getAttribute("height") || "40") || 40;
       svgNode.setAttribute("viewBox", `0 0 ${wAttr} ${hAttr}`);
       svgNode.removeAttribute("width");
       svgNode.removeAttribute("height");

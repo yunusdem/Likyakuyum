@@ -28,6 +28,9 @@ const parametreSema = z.object({
     kasaTipi: z.preprocess(v => (v === "" || v === undefined ? undefined : v), z.coerce.number().int().min(0).max(1).optional()),
     esik: sayiOpt(0, 1e12), sapma: sayiOpt(0, 1000), adet: sayiOpt(1, 1000), yasKucuk: sayiOpt(0, 150), yasBuyuk: sayiOpt(0, 150),
     vadeBaslangic: tarih, vadeBitis: tarih,
+    // Barkodlu altın raporları: ürün kartındaki değerler (parametreli sorguda kullanılır)
+    urunAyar: z.string().trim().max(50).optional(), urunGrup: z.string().trim().max(50).optional(),
+    urunUretici: z.string().trim().max(150).optional(), urunBanko: z.string().trim().max(50).optional(),
     paraIdler: z.preprocess(v => (v === "" || v === undefined ? undefined : String(v).split(",").map(x => Number(x.trim())).filter(n => Number.isInteger(n) && n > 0)), z.array(z.number().int().positive()).max(50).optional()),
 });
 const kodSema = z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{1,20}$/);
@@ -66,7 +69,7 @@ export class RaporController {
     /** GET /api/v1/rapor/sablonlar */
     static sablonlar = asyncHandler(async (req, res) => ApiResponse.ok(res, "Raporlar listelendi.", await RaporService.sablonlar(RaporController.getDbContext(req))));
     /** GET /api/v1/rapor/:kod/tanim — parametre şeması + kolonlar (ekran filtre şeridi ve grid için) */
-    static tanim = asyncHandler(async (req, res) => ApiResponse.ok(res, "Rapor tanımı.", RaporService.tanim(RaporController.kod(req))));
+    static tanim = asyncHandler(async (req, res) => ApiResponse.ok(res, "Rapor tanımı.", await RaporService.tanimSecenekli(RaporController.kod(req), RaporController.getDbContext(req))));
     /** GET /api/v1/rapor/:kod/veri?... — ekran grid'i */
     static veri = asyncHandler(async (req, res) => {
         const v = await RaporService.veri(RaporController.kod(req), RaporController.parametreler(req), RaporController.getDbContext(req));

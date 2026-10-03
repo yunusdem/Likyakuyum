@@ -97,18 +97,16 @@ export const ANALIZ_SORGULARI = {
             return sinirla(paraSatirlari, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`, undefined, paraOzeti.filter(o => o.para === "GENEL TOPLAM"));
         return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`, "Satırlardaki maliyet kayıtların başından yürütülen ağırlıklı ortalama maliyettir; kâr % = brüt kâr ÷ satış tutarı. Rapor sonundaki para bazındaki tabloda brüt kâr = satış tutarı − satış miktarı × dönemin ortalama alış kuru (dönemde alış yoksa yürüyen ortalama maliyet); bu yüzden iki brüt kâr farklı olabilir.", paraOzeti);
     },
-    /** Altın işçilik raporu — sarraf fişi satırlarındaki işçilik (has gram) ve fişteki altın has kuruyla TL karşılığı */
+    /** Altın işçilik raporu — sarraf fişi satırlarındaki işçilik (has gram × fişteki altın has kuru) ve eski "İşçilik ve KDV Raporu"ndaki döviz fişi işçilik satırları */
     async ALTISC1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
         const ozet = `${aralikOzeti(p)}${p.fisTipi === 0 ? " · Alış" : p.fisTipi === 1 ? " · Satış" : ""}${ozetEk(p) || " · Tüm vezneler"}`;
         const var_ = (await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_SARRAF_FISI','U') IS NULL OR OBJECT_ID('dbo.TODVZ_SARRAF_FISI_SATIRI','U') IS NULL THEN 0 ELSE 1 END v`)).recordset[0]?.v;
-        if (!var_)
-            return sinirla([], t, ozet, "Bu veritabanında sarraf fişi tabloları (TODVZ_SARRAF_FISI) bulunmadığı için işçilik verisi yok.");
         const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
         const f = filtreler(req, p, { vezne: "V", para: "S.URUN_ID" });
-        const res = await req.query(`
-      SELECT F.SARRAF_FISI_ID fisId, F.TARIH tarih, RTRIM(ISNULL(F.FIS_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan, F.TIP tipKod, RTRIM(ISNULL(V.KOD,'')) vezneKod,
+        const res = !var_ ? { recordset: [] } : await req.query(`
+      SELECT F.SARRAF_FISI_ID fisId, ISNULL(P.SIRA_NO,99) siraNo, F.TARIH tarih, RTRIM(ISNULL(F.FIS_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan, F.TIP tipKod, RTRIM(ISNULL(V.KOD,'')) vezneKod,
         ISNULL(F.ALTIN_HAS_KURU,0) hasKuru, ISNULL(F.KDV_ORANI,0) kdvOrani, ISNULL(F.KDV,0) fisKdv, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(S.ADET,0) adet, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.MILYEM,0) milyem,
         ISNULL(S.HAS_GRAM,0) hasGram, ISNULL(S.ISCILIK_HESAPLAMA_SEKLI,0) sekilKod, ISNULL(S.ISCILIK_MIKTARI,0) iscilikMiktari, ISNULL(S.ISCILIK_HAS_GRAM,0) iscilikHasGram, ISNULL(S.TUTAR,0) tutar
       FROM dbo.TODVZ_SARRAF_FISI F JOIN dbo.TODVZ_SARRAF_FISI_SATIRI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
@@ -122,10 +120,27 @@ export const ANALIZ_SORGULARI = {
             const ilk = !kdvGorulen.has(Number(r.fisId));
             kdvGorulen.add(Number(r.fisId));
             const oran = Number(r.kdvOrani) || 0, kdv = ilk ? Number(r.fisKdv) || 0 : 0;
-            return { ...r, cins: r.paraKod, kdvOrani: oran, kdv, kdvMatrahi: oran > 0 ? kdv / (oran / 100) : 0, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", adet: Number(r.adet), miktar: Number(r.miktar), milyem: Number(r.milyem), hasGram: Number(r.hasGram), sekil: ISCILIK_SEKLI[Number(r.sekilKod)] || "-",
+            return { ...r, belge: "Sarraf fişi", cins: r.paraKod, kdvOrani: oran, kdv, kdvMatrahi: oran > 0 ? kdv / (oran / 100) : 0, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", adet: Number(r.adet), miktar: Number(r.miktar), milyem: Number(r.milyem), hasGram: Number(r.hasGram), sekil: ISCILIK_SEKLI[Number(r.sekilKod)] || "-",
                 iscilikMiktari: Number(r.iscilikMiktari), iscilikHasGram: ihg, hasKuru: hk, iscilikTutari: ihg * hk, tutar: Number(r.tutar), paraBaslik: `${r.paraKod} — ${r.paraAd}` };
         });
-        return sinirla(satirlar, t, ozet, "Kaynak: Genel Sarraf Fişi satırları; yalnızca işçiliği olan satırlar listelenir. İşçilik miktarı milyem cinsindendir (adet başına veya toplam); işçilik has gram = işçilik miktarı / 1000 (adet başına ise × adet). İşçilik tutarı (TL) = işçilik has gram × fişteki altın has kuru.");
+        // Eski "İŞÇİLİK VE KDV RAPORU" (SODVZCR_ALTIN_ISCILIK_RAPORU) döviz fişi satırlarındaki işçiliği listeler (test veritabanında doğrulandı 01.10.2026):
+        // İşçilik / birim fiyatı = satırın ISCILIK alanı, KDV = satırın KDV'si, KDV matrahı = işçilik × miktar − KDV, Tutar = satır tutarı. Sarraf fişi satırlarıyla birlikte verilir.
+        const dreq = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
+        const df = filtreler(dreq, p, { vezne: "V", para: "S.PARA_ID" });
+        const dres = await dreq.query(`
+      SELECT F.FIS_ID fisId, F.TARIH tarih, COALESCE(NULLIF(RTRIM(F.SERI_NO),''), RTRIM(ISNULL(F.BELGE_NO,''))) belgeNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo2, RTRIM(ISNULL(F.UNVAN,'')) unvan, F.TIP tipKod,
+        RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.ISCILIK,0) iscilik,
+        ISNULL(S.KDV_ORANI,0) kdvOrani, ISNULL(S.KDV,0) kdv, ISNULL(S.TUTAR,0) tutar
+      FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
+      WHERE ISNULL(F.IPTAL,0)=0 AND ISNULL(S.ISCILIK,0)<>0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip) ${df}
+      ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, F.TARIH, F.FIS_ID, S.SATIR_NO;`);
+        for (const r of dres.recordset) {
+            const miktar = Number(r.miktar) || 0, isc = Number(r.iscilik) || 0, kdv = Number(r.kdv) || 0;
+            satirlar.push({ ...r, belge: "Döviz fişi", cins: r.paraAd || r.paraKod, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", adet: null, miktar, milyem: null, hasGram: null, sekil: "", iscilikMiktari: null, iscilikHasGram: null,
+                hasKuru: null, iscilikBirimFiyati: isc, iscilikTutari: isc * miktar, kdvOrani: Number(r.kdvOrani) || 0, kdv, kdvMatrahi: isc * miktar - kdv, tutar: Number(r.tutar) || 0, paraBaslik: `${r.paraKod} — ${r.paraAd}` });
+        }
+        satirlar.sort((a, b) => Number(a.siraNo) - Number(b.siraNo) || String(a.paraKod).localeCompare(String(b.paraKod)) || new Date(a.tarih).getTime() - new Date(b.tarih).getTime());
+        return sinirla(satirlar, t, ozet, "Seçilen aralıkta işçilikli sarraf fişi ya da döviz fişi satırı yok.");
     },
     /** Personel değerlendirme — fişi kaydeden kullanıcı bazında işlem adedi, hacim, komisyon, iptal ve kur sapması */
     async PERDEG1(pool, p, t) {
