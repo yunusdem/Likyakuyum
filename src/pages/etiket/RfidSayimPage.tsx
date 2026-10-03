@@ -39,6 +39,7 @@ import {
   IconPlus,
   IconTagOff,
   IconBinoculars,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 import {
   EtiketService,
@@ -130,7 +131,16 @@ export const RfidSayimPage: React.FC<RfidSayimPageProps> = ({
   const [scannedMap, setScannedMap] = useState<Map<string, RfidTagItem>>(new Map());
   const [recentReadEpcs, setRecentReadEpcs] = useState<string[]>([]);
   const [savingSlip, setSavingSlip] = useState<boolean>(false);
-  const [slipSuccessMsg, setSlipSuccessMsg] = useState<string | null>(null);
+  const [notifyModal, setNotifyModal] = useState<{
+    show: boolean;
+    type: "success" | "warning" | "danger" | "info";
+    title?: string;
+    message: string;
+  } | null>(null);
+
+  const showNotify = (message: string, type: "success" | "warning" | "danger" | "info" = "info", title?: string) => {
+    setNotifyModal({ show: true, type, title, message });
+  };
 
   // ─── RFID Tanımlama Modalı State'leri ─────────────────────────────────────
   const [assignModalOpen, setAssignModalOpen] = useState<boolean>(false);
@@ -493,7 +503,6 @@ export const RfidSayimPage: React.FC<RfidSayimPageProps> = ({
           return next;
         });
 
-        setSlipSuccessMsg(`RFID EPC kodu (${cleanEpc}) başarıyla '${selectedProduct.grupKodu}-${selectedProduct.urunNo}' ürününe tanımlandı ve SQL veritabanına kaydedildi!`);
         setAssignModalOpen(false);
       }
     } catch (err: any) {
@@ -819,13 +828,13 @@ export const RfidSayimPage: React.FC<RfidSayimPageProps> = ({
   const temizleSayim = () => {
     setScannedMap(new Map());
     setRecentReadEpcs([]);
-    setSlipSuccessMsg(null);
+    setNotifyModal(null);
   };
 
   const fiseAktar = () => {
     const okunanlar = Array.from(scannedMap.values());
     if (okunanlar.length === 0) {
-      alert("Aktarılacak okunan RFID kaydı bulunmuyor.");
+      showNotify("Aktarılacak okunan RFID kaydı bulunmuyor.", "warning", "Uyarı");
       return;
     }
     if (onTransferToSlip) {
@@ -839,7 +848,7 @@ export const RfidSayimPage: React.FC<RfidSayimPageProps> = ({
   const sayimFisiKaydet = async () => {
     const okunanlar = Array.from(scannedMap.values());
     if (okunanlar.length === 0) {
-      alert("Kaydedilecek okunan RFID ürünü bulunmuyor.");
+      showNotify("Kaydedilecek okunan RFID ürünü bulunmuyor.", "warning", "Uyarı");
       return;
     }
 
@@ -866,9 +875,13 @@ export const RfidSayimPage: React.FC<RfidSayimPageProps> = ({
 
       await EtiketService.saveSayimFisi(payload);
       beeper.successChime();
-      setSlipSuccessMsg(`Sayım fişi (#${nextNo}) başarıyla kaydedildi! Toplam ${metrics.benzersizAdet} adet ürün sisteme işlendi.`);
+      showNotify(
+        `Sayım fişi (#${nextNo}) başarıyla kaydedildi!\nToplam ${metrics.benzersizAdet} adet ürün sisteme işlendi.`,
+        "success",
+        "Sayım Fişi Kaydedildi"
+      );
     } catch (err: any) {
-      alert("Sayım fişi kaydedilirken hata oluştu: " + err.message);
+      showNotify("Sayım fişi kaydedilirken hata oluştu: " + err.message, "danger", "Hata Oluştu");
     } finally {
       setSavingSlip(false);
     }
@@ -1085,16 +1098,7 @@ export const RfidSayimPage: React.FC<RfidSayimPageProps> = ({
         </div>
       </div>
 
-      {slipSuccessMsg && (
-        <Alert variant="success" className="py-1.5 px-3 mb-2.5 small d-flex align-items-center justify-content-between border shadow-sm">
-          <span>
-            <IconCheck size={16} className="me-1.5 text-success" /> {slipSuccessMsg}
-          </span>
-          <Button variant="link" size="sm" className="p-0 text-success fw-bold text-decoration-none" onClick={() => setSlipSuccessMsg(null)}>
-            Kapat
-          </Button>
-        </Alert>
-      )}
+
 
       {/* ─── 2. CANLI TABLO ─── */}
       <Card className="border rounded-3 shadow-sm flex-grow-1 d-flex flex-column mb-2.5 bg-white">
@@ -1646,6 +1650,68 @@ export const RfidSayimPage: React.FC<RfidSayimPageProps> = ({
             Kapat
           </Button>
         </Modal.Footer>
+      </Modal>
+
+      {/* ─── BİLDİRİM / UYARI POPUP MODALI (ORTADA AÇILIR) ─── */}
+      <Modal
+        show={Boolean(notifyModal?.show)}
+        onHide={() => setNotifyModal(null)}
+        centered
+        size="sm"
+        backdrop="static"
+      >
+        <Modal.Body className="text-center p-4">
+          <div className="d-flex justify-content-center mb-3">
+            {notifyModal?.type === "success" && (
+              <div
+                className="d-flex align-items-center justify-content-center rounded-circle bg-success bg-opacity-10 text-success"
+                style={{ width: "56px", height: "56px" }}
+              >
+                <IconCheck size={30} />
+              </div>
+            )}
+            {notifyModal?.type === "warning" && (
+              <div
+                className="d-flex align-items-center justify-content-center rounded-circle bg-warning bg-opacity-10 text-warning"
+                style={{ width: "56px", height: "56px" }}
+              >
+                <IconAlertTriangle size={30} />
+              </div>
+            )}
+            {notifyModal?.type === "danger" && (
+              <div
+                className="d-flex align-items-center justify-content-center rounded-circle bg-danger bg-opacity-10 text-danger"
+                style={{ width: "56px", height: "56px" }}
+              >
+                <IconAlertTriangle size={30} />
+              </div>
+            )}
+            {notifyModal?.type === "info" && (
+              <div
+                className="d-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10 text-primary"
+                style={{ width: "56px", height: "56px" }}
+              >
+                <IconInfoCircle size={30} />
+              </div>
+            )}
+          </div>
+
+          <h5 className="fw-bold text-dark mb-2">
+            {notifyModal?.title || (notifyModal?.type === "success" ? "Başarılı" : notifyModal?.type === "danger" ? "Hata" : "Bilgi")}
+          </h5>
+
+          <p className="text-secondary small mb-4" style={{ whiteSpace: "pre-line" }}>
+            {notifyModal?.message}
+          </p>
+
+          <Button
+            variant={notifyModal?.type === "danger" ? "danger" : notifyModal?.type === "warning" ? "warning" : "dark"}
+            className="w-100 py-2 fw-semibold shadow-sm"
+            onClick={() => setNotifyModal(null)}
+          >
+            Tamam
+          </Button>
+        </Modal.Body>
       </Modal>
     </div>
   );
