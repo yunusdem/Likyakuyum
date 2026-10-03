@@ -45,8 +45,19 @@ export interface Eslesme {
   otomatik: boolean;
 }
 
+/** Aktarım durumu, fişin Hesap satırıyla karşılanma haline uymayan hareket (bkz. kapsamFarklari) */
+export interface KapsamFarki {
+  vomsisId: number;
+  /** true: fişin Hesap satırı bankayı taşıyor ama durum henüz "fişle karşılandı" değil · false: durum öyle ama artık karşılanmıyor */
+  karsilaniyor: boolean;
+  bankaHareketId: number | null;
+}
+
 const zaman = (d: Date | null | undefined): string | null => (d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : null);
 const gunTarihi = (g: string) => new Date(`${g}T00:00:00Z`);
+/** Hareketin Banka Hesap Kartı: e-Banka hesabı kartla eşlenmemişse IBAN'ı tutan kart (h: TODVZ_EBANKA_HESAP, k: TODVZ_BANKA) */
+const FIS_BANKA_ID = `COALESCE(k.BANKA_ID, (SELECT TOP 1 kb.BANKA_ID FROM TODVZ_BANKA kb
+                 WHERE LEN(ISNULL(h.IBAN, '')) > 0 AND REPLACE(kb.IBAN, ' ', '') IN (REPLACE(h.IBAN, ' ', ''), REPLACE(ISNULL(h.OZEL_IBAN, ''), ' ', ''))))`;
 
 export class EBankaMutabakatSqlRepository {
   private static readonly hazirHavuzlar = new WeakSet<sql.ConnectionPool>();
@@ -97,12 +108,19 @@ export class EBankaMutabakatSqlRepository {
           SELECT name FROM sys.tables WHERE name IN ('TODVZ_FIS','TODVZ_FIS_SATIRI','TODVZ_SARRAF_FISI','TODVZ_SARRAF_FISI_SATIRI','TODVZ_ODEME_SATIRI','TODVZ_FATURA','TODVZ_EBELGE_GIDEN','TODVZ_EBELGE_GELEN','TODVZ_CARI_KART')
         `)
       ).recordset.map((r: any) => String(r.name).toUpperCase());
+      // Hesap satırı için üç kolon da gerekir (COL_LENGTH tablo ya da kolon yoksa NULL döner)
+      const hesapKolonlari = (tablo: string) => ["ODEME_ARACI_TURU", "CARI_KART_ID", "POS_CIHAZI_ID"].map((k) => `COL_LENGTH('${tablo}','${k}')`).join(" + ");
       const kolonlar = (
-        await pool.request().query(`SELECT COL_LENGTH('TODVZ_FIS','E_FATURA_ETTN') AS ETTN, COL_LENGTH('TODVZ_FIS','ODEME_TUTARI') AS ODEME`)
+        await pool.request().query(`
+          SELECT COL_LENGTH('TODVZ_FIS','E_FATURA_ETTN') AS ETTN, COL_LENGTH('TODVZ_FIS','ODEME_TUTARI') AS ODEME,
+                 ${hesapKolonlari("TODVZ_ODEME_SATIRI")} AS SARRAF_HESAP, ${hesapKolonlari("TODVZ_FATURA_ODEME")} AS PERAKENDE_HESAP
+        `)
       ).recordset[0];
       const kume = new Set(adlar);
       if (kolonlar.ETTN !== null) kume.add("FIS.E_FATURA_ETTN");
       if (kolonlar.ODEME !== null) kume.add("FIS.ODEME_TUTARI");
+      if (kolonlar.SARRAF_HESAP !== null && kume.has("TODVZ_SARRAF_FISI")) kume.add("ODEME_SATIRI.HESAP");
+      if (kolonlar.PERAKENDE_HESAP !== null && kume.has("TODVZ_FATURA")) kume.add("FATURA_ODEME.HESAP");
       this.tablolar.set(pool, kume);
       this.hazirHavuzlar.add(pool);
     }
@@ -124,8 +142,7 @@ export class EBankaMutabakatSqlRepository {
       await req.query(`
         SELECT t.*, k.BANKA_ID AS KART_BANKA_ID, h.HESAP_NO, b.BANKA_ADI, p.TIP_ADI, ISNULL(p.KURAL, 0) AS KURAL, p.CARI_KART_ID AS TIP_CARI_ID,
                i.FATURA_GEREKMEZ, i.NOTU, i.CARI_KART_ID AS ONAYLI_CARI_ID,
-               COALESCE(k.BANKA_ID, (SELECT TOP 1 kb.BANKA_ID FROM TODVZ_BANKA kb
-                 WHERE LEN(ISNULL(h.IBAN, '')) > 0 AND REPLACE(kb.IBAN, ' ', '') IN (REPLACE(h.IBAN, ' ', ''), REPLACE(ISNULL(h.OZEL_IBAN, ''), ' ', '')))) AS FIS_BANKA_ID
+               ${FIS_BANKA_ID} AS FIS_BANKA_ID
         FROM TODVZ_EBANKA_HAREKET t
         LEFT JOIN TODVZ_EBANKA_HESAP h ON h.VOMSIS_HESAP_ID = t.VOMSIS_HESAP_ID
         LEFT JOIN TODVZ_BANKA k ON k.BANKA_ID = h.BANKA_ID
@@ -331,6 +348,68 @@ export class EBankaMutabakatSqlRepository {
     // Silinmez, reddedildi olarak işaretlenir: otomatik eşleştirme bir sonraki listelemede aynı fişi yeniden eşlemesin
     const r = await req.query(`UPDATE TODVZ_EBANKA_MUTABAKAT SET RED = 1 WHERE VOMSIS_ID = @ID AND FIS_TURU = @TUR AND FIS_ID = @FIS AND RED = 0`);
     return r.rowsAffected[0] || 0;
+  }
+
+  // ─── Fişle karşılanan hareketler (banka bakiyesinde çift sayım önlemi) ─────
+
+  /**
+   * Banka bakiyesi, sarraf / perakende fişindeki Hesap (ödeme aracı 3) satırını da sayar. Hareket, aynı Banka Hesap Kartına
+   * Hesap satırı olan bir fişle eşlenmişse banka girişini o fiş taşır; ayrıca banka fişi olursa para iki kez sayılır.
+   * Aktarım durumu bu hale uymayan hareketleri döner. vomsisIdler null: tüm hareketler.
+   */
+  public static async kapsamFarklari(vomsisIdler: number[] | null, dbContext?: DbContext): Promise<KapsamFarki[]> {
+    const idler = vomsisIdler ? [...new Set(vomsisIdler.filter((n) => Number.isSafeInteger(n) && n > 0))] : null;
+    if (idler && !idler.length) return [];
+    const pool = await this.pool(dbContext);
+    // Koşul, banka bakiyesi sorgusundakiyle aynı (bankaSql.repository > listBankalar)
+    const hesapSatiri = (tablo: string, baslik: string, kolon: string) =>
+      `EXISTS (SELECT 1 FROM ${tablo} o JOIN ${baslik} fb ON fb.${kolon} = o.${kolon}
+               WHERE o.${kolon} = m.FIS_ID AND o.ODEME_ARACI_TURU = 3 AND bk.BANKA_ID IN (o.CARI_KART_ID, o.POS_CIHAZI_ID))`;
+    const turler: string[] = [];
+    if (await this.var(pool, "ODEME_SATIRI.HESAP")) turler.push(`(m.FIS_TURU = 'sarraf' AND ${hesapSatiri("TODVZ_ODEME_SATIRI", "TODVZ_SARRAF_FISI", "SARRAF_FISI_ID")})`);
+    if (await this.var(pool, "FATURA_ODEME.HESAP")) turler.push(`(m.FIS_TURU = 'perakende' AND ${hesapSatiri("TODVZ_FATURA_ODEME", "TODVZ_FATURA", "FATURA_ID")})`);
+    const karsilaniyor = turler.length
+      ? `CASE WHEN bk.BANKA_ID IS NOT NULL AND EXISTS (SELECT 1 FROM TODVZ_EBANKA_MUTABAKAT m WHERE m.VOMSIS_ID = t.VOMSIS_ID AND m.RED = 0 AND (${turler.join(" OR ")})) THEN 1 ELSE 0 END`
+      : "0";
+    const rows = (
+      await pool.request().query(`
+        SELECT t.VOMSIS_ID, t.BANKA_HAREKET_ID, x.KARSILANIYOR
+        FROM TODVZ_EBANKA_HAREKET t
+        LEFT JOIN TODVZ_EBANKA_HESAP h ON h.VOMSIS_HESAP_ID = t.VOMSIS_HESAP_ID
+        LEFT JOIN TODVZ_BANKA k ON k.BANKA_ID = h.BANKA_ID
+        CROSS APPLY (SELECT ${FIS_BANKA_ID} AS BANKA_ID) bk
+        CROSS APPLY (SELECT ${karsilaniyor} AS KARSILANIYOR) x
+        WHERE ${idler ? `t.VOMSIS_ID IN (${idler.join(",")}) AND ` : ""}(
+          -- Kilitlenmiş ama fişi henüz yazılmamış hareket (durum 1, fiş yok) aktarım bitince bir sonraki turda ele alınır
+          (x.KARSILANIYOR = 1 AND ((t.AKTARIM_DURUMU = 0 AND t.BANKA_HAREKET_ID IS NULL) OR (t.AKTARIM_DURUMU = 1 AND t.BANKA_HAREKET_ID IS NOT NULL)))
+          OR (x.KARSILANIYOR = 0 AND t.AKTARIM_DURUMU = 3)
+        )
+      `)
+    ).recordset;
+    return rows.map((r: any) => ({ vomsisId: Number(r.VOMSIS_ID), karsilaniyor: Boolean(r.KARSILANIYOR), bankaHareketId: r.BANKA_HAREKET_ID ?? null }));
+  }
+
+  /** Aktarım durumunu yalnız beklenen eski durumdaysa değiştirir: araya giren aktarım ya da kullanıcı işlemi ezilmez. */
+  public static async kapsamDurumuYaz(vomsisId: number, eski: 0 | 2 | 3, yeni: 0 | 3, dbContext?: DbContext): Promise<boolean> {
+    const pool = await this.pool(dbContext);
+    const req = pool.request();
+    req.input("ID", sql.BigInt, vomsisId);
+    req.input("ESKI", sql.TinyInt, eski);
+    req.input("YENI", sql.TinyInt, yeni);
+    const r = await req.query(`
+      UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = @YENI
+      WHERE VOMSIS_ID = @ID AND AKTARIM_DURUMU = @ESKI AND (@ESKI = 2 OR BANKA_HAREKET_ID IS NULL)
+    `);
+    return (r.rowsAffected[0] || 0) === 1;
+  }
+
+  /** Verilen hareketlerden banka girişi fişin Hesap satırında olanlar (aktarım durumu 3) */
+  public static async fisleKarsilananlar(vomsisIdler: number[], dbContext?: DbContext): Promise<Set<number>> {
+    const idler = vomsisIdler.filter((n) => Number.isSafeInteger(n) && n > 0);
+    if (!idler.length) return new Set();
+    const pool = await this.pool(dbContext);
+    const rows = (await pool.request().query(`SELECT VOMSIS_ID FROM TODVZ_EBANKA_HAREKET WHERE AKTARIM_DURUMU = 3 AND VOMSIS_ID IN (${idler.join(",")})`)).recordset;
+    return new Set(rows.map((r: any) => Number(r.VOMSIS_ID)));
   }
 
   public static async isaretle(vomsisId: number, faturaGerekmez: boolean, not: string | null, kullaniciId?: number, dbContext?: DbContext): Promise<boolean> {

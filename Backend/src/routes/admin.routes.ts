@@ -5,6 +5,7 @@ import { FirmaController } from "../controllers/admin/firma.controller.js";
 import { KullaniciController } from "../controllers/admin/kullanici.controller.js";
 import { ModulController } from "../controllers/admin/modul.controller.js";
 import { IzlemeController } from "../controllers/admin/izleme.controller.js";
+import { PosAdminController } from "../controllers/admin/posAdmin.controller.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import {
   adminKapisi,
@@ -96,6 +97,24 @@ router.get("/izleme/giris-log", validate(girisLogSchema), IzlemeController.giris
 router.get("/izleme/islem-log", validate(islemLogSchema), IzlemeController.islemLoglari);
 router.post("/izleme/oturumlar/:sid/kapat", validate(oturumKapatSchema), IzlemeController.oturumuKapat);
 router.post("/firmalar/:id/oturumlari-kapat", validate(adminIdSchema), IzlemeController.firmaOturumlariniKapat);
+
+// POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5): merkezi ayarlar, firma modu, doğrulama, test konsolu
+router.get("/pos/ayar", PosAdminController.ayarGetir);
+router.put("/pos/ayar", PosAdminController.ayarKaydet);
+router.get("/pos/dogrulama", PosAdminController.dogrulama);
+router.put("/pos/dogrulama", PosAdminController.dogrulamaYaz);
+router.get("/pos/log", PosAdminController.log);
+router.post("/pos/kimlik-testi", PosAdminController.kimlikTesti);
+router.get("/pos/firmalar", PosAdminController.konsolFirmalar);
+router.get("/firmalar/:id/pos", validate(adminIdSchema), PosAdminController.firmaModu);
+router.put("/firmalar/:id/pos", validate(adminIdSchema), PosAdminController.firmaModuYaz);
+router.get("/firmalar/:id/pos/terminaller", validate(adminIdSchema), PosAdminController.konsolTerminaller);
+router.post("/firmalar/:id/pos/baglanti-testi", validate(adminIdSchema), PosAdminController.konsolBaglantiTesti);
+router.post("/firmalar/:id/pos/deneme", validate(adminIdSchema), PosAdminController.konsolDeneme);
+// adminIdSchema yalnızca :id'yi tanır ve diğer yol parametrelerini atar; bu yüzden :islemId'li uçlarda kullanılmaz (servis denetler)
+router.get("/firmalar/:id/pos/deneme/:islemId", PosAdminController.konsolIslem);
+router.post("/firmalar/:id/pos/deneme/:islemId/iptal", PosAdminController.konsolIptal);
+router.post("/firmalar/:id/pos/deneme/:islemId/elle", PosAdminController.konsolElle);
 
 // Bilinmeyen admin yolları ve tüm admin hataları burada biter (genel hata işleyicisine düşmez)
 router.use((req, res, next) => next(ApiError.notFound("Endpoint bulunamadı.")));

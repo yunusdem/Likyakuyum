@@ -374,6 +374,9 @@ export const EBankaMutabakatPage: React.FC = () => {
                 <Table size="sm" className="mb-3 align-middle">
                   <tbody>{secili.fisler.map((f) => fisSatiri(secili, f, true))}</tbody>
                 </Table>
+                {secili.fisleKarsilandi && (
+                  <div className="text-muted mb-3">Banka girişi fişin Hesap satırından sayılıyor; bu hareket için ayrıca banka fişi kesilmez (kesilmişse iptal edildi).</div>
+                )}
               </>
             )}
 

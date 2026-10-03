@@ -8,6 +8,7 @@ import {
   IconWifi,
   IconLogin2,
   IconListDetails,
+  IconCreditCard,
   IconShieldLock,
   IconKey,
   IconLogout,
@@ -21,6 +22,7 @@ const MENU = [
   { yol: "/cevrimici", baslik: "Çevrimiçi", ikon: <IconWifi size={18} />, tam: false },
   { yol: "/giris-gecmisi", baslik: "Giriş Geçmişi", ikon: <IconLogin2 size={18} />, tam: false },
   { yol: "/islem-kaydi", baslik: "İşlem Kaydı", ikon: <IconListDetails size={18} />, tam: false },
+  { yol: "/pos", baslik: "POS Entegrasyonu", ikon: <IconCreditCard size={18} />, tam: false },
   { yol: "/adminler", baslik: "Adminler", ikon: <IconShieldLock size={18} />, tam: false },
   { yol: "/sifre-degistir", baslik: "Şifre Değiştir", ikon: <IconKey size={18} />, tam: false },
 ];

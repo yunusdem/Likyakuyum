@@ -101,6 +101,9 @@ const envSchema = z.object({
   // "zorunlu": firma kayıtlı/aktif/lisanslı ve kullanıcı merkezde tanımlı olmalı. Tüm firmalar panelde tanımlanıp
   // kullanıcıları içe aktarılmadan "zorunlu" YAPMAYIN; tanımsız firmalar giremez.
   MERKEZ_GIRIS: z.enum(["kapali", "zorunlu"]).default("kapali"),
+  // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md). Firmanın POS modu admin panelinden gelir; bu değer yalnızca
+  // admin veritabanı hiç yapılandırılmamış sunucuda (yerel geliştirme) kullanılır. Canlı mod buradan AÇILAMAZ.
+  POS_MOD_YEDEK: z.enum(["kapali", "test"]).default("kapali"),
   // Mail gönderimi (firma e-posta doğrulaması). SMTP_HOST ya da SMTP_FROM boşsa mail özelliği kapalıdır.
   // Değerler sunucudaki Backend/.env.local dosyasına yazılır (git izlemez).
   SMTP_HOST: z.string().default(""),
