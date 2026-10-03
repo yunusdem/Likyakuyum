@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
+import { havuzBasinaBirKez } from "../utils/havuzBirKez.js";
 
 /**
  * MASAK 'Malvarlıkları Dondurulanlar' listeleri
@@ -184,8 +185,11 @@ export interface MasakListeSayfasi {
 export class MasakSqlRepository {
   /**
    * TODVZ_MASAK_LISTE ve TODVZ_MASAK_GUNCELLEME tablolarını (ve indekslerini) yoksa oluşturur.
+   * Havuz başına bir kez çalışır; sonuç (hata dahil) havuzla birlikte saklanır.
    */
-  public static async ensureTablesExist(pool: sql.ConnectionPool): Promise<void> {
+  public static ensureTablesExist = havuzBasinaBirKez((pool) => MasakSqlRepository.tablolariKur(pool));
+
+  private static async tablolariKur(pool: sql.ConnectionPool): Promise<void> {
     const ddl = `
       IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TODVZ_MASAK_LISTE')
       BEGIN
@@ -623,6 +627,15 @@ export class MasakSqlRepository {
     }));
   }
 
+  /** mapKayit'in okuduğu kolonlar (L takma adıyla) */
+  private static readonly KAYIT_KOLONLARI = [
+    "MASAK_ID", "LISTE_KOD", "LISTE_ADI", "SIRA_NO", "AD_UNVAN", "AD_UNVAN_NORM", "KAYIT_TIPI", "KIMLIK_NO",
+    "TCKN", "VKN", "DIGER_ISIMLER", "ORIJINAL_AD", "ESKI_ADI", "GOREVI", "ADRES", "UYRUK", "DIGER_UYRUK",
+    "YAPTIRIM_TURU", "ANNE_ADI", "BABA_ADI", "DOGUM_TARIHI", "DOGUM_TARIHI_DT", "DOGUM_YERI", "ORGUT",
+    "KURULUS_YAPISI", "LISTEYE_ALINMA", "KARAR_BILGI", "RESMI_GAZETE", "DIGER_BILGILER", "EK_BILGI",
+    "KAYNAK_URL", "GUNCELLEME_ZAMANI",
+  ].map((k) => `L.[${k}]`).join(", ");
+
   /** SELECT * satırını API modeline çevirir */
   private static mapKayit(r: any): MasakKayitModel {
     let ek: Record<string, string> | null = null;
@@ -855,8 +868,12 @@ export class MasakSqlRepository {
       orKosullar.push(`(${kelimeKosullari.join(" AND ")})`);
     }
 
+    // İki adım: önce yalnız MASAK_ID + skorla eşleşenler süzülüp sıralanır (geniş NVARCHAR(MAX) kolonlar
+    // sıralamaya taşınmaz), sonra seçilen en çok @limit satırın kullanılan kolonları anahtarla okunur.
+    // Eşleşme koşulları, skor ve sıralama tek adımlı sorguyla aynıdır.
     const res = await req.query(`
-      SELECT TOP (@limit) *,
+      WITH [SECILEN] AS (
+      SELECT TOP (@limit) [MASAK_ID],
         CASE
           WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[') THEN 100
           WHEN @kimlik IS NOT NULL AND ([DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[') THEN 85
@@ -866,7 +883,12 @@ export class MasakSqlRepository {
         END AS [SKOR]
       FROM [dbo].[TODVZ_MASAK_LISTE]
       WHERE ${orKosullar.join(" OR ")}
-      ORDER BY [SKOR] DESC, [LISTE_KOD] ASC, ISNULL([SIRA_NO], 999999) ASC;
+      ORDER BY [SKOR] DESC, [LISTE_KOD] ASC, ISNULL([SIRA_NO], 999999) ASC
+      )
+      SELECT ${MasakSqlRepository.KAYIT_KOLONLARI}, S.[SKOR]
+      FROM [SECILEN] S
+      INNER JOIN [dbo].[TODVZ_MASAK_LISTE] L ON L.[MASAK_ID] = S.[MASAK_ID]
+      ORDER BY S.[SKOR] DESC, L.[LISTE_KOD] ASC, ISNULL(L.[SIRA_NO], 999999) ASC;
     `);
 
     const dogum = params.dogumTarihiDt

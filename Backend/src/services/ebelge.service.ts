@@ -1,5 +1,7 @@
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
+import { SureliOnbellek } from "../utils/sureliOnbellek.js";
+import { getPoolKey } from "../config/mssql.config.js";
 import { FATURA_NO_BICIMI, faturaNoUret } from "../utils/faturaNo.utils.js";
 import { EbelgeSeriRepository, SeriBelgeTuru } from "../models/ebelgeSeri.repository.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
@@ -131,6 +133,13 @@ export const pkEtiketiSec = (kullanicilar: { Alias?: string; Unit?: string }[]):
     || etiketler.find((k) => k.birim.toUpperCase() !== "GB" && !/(^|[:._-])gb|defaultgb/i.test(k.alias));
   return (pk || etiketler[0])?.alias || "";
 };
+
+/** Ekrandaki mükellef / alıcı adresi sorguları için (anahtar: firma havuzu + VKN) */
+const ALICI_ONBELLEK_SURE_MS = 6 * 60 * 60_000;
+const ALICI_ONBELLEK_EN_FAZLA = 2000;
+const mukellefOnbellek = new SureliOnbellek<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string }>(
+  ALICI_ONBELLEK_SURE_MS, ALICI_ONBELLEK_EN_FAZLA);
+const adresOnbellek = new SureliOnbellek<{ adresler: EbelgeAliciAdres[] }>(ALICI_ONBELLEK_SURE_MS, ALICI_ONBELLEK_EN_FAZLA);
 
 export class EbelgeService {
   /**
@@ -613,10 +622,28 @@ export class EbelgeService {
   }
 
   /**
+   * Ekrandaki mükellef sorgusu: mükellef çıkan sonuç firma+VKN anahtarıyla 6 saat bellekte tutulur,
+   * aynı anda gelen aynı sorgu tek ICE çağrısını paylaşır. Mükellef olmayan / hatalı sonuç saklanmaz.
+   * Gönderim yolları (kaynak gönderimi, alias çözümü) ICE'ye canlı sorar.
+   */
+  public static async mukellefSorgula(
+    vknTckn: string,
+    kullanici: string,
+    dbContext?: DbContext
+  ): Promise<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string }> {
+    const sonuc = await mukellefOnbellek.al(
+      `${getPoolKey(dbContext?.dbServer, dbContext?.dbName)}|${vknTckn.trim()}`,
+      () => this.mukellefSorgulaCanli(vknTckn, kullanici, dbContext),
+      (s) => s.mukellefMi && s.kullanicilar.length > 0
+    );
+    return structuredClone(sonuc);
+  }
+
+  /**
    * Alıcının e-Fatura mükellefi olup olmadığını sorar.
    * Sonuç boşsa alıcı mükellef değildir → e-Arşiv kesilmelidir.
    */
-  public static async mukellefSorgula(
+  public static async mukellefSorgulaCanli(
     vknTckn: string,
     kullanici: string,
     dbContext?: DbContext
@@ -686,6 +713,20 @@ export class EbelgeService {
    * Mükellef sorgusundan AYRI tutulur: adres bulunamaması belge türü kararını etkilemez.
    */
   public static async aliciAdresleri(
+    vknTckn: string,
+    kullanici: string,
+    dbContext?: DbContext
+  ): Promise<{ adresler: EbelgeAliciAdres[] }> {
+    // Adres bulunan sonuç 6 saat saklanır; boş sonuç ve hata saklanmaz
+    const sonuc = await adresOnbellek.al(
+      `${getPoolKey(dbContext?.dbServer, dbContext?.dbName)}|${vknTckn.trim()}`,
+      () => this.aliciAdresleriCanli(vknTckn, kullanici, dbContext),
+      (s) => s.adresler.length > 0
+    );
+    return structuredClone(sonuc);
+  }
+
+  private static async aliciAdresleriCanli(
     vknTckn: string,
     kullanici: string,
     dbContext?: DbContext

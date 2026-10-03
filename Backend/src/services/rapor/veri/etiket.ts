@@ -1,6 +1,6 @@
 import sql from "mssql";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
-import { type RaporParametreler, aralikOzeti, filtreler, kurCoz, kurTarihte, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
+import { type RaporParametreler, aralikOzeti, filtreler, kurCoz, kurTarihlerde, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 import { YEREL_GUN, saatTr } from "../kaynak.js";
 
 /**
@@ -179,9 +179,11 @@ export const ETIKET_SORGULARI: Record<string, Sorgu> = {
       }
     }
 
-    // Fatura günü HAS kuru (gün başına tek sorgu)
+    // Fatura günü HAS kuru (tüm günler tek sorguda)
     const gunKuru = new Map<string, number>();
-    for (const g of new Set(ham.map((r: any) => gunMetni(r.tarih)))) gunKuru.set(g, d.hasId ? (await kurTarihte(pool, g)).get(d.hasId) || 0 : 0);
+    const gunler = [...new Set<string>(ham.map((r: any) => gunMetni(r.tarih)))];
+    const gunHaritalari = d.hasId ? await kurTarihlerde(pool, gunler) : null;
+    for (const g of gunler) gunKuru.set(g, gunHaritalari ? gunHaritalari.get(g)!.get(d.hasId) || 0 : 0);
 
     const tlId = Number((await pool.request().query(`SELECT TOP 1 PARA_ID id FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID`)).recordset[0]?.id || 1);
     let oncekiFatura = -1;

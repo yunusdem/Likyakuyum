@@ -1,4 +1,5 @@
 import { apiClient, getEffectiveApiUrl } from "./apiClient";
+import { trSayiBicimi, trTarihBicimi, trTarihSaatBicimi } from "../utils/intlOnbellek";
 
 /**
  * Rapor servisleri — Backend: /api/v1/rapor. Bkz. docs/raporlar.md.
@@ -89,14 +90,14 @@ export const RaporService = {
 
 export const raporBicimle = (v: any, bicim?: RaporBicim): string => {
   if (v === null || v === undefined || v === "") return "";
-  const tr = (n: number, b: number, maxB = b) => Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: b, maximumFractionDigits: maxB });
+  const tr = (n: number, b: number, maxB = b) => trSayiBicimi(b, maxB).format(Number(n || 0));
   switch (bicim) {
     case "sayi": return tr(Number(v), 2);
     case "sayi4": return tr(Number(v), 4);
     case "kur": return tr(Number(v), 2, 5);
-    case "tam": return Number(v || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
-    case "tarih": { const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }); }
-    case "tarihSaat": { const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", hour12: false }).replace(",", ""); }
+    case "tam": return trSayiBicimi(undefined, 0).format(Number(v || 0));
+    case "tarih": { const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : trTarihBicimi().format(d); }
+    case "tarihSaat": { const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : trTarihSaatBicimi().format(d).replace(",", ""); }
     default: return String(v);
   }
 };

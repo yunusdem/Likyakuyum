@@ -2,7 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { BankaSqlRepository } from "./bankaSql.repository.js";
-import { DbContext, EBankaSqlRepository } from "./ebankaSql.repository.js";
+import { DbContext, EBankaSqlRepository, ebankaOzetOnbellegi } from "./ebankaSql.repository.js";
 
 // F- e-Banka (Vomsis) Faz 1 — Vomsis banka / hesap / hareket aynası (docs/EBANKA_VOMSIS_YOL_HARITASI.md)
 // Tarihler Vomsis'ten geldiği duvar saatiyle saklanır; saat dilimi çevirisi yapılmaz.
@@ -187,6 +187,26 @@ const etiketMetni = (tags: unknown): string | null => {
   return adlar.length ? adlar.join(", ").slice(0, 500) : null;
 };
 
+// hareketleriYaz: tabloya yazılan kolonlar ve aynı sıradaki parametre adları
+const HAREKET_KOLONLARI = [
+  "VOMSIS_ID", "VOMSIS_HESAP_ID", "ANAHTAR", "TIP_KODU", "BANKA_TIPI", "MT940_TIPI", "SISTEM_TARIHI", "MUHASEBE_TARIHI",
+  "GONDEREN_TCKN", "GONDEREN_AD", "GONDEREN_SUBE", "GONDEREN_UNVAN", "GONDEREN_IBAN", "GONDEREN_VKN", "ALICI_IBAN", "KARSI_UNVAN", "KARSI_IBAN", "KARSI_VKN",
+  "FIS_NO", "ODEYEN_VKN", "ACIKLAMA", "DOVIZ", "TUTAR", "BAKIYE", "EVRAK_NO", "TUR", "NOTU", "ETIKETLER", "SIRA", "VOMSIS_KAYIT_ZAMANI",
+];
+const HAREKET_PARAMETRELERI = [
+  "ID", "HESAP", "ANAHTAR", "TIP", "BANKA_TIPI", "MT940", "SISTEM", "MUHASEBE",
+  "G_TCKN", "G_AD", "G_SUBE", "G_UNVAN", "G_IBAN", "G_VKN", "A_IBAN", "K_UNVAN", "K_IBAN", "K_VKN",
+  "FIS_NO", "ODEYEN_VKN", "ACIKLAMA", "DOVIZ", "TUTAR", "BAKIYE", "EVRAK_NO", "TUR", "NOTU", "ETIKETLER", "SIRA", "KAYIT",
+];
+const HAREKET_METIN_KOLONLARI = new Set([
+  "ANAHTAR", "TIP_KODU", "BANKA_TIPI", "MT940_TIPI", "GONDEREN_TCKN", "GONDEREN_AD", "GONDEREN_SUBE", "GONDEREN_UNVAN", "GONDEREN_IBAN", "GONDEREN_VKN",
+  "ALICI_IBAN", "KARSI_UNVAN", "KARSI_IBAN", "KARSI_VKN", "FIS_NO", "ODEYEN_VKN", "ACIKLAMA", "DOVIZ", "EVRAK_NO", "TUR", "NOTU", "ETIKETLER",
+]);
+/** Transaction başına satır: kilitler kısa sürsün */
+const HAREKET_PARCASI = 500;
+/** Tek INSERT'teki satır: 30 parametre x 60 = 1800 (sınır 2100) */
+const HAREKET_INSERT_SATIRI = 60;
+
 export class EBankaVeriSqlRepository {
   public static async ensureTables(pool: sql.ConnectionPool): Promise<void> {
     await EBankaSqlRepository.ensureTables(pool);
@@ -337,6 +357,7 @@ export class EBankaVeriSqlRepository {
           INSERT INTO TODVZ_EBANKA_BANKA (VOMSIS_BANKA_ID, BANKA_KODU, BANKA_ADI, EFT_KODU, SIRA) VALUES (@ID, @KOD, @AD, @EFT, @SIRA);
       `);
     }
+    ebankaOzetOnbellegi.temizle(pool);
     return bankalar.length;
   }
 
@@ -372,6 +393,7 @@ export class EBankaVeriSqlRepository {
             @BLOKE, @KULLANILABILIR, @DAHIL, @DURUM, @URUN, @SIRA, GETDATE());
       `);
     }
+    ebankaOzetOnbellegi.temizle(pool);
     return hesaplar.length;
   }
 
@@ -392,6 +414,7 @@ export class EBankaVeriSqlRepository {
       WHERE h.BANKA_ID IS NULL AND h.ESLEME_ELLE = 0 AND h.IBAN IS NOT NULL AND k.ADET = 1
         AND NOT EXISTS (SELECT 1 FROM TODVZ_EBANKA_HESAP d WHERE d.BANKA_ID = k.BANKA_ID);
     `);
+    ebankaOzetOnbellegi.temizle(pool);
     return r.rowsAffected[0] || 0;
   }
 
@@ -413,77 +436,99 @@ export class EBankaVeriSqlRepository {
     return tipler.length;
   }
 
-  /** Vomsis id'si ile ekle/güncelle. Aktarım alanlarına (durum, fiş, cari) dokunmaz. */
+  /**
+   * Vomsis id'si ile ekle/güncelle. Aktarım alanlarına (durum, fiş, cari) dokunmaz.
+   * Satırlar 500'lük parçalarla geçici tabloya yüklenir; parça başına kısa bir transaction'da tek UPDATE (yalnız değişen satırlar)
+   * ve tek INSERT çalışır. Aynı id birden çok gelirse sonuncusu yazılır; sayımlar satır satır yazımdakiyle aynıdır
+   * (yeni id bir kez "yeni", tekrarları ve var olanlar "güncellenen").
+   */
   public static async hareketleriYaz(hareketler: VomsisHareket[], dbContext?: DbContext): Promise<{ yeni: number; guncellenen: number }> {
     const pool = await this.pool(dbContext);
+    const sonHali = new Map<string, VomsisHareket>();
+    let gecerli = 0;
+    for (const h of hareketler) {
+      if (!h?.id || !h.bank_account_id) continue;
+      gecerli++;
+      sonHali.set(String(h.id), h);
+    }
+    const tekil = [...sonHali.values()];
     let yeni = 0;
-    let guncellenen = 0;
+    try {
+      for (let i = 0; i < tekil.length; i += HAREKET_PARCASI) yeni += await this.hareketParcasiniYaz(pool, tekil.slice(i, i + HAREKET_PARCASI));
+    } finally {
+      ebankaOzetOnbellegi.temizle(pool);
+    }
+    return { yeni, guncellenen: gecerli - yeni };
+  }
+
+  /** Bir parçayı yazar, yeni eklenen satır sayısını döner. */
+  private static async hareketParcasiniYaz(pool: sql.ConnectionPool, parca: VomsisHareket[]): Promise<number> {
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
-      for (const h of hareketler) {
-        if (!h?.id || !h.bank_account_id) continue;
+      // Kolon tipleri ve harmanlamaları tablonunkiyle birebir olsun diye geçici tablo tablodan kopyalanır
+      await new sql.Request(tx).batch(`
+        IF OBJECT_ID('tempdb..#EBANKA_HAREKET_YAZ') IS NOT NULL DROP TABLE #EBANKA_HAREKET_YAZ;
+        SELECT TOP 0 ${HAREKET_KOLONLARI.join(", ")} INTO #EBANKA_HAREKET_YAZ FROM TODVZ_EBANKA_HAREKET;
+      `);
+      for (let i = 0; i < parca.length; i += HAREKET_INSERT_SATIRI) {
         const req = new sql.Request(tx);
-        req.input("ID", sql.BigInt, h.id);
-        req.input("HESAP", sql.Int, h.bank_account_id);
-        req.input("ANAHTAR", sql.VarChar(64), metin(h.key, 64));
-        req.input("TIP", sql.VarChar(50), metin(h.vms_transaction_type, 50));
-        req.input("BANKA_TIPI", sql.VarChar(50), metin(h.transaction_type, 50));
-        req.input("MT940", sql.VarChar(50), metin(h.mt940transaction_type, 50));
-        req.input("SISTEM", sql.DateTime, vomsisTarihi(h.system_date));
-        req.input("MUHASEBE", sql.DateTime, vomsisTarihi(h.accounting_date));
-        req.input("G_TCKN", sql.VarChar(20), metin(h.sender_identity_number, 20));
-        req.input("G_AD", sql.NVarChar(200), metin(h.sender_name, 200));
-        req.input("G_SUBE", sql.NVarChar(100), metin(h.sender_branch, 100));
-        req.input("G_UNVAN", sql.NVarChar(250), metin(h.sender_title, 250));
-        req.input("G_IBAN", sql.VarChar(34), ibanTemizle(h.sender_iban));
-        req.input("G_VKN", sql.VarChar(20), metin(h.sender_taxno, 20));
-        req.input("A_IBAN", sql.VarChar(34), ibanTemizle(h.reciever_iban ?? h.receiver_iban));
-        req.input("K_UNVAN", sql.NVarChar(250), metin(h.opponent_title, 250));
-        req.input("K_IBAN", sql.VarChar(34), ibanTemizle(h.opponent_iban));
-        req.input("K_VKN", sql.VarChar(20), metin(h.opponent_taxno, 20));
-        req.input("FIS_NO", sql.VarChar(50), metin(h.fis_no, 50));
-        req.input("ODEYEN_VKN", sql.VarChar(20), metin(h.payer_tax_no, 20));
-        req.input("ACIKLAMA", sql.NVarChar(1000), metin(h.description, 1000));
-        req.input("DOVIZ", sql.VarChar(10), metin(h.fec_name, 10));
-        req.input("TUTAR", sql.Decimal(18, 2), sayi(h.amount) ?? 0);
-        req.input("BAKIYE", sql.Decimal(18, 2), sayi(h.current_balance));
-        req.input("EVRAK_NO", sql.VarChar(50), metin(h.resource_code, 50));
-        req.input("TUR", sql.VarChar(10), metin(h.type, 10));
-        req.input("NOTU", sql.NVarChar(500), metin(h.note, 500));
-        req.input("ETIKETLER", sql.NVarChar(500), etiketMetni(h.tags));
-        req.input("SIRA", sql.Int, h.order ?? null);
-        req.input("KAYIT", sql.DateTime, vomsisTarihi(h.created_at));
-        const r = await req.query(`
-          UPDATE TODVZ_EBANKA_HAREKET SET
-            VOMSIS_HESAP_ID = @HESAP, ANAHTAR = @ANAHTAR, TIP_KODU = @TIP, BANKA_TIPI = @BANKA_TIPI, MT940_TIPI = @MT940,
-            SISTEM_TARIHI = @SISTEM, MUHASEBE_TARIHI = @MUHASEBE, GONDEREN_TCKN = @G_TCKN, GONDEREN_AD = @G_AD, GONDEREN_SUBE = @G_SUBE,
-            GONDEREN_UNVAN = @G_UNVAN, GONDEREN_IBAN = @G_IBAN, GONDEREN_VKN = @G_VKN, ALICI_IBAN = @A_IBAN, KARSI_UNVAN = @K_UNVAN,
-            KARSI_IBAN = @K_IBAN, KARSI_VKN = @K_VKN, FIS_NO = @FIS_NO, ODEYEN_VKN = @ODEYEN_VKN, ACIKLAMA = @ACIKLAMA, DOVIZ = @DOVIZ,
-            TUTAR = @TUTAR, BAKIYE = @BAKIYE, EVRAK_NO = @EVRAK_NO, TUR = @TUR, NOTU = @NOTU, ETIKETLER = @ETIKETLER, SIRA = @SIRA,
-            VOMSIS_KAYIT_ZAMANI = @KAYIT
-          WHERE VOMSIS_ID = @ID;
-          IF @@ROWCOUNT = 0
-          BEGIN
-            INSERT INTO TODVZ_EBANKA_HAREKET (VOMSIS_ID, VOMSIS_HESAP_ID, ANAHTAR, TIP_KODU, BANKA_TIPI, MT940_TIPI, SISTEM_TARIHI, MUHASEBE_TARIHI,
-              GONDEREN_TCKN, GONDEREN_AD, GONDEREN_SUBE, GONDEREN_UNVAN, GONDEREN_IBAN, GONDEREN_VKN, ALICI_IBAN, KARSI_UNVAN, KARSI_IBAN, KARSI_VKN,
-              FIS_NO, ODEYEN_VKN, ACIKLAMA, DOVIZ, TUTAR, BAKIYE, EVRAK_NO, TUR, NOTU, ETIKETLER, SIRA, VOMSIS_KAYIT_ZAMANI)
-            VALUES (@ID, @HESAP, @ANAHTAR, @TIP, @BANKA_TIPI, @MT940, @SISTEM, @MUHASEBE,
-              @G_TCKN, @G_AD, @G_SUBE, @G_UNVAN, @G_IBAN, @G_VKN, @A_IBAN, @K_UNVAN, @K_IBAN, @K_VKN,
-              @FIS_NO, @ODEYEN_VKN, @ACIKLAMA, @DOVIZ, @TUTAR, @BAKIYE, @EVRAK_NO, @TUR, @NOTU, @ETIKETLER, @SIRA, @KAYIT);
-            SELECT 1 AS YENI;
-          END
-          ELSE SELECT 0 AS YENI;
-        `);
-        if (r.recordset?.[0]?.YENI === 1) yeni++;
-        else guncellenen++;
+        const satirlar = parca.slice(i, i + HAREKET_INSERT_SATIRI).map((h, j) => {
+          const p = (ad: string) => `${ad}_${j}`;
+          req.input(p("ID"), sql.BigInt, h.id);
+          req.input(p("HESAP"), sql.Int, h.bank_account_id);
+          req.input(p("ANAHTAR"), sql.VarChar(64), metin(h.key, 64));
+          req.input(p("TIP"), sql.VarChar(50), metin(h.vms_transaction_type, 50));
+          req.input(p("BANKA_TIPI"), sql.VarChar(50), metin(h.transaction_type, 50));
+          req.input(p("MT940"), sql.VarChar(50), metin(h.mt940transaction_type, 50));
+          req.input(p("SISTEM"), sql.DateTime, vomsisTarihi(h.system_date));
+          req.input(p("MUHASEBE"), sql.DateTime, vomsisTarihi(h.accounting_date));
+          req.input(p("G_TCKN"), sql.VarChar(20), metin(h.sender_identity_number, 20));
+          req.input(p("G_AD"), sql.NVarChar(200), metin(h.sender_name, 200));
+          req.input(p("G_SUBE"), sql.NVarChar(100), metin(h.sender_branch, 100));
+          req.input(p("G_UNVAN"), sql.NVarChar(250), metin(h.sender_title, 250));
+          req.input(p("G_IBAN"), sql.VarChar(34), ibanTemizle(h.sender_iban));
+          req.input(p("G_VKN"), sql.VarChar(20), metin(h.sender_taxno, 20));
+          req.input(p("A_IBAN"), sql.VarChar(34), ibanTemizle(h.reciever_iban ?? h.receiver_iban));
+          req.input(p("K_UNVAN"), sql.NVarChar(250), metin(h.opponent_title, 250));
+          req.input(p("K_IBAN"), sql.VarChar(34), ibanTemizle(h.opponent_iban));
+          req.input(p("K_VKN"), sql.VarChar(20), metin(h.opponent_taxno, 20));
+          req.input(p("FIS_NO"), sql.VarChar(50), metin(h.fis_no, 50));
+          req.input(p("ODEYEN_VKN"), sql.VarChar(20), metin(h.payer_tax_no, 20));
+          req.input(p("ACIKLAMA"), sql.NVarChar(1000), metin(h.description, 1000));
+          req.input(p("DOVIZ"), sql.VarChar(10), metin(h.fec_name, 10));
+          req.input(p("TUTAR"), sql.Decimal(18, 2), sayi(h.amount) ?? 0);
+          req.input(p("BAKIYE"), sql.Decimal(18, 2), sayi(h.current_balance));
+          req.input(p("EVRAK_NO"), sql.VarChar(50), metin(h.resource_code, 50));
+          req.input(p("TUR"), sql.VarChar(10), metin(h.type, 10));
+          req.input(p("NOTU"), sql.NVarChar(500), metin(h.note, 500));
+          req.input(p("ETIKETLER"), sql.NVarChar(500), etiketMetni(h.tags));
+          req.input(p("SIRA"), sql.Int, h.order ?? null);
+          req.input(p("KAYIT"), sql.DateTime, vomsisTarihi(h.created_at));
+          return `(${HAREKET_PARAMETRELERI.map((ad) => `@${p(ad)}`).join(", ")})`;
+        });
+        await req.query(`INSERT INTO #EBANKA_HAREKET_YAZ (${HAREKET_KOLONLARI.join(", ")}) VALUES ${satirlar.join(",\n")}`);
       }
+      // Değişmemiş satıra yazılmaz. Metinler bayt bayt karşılaştırılır (büyük/küçük harf ve sondaki boşluk farkı da değişikliktir).
+      const kiyas = (on: string) => HAREKET_KOLONLARI.map((k) => (HAREKET_METIN_KOLONLARI.has(k) ? `CAST(${on}.${k} AS VARBINARY(2000))` : `${on}.${k}`)).join(", ");
+      const r = await new sql.Request(tx).query(`
+        UPDATE t SET ${HAREKET_KOLONLARI.filter((k) => k !== "VOMSIS_ID").map((k) => `${k} = s.${k}`).join(", ")}
+        FROM TODVZ_EBANKA_HAREKET t JOIN #EBANKA_HAREKET_YAZ s ON s.VOMSIS_ID = t.VOMSIS_ID
+        WHERE EXISTS (SELECT ${kiyas("s")} EXCEPT SELECT ${kiyas("t")});
+
+        INSERT INTO TODVZ_EBANKA_HAREKET (${HAREKET_KOLONLARI.join(", ")})
+        SELECT ${HAREKET_KOLONLARI.map((k) => `s.${k}`).join(", ")} FROM #EBANKA_HAREKET_YAZ s
+        WHERE NOT EXISTS (SELECT 1 FROM TODVZ_EBANKA_HAREKET t WITH (UPDLOCK, HOLDLOCK) WHERE t.VOMSIS_ID = s.VOMSIS_ID);
+        SELECT @@ROWCOUNT AS YENI;
+
+        DROP TABLE #EBANKA_HAREKET_YAZ;
+      `);
       await tx.commit();
+      return Number(r.recordset?.[0]?.YENI) || 0;
     } catch (err) {
       await tx.rollback().catch(() => undefined);
       throw err;
     }
-    return { yeni, guncellenen };
   }
 
   public static async sonEsitlemeyiYaz(dbContext?: DbContext): Promise<void> {
@@ -492,6 +537,7 @@ export class EBankaVeriSqlRepository {
       IF NOT EXISTS (SELECT 1 FROM TODVZ_EBANKA_AYAR WHERE AYAR_ID = 1) INSERT INTO TODVZ_EBANKA_AYAR (AYAR_ID) VALUES (1);
       UPDATE TODVZ_EBANKA_AYAR SET SON_ESITLEME = GETDATE(), SON_HAREKET_ID = (SELECT MAX(VOMSIS_ID) FROM TODVZ_EBANKA_HAREKET) WHERE AYAR_ID = 1;
     `);
+    ebankaOzetOnbellegi.temizle(pool);
   }
 
   /** Son eşitlemeden bu yana geçen saniye. Saat dilimine takılmamak için veritabanı saatiyle hesaplanır. */
@@ -514,6 +560,7 @@ export class EBankaVeriSqlRepository {
       DELETE FROM TODVZ_EBANKA_BANKA;
       UPDATE TODVZ_EBANKA_AYAR SET SON_ESITLEME = NULL, SON_HAREKET_ID = NULL WHERE AYAR_ID = 1;
     `);
+    ebankaOzetOnbellegi.temizle(pool);
     return true;
   }
 
@@ -571,6 +618,7 @@ export class EBankaVeriSqlRepository {
     req.input("ID", sql.Int, vomsisHesapId);
     req.input("BANKA_ID", sql.Int, bankaId);
     const r = await req.query(`UPDATE TODVZ_EBANKA_HESAP SET BANKA_ID = @BANKA_ID, ESLEME_ELLE = 1 WHERE VOMSIS_HESAP_ID = @ID`);
+    ebankaOzetOnbellegi.temizle(pool);
     return r.rowsAffected[0] ? "ok" : "hesap-yok";
   }
 

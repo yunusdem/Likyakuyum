@@ -1,5 +1,6 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
+import { HavuzOnbellegi } from "../utils/havuzOnbellegi.js";
 import { logger } from "../utils/logger.js";
 
 // F- e-Banka (Vomsis) — docs/EBANKA_VOMSIS_YOL_HARITASI.md
@@ -52,6 +53,9 @@ const TOKEN_KOLONLARI: Record<VomsisServis, { token: string; bitis: string }> = 
 
 const tarihMetni = (d: Date | null): string | null => (d ? new Date(d).toISOString() : null);
 
+/** Ana Sayfa'nın e-Banka özeti (GET /ebanka/ozet): havuz başına 10 sn tutulur; ayar, hesap ve hareket yazımlarında temizlenir. */
+export const ebankaOzetOnbellegi = new HavuzOnbellegi<any>(10_000);
+
 export class EBankaSqlRepository {
   public static async ensureTables(pool: sql.ConnectionPool): Promise<void> {
     try {
@@ -97,9 +101,17 @@ export class EBankaSqlRepository {
     }
   }
 
+  // Tablo denetimi bağlantı havuzu başına bir kez yapılır (ensureTables hatayı kendisi günlüğe yazar, sonuç saklanır)
+  private static readonly hazirHavuzlar = new WeakMap<sql.ConnectionPool, Promise<void>>();
+
   private static async pool(dbContext?: DbContext): Promise<sql.ConnectionPool> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-    await this.ensureTables(pool);
+    let hazir = this.hazirHavuzlar.get(pool);
+    if (!hazir) {
+      hazir = this.ensureTables(pool);
+      this.hazirHavuzlar.set(pool, hazir);
+    }
+    await hazir;
     return pool;
   }
 
@@ -153,6 +165,7 @@ export class EBankaSqlRepository {
         GUNCELLEME_ZAMANI = GETDATE()
       WHERE AYAR_ID = 1;
     `);
+    ebankaOzetOnbellegi.temizle(pool);
   }
 
   public static async tokenGetir(servis: VomsisServis, dbContext?: DbContext): Promise<{ sifreli: string; bitis: Date } | null> {

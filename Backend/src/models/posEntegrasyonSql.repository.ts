@@ -1,5 +1,6 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
+import { havuzBasinaBirKez } from "../utils/havuzBirKez.js";
 import { logger } from "../utils/logger.js";
 import {
   DbContext,
@@ -91,7 +92,10 @@ const islemden = (r: any): PosIslem => ({
 });
 
 export class PosEntegrasyonSqlRepository {
-  public static async ensureTables(pool: sql.ConnectionPool): Promise<void> {
+  /** Havuz başına bir kez çalışır (POS durum yoklaması her 2 sn'de geldiği için her istekte tekrarlanmaz) */
+  public static ensureTables = havuzBasinaBirKez((pool) => PosEntegrasyonSqlRepository.tablolariKur(pool));
+
+  private static async tablolariKur(pool: sql.ConnectionPool): Promise<void> {
     try {
       await pool.request().batch(`
         IF OBJECT_ID('TODVZ_POS_TERMINAL', 'U') IS NULL

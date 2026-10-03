@@ -95,6 +95,16 @@ export class EbelgeKuyrukRepository {
     return r.recordset[0]?.O != null;
   }
 
+  /** Arka plan işi için: bekleyen ya da işlenen (zamanı gelmemiş dahil) iş var mı */
+  public static async bekleyenVarMi(ctx?: DbContext): Promise<boolean> {
+    const pool = await this.havuz(ctx);
+    const r = await pool.request().query(`
+      SELECT CASE WHEN EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_KUYRUK] WHERE [DURUM] IN ('BEKLIYOR', 'ISLENIYOR'))
+        THEN 1 ELSE 0 END AS [VAR]
+    `);
+    return r.recordset[0]?.VAR === 1;
+  }
+
   public static async ekle(
     is: { uuid: string; belgeTuru: string; islem: KuyrukIslem; veri?: any; kullanici: string; sonrakiSn?: number },
     ctx?: DbContext

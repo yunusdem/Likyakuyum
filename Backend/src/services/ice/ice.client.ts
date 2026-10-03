@@ -212,7 +212,24 @@ export const callSoap = async <T = any>(options: IceCallOptions): Promise<IceCal
     );
   }
 
-  const text = await response.text();
+  // Gövde okuması da süre sınırlı: başlıklar geldikten sonra aynı süre kadar daha beklenir
+  // (başlık beklemesi kısalmaz; gövdede takılan bağlantı kuyruğu dakikalarca tutmaz)
+  const govdeTimer = setTimeout(() => controller.abort(), timeoutMs);
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      logger.warn(`ICE ${method}: zaman aşımı (${timeoutMs} ms)`);
+      throw new ApiError(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        `Entegratör servisi ${timeoutMs / 1000} saniyede yanıt vermedi (${method}).`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(govdeTimer);
+  }
   const sureMs = Date.now() - started;
 
   if (text.length > MAX_RESPONSE_BYTES) {

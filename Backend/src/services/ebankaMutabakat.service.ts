@@ -1,5 +1,5 @@
 import { DbContext } from "../models/ebankaSql.repository.js";
-import { EBankaMutabakatSqlRepository, FisTuru, MutabakatFisi, MutabakatHareketi, Yon } from "../models/ebankaMutabakatSql.repository.js";
+import { EBankaMutabakatSqlRepository, Eslesme, FisTuru, MutabakatFisi, MutabakatHareketi, Yon } from "../models/ebankaMutabakatSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EBankaAktarimSqlRepository } from "../models/ebankaAktarimSql.repository.js";
 import { EBankaAktarimService, ibanSade, planla } from "./ebankaAktarim.service.js";
@@ -120,7 +120,7 @@ export class EBankaMutabakatService {
     // Döviz hesap: TL karşılığı o günün kur tablosundan (M15). Kur bulunamazsa karşılaştırılamaz.
     const tlMi = (h: MutabakatHareketi) => ["TL", "TRY", ""].includes((h.doviz || "").toUpperCase());
     const kurlar = new Map<number, number | null>();
-    const kurOnbellek = new Map<string, number>();
+    const kurIstekleri: { vomsisId: number; paraId: number; gun: string; giris: boolean }[] = [];
     for (const h of hareketler) {
       if (tlMi(h)) continue;
       const paraId = s.paraKodlari.get((h.doviz || "").toUpperCase());
@@ -129,10 +129,13 @@ export class EBankaMutabakatService {
         kurlar.set(h.vomsisId, null);
         continue;
       }
-      const a = `${paraId}|${gun}|${h.tutar > 0}`;
-      if (!kurOnbellek.has(a)) kurOnbellek.set(a, await EBankaAktarimSqlRepository.kurGetir(paraId, gun, h.tutar > 0, dbContext).catch(() => 0));
-      const kur = kurOnbellek.get(a) || 0;
-      kurlar.set(h.vomsisId, kur > 0 ? kur : null);
+      kurIstekleri.push({ vomsisId: h.vomsisId, paraId, gun, giris: h.tutar > 0 });
+    }
+    // (para, gün, yön) başına kur tek sorguda okunur
+    const kurOnbellek = await EBankaAktarimSqlRepository.kurlarGetir(kurIstekleri, dbContext).catch(() => new Map<string, number>());
+    for (const k of kurIstekleri) {
+      const kur = kurOnbellek.get(`${k.paraId}|${k.gun}|${k.giris}`) || 0;
+      kurlar.set(k.vomsisId, kur > 0 ? kur : null);
     }
     const bankaTl = (h: MutabakatHareketi): number | null => {
       if (tlMi(h)) return Math.abs(h.tutar);
@@ -182,12 +185,17 @@ export class EBankaMutabakatService {
         tamlar.set(h.vomsisId, tam);
         for (const f of tam) fisinTamHareketleri.set(anahtar(f), (fisinTamHareketleri.get(anahtar(f)) || 0) + 1);
       }
+      const otomatikler: Eslesme[] = [];
       for (const h of aranacak) {
         const tam = tamlar.get(h.vomsisId) || [];
         if (tam.length !== 1 || fisinTamHareketleri.get(anahtar(tam[0])) !== 1) continue;
-        await EBankaMutabakatSqlRepository.esle({ vomsisId: h.vomsisId, fisTuru: tam[0].fisTuru, fisId: tam[0].fisId, otomatik: true }, kullaniciId, dbContext);
-        eslesmeler.push({ vomsisId: h.vomsisId, fisTuru: tam[0].fisTuru, fisId: tam[0].fisId, otomatik: true });
-        adaylarByHareket.delete(h.vomsisId);
+        otomatikler.push({ vomsisId: h.vomsisId, fisTuru: tam[0].fisTuru, fisId: tam[0].fisId, otomatik: true });
+      }
+      // Hepsi tek yazımda; liste, yazım başarılı olunca güncellenir
+      await EBankaMutabakatSqlRepository.otomatikEsleToplu(otomatikler, kullaniciId, dbContext);
+      for (const e of otomatikler) {
+        eslesmeler.push(e);
+        adaylarByHareket.delete(e.vomsisId);
       }
     }
 
@@ -203,8 +211,9 @@ export class EBankaMutabakatService {
     for (const c of s.ibanSozlugu.values()) cariAdlari.set(c.cariKartId, c.ad);
     for (const c of s.tipCarileri.values()) cariAdlari.set(c.cariKartId, c.ad);
     const eksikCariler = [...new Set(hareketler.map((h) => h.onayliCariId).filter((id): id is number => !!id && !cariAdlari.has(id)))];
+    const eksikler = await EBankaAktarimSqlRepository.carilerGetir(eksikCariler, dbContext);
     for (const id of eksikCariler) {
-      const c = await EBankaAktarimSqlRepository.cariGetir(id, dbContext);
+      const c = eksikler.get(id);
       if (c) cariAdlari.set(id, c.ad);
     }
 

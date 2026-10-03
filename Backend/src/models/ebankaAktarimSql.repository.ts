@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { DbContext } from "./ebankaSql.repository.js";
+import { DbContext, ebankaOzetOnbellegi } from "./ebankaSql.repository.js";
 import { EBankaVeriSqlRepository } from "./ebankaVeriSql.repository.js";
 
 // F- e-Banka Faz 2 — Vomsis hareketinin banka fişine aktarımı için veri erişimi (docs/EBANKA_VOMSIS_YOL_HARITASI.md)
@@ -250,6 +250,69 @@ export class EBankaAktarimSqlRepository {
     }
   }
 
+  /**
+   * kurGetir'in toplu hali: her (para, gün, yön) için aynı kural (eşit/önceki en yakın kur tablosu, aynı sıralama).
+   * Anahtar "paraId|gün|giris" (giris: true/false). Bulunamayan 0. Sorgu hata verirse tek tek kurGetir'e düşülür.
+   */
+  public static async kurlarGetir(istekler: { paraId: number; gun: string; giris: boolean }[], dbContext?: DbContext): Promise<Map<string, number>> {
+    const sonuc = new Map<string, number>();
+    const tekil = [...new Map(istekler.map((i) => [`${i.paraId}|${i.gun}|${i.giris}`, i])).values()];
+    if (!tekil.length) return sonuc;
+    const pool = await EBankaVeriSqlRepository.pool(dbContext);
+    const alan = (giris: boolean) => (giris ? "COALESCE(NULLIF(K.DOVIZ_ALIS,0),K.EFEKTIF_ALIS)" : "COALESCE(NULLIF(K.DOVIZ_SATIS,0),K.EFEKTIF_SATIS)");
+    // 3 parametre x 600 = 1800 (sınır 2100)
+    for (let i = 0; i < tekil.length; i += 600) {
+      const parca = tekil.slice(i, i + 600);
+      const req = pool.request();
+      const satirlar = parca.map((k, j) => {
+        req.input(`P${j}`, sql.Int, k.paraId);
+        req.input(`G${j}`, sql.Date, new Date(`${k.gun}T00:00:00Z`));
+        req.input(`Y${j}`, sql.Bit, k.giris ? 1 : 0);
+        return `(${j}, @P${j}, @G${j}, @Y${j})`;
+      });
+      try {
+        const rows = (
+          await req.query(`
+            SELECT v.SIRA, x.KUR
+            FROM (VALUES ${satirlar.join(", ")}) v (SIRA, PARA, GUN, GIRIS)
+            OUTER APPLY (
+              SELECT TOP 1 CASE WHEN v.GIRIS = 1 THEN ${alan(true)} ELSE ${alan(false)} END AS KUR
+              FROM dbo.TODVZ_KUR K JOIN dbo.TODVZ_KUR_TABLOSU T ON T.KUR_TABLOSU_ID = K.KUR_TABLOSU_ID
+              WHERE K.PARA_ID = v.PARA AND CAST(T.TARIH AS date) <= v.GUN
+                AND ((v.GIRIS = 1 AND ${alan(true)} > 0) OR (v.GIRIS = 0 AND ${alan(false)} > 0))
+              ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC
+            ) x
+          `)
+        ).recordset;
+        for (const r of rows) {
+          const k = parca[Number(r.SIRA)];
+          sonuc.set(`${k.paraId}|${k.gun}|${k.giris}`, Number(r.KUR) || 0);
+        }
+      } catch {
+        for (const k of parca) sonuc.set(`${k.paraId}|${k.gun}|${k.giris}`, await this.kurGetir(k.paraId, k.gun, k.giris, dbContext));
+      }
+    }
+    return sonuc;
+  }
+
+  /** cariGetir'in toplu hali (var olmayan id dönmez) */
+  public static async carilerGetir(cariKartIdler: number[], dbContext?: DbContext): Promise<Map<number, CariOzeti>> {
+    const idler = [...new Set(cariKartIdler.filter((n) => Number.isSafeInteger(n)))];
+    const sonuc = new Map<number, CariOzeti>();
+    if (!idler.length) return sonuc;
+    const pool = await EBankaVeriSqlRepository.pool(dbContext);
+    for (let i = 0; i < idler.length; i += 2000) {
+      const req = pool.request();
+      const adlar = idler.slice(i, i + 2000).map((id, j) => {
+        req.input(`I${j}`, sql.Int, id);
+        return `@I${j}`;
+      });
+      const rows = (await req.query(`SELECT CARI_KART_ID, KOD, AD FROM TODVZ_CARI_KART WHERE CARI_KART_ID IN (${adlar.join(", ")})`)).recordset;
+      for (const r of rows) sonuc.set(r.CARI_KART_ID, { cariKartId: r.CARI_KART_ID, kod: kirp(r.KOD), ad: kirp(r.AD) });
+    }
+    return sonuc;
+  }
+
   // ─── Durum yazımları ───────────────────────────────────────────────────────
 
   /** Hareketi aktarım için kilitler. İki kullanıcı / iki çalıştırma aynı harekete fiş kesemesin diye fişten ÖNCE işaretlenir. */
@@ -258,6 +321,7 @@ export class EBankaAktarimSqlRepository {
     const req = pool.request();
     req.input("ID", sql.BigInt, vomsisId);
     const r = await req.query(`UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = 1 WHERE VOMSIS_ID = @ID AND AKTARIM_DURUMU = 0 AND BANKA_HAREKET_ID IS NULL`);
+    ebankaOzetOnbellegi.temizle(pool);
     return (r.rowsAffected[0] || 0) === 1;
   }
 
@@ -268,6 +332,7 @@ export class EBankaAktarimSqlRepository {
     req.input("FIS", sql.Int, bankaHareketId);
     req.input("CARI", sql.Int, cariKartId);
     await req.query(`UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = 1, BANKA_HAREKET_ID = @FIS, CARI_KART_ID = @CARI WHERE VOMSIS_ID = @ID`);
+    ebankaOzetOnbellegi.temizle(pool);
   }
 
   /** Fiş kesilemediyse kilit geri alınır. */
@@ -276,6 +341,7 @@ export class EBankaAktarimSqlRepository {
     const req = pool.request();
     req.input("ID", sql.BigInt, vomsisId);
     await req.query(`UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = 0 WHERE VOMSIS_ID = @ID AND BANKA_HAREKET_ID IS NULL`);
+    ebankaOzetOnbellegi.temizle(pool);
   }
 
   /** Bekliyor ↔ aktarılmayacak. Fişi olan (aktarılmış) harekete dokunmaz. */
@@ -289,6 +355,7 @@ export class EBankaAktarimSqlRepository {
       UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = @DURUM
       WHERE VOMSIS_ID IN (${idler.join(",")}) AND AKTARIM_DURUMU IN (0, 2) AND BANKA_HAREKET_ID IS NULL
     `);
+    ebankaOzetOnbellegi.temizle(pool);
     return r.rowsAffected[0] || 0;
   }
 
@@ -302,6 +369,7 @@ export class EBankaAktarimSqlRepository {
       FROM TODVZ_EBANKA_HAREKET t JOIN TODVZ_EBANKA_HAREKET_TIPI p ON p.TIP_KODU = t.TIP_KODU
       WHERE t.AKTARIM_DURUMU = 0 AND t.BANKA_HAREKET_ID IS NULL AND p.KURAL = 2 AND t.SISTEM_TARIHI >= @BAS
     `);
+    ebankaOzetOnbellegi.temizle(pool);
     return r.rowsAffected[0] || 0;
   }
 

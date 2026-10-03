@@ -1,7 +1,7 @@
 import sql from "mssql";
 import { logger } from "../utils/logger.js";
 import { AktarimAdayi, TipKurali } from "./ebankaAktarimSql.repository.js";
-import { DbContext } from "./ebankaSql.repository.js";
+import { DbContext, ebankaOzetOnbellegi } from "./ebankaSql.repository.js";
 import { EBankaVeriSqlRepository } from "./ebankaVeriSql.repository.js";
 
 // F- e-Banka > Tahsilat / Ödeme Mutabakatı (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md)
@@ -248,12 +248,14 @@ export class EBankaMutabakatSqlRepository {
       parcalar.push(`
         SELECT 'sarraf' AS FIS_TURU, f.SARRAF_FISI_ID AS FIS_ID, LTRIM(RTRIM(CAST(f.FIS_NO AS VARCHAR(50)))) AS FIS_NO, f.TARIH, f.CARI_KART_ID, ${cariAd} AS CARI_ADI,
                CASE WHEN f.TIP = 0 THEN 'giden' ELSE 'gelen' END AS YON,
-               CAST(ISNULL(NULLIF((SELECT SUM(o.TUTAR) FROM TODVZ_ODEME_SATIRI o WHERE o.SARRAF_FISI_ID = f.SARRAF_FISI_ID), 0),
-                           (SELECT SUM(s.TUTAR) FROM TODVZ_SARRAF_FISI_SATIRI s WHERE s.SARRAF_FISI_ID = f.SARRAF_FISI_ID)) AS DECIMAL(18,2)) AS TUTAR,
-               CAST(ISNULL((SELECT SUM(s.TUTAR) FROM TODVZ_SARRAF_FISI_SATIRI s WHERE s.SARRAF_FISI_ID = f.SARRAF_FISI_ID), 0) AS DECIMAL(18,2)) AS FIS_TOPLAMI,
+               CAST(ISNULL(NULLIF(os.TOPLAM, 0), ss.TOPLAM) AS DECIMAL(18,2)) AS TUTAR,
+               CAST(ISNULL(ss.TOPLAM, 0) AS DECIMAL(18,2)) AS FIS_TOPLAMI,
                CASE WHEN f.TIP = 0 THEN CASE WHEN ${gelenFatura("f.TARIH")} THEN 1 ELSE 0 END
                     ELSE CASE WHEN ${gidenGonderildi(0, "f.SARRAF_FISI_ID")} THEN 1 ELSE 0 END END AS FATURALI
         FROM TODVZ_SARRAF_FISI f ${cariJoin("f.CARI_KART_ID")}
+        -- Satır toplamı bir kez hesaplanır (TUTAR ve FIS_TOPLAMI ikisi de kullanır)
+        OUTER APPLY (SELECT SUM(o.TUTAR) AS TOPLAM FROM TODVZ_ODEME_SATIRI o WHERE o.SARRAF_FISI_ID = f.SARRAF_FISI_ID) os
+        OUTER APPLY (SELECT SUM(s.TUTAR) AS TOPLAM FROM TODVZ_SARRAF_FISI_SATIRI s WHERE s.SARRAF_FISI_ID = f.SARRAF_FISI_ID) ss
         WHERE ${kosul("sarraf", "f.SARRAF_FISI_ID", "f.CARI_KART_ID", "f.TARIH")}`);
     }
     if (await this.var(pool, "TODVZ_FATURA")) {
@@ -339,6 +341,31 @@ export class EBankaMutabakatSqlRepository {
     `);
   }
 
+  /**
+   * Otomatik eşleşmelerin toplu yazımı: esle(..., otomatik: true) ile aynı sonuç. Otomatik eşleme var olan (reddedilmiş dahil)
+   * kaydı değiştirmez, yalnız olmayanı ekler.
+   */
+  public static async otomatikEsleToplu(eslesmeler: { vomsisId: number; fisTuru: FisTuru; fisId: number }[], kullaniciId?: number, dbContext?: DbContext): Promise<void> {
+    if (!eslesmeler.length) return;
+    const pool = await this.pool(dbContext);
+    // 3 parametre x 600 = 1800 (sınır 2100)
+    for (let i = 0; i < eslesmeler.length; i += 600) {
+      const req = pool.request();
+      req.input("KUL", sql.Int, kullaniciId ?? null);
+      const satirlar = eslesmeler.slice(i, i + 600).map((e, j) => {
+        req.input(`I${j}`, sql.BigInt, e.vomsisId);
+        req.input(`T${j}`, sql.VarChar(10), e.fisTuru);
+        req.input(`F${j}`, sql.Int, e.fisId);
+        return `(@I${j}, @T${j}, @F${j})`;
+      });
+      await req.query(`
+        INSERT INTO TODVZ_EBANKA_MUTABAKAT (VOMSIS_ID, FIS_TURU, FIS_ID, OTOMATIK, EKLEYEN_ID)
+        SELECT DISTINCT v.ID, v.TUR, v.FIS, 1, @KUL FROM (VALUES ${satirlar.join(", ")}) v (ID, TUR, FIS)
+        WHERE NOT EXISTS (SELECT 1 FROM TODVZ_EBANKA_MUTABAKAT m WHERE m.VOMSIS_ID = v.ID AND m.FIS_TURU = v.TUR AND m.FIS_ID = v.FIS)
+      `);
+    }
+  }
+
   public static async eslemeyiKaldir(vomsisId: number, fisTuru: FisTuru, fisId: number, dbContext?: DbContext): Promise<number> {
     const pool = await this.pool(dbContext);
     const req = pool.request();
@@ -400,6 +427,7 @@ export class EBankaMutabakatSqlRepository {
       UPDATE TODVZ_EBANKA_HAREKET SET AKTARIM_DURUMU = @YENI
       WHERE VOMSIS_ID = @ID AND AKTARIM_DURUMU = @ESKI AND (@ESKI = 2 OR BANKA_HAREKET_ID IS NULL)
     `);
+    ebankaOzetOnbellegi.temizle(pool);
     return (r.rowsAffected[0] || 0) === 1;
   }
 

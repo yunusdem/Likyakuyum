@@ -1,6 +1,6 @@
 import { UrunStokSqlRepository, type UrunStokFiltre, type UrunStokSatirHam, type UrunStokTipi } from "../models/urunStokSql.repository.js";
 import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
-import { kurCoz, kurTarihte } from "./rapor/raporOrtak.js";
+import { kurCoz, kurTarihlerde } from "./rapor/raporOrtak.js";
 import { raporPdf } from "./rapor/raporMotor.js";
 import { raporExcel } from "./rapor/raporExcel.js";
 import type { RaporKolon, RaporTanim, RaporFirma } from "./rapor/raporTanim.js";
@@ -103,12 +103,8 @@ export class UrunStokService {
       return m.get(id) || 0;
     };
 
-    // Satış günlerinin kurları (gün başına tek sorgu)
-    const gunKurlari = new Map<string, Map<number, number>>();
-    for (const r of ham) {
-      const g = gun(r.SATIS_TARIHI);
-      if (g && !gunKurlari.has(g)) gunKurlari.set(g, await kurTarihte(pool, g));
-    }
+    // Satış günlerinin kurları (tüm günler tek sorguda)
+    const gunKurlari = await kurTarihlerde(pool, ham.map((r) => gun(r.SATIS_TARIHI)).filter((g): g is string => !!g));
 
     const satirlar = ham.map((r) => this.satirYap(r, varsayilan, guncel.kurlar, gunKurlari, kurOf, tlId));
     const ozet = this.ozetYap(satirlar, varsayilan);

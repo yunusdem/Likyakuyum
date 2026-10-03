@@ -218,7 +218,8 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
     // devir değeri (devir günü kuruyla), kapanış / açılış evalüasyonu (aynı devrin bugünkü kurla değeri − devir günü kuruyla değeri), devreden değeri ve toplam net kâr / zarar.
     // Varlık = vezne mevcudu + cari alacaklarımız − cari borçlarımız. Borç / alacak net harekettir (eski yordam brüt veriyor olabilir — canlıda karşılaştırılacak).
     const net = async (gun: string) => { const m = new Map<string, { paraId: number; paraKod: string; miktar: number }>();
-      for (const v of await vezneBakiyeleri(pool, gun, p)) { if (!paraUygun(Number(v.paraId))) continue; const o = m.get(v.paraKod) || { paraId: Number(v.paraId), paraKod: v.paraKod, miktar: 0 }; o.miktar += Number(v.miktar) || 0; m.set(v.paraKod, o); }
+      // Seçilen günün vezne bakiyeleri yukarıda zaten okundu (aynı sorgu); yalnız devir günü için yeniden çalıştırılır
+      for (const v of gun === p.tarih ? vezneler : await vezneBakiyeleri(pool, gun, p)) { if (!paraUygun(Number(v.paraId))) continue; const o = m.get(v.paraKod) || { paraId: Number(v.paraId), paraKod: v.paraKod, miktar: 0 }; o.miktar += Number(v.miktar) || 0; m.set(v.paraKod, o); }
       const c = await pool.request().input("t", sql.Date, gun).query(`${ch} SELECT CH.paraId, RTRIM(P.KOD) paraKod, SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE -CH.meblag END) net
         FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD`);
       for (const r of c.recordset) { if (!paraUygun(Number(r.paraId))) continue; const o = m.get(r.paraKod) || { paraId: Number(r.paraId), paraKod: r.paraKod, miktar: 0 }; o.miktar += Number(r.net) || 0; m.set(r.paraKod, o); }

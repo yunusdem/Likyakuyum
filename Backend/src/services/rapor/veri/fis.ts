@@ -1,7 +1,7 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
-import { type RaporParametreler, FIS_USD_KURU_SQL, adetOzeti, aralikOzeti, filtreler, idFiltre, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
+import { type RaporParametreler, FIS_USD_KOLON_SQL, adetOzeti, usdKuruCozucu, aralikOzeti, filtreler, idFiltre, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 
 /**
  * Fiş raporları (docs/raporlar-faz2.md, Faz R2-F) — yalnızca SELECT. Kaynak TODVZ_FIS + TODVZ_FIS_SATIRI; iptal fişler hariç.
@@ -169,12 +169,13 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
         CASE WHEN NULLIF(RTRIM(F.VERGI_KIMLIK_NO),'') IS NULL AND NULLIF(RTRIM(F.PASAPORT_NO),'') IS NOT NULL THEN 1 ELSE 0 END pasaport,
         RTRIM(ISNULL(F.UNVAN,'')) unvan, RTRIM(ISNULL(F.VERGI_KIMLIK_NO,'')) vergiNo, RTRIM(ISNULL(F.PASAPORT_NO,'')) pasaportNo, RTRIM(ISNULL(VD.AD,'')) vergiDairesi,
         F.TIP tipKod, ISNULL(F.ZAMAN,F.TARIH) zaman, RTRIM(ISNULL(F.SERI_NO,'')) seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
-        ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, ISNULL(S.BMV,0) bmv, ISNULL(S.KMV,0) kmv, ISNULL(S.KOMISYON,0) komisyon, ${FIS_USD_KURU_SQL} usdKuru
+        ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, ISNULL(S.BMV,0) bmv, ISNULL(S.KMV,0) kmv, ISNULL(S.KOMISYON,0) komisyon, ${FIS_USD_KOLON_SQL}
       FROM ${SATIR_JOIN} LEFT JOIN dbo.TODVZ_TABLO_MADDESI VD ON VD.TABLO_MADDESI_ID=F.VERGI_DAIRESI_ID
       WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip)
         AND (@arama IS NULL OR F.VERGI_KIMLIK_NO LIKE @arama OR F.PASAPORT_NO LIKE @arama OR F.UNVAN LIKE @arama) ${f}
       ORDER BY F.TARIH, F.SERI_NO, F.FIS_ID, S.SATIR_NO;`);
-    const ham = res.recordset.map((r: any) => { const miktar = Number(r.miktar) || 0, tutar = Number(r.tutar) || 0, usdKuru = Number(r.usdKuru) || 0; const no = String(r.kimlikNo || "");
+    const usdKuruBul = await usdKuruCozucu(pool, res.recordset);
+    const ham = res.recordset.map((r: any) => { const miktar = Number(r.miktar) || 0, tutar = Number(r.tutar) || 0, usdKuru = Number(usdKuruBul(r)) || 0; const no = String(r.kimlikNo || "");
       const tur = !no ? "" : r.pasaport ? "Pasaport" : no.length === 11 ? "TCKN" : "VKN";
       return { ...r, tip: tipAdi(r.tipKod), miktar, tutar, kur: Number(r.kur) || 0, usdKuru, bmv: Number(r.bmv), kmv: Number(r.kmv), komisyon: Number(r.komisyon),
         usdKarsiligi: String(r.paraKod).toUpperCase() === "USD" ? miktar : usdKuru > 0 ? tutar / usdKuru : 0, cins: "D",

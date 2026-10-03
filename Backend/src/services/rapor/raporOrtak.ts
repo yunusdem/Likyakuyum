@@ -64,6 +64,57 @@ export const FIS_USD_KURU_SQL = `(CASE WHEN ISNULL(F.GISE_USD_KURU,0) NOT IN (0,
         AND (CASE WHEN F.TIP=0 THEN COALESCE(NULLIF(UK.EFEKTIF_ALIS,0),UK.DOVIZ_ALIS) ELSE COALESCE(NULLIF(UK.EFEKTIF_SATIS,0),UK.DOVIZ_SATIS) END)>0
       ORDER BY UT.TARIH DESC, UT.KUR_TABLOSU_ID DESC)),0) END)`;
 
+/** FIS_USD_KURU_SQL'in kur tablosu adımı (F: TIP, TARIH); usdKuruCozucu az sayıda gün için bunu gün başına bir kez çalıştırır. */
+const USD_TABLO_KURU_SQL = `(SELECT TOP 1 CASE WHEN F.TIP=0 THEN COALESCE(NULLIF(UK.EFEKTIF_ALIS,0),UK.DOVIZ_ALIS) ELSE COALESCE(NULLIF(UK.EFEKTIF_SATIS,0),UK.DOVIZ_SATIS) END
+      FROM dbo.TODVZ_KUR UK JOIN dbo.TODVZ_KUR_TABLOSU UT ON UT.KUR_TABLOSU_ID=UK.KUR_TABLOSU_ID
+      WHERE UK.PARA_ID=${USD_PARA_SQL} AND CAST(UT.TARIH AS date)<=CAST(F.TARIH AS date)
+        AND (CASE WHEN F.TIP=0 THEN COALESCE(NULLIF(UK.EFEKTIF_ALIS,0),UK.DOVIZ_ALIS) ELSE COALESCE(NULLIF(UK.EFEKTIF_SATIS,0),UK.DOVIZ_SATIS) END)>0
+      ORDER BY UT.TARIH DESC, UT.KUR_TABLOSU_ID DESC)`;
+/**
+ * FIS_USD_KURU_SQL'in hızlı karşılığı: SQL yalnızca fişin kendi alanlarını getirir (aşağıdaki kolonlar, F = TODVZ_FIS), kur tablosu adımı
+ * `usdKuruCozucu` ile fiş satırı başına değil, (alış/satış, gün) çifti başına bir kez çözülür. Sonuç FIS_USD_KURU_SQL ile birebir aynıdır.
+ */
+export const FIS_USD_KOLON_SQL = `F.GISE_USD_KURU usdGise, F.TIP usdTip, CONVERT(char(10), CAST(F.TARIH AS date), 23) usdGun,
+    (SELECT TOP 1 US.KUR FROM dbo.TODVZ_FIS_SATIRI US WHERE US.FIS_ID=F.FIS_ID AND US.PARA_ID=${USD_PARA_SQL} AND ISNULL(US.KUR,0)>0 ORDER BY US.SATIR_NO) usdSatirKur`;
+/** Bu kadar (alış/satış, gün) çiftine kadar kur tablosu adımı çift başına SQL'de; fazlasında USD kur geçmişi bir kez okunup ikili aramayla eşlenir. */
+const USD_GUN_SINIRI = 60;
+/** FIS_USD_KOLON_SQL kolonlarından fişin USD kurunu bulan fonksiyon; yardımcı kolonları silip eski sorgudaki `usdKuru` alanını yazar. */
+export async function usdKuruCozucu(pool: sql.ConnectionPool, satirlar: any[]) {
+  // F.TIP=0 → alış (0), diğer her şey (NULL dahil) → satış (1): FIS_USD_KURU_SQL'deki CASE ile aynı
+  const tur = (r: any) => (r.usdTip != null && Number(r.usdTip) === 0 ? 0 : 1);
+  const giseOf = (r: any) => (r.usdGise == null ? 0 : Number(r.usdGise));
+  const ciftler = new Map<string, { tur: number; gun: string }>();
+  for (const r of satirlar) { const g = giseOf(r); if ((g === 0 || g === 1) && r.usdSatirKur == null && r.usdGun != null) ciftler.set(`${tur(r)}|${r.usdGun}`, { tur: tur(r), gun: String(r.usdGun) }); }
+  const tabloKuru = new Map<string, number>();
+  if (ciftler.size && ciftler.size <= USD_GUN_SINIRI) {
+    const liste = [...ciftler.values()], req = pool.request();
+    liste.forEach((c, i) => req.input(`ut${i}`, sql.TinyInt, c.tur).input(`ug${i}`, sql.Date, c.gun));
+    const r = await req.query(`SELECT F.N n, ${USD_TABLO_KURU_SQL} kur FROM (VALUES ${liste.map((_, i) => `(${i},@ut${i},@ug${i})`).join(",")}) F(N, TIP, TARIH)`);
+    for (const x of r.recordset) tabloKuru.set(`${liste[Number(x.n)].tur}|${liste[Number(x.n)].gun}`, x.kur == null ? 0 : Number(x.kur));
+  } else if (ciftler.size) {
+    // Sıra FIS_USD_KURU_SQL'deki TOP 1 sırasıyla aynı: TARIH DESC, KUR_TABLOSU_ID DESC; kuru > 0 olmayanlar o tür için atlanır
+    const r = await pool.request().query(`
+      SELECT CONVERT(char(10), CAST(UT.TARIH AS date), 23) gun, COALESCE(NULLIF(UK.EFEKTIF_ALIS,0),UK.DOVIZ_ALIS) alis, COALESCE(NULLIF(UK.EFEKTIF_SATIS,0),UK.DOVIZ_SATIS) satis
+      FROM dbo.TODVZ_KUR UK JOIN dbo.TODVZ_KUR_TABLOSU UT ON UT.KUR_TABLOSU_ID=UK.KUR_TABLOSU_ID
+      WHERE UK.PARA_ID=${USD_PARA_SQL}
+      ORDER BY UT.TARIH DESC, UT.KUR_TABLOSU_ID DESC`);
+    const listeler = (["alis", "satis"] as const).map(a => r.recordset.filter((x: any) => x[a] != null && Number(x[a]) > 0).map((x: any) => ({ gun: String(x.gun), kur: Number(x[a]) })));
+    for (const [k, c] of ciftler) {
+      // Gün azalan sırada: "gün <= fiş günü" olan ilk kayıt ikili aramayla
+      const l = listeler[c.tur]; let a = 0, b = l.length;
+      while (a < b) { const o = (a + b) >> 1; if (l[o].gun > c.gun) a = o + 1; else b = o; }
+      tabloKuru.set(k, a < l.length ? l[a].kur : 0);
+    }
+  }
+  return (r: any): number => {
+    const g = giseOf(r);
+    const k = g !== 0 && g !== 1 ? g : r.usdSatirKur != null ? Number(r.usdSatirKur) : r.usdGun == null ? 0 : tabloKuru.get(`${tur(r)}|${r.usdGun}`) ?? 0;
+    delete r.usdGise; delete r.usdSatirKur; delete r.usdTip; delete r.usdGun;
+    r.usdKuru = k;
+    return k;
+  };
+}
+
 /** Kur tablosu: kurTuru 0 = anlık gişe (en son), 2 = saklanan (kurTarihi'ne eşit/önceki en yakın gün). */
 export async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler) {
   const tur = p.kurTuru === 2 ? 2 : 0;
@@ -100,6 +151,30 @@ export async function kurTarihte(pool: sql.ConnectionPool, tarih: string) {
   const m = new Map<number, number>(r.recordset.map((x: any) => [Number(x.id), Number(x.kur) || 0]));
   m.set(Number((await pool.request().query(`SELECT ${TL_PARA_SQL} id`)).recordset[0]?.id || 1), 1);
   return m;
+}
+
+/** kurTarihte'nin çok günlük hali: her gün için aynı harita, ama gün başına sorgu yerine tek sorgu (1000 günlük parçalar). YYYY-AA-GG olmayan gün kurTarihte'ye düşer. */
+export async function kurTarihlerde(pool: sql.ConnectionPool, gunler: Iterable<string>) {
+  const sonuc = new Map<string, Map<number, number>>();
+  const tumu = [...new Set(gunler)];
+  const gecerli = tumu.filter(g => /^\d{4}-\d{2}-\d{2}$/.test(g));
+  for (const g of tumu) if (!gecerli.includes(g)) sonuc.set(g, await kurTarihte(pool, g));
+  if (!gecerli.length) return sonuc;
+  const tlId = Number((await pool.request().query(`SELECT ${TL_PARA_SQL} id`)).recordset[0]?.id || 1);
+  for (let i = 0; i < gecerli.length; i += 1000) {
+    const parca = gecerli.slice(i, i + 1000);
+    const req = pool.request();
+    parca.forEach((g, j) => req.input(`g${j}`, sql.Date, g));
+    const r = await req.query(`
+      SELECT G.n, K.PARA_ID id, COALESCE(NULLIF(K.EFEKTIF_ALIS,0),K.DOVIZ_ALIS) kur
+      FROM (VALUES ${parca.map((_, j) => `(${j},@g${j})`).join(",")}) G(n, t)
+      CROSS APPLY (SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T WHERE CAST(T.TARIH AS date)<=G.t ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC) X
+      JOIN dbo.TODVZ_KUR K ON K.KUR_TABLOSU_ID=X.KUR_TABLOSU_ID`);
+    const haritalar = parca.map(() => new Map<number, number>());
+    for (const x of r.recordset) haritalar[Number(x.n)].set(Number(x.id), Number(x.kur) || 0);
+    parca.forEach((g, j) => { haritalar[j].set(tlId, 1); sonuc.set(g, haritalar[j]); });
+  }
+  return sonuc;
 }
 
 /** Seçilen (hedef) paraya çevrim: TL karşılığı ÷ hedef paranın kuru; hedef boş ya da TL ise TL karşılığının kendisi. Eski raporlardaki SECILEN_* alanlarının karşılığı. */
