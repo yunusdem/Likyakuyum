@@ -91,6 +91,7 @@ export const surumYayinla = async (s: YayinSecenekleri): Promise<YayinSonucu> =>
         cwd: be,
         shell: true,
         encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
       });
       if (r.status !== 0) throw new Error(`npm ci başarısız: ${(r.stderr || r.stdout || "").slice(-800)}`);
       fs.rmSync(path.join(be, "package-lock.json"), { force: true });

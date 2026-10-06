@@ -61,7 +61,7 @@ export const kurulumPaketiHazirla = async (s: {
   const r = spawnSync(
     "powershell.exe",
     ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${path.join(hazirlik, "uygulama").replace(/'/g, "''")}' -Force`],
-    { encoding: "utf8" }
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
   );
   if (r.status !== 0) throw new Error(`Paket açılamadı: ${r.stderr || r.stdout}`);
   if (!fs.existsSync(path.join(hazirlik, "uygulama", "backend", "BUTUNLUK.json"))) throw new Error("Paket eksik: backend\\BUTUNLUK.json yok.");
@@ -98,8 +98,13 @@ const main = async () => {
   fs.mkdirSync(cikti, { recursive: true });
   console.log("  Kurulum exe'si derleniyor (birkaç dakika)…");
   const iss = path.resolve(backendKok, "..", "kurulum", "LikyaKuyum.iss");
-  const r = spawnSync(iscc, [`/DSurum=${surum}`, `/DKaynak=${hazirlik}`, `/DCikti=${cikti}`, iss], { encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`ISCC başarısız: ${(r.stdout || "").slice(-1500)} ${r.stderr || ""}`);
+  // /Q: yalnız uyarı ve hatalar yazılır (her dosya için "Compressing:" satırı varsayılan 1 MB tamponu taşırıp süreci öldürüyordu)
+  const r = spawnSync(iscc, ["/Q", `/DSurum=${surum}`, `/DKaynak=${hazirlik}`, `/DCikti=${cikti}`, iss], {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (r.error) throw new Error(`ISCC çalıştırılamadı: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`ISCC başarısız (kod ${r.status}): ${(r.stderr || "").slice(-2000)} ${(r.stdout || "").slice(-2000)}`);
   fs.writeFileSync(path.join(cikti, "SURUM"), surum, "utf8");
   fs.rmSync(hazirlik, { recursive: true, force: true });
   console.log(`\n  TAMAM: ${path.join(cikti, "LikyaKuyumKurulum.exe")} (sürüm ${surum})\n`);
