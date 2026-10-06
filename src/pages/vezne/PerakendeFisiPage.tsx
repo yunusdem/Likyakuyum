@@ -106,6 +106,7 @@ interface CartLineItem {
   gram: number | string;
   hasGram: number | string;
   birimFiyat: number | string;
+  kur?: number | string;
   tutar: number | string;
   kdvOrani: number | string;
   kdvTutari: number | string;
@@ -159,6 +160,7 @@ const GRID_COLS = [
   "gram",
   "hasGram",
   "birimFiyat",
+  "kur",
   "kdvOrani",
 ] as const;
 type GridColKey = typeof GRID_COLS[number];
@@ -190,6 +192,7 @@ const createEmptyRow = (): CartLineItem => ({
   gram: "",
   hasGram: "",
   birimFiyat: "",
+  kur: "",
   tutar: "",
   kdvOrani: 0,
   kdvTutari: "",
@@ -275,15 +278,21 @@ export const isAltinOrGumusRow = (row?: Partial<OdemeRow> | null, customList?: U
 
 const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
   if (!row) return true;
-  const hasSpecialKod = Boolean(
-    (row.paraKodu && row.paraKodu.trim() !== "" && row.paraKodu.toUpperCase() !== "TL" && row.paraKodu.toUpperCase() !== "TRY") ||
-    (row.paraAdi && row.paraAdi.trim() !== "" && row.paraAdi.toUpperCase() !== "TÜRK LİRASI" && row.paraAdi.toUpperCase() !== "TURK LIRASI")
-  );
+  const hasParaKodu = Boolean(row.paraKodu && String(row.paraKodu).trim());
+  const hasParaAdi = Boolean(row.paraAdi && String(row.paraAdi).trim());
+  const hasCariKod = Boolean(row.cariKod && String(row.cariKod).trim());
   const hasAdet = Boolean(row.adet !== "" && row.adet !== null && Number(row.adet) > 0);
   const hasMiktar = Boolean(row.miktar !== "" && row.miktar !== null && Number(row.miktar) > 0);
-  const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && Number(row.tutar) > 0);
+  const hasMilyem = Boolean(row.milyem !== "" && row.milyem !== null && Number(row.milyem) > 0);
   const hasHasGram = Boolean(row.hasGram !== "" && row.hasGram !== null && Number(row.hasGram) > 0);
-  return !hasSpecialKod && !hasAdet && !hasMiktar && !hasTutar && !hasHasGram;
+  const hasKur = Boolean(row.kur !== "" && row.kur !== null && Number(row.kur) > 0);
+  const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && Number(row.tutar) > 0);
+  const hasCari = Boolean(row.cariKartId);
+  const hasBanka = Boolean(row.bankaId);
+  const hasParaId = Boolean(row.paraId);
+  const hasModifiedTur = row.odemeAraciTuru !== 0 && row.odemeAraciTuru !== undefined;
+
+  return !hasParaKodu && !hasParaAdi && !hasCariKod && !hasAdet && !hasMiktar && !hasMilyem && !hasHasGram && !hasKur && !hasTutar && !hasCari && !hasBanka && !hasParaId && !hasModifiedTur;
 };
 
 const isPerakendeRowFilled = (row?: CartLineItem): boolean => {
@@ -311,6 +320,8 @@ export const isAnonymousCustomerName = (val?: string | null): boolean => {
     s.includes("BEYAN EDILME")
   );
 };
+
+export const DEFAULT_CUSTOMER_NAME = "İsim beyan edilmemiştir";
 
 export function detectScenario(
   identValue: string,
@@ -518,9 +529,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   }, [posCihazlari, bankaHesaplari]);
 
   // Customer State
-  const [aliciVknTckn, setAliciVknTckn] = useState<string>("11111111111");
+  const [aliciVknTckn, setAliciVknTckn] = useState<string>("");
   const [cariKod, setCariKod] = useState<string>("");
-  const [aliciUnvan, setAliciUnvan] = useState<string>("NİHAİ TÜKETİCİ");
+  const [aliciUnvan, setAliciUnvan] = useState<string>(DEFAULT_CUSTOMER_NAME);
   const [cariKartId, setCariKartId] = useState<number | null>(null);
   const [adres, setAdres] = useState<string>("");
   const [ilce, setIlce] = useState<string>("");
@@ -528,65 +539,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [vergiDairesi, setVergiDairesi] = useState<string>("");
   const [telefon, setTelefon] = useState<string>("");
   const [eposta, setEposta] = useState<string>("");
-
-  // E-Belge / GİB Mükellefiyet Kontrolü (TCKN / VKN Sorgulama)
-  const checkAndApplyMukellefiyet = useCallback(async (vknTckn: string, currentUnvan?: string, fallbackSenaryo?: string) => {
-    const clean = (vknTckn || "").replace(/\D/g, "");
-    if (!clean || clean === "11111111111" || clean === "2222222222") {
-      setSenaryo("EARSIVFATURA");
-      return "EARSIVFATURA";
-    }
-
-    // Pasaport / Yabancı kontrolü
-    if (vknTckn.toUpperCase().startsWith("P:") || vknTckn.toUpperCase().startsWith("PAS:") || (clean.length >= 6 && clean.length <= 9 && /[A-Za-z]/.test(vknTckn))) {
-      setSenaryo("YOLCUBERABERFATURA");
-      return "YOLCUBERABERFATURA";
-    }
-
-    if (clean.length === 10 || clean.length === 11) {
-      try {
-        const res = await ebelgeService.mukellefSorgula(clean);
-        if (res && res.mukellefMi) {
-          // E-Fatura Mükellefi -> Doğrudan e-Fatura (TICARIFATURA)
-          setSenaryo("TICARIFATURA");
-          const foundTitle = (res.kullanicilar?.[0]?.Title || "").trim();
-          if (foundTitle) {
-            setAliciUnvan(foundTitle);
-            lastFocusedUnvanRef.current = foundTitle;
-          }
-          // ICE / e-Fatura kayıtlı adreslerini de getir
-          try {
-            const adrRes = await ebelgeService.aliciAdresleri(clean);
-            if (Array.isArray(adrRes) && adrRes.length > 0) {
-              const firstAdres = adrRes[0];
-              const combinedAdres = [firstAdres.adres, firstAdres.ilce, firstAdres.il].filter(Boolean).join(" ");
-              if (combinedAdres) {
-                setDetayAdres(combinedAdres);
-              }
-              if (firstAdres.vergiDairesi) {
-                setVergiDairesi(firstAdres.vergiDairesi);
-              }
-            }
-          } catch { }
-
-          showInfo(`✅ e-Fatura Mükellefi (${foundTitle || clean}) bilgileri getirildi → Senaryo: e-Fatura`);
-          return "TICARIFATURA";
-        } else {
-          // E-Fatura Mükellefi değil -> e-Arşiv (EARSIVFATURA)
-          setSenaryo("EARSIVFATURA");
-          return "EARSIVFATURA";
-        }
-      } catch (err) {
-        console.warn("Mükellef sorgulama hatası:", err);
-        const auto = detectScenario(vknTckn, undefined, currentUnvan);
-        setSenaryo(auto);
-        return auto;
-      }
-    }
-    const auto = detectScenario(vknTckn, undefined, currentUnvan);
-    setSenaryo(auto);
-    return auto;
-  }, [showInfo]);
 
   // Cart & Grid State
   const [items, setItems] = useState<CartLineItem[]>([createEmptyRow()]);
@@ -1003,7 +955,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       setKurMap(mergedKurMap);
       const allKurList = Array.from(mergedKurMap.values());
       const hasKurItem = allKurList.find((k) => ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()));
-      const rate = hasKurItem ? Number(hasKurItem.dovizAlis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifSatis) || 0 : 0;
+      const rate = hasKurItem
+        ? (faturaTipi === 0
+            ? Number(hasKurItem.efektifAlis ?? hasKurItem.dovizAlis ?? hasKurItem.efektifSatis ?? hasKurItem.dovizSatis) || 0
+            : Number(hasKurItem.efektifSatis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizAlis) || 0)
+        : 0;
       if (rate > 0) {
         setAltinHasKuru(rate);
       }
@@ -1092,6 +1048,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       gram: line.gram === "" ? "" : (parseDecimal(line.gram) || 0),
       hasGram: line.hasGram === "" ? "" : (parseDecimal(line.hasGram) || 0),
       birimFiyat: line.birimFiyat === "" ? "" : birimFiyat,
+      kur: line.kur === "" ? "" : (line.kur !== undefined && line.kur !== null ? line.kur : ""),
       tutar: tutar > 0 ? tutar : (line.tutar === "" ? "" : 0),
       kdvOrani: line.kdvOrani === "" ? "" : kdvOrani,
       kdvTutari: kdvTutari > 0 ? kdvTutari : (line.kdvTutari === "" ? "" : 0),
@@ -1199,6 +1156,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     satisFiyati?: number;
     kdvOrani?: number;
   }) => {
+    const autoKur = altinHasKuru > 0 ? altinHasKuru : 1;
     const populated = recalculateLine({
       altinUrunId: product.altinUrunId ?? null,
       barkod: product.barkod,
@@ -1209,6 +1167,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       gram: product.gram || 0,
       hasGram: product.hasGram || 0,
       birimFiyat: product.satisFiyati || 0,
+      kur: autoKur,
       kdvOrani: product.kdvOrani ?? 0,
     });
 
@@ -1260,6 +1219,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     let gram = 0;
     let hasGram = 0;
     let birimFiyat = 0;
+    let itemKur: number | string = 1;
 
     if (item.tip === "para") {
       const rawPara = item.item as UrunItem;
@@ -1271,8 +1231,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       gram = Number(rawPara.gramaj) || (isGramType ? 1 : 0);
       hasGram = Number(rawPara.hasOrani) || 0;
 
-      const kur = getKurForProduct(rawPara, faturaTipi === 2 ? 0 : 1);
-      birimFiyat = Number(rawPara.satisFiyati) || (kur > 0 ? kur : 0);
+      const isTL = (rawPara.kod || "").toUpperCase() === "TL" || (rawPara.kod || "").toUpperCase() === "TRY";
+      if (isTL) {
+        itemKur = 1;
+      } else {
+        const k = getKurForProduct(rawPara, faturaTipi === 0 ? 0 : 1);
+        itemKur = k > 0 ? k : 1;
+      }
+      birimFiyat = Number(rawPara.satisFiyati) || (Number(itemKur) > 0 ? Number(itemKur) : 0);
     } else {
       const raw = item.item as AltinUrunItem | OzelUrunItem;
       barcode = raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`;
@@ -1286,6 +1252,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       ayar = raw.ayar || "14K";
       birim = (raw as any).birim || "Adet";
       birimFiyat = Number(raw.satisFiyati) || 0;
+      itemKur = altinHasKuru > 0 ? altinHasKuru : 1;
     }
 
     const targetRowId = activeProductRowIdRef.current || activeProductRowId || lastProductRowIdRef.current;
@@ -1319,6 +1286,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         gram,
         hasGram,
         birimFiyat,
+        kur: itemKur,
         kdvOrani: 0,
       });
 
@@ -1536,14 +1504,77 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   const genelToplam = Math.max(0, Math.round((brutToplam - calculatedIskontoTutari) * 100) / 100);
 
-  // Payment totals calculation
   const totalOdemeAdet = odemeRows.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
   const totalOdemeMiktar = odemeRows.reduce((s, r) => s + (parseDecimal(r.miktar) || 0), 0);
   const totalOdemeHas = odemeRows.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
   const totalOdemeTutar = odemeRows.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
 
+  const alisHas = useMemo(() => {
+    if (totalHasGrams > 0) return totalHasGrams;
+    const goldKur = Number(altinHasKuru) || 0;
+    if (genelToplam > 0 && goldKur > 0) {
+      return parseFloat((genelToplam / goldKur).toFixed(4));
+    }
+    return 0;
+  }, [totalHasGrams, genelToplam, altinHasKuru]);
+
   const farkTL = genelToplam - totalOdemeTutar;
-  const farkHas = totalHasGrams - totalOdemeHas;
+
+  const odemeHas = useMemo(() => {
+    const explicitOdemeHas = odemeRows.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
+    if (explicitOdemeHas > 0 && Math.abs(totalOdemeTutar) < 0.01) {
+      return explicitOdemeHas;
+    }
+    if (genelToplam > 0 && alisHas > 0) {
+      if (Math.abs(farkTL) < 0.01) {
+        return alisHas;
+      }
+      const ratio = totalOdemeTutar / genelToplam;
+      return parseFloat((alisHas * ratio).toFixed(4));
+    }
+    if (explicitOdemeHas > 0) return explicitOdemeHas;
+    const goldKur = Number(altinHasKuru) || 0;
+    if (totalOdemeTutar > 0 && goldKur > 0) {
+      return parseFloat((totalOdemeTutar / goldKur).toFixed(4));
+    }
+    return 0;
+  }, [odemeRows, genelToplam, alisHas, farkTL, totalOdemeTutar, altinHasKuru]);
+
+  const farkHas = useMemo(() => {
+    if (Math.abs(farkTL) < 0.01) {
+      return 0;
+    }
+    const diff = alisHas - odemeHas;
+    if (Math.abs(diff) < 0.0001) return 0;
+    return parseFloat(diff.toFixed(4));
+  }, [farkTL, alisHas, odemeHas]);
+
+  // Dinamik sütun genişlikleri
+  const odemeMiktarColWidth = useMemo(() => {
+    let maxLen = 6;
+    for (const r of odemeRows) {
+      const valStr = (r.miktar != null ? String(r.miktar) : "").trim();
+      const fmtStr = formatMiktar(r.miktar) || "";
+      const len = Math.max(valStr.length, fmtStr.length);
+      if (len > maxLen) {
+        maxLen = len;
+      }
+    }
+    return Math.max(75, Math.ceil(maxLen * 9.5 + 24));
+  }, [odemeRows]);
+
+  const linesMiktarColWidth = useMemo(() => {
+    let maxLen = 6;
+    for (const r of items) {
+      const valStr = (r.miktar != null ? String(r.miktar) : "").trim();
+      const fmtStr = formatMiktar(r.miktar) || "";
+      const len = Math.max(valStr.length, fmtStr.length);
+      if (len > maxLen) {
+        maxLen = len;
+      }
+    }
+    return Math.max(75, Math.ceil(maxLen * 9.5 + 24));
+  }, [items]);
 
   const iskontoLookupColumns: LookupColumn<IskontoItem>[] = [
     {
@@ -1654,17 +1685,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     });
   }, []);
 
-  // Boş ödeme satırlarını otomatik temizleme (İlk satır - index 0 daima korunur)
+  // Boş ödeme satırlarını otomatik temizleme
   const cleanupEmptyOdemeRows = useCallback((keepActiveIndex?: number | null) => {
     setOdemeRows((prev) => {
       if (prev.length <= 1) return prev;
       const filtered = prev.filter((r, idx) => {
-        if (idx === 0) return true; // İlk satır daima korunur
         if (typeof keepActiveIndex === "number" && idx === keepActiveIndex) return true;
         return !isOdemeRowEmpty(r);
       });
       if (filtered.length === prev.length) return prev;
-      return filtered.length > 0 ? filtered.map((r, i) => ({ ...r, satirNo: i + 1 })) : [createEmptyOdemeRow(1)];
+      const result = filtered.length > 0 ? filtered : [createEmptyOdemeRow(1)];
+      return result.map((r, idx) => ({ ...r, satirNo: idx + 1 }));
     });
   }, []);
 
@@ -1714,7 +1745,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         if (r.id !== rowId) return r;
         const isBarkodlu = Boolean((r.barkod && String(r.barkod).trim()) || r.altinUrunId);
         // Barkodlu üründe sadece miktar değiştirilebilir; diğer alanlar sabittir
-        if (isBarkodlu && (field === "gram" || field === "hasGram" || field === "ayar" || field === "birim" || field === "urunAdi" || field === "birimFiyat" || field === "kdvOrani")) {
+        if (isBarkodlu && (field === "gram" || field === "hasGram" || field === "ayar" || field === "birim" || field === "urunAdi" || field === "birimFiyat" || field === "kur" || field === "kdvOrani")) {
           return r;
         }
         let valToSet = value;
@@ -1772,6 +1803,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return;
     }
 
+    // F6 veya Shift+Delete ile satırı sil
+    if (e.key === "F6" || (e.key === "Delete" && e.shiftKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleDeleteRow(rowId);
+      const nextIdx = Math.max(0, rowIndex - 1);
+      setTimeout(() => {
+        const remaining = items.filter((r) => r.id !== rowId);
+        const targetRow = remaining[nextIdx] || remaining[0];
+        if (targetRow) {
+          focusGridCell(targetRow.id, colKey, "select");
+        }
+      }, 50);
+      return;
+    }
+
     if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
       e.preventDefault();
 
@@ -1783,6 +1830,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           PerakendeService.getProductByBarcode(val)
             .then((product) => {
               if (product) {
+                const autoKur = altinHasKuru > 0 ? altinHasKuru : 1;
                 const populated = recalculateLine({
                   ...row,
                   altinUrunId: product.altinUrunId,
@@ -1794,6 +1842,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   gram: product.gram || 0,
                   hasGram: product.hasGram || 0,
                   birimFiyat: product.satisFiyati || 0,
+                  kur: autoKur,
                   kdvOrani: product.kdvOrani ?? 0,
                 });
 
@@ -1940,6 +1989,38 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       })
     );
   }, [altinHasKuru, odemeUrunList]);
+
+  const handleAltinHasKuruChange = useCallback((val: string) => {
+    const num = parseFloat(val);
+    const cleanVal = isNaN(num) ? 0 : num;
+    setAltinHasKuru(cleanVal);
+    setOdemeRows((prev) => prev.map((r) => recomputeOdemeRow(r, cleanVal)));
+  }, [odemeUrunList]);
+
+  const handleFaturaTipiChange = useCallback((newTip: number) => {
+    setFaturaTipi(newTip);
+    const allKurList = Array.from(kurMap.values());
+    const hasKurItem = allKurList.find((k) => ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()));
+    let newHasRate = altinHasKuru;
+    if (hasKurItem) {
+      const rate = newTip === 0
+        ? Number(hasKurItem.efektifAlis ?? hasKurItem.dovizAlis ?? hasKurItem.efektifSatis ?? hasKurItem.dovizSatis) || 0
+        : Number(hasKurItem.efektifSatis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizAlis) || 0;
+      if (rate > 0) {
+        newHasRate = rate;
+        setAltinHasKuru(rate);
+      }
+    }
+    setOdemeRows((prev) => prev.map((r) => {
+      if (!r.paraKodu || r.paraKodu === "TL" || r.paraKodu === "VERESIYE") return recomputeOdemeRow(r, newHasRate);
+      const found = odemeUrunList.find((u) => u.kod.toUpperCase() === r.paraKodu.toUpperCase());
+      if (!found) return recomputeOdemeRow(r, newHasRate);
+      const effAlis = Number(found.alisMilyem) > 0 ? Number(found.alisMilyem) : (Number((found as any).hasAlisKatsayisi) > 0 ? Number((found as any).hasAlisKatsayisi) : (Number(found.hasOrani) || 1000));
+      const effSatis = Number(found.satisMilyem) > 0 ? Number(found.satisMilyem) : (Number((found as any).hasSatisKatsayisi) > 0 ? Number((found as any).hasSatisKatsayisi) : (Number(found.hasOrani) || 1000));
+      const milyemVal = newTip === 1 ? String(effAlis) : String(effSatis);
+      return recomputeOdemeRow({ ...r, milyem: milyemVal }, newHasRate);
+    }));
+  }, [kurMap, altinHasKuru, odemeUrunList]);
 
   // Helper: Ürün / Döviz / Maden için Güncel Alış/Satış Kurunu Çek
   const getKurForProduct = useCallback((
@@ -2409,6 +2490,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         updateOdemeRow(rowId, colKey as keyof OdemeRow, prevVal !== undefined && prevVal !== null ? prevVal : "");
         setTimeout(() => focusOdemeGridCell(rowId, colKey, "select"), 20);
       }
+      return;
+    }
+
+    // F6 veya Shift+Delete ile satırı sil
+    if (e.key === "F6" || (e.key === "Delete" && e.shiftKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleDeleteOdemeRow(rowId);
+      const nextIdx = Math.max(0, rowIndex - 1);
+      setTimeout(() => {
+        const remaining = odemeRows.filter((r) => r.id !== rowId);
+        const targetRow = remaining[nextIdx] || remaining[0];
+        if (targetRow) {
+          focusOdemeGridCell(targetRow.id, colKey, "select");
+        }
+      }, 50);
       return;
     }
 
@@ -3179,7 +3276,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const rawData = res.raw as any;
     const passportNo = rawData?.pasaportNo || "";
     const identVal = res.vergiKimlikNo || passportNo || "";
-    setAliciVknTckn(identVal || "11111111111");
+    setAliciVknTckn(identVal || "");
+    setDetayVknTckn(identVal || "");
     const resolvedKod = res.kod || rawData?.kod || rawData?.cariKodu || "";
     setCariKod(resolvedKod);
     setAdres(res.adres || "");
@@ -3192,7 +3290,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const autoSenaryo = (res.isMukellef || res.eFaturaPostaKutusu || rawData?.eFatura) ? "TICARIFATURA" : detectScenario(identVal, rawData, res.unvan);
     setSenaryo(autoSenaryo);
     if (identVal && identVal !== "11111111111") {
-      void checkAndApplyMukellefiyet(identVal, res.unvan, autoSenaryo);
+      ebelgeService.mukellefSorgula(identVal).then((mRes) => {
+        if (mRes && mRes.mukellefMi) {
+          setSenaryo("TICARIFATURA");
+          const firstUser = mRes.kullanicilar?.[0];
+          if (firstUser?.Alias) {
+            setEposta((prev) => prev || firstUser.Alias);
+          }
+        }
+      }).catch(() => { });
     }
 
     setOdemeRows((prev) =>
@@ -3267,7 +3373,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const activeStat = statisticList.find((s) => s.id === Number(activeStatId));
     const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
 
-    if (!isGayriResmi && res.unvan && res.unvan !== "NİHAİ TÜKETİCİ") {
+    if (!isGayriResmi && res.unvan && !isAnonymousCustomerName(res.unvan)) {
       void handleMasakQuery(res.unvan, res.vergiKimlikNo);
     } else {
       setMasakResult({ matches: [], searched: false });
@@ -3278,13 +3384,256 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const isMissingInfo =
         !cleanVkn ||
         cleanVkn === "11111111111" ||
-        res.unvan.trim().toUpperCase() === "NİHAİ TÜKETİCİ" ||
+        isAnonymousCustomerName(res.unvan) ||
         !res.adres?.trim();
       if (isMissingInfo) {
         setShowMasakLimitWarningModal(true);
       }
     }
   };
+
+  // E-Belge / GİB / Cari / Kayıtsız Müşteri TCKN/VKN Sorgulama
+  const handleVknLookup = useCallback(async (inputVal: string, isEnterOrBlur = false) => {
+    const cleanVal = (inputVal || "").replace(/\D/g, "").slice(0, 11);
+    if (!cleanVal) {
+      setAliciVknTckn("");
+      setDetayVknTckn("");
+      setCariKod("");
+      setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+      setDetayUnvan(DEFAULT_CUSTOMER_NAME);
+      setCariKartId(null);
+      lastFocusedCariKodRef.current = "";
+      lastFocusedUnvanRef.current = "";
+      lastFocusedVknRef.current = "";
+      setAdres("");
+      setDetayAdres("");
+      setTelefon("");
+      setDetayTelefon("");
+      setEposta("");
+      setDetayEposta("");
+      setVergiDairesi("");
+      setDetayVergiDairesi("");
+      setIl("");
+      setDetayIl("");
+      setIlce("");
+      setDetayIlce("");
+      setSenaryo("EARSIVFATURA");
+      return;
+    }
+
+    // 1. 10 veya 11 hane ise Birebir Eşleşme Kontrolü
+    if (cleanVal.length === 10 || cleanVal.length === 11) {
+      const exactCari = cariler.find((c) => (c.vergiKimlikNo || "").replace(/\D/g, "") === cleanVal);
+      if (exactCari) {
+        void handleSelectCustomer({
+          type: "registered",
+          id: exactCari.id,
+          kod: exactCari.kod,
+          unvan: exactCari.ad || (exactCari as any).unvan || "",
+          vergiKimlikNo: exactCari.vergiKimlikNo || cleanVal,
+          adres: exactCari.adres || "",
+          telefon: exactCari.telefon || "",
+          isMukellef: Boolean((exactCari as any).eFatura || (exactCari as any).eFaturaPostaKutusu || (exactCari as any).isMukellef),
+          raw: exactCari,
+        });
+        lastFocusedVknRef.current = cleanVal;
+        return;
+      }
+
+      const exactKayitsiz = kayitsizMusteriler.find((k) => (k.vergiKimlikNo || "").replace(/\D/g, "") === cleanVal);
+      if (exactKayitsiz) {
+        void handleSelectCustomer({
+          type: "unregistered",
+          id: null,
+          kod: "",
+          unvan: exactKayitsiz.ad || exactKayitsiz.unvan || "",
+          vergiKimlikNo: exactKayitsiz.vergiKimlikNo || cleanVal,
+          adres: exactKayitsiz.adres || "",
+          telefon: exactKayitsiz.telefon || "",
+          raw: exactKayitsiz,
+        });
+        lastFocusedVknRef.current = cleanVal;
+        return;
+      }
+
+      // GİB / GİP Mukellef Sorgulama (10 veya 11 hane ise)
+      try {
+        const res = await ebelgeService.mukellefSorgula(cleanVal);
+        if (res && res.mukellefMi && res.kullanicilar && res.kullanicilar.length > 0) {
+          const title = (res.kullanicilar[0].Title || "").trim();
+          if (title) {
+            setAliciUnvan(title);
+            setDetayUnvan(title);
+            setDetayVknTckn(cleanVal);
+            setAliciVknTckn(cleanVal);
+            setCariKod("");
+            setCariKartId(null);
+            lastFocusedCariKodRef.current = "";
+            lastFocusedUnvanRef.current = title;
+            lastFocusedVknRef.current = cleanVal;
+            setSenaryo("TICARIFATURA"); // GİP'te kayıtlı e-Fatura mükellefi ise otomatik e-Fatura
+            if (res.kullanicilar[0].Alias) {
+              setEposta(res.kullanicilar[0].Alias);
+              setDetayEposta(res.kullanicilar[0].Alias);
+            }
+            try {
+              const adrRes = await ebelgeService.aliciAdresleri(cleanVal);
+              if (Array.isArray(adrRes) && adrRes.length > 0) {
+                const first = adrRes[0];
+                const comb = [first.adres, first.ilce, first.il].filter(Boolean).join(" ");
+                if (comb) {
+                  setAdres(comb);
+                  setDetayAdres(comb);
+                }
+                if (first.telefon) {
+                  setTelefon(first.telefon);
+                  setDetayTelefon(first.telefon);
+                }
+                if (first.vergiDairesi) {
+                  setVergiDairesi(first.vergiDairesi);
+                  setDetayVergiDairesi(first.vergiDairesi);
+                }
+              }
+            } catch { }
+            return;
+          }
+        }
+      } catch { }
+
+      // Hem DB'de hem GİP'te yoksa
+      setCariKod("");
+      setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+      setDetayUnvan(DEFAULT_CUSTOMER_NAME);
+      setCariKartId(null);
+      lastFocusedCariKodRef.current = "";
+      lastFocusedUnvanRef.current = "";
+      lastFocusedVknRef.current = cleanVal;
+      setAdres("");
+      setDetayAdres("");
+      setTelefon("");
+      setDetayTelefon("");
+      setEposta("");
+      setDetayEposta("");
+      setVergiDairesi("");
+      setDetayVergiDairesi("");
+      setIl("");
+      setDetayIl("");
+      setIlce("");
+      setDetayIlce("");
+      setSenaryo("EARSIVFATURA");
+      return;
+    }
+
+    // 2. 10 haneden kısa ise ve Enter / Blur yapılmışsa arama modalı aç
+    if (isEnterOrBlur && cleanVal.length >= 2) {
+      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("vkn", cleanVal);
+      if (totalCount === 1) {
+        if (mc.length === 1) {
+          const single = mc[0];
+          void handleSelectCustomer({
+            type: "registered",
+            id: single.id,
+            kod: single.kod,
+            unvan: single.ad || (single as any).unvan || "",
+            vergiKimlikNo: single.vergiKimlikNo || cleanVal,
+            adres: single.adres || "",
+            telefon: single.telefon || "",
+            isMukellef: Boolean((single as any).eFatura || (single as any).eFaturaPostaKutusu || (single as any).isMukellef),
+            raw: single,
+          });
+          lastFocusedVknRef.current = single.vergiKimlikNo || cleanVal;
+          return;
+        } else if (mk.length === 1) {
+          const singleK = mk[0];
+          void handleSelectCustomer({
+            type: "unregistered",
+            id: null,
+            kod: "",
+            unvan: singleK.ad || singleK.unvan || "",
+            vergiKimlikNo: singleK.vergiKimlikNo || cleanVal,
+            adres: singleK.adres || "",
+            telefon: singleK.telefon || "",
+            raw: singleK,
+          });
+          lastFocusedVknRef.current = singleK.vergiKimlikNo || cleanVal;
+          return;
+        }
+      } else if (totalCount > 1) {
+        lastModalCallerRef.current = "vkn";
+        setMusteriSearchTerm(cleanVal);
+        setCariSearchField("vkn");
+        setShowMusteriModal(true);
+        return;
+      }
+    }
+
+    // Kullanıcı yazmaya / silmeye devam ediyor (10 haneden az), arama yapmadan eski cariyi temizle
+    setCariKod("");
+    setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+    setDetayUnvan(DEFAULT_CUSTOMER_NAME);
+    setCariKartId(null);
+    lastFocusedCariKodRef.current = "";
+    lastFocusedUnvanRef.current = "";
+  }, [cariler, kayitsizMusteriler, findMatchingCustomers, handleSelectCustomer]);
+
+  // Cari Kodu Arama / Doğrulama
+  const handleCariKodLookup = useCallback((inputVal: string, isEnterOrBlur = false) => {
+    const val = (inputVal || "").trim();
+    if (!val) {
+      setCariKod("");
+      setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+      setDetayUnvan(DEFAULT_CUSTOMER_NAME);
+      setCariKartId(null);
+      lastFocusedCariKodRef.current = "";
+      return;
+    }
+    const exact = cariler.find((c) => (c.kod || "").toLowerCase() === val.toLowerCase());
+    if (exact) {
+      void handleSelectCustomer({
+        type: "registered",
+        id: exact.id,
+        kod: exact.kod,
+        unvan: exact.ad || (exact as any).unvan || "",
+        vergiKimlikNo: exact.vergiKimlikNo || "",
+        adres: exact.adres || "",
+        telefon: exact.telefon || "",
+        raw: exact,
+      });
+      lastFocusedCariKodRef.current = exact.kod || "";
+      return;
+    }
+    const { cariler: mc, totalCount } = findMatchingCustomers("kod", val);
+    if (totalCount === 1 && mc.length === 1) {
+      const single = mc[0];
+      void handleSelectCustomer({
+        type: "registered",
+        id: single.id,
+        kod: single.kod,
+        unvan: single.ad || (single as any).unvan || "",
+        vergiKimlikNo: single.vergiKimlikNo || "",
+        adres: single.adres || "",
+        telefon: single.telefon || "",
+        raw: single,
+      });
+      lastFocusedCariKodRef.current = single.kod || "";
+      return;
+    }
+    if (isEnterOrBlur) {
+      if (totalCount > 1) {
+        lastModalCallerRef.current = "cariKod";
+        setMusteriSearchTerm(val);
+        setCariSearchField("kod");
+        setShowMusteriModal(true);
+      } else {
+        // Yoksa boşalt
+        setCariKod("");
+        setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+        setDetayUnvan(DEFAULT_CUSTOMER_NAME);
+        setCariKartId(null);
+        lastFocusedCariKodRef.current = "";
+      }
+    }
+  }, [cariler, findMatchingCustomers, handleSelectCustomer]);
 
   // F9: Fiş / Fatura Önizleme Modalı Aç
   const handleOpenPrintPreview = () => {
@@ -3368,7 +3717,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     }
 
     if (validItems.length === 0) {
-      showWarning("Faturada en az bir satış kalemi bulunmalıdır!");
       return;
     }
 
@@ -3395,11 +3743,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       showError(
         `⛔ Ödeme / tahsilat tutarı (${totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺), fiş genel toplamından (${genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺) fazladır! Aradaki ${(Math.abs(rawDiffTL)).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺ eksi (-) farkı lütfen düzeltiniz.`
       );
-      return;
-    }
-
-    if (totalOdemeTutar > 0 && rawDiffTL > 0.05 && !forceOdemeFarkApprove) {
-      setShowOdemeFarkConfirmModal({ show: true, andPrint: withPrint, rawDiffTL });
       return;
     }
 
@@ -4491,33 +4834,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             className={faturaTipi === 1 ? "text-success border-success" : "text-primary border-primary"}
             value={faturaTipi}
             onChange={(e) => {
-              const newTip = Number(e.target.value);
-              setFaturaTipi(newTip);
-              setOdemeRows((prev) => prev.map((r) => {
-                if (!r.paraKodu || r.paraKodu === "TL" || r.paraKodu === "VERESIYE") return r;
-                const found = odemeUrunList.find((u) => u.kod.toUpperCase() === r.paraKodu.toUpperCase());
-                if (!found) return r;
-                const effAlis = Number(found.alisMilyem) > 0 ? Number(found.alisMilyem) : (Number((found as any).hasAlisKatsayisi) > 0 ? Number((found as any).hasAlisKatsayisi) : (Number(found.hasOrani) || 1000));
-                const effSatis = Number(found.satisMilyem) > 0 ? Number(found.satisMilyem) : (Number((found as any).hasSatisKatsayisi) > 0 ? Number((found as any).hasSatisKatsayisi) : (Number(found.hasOrani) || 1000));
-                const milyemVal = newTip === 1 ? String(effAlis) : String(effSatis);
-                return { ...r, milyem: milyemVal };
-              }));
+              handleFaturaTipiChange(Number(e.target.value));
             }}
             onKeyDown={(e) => {
               if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
                 e.preventDefault();
                 e.stopPropagation();
                 const newTip = (faturaTipi === 1 ? 0 : 1);
-                setFaturaTipi(newTip);
-                setOdemeRows((prev) => prev.map((r) => {
-                  if (!r.paraKodu || r.paraKodu === "TL" || r.paraKodu === "VERESIYE") return r;
-                  const found = odemeUrunList.find((u) => u.kod.toUpperCase() === r.paraKodu.toUpperCase());
-                  if (!found) return r;
-                  const effAlis = Number(found.alisMilyem) > 0 ? Number(found.alisMilyem) : (Number((found as any).hasAlisKatsayisi) > 0 ? Number((found as any).hasAlisKatsayisi) : (Number(found.hasOrani) || 1000));
-                  const effSatis = Number(found.satisMilyem) > 0 ? Number(found.satisMilyem) : (Number((found as any).hasSatisKatsayisi) > 0 ? Number((found as any).hasSatisKatsayisi) : (Number(found.hasOrani) || 1000));
-                  const milyemVal = newTip === 1 ? String(effAlis) : String(effSatis);
-                  return { ...r, milyem: milyemVal };
-                }));
+                handleFaturaTipiChange(newTip);
               }
             }}
           >
@@ -4543,77 +4867,33 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   size="sm"
                   value={aliciVknTckn}
                   onChange={(e) => {
-                    const rawVal = e.target.value;
+                    const rawVal = e.target.value.replace(/\D/g, "").slice(0, 11);
                     setAliciVknTckn(rawVal);
-                    const newSenaryo = detectScenario(rawVal, undefined, aliciUnvan);
-                    setSenaryo(newSenaryo);
+                    setDetayVknTckn(rawVal);
+                    if (!rawVal) {
+                      void handleVknLookup("", false);
+                    } else if (rawVal.length === 10 || rawVal.length === 11) {
+                      void handleVknLookup(rawVal, false);
+                    } else {
+                      setCariKod("");
+                      setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+                      setDetayUnvan(DEFAULT_CUSTOMER_NAME);
+                      setCariKartId(null);
+                      lastFocusedCariKodRef.current = "";
+                      lastFocusedUnvanRef.current = "";
+                    }
                   }}
                   onKeyDown={async (e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      const val = (aliciVknTckn && aliciVknTckn !== "11111111111" ? aliciVknTckn : "").trim();
-                      const prevVal = (lastFocusedVknRef.current || "").trim();
-                      if (val && val === prevVal) {
-                        cariKodRef.current?.focus();
-                        cariKodRef.current?.select();
-                        return;
-                      }
-                      if (!val) {
-                        cariKodRef.current?.focus();
-                        cariKodRef.current?.select();
-                        return;
-                      }
-                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("vkn", val);
-                      if (totalCount === 1) {
-                        if (mc.length === 1) {
-                          const single = mc[0];
-                          void handleSelectCustomer({
-                            type: "registered",
-                            id: single.id,
-                            kod: single.kod,
-                            unvan: single.ad || (single as any).unvan || "",
-                            vergiKimlikNo: single.vergiKimlikNo || "",
-                            adres: single.adres || "",
-                            telefon: single.telefon || "",
-                            raw: single,
-                          });
-                        } else if (mk.length === 1) {
-                          const singleK = mk[0];
-                          void handleSelectCustomer({
-                            type: "unregistered",
-                            id: null,
-                            kod: "",
-                            unvan: singleK.ad || singleK.unvan || "",
-                            vergiKimlikNo: singleK.vergiKimlikNo || "",
-                            adres: singleK.adres || "",
-                            telefon: singleK.telefon || "",
-                            raw: singleK,
-                          });
-                        }
-                        lastFocusedVknRef.current = val;
-                        cariKodRef.current?.focus();
-                        cariKodRef.current?.select();
-                        return;
-                      }
-                      if (totalCount === 0 && (val.length === 10 || val.length === 11)) {
-                        const senaryoRes = await checkAndApplyMukellefiyet(val, aliciUnvan);
-                        if (senaryoRes === "TICARIFATURA") {
-                          lastFocusedVknRef.current = val;
-                          cariKodRef.current?.focus();
-                          cariKodRef.current?.select();
-                          return;
-                        }
-                      }
-                      lastModalCallerRef.current = "vkn";
-                      setMusteriSearchTerm(val);
-                      setCariSearchField("vkn");
-                      setShowMusteriModal(true);
+                      await handleVknLookup(aliciVknTckn, true);
+                      cariKodRef.current?.focus();
+                      cariKodRef.current?.select();
                     }
                   }}
                   onBlur={(e) => {
-                    const val = e.target.value.trim();
-                    if (val && val !== "11111111111") {
-                      void checkAndApplyMukellefiyet(val, aliciUnvan);
+                    if (aliciVknTckn.length === 10 || aliciVknTckn.length === 11 || !aliciVknTckn) {
+                      void handleVknLookup(aliciVknTckn, true);
                     }
                   }}
                   placeholder="TCKN / VKN / Pasaport"
@@ -4666,41 +4946,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      const val = (cariKod || "").trim();
-                      const prevVal = (lastFocusedCariKodRef.current || "").trim();
-                      if (val && val.toLowerCase() === prevVal.toLowerCase()) {
-                        aliciUnvanRef.current?.focus();
-                        aliciUnvanRef.current?.select();
-                        return;
-                      }
-                      if (!val) {
-                        aliciUnvanRef.current?.focus();
-                        aliciUnvanRef.current?.select();
-                        return;
-                      }
-                      const { cariler: mc, totalCount } = findMatchingCustomers("kod", val);
-                      if (totalCount === 1 && mc.length === 1) {
-                        const single = mc[0];
-                        void handleSelectCustomer({
-                          type: "registered",
-                          id: single.id,
-                          kod: single.kod,
-                          unvan: single.ad || (single as any).unvan || "",
-                          vergiKimlikNo: single.vergiKimlikNo || "",
-                          adres: single.adres || "",
-                          telefon: single.telefon || "",
-                          raw: single,
-                        });
-                        lastFocusedCariKodRef.current = single.kod || "";
-                        aliciUnvanRef.current?.focus();
-                        aliciUnvanRef.current?.select();
-                        return;
-                      }
-                      lastModalCallerRef.current = "cariKod";
-                      setMusteriSearchTerm(val);
-                      setCariSearchField("kod");
-                      setShowMusteriModal(true);
+                      handleCariKodLookup(cariKod, true);
+                      aliciUnvanRef.current?.focus();
+                      aliciUnvanRef.current?.select();
                     }
+                  }}
+                  onBlur={(e) => {
+                    handleCariKodLookup(e.target.value, false);
                   }}
                   placeholder="Cari Kodu"
                   style={{ fontSize: "12px", fontFamily: "monospace", fontWeight: 600 }}
@@ -4723,7 +4975,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             </div>
 
             {/* Müşteri Adı (+ Dürbün + MASAK Butonu + Nihai Tüketici) */}
-            <div className="d-flex align-items-center gap-1" style={{ minWidth: "320px", width: "380px", flex: "1.3 1 320px" }}>
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "220px", flex: "1 1 220px" }}>
               <label style={{ width: 75, minWidth: 75, fontSize: "12px", fontWeight: 600 }} className="mb-0 text-secondary">
                 Müşteri Adı
               </label>
@@ -4738,24 +4990,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     const newSenaryo = detectScenario(aliciVknTckn, undefined, newUnvan);
                     setSenaryo(newSenaryo);
                   }}
+                  onBlur={() => {
+                    if (!aliciUnvan || !aliciUnvan.trim() || isAnonymousCustomerName(aliciUnvan)) {
+                      setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+                      setCariKod("");
+                      setCariKartId(null);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
                       const raw = (aliciUnvan || "").trim();
                       if (isAnonymousCustomerName(raw)) {
+                        setAliciUnvan(DEFAULT_CUSTOMER_NAME);
+                        setCariKod("");
+                        setCariKartId(null);
                         if (items.length > 0) {
                           focusGridCell(items[0].id, "barkod", "select");
                         }
                         return;
                       }
                       const val = raw;
-                      const prevVal = (lastFocusedUnvanRef.current || "").trim();
-                      if (val && val.toLowerCase() === prevVal.toLowerCase()) {
-                        if (items.length > 0) {
-                          focusGridCell(items[0].id, "barkod", "select");
-                        }
-                        return;
-                      }
                       const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("unvan", val);
                       if (totalCount === 1) {
                         if (mc.length === 1) {
@@ -4788,14 +5043,20 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         }
                         return;
                       }
-                      lastModalCallerRef.current = "unvan";
-                      setMusteriSearchTerm(val);
-                      setCariSearchField("unvan");
-                      setShowMusteriModal(true);
+                      if (totalCount > 1) {
+                        lastModalCallerRef.current = "unvan";
+                        setMusteriSearchTerm(val);
+                        setCariSearchField("unvan");
+                        setShowMusteriModal(true);
+                      } else {
+                        setCariKod("");
+                        setCariKartId(null);
+                        if (items.length > 0) {
+                          focusGridCell(items[0].id, "barkod", "select");
+                        }
+                      }
                     }
                   }}
-                  placeholder="Müşteri Adı / Ünvanı"
-                  style={{ fontSize: "12px", fontWeight: 600 }}
                 />
                 <Button
                   variant="outline-secondary"
@@ -4838,6 +5099,21 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               >
                 Nihai
               </Button>
+            </div>
+
+            {/* Has Kuru */}
+            <div className="d-flex align-items-center gap-1" style={{ minWidth: "140px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" }} className="mb-0 text-secondary">
+                Has Kuru
+              </label>
+              <Form.Control
+                type="number"
+                size="sm"
+                value={altinHasKuru}
+                onChange={(e) => handleAltinHasKuruChange(e.target.value)}
+                className="font-monospace text-end"
+                style={{ width: "95px" }}
+              />
             </div>
           </div>
 
@@ -4939,30 +5215,25 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               <thead style={{ background: "#d9e8fb", color: "#000" }}>
                 <tr className="text-center align-middle">
                   <th style={{ width: "3%", minWidth: "28px" }} className="text-center">#</th>
-                  <th style={{ width: "13%", minWidth: "130px" }} className="text-center">Barkod</th>
-                  <th style={{ width: "23%", minWidth: "180px" }} className="text-center">Ürün Açıklaması / Model</th>
-                  <th style={{ width: "7%", minWidth: "65px" }} className="text-center">Ayar</th>
-                  <th style={{ width: "6%", minWidth: "55px" }} className="text-center">Miktar</th>
-                  <th style={{ width: "6%", minWidth: "55px" }} className="text-center">Birim</th>
-                  <th style={{ width: "8%", minWidth: "70px" }} className="text-center">Gram</th>
-                  <th style={{ width: "8%", minWidth: "70px" }} className="text-center">Has Gr</th>
-                  <th style={{ width: "10%", minWidth: "85px" }} className="text-center">Birim Fiyat (₺)</th>
+                  <th style={{ width: "12%", minWidth: "120px" }} className="text-center">Barkod</th>
+                  <th style={{ width: "21%", minWidth: "170px" }} className="text-center">Ürün Açıklaması / Model</th>
+                  <th style={{ width: "6%", minWidth: "60px" }} className="text-center">Ayar</th>
+                  <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth }} className="text-center">Miktar</th>
+                  <th style={{ width: "5%", minWidth: "50px" }} className="text-center">Birim</th>
+                  <th style={{ width: "7%", minWidth: "65px" }} className="text-center">Gram</th>
+                  <th style={{ width: "7%", minWidth: "65px" }} className="text-center">Has Gr</th>
+                  <th style={{ width: "9%", minWidth: "80px" }} className="text-center">Fiyat</th>
+                  <th style={{ width: "8%", minWidth: "75px" }} className="text-center">Kur</th>
                   <th style={{ width: "5%", minWidth: "45px" }} className="text-center">KDV %</th>
-                  <th style={{ width: "7%", minWidth: "70px" }} className="text-center">KDV (₺)</th>
-                  <th style={{ width: "9%", minWidth: "85px" }} className="text-center">Satır Toplamı (₺)</th>
+                  <th style={{ width: "7%", minWidth: "65px" }} className="text-center">KDV (₺)</th>
+                  <th style={{ width: "9%", minWidth: "80px" }} className="text-center">Tutar</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item, idx) => {
                   const isBarkodlu = Boolean((item.barkod && String(item.barkod).trim()) || item.altinUrunId);
-                  const isRowItemEmpty = isRowEmpty(item);
-                  const isRowValid = isPerakendeRowFilled(item);
-                  const isAttempted = Boolean(invalidRowIds[item.id]);
-                  const shouldValidate = (!isRowItemEmpty && !isRowValid) || (isAttempted && !isRowValid);
-
-                  const isBarkodMissing = shouldValidate && (!item.barkod || !String(item.barkod).trim()) && (!item.urunAdi || !String(item.urunAdi).trim());
-                  const isMiktarMissing = shouldValidate && (!item.miktar || Number(item.miktar) <= 0) && (!item.gram || Number(item.gram) <= 0);
-                  const isFiyatMissing = shouldValidate && (!item.birimFiyat || Number(item.birimFiyat) <= 0) && (!item.tutar || Number(item.tutar) <= 0);
+                  const hasProduct = Boolean((item.barkod && String(item.barkod).trim()) || (item.urunAdi && String(item.urunAdi).trim()) || item.altinUrunId || (item.birimFiyat && Number(item.birimFiyat) > 0));
+                  const isMiktarMissing = hasProduct && (!item.miktar || String(item.miktar).trim() === "" || Number(item.miktar) <= 0 || parseDecimal(item.miktar) <= 0);
 
                   return (
                     <tr
@@ -4974,20 +5245,32 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                       }}
                     >
                       {/* Satır Sıra No */}
-                      <td className="text-center text-muted fw-bold" style={{ fontSize: "11px" }}>
-                        {idx + 1}
+                      <td className="text-center text-muted fw-bold" style={{ fontSize: "11px", verticalAlign: "middle" }}>
+                        <div className="d-flex align-items-center justify-content-center gap-1">
+                          <span>{idx + 1}</span>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="p-0 text-danger opacity-50 hover-opacity-100"
+                            onClick={() => handleDeleteRow(item.id)}
+                            title="Satırı Sil (F6)"
+                            style={{ lineHeight: 1 }}
+                          >
+                            <IconTrash size={12} />
+                          </Button>
+                        </div>
                       </td>
 
                       {/* Barkod (+ Dürbün) */}
                       <td style={{ padding: "2px 4px" }}>
-                        <div className="input-group input-group-sm" style={isBarkodMissing ? { backgroundColor: "#fee2e2", border: "1.5px solid #dc2626", borderRadius: "3px" } : {}}>
+                        <div className="input-group input-group-sm">
                           <input
                             ref={(el) => {
                               rowInputRefs.current[`${item.id}_barkod`] = el;
                             }}
                             type="text"
-                            className={`form-control form-control-sm font-monospace fw-bold p-1 ${isBarkodMissing ? "text-danger" : "text-primary"}`}
-                            style={{ fontSize: "12px", backgroundColor: isBarkodMissing ? "#fee2e2" : undefined }}
+                            className="form-control form-control-sm font-monospace fw-bold p-1 text-primary"
+                            style={{ fontSize: "12px" }}
                             value={item.barkod}
                             onChange={(e) => handleUpdateItem(item.id, "barkod", e.target.value)}
                             onKeyDown={(e) => handleGridKeyDown(e, idx, "barkod", item.id)}
@@ -4997,7 +5280,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                               cleanupEmptyOdemeRows(null);
                             }}
                             placeholder="Barkod Okut..."
-                            title={isBarkodMissing ? "Lütfen barkod veya ürün seçiniz" : undefined}
                           />
                           <Button
                             variant="outline-secondary"
@@ -5022,11 +5304,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           type="text"
                           readOnly={isBarkodlu}
                           tabIndex={isBarkodlu ? -1 : 0}
-                          className={`form-control form-control-sm p-1 ${isBarkodMissing ? "text-danger fw-bold" : ""}`}
+                          className="form-control form-control-sm p-1"
                           style={{
                             fontSize: "12px",
-                            backgroundColor: isBarkodlu ? "#f8fafc" : isBarkodMissing ? "#fee2e2" : undefined,
-                            border: isBarkodMissing ? "1.5px solid #dc2626" : undefined,
+                            backgroundColor: isBarkodlu ? "#f8fafc" : undefined,
                             cursor: isBarkodlu ? "not-allowed" : undefined,
                             color: isBarkodlu ? "#475569" : undefined,
                           }}
@@ -5102,11 +5383,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           }}
                           type="text"
                           inputMode="decimal"
-                          className={`form-control form-control-sm text-center font-monospace p-1 ${isMiktarMissing ? "text-danger fw-bold" : isBarkodlu ? "fw-bold text-primary" : ""}`}
+                          className={`form-control form-control-sm text-center font-monospace p-1 ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : isBarkodlu ? "fw-bold text-primary" : ""}`}
                           style={{
                             fontSize: "12px",
                             backgroundColor: isMiktarMissing ? "#fee2e2" : isBarkodlu ? "#f0f9ff" : undefined,
-                            border: isMiktarMissing ? "1.5px solid #dc2626" : isBarkodlu ? "1.5px solid #bae6fd" : undefined,
+                            border: isMiktarMissing ? "2px solid #dc2626" : isBarkodlu ? "1.5px solid #bae6fd" : undefined,
+                            boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                           }}
                           value={formatMiktar(item.miktar)}
                           onChange={(e) => handleUpdateItem(item.id, "miktar", e.target.value)}
@@ -5158,11 +5440,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           step="0.01"
                           readOnly={isBarkodlu}
                           tabIndex={isBarkodlu ? -1 : 0}
-                          className={`form-control form-control-sm text-end font-monospace p-1 ${isMiktarMissing ? "text-danger fw-bold" : ""}`}
+                          className={`form-control form-control-sm text-end font-monospace p-1 ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
                           style={{
                             fontSize: "12px",
                             backgroundColor: isBarkodlu ? "#f8fafc" : isMiktarMissing ? "#fee2e2" : undefined,
-                            border: isMiktarMissing ? "1.5px solid #dc2626" : undefined,
+                            border: isMiktarMissing ? "2px solid #dc2626" : undefined,
+                            boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                             cursor: isBarkodlu ? "not-allowed" : undefined,
                             color: isBarkodlu ? "#475569" : undefined,
                           }}
@@ -5216,11 +5499,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           step="0.01"
                           readOnly={isBarkodlu}
                           tabIndex={isBarkodlu ? -1 : 0}
-                          className={`form-control form-control-sm text-end font-monospace fw-bold p-1 ${isFiyatMissing ? "text-danger" : "text-success"}`}
+                          className="form-control form-control-sm text-end font-monospace fw-bold p-1 text-success"
                           style={{
                             fontSize: "12px",
-                            backgroundColor: isBarkodlu ? "#f8fafc" : isFiyatMissing ? "#fee2e2" : undefined,
-                            border: isFiyatMissing ? "1.5px solid #dc2626" : undefined,
+                            backgroundColor: isBarkodlu ? "#f8fafc" : undefined,
                             cursor: isBarkodlu ? "not-allowed" : undefined,
                           }}
                           value={item.birimFiyat}
@@ -5232,7 +5514,37 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             cleanupEmptyOdemeRows(null);
                           }}
                           placeholder="0.00"
-                          title={isBarkodlu ? "Barkodlu üründe birim fiyat değiştirilemez" : isFiyatMissing ? "Lütfen birim fiyat giriniz" : undefined}
+                          title={isBarkodlu ? "Barkodlu üründe birim fiyat değiştirilemez" : undefined}
+                        />
+                      </td>
+
+                      {/* Kur */}
+                      <td style={{ padding: "2px 4px" }}>
+                        <input
+                          ref={(el) => {
+                            rowInputRefs.current[`${item.id}_kur`] = el;
+                          }}
+                          type="number"
+                          step="0.0001"
+                          readOnly={isBarkodlu}
+                          tabIndex={isBarkodlu ? -1 : 0}
+                          className="form-control form-control-sm text-end font-monospace p-1"
+                          style={{
+                            fontSize: "12px",
+                            backgroundColor: isBarkodlu ? "#f8fafc" : undefined,
+                            cursor: isBarkodlu ? "not-allowed" : undefined,
+                            color: isBarkodlu ? "#475569" : undefined,
+                          }}
+                          value={item.kur ?? ""}
+                          onChange={(e) => handleUpdateItem(item.id, "kur", e.target.value)}
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "kur", item.id)}
+                          onFocus={() => {
+                            setActiveRowIndex(idx);
+                            cleanupEmptyRows(idx);
+                            cleanupEmptyOdemeRows(null);
+                          }}
+                          placeholder="1.00"
+                          title={isBarkodlu ? "Barkodlu üründe kur sabittir" : undefined}
                         />
                       </td>
 
@@ -5314,7 +5626,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     <th style={{ width: 140 }} className="text-center">Açıklama</th>
                     <th style={{ width: 110 }} className="text-center">Para / İskonto</th>
                     <th style={{ width: 55 }} className="text-center">Adet</th>
-                    <th style={{ width: 75 }} className="text-center">Miktar</th>
+                    <th style={{ width: odemeMiktarColWidth, minWidth: odemeMiktarColWidth }} className="text-center">Miktar</th>
                     <th style={{ width: 70 }} className="text-center">Milyem</th>
                     <th style={{ width: 85 }} className="text-center">Has Gr</th>
                     <th style={{ width: 95 }} className="text-center">Kur / Oran</th>
@@ -5370,6 +5682,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         ? "#86efac"
                         : undefined;
 
+                    const hasPayment = Boolean((oRow.paraKodu && oRow.paraKodu.trim() !== "") || (oRow.paraAdi && oRow.paraAdi.trim() !== "") || (oRow.odemeAraciTuru !== 0 && oRow.odemeAraciTuru !== undefined) || (oRow.cariKod && oRow.cariKod.trim() !== "") || (oRow.kur && Number(oRow.kur) > 0));
+                    const isOdemeMiktarMissing = hasPayment && (!oRow.miktar || String(oRow.miktar).trim() === "" || parseDecimal(oRow.miktar) <= 0);
+
                     return (
                       <tr
                         key={oRow.id}
@@ -5384,7 +5699,19 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         } as any}
                       >
                         <td className="text-muted text-center" style={{ padding: "2px", fontSize: "10px", verticalAlign: "middle", backgroundColor: rowBg, color: rowTextColor, borderColor: rowBorderColor }}>
-                          {rowIndex + 1}
+                          <div className="d-flex align-items-center justify-content-center gap-1">
+                            <span>{rowIndex + 1}</span>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="p-0 text-danger opacity-50 hover-opacity-100"
+                              onClick={() => handleDeleteOdemeRow(oRow.id)}
+                              title="Ödeme Satırını Sil (F6)"
+                              style={{ lineHeight: 1 }}
+                            >
+                              <IconTrash size={12} />
+                            </Button>
+                          </div>
                         </td>
 
                         {/* Tür Seçimi (Vezne, Cari, POS, Hesap) */}
@@ -5930,12 +6257,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         </td>
 
                         {/* Miktar */}
-                        <td style={{ padding: "2px 4px", backgroundColor: rowBg, borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                        <td style={{ padding: "2px 4px", backgroundColor: isOdemeMiktarMissing ? "#fee2e2" : rowBg, borderColor: isOdemeMiktarMissing ? "#dc2626" : rowBorderColor, verticalAlign: "middle" }}>
                           <Form.Control
                             ref={(el) => { odemeInputRefs.current[`${oRow.id}_miktar`] = el; }}
                             inputMode="decimal"
                             size="sm"
-                            className="text-end font-monospace fw-semibold"
+                            className={`text-end font-monospace fw-semibold ${isOdemeMiktarMissing ? "is-invalid border-danger border-2 text-danger" : ""}`}
                             value={formatMiktar(oRow.miktar)}
                             onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
                             onBlur={() => updateOdemeRow(oRow.id, "miktar", formatMiktar(oRow.miktar))}
@@ -5948,9 +6275,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             style={{
                               fontSize: "11px",
                               padding: "1px 4px",
-                              backgroundColor: rowBg,
-                              color: rowTextColor,
-                              borderColor: rowBorderColor,
+                              backgroundColor: isOdemeMiktarMissing ? "#fee2e2" : rowBg,
+                              color: isOdemeMiktarMissing ? "#dc2626" : rowTextColor,
+                              border: isOdemeMiktarMissing ? "2px solid #dc2626" : undefined,
+                              boxShadow: isOdemeMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                             }}
                           />
                         </td>
@@ -6091,12 +6419,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   <tr>
                     <td className="fw-semibold text-secondary">{faturaTipi === 0 ? "Alış" : "Satış"}</td>
                     <td className="text-end font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</td>
-                    <td className="text-end font-monospace">{totalHasGrams.toFixed(4)}</td>
+                    <td className="text-end font-monospace">{alisHas.toFixed(4)}</td>
                   </tr>
                   <tr>
                     <td className="fw-semibold text-secondary">{faturaTipi === 0 ? "Ödeme" : "Tahsilat"}</td>
                     <td className="text-end font-monospace">{totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</td>
-                    <td className="text-end font-monospace">{totalOdemeHas.toFixed(4)}</td>
+                    <td className="text-end font-monospace">{odemeHas.toFixed(4)}</td>
                   </tr>
                   <tr style={{ background: farkTL < -0.01 ? "#fee2e2" : (Math.abs(farkTL) > 0.01 || Math.abs(farkHas) > 0.0001) ? "#fff5f5" : "#f8f9fa" }}>
                     <td className="fw-bold" style={{ color: farkTL < -0.01 ? "#991b1b" : "inherit" }}>Fark</td>

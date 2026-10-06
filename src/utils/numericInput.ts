@@ -38,9 +38,14 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
     return parts.length > 1 ? `${formattedInt},${decPart}` : formattedInt;
   }
 
-  // 2. "0.5", "0.25" gibi 0 ile başlayan küçük ondalık sayılar
-  if (s.startsWith("0.") || s.startsWith(".")) {
-    return s;
+  // 2. Ondalık nokta içeriyorsa (örn: "34.50", "0.25", "100.5", "1234.56", "2300.00")
+  if (s.includes(".")) {
+    const dotParts = s.split(".");
+    if (dotParts.length === 2) {
+      const intDigits = dotParts[0].replace(/\D/g, "");
+      const formattedInt = intDigits ? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "0";
+      return `${formattedInt},${dotParts[1]}`;
+    }
   }
 
   // 3. Tüm tam sayılar ve binlikler (1000 -> 1.000, 1000000 -> 1.000.000)
@@ -84,12 +89,12 @@ export function parseDecimal(val: any): number {
     const lastComma = str.lastIndexOf(",");
     const lastDot = str.lastIndexOf(".");
     if (lastComma > lastDot) {
-      // Türkçe: "500.000,50" -> noktalar binlik, virgül ondalık
+      // Türkçe: "500.000,50" veya "2.300,00" -> noktalar binlik, virgül ondalık
       const clean = str.replace(/\./g, "").replace(",", ".");
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     } else {
-      // İngilizce: "500,000.50" -> virgüller binlik, nokta ondalık
+      // İngilizce: "500,000.50" veya "2,300.00" -> virgüller binlik, nokta ondalık
       const clean = str.replace(/,/g, "");
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
@@ -105,6 +110,7 @@ export function parseDecimal(val: any): number {
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
+    // Tek virgül ("2300,50", "34,50", "0,25") -> ondalık
     const clean = str.replace(",", ".");
     const num = parseFloat(clean);
     return isNaN(num) ? 0 : num;
@@ -112,14 +118,15 @@ export function parseDecimal(val: any): number {
 
   // 3. Sadece nokta içeriyorsa
   if (str.includes(".")) {
-    // "0.5", "0.25", ".75" gibi 0 ile başlayan küçük ondalık sayılar
-    if (str.startsWith("0.") || str.startsWith(".")) {
-      const num = parseFloat(str);
+    const dotParts = str.split(".");
+    // Birden fazla nokta varsa ("1.000.000" veya "23.000.000") kesinlikle binlik ayracıdır
+    if (dotParts.length > 2) {
+      const clean = str.replace(/\./g, "");
+      const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
-    // "500.000", "5.000", "1.000.000" gibi tüm sayılarda nokta binlik ayraçtır:
-    const clean = str.replace(/\./g, "");
-    const num = parseFloat(clean);
+    // Tek nokta varsa (örn: "2300.00", "2300.000", "34.50", "1.000", "1.0000", "0.5") -> HER ZAMAN ONDALIKTIR!
+    const num = parseFloat(str);
     return isNaN(num) ? 0 : num;
   }
 
