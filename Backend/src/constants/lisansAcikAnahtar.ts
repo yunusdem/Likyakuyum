@@ -6,4 +6,4 @@
  * bundan sonra derlenir. Boşken kurulum modunda hiçbir lisans kabul edilmez (kilit: LISANS_GECERSIZ).
  * Bu değer ortam değişkeninden OKUNMAZ: müşteri makinesinde değiştirilip sahte lisans kabul ettirilemesin.
  */
-export const LISANS_ACIK_ANAHTAR = "";
+export const LISANS_ACIK_ANAHTAR = "MCowBQYDK2VwAyEAEqNrvFNrgZ9m54XNbm8H9/8OUxzZuetaxoDtZnVr7t0=";
