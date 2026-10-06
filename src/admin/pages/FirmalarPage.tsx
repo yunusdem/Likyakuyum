@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { IconPlus } from "@tabler/icons-react";
-import { adminApi, FirmaDto, FirmaDurum } from "../services/adminApi";
+import { adminApi, BulutDurum, FirmaDto, FirmaDurum } from "../services/adminApi";
 import FirmaFormu from "../components/FirmaFormu";
 import { DogrulamaRozeti, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
 
@@ -16,6 +16,29 @@ const FirmalarPage: React.FC = () => {
   const [arama, setArama] = useState("");
   const [durum, setDurum] = useState<DurumFiltresi>("HEPSI");
   const [ekleAcik, setEkleAcik] = useState(false);
+  const [bulut, setBulut] = useState<BulutDurum | null>(null);
+  // Bulut firma oluşturulduktan sonra geçici şifre yalnız bu pencerede, bir kez gösterilir
+  const [sonuc, setSonuc] = useState<{
+    firma: FirmaDto;
+    ilkKullanici: { kullaniciAdi: string; geciciSifre: string };
+  } | null>(null);
+  const [kopyalandi, setKopyalandi] = useState(false);
+
+  const ekleAc = async () => {
+    setEkleAcik(true);
+    try {
+      setBulut(await adminApi.bulutDurum());
+    } catch {
+      setBulut(null); // eski sunucu / yetki: seçenek gösterilmez, normal kayıt çalışır
+    }
+  };
+
+  const sonucuKapat = () => {
+    const firmaId = sonuc?.firma.firmaId;
+    setSonuc(null);
+    setKopyalandi(false);
+    if (firmaId) navigate(`/firmalar/${firmaId}`);
+  };
 
   const yukle = useCallback(async () => {
     try {
@@ -61,8 +84,10 @@ const FirmalarPage: React.FC = () => {
                 <option value="AKTIF">Aktif</option>
                 <option value="DONDURULMUS">Dondurulmuş</option>
                 <option value="PASIF">Pasif</option>
+                <option value="SILINECEK">Silinecek</option>
+                <option value="SILINDI">Silindi</option>
               </Form.Select>
-              <Button className="btn-adm" size="sm" onClick={() => setEkleAcik(true)}>
+              <Button className="btn-adm" size="sm" onClick={ekleAc}>
                 <IconPlus size={16} className="me-1" />
                 Yeni Firma
               </Button>
@@ -134,8 +159,78 @@ const FirmalarPage: React.FC = () => {
               const firma = await adminApi.firmaEkle(veri);
               navigate(`/firmalar/${firma.firmaId}`);
             }}
+            bulut={bulut}
+            bulutKaydet={async (veri) => {
+              const yanit = await adminApi.firmaBulutEkle(veri);
+              setEkleAcik(false);
+              setSonuc(yanit);
+              yukle();
+            }}
           />
         </Modal.Body>
+      </Modal>
+
+      <Modal show={!!sonuc} onHide={sonucuKapat} backdrop="static" keyboard={false} centered>
+        <Modal.Header>
+          <Modal.Title as="h5">Firma oluşturuldu</Modal.Title>
+        </Modal.Header>
+        {sonuc && (
+          <Modal.Body>
+            <Table size="sm" className="mb-3">
+              <tbody>
+                <tr>
+                  <th className="fw-normal text-muted">Firma</th>
+                  <td>
+                    {sonuc.firma.firmaKodu} · {sonuc.firma.unvan}
+                  </td>
+                </tr>
+                <tr>
+                  <th className="fw-normal text-muted">Müşteri No</th>
+                  <td>{sonuc.firma.musteriNo}</td>
+                </tr>
+                <tr>
+                  <th className="fw-normal text-muted">Veritabanı</th>
+                  <td>
+                    {sonuc.firma.dbServer} · {sonuc.firma.dbName}
+                  </td>
+                </tr>
+                <tr>
+                  <th className="fw-normal text-muted">İlk kullanıcı</th>
+                  <td className="fw-semibold">{sonuc.ilkKullanici.kullaniciAdi}</td>
+                </tr>
+                <tr>
+                  <th className="fw-normal text-muted">Geçici şifre</th>
+                  <td>
+                    <code className="fs-6">{sonuc.ilkKullanici.geciciSifre}</code>{" "}
+                    <Button
+                      size="sm"
+                      variant="outline-secondary"
+                      className="ms-2"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(sonuc.ilkKullanici.geciciSifre);
+                          setKopyalandi(true);
+                        } catch {
+                          setKopyalandi(false);
+                        }
+                      }}
+                    >
+                      {kopyalandi ? "Kopyalandı" : "Kopyala"}
+                    </Button>
+                  </td>
+                </tr>
+              </tbody>
+            </Table>
+            <Alert variant="warning" className="mb-0">
+              Geçici şifre yalnızca şimdi gösteriliyor. Firmaya iletin; kullanıcı ilk girişte kendi şifresini belirler.
+            </Alert>
+          </Modal.Body>
+        )}
+        <Modal.Footer>
+          <Button className="btn-adm" onClick={sonucuKapat}>
+            Tamam, firmaya git
+          </Button>
+        </Modal.Footer>
       </Modal>
     </>
   );

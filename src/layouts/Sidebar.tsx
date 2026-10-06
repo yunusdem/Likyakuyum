@@ -15,6 +15,7 @@ import {
   IconX,
   IconLogin2,
   IconKey,
+  IconLicense,
   IconUser,
   IconClock,
   IconCalendar,
@@ -55,6 +56,7 @@ import { CashDeskService } from "../services/cashDeskService";
 // import required routes
 import { DashboardMenu } from "routes/DashboardRoute";
 import { menuyuSuz } from "../config/modulKatalogu";
+import { SistemService } from "../services/sistemService";
 
 interface SidebarProps {
   hideLogo: boolean;
@@ -269,6 +271,11 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   const currentPath = location.pathname;
   const { handleCollapsed, collapsed } = useMenu();
   const { user, logout } = useAuth();
+  // Kurulum (exe) sürümünde Lisans ve Sürüm sayfasının düğmesi gösterilir
+  const [kurulumSurumu, setKurulumSurumu] = useState(false);
+  useEffect(() => {
+    SistemService.bilgi().then((b) => setKurulumSurumu(!!b.kurulum));
+  }, []);
   // Yönetim panelinden firmaya kapatılan menüler hiç çizilmez (kısayol tuşları da yalnız görünen menüde çalışır)
   const gorunenMenu = useMemo(() => menuyuSuz(DashboardMenu, user?.merkez?.moduller), [user?.merkez?.moduller]);
   const gorunenMenuRef = useRef(gorunenMenu);
@@ -995,6 +1002,17 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
           {/* Kilit ve Çıkış Butonları (Altlı Üstlü) */}
           <div className="d-flex flex-column gap-1 flex-shrink-0 align-items-center justify-content-center">
+            {kurulumSurumu && (
+              <button
+                type="button"
+                onClick={() => navigate("/lisans-surum")}
+                className="btn btn-outline-secondary btn-sm p-0 d-flex align-items-center justify-content-center rounded-2 shadow-xs"
+                title="Lisans ve Sürüm"
+                style={{ width: "28px", height: "28px", transition: "all 0.2s ease" }}
+              >
+                <IconLicense size={15} />
+              </button>
+            )}
             {/* Anahtar / Şifre Değiştir */}
             <button
               type="button"

@@ -12,6 +12,14 @@ export interface MerkezOturumBilgisi {
   kullaniciSayisi: number;
   /** Firmaya açık modül kodları; null = kısıt yok */
   moduller: string[] | null;
+  /** Lisans uyarı bandı / kilit penceresindeki iletişim bilgisi */
+  iletisim?: LisansIletisim;
+}
+
+export interface LisansIletisim {
+  telefon: string;
+  eposta: string;
+  metin: string;
 }
 
 export interface UserProfileDto {

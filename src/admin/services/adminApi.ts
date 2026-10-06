@@ -20,8 +20,9 @@ export interface AdminDto {
   olusturmaTarihi: string;
 }
 
-export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF";
-export type BaglantiModu = "cloud" | "local";
+export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF" | "SILINECEK" | "SILINDI";
+/** cloud: sunucumuzda · local: web köprü · setup: kurulum (lisanslı exe) */
+export type BaglantiModu = "cloud" | "local" | "setup";
 export type LisansDurumu = "YOK" | "GECERLI" | "YAKINDA" | "BITMIS";
 
 export interface LisansDto {
@@ -35,6 +36,48 @@ export interface LisansDto {
   notlar: string | null;
   aktif: boolean;
   olusturmaTarihi: string;
+  /** Kurulum (exe): imzalı lisans kodu ve bağlı olduğu makine */
+  lisansKodu: string | null;
+  makineKimligi: string | null;
+  seriNo: number | null;
+  iptal: boolean;
+  teslim: "KOD" | "HEARTBEAT" | null;
+  teslimTarihi: string | null;
+}
+
+export type AyarAnahtari =
+  | "LISANS_ILETISIM_TELEFON"
+  | "LISANS_ILETISIM_EPOSTA"
+  | "LISANS_ILETISIM_METIN"
+  | "YEDEK_KLASORU"
+  | "SURUM_KLASORU"
+  | "SABLON_YEDEK_DOSYASI";
+
+export interface AyarlarDto {
+  ayarlar: Record<AyarAnahtari, string>;
+  durum: { lisansImzaAcik: boolean; klonAcik: boolean };
+}
+
+export interface SurumDto {
+  surum: string;
+  yayinTarihi: string;
+  boyut: number;
+  semaSurumu: number | null;
+  notlar: string | null;
+  aktif: boolean;
+  kurulumSayisi: number;
+  sabitFirmaSayisi: number;
+}
+
+export interface HeartbeatDto {
+  tarih: string;
+  surum: string | null;
+  makineKimligi: string | null;
+  lisansDurumu: string | null;
+  kilitNedeni: string | null;
+  kullaniciSayisi: number | null;
+  semaSurumu: number | null;
+  ip: string | null;
 }
 
 export interface FirmaDto {
@@ -78,6 +121,21 @@ export interface FirmaDto {
   lisansDurumu: LisansDurumu;
   lisansKalanGun: number | null;
   aktifLisans: { lisansId: number; baslangic: string; bitis: string; kullaniciLimiti: number; paketAdi: string | null } | null;
+  /** Bulut: silme istendiyse kalıcı silinme zamanı */
+  silinmePlani: string | null;
+  silindiTarihi: string | null;
+  yedekTarihi: string | null;
+  yedekBoyut: number | null;
+  yedekVar: boolean;
+  yedekSilinmePlani: string | null;
+  /** Kurulum (exe) */
+  makineKimligi: string | null;
+  surum: string | null;
+  hedefSurum: string | null;
+  sonGorulme: string | null;
+  bildirilenLisansDurumu: string | null;
+  bildirilenKilitNedeni: string | null;
+  bildirilenKullaniciSayisi: number | null;
 }
 
 export interface FirmaGirdi {
@@ -98,6 +156,21 @@ export interface FirmaGirdi {
   dbUser: string;
   /** gönderilmezse kayıtlı şifreye dokunulmaz */
   dbSifre?: string;
+}
+
+/** Sunucumuzda şablondan yeni veritabanıyla açılan firma */
+export interface BulutFirmaGirdi extends Omit<FirmaGirdi, "baglantiModu" | "dbServer" | "dbSifre"> {
+  dbSifre: string;
+  ilkKullaniciAdi: string;
+  ilkKullaniciAdSoyad: string;
+  lisansBitis: string;
+  kullaniciLimiti: number;
+}
+
+export interface BulutDurum {
+  /** false: sunucuda KLON_DB_USER / KLON_DB_PASSWORD tanımlı değil */
+  klonAcik: boolean;
+  sunucu: string;
 }
 
 export interface LisansGirdi {
@@ -409,6 +482,18 @@ export const adminApi = {
   firmalar: () => istek<FirmaDto[]>("GET", "/firmalar"),
   firma: (firmaId: number) => istek<FirmaDto>("GET", `/firmalar/${firmaId}`),
   firmaEkle: (veri: FirmaGirdi) => istek<FirmaDto>("POST", "/firmalar", veri),
+  bulutDurum: () => istek<BulutDurum>("GET", "/bulut-durum"),
+  firmaYedekle: (firmaId: number) => istek<FirmaDto>("POST", `/firmalar/${firmaId}/yedekle`),
+  /** Dönen adres tarayıcıda açılınca dosya doğrudan iner (15 dk geçerli) */
+  firmaYedekIndirmeAdresi: async (firmaId: number) => {
+    const b = await istek<{ yol: string; sonGecerlilik: string }>("POST", `/firmalar/${firmaId}/yedek/baglanti`);
+    return `${API_KOK}${b.yol}`;
+  },
+  firmaSilmeDurumu: (firmaId: number) => istek<{ silinemezNedeni: string | null }>("GET", `/firmalar/${firmaId}/silme-durumu`),
+  firmaSil: (firmaId: number, onay: string) => istek<FirmaDto>("POST", `/firmalar/${firmaId}/sil`, { onay }),
+  firmaSilmeyiGeriAl: (firmaId: number) => istek<FirmaDto>("POST", `/firmalar/${firmaId}/sil/geri-al`),
+  firmaBulutEkle: (veri: BulutFirmaGirdi) =>
+    istek<{ firma: FirmaDto; ilkKullanici: { kullaniciAdi: string; geciciSifre: string } }>("POST", "/firmalar/bulut", veri),
   firmaGuncelle: (firmaId: number, veri: FirmaGirdi) => istek<FirmaDto>("PUT", `/firmalar/${firmaId}`, veri),
   firmaDurum: (firmaId: number, durum: FirmaDurum, not: string) =>
     istek<FirmaDto>("PUT", `/firmalar/${firmaId}/durum`, { durum, not }),
@@ -425,6 +510,37 @@ export const adminApi = {
   /** Herkese açık: maildeki bağlantıyı açan firma düğmeye basınca */
   epostaOnayla: (anahtar: string) => istek<{ unvan: string; eposta: string }>("POST", "/eposta-dogrulama/onayla", { anahtar }),
   lisanslar: (firmaId: number) => istek<LisansDto[]>("GET", `/firmalar/${firmaId}/lisanslar`),
+  lisansKoduUret: (firmaId: number, lisansId: number, makineKimligi: string) =>
+    istek<{ kod: string; lisans: LisansDto }>("POST", `/firmalar/${firmaId}/lisanslar/${lisansId}/kod`, { makineKimligi }),
+  lisansIptal: (firmaId: number, lisansId: number) => istek<LisansDto>("POST", `/firmalar/${firmaId}/lisanslar/${lisansId}/iptal`),
+  ayarlar: () => istek<AyarlarDto>("GET", "/ayarlar"),
+  surumler: () => istek<SurumDto[]>("GET", "/surumler"),
+  surumGuncelle: (surum: string, veri: { aktif?: boolean; notlar?: string | null }) =>
+    istek<SurumDto[]>("PUT", `/surumler/${encodeURIComponent(surum)}`, veri),
+  hedefSurum: (firmaId: number, surum: string | null) => istek<FirmaDto>("PUT", `/firmalar/${firmaId}/hedef-surum`, { surum }),
+  kurulumDurumu: (firmaId: number) =>
+    istek<{ sonBildirilenMakine: string | null; gecmis: HeartbeatDto[] }>("GET", `/firmalar/${firmaId}/kurulum`),
+  kurulumBaglantisi: (firmaId: number) =>
+    istek<{ adres: string; sonGecerlilik: string }>("POST", `/firmalar/${firmaId}/kurulum/baglanti`),
+  /** firma.lky dosyasını oturum anahtarıyla indirir ve tarayıcıya kaydettirir */
+  firmaDosyasiIndir: async (firmaId: number) => {
+    const token = tokenOku();
+    const r = await fetch(`${API_KOK}/firmalar/${firmaId}/kurulum/firma-dosyasi`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      throw new AdminApiHatasi(r.status, j?.message || `İndirilemedi (${r.status}).`);
+    }
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "firma.lky";
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+  ayarKaydet: (veri: Partial<Record<AyarAnahtari, string>>) => istek<AyarlarDto>("PUT", "/ayarlar", veri),
   lisansEkle: (firmaId: number, veri: LisansGirdi) =>
     istek<{ firma: FirmaDto; lisanslar: LisansDto[] }>("POST", `/firmalar/${firmaId}/lisanslar`, veri),
 

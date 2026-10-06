@@ -5,8 +5,8 @@ import { IconSearch } from "@tabler/icons-react";
 import { adminApi, FirmaDto, FirmaDurum } from "../services/adminApi";
 import { DurumRozeti, LisansRozeti } from "./FirmaRozetleri";
 
-/** Durumun sayı karşılığı: 1 = Aktif, 0 = Pasif, 2 = Dondurulmuş */
-const DURUM_KODU: Record<FirmaDurum, number> = { AKTIF: 1, PASIF: 0, DONDURULMUS: 2 };
+/** Durumun sayı karşılığı: 1 = Aktif, 0 = Pasif, 2 = Dondurulmuş, 3 = Silinecek, 4 = Silindi */
+const DURUM_KODU: Record<FirmaDurum, number> = { AKTIF: 1, PASIF: 0, DONDURULMUS: 2, SILINECEK: 3, SILINDI: 4 };
 
 const kucult = (v: string | null | undefined) => (v || "").toLocaleLowerCase("tr");
 

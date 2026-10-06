@@ -19,6 +19,7 @@ import { comparePassword, hashPassword } from "../utils/password.utils.js";
 import { baglantiSina, firmaDbAnahtari } from "./admin/firmaBaglanti.service.js";
 import { sifreCoz } from "../utils/kripto.utils.js";
 import { ModulSqlRepository } from "../models/admin/modulSql.repository.js";
+import { AyarSqlRepository } from "../models/admin/ayarSql.repository.js";
 
 /**
  * Kullanıcı uygulamasının (likyakuyum.com) merkez — LIKYA_ADMIN — kontrolü
@@ -63,9 +64,19 @@ export const musteriNoTemizle = (v: string): string => String(v || "").replace(/
 /** Giriş ekranı pencereyi yanıttaki errors.kod'a göre açar. */
 const redHatasi = (kod: GirisRedKodu): ApiError => new ApiError(HttpStatus.FORBIDDEN, RED_MESAJI[kod], { kod });
 
+/** Lisans bitince giriş penceresinde panelden ayarlanan iletişim bilgisi de gösterilir (K18). */
+const girisRedHatasi = async (kod: GirisRedKodu): Promise<ApiError> => {
+  if (kod !== "LISANS_BITTI") return redHatasi(kod);
+  const a = await AyarSqlRepository.tumu();
+  return new ApiError(HttpStatus.FORBIDDEN, RED_MESAJI[kod], {
+    kod,
+    iletisim: { telefon: a.LISANS_ILETISIM_TELEFON, eposta: a.LISANS_ILETISIM_EPOSTA, metin: a.LISANS_ILETISIM_METIN },
+  });
+};
+
 /** Firmanın şu an çalışmasına engel olan durum; yoksa null. Lisansı hiç tanımlanmamış firma engellenmez. */
 export const firmaEngeli = (firma: FirmaDto): GirisRedKodu | null => {
-  if (firma.durum === "PASIF") return "FIRMA_PASIF";
+  if (firma.durum === "PASIF" || firma.durum === "SILINECEK" || firma.durum === "SILINDI") return "FIRMA_PASIF";
   if (firma.durum === "DONDURULMUS") return "FIRMA_DONDURULDU";
   if (firma.lisansDurumu === "BITMIS") return "LISANS_BITTI";
   return null;
@@ -96,7 +107,7 @@ export class MerkezGirisService {
         redNedeni: firma ? engel : `${engel}: ${anahtar}`,
         ...istemci,
       });
-      throw redHatasi(engel);
+      throw await girisRedHatasi(engel);
     }
     return firma!;
   }
@@ -123,7 +134,8 @@ export class MerkezGirisService {
   ): Promise<FirmaDto> {
     const no = musteriNoTemizle(musteriNo);
     const firma = await FirmaSqlRepository.idIleBul(firmaId);
-    const eslesir = !!firma && !!no && (firma.musteriNo || "").toUpperCase() === no;
+    // Kurulum (exe) firmaları web'den girmez; kendi bilgisayarlarındaki programı kullanır
+    const eslesir = !!firma && !!no && (firma.musteriNo || "").toUpperCase() === no && firma.baglantiModu !== "setup";
 
     const engel: GirisRedKodu | null = eslesir ? firmaEngeli(firma!) : "MUSTERI_NO_BULUNAMADI";
     if (engel) {
@@ -135,7 +147,7 @@ export class MerkezGirisService {
         redNedeni: eslesir ? engel : `${engel}: ${no} / ${firmaId}`,
         ...istemci,
       });
-      throw redHatasi(engel);
+      throw await girisRedHatasi(engel);
     }
     return firma!;
   }
@@ -305,6 +317,11 @@ export class MerkezGirisService {
       kullaniciLimiti: b.firma.aktifLisans?.kullaniciLimiti ?? null,
       kullaniciSayisi: b.firma.kullaniciSayisi,
       moduller: await ModulSqlRepository.firmaAcikModulleri(b.firma.firmaId),
+      iletisim: await AyarSqlRepository.tumu().then((a) => ({
+        telefon: a.LISANS_ILETISIM_TELEFON,
+        eposta: a.LISANS_ILETISIM_EPOSTA,
+        metin: a.LISANS_ILETISIM_METIN,
+      })),
     };
   }
 

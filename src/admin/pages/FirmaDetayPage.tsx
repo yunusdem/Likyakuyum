@@ -7,6 +7,9 @@ import FirmaKullanicilari from "../components/FirmaKullanicilari";
 import FirmaModulleri from "../components/FirmaModulleri";
 import FirmaPos from "../components/FirmaPos";
 import FirmaEpostaDogrulama from "../components/FirmaEpostaDogrulama";
+import FirmaYedekSilme from "../components/FirmaYedekSilme";
+import LisansKoduIslemleri from "../components/LisansKoduIslemleri";
+import FirmaKurulum from "../components/FirmaKurulum";
 import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
 
 const DURUM_ACIKLAMASI: Record<FirmaDurum, string> = {
@@ -14,6 +17,8 @@ const DURUM_ACIKLAMASI: Record<FirmaDurum, string> = {
   DONDURULMUS:
     "Kullanıcılar giremez; giriş ekranında “Hesabınız donduruldu” penceresi çıkar. İçerideki kullanıcılar bir sonraki işlemlerinde düşer. Veriler durur.",
   PASIF: "Kullanılmayan firma. Kullanıcılar giremez; içerideki kullanıcılar bir sonraki işlemlerinde düşer. Veriler durur.",
+  SILINECEK: "Silme istendi. Kullanıcılar giremez; 30 gün içinde Yedek & Silme sekmesinden geri alınabilir.",
+  SILINDI: "Veritabanı kalıcı olarak silindi; kayıt arşivde durur.",
 };
 
 const bugun = () => new Date().toISOString().slice(0, 10);
@@ -190,7 +195,7 @@ const FirmaDetayPage: React.FC = () => {
                 Oturumları Kapat
               </Button>
               {(["AKTIF", "DONDURULMUS", "PASIF"] as FirmaDurum[])
-                .filter((d) => d !== firma.durum)
+                .filter((d) => d !== firma.durum && firma.durum !== "SILINECEK" && firma.durum !== "SILINDI")
                 .map((d) => (
                   <Button
                     key={d}
@@ -346,6 +351,18 @@ const FirmaDetayPage: React.FC = () => {
               <FirmaPos firma={firma} />
             </Tab>
 
+            {firma.baglantiModu === "setup" && (
+              <Tab eventKey="kurulum" title="Kurulum" mountOnEnter>
+                <FirmaKurulum firma={firma} degisti={setFirma} />
+              </Tab>
+            )}
+
+            {firma.baglantiModu === "cloud" && (
+              <Tab eventKey="yedek" title="Yedek & Silme" mountOnEnter>
+                <FirmaYedekSilme firma={firma} degisti={setFirma} />
+              </Tab>
+            )}
+
             <Tab eventKey="lisans" title="Lisans">
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <div className="text-muted small">
@@ -369,6 +386,7 @@ const FirmaDetayPage: React.FC = () => {
                       <th>Lisans anahtarı</th>
                       <th>Not</th>
                       <th>Eklenme</th>
+                      {firma.baglantiModu === "setup" && <th>Kurulum lisans kodu</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -382,6 +400,18 @@ const FirmaDetayPage: React.FC = () => {
                         <td>{l.lisansAnahtari || "-"}</td>
                         <td style={{ maxWidth: 260 }}>{l.notlar || "-"}</td>
                         <td>{tarihYaz(l.olusturmaTarihi)}</td>
+                        {firma.baglantiModu === "setup" && (
+                          <td>
+                            <LisansKoduIslemleri
+                              firma={firma}
+                              lisans={l}
+                              degisti={async () => {
+                                setLisanslar(await adminApi.lisanslar(firmaId));
+                                setFirma(await adminApi.firma(firmaId));
+                              }}
+                            />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

@@ -23,6 +23,14 @@ import {
   adminGuncelleSchema,
   adminIdSchema,
   firmaEkleSchema,
+  bulutFirmaSchema,
+  firmaSilSchema,
+  indirSchema,
+  lisansKodSchema,
+  lisansIptalSchema,
+  ayarKaydetSchema,
+  surumGuncelleSchema,
+  hedefSurumSchema,
   firmaGuncelleSchema,
   firmaDurumSchema,
   firmaDogrulamaSchema,
@@ -49,6 +57,9 @@ router.post("/auth/login", adminGirisSiniri, validate(adminGirisSchema), AdminAu
 // Açık uç: firma, maildeki doğrulama bağlantısını açıp düğmeye basınca (oturum yok; anahtar tek kullanımlık)
 router.post("/eposta-dogrulama/onayla", epostaOnaySiniri, validate(epostaOnaySchema), FirmaController.epostaOnayla);
 
+// Açık uç: panelin ürettiği 15 dakikalık bağlantıyla yedek dosyası indirme (tarayıcı doğrudan indirir)
+router.get("/indir/:token", epostaOnaySiniri, validate(indirSchema), FirmaController.indir);
+
 // Buradan sonrası admin oturumu ister
 router.use(adminAuthenticate);
 
@@ -71,6 +82,13 @@ router.put("/firmalar/:id/eposta-dogrulama", validate(epostaDogrulamaElleSchema)
 
 router.get("/firmalar", FirmaController.listele);
 router.post("/firmalar", validate(firmaEkleSchema), FirmaController.ekle);
+router.get("/bulut-durum", FirmaController.bulutDurum);
+router.post("/firmalar/bulut", validate(bulutFirmaSchema), FirmaController.bulutEkle);
+router.post("/firmalar/:id/yedekle", validate(adminIdSchema), FirmaController.yedekle);
+router.post("/firmalar/:id/yedek/baglanti", validate(adminIdSchema), FirmaController.yedekBaglantisi);
+router.get("/firmalar/:id/silme-durumu", validate(adminIdSchema), FirmaController.silmeDurumu);
+router.post("/firmalar/:id/sil", validate(firmaSilSchema), FirmaController.sil);
+router.post("/firmalar/:id/sil/geri-al", validate(adminIdSchema), FirmaController.silmeyiGeriAl);
 router.get("/firmalar/:id", validate(adminIdSchema), FirmaController.getir);
 router.put("/firmalar/:id", validate(firmaGuncelleSchema), FirmaController.guncelle);
 router.put("/firmalar/:id/durum", validate(firmaDurumSchema), FirmaController.durum);
@@ -79,6 +97,16 @@ router.post("/firmalar/:id/db-test", validate(adminIdSchema), FirmaController.db
 router.post("/firmalar/:id/masak-kontrol", validate(adminIdSchema), FirmaController.masakKontrol);
 router.get("/firmalar/:id/lisanslar", validate(adminIdSchema), FirmaController.lisanslar);
 router.post("/firmalar/:id/lisanslar", validate(lisansEkleSchema), FirmaController.lisansEkle);
+router.post("/firmalar/:id/lisanslar/:lisansId/kod", validate(lisansKodSchema), FirmaController.lisansKodu);
+router.post("/firmalar/:id/lisanslar/:lisansId/iptal", validate(lisansIptalSchema), FirmaController.lisansIptal);
+router.get("/ayarlar", FirmaController.ayarlar);
+router.get("/firmalar/:id/kurulum", validate(adminIdSchema), FirmaController.kurulumDurumu);
+router.get("/firmalar/:id/kurulum/firma-dosyasi", validate(adminIdSchema), FirmaController.firmaDosyasi);
+router.post("/firmalar/:id/kurulum/baglanti", validate(adminIdSchema), FirmaController.kurulumBaglantisi);
+router.put("/firmalar/:id/hedef-surum", validate(hedefSurumSchema), FirmaController.hedefSurum);
+router.get("/surumler", FirmaController.surumler);
+router.put("/surumler/:surum", validate(surumGuncelleSchema), FirmaController.surumGuncelle);
+router.put("/ayarlar", validate(ayarKaydetSchema), FirmaController.ayarKaydet);
 
 router.get("/kullanicilar", KullaniciController.tumu);
 router.put("/kullanicilar/:id", validate(kullaniciGuncelleSchema), KullaniciController.guncelle);

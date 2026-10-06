@@ -120,9 +120,15 @@ class ApiClient {
         }
 
         // Sunucunun hata kodu (ör. giriş reddinde errors.kod = FIRMA_DONDURULDU) çağırana taşınır
-        const apiError = new Error(errorMessage) as Error & { kod?: string; status?: number };
+        const apiError = new Error(errorMessage) as Error & { kod?: string; status?: number; ayrinti?: any };
         apiError.kod = json?.errors?.kod;
         apiError.status = response.status;
+        apiError.ayrinti = json?.errors;
+
+        // Kurulum sürümü: lisans kilidi (423) her ekranda kilit penceresini açar (giriş/lisans ekranları kendileri gösterir)
+        if (response.status === 423 && json?.errors?.kod === "LISANS_KILIT" && !url.includes("/auth/login") && !url.includes("/auth/lisans")) {
+          window.dispatchEvent(new CustomEvent("likya_lisans_kilit", { detail: { mesaj: errorMessage, ...json.errors } }));
+        }
         throw apiError;
       }
 

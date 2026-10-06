@@ -1,3 +1,4 @@
+import path from "path";
 import winston from "winston";
 import { env } from "../config/env.config.js";
 
@@ -23,3 +24,16 @@ export const logger = winston.createLogger({
     }),
   ],
 });
+
+// Kurulum (exe): program arka planda (Görev Zamanlayıcı) çalışır, konsol görünmez; loglar veri klasörüne de yazılır
+if (env.KURULUM_MODU) {
+  logger.add(
+    new winston.transports.File({
+      filename: path.join(env.VERI_KLASORU, "log", "likya.log"),
+      maxsize: 5 * 1024 * 1024,
+      maxFiles: 5,
+      tailable: true,
+      format: combine(timestamp({ format: "YYYY-MM-DD HH:mm:ss" }), customFormat),
+    })
+  );
+}

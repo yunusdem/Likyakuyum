@@ -84,6 +84,9 @@ import LandingAboutPage from "./pages/landing/LandingAboutPage";
 
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import LisansKilitDinleyici from "./components/lisans/LisansKilitDinleyici";
+import LisansUyariBandi from "./components/lisans/LisansUyariBandi";
+import LisansSurumPage from "./pages/settings/LisansSurumPage";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ERPContextMenu } from "./components/common/ERPContextMenu";
@@ -114,6 +117,7 @@ const DashboardLayout: React.FC = () => {
       <div id="content" className="position-relative min-vh-100 d-flex flex-column">
         <Header />
         <main className="flex-grow-1 custom-container pt-1 pb-3">
+          <LisansUyariBandi />
           <ModulKorumasi />
         </main>
         <footer className="custom-container py-3 border-top mt-auto bg-body">
@@ -143,6 +147,7 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <UserThemeApplier />
+        <LisansKilitDinleyici />
         <ERPContextMenu />
         <Routes>
 
@@ -170,6 +175,7 @@ export default function App() {
           <Route path="/" element={<DashboardLayout />}>
             <Route path="dashboard" element={<HomePage />} />
             <Route path="sifre-degistir" element={<ChangePasswordPage />} />
+            <Route path="lisans-surum" element={<LisansSurumPage />} />
             <Route path="ayarlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
             <Route path="tanimlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
             <Route path="ayarlar/firma-tanimlari" element={<CompanyDefinitionsPage />} />

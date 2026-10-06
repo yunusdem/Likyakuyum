@@ -17,6 +17,8 @@ import {
 } from "@tabler/icons-react";
 import { useAuth } from "../../context/AuthContext";
 import { AuthService, MusteriVeritabani } from "../../services/authService";
+import { SistemBilgisi, SistemService } from "../../services/sistemService";
+import LisansKilitPenceresi, { LisansKilitBilgisi } from "../../components/lisans/LisansKilitPenceresi";
 
 const MUSTERI_NO_KEY = "kuyumcu_erp_musteri_no";
 const FIRMA_ID_KEY = "kuyumcu_erp_firma_id";
@@ -63,8 +65,50 @@ export const LoginPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [engel, setEngel] = useState<{ baslik: string; mesaj: string } | null>(null);
 
+  // Kurulum (exe) sürümü: tek firma, müşteri no / veritabanı seçimi yok; lisans kilidi ve ilk yönetici
+  const [sistem, setSistem] = useState<SistemBilgisi | null>(null);
+  const [kilit, setKilit] = useState<LisansKilitBilgisi | null>(null);
+  const [kilitKapatilabilir, setKilitKapatilabilir] = useState(false);
+  const [ilkYonetici, setIlkYonetici] = useState(false);
+  const [ilkAdSoyad, setIlkAdSoyad] = useState("");
+  const [sifreTekrar, setSifreTekrar] = useState("");
+  const kurulum = !!sistem?.kurulum;
+
+  const kurulumuYukle = async () => {
+    const b = await SistemService.bilgi(true);
+    setSistem(b);
+    if (!b.kurulum) return;
+    try {
+      const d = await SistemService.lisansDurumu();
+      if (d.durum === "KILITLI") {
+        setKilitKapatilabilir(false);
+        setKilit({ mesaj: d.mesaj || "Program kilitli.", neden: d.neden, iletisim: d.iletisim, makineKimligi: d.makineKimligi });
+        return;
+      }
+      setKilit(null);
+    } catch {
+      /* lisans durumu okunamadı; giriş denemesi 423 ile pencereyi açar */
+    }
+    setIlkYonetici(b.kullaniciVar === false);
+  };
+
+  useEffect(() => {
+    kurulumuYukle();
+  }, []);
+
   /** Giriş bir yönetim engeline takıldıysa pencereyi açar ve true döner. */
   const engelGoster = (err: any): boolean => {
+    // Kurulum: lisans kilidi (423) · Bulut: lisans bitti (iletişim bilgisiyle)
+    if (err?.status === 423 && err?.kod === "LISANS_KILIT") {
+      setKilitKapatilabilir(false);
+      setKilit({ mesaj: err.message, neden: err.ayrinti?.neden, iletisim: err.ayrinti?.iletisim, makineKimligi: err.ayrinti?.makineKimligi });
+      return true;
+    }
+    if (err?.kod === "LISANS_BITTI") {
+      setKilitKapatilabilir(true);
+      setKilit({ mesaj: err.message, neden: "LISANS_BITTI", iletisim: err.ayrinti?.iletisim });
+      return true;
+    }
     const baslik = err?.kod ? ENGEL_BASLIKLARI[err.kod] : undefined;
     if (!baslik) return false;
     setEngel({ baslik, mesaj: err.message });
@@ -85,6 +129,7 @@ export const LoginPage: React.FC = () => {
 
   // Müşteri no yazıldıkça (kısa bekleme ile) veritabanları listelenir
   useEffect(() => {
+    if (kurulum) return;
     const no = musteriNoTemizle(musteriNo);
     setVeritabanlari([]);
     setFirmaId(0);
@@ -121,7 +166,7 @@ export const LoginPage: React.FC = () => {
       iptal = true;
       clearTimeout(timer);
     };
-  }, [musteriNo]);
+  }, [musteriNo, kurulum]);
 
   const handleUsernameChange = (val: string) => {
     const clean = val.replace(/\s+/g, "");
@@ -145,8 +190,35 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setErrorMsg(null);
 
-    const no = musteriNoTemizle(musteriNo);
     const cleanUsername = username.trim().replace(/\s+/g, "");
+    if (kurulum) {
+      if (!cleanUsername || !password) {
+        setErrorMsg("Lütfen kullanıcı adınızı ve şifrenizi giriniz.");
+        return;
+      }
+      if (ilkYonetici) {
+        if (password !== sifreTekrar) {
+          setErrorMsg("Şifre ile tekrarı aynı değil.");
+          return;
+        }
+      }
+      try {
+        setIsLoading(true);
+        if (ilkYonetici) {
+          await SistemService.ilkYonetici({ username: cleanUsername, fullName: ilkAdSoyad.trim() || cleanUsername, password });
+        }
+        await login({ musteriNo: sistem?.firma?.musteriNo || "KURULUM", firmaId: 1, username: cleanUsername, password });
+        navigate("/dashboard", { replace: true });
+      } catch (err: any) {
+        if (engelGoster(err)) return;
+        setErrorMsg(err?.status === 401 ? "Kullanıcı adı veya şifre hatalı." : err?.message || "Giriş başarısız.");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    const no = musteriNoTemizle(musteriNo);
     if (!no) {
       setErrorMsg("Lütfen müşteri numaranızı giriniz.");
       return;
@@ -441,8 +513,18 @@ export const LoginPage: React.FC = () => {
                 </Alert>
               )}
 
+              {kurulum && (
+                <Alert variant={ilkYonetici ? "info" : "light"} className="py-2 small border">
+                  <div className="fw-semibold">{sistem?.firma?.unvan || "Likya Kuyum"}</div>
+                  {ilkYonetici
+                    ? "İlk kurulum: programın yöneticisi olacak kullanıcıyı oluşturun. Diğer kullanıcıları içeriden açabilirsiniz."
+                    : `Sürüm ${sistem?.surum || ""}`}
+                </Alert>
+              )}
+
               {/* Giriş: Müşteri No → Veritabanı → Kullanıcı Adı → Şifre */}
               <Form onSubmit={handleSubmit} autoComplete="off">
+                {!kurulum && (<>
                 {/* Müşteri No */}
                 <Form.Group as={Row} className="align-items-center mb-3">
                   <Col xs={12} sm={4} className="mb-1 mb-sm-0">
@@ -525,6 +607,24 @@ export const LoginPage: React.FC = () => {
                     {dbHata && <div className="small text-danger mt-1">{dbHata}</div>}
                   </Col>
                 </Form.Group>
+                </>)}
+
+                {kurulum && ilkYonetici && (
+                  <Form.Group as={Row} className="align-items-center mb-3">
+                    <Col xs={12} sm={4} className="mb-1 mb-sm-0">
+                      <Form.Label className="small fw-semibold text-secondary mb-0">Ad Soyad</Form.Label>
+                    </Col>
+                    <Col xs={12} sm={8}>
+                      <Form.Control
+                        value={ilkAdSoyad}
+                        disabled={isLoading}
+                        onChange={(e) => setIlkAdSoyad(e.target.value)}
+                        style={{ height: "42px" }}
+                        maxLength={100}
+                      />
+                    </Col>
+                  </Form.Group>
+                )}
 
                 {/* Kullanıcı Adı */}
                 <Form.Group as={Row} className="align-items-center mb-3">
@@ -596,6 +696,25 @@ export const LoginPage: React.FC = () => {
                   </Col>
                 </Form.Group>
 
+                {kurulum && ilkYonetici && (
+                  <Form.Group as={Row} className="align-items-center mb-3">
+                    <Col xs={12} sm={4} className="mb-1 mb-sm-0">
+                      <Form.Label className="small fw-semibold text-secondary mb-0">Şifre tekrar</Form.Label>
+                    </Col>
+                    <Col xs={12} sm={8}>
+                      <Form.Control
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={sifreTekrar}
+                        disabled={isLoading}
+                        onChange={(e) => setSifreTekrar(e.target.value)}
+                        style={{ height: "42px" }}
+                      />
+                      <div className="small text-muted mt-1">En az 8 karakter; harf ve rakam içermeli.</div>
+                    </Col>
+                  </Form.Group>
+                )}
+
                 {/* Remember Me */}
                 <Row className="mb-4">
                   <Col xs={12} sm={{ span: 8, offset: 4 }}>
@@ -625,7 +744,7 @@ export const LoginPage: React.FC = () => {
                         </>
                       ) : (
                         <>
-                          <span>Sisteme Giriş Yap</span>
+                          <span>{kurulum && ilkYonetici ? "Yöneticiyi Oluştur ve Gir" : "Sisteme Giriş Yap"}</span>
                           <IconArrowRight size={18} />
                         </>
                       )}
@@ -650,6 +769,15 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <LisansKilitPenceresi
+        bilgi={kilit}
+        kapat={kilitKapatilabilir ? () => setKilit(null) : undefined}
+        yuklendi={() => {
+          setKilit(null);
+          kurulumuYukle();
+        }}
+      />
 
       <Modal show={!!engel} onHide={() => setEngel(null)} centered>
         <Modal.Header closeButton>

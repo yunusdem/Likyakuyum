@@ -101,6 +101,32 @@ const envSchema = z.object({
   // "zorunlu": firma kayıtlı/aktif/lisanslı ve kullanıcı merkezde tanımlı olmalı. Tüm firmalar panelde tanımlanıp
   // kullanıcıları içe aktarılmadan "zorunlu" YAPMAYIN; tanımsız firmalar giremez.
   MERKEZ_GIRIS: z.enum(["kapali", "zorunlu"]).default("kapali"),
+  // Bulut firma klonlama (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, K2). docs/sql/KLON_HESABI.sql ile açılan SQL hesabı;
+  // KLON_DB_USER veya KLON_DB_PASSWORD boşsa panelden veritabanı oluşturma kapalıdır. Sunucu/port boşsa ADMIN_DB_* kullanılır.
+  KLON_DB_USER: z.string().default(""),
+  KLON_DB_PASSWORD: z.string().default(""),
+  KLON_DB_SERVER: z.string().default(""),
+  KLON_DB_PORT: z.string().default(""),
+  // Bulut firmalarının kaydına yazılan sunucu adresi (kullanıcı girişinde firma bu adresle eşleşir)
+  BULUT_DB_SUNUCU: z.string().default("127.0.0.1"),
+  // Çevrimdışı lisans imza anahtarı (yalnız merkez sunucu; npm run lisans-anahtar). Boşsa panelden lisans kodu üretilemez.
+  LISANS_OZEL_ANAHTAR: z.string().default(""),
+  // --- Kurulum (exe) modu: müşterinin bilgisayarında/sunucusunda çalışan kopya (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md) ---
+  // "1" iken: merkez veritabanı yoktur, giriş yerel firma veritabanıyla yapılır, çevrimdışı lisans denetlenir.
+  KURULUM_MODU: z
+    .string()
+    .default("0")
+    .transform((v) => v === "1" || v.toLowerCase() === "true"),
+  // Lisans, durum ve firma dosyaları (firma.lky, lisans.lky, durum.lky)
+  VERI_KLASORU: z.string().default("C:\\ProgramData\\LikyaKuyum"),
+  KURULUM_DB_SERVER: z.string().default("127.0.0.1"),
+  KURULUM_DB_NAME: z.string().default("LIKYA"),
+  KURULUM_DB_USER: z.string().default(""),
+  KURULUM_DB_PASSWORD: z.string().default(""),
+  // Merkez sunucunun adresi (heartbeat, güncelleme, GİB/Piyasa aktarımı)
+  MERKEZ_ADRESI: z.string().default("https://likyakuyum.com"),
+  // Kurulumda arayüz (Vite build çıktısı) bu klasörden sunulur; boşsa sunulmaz
+  ARAYUZ_KLASORU: z.string().default(""),
   // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md). Firmanın POS modu admin panelinden gelir; bu değer yalnızca
   // admin veritabanı hiç yapılandırılmamış sunucuda (yerel geliştirme) kullanılır. Canlı mod buradan AÇILAMAZ.
   POS_MOD_YEDEK: z.enum(["kapali", "test"]).default("kapali"),

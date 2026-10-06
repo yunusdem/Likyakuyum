@@ -6,9 +6,17 @@ export const DURUM_ETIKETI: Record<FirmaDurum, string> = {
   AKTIF: "Aktif",
   DONDURULMUS: "Dondurulmuş",
   PASIF: "Pasif",
+  SILINECEK: "Silinecek",
+  SILINDI: "Silindi",
 };
 
-const DURUM_RENGI: Record<FirmaDurum, string> = { AKTIF: "success", DONDURULMUS: "warning", PASIF: "secondary" };
+const DURUM_RENGI: Record<FirmaDurum, string> = {
+  AKTIF: "success",
+  DONDURULMUS: "warning",
+  PASIF: "secondary",
+  SILINECEK: "danger",
+  SILINDI: "dark",
+};
 
 export const DurumRozeti: React.FC<{ durum: FirmaDurum }> = ({ durum }) => (
   <Badge bg={DURUM_RENGI[durum]} text={durum === "DONDURULMUS" ? "dark" : undefined}>

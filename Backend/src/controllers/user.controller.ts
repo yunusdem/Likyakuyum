@@ -6,6 +6,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { FirmaKullaniciMerkezService } from "../services/firmaKullaniciMerkez.service.js";
+import { env } from "../config/env.config.js";
+import { KurulumLisansService } from "../services/kurulum/kurulumLisans.service.js";
 
 export class UserController {
   public static listUsers = asyncHandler(async (req: Request, res: Response) => {
@@ -31,6 +33,8 @@ export class UserController {
   public static createUser = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
     // Merkez açıksa (MERKEZ_GIRIS=zorunlu): firma yöneticisi + şifre kuralı + lisans limiti; kapalıysa merkez = null
+    // Kurulum modu: lisanstaki kullanıcı limiti (tanımlı kullanıcı sayısı) aşılamaz
+    if (env.KURULUM_MODU) await KurulumLisansService.kullaniciAcilabilirMi();
     const merkez = await FirmaKullaniciMerkezService.baglam(req.user);
     if (merkez) FirmaKullaniciMerkezService.olusturmaOnDenetimi(merkez, req.body);
     const newUser = await UserService.createUser(req.body, dbContext);

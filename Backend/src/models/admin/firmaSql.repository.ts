@@ -10,6 +10,9 @@ const SECIM = `
          CASE WHEN f.EPOSTA_TOKEN_HASH IS NOT NULL AND f.EPOSTA_TOKEN_BITIS > GETDATE() THEN f.EPOSTA_TOKEN_BITIS END AS EPOSTA_BAGLANTI_BITIS,
          f.DOGRULANDI, f.DOGRULAYAN_ADMIN_ID, a.KULLANICI_ADI AS DOGRULAYAN_ADMIN, f.DOGRULAMA_TARIHI, f.DOGRULAMA_NOTU,
          f.DB_SON_TEST_TARIHI, f.DB_SON_TEST_SONUCU, f.MASAK_DURUMU, f.MASAK_SON_KONTROL, f.OLUSTURMA_TARIHI,
+         f.SILINME_PLANI, f.SILINDI_TARIHI, f.YEDEK_DOSYA, f.YEDEK_TARIHI, f.YEDEK_BOYUT, f.YEDEK_SILINME_PLANI,
+         f.MAKINE_KIMLIGI, f.SURUM, f.HEDEF_SURUM, f.SON_GORULME, f.BILDIRILEN_LISANS_DURUMU, f.BILDIRILEN_KILIT_NEDENI,
+         f.BILDIRILEN_KULLANICI_SAYISI,
          (SELECT COUNT(*) FROM dbo.ADM_KULLANICI k WHERE k.FIRMA_ID = f.FIRMA_ID AND k.DURUM = 'AKTIF') AS KULLANICI_SAYISI,
          l.LISANS_ID, l.BASLANGIC, l.BITIS, l.KULLANICI_LIMITI, l.PAKET_ADI,
          DATEDIFF(DAY, CAST(GETDATE() AS DATE), l.BITIS) AS KALAN_GUN
@@ -75,6 +78,19 @@ const satirdan = (r: any): FirmaDto => ({
         paketAdi: r.PAKET_ADI ?? null,
       }
     : null,
+  silinmePlani: r.SILINME_PLANI ?? null,
+  silindiTarihi: r.SILINDI_TARIHI ?? null,
+  yedekTarihi: r.YEDEK_TARIHI ?? null,
+  yedekBoyut: r.YEDEK_BOYUT === null || r.YEDEK_BOYUT === undefined ? null : Number(r.YEDEK_BOYUT),
+  yedekVar: !!r.YEDEK_DOSYA,
+  yedekSilinmePlani: r.YEDEK_SILINME_PLANI ?? null,
+  makineKimligi: r.MAKINE_KIMLIGI ?? null,
+  surum: r.SURUM ?? null,
+  hedefSurum: r.HEDEF_SURUM ?? null,
+  sonGorulme: r.SON_GORULME ?? null,
+  bildirilenLisansDurumu: r.BILDIRILEN_LISANS_DURUMU ?? null,
+  bildirilenKilitNedeni: r.BILDIRILEN_KILIT_NEDENI ?? null,
+  bildirilenKullaniciSayisi: r.BILDIRILEN_KULLANICI_SAYISI ?? null,
 });
 
 /** Tabloya yazılan, servis tarafından hazırlanmış alanlar. */
@@ -145,7 +161,7 @@ export class FirmaSqlRepository {
       .request()
       .input("no", sql.VarChar(20), musteriNo)
       .query(`SELECT FIRMA_ID, UNVAN, DB_NAME, DURUM FROM dbo.ADM_FIRMA
-              WHERE MUSTERI_NO = @no AND DURUM <> 'PASIF' ORDER BY UNVAN, DB_NAME`);
+              WHERE MUSTERI_NO = @no AND DURUM IN ('AKTIF', 'DONDURULMUS') AND BAGLANTI_MODU <> 'setup' ORDER BY UNVAN, DB_NAME`);
     return res.recordset.map((r: any) => ({ firmaId: r.FIRMA_ID, unvan: r.UNVAN, dbName: r.DB_NAME, durum: r.DURUM }));
   }
 
@@ -159,6 +175,42 @@ export class FirmaSqlRepository {
       SELECT CAST(SCOPE_IDENTITY() AS INT) AS FIRMA_ID;
     `);
     return res.recordset[0].FIRMA_ID;
+  }
+
+  /** Firma kodu ya da veritabanı (eşleme anahtarı) başka bir firmada kullanılıyor mu (bulut klonlamadan önce). */
+  public static async cakismaVarMi(firmaKodu: string, dbAnahtar: string): Promise<"KOD" | "DB" | null> {
+    const pool = await getAdminPool();
+    const res = await pool
+      .request()
+      .input("kod", sql.VarChar(20), firmaKodu)
+      .input("anahtar", sql.VarChar(400), dbAnahtar)
+      .query(`SELECT
+                (SELECT COUNT(*) FROM dbo.ADM_FIRMA WHERE FIRMA_KODU = @kod) AS KOD,
+                (SELECT COUNT(*) FROM dbo.ADM_FIRMA WHERE DB_ANAHTAR = @anahtar) AS DB`);
+    const r = res.recordset[0];
+    return r.KOD > 0 ? "KOD" : r.DB > 0 ? "DB" : null;
+  }
+
+  /**
+   * Bulut klonlama yarıda kalınca az önce açılan firma kaydını ve ona bağlı ilk kayıtları (kullanıcı, lisans,
+   * modül ayarı) tek işlemde siler. Başka bir tablo firmaya bağlanmışsa silmez, hata fırlatır.
+   */
+  public static async yeniFirmayiGeriAl(firmaId: number): Promise<void> {
+    const pool = await getAdminPool();
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+    try {
+      await new sql.Request(tx).input("id", sql.Int, firmaId).query(`
+        DELETE FROM dbo.ADM_KULLANICI WHERE FIRMA_ID = @id;
+        DELETE FROM dbo.ADM_LISANS WHERE FIRMA_ID = @id;
+        DELETE FROM dbo.ADM_FIRMA_MODUL WHERE FIRMA_ID = @id;
+        DELETE FROM dbo.ADM_FIRMA WHERE FIRMA_ID = @id;
+      `);
+      await tx.commit();
+    } catch (err) {
+      await tx.rollback().catch(() => undefined);
+      throw err;
+    }
   }
 
   /** dbSifreEnc undefined ise kayıtlı şifreye dokunulmaz; null ise silinir. */

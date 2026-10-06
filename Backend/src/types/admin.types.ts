@@ -62,10 +62,30 @@ export type AdminIslem =
   | "POS_AYAR_DEGISTI"
   | "POS_MOD_DEGISTI"
   | "POS_DOGRULAMA"
-  | "POS_DENEME";
+  | "POS_DENEME"
+  | "FIRMA_DB_OLUSTURULDU"
+  | "FIRMA_DB_OLUSTURMA_GERI_ALINDI"
+  | "YEDEK_ALINDI"
+  | "YEDEK_ALINAMADI"
+  | "YEDEK_INDIRME_BAGLANTISI"
+  | "FIRMA_SILME_PLANLANDI"
+  | "FIRMA_SILME_GERI_ALINDI"
+  | "FIRMA_DB_SILINDI"
+  | "FIRMA_DB_SILINEMEDI"
+  | "SILINEN_YEDEK_TEMIZLENDI"
+  | "AYAR_DEGISTI"
+  | "LISANS_KODU_URETILDI"
+  | "LISANS_IPTAL"
+  | "MAKINE_KIMLIGI_DEGISTI"
+  | "KURULUM_BAGLANTISI"
+  | "SURUM_YAYINLANDI"
+  | "SURUM_GUNCELLENDI"
+  | "HEDEF_SURUM_DEGISTI";
 
-export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF";
-export type BaglantiModu = "cloud" | "local";
+/** SILINECEK: panelden silme istendi, 30 gün geri alınabilir · SILINDI: veritabanı kaldırıldı (kayıt arşivde) */
+export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF" | "SILINECEK" | "SILINDI";
+/** cloud: sunucumuzda · local: web köprü (müşterinin SQL'ine site bağlanır) · setup: kurulum (lisanslı exe) */
+export type BaglantiModu = "cloud" | "local" | "setup";
 
 /** Aktif lisansın bugüne göre durumu. YAKINDA = bitişe 30 gün veya daha az kaldı. */
 export type LisansDurumu = "YOK" | "GECERLI" | "YAKINDA" | "BITMIS";
@@ -83,6 +103,13 @@ export interface LisansDto {
   aktif: boolean;
   olusturanAdminId: number | null;
   olusturmaTarihi: Date;
+  /** Kurulum (exe): imzalı lisans kodu ve bağlı olduğu makine */
+  lisansKodu: string | null;
+  makineKimligi: string | null;
+  seriNo: number | null;
+  iptal: boolean;
+  teslim: "KOD" | "HEARTBEAT" | null;
+  teslimTarihi: Date | null;
 }
 
 /** İstemciye dönen firma. Veritabanı şifresi hiçbir zaman dönmez; yalnızca tanımlı olup olmadığı bildirilir. */
@@ -131,6 +158,22 @@ export interface FirmaDto {
   lisansDurumu: LisansDurumu;
   lisansKalanGun: number | null;
   aktifLisans: Pick<LisansDto, "lisansId" | "baslangic" | "bitis" | "kullaniciLimiti" | "paketAdi"> | null;
+  /** Bulut: silme istendiyse kalıcı silinme zamanı */
+  silinmePlani: Date | null;
+  silindiTarihi: Date | null;
+  /** Son yedek (firma başına tek dosya; silinen firmada son yedek) */
+  yedekTarihi: Date | null;
+  yedekBoyut: number | null;
+  yedekVar: boolean;
+  yedekSilinmePlani: Date | null;
+  /** Kurulum (exe) bilgileri */
+  makineKimligi: string | null;
+  surum: string | null;
+  hedefSurum: string | null;
+  sonGorulme: Date | null;
+  bildirilenLisansDurumu: string | null;
+  bildirilenKilitNedeni: string | null;
+  bildirilenKullaniciSayisi: number | null;
 }
 
 /** Firma kaydında yazılabilen alanlar. */
@@ -151,6 +194,16 @@ export interface FirmaGirdi {
   dbUser?: string | null;
   /** undefined: dokunma · "": kayıtlı şifreyi sil · dolu: yeni şifre */
   dbSifre?: string;
+}
+
+/** Panelden sunucumuzda şablondan yeni veritabanıyla açılan firma (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, 6.1) */
+export interface BulutFirmaGirdi extends Omit<FirmaGirdi, "baglantiModu" | "dbServer" | "dbUser" | "dbSifre"> {
+  dbUser: string;
+  dbSifre: string;
+  ilkKullaniciAdi: string;
+  ilkKullaniciAdSoyad?: string | null;
+  lisansBitis: string;
+  kullaniciLimiti: number;
 }
 
 export type KullaniciDurum = "AKTIF" | "PASIF";
@@ -194,6 +247,8 @@ export interface MerkezOturumBilgisi {
   kullaniciSayisi: number;
   /** Firmaya açık modül kodları; null = modül ayarı yapılmamış, kısıt yok (her şey açık) */
   moduller: string[] | null;
+  /** Lisans uyarı bandı ve kilit penceresindeki iletişim bilgisi */
+  iletisim?: { telefon: string; eposta: string; metin: string };
 }
 
 /** Giriş reddinde istemciye dönen kod (yanıtta errors.kod). Giriş ekranı pencereyi buna göre açar. */

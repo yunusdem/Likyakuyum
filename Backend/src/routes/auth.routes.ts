@@ -3,7 +3,15 @@ import { AuthController } from "../controllers/auth.controller.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { authRateLimiter } from "../middlewares/rateLimiter.middleware.js";
-import { loginSchema, refreshTokenSchema, changePasswordSchema, musteriVeritabanlariSchema } from "../schemas/auth.schema.js";
+import {
+  loginSchema,
+  refreshTokenSchema,
+  changePasswordSchema,
+  musteriVeritabanlariSchema,
+  lisansYukleSchema,
+  ilkYoneticiSchema,
+} from "../schemas/auth.schema.js";
+import { KurulumController } from "../controllers/kurulum.controller.js";
 
 const router = Router();
 
@@ -14,6 +22,11 @@ router.get("/musteri-veritabanlari", authRateLimiter, validate(musteriVeritabanl
 // /register kapatıldı: kimlik doğrulaması olmadan kullanıcı açıyordu. Kullanıcılar Kullanıcı Tanımları ekranından
 // (firma yöneticisi) veya yönetim panelinden açılır (docs/ADMIN_PANEL_YOL_HARITASI.md 7.2).
 router.post("/refresh-token", validate(refreshTokenSchema), AuthController.refreshToken);
+
+// Kurulum (exe) sürümü: çevrimdışı lisans ve ilk yönetici (bulut sürümünde 404)
+router.get("/lisans-durum", KurulumController.lisansDurumu);
+router.post("/lisans-yukle", authRateLimiter, validate(lisansYukleSchema), KurulumController.lisansYukle);
+router.post("/ilk-yonetici", authRateLimiter, validate(ilkYoneticiSchema), KurulumController.ilkYonetici);
 
 // Protected Auth Endpoints
 router.post("/logout", authenticate, AuthController.logout);

@@ -12,6 +12,8 @@ import {
   IconShieldLock,
   IconKey,
   IconLogout,
+  IconSettings,
+  IconPackage,
 } from "@tabler/icons-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 
@@ -24,6 +26,8 @@ const MENU = [
   { yol: "/islem-kaydi", baslik: "İşlem Kaydı", ikon: <IconListDetails size={18} />, tam: false },
   { yol: "/pos", baslik: "POS Entegrasyonu", ikon: <IconCreditCard size={18} />, tam: false },
   { yol: "/adminler", baslik: "Adminler", ikon: <IconShieldLock size={18} />, tam: false },
+  { yol: "/surumler", baslik: "Sürümler", ikon: <IconPackage size={18} />, tam: false },
+  { yol: "/ayarlar", baslik: "Ayarlar", ikon: <IconSettings size={18} />, tam: false },
   { yol: "/sifre-degistir", baslik: "Şifre Değiştir", ikon: <IconKey size={18} />, tam: false },
 ];
 

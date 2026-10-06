@@ -40,6 +40,9 @@ import { EBankaController } from "../controllers/ebanka.controller.js";
 import { DONUS_YOLU } from "../services/ebankaVposOdeme.service.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { modulKapisi } from "../middlewares/modul.middleware.js";
+import { lisansKapisi } from "../middlewares/lisans.middleware.js";
+import { KurulumController } from "../controllers/kurulum.controller.js";
+import merkezRoutes from "./merkez.routes.js";
 
 const apiRouter = Router();
 
@@ -47,6 +50,14 @@ const apiRouter = Router();
 // MERKEZ_GIRIS kapalıyken ve modül ayarı yapılmamış firmada hiçbir şeyi kısıtlamaz.
 const kapi = (onek: string) => [authenticate, modulKapisi(onek)];
 
+// Kurulum (exe) modunda lisans kilidi; bulut modunda etkisiz
+apiRouter.use(lisansKapisi);
+apiRouter.get("/sistem/bilgi", KurulumController.bilgi);
+apiRouter.get("/sistem/guncelleme", authenticate, KurulumController.guncellemeDurumu);
+apiRouter.post("/sistem/guncelleme/kontrol", authenticate, KurulumController.guncellemeKontrol);
+apiRouter.post("/sistem/guncelleme/simdi", authenticate, KurulumController.guncellemeSimdi);
+// Merkez: kurulum (exe) programlarının bildirimi ve güncelleme paketi (yalnız merkez sunucuda çalışır)
+apiRouter.use("/merkez", merkezRoutes);
 apiRouter.use("/health", healthRoutes);
 apiRouter.use("/admin", adminRoutes);
 apiRouter.use("/auth", authRoutes);

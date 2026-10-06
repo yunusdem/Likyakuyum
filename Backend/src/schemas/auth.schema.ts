@@ -12,6 +12,18 @@ export const loginSchema = z.object({
   }),
 });
 
+export const lisansYukleSchema = z.object({
+  body: z.object({ kod: z.string().trim().min(20, "Lisans kodunu eksiksiz yapıştırın").max(8000) }),
+});
+
+export const ilkYoneticiSchema = z.object({
+  body: z.object({
+    username: z.string().trim().min(2, "Kullanıcı adı en az 2 karakter olmalıdır").max(30),
+    fullName: z.string().trim().max(100).optional(),
+    password: z.string().min(1, "Şifre girilmelidir").max(200),
+  }),
+});
+
 export const musteriVeritabanlariSchema = z.object({
   query: z.object({
     musteriNo: z.string().trim().min(1, "Müşteri no girilmelidir").max(20),

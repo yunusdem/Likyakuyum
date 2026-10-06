@@ -9,6 +9,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "ilk-admin": "tsx src/scripts/ilk-admin.ts",
+    "lisans-anahtar": "tsx src/scripts/lisans-anahtar-uret.ts",
+    "surum:yayinla": "tsx src/scripts/surum-yayinla.ts",
+    "kurulum:paketi": "tsx src/scripts/kurulum-paketi.ts",
     "clean": "rimraf dist"
   },
   "keywords": [

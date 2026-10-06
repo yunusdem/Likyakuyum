@@ -6,6 +6,8 @@ import { ResponseMessages } from "../constants/responseMessages.js";
 import { setDbCredentials, normalizeServerName } from "../config/mssql.config.js";
 import { OturumService } from "../services/oturum.service.js";
 import { MerkezGirisService } from "../services/merkezGiris.service.js";
+import { env } from "../config/env.config.js";
+import { kurulumBaglantisiniKaydet, kurulumDbContext } from "../services/kurulum/kurulumDb.js";
 
 /**
  * Middleware to authenticate requests via JWT Bearer token in Authorization header or cookie.
@@ -22,6 +24,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     }
 
     if (!token) {
+      if (env.KURULUM_MODU) throw ApiError.unauthorized("Kimlik doğrulama tokenı bulunamadı. Lütfen giriş yapınız.");
       // In development mode, auto-provide default admin user context if no token is supplied
       if (process.env.NODE_ENV === "development" || !process.env.NODE_ENV) {
         req.user = {
@@ -42,6 +45,13 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     const decoded = verifyAccessToken(token);
     req.user = decoded;
     req.accessToken = token;
+
+    // Kurulum modu: tek veritabanı .env'den; token ya da istek başlığındaki bağlantı bilgisine hiç bakılmaz
+    if (env.KURULUM_MODU) {
+      kurulumBaglantisiniKaydet();
+      Object.assign(req.user, kurulumDbContext(), { dbUser: undefined, dbPassword: undefined });
+      return next();
+    }
 
     // Müşteri no ile açılan oturum: bağlantı firma kaydından sunucuda çözülür, istemci başlıklarına bakılmaz
     if (decoded.firmaId) {
