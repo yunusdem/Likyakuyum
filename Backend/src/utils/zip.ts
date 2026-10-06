@@ -58,8 +58,17 @@ export class ZipYazici {
     if (this.konum > 0xfffffff0) throw new Error("ZIP 4 GB sınırını aşıyor.");
     return new Promise((tamam, hata) => {
       if (this.akis.write(b)) return tamam();
-      this.akis.once("drain", tamam);
-      this.akis.once("error", hata);
+      // Dinleyiciler her beklemede eklenip biri tetiklenince ikisi de kaldırılır (birikmesin)
+      const bitti = () => {
+        this.akis.off("error", basarisiz);
+        tamam();
+      };
+      const basarisiz = (e: Error) => {
+        this.akis.off("drain", bitti);
+        hata(e);
+      };
+      this.akis.once("drain", bitti);
+      this.akis.once("error", basarisiz);
     });
   }
 
