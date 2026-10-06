@@ -399,7 +399,7 @@ export const CariHareketPage: React.FC = () => {
           }
           return {
             paraId: pId,
-            meblag: Number(l.meblag) || 0,
+            meblag: parseDecimal(l.meblag),
           };
         })
         .filter((l) => l.paraId > 0 && l.meblag > 0);
@@ -830,11 +830,11 @@ export const CariHareketPage: React.FC = () => {
       title: "Cari Hareket Makbuzu",
       subtitle: `${cariKod} - ${cariAd} | Tarih: ${tarih} | Vezne: ${vezneKod} | ${cariTipi === 0 ? "BORÇ" : "ALACAK"}`,
       data: lines
-        .filter((l) => Number(l.meblag) > 0)
+        .filter((l) => parseDecimal(l.meblag) > 0)
         .map((l, i) => ({
           satir: i + 1,
           paraKodu: l.paraKodu,
-          meblag: new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(Number(l.meblag)),
+          meblag: new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(parseDecimal(l.meblag)),
           islemTipi: cariTipi === 0 ? "Borç" : "Alacak",
           aciklama: aciklama || "-",
         })),
@@ -1391,13 +1391,22 @@ export const CariHareketPage: React.FC = () => {
                                   ref={(el) => {
                                     miktarInputRefs.current[idx] = el;
                                   }}
-                                  type="number"
-                                  step="any"
+                                  type="text"
+                                  inputMode="decimal"
+                                  autoComplete="off"
                                   data-custom-enter="true"
                                   value={line.meblag}
                                   onFocus={() => setActiveGridRowIdx(idx)}
                                   onChange={(e) => handleLineMeblagChange(idx, e.target.value)}
-                                  onKeyDown={(e) => handleMiktarKeyDown(e, idx)}
+                                  onBlur={() => {
+                                    if (line.meblag) {
+                                      handleLineMeblagChange(idx, formatMiktar(line.meblag));
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    blockNonNumericKeys(e);
+                                    handleMiktarKeyDown(e, idx);
+                                  }}
                                   style={{
                                     border: "none",
                                     outline: "none",
@@ -1466,8 +1475,20 @@ export const CariHareketPage: React.FC = () => {
               <div className="text-muted small fw-semibold text-uppercase tracking-wider mb-1">
                 Net Cari Durumu
               </div>
-              <h3 className="mb-0 fw-bold font-monospace" style={{ letterSpacing: "-0.5px" }}>
-                {bakiyeSummary?.headerLabel || "0,00"}
+              <h3 className="mb-0 fw-bold font-monospace d-flex align-items-center justify-content-center flex-wrap" style={{ letterSpacing: "-0.5px" }}>
+                <span>
+                  {new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(bakiyeSummary?.netHasBakiye || 0)} HAS
+                </span>
+                {bakiyeSummary?.netHasYon === "A" && (bakiyeSummary.netHasBakiye > 0.0001) && (
+                  <span className="ms-1" style={{ fontSize: "14px", fontWeight: "700", color: "#dc2626" }}>
+                    (Alacak)
+                  </span>
+                )}
+                {bakiyeSummary?.netHasYon === "B" && (bakiyeSummary.netHasBakiye > 0.0001) && (
+                  <span className="ms-1" style={{ fontSize: "14px", fontWeight: "700", color: "#16a34a" }}>
+                    (Borç)
+                  </span>
+                )}
               </h3>
               {cariKartId && (
                 <div className="mt-1 small text-secondary">
@@ -1545,33 +1566,6 @@ export const CariHareketPage: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot
-                      style={{
-                        backgroundColor: "#f8fafc",
-                        fontWeight: "bold",
-                        borderTop: "2px solid #e2e8f0",
-                      }}
-                    >
-                      <tr>
-                        <td className="py-2 px-3 text-dark fw-bold">Toplam</td>
-                        <td className="py-2 px-3 text-end font-monospace text-danger fw-bold">
-                          {new Intl.NumberFormat("tr-TR", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          }).format(
-                            bakiyeSummary.satirlar.reduce((acc, r) => acc + (r.borcBakiye || 0), 0)
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-end font-monospace text-success fw-bold">
-                          {new Intl.NumberFormat("tr-TR", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          }).format(
-                            bakiyeSummary.satirlar.reduce((acc, r) => acc + (r.alacakBakiye || 0), 0)
-                          )}
-                        </td>
-                      </tr>
-                    </tfoot>
                   </Table>
                 </div>
               )}

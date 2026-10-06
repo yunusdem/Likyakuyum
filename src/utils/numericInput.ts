@@ -38,17 +38,26 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
     return parts.length > 1 ? `${formattedInt},${decPart}` : formattedInt;
   }
 
-  // 2. Ondalık nokta içeriyorsa (örn: "34.50", "0.25", "100.5", "1234.56", "2300.00")
+  // 2. Nokta içeriyorsa:
   if (s.includes(".")) {
     const dotParts = s.split(".");
-    if (dotParts.length === 2) {
-      const intDigits = dotParts[0].replace(/\D/g, "");
-      const formattedInt = intDigits ? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "0";
-      return `${formattedInt},${dotParts[1]}`;
+    // Birden fazla nokta (örn: "1.000.000") -> zaten binlik nokta ile ayrılmış
+    if (dotParts.length > 2) {
+      const allDigits = s.replace(/\D/g, "");
+      return allDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     }
+    // Tek nokta: 1-3 basamak . 3 basamak ise (örn: "4.800", "48.000", "480.000") ve başı 0 değilse binlik noktadır
+    if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1].length === 3) {
+      const allDigits = s.replace(/\D/g, "");
+      return allDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+    // Aksi halde JS ondalık formatıdır (örn: "0.25", "34.50", "4800.5", "1234.56")
+    const intDigits = dotParts[0].replace(/\D/g, "");
+    const formattedInt = intDigits ? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "0";
+    return `${formattedInt},${dotParts[1]}`;
   }
 
-  // 3. Tüm tam sayılar ve binlikler (1000 -> 1.000, 1000000 -> 1.000.000)
+  // 3. Düz rakamlar (örn: "4800" -> "4.800", "1000000" -> "1.000.000")
   const rawDigits = s.replace(/\D/g, "");
   if (!rawDigits) return "";
   return rawDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -76,7 +85,7 @@ export function formatMiktar(val: string | number | undefined | null): string {
 
 /**
  * Binlik basamaklı ve/veya virgüllü metinleri doğru sayıya çevirir.
- * 1.000.000 -> 1000000, 5.000 -> 5000, 5000 -> 5000, 5000.50 -> 5000.5, 5000,50 -> 5000.5
+ * 1.000.000 -> 1000000, 5.000 -> 5000, 4.800 -> 4800, 5000 -> 5000, 5000.50 -> 5000.5, 5000,50 -> 5000.5
  */
 export function parseDecimal(val: any): number {
   if (val === null || val === undefined || val === "") return 0;
@@ -89,7 +98,7 @@ export function parseDecimal(val: any): number {
     const lastComma = str.lastIndexOf(",");
     const lastDot = str.lastIndexOf(".");
     if (lastComma > lastDot) {
-      // Türkçe: "500.000,50" veya "2.300,00" -> noktalar binlik, virgül ondalık
+      // Türkçe: "500.000,50" veya "2.300,00" veya "4.800,00" -> noktalar binlik, virgül ondalık
       const clean = str.replace(/\./g, "").replace(",", ".");
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
@@ -110,7 +119,7 @@ export function parseDecimal(val: any): number {
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
-    // Tek virgül ("2300,50", "34,50", "0,25") -> ondalık
+    // Tek virgül ("2300,50", "34,50", "0,25", "4800,00") -> ondalık
     const clean = str.replace(",", ".");
     const num = parseFloat(clean);
     return isNaN(num) ? 0 : num;
@@ -125,7 +134,13 @@ export function parseDecimal(val: any): number {
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
-    // Tek nokta varsa (örn: "2300.00", "2300.000", "34.50", "1.000", "1.0000", "0.5") -> HER ZAMAN ONDALIKTIR!
+    // Tek nokta: 1-3 basamak . 3 basamak ise (örn: "4.800", "48.000", "480.000") ve başı 0 değilse binlik ayracıdır
+    if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1].length === 3) {
+      const clean = str.replace(/\./g, "");
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : num;
+    }
+    // Aksi halde JS ondalık formatıdır (örn: "2300.00", "34.50", "0.25", "1234.56", "0.5")
     const num = parseFloat(str);
     return isNaN(num) ? 0 : num;
   }
