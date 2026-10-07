@@ -286,6 +286,12 @@ export interface IstatistikSecimItem {
   ciktiSatirSayisi?: number;
   aciklama?: string;
   fisTipi?: number;
+  bmvOrani?: number;
+  kmvOrani?: number;
+  komisyonOrani?: number;
+  komisyonYetkisi?: boolean;
+  odemeSekliVar?: boolean;
+  odemeSekli?: number | null;
 }
 
 export interface VezneBakiyeDetailItem {

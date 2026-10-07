@@ -655,22 +655,14 @@ export const CariEmanetDekontPage: React.FC = () => {
       applyUserVezne(vezneler);
 
       // Kayıt vs Düzeltme Modu Davranışı:
-      // Cari emanet kayıtta ilk açılışta heryer boş gelecek.
-      // Düzeltme sayfasında da son kayıt her zaman seçili gelecek.
-      if (isDuzeltmeMode) {
-        if (queryId) {
-          const targetId = Number(queryId);
-          const foundIdx = sortedDekonts.findIndex((d) => d.cariDekontId === targetId);
-          if (foundIdx !== -1) setCurrentIndex(foundIdx);
-          await loadDekontRecord(targetId, trimmedCariler, false);
-        } else if (sortedDekonts.length > 0) {
-          const lastIdx = sortedDekonts.length - 1;
-          setCurrentIndex(lastIdx);
-          await loadDekontRecord(sortedDekonts[lastIdx].cariDekontId, trimmedCariler, false);
-        } else {
-          resetFormToBlank(false);
-        }
+      // Hem Kayıt hem de Düzeltme ilk açılışta boş form ile başlar
+      if (isDuzeltmeMode && queryId) {
+        const targetId = Number(queryId);
+        const foundIdx = sortedDekonts.findIndex((d) => d.cariDekontId === targetId);
+        if (foundIdx !== -1) setCurrentIndex(foundIdx);
+        await loadDekontRecord(targetId, trimmedCariler, false);
       } else {
+        setCurrentIndex(-1);
         resetFormToBlank(false);
       }
     } catch (err: any) {
@@ -692,19 +684,10 @@ export const CariEmanetDekontPage: React.FC = () => {
     prevPathRef.current = location.pathname;
 
     if (prevPath !== location.pathname) {
-      if (isDuzeltmeMode) {
-        if (savedDekontsRef.current.length > 0) {
-          const lastIdx = savedDekontsRef.current.length - 1;
-          setCurrentIndex(lastIdx);
-          loadDekontRecord(savedDekontsRef.current[lastIdx].cariDekontId, undefined, false);
-        } else {
-          resetFormToBlank(false);
-        }
-      } else {
-        resetFormToBlank(false);
-      }
+      setCurrentIndex(-1);
+      resetFormToBlank(false);
     }
-  }, [location.pathname, isDuzeltmeMode, loadDekontRecord, resetFormToBlank]);
+  }, [location.pathname, resetFormToBlank]);
 
   // Para Birimi Seçildiğinde Tek Seferde Tüm Hücreleri Doldur
   const handleSelectParaForRow = (

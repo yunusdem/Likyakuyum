@@ -64,7 +64,6 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "F- Kasa Hareket Listesi", link: raporLinki("KASHAR1") },
       { id: uuid(), name: "G- Hesap Ekstre", link: raporLinki("HESEKS1") },
       { id: uuid(), name: "H- Hesap Bakiye Raporu", link: raporLinki("HESBAK1") },
-      { id: uuid(), name: "I- Hesap Ad Listesi", link: "kasa/hesap-ad-listesi" },
     ],
   },
 
@@ -101,7 +100,8 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "J- Cari Ekstre", link: raporLinki("CAREKS1") },
       { id: uuid(), name: "K- Cari Bakiye Raporu", link: raporLinki("CARBAK1") },
       { id: uuid(), name: "L- POS Ekstre", link: raporLinki("POSEKS1") },
-      { id: uuid(), name: "M- Vadeli İşlem Listesi", link: raporLinki("VADISL1") },
+      { id: uuid(), name: "M- Hesap Ad Listesi", link: "cari/hesap-ad-listesi" },
+      { id: uuid(), name: "N- Vadeli İşlem Listesi", link: raporLinki("VADISL1") },
     ],
   },
 

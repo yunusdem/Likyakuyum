@@ -70,6 +70,15 @@ export class EbelgeKuyrukRepository {
         const r = await pool.request().query(`SELECT OBJECT_ID('dbo.TODVZ_EBELGE_KUYRUK', 'U') AS O`);
         return r.recordset[0]?.O != null;
     }
+    /** Arka plan işi için: bekleyen ya da işlenen (zamanı gelmemiş dahil) iş var mı */
+    static async bekleyenVarMi(ctx) {
+        const pool = await this.havuz(ctx);
+        const r = await pool.request().query(`
+      SELECT CASE WHEN EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_KUYRUK] WHERE [DURUM] IN ('BEKLIYOR', 'ISLENIYOR'))
+        THEN 1 ELSE 0 END AS [VAR]
+    `);
+        return r.recordset[0]?.VAR === 1;
+    }
     static async ekle(is, ctx) {
         const pool = await this.havuz(ctx);
         const r = await pool

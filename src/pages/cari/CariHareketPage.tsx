@@ -240,15 +240,12 @@ export const CariHareketPage: React.FC = () => {
 
 
 
-  // Load record if queryId present or edit mode (Kayıt sayfasında daima boş, Düzeltme sayfasında son kayıt)
+  // Load record if queryId present (Hem Kayıt hem Düzeltme ilk açılışta boş başlar)
   useEffect(() => {
     if (queryId) {
       loadRecordById(Number(queryId));
-    } else if (isEditMode) {
-      // In edit mode without id, load last record
-      loadLastRecord();
     } else {
-      // In kayit mode (/cari/hareket-kayit), ensure clean empty form with zero previous record data
+      // Hem kayit hem de duzeltme sayfasında temiz boş form açılır
       setCurrentHareketId(null);
       setCariKartId(null);
       setCariKod("");

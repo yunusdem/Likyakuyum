@@ -53,12 +53,13 @@ export class PosCihaziSqlRepository {
       SELECT 
         p.POS_CIHAZI_ID AS posCihaziId,
         p.CARI_KART_ID AS cariKartId,
-        c.KOD AS cariKodu,
-        c.AD AS cariUnvan,
+        COALESCE(b.HESAP_NO, c.KOD) AS cariKodu,
+        COALESCE(b.HESAP_ADI, c.AD) AS cariUnvan,
         p.KOD AS kod,
         p.AD AS ad,
         ISNULL(p.DEVIR, 0) AS devir
       FROM dbo.TODVZ_POS_CIHAZI p
+      LEFT JOIN dbo.TODVZ_BANKA b ON b.BANKA_ID = p.CARI_KART_ID
       LEFT JOIN dbo.TODVZ_CARI_KART c ON c.CARI_KART_ID = p.CARI_KART_ID
       ORDER BY p.KOD ASC
     `;
@@ -85,12 +86,13 @@ export class PosCihaziSqlRepository {
       SELECT 
         p.POS_CIHAZI_ID AS posCihaziId,
         p.CARI_KART_ID AS cariKartId,
-        c.KOD AS cariKodu,
-        c.AD AS cariUnvan,
+        COALESCE(b.HESAP_NO, c.KOD) AS cariKodu,
+        COALESCE(b.HESAP_ADI, c.AD) AS cariUnvan,
         p.KOD AS kod,
         p.AD AS ad,
         ISNULL(p.DEVIR, 0) AS devir
       FROM dbo.TODVZ_POS_CIHAZI p
+      LEFT JOIN dbo.TODVZ_BANKA b ON b.BANKA_ID = p.CARI_KART_ID
       LEFT JOIN dbo.TODVZ_CARI_KART c ON c.CARI_KART_ID = p.CARI_KART_ID
       WHERE p.POS_CIHAZI_ID = @POS_CIHAZI_ID
     `;

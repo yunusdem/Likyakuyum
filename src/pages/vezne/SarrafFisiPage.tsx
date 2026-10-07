@@ -44,6 +44,7 @@ import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generateSarrafReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
+import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface VezneItem { id: number; kod: string; ad: string; }
@@ -556,6 +557,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }
   }, [tip, user?.appearance?.buyHeaderBgColor, user?.appearance?.sellHeaderBgColor]);
 
+  const activeFisThemeText = useMemo(() => {
+    let buyText = user?.appearance?.buyHeaderTextColor;
+    let sellText = user?.appearance?.sellHeaderTextColor;
+    if (!buyText || !sellText) {
+      try {
+        const cached = localStorage.getItem("kuyumcu_active_appearance");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!buyText && parsed.buyHeaderTextColor) buyText = parsed.buyHeaderTextColor;
+          if (!sellText && parsed.sellHeaderTextColor) sellText = parsed.sellHeaderTextColor;
+        }
+      } catch {}
+    }
+    if (tip === 0) {
+      return buyText || "var(--user-buy-header-text, #0f172a)";
+    } else {
+      return sellText || "var(--user-sell-header-text, #0f172a)";
+    }
+  }, [tip, user?.appearance?.buyHeaderTextColor, user?.appearance?.sellHeaderTextColor]);
+
   const [belgeTuru, setBelgeTuru] = useState(0);
   const [unvan, setUnvan] = useState(DEFAULT_CUSTOMER_NAME);
   const [cariKartId, setCariKartId] = useState<number | null>(null);
@@ -667,7 +688,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [cariSearchField, setCariSearchField] = useState<CustomerSearchField>("all");
   const [urunSearchTerm, setUrunSearchTerm] = useState("");
   const [istatistikSearchTerm, setIstatistikSearchTerm] = useState("");
-  const [showMasakConfirmModal, setShowMasakConfirmModal] = useState(false);
   const [showMasakCustomerWarningModal, setShowMasakCustomerWarningModal] = useState(false);
   const [showMasakMissingModal, setShowMasakMissingModal] = useState(false);
   const [masakMissingFields, setMasakMissingFields] = useState<string[]>([]);
@@ -818,7 +838,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     showFarkConfirmModal.show ||
     masakModalOpen ||
     masakManagementOpen ||
-    showMasakConfirmModal ||
     showMasakCustomerWarningModal ||
     showMasakMissingModal ||
     showDeleteConfirm
@@ -1127,7 +1146,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             urunKodu: s.urunKodu || "",
             urunAdi: s.urunAdi || "",
             adet: s.adet != null ? s.adet : "",
-            miktar: s.miktar != null ? formatMiktar(s.miktar) : "",
+            miktar: s.miktar != null ? String(s.miktar) : "",
             milyem: itemMilyem,
             hasGram: s.hasGram != null ? s.hasGram : "",
             iscilikHesaplamaSekli: s.iscilikHesaplamaSekli || 0,
@@ -1230,7 +1249,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             paraKodu: resolvedParaKodu,
             paraAdi: resolvedParaAdi || matchedUrun?.ad || (resolvedParaKodu === "TL" ? "TÜRK LİRASI" : ""),
             adet: calcAdet,
-            miktar: o.miktar != null ? formatMiktar(o.miktar) : "",
+            miktar: o.miktar != null ? String(o.miktar) : "",
             milyem: oMilyem,
             hasGram: o.hasGram != null ? o.hasGram : "",
             kur: o.kur != null ? o.kur : 1,
@@ -1588,12 +1607,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       } catch (err) {
         console.error("Auto MASAK check error:", err);
-      }
-
-      // Kullanıcıdan MASAK limit onayı al
-      if (!forceMasakApprove) {
-        setShowMasakConfirmModal(true);
-        return;
       }
     }
 
@@ -2043,18 +2056,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (!cleanVal) {
       setDetayVergiKimlikNo("");
       setCariKod("");
-      setUnvan(DEFAULT_CUSTOMER_NAME);
-      setDetayUnvan(DEFAULT_CUSTOMER_NAME);
       setCariKartId(null);
       lastFocusedCariKodRef.current = "";
-      lastFocusedUnvanRef.current = "";
       lastFocusedVknRef.current = "";
-      setDetayAdres("");
-      setDetayTelefonNo("");
-      setDetayEposta("");
-      setDetayBabaAdi("");
-      setDetayAnneAdi("");
-      setBelgeTuru(0);
       return;
     }
 
@@ -2125,18 +2129,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       } catch { }
 
-      // Hem DB'de hem GİP'te yoksa
+      // Hem DB'de hem GİP'te yoksa (kayıtsız perakende müşteri)
       setCariKod("");
-      setUnvan(DEFAULT_CUSTOMER_NAME);
-      setDetayUnvan(DEFAULT_CUSTOMER_NAME);
       setCariKartId(null);
       lastFocusedCariKodRef.current = "";
-      lastFocusedUnvanRef.current = "";
       lastFocusedVknRef.current = cleanVal;
-      setDetayAdres("");
-      setDetayTelefonNo("");
-      setDetayEposta("");
-      setBelgeTuru(0);
       return;
     }
 
@@ -2183,16 +2180,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
     }
 
-    // Kullanıcı yazmaya / silmeye devam ediyor (10 haneden az), arama yapmadan eski cariyi temizle
     setCariKod("");
-    setUnvan(DEFAULT_CUSTOMER_NAME);
-    setDetayUnvan(DEFAULT_CUSTOMER_NAME);
     setCariKartId(null);
     lastFocusedCariKodRef.current = "";
-    lastFocusedUnvanRef.current = "";
   }, [cariList, kayitsizMusteriList, findMatchingCustomers, handleSelectCustomer]);
 
-  // Open F5 Detay Modal (syncing current Unvan if set)
+  // Open F8 Detay Modal (syncing current Unvan if set)
   const openDetayModal = useCallback(() => {
     if (unvan && unvan !== DEFAULT_CUSTOMER_NAME && (!detayUnvan || detayUnvan === DEFAULT_CUSTOMER_NAME)) {
       setDetayUnvan(unvan);
@@ -2202,9 +2195,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
   // Detay save
   const handleSaveDetay = useCallback(async () => {
+    if (detayUnvan && detayUnvan.trim()) {
+      setUnvan(detayUnvan.trim());
+    }
     if (!fisId) {
       // Just keep in state if fis is not yet saved to DB
-      setUnvan(detayUnvan || DEFAULT_CUSTOMER_NAME);
+      showNotif("success", "Müşteri detay bilgileri fişe uygulandı");
       setShowDetayModal(false);
       return;
     }
@@ -2228,7 +2224,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         vekilKimlikNo: detayVekilKimlikNo || null,
         kullaniciId: Number(user?.id) || 1,
       });
-      setUnvan(detayUnvan || DEFAULT_CUSTOMER_NAME);
       showNotif("success", "Müşteri detayı kaydedildi");
       setShowDetayModal(false);
     } catch (e: any) {
@@ -2237,7 +2232,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, [fisId, detayUnvan, detayKisilikTipi, detayVergiKimlikNo, detayBabaAdi, detayAnneAdi,
     detayAdres, detayEposta, detayTelefonNo, detayDogumTarihi, detayDogumYeri,
     detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru, detayKimlikGecerlilikTarihi,
-    detayVekilAdi, detayVekilKimlikNo, user?.id]);
+    detayVekilAdi, detayVekilKimlikNo, user?.id, showNotif]);
 
   // Helper: Ürün / Döviz / Maden için Güncel Alış/Satış Kurunu Çek
   const getKurForProduct = useCallback((
@@ -2617,9 +2612,8 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
     let sanitizedValue = value;
     if (field === "adet") {
       sanitizedValue = onlyDigits(String(value));
-    } else if (field === "miktar") {
-      sanitizedValue = formatMiktar(value);
     } else if (
+      field === "miktar" ||
       field === "milyem" ||
       field === "hasGram" ||
       field === "iscilikiMiktari" ||
@@ -2640,7 +2634,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         const numAdet = Number(sanitizedValue) || 0;
         const found = urunList.find((u) => u.kod.trim().toLowerCase() === (r.urunKodu || "").trim().toLowerCase());
         if (found && Number(found.gramaj) > 0 && numAdet > 0) {
-          miktar = formatMiktar(Number(found.gramaj) * numAdet);
+          miktar = String(Number(found.gramaj) * numAdet);
         }
       }
 
@@ -2661,9 +2655,6 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
       }
-      if (field === "miktar" && val !== "" && val !== null && val !== undefined) {
-        val = formatMiktar(val);
-      }
       const curHasKuru = Number(altinHasKuru) || 0;
       return recomputeRow({ ...r, [field]: val }, curHasKuru, field);
     }));
@@ -2673,9 +2664,8 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
     let sanitizedValue = value;
     if (field === "adet") {
       sanitizedValue = onlyDigits(String(value));
-    } else if (field === "miktar") {
-      sanitizedValue = onlyDecimal(value);
     } else if (
+      field === "miktar" ||
       field === "milyem" ||
       field === "hasGram" ||
       field === "kur" ||
@@ -2698,9 +2688,9 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         const numAdet = Number(sanitizedValue) || 0;
         const found = urunList.find((u) => u.kod.trim().toLowerCase() === (r.paraKodu || "").trim().toLowerCase());
         if (found && Number(found.gramaj) > 0 && numAdet > 0) {
-          miktar = formatMiktar(Number(found.gramaj) * numAdet);
+          miktar = String(Number(found.gramaj) * numAdet);
         } else if (numAdet > 0 && (!miktar || Number(miktar) === 0)) {
-          miktar = formatMiktar(numAdet);
+          miktar = String(numAdet);
         }
       }
       const u = { ...r, miktar, [field]: effectiveVal };
@@ -2715,9 +2705,6 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       let val = r[field];
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
-      }
-      if (field === "miktar" && val !== "" && val !== null && val !== undefined) {
-        val = formatMiktar(val);
       }
       const curHasKuru = Number(altinHasKuru) || 0;
       return recomputeOdemeRow({ ...r, [field]: val }, curHasKuru, field);
@@ -4050,7 +4037,6 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
     setShowNewCariModal(false);
     setShowNewBankaModal(false);
     setShowOdemeParaModal(false);
-    setShowMasakConfirmModal(false);
     setShowMasakCustomerWarningModal(false);
     setShowMasakMissingModal(false);
     setShowDeleteConfirm(false);
@@ -4228,8 +4214,17 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         return;
       }
       const activeEl = document.activeElement as HTMLElement | null;
+      const isF12 = e.key === "F12" || e.code === "F12" || e.keyCode === 123;
+      if (isF12) {
+        if (triggerAdjacentBinoculars(activeEl)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
+
       if (["INPUT", "TEXTAREA", "SELECT"].includes(activeEl?.tagName || "") &&
-        !["F1", "F3", "F4", "F7", "F8", "F9", "F10"].includes(e.key)) {
+        !["F1", "F3", "F4", "F7", "F8", "F9", "F10", "F12"].includes(e.key)) {
         return;
       }
       if (e.key === "F1") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleSave(false, false); }
@@ -4371,19 +4366,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       {pos.pencere}
       <ERPToolbar
         disableShortcuts
-        pageTitle={
-          <span style={{ fontWeight: 700, fontSize: "14px" }} className="d-flex align-items-center gap-2">
-            {displayTitle}{" "}
-            <Badge bg={tip === 0 ? "primary" : "success"} style={{ fontSize: "11px" }}>
-              {tip === 0 ? "ALIŞ" : "SATIŞ"}
-            </Badge>
-            {arbitrajActiveInfo && (
-              <Badge bg="warning" className="text-dark fw-bold px-2 py-0.5 d-inline-flex align-items-center gap-1 shadow-2xs" style={{ fontSize: "11px" }}>
-                <IconArrowsExchange size={14} /> ARBİTRAJ ({arbitrajActiveInfo.girisKod} ⇄ {arbitrajActiveInfo.cikisKod})
-              </Badge>
-            )}
-          </span>
-        }
+        pageTitle={displayTitle}
         onNew={handleNew}
         onSave={() => handleSave(false, false)}
         onSearch={isDuzeltmeMode ? handleOpenFisModal : undefined}
@@ -4399,7 +4382,37 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         onRefresh={handleRefresh}
         onPrint={openPrintPreview}
         onPreview={openPrintPreview}
-        centerContent={undefined}
+        centerContent={
+          <div className="d-flex align-items-center gap-2">
+            <div
+              style={{
+                border: tip === 0 ? "2px solid #16a34a" : "2px solid #dc2626",
+                backgroundColor: activeFisThemeBg,
+                color: activeFisThemeText,
+                fontWeight: 800,
+                fontSize: "13.5px",
+                letterSpacing: "3px",
+                minWidth: "220px",
+                padding: "4px 30px",
+                borderRadius: "6px",
+                height: "30px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: tip === 0 ? "0 1px 3px rgba(22, 163, 74, 0.15)" : "0 1px 3px rgba(220, 38, 38, 0.15)",
+                textAlign: "center",
+                textTransform: "uppercase",
+              }}
+            >
+              {tip === 0 ? "ALIŞ" : "SATIŞ"}
+            </div>
+            {arbitrajActiveInfo && (
+              <Badge bg="warning" className="text-dark fw-bold px-2 py-1 d-inline-flex align-items-center gap-1 shadow-2xs" style={{ fontSize: "11px" }}>
+                <IconArrowsExchange size={14} /> ARBİTRAJ ({arbitrajActiveInfo.girisKod} ⇄ {arbitrajActiveInfo.cikisKod})
+              </Badge>
+            )}
+          </div>
+        }
         rightContent={
           <div className="d-flex align-items-center gap-2 text-nowrap">
             {/* Vezne Bakiyeleri: sağ tarafta, veznenin solunda, dış kenarlıksız, daha kısa */}
@@ -4632,11 +4645,8 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                             void handleVknLookup(val, false);
                           } else {
                             setCariKod("");
-                            setUnvan(DEFAULT_CUSTOMER_NAME);
-                            setDetayUnvan(DEFAULT_CUSTOMER_NAME);
                             setCariKartId(null);
                             lastFocusedCariKodRef.current = "";
-                            lastFocusedUnvanRef.current = "";
                           }
                         }
                       }}
@@ -5188,7 +5198,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                           inputMode="decimal"
                           size="sm"
                           className={`text-end font-monospace ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
-                          value={formatMiktar(row.miktar)}
+                          value={row.miktar ?? ""}
                           onChange={(e) => updateRow(row.id, "miktar", e.target.value)}
                           onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "miktar", row.id)}
                           onBlur={() => normalizeRowOnBlur(row.id, "miktar")}
@@ -5939,7 +5949,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                             inputMode="decimal"
                             size="sm"
                             className={`text-end font-monospace ${isOdemeMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
-                            value={formatMiktar(oRow.miktar)}
+                            value={oRow.miktar ?? ""}
                             onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
                             onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "miktar", oRow.id)}
                             onBlur={() => normalizeOdemeRowOnBlur(oRow.id, "miktar")}
@@ -6796,25 +6806,25 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                 İşlem tutarı MASAK Yasal Bildirim Sınırını (≥185.000 TL / 5.000 USD) aşmaktadır.
               </p>
               <p className="small text-muted mb-0">
-                5549 sayılı yasa gereğince işlem yapılan müşterinin <strong>İsim / Ünvan, T.C. Kimlik / VKN, Adres ve Kişilik Tipi</strong> bilgilerinin eksiksiz girilmesi zorunludur.
+                5549 sayılı yasa gereğince işlem yapılan müşterinin <strong>İsim / Ünvan, T.C. Kimlik / VKN, Adres ve Kişilik Tipi</strong> bilgilerinin eksiksiz girilmesi zorunludur. Detay bilgileri girilmeden işlem kaydedilemez.
               </p>
             </div>
           </div>
         </Modal.Body>
         <Modal.Footer className="py-2">
-          <Button size="sm" variant="outline-secondary" onClick={() => {
+          <Button size="sm" variant="secondary" onClick={() => setShowMasakCustomerWarningModal(false)}>
+            Vazgeç
+          </Button>
+          <Button size="sm" variant="primary" onClick={() => {
             setShowMasakCustomerWarningModal(false);
             openDetayModal();
           }}>
-            Detay Bilgileri Aç (F8)
-          </Button>
-          <Button size="sm" variant="primary" onClick={() => setShowMasakCustomerWarningModal(false)}>
-            Tamam
+            Detay Bilgilerini Doldur (F8)
           </Button>
         </Modal.Footer>
       </Modal>
 
-      {/* 2a) Kaydederken Zorunlu MASAK Bilgileri Eksik Modalı (Sayfa Ortasında) */}
+      {/* 2) Kaydederken Zorunlu MASAK Bilgileri Eksik Modalı (Sayfa Ortasında) */}
       <Modal show={showMasakMissingModal} onHide={() => setShowMasakMissingModal(false)} centered>
         <Modal.Header closeButton className="py-2 bg-danger-subtle text-danger">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
@@ -6835,7 +6845,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
             </ul>
           </div>
           <div className="small text-muted">
-            Mevzuat gereği bu bilgiler olmadan fiş kaydedilemez. Lütfen detay penceresinden eksik bilgileri doldurunuz.
+            Mevzuat gereği bu bilgiler eksiksiz doldurulmadan fiş kaydedilemez. Lütfen detay penceresinden eksik bilgileri doldurup kaydediniz.
           </div>
         </Modal.Body>
         <Modal.Footer className="py-2">
@@ -6851,46 +6861,6 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
             }}
           >
             Detay Bilgilerini Doldur (F8)
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* 2b) Kaydederken MASAK Sınırı Onay Modalı (Sayfa Ortasında: Yine de Kaydedeyim mi / Vazgeç) */}
-      <Modal show={showMasakConfirmModal} onHide={() => setShowMasakConfirmModal(false)} centered>
-        <Modal.Header closeButton className="py-2 bg-warning-subtle text-warning-emphasis">
-          <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
-            <IconAlertTriangle size={20} className="text-warning" />
-            MASAK Yasal Sınırı - Kayıt Onayı
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="py-3 text-center">
-          <div className="mb-3">
-            <IconAlertTriangle size={48} className="text-warning animate-bounce" />
-          </div>
-          <h6 className="fw-bold mb-2">
-            İşlem MASAK Yasal Sınırını (≥185.000 TL / 5.000 USD) Aşmaktadır!
-          </h6>
-          <p className="small text-muted mb-3">
-            Müşteri kimlik ve adres bilgileri mevzuat gereğince işlemle birlikte kayıt altına alınacaktır.
-          </p>
-          <div className="alert alert-warning py-2 small mb-0 fw-semibold">
-            Fişi yine de kaydetmek istiyor musunuz?
-          </div>
-        </Modal.Body>
-        <Modal.Footer className="py-2 justify-content-center">
-          <Button size="sm" variant="secondary" className="px-3" onClick={() => setShowMasakConfirmModal(false)}>
-            Vazgeç
-          </Button>
-          <Button
-            size="sm"
-            variant="warning"
-            className="fw-bold px-3"
-            onClick={() => {
-              setShowMasakConfirmModal(false);
-              void handleSave(true, false, true);
-            }}
-          >
-            Yine de Kaydet
           </Button>
         </Modal.Footer>
       </Modal>

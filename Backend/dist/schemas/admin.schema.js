@@ -61,7 +61,7 @@ const firmaGovdesi = z.object({
     telefon: secmeli(30),
     eposta: z.union([z.literal(""), z.string().trim().email("Geçerli bir e-posta giriniz").max(150)]).nullish(),
     adres: secmeli(500),
-    baglantiModu: z.enum(["cloud", "local"]),
+    baglantiModu: z.enum(["cloud", "local", "setup"]),
     dbServer: z.string().trim().min(1, "Veritabanı sunucusu girilmelidir").max(200),
     dbName: z.string().trim().min(1, "Veritabanı adı girilmelidir").max(128),
     dbUser: secmeli(128),
@@ -69,7 +69,52 @@ const firmaGovdesi = z.object({
     dbSifre: z.string().max(128).optional(),
 });
 export const firmaEkleSchema = z.object({ body: firmaGovdesi });
+// Bulut firma: sunucumuzda şablondan yeni veritabanı (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, 6.1)
+const sqlAdi = (alan) => z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z][A-Za-z0-9_]{2,63}$/, `${alan} harfle başlamalı; yalnız harf, rakam ve alt çizgi içermeli (3-64 karakter)`);
+export const bulutFirmaSchema = z.object({
+    body: firmaGovdesi.omit({ baglantiModu: true, dbServer: true, dbName: true, dbUser: true, dbSifre: true }).extend({
+        dbName: sqlAdi("Veritabanı adı"),
+        dbUser: sqlAdi("Veritabanı kullanıcı adı"),
+        dbSifre: z.string().min(8, "Veritabanı şifresi en az 8 karakter olmalıdır").max(128),
+        ilkKullaniciAdi: z.string().trim().min(2, "İlk kullanıcı adı en az 2 karakter olmalıdır").max(50),
+        ilkKullaniciAdSoyad: secmeli(100),
+        lisansBitis: gun,
+        kullaniciLimiti: z.coerce.number().int().min(1, "Kullanıcı limiti en az 1 olmalıdır").max(10000),
+    }),
+});
 export const firmaGuncelleSchema = z.object({ params: idParam, body: firmaGovdesi });
+export const firmaSilSchema = z.object({
+    params: idParam,
+    body: z.object({ onay: z.string().trim().min(1, "Onay için firma kodunu yazın").max(20) }),
+});
+const lisansParam = z.object({ id: z.coerce.number().int().positive(), lisansId: z.coerce.number().int().positive() });
+export const lisansKodSchema = z.object({
+    params: lisansParam,
+    body: z.object({ makineKimligi: z.string().trim().min(19, "Makine kimliği XXXX-XXXX-XXXX-XXXX biçiminde olmalıdır").max(19) }),
+});
+export const lisansIptalSchema = z.object({ params: lisansParam });
+export const ayarKaydetSchema = z.object({
+    body: z.object({
+        LISANS_ILETISIM_TELEFON: z.string().max(100).optional(),
+        LISANS_ILETISIM_EPOSTA: z.string().max(150).optional(),
+        LISANS_ILETISIM_METIN: z.string().max(2000).optional(),
+        YEDEK_KLASORU: z.string().max(400).optional(),
+        SURUM_KLASORU: z.string().max(400).optional(),
+        SABLON_YEDEK_DOSYASI: z.string().max(400).optional(),
+    }),
+});
+export const surumGuncelleSchema = z.object({
+    params: z.object({ surum: z.string().min(1).max(30) }),
+    body: z.object({ aktif: z.boolean().optional(), notlar: z.string().max(2000).nullish() }),
+});
+export const hedefSurumSchema = z.object({
+    params: idParam,
+    body: z.object({ surum: z.string().max(30).nullable() }),
+});
+export const indirSchema = z.object({ params: z.object({ token: z.string().min(20).max(100) }) });
 export const firmaDurumSchema = z.object({
     params: idParam,
     body: z.object({ durum: z.enum(["AKTIF", "DONDURULMUS", "PASIF"]), not: secmeli(500) }),

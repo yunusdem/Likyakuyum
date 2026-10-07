@@ -217,6 +217,36 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     }
   };
 
+  const formatDisplayDateOnly = (dateStr?: string | null): string => {
+    if (!dateStr) return "";
+    try {
+      const parts = dateStr.split("T")[0].split("-");
+      if (parts.length === 3) {
+        return `${parts[2]}.${parts[1]}.${parts[0]}`;
+      }
+      const dt = new Date(dateStr);
+      const d = String(dt.getDate()).padStart(2, "0");
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const y = dt.getFullYear();
+      return `${d}.${m}.${y}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const formatDisplayTimeOnly = (isoStr?: string | null): string => {
+    if (!isoStr) return "";
+    try {
+      const dt = new Date(isoStr);
+      const h = String(dt.getHours()).padStart(2, "0");
+      const min = String(dt.getMinutes()).padStart(2, "0");
+      const s = String(dt.getSeconds()).padStart(2, "0");
+      return `${h}:${min}:${s}`;
+    } catch {
+      return isoStr;
+    }
+  };
+
   const getCellKey = (rowIndex: number, col: EditableCol) => `${rowIndex}_${col}`;
 
   // Load kur tablosu from API
@@ -282,6 +312,13 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           } else if (targetId) {
             const idx = datesList.findIndex((d) => d.id === targetId);
             setSelectedDateIdx(idx >= 0 ? idx : -1);
+          } else if (targetTarih) {
+            const matched = datesList.find((d) => d.tarih === targetTarih);
+            if (matched) {
+              targetId = matched.id;
+              const idx = datesList.findIndex((d) => d.id === targetId);
+              setSelectedDateIdx(idx >= 0 ? idx : -1);
+            }
           }
 
           let tablo = await KurService.getKurTablosu({
@@ -1175,6 +1212,19 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     loadTabloData({ id: last.id, tarih: last.tarih });
   };
 
+  // Search Modal açma handler'ı (Saklanan modunda güncel tarih listesini de çeker)
+  const handleOpenSearchModal = async () => {
+    if (effectivePageType === "saklanan") {
+      try {
+        const datesList = await KurService.getStoredDates(2);
+        setStoredDates(datesList);
+      } catch (e) {
+        console.error("Saklanan tarihler yüklenemedi:", e);
+      }
+    }
+    setShowSearchModal(true);
+  };
+
   // Global Keyboard shortcuts listener (F1 - F10 & Arrow keys)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -1188,7 +1238,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         setSelectedRowIndex((prev) => (prev === null ? 0 : Math.max(prev - 1, 0)));
       } else if (e.key === "F4") {
         e.preventDefault();
-        setShowSearchModal(true);
+        handleOpenSearchModal();
       } else if (e.key === "F7") {
         e.preventDefault();
         if (effectivePageType === "anlik") {
@@ -1214,14 +1264,18 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
   return (
     <div className="kuyumcu-kur-container w-100 pb-3" style={{ overflowX: "hidden" }}>
-      {/* 1. Sol Üst Standart ERP Toolbar (Anlık Fiyat Listesi'nde Kaydetme Butonu Aktif) */}
+      {/* 1. Sol Üst Standart ERP Toolbar (Anlık Fiyat Listesi'nde Kaydetme Butonu Aktif, Saklanan'da Gezinme Aktif) */}
       <ERPToolbar
         hideNew={true}
         hideSave={effectivePageType !== "anlik"}
         hideDelete={true}
-        hideNavigation={true}
+        hideNavigation={effectivePageType !== "saklanan"}
+        onFirst={handleFirstDate}
+        onPrev={handlePrevDate}
+        onNext={handleNextDate}
+        onLast={handleLastDate}
         onSave={handleSave}
-        onSearch={() => setShowSearchModal(true)}
+        onSearch={handleOpenSearchModal}
         onPrint={handlePrint}
         onRefresh={() => loadTabloData({ id: tabloId, tarih })}
         disabled={isLoading || isSaving}
@@ -1783,71 +1837,148 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         </Modal.Footer>
       </Modal>
 
-      {/* Lookup / Search Modal (Dürbün ile Seçim - D- Vezne Tanımları gibi) */}
-      <LookupModal<KurRowItem>
-        show={showSearchModal}
-        onHide={() => setShowSearchModal(false)}
-        title="Para Birimi / Kur Arama (Dürbün)"
-        searchPlaceholder="Kod veya para birimi adı yazınız..."
-        items={rows}
-        isLoading={isLoading}
-        filterFn={(r, term) => {
-          const t = term.toLowerCase();
-          return r.kod.toLowerCase().includes(t) || r.ad.toLowerCase().includes(t);
-        }}
-        columns={[
-          {
-            header: "Kod",
-            width: "80px",
-            align: "center",
-            render: (r) => <span className="badge bg-light text-dark border font-monospace fw-bold">{r.kod}</span>,
-          },
-          {
-            header: "Para Birimi Adı",
-            render: (r) => <span className="fw-semibold text-dark">{r.ad}</span>,
-          },
-          {
-            header: "Efektif Alış",
-            width: "120px",
-            align: "right",
-            render: (r) => <span className="font-monospace text-danger fw-bold">{formatDisplayNumber(r.efektifAlis, 4)}</span>,
-          },
-          {
-            header: "Efektif Satış",
-            width: "120px",
-            align: "right",
-            render: (r) => <span className="font-monospace text-success fw-bold">{formatDisplayNumber(r.efektifSatis, 4)}</span>,
-          },
-          {
-            header: "Döviz Alış",
-            width: "120px",
-            align: "right",
-            render: (r) => <span className="font-monospace text-muted">{formatDisplayNumber(r.dovizAlis, 4)}</span>,
-          },
-          {
-            header: "Döviz Satış",
-            width: "120px",
-            align: "right",
-            render: (r) => <span className="font-monospace text-muted">{formatDisplayNumber(r.dovizSatis, 4)}</span>,
-          },
-          {
-            header: "Parite",
-            width: "100px",
-            align: "right",
-            render: (r) => <span className="font-monospace">{formatDisplayNumber(r.parite, 6)}</span>,
-          },
-        ]}
-        onSelect={(r) => {
-          const originalIdx = rows.findIndex((item) => item.paraId === r.paraId);
-          if (originalIdx >= 0) {
-            const cellKey = getCellKey(originalIdx, "dovizAlis");
-            setTimeout(() => {
-              inputRefs.current[cellKey]?.focus();
-              inputRefs.current[cellKey]?.select();
-            }, 100);
-          }
-        }}
-      />
+      {/* Lookup / Search Modal */}
+      {effectivePageType === "saklanan" ? (
+        <LookupModal<StoredKurDateItem>
+          show={showSearchModal}
+          onHide={() => setShowSearchModal(false)}
+          title="Saklanan Fiyat Listesi - Kayıtlı Kur Tarihleri Arama (Dürbün)"
+          searchPlaceholder="Tarih, saat veya kayıt no arayınız (örn: 07.10.2026, 2026-10)..."
+          items={[...storedDates].reverse()}
+          isLoading={isLoading}
+          filterFn={(item, term) => {
+            const t = term.toLowerCase().trim();
+            const displayDate = formatDisplayDateOnly(item.tarih).toLowerCase();
+            const rawDate = (item.tarih || "").toLowerCase();
+            const timeStr = formatDisplayTimeOnly(item.zaman).toLowerCase();
+            const idStr = String(item.id);
+            return (
+              displayDate.includes(t) ||
+              rawDate.includes(t) ||
+              timeStr.includes(t) ||
+              idStr.includes(t)
+            );
+          }}
+          columns={[
+            {
+              header: "Kayıt No",
+              width: "100px",
+              align: "center",
+              render: (item) => (
+                <span className="badge bg-light text-primary border font-monospace fw-bold">
+                  #{item.id}
+                </span>
+              ),
+            },
+            {
+              header: "Tarih",
+              width: "140px",
+              render: (item) => (
+                <div className="d-flex align-items-center gap-2">
+                  <IconCalendar size={15} className="text-secondary" />
+                  <span className="fw-bold text-dark font-monospace">
+                    {formatDisplayDateOnly(item.tarih)}
+                  </span>
+                </div>
+              ),
+            },
+            {
+              header: "Saat / Zaman",
+              width: "140px",
+              render: (item) => (
+                <div className="d-flex align-items-center gap-2">
+                  <IconClock size={15} className="text-muted" />
+                  <span className="font-monospace text-muted">
+                    {formatDisplayTimeOnly(item.zaman)}
+                  </span>
+                </div>
+              ),
+            },
+            {
+              header: "Durum",
+              render: (item) => {
+                const isCurrent = item.id === tabloId;
+                return isCurrent ? (
+                  <Badge bg="success">Ekranda Seçili Kur</Badge>
+                ) : (
+                  <span className="text-muted small">Kayıtlı Arşiv Kuru</span>
+                );
+              },
+            },
+          ]}
+          onSelect={(item) => {
+            const idx = storedDates.findIndex((d) => d.id === item.id);
+            if (idx >= 0) setSelectedDateIdx(idx);
+            loadTabloData({ id: item.id, tarih: item.tarih });
+            setShowSearchModal(false);
+          }}
+        />
+      ) : (
+        <LookupModal<KurRowItem>
+          show={showSearchModal}
+          onHide={() => setShowSearchModal(false)}
+          title="Para Birimi / Kur Arama (Dürbün)"
+          searchPlaceholder="Kod veya para birimi adı yazınız..."
+          items={rows}
+          isLoading={isLoading}
+          filterFn={(r, term) => {
+            const t = term.toLowerCase();
+            return r.kod.toLowerCase().includes(t) || r.ad.toLowerCase().includes(t);
+          }}
+          columns={[
+            {
+              header: "Kod",
+              width: "80px",
+              align: "center",
+              render: (r) => <span className="badge bg-light text-dark border font-monospace fw-bold">{r.kod}</span>,
+            },
+            {
+              header: "Para Birimi Adı",
+              render: (r) => <span className="fw-semibold text-dark">{r.ad}</span>,
+            },
+            {
+              header: "Efektif Alış",
+              width: "120px",
+              align: "right",
+              render: (r) => <span className="font-monospace text-danger fw-bold">{formatDisplayNumber(r.efektifAlis, 4)}</span>,
+            },
+            {
+              header: "Efektif Satış",
+              width: "120px",
+              align: "right",
+              render: (r) => <span className="font-monospace text-success fw-bold">{formatDisplayNumber(r.efektifSatis, 4)}</span>,
+            },
+            {
+              header: "Döviz Alış",
+              width: "120px",
+              align: "right",
+              render: (r) => <span className="font-monospace text-muted">{formatDisplayNumber(r.dovizAlis, 4)}</span>,
+            },
+            {
+              header: "Döviz Satış",
+              width: "120px",
+              align: "right",
+              render: (r) => <span className="font-monospace text-muted">{formatDisplayNumber(r.dovizSatis, 4)}</span>,
+            },
+            {
+              header: "Parite",
+              width: "100px",
+              align: "right",
+              render: (r) => <span className="font-monospace">{formatDisplayNumber(r.parite, 6)}</span>,
+            },
+          ]}
+          onSelect={(r) => {
+            const originalIdx = rows.findIndex((item) => item.paraId === r.paraId);
+            if (originalIdx >= 0) {
+              const cellKey = getCellKey(originalIdx, "dovizAlis");
+              setTimeout(() => {
+                inputRefs.current[cellKey]?.focus();
+                inputRefs.current[cellKey]?.select();
+              }, 100);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

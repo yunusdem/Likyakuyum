@@ -681,45 +681,6 @@ export const BankaHesapKartiPage: React.FC<BankaHesapKartiPageProps> = ({
               </Form.Group>
             </Col>
 
-            {/* ─── ALT BLOK: Muhasebe Hesap Kodları ───────────────────────── */}
-            <Col xs={12} className="mt-2">
-              <div className="bg-light p-3 rounded border">
-                <Form.Group as={Row} className="align-items-center">
-                  <Form.Label column lg={2} sm={3} className="small fw-bold text-secondary text-sm-end text-start mb-0">
-                    Muh. Kodları :
-                  </Form.Label>
-                  <Col lg={10} sm={9}>
-                    <div className="d-flex flex-wrap gap-1 mb-2">
-                      {lookups.muhHesaplar.map((m) => (
-                        <Button
-                          key={m.kod}
-                          variant={muhHesapKodlari.includes(m.kod) ? "primary" : "outline-secondary"}
-                          size="sm"
-                          style={{ fontSize: "0.75rem", padding: "2px 8px" }}
-                          onClick={() => {
-                            const current = muhHesapKodlari.split(";").map((s) => s.trim()).filter(Boolean);
-                            if (current.includes(m.kod)) {
-                              setMuhHesapKodlari(current.filter((k) => k !== m.kod).join("; "));
-                            } else {
-                              setMuhHesapKodlari([...current, m.kod].join("; "));
-                            }
-                          }}
-                        >
-                          {m.kod} - {m.ad}
-                        </Button>
-                      ))}
-                    </div>
-                    <Form.Control
-                      type="text"
-                      size="sm"
-                      value={muhHesapKodlari}
-                      onChange={(e) => setMuhHesapKodlari(e.target.value)}
-                      className="small font-monospace"
-                    />
-                  </Col>
-                </Form.Group>
-              </div>
-            </Col>
           </Row>
         </Card.Body>
       </Card>

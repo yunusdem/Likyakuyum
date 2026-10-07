@@ -1,5 +1,7 @@
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
+import { SureliOnbellek } from "../utils/sureliOnbellek.js";
+import { getPoolKey } from "../config/mssql.config.js";
 import { FATURA_NO_BICIMI, faturaNoUret } from "../utils/faturaNo.utils.js";
 import { EbelgeSeriRepository } from "../models/ebelgeSeri.repository.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
@@ -39,6 +41,11 @@ export const pkEtiketiSec = (kullanicilar) => {
         || etiketler.find((k) => k.birim.toUpperCase() !== "GB" && !/(^|[:._-])gb|defaultgb/i.test(k.alias));
     return (pk || etiketler[0])?.alias || "";
 };
+/** Ekrandaki mükellef / alıcı adresi sorguları için (anahtar: firma havuzu + VKN) */
+const ALICI_ONBELLEK_SURE_MS = 6 * 60 * 60_000;
+const ALICI_ONBELLEK_EN_FAZLA = 2000;
+const mukellefOnbellek = new SureliOnbellek(ALICI_ONBELLEK_SURE_MS, ALICI_ONBELLEK_EN_FAZLA);
+const adresOnbellek = new SureliOnbellek(ALICI_ONBELLEK_SURE_MS, ALICI_ONBELLEK_EN_FAZLA);
 export class EbelgeService {
     /**
      * Ayarları getirir. Kayıt yoksa TODVZ_TANIM'daki VKN ile ön doldurulmuş
@@ -410,10 +417,19 @@ export class EbelgeService {
         };
     }
     /**
+     * Ekrandaki mükellef sorgusu: mükellef çıkan sonuç firma+VKN anahtarıyla 6 saat bellekte tutulur,
+     * aynı anda gelen aynı sorgu tek ICE çağrısını paylaşır. Mükellef olmayan / hatalı sonuç saklanmaz.
+     * Gönderim yolları (kaynak gönderimi, alias çözümü) ICE'ye canlı sorar.
+     */
+    static async mukellefSorgula(vknTckn, kullanici, dbContext) {
+        const sonuc = await mukellefOnbellek.al(`${getPoolKey(dbContext?.dbServer, dbContext?.dbName)}|${vknTckn.trim()}`, () => this.mukellefSorgulaCanli(vknTckn, kullanici, dbContext), (s) => s.mukellefMi && s.kullanicilar.length > 0);
+        return structuredClone(sonuc);
+    }
+    /**
      * Alıcının e-Fatura mükellefi olup olmadığını sorar.
      * Sonuç boşsa alıcı mükellef değildir → e-Arşiv kesilmelidir.
      */
-    static async mukellefSorgula(vknTckn, kullanici, dbContext) {
+    static async mukellefSorgulaCanli(vknTckn, kullanici, dbContext) {
         if (!/^\d{10}$|^\d{11}$/.test(vknTckn.trim())) {
             return {
                 mukellefMi: false,
@@ -473,6 +489,11 @@ export class EbelgeService {
      * Mükellef sorgusundan AYRI tutulur: adres bulunamaması belge türü kararını etkilemez.
      */
     static async aliciAdresleri(vknTckn, kullanici, dbContext) {
+        // Adres bulunan sonuç 6 saat saklanır; boş sonuç ve hata saklanmaz
+        const sonuc = await adresOnbellek.al(`${getPoolKey(dbContext?.dbServer, dbContext?.dbName)}|${vknTckn.trim()}`, () => this.aliciAdresleriCanli(vknTckn, kullanici, dbContext), (s) => s.adresler.length > 0);
+        return structuredClone(sonuc);
+    }
+    static async aliciAdresleriCanli(vknTckn, kullanici, dbContext) {
         const vkn = vknTckn.trim();
         if (!/^\d{10}$|^\d{11}$/.test(vkn)) {
             throw ApiError.badRequest("VKN 10, TCKN 11 haneli rakam olmalıdır.");

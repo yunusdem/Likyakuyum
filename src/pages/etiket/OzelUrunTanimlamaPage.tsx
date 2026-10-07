@@ -1167,17 +1167,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   }, [loadAll]);
 
   useEffect(() => {
-    if (isDuzeltmeMode && ozelList.length > 0 && !ozelUrunId) {
-      const queryParams = new URLSearchParams(location.search);
-      const queryId = queryParams.get("id");
-      if (queryId) {
-        const match = ozelList.find((u) => u.ozelUrunId === parseInt(queryId, 10));
-        if (match) handleSelectRecord(match);
-        else handleSelectRecord(ozelList[ozelList.length - 1]);
-      } else {
-        handleSelectRecord(ozelList[ozelList.length - 1]);
-      }
-    } else if (!isDuzeltmeMode && ozelUrunId) {
+    const queryParams = new URLSearchParams(location.search);
+    const queryId = queryParams.get("id");
+
+    if (isDuzeltmeMode && queryId && ozelList.length > 0) {
+      const match = ozelList.find((u) => u.ozelUrunId === parseInt(queryId, 10));
+      if (match) handleSelectRecord(match);
+    } else {
+      // Hem Kayıt hem de Düzeltme sayfası ilk açılışta boş gelir
       handleNew();
     }
     const timer = setTimeout(() => {
@@ -1299,11 +1296,12 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       const exact = grupList.find((g) => (g.grupKodu || "").trim().toUpperCase() === val);
       if (exact) {
         handleGrupSec(exact.grupKodu);
-        mamulTipiRef.current?.focus();
       } else {
-        setGrupInitialSearch(val);
-        setShowGrupLookup(true);
+        handleGrupSec(val);
       }
+      setTimeout(() => {
+        mamulTipiRef.current?.focus();
+      }, 50);
     }
   };
 
@@ -1484,13 +1482,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setResimler([]);
     setSeciliResimIndex(0);
 
-    if (isDuzeltmeMode) {
-      navigate("/etiket/ozel-urun-barkodlama");
-    } else {
-      setTimeout(() => {
-        grupKoduRef.current?.focus();
-      }, 50);
-    }
+    setTimeout(() => {
+      grupKoduRef.current?.focus();
+    }, 50);
     if (vezneId && ayar) {
       fetchStok(vezneId, ayar);
     }
@@ -2156,6 +2150,21 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     >
                       <IconBinoculars size={16} />
                     </Button>
+                    {!isDuzeltmeMode && (
+                      <Button
+                        variant="outline-success"
+                        onClick={() => {
+                          setYeniGrupKodu(grupKodu || "");
+                          setYeniGrupAciklama("");
+                          setYeniGrupBaslangicNo(0);
+                          setShowGrupEkleModal(true);
+                        }}
+                        title="Yeni Grup Ekle (+)"
+                        className="px-2"
+                      >
+                        <IconPlus size={16} />
+                      </Button>
+                    )}
                   </InputGroup>
                 </div>
               </Col>
@@ -2241,56 +2250,60 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Orjinal Kod & Model (Yan Yana) */}
-                  <Row className="g-2 mb-2">
-                    <Col xs={12} sm={6}>
-                      <div className="d-flex align-items-center gap-1.5">
-                        <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
-                          Orjinal Kod :
-                        </div>
-                        <Form.Control
-                          ref={orjinalKodRef}
-                          type="text"
-                          size="sm"
-                          value={orjinalKod}
-                          onChange={(e) => setOrjinalKod(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              modelRef.current?.focus();
-                            }
-                          }}
-                          className="font-monospace bg-white text-start"
-                          style={{ maxWidth: "150px" }}
-                        />
-                      </div>
-                    </Col>
-                    <Col xs={12} sm={6}>
-                      <div className="d-flex align-items-center gap-1.5">
-                        <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "50px" }}>
-                          Model :
-                        </div>
-                        <Form.Control
-                          ref={modelRef}
-                          type="text"
-                          size="sm"
-                          value={model}
-                          onChange={(e) => setModel(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              bankoRef.current?.focus();
-                            }
-                          }}
-                          className="bg-white"
-                          style={{ maxWidth: "160px" }}
-                        />
-                      </div>
-                    </Col>
-                  </Row>
+                  {/* Orjinal Kod */}
+                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
+                      Orjinal Kod :
+                    </div>
+                    <div style={{ maxWidth: "200px" }}>
+                      <Form.Control
+                        ref={orjinalKodRef}
+                        type="text"
+                        size="sm"
+                        value={orjinalKod}
+                        onChange={(e) => setOrjinalKod(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === "ArrowDown") {
+                            e.preventDefault();
+                            modelRef.current?.focus();
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            ureticiFirmaRef.current?.focus();
+                          }
+                        }}
+                        className="font-monospace bg-white text-start"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Model (Alt Satırda) */}
+                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
+                      Model :
+                    </div>
+                    <div style={{ maxWidth: "200px" }}>
+                      <Form.Control
+                        ref={modelRef}
+                        type="text"
+                        size="sm"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === "ArrowDown") {
+                            e.preventDefault();
+                            bankoRef.current?.focus();
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            orjinalKodRef.current?.focus();
+                          }
+                        }}
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
 
                   {/* Banko */}
-                  <div className="d-flex align-items-center gap-1.5">
+                  <div className="d-flex align-items-center gap-1.5 mb-2">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Banko :
                     </div>
@@ -2333,6 +2346,152 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         </Button>
                       </InputGroup>
                     </div>
+                  </div>
+                </div>
+
+                {/* ─── Fotoğraf Yönetimi (Ürün Kimliği İçinde En Altta) ─── */}
+                <div className="pt-2.5 mt-2 border-top">
+                  <div className="d-flex align-items-center gap-3">
+                    {/* Ana Fotoğraf Önizleme Kutusu */}
+                    <div
+                      className="rounded-3 border d-flex flex-column align-items-center justify-content-center bg-white position-relative overflow-hidden flex-shrink-0 group"
+                      style={{
+                        width: "125px",
+                        height: "100px",
+                        boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
+                        cursor: (resimler.length > 0 || resim) ? "zoom-in" : "default",
+                      }}
+                      onClick={() => {
+                        if (resimler.length > 0 || resim) setShowFotoModal(true);
+                      }}
+                      title={(resimler.length > 0 || resim) ? "Büyütmek için tıklayın" : ""}
+                    >
+                      {resimler.length > 0 && resimler[seciliResimIndex] ? (
+                        <img
+                          src={resolveImageUrl(resimler[seciliResimIndex])}
+                          alt={`Özel Ürün Fotoğrafı ${seciliResimIndex + 1}`}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            padding: "4px",
+                          }}
+                        />
+                      ) : resim ? (
+                        <img
+                          src={resolveImageUrl(resim)}
+                          alt="Özel Ürün Fotoğrafı"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            padding: "4px",
+                          }}
+                        />
+                      ) : (
+                        <div className="d-flex flex-column align-items-center text-muted p-2 text-center">
+                          <IconCamera size={26} className="text-secondary opacity-50 mb-1" />
+                          <span className="small fw-semibold text-secondary" style={{ fontSize: "11px" }}>Fotoğraf Yok</span>
+                        </div>
+                      )}
+
+                      {/* Büyütme Butonu */}
+                      {(resimler.length > 0 || resim) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowFotoModal(true);
+                          }}
+                          className="btn btn-sm btn-light border position-absolute end-0 top-0 m-1 rounded-circle d-flex align-items-center justify-content-center shadow-xs"
+                          style={{ width: "22px", height: "22px", zIndex: 6, opacity: 0.85, padding: 0 }}
+                          title="Fotoğrafı Büyüt"
+                        >
+                          <IconMaximize size={12} className="text-dark" />
+                        </button>
+                      )}
+
+                      {resimler.length > 1 && (
+                        <span
+                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5 rounded-top-start small font-monospace"
+                          style={{ fontSize: "10px" }}
+                        >
+                          {seciliResimIndex + 1}/{resimler.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* YÜKLE & SİL Eylem Butonları */}
+                    <div className="d-flex flex-column gap-1.5" style={{ width: "120px" }}>
+                      <Dropdown className="w-100">
+                        <Dropdown.Toggle
+                          variant="outline-success"
+                          size="sm"
+                          className="fw-bold w-100 d-flex align-items-center justify-content-center gap-1"
+                          id="dropdown-ozel-foto-yukle"
+                        >
+                          <IconCamera size={14} />
+                          <span>YÜKLE</span>
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: "140px" }}>
+                          <Dropdown.Item
+                            onClick={startCamera}
+                            className="d-flex align-items-center gap-2 small py-1.5"
+                          >
+                            <IconCamera size={15} className="text-success" />
+                            <span className="fw-semibold">Kameradan Çek</span>
+                          </Dropdown.Item>
+                          <Dropdown.Item
+                            onClick={() => fileInputRef.current?.click()}
+                            className="d-flex align-items-center gap-2 small py-1.5"
+                          >
+                            <IconFolder size={15} className="text-primary" />
+                            <span className="fw-semibold">Dosyadan Seç</span>
+                          </Dropdown.Item>
+                        </Dropdown.Menu>
+                      </Dropdown>
+
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        className="fw-bold"
+                        onClick={handleDeleteSelectedPhoto}
+                        disabled={resimler.length === 0 && !resim}
+                        title="Seçili Fotoğrafı Kaldır"
+                      >
+                        SİL
+                      </Button>
+                    </div>
+
+                    {/* Çoklu Fotoğraf Küçük Kareler Listesi (Thumbnails) */}
+                    {resimler.length > 1 && (
+                      <div className="d-flex align-items-center gap-1.5 overflow-auto py-1 flex-grow-1" style={{ maxWidth: "100%" }}>
+                        {resimler.map((imgUrl, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setSeciliResimIndex(idx);
+                              setResim(imgUrl);
+                            }}
+                            className={`rounded border p-0.5 cursor-pointer ${idx === seciliResimIndex ? "border-primary border-2 shadow-sm" : "border-light opacity-75"
+                              }`}
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              flexShrink: 0,
+                              cursor: "pointer",
+                              background: "#fff",
+                            }}
+                          >
+                            <img
+                              src={resolveImageUrl(imgUrl)}
+                              alt={`thumb-${idx}`}
+                              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "2px" }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2964,151 +3123,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
             )}
           </div>
 
-          {/* ─── ALT BÖLÜM: Fotoğraf Yönetimi (Önizleme, Kamera, Yükle & Sil) ─── */}
-          <div className="border rounded-3 p-3 bg-light mb-3">
-            <div className="d-flex align-items-center gap-3">
-              {/* Ana Fotoğraf Önizleme Kutusu */}
-              <div
-                className="rounded-3 border d-flex flex-column align-items-center justify-content-center bg-white position-relative overflow-hidden flex-shrink-0 group"
-                style={{
-                  width: "140px",
-                  height: "110px",
-                  boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
-                  cursor: (resimler.length > 0 || resim) ? "zoom-in" : "default",
-                }}
-                onClick={() => {
-                  if (resimler.length > 0 || resim) setShowFotoModal(true);
-                }}
-                title={(resimler.length > 0 || resim) ? "Büyütmek için tıklayın" : ""}
-              >
-                {resimler.length > 0 && resimler[seciliResimIndex] ? (
-                  <img
-                    src={resolveImageUrl(resimler[seciliResimIndex])}
-                    alt={`Özel Ürün Fotoğrafı ${seciliResimIndex + 1}`}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      padding: "4px",
-                    }}
-                  />
-                ) : resim ? (
-                  <img
-                    src={resolveImageUrl(resim)}
-                    alt="Özel Ürün Fotoğrafı"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      padding: "4px",
-                    }}
-                  />
-                ) : (
-                  <div className="d-flex flex-column align-items-center text-muted p-2 text-center">
-                    <IconCamera size={28} className="text-secondary opacity-50 mb-1" />
-                    <span className="small fw-semibold text-secondary" style={{ fontSize: "11px" }}>Fotoğraf Yok</span>
-                  </div>
-                )}
 
-                {/* Büyütme Butonu */}
-                {(resimler.length > 0 || resim) && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowFotoModal(true);
-                    }}
-                    className="btn btn-sm btn-light border position-absolute end-0 top-0 m-1 rounded-circle d-flex align-items-center justify-content-center shadow-xs"
-                    style={{ width: "24px", height: "24px", zIndex: 6, opacity: 0.85, padding: 0 }}
-                    title="Fotoğrafı Büyüt"
-                  >
-                    <IconMaximize size={13} className="text-dark" />
-                  </button>
-                )}
-
-                {resimler.length > 1 && (
-                  <span
-                    className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5 rounded-top-start small font-monospace"
-                    style={{ fontSize: "10px" }}
-                  >
-                    {seciliResimIndex + 1}/{resimler.length}
-                  </span>
-                )}
-              </div>
-
-              {/* YÜKLE & SİL Eylem Butonları */}
-              <div className="d-flex flex-column gap-2" style={{ width: "135px" }}>
-                <Dropdown className="w-100">
-                  <Dropdown.Toggle
-                    variant="outline-success"
-                    size="sm"
-                    className="fw-bold w-100 d-flex align-items-center justify-content-center gap-1"
-                    id="dropdown-ozel-foto-yukle"
-                  >
-                    <IconCamera size={15} />
-                    <span>YÜKLE</span>
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: "150px" }}>
-                    <Dropdown.Item
-                      onClick={startCamera}
-                      className="d-flex align-items-center gap-2 small py-2"
-                    >
-                      <IconCamera size={16} className="text-success" />
-                      <span className="fw-semibold">Kameradan Çek</span>
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      onClick={() => fileInputRef.current?.click()}
-                      className="d-flex align-items-center gap-2 small py-2"
-                    >
-                      <IconFolder size={16} className="text-primary" />
-                      <span className="fw-semibold">Dosyadan Seç</span>
-                    </Dropdown.Item>
-                  </Dropdown.Menu>
-                </Dropdown>
-
-                <Button
-                  variant="outline-danger"
-                  size="sm"
-                  className="fw-bold"
-                  onClick={handleDeleteSelectedPhoto}
-                  disabled={resimler.length === 0 && !resim}
-                  title="Seçili Fotoğrafı Kaldır"
-                >
-                  SİL
-                </Button>
-              </div>
-
-              {/* Çoklu Fotoğraf Küçük Kareler Listesi (Thumbnails) */}
-              {resimler.length > 1 && (
-                <div className="d-flex align-items-center gap-1.5 overflow-auto py-1 flex-grow-1" style={{ maxWidth: "100%" }}>
-                  {resimler.map((imgUrl, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        setSeciliResimIndex(idx);
-                        setResim(imgUrl);
-                      }}
-                      className={`rounded border p-0.5 cursor-pointer ${idx === seciliResimIndex ? "border-primary border-2 shadow-sm" : "border-light opacity-75"
-                        }`}
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        flexShrink: 0,
-                        cursor: "pointer",
-                        background: "#fff",
-                      }}
-                    >
-                      <img
-                        src={resolveImageUrl(imgUrl)}
-                        alt={`thumb-${idx}`}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "2px" }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
 
           {/* ─── ALT ÇUBUK: Kurlar + Eylem Butonları ─── */}
           <div className="pt-3 mt-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-3">
@@ -3258,6 +3273,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         show={showGrupLookup}
         title="Kayıtlı Özel Ürün Grupları (Grup Seçimi)"
         initialSearchTerm={grupInitialSearch}
+        onAddNew={() => {
+          setShowGrupLookup(false);
+          setYeniGrupKodu(grupInitialSearch || grupKodu || "");
+          setYeniGrupAciklama("");
+          setYeniGrupBaslangicNo(0);
+          setShowGrupEkleModal(true);
+        }}
+        addNewLabel="Yeni Grup Ekle"
         columns={[
           {
             header: "Grup Kodu",

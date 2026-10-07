@@ -513,7 +513,7 @@ export class VezneTransferiSqlRepository {
                 request.input("search", sql.VarChar(100), `%${filters.search.trim()}%`);
                 query += " AND (t.REF_NO LIKE @search OR t.ACIKLAMA LIKE @search OR va.AD LIKE @search OR vv.AD LIKE @search)";
             }
-            query += " ORDER BY t.VEZNE_TRANSFERI_ID DESC";
+            query += " ORDER BY t.VEZNE_TRANSFERI_ID ASC";
             const res = await request.query(query);
             return (res.recordset || []).map((r) => ({
                 id: r.id,
@@ -630,7 +630,7 @@ export class VezneTransferiSqlRepository {
           b.MIKTAR AS miktar
         FROM [dbo].[TODVZ_VEZNE_BAKIYE] b WITH (NOLOCK)
         INNER JOIN [dbo].[TODVZ_PARA] p WITH (NOLOCK) ON b.PARA_ID = p.PARA_ID
-        WHERE b.VEZNE_ID = @vezneId AND b.MIKTAR > 0
+        WHERE b.VEZNE_ID = @vezneId AND b.MIKTAR <> 0
         ORDER BY p.SIRA_NO ASC, p.KOD ASC
       `);
             return (res.recordset || []).map((r) => ({

@@ -168,7 +168,23 @@ export const callSoap = async (options) => {
     if (contentLength && contentLength > MAX_RESPONSE_BYTES) {
         throw new ApiError(HttpStatus.BAD_GATEWAY, `Entegratör cevabı çok büyük (${Math.round(contentLength / 1048576)} MB). İstek daraltılmalı.`);
     }
-    const text = await response.text();
+    // Gövde okuması da süre sınırlı: başlıklar geldikten sonra aynı süre kadar daha beklenir
+    // (başlık beklemesi kısalmaz; gövdede takılan bağlantı kuyruğu dakikalarca tutmaz)
+    const govdeTimer = setTimeout(() => controller.abort(), timeoutMs);
+    let text;
+    try {
+        text = await response.text();
+    }
+    catch (err) {
+        if (err?.name === "AbortError") {
+            logger.warn(`ICE ${method}: zaman aşımı (${timeoutMs} ms)`);
+            throw new ApiError(HttpStatus.SERVICE_UNAVAILABLE, `Entegratör servisi ${timeoutMs / 1000} saniyede yanıt vermedi (${method}).`);
+        }
+        throw err;
+    }
+    finally {
+        clearTimeout(govdeTimer);
+    }
     const sureMs = Date.now() - started;
     if (text.length > MAX_RESPONSE_BYTES) {
         throw new ApiError(HttpStatus.BAD_GATEWAY, "Entegratör cevabı işlenemeyecek kadar büyük.");

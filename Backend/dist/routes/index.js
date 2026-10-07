@@ -34,14 +34,27 @@ import iskontoRoutes from "./iskonto.routes.js";
 import ebankaRoutes from "./ebanka.routes.js";
 import gibRoutes from "./gib.routes.js";
 import piyasaRoutes from "./piyasa.routes.js";
+import posRoutes from "./pos.routes.js";
+import { PosController } from "../controllers/pos.controller.js";
 import { EBankaController } from "../controllers/ebanka.controller.js";
 import { DONUS_YOLU } from "../services/ebankaVposOdeme.service.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { modulKapisi } from "../middlewares/modul.middleware.js";
+import { lisansKapisi } from "../middlewares/lisans.middleware.js";
+import { KurulumController } from "../controllers/kurulum.controller.js";
+import merkezRoutes from "./merkez.routes.js";
 const apiRouter = Router();
 // Firma bazlı modül kısıtı: önek → kullanan modüller eşlemesi services/admin/modul.service.ts API_MODULLERI'nde.
 // MERKEZ_GIRIS kapalıyken ve modül ayarı yapılmamış firmada hiçbir şeyi kısıtlamaz.
 const kapi = (onek) => [authenticate, modulKapisi(onek)];
+// Kurulum (exe) modunda lisans kilidi; bulut modunda etkisiz
+apiRouter.use(lisansKapisi);
+apiRouter.get("/sistem/bilgi", KurulumController.bilgi);
+apiRouter.get("/sistem/guncelleme", authenticate, KurulumController.guncellemeDurumu);
+apiRouter.post("/sistem/guncelleme/kontrol", authenticate, KurulumController.guncellemeKontrol);
+apiRouter.post("/sistem/guncelleme/simdi", authenticate, KurulumController.guncellemeSimdi);
+// Merkez: kurulum (exe) programlarının bildirimi ve güncelleme paketi (yalnız merkez sunucuda çalışır)
+apiRouter.use("/merkez", merkezRoutes);
 apiRouter.use("/health", healthRoutes);
 apiRouter.use("/admin", adminRoutes);
 apiRouter.use("/auth", authRoutes);
@@ -57,6 +70,10 @@ apiRouter.use("/ebanka", kapi("/ebanka"), ebankaRoutes);
 // Banka, 3D Secure sonrası müşterinin tarayıcısını buraya yollar (GET ya da POST). Oturumsuzdur: yalnızca sabit bir sayfa döner,
 // gelen veriyi okumaz ve hiçbir kayda dokunmaz; ödeme sonucu ekrandan Vomsis'e sorularak doğrulanır.
 apiRouter.all(DONUS_YOLU, EBankaController.vposDonus);
+// POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md). Açık/kapalı kararı firmanın POS modundadır (admin paneli).
+apiRouter.use("/pos", kapi("/pos"), posRoutes);
+// Cihaz servisinin (Token) sonuç bildirimi. Oturumsuzdur; adres işlem başına imzalıdır.
+apiRouter.post("/pos-donus/token/:firmaId/:islemId/:imza", PosController.tokenDonus);
 apiRouter.use("/kasa", kapi("/kasa"), kasaRoutes);
 apiRouter.use("/etiket", kapi("/etiket"), etiketRoutes);
 apiRouter.use("/vezne/izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);

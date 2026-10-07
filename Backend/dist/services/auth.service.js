@@ -8,6 +8,9 @@ import { MerkezGirisService } from "./merkezGiris.service.js";
 import { ESKI_SIFRE_ISARETI } from "../types/admin.types.js";
 import { sifreDogrula } from "../utils/sifre.utils.js";
 import { OturumService } from "./oturum.service.js";
+import { env } from "../config/env.config.js";
+import { kurulumBaglantisiniKaydet, kurulumDbContext, kurulumHavuzu } from "./kurulum/kurulumDb.js";
+import { KurulumLisansService } from "./kurulum/kurulumLisans.service.js";
 export class AuthService {
     /**
      * Müşteri no ile giriş (docs/GIRIS_VE_EBELGE_DUZENLEME.md G2-G7): firma, müşteri no + seçilen firmaId ile merkezde
@@ -15,6 +18,8 @@ export class AuthService {
      * doğrulanır: kullanıcı o veritabanının firmasında tanımlı değilse giremez.
      */
     static async login(input, istemci = { ip: "", tarayici: "" }) {
+        if (env.KURULUM_MODU)
+            return this.kurulumGiris(input.username, input.password);
         const firma = await MerkezGirisService.musteriFirmaKontrol(input.musteriNo, input.firmaId, input.username, istemci);
         const b = await MerkezGirisService.firmaBaglantisi(firma.firmaId);
         await MerkezGirisService.havuzDogrula(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
@@ -27,6 +32,59 @@ export class AuthService {
         }
         const sid = await OturumService.ac(kullanici.kullaniciId, firma.firmaId, istemci);
         return this.oturumAc(user, { ...dbContext, firmaId: firma.firmaId }, await MerkezGirisService.oturumBilgisi({ firma, kullanici }), sid);
+    }
+    // ----------------------------------------------------------- Kurulum (exe) modu ---
+    /** Kurulum modunda oturum bilgisi: firma ve lisans, merkez yerine yerel lisanstan gelir. */
+    static async kurulumOturumBilgisi(user) {
+        const d = await KurulumLisansService.durum();
+        const pool = await kurulumHavuzu();
+        const sayi = (await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`)).recordset[0].N;
+        return {
+            firmaKodu: d.firmaKodu || "",
+            firmaUnvan: d.firmaUnvan || "",
+            firmaYoneticisi: !!user.isSysAdmin,
+            sifreDegismeli: false,
+            lisansBitis: d.bitis,
+            lisansKalanGun: d.kalanGun,
+            kullaniciLimiti: d.kullaniciLimiti,
+            kullaniciSayisi: sayi,
+            moduller: d.moduller,
+            iletisim: d.iletisim,
+        };
+    }
+    /** Kurulum modunda giriş: tek firma veritabanı .env'den; kullanıcı ve şifre firma veritabanındaki TODVZ_KULLANICI. */
+    static async kurulumGiris(username, password) {
+        kurulumBaglantisiniKaydet();
+        const dbContext = kurulumDbContext();
+        const user = await UserSqlRepository.findByUsername(username, dbContext);
+        const dogru = !!user && (await comparePassword(password, user.passwordHash || user.password || ""));
+        if (!user || !dogru)
+            throw ApiError.unauthorized(ResponseMessages.INVALID_CREDENTIALS);
+        return this.oturumAc(user, { ...dbContext, firmaId: 0 }, await this.kurulumOturumBilgisi(user));
+    }
+    /** Kurulumun ilk açılışı: hiç kullanıcı yokken ilk yönetici (sistem yöneticisi) açılır; sonra bu uç kapanır. */
+    static async kurulumIlkYonetici(girdi) {
+        if (!env.KURULUM_MODU)
+            throw ApiError.notFound("Bu işlem yalnız kurulum sürümünde vardır.");
+        MerkezGirisService.sifreKuraliniDenetle(girdi.password);
+        kurulumBaglantisiniKaydet();
+        const pool = await kurulumHavuzu();
+        const sayi = (await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`)).recordset[0].N;
+        if (sayi > 0)
+            throw ApiError.conflict("İlk yönetici zaten tanımlı. Kullanıcılar programın içinden açılır.");
+        const dbContext = kurulumDbContext();
+        const { UserService } = await import("./user.service.js");
+        const yeni = await UserService.createUser({ username: girdi.username, fullName: girdi.fullName || girdi.username, password: girdi.password, isSysAdmin: true, role: "admin" }, dbContext);
+        const user = await UserSqlRepository.findById(String(yeni.id), dbContext);
+        if (!user)
+            throw ApiError.internal("İlk yönetici oluşturulamadı.");
+        return this.oturumAc(user, { ...dbContext, firmaId: 0 }, await this.kurulumOturumBilgisi(user));
+    }
+    /** Kurulumda henüz kullanıcı yok mu (giriş ekranı "ilk yönetici" formunu buna göre açar). */
+    static async kurulumKullaniciVarMi() {
+        kurulumBaglantisiniKaydet();
+        const pool = await kurulumHavuzu();
+        return (await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`)).recordset[0].N > 0;
     }
     /** Giriş ekranı: müşteri noya bağlı veritabanları. */
     static musteriVeritabanlari(musteriNo) {
@@ -141,7 +199,11 @@ export class AuthService {
     static async refreshToken(input) {
         try {
             const decoded = verifyRefreshToken(input.refreshToken);
-            if (decoded.firmaId) {
+            if (env.KURULUM_MODU) {
+                kurulumBaglantisiniKaydet();
+                Object.assign(decoded, kurulumDbContext());
+            }
+            else if (decoded.firmaId) {
                 const b = await MerkezGirisService.firmaBaglantisi(decoded.firmaId);
                 setDbCredentials(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
             }
@@ -175,6 +237,8 @@ export class AuthService {
         if (!user) {
             throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
         }
+        if (env.KURULUM_MODU)
+            return { ...UserSqlRepository.toDto(user), merkez: await this.kurulumOturumBilgisi(user) };
         // Merkez açıksa: firma dondurulmuş/pasif/lisansı bitmiş ya da kullanıcı kapatılmışsa 401 → istemci girişe döner
         const baglam = await MerkezGirisService.baglam({ ...dbContext, username: user.username });
         return { ...UserSqlRepository.toDto(user), ...(baglam && { merkez: await MerkezGirisService.oturumBilgisi(baglam) }) };

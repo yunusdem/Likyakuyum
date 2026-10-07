@@ -1,4 +1,4 @@
-import { EBankaSqlRepository } from "../models/ebankaSql.repository.js";
+import { EBankaSqlRepository, ebankaOzetOnbellegi } from "../models/ebankaSql.repository.js";
 import { EBankaPosSqlRepository } from "../models/ebankaPosSql.repository.js";
 import { EBankaVposSqlRepository } from "../models/ebankaVposSql.repository.js";
 import { EBankaVeriSqlRepository } from "../models/ebankaVeriSql.repository.js";
@@ -79,7 +79,12 @@ export class EBankaService {
         return EBankaSqlRepository.logListele(limit, dbContext);
     }
     // ─── Faz 1: Özet / Hesaplar / Hareketler ───────────────────────────────────
+    /** Ana Sayfa her açılışta çağırır: havuz başına 10 sn bellekte tutulur, aynı anda gelen istekler tek sorguyu paylaşır. */
     static async ozet(dbContext) {
+        const pool = await EBankaVeriSqlRepository.pool(dbContext);
+        return ebankaOzetOnbellegi.getir(pool, () => this.ozetHesapla(dbContext));
+    }
+    static async ozetHesapla(dbContext) {
         const [ayar, hesaplar, sayilar] = await Promise.all([
             EBankaSqlRepository.ayarGetir(dbContext),
             EBankaVeriSqlRepository.hesaplariListele(dbContext),

@@ -47,7 +47,7 @@ export class EBankaController {
         return ApiResponse.ok(res, "Fiş eşlendi.", await EBankaMutabakatService.esle(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
     });
     static mutabakatEslemeKaldir = asyncHandler(async (req, res) => {
-        return ApiResponse.ok(res, "Eşleşme kaldırıldı.", await EBankaMutabakatService.eslemeyiKaldir(req.body || {}, EBankaController.getDbContext(req)));
+        return ApiResponse.ok(res, "Eşleşme kaldırıldı.", await EBankaMutabakatService.eslemeyiKaldir(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
     });
     static mutabakatCariOnayla = asyncHandler(async (req, res) => {
         return ApiResponse.ok(res, "Cari kaydedildi.", await EBankaMutabakatService.cariOnayla(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));

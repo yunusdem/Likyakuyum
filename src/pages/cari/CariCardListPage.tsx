@@ -165,9 +165,14 @@ export const CariCardListPage: React.FC = () => {
 
   return (
     <div className="cari-card-list-page w-100 pb-3" style={{ overflowX: "hidden" }}>
-      {/* 1. ERP Aksiyon Toolbar */}
       <ERPToolbar
-        pageTitle={location.pathname.includes("detayli") ? "I- Detaylı Cari Kart Listesi" : "C- Cari Kart Listesi"}
+        pageTitle={
+          location.pathname.includes("hesap-ad-listesi")
+            ? "M- Hesap Ad Listesi"
+            : location.pathname.includes("detayli")
+            ? "I- Detaylı Cari Kart Listesi"
+            : "H- Cari Kart Listesi"
+        }
         pageIcon={<IconUsers size={20} className="text-primary" />}
         onRefresh={loadData}
         onPrint={handlePrint}

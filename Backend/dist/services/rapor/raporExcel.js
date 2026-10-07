@@ -1,10 +1,12 @@
 import ExcelJS from "exceljs";
 import { bicimle } from "./raporMotor.js";
-/**
- * Aynı rapor tanımı ve satırlardan Excel (.xlsx) üretir (yönetici kararı F1).
- * Sayısal kolonlar sayı olarak yazılır (Excel'de toplanabilir); tarih kolonları tarih olarak.
- */
+import { raporIsiCalistir } from "./raporIsHavuzu.js";
+/** Excel'i ayrı iş parçacığında üretir (büyük raporda ana süreci bekletmesin). */
 export async function raporExcel(p) {
+    return raporIsiCalistir("excel", p);
+}
+/** Asıl Excel üretimi (iş parçacığında ya da yedek olarak aynı süreçte çalışır). */
+export async function raporExcelUret(p) {
     const wb = new ExcelJS.Workbook();
     wb.creator = p.firma.ad || "Kuyumcu ERP";
     const ws = wb.addWorksheet(p.tanim.ad.replace(/[*?:\/\[\]]/g, "-").slice(0, 31), { views: [{ state: "frozen", ySplit: 4 }] });

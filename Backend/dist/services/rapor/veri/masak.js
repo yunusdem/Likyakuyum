@@ -1,6 +1,6 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
-import { FIS_USD_KURU_SQL, adetOzeti, aralikOzeti, filtreler, idFiltre, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
+import { FIS_USD_KOLON_SQL, adetOzeti, usdKuruCozucu, aralikOzeti, filtreler, idFiltre, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 const YAS_ARALIKLARI = [[0, 17, "0 – 17"], [18, 25, "18 – 25"], [26, 35, "26 – 35"], [36, 50, "36 – 50"], [51, 65, "51 – 65"], [66, 200, "66 ve üzeri"]];
 /** İşlem tarihindeki yaş (doğum günü henüz gelmediyse bir eksik) ve yaş aralığı. Saf fonksiyon. */
 export function yasAraligi(dogum, islem) {
@@ -63,7 +63,7 @@ export function grupOzeti(satirlar) {
 }
 /**
  * Ortak sorgu: tarih aralığı + fiş tipi + vezne (+ ek koşul). Satır = fiş satırı (eski MASAK raporlarının alt listeleri gibi: miktar, para, kur, satır tutarı).
- * `tutar` satır tutarı (TL), `fisTutar` fişin TL toplamı; USD karşılığı = satır tutarı ÷ fişin USD kuru, USD satırında miktarın kendisi (`FIS_USD_KURU_SQL`).
+ * `tutar` satır tutarı (TL), `fisTutar` fişin TL toplamı; USD karşılığı = satır tutarı ÷ fişin USD kuru, USD satırında miktarın kendisi (`FIS_USD_KOLON_SQL` + `usdKuruCozucu`).
  */
 async function masakSatirlari(pool, p, ek = () => "") {
     if (!p.baslangic || !p.bitis)
@@ -76,7 +76,7 @@ async function masakSatirlari(pool, p, ek = () => "") {
     const res = await req.query(`
     SELECT F.FIS_ID fisId, S.SATIR_NO satirNo, ISNULL(F.ZAMAN,F.TARIH) zaman, CONVERT(varchar(10), F.TARIH, 120) gun, RTRIM(ISNULL(F.SERI_NO,''))+RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.SERI_NO,'')) seriNo,
       RTRIM(ISNULL(F.UNVAN,'')) unvan, COALESCE(NULLIF(RTRIM(F.VERGI_KIMLIK_NO),''), NULLIF(RTRIM(F.PASAPORT_NO),''), '') kimlikNo, F.TIP tipKod,
-      ISNULL(F.TOPLAM_TUTAR,0) fisTutar, ISNULL(S.TUTAR,0) tutar, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, RTRIM(ISNULL(P.KOD,'')) paraKod, ${FIS_USD_KURU_SQL} usdKuru,
+      ISNULL(F.TOPLAM_TUTAR,0) fisTutar, ISNULL(S.TUTAR,0) tutar, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, RTRIM(ISNULL(P.KOD,'')) paraKod, ${FIS_USD_KOLON_SQL},
       RTRIM(ISNULL(F.PASAPORT_NO,'')) pasaportNo, RTRIM(ISNULL(F.BABA_ADI,'')) babaAdi, RTRIM(ISNULL(F.ANNE_ADI,'')) anneAdi, RTRIM(ISNULL(F.KIMLIK_SERI_NO,'')) kimlikSeriNo,
       RTRIM(ISNULL(F.ADRES,'')) adres, ${bildirimSql} bildirimFormu, RTRIM(ISNULL(VD.AD,'')) vergiDairesi, ${var_.ulke ? "RTRIM(ISNULL(UY.AD,''))" : "''"} uyruk,
       ISNULL(F.MESLEK_ID,0) meslekId, RTRIM(ISNULL(M.AD,'')) meslek, RTRIM(ISNULL(SK.AD,'')) sektor, F.DOGUM_TARIHI dogumTarihi,
@@ -89,8 +89,9 @@ async function masakSatirlari(pool, p, ek = () => "") {
       LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=F.EKLEYEN_ID LEFT JOIN dbo.TODVZ_KULLANICI SY ON SY.KULLANICI_ID=F.SUPHELI_ISLEMLER_YETKILI_ID
     WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip) ${f}
     ORDER BY ISNULL(F.ZAMAN,F.TARIH), F.FIS_ID, S.SATIR_NO;`);
+    const usdKuruBul = await usdKuruCozucu(pool, res.recordset);
     return res.recordset.map((r) => {
-        const tutar = Number(r.tutar) || 0, miktar = Number(r.miktar) || 0, usdKuru = Number(r.usdKuru) || 0;
+        const tutar = Number(r.tutar) || 0, miktar = Number(r.miktar) || 0, usdKuru = Number(usdKuruBul(r)) || 0;
         return { ...r, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", tutar, fisTutar: Number(r.fisTutar) || 0, miktar, kur: Number(r.kur) || 0,
             usdKarsiligi: String(r.paraKod).toUpperCase() === "USD" ? miktar : usdKuru > 0 ? tutar / usdKuru : 0,
             meslekId: Number(r.meslekId) || 0, masakListesinde: !!r.masakListesinde, masakListesindeMetin: r.masakListesinde ? "EVET" : "", bildirimFormuMetin: r.bildirimFormu ? "VAR" : "" };

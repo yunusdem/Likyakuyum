@@ -1222,12 +1222,82 @@ export class CariHareketSqlRepository {
             }
             // Fetch Para metadata if needed
             const paraMetaRes = await pool.request().query(`
-        SELECT PARA_ID, LTRIM(RTRIM(KOD)) AS KOD, LTRIM(RTRIM(AD)) AS AD, ISNULL(HAS_ORANI, 0) AS HAS_ORANI, ISNULL(SIRA_NO, 99) AS SIRA_NO
+        SELECT [PARA_ID], LTRIM(RTRIM(ISNULL([KOD], ''))) AS [KOD], LTRIM(RTRIM(ISNULL([AD], ''))) AS [AD], ISNULL([HAS_ORANI], 0) AS [HAS_ORANI], ISNULL([SIRA_NO], 99) AS [SIRA_NO], [URUN_TIPI]
         FROM [dbo].[TODVZ_PARA] WITH (NOLOCK);
       `);
             const paraMap = new Map();
             for (const p of paraMetaRes.recordset || []) {
-                paraMap.set(p.PARA_ID, { kod: p.KOD, ad: p.AD, hasOrani: p.HAS_ORANI });
+                paraMap.set(p.PARA_ID, { kod: p.KOD, ad: p.AD, hasOrani: Number(p.HAS_ORANI) || 0, urunTipi: p.URUN_TIPI !== null ? Number(p.URUN_TIPI) : undefined });
+            }
+            // 1. Fetch live rates and product definitions from Anlık Fiyat Listesi (TUR = 0)
+            let anlikTablo = null;
+            try {
+                const { KurSqlRepository } = await import("./kurSql.repository.js");
+                anlikTablo = await KurSqlRepository.findTablo({ tur: 0 }, dbContext);
+            }
+            catch (kTabloErr) {
+                logger.warn("CariHareketSqlRepository.getCariBakiye KurSqlRepository warning:", kTabloErr);
+            }
+            const kurMap = new Map();
+            let hasAltinKuru = 0;
+            if (anlikTablo && Array.isArray(anlikTablo.satirlar)) {
+                for (const s of anlikTablo.satirlar) {
+                    const dovizAlis = Number(s.dovizAlis) || 0;
+                    const efektifAlis = Number(s.efektifAlis) || 0;
+                    const dovizSatis = Number(s.dovizSatis) || 0;
+                    const efektifSatis = Number(s.efektifSatis) || 0;
+                    const primaryAlis = dovizAlis > 0 ? dovizAlis : (efektifAlis > 0 ? efektifAlis : (dovizSatis > 0 ? dovizSatis : efektifSatis));
+                    const primarySatis = dovizSatis > 0 ? dovizSatis : (efektifSatis > 0 ? efektifSatis : (dovizAlis > 0 ? dovizAlis : efektifAlis));
+                    kurMap.set(s.paraId, {
+                        alis: primaryAlis,
+                        satis: primarySatis,
+                        hasOrani: s.hasOrani,
+                        kod: s.kod,
+                        urunTipi: s.urunTipi,
+                    });
+                    const upper = (s.kod || "").trim().toUpperCase();
+                    // Patron talimatı: HAS Altın çevriminde kesinlikle HAS satırındaki dinamik EFEKTİF ALIŞ (örn: 6.700) kuru kullanılır:
+                    if (upper === "HAS" || upper === "HAS ALTIN" || upper === "HASALTIN" || s.hasOrani === 1) {
+                        const hasAlisFiyati = efektifAlis > 0 ? efektifAlis : (dovizAlis > 0 ? dovizAlis : 0);
+                        if (hasAlisFiyati > 0) {
+                            hasAltinKuru = hasAlisFiyati;
+                        }
+                    }
+                }
+            }
+            // Fallback: check TODVZ_TANIM -> HAS_ALTIN_PARA_ID
+            if (!hasAltinKuru) {
+                try {
+                    const tanimRes = await pool.request().query(`
+            SELECT TOP 1 [HAS_ALTIN_PARA_ID] FROM [dbo].[TODVZ_TANIM] WITH (NOLOCK);
+          `);
+                    const hasAltinParaId = tanimRes.recordset[0]?.HAS_ALTIN_PARA_ID;
+                    if (hasAltinParaId && kurMap.has(hasAltinParaId) && kurMap.get(hasAltinParaId).alis > 0) {
+                        hasAltinKuru = kurMap.get(hasAltinParaId).alis;
+                    }
+                }
+                catch (tErr) {
+                    logger.warn("CariHareketSqlRepository.getCariBakiye tanim fetch warning:", tErr);
+                }
+            }
+            // Fallback: check any latest TODVZ_KUR record for HAS EFEKTIF_ALIS
+            if (!hasAltinKuru) {
+                try {
+                    const fbRes = await pool.request().query(`
+            SELECT TOP 1 COALESCE(NULLIF(K.[EFEKTIF_ALIS], 0), NULLIF(K.[DOVIZ_ALIS], 0), 0) AS [HAS_ALIS]
+            FROM [dbo].[TODVZ_KUR] K WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON P.[PARA_ID] = K.[PARA_ID]
+            WHERE (UPPER(LTRIM(RTRIM(P.[KOD]))) IN ('HAS', 'HAS ALTIN', 'HASALTIN', 'ALTIN') OR P.[HAS_ORANI] = 1)
+              AND (K.[EFEKTIF_ALIS] > 0 OR K.[DOVIZ_ALIS] > 0)
+            ORDER BY K.[KUR_TABLOSU_ID] DESC;
+          `);
+                    if (fbRes.recordset[0]?.HAS_ALIS > 0) {
+                        hasAltinKuru = Number(fbRes.recordset[0].HAS_ALIS);
+                    }
+                }
+                catch (fErr) {
+                    logger.warn("CariHareketSqlRepository.getCariBakiye fallback kur warning:", fErr);
+                }
             }
             const rows = [];
             let totalNetHas = 0;
@@ -1251,14 +1321,46 @@ export class CariHareketSqlRepository {
                     totalAlacakSum += alacakBakiye;
                 }
                 const pid = Number(r.PARA_ID);
-                const meta = paraMap.get(pid);
+                const meta = kurMap.get(pid) || paraMap.get(pid);
                 const kod = (r.KOD || meta?.kod || "TL").trim();
-                const ad = (r.AD || meta?.ad || kod).trim();
-                const hasOrani = Number(r.HAS_ORANI ?? meta?.hasOrani ?? 0);
+                const ad = (r.AD || paraMap.get(pid)?.ad || kod).trim();
+                const rawHasOrani = Number(r.HAS_ORANI ?? meta?.hasOrani ?? 0);
+                const hasOrani = rawHasOrani > 10 ? rawHasOrani / 1000 : rawHasOrani;
                 if (rawBorc > 0 || rawAlacak > 0 || borcBakiye > 0 || alacakBakiye > 0) {
                     const signedBakiye = (yon === "A" ? 1 : -1) * Math.abs(diff);
-                    const effectiveHasOrani = hasOrani > 0 ? hasOrani : (kod.toUpperCase() === "HAS" ? 1 : 0);
-                    totalNetHas += signedBakiye * effectiveHasOrani;
+                    const upperKod = kod.toUpperCase();
+                    const isTL = upperKod === "TL" || upperKod === "TRY" || upperKod === "TRL" || upperKod === "TL." || upperKod === "YTL";
+                    const isDirectHas = upperKod === "HAS" || upperKod === "HAS ALTIN" || upperKod === "HASALTIN";
+                    // Bilinen döviz kodları (Asla altın/maden olarak kabul edilmez)
+                    const dovizKodlari = [
+                        "USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "DKK", "SAR", "NOK",
+                        "SEK", "RUB", "CNY", "IRR", "KWD", "AED", "QAR", "BHD", "OMR", "JOD",
+                        "AZN", "GEL", "KZT", "RON", "BGN", "PLN", "RSD", "UAH", "LEI", "LEV",
+                        "MNT", "CAT", "MET", "DEM", "TEN", "GRV", "LAR"
+                    ];
+                    const isDoviz = dovizKodlari.includes(upperKod) || (meta?.urunTipi === 0 && !isDirectHas && !isTL);
+                    let rowHasVal = 0;
+                    if (isDirectHas) {
+                        // HAS Altın doğrudan 1:1 gramdır
+                        rowHasVal = signedBakiye;
+                    }
+                    else if (isTL) {
+                        // Türk Lirası: Anlık Fiyat Listesindeki Has Altın TL Fiyatına bölünür
+                        rowHasVal = hasAltinKuru > 0 ? signedBakiye / hasAltinKuru : 0;
+                    }
+                    else if (isDoviz) {
+                        // Dövizler (USD, EUR, GBP, CAD, CHF vb.): Anlık Fiyat Listesindeki Alış Kuru ile TL'ye, ardından Has Altın Fiyatına bölünür
+                        const kInfo = kurMap.get(pid);
+                        const dovizKuru = kInfo && kInfo.alis > 0 ? kInfo.alis : 1;
+                        const tlVal = signedBakiye * dovizKuru;
+                        rowHasVal = hasAltinKuru > 0 ? tlVal / hasAltinKuru : 0;
+                    }
+                    else {
+                        // Diğer Maden ve Altın Grupları (22 Ayar, 14 Ayar, Hurda vb.): Has Oranı ile HAS gramına çevrilir
+                        const effectiveHasOrani = hasOrani > 0 ? (hasOrani > 10 ? hasOrani / 1000 : hasOrani) : 1;
+                        rowHasVal = signedBakiye * effectiveHasOrani;
+                    }
+                    totalNetHas += rowHasVal;
                     rows.push({
                         paraId: pid,
                         kod,
@@ -1267,34 +1369,23 @@ export class CariHareketSqlRepository {
                         alacakBakiye,
                         netBakiye: Math.abs(diff),
                         yon,
-                        hasOrani,
+                        hasOrani: rawHasOrani,
                     });
                 }
             }
-            const netTotalDiff = totalAlacakSum - totalBorcSum;
-            const netYon = netTotalDiff > 0.0001 ? "A" : (netTotalDiff < -0.0001 ? "B" : "-");
-            let headerLabel = "0,00";
-            if (rows.length === 1) {
-                const r = rows[0];
-                const fmt = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(r.netBakiye);
-                headerLabel = `${fmt} ${r.kod} (${r.yon === "A" ? "Alacak" : r.yon === "B" ? "Borç" : "-"})`;
-            }
-            else if (Math.abs(totalNetHas) > 0.0001) {
-                const fmt = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(Math.abs(totalNetHas));
-                const hasYon = totalNetHas > 0 ? "Alacak" : "Borç";
-                headerLabel = `${fmt} HAS (${hasYon})`;
-            }
-            else {
-                const fmt = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(netTotalDiff));
-                headerLabel = `${fmt} (${netYon === "A" ? "Alacak" : netYon === "B" ? "Borç" : "-"})`;
-            }
+            const netHasYon = totalNetHas > 0.0001 ? "A" : (totalNetHas < -0.0001 ? "B" : "-");
+            const absHas = Math.abs(totalNetHas);
+            const fmtHas = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(absHas);
+            const headerLabel = absHas > 0.0001
+                ? `${fmtHas} HAS (${netHasYon === "A" ? "Alacak" : "Borç"})`
+                : "0,00 HAS";
             return {
                 cariKartId: id,
                 kod: cari.KOD,
                 ad: cari.AD,
                 satirlar: rows,
-                netHasBakiye: Math.abs(totalNetHas),
-                netHasYon: totalNetHas > 0.0001 ? "A" : (totalNetHas < -0.0001 ? "B" : "-"),
+                netHasBakiye: absHas,
+                netHasYon,
                 headerLabel,
             };
         }

@@ -66,6 +66,7 @@ import { generateDovizReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
+import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
 
 interface VezneItem {
   id: number;
@@ -408,6 +409,7 @@ export const DovizFisiPage: React.FC = () => {
   const lastFocusedUnvanRef = useRef<string>("");
   const lastFocusedVknRef = useRef<string>("");
   const lastFocusedIstatistikKodRef = useRef<string>("");
+  const hasUserSelectedStatRef = useRef<boolean>(false);
   const lastModalCallerRef = useRef<"cariKod" | "unvan" | "vkn" | "istatistik" | "paraGrid" | null>(null);
   const lastParaModalRowIndexRef = useRef<number | null>(null);
 
@@ -460,7 +462,7 @@ export const DovizFisiPage: React.FC = () => {
   const [vezneId, setVezneId] = useState<number>(1);
   const [vezneKod, setVezneKod] = useState<string>("01");
   const [vezneAd, setVezneAd] = useState<string>("Ana Vezne");
-  const [tip, setTip] = useState<number>(1); // 0: Alış, 1: Satış (Kayıt sayfası varsayılan olarak SATIŞ)
+  const [tip, setTip] = useState<number>(0); // 0: Alış, 1: Satış (Varsayılan olarak ALIŞ)
 
   // Alış / Satış başlığı renk teması
   const activeFisThemeBg = useMemo(() => {
@@ -482,6 +484,26 @@ export const DovizFisiPage: React.FC = () => {
       return sellBg || "var(--user-sell-header-bg, #e2e8f0)";
     }
   }, [tip, user?.appearance?.buyHeaderBgColor, user?.appearance?.sellHeaderBgColor]);
+
+  const activeFisThemeText = useMemo(() => {
+    let buyText = user?.appearance?.buyHeaderTextColor;
+    let sellText = user?.appearance?.sellHeaderTextColor;
+    if (!buyText || !sellText) {
+      try {
+        const cached = localStorage.getItem("kuyumcu_active_appearance");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!buyText && parsed.buyHeaderTextColor) buyText = parsed.buyHeaderTextColor;
+          if (!sellText && parsed.sellHeaderTextColor) sellText = parsed.sellHeaderTextColor;
+        }
+      } catch { }
+    }
+    if (tip === 0) {
+      return buyText || "var(--user-buy-header-text, #0f172a)";
+    } else {
+      return sellText || "var(--user-sell-header-text, #0f172a)";
+    }
+  }, [tip, user?.appearance?.buyHeaderTextColor, user?.appearance?.sellHeaderTextColor]);
   const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [saat, setSaat] = useState<string>(() => {
     const d = new Date();
@@ -568,22 +590,36 @@ export const DovizFisiPage: React.FC = () => {
   const [gmFaturaNo, setGmFaturaNo] = useState<string>("");
 
   // Table Lines: Starts with EXACTLY 1 row if no data
-  const createEmptyRow = (satirNo: number): GridLineItem => ({
-    id: `row-${Date.now()}-${Math.random()}`,
-    satirNo,
-    paraId: 0,
-    paraKodu: "",
-    paraAdi: "",
-    miktar: "",
-    kur: "",
-    komisyonOrani: "",
-    komisyon: "",
-    bmvOrani: "",
-    bmv: "",
-    kmvOrani: "",
-    kmv: "",
-    tutar: "",
-  });
+  const createEmptyRow = (satirNo: number): GridLineItem => {
+    const statKod = (istatistikKodu || "").trim();
+    const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
+    const bmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null
+      ? Number(activeStat.bmvOrani)
+      : (activeStat && tip === 1 ? 0.2 : 0);
+    const kmvRate = activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null
+      ? Number(activeStat.kmvOrani)
+      : 0;
+    const komRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null
+      ? Number(activeStat.komisyonOrani)
+      : 0;
+
+    return {
+      id: `row-${Date.now()}-${Math.random()}`,
+      satirNo,
+      paraId: 0,
+      paraKodu: "",
+      paraAdi: "",
+      miktar: "",
+      kur: "",
+      komisyonOrani: komRate > 0 ? komRate.toString() : "",
+      komisyon: "",
+      bmvOrani: bmvRate > 0 ? bmvRate.toString() : (activeStat && tip === 1 ? "0.2" : ""),
+      bmv: "",
+      kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
+      kmv: "",
+      tutar: "",
+    };
+  };
 
   const [lines, setLines] = useState<GridLineItem[]>([createEmptyRow(1)]);
   const [activeRowIndex, setActiveRowIndex] = useState<number>(0);
@@ -864,10 +900,12 @@ export const DovizFisiPage: React.FC = () => {
     setCariKartId(null);
     setVergiKimlikNo("");
     setGelisNedeni("");
-    setTip(1);
+    setTip(0);
     setKurTuru(0);
     setIstatistikId(null);
     setIstatistikKodu("");
+    setSelectedStatistic(null);
+    hasUserSelectedStatRef.current = false;
     lastFocusedCariKodRef.current = "";
     lastFocusedUnvanRef.current = DEFAULT_CUSTOMER_NAME;
     lastFocusedVknRef.current = "";
@@ -1074,28 +1112,21 @@ export const DovizFisiPage: React.FC = () => {
       setParaList(combinedParalar);
 
       if (isDuzeltmeMode) {
+        try {
+          const fisler = await DovizFisService.getFisList({ limit: 500 });
+          setSavedFisList(fisler || []);
+        } catch {
+          // ignore
+        }
         if (queryId) {
           await loadFisById(Number(queryId));
         } else {
-          // Düzeltme ekranında otomatik son kayıt getirilir
-          try {
-            const fisler = await DovizFisService.getFisList({ limit: 500 });
-            setSavedFisList(fisler);
-            if (fisler && fisler.length > 0) {
-              const latestFis = fisler[fisler.length - 1];
-              await loadFisById(latestFis.fisId);
-              setCurrentIndex(fisler.length - 1);
-            } else {
-              resetForm(curLookups, compDef);
-              applyDefaultIstatistik(tip, istatistikler, compDef, user);
-            }
-          } catch {
-            resetForm(curLookups, compDef);
-            applyDefaultIstatistik(tip, istatistikler, compDef, user);
-          }
+          // D- Döviz Fişi Düzeltme ekranı ilk açılışta boş gelir
+          resetForm(curLookups, compDef);
+          setCurrentIndex(-1);
         }
       } else {
-        // [C- Döviz Fişi] sayfasında hiçbir eski veri gözükmez, temiz yeni fiş modu açılır
+        // [E- Döviz Fişi Kayıt] sayfasında temiz yeni fiş modu açılır
         resetForm(curLookups, compDef);
         applyDefaultIstatistik(tip, istatistikler, compDef, user);
       }
@@ -1164,6 +1195,7 @@ export const DovizFisiPage: React.FC = () => {
       setKurTuru(fis.kurTuru ?? 0);
       setIstatistikId(fis.istatistikId);
       setIstatistikKodu(fis.istatistikKodu || (fis.tip === 1 ? "10285" : "9249"));
+      hasUserSelectedStatRef.current = true;
 
       lastFocusedCariKodRef.current = matchedCari;
       lastFocusedUnvanRef.current = fis.unvan || DEFAULT_CUSTOMER_NAME;
@@ -1692,25 +1724,42 @@ export const DovizFisiPage: React.FC = () => {
           }
         }
 
-        // 2. BMV % ve BMV Tutarı (Elle müdahale edilemez, otomatik hesaplanır)
-        if (tip === 1) {
-          updated.bmvOrani = "0.2";
-          if (tutar > 0) {
-            updated.bmv = (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi);
+        // 2. BMV % ve BMV Tutarı
+        if (field === "bmvOrani") {
+          updated.bmvOrani = value;
+          const bmvRate = parseDecimal(value);
+          if (bmvRate > 0 && tutar > 0) {
+            updated.bmv = (Math.round(tutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
+          } else if (!value) {
+            updated.bmv = "";
+          }
+        } else if (field === "bmv") {
+          updated.bmv = value;
+        } else {
+          const bmvRate = parseDecimal(updated.bmvOrani || (tip === 1 ? "0.2" : "0"));
+          if (bmvRate > 0 && tutar > 0) {
+            updated.bmv = (Math.round(tutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
           } else {
             updated.bmv = "";
           }
-        } else {
-          updated.bmvOrani = "0";
-          updated.bmv = "";
         }
 
-        // 3. KMV Tutarı
+        // 3. KMV % ve KMV Tutarı
         if (field === "kmvOrani") {
-          const kmvRate = parseDecimal(value || "0");
+          updated.kmvOrani = value;
+          const kmvRate = parseDecimal(value);
           if (kmvRate > 0 && tutar > 0) {
             updated.kmv = (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
           } else if (!value) {
+            updated.kmv = "";
+          }
+        } else if (field === "kmv") {
+          updated.kmv = value;
+        } else {
+          const kmvRate = parseDecimal(updated.kmvOrani || "0");
+          if (kmvRate > 0 && tutar > 0) {
+            updated.kmv = (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
+          } else {
             updated.kmv = "";
           }
         }
@@ -1720,20 +1769,91 @@ export const DovizFisiPage: React.FC = () => {
     );
   };
 
+  const applyStatisticToLines = useCallback((stat: StatisticItem | IstatistikSecimItem | null, currentTip: number = tip) => {
+    if (!stat) {
+      setLines((prev) =>
+        prev.map((row) => ({
+          ...row,
+          bmvOrani: "",
+          bmv: "",
+          kmvOrani: "",
+          kmv: "",
+          komisyonOrani: "",
+          komisyon: "",
+        }))
+      );
+      return;
+    }
+
+    const bmvRate = stat?.bmvOrani !== undefined && stat?.bmvOrani !== null
+      ? Number(stat.bmvOrani)
+      : (currentTip === 1 ? 0.2 : 0);
+    const kmvRate = stat?.kmvOrani !== undefined && stat?.kmvOrani !== null
+      ? Number(stat.kmvOrani)
+      : 0;
+    const komRate = stat?.komisyonOrani !== undefined && stat?.komisyonOrani !== null
+      ? Number(stat.komisyonOrani)
+      : 0;
+    const factor = Math.pow(10, tlKurusSayisi);
+
+    setLines((prev) =>
+      prev.map((row) => {
+        const m = parseMiktar(row.miktar);
+        const k = parseKur(row.kur);
+        const tutar = calculateRowTutar(m, k, row.paraKodu);
+
+        const bmvVal = bmvRate > 0 && tutar > 0
+          ? (Math.round(tutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi)
+          : "";
+        const kmvVal = kmvRate > 0 && tutar > 0
+          ? (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi)
+          : "";
+        const komVal = komRate > 0 && tutar > 0
+          ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi)
+          : "";
+
+        return {
+          ...row,
+          bmvOrani: bmvRate > 0 ? bmvRate.toString() : (currentTip === 1 ? "0.2" : ""),
+          bmv: bmvVal,
+          kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
+          kmv: kmvVal,
+          komisyonOrani: komRate > 0 ? komRate.toString() : "",
+          komisyon: komVal,
+        };
+      })
+    );
+  }, [tip, tlKurusSayisi]);
+
   const handleSelectCurrency = (rowId: string, para: ParaItem) => {
     if (isLocked) return;
     const isTL = para.kod?.toUpperCase() === "TL" || para.kod?.toUpperCase() === "TRY" || para.kod?.toUpperCase() === "TRL";
     const autoKur = isTL ? 0 : resolveCurrencyRate(para, tip, kurTuru);
+    const statKod = (istatistikKodu || "").trim();
+    const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
+    const defaultBmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null ? Number(activeStat.bmvOrani) : (activeStat && tip === 1 ? 0.2 : 0);
+    const defaultKmvRate = activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null ? Number(activeStat.kmvOrani) : 0;
+    const defaultKomRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null ? Number(activeStat.komisyonOrani) : 0;
+
     setLines((prev) =>
       prev.map((row) => {
         if (row.id !== rowId) return row;
         const m = parseMiktar(row.miktar);
         const tutar = calculateRowTutar(m, autoKur);
         const factor = Math.pow(10, tlKurusSayisi);
-        const bmvOrani = tip === 1 ? "0.2" : "0";
-        const bmvVal = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
-        const komRate = parseDecimal(row.komisyonOrani || "0");
-        const komVal = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi) : row.komisyon;
+
+        const bmvOrani = row.bmvOrani !== "" && row.bmvOrani !== undefined ? row.bmvOrani : (defaultBmvRate > 0 ? defaultBmvRate.toString() : (activeStat && tip === 1 ? "0.2" : ""));
+        const bmvRateNum = parseDecimal(bmvOrani);
+        const bmvVal = bmvRateNum > 0 && tutar > 0 ? (Math.round(tutar * (bmvRateNum / 100) * factor) / factor).toFixed(tlKurusSayisi) : "";
+
+        const kmvOrani = row.kmvOrani !== "" && row.kmvOrani !== undefined ? row.kmvOrani : (defaultKmvRate > 0 ? defaultKmvRate.toString() : "");
+        const kmvRateNum = parseDecimal(kmvOrani);
+        const kmvVal = kmvRateNum > 0 && tutar > 0 ? (Math.round(tutar * (kmvRateNum / 100) * factor) / factor).toFixed(tlKurusSayisi) : "";
+
+        const komOrani = row.komisyonOrani !== "" && row.komisyonOrani !== undefined ? row.komisyonOrani : (defaultKomRate > 0 ? defaultKomRate.toString() : "");
+        const komRateNum = parseDecimal(komOrani);
+        const komVal = komRateNum > 0 && tutar > 0 ? (Math.round(tutar * (komRateNum / 100) * factor) / factor).toFixed(tlKurusSayisi) : "";
+
         return {
           ...row,
           paraId: para.id,
@@ -1743,6 +1863,9 @@ export const DovizFisiPage: React.FC = () => {
           tutar: tutar > 0 ? tutar : "",
           bmvOrani,
           bmv: bmvVal,
+          kmvOrani,
+          kmv: kmvVal,
+          komisyonOrani: komOrani,
           komisyon: komVal,
         };
       })
@@ -1760,23 +1883,16 @@ export const DovizFisiPage: React.FC = () => {
     }, 50);
   };
 
-  const handleSelectIstatistik = (item: IstatistikSecimItem) => {
+  const handleSelectIstatistik = (item: IstatistikSecimItem | StatisticItem) => {
     if (isLocked) return;
+    hasUserSelectedStatRef.current = true;
     setIstatistikId(item.id);
     setIstatistikKodu(item.kod);
     setSelectedStatistic(item as any);
     const dizaynTipi = Number(item.fisDizaynTipi ?? (item as any).tip ?? 0);
     setIstatistikFisDizaynTipi(dizaynTipi);
-    setStatisticList((prev) => {
-      const idx = prev.findIndex((s) => s.id === item.id || s.kod === item.kod);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = { ...copy[idx], ...item, fisDizaynTipi: dizaynTipi };
-        return copy;
-      }
-      return [...prev, item as any];
-    });
     lastFocusedIstatistikKodRef.current = item.kod;
+    applyStatisticToLines(item, tip);
     setShowIstatistikModal(false);
     setTimeout(() => {
       focusCell(0, "kod");
@@ -2481,8 +2597,18 @@ export const DovizFisiPage: React.FC = () => {
       setIstatistikId(null);
       setIstatistikKodu(fallbackKod);
       lastFocusedIstatistikKodRef.current = fallbackKod;
+      applyStatisticToLines(null, fisTipi);
       return;
     }
+
+    const setMatched = (item: StatisticItem) => {
+      setIstatistikId(item.id);
+      setIstatistikKodu(item.kod || "");
+      setSelectedStatistic(item);
+      setIstatistikFisDizaynTipi(Number(item.fisDizaynTipi ?? 0));
+      lastFocusedIstatistikKodRef.current = item.kod || "";
+      applyStatisticToLines(item, fisTipi);
+    };
 
     // 1. Firma Tanımları Kontrolü (Öncelikli)
     if (compDef) {
@@ -2493,9 +2619,7 @@ export const DovizFisiPage: React.FC = () => {
           (s) => s.id === Number(companyStatId) || Number(s.id) === Number(companyStatId)
         );
         if (foundCompany) {
-          setIstatistikId(foundCompany.id);
-          setIstatistikKodu(foundCompany.kod || "");
-          lastFocusedIstatistikKodRef.current = foundCompany.kod || "";
+          setMatched(foundCompany);
           return;
         }
       }
@@ -2511,9 +2635,7 @@ export const DovizFisiPage: React.FC = () => {
           String(s.id) === cleanUserCode
       );
       if (foundUser) {
-        setIstatistikId(foundUser.id);
-        setIstatistikKodu(foundUser.kod || "");
-        lastFocusedIstatistikKodRef.current = foundUser.kod || "";
+        setMatched(foundUser);
         return;
       }
     }
@@ -2529,10 +2651,7 @@ export const DovizFisiPage: React.FC = () => {
     });
 
     if (matchingList.length > 0) {
-      const firstItem = matchingList[0];
-      setIstatistikId(firstItem.id);
-      setIstatistikKodu(firstItem.kod || "");
-      lastFocusedIstatistikKodRef.current = firstItem.kod || "";
+      setMatched(matchingList[0]);
       return;
     }
 
@@ -2542,9 +2661,7 @@ export const DovizFisiPage: React.FC = () => {
       (s) => (s.kod || "").trim() === fallbackKod
     );
     if (fallbackMatched) {
-      setIstatistikId(fallbackMatched.id);
-      setIstatistikKodu(fallbackMatched.kod || fallbackKod);
-      lastFocusedIstatistikKodRef.current = fallbackMatched.kod || fallbackKod;
+      setMatched(fallbackMatched);
       return;
     }
 
@@ -2552,17 +2669,19 @@ export const DovizFisiPage: React.FC = () => {
     setIstatistikId(null);
     setIstatistikKodu(fallbackKod);
     lastFocusedIstatistikKodRef.current = fallbackKod;
+    applyStatisticToLines(null, fisTipi);
   };
 
   // Tip, İstatistik Listesi veya Firma Tanımları değiştiğinde varsayılan istatistik seç
   useEffect(() => {
-    if (!isDuzeltmeMode && statisticList.length > 0) {
+    if (!isDuzeltmeMode && statisticList.length > 0 && !hasUserSelectedStatRef.current) {
       applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
     }
   }, [tip, statisticList, companyDefinitions, isDuzeltmeMode, user]);
 
   const handleTipChange = (newTip: number) => {
     setTip(newTip);
+    hasUserSelectedStatRef.current = false;
     // Tip değişince istatistiği de güncelle — tüm güncel değerleri parametre olarak geçir
     applyDefaultIstatistik(newTip, statisticList, companyDefinitions, user);
     setLines((prev) =>
@@ -3543,6 +3662,16 @@ export const DovizFisiPage: React.FC = () => {
       const isF8 = key === "F8" || e.code === "F8" || e.keyCode === 119;
       const isF9 = key === "F9" || e.code === "F9" || e.keyCode === 120;
       const isF10 = key === "F10" || e.code === "F10" || e.keyCode === 121;
+      const isF12 = key === "F12" || e.code === "F12" || e.keyCode === 123;
+
+      if (isF12) {
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (triggerAdjacentBinoculars(activeEl)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
 
       // F8 Detay Modalı açar
       if (isF8) {
@@ -3926,29 +4055,7 @@ export const DovizFisiPage: React.FC = () => {
       {/* Top ERP Toolbar with Refresh Icon on right and Dynamic Balances */}
       <ERPToolbar
         disableShortcuts={true}
-        pageTitle={
-          <div className="d-flex align-items-center gap-2">
-            <span style={{ fontSize: "14px", fontWeight: 700 }}>
-              {isDuzeltmeMode ? "F- Döviz Fişi Düzeltme" : "E- Döviz Fişi Kayıt"}
-            </span>
-            <span
-              className="badge px-2 py-0.5 fw-bold text-white shadow-2xs"
-              style={{
-                fontSize: "11px",
-                backgroundColor: tip === 1 ? "#16a34a" : "#b91c1c",
-                letterSpacing: "0.5px",
-                borderRadius: "3px",
-              }}
-            >
-              {tip === 1 ? "SATIŞ FİŞİ" : "ALIŞ FİŞİ"}
-            </span>
-            {arbitrajActiveInfo && (
-              <Badge bg="warning" className="text-dark fw-bold px-2 py-0.5 d-inline-flex align-items-center gap-1 shadow-2xs" style={{ fontSize: "11px" }}>
-                <IconArrowsExchange size={14} /> ARBİTRAJ ({arbitrajActiveInfo.girisKod} ⇄ {arbitrajActiveInfo.cikisKod})
-              </Badge>
-            )}
-          </div>
-        }
+        pageTitle={isDuzeltmeMode ? "F- Döviz Fişi Düzeltme" : "E- Döviz Fişi Kayıt"}
         onNew={handleToolbarNew}
         onSave={handleToolbarSave}
         onSearch={isDuzeltmeMode ? openFisSecimModal : undefined}
@@ -3959,6 +4066,37 @@ export const DovizFisiPage: React.FC = () => {
         onPrev={handlePrev}
         onNext={handleNext}
         onLast={handleLast}
+        centerContent={
+          <div className="d-flex align-items-center gap-2">
+            <div
+              style={{
+                border: tip === 0 ? "2px solid #16a34a" : "2px solid #dc2626",
+                backgroundColor: activeFisThemeBg,
+                color: activeFisThemeText,
+                fontWeight: 800,
+                fontSize: "13.5px",
+                letterSpacing: "3px",
+                minWidth: "220px",
+                padding: "4px 30px",
+                borderRadius: "6px",
+                height: "30px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: tip === 0 ? "0 1px 3px rgba(22, 163, 74, 0.15)" : "0 1px 3px rgba(220, 38, 38, 0.15)",
+                textAlign: "center",
+                textTransform: "uppercase",
+              }}
+            >
+              {tip === 0 ? "ALIŞ" : "SATIŞ"}
+            </div>
+            {arbitrajActiveInfo && (
+              <Badge bg="warning" className="text-dark fw-bold px-2 py-1 d-inline-flex align-items-center gap-1 shadow-2xs" style={{ fontSize: "11px" }}>
+                <IconArrowsExchange size={14} /> ARBİTRAJ ({arbitrajActiveInfo.girisKod} ⇄ {arbitrajActiveInfo.cikisKod})
+              </Badge>
+            )}
+          </div>
+        }
         onPrint={() => {
           const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
           setPrintSnapshot({
@@ -4651,13 +4789,45 @@ export const DovizFisiPage: React.FC = () => {
                           onFocus={() => {
                             lastFocusedIstatistikKodRef.current = istatistikKodu;
                           }}
-                          onChange={(e) => setIstatistikKodu(e.target.value.slice(0, 20))}
+                          onChange={(e) => {
+                            const nextVal = e.target.value.slice(0, 20);
+                            setIstatistikKodu(nextVal);
+                            if (!nextVal.trim()) {
+                              hasUserSelectedStatRef.current = true;
+                              setIstatistikId(null);
+                              setSelectedStatistic(null);
+                              setIstatistikFisDizaynTipi(0);
+                              lastFocusedIstatistikKodRef.current = "";
+                              applyStatisticToLines(null, tip);
+                            }
+                          }}
+                          onBlur={() => {
+                            const val = (istatistikKodu || "").trim();
+                            if (!val) {
+                              hasUserSelectedStatRef.current = true;
+                              setIstatistikId(null);
+                              setSelectedStatistic(null);
+                              setIstatistikFisDizaynTipi(0);
+                              lastFocusedIstatistikKodRef.current = "";
+                              applyStatisticToLines(null, tip);
+                              return;
+                            }
+                            const q = val.toLowerCase();
+                            const matched = statisticList.find((s) => {
+                              const fType = Number(s.fisTipi);
+                              const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                              return typeMatch && ((s.kod || "").toLowerCase() === q || String(s.id) === q);
+                            });
+                            if (matched && matched.id !== istatistikId) {
+                              handleSelectIstatistik(matched);
+                            }
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
                               const val = (istatistikKodu || "").trim();
                               const prevVal = (lastFocusedIstatistikKodRef.current || "").trim();
-                              if (val && val.toLowerCase() === prevVal.toLowerCase()) {
+                              if (val && val.toLowerCase() === prevVal.toLowerCase() && selectedStatistic) {
                                 focusCell(0, "kod");
                                 return;
                               }
@@ -4673,14 +4843,7 @@ export const DovizFisiPage: React.FC = () => {
                               });
                               if (matched.length === 1) {
                                 const single = matched[0];
-                                setIstatistikId(single.id);
-                                setIstatistikKodu(single.kod);
-                                setSelectedStatistic(single);
-                                setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
-                                lastFocusedIstatistikKodRef.current = single.kod;
-                                setTimeout(() => {
-                                  focusCell(0, "kod");
-                                }, 50);
+                                handleSelectIstatistik(single);
                                 return;
                               }
                               lastModalCallerRef.current = "istatistik";
