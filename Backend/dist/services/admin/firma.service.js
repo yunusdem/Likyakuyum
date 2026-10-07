@@ -9,6 +9,7 @@ import { firmaDbAnahtari } from "./firmaBaglanti.service.js";
 import { IzlemeSqlRepository } from "../../models/admin/izlemeSql.repository.js";
 import { OturumService } from "../oturum.service.js";
 import { MerkezGirisService } from "../merkezGiris.service.js";
+import { DestekOlay } from "../destek/destekOlay.js";
 const bosIseNull = (v) => {
     const t = (v ?? "").trim();
     return t === "" ? null : t;
@@ -163,6 +164,7 @@ export class FirmaService {
             eski: { durum: eski.durum, not: eski.durumNotu },
             yeni: { durum: girdi.durum, not, kapananOturum },
         });
+        DestekOlay.firmaDurumu(firmaId, girdi.durum, not, kapananOturum); // K14
         return this.getir(firmaId);
     }
     static async dogrulama(yapan, firmaId, girdi) {

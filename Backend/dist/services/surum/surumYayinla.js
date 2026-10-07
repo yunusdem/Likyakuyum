@@ -12,6 +12,7 @@ import { klasorKopyala } from "../../utils/dosya.utils.js";
 import { enYuksekGoc, gocDosyalari, semaGocUygula } from "../semaGoc.service.js";
 import { kd, klonIle, klonYapilandirildiMi } from "../admin/klon.service.js";
 import { butunlukListesiUret, paketImzala, sha256Dosya } from "./paketImza.js";
+import { DestekService } from "../destek/destek.service.js";
 /** 1.0.0+20261006.153012 (Türkiye saati; aynı dakikada iki yayın çakışmasın diye saniyeli) */
 export const surumAdi = (pkgSurum, an = new Date()) => {
     const z = trZaman(an);
@@ -93,6 +94,7 @@ export const surumYayinla = async (s) => {
                 .input("not", sql.NVarChar(2000), s.not ?? null)
                 .query(`INSERT INTO dbo.ADM_SURUM (SURUM, DOSYA_YOLU, BOYUT, SHA256, IMZA, SEMA_SURUMU, NOTLAR) VALUES (@surum, @yol, @boyut, @sha, @imza, @sema, @not)`);
             await AdminLogSqlRepository.islemLogu({ adminId: null, islem: "SURUM_YAYINLANDI", hedefTur: "SURUM", hedefId: surum, yeni: { boyut, dosya: adet, sema: sonuc.sema } });
+            await DestekService.surumTaslagi(surum, s.not ?? null); // K10: admin panelinde taslak bildirim
         }
         return sonuc;
     }

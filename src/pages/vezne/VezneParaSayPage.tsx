@@ -9,6 +9,7 @@ import {
   InputGroup,
   Badge,
   Spinner,
+  Alert,
 } from "react-bootstrap";
 import {
   IconCash,
@@ -16,6 +17,7 @@ import {
   IconRefresh,
   IconPrinter,
   IconSearch,
+  IconBinoculars,
   IconTrash,
   IconCalculator,
   IconCoins,
@@ -64,23 +66,32 @@ export interface ParaSayCurrencyState {
   kasaBakiyesi: number;
 }
 
-export interface PopupNotificationState {
-  type: "success" | "danger" | "warning" | "info";
-  title: string;
-  message: string;
-  details?: string;
-}
-
 export const VezneParaSayPage: React.FC = () => {
   const { user } = useAuth();
 
   // Üst Form Bilgileri
   const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [saat, setSaat] = useState<string>(() => new Date().toTimeString().split(" ")[0].slice(0, 5));
+  const [liveSaat, setLiveSaat] = useState<string>(() => new Date().toLocaleTimeString("tr-TR"));
   const [aciklama, setAciklama] = useState<string>("Günlük Kasa Sayımı");
   const [selectedVezneId, setSelectedVezneId] = useState<number>(0);
   const [selectedVezneKod, setSelectedVezneKod] = useState<string>("");
   const [selectedVezneAd, setSelectedVezneAd] = useState<string>("");
   const [activeSayimId, setActiveSayimId] = useState<number | null>(null);
+  const [sayimDurumu, setSayimDurumu] = useState<string | null>(null);
+
+  // Canlı Saat Sayacı (Geçmiş kayıt yüklenmediyse anlık saati gösterir)
+  useEffect(() => {
+    if (!activeSayimId) {
+      const interval = setInterval(() => {
+        setLiveSaat(new Date().toLocaleTimeString("tr-TR"));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [activeSayimId]);
+
+  const displaySaat = activeSayimId ? (saat || "-") : liveSaat;
+  const displayTarih = new Date(tarih).toLocaleDateString("tr-TR");
 
   // Tanım & Liste State'leri
   const [vezneList, setVezneList] = useState<VezneItem[]>([]);
@@ -98,32 +109,37 @@ export const VezneParaSayPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showVezneLookup, setShowVezneLookup] = useState<boolean>(false);
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
-  const [showClearConfirmModal, setShowClearConfirmModal] = useState<boolean>(false);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
   const [historyList, setHistoryList] = useState<VezneParaSayimDto[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [historyFilterBaslangic, setHistoryFilterBaslangic] = useState<string>("");
+  const [historyFilterBitis, setHistoryFilterBitis] = useState<string>("");
+  const [historyFilterVezneId, setHistoryFilterVezneId] = useState<string>("ALL");
+  const [historyFilterSearch, setHistoryFilterSearch] = useState<string>("");
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number>(0);
 
-  // Sayfa Ortasında Açılan Popup Bildirim Modalı
-  const [popupNotification, setPopupNotification] = useState<PopupNotificationState | null>(null);
+  // 3 Saniye Sonra Kaybolan Standart ERP Toast Bildirimi
+  const [notification, setNotification] = useState<{
+    type: "success" | "danger" | "warning" | "info";
+    message: string;
+  } | null>(null);
+
+  const showNotif = useCallback((type: "success" | "danger" | "warning" | "info", msg: string) => {
+    setNotification({ type, message: msg });
+  }, []);
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   // Klavye Navigasyonu Referansları
   const adetInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const vezneInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Sayfa Ortasında Popup Bildirim Gösterme
-  const showPopup = useCallback((type: "success" | "danger" | "warning" | "info", title: string, message: string, details?: string) => {
-    setPopupNotification({ type, title, message, details });
-  }, []);
-
-  // Popup otomatik kapatma (Başarılı / Bilgi bildirimleri için 2.8 saniye)
-  useEffect(() => {
-    if (popupNotification && (popupNotification.type === "success" || popupNotification.type === "info")) {
-      const timer = setTimeout(() => {
-        setPopupNotification(null);
-      }, 2800);
-      return () => clearTimeout(timer);
-    }
-  }, [popupNotification]);
 
   // Kullanıcının varsayılan veznesini belirleme
   const getUserVezne = useCallback(
@@ -172,23 +188,21 @@ export const VezneParaSayPage: React.FC = () => {
         setSelectedVezneAd(defaultVezne.ad);
       }
     } catch (err: any) {
-      showPopup(
+      showNotif(
         "danger",
-        "Yükleme Hatası",
-        "Başlangıç verileri yüklenirken bir sorun oluştu.",
-        err?.message || String(err)
+        "Başlangıç verileri yüklenirken bir sorun oluştu: " + (err?.message || String(err))
       );
     } finally {
       setIsLoading(false);
     }
-  }, [getUserVezne, showPopup]);
+  }, [getUserVezne, showNotif]);
 
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
 
   // 2. Seçili Veznenin Kasa Bakiyelerini Yükle
-  const loadVezneBakiyeler = useCallback(async (vezneId: number, silent = false) => {
+  const loadVezneBakiyeler = useCallback(async (vezneId: number, _silent = true) => {
     if (!vezneId || vezneId <= 0) {
       setKasaBakiyeleriMap({});
       return;
@@ -202,17 +216,10 @@ export const VezneParaSayPage: React.FC = () => {
         });
       }
       setKasaBakiyeleriMap(bMap);
-      if (!silent) {
-        showPopup(
-          "info",
-          "Bakiyeler Güncellendi",
-          `${selectedVezneKod || "Seçili vezne"} kasa bakiyeleri güncel veritabanından çekildi.`
-        );
-      }
     } catch (err) {
       setKasaBakiyeleriMap({});
     }
-  }, [selectedVezneKod, showPopup]);
+  }, []);
 
   useEffect(() => {
     if (selectedVezneId > 0) {
@@ -232,11 +239,57 @@ export const VezneParaSayPage: React.FC = () => {
     }));
   }, [currencyList, kasaBakiyeleriMap]);
 
+  // 4. Hesaplama Fonksiyonları
+  const getSayilanTutar = useCallback(
+    (kod: string): number => {
+      const kodUpper = kod.toUpperCase().trim();
+      const currCounts = countsMap[kodUpper] || {};
+      let total = 0;
+      Object.entries(currCounts).forEach(([kupurStr, adet]) => {
+        const kupur = Number(kupurStr);
+        if (kupur > 0 && adet > 0) {
+          total += kupur * adet;
+        }
+      });
+      return total;
+    },
+    [countsMap]
+  );
+
+  const getToplamBanknotAdedi = useCallback(
+    (kod: string): number => {
+      const kodUpper = kod.toUpperCase().trim();
+      const currCounts = countsMap[kodUpper] || {};
+      let count = 0;
+      Object.values(currCounts).forEach((adet) => {
+        if (adet > 0) count += adet;
+      });
+      return count;
+    },
+    [countsMap]
+  );
+
+  // Kasa Para Birimleri ve Bakiyeleri tablosunda herşeyi 0 olanlar (bakiye=0 ve sayılan=0) gözükmez
+  const visibleCurrencies: ParaSayCurrencyState[] = useMemo(() => {
+    return masterCurrencies.filter((c) => {
+      const sayilan = getSayilanTutar(c.paraKodu);
+      const bakiye = Number(c.kasaBakiyesi) || 0;
+      return Math.abs(bakiye) > 0.000001 || Math.abs(sayilan) > 0.000001;
+    });
+  }, [masterCurrencies, getSayilanTutar]);
+
   // Seçili para birimi
-  const activeCurrency = masterCurrencies[selectedCurrencyIndex] || masterCurrencies[0];
+  const activeCurrency = visibleCurrencies[selectedCurrencyIndex] || visibleCurrencies[0] || null;
   const activeKodUpper = activeCurrency ? activeCurrency.paraKodu.toUpperCase().trim() : "";
 
-  // 4. Seçili Para Biriminin Kupürlerini (TODVZ_BANKNOT) Yükleme / Önbellek
+  // Seçili para birimi indeksinin taşmasını engelle
+  useEffect(() => {
+    if (selectedCurrencyIndex >= visibleCurrencies.length && visibleCurrencies.length > 0) {
+      setSelectedCurrencyIndex(visibleCurrencies.length - 1);
+    }
+  }, [visibleCurrencies.length, selectedCurrencyIndex]);
+
+  // 5. Seçili Para Biriminin Kupürlerini (TODVZ_BANKNOT) Yükleme / Önbellek
   useEffect(() => {
     if (!activeCurrency || !activeCurrency.paraId) return;
     const pId = activeCurrency.paraId;
@@ -272,36 +325,6 @@ export const VezneParaSayPage: React.FC = () => {
     return getKupurlerForCurrency(activeCurrency.paraId, activeCurrency.paraKodu);
   }, [activeCurrency, getKupurlerForCurrency]);
 
-  // 5. Hesaplama Fonksiyonları
-  const getSayilanTutar = useCallback(
-    (kod: string): number => {
-      const kodUpper = kod.toUpperCase().trim();
-      const currCounts = countsMap[kodUpper] || {};
-      let total = 0;
-      Object.entries(currCounts).forEach(([kupurStr, adet]) => {
-        const kupur = Number(kupurStr);
-        if (kupur > 0 && adet > 0) {
-          total += kupur * adet;
-        }
-      });
-      return total;
-    },
-    [countsMap]
-  );
-
-  const getToplamBanknotAdedi = useCallback(
-    (kod: string): number => {
-      const kodUpper = kod.toUpperCase().trim();
-      const currCounts = countsMap[kodUpper] || {};
-      let count = 0;
-      Object.values(currCounts).forEach((adet) => {
-        if (adet > 0) count += adet;
-      });
-      return count;
-    },
-    [countsMap]
-  );
-
   // Kupür Adedi Değiştirme
   const handleAdetChange = (kupur: number, valueStr: string) => {
     if (!activeKodUpper) return;
@@ -335,13 +358,11 @@ export const VezneParaSayPage: React.FC = () => {
       ...prev,
       [activeKodUpper]: {},
     }));
-    showPopup("info", "Kupürler Sıfırlandı", `${activeCurrency?.paraKodu} para birimi için sayım adetleri sıfırlandı.`);
   };
 
   // Aktif Para Birimini Sistem Bakiyesine Eşitle (Kupürlere otomatik dağıt)
   const handleAutoFillWithBalance = () => {
     if (!activeCurrency || activeCurrency.kasaBakiyesi <= 0) {
-      showPopup("warning", "Bakiye Yok", "Sistemde dağıtılacak pozitif kasa bakiyesi bulunmuyor.");
       return;
     }
     let remaining = Math.round(activeCurrency.kasaBakiyesi);
@@ -360,31 +381,32 @@ export const VezneParaSayPage: React.FC = () => {
       ...prev,
       [activeKodUpper]: newCounts,
     }));
-
-    showPopup(
-      "success",
-      "Otomatik Dağıtıldı",
-      `${activeCurrency.paraKodu} kasa bakiyesi (${activeCurrency.kasaBakiyesi.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}) kupürlere otomatik dağıtıldı.`
-    );
   };
 
-  // Tüm Sayımları Temizle (F3)
-  const handleClearAll = () => {
+  // Sol üstteki "Yeni" butonu veya Kısayol: Otomatik sıfırlar, bildirim vermez
+  const handleResetNew = useCallback(() => {
     setCountsMap({});
     setActiveSayimId(null);
-    setShowClearConfirmModal(false);
-    showPopup("info", "Sayımlar Sıfırlandı", "Tüm para birimlerine ait sayım adetleri sıfırlandı.");
-  };
+    setAciklama("Günlük Kasa Sayımı");
+    const now = new Date();
+    setTarih(now.toISOString().split("T")[0]);
+    setSaat(now.toTimeString().split(" ")[0].slice(0, 5));
+    setSayimDurumu(null);
+  }, []);
 
-  // Veritabanına ve Yerel Depolamaya Kaydet (F2)
+  // Veritabanına Kaydet (F1 - Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_KAYDET)
   const handleSave = async () => {
     if (!selectedVezneId || selectedVezneId <= 0) {
-      showPopup("warning", "Vezne Seçimi Gerekli", "Lütfen önce sayım yapılan vezneyi seçiniz.");
+      showNotif("warning", "Lütfen önce sayım yapılan vezneyi seçiniz (F12).");
       return;
     }
 
     setIsSaving(true);
     try {
+      const now = new Date();
+      const nowTarih = now.toISOString().split("T")[0];
+      const nowSaat = now.toTimeString().split(" ")[0].slice(0, 8);
+
       // 1. Satır Dökümlerini Hazırla
       const satirlar = masterCurrencies.map((curr) => {
         const kodUpper = curr.paraKodu.toUpperCase().trim();
@@ -416,8 +438,8 @@ export const VezneParaSayPage: React.FC = () => {
       // 2. Veritabanı Payload
       const savePayload: VezneParaSayimDto = {
         sayimId: activeSayimId,
-        tarih,
-        saat: new Date().toTimeString().split(" ")[0].slice(0, 5),
+        tarih: nowTarih,
+        saat: nowSaat,
         vezneId: selectedVezneId,
         vezneKodu: selectedVezneKod,
         vezneAdi: selectedVezneAd,
@@ -429,46 +451,34 @@ export const VezneParaSayPage: React.FC = () => {
         satirlar,
       };
 
-      // 3. Veritabanına Kaydet
-      const res = await VezneParaSayimService.saveSayim(savePayload);
-      if (res?.sayimId) {
-        setActiveSayimId(res.sayimId);
-      }
+      // 3. Stored Procedure ile Veritabanına Kaydet
+      await VezneParaSayimService.saveSayim(savePayload);
 
-      // 4. Offline LocalStorage Yedekleme
-      try {
-        localStorage.setItem(`para_sayim_${selectedVezneId}`, JSON.stringify(savePayload));
-      } catch {}
-
-      // 5. Sayfa Ortasında Başarı Pop-up'ı Göster
-      showPopup(
-        "success",
-        "Sayım Başarıyla Kaydedildi!",
-        `Vezne: ${selectedVezneKod} - ${selectedVezneAd}\nTarih: ${new Date(tarih).toLocaleDateString("tr-TR")}\nDurum: ${genelDurum}`,
-        `Kayıt No: #${res?.sayimId || "Yeni"} | Tüm veriler veritabanında saklandı.`
-      );
+      // 4. Kayıt edilince otomatik sayfa boşalacak ve bildirim olmayacak
+      setCountsMap({});
+      setActiveSayimId(null);
+      setAciklama("Günlük Kasa Sayımı");
+      setSayimDurumu(null);
+      setTarih(nowTarih);
+      setSaat(nowSaat.slice(0, 5));
     } catch (err: any) {
-      showPopup(
+      showNotif(
         "danger",
-        "Kayıt Hatası",
-        "Vezne para sayımı kaydedilirken bir hata meydana geldi.",
-        err?.response?.data?.message || err?.message || String(err)
+        `Kayıt hatası: ${err?.response?.data?.message || err?.message || "Sayım kaydedilemedi."}`
       );
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Geçmiş Sayımları Aç (F4)
+  // Geçmiş Sayımları Aç (F3 / Üst Dürbün)
   const handleOpenHistory = async () => {
-    if (!selectedVezneId || selectedVezneId <= 0) {
-      showPopup("warning", "Vezne Seçiniz", "Geçmiş sayımları görmek için önce bir vezne seçiniz.");
-      return;
-    }
     setIsLoadingHistory(true);
     setShowHistoryModal(true);
+    setSelectedHistoryIndex(0);
+    setHistoryFilterVezneId(selectedVezneId > 0 ? String(selectedVezneId) : "ALL");
     try {
-      const list = await VezneParaSayimService.getGecmisSayimlar(selectedVezneId);
+      const list = await VezneParaSayimService.getGecmisSayimlar(0);
       setHistoryList(list);
     } catch {
       setHistoryList([]);
@@ -481,22 +491,58 @@ export const VezneParaSayPage: React.FC = () => {
   const handleLoadHistoryItem = async (sayimId: number) => {
     try {
       const detail = await VezneParaSayimService.getSayimById(sayimId);
-      if (detail && detail.countsMap) {
-        setCountsMap(detail.countsMap);
+      if (detail) {
+        if (detail.countsMap) setCountsMap(detail.countsMap);
         setTarih(detail.tarih ? String(detail.tarih).split("T")[0] : tarih);
+        setSaat(detail.saat || new Date().toTimeString().split(" ")[0].slice(0, 5));
         setAciklama(detail.aciklama || "Geçmiş Sayım Yüklendi");
         setActiveSayimId(detail.sayimId || null);
+        setSayimDurumu(detail.genelDurum || "Kaydedildi");
+        if (detail.vezneId && detail.vezneId > 0) {
+          setSelectedVezneId(detail.vezneId);
+          setSelectedVezneKod(detail.vezneKodu || "");
+          setSelectedVezneAd(detail.vezneAdi || "");
+        }
         setShowHistoryModal(false);
-        showPopup(
-          "success",
-          "Sayım Yüklendi",
-          `Kayıt #${detail.sayimId} (${detail.tarih ? new Date(detail.tarih).toLocaleDateString("tr-TR") : ""}) başarıyla ekrana aktarıldı.`
-        );
       }
     } catch (err: any) {
-      showPopup("danger", "Yükleme Hatası", "Sayım detayları getirilemedi: " + (err?.message || err));
+      showNotif("danger", "Sayım detayları getirilemedi: " + (err?.message || err));
     }
   };
+
+  // Geçmiş Sayım Filtrelenmiş Listesi
+  const filteredHistoryList = useMemo(() => {
+    return historyList.filter((item) => {
+      if (historyFilterVezneId !== "ALL") {
+        if (String(item.vezneId) !== historyFilterVezneId) return false;
+      }
+      if (historyFilterBaslangic) {
+        const itemDate = item.tarih ? String(item.tarih).split("T")[0] : "";
+        if (itemDate && itemDate < historyFilterBaslangic) return false;
+      }
+      if (historyFilterBitis) {
+        const itemDate = item.tarih ? String(item.tarih).split("T")[0] : "";
+        if (itemDate && itemDate > historyFilterBitis) return false;
+      }
+      if (historyFilterSearch.trim()) {
+        const term = historyFilterSearch.toLowerCase().trim();
+        const noMatch = String(item.sayimId || "").includes(term);
+        const vezneMatch =
+          (item.vezneKodu || "").toLowerCase().includes(term) ||
+          (item.vezneAdi || "").toLowerCase().includes(term);
+        const userMatch = (item.kullaniciAdi || "").toLowerCase().includes(term);
+        const descMatch = (item.aciklama || "").toLowerCase().includes(term);
+        if (!noMatch && !vezneMatch && !userMatch && !descMatch) return false;
+      }
+      return true;
+    });
+  }, [
+    historyList,
+    historyFilterVezneId,
+    historyFilterBaslangic,
+    historyFilterBitis,
+    historyFilterSearch,
+  ]);
 
   // Klavye Gezinmesi (Enter / Ok Tuşları)
   const handleInputKeyDown = (
@@ -509,7 +555,7 @@ export const VezneParaSayPage: React.FC = () => {
         adetInputRefs.current[kIndex + 1]?.focus();
         adetInputRefs.current[kIndex + 1]?.select();
       } else {
-        if (selectedCurrencyIndex < masterCurrencies.length - 1) {
+        if (selectedCurrencyIndex < visibleCurrencies.length - 1) {
           setSelectedCurrencyIndex(selectedCurrencyIndex + 1);
         } else {
           adetInputRefs.current[0]?.focus();
@@ -534,33 +580,43 @@ export const VezneParaSayPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [selectedCurrencyIndex]);
 
-  // Global Kısayol Tuşları (F2, F3, F4, F5, F7, F8, F12, ESC)
+  // Global Kısayol Tuşları (F1: Kaydet, F3: Kayıtlar, F12: Kasa Seç, F5: Yenile, F7: Yazdır, ESC)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (popupNotification) {
-        if (e.key === "Escape" || e.key === "Enter") {
-          setPopupNotification(null);
-          return;
-        }
-      }
-
-      if (showVezneLookup || showPrintModal || showClearConfirmModal || showHistoryModal) {
+      if (showHistoryModal) {
         if (e.key === "Escape") {
-          setShowVezneLookup(false);
-          setShowPrintModal(false);
-          setShowClearConfirmModal(false);
+          e.preventDefault();
           setShowHistoryModal(false);
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSelectedHistoryIndex((prev) =>
+            Math.min(prev + 1, Math.max(0, filteredHistoryList.length - 1))
+          );
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSelectedHistoryIndex((prev) => Math.max(prev - 1, 0));
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          const target = filteredHistoryList[selectedHistoryIndex];
+          if (target && target.sayimId) {
+            handleLoadHistoryItem(target.sayimId);
+          }
         }
         return;
       }
 
-      if (e.key === "F2") {
+      if (showVezneLookup || showPrintModal) {
+        if (e.key === "Escape") {
+          setShowVezneLookup(false);
+          setShowPrintModal(false);
+        }
+        return;
+      }
+
+      if (e.key === "F1" || e.key === "F2") {
         e.preventDefault();
         handleSave();
-      } else if (e.key === "F3") {
-        e.preventDefault();
-        setShowClearConfirmModal(true);
-      } else if (e.key === "F4") {
+      } else if (e.key === "F3" || e.key === "F4") {
         e.preventDefault();
         handleOpenHistory();
       } else if (e.key === "F5") {
@@ -578,21 +634,22 @@ export const VezneParaSayPage: React.FC = () => {
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [
-    popupNotification,
     showVezneLookup,
     showPrintModal,
-    showClearConfirmModal,
     showHistoryModal,
     selectedVezneId,
     loadVezneBakiyeler,
     handleSave,
+    handleResetNew,
     handleOpenHistory,
+    filteredHistoryList,
+    selectedHistoryIndex,
   ]);
 
   // Özet İstatistikler
   const totalSayilanCurrencyCount = useMemo(() => {
-    return masterCurrencies.filter((c) => getSayilanTutar(c.paraKodu) > 0).length;
-  }, [masterCurrencies, getSayilanTutar]);
+    return visibleCurrencies.filter((c) => getSayilanTutar(c.paraKodu) > 0).length;
+  }, [visibleCurrencies, getSayilanTutar]);
 
   const activeSayilanTutar = activeCurrency ? getSayilanTutar(activeCurrency.paraKodu) : 0;
   const activeKasaBakiye = activeCurrency ? activeCurrency.kasaBakiyesi : 0;
@@ -647,34 +704,34 @@ export const VezneParaSayPage: React.FC = () => {
         pageTitle="M- Vezne Para Say"
         pageIcon={<IconCash size={20} />}
         onSave={handleSave}
-        onNew={() => setShowClearConfirmModal(true)}
+        onNew={handleResetNew}
         onRefresh={() => {
           if (selectedVezneId > 0) loadVezneBakiyeler(selectedVezneId);
         }}
         onPrint={() => setShowPrintModal(true)}
-        onSearch={() => setShowVezneLookup(true)}
+        onSearch={handleOpenHistory}
         disabled={isSaving || isLoading}
-        modeText={
-          selectedVezneKod
-            ? `Aktif Vezne: ${selectedVezneKod} - ${selectedVezneAd} ${activeSayimId ? `(#${activeSayimId})` : ""}`
-            : "Vezne Seçiniz"
-        }
         rightContent={
-          <div className="d-flex align-items-center gap-2">
-            <Button
-              variant="outline-primary"
-              size="sm"
-              className="py-1 px-2.5 fs-8 fw-semibold d-flex align-items-center gap-1.5"
-              onClick={handleOpenHistory}
-              title="Geçmiş Sayım Kayıtları (F4)"
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            {/* Personel */}
+            <div
+              className="px-2 py-0 rounded border bg-light text-dark small fw-semibold text-truncate d-flex align-items-center"
+              style={{ borderColor: "#cbd5e1", height: "28px", fontSize: "12px", maxWidth: "150px" }}
+              title={user?.fullName || user?.username || "Veznedar"}
             >
-              <IconHistory size={15} />
-              <span>Geçmiş Sayımlar (F4)</span>
-            </Button>
-            <Badge bg="primary" className="px-2.5 py-1.5 fs-7 fw-semibold">
-              <IconCoins size={14} className="me-1" />
-              {totalSayilanCurrencyCount} / {masterCurrencies.length} Para Sayıldı
-            </Badge>
+              <IconUser size={14} className="me-1 text-secondary" />
+              <span>{user?.fullName || user?.username || "Veznedar"}</span>
+            </div>
+
+            {/* Tarih & Saat */}
+            <div
+              className="px-2 py-0 rounded border bg-light text-dark small fw-semibold d-flex align-items-center gap-1 font-monospace"
+              style={{ borderColor: "#cbd5e1", height: "28px", fontSize: "12px" }}
+              title={activeSayimId ? `Kayıt Tarihi ve Saati (#${activeSayimId})` : "Canlı Tarih ve Saat"}
+            >
+              <IconClock size={14} className="text-secondary" />
+              <span>{displayTarih} {displaySaat}</span>
+            </div>
           </div>
         }
       />
@@ -682,135 +739,96 @@ export const VezneParaSayPage: React.FC = () => {
       {/* 2. Üst Parametreler & Vezne Seçim Kartı */}
       <div
         className="border rounded-2 bg-white shadow-2xs mb-3 mt-1"
-        style={{ borderColor: "#cbd5e1", padding: "12px 16px" }}
+        style={{ borderColor: "#cbd5e1", padding: "10px 16px" }}
       >
-        <Row className="g-2.5 align-items-center">
-          {/* Tarih */}
-          <Col xs={12} sm={6} md={3} lg={2.5}>
-            <div className="d-flex flex-row align-items-center gap-2">
-              <label
-                className="small fw-semibold mb-0 text-nowrap"
-                style={{ minWidth: "55px", fontSize: "12.5px", color: "#334155" }}
-              >
-                Tarih:
-              </label>
-              <Form.Control
-                type="date"
-                size="sm"
-                value={tarih}
-                onChange={(e) => setTarih(e.target.value)}
-                style={{ height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-              />
-            </div>
-          </Col>
-
+        <div className="d-flex align-items-center flex-wrap gap-3 py-0.5">
           {/* Vezne Seçimi */}
-          <Col xs={12} sm={6} md={5} lg={4}>
-            <div className="d-flex flex-row align-items-center gap-2">
-              <label
-                className="small fw-semibold mb-0 text-nowrap"
-                style={{ minWidth: "55px", fontSize: "12.5px", color: "#334155" }}
+          <div className="d-flex align-items-center gap-1.5">
+            <label
+              className="small fw-semibold mb-0 text-nowrap"
+              style={{ fontSize: "12.5px", color: "#334155" }}
+            >
+              Kasa:
+            </label>
+            <InputGroup size="sm" style={{ width: "120px", flexShrink: 0 }}>
+              <Form.Control
+                ref={vezneInputRef}
+                type="text"
+                value={selectedVezneKod}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedVezneKod(val);
+                  const found = vezneList.find(
+                    (v) =>
+                      v.kod.toLowerCase() === val.trim().toLowerCase() ||
+                      String(v.id) === val.trim()
+                  );
+                  if (found) {
+                    setSelectedVezneId(found.id);
+                    setSelectedVezneAd(found.ad);
+                  } else {
+                    setSelectedVezneId(0);
+                    setSelectedVezneAd("");
+                  }
+                }}
+                onDoubleClick={() => setShowVezneLookup(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "F8" || e.key === "F12") {
+                    e.preventDefault();
+                    setShowVezneLookup(true);
+                  }
+                }}
+                placeholder=""
+                style={{
+                  height: "28px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  borderColor: "#cbd5e1",
+                  cursor: "pointer",
+                }}
+                title="Vezne Kodu (Seçmek için F12 veya Çift Tıklayın)"
+              />
+              <Button
+                variant="outline-secondary"
+                className="px-2 py-0 d-flex align-items-center justify-content-center"
+                style={{ height: "28px", borderColor: "#cbd5e1" }}
+                onClick={() => setShowVezneLookup(true)}
+                title="Kasa / Vezne Seç (Dürbün - F12 / Çift Tık)"
               >
-                Vezne:
-              </label>
-              <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: 0 }}>
-                <InputGroup size="sm" style={{ width: "120px", flexShrink: 0 }}>
-                  <Form.Control
-                    ref={vezneInputRef}
-                    type="text"
-                    value={selectedVezneKod}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedVezneKod(val);
-                      const found = vezneList.find(
-                        (v) =>
-                          v.kod.toLowerCase() === val.trim().toLowerCase() ||
-                          String(v.id) === val.trim()
-                      );
-                      if (found) {
-                        setSelectedVezneId(found.id);
-                        setSelectedVezneAd(found.ad);
-                      } else {
-                        setSelectedVezneId(0);
-                        setSelectedVezneAd("");
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === "F8" || e.key === "F12") {
-                        e.preventDefault();
-                        setShowVezneLookup(true);
-                      }
-                    }}
-                    placeholder=""
-                    style={{
-                      height: "30px",
-                      fontSize: "12.5px",
-                      fontWeight: 600,
-                      borderColor: "#cbd5e1",
-                    }}
-                  />
-                  <Button
-                    variant="outline-secondary"
-                    className="px-2 py-0 d-flex align-items-center justify-content-center"
-                    style={{ height: "30px", borderColor: "#cbd5e1" }}
-                    onClick={() => setShowVezneLookup(true)}
-                    title="Vezne Seç (F8 / F12)"
-                  >
-                    <IconSearch size={14} />
-                  </Button>
-                </InputGroup>
-                {selectedVezneAd && (
-                  <span
-                    className="text-dark small fw-semibold text-truncate ms-1"
-                    style={{ maxWidth: "200px" }}
-                    title={selectedVezneAd}
-                  >
-                    ({selectedVezneAd})
-                  </span>
-                )}
-              </div>
-            </div>
-          </Col>
+                <IconBinoculars size={14} />
+              </Button>
+            </InputGroup>
+            {selectedVezneAd && (
+              <span
+                className="text-dark small fw-semibold text-truncate"
+                style={{ maxWidth: "160px", fontSize: "12px" }}
+                title={selectedVezneAd}
+              >
+                ({selectedVezneAd})
+              </span>
+            )}
+          </div>
 
-          {/* Sayım Yapan Personel */}
-          <Col xs={12} sm={6} md={4} lg={3}>
-            <div className="d-flex flex-row align-items-center gap-2">
-              <label
-                className="small fw-semibold mb-0 text-nowrap"
-                style={{ minWidth: "80px", fontSize: "12.5px", color: "#334155" }}
-              >
-                Sayım Yapan:
-              </label>
-              <div
-                className="px-2 py-1 rounded border bg-light text-dark small fw-semibold flex-grow-1 text-truncate"
-                style={{ borderColor: "#cbd5e1", height: "30px", fontSize: "12px", lineHeight: "20px" }}
-              >
-                <IconUser size={14} className="me-1 text-secondary" />
-                {user?.fullName || user?.username || "Veznedar"}
-              </div>
-            </div>
-          </Col>
+          <div className="text-muted opacity-50 d-none d-md-block">|</div>
 
           {/* Açıklama */}
-          <Col xs={12} lg={2.5}>
-            <div className="d-flex flex-row align-items-center gap-2">
-              <label
-                className="small fw-semibold mb-0 text-nowrap"
-                style={{ minWidth: "60px", fontSize: "12.5px", color: "#334155" }}
-              >
-                Açıklama:
-              </label>
-              <Form.Control
-                type="text"
-                size="sm"
-                value={aciklama}
-                onChange={(e) => setAciklama(e.target.value)}
-                placeholder="Sayım notu..."
-                style={{ height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-              />
-            </div>
-          </Col>
-        </Row>
+          <div className="d-flex align-items-center gap-1.5 flex-grow-1" style={{ maxWidth: "450px" }}>
+            <label
+              className="small fw-semibold mb-0 text-nowrap"
+              style={{ fontSize: "12.5px", color: "#334155" }}
+            >
+              Açıklama:
+            </label>
+            <Form.Control
+              type="text"
+              size="sm"
+              value={aciklama}
+              onChange={(e) => setAciklama(e.target.value)}
+              placeholder="Sayım notu..."
+              style={{ height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* 3. Ana Master-Detail Ekran (Sol: Para Birimleri, Sağ: Kupür Sayım Detayı) */}
@@ -823,26 +841,51 @@ export const VezneParaSayPage: React.FC = () => {
           >
             {/* Sol Panel Başlık */}
             <div
-              className="px-3 py-2 border-bottom d-flex justify-content-between align-items-center bg-light rounded-top-2"
+              className="px-3 py-2 border-bottom d-flex justify-content-between align-items-center bg-light rounded-top-2 flex-wrap gap-2"
               style={{ borderColor: "#e2e8f0" }}
             >
-              <div className="fw-bold small text-dark d-flex align-items-center gap-1.5">
-                <IconBuildingBank size={16} className="text-primary" />
-                Kasa Para Birimleri ve Bakiyeleri
-              </div>
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="py-0 px-2 fs-8 fw-semibold"
-                style={{ height: "26px" }}
-                onClick={() => {
-                  if (selectedVezneId > 0) loadVezneBakiyeler(selectedVezneId);
-                }}
-                title="Kasa Bakiyelerini Yenile (F5)"
+              <div
+                className="fw-bold small text-dark d-flex align-items-center gap-1.5"
+                style={{ cursor: "pointer" }}
+                onDoubleClick={() => setShowVezneLookup(true)}
+                title="Kasa seçmek için çift tıklayın (F12)"
               >
-                <IconRefresh size={13} className="me-1" />
-                Yenile
-              </Button>
+                <IconBuildingBank size={16} className="text-primary" />
+                <span>Kasa Para Birimleri ve Bakiyeleri</span>
+                {selectedVezneKod && (
+                  <Badge bg="light" text="dark" className="border ms-1 fw-semibold">
+                    {selectedVezneKod}
+                  </Badge>
+                )}
+              </div>
+              <div className="d-flex align-items-center gap-1.5">
+                <Button
+                  variant="outline-primary"
+                  size="sm"
+                  className="py-0 px-2 fs-8 fw-semibold d-flex align-items-center gap-1"
+                  style={{ height: "26px" }}
+                  onClick={() => setShowVezneLookup(true)}
+                  title="Tablodan Kasa / Vezne Seç (Dürbün - F12)"
+                >
+                  <IconBinoculars size={14} />
+                  <span>Kasa Seç</span>
+                </Button>
+
+                {/* Yenile (Refresh) Butonu */}
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="py-0 px-2 fs-8 fw-semibold d-flex align-items-center gap-1"
+                  style={{ height: "26px" }}
+                  onClick={() => {
+                    if (selectedVezneId > 0) loadVezneBakiyeler(selectedVezneId);
+                  }}
+                  title="Kasa Bakiyelerini Yenile (F5)"
+                >
+                  <IconRefresh size={13} />
+                  <span>Yenile</span>
+                </Button>
+              </div>
             </div>
 
             {/* Para Birimleri Tablosu */}
@@ -870,14 +913,14 @@ export const VezneParaSayPage: React.FC = () => {
                         Para birimleri ve bakiyeler yükleniyor...
                       </td>
                     </tr>
-                  ) : masterCurrencies.length === 0 ? (
+                  ) : visibleCurrencies.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center py-4 text-muted">
-                        Tanımlı para birimi bulunamadı.
+                        Kasa bakiyesi veya sayım tutarı bulunan para birimi bulunamadı.
                       </td>
                     </tr>
                   ) : (
-                    masterCurrencies.map((curr, idx) => {
+                    visibleCurrencies.map((curr, idx) => {
                       const isSelected = selectedCurrencyIndex === idx;
                       const sayilan = getSayilanTutar(curr.paraKodu);
                       const bakiye = curr.kasaBakiyesi;
@@ -984,13 +1027,14 @@ export const VezneParaSayPage: React.FC = () => {
                 variant="outline-danger"
                 size="sm"
                 className="py-1 px-2.5 fs-8 fw-semibold"
-                onClick={() => setShowClearConfirmModal(true)}
+                onClick={handleResetNew}
+                title="Sayımları sıfırlar ve yeni sayım oturumu başlatır"
               >
                 <IconTrash size={14} className="me-1" />
                 Tüm Sayımları Sıfırla (F3)
               </Button>
               <div className="small text-muted">
-                Toplam <strong>{masterCurrencies.length}</strong> para birimi
+                Toplam <strong>{visibleCurrencies.length}</strong> para birimi
               </div>
             </div>
           </div>
@@ -1016,145 +1060,456 @@ export const VezneParaSayPage: React.FC = () => {
                   Kupür Sayımı
                 </span>
               </div>
-              <div className="d-flex align-items-center gap-1.5">
-                <Button
-                  variant="outline-primary"
-                  size="sm"
-                  className="py-0 px-2 fs-8 fw-semibold"
-                  style={{ height: "26px" }}
-                  onClick={handleAutoFillWithBalance}
-                  title="Sistem Kasa Bakiyesini Kupürlere Otomatik Dağıt"
-                >
-                  <IconCalculator size={13} className="me-1" />
-                  Bakiyeye Eşitle
-                </Button>
-                <Button
-                  variant="outline-secondary"
-                  size="sm"
-                  className="py-0 px-2 fs-8 fw-semibold"
-                  style={{ height: "26px" }}
-                  onClick={handleResetActiveCurrency}
-                  title="Bu Para Biriminin Sayımını Sıfırla"
-                >
-                  <IconTrash size={13} className="me-1" />
-                  Sıfırla
-                </Button>
-              </div>
+              {activeCurrency && (
+                <div className="d-flex align-items-center gap-1.5">
+                  <Button
+                    variant="outline-primary"
+                    size="sm"
+                    className="py-0 px-2 fs-8 fw-semibold"
+                    style={{ height: "26px" }}
+                    onClick={handleAutoFillWithBalance}
+                    title="Sistem Kasa Bakiyesini Kupürlere Otomatik Dağıt"
+                  >
+                    <IconCalculator size={13} className="me-1" />
+                    Bakiyeye Eşitle
+                  </Button>
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    className="py-0 px-2 fs-8 fw-semibold"
+                    style={{ height: "26px" }}
+                    onClick={handleResetActiveCurrency}
+                    title="Bu Para Biriminin Sayımını Sıfırla"
+                  >
+                    <IconTrash size={13} className="me-1" />
+                    Sıfırla
+                  </Button>
+                </div>
+              )}
             </div>
 
-            {/* Kupür Sayım Tablosu */}
-            <div className="table-responsive flex-grow-1 p-2" style={{ maxHeight: "calc(100vh - 380px)" }}>
-              <Table bordered size="sm" className="mb-0" style={{ fontSize: "13px" }}>
-                <thead style={{ backgroundColor: "#f8fafc", color: "#475569" }}>
+            {!activeCurrency ? (
+              <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1 p-5 text-center text-muted">
+                <IconCash size={42} className="text-secondary opacity-50 mb-2" />
+                <div className="fw-semibold text-dark">Sayım yapılacak aktif para birimi bulunamadı.</div>
+                <div className="small text-muted mt-1">Kasa bakiyesi bulunan veya sayım yapılan para birimleri bu alanda listelenir.</div>
+              </div>
+            ) : (
+              <>
+                {/* Kupür Sayım Tablosu */}
+                <div className="table-responsive flex-grow-1 p-2" style={{ maxHeight: "calc(100vh - 380px)" }}>
+                  <Table bordered size="sm" className="mb-0" style={{ fontSize: "13px" }}>
+                    <thead style={{ backgroundColor: "#f8fafc", color: "#475569" }}>
+                      <tr>
+                        <th style={{ width: "110px" }}>Kupür</th>
+                        <th style={{ width: "140px" }} className="text-center">Adet</th>
+                        <th className="text-end" style={{ width: "130px" }}>Tutar</th>
+                        <th className="text-center" style={{ width: "160px" }}>Hızlı Ekle</th>
+                        <th className="text-end" style={{ width: "70px" }}>Pay (%)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeKupurler.map((kupur, kIdx) => {
+                        const adet = countsMap[activeKodUpper]?.[kupur] || 0;
+                        const tutar = kupur * adet;
+                        const pay =
+                          activeSayilanTutar > 0
+                            ? ((tutar / activeSayilanTutar) * 100).toFixed(1)
+                            : "0.0";
+
+                        return (
+                          <tr key={`${activeKodUpper}-${kupur}-${kIdx}`} className="align-middle">
+                            {/* Kupür Değeri */}
+                            <td className="fw-bold text-dark ps-2">
+                              <Badge bg="secondary" className="px-2 py-1 fs-7 me-1">
+                                {kupur >= 1
+                                  ? kupur.toLocaleString("tr-TR")
+                                  : kupur.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                              </Badge>
+                              <span className="text-muted small">{activeKodUpper}</span>
+                            </td>
+
+                            {/* Adet Inputu */}
+                            <td className="text-center">
+                              <Form.Control
+                                ref={(el) => {
+                                  adetInputRefs.current[kIdx] = el;
+                                }}
+                                type="text"
+                                inputMode="numeric"
+                                size="sm"
+                                className="text-center fw-bold font-monospace kupur-adet-input"
+                                value={adet === 0 ? "" : String(adet)}
+                                onChange={(e) => handleAdetChange(kupur, e.target.value)}
+                                onKeyDown={(e) => handleInputKeyDown(e, kIdx)}
+                                onFocus={(e) => e.target.select()}
+                                placeholder="0"
+                                style={{
+                                  height: "32px",
+                                  fontSize: "13.5px",
+                                  borderColor: adet > 0 ? "#0284c7" : "#cbd5e1",
+                                  backgroundColor: adet > 0 ? "#f0f9ff" : "#ffffff",
+                                  color: adet > 0 ? "#0369a1" : "#1e293b",
+                                }}
+                              />
+                            </td>
+
+                            {/* Tutar */}
+                            <td className="text-end fw-bold font-monospace text-dark pe-2">
+                              {tutar > 0
+                                ? tutar.toLocaleString("tr-TR", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })
+                                : "-"}
+                            </td>
+
+                            {/* Hızlı Ekle Butonları */}
+                            <td className="text-center">
+                              <div className="d-inline-flex align-items-center gap-1">
+                                <Button
+                                  variant="outline-secondary"
+                                  size="sm"
+                                  className="px-1.5 py-0 fs-8 fw-semibold"
+                                  style={{ height: "24px" }}
+                                  onClick={() => handleQuickAdd(kupur, 1)}
+                                >
+                                  +1
+                                </Button>
+                                <Button
+                                  variant="outline-secondary"
+                                  size="sm"
+                                  className="px-1.5 py-0 fs-8 fw-semibold"
+                                  style={{ height: "24px" }}
+                                  onClick={() => handleQuickAdd(kupur, 5)}
+                                >
+                                  +5
+                                </Button>
+                                <Button
+                                  variant="outline-secondary"
+                                  size="sm"
+                                  className="px-1.5 py-0 fs-8 fw-semibold"
+                                  style={{ height: "24px" }}
+                                  onClick={() => handleQuickAdd(kupur, 10)}
+                                >
+                                  +10
+                                </Button>
+                                <Button
+                                  variant="outline-secondary"
+                                  size="sm"
+                                  className="px-1.5 py-0 fs-8 fw-semibold"
+                                  style={{ height: "24px" }}
+                                  onClick={() => handleQuickAdd(kupur, 50)}
+                                >
+                                  +50
+                                </Button>
+                              </div>
+                            </td>
+
+                            {/* Pay Yüzdesi */}
+                            <td className="text-end font-monospace text-muted small pe-2">
+                              %{pay}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
+                </div>
+
+                {/* Sağ Panel: Kupür Sayım İcmali & Fark Kartı */}
+                <div
+                  className="p-3 border-top bg-light rounded-bottom-2"
+                  style={{ borderColor: "#e2e8f0" }}
+                >
+                  <Row className="g-2 text-center">
+                    <Col xs={6} sm={3}>
+                      <div className="p-2 border rounded bg-white shadow-2xs">
+                        <div className="text-muted fs-8 fw-semibold text-uppercase">Toplam Adet</div>
+                        <div className="fs-6 fw-bold text-dark font-monospace mt-0.5">
+                          {getToplamBanknotAdedi(activeKodUpper)} Adet
+                        </div>
+                      </div>
+                    </Col>
+                    <Col xs={6} sm={3}>
+                      <div className="p-2 border rounded bg-white shadow-2xs">
+                        <div className="text-muted fs-8 fw-semibold text-uppercase">Kasa Bakiyesi</div>
+                        <div className="fs-6 fw-bold text-secondary font-monospace mt-0.5">
+                          {activeKasaBakiye.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </Col>
+                    <Col xs={6} sm={3}>
+                      <div className="p-2 border rounded bg-white shadow-2xs">
+                        <div className="text-muted fs-8 fw-semibold text-uppercase">Sayılan Tutar</div>
+                        <div className="fs-6 fw-bold text-primary font-monospace mt-0.5">
+                          {activeSayilanTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </Col>
+                    <Col xs={6} sm={3}>
+                      <div
+                        className="p-2 border rounded shadow-2xs"
+                        style={{
+                          backgroundColor:
+                            Math.abs(activeFark) < 0.001
+                              ? "#dcfce7"
+                              : activeFark > 0
+                              ? "#e0f2fe"
+                              : "#fee2e2",
+                          borderColor:
+                            Math.abs(activeFark) < 0.001
+                              ? "#86efac"
+                              : activeFark > 0
+                              ? "#7dd3fc"
+                              : "#fca5a5",
+                        }}
+                      >
+                        <div
+                          className="fs-8 fw-semibold text-uppercase"
+                          style={{
+                            color:
+                              Math.abs(activeFark) < 0.001
+                                ? "#15803d"
+                                : activeFark > 0
+                                ? "#0369a1"
+                                : "#b91c1c",
+                          }}
+                        >
+                          {Math.abs(activeFark) < 0.001
+                            ? "Dengede"
+                            : activeFark > 0
+                            ? "Kasa Fazlası"
+                            : "Kasa Noksanı"}
+                        </div>
+                        <div
+                          className="fs-6 fw-bold font-monospace mt-0.5"
+                          style={{
+                            color:
+                              Math.abs(activeFark) < 0.001
+                                ? "#15803d"
+                                : activeFark > 0
+                                ? "#0369a1"
+                                : "#b91c1c",
+                          }}
+                        >
+                          {(activeFark > 0 ? "+" : "") +
+                            activeFark.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </Col>
+                  </Row>
+                </div>
+              </>
+            )}
+          </div>
+        </Col>
+      </Row>
+
+      {/* 4. Alt Kısayol ve Fonksiyon Bilgilendirme Çubuğu */}
+      <div
+        className="mt-2.5 py-1 px-3 rounded-1 border bg-white shadow-2xs d-flex align-items-center justify-content-between flex-wrap gap-2 text-muted"
+        style={{ fontSize: "11.5px", borderColor: "#cbd5e1" }}
+      >
+        <div className="d-flex align-items-center flex-wrap gap-3">
+          <span><strong className="text-dark">[F1]</strong> Kaydet</span>
+          <span><strong className="text-dark">[F3]</strong> Sayım Kayıtları</span>
+          <span><strong className="text-dark">[F5]</strong> Bakiye Yenile</span>
+          <span><strong className="text-dark">[F7]</strong> Tutanağı Yazdır</span>
+          <span><strong className="text-dark">[F12]</strong> Kasa Seç (Çift Tık)</span>
+          <span><strong className="text-dark">[ESC]</strong> Kapat</span>
+        </div>
+        <div className="small font-monospace text-secondary" style={{ fontSize: "11px" }}>
+          Likya ERP • Vezne Para Sayımı
+        </div>
+      </div>
+      <Modal
+        show={showHistoryModal}
+        onHide={() => setShowHistoryModal(false)}
+        size="xl"
+        centered
+      >
+        <Modal.Header closeButton className="py-2.5 bg-light">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-1.5">
+            <IconHistory size={18} className="text-primary" />
+            <span>Kayıtlı Kasa Sayımları (F3 / Dürbün)</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          {/* Filtreleme Alanı */}
+          <div className="p-2.5 mb-3 bg-light rounded border" style={{ borderColor: "#e2e8f0" }}>
+            <Row className="g-2 align-items-center">
+              <Col xs={12} sm={6} md={3}>
+                <div className="d-flex align-items-center gap-1.5">
+                  <span className="small text-muted text-nowrap" style={{ minWidth: "65px", fontSize: "12px" }}>
+                    Başlangıç:
+                  </span>
+                  <Form.Control
+                    type="date"
+                    size="sm"
+                    value={historyFilterBaslangic}
+                    onChange={(e) => {
+                      setHistoryFilterBaslangic(e.target.value);
+                      setSelectedHistoryIndex(0);
+                    }}
+                    style={{ height: "28px", fontSize: "12px" }}
+                  />
+                </div>
+              </Col>
+              <Col xs={12} sm={6} md={3}>
+                <div className="d-flex align-items-center gap-1.5">
+                  <span className="small text-muted text-nowrap" style={{ minWidth: "40px", fontSize: "12px" }}>
+                    Bitiş:
+                  </span>
+                  <Form.Control
+                    type="date"
+                    size="sm"
+                    value={historyFilterBitis}
+                    onChange={(e) => {
+                      setHistoryFilterBitis(e.target.value);
+                      setSelectedHistoryIndex(0);
+                    }}
+                    style={{ height: "28px", fontSize: "12px" }}
+                  />
+                </div>
+              </Col>
+              <Col xs={12} sm={6} md={3}>
+                <div className="d-flex align-items-center gap-1.5">
+                  <span className="small text-muted text-nowrap" style={{ minWidth: "40px", fontSize: "12px" }}>
+                    Kasa:
+                  </span>
+                  <Form.Select
+                    size="sm"
+                    value={historyFilterVezneId}
+                    onChange={(e) => {
+                      setHistoryFilterVezneId(e.target.value);
+                      setSelectedHistoryIndex(0);
+                    }}
+                    style={{ height: "28px", fontSize: "12px" }}
+                  >
+                    <option value="ALL">Tüm Vezneler</option>
+                    {vezneList.map((v) => (
+                      <option key={v.id} value={String(v.id)}>
+                        {v.kod} - {v.ad}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </div>
+              </Col>
+              <Col xs={12} sm={6} md={3}>
+                <InputGroup size="sm">
+                  <InputGroup.Text className="py-0 px-2 bg-white" style={{ height: "28px" }}>
+                    <IconSearch size={13} className="text-muted" />
+                  </InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    placeholder="No, personel, açıklama ara..."
+                    value={historyFilterSearch}
+                    onChange={(e) => {
+                      setHistoryFilterSearch(e.target.value);
+                      setSelectedHistoryIndex(0);
+                    }}
+                    style={{ height: "28px", fontSize: "12px" }}
+                    autoFocus
+                  />
+                </InputGroup>
+              </Col>
+            </Row>
+          </div>
+
+          {/* Sayım Kayıtları Tablosu */}
+          {isLoadingHistory ? (
+            <div className="text-center py-4 text-muted">
+              <Spinner animation="border" size="sm" className="me-2" />
+              Geçmiş sayım kayıtları veritabanından getiriliyor...
+            </div>
+          ) : filteredHistoryList.length === 0 ? (
+            <div className="text-center py-4 text-muted small">
+              Kriterlere uygun kayıtlı sayım bulunamadı.
+            </div>
+          ) : (
+            <div className="table-responsive border rounded" style={{ maxHeight: "420px" }}>
+              <style>{`
+                .history-table tbody tr.history-selected-row,
+                .history-table tbody tr.history-selected-row > td,
+                .history-table tbody tr.history-selected-row > th,
+                .history-table tbody tr.history-selected-row:hover,
+                .history-table tbody tr.history-selected-row:hover > td,
+                .history-table tbody tr.history-selected-row:hover > th {
+                  background-color: #bae6fd !important;
+                  --bs-table-bg: #bae6fd !important;
+                  --bs-table-accent-bg: #bae6fd !important;
+                  box-shadow: inset 0 0 0 9999px #bae6fd !important;
+                  color: #0c4a6e !important;
+                }
+                .history-table tbody tr:not(.history-selected-row):hover,
+                .history-table tbody tr:not(.history-selected-row):hover > td,
+                .history-table tbody tr:not(.history-selected-row):hover > th {
+                  background-color: #e0f2fe !important;
+                  --bs-table-bg: #e0f2fe !important;
+                  --bs-table-accent-bg: #e0f2fe !important;
+                  box-shadow: inset 0 0 0 9999px #e0f2fe !important;
+                  color: #0369a1 !important;
+                }
+              `}</style>
+              <Table hover bordered size="sm" className="mb-0 text-nowrap align-middle history-table" style={{ fontSize: "12.5px" }}>
+                <thead className="sticky-top bg-light text-secondary" style={{ zIndex: 1 }}>
                   <tr>
-                    <th style={{ width: "110px" }}>Kupür</th>
-                    <th style={{ width: "140px" }} className="text-center">Adet</th>
-                    <th className="text-end" style={{ width: "130px" }}>Tutar</th>
-                    <th className="text-center" style={{ width: "160px" }}>Hızlı Ekle</th>
-                    <th className="text-end" style={{ width: "70px" }}>Pay (%)</th>
+                    <th style={{ width: "65px" }} className="text-center">Kayıt No</th>
+                    <th style={{ width: "95px" }}>Tarih</th>
+                    <th style={{ width: "65px" }}>Saat</th>
+                    <th style={{ width: "130px" }}>Vezne / Kasa</th>
+                    <th style={{ width: "130px" }}>Sayım Yapan</th>
+                    <th>Açıklama</th>
+                    <th style={{ width: "85px" }} className="text-center">Durum</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {activeKupurler.map((kupur, kIdx) => {
-                    const adet = countsMap[activeKodUpper]?.[kupur] || 0;
-                    const tutar = kupur * adet;
-                    const pay =
-                      activeSayilanTutar > 0
-                        ? ((tutar / activeSayilanTutar) * 100).toFixed(1)
-                        : "0.0";
-
+                  {filteredHistoryList.map((item, index) => {
+                    const isSelected = index === selectedHistoryIndex;
                     return (
-                      <tr key={`${activeKodUpper}-${kupur}-${kIdx}`} className="align-middle">
-                        {/* Kupür Değeri */}
-                        <td className="fw-bold text-dark ps-2">
-                          <Badge bg="secondary" className="px-2 py-1 fs-7 me-1">
-                            {kupur >= 1
-                              ? kupur.toLocaleString("tr-TR")
-                              : kupur.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                      <tr
+                        key={item.sayimId}
+                        className={`align-middle ${isSelected ? "history-selected-row fw-semibold" : ""}`}
+                        style={{
+                          cursor: "pointer",
+                        }}
+                        onClick={() => setSelectedHistoryIndex(index)}
+                        onDoubleClick={() => handleLoadHistoryItem(item.sayimId!)}
+                      >
+                        <td
+                          className="text-center fw-bold font-monospace"
+                          style={{ color: isSelected ? "#0369a1" : undefined }}
+                        >
+                          #{item.sayimId}
+                        </td>
+                        <td>{item.tarih ? new Date(item.tarih).toLocaleDateString("tr-TR") : "-"}</td>
+                        <td className="font-monospace">{item.saat || "-"}</td>
+                        <td className="fw-semibold">
+                          {item.vezneKodu ? `${item.vezneKodu} - ${item.vezneAdi || ""}` : item.vezneAdi || item.vezneId}
+                        </td>
+                        <td>{item.kullaniciAdi || "-"}</td>
+                        <td className="text-truncate" style={{ maxWidth: "220px" }}>
+                          {item.aciklama || "-"}
+                        </td>
+                        <td className="text-center">
+                          <Badge
+                            bg={
+                              item.genelDurum === "Dengede"
+                                ? "success"
+                                : item.genelDurum === "Farklı"
+                                ? "warning"
+                                : "secondary"
+                            }
+                            text={
+                              item.genelDurum === "Farklı"
+                                ? "dark"
+                                : "white"
+                            }
+                            className="fw-semibold"
+                          >
+                            {item.genelDurum || "Kaydedildi"}
                           </Badge>
-                          <span className="text-muted small">{activeKodUpper}</span>
-                        </td>
-
-                        {/* Adet Inputu */}
-                        <td className="text-center">
-                          <Form.Control
-                            ref={(el) => {
-                              adetInputRefs.current[kIdx] = el;
-                            }}
-                            type="text"
-                            inputMode="numeric"
-                            size="sm"
-                            className="text-center fw-bold font-monospace kupur-adet-input"
-                            value={adet === 0 ? "" : String(adet)}
-                            onChange={(e) => handleAdetChange(kupur, e.target.value)}
-                            onKeyDown={(e) => handleInputKeyDown(e, kIdx)}
-                            onFocus={(e) => e.target.select()}
-                            placeholder="0"
-                            style={{
-                              height: "32px",
-                              fontSize: "13.5px",
-                              borderColor: adet > 0 ? "#0284c7" : "#cbd5e1",
-                              backgroundColor: adet > 0 ? "#f0f9ff" : "#ffffff",
-                              color: adet > 0 ? "#0369a1" : "#1e293b",
-                            }}
-                          />
-                        </td>
-
-                        {/* Tutar */}
-                        <td className="text-end fw-bold font-monospace text-dark pe-2">
-                          {tutar > 0
-                            ? tutar.toLocaleString("tr-TR", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })
-                            : "-"}
-                        </td>
-
-                        {/* Hızlı Ekle Butonları */}
-                        <td className="text-center">
-                          <div className="d-inline-flex align-items-center gap-1">
-                            <Button
-                              variant="outline-secondary"
-                              size="sm"
-                              className="px-1.5 py-0 fs-8 fw-semibold"
-                              style={{ height: "24px" }}
-                              onClick={() => handleQuickAdd(kupur, 1)}
-                            >
-                              +1
-                            </Button>
-                            <Button
-                              variant="outline-secondary"
-                              size="sm"
-                              className="px-1.5 py-0 fs-8 fw-semibold"
-                              style={{ height: "24px" }}
-                              onClick={() => handleQuickAdd(kupur, 5)}
-                            >
-                              +5
-                            </Button>
-                            <Button
-                              variant="outline-secondary"
-                              size="sm"
-                              className="px-1.5 py-0 fs-8 fw-semibold"
-                              style={{ height: "24px" }}
-                              onClick={() => handleQuickAdd(kupur, 10)}
-                            >
-                              +10
-                            </Button>
-                            <Button
-                              variant="outline-secondary"
-                              size="sm"
-                              className="px-1.5 py-0 fs-8 fw-semibold"
-                              style={{ height: "24px" }}
-                              onClick={() => handleQuickAdd(kupur, 50)}
-                            >
-                              +50
-                            </Button>
-                          </div>
-                        </td>
-
-                        {/* Pay Yüzdesi */}
-                        <td className="text-end font-monospace text-muted small pe-2">
-                          %{pay}
                         </td>
                       </tr>
                     );
@@ -1162,269 +1517,31 @@ export const VezneParaSayPage: React.FC = () => {
                 </tbody>
               </Table>
             </div>
-
-            {/* Sağ Panel: Kupür Sayım İcmali & Fark Kartı */}
-            <div
-              className="p-3 border-top bg-light rounded-bottom-2"
-              style={{ borderColor: "#e2e8f0" }}
-            >
-              <Row className="g-2 text-center">
-                <Col xs={6} sm={3}>
-                  <div className="p-2 border rounded bg-white shadow-2xs">
-                    <div className="text-muted fs-8 fw-semibold text-uppercase">Toplam Adet</div>
-                    <div className="fs-6 fw-bold text-dark font-monospace mt-0.5">
-                      {getToplamBanknotAdedi(activeKodUpper)} Adet
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={6} sm={3}>
-                  <div className="p-2 border rounded bg-white shadow-2xs">
-                    <div className="text-muted fs-8 fw-semibold text-uppercase">Kasa Bakiyesi</div>
-                    <div className="fs-6 fw-bold text-secondary font-monospace mt-0.5">
-                      {activeKasaBakiye.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={6} sm={3}>
-                  <div className="p-2 border rounded bg-white shadow-2xs">
-                    <div className="text-muted fs-8 fw-semibold text-uppercase">Sayılan Tutar</div>
-                    <div className="fs-6 fw-bold text-primary font-monospace mt-0.5">
-                      {activeSayilanTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={6} sm={3}>
-                  <div
-                    className="p-2 border rounded shadow-2xs"
-                    style={{
-                      backgroundColor:
-                        Math.abs(activeFark) < 0.001
-                          ? "#dcfce7"
-                          : activeFark > 0
-                          ? "#e0f2fe"
-                          : "#fee2e2",
-                      borderColor:
-                        Math.abs(activeFark) < 0.001
-                          ? "#86efac"
-                          : activeFark > 0
-                          ? "#7dd3fc"
-                          : "#fca5a5",
-                    }}
-                  >
-                    <div
-                      className="fs-8 fw-semibold text-uppercase"
-                      style={{
-                        color:
-                          Math.abs(activeFark) < 0.001
-                            ? "#15803d"
-                            : activeFark > 0
-                            ? "#0369a1"
-                            : "#b91c1c",
-                      }}
-                    >
-                      {Math.abs(activeFark) < 0.001
-                        ? "Dengede"
-                        : activeFark > 0
-                        ? "Kasa Fazlası"
-                        : "Kasa Noksanı"}
-                    </div>
-                    <div
-                      className="fs-6 fw-bold font-monospace mt-0.5"
-                      style={{
-                        color:
-                          Math.abs(activeFark) < 0.001
-                            ? "#15803d"
-                            : activeFark > 0
-                            ? "#0369a1"
-                            : "#b91c1c",
-                      }}
-                    >
-                      {(activeFark > 0 ? "+" : "") +
-                        activeFark.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                </Col>
-              </Row>
-            </div>
-          </div>
-        </Col>
-      </Row>
-
-      {/* 4. Sayfa Ortasında Açılan Popup Bildirim Modalı */}
-      <Modal
-        show={!!popupNotification}
-        onHide={() => setPopupNotification(null)}
-        centered
-        size="sm"
-        backdrop="static"
-        keyboard={true}
-      >
-        <Modal.Body className="p-4 text-center">
-          {/* İkon */}
-          <div className="mb-3 d-flex justify-content-center">
-            {popupNotification?.type === "success" && (
-              <div
-                className="rounded-circle d-flex align-items-center justify-content-center text-success"
-                style={{ width: "64px", height: "64px", backgroundColor: "#dcfce7" }}
-              >
-                <IconCheck size={36} stroke={2.5} />
-              </div>
-            )}
-            {popupNotification?.type === "danger" && (
-              <div
-                className="rounded-circle d-flex align-items-center justify-content-center text-danger"
-                style={{ width: "64px", height: "64px", backgroundColor: "#fee2e2" }}
-              >
-                <IconAlertCircle size={36} stroke={2.5} />
-              </div>
-            )}
-            {popupNotification?.type === "warning" && (
-              <div
-                className="rounded-circle d-flex align-items-center justify-content-center text-warning"
-                style={{ width: "64px", height: "64px", backgroundColor: "#fef3c7" }}
-              >
-                <IconAlertTriangle size={36} stroke={2.5} />
-              </div>
-            )}
-            {popupNotification?.type === "info" && (
-              <div
-                className="rounded-circle d-flex align-items-center justify-content-center text-primary"
-                style={{ width: "64px", height: "64px", backgroundColor: "#e0f2fe" }}
-              >
-                <IconInfoCircle size={36} stroke={2.5} />
-              </div>
-            )}
-          </div>
-
-          {/* Başlık */}
-          <h5 className="fw-bold text-dark mb-2">{popupNotification?.title}</h5>
-
-          {/* Mesaj */}
-          <div
-            className="text-secondary small mb-3 text-break"
-            style={{ whiteSpace: "pre-line", lineHeight: 1.5 }}
-          >
-            {popupNotification?.message}
-          </div>
-
-          {/* Detay Bilgisi (Opsiyonel) */}
-          {popupNotification?.details && (
-            <div
-              className="p-2 mb-3 bg-light rounded border text-start small font-monospace text-muted"
-              style={{ fontSize: "11px", maxHeight: "100px", overflowY: "auto" }}
-            >
-              {popupNotification.details}
-            </div>
           )}
-
-          {/* Aksiyon Butonu */}
-          <div className="d-flex justify-content-center mt-2">
+        </Modal.Body>
+        <Modal.Footer className="bg-light py-1.5 px-3 d-flex justify-content-between align-items-center">
+          <span className="small text-muted">
+            Toplam <strong>{filteredHistoryList.length}</strong> kayıt (Seçmek için Çift Tıklayın veya Enter)
+          </span>
+          <div className="d-flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowHistoryModal(false)}>
+              Kapat (ESC)
+            </Button>
             <Button
-              variant={
-                popupNotification?.type === "success"
-                  ? "success"
-                  : popupNotification?.type === "danger"
-                  ? "danger"
-                  : popupNotification?.type === "warning"
-                  ? "warning"
-                  : "primary"
-              }
+              variant="primary"
               size="sm"
-              className="px-4 py-1.5 fw-bold shadow-sm"
-              onClick={() => setPopupNotification(null)}
-              autoFocus
+              disabled={!filteredHistoryList[selectedHistoryIndex]}
+              onClick={() => {
+                const target = filteredHistoryList[selectedHistoryIndex];
+                if (target && target.sayimId) {
+                  handleLoadHistoryItem(target.sayimId);
+                }
+              }}
             >
-              Tamam (Enter)
+              <IconCheck size={15} className="me-1" />
+              Seç (Enter)
             </Button>
           </div>
-        </Modal.Body>
-      </Modal>
-
-      {/* 5. Geçmiş Sayımlar Modalı (F4) */}
-      <Modal
-        show={showHistoryModal}
-        onHide={() => setShowHistoryModal(false)}
-        size="lg"
-        centered
-      >
-        <Modal.Header closeButton className="py-2.5 bg-light">
-          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-1.5">
-            <IconHistory size={18} className="text-primary" />
-            <span>Geçmiş Kasa Sayım Kayıtları ({selectedVezneKod || "Tüm Vezneler"})</span>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-3">
-          {isLoadingHistory ? (
-            <div className="text-center py-4 text-muted">
-              <Spinner animation="border" size="sm" className="me-2" />
-              Geçmiş sayım kayıtları veritabanından getiriliyor...
-            </div>
-          ) : historyList.length === 0 ? (
-            <div className="text-center py-4 text-muted">
-              Bu vezneye ait kayıtlı geçmiş sayım bulunamadı.
-            </div>
-          ) : (
-            <div className="table-responsive" style={{ maxHeight: "400px" }}>
-              <Table hover bordered size="sm" className="mb-0 text-nowrap" style={{ fontSize: "12.5px" }}>
-                <thead className="sticky-top bg-light text-secondary">
-                  <tr>
-                    <th style={{ width: "60px" }} className="text-center">Kayıt No</th>
-                    <th style={{ width: "100px" }}>Tarih</th>
-                    <th style={{ width: "70px" }}>Saat</th>
-                    <th style={{ width: "120px" }}>Vezne</th>
-                    <th>Sayım Yapan</th>
-                    <th>Açıklama</th>
-                    <th style={{ width: "90px" }} className="text-center">Durum</th>
-                    <th style={{ width: "110px" }} className="text-center">İşlem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyList.map((item) => (
-                    <tr key={item.sayimId} className="align-middle">
-                      <td className="text-center fw-bold font-monospace">#{item.sayimId}</td>
-                      <td>{item.tarih ? new Date(item.tarih).toLocaleDateString("tr-TR") : "-"}</td>
-                      <td>{item.saat || "-"}</td>
-                      <td className="fw-semibold">{item.vezneKodu || item.vezneAdi || item.vezneId}</td>
-                      <td>{item.kullaniciAdi || "-"}</td>
-                      <td className="text-truncate" style={{ maxWidth: "180px" }}>
-                        {item.aciklama || "-"}
-                      </td>
-                      <td className="text-center">
-                        <span
-                          className={`badge ${
-                            item.genelDurum === "Dengede"
-                              ? "bg-success"
-                              : item.genelDurum === "Farklı"
-                              ? "bg-warning text-dark"
-                              : "bg-secondary"
-                          }`}
-                        >
-                          {item.genelDurum || "Kaydedildi"}
-                        </span>
-                      </td>
-                      <td className="text-center">
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          className="py-0 px-2 fs-8 fw-semibold"
-                          onClick={() => handleLoadHistoryItem(item.sayimId!)}
-                          title="Bu sayımı ekrana yükle"
-                        >
-                          <IconEye size={13} className="me-1" />
-                          Yükle
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
-          )}
-        </Modal.Body>
-        <Modal.Footer className="bg-light py-1.5 px-3">
-          <Button variant="secondary" size="sm" onClick={() => setShowHistoryModal(false)}>
-            Kapat
-          </Button>
         </Modal.Footer>
       </Modal>
 
@@ -1448,38 +1565,7 @@ export const VezneParaSayPage: React.FC = () => {
         }}
       />
 
-      {/* 7. Tüm Sayımları Temizle Onay Modalı */}
-      <Modal
-        show={showClearConfirmModal}
-        onHide={() => setShowClearConfirmModal(false)}
-        centered
-        size="sm"
-      >
-        <Modal.Header closeButton className="py-2 bg-light">
-          <Modal.Title className="fs-6 fw-bold text-danger">
-            <IconTrash size={18} className="me-1" />
-            Sayımları Sıfırla
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="py-3">
-          <p className="small mb-0 text-muted">
-            Girilen tüm para birimlerine ait banknot ve madeni para sayım adetleri sıfırlanacaktır.
-            Onaylıyor musunuz?
-          </p>
-        </Modal.Body>
-        <Modal.Footer className="py-1.5 bg-light">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setShowClearConfirmModal(false)}
-          >
-            Vazgeç
-          </Button>
-          <Button variant="danger" size="sm" onClick={handleClearAll}>
-            Evet, Sıfırla
-          </Button>
-        </Modal.Footer>
-      </Modal>
+
 
       {/* 8. Resmi Kasa Sayım Tutanağı / Yazdırma Modalı (F7) */}
       <Modal
@@ -1638,6 +1724,20 @@ export const VezneParaSayPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* 3 Saniye Sonra Kaybolan Standart ERP Bildirimi */}
+      {notification && (
+        <div className="erp-toast-container">
+          <Alert
+            variant={notification.type}
+            className="erp-toast-item py-2 px-3 mb-0 border-0 shadow small d-flex align-items-center justify-content-between gap-2"
+            dismissible
+            onClose={() => setNotification(null)}
+          >
+            <span>{notification.message}</span>
+          </Alert>
+        </div>
+      )}
     </div>
   );
 };
