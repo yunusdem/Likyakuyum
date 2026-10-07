@@ -12,6 +12,7 @@ import { klasorKopyala } from "../../utils/dosya.utils.js";
 import { enYuksekGoc, gocDosyalari, semaGocUygula } from "../semaGoc.service.js";
 import { kd, klonIle, klonYapilandirildiMi } from "../admin/klon.service.js";
 import { butunlukListesiUret, paketImzala, sha256Dosya } from "./paketImza.js";
+import { DestekService } from "../destek/destek.service.js";
 
 /**
  * Sürüm yayınlama (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, 6.6 · K10, K20). Merkez sunucuda her deploy'dan sonra:
@@ -128,6 +129,7 @@ export const surumYayinla = async (s: YayinSecenekleri): Promise<YayinSonucu> =>
         .input("not", sql.NVarChar(2000), s.not ?? null)
         .query(`INSERT INTO dbo.ADM_SURUM (SURUM, DOSYA_YOLU, BOYUT, SHA256, IMZA, SEMA_SURUMU, NOTLAR) VALUES (@surum, @yol, @boyut, @sha, @imza, @sema, @not)`);
       await AdminLogSqlRepository.islemLogu({ adminId: null, islem: "SURUM_YAYINLANDI", hedefTur: "SURUM", hedefId: surum, yeni: { boyut, dosya: adet, sema: sonuc.sema } });
+      await DestekService.surumTaslagi(surum, s.not ?? null); // K10: admin panelinde taslak bildirim
     }
     return sonuc;
   } finally {

@@ -5,6 +5,8 @@
 const API_KOK = "/api/v1/admin";
 const TOKEN_ANAHTARI = "likya_admin_token";
 
+import type { BildirimHedefi, BildirimTuru, KonuOzet, KonuTuru, MesajDto } from "../../components/destek/destekOrtak";
+
 export const OTURUM_BITTI_OLAYI = "likya-admin-oturum-bitti";
 
 export type AdminDurum = "AKTIF" | "PASIF";
@@ -432,6 +434,53 @@ export const tokenYaz = (token: string | null) => {
   }
 };
 
+
+// ---------------------------------------------------------------- Destek ---
+export interface DestekOzet {
+  okunmamis: number;
+  acikTalep: number;
+  taslakBildirim: number;
+  kurulu: boolean;
+}
+export interface DestekHedef {
+  firmaId: number;
+  firmaKodu: string;
+  unvan: string;
+  kullaniciId: number | null;
+  kullaniciAdi: string | null;
+}
+export interface DestekKonuDetay {
+  konu: KonuOzet;
+  mesajlar: MesajDto[];
+  hedefler?: DestekHedef[];
+  yanitSayisi?: number;
+}
+export interface DestekKonuFiltresi {
+  tur?: KonuTuru | "TALEP_SISTEM";
+  durum?: string;
+  firmaId?: number;
+  atananAdminId?: number;
+  kaynakKonuId?: number;
+  arama?: string;
+  sayfa?: number;
+  sayfaBoyu?: number;
+}
+export interface BildirimGirdi {
+  baslik: string;
+  metin: string;
+  bildirimTuru: BildirimTuru;
+  onemli: boolean;
+  cevapAlir: boolean;
+  hedef: BildirimHedefi;
+  firmaIds?: number[];
+  kullaniciIds?: number[];
+  gonder: boolean;
+}
+export interface DestekHedefSecenekleri {
+  firmalar: { firmaId: number; firmaKodu: string; unvan: string; durum: string }[];
+  kullanicilar: { kullaniciId: number; firmaId: number; kullaniciAdi: string; adSoyad: string | null }[];
+}
+
 async function istek<T>(yontem: string, yol: string, govde?: unknown): Promise<T> {
   const token = tokenOku();
   let yanit: Response;
@@ -588,4 +637,23 @@ export const adminApi = {
     istek<{ geciciSifre: string; firmaDbEsitlendi: boolean }>("POST", `/kullanicilar/${kullaniciId}/sifre-sifirla`),
   kullanicilariIceAktar: (firmaId: number) =>
     istek<{ eklenen: string[]; zatenVar: number; atlanan: number }>("POST", `/firmalar/${firmaId}/kullanicilar/ice-aktar`),
+  // Destek (docs/DESTEK_VE_BILDIRIM_YOL_HARITASI.md, Faz 3)
+  destekOzet: () => istek<DestekOzet>("GET", "/destek/ozet"),
+  destekKonular: (f: DestekKonuFiltresi) => istek<{ satirlar: KonuOzet[]; toplam: number; kurulu: boolean }>("GET", `/destek/konular${sorgu({ ...f })}`),
+  destekKonu: (konuId: number) => istek<DestekKonuDetay>("GET", `/destek/konular/${konuId}`),
+  destekMesajYaz: (konuId: number, metin: string, icNot: boolean) => istek<DestekKonuDetay>("POST", `/destek/konular/${konuId}/mesajlar`, { metin, icNot }),
+  destekKonuGuncelle: (konuId: number, veri: { durum?: "KAPALI" | "ACIK"; atananAdminId?: number | null }) =>
+    istek<DestekKonuDetay>("PUT", `/destek/konular/${konuId}`, veri),
+  bildirimler: () => istek<{ satirlar: KonuOzet[]; toplam: number; kurulu: boolean }>("GET", "/destek/bildirimler"),
+  bildirimHedefleri: () => istek<DestekHedefSecenekleri>("GET", "/destek/hedefler"),
+  bildirimOlustur: (veri: BildirimGirdi) => istek<DestekKonuDetay>("POST", "/destek/bildirimler", veri),
+  bildirimGuncelle: (konuId: number, veri: BildirimGirdi) => istek<DestekKonuDetay>("PUT", `/destek/bildirimler/${konuId}`, veri),
+  bildirimGeriCek: (konuId: number) => istek<DestekKonuDetay>("POST", `/destek/bildirimler/${konuId}/geri-cek`),
+  /** Ek görsel (Authorization ile); nesne adresi döner */
+  destekEkAdresi: async (ekId: number) => {
+    const token = tokenOku();
+    const r = await fetch(`${API_KOK}/destek/ek/${ekId}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
+    if (!r.ok) throw new AdminApiHatasi(r.status, "Görsel alınamadı.");
+    return URL.createObjectURL(await r.blob());
+  },
 };

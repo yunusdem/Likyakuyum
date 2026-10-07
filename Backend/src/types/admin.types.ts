@@ -80,7 +80,12 @@ export type AdminIslem =
   | "KURULUM_BAGLANTISI"
   | "SURUM_YAYINLANDI"
   | "SURUM_GUNCELLENDI"
-  | "HEDEF_SURUM_DEGISTI";
+  | "HEDEF_SURUM_DEGISTI"
+  | "DESTEK_ATAMA"
+  | "DESTEK_DURUM"
+  | "BILDIRIM_TASLAK"
+  | "BILDIRIM_GONDERILDI"
+  | "BILDIRIM_GERI_CEKILDI";
 
 /** SILINECEK: panelden silme istendi, 30 gün geri alınabilir · SILINDI: veritabanı kaldırıldı (kayıt arşivde) */
 export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF" | "SILINECEK" | "SILINDI";

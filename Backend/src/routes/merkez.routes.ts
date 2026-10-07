@@ -8,6 +8,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { istemciIp } from "../utils/istemci.utils.js";
 import { MerkezKurulumService } from "../services/admin/merkezKurulum.service.js";
+import merkezDestekRoutes from "./merkezDestek.routes.js";
 
 /**
  * Merkez sunucunun kurulum (exe) programlarına açık uçları (oturumsuz; kimlik: firma kodu + kurulum anahtarı).
@@ -25,6 +26,8 @@ const merkezSiniri = rateLimit({
 });
 
 router.use((req, res, next) => (adminYapilandirildiMi() ? next() : next(adminYapilandirmaHatasi())));
+// Destek köprüsü kendi (daha geniş) sınırıyla çalışır; heartbeat sınırı aşağıdakilere uygulanır
+router.use("/destek", merkezDestekRoutes);
 router.use(merkezSiniri);
 
 const heartbeatSchema = z.object({

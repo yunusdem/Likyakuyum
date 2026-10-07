@@ -87,6 +87,7 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import LisansKilitDinleyici from "./components/lisans/LisansKilitDinleyici";
 import LisansUyariBandi from "./components/lisans/LisansUyariBandi";
 import LisansSurumPage from "./pages/settings/LisansSurumPage";
+import DestekPage from "./pages/destek/DestekPage";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ERPContextMenu } from "./components/common/ERPContextMenu";
@@ -176,6 +177,7 @@ export default function App() {
             <Route path="dashboard" element={<HomePage />} />
             <Route path="sifre-degistir" element={<ChangePasswordPage />} />
             <Route path="lisans-surum" element={<LisansSurumPage />} />
+            <Route path="destek" element={<DestekPage />} />
             <Route path="ayarlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
             <Route path="tanimlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
             <Route path="ayarlar/firma-tanimlari" element={<CompanyDefinitionsPage />} />

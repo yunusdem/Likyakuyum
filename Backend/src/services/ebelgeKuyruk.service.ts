@@ -25,6 +25,7 @@ import { getGiderPusulasiCikti, sendGiderPusulasi } from "./ice/ice.giderpusulas
 import { cancelMustahsil, sendMustahsil } from "./ice/ice.mustahsil.js";
 import { getEDovizStatus, sendEDoviz, sendEDovizIptal } from "./ice/ice.edoviz.js";
 import { toBase64 } from "./ice/ubl/invoiceBuilder.js";
+import { DestekOlay } from "./destek/destekOlay.js";
 
 /**
  * e-Belge gönderim kuyruğu (docs/EBELGE_KUYRUK_YOL_HARITASI.md).
@@ -435,6 +436,7 @@ export class EbelgeKuyrukService {
     const oldu = await this.gecir(ctx, kayit, beklenen, sonuc.durum, { mesaj, kod: sonuc.kod });
     await EbelgeKuyrukRepository.bitir(is.id, sonuc.durum === "GONDERILDI" ? "TAMAM" : "BASARISIZ", oldu ? mesaj : "Durum başka işlemle değişti.", ctx);
     if (!oldu) return;
+    if (sonuc.durum === "HATA") DestekOlay.ebelgeHatasi(ctx, kayit, mesaj); // K14: firmanın ziline ve admin listesine düşer
     await this.kaynakYaz(ctx, kayit, sonuc.durum, mesaj);
     if (sonuc.durum === "GONDERILDI") await EbelgeKuyrukRepository.bekleyenleriOne(kayit.uuid, "MAIL", ctx);
   }

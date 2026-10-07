@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   IconArrowBarLeft,
   IconArrowBarRight,
-  IconBell,
   IconMaximize,
   IconMinimize,
   IconChartLine,
@@ -22,7 +21,7 @@ import { Container, ListGroup, Button } from "react-bootstrap";
 
 //import custom components
 import UserMenu from "./UserMenu";
-import NoficationList from "components/common/NoficationList";
+import DestekZil from "components/destek/DestekZil";
 import MasakModal from "components/masak/MasakModal";
 import MasakMenu from "components/masak/MasakMenu";
 import { useAuth } from "../../context/AuthContext";
@@ -91,7 +90,6 @@ const Header: React.FC = () => {
     return !kisayol || modulAcikMi(acikModuller, kisayol.key);
   });
   const masakAcik = modulAcikMi(acikModuller, "ust:masak");
-  const [isNoficationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const { handleCollapsed, collapsed } = useMenu();
@@ -274,20 +272,9 @@ const Header: React.FC = () => {
                 </Button>
               </ListGroup.Item>
 
-              {/* Notification Bell */}
+              {/* Destek zili: sayaç, sağ panel, Talep Oluştur (docs/DESTEK_VE_BILDIRIM_YOL_HARITASI.md) */}
               <ListGroup.Item as="li">
-                <Button
-                  variant="ghost"
-                  className="position-relative btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-0"
-                  onClick={() => setIsNotificationOpen(true)}
-                  title="Bildirimler"
-                  style={{ width: "32px", height: "32px" }}
-                >
-                  <IconBell size={18} />
-                  <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style={{ fontSize: "8.5px", marginTop: "4px", marginLeft: "-6px" }}>
-                    2<span className="visually-hidden">okunmamış bildirim</span>
-                  </span>
-                </Button>
+                <DestekZil />
               </ListGroup.Item>
 
               {/* User Profile Menu */}
@@ -345,10 +332,6 @@ const Header: React.FC = () => {
         onHide={() => setIsMasakModalOpen(false)}
       />
 
-      <NoficationList
-        isOpen={isNoficationOpen}
-        onClose={() => setIsNotificationOpen(false)}
-      />
     </Fragment>
   );
 };
