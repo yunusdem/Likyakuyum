@@ -914,7 +914,23 @@ export class SarrafFisSqlRepository {
         END;
 
         UPDATE [dbo].[TODVZ_SARRAF_FISI]
-        SET ISTATISTIK_ID = @IN_ISTATISTIK_ID
+        SET ISTATISTIK_ID = @IN_ISTATISTIK_ID,
+            UNVAN = ISNULL(@IN_UNVAN, UNVAN),
+            VERGI_KIMLIK_NO = @IN_VERGI_KIMLIK_NO,
+            ADRES = @IN_ADRES,
+            TELEFON_NO = @IN_TELEFON_NO,
+            EPOSTA = @IN_EPOSTA,
+            BABA_ADI = @IN_BABA_ADI,
+            ANNE_ADI = @IN_ANNE_ADI,
+            DOGUM_TARIHI = @IN_DOGUM_TARIHI,
+            DOGUM_YERI = @IN_DOGUM_YERI,
+            KIMLIK_SERI_NO = @IN_KIMLIK_SERI_NO,
+            PASAPORT_NO = @IN_PASAPORT_NO,
+            KIMLIK_BELGE_TURU = @IN_KIMLIK_BELGE_TURU,
+            KIMLIK_GECERLILIK_TARIHI = @IN_KIMLIK_GECERLILIK_TARIHI,
+            VEKIL_ADI = @IN_VEKIL_ADI,
+            VEKIL_KIMLIK_NO = @IN_VEKIL_KIMLIK_NO,
+            KISILIK_TIPI = @IN_KISILIK_TIPI
         WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
 
         ${validOdemeler.map((o, idx) => `
@@ -1140,7 +1156,50 @@ export class SarrafFisSqlRepository {
             req.input("YETKILI_KISI_ID", sql.Int, dto.yetkiliKisiId ?? null);
             req.input("KIMLIK_GECERLILIK_TARIHI", sql.DateTime, dto.kimlikGecerlilikTarihi ? new Date(dto.kimlikGecerlilikTarihi) : null);
             req.input("KULLANICI_ID", sql.Int, dto.kullaniciId);
-            await req.execute("SODVZ_SARRAF_FISI_DETAYI_KAYDET");
+            try {
+                await req.execute("SODVZ_SARRAF_FISI_DETAYI_KAYDET");
+            }
+            catch (procErr) {
+                logger.warn("SODVZ_SARRAF_FISI_DETAYI_KAYDET warning:", procErr);
+            }
+            await pool.request()
+                .input("id", sql.Int, dto.sarrafFisiId)
+                .input("unvan", sql.VarChar(200), dto.unvan ?? null)
+                .input("kisilikTipi", sql.TinyInt, dto.kisilikTipi ?? null)
+                .input("vergiKimlikNo", sql.Char(20), dto.vergiKimlikNo ?? null)
+                .input("pasaportNo", sql.Char(20), dto.pasaportNo ?? null)
+                .input("babaAdi", sql.VarChar(200), dto.babaAdi ?? null)
+                .input("anneAdi", sql.VarChar(200), dto.anneAdi ?? null)
+                .input("adres", sql.VarChar(100), dto.adres ?? null)
+                .input("eposta", sql.VarChar(100), dto.eposta ?? null)
+                .input("telefonNo", sql.VarChar(20), dto.telefonNo ?? null)
+                .input("dogumTarihi", sql.DateTime, dto.dogumTarihi ? new Date(dto.dogumTarihi) : null)
+                .input("dogumYeri", sql.VarChar(100), dto.dogumYeri ?? null)
+                .input("kimlikSeriNo", sql.Char(20), dto.kimlikSeriNo ?? null)
+                .input("kimlikBelgeTuru", sql.TinyInt, dto.kimlikBelgeTuru ?? null)
+                .input("kimlikGecerlilikTarihi", sql.DateTime, dto.kimlikGecerlilikTarihi ? new Date(dto.kimlikGecerlilikTarihi) : null)
+                .input("vekilAdi", sql.VarChar(200), dto.vekilAdi ?? null)
+                .input("vekilKimlikNo", sql.Char(20), dto.vekilKimlikNo ?? null)
+                .query(`
+          UPDATE [dbo].[TODVZ_SARRAF_FISI]
+          SET UNVAN = COALESCE(@unvan, UNVAN),
+              KISILIK_TIPI = @kisilikTipi,
+              VERGI_KIMLIK_NO = @vergiKimlikNo,
+              PASAPORT_NO = @pasaportNo,
+              BABA_ADI = @babaAdi,
+              ANNE_ADI = @anneAdi,
+              ADRES = @adres,
+              EPOSTA = @eposta,
+              TELEFON_NO = @telefonNo,
+              DOGUM_TARIHI = @dogumTarihi,
+              DOGUM_YERI = @dogumYeri,
+              KIMLIK_SERI_NO = @kimlikSeriNo,
+              KIMLIK_BELGE_TURU = @kimlikBelgeTuru,
+              KIMLIK_GECERLILIK_TARIHI = @kimlikGecerlilikTarihi,
+              VEKIL_ADI = @vekilAdi,
+              VEKIL_KIMLIK_NO = @vekilKimlikNo
+          WHERE SARRAF_FISI_ID = @id
+        `);
         }
         catch (err) {
             logger.error("saveDetay error:", err);

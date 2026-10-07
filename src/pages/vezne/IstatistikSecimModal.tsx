@@ -59,6 +59,12 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
           fisTipi: Number(s.fisTipi),
           fisDizaynTipi: isNaN(dizayn) ? 0 : dizayn,
           ciktiSatirSayisi: Number(s.ciktiSatirSayisi || 0),
+          bmvOrani: Number(s.bmvOrani ?? 0),
+          kmvOrani: Number(s.kmvOrani ?? 0),
+          komisyonOrani: Number(s.komisyonOrani ?? 0),
+          komisyonYetkisi: s.komisyonYetkisi,
+          odemeSekliVar: s.odemeSekliVar,
+          odemeSekli: s.odemeSekli,
         };
       });
 

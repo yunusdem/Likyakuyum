@@ -13,7 +13,11 @@ const bosIseNull = (v) => {
     const t = (v ?? "").trim();
     return t === "" ? null : t;
 };
-const yazimHazirla = (g) => {
+const yazimHazirla = (g0) => {
+    // Kurulum (exe) firmasının veritabanı müşteridedir: merkezde yalnız benzersiz bir yer tutucu tutulur
+    const g = g0.baglantiModu === "setup"
+        ? { ...g0, dbServer: "kurulum", dbName: g0.firmaKodu.trim().toUpperCase(), dbUser: null, dbSifre: undefined }
+        : g0;
     const dbName = g.dbName.trim();
     const { port, anahtar } = firmaDbAnahtari(g.dbServer, dbName);
     return {
@@ -74,7 +78,8 @@ export class FirmaService {
     }
     static async ekle(yapan, girdi) {
         const yazim = yazimHazirla(girdi);
-        const dbSifreEnc = girdi.dbSifre ? sifrele(girdi.dbSifre) : null;
+        // Kurulum (exe) firmasının veritabanı müşteridedir; merkezde şifre tutulmaz
+        const dbSifreEnc = girdi.dbSifre && girdi.baglantiModu !== "setup" ? sifrele(girdi.dbSifre) : null;
         let firmaId;
         try {
             firmaId = await FirmaSqlRepository.ekle(yazim, dbSifreEnc);
@@ -97,7 +102,13 @@ export class FirmaService {
         const eski = await this.getir(firmaId);
         const yazim = yazimHazirla(girdi);
         // undefined: dokunma · "": sil · dolu: değiştir
-        const dbSifreEnc = girdi.dbSifre === undefined ? undefined : girdi.dbSifre === "" ? null : sifrele(girdi.dbSifre);
+        const dbSifreEnc = girdi.baglantiModu === "setup"
+            ? eski.dbSifreTanimli ? null : undefined
+            : girdi.dbSifre === undefined
+                ? undefined
+                : girdi.dbSifre === ""
+                    ? null
+                    : sifrele(girdi.dbSifre);
         try {
             await FirmaSqlRepository.guncelle(firmaId, yazim, dbSifreEnc);
         }
@@ -133,6 +144,11 @@ export class FirmaService {
     /** Aktif / Dondurulmuş / Pasif. Aktif dışına alınan firmanın açık oturumları anında düşürülür. */
     static async durumDegistir(yapan, firmaId, girdi) {
         const eski = await this.getir(firmaId);
+        if (eski.durum === "SILINECEK" || eski.durum === "SILINDI") {
+            throw ApiError.badRequest(eski.durum === "SILINECEK"
+                ? "Firma silinmek üzere bekliyor; önce silmeyi geri alın."
+                : "Firma silinmiş; durumu değiştirilemez.");
+        }
         const not = bosIseNull(girdi.not);
         if (eski.durum === girdi.durum && eski.durumNotu === not)
             return eski;

@@ -128,7 +128,8 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kasa/hareket-duzeltme": { title: "D- Kasa Hareket Düzeltme", icon: <IconCash size={20} /> },
   "/kasa/kasa-hareket-kayit": { title: "C- Kasa Hareket Kayıt", icon: <IconCash size={20} /> },
   "/kasa/kasa-hareket-duzeltme": { title: "D- Kasa Hareket Düzeltme", icon: <IconCash size={20} /> },
-  "/kasa/hesap-ad-listesi": { title: "I- Hesap Ad Listesi", icon: <IconBuilding size={20} /> },
+  "/cari/hesap-ad-listesi": { title: "M- Hesap Ad Listesi", icon: <IconBuilding size={20} /> },
+  "/kasa/hesap-ad-listesi": { title: "M- Hesap Ad Listesi", icon: <IconBuilding size={20} /> },
   "/banka/hesap-kartlari": { title: "A- Banka Hesap Kartları", icon: <IconCreditCard size={20} /> },
   "/banka/hesap-karti": { title: "A- Banka Hesap Kartları", icon: <IconCreditCard size={20} /> },
   "/banka/pos-tanimlari": { title: "B- POS Cihazı Tanımları", icon: <IconCreditCard size={20} /> },
@@ -601,27 +602,27 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
         )}
       </div>
 
-      {/* Ortadaki Sayfa İkonu, Başlığı ve CenterContent */}
-      <div className="d-flex align-items-center gap-2 gap-md-3 px-1 px-md-2 ms-0 ms-sm-2 my-1 my-sm-0 me-auto flex-wrap erp-toolbar-center-section">
-        {finalTitle && (
-          <div className="d-flex align-items-center gap-1.5 erp-toolbar-title-box flex-shrink-0">
-            <span className="erp-tb-divider d-none d-sm-inline-block" style={{ height: "20px", margin: "0 6px 0 0" }} />
-            {finalIcon && (
-              <span className="text-primary d-inline-flex align-items-center">
-                {finalIcon}
-              </span>
-            )}
-            <span className="fw-bold text-dark fs-6 text-nowrap" style={{ letterSpacing: "-0.2px" }}>
-              {finalTitle}
+      {/* Ortadaki Sayfa İkonu ve Başlığı */}
+      {finalTitle && (
+        <div className="d-flex align-items-center gap-1.5 erp-toolbar-title-box flex-shrink-0 ms-0 ms-sm-2 my-1 my-sm-0">
+          <span className="erp-tb-divider d-none d-sm-inline-block" style={{ height: "20px", margin: "0 6px 0 0" }} />
+          {finalIcon && (
+            <span className="text-primary d-inline-flex align-items-center">
+              {finalIcon}
             </span>
-          </div>
-        )}
-        {centerContent && (
-          <div className="d-flex align-items-center erp-toolbar-center-content" style={{ maxWidth: "100%", overflowX: "auto" }}>
-            {centerContent}
-          </div>
-        )}
-      </div>
+          )}
+          <span className="fw-bold text-dark fs-6 text-nowrap" style={{ letterSpacing: "-0.2px" }}>
+            {finalTitle}
+          </span>
+        </div>
+      )}
+
+      {/* Sol ve Sağ Grupların Tam Ortasındaki İçerik */}
+      {centerContent && (
+        <div className="d-flex align-items-center justify-content-center flex-grow-1 px-2 mx-auto erp-toolbar-center-content" style={{ minWidth: 0 }}>
+          {centerContent}
+        </div>
+      )}
 
       {/* Sağ Toolbar Grubu: Custom RightContent + Yenile */}
       <div className="d-flex align-items-center gap-2 ms-auto">

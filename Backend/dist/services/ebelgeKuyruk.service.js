@@ -21,6 +21,8 @@ const TAZE_DK = 5;
 const YETIM_GUN = 2;
 const TIK_MS = 30_000;
 const SAHIPSIZ_TARAMA_MS = 5 * 60_000;
+/** Kuyruk tablosu olmayan ya da hiç bekleyen işi olmayan firma bu aralıkla yoklanır (yeni iş gelince hemen uyanır) */
+const BOS_FIRMA_ARALIK_MS = 5 * 60_000;
 export const BEKLEME_MS = 15_000;
 const dogru = (v) => String(v).toLowerCase() === "true";
 const yanlis = (v) => String(v).toLowerCase() === "false";
@@ -215,7 +217,8 @@ export class EbelgeKuyrukService {
     /** İşlenecek firma veritabanları. Anahtar: havuz anahtarı (sunucu:port:db) */
     static baglamlar = new Map();
     static calisiyor = false;
-    static sonTarama = 0;
+    /** Firma başına: bir sonraki yoklama zamanı (boş firma seyrek yoklanır) ve son sahipsiz taraması */
+    static zamanlar = new Map();
     static baslatildi = false;
     /** e-Belge isteği gelen firma listeye girer (tablo yoksa kurulabilir: firma e-Belge kullanıyor) */
     static baglamKaydet(ctx, kurulabilir = true) {
@@ -224,6 +227,14 @@ export class EbelgeKuyrukService {
         const anahtar = getPoolKey(ctx.dbServer, ctx.dbName);
         const eski = this.baglamlar.get(anahtar);
         this.baglamlar.set(anahtar, { ctx: { dbServer: ctx.dbServer, dbName: ctx.dbName }, kurulabilir: kurulabilir || !!eski?.kurulabilir });
+        // e-Belge isteği gelen firma bir sonraki turda beklemeden yoklanır
+        if (kurulabilir) {
+            const z = this.zamanlar.get(anahtar);
+            if (z) {
+                z.sonraki = 0;
+                z.uyandirildi = true;
+            }
+        }
     }
     /** Sunucu açılışında bir kez: zamanlayıcı + yeniden başlatmada kalan işler için firmaları bul */
     static baslat() {
@@ -262,20 +273,32 @@ export class EbelgeKuyrukService {
             return;
         this.calisiyor = true;
         try {
-            const tara = Date.now() - this.sonTarama > SAHIPSIZ_TARAMA_MS;
-            if (tara)
-                this.sonTarama = Date.now();
-            for (const { ctx, kurulabilir } of [...this.baglamlar.values()]) {
+            for (const [anahtar, { ctx, kurulabilir }] of [...this.baglamlar.entries()]) {
+                const simdi = Date.now();
+                let z = this.zamanlar.get(anahtar);
+                if (!z)
+                    this.zamanlar.set(anahtar, (z = { sonraki: 0, sonTarama: 0, uyandirildi: false }));
+                if (simdi < z.sonraki)
+                    continue;
+                z.uyandirildi = false;
                 try {
-                    if (!kurulabilir && !(await EbelgeKuyrukRepository.tabloVarMi(ctx)))
+                    if (!kurulabilir && !(await EbelgeKuyrukRepository.tabloVarMi(ctx))) {
+                        if (!z.uyandirildi)
+                            z.sonraki = simdi + BOS_FIRMA_ARALIK_MS;
                         continue;
-                    if (tara) {
+                    }
+                    if (simdi - z.sonTarama >= SAHIPSIZ_TARAMA_MS) {
+                        z.sonTarama = simdi;
                         await this.sahipsizleriAl(ctx);
                         await EbelgeKuyrukRepository.temizle(ctx);
                     }
                     const isler = await EbelgeKuyrukRepository.al(5, ctx);
                     for (const is of isler)
                         await this.isle(ctx, is);
+                    // Hiç bekleyen işi kalmayan firma seyrek yoklanır; zamanı gelmemiş iş varsa her tur bakılır
+                    const bos = !isler.length && !(await EbelgeKuyrukRepository.bekleyenVarMi(ctx));
+                    // Bu arada baglamKaydet ile uyandırıldıysa uyku kurulmaz
+                    z.sonraki = bos && !z.uyandirildi ? Date.now() + BOS_FIRMA_ARALIK_MS : 0;
                 }
                 catch (e) {
                     logger.warn(`e-Belge kuyruğu (${ctx.dbName}) işlenemedi:`, e);

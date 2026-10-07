@@ -16,7 +16,7 @@ import {
   PosCihaziItem,
   SavePosCihaziPayload,
 } from "../../services/posCihaziService";
-import { CariService, CariKartItem } from "../../services/cariService";
+import { BankaService, BankaHesapItem } from "../../services/bankaService";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
@@ -42,16 +42,16 @@ export const PosCihaziTanimlariPage: React.FC = () => {
 
   // ─── Lists & Data ──────────────────────────────────────────────────────────
   const [posList, setPosList] = useState<PosCihaziItem[]>([]);
-  const [cariList, setCariList] = useState<any[]>([]);
+  const [bankaList, setBankaList] = useState<BankaHesapItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
 
   // ─── Modals & Search ───────────────────────────────────────────────────────
   const [showPosLookup, setShowPosLookup] = useState(false);
-  const [showCariLookup, setShowCariLookup] = useState(false);
+  const [showBankaLookup, setShowBankaLookup] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [posInitialSearch, setPosInitialSearch] = useState<string>("");
-  const [cariInitialSearch, setCariInitialSearch] = useState<string>("");
+  const [bankaInitialSearch, setBankaInitialSearch] = useState<string>("");
 
   // Canlı Saat
   const [currentDateTime, setCurrentDateTime] = useState<string>("");
@@ -87,14 +87,14 @@ export const PosCihaziTanimlariPage: React.FC = () => {
   // ─── Veri Yükleme ──────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
-      const [posData, cariData] = await Promise.all([
+      const [posData, bankaData] = await Promise.all([
         PosCihaziService.getPosCihazlari().catch(() => []),
-        CariService.getCariKartlar().catch(() => []),
+        BankaService.getBankalar().catch(() => []),
       ]);
       setPosList(posData);
-      setCariList(cariData);
+      setBankaList(bankaData);
     } catch (err: any) {
-      showNotif("danger", "POS cihazları listesi yüklenemedi.");
+      showNotif("danger", "POS cihazları veya banka hesapları yüklenemedi.");
     }
   }, []);
 
@@ -210,7 +210,7 @@ export const PosCihaziTanimlariPage: React.FC = () => {
         setPosInitialSearch("");
         setShowPosLookup(true);
       } else if (e.key === "F4") {
-        if (!showPosLookup && !showCariLookup) {
+        if (!showPosLookup && !showBankaLookup) {
           e.preventDefault();
           handleNew();
         }
@@ -242,34 +242,43 @@ export const PosCihaziTanimlariPage: React.FC = () => {
     }
   };
 
-  const handleCariKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleBankaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       const val = cariUnvan.trim().toLowerCase();
       if (!val) {
-        setCariInitialSearch("");
-        setShowCariLookup(true);
+        setBankaInitialSearch("");
+        setShowBankaLookup(true);
         return;
       }
-      const matches = cariList.filter((c) => {
-        const u = String(c.unvan || c.ad || "").toLowerCase();
-        const k = String(c.kod || c.id || "").toLowerCase();
-        return u.includes(val) || k.includes(val);
+      const matches = bankaList.filter((b) => {
+        const hAd = String(b.hesapAdi || "").toLowerCase();
+        const hNo = String(b.hesapNo || "").toLowerCase();
+        const bAd = String(b.bankaAdi || "").toLowerCase();
+        const sAd = String(b.subeAdi || "").toLowerCase();
+        const iban = String(b.iban || "").toLowerCase();
+        return (
+          hAd.includes(val) ||
+          hNo.includes(val) ||
+          bAd.includes(val) ||
+          sAd.includes(val) ||
+          iban.includes(val)
+        );
       });
       if (matches.length === 1) {
         const selected = matches[0];
-        setCariKartId(selected.id || selected.cariKartId);
-        setCariKodu(selected.kod || "");
-        setCariUnvan(selected.unvan || selected.ad || "");
+        setCariKartId(selected.bankaId);
+        setCariKodu(selected.hesapNo || "");
+        setCariUnvan(selected.hesapAdi || selected.bankaAdi || "");
         devirRef.current?.focus();
       } else {
-        setCariInitialSearch(cariUnvan.trim());
-        setShowCariLookup(true);
+        setBankaInitialSearch(cariUnvan.trim());
+        setShowBankaLookup(true);
       }
-    } else if (e.key === "F4") {
+    } else if (e.key === "F4" || e.key === "F8" || e.key === "F12") {
       e.preventDefault();
-      setCariInitialSearch(cariUnvan.trim());
-      setShowCariLookup(true);
+      setBankaInitialSearch(cariUnvan.trim());
+      setShowBankaLookup(true);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       adRef.current?.focus();
@@ -291,8 +300,8 @@ export const PosCihaziTanimlariPage: React.FC = () => {
       render: (it) => <span className="fw-semibold">{it.ad}</span>,
     },
     {
-      header: "Banka / Cari",
-      width: "200px",
+      header: "Bağlı Banka Hesabı",
+      width: "220px",
       render: (it) => <span>{it.cariUnvan || "-"}</span>,
     },
     {
@@ -317,25 +326,39 @@ export const PosCihaziTanimlariPage: React.FC = () => {
     },
   ];
 
-  const cariLookupColumns: LookupColumn<any>[] = [
+  const bankaLookupColumns: LookupColumn<BankaHesapItem>[] = [
     {
-      header: "Cari Kodu",
-      width: "120px",
-      render: (it) => <span className="font-monospace fw-bold text-primary">{it.kod || it.id}</span>,
-    },
-    {
-      header: "Cari Ünvanı / Banka Adı",
-      render: (it) => <span className="fw-semibold">{it.unvan || it.ad}</span>,
-    },
-    {
-      header: "Telefon",
+      header: "Hesap No",
       width: "130px",
-      render: (it) => <span>{it.telefon || "-"}</span>,
+      render: (it) => <span className="font-monospace fw-bold text-primary">{it.hesapNo}</span>,
     },
     {
-      header: "Vergi / TC No",
-      width: "140px",
-      render: (it) => <span>{it.vergiKimlikNo || it.tcKimlikNo || "-"}</span>,
+      header: "Hesap Adı",
+      render: (it) => <span className="fw-semibold">{it.hesapAdi}</span>,
+    },
+    {
+      header: "Banka / Şube",
+      width: "200px",
+      render: (it) => (
+        <span>
+          {it.bankaAdi || "-"} {it.subeAdi ? `(${it.subeAdi})` : ""}
+        </span>
+      ),
+    },
+    {
+      header: "IBAN",
+      width: "220px",
+      render: (it) => <span className="font-monospace small">{it.iban || "-"}</span>,
+    },
+    {
+      header: "Bakiye",
+      width: "130px",
+      align: "right",
+      render: (it) => (
+        <span className={`font-monospace fw-bold ${Number(it.bakiye || 0) < 0 ? "text-danger" : "text-success"}`}>
+          {Number(it.bakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
+        </span>
+      ),
     },
   ];
 
@@ -441,10 +464,10 @@ export const PosCihaziTanimlariPage: React.FC = () => {
                 </Col>
               </Form.Group>
 
-              {/* Bağlı Cari / Banka Kartı */}
+              {/* Bağlı Banka Kartı */}
               <Form.Group as={Row} className="mb-2 align-items-center g-2">
                 <Form.Label column style={{ width: "115px", flex: "0 0 115px", maxWidth: "115px" }} className="small fw-bold text-secondary text-start text-nowrap">
-                  Bağlı Banka/Cari :
+                  Bağlı Banka :
                 </Form.Label>
                 <Col>
                   <div style={{ maxWidth: "280px" }}>
@@ -458,16 +481,17 @@ export const PosCihaziTanimlariPage: React.FC = () => {
                           setCariUnvan(e.target.value);
                           if (!e.target.value.trim()) setCariKartId(null);
                         }}
-                        onKeyDown={handleCariKeyDown}
+                        onKeyDown={handleBankaKeyDown}
+                        placeholder="Banka kartı seçiniz..."
                         className="fw-semibold shadow-none"
                       />
                       <Button
                         variant="outline-primary"
                         onClick={() => {
-                          setCariInitialSearch(cariUnvan.trim());
-                          setShowCariLookup(true);
+                          setBankaInitialSearch(cariUnvan.trim());
+                          setShowBankaLookup(true);
                         }}
-                        title="Banka / Cari Kartı Seç (F4)"
+                        title="Banka Hesap Kartı Seç (F4 / F8 / F12)"
                       >
                         <IconBinoculars size={15} />
                       </Button>
@@ -571,32 +595,31 @@ export const PosCihaziTanimlariPage: React.FC = () => {
         onHide={() => setShowPosLookup(false)}
       />
 
-      {/* 2. Cari Kart Seçimi LookupModal */}
-      <LookupModal<any>
-        show={showCariLookup}
-        title="Banka / Cari Kartı Seçimi (F4)"
-        initialSearchTerm={cariInitialSearch}
-        columns={cariLookupColumns}
-        items={cariList}
+      {/* 2. Banka Hesap Kartı Seçimi LookupModal */}
+      <LookupModal<BankaHesapItem>
+        show={showBankaLookup}
+        title="Banka Hesap Kartı Seçimi (F4 / F8 / F12)"
+        initialSearchTerm={bankaInitialSearch}
+        columns={bankaLookupColumns}
+        items={bankaList}
         filterFn={(it, term) => {
           const t = term.toLowerCase();
           return (
-            (it.kod ? it.kod.toLowerCase().includes(t) : false) ||
-            (it.ad ? it.ad.toLowerCase().includes(t) : false) ||
-            (it.unvan ? it.unvan.toLowerCase().includes(t) : false) ||
-            (it.telefon ? it.telefon.toLowerCase().includes(t) : false) ||
-            (it.vergiKimlikNo ? it.vergiKimlikNo.toLowerCase().includes(t) : false) ||
-            (it.tcKimlikNo ? it.tcKimlikNo.toLowerCase().includes(t) : false)
+            (it.hesapNo ? it.hesapNo.toLowerCase().includes(t) : false) ||
+            (it.hesapAdi ? it.hesapAdi.toLowerCase().includes(t) : false) ||
+            (it.bankaAdi ? it.bankaAdi.toLowerCase().includes(t) : false) ||
+            (it.subeAdi ? it.subeAdi.toLowerCase().includes(t) : false) ||
+            (it.iban ? it.iban.toLowerCase().includes(t) : false)
           );
         }}
-        onSelect={(selected: any) => {
-          setCariKartId(selected.id || selected.cariKartId);
-          setCariKodu(selected.kod || "");
-          setCariUnvan(selected.unvan || selected.ad || "");
-          setShowCariLookup(false);
+        onSelect={(selected: BankaHesapItem) => {
+          setCariKartId(selected.bankaId);
+          setCariKodu(selected.hesapNo || "");
+          setCariUnvan(selected.hesapAdi || selected.bankaAdi || "");
+          setShowBankaLookup(false);
           devirRef.current?.focus();
         }}
-        onHide={() => setShowCariLookup(false)}
+        onHide={() => setShowBankaLookup(false)}
       />
 
       {/* 3. Silme Onay Modalı */}

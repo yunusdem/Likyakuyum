@@ -775,17 +775,14 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   }, [loadAll]);
 
   useEffect(() => {
-    if (isDuzeltmeMode && altinList.length > 0 && !altinUrunId) {
-      const queryParams = new URLSearchParams(location.search);
-      const queryId = queryParams.get("id");
-      if (queryId) {
-        const match = altinList.find((u) => u.altinUrunId === parseInt(queryId, 10));
-        if (match) handleSelectRecord(match);
-        else handleSelectRecord(altinList[altinList.length - 1]);
-      } else {
-        handleSelectRecord(altinList[altinList.length - 1]);
-      }
-    } else if (!isDuzeltmeMode && altinUrunId) {
+    const queryParams = new URLSearchParams(location.search);
+    const queryId = queryParams.get("id");
+
+    if (isDuzeltmeMode && queryId && altinList.length > 0) {
+      const match = altinList.find((u) => u.altinUrunId === parseInt(queryId, 10));
+      if (match) handleSelectRecord(match);
+    } else {
+      // Hem Kayıt hem de Düzeltme sayfası ilk açılışta boş gelir
       handleNew();
     }
     const timer = setTimeout(() => {
@@ -914,11 +911,12 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       const exact = grupList.find((g) => (g.grupKodu || "").trim().toUpperCase() === val);
       if (exact) {
         handleGrupSec(exact.grupKodu);
-        ayarInputRef.current?.focus();
       } else {
-        setGrupInitialSearch(val);
-        setShowGrupLookup(true);
+        handleGrupSec(val);
       }
+      setTimeout(() => {
+        ayarInputRef.current?.focus();
+      }, 50);
     }
   };
 
@@ -1095,13 +1093,9 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     setResimler([]);
     setSeciliResimIndex(0);
 
-    if (isDuzeltmeMode) {
-      navigate("/etiket/altin-urun-barkodlama");
-    } else {
-      setTimeout(() => {
-        grupKoduRef.current?.focus();
-      }, 50);
-    }
+    setTimeout(() => {
+      grupKoduRef.current?.focus();
+    }, 50);
     if (vezneId) {
       fetchStok(vezneId, "22");
     }
@@ -1826,6 +1820,21 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                     >
                       <IconBinoculars size={16} />
                     </Button>
+                    {!isDuzeltmeMode && (
+                      <Button
+                        variant="outline-success"
+                        onClick={() => {
+                          setYeniGrupKodu(grupKodu || "");
+                          setYeniGrupAciklama("");
+                          setYeniGrupBaslangicNo(0);
+                          setShowGrupEkleModal(true);
+                        }}
+                        title="Yeni Grup Ekle (+)"
+                        className="px-2"
+                      >
+                        <IconPlus size={16} />
+                      </Button>
+                    )}
                   </InputGroup>
                 </div>
               </Col>
@@ -2776,6 +2785,14 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         show={showGrupLookup}
         title="Kayıtlı Altın Ürün Grupları (Grup Seçimi)"
         initialSearchTerm={grupInitialSearch}
+        onAddNew={() => {
+          setShowGrupLookup(false);
+          setYeniGrupKodu(grupInitialSearch || grupKodu || "");
+          setYeniGrupAciklama("");
+          setYeniGrupBaslangicNo(0);
+          setShowGrupEkleModal(true);
+        }}
+        addNewLabel="Yeni Grup Ekle"
         columns={[
           {
             header: "Grup Kodu",

@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { aralikOzeti, filtreler, kurCoz, kurTarihte, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
+import { aralikOzeti, filtreler, kurCoz, kurTarihlerde, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 import { YEREL_GUN, saatTr } from "../kaynak.js";
 /** Fatura satırı (S) ↔ altın ürün (U) eşleşmesi */
 const SATIR_URUN = `(S.ALTIN_URUN_ID=U.ALTIN_URUN_ID OR (ISNULL(S.ALTIN_URUN_ID,0)=0 AND LEN(LTRIM(RTRIM(ISNULL(S.BARKOD,''))))>0 AND S.BARKOD=U.BARKOD))`;
@@ -175,10 +175,12 @@ export const ETIKET_SORGULARI = {
                 }
             }
         }
-        // Fatura günü HAS kuru (gün başına tek sorgu)
+        // Fatura günü HAS kuru (tüm günler tek sorguda)
         const gunKuru = new Map();
-        for (const g of new Set(ham.map((r) => gunMetni(r.tarih))))
-            gunKuru.set(g, d.hasId ? (await kurTarihte(pool, g)).get(d.hasId) || 0 : 0);
+        const gunler = [...new Set(ham.map((r) => gunMetni(r.tarih)))];
+        const gunHaritalari = d.hasId ? await kurTarihlerde(pool, gunler) : null;
+        for (const g of gunler)
+            gunKuru.set(g, gunHaritalari ? gunHaritalari.get(g).get(d.hasId) || 0 : 0);
         const tlId = Number((await pool.request().query(`SELECT TOP 1 PARA_ID id FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID`)).recordset[0]?.id || 1);
         let oncekiFatura = -1;
         const satirlar = ham.map((r) => {

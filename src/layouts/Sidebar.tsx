@@ -446,6 +446,11 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       return true;
     }
 
+    const paraSayAliases = ["/vezne/para-say", "/vezne/para-sayma", "/vezne/vezne-para-say"];
+    if (paraSayAliases.includes(curNorm) && paraSayAliases.includes(linkNorm)) {
+      return true;
+    }
+
     const barkodBasimiAliases = ["/etiket/barkod-basimi", "/etiket/barkod-fiyat"];
     if (barkodBasimiAliases.includes(curNorm) && barkodBasimiAliases.includes(linkNorm)) {
       return true;

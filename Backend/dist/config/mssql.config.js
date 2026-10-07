@@ -133,6 +133,30 @@ export const getActivePool = async () => {
     return null;
 };
 /**
+ * Bir veritabanına ait önbellekteki tüm havuzları kapatır ve kayıtlı bağlantı bilgisini unutur.
+ * Bulut klonlamada yarıda kalan veritabanı silinmeden önce çağrılır (eski havuz silinen veritabanına bağlı kalmasın).
+ */
+export const veritabaniHavuzlariniKapat = async (server, database) => {
+    const { host, port } = parseServerAndPort(server, Number(env.DB_PORT) || 1433);
+    const onEk = `${host.toLowerCase()}:${port}:${database.trim().toLowerCase()}`;
+    for (const anahtar of [...poolCache.keys()]) {
+        if (anahtar !== onEk && !anahtar.startsWith(`${onEk}:`))
+            continue;
+        const p = poolCache.get(anahtar);
+        poolCache.delete(anahtar);
+        try {
+            await (await p)?.close();
+        }
+        catch {
+            // zaten kapalı / hiç açılamamış
+        }
+    }
+    dbCredentialsMap.delete(onEk);
+    const db = database.trim().toLowerCase();
+    for (const k of [`${host.toLowerCase()}:${db}`, `localhost:${port}:${db}`, `localhost:${db}`])
+        dbCredentialsMap.delete(k);
+};
+/**
  * Generates cache key for given server and database
  */
 export const getPoolKey = (server, database) => {

@@ -1,4 +1,5 @@
 import { EBankaAktarimSqlRepository } from "../models/ebankaAktarimSql.repository.js";
+import { EBankaMutabakatSqlRepository } from "../models/ebankaMutabakatSql.repository.js";
 import { EBankaSqlRepository } from "../models/ebankaSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
 import { BankaService } from "./banka.service.js";
@@ -161,9 +162,65 @@ export class EBankaAktarimService {
             throw err;
         }
     }
+    /**
+     * Çift sayım önlemi (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md, M18): hareket, aynı Banka Hesap Kartına Hesap satırı olan bir sarraf /
+     * perakende fişiyle eşlenmişse banka girişini o fiş taşır. Böyle hareketin banka fişi kesilmez (aktarım durumu 3), kesilmişse iptal edilir.
+     * Eşleşme kalkar ya da fişten Hesap satırı çıkarsa geri alınır: iptal kaldırılır, fişi olmayan hareket Bekleyenler'e döner.
+     * vomsisIdler null: tüm hareketler.
+     */
+    static async kapsamiUygula(vomsisIdler, kullaniciId, dbContext) {
+        const farklar = await EBankaMutabakatSqlRepository.kapsamFarklari(vomsisIdler, dbContext);
+        let karsilanan = 0;
+        let geriAlinan = 0;
+        let iptalEdilen = 0;
+        for (const f of farklar) {
+            if (f.karsilaniyor) {
+                // Fiş iptal edilince banka tarafındaki kanca durumu 2 yapar; buradan 3'e çekilir ki geri alınabileceği bilinsin
+                if (f.bankaHareketId)
+                    await BankaService.toggleIptalHareket(f.bankaHareketId, true, kullaniciId, dbContext);
+                if (await EBankaMutabakatSqlRepository.kapsamDurumuYaz(f.vomsisId, f.bankaHareketId ? 2 : 0, 3, dbContext)) {
+                    karsilanan++;
+                    if (f.bankaHareketId)
+                        iptalEdilen++;
+                }
+            }
+            else if (f.bankaHareketId) {
+                // İptal geri alınınca kanca durumu yeniden 1 (aktarıldı) yapar
+                await BankaService.toggleIptalHareket(f.bankaHareketId, false, kullaniciId, dbContext);
+                geriAlinan++;
+            }
+            else if (await EBankaMutabakatSqlRepository.kapsamDurumuYaz(f.vomsisId, 3, 0, dbContext)) {
+                geriAlinan++;
+            }
+        }
+        if (karsilanan || geriAlinan) {
+            const ayar = await EBankaSqlRepository.ayarGetir(dbContext);
+            await EBankaSqlRepository.logYaz({
+                islem: "fisle-karsilama",
+                mod: ayar?.mod ?? "sahte",
+                basarili: true,
+                adet: karsilanan + geriAlinan,
+                mesaj: `${karsilanan} hareketin banka girişi fişin Hesap satırında (${iptalEdilen} banka fişi iptal edildi), ${geriAlinan} hareket geri alındı`,
+                kullaniciId,
+            }, dbContext);
+        }
+        return { karsilanan, geriAlinan };
+    }
+    /** kapsamiUygula'nın asıl işi (eşleme, listeleme, aktarım) durdurmayan hali: hata günlüğe yazılır, bir sonraki çağrıda yeniden denenir. */
+    static async kapsamiDene(vomsisIdler, kullaniciId, dbContext) {
+        try {
+            await this.kapsamiUygula(vomsisIdler, kullaniciId, dbContext);
+        }
+        catch (err) {
+            const ayar = await EBankaSqlRepository.ayarGetir(dbContext).catch(() => null);
+            await EBankaSqlRepository.logYaz({ islem: "fisle-karsilama", mod: ayar?.mod ?? "sahte", basarili: false, mesaj: err?.message || String(err), kullaniciId }, dbContext);
+        }
+    }
     /** Otomatik aktarım: eşitlemeden sonra ve Bekleyenler ekranındaki butonla çalışır. */
     static async calistir(kullaniciId, dbContext) {
         const { baslangic } = await this.canliMi(dbContext);
+        // Fişin Hesap satırıyla karşılanan hareket bekleyenlerden çıksın, banka fişi kesilmesin
+        await this.kapsamiDene(null, kullaniciId, dbContext);
         const aktarilmayacak = await EBankaAktarimSqlRepository.aktarilmayacaklariKapat(baslangic, dbContext);
         const [adaylar, s] = await Promise.all([EBankaAktarimSqlRepository.bekleyenler(baslangic, dbContext), this.sozlukler(dbContext)]);
         let aktarilan = 0;
@@ -210,9 +267,12 @@ export class EBankaAktarimService {
     /** Bekleyenler'den elle aktarım: cariyi (isteğe bağlı) ve döviz hesabında kuru kullanıcı verir. */
     static async elleAktar(vomsisId, girdi, kullaniciId, dbContext) {
         await this.canliMi(dbContext);
+        await this.kapsamiDene([vomsisId], kullaniciId, dbContext);
         const h = await EBankaAktarimSqlRepository.adayGetir(vomsisId, dbContext);
         if (!h)
             throw ApiError.notFound("Hareket bulunamadı.");
+        if (h.aktarimDurumu === 3)
+            throw ApiError.conflict("Bu hareketin banka girişi, eşlendiği fişin Hesap satırında; ayrıca banka fişi kesilmez.");
         if (h.aktarimDurumu !== 0)
             throw ApiError.conflict("Bu hareket bekleyenlerde değil.");
         if (!h.bankaId)

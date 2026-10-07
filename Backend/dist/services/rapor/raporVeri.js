@@ -236,7 +236,8 @@ export const RAPOR_SORGULARI = {
         // Varlık = vezne mevcudu + cari alacaklarımız − cari borçlarımız. Borç / alacak net harekettir (eski yordam brüt veriyor olabilir — canlıda karşılaştırılacak).
         const net = async (gun) => {
             const m = new Map();
-            for (const v of await vezneBakiyeleri(pool, gun, p)) {
+            // Seçilen günün vezne bakiyeleri yukarıda zaten okundu (aynı sorgu); yalnız devir günü için yeniden çalıştırılır
+            for (const v of gun === p.tarih ? vezneler : await vezneBakiyeleri(pool, gun, p)) {
                 if (!paraUygun(Number(v.paraId)))
                     continue;
                 const o = m.get(v.paraKod) || { paraId: Number(v.paraId), paraKod: v.paraKod, miktar: 0 };

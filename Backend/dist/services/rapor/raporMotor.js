@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { ApiError } from "../../utils/ApiError.js";
 import { RAPOR_DIZINI, yaziTipleri, doldur } from "../belge/belgeMotor.js";
+import { raporIsiCalistir } from "./raporIsHavuzu.js";
 /**
  * Rapor PDF motoru — bant tabanlı (Crystal mantığı):
  * sayfa başlığı (firma, rapor adı, filtre özeti) → kolon başlıkları → [grup başlığı → detay satırları → grup alt toplamı]* →
@@ -27,9 +28,23 @@ export function raporTanimOku(kod) {
     t.kod = t.kod || kod;
     return t;
 }
-const trSayi = (n, b = 2) => Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: b, maximumFractionDigits: b });
-const tarihTr = (v) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }) : ""; };
-const tarihSaatTr = (v) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", hour12: false }).replace(",", "") : ""; };
+// Intl biçimleyicileri seçeneklere göre bir kez kurulur; toLocaleString her çağrıda yenisini kurduğu için binlerce hücrede pahalıdır.
+// Seçenekler toLocaleString / toLocaleDateString'in varsayılanlarıyla birebir aynıdır (çıktı metni değişmez).
+const sayiBicimleri = new Map();
+const sayiBicimi = (min, max) => {
+    const a = `${min}|${max}`;
+    let f = sayiBicimleri.get(a);
+    if (!f) {
+        f = new Intl.NumberFormat("tr-TR", min === undefined ? { maximumFractionDigits: max } : { minimumFractionDigits: min, maximumFractionDigits: max });
+        sayiBicimleri.set(a, f);
+    }
+    return f;
+};
+const tarihBicimi = new Intl.DateTimeFormat("tr-TR", { timeZone: "Europe/Istanbul" });
+const tarihSaatBicimi = new Intl.DateTimeFormat("tr-TR", { timeZone: "Europe/Istanbul", hour12: false, year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+const trSayi = (n, b = 2) => sayiBicimi(b, b).format(Number(n || 0));
+const tarihTr = (v) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? tarihBicimi.format(d) : ""; };
+const tarihSaatTr = (v) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? tarihSaatBicimi.format(d).replace(",", "") : ""; };
 /** Hücre değerini kolon biçimine göre metne çevirir (PDF ve Excel görünüm metni). */
 export function bicimle(v, bicim) {
     if (v === null || v === undefined || v === "")
@@ -37,15 +52,24 @@ export function bicimle(v, bicim) {
     switch (bicim) {
         case "sayi": return trSayi(Number(v));
         case "sayi4": return trSayi(Number(v), 4);
-        case "kur": return Number(v || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 5 });
-        case "tam": return Number(v || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
+        case "kur": return sayiBicimi(2, 5).format(Number(v || 0));
+        case "tam": return sayiBicimi(undefined, 0).format(Number(v || 0));
         case "tarih": return tarihTr(v);
         case "tarihSaat": return tarihSaatTr(v);
         default: return String(v);
     }
 }
 const sayisal = (b) => b === "sayi" || b === "sayi4" || b === "kur" || b === "tam";
+/**
+ * PDF'i ayrı iş parçacığında üretir: pdfkit çizimi senkron olduğundan büyük raporda ana süreçte tüm istekleri bekletirdi.
+ * Yazı tipi denetimi burada yapılır ki hata ApiError olarak dönsün.
+ */
 export async function raporPdf(g) {
+    yaziTipleri();
+    return raporIsiCalistir("pdf", g);
+}
+/** Asıl PDF çizimi (iş parçacığında ya da yedek olarak aynı süreçte çalışır). */
+export async function raporPdfUret(g) {
     const font = yaziTipleri();
     const yatay = g.tanim.kagit === "A4-yatay";
     const kenar = 28;
@@ -72,9 +96,12 @@ export async function raporPdf(g) {
             const f = kalin ? K() : N();
             let b = tabanBoyut, t = metin;
             const avail = g - 6;
-            while (f.fontSize(b).widthOfString(t) > avail && b > 5.5)
+            let w = f.fontSize(b).widthOfString(t);
+            while (w > avail && b > 5.5) {
                 b -= 0.5;
-            if (f.fontSize(b).widthOfString(t) > avail) {
+                w = f.fontSize(b).widthOfString(t);
+            }
+            if (w > avail) {
                 while (t.length > 1 && f.widthOfString(t + "…") > avail)
                     t = t.slice(0, -1);
                 t += "…";
@@ -92,9 +119,12 @@ export async function raporPdf(g) {
             {
                 const g35 = genislik * 0.35;
                 let b = 8, t = g.firma.ad || "";
-                while (N().fontSize(b).widthOfString(t) > g35 && b > 6)
+                let w = N().fontSize(b).widthOfString(t);
+                while (w > g35 && b > 6) {
                     b -= 0.5;
-                if (N().fontSize(b).widthOfString(t) > g35) {
+                    w = N().fontSize(b).widthOfString(t);
+                }
+                if (w > g35) {
                     while (t.length > 1 && N().widthOfString(t + "…") > g35)
                         t = t.slice(0, -1);
                     t += "…";

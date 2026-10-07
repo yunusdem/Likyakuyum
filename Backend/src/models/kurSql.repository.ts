@@ -293,8 +293,8 @@ export class KurSqlRepository {
 
       let q = "SELECT TOP 1 * FROM [dbo].[TODVZ_KUR_TABLOSU] WHERE [TUR] = @tur";
       if (tarih) {
-        req.input("tarih", sql.Date, new Date(tarih));
-        q += " AND [TARIH] >= @tarih AND [TARIH] < DATEADD(DAY, 1, @tarih)";
+        req.input("tarih", sql.VarChar(10), String(tarih).substring(0, 10));
+        q += " AND CAST([TARIH] AS DATE) = CAST(@tarih AS DATE)";
       }
       q += " ORDER BY [ZAMAN] DESC, [KUR_TABLOSU_ID] DESC";
 
@@ -534,6 +534,88 @@ export class KurSqlRepository {
       }
     }
 
+    // 4. If tur === 0 (Anlık Fiyat Listesi kaydedildiğinde), aynı zamanda o günün Saklanan Kapanış Kuru (TUR = 2) da otomatik güncellensin/oluşturulsun
+    if (tur === 0 && satirlar && satirlar.length > 0) {
+      try {
+        let saklananTabloId: number | null = null;
+        const checkSaklanan = await pool
+          .request()
+          .input("zaman", sql.DateTime, zaman)
+          .query<{ KUR_TABLOSU_ID: number }>(`
+            SELECT TOP 1 [KUR_TABLOSU_ID] 
+            FROM [dbo].[TODVZ_KUR_TABLOSU] 
+            WHERE [TUR] = 2 AND CAST([TARIH] AS DATE) = CAST(@zaman AS DATE)
+            ORDER BY [KUR_TABLOSU_ID] DESC
+          `);
+
+        if (checkSaklanan.recordset.length > 0) {
+          saklananTabloId = checkSaklanan.recordset[0].KUR_TABLOSU_ID;
+          await pool
+            .request()
+            .input("id", sql.Int, saklananTabloId)
+            .input("zaman", sql.DateTime, zaman)
+            .query(`
+              UPDATE [dbo].[TODVZ_KUR_TABLOSU] 
+              SET [ZAMAN] = @zaman, [TARIH] = CAST(@zaman AS DATE) 
+              WHERE [KUR_TABLOSU_ID] = @id
+            `);
+        } else {
+          const insSaklanan = await pool
+            .request()
+            .input("zaman", sql.DateTime, zaman)
+            .query<{ KUR_TABLOSU_ID: number }>(`
+              INSERT INTO [dbo].[TODVZ_KUR_TABLOSU] ([TARIH], [TUR], [ZAMAN])
+              OUTPUT INSERTED.KUR_TABLOSU_ID
+              VALUES (CAST(@zaman AS DATE), 2, @zaman);
+            `);
+          saklananTabloId = insSaklanan.recordset[0]?.KUR_TABLOSU_ID || null;
+        }
+
+        if (saklananTabloId) {
+          kapanisId = saklananTabloId;
+          const uniqueSatirlar = Array.from(
+            new Map(satirlar.filter((s) => s && s.paraId).map((s) => [s.paraId, s])).values()
+          );
+
+          for (const s of uniqueSatirlar) {
+            const dovizAlis = s.dovizAlis !== null && s.dovizAlis !== undefined && !isNaN(Number(s.dovizAlis)) ? Number(s.dovizAlis) : 0;
+            const dovizSatis = s.dovizSatis !== null && s.dovizSatis !== undefined && !isNaN(Number(s.dovizSatis)) ? Number(s.dovizSatis) : 0;
+            const efektifAlis = s.efektifAlis !== null && s.efektifAlis !== undefined && !isNaN(Number(s.efektifAlis)) ? Number(s.efektifAlis) : 0;
+            const efektifSatis = s.efektifSatis !== null && s.efektifSatis !== undefined && !isNaN(Number(s.efektifSatis)) ? Number(s.efektifSatis) : 0;
+            const parite = s.parite !== null && s.parite !== undefined && !isNaN(Number(s.parite)) ? Number(s.parite) : 0;
+
+            const rReq = pool.request();
+            rReq.input("KUR_TABLOSU_ID", sql.Int, saklananTabloId);
+            rReq.input("PARA_ID", sql.Int, s.paraId);
+            rReq.input("DOVIZ_ALIS", sql.Float, dovizAlis);
+            rReq.input("DOVIZ_SATIS", sql.Float, dovizSatis);
+            rReq.input("EFEKTIF_ALIS", sql.Float, efektifAlis);
+            rReq.input("EFEKTIF_SATIS", sql.Float, efektifSatis);
+            rReq.input("PARITE", sql.Float, parite);
+
+            await rReq.query(`
+              UPDATE [dbo].[TODVZ_KUR]
+              SET 
+                  [DOVIZ_ALIS] = @DOVIZ_ALIS,
+                  [DOVIZ_SATIS] = @DOVIZ_SATIS,
+                  [EFEKTIF_ALIS] = @EFEKTIF_ALIS,
+                  [EFEKTIF_SATIS] = @EFEKTIF_SATIS,
+                  [PARITE] = @PARITE
+              WHERE [KUR_TABLOSU_ID] = @KUR_TABLOSU_ID AND [PARA_ID] = @PARA_ID;
+
+              IF @@ROWCOUNT = 0
+              BEGIN
+                  INSERT INTO [dbo].[TODVZ_KUR] ([KUR_TABLOSU_ID], [PARA_ID], [DOVIZ_ALIS], [DOVIZ_SATIS], [EFEKTIF_ALIS], [EFEKTIF_SATIS], [PARITE])
+                  VALUES (@KUR_TABLOSU_ID, @PARA_ID, @DOVIZ_ALIS, @DOVIZ_SATIS, @EFEKTIF_ALIS, @EFEKTIF_SATIS, @PARITE);
+              END
+            `);
+          }
+        }
+      } catch (saklaErr: any) {
+        logger.warn("Anlık kur kaydedilirken saklanan kura otomatik aktarım uyarısı:", saklaErr?.message || saklaErr);
+      }
+    }
+
     const saved = await KurSqlRepository.findTablo({ tur, id: finalKurTablosuId }, dbContext);
     if (!saved) {
       throw ApiError.internal("Kur tablosu kaydedildi fakat veri okunamadı.");
@@ -619,6 +701,40 @@ export class KurSqlRepository {
         WHERE [TUR] = @tur
         ORDER BY [ZAMAN] ASC, [KUR_TABLOSU_ID] ASC
       `);
+
+    if (res.recordset.length === 0 && tur === 2) {
+      // Eğer henüz hiç TUR=2 kaydı yoksa, TUR=0'daki aktif tabloyu kontrol edip başlangıç kaydı oluştur
+      const anlikRes = await pool
+        .request()
+        .query<TodvzKurTablosuEntity>(`
+          SELECT TOP 1 [KUR_TABLOSU_ID], [TARIH], [ZAMAN]
+          FROM [dbo].[TODVZ_KUR_TABLOSU]
+          WHERE [TUR] = 0
+          ORDER BY [KUR_TABLOSU_ID] DESC
+        `);
+      if (anlikRes.recordset.length > 0) {
+        const anlikTablo = anlikRes.recordset[0];
+        try {
+          await KurSqlRepository.sakla(anlikTablo.KUR_TABLOSU_ID, 2, anlikTablo.ZAMAN ? new Date(anlikTablo.ZAMAN).toISOString() : undefined, dbContext);
+          const reCheck = await pool
+            .request()
+            .input("tur", sql.TinyInt, 2)
+            .query<TodvzKurTablosuEntity>(`
+              SELECT [KUR_TABLOSU_ID], [TARIH], [ZAMAN]
+              FROM [dbo].[TODVZ_KUR_TABLOSU]
+              WHERE [TUR] = 2
+              ORDER BY [ZAMAN] ASC, [KUR_TABLOSU_ID] ASC
+            `);
+          return reCheck.recordset.map((r) => ({
+            id: r.KUR_TABLOSU_ID,
+            tarih: KurSqlRepository.formatDateOnly(r.TARIH),
+            zaman: KurSqlRepository.formatIso(r.ZAMAN),
+          }));
+        } catch (e) {
+          logger.warn("Başlangıç saklanan kur oluşturma uyarısı:", e);
+        }
+      }
+    }
 
     return res.recordset.map((r) => ({
       id: r.KUR_TABLOSU_ID,

@@ -129,15 +129,28 @@ export const KasaHesapKayitPage: React.FC = () => {
       setHesapList(hesaplar);
       setIskontoList(iskontolar);
 
-      if (isEditPage) {
-        if (hesaplar.length > 0) {
-          const sonKayit = hesaplar.reduce((max, h) => (h.hesapId > max.hesapId ? h : max));
-          handleSelectHesap(sonKayit);
+      const queryParams = new URLSearchParams(location.search);
+      const queryId = queryParams.get("id");
+
+      if (isEditPage && queryId && hesaplar.length > 0) {
+        const match = hesaplar.find((h) => String(h.hesapId) === queryId);
+        if (match) {
+          handleSelectHesap(match);
         } else {
-          handleNew();
+          setHesapId(null);
+          setKod("");
+          setAd("");
+          setKdvOrani(0);
+          setIskontoId(null);
+          setAktif(true);
+          setToplamGiris(0);
+          setToplamCikis(0);
+          setBakiye(0);
+          setEklemeZamani(null);
+          setGuncellemeZamani(null);
         }
       } else {
-        // A- Hesap Kayıt: Tüm input alanları boş, KDV oranı 0
+        // Hem Kayıt hem de Düzeltme ilk açılışta boş gelir
         setHesapId(null);
         setKod("");
         setAd("");

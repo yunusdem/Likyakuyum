@@ -1,11 +1,14 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
+import { HavuzOnbellegi } from "../utils/havuzOnbellegi.js";
 import { logger } from "../utils/logger.js";
 const TOKEN_KOLONLARI = {
     banka: { token: "TOKEN_BANKA_SIFRELI", bitis: "TOKEN_BANKA_BITIS" },
     vpos: { token: "TOKEN_VPOS_SIFRELI", bitis: "TOKEN_VPOS_BITIS" },
 };
 const tarihMetni = (d) => (d ? new Date(d).toISOString() : null);
+/** Ana Sayfa'nın e-Banka özeti (GET /ebanka/ozet): havuz başına 10 sn tutulur; ayar, hesap ve hareket yazımlarında temizlenir. */
+export const ebankaOzetOnbellegi = new HavuzOnbellegi(10_000);
 export class EBankaSqlRepository {
     static async ensureTables(pool) {
         try {
@@ -51,9 +54,16 @@ export class EBankaSqlRepository {
             logger.warn(`[EBankaSqlRepository.ensureTables] Warning: ${err.message}`);
         }
     }
+    // Tablo denetimi bağlantı havuzu başına bir kez yapılır (ensureTables hatayı kendisi günlüğe yazar, sonuç saklanır)
+    static hazirHavuzlar = new WeakMap();
     static async pool(dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-        await this.ensureTables(pool);
+        let hazir = this.hazirHavuzlar.get(pool);
+        if (!hazir) {
+            hazir = this.ensureTables(pool);
+            this.hazirHavuzlar.set(pool, hazir);
+        }
+        await hazir;
         return pool;
     }
     static async ayarGetir(dbContext) {
@@ -105,6 +115,7 @@ export class EBankaSqlRepository {
         GUNCELLEME_ZAMANI = GETDATE()
       WHERE AYAR_ID = 1;
     `);
+        ebankaOzetOnbellegi.temizle(pool);
     }
     static async tokenGetir(servis, dbContext) {
         const pool = await this.pool(dbContext);

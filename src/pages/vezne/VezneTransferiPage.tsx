@@ -20,6 +20,7 @@ import {
   IconArrowsExchange,
   IconPrinter,
   IconAlertTriangle,
+  IconChevronDown,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -30,10 +31,150 @@ import {
   VezneTransferiModel,
   VezneTransferiListItem,
 } from "../../services/vezneTransferiService";
+import {
+  VezneIzlemeService,
+  VezneIzlemeRow,
+} from "../../services/vezneIzlemeService";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
 import { useAuth } from "../../context/AuthContext";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
+
+interface VezneBakiyeDropdownProps {
+  vezneId: number;
+  vezneAd?: string;
+  bakiyeler: { paraId: number; paraKodu: string; paraAdi: string; miktar: number }[];
+  align?: "left" | "right";
+}
+
+// Vezne Bakiyelerini Açılır Tablo ile Gösteren Komponent
+const VezneBakiyeDropdown: React.FC<VezneBakiyeDropdownProps> = ({
+  vezneId,
+  vezneAd,
+  bakiyeler,
+  align = "left",
+}) => {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  if (!vezneId || vezneId <= 0) return null;
+
+  // Sadece kayıtlı (sıfırdan farklı) bakiyeleri göster
+  const activeBakiyeler = (bakiyeler || []).filter((b) => Number(b.miktar) !== 0);
+
+  return (
+    <div className="position-relative d-inline-block ms-1" ref={dropdownRef} style={{ zIndex: 1050 }}>
+      <button
+        type="button"
+        className="btn btn-sm py-0 px-1.5 d-inline-flex align-items-center justify-content-center border rounded shadow-2xs bg-white text-secondary"
+        style={{
+          width: "30px",
+          height: "30px",
+          borderColor: "#cbd5e1",
+        }}
+        onClick={() => setIsOpen((prev) => !prev)}
+        title={`${vezneAd || "Vezne"} bakiye tablosunu görüntülemek için tıklayınız`}
+      >
+        <IconChevronDown
+          size={16}
+          style={{
+            transform: isOpen ? "rotate(180deg)" : "none",
+            transition: "transform 0.15s ease",
+            color: "#475569",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          className="position-absolute shadow-lg border rounded bg-white overflow-hidden"
+          style={{
+            top: "calc(100% + 4px)",
+            ...(align === "right" ? { right: 0, left: "auto" } : { left: 0, right: "auto" }),
+            zIndex: 1060,
+            width: "320px",
+            borderColor: "#cbd5e1",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+          }}
+        >
+          {activeBakiyeler.length === 0 ? (
+            <div className="p-3 text-center text-muted small" style={{ fontSize: "12px" }}>
+              Kayıtlı bakiye bulunamadı.
+            </div>
+          ) : (
+            <div style={{ maxHeight: "360px", overflowY: "auto" }}>
+              <Table hover size="sm" className="mb-0 align-middle" style={{ fontSize: "11.5px" }}>
+                <thead
+                  style={{
+                    backgroundColor: "#bae6fd",
+                    color: "#0369a1",
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 2,
+                  }}
+                >
+                  <tr>
+                    <th className="py-1.5 px-2.5 fw-bold border-bottom" style={{ backgroundColor: "#bae6fd", color: "#0369a1" }}>Kod</th>
+                    <th className="py-1.5 px-2.5 fw-bold text-end border-bottom" style={{ backgroundColor: "#bae6fd", color: "#0369a1" }}>Borç bakiye</th>
+                    <th className="py-1.5 px-2.5 fw-bold text-end border-bottom" style={{ backgroundColor: "#bae6fd", color: "#0369a1" }}>Alacak bakiye</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeBakiyeler.map((row) => {
+                    const borc = Number(row.miktar) > 0 ? Number(row.miktar) : 0;
+                    const alacak = Number(row.miktar) < 0 ? Math.abs(Number(row.miktar)) : 0;
+                    return (
+                      <tr key={row.paraId}>
+                        <td className="py-1.5 px-2.5 font-monospace fw-bold text-dark">
+                          {row.paraKodu}
+                        </td>
+                        <td className="py-1.5 px-2.5 text-end font-monospace">
+                          {borc > 0 ? (
+                            <span className="fw-bold text-danger">
+                              {new Intl.NumberFormat("tr-TR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }).format(borc)}
+                            </span>
+                          ) : (
+                            <span className="text-muted opacity-40">-</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2.5 text-end font-monospace">
+                          {alacak > 0 ? (
+                            <span className="fw-bold text-success">
+                              {new Intl.NumberFormat("tr-TR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }).format(alacak)}
+                            </span>
+                          ) : (
+                            <span className="text-muted opacity-40">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface TransferGridRow {
   id: string;
@@ -64,7 +205,6 @@ export const VezneTransferiPage: React.FC = () => {
   const [isLoadingLookups, setIsLoadingLookups] = useState<boolean>(true);
 
   // Modals
-  const [showAlanVezneModal, setShowAlanVezneModal] = useState<boolean>(false);
   const [showVerenVezneModal, setShowVerenVezneModal] = useState<boolean>(false);
   const [showParaModal, setShowParaModal] = useState<boolean>(false);
   const [activeRowIdForPara, setActiveRowIdForPara] = useState<string | null>(null);
@@ -85,13 +225,82 @@ export const VezneTransferiPage: React.FC = () => {
   const [alanVezneId, setAlanVezneId] = useState<number>(0);
   const [alanVezneKod, setAlanVezneKod] = useState<string>("");
   const [alanVezneAd, setAlanVezneAd] = useState<string>("");
+  const [alanVezneBakiyeler, setAlanVezneBakiyeler] = useState<
+    { paraId: number; paraKodu: string; paraAdi: string; miktar: number }[]
+  >([]);
   const [verenVezneId, setVerenVezneId] = useState<number>(0);
   const [verenVezneKod, setVerenVezneKod] = useState<string>("");
   const [verenVezneAd, setVerenVezneAd] = useState<string>("");
+  const [verenVezneBakiyeler, setVerenVezneBakiyeler] = useState<
+    { paraId: number; paraKodu: string; paraAdi: string; miktar: number }[]
+  >([]);
+  const [izlemeRows, setIzlemeRows] = useState<VezneIzlemeRow[]>([]);
   const [aciklama, setAciklama] = useState<string>("");
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   useERPAutoFocus({ dependencies: [transferId] });
+
+  // Alan Vezne bakiyelerini otomatik yükleme (Vezne İzleme verileri ile uyumlu)
+  useEffect(() => {
+    let active = true;
+    if (alanVezneId && alanVezneId > 0) {
+      if (izlemeRows.length > 0) {
+        const bList = izlemeRows
+          .map((r) => ({
+            paraId: r.paraId,
+            paraKodu: r.paraKodu,
+            paraAdi: r.paraAdi,
+            miktar: r.bakiyeler[alanVezneId] ?? 0,
+          }))
+          .filter((b) => b.miktar !== 0);
+        setAlanVezneBakiyeler(bList);
+      } else {
+        VezneTransferiService.getVezneBakiyeler(alanVezneId)
+          .then((b) => {
+            if (active) setAlanVezneBakiyeler(b || []);
+          })
+          .catch(() => {
+            if (active) setAlanVezneBakiyeler([]);
+          });
+      }
+    } else {
+      setAlanVezneBakiyeler([]);
+    }
+    return () => {
+      active = false;
+    };
+  }, [alanVezneId, izlemeRows]);
+
+  // Veren Vezne bakiyelerini otomatik yükleme (Vezne İzleme verileri ile uyumlu)
+  useEffect(() => {
+    let active = true;
+    if (verenVezneId && verenVezneId > 0) {
+      if (izlemeRows.length > 0) {
+        const bList = izlemeRows
+          .map((r) => ({
+            paraId: r.paraId,
+            paraKodu: r.paraKodu,
+            paraAdi: r.paraAdi,
+            miktar: r.bakiyeler[verenVezneId] ?? 0,
+          }))
+          .filter((b) => b.miktar !== 0);
+        setVerenVezneBakiyeler(bList);
+      } else {
+        VezneTransferiService.getVezneBakiyeler(verenVezneId)
+          .then((b) => {
+            if (active) setVerenVezneBakiyeler(b || []);
+          })
+          .catch(() => {
+            if (active) setVerenVezneBakiyeler([]);
+          });
+      }
+    } else {
+      setVerenVezneBakiyeler([]);
+    }
+    return () => {
+      active = false;
+    };
+  }, [verenVezneId, izlemeRows]);
 
   // Helper: create blank row
   const createEmptyRow = (satirNo: number = 1): TransferGridRow => ({
@@ -106,6 +315,7 @@ export const VezneTransferiPage: React.FC = () => {
   const [lines, setLines] = useState<TransferGridRow[]>([createEmptyRow(1)]);
   const [activeRowIndex, setActiveRowIndex] = useState<number>(0);
   const rowInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const verenVezneInputRef = useRef<HTMLInputElement | null>(null);
 
   // Helper to determine the logged-in user's assigned vezne
   const getUserVezne = useCallback(
@@ -132,12 +342,36 @@ export const VezneTransferiPage: React.FC = () => {
     [user?.cashierCode]
   );
 
-  // Load lookups (Vezneler & Paralar)
-  useEffect(() => {
-    let mounted = true;
-    const fetchLookups = async () => {
-      setIsLoadingLookups(true);
-      try {
+  // Load lookups (Vezne İzleme sayfasındaki canlı veriler ile yükle)
+  const fetchIzlemeData = useCallback(async () => {
+    setIsLoadingLookups(true);
+    try {
+      const izlemeRes = await VezneIzlemeService.getIzlemeData().catch(() => null);
+      if (izlemeRes && izlemeRes.columns && izlemeRes.columns.length > 0) {
+        const vCols: VezneItem[] = izlemeRes.columns.map((c) => ({
+          id: c.vezneId,
+          kod: c.kod,
+          ad: c.ad,
+        }));
+        const pRows: { id: number; kod: string; ad: string }[] = (izlemeRes.rows || []).map((r) => ({
+          id: r.paraId,
+          kod: r.paraKodu,
+          ad: r.paraAdi,
+        }));
+        setVezneList(vCols);
+        setParaList(pRows);
+        setIzlemeRows(izlemeRes.rows || []);
+
+        if (!queryId) {
+          const uv = getUserVezne(vCols);
+          if (uv) {
+            setAlanVezneId(uv.id);
+            setAlanVezneKod(uv.kod);
+            setAlanVezneAd(uv.ad);
+          }
+        }
+        return izlemeRes;
+      } else {
         const [vezneler, paralar] = await Promise.all([
           CashDeskService.getVezneler().catch(() => []),
           ProductDefinitionService.getProducts().catch(async () => {
@@ -145,32 +379,30 @@ export const VezneTransferiPage: React.FC = () => {
             return fallbackCurrencies.map((c) => ({ id: c.id, kod: c.code, ad: c.name } as ProductItem));
           }),
         ]);
+        setVezneList(vezneler);
+        setParaList(paralar.map((p) => ({ id: p.id, kod: p.kod.trim(), ad: p.ad.trim() })));
 
-        if (mounted) {
-          setVezneList(vezneler);
-          setParaList(paralar.map((p) => ({ id: p.id, kod: p.kod.trim(), ad: p.ad.trim() })));
-
-          if (!queryId) {
-            const uv = getUserVezne(vezneler);
-            if (uv) {
-              setAlanVezneId(uv.id);
-              setAlanVezneKod(uv.kod);
-              setAlanVezneAd(uv.ad);
-            }
+        if (!queryId) {
+          const uv = getUserVezne(vezneler);
+          if (uv) {
+            setAlanVezneId(uv.id);
+            setAlanVezneKod(uv.kod);
+            setAlanVezneAd(uv.ad);
           }
         }
-      } catch (err) {
-        console.error("Lookup yükleme hatası:", err);
-      } finally {
-        if (mounted) setIsLoadingLookups(false);
+        return null;
       }
-    };
-
-    fetchLookups();
-    return () => {
-      mounted = false;
-    };
+    } catch (err) {
+      console.error("Vezne izleme verisi yükleme hatası:", err);
+      return null;
+    } finally {
+      setIsLoadingLookups(false);
+    }
   }, [queryId, getUserVezne]);
+
+  useEffect(() => {
+    fetchIzlemeData();
+  }, [fetchIzlemeData]);
 
   // Sync Alan Vezne with logged-in user when vezneList or user becomes available
   useEffect(() => {
@@ -183,6 +415,17 @@ export const VezneTransferiPage: React.FC = () => {
       }
     }
   }, [queryId, transferId, alanVezneId, vezneList, getUserVezne]);
+
+  // Sayfa ilk açılınca imleç doğrudan Veren vezne inputuna fokuslanır
+  useEffect(() => {
+    if (!isLoadingLookups) {
+      const timer = setTimeout(() => {
+        verenVezneInputRef.current?.focus();
+        verenVezneInputRef.current?.select();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoadingLookups]);
 
   // Load transfer by ID if query parameter present
   const loadTransferById = useCallback(async (id: number) => {
@@ -258,6 +501,11 @@ export const VezneTransferiPage: React.FC = () => {
     setActiveRowIndex(0);
     setNotification(null);
 
+    setTimeout(() => {
+      verenVezneInputRef.current?.focus();
+      verenVezneInputRef.current?.select();
+    }, 100);
+
     if (queryId) {
       navigate(location.pathname, { replace: true });
     }
@@ -266,15 +514,7 @@ export const VezneTransferiPage: React.FC = () => {
   const handleRefresh = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [vezneler, paralar] = await Promise.all([
-        CashDeskService.getVezneler().catch(() => []),
-        ProductDefinitionService.getProducts().catch(async () => {
-          const fallbackCurrencies = await CashDeskService.getCurrencies().catch(() => []);
-          return fallbackCurrencies.map((c) => ({ id: c.id, kod: c.code, ad: c.name } as ProductItem));
-        }),
-      ]);
-      setVezneList(vezneler);
-      setParaList(paralar.map((p) => ({ id: p.id, kod: p.kod.trim(), ad: p.ad.trim() })));
+      await fetchIzlemeData();
       if (transferId) {
         await loadTransferById(transferId);
       } else if (!isDuzeltmeMode) {
@@ -285,7 +525,7 @@ export const VezneTransferiPage: React.FC = () => {
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [transferId, isDuzeltmeMode, loadTransferById, resetForm]);
+  }, [fetchIzlemeData, transferId, isDuzeltmeMode, loadTransferById, resetForm]);
 
   // Navigation handlers (|◀, ◀, ▶, ▶|)
   const handleNavigate = async (action: "first" | "prev" | "next" | "last") => {
@@ -540,22 +780,38 @@ export const VezneTransferiPage: React.FC = () => {
     }
   }, [notification]);
 
-  // Toplu Transfer (F5): Fetches source vezne balances and populates grid
+  // Toplu Transfer (F5): Veren veznenin Vezne İzleme'deki canlı bakiyelerini transfer satırlarına yükler
   const handleTopluTransfer = useCallback(async () => {
     if (!verenVezneId || verenVezneId <= 0) {
       setNotification({
         type: "warning",
-        message: "Lütfen önce veren vezneyi seçiniz.",
+        message: "Lütfen önce Veren Vezneyi seçiniz.",
       });
+      setShowVerenVezneModal(true);
       return;
     }
 
     try {
-      const bakiyeler = await VezneTransferiService.getVezneBakiyeler(verenVezneId);
+      let bakiyeler: { paraId: number; paraKodu: string; paraAdi: string; miktar: number }[] = [];
+      const izlemeRes = await VezneIzlemeService.getIzlemeData().catch(() => null);
+      if (izlemeRes && izlemeRes.rows && izlemeRes.rows.length > 0) {
+        setIzlemeRows(izlemeRes.rows);
+        bakiyeler = izlemeRes.rows
+          .map((r) => ({
+            paraId: r.paraId,
+            paraKodu: r.paraKodu,
+            paraAdi: r.paraAdi,
+            miktar: r.bakiyeler[verenVezneId] ?? 0,
+          }))
+          .filter((b) => b.miktar !== 0);
+      } else {
+        bakiyeler = await VezneTransferiService.getVezneBakiyeler(verenVezneId);
+      }
+
       if (!bakiyeler || bakiyeler.length === 0) {
         setNotification({
           type: "warning",
-          message: `${verenVezneAd || "Veren veznede"} pozitif bakiye bulunamadı.`,
+          message: `${verenVezneAd || "Veren veznede"} aktarılacak bakiye bulunamadı.`,
         });
         return;
       }
@@ -572,8 +828,14 @@ export const VezneTransferiPage: React.FC = () => {
       setLines(newLines);
       setNotification({
         type: "success",
-        message: `${verenVezneAd} kasasındaki ${bakiyeler.length} adet para bakiyesi transfer satırlarına yüklendi.`,
+        message: `${verenVezneAd} veznesindeki ${bakiyeler.length} adet bakiye transfer satırlarına yüklendi.`,
       });
+
+      setTimeout(() => {
+        const firstMiktarInput = rowInputRefs.current["miktar-0"] || rowInputRefs.current["kod-0"];
+        firstMiktarInput?.focus();
+        firstMiktarInput?.select();
+      }, 100);
     } catch (e: any) {
       setNotification({
         type: "danger",
@@ -635,7 +897,9 @@ export const VezneTransferiPage: React.FC = () => {
       return;
     }
 
-    const validLines = lines.filter((l) => l.paraId > 0 && Number(l.miktar) > 0);
+    const validLines = lines.filter(
+      (l) => l.paraId > 0 && l.miktar !== "" && !isNaN(Number(l.miktar)) && Number(l.miktar) !== 0
+    );
     if (validLines.length === 0) {
       setNotification({
         type: "warning",
@@ -687,6 +951,13 @@ export const VezneTransferiPage: React.FC = () => {
       setVerenVezneId(0);
       setVerenVezneKod("");
       setVerenVezneAd("");
+      setVerenVezneBakiyeler([]);
+      if (uv) {
+        VezneTransferiService.getVezneBakiyeler(uv.id)
+          .then((b) => setAlanVezneBakiyeler(b || []))
+          .catch(() => {});
+      }
+      await fetchIzlemeData();
       setAciklama("");
       setLines([createEmptyRow(1)]);
       setActiveRowIndex(0);
@@ -745,13 +1016,14 @@ export const VezneTransferiPage: React.FC = () => {
     }
   };
 
-  // Search Past Transfers Modal
+  // Search Past Transfers Modal (En eski kayıt ilk satırda, en yeni kayıt en altta - SQL sırasına göre ASC)
   const handleOpenSearchModal = async () => {
     setShowSearchModal(true);
     setIsLoadingTransferList(true);
     try {
-      const list = await VezneTransferiService.getTransfers({ limit: 100 });
-      setTransferList(list);
+      const list = await VezneTransferiService.getTransfers({ limit: 500 });
+      const sorted = [...(list || [])].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      setTransferList(sorted);
     } catch (e) {
       console.error("Transfer listesi getirme hatası:", e);
     } finally {
@@ -762,7 +1034,7 @@ export const VezneTransferiPage: React.FC = () => {
   // Keyboard shortcuts F1, F4, F5, F9, F10
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showAlanVezneModal || showVerenVezneModal || showParaModal || showSearchModal || showParaSayModal || showPrintModal || showDeleteConfirmModal) {
+      if (showVerenVezneModal || showParaModal || showSearchModal || showParaSayModal || showPrintModal || showDeleteConfirmModal) {
         return;
       }
 
@@ -791,7 +1063,6 @@ export const VezneTransferiPage: React.FC = () => {
     resetForm,
     handleTopluTransfer,
     handleOpenParaSay,
-    showAlanVezneModal,
     showVerenVezneModal,
     showParaModal,
     showSearchModal,
@@ -892,8 +1163,8 @@ export const VezneTransferiPage: React.FC = () => {
       )}
 
       {/* Main Window Frame matching Sarraf Fişi full-width card standard */}
-      <Card className="border-0 shadow-sm rounded-2 overflow-hidden mb-2">
-        <Card.Body className="p-0">
+      <Card className="border-0 shadow-sm rounded-2 mb-2" style={{ overflow: "visible" }}>
+        <Card.Body className="p-0" style={{ overflow: "visible" }}>
           {/* Form Header Area: 2-Column Responsive Grid matching Sarraf & Doviz Fisi */}
           <div className="py-2.5 px-3 bg-light border-bottom">
             <Row className="g-3">
@@ -911,18 +1182,18 @@ export const VezneTransferiPage: React.FC = () => {
                     >
                       Tarih
                     </label>
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0 }}>
                       <Form.Control
                         type="date"
                         size="sm"
                         value={tarih}
                         onChange={(e) => setTarih(e.target.value)}
-                        style={{ height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ width: "135px", maxWidth: "135px", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       />
                     </div>
                   </div>
 
-                  {/* Alan Vezne */}
+                  {/* Alan Vezne (Giriş Yapan Kullanıcının Veznesi - Değiştirilemez, Dürbünsüz) */}
                   <div className="d-flex flex-row align-items-center gap-2">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
@@ -930,57 +1201,37 @@ export const VezneTransferiPage: React.FC = () => {
                     >
                       Alan vezne
                     </label>
-                    <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ width: "120px", flexShrink: 0 }}>
-                        <Form.Control
-                          type="text"
-                          value={alanVezneKod}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setAlanVezneKod(val);
-                            const found = vezneList.find(
-                              (v) =>
-                                v.kod.toLowerCase() === val.trim().toLowerCase() ||
-                                String(v.id) === val.trim()
-                            );
-                            if (found) {
-                              setAlanVezneId(found.id);
-                              setAlanVezneAd(found.ad);
-                            } else {
-                              setAlanVezneId(0);
-                              setAlanVezneAd("");
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === "F8") {
-                              e.preventDefault();
-                              setShowAlanVezneModal(true);
-                            }
-                          }}
-                          placeholder=""
-                          style={{
-                            backgroundColor: "#ffffff",
-                            height: "30px",
-                            fontSize: "12.5px",
-                            fontWeight: 600,
-                            borderColor: "#cbd5e1",
-                          }}
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          className="px-2 py-0 d-flex align-items-center justify-content-center"
-                          style={{ height: "30px", borderColor: "#cbd5e1" }}
-                          onClick={() => setShowAlanVezneModal(true)}
-                          title="Alan Vezne Seç (F8)"
-                        >
-                          <IconBinoculars size={14} />
-                        </Button>
-                      </InputGroup>
+                    <div className="d-flex align-items-center gap-1.5 flex-wrap flex-grow-1" style={{ minWidth: 0 }}>
+                      <Form.Control
+                        type="text"
+                        size="sm"
+                        readOnly
+                        disabled
+                        value={alanVezneKod}
+                        style={{
+                          width: "90px",
+                          maxWidth: "90px",
+                          backgroundColor: "#f1f5f9",
+                          color: "#1e293b",
+                          height: "30px",
+                          fontSize: "12.5px",
+                          fontWeight: 600,
+                          borderColor: "#cbd5e1",
+                          cursor: "not-allowed",
+                        }}
+                        title="Alan vezne giriş yapan kullanıcının veznesidir (Değiştirilemez)"
+                      />
                       {alanVezneAd && (
-                        <span className="text-dark small fw-semibold text-truncate ms-1" style={{ maxWidth: "200px" }}>
+                        <span className="text-dark small fw-semibold text-truncate ms-1" style={{ maxWidth: "180px" }}>
                           ({alanVezneAd})
                         </span>
                       )}
+                      <VezneBakiyeDropdown
+                        vezneId={alanVezneId}
+                        vezneAd={alanVezneAd}
+                        bakiyeler={alanVezneBakiyeler}
+                        align="left"
+                      />
                     </div>
                   </div>
 
@@ -992,14 +1243,14 @@ export const VezneTransferiPage: React.FC = () => {
                     >
                       Ref no
                     </label>
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0 }}>
                       <Form.Control
                         type="text"
                         size="sm"
                         value={refNo}
                         onChange={(e) => setRefNo(e.target.value)}
                         placeholder=""
-                        style={{ height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ width: "135px", maxWidth: "135px", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       />
                     </div>
                   </div>
@@ -1020,9 +1271,10 @@ export const VezneTransferiPage: React.FC = () => {
                     >
                       Veren vezne
                     </label>
-                    <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: 0 }}>
+                    <div className="d-flex align-items-center gap-1.5 flex-wrap flex-grow-1" style={{ minWidth: 0 }}>
                       <InputGroup size="sm" style={{ width: "120px", flexShrink: 0 }}>
                         <Form.Control
+                          ref={verenVezneInputRef}
                           type="text"
                           value={verenVezneKod}
                           onChange={(e) => {
@@ -1042,7 +1294,16 @@ export const VezneTransferiPage: React.FC = () => {
                             }
                           }}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === "F8") {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (!verenVezneId) {
+                                setShowVerenVezneModal(true);
+                              } else {
+                                const firstRowParaInput = rowInputRefs.current["kod-0"];
+                                firstRowParaInput?.focus();
+                                firstRowParaInput?.select();
+                              }
+                            } else if (e.key === "F8" || e.key === "F12") {
                               e.preventDefault();
                               setShowVerenVezneModal(true);
                             }
@@ -1061,16 +1322,22 @@ export const VezneTransferiPage: React.FC = () => {
                           className="px-2 py-0 d-flex align-items-center justify-content-center"
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => setShowVerenVezneModal(true)}
-                          title="Veren Vezne Seç (F8)"
+                          title="Veren Vezne Seç (F8 / F12)"
                         >
                           <IconBinoculars size={14} />
                         </Button>
                       </InputGroup>
                       {verenVezneAd && (
-                        <span className="text-dark small fw-semibold text-truncate ms-1" style={{ maxWidth: "200px" }}>
+                        <span className="text-dark small fw-semibold text-truncate ms-1" style={{ maxWidth: "180px" }}>
                           ({verenVezneAd})
                         </span>
                       )}
+                      <VezneBakiyeDropdown
+                        vezneId={verenVezneId}
+                        vezneAd={verenVezneAd}
+                        bakiyeler={verenVezneBakiyeler}
+                        align="right"
+                      />
                     </div>
                   </div>
 
@@ -1082,14 +1349,14 @@ export const VezneTransferiPage: React.FC = () => {
                     >
                       Açıklama
                     </label>
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0 }}>
                       <Form.Control
                         type="text"
                         size="sm"
                         value={aciklama}
                         onChange={(e) => setAciklama(e.target.value)}
                         placeholder=""
-                        style={{ height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ width: "200px", maxWidth: "200px", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       />
                     </div>
                   </div>
@@ -1099,8 +1366,8 @@ export const VezneTransferiPage: React.FC = () => {
           </div>
 
           {/* Lines Grid Table */}
-          <div className="table-responsive" style={{ minHeight: "160px", maxHeight: "280px", overflowY: "auto" }}>
-            <Table bordered hover size="sm" className="mb-0 text-nowrap" style={{ fontSize: "12.5px" }}>
+          <div className="table-responsive w-100" style={{ minHeight: "160px", maxHeight: "280px", overflowY: "auto", backgroundColor: "#ffffff" }}>
+            <Table bordered hover size="sm" className="mb-0 w-100 text-nowrap" style={{ fontSize: "12.5px" }}>
               <thead
                 style={{
                   backgroundColor: "#bfdbfe",
@@ -1110,10 +1377,10 @@ export const VezneTransferiPage: React.FC = () => {
                   zIndex: 2,
                 }}
               >
-                <tr>
-                  <th style={{ width: "120px", padding: "4px 8px" }}>Kod</th>
-                  <th style={{ padding: "4px 8px" }}>Para adı</th>
-                  <th style={{ width: "220px", padding: "4px 8px" }} className="text-end">
+                <tr style={{ backgroundColor: "#bfdbfe" }}>
+                  <th style={{ width: "130px", padding: "6px 8px", backgroundColor: "#bfdbfe", color: "#1e3a8a" }}>Kod</th>
+                  <th style={{ padding: "6px 8px", backgroundColor: "#bfdbfe", color: "#1e3a8a" }}>Para adı</th>
+                  <th style={{ width: "220px", padding: "6px 8px", backgroundColor: "#bfdbfe", color: "#1e3a8a" }} className="text-end">
                     Miktar
                   </th>
                 </tr>
@@ -1122,11 +1389,13 @@ export const VezneTransferiPage: React.FC = () => {
                 {lines.map((line, idx) => (
                   <tr
                     key={line.id}
+                    data-row-id={line.id}
                     className={activeRowIndex === idx ? "table-active" : ""}
                     onClick={() => setActiveRowIndex(idx)}
+                    onContextMenu={() => setActiveRowIndex(idx)}
                   >
                     {/* Kod with quick search button */}
-                    <td style={{ padding: "3px 4px" }}>
+                    <td style={{ width: "130px", padding: "3px 4px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
@@ -1161,7 +1430,7 @@ export const VezneTransferiPage: React.FC = () => {
                     </td>
 
                     {/* Miktar */}
-                    <td style={{ padding: "3px 4px" }}>
+                    <td style={{ width: "220px", padding: "3px 4px" }}>
                       <Form.Control
                         ref={(el) => {
                           rowInputRefs.current[`miktar-${idx}`] = el;
@@ -1178,21 +1447,6 @@ export const VezneTransferiPage: React.FC = () => {
                           handleGridKeyDown(e, idx, "miktar");
                         }}
                       />
-                    </td>
-
-                    {/* Delete row action */}
-                    <td style={{ padding: "2px", textAlign: "center", verticalAlign: "middle" }}>
-                      {lines.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="p-0 text-muted hover-danger border-0"
-                          onClick={() => handleRemoveLine(idx)}
-                          title="Satırı Sil"
-                        >
-                          <IconTrash size={14} />
-                        </Button>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -1246,25 +1500,7 @@ export const VezneTransferiPage: React.FC = () => {
         </Card.Body>
       </Card>
 
-      {/* Alan Vezne Lookup Modal */}
-      <LookupModal<VezneItem>
-        show={showAlanVezneModal}
-        onHide={() => setShowAlanVezneModal(false)}
-        title="Alan Vezne Seçiniz"
-        items={vezneList}
-        columns={vezneColumns}
-        searchPlaceholder="Vezne adı veya koduna göre ara..."
-        filterFn={(item, term) =>
-          item.kod.toLowerCase().includes(term.toLowerCase()) ||
-          item.ad.toLowerCase().includes(term.toLowerCase())
-        }
-        onSelect={(item) => {
-          setAlanVezneId(item.id);
-          setAlanVezneKod(item.kod);
-          setAlanVezneAd(item.ad);
-          setShowAlanVezneModal(false);
-        }}
-      />
+
 
       {/* Veren Vezne Lookup Modal */}
       <LookupModal<VezneItem>
@@ -1417,7 +1653,7 @@ export const VezneTransferiPage: React.FC = () => {
               </thead>
               <tbody>
                 {lines
-                  .filter((l) => l.paraId > 0 && Number(l.miktar) > 0)
+                  .filter((l) => l.paraId > 0 && Number(l.miktar) !== 0)
                   .map((l, i) => (
                     <tr key={i}>
                       <td><strong>{l.paraKodu}</strong> - {l.paraAdi}</td>

@@ -28,6 +28,7 @@ import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
 import DovizFisiPage from "./pages/vezne/DovizFisiPage";
 import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
+import VezneParaSayPage from "./pages/vezne/VezneParaSayPage";
 import PiyasaPage from "./pages/piyasa/PiyasaPage";
 import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
 import PerakendeFisiPage from "./pages/vezne/PerakendeFisiPage";
@@ -221,6 +222,8 @@ export default function App() {
             <Route path="cari/listesi" element={<CariCardListPage />} />
             <Route path="cari/cari-kart-listesi" element={<CariCardListPage />} />
             <Route path="cari/detayli-kart-listesi" element={<CariCardListPage />} />
+            <Route path="cari/hesap-ad-listesi" element={<CariCardListPage />} />
+            <Route path="kasa/hesap-ad-listesi" element={<CariCardListPage />} />
             <Route path="cari/hareket-kayit" element={<CariHareketPage />} />
             <Route path="cari/hareket-duzeltme" element={<CariHareketPage />} />
             <Route path="cari/hareket-listesi" element={<CariHareketListPage />} />
@@ -246,6 +249,9 @@ export default function App() {
             <Route path="piyasa" element={<PiyasaPage />} />
             <Route path="vezne/izleme" element={<VezneIzlemePage />} />
             <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
+            <Route path="vezne/para-say" element={<VezneParaSayPage />} />
+            <Route path="vezne/para-sayma" element={<VezneParaSayPage />} />
+            <Route path="vezne/vezne-para-say" element={<VezneParaSayPage />} />
             <Route path="vezne/sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
             <Route path="vezne/sarraf-fisi-kayit" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
             <Route path="vezne/genel-sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />

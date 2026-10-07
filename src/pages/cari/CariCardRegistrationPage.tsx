@@ -466,12 +466,13 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
         }
 
         if (isEditPage) {
-          const idx =
-            targetIndex !== undefined && targetIndex >= 0 && targetIndex < items.length
-              ? targetIndex
-              : 0;
-          setSelectedIndex(idx);
-          handleSelectCari(items[idx], idx);
+          if (targetIndex !== undefined && targetIndex >= 0 && targetIndex < items.length) {
+            setSelectedIndex(targetIndex);
+            handleSelectCari(items[targetIndex], targetIndex);
+          } else {
+            // B- Cari Kart Düzeltme sayfası ilk açılışta boş gelir
+            handleClear();
+          }
         } else {
           handleClear();
         }

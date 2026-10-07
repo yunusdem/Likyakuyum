@@ -13,16 +13,75 @@ const satirdan = (r) => ({
     aktif: !!r.AKTIF,
     olusturanAdminId: r.OLUSTURAN_ADMIN_ID ?? null,
     olusturmaTarihi: r.OLUSTURMA_TARIHI,
+    lisansKodu: r.LISANS_KODU ?? null,
+    makineKimligi: r.MAKINE_KIMLIGI ?? null,
+    seriNo: r.SERI_NO ?? null,
+    iptal: !!r.IPTAL,
+    teslim: r.TESLIM ?? null,
+    teslimTarihi: r.TESLIM_TARIHI ?? null,
 });
+const SECIM = `
+  SELECT LISANS_ID, FIRMA_ID, LISANS_ANAHTARI, BASLANGIC, BITIS, KULLANICI_LIMITI, PAKET_ADI, NOTLAR, AKTIF,
+         OLUSTURAN_ADMIN_ID, OLUSTURMA_TARIHI, LISANS_KODU, MAKINE_KIMLIGI, SERI_NO, IPTAL, TESLIM, TESLIM_TARIHI
+  FROM dbo.ADM_LISANS`;
 export class LisansSqlRepository {
     static async firmaLisanslari(firmaId) {
         const pool = await getAdminPool();
-        const res = await pool.request().input("firmaId", sql.Int, firmaId).query(`
-      SELECT LISANS_ID, FIRMA_ID, LISANS_ANAHTARI, BASLANGIC, BITIS, KULLANICI_LIMITI, PAKET_ADI, NOTLAR, AKTIF,
-             OLUSTURAN_ADMIN_ID, OLUSTURMA_TARIHI
-      FROM dbo.ADM_LISANS WHERE FIRMA_ID = @firmaId ORDER BY LISANS_ID DESC
-    `);
+        const res = await pool.request().input("firmaId", sql.Int, firmaId).query(`${SECIM} WHERE FIRMA_ID = @firmaId ORDER BY LISANS_ID DESC`);
         return res.recordset.map(satirdan);
+    }
+    static async getir(lisansId) {
+        const pool = await getAdminPool();
+        const res = await pool.request().input("id", sql.Int, lisansId).query(`${SECIM} WHERE LISANS_ID = @id`);
+        return res.recordset[0] ? satirdan(res.recordset[0]) : null;
+    }
+    /** Lisans koduna imzalanacak seri: firmanın şimdiye kadarki en büyük serisinin bir fazlası. */
+    static async sonrakiSeri(firmaId) {
+        const pool = await getAdminPool();
+        const res = await pool
+            .request()
+            .input("firmaId", sql.Int, firmaId)
+            .query(`SELECT ISNULL(MAX(SERI_NO), 0) + 1 AS S FROM dbo.ADM_LISANS WITH (UPDLOCK, HOLDLOCK) WHERE FIRMA_ID = @firmaId`);
+        return res.recordset[0].S;
+    }
+    static async kodYaz(lisansId, kod, makine, seri) {
+        const pool = await getAdminPool();
+        await pool
+            .request()
+            .input("id", sql.Int, lisansId)
+            .input("kod", sql.VarChar(4000), kod)
+            .input("makine", sql.VarChar(40), makine)
+            .input("seri", sql.Int, seri)
+            .query(`UPDATE dbo.ADM_LISANS SET LISANS_KODU = @kod, MAKINE_KIMLIGI = @makine, SERI_NO = @seri,
+                     TESLIM = NULL, TESLIM_TARIHI = NULL WHERE LISANS_ID = @id`);
+    }
+    static async iptalEt(lisansId, adminId) {
+        const pool = await getAdminPool();
+        await pool
+            .request()
+            .input("id", sql.Int, lisansId)
+            .input("adminId", sql.Int, adminId)
+            .query(`UPDATE dbo.ADM_LISANS SET IPTAL = 1, IPTAL_TARIHI = GETDATE(), IPTAL_EDEN_ADMIN_ID = @adminId WHERE LISANS_ID = @id`);
+    }
+    /** Kurulumun bildirimine dönülecek, bu makine için en son üretilmiş ve iptal edilmemiş kod. */
+    static async makineIcinSonKod(firmaId, makine) {
+        const pool = await getAdminPool();
+        const res = await pool
+            .request()
+            .input("firmaId", sql.Int, firmaId)
+            .input("makine", sql.VarChar(40), makine)
+            .query(`SELECT TOP 1 LISANS_ID, LISANS_KODU, SERI_NO FROM dbo.ADM_LISANS
+              WHERE FIRMA_ID = @firmaId AND MAKINE_KIMLIGI = @makine AND IPTAL = 0 AND LISANS_KODU IS NOT NULL
+              ORDER BY SERI_NO DESC`);
+        const r = res.recordset[0];
+        return r ? { lisansId: r.LISANS_ID, kod: r.LISANS_KODU, seri: r.SERI_NO } : null;
+    }
+    static async teslimYaz(lisansId) {
+        const pool = await getAdminPool();
+        await pool
+            .request()
+            .input("id", sql.Int, lisansId)
+            .query(`UPDATE dbo.ADM_LISANS SET TESLIM = 'HEARTBEAT', TESLIM_TARIHI = GETDATE() WHERE LISANS_ID = @id AND TESLIM IS NULL`);
     }
     /** Yeni lisans firmanın aktif lisansı olur; önceki lisans geçmiş olarak kalır (uzatma = yeni satır). */
     static async ekle(veri) {

@@ -5,10 +5,11 @@ import { FirmaController } from "../controllers/admin/firma.controller.js";
 import { KullaniciController } from "../controllers/admin/kullanici.controller.js";
 import { ModulController } from "../controllers/admin/modul.controller.js";
 import { IzlemeController } from "../controllers/admin/izleme.controller.js";
+import { PosAdminController } from "../controllers/admin/posAdmin.controller.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { adminKapisi, adminAuthenticate, adminGirisSiniri, sifreBelirlenmisOlmali, adminHataIsleyici, epostaOnaySiniri, } from "../middlewares/adminAuth.middleware.js";
 import { ApiError } from "../utils/ApiError.js";
-import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, } from "../schemas/admin.schema.js";
+import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, bulutFirmaSchema, firmaSilSchema, indirSchema, lisansKodSchema, lisansIptalSchema, ayarKaydetSchema, surumGuncelleSchema, hedefSurumSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, } from "../schemas/admin.schema.js";
 // Ana admin paneli API'si (docs/ADMIN_PANEL_YOL_HARITASI.md). Kullanıcı tarafının authenticate'i burada kullanılmaz.
 const router = Router();
 router.use(adminKapisi);
@@ -16,6 +17,8 @@ router.use(adminKapisi);
 router.post("/auth/login", adminGirisSiniri, validate(adminGirisSchema), AdminAuthController.giris);
 // Açık uç: firma, maildeki doğrulama bağlantısını açıp düğmeye basınca (oturum yok; anahtar tek kullanımlık)
 router.post("/eposta-dogrulama/onayla", epostaOnaySiniri, validate(epostaOnaySchema), FirmaController.epostaOnayla);
+// Açık uç: panelin ürettiği 15 dakikalık bağlantıyla yedek dosyası indirme (tarayıcı doğrudan indirir)
+router.get("/indir/:token", epostaOnaySiniri, validate(indirSchema), FirmaController.indir);
 // Buradan sonrası admin oturumu ister
 router.use(adminAuthenticate);
 router.post("/auth/logout", AdminAuthController.cikis);
@@ -33,6 +36,13 @@ router.post("/firmalar/:id/eposta-dogrulama/gonder", validate(adminIdSchema), Fi
 router.put("/firmalar/:id/eposta-dogrulama", validate(epostaDogrulamaElleSchema), FirmaController.epostaDogrulamaElle);
 router.get("/firmalar", FirmaController.listele);
 router.post("/firmalar", validate(firmaEkleSchema), FirmaController.ekle);
+router.get("/bulut-durum", FirmaController.bulutDurum);
+router.post("/firmalar/bulut", validate(bulutFirmaSchema), FirmaController.bulutEkle);
+router.post("/firmalar/:id/yedekle", validate(adminIdSchema), FirmaController.yedekle);
+router.post("/firmalar/:id/yedek/baglanti", validate(adminIdSchema), FirmaController.yedekBaglantisi);
+router.get("/firmalar/:id/silme-durumu", validate(adminIdSchema), FirmaController.silmeDurumu);
+router.post("/firmalar/:id/sil", validate(firmaSilSchema), FirmaController.sil);
+router.post("/firmalar/:id/sil/geri-al", validate(adminIdSchema), FirmaController.silmeyiGeriAl);
 router.get("/firmalar/:id", validate(adminIdSchema), FirmaController.getir);
 router.put("/firmalar/:id", validate(firmaGuncelleSchema), FirmaController.guncelle);
 router.put("/firmalar/:id/durum", validate(firmaDurumSchema), FirmaController.durum);
@@ -41,6 +51,16 @@ router.post("/firmalar/:id/db-test", validate(adminIdSchema), FirmaController.db
 router.post("/firmalar/:id/masak-kontrol", validate(adminIdSchema), FirmaController.masakKontrol);
 router.get("/firmalar/:id/lisanslar", validate(adminIdSchema), FirmaController.lisanslar);
 router.post("/firmalar/:id/lisanslar", validate(lisansEkleSchema), FirmaController.lisansEkle);
+router.post("/firmalar/:id/lisanslar/:lisansId/kod", validate(lisansKodSchema), FirmaController.lisansKodu);
+router.post("/firmalar/:id/lisanslar/:lisansId/iptal", validate(lisansIptalSchema), FirmaController.lisansIptal);
+router.get("/ayarlar", FirmaController.ayarlar);
+router.get("/firmalar/:id/kurulum", validate(adminIdSchema), FirmaController.kurulumDurumu);
+router.get("/firmalar/:id/kurulum/firma-dosyasi", validate(adminIdSchema), FirmaController.firmaDosyasi);
+router.post("/firmalar/:id/kurulum/baglanti", validate(adminIdSchema), FirmaController.kurulumBaglantisi);
+router.put("/firmalar/:id/hedef-surum", validate(hedefSurumSchema), FirmaController.hedefSurum);
+router.get("/surumler", FirmaController.surumler);
+router.put("/surumler/:surum", validate(surumGuncelleSchema), FirmaController.surumGuncelle);
+router.put("/ayarlar", validate(ayarKaydetSchema), FirmaController.ayarKaydet);
 router.get("/kullanicilar", KullaniciController.tumu);
 router.put("/kullanicilar/:id", validate(kullaniciGuncelleSchema), KullaniciController.guncelle);
 router.post("/kullanicilar/:id/sifre-sifirla", validate(adminIdSchema), KullaniciController.sifreSifirla);
@@ -56,6 +76,23 @@ router.get("/izleme/giris-log", validate(girisLogSchema), IzlemeController.giris
 router.get("/izleme/islem-log", validate(islemLogSchema), IzlemeController.islemLoglari);
 router.post("/izleme/oturumlar/:sid/kapat", validate(oturumKapatSchema), IzlemeController.oturumuKapat);
 router.post("/firmalar/:id/oturumlari-kapat", validate(adminIdSchema), IzlemeController.firmaOturumlariniKapat);
+// POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5): merkezi ayarlar, firma modu, doğrulama, test konsolu
+router.get("/pos/ayar", PosAdminController.ayarGetir);
+router.put("/pos/ayar", PosAdminController.ayarKaydet);
+router.get("/pos/dogrulama", PosAdminController.dogrulama);
+router.put("/pos/dogrulama", PosAdminController.dogrulamaYaz);
+router.get("/pos/log", PosAdminController.log);
+router.post("/pos/kimlik-testi", PosAdminController.kimlikTesti);
+router.get("/pos/firmalar", PosAdminController.konsolFirmalar);
+router.get("/firmalar/:id/pos", validate(adminIdSchema), PosAdminController.firmaModu);
+router.put("/firmalar/:id/pos", validate(adminIdSchema), PosAdminController.firmaModuYaz);
+router.get("/firmalar/:id/pos/terminaller", validate(adminIdSchema), PosAdminController.konsolTerminaller);
+router.post("/firmalar/:id/pos/baglanti-testi", validate(adminIdSchema), PosAdminController.konsolBaglantiTesti);
+router.post("/firmalar/:id/pos/deneme", validate(adminIdSchema), PosAdminController.konsolDeneme);
+// adminIdSchema yalnızca :id'yi tanır ve diğer yol parametrelerini atar; bu yüzden :islemId'li uçlarda kullanılmaz (servis denetler)
+router.get("/firmalar/:id/pos/deneme/:islemId", PosAdminController.konsolIslem);
+router.post("/firmalar/:id/pos/deneme/:islemId/iptal", PosAdminController.konsolIptal);
+router.post("/firmalar/:id/pos/deneme/:islemId/elle", PosAdminController.konsolElle);
 // Bilinmeyen admin yolları ve tüm admin hataları burada biter (genel hata işleyicisine düşmez)
 router.use((req, res, next) => next(ApiError.notFound("Endpoint bulunamadı.")));
 router.use(adminHataIsleyici);

@@ -165,7 +165,7 @@ export class EbelgeKaynakService {
         const girdi = kaynakFaturaGirdisi(kaynak);
         if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx))
             throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
-        const mukellef = await EbelgeService.mukellefSorgula(girdi.alici.vknTckn, kullanici, ctx);
+        const mukellef = await EbelgeService.mukellefSorgulaCanli(girdi.alici.vknTckn, kullanici, ctx);
         girdi.senaryo = mukellef.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
         const sonuc = await EbelgeService.dogrulaGidenBelge(girdi, kullanici, false, ctx);
         if (!sonuc.semaGecerli || !sonuc.schematronGecerli)
@@ -184,7 +184,7 @@ export class EbelgeKaynakService {
             throw ApiError.conflict("Belge giden kutusunda zaten mevcut; yeniden gönderilmedi.");
         await EbelgeKaynakRepository.reserve(k, girdi.belgeNo, ctx);
         try {
-            const mukellef = await EbelgeService.mukellefSorgula(girdi.alici.vknTckn, kullanici, ctx);
+            const mukellef = await EbelgeService.mukellefSorgulaCanli(girdi.alici.vknTckn, kullanici, ctx);
             girdi.senaryo = mukellef.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
             if (girdi.senaryo !== senaryo)
                 throw ApiError.conflict("Alıcının mükellefiyeti değişmiş. Yeniden hazırlayın.");

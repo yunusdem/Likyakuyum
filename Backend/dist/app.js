@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { env } from "./config/env.config.js";
@@ -10,8 +11,8 @@ import { notFoundMiddleware, errorHandlerMiddleware } from "./middlewares/error.
 import apiRouter from "./routes/index.js";
 export const createApp = () => {
     const app = express();
-    // 1. Security HTTP Headers
-    app.use(helmet());
+    // 1. Security HTTP Headers (kurulumda arayüz de buradan sunulur: canlıdaki IIS gibi CSP uygulanmaz)
+    app.use(helmet(env.KURULUM_MODU ? { contentSecurityPolicy: false } : undefined));
     // 2. CORS Handling (Frontend origin & credentials)
     app.use(corsMiddleware);
     // 3. Request Parsers
@@ -23,7 +24,13 @@ export const createApp = () => {
     // 4. Rate Limiting & HTTP Logging
     app.use(globalRateLimiter);
     app.use(requestLoggerMiddleware);
-    // 5. Root & Health Check Endpoint
+    // 5. Kurulum (exe): arayüz aynı adresten sunulur (tarayıcı kısayolu http://localhost:5000)
+    const arayuz = env.KURULUM_MODU && env.ARAYUZ_KLASORU ? path.resolve(env.ARAYUZ_KLASORU) : "";
+    if (arayuz && fs.existsSync(path.join(arayuz, "index.html"))) {
+        app.use(express.static(arayuz, { index: "index.html", maxAge: "1h" }));
+        app.get(/^(?!\/api\/|\/uploads\/).*/, (req, res) => res.sendFile(path.join(arayuz, "index.html")));
+    }
+    // Root & Health Check Endpoint
     app.get("/", (req, res) => {
         res.json({
             name: "Kuyumcu ERP SaaS Backend API",

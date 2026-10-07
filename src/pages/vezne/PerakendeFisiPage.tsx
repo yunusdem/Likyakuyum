@@ -88,6 +88,7 @@ import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generatePerakendeReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
+import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
 import { MasakService, MasakEslesme } from "../../services/masakService";
 import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
@@ -489,6 +490,26 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return sellBg || "var(--user-sell-header-bg, #e2e8f0)";
     }
   }, [faturaTipi, user?.appearance?.buyHeaderBgColor, user?.appearance?.sellHeaderBgColor]);
+
+  const activeFisThemeText = useMemo(() => {
+    let buyText = user?.appearance?.buyHeaderTextColor;
+    let sellText = user?.appearance?.sellHeaderTextColor;
+    if (!buyText || !sellText) {
+      try {
+        const cached = localStorage.getItem("kuyumcu_active_appearance");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!buyText && parsed.buyHeaderTextColor) buyText = parsed.buyHeaderTextColor;
+          if (!sellText && parsed.sellHeaderTextColor) sellText = parsed.sellHeaderTextColor;
+        }
+      } catch {}
+    }
+    if (faturaTipi === 0) {
+      return buyText || "var(--user-buy-header-text, #0f172a)";
+    } else {
+      return sellText || "var(--user-sell-header-text, #0f172a)";
+    }
+  }, [faturaTipi, user?.appearance?.buyHeaderTextColor, user?.appearance?.sellHeaderTextColor]);
 
   useEffect(() => {
     PrinterService.getYazicilar().then(setPrinters).catch(() => { });
@@ -1010,11 +1031,18 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
 
             setHistoryList(mappedList);
-            const lastIdx = mappedList.length - 1;
-            const lastInv = mappedList[lastIdx];
-            if (lastInv?.faturaId) {
-              setCurrentIndex(lastIdx);
-              await handleSelectInvoiceForEdit(lastInv.faturaId);
+            const queryParams = new URLSearchParams(location.search);
+            const qId = queryParams.get("id");
+            if (qId) {
+              const matchedIdx = mappedList.findIndex((x) => x.faturaId === Number(qId));
+              if (matchedIdx >= 0) {
+                setCurrentIndex(matchedIdx);
+                await handleSelectInvoiceForEdit(Number(qId));
+              }
+            } else {
+              // D- Perakende Fişi Düzeltme sayfası ilk açılışta boş gelir
+              setCurrentIndex(-1);
+              setCurrentFaturaId(null);
             }
           }
         })
@@ -1750,7 +1778,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         }
         let valToSet = value;
         if (field === "miktar") {
-          valToSet = formatMiktar(value);
+          valToSet = onlyDecimal(String(value));
         }
         const updated = { ...r, [field]: valToSet };
         if (field === "barkod" && !String(value).trim()) {
@@ -1974,7 +2002,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         if (field === "adet") {
           sanitizedValue = value.replace(/\D/g, "");
         } else if (field === "miktar") {
-          sanitizedValue = formatMiktar(value);
+          sanitizedValue = onlyDecimal(String(value));
         }
         const updated = { ...r, [field]: sanitizedValue };
         if (field === "tutar") {
@@ -1982,7 +2010,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           const kVal = parseDecimal(r.kur) || 1;
           const isMetal = isAltinOrGumusRow(r, odemeUrunList);
           if (!isMetal && tVal > 0 && kVal > 0) {
-            updated.miktar = formatMiktar(Number((tVal / kVal).toFixed(4)));
+            updated.miktar = String(Number((tVal / kVal).toFixed(4)));
           }
         }
         return recomputeOdemeRow(updated, altinHasKuru);
@@ -2927,6 +2955,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const isF4 = key === "F4" || e.code === "F4" || e.keyCode === 115;
       const isF8 = key === "F8" || e.code === "F8" || e.keyCode === 119;
       const isF9 = key === "F9" || e.code === "F9" || e.keyCode === 120;
+      const isF12 = key === "F12" || e.code === "F12" || e.keyCode === 123;
+
+      if (isF12) {
+        if (triggerAdjacentBinoculars(activeEl)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
 
       if (isF1) {
         e.preventDefault();
@@ -4166,7 +4203,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             barkod: s.barkod || s.BARKOD || "",
             urunAdi: s.urunAdi || s.URUN_ADI || "Altın Ürün",
             ayar: s.ayar || s.AYAR || "14K",
-            miktar: formatMiktar(rawMiktar != null ? rawMiktar : miktar),
+            miktar: rawMiktar != null ? String(rawMiktar) : (miktar != null ? String(miktar) : ""),
             birim: s.birim || s.BIRIM || "Adet",
             gram: parseDecimal(s.gram ?? s.GRAM) || 0,
             hasGram: parseDecimal(s.hasGram ?? s.HAS_GRAM) || 0,
@@ -4256,7 +4293,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             cariKod: rowCariKod,
             cariUnvan: rowCariUnvan,
             adet: o.adet !== null && o.adet !== undefined && o.adet !== "" ? o.adet : (o.ADET !== null && o.ADET !== undefined ? o.ADET : ""),
-            miktar: rawMiktar !== "" ? formatMiktar(rawMiktar) : "",
+            miktar: rawMiktar !== "" && rawMiktar != null ? String(rawMiktar) : "",
             milyem: o.milyem !== null && o.milyem !== undefined && o.milyem !== "" ? o.milyem : (o.MILYEM !== null && o.MILYEM !== undefined ? o.MILYEM : ""),
             hasGram: o.hasGram !== null && o.hasGram !== undefined && o.hasGram !== "" ? o.hasGram : (o.HAS_GRAM !== null && o.HAS_GRAM !== undefined ? o.HAS_GRAM : ""),
             kur: parseDecimal(o.kur ?? o.KUR) || 1,
@@ -4664,21 +4701,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       {/* ─── 1. Top ERP Toolbar ────────────────────────────────────────── */}
       <ERPToolbar
         disableShortcuts
-        pageTitle={
-          <span style={{ fontWeight: 700, fontSize: "14px" }}>
-            {isDuzeltmeMode ? "D- Perakende Fişi Düzeltme" : "C- Perakende Fişi Kayıt"}{" "}
-            <Badge bg={faturaTipi === 1 ? "success" : "primary"} style={{ fontSize: "11px" }}>
-              {faturaTipi === 1 ? "SATIŞ" : "ALIŞ"}
-            </Badge>
-            <Badge bg="primary" className="ms-1" style={{ fontSize: "11px" }}>
-              {senaryo === "EARSIVFATURA"
-                ? "e-Arşiv"
-                : senaryo === "TEMELFATURA"
-                  ? "Temel Fatura"
-                  : "e-Fatura"}
-            </Badge>
-          </span>
-        }
+        pageTitle={isDuzeltmeMode ? "D- Perakende Fişi Düzeltme" : "C- Perakende Fişi Kayıt"}
         pageIcon={<IconBarcode size={20} />}
         onNew={handleNew}
         onSave={() => handleCompleteSale(false)}
@@ -4693,6 +4716,39 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         onPrev={isDuzeltmeMode ? handlePrev : undefined}
         onNext={isDuzeltmeMode ? handleNext : undefined}
         onLast={isDuzeltmeMode ? handleLast : undefined}
+        centerContent={
+          <div className="d-flex align-items-center gap-2">
+            <div
+              style={{
+                border: faturaTipi === 1 ? "2px solid #dc2626" : "2px solid #16a34a",
+                backgroundColor: activeFisThemeBg,
+                color: activeFisThemeText,
+                fontWeight: 800,
+                fontSize: "13.5px",
+                letterSpacing: "3px",
+                minWidth: "220px",
+                padding: "4px 30px",
+                borderRadius: "6px",
+                height: "30px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: faturaTipi === 1 ? "0 1px 3px rgba(220, 38, 38, 0.15)" : "0 1px 3px rgba(22, 163, 74, 0.15)",
+                textAlign: "center",
+                textTransform: "uppercase",
+              }}
+            >
+              {faturaTipi === 1 ? "SATIŞ" : "ALIŞ"}
+            </div>
+            <Badge bg="primary" className="ms-1 px-2 py-1" style={{ fontSize: "11px" }}>
+              {senaryo === "EARSIVFATURA"
+                ? "e-Arşiv"
+                : senaryo === "TEMELFATURA"
+                  ? "Temel Fatura"
+                  : "e-Fatura"}
+            </Badge>
+          </div>
+        }
         rightContent={
           <div className="d-flex align-items-center gap-2">
             {/* Üstteki kompakt tarih ve saat bölümü (Refresh butonunun hemen solunda) */}
@@ -5390,9 +5446,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             border: isMiktarMissing ? "2px solid #dc2626" : isBarkodlu ? "1.5px solid #bae6fd" : undefined,
                             boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                           }}
-                          value={formatMiktar(item.miktar)}
+                          value={item.miktar ?? ""}
                           onChange={(e) => handleUpdateItem(item.id, "miktar", e.target.value)}
-                          onBlur={() => handleUpdateItem(item.id, "miktar", formatMiktar(item.miktar))}
+                          onBlur={() => handleUpdateItem(item.id, "miktar", item.miktar)}
                           onKeyDown={(e) => handleGridKeyDown(e, idx, "miktar", item.id)}
                           onFocus={() => {
                             setActiveRowIndex(idx);
@@ -6263,9 +6319,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             inputMode="decimal"
                             size="sm"
                             className={`text-end font-monospace fw-semibold ${isOdemeMiktarMissing ? "is-invalid border-danger border-2 text-danger" : ""}`}
-                            value={formatMiktar(oRow.miktar)}
+                            value={oRow.miktar ?? ""}
                             onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
-                            onBlur={() => updateOdemeRow(oRow.id, "miktar", formatMiktar(oRow.miktar))}
+                            onBlur={() => updateOdemeRow(oRow.id, "miktar", oRow.miktar)}
                             onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "miktar", oRow.id)}
                             onFocus={() => {
                               setActiveOdemeRowIndex(rowIndex);

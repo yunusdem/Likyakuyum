@@ -251,48 +251,6 @@ export const KasaHareketPage: React.FC = () => {
     loadAll();
   }, [loadAll]);
 
-  // Sayfa modu veya URL değiştiğinde (Kayıt vs Düzeltme)
-  useEffect(() => {
-    if (!isEditPage) {
-      // Kayıt sayfasında form her zaman tamamen temiz ve boş gelir
-      setHesapHareketiId(null);
-      setTarih(new Date().toISOString().slice(0, 10));
-      setAciklama("");
-      setTip(1);
-      setHesapId(null);
-      setHesapKod("");
-      setHesapAd("");
-      setHesapBakiye(0);
-      setMeblag("");
-      setKdvOrani(0);
-      setKdvTutari(0);
-      setEklemeZamani(null);
-      setGuncellemeZamani(null);
-      hasAutoSelectedRef.current = false;
-    } else {
-      // Düzeltme sayfasında en son hareket seçilir
-      hasAutoSelectedRef.current = false;
-    }
-  }, [isEditPage, location.pathname]);
-
-  // Düzeltme modunda ilk açılışta otomatik olarak en son hareketi seç
-  useEffect(() => {
-    if (isEditPage && !hasAutoSelectedRef.current && hareketList.length > 0) {
-      hasAutoSelectedRef.current = true;
-      const sonHareket = hareketList[0]; // En yeni tarihli hareket
-      handleSelectHareket(sonHareket);
-    }
-  }, [isEditPage, hareketList]);
-
-  // Vezne seçildiğinde anlık bakiyeleri yükle
-  useEffect(() => {
-    if (vezneId) {
-      fetchVezneBakiyeler(vezneId);
-    } else {
-      setVezneBakiyeler([]);
-    }
-  }, [vezneId, fetchVezneBakiyeler]);
-
   // ─── Hareket Seçimi ──────────────────────────────────────────────────────────
   const handleSelectHareket = useCallback((h: HesapHareketiItem) => {
     setHesapHareketiId(h.hesapHareketiId);
@@ -324,6 +282,45 @@ export const KasaHareketPage: React.FC = () => {
       fetchVezneBakiyeler(h.vezneId);
     }
   }, [hesapList, fetchVezneBakiyeler]);
+
+  // Sayfa modu veya URL değiştiğinde (Kayıt vs Düzeltme)
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    const queryId = queryParams.get("id");
+
+    if (isEditPage && queryId && hareketList.length > 0) {
+      const match = hareketList.find((h) => String(h.hesapHareketiId) === queryId);
+      if (match) {
+        handleSelectHareket(match);
+        return;
+      }
+    }
+
+    // Hem Kayıt hem de Düzeltme ilk açılışta boş form ile başlar
+    setHesapHareketiId(null);
+    setTarih(new Date().toISOString().slice(0, 10));
+    setAciklama("");
+    setTip(1);
+    setHesapId(null);
+    setHesapKod("");
+    setHesapAd("");
+    setHesapBakiye(0);
+    setMeblag("");
+    setKdvOrani(0);
+    setKdvTutari(0);
+    setEklemeZamani(null);
+    setGuncellemeZamani(null);
+    hasAutoSelectedRef.current = false;
+  }, [isEditPage, location.pathname, location.search, hareketList, handleSelectHareket]);
+
+  // Vezne seçildiğinde anlık bakiyeleri yükle
+  useEffect(() => {
+    if (vezneId) {
+      fetchVezneBakiyeler(vezneId);
+    } else {
+      setVezneBakiyeler([]);
+    }
+  }, [vezneId, fetchVezneBakiyeler]);
 
   // ─── Yeni Kayıt Modu (F4 / Yeni) ───────────────────────────────────────────
   const handleNew = useCallback(() => {

@@ -1,0 +1,348 @@
+import crypto from "crypto";
+import fs from "fs";
+import sql from "mssql";
+import { ApiError } from "../../utils/ApiError.js";
+import { HttpStatus } from "../../constants/httpStatusCodes.js";
+import { logger } from "../../utils/logger.js";
+import { bugunTr, gunFarki } from "../../utils/zaman.utils.js";
+import { LisansKoduGecersiz, lisansKoduCoz } from "../lisans/lisansKodu.js";
+import { makineKimligi } from "../lisans/makineKimligi.js";
+import { kurulumFirmasi, firmaDosyasiHatasi, veriYolu } from "./firmaDosyasi.js";
+import { kurulumHavuzu } from "./kurulumDb.js";
+import { butunlukHatasi } from "./butunluk.js";
+export const KILIT_MESAJI = {
+    LISANS_YOK: "Bu kurulum için lisans yüklenmemiş.",
+    LISANS_GECERSIZ: "Yüklü lisans doğrulanamadı.",
+    FIRMA_UYUSMUYOR: "Yüklü lisans bu firmaya ait değil.",
+    MAKINE_UYUSMUYOR: "Lisans başka bir bilgisayara verilmiş. Bilgisayar değiştiyse yeni lisans almanız gerekir.",
+    SAAT_GERI_ALINDI: "Bilgisayarın tarihi/saati geri alındığı için program kilitlendi.",
+    LISANS_DOLDU: "Lisans süreniz doldu.",
+    DURUM_BOZUK: "Lisans kayıtları değiştirilmiş veya silinmiş olduğu için program kilitlendi.",
+    FIRMA_DOSYASI_YOK: "Kurulumun firma dosyası (firma.lky) bulunamadı veya bozuk. Programı yeniden kurun.",
+    BUTUNLUK_BOZUK: "Program dosyaları değiştirilmiş veya bozulmuş. Programı yeniden kurun ya da bizimle iletişime geçin.",
+};
+export const UYARI_GUN = 30;
+const SAAT_TOLERANS_MS = 5 * 60 * 1000;
+const KAYIT_TOLERANS_MS = 24 * 60 * 60 * 1000;
+const MERKEZ_SAAT_TOLERANS_MS = 2 * 24 * 60 * 60 * 1000;
+const ONBELLEK_MS = 60 * 1000;
+const KAYIT_ONBELLEK_MS = 10 * 60 * 1000;
+const VARSAYILAN_ILETISIM = {
+    telefon: "",
+    eposta: "",
+    metin: "Programı kullanmaya devam etmek için lütfen bizimle iletişime geçin.",
+};
+// ------------------------------------------------------------------ test kancaları ---
+let saat = () => Date.now();
+let makine = makineKimligi;
+/** Yalnız testler: saat ve makine kimliği kaynağını değiştirir. */
+export const kurulumTestKancalari = (k) => {
+    if (k.saat)
+        saat = k.saat;
+    if (k.makine)
+        makine = k.makine;
+    onbellek = null;
+    kayitOnbellek = null;
+};
+// ------------------------------------------------------------------ şifreleme ---
+const durumAnahtari = () => crypto.createHash("sha256").update(`likya-durum|${makine()}`).digest();
+export const durumSifrele = (d) => {
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv("aes-256-gcm", durumAnahtari(), iv);
+    const govde = Buffer.concat([c.update(JSON.stringify(d), "utf8"), c.final()]);
+    return `LKD1.${iv.toString("base64url")}.${govde.toString("base64url")}.${c.getAuthTag().toString("base64url")}`;
+};
+/** Çözülemezse null (değiştirilmiş ya da başka makinenin dosyası). */
+export const durumCoz = (metin) => {
+    try {
+        const [onek, iv, govde, etiket] = metin.trim().split(".");
+        if (onek !== "LKD1")
+            return null;
+        const d = crypto.createDecipheriv("aes-256-gcm", durumAnahtari(), Buffer.from(iv, "base64url"));
+        d.setAuthTag(Buffer.from(etiket, "base64url"));
+        const acik = Buffer.concat([d.update(Buffer.from(govde, "base64url")), d.final()]).toString("utf8");
+        const v = JSON.parse(acik);
+        if (typeof v.sonGorulen !== "number" || typeof v.seri !== "number")
+            return null;
+        return v;
+    }
+    catch {
+        return null;
+    }
+};
+// ------------------------------------------------------------------ depolama ---
+const dosyaOku = (ad) => {
+    try {
+        return fs.readFileSync(veriYolu(ad), "utf8");
+    }
+    catch {
+        return null;
+    }
+};
+const dosyaYaz = (ad, icerik) => {
+    fs.mkdirSync(veriYolu(""), { recursive: true });
+    const gecici = veriYolu(`${ad}.yeni`);
+    fs.writeFileSync(gecici, icerik, "utf8");
+    fs.renameSync(gecici, veriYolu(ad));
+};
+const tabloHazirla = async (pool) => {
+    await pool.request().batch(`
+    IF OBJECT_ID('dbo.LKY_DURUM') IS NULL
+      CREATE TABLE dbo.LKY_DURUM (ANAHTAR varchar(50) NOT NULL PRIMARY KEY, DEGER nvarchar(max) NULL, TARIH datetime NOT NULL DEFAULT GETDATE());`);
+};
+const dbOku = async () => {
+    const pool = await kurulumHavuzu();
+    await tabloHazirla(pool);
+    const res = await pool.request().query(`SELECT ANAHTAR, DEGER FROM dbo.LKY_DURUM WHERE ANAHTAR IN ('LISANS', 'DURUM')`);
+    const m = new Map(res.recordset.map((r) => [r.ANAHTAR, r.DEGER]));
+    return { lisans: m.get("LISANS") ?? null, durum: m.get("DURUM") ?? null };
+};
+const dbYaz = async (anahtar, deger) => {
+    const pool = await kurulumHavuzu();
+    await tabloHazirla(pool);
+    await pool
+        .request()
+        .input("a", sql.VarChar(50), anahtar)
+        .input("d", sql.NVarChar(sql.MAX), deger)
+        .query(`
+      MERGE dbo.LKY_DURUM WITH (HOLDLOCK) AS h USING (SELECT @a AS ANAHTAR) AS k ON h.ANAHTAR = k.ANAHTAR
+      WHEN MATCHED THEN UPDATE SET DEGER = @d, TARIH = GETDATE()
+      WHEN NOT MATCHED THEN INSERT (ANAHTAR, DEGER) VALUES (@a, @d);`);
+};
+const durumuKaydet = async (d) => {
+    const metin = durumSifrele(d);
+    dosyaYaz("durum.lky", metin);
+    await dbYaz("DURUM", metin);
+};
+/** Veritabanındaki en son kaydın zamanı (saat geri alma denetimi için). */
+let kayitOnbellek = null;
+const enSonKayitZamani = async () => {
+    if (kayitOnbellek && saat() - kayitOnbellek.zaman < KAYIT_ONBELLEK_MS && saat() >= kayitOnbellek.zaman)
+        return kayitOnbellek.deger;
+    let deger = null;
+    try {
+        const pool = await kurulumHavuzu();
+        const parcalar = ["TODVZ_FIS", "TODVZ_SARRAF_FISI", "TODVZ_CARI_HAREKET", "TODVZ_HESAP_HAREKETI"]
+            .map((t) => `SELECT MAX(EKLEME_ZAMANI) AS Z FROM dbo.${t} WHERE COL_LENGTH('dbo.${t}', 'EKLEME_ZAMANI') IS NOT NULL`)
+            .join(" UNION ALL ");
+        const res = await pool.request().query(`SELECT MAX(Z) AS Z FROM (${parcalar}) x`);
+        const z = res.recordset[0]?.Z;
+        deger = z ? new Date(z).getTime() : null;
+    }
+    catch (err) {
+        logger.warn(`[LISANS] Son kayıt zamanı okunamadı: ${err?.message}`);
+    }
+    kayitOnbellek = { zaman: saat(), deger };
+    return deger;
+};
+// ------------------------------------------------------------------ servis ---
+let onbellek = null;
+const kalanGunHesapla = (bitis) => gunFarki(bugunTr(new Date(saat())), bitis);
+export class KurulumLisansService {
+    static onbellegiTemizle() {
+        onbellek = null;
+    }
+    /** Geçerli lisans durumu (60 sn önbellekli). Her çağrıda saat ilerlemesini kaydeder, geri alınmışsa kilitler. */
+    static async durum(zorla = false) {
+        const simdi = saat();
+        if (!zorla && onbellek && simdi - onbellek.zaman < ONBELLEK_MS && simdi >= onbellek.zaman)
+            return onbellek.deger;
+        const deger = await this.hesapla(simdi);
+        onbellek = { zaman: simdi, deger };
+        return deger;
+    }
+    static async hesapla(simdi) {
+        const firma = kurulumFirmasi();
+        let mk = "";
+        try {
+            mk = makine();
+        }
+        catch {
+            mk = "";
+        }
+        const taban = (v = {}) => ({
+            durum: "KILITLI",
+            neden: null,
+            mesaj: null,
+            makineKimligi: mk,
+            firmaKodu: firma?.firmaKodu ?? null,
+            firmaUnvan: firma?.unvan ?? null,
+            musteriNo: firma?.musteriNo ?? null,
+            bitis: null,
+            kalanGun: null,
+            kullaniciLimiti: null,
+            moduller: null,
+            seri: null,
+            iletisim: VARSAYILAN_ILETISIM,
+            ...v,
+        });
+        const kilit = (neden, v = {}) => taban({ ...v, durum: "KILITLI", neden, mesaj: KILIT_MESAJI[neden] });
+        if (!firma)
+            return kilit("FIRMA_DOSYASI_YOK", { mesaj: `${KILIT_MESAJI.FIRMA_DOSYASI_YOK} (${firmaDosyasiHatasi()})` });
+        const bozukluk = await butunlukHatasi();
+        if (bozukluk)
+            return kilit("BUTUNLUK_BOZUK");
+        // Lisans kodu: dosya ve veritabanı; serisi büyük olan geçerlidir
+        const db = await dbOku();
+        const adaylar = [dosyaOku("lisans.lky"), db.lisans].filter((x) => !!x && !!x.trim());
+        if (adaylar.length === 0)
+            return kilit("LISANS_YOK");
+        let lisans = null;
+        for (const a of adaylar) {
+            try {
+                const v = lisansKoduCoz(a);
+                if (!lisans || v.seri > lisans.seri)
+                    lisans = v;
+            }
+            catch {
+                // geçersiz aday atlanır
+            }
+        }
+        if (!lisans)
+            return kilit("LISANS_GECERSIZ");
+        const bilgi = {
+            bitis: lisans.bitis,
+            kalanGun: kalanGunHesapla(lisans.bitis),
+            kullaniciLimiti: lisans.kullaniciLimiti,
+            moduller: lisans.moduller,
+            seri: lisans.seri,
+            iletisim: lisans.iletisim || VARSAYILAN_ILETISIM,
+        };
+        if (lisans.firmaKodu !== firma.firmaKodu)
+            return kilit("FIRMA_UYUSMUYOR", bilgi);
+        if (!mk || lisans.makine !== mk)
+            return kilit("MAKINE_UYUSMUYOR", bilgi);
+        // Durum: iki kopya birleştirilir; biri bile değiştirilmişse kilit
+        const kopyalar = [dosyaOku("durum.lky"), db.durum].filter((x) => !!x && !!x.trim());
+        const cozulen = kopyalar.map(durumCoz);
+        if (kopyalar.length === 0 || cozulen.some((d) => d === null)) {
+            const d = { sonGorulen: simdi, seri: lisans.seri, kilit: { neden: "DURUM_BOZUK", zaman: simdi, seri: lisans.seri } };
+            await durumuKaydet(d).catch(() => undefined);
+            return kilit("DURUM_BOZUK", bilgi);
+        }
+        const d = {
+            sonGorulen: Math.max(...cozulen.map((x) => x.sonGorulen)),
+            seri: Math.max(...cozulen.map((x) => x.seri)),
+            kilit: cozulen.map((x) => x.kilit).find((k) => !!k) ?? null,
+        };
+        if (d.kilit)
+            return kilit(d.kilit.neden, bilgi);
+        // Saat denetimi
+        const sonKayit = await enSonKayitZamani();
+        if (simdi < d.sonGorulen - SAAT_TOLERANS_MS || (sonKayit !== null && simdi < sonKayit - KAYIT_TOLERANS_MS)) {
+            d.kilit = { neden: "SAAT_GERI_ALINDI", zaman: simdi, seri: lisans.seri };
+            await durumuKaydet(d);
+            logger.warn("[LISANS] Saat geri alınmış; program kilitlendi.");
+            return kilit("SAAT_GERI_ALINDI", bilgi);
+        }
+        if (simdi - d.sonGorulen > 60_000 || kopyalar.length < 2) {
+            d.sonGorulen = Math.max(d.sonGorulen, simdi);
+            await durumuKaydet(d);
+        }
+        const kalan = bilgi.kalanGun;
+        if (kalan < 0)
+            return kilit("LISANS_DOLDU", bilgi);
+        return taban({ ...bilgi, durum: kalan <= UYARI_GUN ? "UYARI" : "GECERLI" });
+    }
+    /** "Lisans Yükle": kod doğrulanır, bu firma ve bu makine için olmalı, eskisinden yeni olmalı. */
+    static async yukle(kod) {
+        const firma = kurulumFirmasi();
+        if (!firma)
+            throw ApiError.badRequest(KILIT_MESAJI.FIRMA_DOSYASI_YOK);
+        let v;
+        try {
+            v = lisansKoduCoz(kod);
+        }
+        catch (err) {
+            throw ApiError.badRequest(err instanceof LisansKoduGecersiz ? err.message : "Lisans kodu doğrulanamadı.");
+        }
+        const mk = makine();
+        if (v.firmaKodu !== firma.firmaKodu)
+            throw ApiError.badRequest("Bu lisans kodu başka bir firmaya ait.");
+        if (v.makine !== mk) {
+            throw ApiError.badRequest(`Bu lisans kodu başka bir bilgisayar için üretilmiş. Bu bilgisayarın kimliği: ${mk}`);
+        }
+        const simdi = saat();
+        const verilme = Date.parse(v.verilme);
+        if (Number.isFinite(verilme) && verilme > simdi + KAYIT_TOLERANS_MS) {
+            throw ApiError.badRequest("Bilgisayarın tarihi/saati yanlış (lisans kodundan daha eski). Saati düzeltip tekrar deneyin.");
+        }
+        if (gunFarki(bugunTr(new Date(simdi)), v.bitis) < 0)
+            throw ApiError.badRequest("Bu lisans kodunun süresi dolmuş.");
+        // Mevcut durum
+        const db = await dbOku();
+        const eskiKodlar = [dosyaOku("lisans.lky"), db.lisans].filter((x) => !!x);
+        let eskiSeri = 0;
+        for (const k of eskiKodlar) {
+            try {
+                const e = lisansKoduCoz(k);
+                if (e.firmaKodu === firma.firmaKodu)
+                    eskiSeri = Math.max(eskiSeri, e.seri);
+            }
+            catch {
+                /* yok say */
+            }
+        }
+        if (v.seri < eskiSeri)
+            throw ApiError.badRequest("Bu kod, yüklü lisanstan daha eski. En son verilen kodu yükleyin.");
+        const kopyalar = [dosyaOku("durum.lky"), db.durum].filter((x) => !!x && !!x.trim()).map(durumCoz);
+        const gecerli = kopyalar.filter((x) => !!x);
+        const eskiKilit = gecerli.map((x) => x.kilit).find((k) => !!k) ?? (kopyalar.some((x) => x === null) ? { neden: "DURUM_BOZUK", zaman: simdi, seri: eskiSeri } : null);
+        // Kilit (saat / bozuk durum) yalnız kilitlendiği andaki seriden YENİ bir kodla açılır; süre dolması yeni bitişle açılır
+        if (eskiKilit && eskiKilit.neden !== "LISANS_DOLDU" && v.seri <= eskiKilit.seri) {
+            throw ApiError.badRequest("Program kilitli. Kilidi açmak için merkezden YENİ bir lisans kodu almanız gerekir.");
+        }
+        const sonGorulen = Math.max(simdi, Number.isFinite(verilme) ? verilme : 0, ...gecerli.map((x) => x.sonGorulen));
+        const temizKod = kod.replace(/\s+/g, "");
+        dosyaYaz("lisans.lky", temizKod);
+        await dbYaz("LISANS", temizKod);
+        await durumuKaydet({ sonGorulen, seri: v.seri, kilit: null });
+        this.onbellegiTemizle();
+        kayitOnbellek = null;
+        return this.durum(true);
+    }
+    /**
+     * Merkezden alınan saatle karşılaştırma (internet varken): bilgisayarın saati merkezden 2 günden fazla gerideyse
+     * program kilitlenir (çevrimdışı denetimden kaçmak için saat geri alınmış olabilir).
+     */
+    static async merkezSaatiniDenetle(sunucuMs) {
+        if (!Number.isFinite(sunucuMs))
+            return false;
+        const simdi = saat();
+        if (simdi >= sunucuMs - MERKEZ_SAAT_TOLERANS_MS)
+            return false;
+        const db = await dbOku();
+        let seri = 0;
+        for (const k of [dosyaOku("lisans.lky"), db.lisans]) {
+            if (!k)
+                continue;
+            try {
+                seri = Math.max(seri, lisansKoduCoz(k).seri);
+            }
+            catch {
+                /* yok say */
+            }
+        }
+        const eski = [dosyaOku("durum.lky"), db.durum].filter((x) => !!x).map(durumCoz).filter((x) => !!x);
+        await durumuKaydet({
+            sonGorulen: Math.max(sunucuMs, ...eski.map((x) => x.sonGorulen)),
+            seri: Math.max(seri, ...eski.map((x) => x.seri)),
+            kilit: { neden: "SAAT_GERI_ALINDI", zaman: simdi, seri },
+        });
+        this.onbellegiTemizle();
+        logger.warn("[LISANS] Bilgisayar saati merkez saatinden geride; program kilitlendi.");
+        return true;
+    }
+    /** Kullanıcı limitine göre yeni kullanıcı açılabilir mi (kurulum modunda Kullanıcı Tanımları). */
+    static async kullaniciAcilabilirMi() {
+        const d = await this.durum();
+        if (d.durum === "KILITLI")
+            throw new ApiError(HttpStatus.LOCKED, d.mesaj || "Program kilitli.", { kod: "LISANS_KILIT", neden: d.neden });
+        const pool = await kurulumHavuzu();
+        const res = await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`);
+        const sayi = res.recordset[0].N;
+        if (d.kullaniciLimiti !== null && sayi >= d.kullaniciLimiti) {
+            throw ApiError.conflict(`Lisansınızdaki kullanıcı limiti (${d.kullaniciLimiti}) dolu. Ek kullanıcı için bizimle iletişime geçin.`);
+        }
+    }
+}
