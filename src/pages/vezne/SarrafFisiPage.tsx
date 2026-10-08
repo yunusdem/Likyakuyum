@@ -1288,11 +1288,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (kurSatirlar.length > 0) {
       const hasKurItem = kurSatirlar.find((k) => ["HAS", "ALTIN", "HAS ALTIN"].includes((k.kod || "").toUpperCase().trim()));
       if (hasKurItem) {
-        defaultHas = (hasKurItem.dovizAlis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifSatis) || "";
+        defaultHas = (tip === 0
+          ? (hasKurItem.efektifAlis ?? hasKurItem.dovizAlis ?? hasKurItem.efektifSatis ?? hasKurItem.dovizSatis)
+          : (hasKurItem.efektifSatis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizAlis)) || "";
       }
       const gumusKurItem = kurSatirlar.find((k) => ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ"].includes((k.kod || "").toUpperCase().trim()));
       if (gumusKurItem) {
-        defaultGumus = (gumusKurItem.dovizAlis ?? gumusKurItem.efektifAlis ?? gumusKurItem.dovizSatis ?? gumusKurItem.efektifSatis) || "";
+        defaultGumus = (tip === 0
+          ? (gumusKurItem.efektifAlis ?? gumusKurItem.dovizAlis ?? gumusKurItem.efektifSatis ?? gumusKurItem.dovizSatis)
+          : (gumusKurItem.efektifSatis ?? gumusKurItem.dovizSatis ?? gumusKurItem.efektifAlis ?? gumusKurItem.dovizAlis)) || "";
       }
     }
     setAltinHasKuru(defaultHas);
@@ -1389,9 +1393,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setKurSatirlar(allKurList);
 
       const hasKurItem = allKurList.find((k) => ["HAS", "ALTIN", "HAS ALTIN"].includes((k.kod || "").toUpperCase().trim()));
-      const defaultHas = hasKurItem ? ((hasKurItem.dovizAlis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifSatis) || "") : "";
+      const defaultHas = hasKurItem ? (((tip === 0 ? (hasKurItem.efektifAlis ?? hasKurItem.dovizAlis) : (hasKurItem.efektifSatis ?? hasKurItem.dovizSatis)) || (hasKurItem.efektifAlis ?? hasKurItem.dovizAlis)) || "") : "";
       const gumusKurItem = allKurList.find((k) => ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ"].includes((k.kod || "").toUpperCase().trim()));
-      const defaultGumus = gumusKurItem ? ((gumusKurItem.dovizAlis ?? gumusKurItem.efektifAlis ?? gumusKurItem.dovizSatis ?? gumusKurItem.efektifSatis) || "") : "";
+      const defaultGumus = gumusKurItem ? (((tip === 0 ? (gumusKurItem.efektifAlis ?? gumusKurItem.dovizAlis) : (gumusKurItem.efektifSatis ?? gumusKurItem.dovizSatis)) || (gumusKurItem.efektifAlis ?? gumusKurItem.dovizAlis)) || "") : "";
 
       if (!queryId) {
         let userVezneId: number | null = null;
@@ -2234,7 +2238,70 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru, detayKimlikGecerlilikTarihi,
     detayVekilAdi, detayVekilKimlikNo, user?.id, showNotif]);
 
-  // Helper: Ürün / Döviz / Maden için Güncel Alış/Satış Kurunu Çek
+  // Helper: İşlem tipine (Alış: 0, Satış: 1) göre HAS Altın Kurunu Al (Öncelik: Efektif Alış/Satış)
+  const getHasKurForTip = useCallback((islemTip: 0 | 1): number => {
+    const hasKurItem = kurSatirlar.find((k) => ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()));
+    if (hasKurItem) {
+      const rate = islemTip === 0
+        ? (hasKurItem.efektifAlis ?? hasKurItem.dovizAlis ?? hasKurItem.efektifSatis ?? hasKurItem.dovizSatis ?? 0)
+        : (hasKurItem.efektifSatis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizAlis ?? 0);
+      if (Number(rate) > 0) return Number(rate);
+    }
+    return Number(altinHasKuru) || 0;
+  }, [kurSatirlar, altinHasKuru]);
+
+  // Helper: İşlem tipine göre Gümüş HAS Kurunu Al
+  const getGumusKurForTip = useCallback((islemTip: 0 | 1): number => {
+    const gumusKurItem = kurSatirlar.find((k) => ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes((k.kod || "").toUpperCase().trim()));
+    if (gumusKurItem) {
+      const rate = islemTip === 0
+        ? (gumusKurItem.efektifAlis ?? gumusKurItem.dovizAlis ?? gumusKurItem.efektifSatis ?? gumusKurItem.dovizSatis ?? 0)
+        : (gumusKurItem.efektifSatis ?? gumusKurItem.dovizSatis ?? gumusKurItem.efektifAlis ?? gumusKurItem.dovizAlis ?? 0);
+      if (Number(rate) > 0) return Number(rate);
+    }
+    return Number(gumusHasKuru) || 0;
+  }, [kurSatirlar, gumusHasKuru]);
+
+  // Helper: Ürün için Anlık Fiyat Listesindeki Alışta Efektif Alış, Satışta Efektif Satış Milyemini/Katsayısını Çek
+  const getMilyemForProduct = useCallback((
+    urun: { paraId?: number; kod?: string; urunTipi?: number; ad?: string; alisMilyem?: any; satisMilyem?: any; hasAlisKatsayisi?: any; hasSatisKatsayisi?: any; hasOrani?: any },
+    islemTip: 0 | 1
+  ): number | string => {
+    const pId = urun.paraId;
+    const code = (urun.kod || "").toUpperCase().trim();
+    const name = (urun.ad || "").toUpperCase().trim();
+
+    if (urun.urunTipi === 0 || code === "TL" || code === "TRY" || code === "TRL") return "";
+
+    // 1. Önce Anlık Fiyat Listesinden ara (Alışta efektifAlis, Satışta efektifSatis)
+    const found = kurSatirlar.find((k) =>
+      (pId && k.paraId === pId) ||
+      (k.kod && k.kod.toUpperCase().trim() === code) ||
+      (name && k.ad && k.ad.toUpperCase().trim() === name)
+    );
+
+    if (found) {
+      const rate = islemTip === 0
+        ? (found.efektifAlis ?? found.dovizAlis ?? 0)
+        : (found.efektifSatis ?? found.dovizSatis ?? 0);
+      if (Number(rate) > 0) return Number(rate);
+    }
+
+    // 2. Ürün tanımındaki milyem / has katsayısı
+    const rawAlis = urun.alisMilyem !== undefined && urun.alisMilyem !== null && Number(urun.alisMilyem) > 0
+      ? urun.alisMilyem
+      : (urun.hasAlisKatsayisi && Number(urun.hasAlisKatsayisi) > 0 ? urun.hasAlisKatsayisi : urun.hasOrani);
+    const rawSatis = urun.satisMilyem !== undefined && urun.satisMilyem !== null && Number(urun.satisMilyem) > 0
+      ? urun.satisMilyem
+      : (urun.hasSatisKatsayisi && Number(urun.hasSatisKatsayisi) > 0 ? urun.hasSatisKatsayisi : urun.hasOrani);
+
+    const val = islemTip === 0 ? rawAlis : rawSatis;
+    if (val !== undefined && val !== null && Number(val) > 0) return Number(val);
+
+    return "";
+  }, [kurSatirlar]);
+
+  // Helper: Ürün / Döviz / Maden için Satır Kuru (Döviz ise döviz kuru, Altın/Ziynet ise HAS Altın Kuru)
   const getKurForProduct = useCallback((
     urun: { paraId?: number; kod?: string; urunTipi?: number; ad?: string },
     islemTip: 0 | 1
@@ -2245,48 +2312,27 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     if (code === "TL" || code === "TRY" || code === "TRL") return 1;
 
-    // 1. Önce kur listesinde bu ürünün/paranın birebir özel kuru var mı bak
-    const found = kurSatirlar.find((k) =>
-      (pId && k.paraId === pId) ||
-      (k.kod && k.kod.toUpperCase().trim() === code) ||
-      (name && k.ad && k.ad.toUpperCase().trim() === name)
-    );
-    if (found) {
+    // Altın / Ziynet (1 veya 3) ise kur daima HAS Altın Kurudur
+    if (urun.urunTipi === 1 || urun.urunTipi === 3 || code.includes("HAS") || code.includes("ALTIN") || name.includes("ALTIN")) {
+      return getHasKurForTip(islemTip);
+    }
+
+    // Gümüş (2) ise kur Gümüş HAS Kurudur
+    if (urun.urunTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS")) {
+      return getGumusKurForTip(islemTip);
+    }
+
+    // Döviz / Para (0) için döviz kuru
+    const curKur = kurSatirlar.find((k) => (k.paraId && k.paraId === pId) || (k.kod && k.kod.toUpperCase().trim() === code) || (name && k.ad && k.ad.toUpperCase().trim() === name));
+    if (curKur) {
       const rate = islemTip === 0
-        ? (found.dovizAlis ?? found.efektifAlis ?? found.dovizSatis ?? found.efektifSatis ?? 0)
-        : (found.dovizSatis ?? found.efektifSatis ?? found.dovizAlis ?? found.efektifAlis ?? 0);
+        ? (curKur.efektifAlis ?? curKur.dovizAlis ?? curKur.efektifSatis ?? curKur.dovizSatis ?? 0)
+        : (curKur.efektifSatis ?? curKur.dovizSatis ?? curKur.efektifAlis ?? curKur.dovizAlis ?? 0);
       if (Number(rate) > 0) return Number(rate);
     }
 
-    // 2. Ürün Tipi Altın ise (1)
-    if (urun.urunTipi === 1 || code.includes("HAS") || code.includes("ALTIN") || name.includes("ALTIN")) {
-      if (Number(altinHasKuru) > 0) return Number(altinHasKuru);
-      const hasKur = kurSatirlar.find((k) => ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()));
-      if (hasKur) {
-        const rate = islemTip === 0 ? (hasKur.dovizAlis ?? hasKur.efektifAlis ?? 0) : (hasKur.dovizSatis ?? hasKur.efektifSatis ?? 0);
-        if (Number(rate) > 0) return Number(rate);
-      }
-    }
-    // 3. Ürün Tipi Gümüş ise (2)
-    else if (urun.urunTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS")) {
-      if (Number(gumusHasKuru) > 0) return Number(gumusHasKuru);
-      const gKur = kurSatirlar.find((k) => ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes((k.kod || "").toUpperCase().trim()));
-      if (gKur) {
-        const rate = islemTip === 0 ? (gKur.dovizAlis ?? gKur.efektifAlis ?? 0) : (gKur.dovizSatis ?? gKur.efektifSatis ?? 0);
-        if (Number(rate) > 0) return Number(rate);
-      }
-    }
-    // 4. Diğer / Döviz ise (0)
-    else if (urun.urunTipi === 0 || !urun.urunTipi) {
-      const curKur = kurSatirlar.find((k) => (k.paraId && k.paraId === pId) || (k.kod && k.kod.toUpperCase().trim() === code) || (name && k.ad && k.ad.toUpperCase().trim() === name));
-      if (curKur) {
-        const rate = islemTip === 0 ? (curKur.dovizAlis ?? curKur.efektifAlis ?? 0) : (curKur.dovizSatis ?? curKur.efektifSatis ?? 0);
-        if (Number(rate) > 0) return Number(rate);
-      }
-    }
-
-    return Number(altinHasKuru) || 0;
-  }, [kurSatirlar, altinHasKuru, gumusHasKuru]);
+    return getHasKurForTip(islemTip);
+  }, [kurSatirlar, getHasKurForTip, getGumusKurForTip]);
 
   // e-Banka'dan fiş kesiliyorsa banka tutarı (TL); miktarı boş ürün satırında miktar bu tutarın kalanından hesaplanır
   const ebHedefRef = useRef(0);
@@ -2303,28 +2349,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       return;
     }
 
-    const autoKur = getKurForProduct(item, tip);
     const isPara = item.urunTipi === 0;
-    const curHasKuru = autoKur > 0
-      ? autoKur
-      : (item.urunTipi === 1 ? (Number(altinHasKuru) || 0) : (item.urunTipi === 2 ? (Number(gumusHasKuru) || 0) : 0));
+    const autoKur = getKurForProduct(item, tip);
+    const autoMilyem = getMilyemForProduct(item, tip);
+    const curHasKuru = isPara ? autoKur : (item.urunTipi === 2 ? getGumusKurForTip(tip) : getHasKurForTip(tip));
 
     setLines((prev) => prev.map((r) => {
       if (r.id !== rowId) return r;
-      const rawAlis = item.alisMilyem !== undefined && item.alisMilyem !== null && Number(item.alisMilyem) > 0
-        ? item.alisMilyem
-        : (item.hasAlisKatsayisi && Number(item.hasAlisKatsayisi) > 0 ? item.hasAlisKatsayisi : item.hasOrani);
-      const rawSatis = item.satisMilyem !== undefined && item.satisMilyem !== null && Number(item.satisMilyem) > 0
-        ? item.satisMilyem
-        : (item.hasSatisKatsayisi && Number(item.hasSatisKatsayisi) > 0 ? item.hasSatisKatsayisi : item.hasOrani);
-      const rawHasOrani = tip === 0 ? rawAlis : rawSatis;
 
       const adet = isPara ? "" : (overrideAdet !== undefined ? overrideAdet : (Number(r.adet) > 0 ? Number(r.adet) : 1));
       const miktar = isPara ? (r.miktar || "") : (Number(item.gramaj) > 0 ? Number(item.gramaj) * (Number(adet) || 1) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
       const iscilikiMiktari = isPara ? "" : (item.iscilik && Number(item.iscilik) > 0 ? Number(item.iscilik) : (r.iscilikiMiktari || ""));
-      const milyem = isPara ? "" : ((rawHasOrani !== undefined && rawHasOrani !== null && Number(rawHasOrani) > 0)
-        ? rawHasOrani
-        : (r.milyem || ""));
+      const milyem = isPara ? "" : (autoMilyem !== "" ? autoMilyem : (r.milyem || ""));
 
       const updated: GridRow = {
         ...r,
@@ -2339,7 +2375,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         iscilikHasGram: isPara ? "" : r.iscilikHasGram,
         hasGram: isPara ? "" : r.hasGram,
         urunTipi: item.urunTipi ?? 0,
-        kur: autoKur > 0 ? autoKur : (curHasKuru > 0 ? curHasKuru : (r.kur || "")),
+        kur: curHasKuru > 0 ? curHasKuru : (autoKur > 0 ? autoKur : (r.kur || "")),
       };
       // e-Banka: miktar boşsa banka tutarının kalanı / (kur × milyem)
       if (ebHedefRef.current > 0 && !(parseDecimal(updated.miktar) > 0)) {
@@ -2352,7 +2388,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       return recomputeRow(updated, curHasKuru);
     }));
     setInvalidRowIds((prev) => ({ ...prev, [rowId]: true }));
-  }, [tip, getKurForProduct, altinHasKuru, gumusHasKuru]);
+  }, [tip, getKurForProduct, getMilyemForProduct, getHasKurForTip, getGumusKurForTip]);
 
   const applyProductToOdemeRow = useCallback((
     rowId: string,
@@ -2362,21 +2398,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const code = (item.kod || "").toUpperCase().trim();
     const isTL = code === "TL" || code === "TRY" || code === "TRL";
     const isPara = item.urunTipi === 0 || isTL;
-    const autoKur = getKurForProduct(item, tip === 0 ? 0 : 1);
-    const curHasKuru = Number(altinHasKuru) || 0;
+    const odemeTip: 0 | 1 = tip === 0 ? 1 : 0;
+    const autoKur = getKurForProduct(item, odemeTip);
+    const autoMilyem = getMilyemForProduct(item, odemeTip);
+    const curHasKuru = isPara ? autoKur : (item.urunTipi === 2 ? getGumusKurForTip(odemeTip) : getHasKurForTip(odemeTip));
+
     setOdemeRows((prev) => prev.map((r) => {
       if (r.id !== rowId) return r;
-      const rawAlis = item.alisMilyem !== undefined && item.alisMilyem !== null && Number(item.alisMilyem) > 0
-        ? item.alisMilyem
-        : (item.hasAlisKatsayisi && Number(item.hasAlisKatsayisi) > 0 ? item.hasAlisKatsayisi : item.hasOrani);
-      const rawSatis = item.satisMilyem !== undefined && item.satisMilyem !== null && Number(item.satisMilyem) > 0
-        ? item.satisMilyem
-        : (item.hasSatisKatsayisi && Number(item.hasSatisKatsayisi) > 0 ? item.hasSatisKatsayisi : item.hasOrani);
-      const rawHasOrani = tip === 0 ? rawAlis : rawSatis;
 
       const adet = isPara ? "" : (overrideAdet !== undefined ? overrideAdet : (Number(r.adet) > 0 ? Number(r.adet) : 1));
       const miktar = isPara ? (r.miktar || "") : (Number(item.gramaj) > 0 ? Number(item.gramaj) * (Number(adet) || 1) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
-      const milyem = isPara ? "" : ((rawHasOrani !== undefined && rawHasOrani !== null && Number(rawHasOrani) > 0) ? rawHasOrani : (r.milyem || ""));
+      const milyem = isPara ? "" : (autoMilyem !== "" ? autoMilyem : (r.milyem || ""));
+
       const updated: OdemeRow = {
         ...r,
         paraId: item.paraId,
@@ -2387,12 +2420,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         milyem,
         hasGram: isPara ? "" : r.hasGram,
         urunTipi: item.urunTipi ?? (isTL ? 0 : (item.kod?.length === 3 ? 0 : 1)),
-        kur: isTL ? "" : (autoKur > 0 ? autoKur : (curHasKuru > 0 ? curHasKuru : (r.kur || ""))),
+        kur: isTL ? "" : (curHasKuru > 0 ? curHasKuru : (autoKur > 0 ? autoKur : (r.kur || ""))),
       };
       return recomputeOdemeRow(updated, curHasKuru);
     }));
     setInvalidOdemeRowIds((prev) => ({ ...prev, [rowId]: true }));
-  }, [tip, getKurForProduct, altinHasKuru]);
+  }, [tip, getKurForProduct, getMilyemForProduct, getHasKurForTip, getGumusKurForTip]);
 
   // Satırın tamamen boş olup olmadığını kontrol eder (Kalemler)
   const isSarrafRowCompletelyEmpty = useCallback((r?: GridRow): boolean => {
@@ -4547,34 +4580,43 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                           setIstatistikKodu(defStat.kod);
                         }
                       }
-                      const currentHasKuru = Number(altinHasKuru) || 0;
+                      const newHasKuru = getHasKurForTip(newTip);
+                      const newGumusKuru = getGumusKurForTip(newTip);
+                      if (newHasKuru > 0) setAltinHasKuru(newHasKuru);
+                      if (newGumusKuru > 0) setGumusHasKuru(newGumusKuru);
+
                       setLines((prev) => prev.map((r) => {
                         if (!r.urunKodu) return r;
                         const found = urunList.find((u) => u.kod.trim().toLowerCase() === r.urunKodu.trim().toLowerCase()) || { paraId: r.urunId, kod: r.urunKodu, urunTipi: r.urunTipi };
                         const autoKur = getKurForProduct(found, newTip);
-                        const rawAlis = (found as any).alisMilyem || (found as any).hasAlisKatsayisi || (found as any).hasOrani || r.milyem;
-                        const rawSatis = (found as any).satisMilyem || (found as any).hasSatisKatsayisi || (found as any).hasOrani || r.milyem;
-                        const rawMilyem = newTip === 0 ? rawAlis : rawSatis;
+                        const autoMilyem = getMilyemForProduct(found, newTip);
+                        const curKur = found.urunTipi === 0 ? autoKur : (found.urunTipi === 2 ? newGumusKuru : newHasKuru);
+
                         const updated = {
                           ...r,
-                          kur: autoKur > 0 ? autoKur : r.kur,
-                          milyem: (found as any).urunTipi === 0 ? "" : (rawMilyem || r.milyem),
+                          kur: curKur > 0 ? curKur : (autoKur > 0 ? autoKur : r.kur),
+                          milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                         };
-                        return recomputeRow(updated, autoKur);
+                        return recomputeRow(updated, curKur);
                       }));
+
+                      const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
+                      const odemeHasKuru = getHasKurForTip(odemeTip);
+                      const odemeGumusKuru = getGumusKurForTip(odemeTip);
+
                       setOdemeRows((prev) => prev.map((r) => {
                         if (!r.paraKodu || r.paraKodu === "TL") return r;
                         const found = urunList.find((u) => u.kod.trim().toLowerCase() === r.paraKodu.trim().toLowerCase()) || { paraId: r.paraId, kod: r.paraKodu, urunTipi: r.urunTipi };
-                        const autoKur = getKurForProduct(found, newTip === 0 ? 1 : 0);
-                        const rawAlis = (found as any).alisMilyem || (found as any).hasAlisKatsayisi || (found as any).hasOrani || r.milyem;
-                        const rawSatis = (found as any).satisMilyem || (found as any).hasSatisKatsayisi || (found as any).hasOrani || r.milyem;
-                        const rawMilyem = newTip === 0 ? rawSatis : rawAlis;
+                        const autoKur = getKurForProduct(found, odemeTip);
+                        const autoMilyem = getMilyemForProduct(found, odemeTip);
+                        const curKur = found.urunTipi === 0 ? autoKur : (found.urunTipi === 2 ? odemeGumusKuru : odemeHasKuru);
+
                         const updated = {
                           ...r,
-                          kur: autoKur > 0 ? autoKur : r.kur,
-                          milyem: (found as any).urunTipi === 0 ? "" : (rawMilyem || r.milyem),
+                          kur: curKur > 0 ? curKur : (autoKur > 0 ? autoKur : r.kur),
+                          milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                         };
-                        return recomputeOdemeRow(updated, currentHasKuru);
+                        return recomputeOdemeRow(updated, curKur);
                       }));
                     }}
                     onKeyDown={(e) => {
@@ -4590,34 +4632,43 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                             setIstatistikKodu(defStat.kod);
                           }
                         }
-                        const currentHasKuru = Number(altinHasKuru) || 0;
+                        const newHasKuru = getHasKurForTip(newTip);
+                        const newGumusKuru = getGumusKurForTip(newTip);
+                        if (newHasKuru > 0) setAltinHasKuru(newHasKuru);
+                        if (newGumusKuru > 0) setGumusHasKuru(newGumusKuru);
+
                         setLines((prev) => prev.map((r) => {
                           if (!r.urunKodu) return r;
                           const found = urunList.find((u) => u.kod.trim().toLowerCase() === r.urunKodu.trim().toLowerCase()) || { paraId: r.urunId, kod: r.urunKodu, urunTipi: r.urunTipi };
                           const autoKur = getKurForProduct(found, newTip);
-                          const rawAlis = (found as any).alisMilyem || (found as any).hasAlisKatsayisi || (found as any).hasOrani || r.milyem;
-                          const rawSatis = (found as any).satisMilyem || (found as any).hasSatisKatsayisi || (found as any).hasOrani || r.milyem;
-                          const rawMilyem = newTip === 0 ? rawAlis : rawSatis;
+                          const autoMilyem = getMilyemForProduct(found, newTip);
+                          const curKur = found.urunTipi === 0 ? autoKur : (found.urunTipi === 2 ? newGumusKuru : newHasKuru);
+
                           const updated = {
                             ...r,
-                            kur: autoKur > 0 ? autoKur : r.kur,
-                            milyem: (found as any).urunTipi === 0 ? "" : (rawMilyem || r.milyem),
+                            kur: curKur > 0 ? curKur : (autoKur > 0 ? autoKur : r.kur),
+                            milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                           };
-                          return recomputeRow(updated, autoKur);
+                          return recomputeRow(updated, curKur);
                         }));
+
+                        const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
+                        const odemeHasKuru = getHasKurForTip(odemeTip);
+                        const odemeGumusKuru = getGumusKurForTip(odemeTip);
+
                         setOdemeRows((prev) => prev.map((r) => {
                           if (!r.paraKodu || r.paraKodu === "TL") return r;
                           const found = urunList.find((u) => u.kod.trim().toLowerCase() === r.paraKodu.trim().toLowerCase()) || { paraId: r.paraId, kod: r.paraKodu, urunTipi: r.urunTipi };
-                          const autoKur = getKurForProduct(found, newTip === 0 ? 1 : 0);
-                          const rawAlis = (found as any).alisMilyem || (found as any).hasAlisKatsayisi || (found as any).hasOrani || r.milyem;
-                          const rawSatis = (found as any).satisMilyem || (found as any).hasSatisKatsayisi || (found as any).hasOrani || r.milyem;
-                          const rawMilyem = newTip === 0 ? rawSatis : rawAlis;
+                          const autoKur = getKurForProduct(found, odemeTip);
+                          const autoMilyem = getMilyemForProduct(found, odemeTip);
+                          const curKur = found.urunTipi === 0 ? autoKur : (found.urunTipi === 2 ? odemeGumusKuru : odemeHasKuru);
+
                           const updated = {
                             ...r,
-                            kur: autoKur > 0 ? autoKur : r.kur,
-                            milyem: (found as any).urunTipi === 0 ? "" : (rawMilyem || r.milyem),
+                            kur: curKur > 0 ? curKur : (autoKur > 0 ? autoKur : r.kur),
+                            milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                           };
-                          return recomputeOdemeRow(updated, currentHasKuru);
+                          return recomputeOdemeRow(updated, curKur);
                         }));
                         return;
                       }

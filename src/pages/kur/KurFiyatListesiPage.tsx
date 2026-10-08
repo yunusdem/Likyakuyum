@@ -1008,85 +1008,169 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       const usdRow = updatedRows.find((r) => r.kod.trim().toUpperCase() === "USD");
       const usdRate = usdRow ? usdRow.efektifAlis || usdRow.dovizAlis : null;
 
+      const effAlisBase = baseAlisEfektif || (baseSatisEfektif ? baseSatisEfektif * 0.985 : 0);
+      const effSatisBase = baseSatisEfektif || (baseAlisEfektif ? baseSatisEfektif * 1.015 : 0);
+      const dovAlisBase = baseAlisDoviz || effAlisBase;
+      const dovSatisBase = baseSatisDoviz || effSatisBase;
+
       let calculatedCount = 0;
 
       updatedRows.forEach((r, idx) => {
         // HAS altın satırının kendisini atla
         if (idx === hasRowIdx) return;
 
-        // 1. Sadece Ürün Tipi Altın (urunTipi === 1) olan ürünler hesaplanır
-        const isAltin =
-          Number(r.urunTipi) === 1 ||
-          (r.urunTipi === null || r.urunTipi === undefined
-            ? (r.kod?.toUpperCase().includes("AYAR") ||
-               r.kod?.toUpperCase().includes("ALT") ||
-               r.ad?.toUpperCase().includes("ALTIN") ||
-               r.ad?.toUpperCase().includes("BİLEZİK") ||
-               r.ad?.toUpperCase().includes("BILEZIK") ||
-               r.ad?.toUpperCase().includes("ÇEYREK") ||
-               r.ad?.toUpperCase().includes("CEYREK") ||
-               r.ad?.toUpperCase().includes("YARIM") ||
-               r.ad?.toUpperCase().includes("TAM") ||
-               r.ad?.toUpperCase().includes("ATA") ||
-               r.ad?.toUpperCase().includes("GREMSE") ||
-               r.ad?.toUpperCase().includes("ZİYNET") ||
-               r.ad?.toUpperCase().includes("ZIYNET") ||
-               r.ad?.toUpperCase().includes("HURDA"))
-            : false);
+        // Sadece Ürün Tipi Altın (1) ve Ziynet (3) olan ürünler hesaplanır
+        const rawUrunTipi = r.urunTipi !== undefined && r.urunTipi !== null ? r.urunTipi : (r as any).URUN_TIPI;
+        const isAltin = rawUrunTipi !== undefined && rawUrunTipi !== null && (Number(rawUrunTipi) === 1 || Number(rawUrunTipi) === 3);
 
         if (!isAltin) {
           return;
         }
 
-        // 2. Alış Has ve Satış Has değerleri kontrolü
+        // 1. Alış Has ve Satış Has değerleri kontrolü
         const rawAlis =
           r.hasAlisKatsayisi !== null && r.hasAlisKatsayisi !== undefined && Number(r.hasAlisKatsayisi) > 0
             ? Number(r.hasAlisKatsayisi)
+            : (r as any).HAS_ALIS_KATSAYISI !== null && (r as any).HAS_ALIS_KATSAYISI !== undefined && Number((r as any).HAS_ALIS_KATSAYISI) > 0
+            ? Number((r as any).HAS_ALIS_KATSAYISI)
+            : (r as any).alisMilyem !== null && (r as any).alisMilyem !== undefined && Number((r as any).alisMilyem) > 0
+            ? Number((r as any).alisMilyem)
+            : (r as any).ALIS_MILYEM !== null && (r as any).ALIS_MILYEM !== undefined && Number((r as any).ALIS_MILYEM) > 0
+            ? Number((r as any).ALIS_MILYEM)
             : r.hasOrani !== null && r.hasOrani !== undefined && Number(r.hasOrani) > 0
             ? Number(r.hasOrani)
+            : (r as any).HAS_ORANI !== null && (r as any).HAS_ORANI !== undefined && Number((r as any).HAS_ORANI) > 0
+            ? Number((r as any).HAS_ORANI)
+            : (r as any).milyem !== null && (r as any).milyem !== undefined && Number((r as any).milyem) > 0
+            ? Number((r as any).milyem)
             : null;
 
         const rawSatis =
           r.hasSatisKatsayisi !== null && r.hasSatisKatsayisi !== undefined && Number(r.hasSatisKatsayisi) > 0
             ? Number(r.hasSatisKatsayisi)
+            : (r as any).HAS_SATIS_KATSAYISI !== null && (r as any).HAS_SATIS_KATSAYISI !== undefined && Number((r as any).HAS_SATIS_KATSAYISI) > 0
+            ? Number((r as any).HAS_SATIS_KATSAYISI)
+            : (r as any).satisMilyem !== null && (r as any).satisMilyem !== undefined && Number((r as any).satisMilyem) > 0
+            ? Number((r as any).satisMilyem)
+            : (r as any).SATIS_MILYEM !== null && (r as any).SATIS_MILYEM !== undefined && Number((r as any).SATIS_MILYEM) > 0
+            ? Number((r as any).SATIS_MILYEM)
             : r.hasOrani !== null && r.hasOrani !== undefined && Number(r.hasOrani) > 0
             ? Number(r.hasOrani)
+            : (r as any).HAS_ORANI !== null && (r as any).HAS_ORANI !== undefined && Number((r as any).HAS_ORANI) > 0
+            ? Number((r as any).HAS_ORANI)
+            : (r as any).milyem !== null && (r as any).milyem !== undefined && Number((r as any).milyem) > 0
+            ? Number((r as any).milyem)
             : null;
 
-        const alisMult = getMultiplier(rawAlis);
-        const satisMult = getMultiplier(rawSatis);
+        let alisMult = getMultiplier(rawAlis);
+        let satisMult = getMultiplier(rawSatis);
 
-        // Eğer Alış Has ve Satış Has yok ise bu satır hesaplanmaz, boş geçilir
-        if (alisMult === null && satisMult === null) {
-          return;
+        if (alisMult === null && satisMult !== null) alisMult = satisMult;
+        if (satisMult === null && alisMult !== null) satisMult = alisMult;
+
+        // Otomatik altın katsayısı tespiti (Hiçbir altın boş geçilmez)
+        if (alisMult === null || satisMult === null) {
+          const norm = ((r.kod || "") + " " + (r.ad || ""))
+            .toUpperCase()
+            .replace(/İ/g, "I")
+            .replace(/ı/g, "i")
+            .replace(/Ç/g, "C")
+            .replace(/ç/g, "c")
+            .replace(/Ş/g, "S")
+            .replace(/ş/g, "s")
+            .replace(/Ğ/g, "G")
+            .replace(/ğ/g, "g")
+            .replace(/Ü/g, "U")
+            .replace(/ü/g, "u")
+            .replace(/Ö/g, "O")
+            .replace(/ö/g, "o");
+
+          let defMult = 0.916; // Standart 22 ayar
+          if (
+            norm.includes("24") ||
+            norm.includes("995") ||
+            norm.includes("999") ||
+            norm.includes("KULCE") ||
+            norm.includes("HAS")
+          ) {
+            defMult = 1.0;
+          } else if (
+            norm.includes("22") ||
+            norm.includes("916") ||
+            norm.includes("BILEZIK") ||
+            norm.includes("BURMA") ||
+            norm.includes("KORDON")
+          ) {
+            defMult = 0.916;
+          } else if (norm.includes("18") || norm.includes("750")) {
+            defMult = 0.75;
+          } else if (norm.includes("14") || norm.includes("585")) {
+            defMult = 0.585;
+          } else if (norm.includes("8") || norm.includes("333")) {
+            defMult = 0.333;
+          } else if (norm.includes("ATA 5") || norm.includes("BESLI") || norm.includes("5LI")) {
+            defMult = 33.08;
+          } else if (norm.includes("ATA 2.5") || norm.includes("IKIBUCUK") || norm.includes("2.5")) {
+            defMult = norm.includes("GREMSE") ? 16.05 : 16.54;
+          } else if (norm.includes("GREMSE")) {
+            defMult = 16.05;
+          } else if (norm.includes("ATA") || norm.includes("CUMHURIYET") || norm.includes("ATA LIRA")) {
+            defMult = 6.615;
+          } else if (norm.includes("CEYREK")) {
+            defMult = 1.605;
+          } else if (norm.includes("YARIM")) {
+            defMult = 3.21;
+          } else if (
+            norm.includes("TAM") ||
+            norm.includes("TEKLIK") ||
+            norm.includes("LIRA") ||
+            norm.includes("ZIYNET")
+          ) {
+            defMult = 6.42;
+          } else if (norm.includes("RESAT") || norm.includes("HAMIT") || norm.includes("AZIZ")) {
+            defMult = 6.615;
+          } else if (norm.includes("HURDA")) {
+            defMult = norm.includes("14")
+              ? 0.585
+              : norm.includes("18")
+              ? 0.75
+              : norm.includes("8")
+              ? 0.333
+              : 0.916;
+          } else if (norm.includes("GUMUS") || norm.includes("SILVER") || norm.includes("925")) {
+            defMult = 0.015;
+          }
+
+          if (alisMult === null) alisMult = defMult;
+          if (satisMult === null) satisMult = defMult;
         }
 
         const newRow = { ...r };
         let isRowUpdated = false;
 
         // Alış hesaplama: (Alış Has / 1000) * HAS Efektif/Döviz Alış
-        if (alisMult !== null) {
-          if (baseAlisEfektif) {
-            newRow.efektifAlis = Number((baseAlisEfektif * alisMult).toFixed(kurDecimals));
+        if (alisMult !== null && alisMult > 0) {
+          if (effAlisBase > 0) {
+            newRow.efektifAlis = Number((effAlisBase * alisMult).toFixed(kurDecimals));
             updatedRawInputs[getCellKey(idx, "efektifAlis")] = newRow.efektifAlis.toFixed(kurDecimals);
             isRowUpdated = true;
           }
-          if (baseAlisDoviz) {
-            newRow.dovizAlis = Number((baseAlisDoviz * alisMult).toFixed(kurDecimals));
+          if (dovAlisBase > 0) {
+            newRow.dovizAlis = Number((dovAlisBase * alisMult).toFixed(kurDecimals));
             updatedRawInputs[getCellKey(idx, "dovizAlis")] = newRow.dovizAlis.toFixed(kurDecimals);
             isRowUpdated = true;
           }
         }
 
         // Satış hesaplama: (Satış Has / 1000) * HAS Efektif/Döviz Satış
-        if (satisMult !== null) {
-          if (baseSatisEfektif) {
-            newRow.efektifSatis = Number((baseSatisEfektif * satisMult).toFixed(kurDecimals));
+        if (satisMult !== null && satisMult > 0) {
+          if (effSatisBase > 0) {
+            newRow.efektifSatis = Number((effSatisBase * satisMult).toFixed(kurDecimals));
             updatedRawInputs[getCellKey(idx, "efektifSatis")] = newRow.efektifSatis.toFixed(kurDecimals);
             isRowUpdated = true;
           }
-          if (baseSatisDoviz) {
-            newRow.dovizSatis = Number((baseSatisDoviz * satisMult).toFixed(kurDecimals));
+          if (dovSatisBase > 0) {
+            newRow.dovizSatis = Number((dovSatisBase * satisMult).toFixed(kurDecimals));
             updatedRawInputs[getCellKey(idx, "dovizSatis")] = newRow.dovizSatis.toFixed(kurDecimals);
             isRowUpdated = true;
           }
@@ -1094,7 +1178,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
         // Parite hesaplama (USD varsa)
         if (usdRate && usdRate > 0) {
-          const rowRate = newRow.efektifAlis || newRow.dovizAlis;
+          const rowRate = newRow.efektifAlis || newRow.dovizAlis || newRow.efektifSatis || newRow.dovizSatis;
           if (rowRate && rowRate > 0) {
             newRow.parite = Number((rowRate / usdRate).toFixed(6));
             updatedRawInputs[getCellKey(idx, "parite")] = newRow.parite.toFixed(6);
@@ -1108,7 +1192,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       });
 
       if (calculatedCount === 0) {
-        setAlertError("Hesaplanacak altın katsayısına (Alış/Satış Has) sahip ürün bulunamadı.");
+        setAlertError("Hesaplanacak altın ürünü bulunamadı.");
         return;
       }
 
@@ -1116,10 +1200,6 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       setRawInputs(updatedRawInputs);
       setIsDirty(true);
       setStatusText("Altın kurları hesaplandı (Kaydedilmedi)");
-      setAlertSuccess(
-        `${calculatedCount} adet altın kuru HAS fiyatına göre başarıyla hesaplandı. F1 veya sol üstteki 'Kaydet' butonuna basarak kaydedebilirsiniz.`
-      );
-      setTimeout(() => setAlertSuccess(null), 5000);
     } catch (err: any) {
       console.error("Altın kurları hesaplama hatası:", err);
       setAlertError("Altın kurları hesaplanırken bir hata oluştu: " + (err?.message || ""));

@@ -27,6 +27,7 @@ import MasakMenu from "components/masak/MasakMenu";
 import { useAuth } from "../../context/AuthContext";
 import { UST_KISAYOLLAR, modulAcikMi } from "../../config/modulKatalogu";
 import HeaderThemeSelector from "components/theme/HeaderThemeSelector";
+import { getAppBrand } from "../../utils/brandHelper";
 
 //import custom hooks
 import useMenu from "hooks/useMenu";
@@ -173,8 +174,8 @@ const Header: React.FC = () => {
                   style={{ width: "26px", height: "26px", objectFit: "contain" }}
                 />
                 <span className="fw-bold fs-6 text-nowrap">
-                  <span className="brand-text-likya">LİKYA</span>{" "}
-                  <span className="brand-text-kuyum">KUYUM</span>
+                  <span className="brand-text-likya">{getAppBrand(user).prefix}</span>{" "}
+                  <span className="brand-text-kuyum">{getAppBrand(user).suffix}</span>
                 </span>
               </div>
 

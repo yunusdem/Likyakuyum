@@ -53,10 +53,10 @@ import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
 import { CashDeskService } from "../services/cashDeskService";
 
-// import required routes
 import { DashboardMenu } from "routes/DashboardRoute";
 import { menuyuSuz } from "../config/modulKatalogu";
 import { SistemService } from "../services/sistemService";
+import { getAppBrand } from "../utils/brandHelper";
 
 interface SidebarProps {
   hideLogo: boolean;
@@ -694,8 +694,8 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
               className="fw-bold site-logo-text text-nowrap"
               style={{ fontSize: "1.25rem" }}
             >
-              <span className="brand-text-likya">LİKYA</span>{" "}
-              <span className="brand-text-kuyum">KUYUM</span>
+              <span className="brand-text-likya">{getAppBrand(user).prefix}</span>{" "}
+              <span className="brand-text-kuyum">{getAppBrand(user).suffix}</span>
             </span>
           </Link>
 

@@ -629,6 +629,7 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
                             <option value={0}>0 - Döviz</option>
                             <option value={1}>1 - Altın</option>
                             <option value={2}>2 - Gümüş</option>
+                            <option value={3}>3 - Ziynet</option>
                           </Form.Select>
                         </Col>
                       </Form.Group>
@@ -1062,9 +1063,11 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
                 bg={
                   item.urunTipi === 1
                     ? "warning"
-                    : item.urunTipi === 0
-                      ? "info"
-                      : "secondary"
+                    : item.urunTipi === 3
+                      ? "danger"
+                      : item.urunTipi === 0
+                        ? "info"
+                        : "secondary"
                 }
               >
                 {item.urunTipi === 0
@@ -1073,7 +1076,9 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
                     ? "Altın"
                     : item.urunTipi === 2
                       ? "Gümüş"
-                      : "Diğer"}
+                      : item.urunTipi === 3
+                        ? "Ziynet"
+                        : "Diğer"}
               </Badge>
             ),
           },

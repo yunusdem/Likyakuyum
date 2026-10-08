@@ -28,7 +28,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback((message: string, type: ToastType = "info", duration = 1750) => {
+  const showToast = useCallback((message: string, type: ToastType = "info", duration = 1500) => {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: ToastItem = { id, message, type, duration };
 
@@ -41,21 +41,81 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [removeToast]);
 
-  const showSuccess = useCallback((msg: string, dur = 1750) => showToast(msg, "success", dur), [showToast]);
-  const showError = useCallback((msg: string, dur = 2000) => showToast(msg, "danger", dur), [showToast]);
-  const showWarning = useCallback((msg: string, dur = 1750) => showToast(msg, "warning", dur), [showToast]);
-  const showInfo = useCallback((msg: string, dur = 1750) => showToast(msg, "info", dur), [showToast]);
+  const showSuccess = useCallback((msg: string, dur = 1500) => showToast(msg, "success", dur), [showToast]);
+  const showError = useCallback((msg: string, dur = 1500) => showToast(msg, "danger", dur), [showToast]);
+  const showWarning = useCallback((msg: string, dur = 1500) => showToast(msg, "warning", dur), [showToast]);
+  const showInfo = useCallback((msg: string, dur = 1500) => showToast(msg, "info", dur), [showToast]);
 
   // Global event listener for non-React or cross-component triggers
   useEffect(() => {
     const handleCustomToast = (e: any) => {
       if (e.detail?.message) {
-        showToast(e.detail.message, e.detail.type || "info", e.detail.duration || 1750);
+        showToast(e.detail.message, e.detail.type || "info", e.detail.duration || 1500);
       }
     };
     window.addEventListener("erp-toast", handleCustomToast);
     return () => window.removeEventListener("erp-toast", handleCustomToast);
   }, [showToast]);
+
+  // Global auto-dismiss for any center popup notifications (.erp-toast-container) across all pages in exactly 1.5s
+  useEffect(() => {
+    const handleNode = (node: Element) => {
+      if (!node || !(node instanceof HTMLElement)) return;
+
+      const toastItems: HTMLElement[] = [];
+      if (node.classList?.contains("erp-toast-item") || (node.classList?.contains("alert") && node.closest(".erp-toast-container"))) {
+        toastItems.push(node);
+      }
+      if (node.querySelectorAll) {
+        node.querySelectorAll<HTMLElement>(".erp-toast-container .erp-toast-item, .erp-toast-container .alert").forEach((el) => {
+          toastItems.push(el);
+        });
+      }
+
+      toastItems.forEach((toastEl) => {
+        if ((toastEl as any).__erp_auto_closed) return;
+        (toastEl as any).__erp_auto_closed = true;
+
+        setTimeout(() => {
+          if (!toastEl.isConnected) return;
+          // 1. Try clicking close button
+          const closeBtn = toastEl.querySelector<HTMLElement>(".btn-close, button.close, [data-bs-dismiss='alert']");
+          if (closeBtn) {
+            closeBtn.click();
+          } else {
+            // 2. Smoothly fade out and hide
+            toastEl.style.transition = "opacity 0.2s ease, transform 0.2s ease";
+            toastEl.style.opacity = "0";
+            toastEl.style.transform = "scale(0.95)";
+            setTimeout(() => {
+              if (toastEl.isConnected) {
+                toastEl.style.display = "none";
+              }
+            }, 200);
+          }
+        }, 1500);
+      });
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const addedNode of mutation.addedNodes) {
+          if (addedNode.nodeType === Node.ELEMENT_NODE) {
+            handleNode(addedNode as Element);
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Initial check
+    document.querySelectorAll<HTMLElement>(".erp-toast-container .erp-toast-item, .erp-toast-container .alert").forEach((el) => {
+      handleNode(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <ToastContext.Provider value={{ showToast, showSuccess, showError, showWarning, showInfo }}>
@@ -122,19 +182,19 @@ export const useToast = () => {
   if (!ctx) {
     // Fallback: trigger via window event if outside provider
     return {
-      showToast: (message: string, type: ToastType = "info", duration = 1750) => {
+      showToast: (message: string, type: ToastType = "info", duration = 1500) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type, duration } }));
       },
-      showSuccess: (message: string, duration = 1750) => {
+      showSuccess: (message: string, duration = 1500) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "success", duration } }));
       },
-      showError: (message: string, duration = 2000) => {
+      showError: (message: string, duration = 1500) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "danger", duration } }));
       },
-      showWarning: (message: string, duration = 1750) => {
+      showWarning: (message: string, duration = 1500) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "warning", duration } }));
       },
-      showInfo: (message: string, duration = 1750) => {
+      showInfo: (message: string, duration = 1500) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "info", duration } }));
       },
     };
