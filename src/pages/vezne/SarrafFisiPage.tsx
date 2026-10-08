@@ -1146,11 +1146,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             urunKodu: s.urunKodu || "",
             urunAdi: s.urunAdi || "",
             adet: s.adet != null ? s.adet : "",
-            miktar: s.miktar != null ? String(s.miktar) : "",
+            miktar: s.miktar != null ? formatMiktar(s.miktar) : "",
             milyem: itemMilyem,
             hasGram: s.hasGram != null ? s.hasGram : "",
             iscilikHesaplamaSekli: s.iscilikHesaplamaSekli || 0,
-            iscilikiMiktari: s.iscilikiMiktari != null ? s.iscilikiMiktari : "",
+            iscilikiMiktari: s.iscilikiMiktari != null ? formatMiktar(s.iscilikiMiktari) : "",
             iscilikHasGram: s.iscilikHasGram != null ? s.iscilikHasGram : "",
             kur: s.kur != null ? s.kur : "",
             tutar: s.tutar != null ? s.tutar : "",
@@ -1249,7 +1249,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             paraKodu: resolvedParaKodu,
             paraAdi: resolvedParaAdi || matchedUrun?.ad || (resolvedParaKodu === "TL" ? "TÜRK LİRASI" : ""),
             adet: calcAdet,
-            miktar: o.miktar != null ? String(o.miktar) : "",
+            miktar: o.miktar != null ? formatMiktar(o.miktar) : "",
             milyem: oMilyem,
             hasGram: o.hasGram != null ? o.hasGram : "",
             kur: o.kur != null ? o.kur : 1,
@@ -2544,7 +2544,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
             paraKodu: "TL",
             paraAdi: "TÜRK LİRASI",
             adet: "",
-            miktar: kalanTL > 0 ? kalanTL : "",
+            miktar: kalanTL > 0 ? formatMiktar(kalanTL) : "",
             kur: "",
             tutar: kalanTL > 0 ? kalanTL : "",
             hasGram: "",
@@ -2572,7 +2572,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
             ...r,
             tutar: kalanTL > 0 ? kalanTL : "",
             hasGram: hasVal,
-            miktar: miktarVal,
+            miktar: miktarVal !== "" ? formatMiktar(miktarVal) : "",
             adet: 1,
             kur: rowKur,
           };
@@ -2583,7 +2583,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           return {
             ...r,
             adet: 1,
-            miktar: miktarVal,
+            miktar: miktarVal !== "" ? formatMiktar(miktarVal) : "",
             tutar: kalanTL > 0 ? kalanTL : "",
             hasGram: hasVal,
             kur: rowKur,
@@ -2612,11 +2612,11 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
     let sanitizedValue = value;
     if (field === "adet") {
       sanitizedValue = onlyDigits(String(value));
+    } else if (field === "miktar" || field === "iscilikiMiktari") {
+      sanitizedValue = formatMiktar(value);
     } else if (
-      field === "miktar" ||
       field === "milyem" ||
       field === "hasGram" ||
-      field === "iscilikiMiktari" ||
       field === "iscilikHasGram" ||
       field === "kur" ||
       field === "tutar" ||
@@ -2634,7 +2634,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         const numAdet = Number(sanitizedValue) || 0;
         const found = urunList.find((u) => u.kod.trim().toLowerCase() === (r.urunKodu || "").trim().toLowerCase());
         if (found && Number(found.gramaj) > 0 && numAdet > 0) {
-          miktar = String(Number(found.gramaj) * numAdet);
+          miktar = formatMiktar(Number(found.gramaj) * numAdet);
         }
       }
 
@@ -2655,6 +2655,9 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
       }
+      if (field === "miktar" || field === "iscilikiMiktari") {
+        val = formatMiktar(val);
+      }
       const curHasKuru = Number(altinHasKuru) || 0;
       return recomputeRow({ ...r, [field]: val }, curHasKuru, field);
     }));
@@ -2664,8 +2667,9 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
     let sanitizedValue = value;
     if (field === "adet") {
       sanitizedValue = onlyDigits(String(value));
+    } else if (field === "miktar") {
+      sanitizedValue = formatMiktar(value);
     } else if (
-      field === "miktar" ||
       field === "milyem" ||
       field === "hasGram" ||
       field === "kur" ||
@@ -2688,9 +2692,9 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         const numAdet = Number(sanitizedValue) || 0;
         const found = urunList.find((u) => u.kod.trim().toLowerCase() === (r.paraKodu || "").trim().toLowerCase());
         if (found && Number(found.gramaj) > 0 && numAdet > 0) {
-          miktar = String(Number(found.gramaj) * numAdet);
+          miktar = formatMiktar(Number(found.gramaj) * numAdet);
         } else if (numAdet > 0 && (!miktar || Number(miktar) === 0)) {
-          miktar = String(numAdet);
+          miktar = formatMiktar(numAdet);
         }
       }
       const u = { ...r, miktar, [field]: effectiveVal };
@@ -2705,6 +2709,9 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       let val = r[field];
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
+      }
+      if (field === "miktar") {
+        val = formatMiktar(val);
       }
       const curHasKuru = Number(altinHasKuru) || 0;
       return recomputeOdemeRow({ ...r, [field]: val }, curHasKuru, field);
@@ -4075,7 +4082,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           urunKodu: mainUrun?.kod || result.girisPara.kod,
           urunAdi: mainUrun?.ad || result.girisPara.ad || result.girisPara.kod,
           adet: 1,
-          miktar: result.girisMiktar,
+          miktar: formatMiktar(result.girisMiktar),
           milyem: mainMilyem,
           hasGram: mainMilyem > 0 ? (result.girisMiktar * mainMilyem) / 1000 : result.girisMiktar,
           iscilikHesaplamaSekli: 0,
@@ -4104,7 +4111,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           paraKodu: result.cikisPara.kod,
           paraAdi: result.cikisPara.ad,
           adet: 1,
-          miktar: result.cikisMiktar,
+          miktar: formatMiktar(result.cikisMiktar),
           milyem: 0,
           hasGram: 0,
           kur: cikisKur,
@@ -4135,7 +4142,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           urunKodu: mainUrun?.kod || result.cikisPara.kod,
           urunAdi: mainUrun?.ad || result.cikisPara.ad || result.cikisPara.kod,
           adet: 1,
-          miktar: result.cikisMiktar,
+          miktar: formatMiktar(result.cikisMiktar),
           milyem: mainMilyem,
           hasGram: mainMilyem > 0 ? (result.cikisMiktar * mainMilyem) / 1000 : result.cikisMiktar,
           iscilikHesaplamaSekli: 0,
@@ -4164,7 +4171,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           paraKodu: result.girisPara.kod,
           paraAdi: result.girisPara.ad,
           adet: 1,
-          miktar: result.girisMiktar,
+          miktar: formatMiktar(result.girisMiktar),
           milyem: 0,
           hasGram: 0,
           kur: girisKur,
@@ -4348,7 +4355,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         paraKodu: doviz ? (doviz.kod || kod) : "TL",
         paraAdi: doviz ? (doviz.ad || kod) : "TÜRK LİRASI",
         urunTipi: 0,
-        miktar: doviz ? b.tutar : b.tutarTl,
+        miktar: formatMiktar(doviz ? b.tutar : b.tutarTl),
         kur: doviz ? parseFloat((b.tutarTl / b.tutar).toFixed(4)) : "",
       };
       setOdemeRows([recomputeOdemeRow(satir, Number(altinHasKuru) || 0)]);

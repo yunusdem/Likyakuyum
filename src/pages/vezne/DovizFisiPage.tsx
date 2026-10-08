@@ -1379,7 +1379,7 @@ export const DovizFisiPage: React.FC = () => {
             paraId: s.paraId,
             paraKodu: s.paraKodu || "",
             paraAdi: s.paraAdi || "",
-            miktar: s.miktar != null ? Number(s.miktar).toFixed(dovizKurusSayisi) : "",
+            miktar: s.miktar != null ? formatMiktar(s.miktar) : "",
             kur: s.kur ? Number(s.kur).toFixed(kurKurusSayisi) : "",
             komisyonOrani: s.komisyonOrani || "",
             komisyon: s.komisyon || "",
@@ -1653,8 +1653,9 @@ export const DovizFisiPage: React.FC = () => {
     if (isLocked) return;
 
     // Sadece geçerli pozitif sayı ve tek ondalık ayırıcı (nokta veya virgül) girişine izin ver
-    if (
-      field === "miktar" ||
+    if (field === "miktar") {
+      value = formatMiktar(value);
+    } else if (
       field === "kur" ||
       field === "komisyon" ||
       field === "komisyonOrani" ||
@@ -1687,7 +1688,7 @@ export const DovizFisiPage: React.FC = () => {
               }
             }
             const em = parseMiktar(updated.miktar) > 0 ? null : ebMiktar(prev, id, matched.kod, parseKur(updated.kur));
-            if (em) updated.miktar = em;
+            if (em) updated.miktar = formatMiktar(em);
           } else if (upper === "") {
             updated.paraId = 0;
             updated.paraAdi = "";
@@ -2338,7 +2339,7 @@ export const DovizFisiPage: React.FC = () => {
               paraId: data.para.id,
               paraKodu: data.para.kod,
               paraAdi: data.para.ad,
-              miktar: data.miktar.toString(),
+              miktar: formatMiktar(data.miktar),
               kur: data.kur.toFixed(kurKurusSayisi),
               tutar: data.tutar,
               bmvOrani,
@@ -2353,7 +2354,7 @@ export const DovizFisiPage: React.FC = () => {
         paraId: data.para.id,
         paraKodu: data.para.kod,
         paraAdi: data.para.ad,
-        miktar: data.miktar.toString(),
+        miktar: formatMiktar(data.miktar),
         kur: data.kur.toFixed(kurKurusSayisi),
         tutar: data.tutar,
         bmvOrani,
@@ -2527,7 +2528,7 @@ export const DovizFisiPage: React.FC = () => {
   const handleOpenBanknotSay = useCallback(() => {
     // Fiş gridindeki geçerli döviz satırlarını kontrol et
     const validLines = lines.filter((l) => {
-      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(l.miktar);
       return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
     });
 
@@ -2542,7 +2543,7 @@ export const DovizFisiPage: React.FC = () => {
   // F9 Para Sayma Modalı için Fiş Özeti (Dövizler + Türk Lirası)
   const getParaSaymaCurrencies = useCallback((): ParaSaymaCurrencyItem[] => {
     const validLines = lines.filter((l) => {
-      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(l.miktar);
       return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
     });
 
@@ -2550,7 +2551,7 @@ export const DovizFisiPage: React.FC = () => {
 
     validLines.forEach((l) => {
       const kod = (l.paraKodu || "").trim().toUpperCase();
-      const miktar = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const miktar = parseMiktar(l.miktar);
       if (!kod || miktar <= 0) return;
 
       if (map.has(kod)) {
@@ -5111,6 +5112,12 @@ export const DovizFisiPage: React.FC = () => {
                             cleanupEmptyRows(idx);
                           }}
                           onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== "") {
+                              handleLineFieldChange(row.id, "miktar", formatMiktar(val));
+                            }
+                          }}
                           onKeyDown={(e) => handleCellKeyDown(e, idx, "miktar")}
                           title={isMiktarMissing ? "Lütfen geçerli bir miktar giriniz" : undefined}
                         />

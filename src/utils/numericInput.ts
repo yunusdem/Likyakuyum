@@ -41,8 +41,8 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
   // 2. Nokta içeriyorsa:
   if (s.includes(".")) {
     const dotParts = s.split(".");
-    // Birden fazla nokta (örn: "1.000.000") -> zaten binlik nokta ile ayrılmış
-    if (dotParts.length > 2) {
+    // Birden fazla nokta (örn: "1.000.000") veya noktadan sonra 4+ basamak varsa (yazarken binlik noktasının ardına basamak eklenmişse)
+    if (dotParts.length > 2 || dotParts[1].length > 3) {
       const allDigits = s.replace(/\D/g, "");
       return allDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     }
@@ -51,7 +51,7 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
       const allDigits = s.replace(/\D/g, "");
       return allDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     }
-    // Aksi halde JS ondalık formatıdır (örn: "0.25", "34.50", "4800.5", "1234.56")
+    // Aksi halde ondalık formatıdır (örn: "0.25", "34.50", "4800.5", "1234.56", "99000000000.58")
     const intDigits = dotParts[0].replace(/\D/g, "");
     const formattedInt = intDigits ? intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "0";
     return `${formattedInt},${dotParts[1]}`;
