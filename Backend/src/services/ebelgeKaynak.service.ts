@@ -173,16 +173,32 @@ export class EbelgeKaynakService {
     return m.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
   }
 
+  /**
+   * UBL-TR alıcı adresinde il ve ilçe ister; Perakende'de nihai tüketicinin adresi çoğu zaman boştur.
+   * Boşsa firmanın kendi il / ilçesi (E-Belge Bağlantı Ayarları) yazılır, adres satırı "Belirtilmemiş" olur.
+   */
+  private static async aliciAdresiniTamamla<T extends { alici: { il?: string; ilce?: string; adres?: string } }>(girdi: T, ctx?: DbContext): Promise<T> {
+    const a = girdi.alici;
+    if (temiz(a.il) && temiz(a.ilce)) return girdi;
+    const ayar = await EbelgeSqlRepository.getAyar(ctx);
+    const il = temiz(a.il) || temiz(ayar?.firmaIl);
+    const ilce = temiz(a.ilce) || temiz(ayar?.firmaIlce);
+    if (!il || !ilce) {
+      throw ApiError.badRequest("Alıcı adresinde il / ilçe yok ve E-Belge Bağlantı Ayarları'nda firma il / ilçesi tanımlı değil; biri doldurulmalı.");
+    }
+    return { ...girdi, alici: { ...a, il, ilce, adres: temiz(a.adres) || "Belirtilmemiş" } };
+  }
+
   /** Perakende fişi hazırlama (P4): satış → fatura doğrulaması, alış → gider pusulası ön izleme. Hiçbir şey gönderilmez. */
   private static async perakendeHazirla(k: KaynakKimlik, kullanici: string, ctx?: DbContext) {
     const kaynak = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
     if (Number(kaynak.baslik.FATURA_TIPI) === 0) {
-      const girdi = perakendeGiderGirdisi(kaynak);
+      const girdi = await this.aliciAdresiniTamamla(perakendeGiderGirdisi(kaynak), ctx);
       if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
       const { ozet } = await EbelgeService.giderPusulasiOnizle(girdi as any, ctx);
       return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan || "", belgeTuruAdi: "e-Gider pusulası", parmakizi: kaynakParmakizi(kaynak), senaryo: "GIDERPUSULASI", tutar: ozet.odenecekTutar, durum: "HAZIR" };
     }
-    const girdi = perakendeFaturaGirdisi(kaynak);
+    const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(kaynak), ctx);
     if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
     girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
     const sonuc = await EbelgeService.dogrulaGidenBelge(girdi as UblFaturaGirdi, kullanici, false, ctx);
@@ -206,9 +222,9 @@ export class EbelgeKaynakService {
       let sonuc: { uuid: string; mesaj: string };
       if (alis) {
         if (senaryo !== "GIDERPUSULASI") throw ApiError.conflict("Belge türü değişmiş. Yeniden hazırlayın.");
-        sonuc = await EbelgeService.giderPusulasiGonder(perakendeGiderGirdisi(guncel) as any, kullanici, ctx, secenek);
+        sonuc = await EbelgeService.giderPusulasiGonder((await this.aliciAdresiniTamamla(perakendeGiderGirdisi(guncel), ctx)) as any, kullanici, ctx, secenek);
       } else {
-        const girdi = perakendeFaturaGirdisi(guncel);
+        const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(guncel), ctx);
         girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
         if (girdi.senaryo !== senaryo) throw ApiError.conflict("Alıcının mükellefiyeti değişmiş. Yeniden hazırlayın.");
         sonuc = girdi.senaryo === "TICARIFATURA"
