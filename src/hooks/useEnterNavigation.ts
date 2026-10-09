@@ -68,8 +68,8 @@ const setNativeValue = (
 export const useEnterNavigation = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as Element;
-      if (!target || !('tagName' in target)) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
       const tagName = (target.tagName || "").toLowerCase();
 
       // ─── 1. Space Tuşu: Tüm select / combobox alanlarını açar ──────────────────
