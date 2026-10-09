@@ -2,6 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { DbContext, EbelgeSqlRepository } from "./ebelgeSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
+import { logger } from "../utils/logger.js";
 import { PERAKENDE_EVRAK_TURU } from "../services/ebelgePerakende.js";
 import { PerakendeSqlRepository } from "./perakendeSql.repository.js";
 import { PosEntegrasyonSqlRepository } from "./posEntegrasyonSql.repository.js";
@@ -234,10 +235,16 @@ export class EbelgeKaynakRepository {
     const pool = await this.pool(ctx);
     await pool.request().input("key",sql.VarChar(80),kaynakAnahtar(k)).input("durum",sql.VarChar(30),durum)
       .input("mesaj",sql.NVarChar(2000),mesaj.slice(0,2000)).query(`UPDATE dbo.TODVZ_EBELGE_KAYNAK SET DURUM=@durum,HATA=@mesaj,TARIH=SYSDATETIME() WHERE ANAHTAR=@key`);
-    // Perakende fişine geri yazılır (P5): 1 = Gönderildi, diğerlerinde 0; son durum metni GIB_STATU_KODU'nda
+    // Perakende fişine geri yazılır (P5): 1 = Gönderildi, diğerlerinde 0. GIB_STATU_KODU'na yazılmaz: canlı veritabanında
+    // kolonun tipi farklı olabiliyor (metin yazınca "Conversion failed" verdi, 10.10.2026). Belge ICE'ye gitmiş olabilir;
+    // fişe geri yazamamak gönderimi hatalı göstermemeli.
     if (perakendeMi(k)) {
-      await pool.request().input("id", sql.Int, k.belgeId).input("durum", sql.VarChar(30), durum)
-        .query(`UPDATE dbo.TODVZ_FATURA SET E_BELGE_DURUMU = CASE WHEN @durum='GONDERILDI' THEN 1 ELSE 0 END, GIB_STATU_KODU = LEFT(@durum, 50) WHERE FATURA_ID=@id`);
+      try {
+        await pool.request().input("id", sql.Int, k.belgeId).input("durum", sql.VarChar(30), durum)
+          .query(`UPDATE dbo.TODVZ_FATURA SET E_BELGE_DURUMU = CASE WHEN @durum='GONDERILDI' THEN 1 ELSE 0 END WHERE FATURA_ID=@id`);
+      } catch (err: any) {
+        logger.warn(`[e-Belge] Perakende fişine durum yazılamadı (${k.belgeId}): ${err?.message}`);
+      }
     }
   }
 }
