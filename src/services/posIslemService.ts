@@ -48,6 +48,8 @@ export interface PosBankaEsleme {
 export interface PosIslem {
   posIslemId: number;
   istekKimlik: string;
+  /** Aynı fişte birlikte gönderilen POS satırlarının ortak kimliği (fiş başına tek sipariş); tek satırda null */
+  grupKimlik: string | null;
   posTerminalId: number | null;
   terminalAd: string | null;
   entegrasyon: PosEntegrasyon;
@@ -108,6 +110,29 @@ export interface PosTahsilatGirdi {
   posCihaziId?: number | null;
   vezneId?: number | null;
   aliciAd?: string | null;
+  /** Alıcının VKN / TCKN'si (bilgi fişine basılır) */
+  aliciVkn?: string | null;
+}
+
+/** Fiş cihaza gönderilmeden önce tahsil edilmiş kısım (nakit / havale / cari); cihaz yalnız kart tutarını çeker */
+export interface PosPesinOdeme {
+  tur: "nakit" | "havale" | "cari";
+  tutar: number;
+}
+
+/** Fiş başına tek sipariş (Inpos): aynı fişin bütün POS satırları birlikte gider */
+export interface PosTopluGirdi {
+  grupKimlik: string;
+  posTerminalId: number | null;
+  satirlar: { istekKimlik: string; tutar: number; posCihaziId?: number | null }[];
+  pesinOdemeler: PosPesinOdeme[];
+  belgeTuru: PosBelgeTuru;
+  belgeId?: number | null;
+  belgeNo?: string | null;
+  belgeTipi: PosBelgeTipi;
+  vezneId?: number | null;
+  aliciAd?: string | null;
+  aliciVkn?: string | null;
 }
 
 export interface PosBankaHareketi {
@@ -173,6 +198,11 @@ export class PosIslemService {
   /** Tutarı cihaza gönderir. Sonuç sonradan gelir: getIslem ile yoklanır. */
   public static async baslat(girdi: PosTahsilatGirdi): Promise<PosIslem> {
     return (await apiClient.post<PosIslem>("/pos/islemler", girdi)).data;
+  }
+
+  /** Fiş başına tek sipariş: satırlar birlikte cihaza gider, her satır için işlem döner (satır sırasıyla). */
+  public static async baslatToplu(girdi: PosTopluGirdi): Promise<PosIslem[]> {
+    return (await apiClient.post<PosIslem[]>("/pos/islemler/toplu", girdi)).data || [];
   }
 
   /** Cihaza hiç göndermeden "alındı" kaydı açar. */

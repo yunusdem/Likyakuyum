@@ -60,6 +60,8 @@ export interface PosBankaEsleme {
 export interface PosIslem {
   posIslemId: number;
   istekKimlik: string;
+  /** Aynı fişte birlikte gönderilen POS satırlarının ortak kimliği; tek satırda null */
+  grupKimlik: string | null;
   posTerminalId: number | null;
   terminalAd: string | null;
   entegrasyon: PosEntegrasyon;
@@ -99,6 +101,7 @@ export interface PosIslem {
 
 export interface PosIslemOlustur {
   istekKimlik: string;
+  grupKimlik?: string | null;
   posTerminalId: number | null;
   entegrasyon: PosEntegrasyon;
   mod: Exclude<PosMod, "kapali">;
@@ -126,14 +129,38 @@ export interface SurucuSonuc {
   zNo?: string | null;
   hata?: string | null;
   ham?: unknown;
+  /**
+   * Fiş başına tek sipariş gönderen sürücülerde (Inpos) cihazda alınan kart ödemelerinin listesi. Varsa sonuç, aynı
+   * siparişe bağlı bütün POS satırlarına tutara göre dağıtılır (K7'nin bulut hali); yoksa sonuç tek işleme aittir.
+   */
+  grupOdemeleri?: GrupOdemesi[];
+}
+
+export interface GrupOdemesi {
+  tutar: number;
+  bankaKodu: string | null;
+  bankaAdi: string | null;
+}
+
+/** Fiş cihaza gönderilmeden önce tahsil edilmiş (nakit, havale, cari) kısım; bilgi fişinde "ödenmiş" görünür, cihaz çekmez */
+export interface PesinOdeme {
+  tur: "nakit" | "havale" | "cari";
+  tutar: number;
 }
 
 export interface SurucuIstek {
   islem: PosIslem;
   terminal: PosTerminal;
   aliciAd: string | null;
+  /** Alıcının VKN / TCKN'si (bilgi fişine basılır); nihai tüketicide null */
+  aliciVkn: string | null;
   /** Sonucun bu sunucuya geri bildirileceği adres (bulut sürücüleri için); yoksa null */
   donusAdresi: string | null;
+  /**
+   * Fiş başına tek sipariş: aynı fişin bütün POS satırları (islem dahil) ve peşin ödenmiş kısmı. Sürücü tek sipariş
+   * gönderir, dönen referans hepsine yazılır. Yoksa yalnız islem gönderilir.
+   */
+  grup?: { islemler: PosIslem[]; pesinOdemeler: PesinOdeme[] };
 }
 
 /**

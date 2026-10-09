@@ -79,6 +79,7 @@ apiRouter.all(DONUS_YOLU, EBankaController.vposDonus);
 apiRouter.use("/pos", kapi("/pos"), posRoutes);
 // Cihaz servisinin (Token) sonuç bildirimi. Oturumsuzdur; adres işlem başına imzalıdır.
 apiRouter.post("/pos-donus/token/:firmaId/:islemId/:imza", PosController.tokenDonus);
+apiRouter.post("/pos-donus/inpos", PosController.inposDonus);
 apiRouter.use("/kasa", kapi("/kasa"), kasaRoutes);
 apiRouter.use("/etiket", kapi("/etiket"), etiketRoutes);
 apiRouter.use("/vezne/izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);

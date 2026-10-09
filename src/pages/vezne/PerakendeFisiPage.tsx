@@ -3834,6 +3834,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             belgeId: currentFaturaId,
             vezneId: selectedVezne?.id ?? null,
             aliciAd: aliciUnvan.trim(),
+            aliciVkn: cleanVkn || null,
+            // Nakit / havale / cari satırları cihaza "ödenmiş" gider; cihaz yalnız kart tutarını çeker
+            pesinOdemeler: odemeRows
+              .filter((r) => r.odemeAraciTuru !== 2 && (parseDecimal(r.tutar) || 0) > 0)
+              .map((r) => ({ tur: r.odemeAraciTuru === 1 ? ("cari" as const) : r.odemeAraciTuru === 3 ? ("havale" as const) : ("nakit" as const), tutar: parseDecimal(r.tutar) || 0 })),
             satirlar: odemeRows
               .filter((r) => r.odemeAraciTuru === 2)
               .map((r) => ({ kimlik: r.id, tutar: parseDecimal(r.tutar) || 0, posCihaziId: r.posCihaziId || r.bankaId || null })),

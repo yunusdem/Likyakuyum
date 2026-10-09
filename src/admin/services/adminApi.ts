@@ -273,6 +273,13 @@ export interface PosMerkezAyar {
   tokenApiUrl: string;
   donusKok: string;
   inposUygulamaNo: string;
+  inposApiUrl: string;
+  inposKullanici: string;
+  inposSifreTanimli: boolean;
+  inposWebhookKullanici: string;
+  inposWebhookSifreTanimli: boolean;
+  /** Inpos portalına (Webhook Konfigürasyonu › Sipariş Durum Güncelleme) yazılacak adres */
+  inposWebhookAdresi: string;
   guncellemeTarihi: string | null;
 }
 
@@ -284,6 +291,13 @@ export interface PosMerkezAyarGirdi {
   tokenApiUrl: string;
   donusKok: string;
   inposUygulamaNo: string;
+  inposApiUrl: string;
+  inposKullanici: string;
+  /** Boş → kayıtlı şifre korunur */
+  inposSifre?: string;
+  inposWebhookKullanici: string;
+  /** Boş → kayıtlı şifre korunur */
+  inposWebhookSifre?: string;
 }
 
 export interface PosSenaryo {
@@ -612,7 +626,7 @@ export const adminApi = {
   posDogrulamaYaz: (veri: { model: string; senaryoNo: number; sonuc: PosDogrulamaSonucu | null; notu?: string }) =>
     istek<{ modeller: PosDogrulamaModeli[] }>("PUT", "/pos/dogrulama", veri),
   posLog: (limit = 100) => istek<PosLogu[]>("GET", `/pos/log${sorgu({ limit })}`),
-  posKimlikTesti: () => istek<{ ayrinti: string }>("POST", "/pos/kimlik-testi"),
+  posKimlikTesti: (saglayici: "token" | "inpos" = "token") => istek<{ ayrinti: string }>("POST", "/pos/kimlik-testi", { saglayici }),
   posFirmalar: () => istek<PosKonsolFirma[]>("GET", "/pos/firmalar"),
   firmaPosModu: (firmaId: number) => istek<{ mod: PosMod; tablolarKurulu: boolean }>("GET", `/firmalar/${firmaId}/pos`),
   firmaPosModuYaz: (firmaId: number, mod: PosMod) => istek<{ mod: PosMod; tablolarKurulu: boolean }>("PUT", `/firmalar/${firmaId}/pos`, { mod }),

@@ -222,9 +222,9 @@ const Konsol: React.FC<{ modeller: PosDogrulamaModeli[] | null; isaretle: (model
       }
     });
 
-  const kimlikDene = () =>
+  const kimlikDene = (saglayici: "token" | "inpos") =>
     calistir(async () => {
-      const s = await adminApi.posKimlikTesti();
+      const s = await adminApi.posKimlikTesti(saglayici);
       setMesaj({ tur: "success", metin: s.ayrinti });
     });
 
@@ -403,9 +403,12 @@ const Konsol: React.FC<{ modeller: PosDogrulamaModeli[] | null; isaretle: (model
         </div>
       )}
 
-      <div className="mt-3">
-        <Button size="sm" variant="outline-secondary" disabled={calisiyor} onClick={kimlikDene}>
+      <div className="mt-3 d-flex flex-wrap gap-2">
+        <Button size="sm" variant="outline-secondary" disabled={calisiyor} onClick={() => kimlikDene("token")}>
           Beko (Token) Kimliğini Dene
+        </Button>
+        <Button size="sm" variant="outline-secondary" disabled={calisiyor} onClick={() => kimlikDene("inpos")}>
+          Inpos Kimliğini Dene
         </Button>
       </div>
     </>
@@ -416,14 +419,38 @@ const Konsol: React.FC<{ modeller: PosDogrulamaModeli[] | null; isaretle: (model
 
 const Ayarlar: React.FC = () => {
   const [ayar, setAyar] = useState<PosMerkezAyar | null>(null);
-  const [form, setForm] = useState<PosMerkezAyarGirdi>({ tokenClientId: "", tokenClientSecret: "", tokenAuthUrl: "", tokenApiUrl: "", donusKok: "", inposUygulamaNo: "" });
+  const [form, setForm] = useState<PosMerkezAyarGirdi>({
+    tokenClientId: "",
+    tokenClientSecret: "",
+    tokenAuthUrl: "",
+    tokenApiUrl: "",
+    donusKok: "",
+    inposUygulamaNo: "",
+    inposApiUrl: "",
+    inposKullanici: "",
+    inposSifre: "",
+    inposWebhookKullanici: "",
+    inposWebhookSifre: "",
+  });
   const [hata, setHata] = useState<string | null>(null);
   const [bilgi, setBilgi] = useState<string | null>(null);
   const [kaydediliyor, setKaydediliyor] = useState(false);
 
   const doldur = (a: PosMerkezAyar) => {
     setAyar(a);
-    setForm({ tokenClientId: a.tokenClientId, tokenClientSecret: "", tokenAuthUrl: a.tokenAuthUrl, tokenApiUrl: a.tokenApiUrl, donusKok: a.donusKok, inposUygulamaNo: a.inposUygulamaNo });
+    setForm({
+      tokenClientId: a.tokenClientId,
+      tokenClientSecret: "",
+      tokenAuthUrl: a.tokenAuthUrl,
+      tokenApiUrl: a.tokenApiUrl,
+      donusKok: a.donusKok,
+      inposUygulamaNo: a.inposUygulamaNo,
+      inposApiUrl: a.inposApiUrl,
+      inposKullanici: a.inposKullanici,
+      inposSifre: "",
+      inposWebhookKullanici: a.inposWebhookKullanici,
+      inposWebhookSifre: "",
+    });
   };
 
   useEffect(() => {
@@ -439,7 +466,14 @@ const Ayarlar: React.FC = () => {
     setHata(null);
     setBilgi(null);
     try {
-      doldur(await adminApi.posAyarKaydet({ ...form, tokenClientSecret: form.tokenClientSecret || undefined }));
+      doldur(
+        await adminApi.posAyarKaydet({
+          ...form,
+          tokenClientSecret: form.tokenClientSecret || undefined,
+          inposSifre: form.inposSifre || undefined,
+          inposWebhookSifre: form.inposWebhookSifre || undefined,
+        })
+      );
       setBilgi("POS ayarları kaydedildi.");
     } catch (err: any) {
       setHata(err?.message || "Kaydedilemedi.");
@@ -486,8 +520,21 @@ const Ayarlar: React.FC = () => {
       {alan("Servis Adresi (sepet)", "tokenApiUrl", { yer: "https://…" })}
       {alan("Sunucunun Dış Adresi", "donusKok", { yer: "https://likyakuyum.com" })}
 
-      <h6 className="mb-3 mt-4">Inpos</h6>
-      {alan("Uygulama Numarası", "inposUygulamaNo")}
+      <h6 className="mb-3 mt-4">Inpos (TSM bulut)</h6>
+      {alan("Servis Adresi", "inposApiUrl", { yer: "https://tsmtest.inpos.com.tr" })}
+      {alan("Portal Kullanıcı Adı", "inposKullanici")}
+      {alan("Portal Şifresi", "inposSifre", { tur: "password", yer: ayar.inposSifreTanimli ? "Kayıtlı (değiştirmek için yazın)" : "" })}
+      {alan("Bildirim (Webhook) Kullanıcı Adı", "inposWebhookKullanici")}
+      {alan("Bildirim (Webhook) Şifresi", "inposWebhookSifre", { tur: "password", yer: ayar.inposWebhookSifreTanimli ? "Kayıtlı (değiştirmek için yazın)" : "" })}
+      <Form.Group className="mb-3">
+        <Form.Label className="small fw-semibold mb-1">Portala Yazılacak Bildirim Adresi</Form.Label>
+        <Form.Control size="sm" readOnly value={ayar.inposWebhookAdresi || "Önce sunucunun dış adresini girin"} />
+        <Form.Text className="text-muted">
+          Inpos portalı › Entegrasyon › Webhook Konfigürasyonu › <strong>Sipariş Durum Güncelleme</strong> alanına bu adres, kimlik doğrulama türü Basic Auth ve yukarıdaki bildirim kullanıcı adı / şifresi
+          yazılır. Listeleme ve detay webhook'ları boş bırakılır (siparişler Inpos'ta tutulur).
+        </Form.Text>
+      </Form.Group>
+      {alan("Uygulama Numarası (GMP3, kullanılmıyor)", "inposUygulamaNo")}
 
       <div className="d-flex align-items-center gap-3">
         <Button type="submit" size="sm" className="btn-adm" disabled={!ayar.tablolarKurulu || kaydediliyor}>

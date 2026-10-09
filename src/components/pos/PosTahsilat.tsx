@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Alert, Badge, Button, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { IconAlertTriangle, IconCheck, IconCreditCard, IconHelpCircle, IconX } from "@tabler/icons-react";
 import { v4 as uuid } from "uuid";
-import { PosBelgeTipi, PosBelgeTuru, PosIslem, PosIslemService, PosMod, PosTerminal } from "../../services/posIslemService";
+import { PosBelgeTipi, PosBelgeTuru, PosIslem, PosIslemService, PosMod, PosPesinOdeme, PosTerminal } from "../../services/posIslemService";
 
 // POS cihazı tahsilatı — docs/POS_ENTEGRASYON_YOL_HARITASI.md (K13: kart, fiş kaydedilmeden hemen önce çekilir)
 // Fiş ekranları yalnızca bu kancayı çağırır; cihazla ilgili iş mantığı fiş ekranlarına yazılmaz.
+// Inpos (bulut, K34): fişin bütün POS satırları tek sipariş olarak gider, cihazda tek bilgi fişi basılır; sonuç satırlara dağıtılır.
 
 export interface PosTahsilSatiri {
   /** Ödeme satırının ekrandaki kimliği */
@@ -23,6 +24,10 @@ export interface PosTahsilIstegi {
   belgeId?: number | null;
   vezneId: number | null;
   aliciAd?: string | null;
+  /** Alıcının VKN / TCKN'si; bilgi fişine basılır (nihai tüketicide boş) */
+  aliciVkn?: string | null;
+  /** Fişin nakit / havale / cari satırları: cihaza "ödenmiş" gider, cihaz yalnız kart tutarını çeker (Inpos) */
+  pesinOdemeler?: PosPesinOdeme[];
   satirlar: PosTahsilSatiri[];
 }
 
@@ -233,8 +238,41 @@ export function usePosTahsilat() {
       posCihaziId: s.posCihaziId,
       vezneId: p.istek.vezneId,
       aliciAd: p.istek.aliciAd ?? null,
+      aliciVkn: p.istek.aliciVkn ?? null,
     }),
     [terminalId]
+  );
+
+  /** Fiş başına tek sipariş (Inpos): verilen satırlar birlikte gider, dönen işlemler satırlara istek kimliğiyle eşlenir. */
+  const gonderToplu = useCallback(
+    async (p: Pencere, hedefler: Satir[]) => {
+      if (!hedefler.length) return;
+      if (terminalId) localStorage.setItem(SON_CIHAZ_ANAHTARI, String(terminalId));
+      const kimlikler = new Map(hedefler.map((s) => [s.kimlik, uuid()] as const));
+      for (const s of hedefler) satirYaz(s.kimlik, { islem: null, mesgul: true, hata: null, denendi: true });
+      try {
+        const islemler = await PosIslemService.baslatToplu({
+          grupKimlik: uuid(),
+          posTerminalId: terminalId,
+          satirlar: hedefler.map((s) => ({ istekKimlik: kimlikler.get(s.kimlik)!, tutar: s.tutar, posCihaziId: s.posCihaziId })),
+          pesinOdemeler: p.istek.pesinOdemeler || [],
+          belgeTuru: p.istek.belgeTuru,
+          belgeId: p.istek.belgeId ?? null,
+          belgeNo: p.istek.belgeNo,
+          belgeTipi: p.istek.belgeTipi,
+          vezneId: p.istek.vezneId,
+          aliciAd: p.istek.aliciAd ?? null,
+          aliciVkn: p.istek.aliciVkn ?? null,
+        });
+        for (const s of hedefler) {
+          const islem = islemler.find((i) => i.istekKimlik === kimlikler.get(s.kimlik)) || null;
+          satirYaz(s.kimlik, { islem, mesgul: false, hata: islem ? null : "İşlem açılamadı." });
+        }
+      } catch (err: any) {
+        for (const s of hedefler) satirYaz(s.kimlik, { hata: err?.message || "İşlem yapılamadı.", mesgul: false });
+      }
+    },
+    [satirYaz, terminalId]
   );
 
   const calistir = useCallback(
@@ -252,12 +290,16 @@ export function usePosTahsilat() {
 
   const gonder = useCallback(
     (p: Pencere, s: Satir) => {
+      // Inpos: fişin alınmamış bütün satırları tek sipariş olarak gider (tek bilgi fişi)
+      if (p.terminaller.find((t) => t.posTerminalId === terminalId)?.entegrasyon === "inpos") {
+        return gonderToplu(p, p.satirlar.filter((x) => !alindiMi(x) && !x.mesgul));
+      }
       if (terminalId) localStorage.setItem(SON_CIHAZ_ANAHTARI, String(terminalId));
       // Önceki denemenin sonucu ekranda kalmasın
       satirYaz(s.kimlik, { islem: null });
       return calistir(s.kimlik, () => PosIslemService.baslat(girdi(p, s)));
     },
-    [calistir, girdi, satirYaz, terminalId]
+    [calistir, girdi, gonderToplu, satirYaz, terminalId]
   );
 
   /** Bekleyen ya da belirsiz işlem varsa onu işaretler; yoksa cihaza hiç göndermeden "alındı" kaydı açar (K26). */
@@ -378,6 +420,7 @@ export function usePosTahsilat() {
       return [i.bankaAdi, i.taksit && i.taksit > 1 ? `${i.taksit} taksit` : null, i.onayKodu ? `Onay ${i.onayKodu}` : null, i.posCihaziAd].filter(Boolean).join(" · ");
     }
     if (i.durum === "BELIRSIZ") return "Cihazdan cevap gelmedi. Cihaza bakıp işaretleyin.";
+    if (i.durum === "BEKLIYOR" && i.entegrasyon === "inpos" && i.mod === "canli") return "Cihazda Siparişler'den bu fişi seçip kartı okutun.";
     return i.hata || "";
   };
 

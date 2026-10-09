@@ -56,6 +56,7 @@ const ISLEM_SECIMI = `
 const islemden = (r: any): PosIslem => ({
   posIslemId: r.POS_ISLEM_ID,
   istekKimlik: r.ISTEK_KIMLIK,
+  grupKimlik: metin(r.GRUP_KIMLIK),
   posTerminalId: r.POS_TERMINAL_ID ?? null,
   terminalAd: metin(r.TERMINAL_AD),
   entegrasyon: r.ENTEGRASYON,
@@ -171,6 +172,10 @@ export class PosEntegrasyonSqlRepository {
           CREATE INDEX [IX_TODVZ_POS_ISLEM_BELGE] ON [dbo].[TODVZ_POS_ISLEM] ([BELGE_TURU], [BELGE_ID]);
           CREATE INDEX [IX_TODVZ_POS_ISLEM_TARIH] ON [dbo].[TODVZ_POS_ISLEM] ([OLUSTURMA] DESC);
         END;
+
+        -- Fiş başına tek sipariş (Inpos bulut): aynı fişte birlikte gönderilen satırların ortak kimliği
+        IF COL_LENGTH('dbo.TODVZ_POS_ISLEM', 'GRUP_KIMLIK') IS NULL
+          ALTER TABLE [dbo].[TODVZ_POS_ISLEM] ADD [GRUP_KIMLIK] VARCHAR(40) NULL;
       `);
     } catch (err: any) {
       logger.warn(`[PosEntegrasyonSqlRepository.ensureTables] Warning: ${err.message}`);
@@ -345,6 +350,7 @@ export class PosEntegrasyonSqlRepository {
     const pool = await this.pool(dbContext);
     const req = pool.request();
     req.input("ISTEK", sql.VarChar(40), dto.istekKimlik);
+    req.input("GRUP", sql.VarChar(40), dto.grupKimlik ?? null);
     req.input("TERMINAL", sql.Int, dto.posTerminalId);
     req.input("ENTEGRASYON", sql.VarChar(10), dto.entegrasyon);
     req.input("MOD", sql.VarChar(10), dto.mod);
@@ -375,6 +381,7 @@ export class PosEntegrasyonSqlRepository {
         ELSE IF @DURUM = 'BEKLIYOR' AND @TERMINAL IS NOT NULL AND EXISTS (
           SELECT 1 FROM TODVZ_POS_ISLEM WITH (UPDLOCK, HOLDLOCK)
           WHERE POS_TERMINAL_ID = @TERMINAL AND DURUM = 'BEKLIYOR' AND DATEDIFF(SECOND, GONDERIM_ZAMANI, GETDATE()) < @ZAMAN_ASIMI
+            AND (@GRUP IS NULL OR GRUP_KIMLIK IS NULL OR GRUP_KIMLIK <> @GRUP)
         )
         BEGIN
           COMMIT;
@@ -382,9 +389,9 @@ export class PosEntegrasyonSqlRepository {
         END
         ELSE
         BEGIN
-          INSERT INTO TODVZ_POS_ISLEM (ISTEK_KIMLIK, POS_TERMINAL_ID, ENTEGRASYON, [MOD], BELGE_TURU, BELGE_ID, BELGE_NO, BELGE_TIPI, TUTAR, DURUM,
+          INSERT INTO TODVZ_POS_ISLEM (ISTEK_KIMLIK, GRUP_KIMLIK, POS_TERMINAL_ID, ENTEGRASYON, [MOD], BELGE_TURU, BELGE_ID, BELGE_NO, BELGE_TIPI, TUTAR, DURUM,
             ELLE, ELLE_KULLANICI_ID, ELLE_ZAMANI, POS_CIHAZI_ID, VEZNE_ID, KULLANICI_ID, GONDERIM_ZAMANI, SONUC_ZAMANI)
-          VALUES (@ISTEK, @TERMINAL, @ENTEGRASYON, @MOD, @BELGE_TURU, @BELGE_ID, @BELGE_NO, @BELGE_TIPI, @TUTAR, @DURUM,
+          VALUES (@ISTEK, @GRUP, @TERMINAL, @ENTEGRASYON, @MOD, @BELGE_TURU, @BELGE_ID, @BELGE_NO, @BELGE_TIPI, @TUTAR, @DURUM,
             @ELLE, CASE WHEN @ELLE = 1 THEN @KULLANICI_ID END, CASE WHEN @ELLE = 1 THEN GETDATE() END, @POS_CIHAZI_ID, @VEZNE_ID, @KULLANICI_ID,
             GETDATE(), CASE WHEN @DURUM <> 'BEKLIYOR' THEN GETDATE() END);
           SET @ID = CAST(SCOPE_IDENTITY() AS INT);
@@ -406,6 +413,25 @@ export class PosEntegrasyonSqlRepository {
   public static async refYaz(posIslemId: number, ref: string | null, dbContext?: DbContext): Promise<void> {
     const pool = await this.pool(dbContext);
     await pool.request().input("ID", sql.Int, posIslemId).input("REF", sql.VarChar(100), ref).query(`UPDATE TODVZ_POS_ISLEM SET SURUCU_REF = @REF WHERE POS_ISLEM_ID = @ID`);
+  }
+
+  /** Aynı grupta (fiş başına tek sipariş) açılan işlemler; sırası satır sırasıdır. */
+  public static async grupIslemleri(grupKimlik: string, dbContext?: DbContext): Promise<PosIslem[]> {
+    const pool = await this.pool(dbContext);
+    const rows = (await pool.request().input("GRUP", sql.VarChar(40), grupKimlik).query(`${ISLEM_SECIMI} WHERE i.GRUP_KIMLIK = @GRUP ORDER BY i.POS_ISLEM_ID`)).recordset;
+    return rows.map(islemden);
+  }
+
+  /** Aynı sürücü referansına (sipariş kimliği) bağlı işlemler. */
+  public static async refIslemleri(ref: string, dbContext?: DbContext): Promise<PosIslem[]> {
+    const pool = await this.pool(dbContext);
+    const rows = (await pool.request().input("REF", sql.VarChar(100), ref).query(`${ISLEM_SECIMI} WHERE i.SURUCU_REF = @REF ORDER BY i.POS_ISLEM_ID`)).recordset;
+    return rows.map(islemden);
+  }
+
+  public static async grubaRefYaz(grupKimlik: string, ref: string | null, dbContext?: DbContext): Promise<void> {
+    const pool = await this.pool(dbContext);
+    await pool.request().input("GRUP", sql.VarChar(40), grupKimlik).input("REF", sql.VarChar(100), ref).query(`UPDATE TODVZ_POS_ISLEM SET SURUCU_REF = @REF WHERE GRUP_KIMLIK = @GRUP`);
   }
 
   /**

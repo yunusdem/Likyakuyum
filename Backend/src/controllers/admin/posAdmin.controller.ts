@@ -39,7 +39,7 @@ export class PosAdminController {
   });
 
   public static kimlikTesti = asyncHandler(async (req: Request, res: Response) => {
-    return ApiResponse.ok(res, "Kimlik denendi.", await PosAdminService.kimlikTesti());
+    return ApiResponse.ok(res, "Kimlik denendi.", await PosAdminService.kimlikTesti(req.body?.saglayici));
   });
 
   public static konsolBaglantiTesti = asyncHandler(async (req: Request, res: Response) => {

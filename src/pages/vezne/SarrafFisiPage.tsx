@@ -1621,6 +1621,17 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             belgeId: fisId,
             vezneId,
             aliciAd: (unvan || detayUnvan || "").trim() || null,
+            aliciVkn: (detayVergiKimlikNo || "").replace(/\D/g, "") || null,
+            // Nakit / havale / cari satırları cihaza "ödenmiş" gider; cihaz yalnız kart tutarını çeker
+            pesinOdemeler: odemeRows
+              .filter((r) => r.odemeAraciTuru !== 2)
+              .map((r) => {
+                const o = recomputeOdemeRow(r, parseDecimal(altinHasKuru) || 0);
+                const mik = parseDecimal(o.miktar) > 0 ? parseDecimal(o.miktar) : parseDecimal(o.adet) || 0;
+                const tutar = parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : mik * (parseDecimal(o.kur) > 0 ? parseDecimal(o.kur) : 1);
+                return { tur: r.odemeAraciTuru === 1 ? ("cari" as const) : r.odemeAraciTuru === 3 ? ("havale" as const) : ("nakit" as const), tutar };
+              })
+              .filter((p) => p.tutar > 0),
             satirlar: odemeRows
               .filter((r) => r.odemeAraciTuru === 2)
               .map((r) => {

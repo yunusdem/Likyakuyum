@@ -36,6 +36,33 @@ BEGIN
 END
 GO
 
+-- 08.10.2026 — Inpos TSM (bulut) entegrasyonu: portal kullanıcısı, erişim anahtarı ve bildirim (webhook) kimliği
+IF COL_LENGTH('dbo.ADM_POS_AYAR', 'INPOS_API_URL') IS NULL
+BEGIN
+  ALTER TABLE [dbo].[ADM_POS_AYAR] ADD
+    [INPOS_API_URL]            VARCHAR(300)  NULL,                  -- https://tsmtest.inpos.com.tr (test) / canlı adres
+    [INPOS_KULLANICI]          VARCHAR(200)  NULL,                  -- TSM portal kullanıcı adı / e-posta
+    [INPOS_SIFRE_ENC]          VARCHAR(1000) NULL,                  -- AES-256-GCM
+    [INPOS_ERISIM_ENC]         VARCHAR(MAX)  NULL,                  -- JWT (şifreli)
+    [INPOS_ERISIM_BITIS]       DATETIME      NULL,
+    [INPOS_WEBHOOK_KULLANICI]  VARCHAR(200)  NULL,                  -- Inpos'un bize bildirim gönderirken kullanacağı Basic Auth
+    [INPOS_WEBHOOK_SIFRE_ENC]  VARCHAR(1000) NULL;
+END
+GO
+
+-- Sağlayıcıya giden sipariş / sepet kimliği hangi firmanın? Sonuç bildirimi tek adrese gelir; firma buradan bulunur.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ADM_POS_SEPET')
+BEGIN
+  CREATE TABLE [dbo].[ADM_POS_SEPET] (
+    [SAGLAYICI]    VARCHAR(10)  NOT NULL,                           -- 'inpos' | 'token'
+    [SEPET_KIMLIK] VARCHAR(100) NOT NULL,
+    [FIRMA_ID]     INT          NOT NULL,
+    [OLUSTURMA]    DATETIME     NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT [PK_ADM_POS_SEPET] PRIMARY KEY ([SAGLAYICI], [SEPET_KIMLIK])
+  );
+END
+GO
+
 -- Firma bazında POS modu. Satırı olmayan firma KAPALI sayılır.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ADM_POS_FIRMA')
 BEGIN
