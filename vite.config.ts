@@ -51,6 +51,10 @@ export default defineConfig(({ mode }) => {
         }
       }
     },
+    // Bağımlılık taraması yalnız uygulama girişlerinden; tmp/ ve dist-*/ altındaki html/js dosyaları taranmasın
+    optimizeDeps: {
+      entries: ['index.html', 'admin.html'],
+    },
     server: {
       port: 3000,
       open: true,

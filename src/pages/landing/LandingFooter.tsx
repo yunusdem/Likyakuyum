@@ -18,6 +18,7 @@ import {
   IconScale,
   IconDatabase,
 } from "@tabler/icons-react";
+import { ILETISIM, MAIL_LINK, TEL_LINK } from "./iletisimBilgileri";
 
 export const LandingFooter: React.FC = () => {
   const navigate = useNavigate();
@@ -93,14 +94,18 @@ export const LandingFooter: React.FC = () => {
             </p>
 
             <div className="d-flex flex-column gap-2 small">
-              <div className="d-flex align-items-center gap-2" style={{ color: "#cbd5e1" }}>
+              <a href={TEL_LINK} className="d-flex align-items-center gap-2 text-decoration-none" style={{ color: "#cbd5e1" }}>
                 <IconPhone size={16} style={{ color: "#f59e0b" }} />
-                <span>+90 (212) 456 78 90</span>
-              </div>
-              <div className="d-flex align-items-center gap-2" style={{ color: "#cbd5e1" }}>
+                <span>{ILETISIM.telefon}</span>
+              </a>
+              <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="d-flex align-items-center gap-2 text-decoration-none" style={{ color: "#cbd5e1" }}>
+                <IconBrandWhatsapp size={16} style={{ color: "#25d366" }} />
+                <span>WhatsApp: {ILETISIM.telefon}</span>
+              </a>
+              <a href={MAIL_LINK} className="d-flex align-items-center gap-2 text-decoration-none" style={{ color: "#cbd5e1" }}>
                 <IconMail size={16} style={{ color: "#f59e0b" }} />
-                <span>destek@likyakuyum.com</span>
-              </div>
+                <span>{ILETISIM.eposta}</span>
+              </a>
               <div className="d-flex align-items-center gap-2" style={{ color: "#cbd5e1" }}>
                 <IconMapPin size={16} style={{ color: "#f59e0b" }} />
                 <span>Kuyumcukent Plaza & Kapalıçarşı / İstanbul</span>

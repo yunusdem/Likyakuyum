@@ -146,6 +146,8 @@ const envSchema = z.object({
   SMTP_PASSWORD: z.string().default(""),
   // Gönderen: "Likya Kuyum <bilgi@likyakuyum.com>" biçiminde de yazılabilir
   SMTP_FROM: z.string().default(""),
+  // Web sitesi iletişim formunun düştüğü adres (docs/ILETISIM_FORMU_YOL_HARITASI.md İ2)
+  ILETISIM_ALICI: z.string().default("info@likyakuyum.com"),
   // Maillerdeki bağlantıların başı (yönetim panelinin dış adresi)
   ADMIN_PANEL_URL: z.string().default("https://admin.likyakuyum.com"),
   ADMIN_ORIGIN: z

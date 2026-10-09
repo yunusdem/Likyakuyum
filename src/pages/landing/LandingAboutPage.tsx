@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
 import {
   IconBuildingStore,
@@ -7,30 +7,17 @@ import {
   IconMapPin,
   IconBrandWhatsapp,
   IconSparkles,
-  IconCheck,
-  IconSend,
   IconHeadset,
   IconAward,
   IconShieldCheck,
 } from "@tabler/icons-react";
 import LandingNavbar from "./LandingNavbar";
 import LandingFooter from "./LandingFooter";
+import IletisimFormu from "./IletisimFormu";
+import { ILETISIM, MAIL_LINK, TEL_LINK } from "./iletisimBilgileri";
 
 export const LandingAboutPage: React.FC = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    name: "",
-    company: "",
-    phone: "",
-    city: "",
-    message: "",
-  });
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitted(true);
-  };
 
   return (
     <div className="w-100 min-vh-100 bg-white" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -101,86 +88,7 @@ export const LandingAboutPage: React.FC = () => {
                   Formu doldurun, uzman ekibimiz mağazanız için en uygun çözümü 15 dakika içinde sunsun.
                 </p>
 
-                {submitted ? (
-                  <div className="alert alert-success p-4 rounded-3 text-center">
-                    <IconCheck size={40} className="text-success mb-2" />
-                    <h5 className="fw-bold mb-1">Talebiniz Alındı!</h5>
-                    <p className="small text-muted mb-0">
-                      Müşteri temsilcimiz en kısa sürede sizinle iletişime geçecektir.
-                    </p>
-                  </div>
-                ) : (
-                  <form onSubmit={handleSubmit} className="d-flex flex-column gap-3">
-                    <div>
-                      <label className="form-label small fw-bold text-secondary mb-1">Adınız Soyadınız *</label>
-                      <input
-                        type="text"
-                        required
-                        className="form-control"
-                        placeholder="Örn: Ahmet Yılmaz"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        style={{ height: "44px", borderColor: "#e2e8f0" }}
-                      />
-                    </div>
-                    <div>
-                      <label className="form-label small fw-bold text-secondary mb-1">Kuyumcu / Firma Ünvanı *</label>
-                      <input
-                        type="text"
-                        required
-                        className="form-control"
-                        placeholder="Örn: Yılmaz Kuyumculuk & Sarrafiye"
-                        value={formData.company}
-                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                        style={{ height: "44px", borderColor: "#e2e8f0" }}
-                      />
-                    </div>
-                    <div className="row g-2">
-                      <div className="col-6">
-                        <label className="form-label small fw-bold text-secondary mb-1">Telefon Numarası *</label>
-                        <input
-                          type="tel"
-                          required
-                          className="form-control"
-                          placeholder="05XX XXX XX XX"
-                          value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          style={{ height: "44px", borderColor: "#e2e8f0" }}
-                        />
-                      </div>
-                      <div className="col-6">
-                        <label className="form-label small fw-bold text-secondary mb-1">Şehir</label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          placeholder="İstanbul"
-                          value={formData.city}
-                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                          style={{ height: "44px", borderColor: "#e2e8f0" }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="form-label small fw-bold text-secondary mb-1">Notunuz / İhtiyaçlarınız</label>
-                      <textarea
-                        rows={3}
-                        className="form-control"
-                        placeholder="Kaç şube/vezne kullanmak istiyorsunuz? Terazi ve barkod yazıcı durumu..."
-                        value={formData.message}
-                        onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                        style={{ borderColor: "#e2e8f0" }}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="btn py-2.5 text-white fw-bold d-flex align-items-center justify-content-center gap-2 rounded-3 mt-2 shadow-sm"
-                      style={{ background: "linear-gradient(135deg, #c88f18 0%, #9e640b 100%)", border: "none" }}
-                    >
-                      <IconSend size={18} />
-                      <span>Ücretsiz Demo Talebi Gönder</span>
-                    </button>
-                  </form>
-                )}
+                <IletisimFormu kaynak="iletisim" renk="altin" dugmeYazisi="Ücretsiz Demo Talebi Gönder" />
               </div>
             </div>
           </div>
@@ -192,9 +100,9 @@ export const LandingAboutPage: React.FC = () => {
                 <div className="p-3 rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{ backgroundColor: "#faf5ea" }}>
                   <IconPhone size={26} style={{ color: "#784405" }} />
                 </div>
-                <h5 className="fw-bold text-dark mb-1">Santral & Satış</h5>
-                <p className="text-secondary small mb-2">Hafta içi 08:30 - 19:00</p>
-                <div className="fw-bold fs-5 text-dark">+90 (850) 840 00 00</div>
+                <h5 className="fw-bold text-dark mb-1">Hemen Arayın</h5>
+                <p className="text-secondary small mb-2">Satış & Destek Hattı</p>
+                <a href={TEL_LINK} className="fw-bold fs-5 text-dark text-decoration-none">{ILETISIM.telefon}</a>
               </div>
             </div>
 
@@ -205,7 +113,7 @@ export const LandingAboutPage: React.FC = () => {
                 </div>
                 <h5 className="fw-bold text-dark mb-1">WhatsApp Destek</h5>
                 <p className="text-secondary small mb-2">Anlık Canlı Destek & Fiyatlandırma</p>
-                <div className="fw-bold fs-5 text-success">+90 (532) 000 00 00</div>
+                <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="fw-bold fs-5 text-success text-decoration-none">{ILETISIM.telefon}</a>
               </div>
             </div>
 
@@ -216,7 +124,7 @@ export const LandingAboutPage: React.FC = () => {
                 </div>
                 <h5 className="fw-bold text-dark mb-1">E-Posta İletişim</h5>
                 <p className="text-secondary small mb-2">Kurumsal & Entegrasyon Talepleri</p>
-                <div className="fw-bold fs-6 text-dark">bilgi@likyakuyum.com</div>
+                <a href={MAIL_LINK} className="fw-bold fs-6 text-dark text-decoration-none">{ILETISIM.eposta}</a>
               </div>
             </div>
           </div>

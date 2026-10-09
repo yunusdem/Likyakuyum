@@ -29,6 +29,8 @@ import {
   IconBrandLinkedin,
 } from "@tabler/icons-react";
 import LandingNavbar from "./landing/LandingNavbar";
+import IletisimFormu from "./landing/IletisimFormu";
+import { ILETISIM, MAIL_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
 import "../styles/LandingFurni.css";
 
 export const LandingPage: React.FC = () => {
@@ -99,6 +101,10 @@ export const LandingPage: React.FC = () => {
                 </button>
                 <a href="#cozumler" className="furni-btn-outline">
                   <span>Çözümleri İnceleyin</span>
+                </a>
+                <a href={TEL_LINK} className="furni-btn-outline">
+                  <IconPhoneCall size={17} />
+                  <span>{ILETISIM.telefon}</span>
                 </a>
               </div>
             </div>
@@ -513,58 +519,77 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ─── 9. NEWSLETTER & CTA (Floating Box with Gold Accent) ─── */}
-      <section className="position-relative z-2" id="iletisim">
+      {/* ─── 9. İLETİŞİM: Ara / WhatsApp / E-posta + Ön Bilgi Formu ─── */}
+      <section className="furni-section-pad position-relative z-2" id="iletisim" style={{ background: "#f8f9fa" }}>
         <div className="container" style={{ maxWidth: "1280px" }}>
-          <div className="furni-newsletter-box">
-            <div className="row align-items-center g-4">
-              <div className="col-12 col-lg-6">
-                <div className="d-flex align-items-center gap-2 mb-2 text-dark">
-                  <IconMail size={24} style={{ color: "#3b5d50" }} />
-                  <h3 className="fw-bold mb-0" style={{ fontSize: "1.45rem" }}>
-                    Bültenimize Abone Olun & Demo İsteyin
-                  </h3>
-                </div>
-                <p className="text-secondary small mb-0">
-                  Kuyumculuk mevzuatları, altın kurları ve sistem güncellemelerinden ilk siz haberdar olun.
-                </p>
-              </div>
+          <div className="row g-4 g-lg-5 align-items-start">
+            {/* Sol: başlık + iletişim kanalları */}
+            <div className="col-12 col-lg-5">
+              <h2 className="mb-3" style={{ fontSize: "2.2rem" }}>
+                Bize Ulaşın, Size Özel Teklif Alın
+              </h2>
+              <p className="text-secondary mb-4">
+                Mağazanız için en uygun kurulumu birlikte planlayalım. Hemen arayın, WhatsApp'tan yazın ya da formu doldurun;
+                en kısa sürede sizi arayalım.
+              </p>
 
-              <div className="col-12 col-lg-6">
-                <form onSubmit={(e) => { e.preventDefault(); alert("Teşekkürler! Demo talebiniz alındı."); }}>
-                  <div className="row g-2">
-                    <div className="col-sm-5">
-                      <input
-                        type="text"
-                        className="form-control rounded-pill py-2.5 px-3 border"
-                        placeholder="Adınız Soyadınız"
-                        required
-                      />
-                    </div>
-                    <div className="col-sm-5">
-                      <input
-                        type="tel"
-                        className="form-control rounded-pill py-2.5 px-3 border"
-                        placeholder="Telefon Numaranız"
-                        required
-                      />
-                    </div>
-                    <div className="col-sm-2">
-                      <button
-                        type="submit"
-                        className="btn w-100 h-100 rounded-pill text-white d-flex align-items-center justify-content-center"
-                        style={{ backgroundColor: "#3b5d50" }}
-                      >
-                        <IconSend size={18} />
-                      </button>
-                    </div>
+              <div className="d-flex flex-column gap-3">
+                <a href={TEL_LINK} className="furni-contact-card text-decoration-none">
+                  <div className="furni-contact-icon" style={{ background: "#3b5d50" }}>
+                    <IconPhoneCall size={24} color="#ffffff" />
                   </div>
-                </form>
+                  <div>
+                    <div className="small text-secondary">Hemen Arayın</div>
+                    <div className="fw-bold fs-5 text-dark">{ILETISIM.telefon}</div>
+                  </div>
+                </a>
+                <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="furni-contact-card text-decoration-none">
+                  <div className="furni-contact-icon" style={{ background: "#25d366" }}>
+                    <IconBrandWhatsapp size={24} color="#ffffff" />
+                  </div>
+                  <div>
+                    <div className="small text-secondary">WhatsApp'tan Yazın</div>
+                    <div className="fw-bold fs-5 text-dark">{ILETISIM.telefon}</div>
+                  </div>
+                </a>
+                <a href={MAIL_LINK} className="furni-contact-card text-decoration-none">
+                  <div className="furni-contact-icon" style={{ background: "#f9bf29" }}>
+                    <IconMail size={24} color="#2f2f2f" />
+                  </div>
+                  <div>
+                    <div className="small text-secondary">E-posta Gönderin</div>
+                    <div className="fw-bold fs-5 text-dark">{ILETISIM.eposta}</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+
+            {/* Sağ: ön bilgi formu */}
+            <div className="col-12 col-lg-7">
+              <div className="furni-newsletter-box" style={{ marginBottom: 0 }}>
+                <div className="d-flex align-items-center gap-2 mb-1 text-dark">
+                  <IconSend size={22} style={{ color: "#3b5d50" }} />
+                  <h3 className="fw-bold mb-0" style={{ fontSize: "1.35rem" }}>Ön Bilgi & Demo Talebi</h3>
+                </div>
+                <p className="text-secondary small mb-4">
+                  Formu doldurun, ekibimiz sizi arayıp mağazanıza uygun çözümü anlatsın.
+                </p>
+                <IletisimFormu kaynak="ana-sayfa" renk="yesil" dugmeYazisi="Bilgi Talebi Gönder" />
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Sabit Ara / WhatsApp düğmeleri (mobilde tek dokunuşla) */}
+      <div className="furni-float-contact">
+        <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="furni-float-btn" style={{ background: "#25d366" }} aria-label="WhatsApp'tan yazın" title="WhatsApp'tan yazın">
+          <IconBrandWhatsapp size={26} color="#ffffff" />
+        </a>
+        <a href={TEL_LINK} className="furni-float-btn" style={{ background: "#3b5d50" }} aria-label={`Ara: ${ILETISIM.telefon}`} title={`Ara: ${ILETISIM.telefon}`}>
+          <IconPhoneCall size={24} color="#ffffff" />
+        </a>
+      </div>
 
       {/* ─── 10. FURNI FOOTER ─── */}
       <footer className="furni-footer">
@@ -588,6 +613,21 @@ export const LandingPage: React.FC = () => {
               <p className="text-secondary small mb-4" style={{ lineHeight: "1.75" }}>
                 Kuyumcular, sarraflar, atölyeler ve döviz büroları için yeni nesil hibrit SQL, hassas terazi ve e-belge entegrasyonlu kurumsal kaynak planlama sistemi.
               </p>
+
+              <div className="d-flex flex-column gap-2 small mb-4">
+                <a href={TEL_LINK} className="furni-footer-link d-flex align-items-center gap-2">
+                  <IconPhone size={16} style={{ color: "#f9bf29" }} />
+                  <span>{ILETISIM.telefon}</span>
+                </a>
+                <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="furni-footer-link d-flex align-items-center gap-2">
+                  <IconBrandWhatsapp size={16} style={{ color: "#25d366" }} />
+                  <span>WhatsApp: {ILETISIM.telefon}</span>
+                </a>
+                <a href={MAIL_LINK} className="furni-footer-link d-flex align-items-center gap-2">
+                  <IconMail size={16} style={{ color: "#f9bf29" }} />
+                  <span>{ILETISIM.eposta}</span>
+                </a>
+              </div>
 
               <div className="d-flex align-items-center gap-2">
                 <a href="#" className="furni-social-circle"><IconBrandInstagram size={18} /></a>

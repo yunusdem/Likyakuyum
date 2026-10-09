@@ -517,3 +517,56 @@
     margin-bottom: 20px;
   }
 }
+
+/* ─── İletişim bölümü: kanal kartları ve sabit Ara / WhatsApp düğmeleri ─────── */
+.furni-contact-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--furni-radius-card);
+  padding: 16px 20px;
+  transition: all 0.25s ease;
+}
+
+.furni-contact-card:hover {
+  border-color: var(--furni-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -12px rgba(59, 93, 80, 0.4);
+}
+
+.furni-contact-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.furni-float-contact {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1030;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.furni-float-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.furni-float-btn:hover {
+  transform: scale(1.08);
+}
