@@ -4,7 +4,7 @@ import { HttpStatus } from "../../constants/httpStatusCodes.js";
 import { PosAdminSqlRepository } from "../../models/admin/posAdminSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { sifreCoz, sifrele } from "../../utils/kripto.utils.js";
-import { GrupOdemesi, PesinOdeme, PosIslem, PosSurucu, PosTerminal, SurucuIstek, SurucuSonuc } from "./pos.types.js";
+import { GrupOdemesi, PesinOdeme, PosIslem, PosKalem, PosSurucu, PosTerminal, SurucuIstek, SurucuSonuc } from "./pos.types.js";
 
 /**
  * Inpos M530 sürücüsü — TSM Entegrasyon API'si (bulut, "inPOS.TMS.IntegrationAPI").
@@ -189,6 +189,23 @@ const eslesmeBul = async (csn: string): Promise<Eslesme> => {
 
 const pesinTipi = (tur: PesinOdeme["tur"]): string => ODEME_TIPI[tur];
 
+/** Bilgi fişi kalemleri: fiş satırları toplamı sipariş toplamını tutuyorsa satırlar, değilse tek satır. Tutar KDV dahil. */
+export const inposKalemleri = (kalemler: PosKalem[] | undefined, toplam: number) => {
+  const tek = [{ name: "Fatura toplamı", unitPrice: toplam, vat: KALEM_KDV, quantity: 1, unit: "adet", section: KALEM_KISIM }];
+  if (!kalemler?.length) return tek;
+  const kalemToplam = para(kalemler.reduce((t, k) => t + k.tutar, 0));
+  if (Math.abs(kalemToplam - toplam) > 0.011) return tek;
+  const desteklenen = [0, 1, 10, 20];
+  return kalemler.map((k) => ({
+    name: k.ad.slice(0, 100),
+    unitPrice: para(k.tutar / k.miktar),
+    vat: desteklenen.includes(Math.round(k.kdvOrani)) ? Math.round(k.kdvOrani) : KALEM_KDV,
+    quantity: k.miktar,
+    unit: "adet",
+    section: KALEM_KISIM,
+  }));
+};
+
 /** Fiş başına tek sipariş. Tutarlar TL (iki ondalık). */
 export const inposSiparisi = (i: SurucuIstek, matchId: string, csn: string) => {
   const islemler = i.grup?.islemler.length ? i.grup.islemler : [i.islem];
@@ -202,8 +219,9 @@ export const inposSiparisi = (i: SurucuIstek, matchId: string, csn: string) => {
     csn: [csn],
     name: ad.slice(0, 100),
     no: i.islem.posIslemId,
-    // Fatura bizim sistemden çıkar; cihaz yalnızca bilgi fişi basar (K3). Tek kalem: fatura toplamı (A15).
-    items: [{ name: "Fatura toplamı", unitPrice: toplam, vat: KALEM_KDV, quantity: 1, unit: "adet", section: KALEM_KISIM }],
+    // Fatura bizim sistemden çıkar; cihaz yalnızca bilgi fişi basar (K3). Fişin kalemleri verilmiş ve toplamı tutuyorsa
+    // kalemler basılır; yoksa tek satır "Fatura toplamı" (A15).
+    items: inposKalemleri(i.grup?.kalemler, toplam),
     totalAmount: toplam,
     subtotalAmount: toplam,
     document: {

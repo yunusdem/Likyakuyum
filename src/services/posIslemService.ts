@@ -120,12 +120,21 @@ export interface PosPesinOdeme {
   tutar: number;
 }
 
+/** Fişin ürün satırı; cihazdaki bilgi fişinde kalem olarak basılır. tutar KDV dahil satır toplamı. */
+export interface PosKalem {
+  ad: string;
+  miktar: number;
+  tutar: number;
+  kdvOrani: number;
+}
+
 /** Fiş başına tek sipariş (Inpos): aynı fişin bütün POS satırları birlikte gider */
 export interface PosTopluGirdi {
   grupKimlik: string;
   posTerminalId: number | null;
   satirlar: { istekKimlik: string; tutar: number; posCihaziId?: number | null }[];
   pesinOdemeler: PosPesinOdeme[];
+  kalemler?: PosKalem[];
   belgeTuru: PosBelgeTuru;
   belgeId?: number | null;
   belgeNo?: string | null;

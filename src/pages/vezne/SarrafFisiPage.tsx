@@ -1810,6 +1810,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 const o = recomputeOdemeRow(r, parseDecimal(altinHasKuru) || 0);
                 return { kimlik: r.id, tutar: parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : parseDecimal(o.miktar) || 0, posCihaziId: r.posCihaziId || r.bankaId || null };
               }),
+            // Cihazdaki bilgi fişinde kalemler (KDV fiş düzeyinde olduğu için satır KDV'si 0; toplam tutmazsa cihazda tek satır basılır)
+            kalemler: lines
+              .filter((l) => parseDecimal(l.tutar) > 0)
+              .map((l) => ({ ad: l.urunAdi || l.urunKodu || "Ürün", miktar: parseDecimal(l.adet) > 0 ? parseDecimal(l.adet) : 1, tutar: parseDecimal(l.tutar), kdvOrani: 0 })),
     });
 
     setIsSaving(true);

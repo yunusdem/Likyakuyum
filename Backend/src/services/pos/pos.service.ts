@@ -9,6 +9,7 @@ import {
   GrupOdemesi,
   MODELLER,
   PesinOdeme,
+  PosKalem,
   PosBankaEsleme,
   PosBelgeTipi,
   PosBelgeTuru,
@@ -75,6 +76,8 @@ export interface PosTopluGirdi {
   posTerminalId?: number | null;
   satirlar?: { istekKimlik?: string; tutar?: number; posCihaziId?: number | null }[];
   pesinOdemeler?: { tur?: string; tutar?: number }[];
+  /** Fişin ürün satırları (bilgi fişinde kalem olarak basılır); yoksa tek satır "Fatura toplamı" gider */
+  kalemler?: { ad?: string; miktar?: number; tutar?: number; kdvOrani?: number }[];
   belgeTuru?: string;
   belgeId?: number | null;
   belgeNo?: string | null;
@@ -376,6 +379,10 @@ export class PosService {
     const pesinOdemeler: PesinOdeme[] = (Array.isArray(girdi.pesinOdemeler) ? girdi.pesinOdemeler : [])
       .map((p) => ({ tur: p?.tur as PesinOdeme["tur"], tutar: Math.round(Number(p?.tutar) * 100) / 100 }))
       .filter((p) => PESIN_TURLERI.includes(p.tur) && Number.isFinite(p.tutar) && p.tutar > 0 && p.tutar <= AZAMI_TUTAR);
+    const kalemler: PosKalem[] = (Array.isArray(girdi.kalemler) ? girdi.kalemler : [])
+      .slice(0, 50)
+      .map((k) => ({ ad: temiz(k?.ad, 100) || "Ürün", miktar: Number(k?.miktar) || 1, tutar: Math.round(Number(k?.tutar) * 100) / 100, kdvOrani: Number(k?.kdvOrani) || 0 }))
+      .filter((k) => Number.isFinite(k.tutar) && k.tutar > 0 && k.miktar > 0 && k.kdvOrani >= 0 && k.kdvOrani <= 100);
 
     // Satırlar sırayla açılır; ilk satır cihazın meşgul olup olmadığını sınar, aynı gruptakiler birbirini meşgul saymaz
     let yeniAcildi = false;
@@ -426,7 +433,7 @@ export class PosService {
     }
 
     try {
-      const { ref } = await surucu.gonder({ islem: islemler[0], terminal, aliciAd: ilk.aliciAd, aliciVkn: ilk.aliciVkn, donusAdresi: null, grup: { islemler, pesinOdemeler } });
+      const { ref } = await surucu.gonder({ islem: islemler[0], terminal, aliciAd: ilk.aliciAd, aliciVkn: ilk.aliciVkn, donusAdresi: null, grup: { islemler, pesinOdemeler, kalemler } });
       await Repo.grubaRefYaz(grupKimlik, ref, dbContext);
       await this.sepetKaydet(mod, terminal.entegrasyon, ref, firmaId);
     } catch (err: any) {

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Alert, Badge, Button, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { IconAlertTriangle, IconCheck, IconCreditCard, IconHelpCircle, IconX } from "@tabler/icons-react";
 import { v4 as uuid } from "uuid";
-import { PosBelgeTipi, PosBelgeTuru, PosIslem, PosIslemService, PosMod, PosPesinOdeme, PosTerminal } from "../../services/posIslemService";
+import { PosBelgeTipi, PosBelgeTuru, PosIslem, PosIslemService, PosKalem, PosMod, PosPesinOdeme, PosTerminal } from "../../services/posIslemService";
 
 // POS cihazı tahsilatı — docs/POS_ENTEGRASYON_YOL_HARITASI.md (K13: kart, fiş kaydedilmeden hemen önce çekilir)
 // Fiş ekranları yalnızca bu kancayı çağırır; cihazla ilgili iş mantığı fiş ekranlarına yazılmaz.
@@ -33,6 +33,8 @@ export interface PosTahsilIstegi {
   aliciVkn?: string | null;
   /** Fişin nakit / havale / cari satırları: cihaza "ödenmiş" gider, cihaz yalnız kart tutarını çeker (Inpos) */
   pesinOdemeler?: PosPesinOdeme[];
+  /** Fişin ürün satırları: cihazdaki bilgi fişinde kalem olarak basılır (Inpos) */
+  kalemler?: PosKalem[];
   satirlar: PosTahsilSatiri[];
 }
 
@@ -261,6 +263,7 @@ export function usePosTahsilat() {
           posTerminalId: terminalId,
           satirlar: hedefler.map((s) => ({ istekKimlik: kimlikler.get(s.kimlik)!, tutar: s.tutar, posCihaziId: s.posCihaziId })),
           pesinOdemeler: p.istek.pesinOdemeler || [],
+          kalemler: p.istek.kalemler || [],
           belgeTuru: p.istek.belgeTuru,
           belgeId: p.istek.belgeId ?? null,
           belgeNo: p.istek.belgeNo,

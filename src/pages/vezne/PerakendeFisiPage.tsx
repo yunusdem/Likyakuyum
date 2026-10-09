@@ -3831,6 +3831,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             satirlar: odemeRows
               .filter((r) => r.odemeAraciTuru === 2)
               .map((r) => ({ kimlik: r.id, tutar: parseDecimal(r.tutar) || 0, posCihaziId: r.posCihaziId || r.bankaId || null })),
+            // Cihazdaki bilgi fişinde kalemler: ürün adı, miktar, KDV dahil satır toplamı
+            kalemler: validItems.map((item) => {
+              const miktar = parseDecimal(item.miktar) || 1;
+              const tutar = Math.round(miktar * (parseDecimal(item.birimFiyat) || 0) * 100) / 100;
+              const kdvOrani = parseDecimal(item.kdvOrani) || 0;
+              return { ad: [item.urunAdi || "Ürün", item.ayar ? `${item.ayar} ayar` : ""].filter(Boolean).join(" "), miktar, tutar: Math.round((tutar + tutar * kdvOrani / 100) * 100) / 100, kdvOrani };
+            }),
     });
 
     isSubmittingRef.current = true;

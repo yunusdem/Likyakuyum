@@ -148,6 +148,14 @@ export interface PesinOdeme {
   tutar: number;
 }
 
+/** Fişin ürün satırı; bilgi fişinde kalem olarak basılır. tutar KDV dahil satır toplamıdır. */
+export interface PosKalem {
+  ad: string;
+  miktar: number;
+  tutar: number;
+  kdvOrani: number;
+}
+
 export interface SurucuIstek {
   islem: PosIslem;
   terminal: PosTerminal;
@@ -160,7 +168,7 @@ export interface SurucuIstek {
    * Fiş başına tek sipariş: aynı fişin bütün POS satırları (islem dahil) ve peşin ödenmiş kısmı. Sürücü tek sipariş
    * gönderir, dönen referans hepsine yazılır. Yoksa yalnız islem gönderilir.
    */
-  grup?: { islemler: PosIslem[]; pesinOdemeler: PesinOdeme[] };
+  grup?: { islemler: PosIslem[]; pesinOdemeler: PesinOdeme[]; kalemler?: PosKalem[] };
 }
 
 /**
