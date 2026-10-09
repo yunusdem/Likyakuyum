@@ -1042,16 +1042,21 @@ export class EbelgeSqlRepository {
   }
 
   /** Serinin o yıl yerel giden kaydındaki en büyük sırası (tür fark etmez; reddedilen de numarayı kilitler) */
-  public static async seriYerelSonSira(seri: string, yil: number, dbContext?: DbContext): Promise<number> {
+  /**
+   * perakendeDahil: fatura formunun numara önerisinde Perakende fiş numaraları da sayılır (aynı seriyi kullanırlar, çakışmasın).
+   * Gönderim kontrolünde sayılmaz: gönderilen belge zaten bir Perakende fişi olabilir; orada yalnız ICE + giden kutusu bakılır.
+   */
+  public static async seriYerelSonSira(seri: string, yil: number, dbContext?: DbContext, perakendeDahil = true): Promise<number> {
     const pool = await this.getPool(dbContext);
     const res = await pool
       .request()
       .input("onEk", sql.VarChar(7), `${seri}${yil}`)
+      .input("perakende", sql.Bit, perakendeDahil ? 1 : 0)
       .query(`SELECT MAX(TRY_CAST(RIGHT([BELGE_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_EBELGE_GIDEN]
               WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk;
               -- Perakende fişleri aynı seriyi kullanır (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3); henüz gönderilmemiş olanlar da atlanır.
               -- Tablo her veritabanında olmayabilir: dinamik SQL ile okunur
-              IF OBJECT_ID('dbo.TODVZ_FATURA', 'U') IS NOT NULL
+              IF @perakende = 1 AND OBJECT_ID('dbo.TODVZ_FATURA', 'U') IS NOT NULL
                 EXEC sp_executesql N'SELECT MAX(TRY_CAST(RIGHT([FATURA_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_FATURA] WHERE LEN([FATURA_NO]) = 16 AND LEFT([FATURA_NO], 7) = @o', N'@o VARCHAR(7)', @o = @onEk;
               ELSE SELECT CAST(NULL AS BIGINT) AS SIRA;`);
     const sets = res.recordsets as any[];

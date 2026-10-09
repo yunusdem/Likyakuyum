@@ -1308,7 +1308,7 @@ export class EbelgeService {
     const aliciAlias = await this.aliciAliasCoz(config, girdi.alici.vknTckn, girdi.aliciAlias);
 
     // 3) Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
-    const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
+    const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext, false);
     if (Number(belgeNo.slice(7)) <= sonSira) {
       throw ApiError.conflict(
         `Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`
@@ -2022,7 +2022,7 @@ export class EbelgeService {
       throw ApiError.unprocessable("Alıcı e-Fatura mükellefi; bu akıştan e-Arşiv gönderilemez.");
     }
     // Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
-    const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
+    const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext, false);
     if (Number(belgeNo.slice(7)) <= sonSira) {
       throw ApiError.conflict(
         `Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`
@@ -2504,7 +2504,8 @@ export class EbelgeService {
     config: Awaited<ReturnType<typeof EbelgeSqlRepository.getConnectionConfig>>,
     seri: string,
     yil: number,
-    dbContext?: DbContext
+    dbContext?: DbContext,
+    perakendeDahil = true
   ): Promise<number> {
     const iceSon = async (tur: "EFatura" | "EArsiv") => {
       const son = await getSonBelgeId(config, seri, tur, yil);
@@ -2517,7 +2518,7 @@ export class EbelgeService {
     const [efatura, earsiv, yerel] = await Promise.all([
       iceSon("EFatura"),
       iceSon("EArsiv"),
-      EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext),
+      EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext, perakendeDahil),
     ]);
     return Math.max(efatura, earsiv, yerel);
   }

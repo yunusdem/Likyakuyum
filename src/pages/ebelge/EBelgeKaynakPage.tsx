@@ -80,7 +80,9 @@ export default function EBelgeKaynakPage() {
   // test geçerse aynı parmak iziyle gönderilir. Kullanıcıya ara adım gösterilmez.
   const gonder = async () => {
     setBusy(true); setHata(''); setSonuclar({});
-    for (const k of kayitlar.filter(r => r.secilebilir && secili.includes(key(r)))) {
+    // ICE bir seride numarayı sırayla kabul eder (büyük numara gidince küçüğü bir daha gönderilemez): küçük numaradan büyüğe gönderilir
+    const gidecekler = kayitlar.filter(r => r.secilebilir && secili.includes(key(r))).sort((a, b) => a.belgeNo.localeCompare(b.belgeNo));
+    for (const k of gidecekler) {
       setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Gönderiliyor', mesaj: '' } }));
       try { const hazir = await ebelgeService.kaynakHazirla(k); const cevap = await ebelgeService.kaynakGonder(hazir);
         setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Gönderildi', mesaj: cevap.mesaj } }));
