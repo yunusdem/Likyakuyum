@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { FastLookupCache } from "./fastLookupCache";
 
 export interface IskontoItem {
   iskontoId: number;
@@ -31,7 +32,21 @@ export interface SaveIskontoPayload {
 }
 
 export class IskontoService {
-  public static async getIskontolar(filter?: { search?: string; aktif?: boolean }): Promise<IskontoItem[]> {
+  public static async getIskontolar(filter?: { search?: string; aktif?: boolean }, forceRefresh: boolean = false): Promise<IskontoItem[]> {
+    const isDefaultList = !filter?.search && filter?.aktif === true;
+    const cacheKey = "iskontolar";
+
+    if (forceRefresh) {
+      FastLookupCache.invalidate(cacheKey);
+    }
+
+    if (isDefaultList) {
+      return FastLookupCache.get(cacheKey, async () => {
+        const res = await apiClient.get<IskontoItem[]>("/iskonto", { aktif: true });
+        return Array.isArray(res.data) ? res.data : [];
+      });
+    }
+
     const params: any = {};
     if (filter?.search) params.search = filter.search;
     if (filter?.aktif !== undefined) params.aktif = filter.aktif;
@@ -47,11 +62,13 @@ export class IskontoService {
 
   public static async saveIskonto(payload: SaveIskontoPayload): Promise<IskontoItem> {
     const res = await apiClient.post<IskontoItem>("/iskonto", payload);
+    FastLookupCache.invalidate("iskontolar");
     return res.data;
   }
 
   public static async deleteIskonto(iskontoId: number, kaliciSil: boolean = true): Promise<boolean> {
     await apiClient.delete(`/iskonto/${iskontoId}`, { params: { kalici: kaliciSil } });
+    FastLookupCache.invalidate("iskontolar");
     return true;
   }
 }

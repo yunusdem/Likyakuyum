@@ -228,33 +228,45 @@ export const DEFAULT_POSTA_KODLARI: LookupItem[] = [
   { id: 59030, kod: "59030", ad: "Süleymanpaşa Merkez", il: "Tekirdağ", ilce: "Süleymanpaşa" },
 ];
 
+import { FastLookupCache } from "./fastLookupCache";
+
 export class CariService {
-  public static async getLookups(): Promise<CariLookups> {
-    const res = await apiClient.get<CariLookups>("/cari/lookups");
-    const data = res.data;
-    if (data) {
-      if (!data.postaKoduList || data.postaKoduList.length === 0) {
-        data.postaKoduList = DEFAULT_POSTA_KODLARI;
-      }
-      return data;
+  public static async getLookups(forceRefresh: boolean = false): Promise<CariLookups> {
+    if (forceRefresh) {
+      FastLookupCache.invalidate("cariLookups");
     }
-    return {
-      vergiDairesiList: [],
-      ilList: [],
-      ilceList: [],
-      postaKoduList: DEFAULT_POSTA_KODLARI,
-      hukukiYapiList: [],
-      sektorList: [],
-      meslekList: [],
-      ulkeList: [],
-      paraList: [],
-      istatistikList: [],
-    };
+    return FastLookupCache.get("cariLookups", async () => {
+      const res = await apiClient.get<CariLookups>("/cari/lookups");
+      const data = res.data;
+      if (data) {
+        if (!data.postaKoduList || data.postaKoduList.length === 0) {
+          data.postaKoduList = DEFAULT_POSTA_KODLARI;
+        }
+        return data;
+      }
+      return {
+        vergiDairesiList: [],
+        ilList: [],
+        ilceList: [],
+        postaKoduList: DEFAULT_POSTA_KODLARI,
+        hukukiYapiList: [],
+        sektorList: [],
+        meslekList: [],
+        ulkeList: [],
+        paraList: [],
+        istatistikList: [],
+      };
+    });
   }
 
-  public static async getCariKartlar(): Promise<CariKartItem[]> {
-    const res = await apiClient.get<CariKartItem[]>("/cari");
-    return res.data || [];
+  public static async getCariKartlar(forceRefresh: boolean = false): Promise<CariKartItem[]> {
+    if (forceRefresh) {
+      FastLookupCache.invalidate("cariKartlar");
+    }
+    return FastLookupCache.get("cariKartlar", async () => {
+      const res = await apiClient.get<CariKartItem[]>("/cari");
+      return res.data || [];
+    });
   }
 
   public static async getCariKartById(id: number | string): Promise<CariKartItem> {
@@ -264,16 +276,19 @@ export class CariService {
 
   public static async createCariKart(data: CariKartFormData): Promise<CariKartItem> {
     const res = await apiClient.post<CariKartItem>("/cari", data);
+    FastLookupCache.invalidate("cariKartlar");
     return res.data;
   }
 
   public static async updateCariKart(id: number | string, data: CariKartFormData): Promise<CariKartItem> {
     const res = await apiClient.put<CariKartItem>(`/cari/${id}`, data);
+    FastLookupCache.invalidate("cariKartlar");
     return res.data;
   }
 
   public static async deleteCariKart(id: number | string): Promise<boolean> {
     const res = await apiClient.delete<{ id: string }>(`/cari/${id}`);
+    FastLookupCache.invalidate("cariKartlar");
     return res.success;
   }
 }

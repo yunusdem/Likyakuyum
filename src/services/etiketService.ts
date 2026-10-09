@@ -361,7 +361,7 @@ export const EtiketService = {
     return (res.data as any)?.data ?? res.data;
   },
   async getAltinUrunByBarkod(barkod: string): Promise<AltinUrunItem> {
-    const res = await apiClient.get<AltinUrunItem>(`/etiket/altin-urun/barkod/${encodeURIComponent(barkod)}`);
+    const res = await apiClient.get<AltinUrunItem>(`/etiket/altin-urun/barkod/${encodeURIComponent(barkod)}`, undefined, { silent: true });
     return (res.data as any)?.data ?? res.data;
   },
   async getAltinUrunStok(vezneId: number, ayar: string): Promise<{ 
@@ -409,7 +409,7 @@ export const EtiketService = {
     return (res.data as any)?.data ?? res.data;
   },
   async getOzelUrunByBarkod(barkod: string): Promise<OzelUrunItem> {
-    const res = await apiClient.get<OzelUrunItem>(`/etiket/ozel-urun/barkod/${encodeURIComponent(barkod)}`);
+    const res = await apiClient.get<OzelUrunItem>(`/etiket/ozel-urun/barkod/${encodeURIComponent(barkod)}`, undefined, { silent: true });
     return (res.data as any)?.data ?? res.data;
   },
   async saveOzelUrun(payload: SaveOzelUrunPayload): Promise<OzelUrunItem> {

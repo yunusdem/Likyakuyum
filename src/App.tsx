@@ -151,8 +151,15 @@ const DashboardLayout: React.FC = () => {
   );
 };
 
+import { FastLookupCache } from "./services/fastLookupCache";
+
 export default function App() {
   useEnterNavigation();
+
+  useEffect(() => {
+    // Pre-warm lookup cache in background so all pages open in 0ms
+    FastLookupCache.preloadAll();
+  }, []);
 
   return (
     <AuthProvider>

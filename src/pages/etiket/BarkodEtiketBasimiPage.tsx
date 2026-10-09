@@ -111,24 +111,9 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
     }
     setAraniyor(true);
     try {
-      // 1. Önce API üzerinden birebir barkod/kod araması yap
-      const altin = await EtiketService.getAltinUrunByBarkod(kod).catch(() => null);
-      if (altin) {
-        setBulunan({ tip: "altin", urun: altin });
-        setSeciliFotoIndex(0);
-        showNotif("success", `Bulundu: ${altin.grupKodu}-${altin.urunNo} (${altin.model || "Sarrafiye"})`);
-        return;
-      }
-      const ozel = await EtiketService.getOzelUrunByBarkod(kod).catch(() => null);
-      if (ozel) {
-        setBulunan({ tip: "ozel", urun: ozel });
-        setSeciliFotoIndex(0);
-        showNotif("success", `Bulundu: ${ozel.grupKodu}-${ozel.urunNo} (${ozel.mamulTipi || "Özel Ürün"})`);
-        return;
-      }
-
-      // 2. Hafızadaki listede tam eşleşen var mı kontrol et
       const cleanKod = kod.toLowerCase();
+
+      // 1. Önce hafızadaki listede tam eşleşen var mı kontrol et (Hızlı ve sıfır network hatası)
       const exactAltin = altinList.find(
         (a) =>
           (a.barkod && a.barkod.toLowerCase() === cleanKod) ||
@@ -154,6 +139,22 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
         setBulunan({ tip: "ozel", urun: exactOzel });
         setSeciliFotoIndex(0);
         showNotif("success", `Bulundu: ${exactOzel.grupKodu}-${exactOzel.urunNo} (${exactOzel.mamulTipi || "Özel Ürün"})`);
+        return;
+      }
+
+      // 2. Hafızada yoksa API üzerinden birebir barkod/kod araması yap (Sessiz modda)
+      const altin = await EtiketService.getAltinUrunByBarkod(kod).catch(() => null);
+      if (altin) {
+        setBulunan({ tip: "altin", urun: altin });
+        setSeciliFotoIndex(0);
+        showNotif("success", `Bulundu: ${altin.grupKodu}-${altin.urunNo} (${altin.model || "Sarrafiye"})`);
+        return;
+      }
+      const ozel = await EtiketService.getOzelUrunByBarkod(kod).catch(() => null);
+      if (ozel) {
+        setBulunan({ tip: "ozel", urun: ozel });
+        setSeciliFotoIndex(0);
+        showNotif("success", `Bulundu: ${ozel.grupKodu}-${ozel.urunNo} (${ozel.mamulTipi || "Özel Ürün"})`);
         return;
       }
 
@@ -348,7 +349,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
   return (
     <div className="barkod-etiket-basimi-page w-100 pb-4" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="A- Barkod Fiyat"
+        pageTitle="C- Barkod Fiyat"
         pageIcon={
           fotograflar.length > 0 ? (
             <div
@@ -391,21 +392,19 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
         </div>
       )}
 
-      {/* Ana Kapsayıcı */}
+      {/* Ana Kapsayıcı (Sola Sabitli ve Üstte) */}
       <div
-        className="d-flex flex-column align-items-center w-100 px-3"
+        className="d-flex flex-column align-items-start w-100 px-3 pt-2"
         style={{
-          minHeight: bulunan ? "auto" : "calc(80vh - 120px)",
-          justifyContent: bulunan ? "flex-start" : "center",
-          paddingTop: bulunan ? "1rem" : "0",
-          transition: "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+          minHeight: "auto",
+          justifyContent: "flex-start",
         }}
       >
         {/* Barkod Okutma & Arama Kartı */}
         <div
           style={{
             width: "100%",
-            maxWidth: bulunan ? "920px" : "640px",
+            maxWidth: bulunan ? "960px" : "680px",
             transition: "all 0.35s ease",
           }}
         >
@@ -416,19 +415,21 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
               boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03)",
             }}
           >
-            <Card.Body className={bulunan ? "p-3" : "p-4"}>
+            <Card.Body className={bulunan ? "p-3" : "p-3.5"}>
               {!bulunan && (
-                <div className="text-center mb-3">
+                <div className="d-flex align-items-center justify-content-center gap-3 mb-3 text-start">
                   <div
-                    className="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10 text-primary mb-2"
-                    style={{ width: "54px", height: "54px" }}
+                    className="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10 text-primary flex-shrink-0 shadow-xs"
+                    style={{ width: "44px", height: "44px" }}
                   >
-                    <IconBarcode size={28} strokeWidth={2} />
+                    <IconBarcode size={24} strokeWidth={2} />
                   </div>
-                  <h5 className="fw-bold text-dark mb-1">Barkod Okutma & Etiket Basımı</h5>
-                  <p className="text-muted small mb-0">
-                    Barkod okutunuz, manuel yazınız veya dürbün ikonu ile listeden seçiniz.
-                  </p>
+                  <div>
+                    <h6 className="fw-bold text-dark mb-0.5" style={{ fontSize: "15px" }}>Barkod Okutma & Etiket Basımı</h6>
+                    <p className="text-muted small mb-0" style={{ fontSize: "12px" }}>
+                      Barkod okutunuz, manuel yazınız veya dürbün ikonu ile listeden seçiniz.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -491,9 +492,9 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
         {/* Ürün Seçildiğinde Açılan Kart */}
         {bulunan && (
           <div
-            className="w-100 fade-in-scale"
+            className="w-100 fade-in-scale text-start"
             style={{
-              maxWidth: "920px",
+              maxWidth: "960px",
               animation: "fadeInUp 0.3s ease-out",
             }}
           >

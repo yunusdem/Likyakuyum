@@ -9,6 +9,7 @@ import {
   Badge,
   Row,
   Col,
+  ButtonGroup,
 } from "react-bootstrap";
 import {
   IconCheck,
@@ -23,6 +24,9 @@ import {
   IconClock,
   IconCalendar,
   IconAlertCircle,
+  IconPlus,
+  IconMinus,
+  IconArrowsVertical,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import {
@@ -47,10 +51,30 @@ export const VezneIzlemePage: React.FC = () => {
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
   const [settings, setSettings] = useState<VezneIzlemeSettings>({
     tazelemeSuresi: 5,
-    ekrandakiVezneSayisi: 8,
+    ekrandakiVezneSayisi: 6,
     toplamdaParaKodu: true,
     firmaDurumuRaporu: false,
   });
+
+  // Row height density state (localStorage persisted)
+  const [rowHeight, setRowHeight] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("vezne_izleme_row_height");
+      if (saved) {
+        const val = Number(saved);
+        if (val >= 20 && val <= 60) return val;
+      }
+    } catch {}
+    return 26; // Default clean 26px
+  });
+
+  const handleRowHeightChange = (newVal: number) => {
+    const clamped = Math.max(20, Math.min(60, newVal));
+    setRowHeight(clamped);
+    try {
+      localStorage.setItem("vezne_izleme_row_height", String(clamped));
+    } catch {}
+  };
 
   // UI / Selection state (Read-only monitoring, clicking selects the kasa/vezne)
   const [selectedVezneId, setSelectedVezneId] = useState<number | null>(null);
@@ -84,7 +108,7 @@ export const VezneIzlemePage: React.FC = () => {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [editSettings, setEditSettings] = useState<VezneIzlemeSettings>({
     tazelemeSuresi: 5,
-    ekrandakiVezneSayisi: 8,
+    ekrandakiVezneSayisi: 6,
     toplamdaParaKodu: true,
     firmaDurumuRaporu: false,
   });
@@ -291,8 +315,23 @@ export const VezneIzlemePage: React.FC = () => {
     setShowFirmaDurumuModal(true);
   }, []);
 
-  // 8'li bloklara bölme (Her tabloda tam 8 vezne sütunu, 8'den fazlası alt alta yeni tabloda gösterilir, yatay kaydırma olmaz)
-  const CHUNK_SIZE = 8;
+  // Helper to scroll active row & chunk into view
+  const scrollActiveIntoView = useCallback((targetChunkIdx: number, targetParaId: number) => {
+    setTimeout(() => {
+      const rowEl = document.getElementById(`vezne-row-${targetChunkIdx}-${targetParaId}`);
+      if (rowEl) {
+        rowEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } else {
+        const chunkEl = document.getElementById(`vezne-chunk-container-${targetChunkIdx}`);
+        if (chunkEl) {
+          chunkEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+      }
+    }, 20);
+  }, []);
+
+  // 6'lı bloklara bölme (Her tabloda en fazla 6 vezne sütunu, 6'dan fazlası alt alta yeni tabloda gösterilir)
+  const CHUNK_SIZE = 6;
   const vezneChunks = useMemo(() => {
     if (!columns || columns.length === 0) return [];
     const chunks: VezneIzlemeColumn[][] = [];
@@ -363,9 +402,17 @@ export const VezneIzlemePage: React.FC = () => {
         if (columns.length > 0) {
           const currIdx = columns.findIndex((c) => c.vezneId === selectedVezneId);
           if (currIdx >= 0 && currIdx < columns.length - 1) {
-            setSelectedVezneId(columns[currIdx + 1].vezneId);
+            const nextCol = columns[currIdx + 1];
+            setSelectedVezneId(nextCol.vezneId);
+            const targetChunkIdx = Math.floor((currIdx + 1) / CHUNK_SIZE);
+            if (selectedParaId !== null) {
+              scrollActiveIntoView(targetChunkIdx, selectedParaId);
+            }
           } else if (currIdx === -1) {
             setSelectedVezneId(columns[0].vezneId);
+            if (selectedParaId !== null) {
+              scrollActiveIntoView(0, selectedParaId);
+            }
           }
         }
       } else if (e.key === "ArrowLeft") {
@@ -373,25 +420,68 @@ export const VezneIzlemePage: React.FC = () => {
         if (columns.length > 0) {
           const currIdx = columns.findIndex((c) => c.vezneId === selectedVezneId);
           if (currIdx > 0) {
-            setSelectedVezneId(columns[currIdx - 1].vezneId);
+            const prevCol = columns[currIdx - 1];
+            setSelectedVezneId(prevCol.vezneId);
+            const targetChunkIdx = Math.floor((currIdx - 1) / CHUNK_SIZE);
+            if (selectedParaId !== null) {
+              scrollActiveIntoView(targetChunkIdx, selectedParaId);
+            }
           }
         }
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         if (rows.length > 0) {
-          const currIdx = rows.findIndex((r) => r.paraId === selectedParaId);
-          if (currIdx >= 0 && currIdx < rows.length - 1) {
-            setSelectedParaId(rows[currIdx + 1].paraId);
-          } else if (currIdx === -1) {
-            setSelectedParaId(rows[0].paraId);
+          const currRowIdx = rows.findIndex((r) => r.paraId === selectedParaId);
+          const currColIdx = columns.findIndex((c) => c.vezneId === selectedVezneId);
+          const activeChunkIdx = currColIdx >= 0 ? Math.floor(currColIdx / CHUNK_SIZE) : 0;
+
+          if (currRowIdx >= 0 && currRowIdx < rows.length - 1) {
+            const nextId = rows[currRowIdx + 1].paraId;
+            setSelectedParaId(nextId);
+            scrollActiveIntoView(activeChunkIdx, nextId);
+          } else if (currRowIdx === rows.length - 1) {
+            // Tablonun en son satırındayken aşağı basıldığında bir alt tabloya (chunk) geç
+            if (activeChunkIdx < vezneChunks.length - 1) {
+              const nextChunkIdx = activeChunkIdx + 1;
+              const nextChunk = vezneChunks[nextChunkIdx];
+              if (nextChunk && nextChunk.length > 0) {
+                const targetVezne = nextChunk[0];
+                const firstRowId = rows[0].paraId;
+                setSelectedVezneId(targetVezne.vezneId);
+                setSelectedParaId(firstRowId);
+                scrollActiveIntoView(nextChunkIdx, firstRowId);
+              }
+            }
+          } else if (currRowIdx === -1) {
+            const firstId = rows[0].paraId;
+            setSelectedParaId(firstId);
+            scrollActiveIntoView(activeChunkIdx, firstId);
           }
         }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         if (rows.length > 0) {
-          const currIdx = rows.findIndex((r) => r.paraId === selectedParaId);
-          if (currIdx > 0) {
-            setSelectedParaId(rows[currIdx - 1].paraId);
+          const currRowIdx = rows.findIndex((r) => r.paraId === selectedParaId);
+          const currColIdx = columns.findIndex((c) => c.vezneId === selectedVezneId);
+          const activeChunkIdx = currColIdx >= 0 ? Math.floor(currColIdx / CHUNK_SIZE) : 0;
+
+          if (currRowIdx > 0) {
+            const prevId = rows[currRowIdx - 1].paraId;
+            setSelectedParaId(prevId);
+            scrollActiveIntoView(activeChunkIdx, prevId);
+          } else if (currRowIdx === 0) {
+            // Tablonun ilk satırındayken yukarı basıldığında bir üst tabloya (chunk) geç
+            if (activeChunkIdx > 0) {
+              const prevChunkIdx = activeChunkIdx - 1;
+              const prevChunk = vezneChunks[prevChunkIdx];
+              if (prevChunk && prevChunk.length > 0) {
+                const targetVezne = prevChunk[0];
+                const lastRowId = rows[rows.length - 1].paraId;
+                setSelectedVezneId(targetVezne.vezneId);
+                setSelectedParaId(lastRowId);
+                scrollActiveIntoView(prevChunkIdx, lastRowId);
+              }
+            }
           }
         }
       }
@@ -406,6 +496,8 @@ export const VezneIzlemePage: React.FC = () => {
     rows,
     selectedVezneId,
     selectedParaId,
+    vezneChunks,
+    scrollActiveIntoView,
     handleOpenKur,
     handleOpenDetay,
     handleOpenVezneBakiye,
@@ -477,28 +569,88 @@ export const VezneIzlemePage: React.FC = () => {
         ) : (
           <div className="flex-grow-1 p-2" style={{ overflowY: "auto", overflowX: "hidden" }}>
             {vezneChunks.map((chunk, chunkIdx) => {
-              const fillerCount = Math.max(0, 8 - chunk.length);
+              const fillerCount = Math.max(0, 6 - chunk.length);
               const fillerArray = Array.from({ length: fillerCount }, (_, i) => i);
               const isMultiChunk = vezneChunks.length > 1;
 
               return (
-                <div key={`vezne-chunk-${chunkIdx}`} className="mb-3">
-                  {/* Tablo Başlığı: Vezneler ve Son Yenilenme Saati */}
-                  <div className="d-flex align-items-center justify-content-between bg-light px-2.5 py-1.5 border rounded-top border-bottom-0">
+                <div key={`vezne-chunk-${chunkIdx}`} id={`vezne-chunk-container-${chunkIdx}`} className="mb-3">
+                  {/* Tablo Başlığı: Vezneler, Satır Genişletme/Daraltma ve Son Yenilenme Saati */}
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 bg-light px-2.5 py-1.5 border rounded-top border-bottom-0">
                     <div className="d-flex align-items-center gap-2">
                       <span className="small fw-bold text-primary">
-                        📊 Vezneler {isMultiChunk ? `(${chunkIdx * 8 + 1} - ${chunkIdx * 8 + chunk.length})` : ""}
+                        📊 Vezneler {isMultiChunk ? `(${chunkIdx * 6 + 1} - ${chunkIdx * 6 + chunk.length})` : ""}
                       </span>
                       <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: "11px" }}>
                         Toplam {columns.length} Vezne
                       </span>
                     </div>
-                    <div className="d-flex align-items-center gap-1.5 text-muted small font-monospace" style={{ fontSize: "12px" }}>
-                      <IconRefresh size={13} className="text-primary" />
-                      <span>Son Yenilenme:</span>
-                      <strong className="text-dark bg-white px-2 py-0.5 border rounded shadow-2xs">
-                        {lastRefreshed.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </strong>
+
+                    <div className="d-flex align-items-center gap-3">
+                      {/* Satır Genişlet / Daralt Kontrolleri */}
+                      <div className="d-flex align-items-center gap-1.5 bg-white px-2 py-0.5 border rounded shadow-2xs">
+                        <IconArrowsVertical size={13} className="text-secondary" />
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>Satır:</span>
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-xs py-0 px-1 border-0"
+                          onClick={() => handleRowHeightChange(rowHeight - 2)}
+                          title="Satırları Daralt (-2px)"
+                          disabled={rowHeight <= 20}
+                          style={{ lineHeight: "1" }}
+                        >
+                          <IconMinus size={12} />
+                        </button>
+                        <span className="fw-bold font-monospace text-dark px-1" style={{ fontSize: "11px" }}>
+                          {rowHeight}px
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-xs py-0 px-1 border-0"
+                          onClick={() => handleRowHeightChange(rowHeight + 2)}
+                          title="Satırları Genişlet (+2px)"
+                          disabled={rowHeight >= 60}
+                          style={{ lineHeight: "1" }}
+                        >
+                          <IconPlus size={12} />
+                        </button>
+                        <div className="vr mx-1" style={{ height: "14px" }} />
+                        <ButtonGroup size="sm" className="btn-group-xs">
+                          <button
+                            type="button"
+                            className={`btn py-0 px-1.5 ${rowHeight === 22 ? "btn-primary text-white" : "btn-light text-secondary border"}`}
+                            style={{ fontSize: "10px", lineHeight: "1.4" }}
+                            onClick={() => handleRowHeightChange(22)}
+                          >
+                            Kompakt
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn py-0 px-1.5 ${rowHeight === 26 ? "btn-primary text-white" : "btn-light text-secondary border"}`}
+                            style={{ fontSize: "10px", lineHeight: "1.4" }}
+                            onClick={() => handleRowHeightChange(26)}
+                          >
+                            Normal
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn py-0 px-1.5 ${rowHeight === 34 ? "btn-primary text-white" : "btn-light text-secondary border"}`}
+                            style={{ fontSize: "10px", lineHeight: "1.4" }}
+                            onClick={() => handleRowHeightChange(34)}
+                          >
+                            Geniş
+                          </button>
+                        </ButtonGroup>
+                      </div>
+
+                      {/* Son Yenilenme */}
+                      <div className="d-flex align-items-center gap-1.5 text-muted small font-monospace" style={{ fontSize: "12px" }}>
+                        <IconRefresh size={13} className="text-primary" />
+                        <span>Son Yenilenme:</span>
+                        <strong className="text-dark bg-white px-2 py-0.5 border rounded shadow-2xs">
+                          {lastRefreshed.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </strong>
+                      </div>
                     </div>
                   </div>
 
@@ -514,10 +666,11 @@ export const VezneIzlemePage: React.FC = () => {
                         width: "100%",
                       }}
                     >
-                      {/* Header (8 Vezne Kolonu + Kod + Toplam) */}
+                      {/* Header (Maksimum 6 Vezne Kolonu + Kod + Toplam) */}
                       <thead
                         style={{
-                          backgroundColor: "#bfdbfe",
+                          background: "linear-gradient(180deg, #dbe8f6 0%, #c8dcf0 100%)",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
                           color: "#1e3a8a",
                           userSelect: "none",
                         }}
@@ -526,18 +679,19 @@ export const VezneIzlemePage: React.FC = () => {
                           {/* Para Kodu Sütun Başlığı */}
                           <th
                             style={{
-                              width: "70px",
-                              backgroundColor: "#bfdbfe",
-                              borderColor: "#93c5fd",
-                              padding: "6px 8px",
+                              width: "75px",
+                              backgroundColor: "transparent",
+                              borderRight: "1px solid #b8cee6",
+                              padding: "4px 8px",
                               textAlign: "center",
+                              fontSize: "0.85rem",
                               fontWeight: 700,
                             }}
                           >
                             SMB
                           </th>
 
-                          {/* 8 Vezne Kolon Başlıkları */}
+                          {/* 6 Vezne Kolon Başlıkları */}
                           {chunk.map((col) => {
                             const isSelected = selectedVezneId !== null && Number(col.vezneId) === Number(selectedVezneId);
 
@@ -546,17 +700,18 @@ export const VezneIzlemePage: React.FC = () => {
                                 key={col.vezneId}
                                 onClick={() => setSelectedVezneId(Number(col.vezneId))}
                                 style={{
-                                  backgroundColor: isSelected ? "#38bdf8" : "#e2e8f0",
+                                  backgroundColor: isSelected ? "#38bdf8" : "transparent",
                                   boxShadow: isSelected
                                     ? "inset 0 0 0 9999px #38bdf8"
-                                    : "inset 0 0 0 9999px #e2e8f0",
-                                  color: isSelected ? "#082f49" : "#334155",
-                                  borderLeft: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
-                                  borderRight: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
-                                  borderTop: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
-                                  borderBottom: isSelected ? "2px solid #0284c7" : "1px solid #cbd5e1",
-                                  padding: "6px 6px",
+                                    : undefined,
+                                  color: isSelected ? "#082f49" : "#1e3a8a",
+                                  borderLeft: isSelected ? "2px solid #0284c7" : "1px solid #b8cee6",
+                                  borderRight: isSelected ? "2px solid #0284c7" : "1px solid #b8cee6",
+                                  borderTop: isSelected ? "2px solid #0284c7" : "1px solid #b8cee6",
+                                  borderBottom: isSelected ? "2px solid #0284c7" : "1px solid #b8cee6",
+                                  padding: "4px 8px",
                                   textAlign: "center",
+                                  fontSize: "0.85rem",
                                   fontWeight: 700,
                                   cursor: "pointer",
                                   transition: "all 0.15s ease",
@@ -578,15 +733,14 @@ export const VezneIzlemePage: React.FC = () => {
                             );
                           })}
 
-                          {/* Eksik Kolonları Dolduran Boş Hücreler (Toplam 8'e tamamlama) */}
+                          {/* Eksik Kolonları Dolduran Boş Hücreler (Toplam 6'ya tamamlama) */}
                           {fillerArray.map((fi) => (
                             <th
                               key={`filler-head-${fi}`}
                               style={{
-                                backgroundColor: "#e2e8f0",
-                                boxShadow: "inset 0 0 0 9999px #e2e8f0",
-                                borderColor: "#cbd5e1",
-                                padding: "6px 8px",
+                                backgroundColor: "transparent",
+                                borderRight: "1px solid #b8cee6",
+                                padding: "4px 8px",
                               }}
                             ></th>
                           ))}
@@ -594,13 +748,13 @@ export const VezneIzlemePage: React.FC = () => {
                           {/* Toplam Sütun Başlığı */}
                           <th
                             style={{
-                              width: "140px",
-                              backgroundColor: "#e2e8f0",
-                              boxShadow: "inset 0 0 0 9999px #e2e8f0",
-                              borderColor: "#cbd5e1",
-                              color: "#334155",
-                              padding: "6px 8px",
+                              width: "165px",
+                              backgroundColor: "transparent",
+                              borderLeft: "1px solid #b8cee6",
+                              color: "#1e3a8a",
+                              padding: "4px 8px",
                               textAlign: "center",
+                              fontSize: "0.85rem",
                               fontWeight: 700,
                             }}
                           >
@@ -618,8 +772,14 @@ export const VezneIzlemePage: React.FC = () => {
 
                           return (
                             <tr
-                              key={row.paraId}
-                              onClick={() => setSelectedParaId(row.paraId)}
+                              key={`${chunkIdx}-${row.paraId}`}
+                              id={`vezne-row-${chunkIdx}-${row.paraId}`}
+                              onClick={() => {
+                                setSelectedParaId(row.paraId);
+                                if (!chunk.some((c) => c.vezneId === selectedVezneId)) {
+                                  setSelectedVezneId(chunk[0].vezneId);
+                                }
+                              }}
                               style={{
                                 backgroundColor: baseRowBg,
                               }}
@@ -628,25 +788,29 @@ export const VezneIzlemePage: React.FC = () => {
                               <td
                                 style={{
                                   backgroundColor: isRowActive
-                                    ? "#e0f2fe"
+                                    ? "#bae6fd"
                                     : rIdx % 2 === 0
                                     ? "#f1f5f9"
                                     : "#e2e8f0",
                                   boxShadow: isRowActive
-                                    ? "inset 0 0 0 9999px #e0f2fe"
+                                    ? "inset 0 0 0 9999px #bae6fd"
                                     : undefined,
+                                  fontSize: "0.88rem",
                                   fontWeight: 700,
                                   textAlign: "center",
-                                  color: isRowActive ? "#0369a1" : "#1e293b",
-                                  padding: "4px 6px",
-                                  borderColor: "#cbd5e1",
+                                  color: isRowActive ? "#0c4a6e" : "#1e293b",
+                                  padding: "0 6px",
+                                  height: `${rowHeight}px`,
+                                  lineHeight: `${rowHeight}px`,
+                                  borderRight: "1px solid #cbd5e1",
                                   cursor: "pointer",
+                                  userSelect: "none",
                                 }}
                               >
                                 {row.paraKodu}
                               </td>
 
-                              {/* 8 Vezne Değerleri (Salt Okunur / Input Yok) */}
+                              {/* 6 Vezne Değerleri (Belirgin & Okunaklı Rakamlar) */}
                               {chunk.map((col) => {
                                 const miktar = row.bakiyeler[col.vezneId];
                                 const isColSelected = selectedVezneId !== null && Number(col.vezneId) === Number(selectedVezneId);
@@ -682,11 +846,13 @@ export const VezneIzlemePage: React.FC = () => {
                                     title={`Vezne: ${col.kod} (${col.ad}) | ${row.paraKodu}: ${formattedVal || "0"}`}
                                   >
                                     <div
-                                      className="px-2 py-1 text-truncate text-end"
+                                      className="px-2 text-truncate text-end font-monospace"
                                       style={{
-                                        minHeight: "26px",
-                                        lineHeight: "24px",
+                                        height: `${rowHeight}px`,
+                                        lineHeight: `${rowHeight}px`,
+                                        fontSize: "0.90rem",
                                         fontWeight: isColSelected ? 700 : miktar && miktar !== 0 ? 600 : 400,
+                                        letterSpacing: "-0.01em",
                                         color: isColSelected ? "#0c4a6e" : miktar && miktar !== 0 ? "#0f172a" : "#94a3b8",
                                       }}
                                     >
@@ -704,20 +870,25 @@ export const VezneIzlemePage: React.FC = () => {
                                     borderColor: "#cbd5e1",
                                     backgroundColor: baseRowBg,
                                     boxShadow: `inset 0 0 0 9999px ${baseRowBg}`,
-                                    padding: "4px 8px",
+                                    height: `${rowHeight}px`,
+                                    padding: "0 8px",
                                   }}
                                 ></td>
                               ))}
 
-                              {/* Toplam Hücresi */}
+                              {/* Toplam Hücresi (Bold ve Belirgin) */}
                               <td
-                                className="font-monospace text-end px-2 py-1"
+                                className="font-monospace text-end px-2"
                                 style={{
-                                  backgroundColor: isRowActive ? "#e0f2fe" : rIdx % 2 === 0 ? "#f8fafc" : "#f1f5f9",
-                                  boxShadow: isRowActive ? "inset 0 0 0 9999px #e0f2fe" : undefined,
+                                  backgroundColor: isRowActive ? "#bae6fd" : rIdx % 2 === 0 ? "#f8fafc" : "#f1f5f9",
+                                  boxShadow: isRowActive ? "inset 0 0 0 9999px #bae6fd" : undefined,
                                   borderColor: "#cbd5e1",
-                                  fontWeight: 700,
-                                  color: "#1e293b",
+                                  height: `${rowHeight}px`,
+                                  lineHeight: `${rowHeight}px`,
+                                  fontSize: "0.92rem",
+                                  fontWeight: 800,
+                                  letterSpacing: "-0.01em",
+                                  color: isRowActive ? "#0c4a6e" : "#0f172a",
                                 }}
                               >
                                 {renderToplam(row)}

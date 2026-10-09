@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { FastLookupCache } from "./fastLookupCache";
 
 export interface BankaHesapItem {
   bankaId: number;
@@ -119,7 +120,22 @@ export interface BankaLookups {
 
 export const BankaService = {
   // ─── Banka Hesap Kartları ──────────────────────────────────────────────────
-  async getBankalar(filter?: { search?: string; aktif?: boolean }): Promise<BankaHesapItem[]> {
+  async getBankalar(filter?: { search?: string; aktif?: boolean }, forceRefresh: boolean = false): Promise<BankaHesapItem[]> {
+    const isDefault = !filter?.search && filter?.aktif === true;
+    const cacheKey = "bankalar";
+
+    if (forceRefresh) {
+      FastLookupCache.invalidate(cacheKey);
+    }
+
+    if (isDefault) {
+      return FastLookupCache.get(cacheKey, async () => {
+        const res = await apiClient.get<BankaHesapItem[]>("/banka/hesaplar", { aktif: true });
+        const data = (res.data as any)?.data ?? res.data;
+        return Array.isArray(data) ? data : [];
+      });
+    }
+
     const res = await apiClient.get<BankaHesapItem[]>("/banka/hesaplar", filter);
     const data = (res.data as any)?.data ?? res.data;
     return Array.isArray(data) ? data : [];
@@ -138,11 +154,13 @@ export const BankaService = {
 
   async saveBanka(payload: SaveBankaHesapPayload): Promise<BankaHesapItem> {
     const res = await apiClient.post<BankaHesapItem>("/banka/hesaplar", payload);
+    FastLookupCache.invalidate("bankalar");
     return (res.data as any)?.data ?? res.data;
   },
 
   async deleteBanka(id: number): Promise<void> {
     await apiClient.delete(`/banka/hesaplar/${id}`);
+    FastLookupCache.invalidate("bankalar");
   },
 
   // ─── Banka Hesap Hareketleri ───────────────────────────────────────────────

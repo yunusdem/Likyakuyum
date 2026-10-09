@@ -43,6 +43,8 @@ import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "./MusteriSecimModal";
 import { KurListesiModal } from "./KurListesiModal";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
+import { CashDeskService } from "../../services/cashDeskService";
+import { FastLookupCache } from "../../services/fastLookupCache";
 import { TlHesabiModal } from "./TlHesabiModal";
 import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
@@ -61,6 +63,7 @@ import {
   KayitsizMusteriItem,
 } from "../../services/dovizFisService";
 import { useAuth } from "../../context/AuthContext";
+import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generateDovizReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, formatMiktar } from "../../utils/numericInput";
@@ -970,18 +973,22 @@ export const DovizFisiPage: React.FC = () => {
     applyDefaultF8Detay(lookupsParam, compDefParam);
   }, [applyDefaultF8Detay]);
 
-  // Load Lookups
+  // Load Lookups (Instant Load with FastLookupCache)
   const loadLookupsAndList = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
+      const fisListPromise = isDuzeltmeMode
+        ? DovizFisService.getFisList({ limit: 500 }).catch(() => [] as DovizFisListItem[])
+        : Promise.resolve([] as DovizFisListItem[]);
+
       const [cariler, vezneler, paralar, kurTabloRes, gunlukKurTabloRes, istatistikler, fisler, cariLk, compDef, kayitsizlar] = await Promise.all([
         CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
-        apiClient.get<VezneItem[]>("/vezne").then((r) => r.data || []).catch(() => [] as VezneItem[]),
-        apiClient.get<ParaItem[]>("/para").then((r) => r.data || []).catch(() => [] as ParaItem[]),
+        CashDeskService.getVezneler().catch(() => [] as VezneItem[]),
+        FastLookupCache.get("paralar", () => apiClient.get<ParaItem[]>("/para").then((r) => r.data || [])),
         KurService.getKurTablosu({ tur: 0 }).catch(() => null),
         KurService.getKurTablosu({ tur: 1 }).catch(() => null),
         StatisticService.getStatistics().catch(() => [] as StatisticItem[]),
-        DovizFisService.getFisList({ limit: 100 }).catch(() => [] as DovizFisListItem[]),
+        fisListPromise,
         CariService.getLookups().catch(() => null),
         CompanyService.getDefinitions().catch(() => null),
         DovizFisService.getKayitsizMusteriler().catch(() => [] as KayitsizMusteriItem[]),
@@ -1041,6 +1048,17 @@ export const DovizFisiPage: React.FC = () => {
 
       setStatisticList(istatistikler);
       setSavedFisList(fisler);
+
+      // Lazily populate search list in background in Kayıt mode
+      if (!isDuzeltmeMode && fisler.length === 0) {
+        DovizFisService.getFisList({ limit: 100 })
+          .then((bgFisler) => {
+            if (bgFisler && bgFisler.length > 0) {
+              setSavedFisList(bgFisler);
+            }
+          })
+          .catch(() => {});
+      }
 
       fetchVezneBalances(currentVezneId).catch(() => { });
 
@@ -1121,12 +1139,6 @@ export const DovizFisiPage: React.FC = () => {
       setParaList(combinedParalar);
 
       if (isDuzeltmeMode) {
-        try {
-          const fisler = await DovizFisService.getFisList({ limit: 500 });
-          setSavedFisList(fisler || []);
-        } catch {
-          // ignore
-        }
         if (queryId) {
           await loadFisById(Number(queryId));
         } else {
@@ -4140,12 +4152,30 @@ export const DovizFisiPage: React.FC = () => {
   ];
 
   const paraColumns: LookupColumn<ParaItem>[] = [
-    { header: "Kod", width: "90px", render: (p) => p.kod },
-    { header: "Ad", render: (p) => p.ad },
+    { header: "Kod", width: "85px", render: (p) => <span className="font-monospace fw-bold text-primary">{p.kod}</span> },
+    { header: "Para / Döviz Adı", render: (p) => <span className="fw-medium">{p.ad}</span> },
+    {
+      header: "Tip",
+      width: "80px",
+      align: "center",
+      render: (p) => {
+        const info = getUrunTipiInfo(p as any);
+        return (
+          <Badge
+            bg={info.bg}
+            text={info.textColor as any}
+            className={info.isBorder ? "border" : undefined}
+            style={{ fontSize: "11px", fontWeight: 600, minWidth: "50px", display: "inline-block", textAlign: "center" }}
+          >
+            {info.label}
+          </Badge>
+        );
+      },
+    },
     {
       header: tip === 0 ? (kurTuru === 0 ? "Efektif Alış" : "Döviz Alış") : (kurTuru === 0 ? "Efektif Satış" : "Döviz Satış"),
       align: "right",
-      width: "130px",
+      width: "125px",
       render: (p) => {
         const rate = resolveCurrencyRate(p, tip, kurTuru);
         return rate > 0 ? rate.toFixed(kurKurusSayisi) : "-";
@@ -6315,7 +6345,13 @@ export const DovizFisiPage: React.FC = () => {
         initialSearchTerm={paraSearchTerm}
         filterFn={(item, term) => {
           const t = term.toLowerCase().trim();
-          return (item.kod || "").toLowerCase().includes(t);
+          if (!t) return true;
+          const info = getUrunTipiInfo(item as any);
+          return (
+            (item.kod || "").toLowerCase().includes(t) ||
+            (item.ad || "").toLowerCase().includes(t) ||
+            info.label.toLowerCase().includes(t)
+          );
         }}
         onSelect={(item) => {
           lastModalCallerRef.current = null;

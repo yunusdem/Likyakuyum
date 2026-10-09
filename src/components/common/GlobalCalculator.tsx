@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { IconBackspace, IconCalculator, IconCheck, IconX } from "@tabler/icons-react";
+import { IconBackspace, IconCalculator, IconCheck, IconDeviceFloppy, IconX } from "@tabler/icons-react";
 
 /**
  * F11 ile programın her yerinden açılan hesap makinesi.
@@ -151,6 +151,21 @@ const GlobalCalculator: React.FC = () => {
     setOpen(false);
   }, [acc, entry, op]);
 
+  const saveAndClose = useCallback(() => {
+    const el = targetRef.current;
+    commitAndClose();
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("calculator-save-requested", {
+          detail: {
+            value: entry,
+            target: el,
+          },
+        })
+      );
+    }, 60);
+  }, [commitAndClose, entry]);
+
   const cancelAndClose = useCallback(() => {
     const el = targetRef.current;
     setOpen(false);
@@ -164,37 +179,52 @@ const GlobalCalculator: React.FC = () => {
     }
   }, []);
 
-  // F11: aç / kapat
+  // F11: aç / kapat & Custom Event
   useEffect(() => {
+    const handleOpen = (e?: Event) => {
+      const customEvt = e as CustomEvent | undefined;
+      const detailTarget = customEvt?.detail?.target;
+      const detailVal = customEvt?.detail?.value;
+
+      const a = detailTarget || document.activeElement;
+      const target =
+        a instanceof HTMLInputElement && ["text", "number", "tel", "search", ""].includes(a.type)
+          ? a
+          : a instanceof HTMLTextAreaElement
+          ? a
+          : null;
+      targetRef.current = target;
+
+      let initialEntry = "0";
+      if (detailVal !== undefined && detailVal !== null && detailVal !== "") {
+        const raw = String(detailVal).replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+        const num = parseFloat(raw);
+        if (!isNaN(num) && isFinite(num)) {
+          initialEntry = String(num);
+        }
+      } else if (target && target.value) {
+        const raw = target.value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+        const num = parseFloat(raw);
+        if (!isNaN(num) && isFinite(num)) {
+          initialEntry = String(num);
+        }
+      }
+
+      setEntry(initialEntry);
+      setAcc(null);
+      setOp(null);
+      setFresh(true);
+      setHistory("");
+      setOpen(true);
+    };
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "F11") return;
       e.preventDefault();
       e.stopPropagation();
-
       setOpen((isOpen) => {
         if (!isOpen) {
-          const a = document.activeElement;
-          const target =
-            a instanceof HTMLInputElement && ["text", "number", "tel", "search", ""].includes(a.type)
-              ? a
-              : a instanceof HTMLTextAreaElement
-              ? a
-              : null;
-          targetRef.current = target;
-
-          let initialEntry = "0";
-          if (target && target.value) {
-            const raw = target.value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-            const num = parseFloat(raw);
-            if (!isNaN(num) && isFinite(num)) {
-              initialEntry = String(num);
-            }
-          }
-          setEntry(initialEntry);
-          setAcc(null);
-          setOp(null);
-          setFresh(true);
-          setHistory("");
+          handleOpen();
           return true;
         } else {
           commitAndClose();
@@ -202,8 +232,13 @@ const GlobalCalculator: React.FC = () => {
         }
       });
     };
+
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("open-global-calculator", handleOpen as any);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("open-global-calculator", handleOpen as any);
+    };
   }, [commitAndClose]);
 
   // Açıkken klavyeden kullanım
@@ -276,9 +311,9 @@ const GlobalCalculator: React.FC = () => {
   return (
     <div className="gc-root" role="dialog" aria-label="Hesap makinesi">
       <style>{`
-        .gc-root .gc-box{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2000;width:320px;max-width:calc(100vw - 32px);
+        .gc-root .gc-box{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:99999;width:320px;max-width:calc(100vw - 32px);
           background:#ffffff;color:#212529;opacity:1;isolation:isolate;border:1px solid var(--bs-border-color);border-radius:var(--bs-border-radius-lg,.5rem);
-          box-shadow:0 .75rem 2rem rgba(0,0,0,.25);user-select:none;}
+          box-shadow:0 1.25rem 3rem rgba(0,0,0,.35);user-select:none;}
         .gc-root .gc-head{display:flex;align-items:center;justify-content:space-between;padding:.5rem .75rem;cursor:move;
           border-bottom:1px solid var(--bs-border-color);background:#f1f3f5;border-radius:var(--bs-border-radius-lg,.5rem) var(--bs-border-radius-lg,.5rem) 0 0;}
         .gc-root .gc-title{font-weight:600;font-size:.9rem;}
@@ -290,7 +325,7 @@ const GlobalCalculator: React.FC = () => {
         .gc-root .gc-btn{padding:.55rem 0;font-weight:500;border:1px solid #dee2e6;opacity:1;}
         .gc-root .gc-btn.btn-light{background:#f1f3f5;color:#212529;}
         .gc-root .gc-btn[class*="btn-outline-"]:not(:hover){background:#ffffff;}
-        .gc-root .gc-backdrop{position:fixed;inset:0;z-index:1999;background:rgba(0,0,0,.35);}
+        .gc-root .gc-backdrop{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.45);}
         [data-bs-theme="dark"] .gc-root .gc-box{background:#1e2227;color:#e9ecef;}
         [data-bs-theme="dark"] .gc-root .gc-head{background:#2a2f35;}
         [data-bs-theme="dark"] .gc-root .gc-screen{background:#15181c;}
@@ -326,12 +361,15 @@ const GlobalCalculator: React.FC = () => {
           {B("x²", () => unary(x => x * x), "outline-secondary")}
           {B("1/x", () => unary(x => 1 / x), "outline-secondary")}
         </div>
-        <div className="gc-foot">
-          <button type="button" className="btn btn-sm btn-primary" onClick={commitAndClose} tabIndex={-1}>
-            <IconCheck size={16} className="me-1" />Tamam
-          </button>
+        <div className="gc-foot d-flex align-items-center justify-content-end gap-2">
           <button type="button" className="btn btn-sm btn-outline-secondary" onClick={cancelAndClose} tabIndex={-1}>
             <IconX size={16} className="me-1" />Vazgeç
+          </button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={commitAndClose} tabIndex={-1} title="Hesaplanan değeri alana aktarır ve kapatır">
+            <IconCheck size={16} className="me-1" />Tamam
+          </button>
+          <button type="button" className="btn btn-sm btn-success fw-bold" onClick={saveAndClose} tabIndex={-1} title="Hesaplanan değeri alana aktarır ve otomatik kaydeder">
+            <IconDeviceFloppy size={16} className="me-1" />Kaydet
           </button>
         </div>
       </div>
