@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { FastLookupCache } from "./fastLookupCache";
 
 export interface NumeratorItem {
   id: string; // `${tur}_${yaziciId ?? "null"}`
@@ -25,9 +26,14 @@ export interface NumeratorFormData {
 }
 
 export class NumeratorService {
-  public static async getNumerators(): Promise<NumeratorItem[]> {
-    const res = await apiClient.get<NumeratorItem[]>("/numerator");
-    return res.data || [];
+  public static async getNumerators(forceRefresh: boolean = false): Promise<NumeratorItem[]> {
+    if (forceRefresh) {
+      FastLookupCache.invalidate("numerators");
+    }
+    return FastLookupCache.get("numerators", async () => {
+      const res = await apiClient.get<NumeratorItem[]>("/numerator");
+      return res.data || [];
+    });
   }
 
   public static async getNumeratorById(id: string): Promise<NumeratorItem> {
@@ -37,21 +43,25 @@ export class NumeratorService {
 
   public static async createNumerator(data: NumeratorFormData): Promise<NumeratorItem> {
     const res = await apiClient.post<NumeratorItem>("/numerator", data);
+    FastLookupCache.invalidate("numerators");
     return res.data;
   }
 
   public static async saveNumerator(data: NumeratorFormData): Promise<NumeratorItem> {
     const res = await apiClient.post<NumeratorItem>("/numerator/save", data);
+    FastLookupCache.invalidate("numerators");
     return res.data;
   }
 
   public static async updateNumerator(id: string, data: NumeratorFormData): Promise<NumeratorItem> {
     const res = await apiClient.put<NumeratorItem>(`/numerator/${id}`, data);
+    FastLookupCache.invalidate("numerators");
     return res.data;
   }
 
   public static async deleteNumerator(id: string): Promise<boolean> {
     const res = await apiClient.delete<{ id: string }>(`/numerator/${id}`);
+    FastLookupCache.invalidate("numerators");
     return res.success;
   }
 }

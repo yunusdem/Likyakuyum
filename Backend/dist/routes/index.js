@@ -43,6 +43,7 @@ import { modulKapisi } from "../middlewares/modul.middleware.js";
 import { lisansKapisi } from "../middlewares/lisans.middleware.js";
 import { KurulumController } from "../controllers/kurulum.controller.js";
 import merkezRoutes from "./merkez.routes.js";
+import destekRoutes from "./destek.routes.js";
 const apiRouter = Router();
 // Firma bazlı modül kısıtı: önek → kullanan modüller eşlemesi services/admin/modul.service.ts API_MODULLERI'nde.
 // MERKEZ_GIRIS kapalıyken ve modül ayarı yapılmamış firmada hiçbir şeyi kısıtlamaz.
@@ -57,6 +58,7 @@ apiRouter.post("/sistem/guncelleme/simdi", authenticate, KurulumController.gunce
 apiRouter.use("/merkez", merkezRoutes);
 apiRouter.use("/health", healthRoutes);
 apiRouter.use("/admin", adminRoutes);
+apiRouter.use("/destek", destekRoutes);
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);

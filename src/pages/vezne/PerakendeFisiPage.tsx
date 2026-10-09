@@ -922,32 +922,23 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   );
 
   useEffect(() => {
-    loadVezneler().then(async (list) => {
-      if (list && list.length > 0) {
-        const uv = await resolveUserVezne(list);
-        if (uv) setSelectedVezne(uv);
-      }
-    });
-
-    CariService.getCariKartlar()
-      .then(setCariler)
-      .catch(console.error);
-
-    CariService.getLookups()
-      .then(setCariLookups)
-      .catch(console.error);
-
-    DovizFisService.getKayitsizMusteriler()
-      .then(setKayitsizMusteriler)
-      .catch(console.error);
-
-    loadOdemeUrunler();
-    loadIskontolar();
-
+    // Instant Parallel Load with FastLookupCache
     Promise.all([
+      loadVezneler().then(async (list) => {
+        if (list && list.length > 0) {
+          const uv = await resolveUserVezne(list);
+          if (uv) setSelectedVezne(uv);
+        }
+      }),
+      CariService.getCariKartlar().then(setCariler).catch(() => []),
+      CariService.getLookups().then(setCariLookups).catch(() => null),
+      DovizFisService.getKayitsizMusteriler().then(setKayitsizMusteriler).catch(() => []),
+      loadOdemeUrunler(),
+      loadIskontolar(),
+      loadProductsForLookup(),
       KurService.getKurTablosu({ tur: 0 }).catch(() => null),
       KurService.getKurTablosu({ tur: 1 }).catch(() => null),
-    ]).then(([anlikRes, gunlukRes]) => {
+    ]).then(([_, __, ___, ____, _____, ______, _______, anlikRes, gunlukRes]) => {
       const mergedKurMap = new Map<string, any>();
       (gunlukRes?.satirlar || []).forEach((k) => {
         const cCode = (k.kod || "").toUpperCase().trim();
@@ -985,8 +976,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         setAltinHasKuru(rate);
       }
     }).catch(console.error);
-
-    loadProductsForLookup();
 
     if (isDuzeltmeMode) {
       PerakendeService.listInvoices({ limit: 500 })

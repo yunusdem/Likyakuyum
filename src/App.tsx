@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Routes, Route, Outlet, Navigate } from "react-router-dom";
 import Header from "layouts/header/Header";
 import Sidebar from "layouts/Sidebar";
@@ -95,11 +95,20 @@ import { ERPContextMenu } from "./components/common/ERPContextMenu";
 import { UserThemeApplier } from "./components/theme/UserThemeApplier";
 import useMenu from "hooks/useMenu";
 import useEnterNavigation from "./hooks/useEnterNavigation";
-
+import { useAuth } from "./context/AuthContext";
+import { getAppBrand } from "./utils/brandHelper";
 
 const DashboardLayout: React.FC = () => {
   const { collapsed, handleCollapsed } = useMenu();
+  const { user } = useAuth();
+  const brand = getAppBrand(user);
   const isExpanded = collapsed === "expanded" || !collapsed;
+
+  useEffect(() => {
+    if (brand?.fullTitle) {
+      document.title = `${brand.fullTitle} - Bulut Yönetim`;
+    }
+  }, [brand?.fullTitle]);
 
   return (
     <div className="dashboard-layout-root min-vh-100 position-relative">
@@ -126,12 +135,12 @@ const DashboardLayout: React.FC = () => {
           <div className="d-flex align-items-center">
             <img
               src="/images/logo/logo.svg"
-              alt="Likya Kuyum Logo"
+              alt="Likya Logo"
               className="flex-shrink-0 me-2"
               style={{ width: "22px", height: "22px", objectFit: "contain" }}
             />
             <span className="text-muted small d-inline-flex align-items-center">
-              © 2026&nbsp;<strong className="text-dark fw-bold">LİKYA KUYUM</strong>.&nbsp;Tüm hakları saklıdır.
+              © {new Date().getFullYear()}&nbsp;<strong className="text-dark fw-bold">{brand.fullTitle}</strong>.&nbsp;Tüm hakları saklıdır.
             </span>
           </div>
         </footer>
@@ -142,8 +151,15 @@ const DashboardLayout: React.FC = () => {
   );
 };
 
+import { FastLookupCache } from "./services/fastLookupCache";
+
 export default function App() {
   useEnterNavigation();
+
+  useEffect(() => {
+    // Pre-warm lookup cache in background so all pages open in 0ms
+    FastLookupCache.preloadAll();
+  }, []);
 
   return (
     <AuthProvider>

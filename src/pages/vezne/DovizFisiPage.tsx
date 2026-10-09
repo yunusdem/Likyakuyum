@@ -43,6 +43,8 @@ import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "./MusteriSecimModal";
 import { KurListesiModal } from "./KurListesiModal";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
+import { CashDeskService } from "../../services/cashDeskService";
+import { FastLookupCache } from "../../services/fastLookupCache";
 import { TlHesabiModal } from "./TlHesabiModal";
 import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
@@ -61,6 +63,7 @@ import {
   KayitsizMusteriItem,
 } from "../../services/dovizFisService";
 import { useAuth } from "../../context/AuthContext";
+import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generateDovizReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, formatMiktar } from "../../utils/numericInput";
@@ -449,6 +452,11 @@ export const DovizFisiPage: React.FC = () => {
     bankaList: DEFAULT_BANKALAR,
   });
 
+  const lookupDataRef = useRef(lookupData);
+  lookupDataRef.current = lookupData;
+  const companyDefinitionsRef = useRef(companyDefinitions);
+  companyDefinitionsRef.current = companyDefinitions;
+
   const [savedFisList, setSavedFisList] = useState<DovizFisListItem[]>([]);
   const [isLoadingFisList, setIsLoadingFisList] = useState<boolean>(false);
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
@@ -589,17 +597,25 @@ export const DovizFisiPage: React.FC = () => {
   const [gmTeyitTarih, setGmTeyitTarih] = useState<string>("");
   const [gmFaturaNo, setGmFaturaNo] = useState<string>("");
 
+  const getEffectiveKmvMode = (def?: TodvzTanimDto | null): number => {
+    const val = def?.KMV_UYGULAMA_SEKLI;
+    if (val === 1 || val === 2 || val === 3) return Number(val);
+    return 3; // Varsayılan: 3 - Kurdan Hariç
+  };
+
   // Table Lines: Starts with EXACTLY 1 row if no data
   const createEmptyRow = (satirNo: number): GridLineItem => {
+    const compDef = companyDefinitionsRef?.current || companyDefinitions;
+    const kmvMode = getEffectiveKmvMode(compDef);
     const statKod = (istatistikKodu || "").trim();
     const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
-    const bmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null
+    const bmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0
       ? Number(activeStat.bmvOrani)
-      : (activeStat && tip === 1 ? 0.2 : 0);
-    const kmvRate = activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null
+      : 0;
+    const kmvRate = (kmvMode !== 1 && activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null && Number(activeStat.kmvOrani) > 0)
       ? Number(activeStat.kmvOrani)
       : 0;
-    const komRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null
+    const komRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0
       ? Number(activeStat.komisyonOrani)
       : 0;
 
@@ -613,7 +629,7 @@ export const DovizFisiPage: React.FC = () => {
       kur: "",
       komisyonOrani: komRate > 0 ? komRate.toString() : "",
       komisyon: "",
-      bmvOrani: bmvRate > 0 ? bmvRate.toString() : (activeStat && tip === 1 ? "0.2" : ""),
+      bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
       bmv: "",
       kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
       kmv: "",
@@ -715,11 +731,6 @@ export const DovizFisiPage: React.FC = () => {
   // Drag & drop state for row reordering
   const [draggedRowIndex, setDraggedRowIndex] = useState<number | null>(null);
   const [dragOverRowIndex, setDragOverRowIndex] = useState<number | null>(null);
-
-  const lookupDataRef = useRef(lookupData);
-  lookupDataRef.current = lookupData;
-  const companyDefinitionsRef = useRef(companyDefinitions);
-  companyDefinitionsRef.current = companyDefinitions;
 
   // Set default values for Customer Detail (F8 Detay Modal):
   // Ülke: "TÜRKİYE", Uyruk: "TÜRKİYE", Hukuki Yapı: "01 - Gerçek Kişi",
@@ -962,18 +973,22 @@ export const DovizFisiPage: React.FC = () => {
     applyDefaultF8Detay(lookupsParam, compDefParam);
   }, [applyDefaultF8Detay]);
 
-  // Load Lookups
+  // Load Lookups (Instant Load with FastLookupCache)
   const loadLookupsAndList = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
+      const fisListPromise = isDuzeltmeMode
+        ? DovizFisService.getFisList({ limit: 500 }).catch(() => [] as DovizFisListItem[])
+        : Promise.resolve([] as DovizFisListItem[]);
+
       const [cariler, vezneler, paralar, kurTabloRes, gunlukKurTabloRes, istatistikler, fisler, cariLk, compDef, kayitsizlar] = await Promise.all([
         CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
-        apiClient.get<VezneItem[]>("/vezne").then((r) => r.data || []).catch(() => [] as VezneItem[]),
-        apiClient.get<ParaItem[]>("/para").then((r) => r.data || []).catch(() => [] as ParaItem[]),
+        CashDeskService.getVezneler().catch(() => [] as VezneItem[]),
+        FastLookupCache.get("paralar", () => apiClient.get<ParaItem[]>("/para").then((r) => r.data || [])),
         KurService.getKurTablosu({ tur: 0 }).catch(() => null),
         KurService.getKurTablosu({ tur: 1 }).catch(() => null),
         StatisticService.getStatistics().catch(() => [] as StatisticItem[]),
-        DovizFisService.getFisList({ limit: 100 }).catch(() => [] as DovizFisListItem[]),
+        fisListPromise,
         CariService.getLookups().catch(() => null),
         CompanyService.getDefinitions().catch(() => null),
         DovizFisService.getKayitsizMusteriler().catch(() => [] as KayitsizMusteriItem[]),
@@ -985,6 +1000,7 @@ export const DovizFisiPage: React.FC = () => {
 
       if (compDef) {
         setCompanyDefinitions(compDef);
+        companyDefinitionsRef.current = compDef;
       }
 
       const curLookups = {
@@ -1032,6 +1048,17 @@ export const DovizFisiPage: React.FC = () => {
 
       setStatisticList(istatistikler);
       setSavedFisList(fisler);
+
+      // Lazily populate search list in background in Kayıt mode
+      if (!isDuzeltmeMode && fisler.length === 0) {
+        DovizFisService.getFisList({ limit: 100 })
+          .then((bgFisler) => {
+            if (bgFisler && bgFisler.length > 0) {
+              setSavedFisList(bgFisler);
+            }
+          })
+          .catch(() => {});
+      }
 
       fetchVezneBalances(currentVezneId).catch(() => { });
 
@@ -1112,12 +1139,6 @@ export const DovizFisiPage: React.FC = () => {
       setParaList(combinedParalar);
 
       if (isDuzeltmeMode) {
-        try {
-          const fisler = await DovizFisService.getFisList({ limit: 500 });
-          setSavedFisList(fisler || []);
-        } catch {
-          // ignore
-        }
         if (queryId) {
           await loadFisById(Number(queryId));
         } else {
@@ -1373,22 +1394,30 @@ export const DovizFisiPage: React.FC = () => {
 
       if (fis.satirlar && fis.satirlar.length > 0) {
         setLines(
-          fis.satirlar.map((s, idx) => ({
-            id: `row-${idx}-${Date.now()}`,
-            satirNo: s.satirNo || idx + 1,
-            paraId: s.paraId,
-            paraKodu: s.paraKodu || "",
-            paraAdi: s.paraAdi || "",
-            miktar: s.miktar != null ? Number(s.miktar).toFixed(dovizKurusSayisi) : "",
-            kur: s.kur ? Number(s.kur).toFixed(kurKurusSayisi) : "",
-            komisyonOrani: s.komisyonOrani || "",
-            komisyon: s.komisyon || "",
-            bmvOrani: s.bmvOrani || (fis.tip === 1 ? "0.2" : ""),
-            bmv: s.bmv || "",
-            kmvOrani: s.kmvOrani || "",
-            kmv: s.kmv || "",
-            tutar: s.tutar != null ? Number(s.tutar).toFixed(tlKurusSayisi) : "",
-          }))
+          fis.satirlar.map((s, idx) => {
+            const rawKmvOrani = s.kmvOrani ?? (s as any).KMV_ORANI;
+            const rawKmv = s.kmv ?? (s as any).KMV;
+            const rawBmvOrani = s.bmvOrani ?? (s as any).BMV_ORANI;
+            const rawBmv = s.bmv ?? (s as any).BMV;
+            const rawKomOrani = s.komisyonOrani ?? (s as any).KOMISYON_ORANI;
+            const rawKom = s.komisyon ?? (s as any).KOMISYON;
+            return {
+              id: `row-${idx}-${Date.now()}`,
+              satirNo: s.satirNo || idx + 1,
+              paraId: s.paraId,
+              paraKodu: s.paraKodu || "",
+              paraAdi: s.paraAdi || "",
+              miktar: s.miktar != null ? formatMiktar(s.miktar) : "",
+              kur: s.kur ? Number(s.kur).toFixed(kurKurusSayisi) : "",
+              komisyonOrani: rawKomOrani != null && Number(rawKomOrani) > 0 ? String(rawKomOrani) : "",
+              komisyon: rawKom != null && Number(rawKom) > 0 ? String(rawKom) : "",
+              bmvOrani: rawBmvOrani != null && Number(rawBmvOrani) > 0 ? String(rawBmvOrani) : "",
+              bmv: rawBmv != null && Number(rawBmv) > 0 ? String(rawBmv) : "",
+              kmvOrani: rawKmvOrani != null && Number(rawKmvOrani) > 0 ? String(rawKmvOrani) : "",
+              kmv: rawKmv != null && Number(rawKmv) > 0 ? String(rawKmv) : "",
+              tutar: s.tutar != null ? Number(s.tutar).toFixed(tlKurusSayisi) : "",
+            };
+          })
         );
       } else {
         setLines([createEmptyRow(1)]);
@@ -1526,6 +1555,91 @@ export const DovizFisiPage: React.FC = () => {
     return Math.round(m * k * factor) / factor;
   }, [tlKurusSayisi]);
 
+  const calculateRowValues = useCallback(
+    (params: {
+      miktar: number | string;
+      kur: number | string;
+      paraKodu?: string;
+      kmvOrani?: number | string;
+      bmvOrani?: number | string;
+      komisyonOrani?: number | string;
+      customTip?: number;
+      customKmvMode?: number;
+    }) => {
+      const currentTip = params.customTip !== undefined ? params.customTip : tip;
+      const compDef = companyDefinitionsRef.current || companyDefinitions;
+      const kmvMode = params.customKmvMode !== undefined
+        ? params.customKmvMode
+        : getEffectiveKmvMode(compDef);
+      const factor = Math.pow(10, tlKurusSayisi);
+
+      const m = parseMiktar(params.miktar);
+      const k = parseKur(params.kur);
+      const isTL =
+        (params.paraKodu || "").toUpperCase().trim() === "TL" ||
+        (params.paraKodu || "").toUpperCase().trim() === "TRY" ||
+        (params.paraKodu || "").toUpperCase().trim() === "TRL";
+
+      const brutTutar = m > 0 ? (isTL ? m : Math.round(m * k * factor) / factor) : 0;
+
+      let bmvVal = "";
+      let kmvVal = "";
+      let komVal = "";
+      let tutarVal: number | "" = "";
+      let kmvOraniVal = params.kmvOrani !== undefined && params.kmvOrani !== null ? String(params.kmvOrani) : "";
+
+      const bmvRate = parseDecimal(params.bmvOrani || "0");
+      const kmvRate = parseDecimal(kmvOraniVal || "0");
+      const komRate = parseDecimal(params.komisyonOrani || "0");
+
+      if (komRate > 0 && brutTutar > 0) {
+        komVal = (Math.round(brutTutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
+      }
+
+      if (bmvRate > 0 && brutTutar > 0) {
+        bmvVal = (Math.round(brutTutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
+      }
+
+      if (kmvMode === 1) {
+        // 1 - Uygulanmasın
+        tutarVal = brutTutar > 0 ? brutTutar : "";
+        kmvVal = "";
+      } else if (kmvMode === 2) {
+        // 2 - Kura Dahil (İç Yüzde Yöntemi)
+        // Müşteriden alınacak toplam = brutTutar (Miktar * Kur)
+        // Satış kuru ASLA değişmez.
+        if (kmvRate > 0 && brutTutar > 0) {
+          const vergisizMatrah = Math.round((brutTutar / (1 + kmvRate / 100)) * factor) / factor;
+          const calculatedKmv = Math.round((brutTutar - vergisizMatrah) * factor) / factor;
+          tutarVal = vergisizMatrah > 0 ? vergisizMatrah : "";
+          kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(tlKurusSayisi) : "";
+        } else {
+          tutarVal = brutTutar > 0 ? brutTutar : "";
+          kmvVal = "";
+        }
+      } else {
+        // 3 - Kurdan Hariç (Dış Yüzde Yöntemi)
+        tutarVal = brutTutar > 0 ? brutTutar : "";
+        if (kmvRate > 0 && brutTutar > 0) {
+          const calculatedKmv = Math.round(brutTutar * (kmvRate / 100) * factor) / factor;
+          kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(tlKurusSayisi) : "";
+        } else {
+          kmvVal = "";
+        }
+      }
+
+      return {
+        brutTutar,
+        tutar: tutarVal,
+        bmv: bmvVal,
+        kmvOrani: kmvOraniVal,
+        kmv: kmvVal,
+        komisyon: komVal,
+      };
+    },
+    [companyDefinitions, tip, tlKurusSayisi]
+  );
+
   const handleAddRow = () => {
     if (isLocked) return;
     const lastRow = lines[lines.length - 1];
@@ -1653,8 +1767,9 @@ export const DovizFisiPage: React.FC = () => {
     if (isLocked) return;
 
     // Sadece geçerli pozitif sayı ve tek ondalık ayırıcı (nokta veya virgül) girişine izin ver
-    if (
-      field === "miktar" ||
+    if (field === "miktar") {
+      value = formatMiktar(value);
+    } else if (
       field === "kur" ||
       field === "komisyon" ||
       field === "komisyonOrani" ||
@@ -1687,7 +1802,7 @@ export const DovizFisiPage: React.FC = () => {
               }
             }
             const em = parseMiktar(updated.miktar) > 0 ? null : ebMiktar(prev, id, matched.kod, parseKur(updated.kur));
-            if (em) updated.miktar = em;
+            if (em) updated.miktar = formatMiktar(em);
           } else if (upper === "") {
             updated.paraId = 0;
             updated.paraAdi = "";
@@ -1696,72 +1811,55 @@ export const DovizFisiPage: React.FC = () => {
 
         const m = field === "miktar" ? value : updated.miktar;
         const k = field === "kur" ? value : updated.kur;
-        const tutar = calculateRowTutar(m, k, updated.paraKodu);
-        updated.tutar = tutar > 0 ? tutar : "";
-
-        // 1. Komisyon % ve Komisyon Tutarı (Elle müdahale edilebilir)
+        const compDef = companyDefinitionsRef.current || companyDefinitions;
+        const kmvMode = getEffectiveKmvMode(compDef);
         const factor = Math.pow(10, tlKurusSayisi);
+
         if (field === "komisyon") {
           updated.komisyon = value;
           const komVal = parseDecimal(value);
-          if (tutar > 0 && komVal > 0) {
-            updated.komisyonOrani = (Math.round((komVal / tutar) * 100 * 100) / 100).toString();
+          const brut = calculateRowTutar(m, k, updated.paraKodu);
+          if (brut > 0 && komVal > 0) {
+            updated.komisyonOrani = (Math.round((komVal / brut) * 100 * 100) / 100).toString();
           } else if (!value) {
             updated.komisyonOrani = "";
           }
         } else if (field === "komisyonOrani") {
           updated.komisyonOrani = value;
-          const komRate = parseDecimal(value);
-          if (komRate > 0 && tutar > 0) {
-            updated.komisyon = (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
-          } else if (!value) {
-            updated.komisyon = "";
-          }
-        } else {
-          const komRate = parseDecimal(updated.komisyonOrani || "0");
-          if (komRate > 0 && tutar > 0) {
-            updated.komisyon = (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
-          }
         }
 
-        // 2. BMV % ve BMV Tutarı
-        if (field === "bmvOrani") {
-          updated.bmvOrani = value;
-          const bmvRate = parseDecimal(value);
-          if (bmvRate > 0 && tutar > 0) {
-            updated.bmv = (Math.round(tutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
-          } else if (!value) {
-            updated.bmv = "";
-          }
-        } else if (field === "bmv") {
+        if (field === "bmv") {
           updated.bmv = value;
-        } else {
-          const bmvRate = parseDecimal(updated.bmvOrani || (tip === 1 ? "0.2" : "0"));
-          if (bmvRate > 0 && tutar > 0) {
-            updated.bmv = (Math.round(tutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
-          } else {
-            updated.bmv = "";
-          }
+        } else if (field === "bmvOrani") {
+          updated.bmvOrani = value;
         }
 
-        // 3. KMV % ve KMV Tutarı
-        if (field === "kmvOrani") {
-          updated.kmvOrani = value;
-          const kmvRate = parseDecimal(value);
-          if (kmvRate > 0 && tutar > 0) {
-            updated.kmv = (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
-          } else if (!value) {
-            updated.kmv = "";
-          }
-        } else if (field === "kmv") {
+        if (field === "kmv") {
           updated.kmv = value;
-        } else {
-          const kmvRate = parseDecimal(updated.kmvOrani || "0");
-          if (kmvRate > 0 && tutar > 0) {
-            updated.kmv = (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
-          } else {
-            updated.kmv = "";
+          if (tip === 1 && kmvMode === 2) {
+            const brut = calculateRowTutar(m, k, updated.paraKodu);
+            const userKmv = parseDecimal(value);
+            const matrah = brut > userKmv ? Math.round((brut - userKmv) * factor) / factor : brut;
+            updated.tutar = matrah > 0 ? matrah : "";
           }
+        } else if (field === "kmvOrani") {
+          updated.kmvOrani = value;
+        }
+
+        if (field !== "komisyon" && field !== "bmv" && field !== "kmv") {
+          const calculated = calculateRowValues({
+            miktar: m,
+            kur: k,
+            paraKodu: updated.paraKodu,
+            kmvOrani: updated.kmvOrani,
+            bmvOrani: updated.bmvOrani,
+            komisyonOrani: updated.komisyonOrani,
+          });
+          updated.tutar = calculated.tutar;
+          updated.bmv = calculated.bmv;
+          updated.kmv = calculated.kmv;
+          updated.kmvOrani = calculated.kmvOrani;
+          updated.komisyon = calculated.komisyon;
         }
 
         return updated;
@@ -1770,60 +1868,71 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const applyStatisticToLines = useCallback((stat: StatisticItem | IstatistikSecimItem | null, currentTip: number = tip) => {
+    const compDef = companyDefinitionsRef.current || companyDefinitions;
+    const kmvMode = getEffectiveKmvMode(compDef);
+
     if (!stat) {
       setLines((prev) =>
-        prev.map((row) => ({
-          ...row,
-          bmvOrani: "",
-          bmv: "",
-          kmvOrani: "",
-          kmv: "",
-          komisyonOrani: "",
-          komisyon: "",
-        }))
+        prev.map((row) => {
+          const calculated = calculateRowValues({
+            miktar: row.miktar,
+            kur: row.kur,
+            paraKodu: row.paraKodu,
+            bmvOrani: "",
+            kmvOrani: "",
+            komisyonOrani: "",
+            customTip: currentTip,
+          });
+          return {
+            ...row,
+            bmvOrani: "",
+            bmv: "",
+            kmvOrani: "",
+            kmv: "",
+            komisyonOrani: "",
+            komisyon: "",
+            tutar: calculated.tutar,
+          };
+        })
       );
       return;
     }
 
-    const bmvRate = stat?.bmvOrani !== undefined && stat?.bmvOrani !== null
+    const bmvRate = stat?.bmvOrani !== undefined && stat?.bmvOrani !== null && Number(stat.bmvOrani) > 0
       ? Number(stat.bmvOrani)
-      : (currentTip === 1 ? 0.2 : 0);
-    const kmvRate = stat?.kmvOrani !== undefined && stat?.kmvOrani !== null
+      : 0;
+    const kmvRate = (kmvMode !== 1 && stat?.kmvOrani !== undefined && stat?.kmvOrani !== null && Number(stat.kmvOrani) > 0)
       ? Number(stat.kmvOrani)
       : 0;
-    const komRate = stat?.komisyonOrani !== undefined && stat?.komisyonOrani !== null
+    const komRate = stat?.komisyonOrani !== undefined && stat?.komisyonOrani !== null && Number(stat.komisyonOrani) > 0
       ? Number(stat.komisyonOrani)
       : 0;
-    const factor = Math.pow(10, tlKurusSayisi);
 
     setLines((prev) =>
       prev.map((row) => {
-        const m = parseMiktar(row.miktar);
-        const k = parseKur(row.kur);
-        const tutar = calculateRowTutar(m, k, row.paraKodu);
-
-        const bmvVal = bmvRate > 0 && tutar > 0
-          ? (Math.round(tutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi)
-          : "";
-        const kmvVal = kmvRate > 0 && tutar > 0
-          ? (Math.round(tutar * (kmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi)
-          : "";
-        const komVal = komRate > 0 && tutar > 0
-          ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi)
-          : "";
+        const calculated = calculateRowValues({
+          miktar: row.miktar,
+          kur: row.kur,
+          paraKodu: row.paraKodu,
+          bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
+          kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
+          komisyonOrani: komRate > 0 ? komRate.toString() : "",
+          customTip: currentTip,
+        });
 
         return {
           ...row,
-          bmvOrani: bmvRate > 0 ? bmvRate.toString() : (currentTip === 1 ? "0.2" : ""),
-          bmv: bmvVal,
+          bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
+          bmv: calculated.bmv,
           kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
-          kmv: kmvVal,
+          kmv: calculated.kmv,
           komisyonOrani: komRate > 0 ? komRate.toString() : "",
-          komisyon: komVal,
+          komisyon: calculated.komisyon,
+          tutar: calculated.tutar,
         };
       })
     );
-  }, [tip, tlKurusSayisi]);
+  }, [calculateRowValues, companyDefinitions, tip]);
 
   const handleSelectCurrency = (rowId: string, para: ParaItem) => {
     if (isLocked) return;
@@ -1831,42 +1940,44 @@ export const DovizFisiPage: React.FC = () => {
     const autoKur = isTL ? 0 : resolveCurrencyRate(para, tip, kurTuru);
     const statKod = (istatistikKodu || "").trim();
     const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
-    const defaultBmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null ? Number(activeStat.bmvOrani) : (activeStat && tip === 1 ? 0.2 : 0);
-    const defaultKmvRate = activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null ? Number(activeStat.kmvOrani) : 0;
-    const defaultKomRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null ? Number(activeStat.komisyonOrani) : 0;
+    const compDef = companyDefinitionsRef.current || companyDefinitions;
+    const kmvMode = getEffectiveKmvMode(compDef);
+
+    const defaultBmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0 ? Number(activeStat.bmvOrani) : 0;
+    const defaultKmvRate = (kmvMode !== 1 && activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null && Number(activeStat.kmvOrani) > 0) ? Number(activeStat.kmvOrani) : 0;
+    const defaultKomRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0 ? Number(activeStat.komisyonOrani) : 0;
 
     setLines((prev) =>
       prev.map((row) => {
         if (row.id !== rowId) return row;
-        const m = parseMiktar(row.miktar);
-        const tutar = calculateRowTutar(m, autoKur);
-        const factor = Math.pow(10, tlKurusSayisi);
+        const m = row.miktar;
+        const k = autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : "";
+        const bmvOrani = defaultBmvRate > 0 ? defaultBmvRate.toString() : "";
+        const kmvOrani = defaultKmvRate > 0 ? defaultKmvRate.toString() : "";
+        const komOrani = defaultKomRate > 0 ? defaultKomRate.toString() : "";
 
-        const bmvOrani = row.bmvOrani !== "" && row.bmvOrani !== undefined ? row.bmvOrani : (defaultBmvRate > 0 ? defaultBmvRate.toString() : (activeStat && tip === 1 ? "0.2" : ""));
-        const bmvRateNum = parseDecimal(bmvOrani);
-        const bmvVal = bmvRateNum > 0 && tutar > 0 ? (Math.round(tutar * (bmvRateNum / 100) * factor) / factor).toFixed(tlKurusSayisi) : "";
-
-        const kmvOrani = row.kmvOrani !== "" && row.kmvOrani !== undefined ? row.kmvOrani : (defaultKmvRate > 0 ? defaultKmvRate.toString() : "");
-        const kmvRateNum = parseDecimal(kmvOrani);
-        const kmvVal = kmvRateNum > 0 && tutar > 0 ? (Math.round(tutar * (kmvRateNum / 100) * factor) / factor).toFixed(tlKurusSayisi) : "";
-
-        const komOrani = row.komisyonOrani !== "" && row.komisyonOrani !== undefined ? row.komisyonOrani : (defaultKomRate > 0 ? defaultKomRate.toString() : "");
-        const komRateNum = parseDecimal(komOrani);
-        const komVal = komRateNum > 0 && tutar > 0 ? (Math.round(tutar * (komRateNum / 100) * factor) / factor).toFixed(tlKurusSayisi) : "";
+        const calculated = calculateRowValues({
+          miktar: m,
+          kur: k,
+          paraKodu: para.kod,
+          bmvOrani,
+          kmvOrani,
+          komisyonOrani: komOrani,
+        });
 
         return {
           ...row,
           paraId: para.id,
           paraKodu: para.kod,
           paraAdi: para.ad,
-          kur: autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : "",
-          tutar: tutar > 0 ? tutar : "",
+          kur: k,
+          tutar: calculated.tutar,
           bmvOrani,
-          bmv: bmvVal,
+          bmv: calculated.bmv,
           kmvOrani,
-          kmv: kmvVal,
+          kmv: calculated.kmv,
           komisyonOrani: komOrani,
-          komisyon: komVal,
+          komisyon: calculated.komisyon,
         };
       })
     );
@@ -2322,12 +2433,27 @@ export const DovizFisiPage: React.FC = () => {
         (!currentRow.paraKodu || currentRow.paraKodu.trim() === "") &&
         (!currentRow.miktar || currentRow.miktar === ""));
 
-    const factor = Math.pow(10, tlKurusSayisi);
-    const bmvOrani = tip === 1 ? "0.2" : "0";
-    const bmvVal =
-      tip === 1 && data.tutar > 0
-        ? (Math.round(data.tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi)
-        : "";
+    const statKod = (istatistikKodu || "").trim();
+    const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
+    const compDef = companyDefinitionsRef.current || companyDefinitions;
+    const kmvMode = getEffectiveKmvMode(compDef);
+
+    const bmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0 ? Number(activeStat.bmvOrani) : 0;
+    const kmvRate = (kmvMode !== 1 && activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null && Number(activeStat.kmvOrani) > 0) ? Number(activeStat.kmvOrani) : 0;
+    const komRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0 ? Number(activeStat.komisyonOrani) : 0;
+
+    const bmvOrani = bmvRate > 0 ? bmvRate.toString() : "";
+    const kmvOrani = kmvRate > 0 ? kmvRate.toString() : "";
+    const komOrani = komRate > 0 ? komRate.toString() : "";
+
+    const calculated = calculateRowValues({
+      miktar: data.miktar,
+      kur: data.kur,
+      paraKodu: data.para.kod,
+      bmvOrani,
+      kmvOrani,
+      komisyonOrani: komOrani,
+    });
 
     if (isCurrentEmpty && currentRow) {
       setLines((prev) =>
@@ -2338,11 +2464,15 @@ export const DovizFisiPage: React.FC = () => {
               paraId: data.para.id,
               paraKodu: data.para.kod,
               paraAdi: data.para.ad,
-              miktar: data.miktar.toString(),
+              miktar: formatMiktar(data.miktar),
               kur: data.kur.toFixed(kurKurusSayisi),
-              tutar: data.tutar,
+              tutar: calculated.tutar,
               bmvOrani,
-              bmv: bmvVal,
+              bmv: calculated.bmv,
+              kmvOrani: calculated.kmvOrani,
+              kmv: calculated.kmv,
+              komisyonOrani: komOrani,
+              komisyon: calculated.komisyon,
             }
             : r
         )
@@ -2353,11 +2483,15 @@ export const DovizFisiPage: React.FC = () => {
         paraId: data.para.id,
         paraKodu: data.para.kod,
         paraAdi: data.para.ad,
-        miktar: data.miktar.toString(),
+        miktar: formatMiktar(data.miktar),
         kur: data.kur.toFixed(kurKurusSayisi),
-        tutar: data.tutar,
+        tutar: calculated.tutar,
         bmvOrani,
-        bmv: bmvVal,
+        bmv: calculated.bmv,
+        kmvOrani: calculated.kmvOrani,
+        kmv: calculated.kmv,
+        komisyonOrani: komOrani,
+        komisyon: calculated.komisyon,
       };
       setLines((prev) => [...prev, newRow]);
       targetIdx = lines.length;
@@ -2389,6 +2523,14 @@ export const DovizFisiPage: React.FC = () => {
     }, 0);
   }, [lines, tip]);
 
+  const totalKmv = useMemo(() => {
+    if (tip !== 1) return 0;
+    return lines.reduce((acc, row) => {
+      const k = parseDecimal(row.kmv);
+      return acc + k;
+    }, 0);
+  }, [lines, tip]);
+
   const totalKomisyon = useMemo(() => {
     return lines.reduce((acc, row) => {
       const k = parseDecimal(row.komisyon);
@@ -2396,21 +2538,21 @@ export const DovizFisiPage: React.FC = () => {
     }, 0);
   }, [lines]);
 
-  // Toplam Masraf: Tablodaki satırların toplam BMV ve Komisyon toplamıdır.
+  // Toplam Masraf: Tablodaki satırların toplam BMV, KMV ve Komisyon toplamıdır.
   const totalMasraf = useMemo(() => {
     const factor = Math.pow(10, tlKurusSayisi);
-    return Math.round((calculatedBsmv + totalKomisyon) * factor) / factor;
-  }, [calculatedBsmv, totalKomisyon, tlKurusSayisi]);
+    return Math.round((calculatedBsmv + totalKmv + totalKomisyon) * factor) / factor;
+  }, [calculatedBsmv, totalKmv, totalKomisyon, tlKurusSayisi]);
 
-  // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + Toplam BMV)
+  // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + Toplam KMV + Toplam BMV)
   const sonToplam = useMemo(() => {
     const factor = Math.pow(10, tlKurusSayisi);
     if (tip === 1) {
-      return Math.round((totalTutar + calculatedBsmv) * factor) / factor;
+      return Math.round((totalTutar + totalKmv + calculatedBsmv) * factor) / factor;
     } else {
       return Math.round((totalTutar - totalMasraf) * factor) / factor;
     }
-  }, [totalTutar, calculatedBsmv, totalMasraf, tip, tlKurusSayisi]);
+  }, [totalTutar, totalKmv, calculatedBsmv, totalMasraf, tip, tlKurusSayisi]);
 
   // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
   const isMasakLimitExceeded = useMemo(() => {
@@ -2527,7 +2669,7 @@ export const DovizFisiPage: React.FC = () => {
   const handleOpenBanknotSay = useCallback(() => {
     // Fiş gridindeki geçerli döviz satırlarını kontrol et
     const validLines = lines.filter((l) => {
-      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(l.miktar);
       return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
     });
 
@@ -2542,7 +2684,7 @@ export const DovizFisiPage: React.FC = () => {
   // F9 Para Sayma Modalı için Fiş Özeti (Dövizler + Türk Lirası)
   const getParaSaymaCurrencies = useCallback((): ParaSaymaCurrencyItem[] => {
     const validLines = lines.filter((l) => {
-      const m = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const m = parseMiktar(l.miktar);
       return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
     });
 
@@ -2550,7 +2692,7 @@ export const DovizFisiPage: React.FC = () => {
 
     validLines.forEach((l) => {
       const kod = (l.paraKodu || "").trim().toUpperCase();
-      const miktar = typeof l.miktar === "number" ? l.miktar : parseFloat(String(l.miktar).replace(/,/g, ".")) || 0;
+      const miktar = parseMiktar(l.miktar);
       if (!kod || miktar <= 0) return;
 
       if (map.has(kod)) {
@@ -2697,20 +2839,24 @@ export const DovizFisiPage: React.FC = () => {
             rate = resolveCurrencyRate(found, newTip, kurTuru);
           }
         }
-        const m = parseMiktar(row.miktar);
-        const tutar = calculateRowTutar(m, rate);
-        const factor = Math.pow(10, tlKurusSayisi);
-        const bmvOrani = newTip === 1 ? (row.paraId || row.paraKodu || m > 0 ? "0.2" : "") : "0";
-        const bmv = newTip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
-        const komRate = parseDecimal(row.komisyonOrani || "0");
-        const komisyon = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi) : row.komisyon;
+        const kurStr = rate > 0 ? rate.toFixed(kurKurusSayisi) : row.kur;
+        const calculated = calculateRowValues({
+          miktar: row.miktar,
+          kur: kurStr,
+          paraKodu: row.paraKodu,
+          bmvOrani: row.bmvOrani,
+          kmvOrani: row.kmvOrani,
+          komisyonOrani: row.komisyonOrani,
+          customTip: newTip,
+        });
         return {
           ...row,
-          kur: rate > 0 ? rate.toFixed(kurKurusSayisi) : row.kur,
-          tutar: tutar > 0 ? tutar : "",
-          bmvOrani,
-          bmv,
-          komisyon,
+          kur: kurStr,
+          tutar: calculated.tutar,
+          bmv: calculated.bmv,
+          kmv: calculated.kmv,
+          kmvOrani: calculated.kmvOrani,
+          komisyon: calculated.komisyon,
         };
       })
     );
@@ -2729,20 +2875,23 @@ export const DovizFisiPage: React.FC = () => {
         );
         if (!found) return row;
         const newRate = resolveCurrencyRate(found, tip, newKurTuru);
-        const m = parseMiktar(row.miktar);
-        const tutar = calculateRowTutar(m, newRate);
-        const factor = Math.pow(10, tlKurusSayisi);
-        const bmvOrani = tip === 1 ? (row.paraId || row.paraKodu || m > 0 ? "0.2" : "") : "0";
-        const bmv = tip === 1 && tutar > 0 ? (Math.round(tutar * 0.002 * factor) / factor).toFixed(tlKurusSayisi) : "";
-        const komRate = parseDecimal(row.komisyonOrani || "0");
-        const komisyon = komRate > 0 && tutar > 0 ? (Math.round(tutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi) : row.komisyon;
+        const kurStr = newRate > 0 ? newRate.toFixed(kurKurusSayisi) : row.kur;
+        const calculated = calculateRowValues({
+          miktar: row.miktar,
+          kur: kurStr,
+          paraKodu: row.paraKodu,
+          bmvOrani: row.bmvOrani,
+          kmvOrani: row.kmvOrani,
+          komisyonOrani: row.komisyonOrani,
+        });
         return {
           ...row,
-          kur: newRate > 0 ? newRate.toFixed(kurKurusSayisi) : row.kur,
-          tutar: tutar > 0 ? tutar : "",
-          bmvOrani,
-          bmv,
-          komisyon,
+          kur: kurStr,
+          tutar: calculated.tutar,
+          bmv: calculated.bmv,
+          kmv: calculated.kmv,
+          kmvOrani: calculated.kmvOrani,
+          komisyon: calculated.komisyon,
         };
       })
     );
@@ -3323,9 +3472,6 @@ export const DovizFisiPage: React.FC = () => {
           }
           const m = parseMiktar(l.miktar);
           const k = parseKur(l.kur);
-          const factor = Math.pow(10, tlKurusSayisi);
-          const bmvVal = tip === 1 ? Math.round(m * k * 0.002 * factor) / factor : 0;
-
           return {
             satirNo: idx,
             paraId: pId,
@@ -3335,11 +3481,11 @@ export const DovizFisiPage: React.FC = () => {
             kur: k,
             iscilik: 0,
             giseKuru: k,
-            tutar: calculateRowTutar(m, k),
+            tutar: parseDecimal(l.tutar || "0"),
             komisyonOrani: parseDecimal(l.komisyonOrani || "0"),
             komisyon: parseDecimal(l.komisyon || "0"),
-            bmvOrani: tip === 1 ? 0.2 : 0,
-            bmv: bmvVal,
+            bmvOrani: parseDecimal(l.bmvOrani || "0"),
+            bmv: parseDecimal(l.bmv || "0"),
             kmvOrani: parseDecimal(l.kmvOrani || "0"),
             kmv: parseDecimal(l.kmv || "0"),
             kdvOrani: 0,
@@ -3379,11 +3525,14 @@ export const DovizFisiPage: React.FC = () => {
           kur: l.kur,
           tutar: l.tutar,
           bmv: l.bmv,
+          kmv: l.kmv,
+          kmvOrani: l.kmvOrani,
           komisyon: l.komisyon,
         })),
         toplamTutar: totalTutar,
         odemeTutari: sonToplam,
         bsmvTutari: calculatedBsmv,
+        kmvTutari: totalKmv,
         komisyonTutari: totalKomisyon,
         giseUsdKuru: usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 1,
       };
@@ -4003,12 +4152,30 @@ export const DovizFisiPage: React.FC = () => {
   ];
 
   const paraColumns: LookupColumn<ParaItem>[] = [
-    { header: "Kod", width: "90px", render: (p) => p.kod },
-    { header: "Ad", render: (p) => p.ad },
+    { header: "Kod", width: "85px", render: (p) => <span className="font-monospace fw-bold text-primary">{p.kod}</span> },
+    { header: "Para / Döviz Adı", render: (p) => <span className="fw-medium">{p.ad}</span> },
+    {
+      header: "Tip",
+      width: "80px",
+      align: "center",
+      render: (p) => {
+        const info = getUrunTipiInfo(p as any);
+        return (
+          <Badge
+            bg={info.bg}
+            text={info.textColor as any}
+            className={info.isBorder ? "border" : undefined}
+            style={{ fontSize: "11px", fontWeight: 600, minWidth: "50px", display: "inline-block", textAlign: "center" }}
+          >
+            {info.label}
+          </Badge>
+        );
+      },
+    },
     {
       header: tip === 0 ? (kurTuru === 0 ? "Efektif Alış" : "Döviz Alış") : (kurTuru === 0 ? "Efektif Satış" : "Döviz Satış"),
       align: "right",
-      width: "130px",
+      width: "125px",
       render: (p) => {
         const rate = resolveCurrencyRate(p, tip, kurTuru);
         return rate > 0 ? rate.toFixed(kurKurusSayisi) : "-";
@@ -4818,7 +4985,7 @@ export const DovizFisiPage: React.FC = () => {
                               const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
                               return typeMatch && ((s.kod || "").toLowerCase() === q || String(s.id) === q);
                             });
-                            if (matched && matched.id !== istatistikId) {
+                            if (matched) {
                               handleSelectIstatistik(matched);
                             }
                           }}
@@ -5111,6 +5278,12 @@ export const DovizFisiPage: React.FC = () => {
                             cleanupEmptyRows(idx);
                           }}
                           onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== "") {
+                              handleLineFieldChange(row.id, "miktar", formatMiktar(val));
+                            }
+                          }}
                           onKeyDown={(e) => handleCellKeyDown(e, idx, "miktar")}
                           title={isMiktarMissing ? "Lütfen geçerli bir miktar giriniz" : undefined}
                         />
@@ -6172,7 +6345,13 @@ export const DovizFisiPage: React.FC = () => {
         initialSearchTerm={paraSearchTerm}
         filterFn={(item, term) => {
           const t = term.toLowerCase().trim();
-          return (item.kod || "").toLowerCase().includes(t);
+          if (!t) return true;
+          const info = getUrunTipiInfo(item as any);
+          return (
+            (item.kod || "").toLowerCase().includes(t) ||
+            (item.ad || "").toLowerCase().includes(t) ||
+            info.label.toLowerCase().includes(t)
+          );
         }}
         onSelect={(item) => {
           lastModalCallerRef.current = null;

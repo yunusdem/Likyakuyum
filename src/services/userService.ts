@@ -10,6 +10,7 @@ export interface MerkezOturumBilgisi {
   lisansKalanGun: number | null;
   kullaniciLimiti: number | null;
   kullaniciSayisi: number;
+  paketAdi?: string | null;
   /** Firmaya açık modül kodları; null = kısıt yok */
   moduller: string[] | null;
   /** Lisans uyarı bandı / kilit penceresindeki iletişim bilgisi */

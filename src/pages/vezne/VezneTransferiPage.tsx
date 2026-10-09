@@ -1138,13 +1138,25 @@ export const VezneTransferiPage: React.FC = () => {
         hideSearch={!isDuzeltmeMode}
         hideDelete={!isDuzeltmeMode}
         rightContent={
-          transferId ? (
-            <div className="d-flex align-items-center gap-1">
-              <Badge bg="secondary" className="px-2 py-0.5 fs-8">
+          <div className="d-flex align-items-center gap-2">
+            <div className="d-flex align-items-center gap-1.5">
+              <label className="small fw-semibold mb-0 text-secondary" style={{ fontSize: "12px" }}>
+                Tarih:
+              </label>
+              <Form.Control
+                type="date"
+                size="sm"
+                value={tarih}
+                onChange={(e) => setTarih(e.target.value)}
+                style={{ width: "128px", height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
+              />
+            </div>
+            {transferId ? (
+              <Badge bg="secondary" className="px-2 py-1 fs-8">
                 #{transferId}
               </Badge>
-            </div>
-          ) : undefined
+            ) : null}
+          </div>
         }
       />
 
@@ -1162,343 +1174,314 @@ export const VezneTransferiPage: React.FC = () => {
         </div>
       )}
 
-      {/* Main Window Frame matching Sarraf Fişi full-width card standard */}
-      <Card className="border-0 shadow-sm rounded-2 mb-2" style={{ overflow: "visible" }}>
-        <Card.Body className="p-0" style={{ overflow: "visible" }}>
-          {/* Form Header Area: 2-Column Responsive Grid matching Sarraf & Doviz Fisi */}
-          <div className="py-2.5 px-3 bg-light border-bottom">
-            <Row className="g-3">
-              {/* Sol Sütun: Tarih, Alan Vezne, Ref no */}
-              <Col xs={12} md={6}>
-                <div
-                  className="border rounded-2 bg-white shadow-2xs h-100 d-flex flex-column gap-2"
-                  style={{ borderColor: "#cbd5e1", padding: "12px 16px" }}
-                >
-                  {/* Tarih */}
-                  <div className="d-flex flex-row align-items-center gap-2">
-                    <label
-                      className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "90px", width: "90px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
-                    >
-                      Tarih
-                    </label>
-                    <div style={{ minWidth: 0 }}>
-                      <Form.Control
-                        type="date"
-                        size="sm"
-                        value={tarih}
-                        onChange={(e) => setTarih(e.target.value)}
-                        style={{ width: "135px", maxWidth: "135px", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Alan Vezne (Giriş Yapan Kullanıcının Veznesi - Değiştirilemez, Dürbünsüz) */}
-                  <div className="d-flex flex-row align-items-center gap-2">
-                    <label
-                      className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "90px", width: "90px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
-                    >
-                      Alan vezne
-                    </label>
-                    <div className="d-flex align-items-center gap-1.5 flex-wrap flex-grow-1" style={{ minWidth: 0 }}>
-                      <Form.Control
-                        type="text"
-                        size="sm"
-                        readOnly
-                        disabled
-                        value={alanVezneKod}
-                        style={{
-                          width: "90px",
-                          maxWidth: "90px",
-                          backgroundColor: "#f1f5f9",
-                          color: "#1e293b",
-                          height: "30px",
-                          fontSize: "12.5px",
-                          fontWeight: 600,
-                          borderColor: "#cbd5e1",
-                          cursor: "not-allowed",
-                        }}
-                        title="Alan vezne giriş yapan kullanıcının veznesidir (Değiştirilemez)"
-                      />
-                      {alanVezneAd && (
-                        <span className="text-dark small fw-semibold text-truncate ms-1" style={{ maxWidth: "180px" }}>
-                          ({alanVezneAd})
-                        </span>
-                      )}
-                      <VezneBakiyeDropdown
-                        vezneId={alanVezneId}
-                        vezneAd={alanVezneAd}
-                        bakiyeler={alanVezneBakiyeler}
-                        align="left"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Ref no */}
-                  <div className="d-flex flex-row align-items-center gap-2">
-                    <label
-                      className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "90px", width: "90px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
-                    >
-                      Ref no
-                    </label>
-                    <div style={{ minWidth: 0 }}>
-                      <Form.Control
-                        type="text"
-                        size="sm"
-                        value={refNo}
-                        onChange={(e) => setRefNo(e.target.value)}
-                        placeholder=""
-                        style={{ width: "135px", maxWidth: "135px", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </Col>
-
-              {/* Sağ Sütun: Veren Vezne, Açıklama */}
-              <Col xs={12} md={6}>
-                <div
-                  className="border rounded-2 bg-white shadow-2xs h-100 d-flex flex-column gap-2"
-                  style={{ borderColor: "#cbd5e1", padding: "12px 16px" }}
-                >
-                  {/* Veren vezne */}
-                  <div className="d-flex flex-row align-items-center gap-2">
-                    <label
-                      className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "90px", width: "90px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
-                    >
-                      Veren vezne
-                    </label>
-                    <div className="d-flex align-items-center gap-1.5 flex-wrap flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ width: "120px", flexShrink: 0 }}>
-                        <Form.Control
-                          ref={verenVezneInputRef}
-                          type="text"
-                          value={verenVezneKod}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setVerenVezneKod(val);
-                            const found = vezneList.find(
-                              (v) =>
-                                v.kod.toLowerCase() === val.trim().toLowerCase() ||
-                                String(v.id) === val.trim()
-                            );
-                            if (found) {
-                              setVerenVezneId(found.id);
-                              setVerenVezneAd(found.ad);
-                            } else {
-                              setVerenVezneId(0);
-                              setVerenVezneAd("");
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              if (!verenVezneId) {
-                                setShowVerenVezneModal(true);
-                              } else {
-                                const firstRowParaInput = rowInputRefs.current["kod-0"];
-                                firstRowParaInput?.focus();
-                                firstRowParaInput?.select();
-                              }
-                            } else if (e.key === "F8" || e.key === "F12") {
-                              e.preventDefault();
-                              setShowVerenVezneModal(true);
-                            }
-                          }}
-                          placeholder=""
-                          style={{
-                            backgroundColor: "#ffffff",
-                            height: "30px",
-                            fontSize: "12.5px",
-                            fontWeight: 600,
-                            borderColor: "#cbd5e1",
-                          }}
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          className="px-2 py-0 d-flex align-items-center justify-content-center"
-                          style={{ height: "30px", borderColor: "#cbd5e1" }}
-                          onClick={() => setShowVerenVezneModal(true)}
-                          title="Veren Vezne Seç (F8 / F12)"
-                        >
-                          <IconBinoculars size={14} />
-                        </Button>
-                      </InputGroup>
-                      {verenVezneAd && (
-                        <span className="text-dark small fw-semibold text-truncate ms-1" style={{ maxWidth: "180px" }}>
-                          ({verenVezneAd})
-                        </span>
-                      )}
-                      <VezneBakiyeDropdown
-                        vezneId={verenVezneId}
-                        vezneAd={verenVezneAd}
-                        bakiyeler={verenVezneBakiyeler}
-                        align="right"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Açıklama */}
-                  <div className="d-flex flex-row align-items-center gap-2">
-                    <label
-                      className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "90px", width: "90px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
-                    >
-                      Açıklama
-                    </label>
-                    <div style={{ minWidth: 0 }}>
-                      <Form.Control
-                        type="text"
-                        size="sm"
-                        value={aciklama}
-                        onChange={(e) => setAciklama(e.target.value)}
-                        placeholder=""
-                        style={{ width: "200px", maxWidth: "200px", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </Col>
-            </Row>
-          </div>
-
-          {/* Lines Grid Table */}
-          <div className="table-responsive w-100" style={{ minHeight: "160px", maxHeight: "280px", overflowY: "auto", backgroundColor: "#ffffff" }}>
-            <Table bordered hover size="sm" className="mb-0 w-100 text-nowrap" style={{ fontSize: "12.5px" }}>
-              <thead
+      {/* 1. Üst Parametreler: Alan, Veren, Ref no, Açıklama alt alta */}
+      <div
+        className="border rounded-2 bg-white shadow-2xs mb-2.5 mt-1 w-100"
+        style={{ borderColor: "#cbd5e1", padding: "12px 18px" }}
+      >
+        <div className="d-flex flex-column gap-2" style={{ maxWidth: "540px" }}>
+          {/* Alan vezne */}
+          <div className="d-flex align-items-center gap-2">
+            <label
+              className="small fw-semibold mb-0 text-nowrap"
+              style={{ width: "95px", minWidth: "95px", fontSize: "12.5px", color: "#334155" }}
+            >
+              Alan vezne:
+            </label>
+            <div className="d-flex align-items-center gap-1.5 flex-grow-1">
+              <Form.Control
+                type="text"
+                size="sm"
+                readOnly
+                disabled
+                value={alanVezneKod}
                 style={{
-                  backgroundColor: "#bfdbfe",
-                  color: "#1e3a8a",
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 2,
+                  width: "90px",
+                  backgroundColor: "#f1f5f9",
+                  color: "#1e293b",
+                  height: "28px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  borderColor: "#cbd5e1",
+                  cursor: "not-allowed",
                 }}
-              >
-                <tr style={{ backgroundColor: "#bfdbfe" }}>
-                  <th style={{ width: "130px", padding: "6px 8px", backgroundColor: "#bfdbfe", color: "#1e3a8a" }}>Kod</th>
-                  <th style={{ padding: "6px 8px", backgroundColor: "#bfdbfe", color: "#1e3a8a" }}>Para adı</th>
-                  <th style={{ width: "220px", padding: "6px 8px", backgroundColor: "#bfdbfe", color: "#1e3a8a" }} className="text-end">
-                    Miktar
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line, idx) => (
-                  <tr
-                    key={line.id}
-                    data-row-id={line.id}
-                    className={activeRowIndex === idx ? "table-active" : ""}
-                    onClick={() => setActiveRowIndex(idx)}
-                    onContextMenu={() => setActiveRowIndex(idx)}
-                  >
-                    {/* Kod with quick search button */}
-                    <td style={{ width: "130px", padding: "3px 4px" }}>
-                      <InputGroup size="sm">
-                        <Form.Control
-                          type="text"
-                          value={line.paraKodu}
-                          onChange={(e) => handleLineChange(idx, "paraKodu", e.target.value)}
-                          placeholder=""
-                          className="fw-bold text-primary text-uppercase p-1 text-center"
-                          style={{ height: "26px", fontSize: "12px" }}
-                          ref={(el) => {
-                            rowInputRefs.current[`kod-${idx}`] = el;
-                          }}
-                          onKeyDown={(e) => handleGridKeyDown(e, idx, "kod")}
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          className="px-1.5 py-0 d-flex align-items-center justify-content-center"
-                          style={{ height: "26px" }}
-                          onClick={() => {
-                            setActiveRowIdForPara(line.id);
-                            setShowParaModal(true);
-                          }}
-                          title="Para Seç"
-                        >
-                          <IconBinoculars size={13} />
-                        </Button>
-                      </InputGroup>
-                    </td>
+                title="Alan vezne giriş yapan kullanıcının veznesidir (Değiştirilemez)"
+              />
+              {alanVezneAd && (
+                <span
+                  className="text-dark small fw-semibold text-truncate"
+                  style={{ maxWidth: "200px", fontSize: "12.5px" }}
+                  title={alanVezneAd}
+                >
+                  ({alanVezneAd})
+                </span>
+              )}
+              <VezneBakiyeDropdown
+                vezneId={alanVezneId}
+                vezneAd={alanVezneAd}
+                bakiyeler={alanVezneBakiyeler}
+                align="left"
+              />
+            </div>
+          </div>
 
-                    {/* Para adı */}
-                    <td style={{ padding: "4px 8px", verticalAlign: "middle" }}>
-                      <span className="fw-medium text-dark">{line.paraAdi || ""}</span>
-                    </td>
+          {/* Veren vezne */}
+          <div className="d-flex align-items-center gap-2">
+            <label
+              className="small fw-semibold mb-0 text-nowrap"
+              style={{ width: "95px", minWidth: "95px", fontSize: "12.5px", color: "#334155" }}
+            >
+              Veren vezne:
+            </label>
+            <div className="d-flex align-items-center gap-1.5 flex-grow-1">
+              <InputGroup size="sm" style={{ width: "120px", flexShrink: 0 }}>
+                <Form.Control
+                  ref={verenVezneInputRef}
+                  type="text"
+                  value={verenVezneKod}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setVerenVezneKod(val);
+                    const found = vezneList.find(
+                      (v) =>
+                        v.kod.toLowerCase() === val.trim().toLowerCase() ||
+                        String(v.id) === val.trim()
+                    );
+                    if (found) {
+                      setVerenVezneId(found.id);
+                      setVerenVezneAd(found.ad);
+                    } else {
+                      setVerenVezneId(0);
+                      setVerenVezneAd("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (!verenVezneId) {
+                        setShowVerenVezneModal(true);
+                      } else {
+                        const firstRowParaInput = rowInputRefs.current["kod-0"];
+                        firstRowParaInput?.focus();
+                        firstRowParaInput?.select();
+                      }
+                    } else if (e.key === "F8" || e.key === "F12") {
+                      e.preventDefault();
+                      setShowVerenVezneModal(true);
+                    }
+                  }}
+                  placeholder=""
+                  style={{
+                    backgroundColor: "#ffffff",
+                    height: "28px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    borderColor: "#cbd5e1",
+                  }}
+                />
+                <Button
+                  variant="outline-secondary"
+                  className="px-2 py-0 d-flex align-items-center justify-content-center"
+                  style={{ height: "28px", borderColor: "#cbd5e1" }}
+                  onClick={() => setShowVerenVezneModal(true)}
+                  title="Veren Vezne Seç (Dürbün - F8 / F12)"
+                >
+                  <IconBinoculars size={14} />
+                </Button>
+              </InputGroup>
+              {verenVezneAd && (
+                <span
+                  className="text-dark small fw-semibold text-truncate"
+                  style={{ maxWidth: "200px", fontSize: "12.5px" }}
+                  title={verenVezneAd}
+                >
+                  ({verenVezneAd})
+                </span>
+              )}
+              <VezneBakiyeDropdown
+                vezneId={verenVezneId}
+                vezneAd={verenVezneAd}
+                bakiyeler={verenVezneBakiyeler}
+                align="left"
+              />
+            </div>
+          </div>
 
-                    {/* Miktar */}
-                    <td style={{ width: "220px", padding: "3px 4px" }}>
+          {/* Ref no */}
+          <div className="d-flex align-items-center gap-2">
+            <label
+              className="small fw-semibold mb-0 text-nowrap"
+              style={{ width: "95px", minWidth: "95px", fontSize: "12.5px", color: "#334155" }}
+            >
+              Ref no:
+            </label>
+            <Form.Control
+              type="text"
+              size="sm"
+              value={refNo}
+              onChange={(e) => setRefNo(e.target.value)}
+              placeholder=""
+              style={{ width: "160px", height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
+            />
+          </div>
+
+          {/* Açıklama */}
+          <div className="d-flex align-items-center gap-2">
+            <label
+              className="small fw-semibold mb-0 text-nowrap"
+              style={{ width: "95px", minWidth: "95px", fontSize: "12.5px", color: "#334155" }}
+            >
+              Açıklama:
+            </label>
+            <Form.Control
+              type="text"
+              size="sm"
+              value={aciklama}
+              onChange={(e) => setAciklama(e.target.value)}
+              placeholder="Transfer açıklaması..."
+              style={{ width: "320px", height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Transfer Kalemleri Tablosu (Üst Alandan Ayrılmış ve Daha Kısa/Kompakt) */}
+      <div
+        className="border rounded-2 bg-white shadow-2xs overflow-hidden mt-3"
+        style={{ borderColor: "#cbd5e1", maxWidth: "650px" }}
+      >
+        <div className="table-responsive" style={{ minHeight: "150px", maxHeight: "300px", overflowY: "auto", backgroundColor: "#ffffff" }}>
+          <Table bordered hover size="sm" className="mb-0 text-nowrap" style={{ fontSize: "12.5px" }}>
+            <thead
+              style={{
+                backgroundColor: "#bae6fd",
+                color: "#0369a1",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+              }}
+            >
+              <tr>
+                <th style={{ width: "130px", padding: "6px 8px", backgroundColor: "#bae6fd", color: "#0369a1" }}>Kod</th>
+                <th style={{ padding: "6px 8px", backgroundColor: "#bae6fd", color: "#0369a1" }}>Para adı</th>
+                <th style={{ width: "180px", padding: "6px 8px", backgroundColor: "#bae6fd", color: "#0369a1" }} className="text-end">
+                  Miktar
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((line, idx) => (
+                <tr
+                  key={line.id}
+                  data-row-id={line.id}
+                  className={activeRowIndex === idx ? "table-active" : ""}
+                  onClick={() => setActiveRowIndex(idx)}
+                  onContextMenu={() => setActiveRowIndex(idx)}
+                >
+                  {/* Kod with quick search button */}
+                  <td style={{ width: "130px", padding: "3px 4px" }}>
+                    <InputGroup size="sm">
                       <Form.Control
-                        ref={(el) => {
-                          rowInputRefs.current[`miktar-${idx}`] = el;
-                        }}
                         type="text"
-                        inputMode="decimal"
-                        data-decimal="true"
-                        className="text-end fw-bold p-1"
-                        style={{ height: "26px", fontSize: "13px" }}
-                        value={line.miktar}
-                        onChange={(e) => handleLineChange(idx, "miktar", e.target.value)}
-                        onKeyDown={(e) => {
-                          blockNonNumericKeys(e, true);
-                          handleGridKeyDown(e, idx, "miktar");
+                        value={line.paraKodu}
+                        onChange={(e) => handleLineChange(idx, "paraKodu", e.target.value)}
+                        placeholder=""
+                        className="fw-bold text-primary text-uppercase p-1 text-center"
+                        style={{ height: "26px", fontSize: "12px" }}
+                        ref={(el) => {
+                          rowInputRefs.current[`kod-${idx}`] = el;
                         }}
+                        onKeyDown={(e) => handleGridKeyDown(e, idx, "kod")}
                       />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </div>
+                      <Button
+                        variant="outline-secondary"
+                        className="px-1.5 py-0 d-flex align-items-center justify-content-center"
+                        style={{ height: "26px" }}
+                        onClick={() => {
+                          setActiveRowIdForPara(line.id);
+                          setShowParaModal(true);
+                        }}
+                        title="Para Seç"
+                      >
+                        <IconBinoculars size={13} />
+                      </Button>
+                    </InputGroup>
+                  </td>
 
-          {/* F1, F5, F9, F10 Bottom Bar matching reference screenshot */}
-          <div
-            className="d-flex align-items-center justify-content-center gap-4 py-1.5 px-3 border-top user-select-none"
-            style={{
-              backgroundColor: "#d1fae5", // Soft cyan/mint strip as shown in user screenshot
-              color: "#065f46",
-              fontSize: "13px",
-              fontWeight: 600,
-            }}
+                  {/* Para adı */}
+                  <td style={{ padding: "4px 8px", verticalAlign: "middle" }}>
+                    <span className="fw-medium text-dark">{line.paraAdi || ""}</span>
+                  </td>
+
+                  {/* Miktar */}
+                  <td style={{ width: "180px", padding: "3px 4px" }}>
+                    <Form.Control
+                      ref={(el) => {
+                        rowInputRefs.current[`miktar-${idx}`] = el;
+                      }}
+                      type="text"
+                      inputMode="decimal"
+                      data-decimal="true"
+                      className="text-end fw-bold p-1"
+                      style={{ height: "26px", fontSize: "13px" }}
+                      value={line.miktar}
+                      onChange={(e) => handleLineChange(idx, "miktar", e.target.value)}
+                      onKeyDown={(e) => {
+                        blockNonNumericKeys(e, true);
+                        handleGridKeyDown(e, idx, "miktar");
+                      }}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+
+        {/* F1, F5, F9, F10 Alt Kısayol Bilgilendirme Şeridi */}
+        <div
+          className="d-flex align-items-center justify-content-center gap-4 py-1.5 px-3 border-top user-select-none"
+          style={{
+            backgroundColor: "#f8fafc",
+            color: "#475569",
+            fontSize: "12.5px",
+            fontWeight: 600,
+          }}
+        >
+          <span
+            onClick={handleSave}
+            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-primary"
+            role="button"
+            title="Transferi Kaydet (F1)"
           >
-            <span
-              onClick={handleSave}
-              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-              role="button"
-              title="Transferi Kaydet (F1)"
-            >
-              F1) Kayıt
-            </span>
-            <span
-              onClick={handleTopluTransfer}
-              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-              role="button"
-              title="Veren Veznedeki Tüm Bakiyeleri Aktar (F5)"
-            >
-              F5) Toplu Transfer
-            </span>
-            <span
-              onClick={handleOpenParaSay}
-              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-              role="button"
-              title="Banknot Sayımı Yap (F9)"
-            >
-              F9) Say
-            </span>
-            <span
-              onClick={() => setShowPrintModal(true)}
-              className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1"
-              role="button"
-              title="Transfer Makbuzunu Yazdır / Kes (F10)"
-            >
-              F10) Kes
-            </span>
-          </div>
-        </Card.Body>
-      </Card>
+            F1) Kayıt
+          </span>
+          <span
+            onClick={handleTopluTransfer}
+            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-success"
+            role="button"
+            title="Veren Veznedeki Tüm Bakiyeleri Aktar (F5)"
+          >
+            F5) Toplu Transfer
+          </span>
+          <span
+            onClick={handleOpenParaSay}
+            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-secondary"
+            role="button"
+            title="Banknot Sayımı Yap (F9)"
+          >
+            F9) Say
+          </span>
+          <span
+            onClick={() => setShowPrintModal(true)}
+            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-dark"
+            role="button"
+            title="Transfer Makbuzunu Yazdır / Kes (F10)"
+          >
+            F10) Kes
+          </span>
+        </div>
+      </div>
 
 
 

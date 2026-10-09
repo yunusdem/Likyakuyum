@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { FastLookupCache } from "./fastLookupCache";
 
 export interface DovizFisSatiriModel {
   satirNo: number;
@@ -250,21 +251,29 @@ export class DovizFisService {
    * Get TODVZ_ISTATISTIK list filtered by tip (0: Alış, 1: Satış)
    */
   public static async getIstatistikler(tip?: number): Promise<IstatistikSecimItem[]> {
-    const params = tip !== undefined ? { tip } : undefined;
-    const res = await apiClient.get<IstatistikSecimItem[]>("/doviz-fis/istatistikler", params);
-    return res.data || [];
+    const cacheKey = `istatistikler_${tip !== undefined ? tip : "all"}`;
+    return FastLookupCache.get(cacheKey, async () => {
+      const params = tip !== undefined ? { tip } : undefined;
+      const res = await apiClient.get<IstatistikSecimItem[]>("/doviz-fis/istatistikler", params);
+      return res.data || [];
+    });
   }
 
   /**
    * Get TODVZ_KAYITSIZ_MUSTERI list
    */
-  public static async getKayitsizMusteriler(): Promise<KayitsizMusteriItem[]> {
-    try {
-      const res = await apiClient.get<KayitsizMusteriItem[]>("/doviz-fis/kayitsiz-musteriler");
-      return res.data || [];
-    } catch {
-      return [];
+  public static async getKayitsizMusteriler(forceRefresh: boolean = false): Promise<KayitsizMusteriItem[]> {
+    if (forceRefresh) {
+      FastLookupCache.invalidate("kayitsizMusteriler");
     }
+    return FastLookupCache.get("kayitsizMusteriler", async () => {
+      try {
+        const res = await apiClient.get<KayitsizMusteriItem[]>("/doviz-fis/kayitsiz-musteriler");
+        return res.data || [];
+      } catch {
+        return [];
+      }
+    });
   }
 }
 

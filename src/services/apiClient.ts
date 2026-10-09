@@ -6,9 +6,10 @@
 
 import { envConfig } from "../config/env.config";
 
-interface RequestOptions extends RequestInit {
+export interface RequestOptions extends RequestInit {
   params?: Record<string, any>;
   timeoutMs?: number;
+  silent?: boolean;
 }
 
 export interface ApiResponse<T = any> {
@@ -149,11 +150,14 @@ class ApiClient {
         throw new Error("Backend API sunucusuna ulaşılamadı. Sunucunun çalıştığından emin olunuz.");
       }
 
-      // If it is an authentication/login error or invalid credentials, keep the console clean without stack trace
-      if (url.includes("/auth/login") || error.message?.includes("Geçersiz") || error.message?.includes("şifre") || error.message?.includes("kullanıcı")) {
-        console.warn(`[Giriş] ${error.message || "Kullanıcı adı veya şifre hatalı."}`);
-      } else {
-        console.error(`[API Client Error] ${options.method || "GET"} ${url}:`, error.message || error);
+      const isSilent = options.silent || (error?.status === 404 && (url.includes("/barkod/") || url.includes("/search")));
+      if (!isSilent) {
+        // If it is an authentication/login error or invalid credentials, keep the console clean without stack trace
+        if (url.includes("/auth/login") || error.message?.includes("Geçersiz") || error.message?.includes("şifre") || error.message?.includes("kullanıcı")) {
+          console.warn(`[Giriş] ${error.message || "Kullanıcı adı veya şifre hatalı."}`);
+        } else {
+          console.error(`[API Client Error] ${options.method || "GET"} ${url}:`, error.message || error);
+        }
       }
       throw error;
     }

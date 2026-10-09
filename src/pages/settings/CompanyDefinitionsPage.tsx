@@ -2037,9 +2037,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                   onChange={(e) => handleChange("KMV_UYGULAMA_SEKLI", Number(e.target.value))}
                                   className="bg-white border"
                                 >
-                                  <option value={0}>0 - Uygulanmasın</option>
-                                  <option value={1}>1 - Binde 1</option>
-                                  <option value={2}>2 - Binde 2</option>
+                                  <option value={1}>1 - Uygulanmasın</option>
+                                  <option value={2}>2 - Kura Dahil</option>
+                                  <option value={3}>3 - Kurdan Hariç</option>
                                 </Form.Select>
                               </Col>
                             </Form.Group>

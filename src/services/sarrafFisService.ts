@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { FastLookupCache } from "./fastLookupCache";
 
 export interface SarrafFisSatiriItem {
   satirId?: number | null;
@@ -226,13 +227,38 @@ export interface VezneBakiyeItem {
 }
 
 export class SarrafFisService {
-  static async getUrunler(): Promise<UrunItem[]> {
-    try {
-      const res = await apiClient.get<any[]>("/sarraf-fis/urunler");
-      if (res.data && res.data.length > 0) {
-        return res.data.map((r: any) => ({
+  static async getUrunler(forceRefresh: boolean = false): Promise<UrunItem[]> {
+    if (forceRefresh) {
+      FastLookupCache.invalidate("urunler");
+    }
+    return FastLookupCache.get("urunler", async () => {
+      try {
+        const res = await apiClient.get<any[]>("/para");
+        if (res.data && res.data.length > 0) {
+          return res.data.map((r: any) => ({
+            id: Number(r.id || r.paraId),
+            paraId: Number(r.id || r.paraId),
+            kod: (r.kod || "").trim(),
+            ad: (r.ad || "").trim(),
+            gramaj: Number(r.gramaj) || 0,
+            hasOrani: Number(r.hasOrani) || 0,
+            hasAlisKatsayisi: Number(r.hasAlisKatsayisi) || 0,
+            hasSatisKatsayisi: Number(r.hasSatisKatsayisi) || 0,
+            alisMilyem: Number(r.alisMilyem) > 0 ? Number(r.alisMilyem) : (Number(r.hasAlisKatsayisi) > 0 ? Number(r.hasAlisKatsayisi) : (Number(r.hasOrani) || 0)),
+            satisMilyem: Number(r.satisMilyem) > 0 ? Number(r.satisMilyem) : (Number(r.hasSatisKatsayisi) > 0 ? Number(r.hasSatisKatsayisi) : (Number(r.hasOrani) || 0)),
+            iscilik: Number(r.iscilik) || 0,
+            birim: Number(r.birim) || 0,
+            urunTipi: Number(r.urunTipi) || 0,
+          }));
+        }
+      } catch (err) {
+        console.warn("getUrunler from /para failed, trying /sarraf-fis/urunler fallback:", err);
+      }
+      try {
+        const res2 = await apiClient.get<any[]>("/sarraf-fis/urunler");
+        return (res2.data || []).map((r: any) => ({
           id: Number(r.id || r.paraId),
-          paraId: Number(r.paraId || r.id),
+          paraId: Number(r.id || r.paraId),
           kod: (r.kod || "").trim(),
           ad: (r.ad || "").trim(),
           gramaj: Number(r.gramaj) || 0,
@@ -245,31 +271,11 @@ export class SarrafFisService {
           birim: Number(r.birim) || 0,
           urunTipi: Number(r.urunTipi) || 0,
         }));
+      } catch (err2) {
+        console.error("getUrunler failed on both endpoints:", err2);
+        return [];
       }
-    } catch (err) {
-      console.warn("getUrunler from /sarraf-fis/urunler failed, trying /para fallback:", err);
-    }
-    try {
-      const res2 = await apiClient.get<any[]>("/para");
-      return (res2.data || []).map((r: any) => ({
-        id: Number(r.id || r.paraId),
-        paraId: Number(r.id || r.paraId),
-        kod: (r.kod || "").trim(),
-        ad: (r.ad || "").trim(),
-        gramaj: Number(r.gramaj) || 0,
-        hasOrani: Number(r.hasOrani) || 0,
-        hasAlisKatsayisi: Number(r.hasAlisKatsayisi) || 0,
-        hasSatisKatsayisi: Number(r.hasSatisKatsayisi) || 0,
-        alisMilyem: Number(r.alisMilyem) > 0 ? Number(r.alisMilyem) : (Number(r.hasAlisKatsayisi) > 0 ? Number(r.hasAlisKatsayisi) : (Number(r.hasOrani) || 0)),
-        satisMilyem: Number(r.satisMilyem) > 0 ? Number(r.satisMilyem) : (Number(r.hasSatisKatsayisi) > 0 ? Number(r.hasSatisKatsayisi) : (Number(r.hasOrani) || 0)),
-        iscilik: Number(r.iscilik) || 0,
-        birim: Number(r.birim) || 0,
-        urunTipi: Number(r.urunTipi) || 0,
-      }));
-    } catch (err2) {
-      console.error("getUrunler failed on both endpoints:", err2);
-      return [];
-    }
+    });
   }
 
   static async getVezneBakiye(vezneId: number): Promise<VezneBakiyeItem[]> {

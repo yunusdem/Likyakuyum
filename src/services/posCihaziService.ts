@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { FastLookupCache } from "./fastLookupCache";
 
 export interface PosCihaziItem {
   posCihaziId: number;
@@ -22,9 +23,14 @@ export interface SavePosCihaziPayload {
 }
 
 export class PosCihaziService {
-  public static async getPosCihazlari(): Promise<PosCihaziItem[]> {
-    const res = await apiClient.get<PosCihaziItem[]>("/banka/pos-cihazlari");
-    return res.data || [];
+  public static async getPosCihazlari(forceRefresh: boolean = false): Promise<PosCihaziItem[]> {
+    if (forceRefresh) {
+      FastLookupCache.invalidate("poslar");
+    }
+    return FastLookupCache.get("poslar", async () => {
+      const res = await apiClient.get<PosCihaziItem[]>("/banka/pos-cihazlari");
+      return res.data || [];
+    });
   }
 
   public static async getPosCihaziById(id: number): Promise<PosCihaziItem> {
@@ -44,11 +50,13 @@ export class PosCihaziService {
 
   public static async savePosCihazi(payload: SavePosCihaziPayload): Promise<PosCihaziItem> {
     const res = await apiClient.post<PosCihaziItem>("/banka/pos-cihazlari", payload);
+    FastLookupCache.invalidate("poslar");
     return res.data;
   }
 
   public static async deletePosCihazi(id: number): Promise<boolean> {
     const res = await apiClient.delete(`/banka/pos-cihazlari/${id}`);
+    FastLookupCache.invalidate("poslar");
     return res.success;
   }
 }

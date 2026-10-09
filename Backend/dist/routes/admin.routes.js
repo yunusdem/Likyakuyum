@@ -6,6 +6,8 @@ import { KullaniciController } from "../controllers/admin/kullanici.controller.j
 import { ModulController } from "../controllers/admin/modul.controller.js";
 import { IzlemeController } from "../controllers/admin/izleme.controller.js";
 import { PosAdminController } from "../controllers/admin/posAdmin.controller.js";
+import { DestekAdminController } from "../controllers/admin/destekAdmin.controller.js";
+import { adminKonuListeSchema, adminMesajSchema, adminKonuGuncelleSchema, bildirimOlusturSchema, bildirimGuncelleSchema, destekIdSchema, } from "../schemas/destek.schema.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { adminKapisi, adminAuthenticate, adminGirisSiniri, sifreBelirlenmisOlmali, adminHataIsleyici, epostaOnaySiniri, } from "../middlewares/adminAuth.middleware.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -76,6 +78,18 @@ router.get("/izleme/giris-log", validate(girisLogSchema), IzlemeController.giris
 router.get("/izleme/islem-log", validate(islemLogSchema), IzlemeController.islemLoglari);
 router.post("/izleme/oturumlar/:sid/kapat", validate(oturumKapatSchema), IzlemeController.oturumuKapat);
 router.post("/firmalar/:id/oturumlari-kapat", validate(adminIdSchema), IzlemeController.firmaOturumlariniKapat);
+// Destek: talepler + sistem kayıtları + bildirimler (docs/DESTEK_VE_BILDIRIM_YOL_HARITASI.md, 4)
+router.get("/destek/ozet", DestekAdminController.ozet);
+router.get("/destek/konular", validate(adminKonuListeSchema), DestekAdminController.konular);
+router.get("/destek/konular/:id", validate(destekIdSchema), DestekAdminController.konu);
+router.post("/destek/konular/:id/mesajlar", validate(adminMesajSchema), DestekAdminController.mesajYaz);
+router.put("/destek/konular/:id", validate(adminKonuGuncelleSchema), DestekAdminController.konuGuncelle);
+router.get("/destek/bildirimler", DestekAdminController.bildirimler);
+router.get("/destek/hedefler", DestekAdminController.hedefSecenekleri);
+router.post("/destek/bildirimler", validate(bildirimOlusturSchema), DestekAdminController.bildirimOlustur);
+router.put("/destek/bildirimler/:id", validate(bildirimGuncelleSchema), DestekAdminController.bildirimGuncelle);
+router.post("/destek/bildirimler/:id/geri-cek", validate(destekIdSchema), DestekAdminController.bildirimGeriCek);
+router.get("/destek/ek/:id", validate(destekIdSchema), DestekAdminController.ek);
 // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5): merkezi ayarlar, firma modu, doğrulama, test konsolu
 router.get("/pos/ayar", PosAdminController.ayarGetir);
 router.put("/pos/ayar", PosAdminController.ayarKaydet);

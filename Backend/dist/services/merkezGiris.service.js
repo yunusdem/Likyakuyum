@@ -254,6 +254,7 @@ export class MerkezGirisService {
             lisansKalanGun: b.firma.lisansKalanGun,
             kullaniciLimiti: b.firma.aktifLisans?.kullaniciLimiti ?? null,
             kullaniciSayisi: b.firma.kullaniciSayisi,
+            paketAdi: b.firma.aktifLisans?.paketAdi ?? null,
             moduller: await ModulSqlRepository.firmaAcikModulleri(b.firma.firmaId),
             iletisim: await AyarSqlRepository.tumu().then((a) => ({
                 telefon: a.LISANS_ILETISIM_TELEFON,

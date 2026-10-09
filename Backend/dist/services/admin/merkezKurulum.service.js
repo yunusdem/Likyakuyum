@@ -17,6 +17,7 @@ import { AyarSqlRepository } from "../../models/admin/ayarSql.repository.js";
 import { BulutSqlRepository } from "../../models/admin/bulutSql.repository.js";
 import { ZipYazici } from "../../utils/zip.js";
 import { tokenOzeti } from "./yedek.service.js";
+import { DestekOlay } from "../destek/destekOlay.js";
 export const KURULUM_BAGLANTI_GUN = 7;
 export const kurulumExeYolu = async () => path.join(await AyarSqlRepository.oku("SURUM_KLASORU"), "kurulum", "LikyaKuyumKurulum.exe");
 const BENIOKU = (unvan, firmaKodu) => [
@@ -133,6 +134,7 @@ export class MerkezKurulumService {
     static async heartbeat(g, ip) {
         const firma = await kurulumuDogrula(g.firmaKodu, g.kurulumAnahtari);
         const makine = g.makineKimligi && /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/.test(g.makineKimligi) ? g.makineKimligi : null;
+        const oncekiSurum = (await FirmaService.getir(firma.firmaId)).surum;
         await KurulumSqlRepository.heartbeatYaz({
             firmaId: firma.firmaId,
             surum: g.surum ? String(g.surum).slice(0, 30) : null,
@@ -143,6 +145,9 @@ export class MerkezKurulumService {
             semaSurumu: Number.isInteger(g.semaSurumu) ? g.semaSurumu : null,
             ip,
         });
+        // Kurulum yeni sürümle geldi: firmanın ziline ve admin listesine düşer (K14)
+        if (g.surum && oncekiSurum && oncekiSurum !== g.surum)
+            DestekOlay.guncellemeKuruldu(firma.firmaId, oncekiSurum, String(g.surum).slice(0, 30));
         // Lisans: firma aktifse ve bu makine firmanın lisanslı makinesiyse, aktif lisansın kodu yoksa üretilir;
         // kurulumdaki seriden yeni bir kod varsa geri döner (uzatma elle kod girmeden iner)
         let lisansKodu = null;

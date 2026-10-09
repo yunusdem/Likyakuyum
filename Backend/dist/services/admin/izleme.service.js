@@ -4,6 +4,7 @@ import { AdminLogSqlRepository } from "../../models/admin/adminLogSql.repository
 import { FirmaSqlRepository } from "../../models/admin/firmaSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { OturumService } from "../oturum.service.js";
+import { DestekOlay } from "../destek/destekOlay.js";
 /** Son kaç dakika içinde işlem yapan oturum "çevrimiçi" sayılır */
 export const CEVRIMICI_DAKIKA = 5;
 export class IzlemeService {
@@ -23,6 +24,7 @@ export class IzlemeService {
             throw ApiError.notFound("Açık oturum bulunamadı.");
         OturumService.onbellegiTemizle();
         await AdminLogSqlRepository.islemLogu({ adminId: yapan.adminId, islem: "OTURUM_KAPATILDI", hedefTur: "OTURUM", hedefId: sid });
+        DestekOlay.oturumKapatildi(sid, yapan.adSoyad); // K14
     }
     static async firmaOturumlariniKapat(yapan, firmaId) {
         if (!(await FirmaSqlRepository.idIleBul(firmaId)))
@@ -36,6 +38,7 @@ export class IzlemeService {
             hedefId: firmaId,
             yeni: { kapanan },
         });
+        DestekOlay.firmaOturumlariKapatildi(firmaId, kapanan, yapan.adSoyad); // K14
         return { kapanan };
     }
 }

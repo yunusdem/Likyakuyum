@@ -3,6 +3,8 @@ import { env } from "./config/env.config.js";
 import { connectDatabase } from "./config/database.config.js";
 import { logger } from "./utils/logger.js";
 import { BulutZamanlayici } from "./services/admin/bulutZamanlayici.js";
+import { DestekZamanlayici } from "./services/destek/destekZamanlayici.js";
+import { DestekKurulumService } from "./services/destek/destekKurulum.service.js";
 import { KurulumBildirim } from "./services/kurulum/kurulumBildirim.js";
 import { Guncelleyici } from "./services/kurulum/guncelleyici.js";
 import { KurulumLisansService } from "./services/kurulum/kurulumLisans.service.js";
@@ -27,6 +29,7 @@ const startServer = async () => {
             logger.info(`🩺 Sağlık Kontrolü (Health): http://localhost:${env.PORT}${env.API_PREFIX}/health`);
             logger.info(`🌍 Ortam: ${env.NODE_ENV.toUpperCase()}`);
             BulutZamanlayici.baslat();
+            DestekZamanlayici.baslat();
             if (env.KURULUM_MODU) {
                 // Kurulum: yeni sürümün şema göçleri kendi veritabanına uygulanır, merkeze bildirim başlar
                 kurulumHavuzu()
@@ -37,6 +40,7 @@ const startServer = async () => {
                 KurulumLisansService.durum(true).catch(() => undefined);
                 Guncelleyici.baslat();
                 KurulumBildirim.baslat();
+                DestekKurulumService.baslat();
             }
         });
         // Graceful Shutdown Signals

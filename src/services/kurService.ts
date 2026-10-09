@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { FastLookupCache } from "./fastLookupCache";
 
 export interface KurRowItem {
   paraId: number;
@@ -52,7 +53,29 @@ export class KurService {
     tur: number;
     tarih?: string;
     id?: number;
+    forceRefresh?: boolean;
   }): Promise<KurTablosuItem> {
+    const isStandardLookup = !params.tarih && !params.id;
+    const cacheKey = `kurTablo_${params.tur}`;
+
+    if (params.forceRefresh) {
+      FastLookupCache.invalidate(cacheKey);
+    }
+
+    if (isStandardLookup) {
+      return FastLookupCache.get(cacheKey, async () => {
+        const res = await apiClient.request<KurTablosuItem>("/kur/tablo", {
+          method: "GET",
+          params: {
+            tur: params.tur,
+            tarih: params.tarih,
+            id: params.id,
+          },
+        });
+        return res.data;
+      }, 30000); // 30s freshness
+    }
+
     const res = await apiClient.request<KurTablosuItem>("/kur/tablo", {
       method: "GET",
       params: {
@@ -71,6 +94,7 @@ export class KurService {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    FastLookupCache.invalidate("kurTablo_");
     return res.data;
   }
 
@@ -83,6 +107,7 @@ export class KurService {
       method: "POST",
       body: JSON.stringify(params),
     });
+    FastLookupCache.invalidate("kurTablo_");
     return res.data;
   }
 
