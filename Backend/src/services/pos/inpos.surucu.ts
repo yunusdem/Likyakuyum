@@ -195,13 +195,12 @@ export const inposKalemleri = (kalemler: PosKalem[] | undefined, toplam: number)
   if (!kalemler?.length) return tek;
   const kalemToplam = para(kalemler.reduce((t, k) => t + k.tutar, 0));
   if (Math.abs(kalemToplam - toplam) > 0.011) return tek;
-  const desteklenen = [0, 1, 10, 20];
   // Kısım gönderilmez: M530'da her kısmın sabit KDV oranı var; kısım verilince oran tutmazsa cihaz "geçersiz KDV oranı" der.
-  // Cihaz, orana uyan kısmı kendisi seçer (cihazda o oranda bir kısım tanımlı olmalı).
+  // Cihaz, orana uyan kısmı kendisi seçer (cihazda o oranda bir kısım tanımlı olmalı). Oran fişteki gibi gider (test cihazında %18 var).
   return kalemler.map((k) => ({
     name: k.ad.slice(0, 100),
     unitPrice: para(k.tutar / k.miktar),
-    vat: desteklenen.includes(Math.round(k.kdvOrani)) ? Math.round(k.kdvOrani) : KALEM_KDV,
+    vat: Math.min(100, Math.max(0, Math.round(k.kdvOrani))),
     quantity: k.miktar,
     unit: "adet",
   }));
