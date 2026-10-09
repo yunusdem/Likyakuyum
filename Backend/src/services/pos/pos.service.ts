@@ -2,7 +2,7 @@ import { PosAdminSqlRepository } from "../../models/admin/posAdminSql.repository
 import { PosEntegrasyonSqlRepository as Repo, PosIslemFiltre, VomsisPosSatiri } from "../../models/posEntegrasyonSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
-import { InposSurucu, inposSiparisIslendi } from "./inpos.surucu.js";
+import { InposSurucu, inposCsn, inposSiparisIslendi } from "./inpos.surucu.js";
 import {
   DbContext,
   ENTEGRASYONLAR,
@@ -448,7 +448,15 @@ export class PosService {
       await this.sonucuIsle(islem, terminal, { ...sonuc, ...d.sonuc, bankaKodu: d.sonuc.bankaKodu ?? null, bankaAdi: d.sonuc.bankaAdi ?? null, hata: d.sonuc.hata ?? sonuc.hata ?? null }, dbContext);
     }
     const ref = islemler[0]?.surucuRef;
-    if (sonuc.durum === "ONAY" && ref && islemler[0].entegrasyon === "inpos" && islemler[0].mod === "canli") void inposSiparisIslendi(ref);
+    if (sonuc.durum === "ONAY" && ref && terminal && islemler[0].entegrasyon === "inpos" && islemler[0].mod === "canli") {
+      let csn: string | null = null;
+      try {
+        csn = inposCsn(terminal);
+      } catch {
+        csn = null;
+      }
+      void inposSiparisIslendi(ref, csn);
+    }
   }
 
   /** Bulut sağlayıcının bildirdiği sipariş sonucu (Inpos webhook). Sipariş bilinmiyorsa hiçbir kayda dokunulmaz. */

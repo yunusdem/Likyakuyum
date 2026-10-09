@@ -1048,8 +1048,14 @@ export class EbelgeSqlRepository {
       .request()
       .input("onEk", sql.VarChar(7), `${seri}${yil}`)
       .query(`SELECT MAX(TRY_CAST(RIGHT([BELGE_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_EBELGE_GIDEN]
-              WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk`);
-    return Number(res.recordset[0]?.SIRA) || 0;
+              WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk;
+              -- Perakende fişleri aynı seriyi kullanır (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3); henüz gönderilmemiş olanlar da atlanır.
+              -- Tablo her veritabanında olmayabilir: dinamik SQL ile okunur
+              IF OBJECT_ID('dbo.TODVZ_FATURA', 'U') IS NOT NULL
+                EXEC sp_executesql N'SELECT MAX(TRY_CAST(RIGHT([FATURA_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_FATURA] WHERE LEN([FATURA_NO]) = 16 AND LEFT([FATURA_NO], 7) = @o', N'@o VARCHAR(7)', @o = @onEk;
+              ELSE SELECT CAST(NULL AS BIGINT) AS SIRA;`);
+    const sets = res.recordsets as any[];
+    return Math.max(Number(sets[0]?.[0]?.SIRA) || 0, Number(sets[1]?.[0]?.SIRA) || 0);
   }
 
   /** Bu hesaptan kesilmiş belgelerin serileri (fatura no önerisi için), ör. ["ABC", "EAR"] */

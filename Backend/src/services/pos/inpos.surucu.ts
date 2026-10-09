@@ -261,10 +261,11 @@ export const inposSonucuCoz = (siparis: any): SurucuSonuc | null => {
   };
 };
 
-/** Kapanan sipariş cihaz listesinden düşsün. Başarısızlık sonucu etkilemez. */
-export const inposSiparisIslendi = async (ref: string): Promise<void> => {
+/** Kapanan sipariş cihaz listesinden düşsün (TSM, sipariş kimliğiyle birlikte cihaz CSN'sini de ister). Başarısızlık sonucu etkilemez. */
+export const inposSiparisIslendi = async (ref: string, csn: string | null): Promise<void> => {
+  if (!csn) return;
   try {
-    await istek(`Inpos sipariş işlendi ${ref}`, "POST", "/api/markOrderProcessed", { id: ref });
+    await istek(`Inpos sipariş işlendi ${ref}`, "POST", "/api/markOrderProcessed", { id: ref, csn });
   } catch {
     // Günlüğe yazıldı; sipariş listede kalır, kasiyer görmezden gelir
   }
@@ -286,7 +287,7 @@ export const InposSurucu: PosSurucu = {
     if (durum === 404) return { durum: "IPTAL", hata: "Sipariş cihaz servisinde bulunamadı (silinmiş).", grupOdemeleri: [] };
     if (durum >= 400) throw inposHatasi(durum, veri, "Sipariş sorgulanamadı.");
     const sonuc = inposSonucuCoz(veri);
-    if (sonuc?.durum === "ONAY") void inposSiparisIslendi(islem.surucuRef);
+    if (sonuc?.durum === "ONAY") void inposSiparisIslendi(islem.surucuRef, inposCsn(terminal));
     return sonuc;
   },
 

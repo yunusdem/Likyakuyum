@@ -249,7 +249,8 @@ export interface EbelgeFaturaNoOnerisi {
 
 /** E-Belge Ayarları'nda tanımlı fatura serisi */
 export interface EbelgeSeriKaydi {
-  belgeTuru: "EFatura" | "EArsiv";
+  /** EGider: Perakende alış fişlerinin gider pusulası serisi */
+  belgeTuru: "EFatura" | "EArsiv" | "EGider";
   seri: string;
   varsayilan: boolean;
 }
@@ -388,7 +389,7 @@ export interface EbelgeKaynakKimlik { evrakTuru: number; belgeId: number; belgeT
 /** Kaynak listesi iki görünümden gelir: fatura (evrakTuru 0) ve e-Döviz fişi (evrakTuru 99). */
 export const EBELGE_DOVIZ_EVRAK_TURU = 99;
 export interface EbelgeKaynakSatiri extends EbelgeKaynakKimlik {
-  kaynak: "FATURA" | "DOVIZ";
+  kaynak: "FATURA" | "DOVIZ" | "PERAKENDE";
   belgeNo: string; tarih: string; unvan: string; tutar: number; paraBirimi: string; durum: string; hata: string | null;
   eskiEttn: string | null; eskiDurum: number; uuid: string | null; secilebilir: boolean; engel: string | null;
 }
@@ -619,7 +620,7 @@ const ebelgeGoruntuBlob = async (yol: string): Promise<EbelgeGoruntu> => {
 };
 
 export const ebelgeService = {
-  async kaynakListe(filtre: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ"; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }) {
+  async kaynakListe(filtre: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ" | "PERAKENDE_SATIS" | "PERAKENDE_ALIS"; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }) {
     return (await apiClient.get<{ toplam: number; kayitlar: EbelgeKaynakSatiri[] }>("/e-belge/kaynak",filtre)).data;
   },
   async kaynakDetay(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakDetay>("/e-belge/kaynak/detay",k)).data; },

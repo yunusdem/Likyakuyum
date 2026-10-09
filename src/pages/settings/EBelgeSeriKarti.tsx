@@ -9,15 +9,18 @@ import { useToast } from "../../context/ToastContext";
  * gelir (numara = ICE'deki son sıra + 1); her tür için bir varsayılan seri formda kendiliğinden seçilir.
  * "ICE'den bul" daha önce kesilmiş belgelerden serileri bulup listeye ekler (kaydetmek gerekir).
  */
-const TURLER: { kod: "EFatura" | "EArsiv"; ad: string }[] = [
-  { kod: "EFatura", ad: "e-Fatura" },
-  { kod: "EArsiv", ad: "e-Arşiv" },
+type SeriTuru = "EFatura" | "EArsiv" | "EGider";
+const TURLER: { kod: SeriTuru; ad: string; iceBul: boolean }[] = [
+  { kod: "EFatura", ad: "e-Fatura", iceBul: true },
+  { kod: "EArsiv", ad: "e-Arşiv", iceBul: true },
+  // Perakende alış fişleri bu seriyle numaralanır ve gider pusulası olarak gider (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3)
+  { kod: "EGider", ad: "e-Gider pusulası (Perakende alış)", iceBul: false },
 ];
 
 const EBelgeSeriKarti: React.FC = () => {
   const { showSuccess, showToast } = useToast();
   const [liste, setListe] = useState<EbelgeSeriKaydi[]>([]);
-  const [yeni, setYeni] = useState<Record<string, string>>({ EFatura: "", EArsiv: "" });
+  const [yeni, setYeni] = useState<Record<string, string>>({ EFatura: "", EArsiv: "", EGider: "" });
   const [yukleniyor, setYukleniyor] = useState(true);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const [araniyor, setAraniyor] = useState<string | null>(null);
@@ -31,7 +34,7 @@ const EBelgeSeriKarti: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ekle = (tur: "EFatura" | "EArsiv", seri: string) => {
+  const ekle = (tur: SeriTuru, seri: string) => {
     const s = seri.toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (s.length !== 3) {
       showToast("Seri 3 karakter (harf/rakam) olmalıdır.", "warning");
@@ -64,6 +67,7 @@ const EBelgeSeriKarti: React.FC = () => {
     });
 
   const iceBul = async (tur: "EFatura" | "EArsiv") => {
+    // e-Gider serisi ICE'den bulunmaz; elle girilir
     setAraniyor(tur);
     try {
       const bulunan = await ebelgeService.seriIceBul(tur);
@@ -112,14 +116,14 @@ const EBelgeSeriKarti: React.FC = () => {
               {TURLER.map((t) => {
                 const turdekiler = liste.filter((x) => x.belgeTuru === t.kod);
                 return (
-                  <Col xs={12} md={6} key={t.kod}>
+                  <Col xs={12} md={4} key={t.kod}>
                     <div className="border rounded-2 p-2 h-100">
                       <div className="d-flex align-items-center justify-content-between mb-2">
                         <span className="fw-semibold" style={{ fontSize: "12.5px" }}>{t.ad}</span>
-                        <Button size="sm" variant="link" className="p-0 d-flex align-items-center gap-1" style={{ fontSize: "12px" }}
-                          disabled={araniyor !== null} onClick={() => void iceBul(t.kod)}>
+                        {t.iceBul && <Button size="sm" variant="link" className="p-0 d-flex align-items-center gap-1" style={{ fontSize: "12px" }}
+                          disabled={araniyor !== null} onClick={() => void iceBul(t.kod as "EFatura" | "EArsiv")}>
                           {araniyor === t.kod ? <Spinner animation="border" size="sm" /> : <IconSearch size={13} />} ICE'den bul
-                        </Button>
+                        </Button>}
                       </div>
                       {!turdekiler.length && <div className="small text-secondary mb-2">Seri tanımlı değil.</div>}
                       {turdekiler.map((x) => (

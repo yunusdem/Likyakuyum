@@ -1782,15 +1782,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
     }
 
-    // POS cihazı tahsilatı (docs/POS_ENTEGRASYON_YOL_HARITASI.md): satışta POS satırları fiş kaydedilmeden önce cihazdan çekilir.
+    // POS cihazı tahsilatı (docs/POS_ENTEGRASYON_YOL_HARITASI.md, K28): satışta fiş ÖNCE kaydedilir (numara oluşur),
+    // POS satırları SONRA cihazdan çekilir; bilgi fişine fiş numarası böyle gider. Ret / vazgeçmede fiş kayıtlı kalır (K29).
     // Entegrasyon kapalıysa ya da veznenin cihazı yoksa hiçbir şey sormadan geçer.
-    const posSonuc =
-      tip === 1
-        ? await pos.tahsilEt({
-            belgeTuru: "sarraf",
-            belgeNo: fisNo.trim() || null,
-            belgeTipi: belgeTuru === 1 ? "efatura" : "earsiv",
-            belgeId: fisId,
+    const posIstegi = (belgeId: number | null, belgeNo: string | null) => ({
+            belgeTuru: "sarraf" as const,
+            belgeNo,
+            belgeTipi: belgeTuru === 1 ? ("efatura" as const) : ("earsiv" as const),
+            belgeId,
+            kayitSonrasi: !fisId,
             vezneId,
             aliciAd: (unvan || detayUnvan || "").trim() || null,
             aliciVkn: (detayVergiKimlikNo || "").replace(/\D/g, "") || null,
@@ -1810,9 +1810,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 const o = recomputeOdemeRow(r, parseDecimal(altinHasKuru) || 0);
                 return { kimlik: r.id, tutar: parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : parseDecimal(o.miktar) || 0, posCihaziId: r.posCihaziId || r.bankaId || null };
               }),
-          })
-        : { tamam: true, kartlar: {} as Record<string, PosKarti> };
-    if (!posSonuc.tamam) return;
+    });
 
     setIsSaving(true);
     try {
@@ -1824,6 +1822,45 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const finalTarih = isDuzeltmeMode ? tarih : liveTarih;
       const finalSaatStr = isDuzeltmeMode ? `${tarih}T${saat}:00` : `${liveTarih}T${liveSaat}:00`;
 
+      // kartlar: cihazdan dönen bankaya göre belirlenen muhasebe POS kartı (yalnızca seçili olandan farklıysa dolu gelir)
+      const odemeSatirlariniHazirla = (kartlar: Record<string, PosKarti>) =>
+        odemeRows
+          .map((r) => recomputeOdemeRow(r, parseDecimal(altinHasKuru) || 0))
+          .filter((o) => {
+            const mik = parseDecimal(o.miktar);
+            const tut = parseDecimal(o.tutar);
+            const ad = parseDecimal(o.adet);
+            const hg = parseDecimal(o.hasGram);
+            return mik > 0 || tut > 0 || ad > 0 || hg > 0;
+          })
+          .map((o, i) => {
+            const mik = parseDecimal(o.miktar);
+            const ad = parseDecimal(o.adet);
+            const effectiveMik = mik > 0 ? mik : (ad > 0 ? ad : 0);
+            const effKur = parseDecimal(o.kur) > 0 ? parseDecimal(o.kur) : 1;
+            const effTut = parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : (effectiveMik * effKur);
+            const posKarti = kartlar[o.id];
+            return {
+              satirNo: i + 1,
+              islemeYeri: o.odemeAraciTuru === 1 ? 1 : (o.odemeAraciTuru === 2 ? 3 : (o.odemeAraciTuru === 3 ? 2 : 0)),
+              odemeAraciTuru: o.odemeAraciTuru || 0,
+              cariKartId: o.cariKartId || null,
+              cariKod: posKarti?.kod || o.cariKod || null,
+              cariUnvan: o.cariUnvan || null,
+              bankaId: posKarti?.posCihaziId || o.bankaId || null,
+              posCihaziId: posKarti?.posCihaziId || o.posCihaziId || (o.odemeAraciTuru === 2 ? (o.bankaId || o.cariKartId) : null),
+              paraId: o.paraId || null,
+              paraKodu: o.paraKodu || (o.odemeAraciTuru === 2 || o.odemeAraciTuru === 3 ? "TL" : null),
+              paraAdi: posKarti?.ad || o.paraAdi || null,
+              iskontoId: o.iskontoId || null,
+              adet: ad,
+              miktar: effectiveMik,
+              milyem: parseDecimal(o.milyem),
+              hasGram: parseDecimal(o.hasGram),
+              kur: effKur,
+              tutar: effTut,
+            };
+          });
       const payload: SaveSarrafFisPayload = {
         sarrafFisiId: fisId,
         vezneId,
@@ -1880,47 +1917,24 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           urunTipi: l.urunTipi || 0,
           karat: l.karat && parseDecimal(l.karat) > 0 ? parseDecimal(l.karat) : null,
         })),
-        odemeSatirlari: odemeRows
-          .map((r) => recomputeOdemeRow(r, parseDecimal(altinHasKuru) || 0))
-          .filter((o) => {
-            const mik = parseDecimal(o.miktar);
-            const tut = parseDecimal(o.tutar);
-            const ad = parseDecimal(o.adet);
-            const hg = parseDecimal(o.hasGram);
-            return mik > 0 || tut > 0 || ad > 0 || hg > 0;
-          })
-          .map((o, i) => {
-            const mik = parseDecimal(o.miktar);
-            const ad = parseDecimal(o.adet);
-            const effectiveMik = mik > 0 ? mik : (ad > 0 ? ad : 0);
-            const effKur = parseDecimal(o.kur) > 0 ? parseDecimal(o.kur) : 1;
-            const effTut = parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : (effectiveMik * effKur);
-            // Cihazdan dönen bankaya göre belirlenen muhasebe POS kartı (yalnızca seçili olandan farklıysa dolu gelir)
-            const posKarti = posSonuc.kartlar[o.id];
-            return {
-              satirNo: i + 1,
-              islemeYeri: o.odemeAraciTuru === 1 ? 1 : (o.odemeAraciTuru === 2 ? 3 : (o.odemeAraciTuru === 3 ? 2 : 0)),
-              odemeAraciTuru: o.odemeAraciTuru || 0,
-              cariKartId: o.cariKartId || null,
-              cariKod: posKarti?.kod || o.cariKod || null,
-              cariUnvan: o.cariUnvan || null,
-              bankaId: posKarti?.posCihaziId || o.bankaId || null,
-              posCihaziId: posKarti?.posCihaziId || o.posCihaziId || (o.odemeAraciTuru === 2 ? (o.bankaId || o.cariKartId) : null),
-              paraId: o.paraId || null,
-              paraKodu: o.paraKodu || (o.odemeAraciTuru === 2 || o.odemeAraciTuru === 3 ? "TL" : null),
-              paraAdi: posKarti?.ad || o.paraAdi || null,
-              iskontoId: o.iskontoId || null,
-              adet: ad,
-              miktar: effectiveMik,
-              milyem: parseDecimal(o.milyem),
-              hasGram: parseDecimal(o.hasGram),
-              kur: effKur,
-              tutar: effTut,
-            };
-          }),
+        odemeSatirlari: odemeSatirlariniHazirla({}),
       };
       const result = await SarrafFisService.saveFis(payload);
-      await pos.kaydedildi("sarraf", result.sarrafFisiId, result.fisNo || fisNo.trim() || null);
+      const kayitliNo: string | null = result.fisNo || fisNo.trim() || null;
+
+      // Kart, fiş kaydedildikten sonra çekilir (K28)
+      const posSonuc = tip === 1 ? await pos.tahsilEt(posIstegi(result.sarrafFisiId, kayitliNo)) : { tamam: true, kartlar: {} as Record<string, PosKarti> };
+      if (Object.keys(posSonuc.kartlar).length > 0) {
+        // Cihazdan dönen banka başka bir muhasebe POS kartına eşliyse fiş o kartla güncellenir (K15)
+        await SarrafFisService.saveFis({ ...payload, sarrafFisiId: result.sarrafFisiId, fisNo: kayitliNo, belgeNo: kayitliNo, odemeSatirlari: odemeSatirlariniHazirla(posSonuc.kartlar) });
+      }
+      await pos.kaydedildi("sarraf", result.sarrafFisiId, kayitliNo);
+      if (!posSonuc.tamam) {
+        // Fiş kayıtlı kalır; ödeme satırı düzeltilip yeniden kaydedilir (K29). e-Belge bu haliyle gönderilmez (K30).
+        showNotif("warning", `Fiş ${kayitliNo || result.sarrafFisiId} kaydedildi ancak POS tahsilatı alınmadı. Ödeme satırını düzeltip yeniden kaydedin.`);
+        await loadFisById(result.sarrafFisiId);
+        return;
+      }
       showNotif("success", `Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} — ${result.fisNo || result.sarrafFisiId}${andPrint ? " (Yazıcıya gönderiliyor...)" : ""}`);
       if (andPrint) {
         const snapObj = {

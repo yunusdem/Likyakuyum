@@ -22,6 +22,11 @@ export interface PosTahsilIstegi {
   belgeTipi: PosBelgeTipi;
   /** Düzeltilen fişin kimliği; yeni fişte boş */
   belgeId?: number | null;
+  /**
+   * K28: fiş kaydedildikten hemen sonra çağrıldı (numara oluştu, kart şimdi çekiliyor). Satırlar kendiliğinden gider;
+   * vazgeçilirse fiş kayıtlı kalır (K29). Düzeltme modundaki "Tahsilat Yapmadan Kaydet" bu modda yoktur.
+   */
+  kayitSonrasi?: boolean;
   vezneId: number | null;
   aliciAd?: string | null;
   /** Alıcının VKN / TCKN'si; bilgi fişine basılır (nihai tüketicide boş) */
@@ -354,7 +359,8 @@ export function usePosTahsilat() {
     };
   }, [pencere]);
 
-  const duzeltme = Boolean(pencere?.istek.belgeId);
+  const kayitSonrasi = Boolean(pencere?.istek.kayitSonrasi);
+  const duzeltme = Boolean(pencere?.istek.belgeId) && !kayitSonrasi;
 
   // Yeni fişte satırlar sırayla kendiliğinden cihaza gider (tek cihaz aynı anda tek işlem alır). Düzeltmede kullanıcı başlatır.
   useEffect(() => {
@@ -529,12 +535,15 @@ export function usePosTahsilat() {
               </tbody>
             </Table>
             {!ozet.hepsiAlindi && ozet.yeniAlinan && (
-              <div className="text-muted mt-2">Çekilen tutarlar kayıtlıdır. Fişi kaydetmeden vazgeçerseniz bu tutarları cihazdan iade etmelisiniz.</div>
+              <div className="text-muted mt-2">
+                {kayitSonrasi ? "Çekilen tutarlar fişe bağlıdır. Vazgeçerseniz bu tutarları cihazdan iade etmelisiniz." : "Çekilen tutarlar kayıtlıdır. Fişi kaydetmeden vazgeçerseniz bu tutarları cihazdan iade etmelisiniz."}
+              </div>
             )}
+            {kayitSonrasi && !ozet.hepsiAlindi && <div className="text-muted mt-2">Fiş kaydedildi. Tahsilat alınamazsa fiş kayıtlı kalır; ödeme satırını düzeltip yeniden kaydedebilirsiniz.</div>}
           </Modal.Body>
           <Modal.Footer className="py-2">
             <Button size="sm" variant="light" disabled={ozet.suren} onClick={() => bitir(false)}>
-              Vazgeç (Fişi Kaydetme)
+              {kayitSonrasi ? "Vazgeç (Tahsilat Alınmadı)" : "Vazgeç (Fişi Kaydetme)"}
             </Button>
             {duzeltme && !ozet.hepsiAlindi && (
               <Button size="sm" variant="outline-primary" disabled={ozet.suren} onClick={() => bitir(true)}>
@@ -542,7 +551,7 @@ export function usePosTahsilat() {
               </Button>
             )}
             <Button size="sm" variant="primary" disabled={!ozet.hepsiAlindi || ozet.suren} onClick={() => bitir(true)}>
-              Fişi Kaydet
+              {kayitSonrasi ? "Tamam" : "Fişi Kaydet"}
             </Button>
           </Modal.Footer>
         </Modal>

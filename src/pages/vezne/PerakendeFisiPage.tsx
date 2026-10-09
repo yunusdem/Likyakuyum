@@ -3812,15 +3812,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       }
     }
 
-    // POS cihazı tahsilatı (docs/POS_ENTEGRASYON_YOL_HARITASI.md): satışta POS satırları fiş kaydedilmeden önce cihazdan çekilir.
+    // POS cihazı tahsilatı (docs/POS_ENTEGRASYON_YOL_HARITASI.md, K28): satışta fiş ÖNCE kaydedilir (numara oluşur),
+    // POS satırları SONRA cihazdan çekilir; bilgi fişine fatura numarası böyle gider. Ret / vazgeçmede fiş kayıtlı kalır (K29).
     // Entegrasyon kapalıysa ya da veznenin cihazı yoksa hiçbir şey sormadan geçer.
-    const posSonuc =
-      faturaTipi === 1
-        ? await pos.tahsilEt({
-            belgeTuru: "perakende",
-            belgeNo: faturaNo.trim() || null,
-            belgeTipi: senaryo === "EARSIVFATURA" ? "earsiv" : "efatura",
-            belgeId: currentFaturaId,
+    const posIstegi = (belgeId: number | null, belgeNo: string | null) => ({
+            belgeTuru: "perakende" as const,
+            belgeNo,
+            belgeTipi: senaryo === "EARSIVFATURA" ? ("earsiv" as const) : ("efatura" as const),
+            belgeId,
+            kayitSonrasi: !currentFaturaId,
             vezneId: selectedVezne?.id ?? null,
             aliciAd: aliciUnvan.trim(),
             aliciVkn: cleanVkn || null,
@@ -3831,9 +3831,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             satirlar: odemeRows
               .filter((r) => r.odemeAraciTuru === 2)
               .map((r) => ({ kimlik: r.id, tutar: parseDecimal(r.tutar) || 0, posCihaziId: r.posCihaziId || r.bankaId || null })),
-          })
-        : { tamam: true, kartlar: {} as Record<string, PosKarti> };
-    if (!posSonuc.tamam) return;
+    });
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
@@ -3851,11 +3849,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         kdvOrani: parseDecimal(item.kdvOrani) || 0,
       }));
 
-      let payloadOdemeler: SavePerakendeFaturaOdemePayload[] = odemeRows
+      // kartlar: cihazdan dönen bankaya göre belirlenen muhasebe POS kartı (yalnızca seçili olandan farklıysa dolu gelir)
+      const odemeleriHazirla = (kartlar: Record<string, PosKarti>): SavePerakendeFaturaOdemePayload[] => odemeRows
         .filter((r) => parseDecimal(r.tutar) > 0 || parseDecimal(r.miktar) > 0 || r.cariKartId || (r.cariKod && r.cariKod.trim() !== ""))
         .map((r, idx) => {
-          // Cihazdan dönen bankaya göre belirlenen muhasebe POS kartı (yalnızca seçili olandan farklıysa dolu gelir)
-          const posKarti = posSonuc.kartlar[r.id];
+          const posKarti = kartlar[r.id];
           return {
             satirNo: idx + 1,
             odemeAraciTuru: r.odemeAraciTuru || 0,
@@ -3874,6 +3872,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             tutar: parseDecimal(r.tutar) || 0,
           };
         });
+      let payloadOdemeler = odemeleriHazirla({});
 
       if (payloadOdemeler.length === 0 && genelToplam > 0) {
         payloadOdemeler = [{
@@ -3928,7 +3927,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       };
 
       const result = await PerakendeService.createInvoice(payload);
-      await pos.kaydedildi("perakende", result?.faturaId, result?.faturaNo || payload.faturaNo);
+      const kayitliId: number | null = result?.faturaId ?? currentFaturaId ?? null;
+      const kayitliNo: string | null = result?.faturaNo || payload.faturaNo || null;
+
+      // Kart, fiş kaydedildikten sonra çekilir (K28)
+      const posSonuc = faturaTipi === 1 ? await pos.tahsilEt(posIstegi(kayitliId, kayitliNo)) : { tamam: true, kartlar: {} as Record<string, PosKarti> };
+      if (Object.keys(posSonuc.kartlar).length > 0) {
+        // Cihazdan dönen banka başka bir muhasebe POS kartına eşliyse fiş o kartla güncellenir (K15)
+        await PerakendeService.createInvoice({ ...payload, faturaId: kayitliId, faturaNo: kayitliNo || payload.faturaNo, odemeler: odemeleriHazirla(posSonuc.kartlar) });
+      }
+      await pos.kaydedildi("perakende", kayitliId, kayitliNo);
+      if (!posSonuc.tamam) {
+        // Fiş kayıtlı kalır; ödeme satırı düzeltilip yeniden kaydedilir (K29). e-Belge bu haliyle gönderilmez (K30).
+        showWarning(`Fiş ${kayitliNo || ""} kaydedildi ancak POS tahsilatı alınmadı. Ödeme satırını düzeltip yeniden kaydedin.`);
+        if (kayitliId) await handleSelectInvoiceForEdit(kayitliId);
+        return;
+      }
 
       if (withPrint) {
         // Önizlemesiz doğrudan yerel sessiz yazdırma servisine (localhost:5050) gönder

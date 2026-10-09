@@ -7,7 +7,8 @@ import { DbContext } from "./ebelgeSql.repository.js";
  * Fatura formundaki numara listesi yalnızca bu serilerden gelir; numara ICE'deki son sıra + 1 ile hesaplanır.
  * Tür başına en fazla bir varsayılan seri.
  */
-export type SeriBelgeTuru = "EFatura" | "EArsiv";
+/** EGider: Perakende alış fişlerinin gider pusulası serisi (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3) */
+export type SeriBelgeTuru = "EFatura" | "EArsiv" | "EGider";
 export interface SeriKaydi {
   belgeTuru: SeriBelgeTuru;
   seri: string;

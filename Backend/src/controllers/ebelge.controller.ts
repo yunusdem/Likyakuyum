@@ -429,7 +429,7 @@ export class EbelgeController {
     const liste = parsed.data.liste;
     const anahtarlar = liste.map((s) => `${s.belgeTuru}:${s.seri}`);
     if (new Set(anahtarlar).size !== anahtarlar.length) throw ApiError.badRequest("Aynı seri aynı türde iki kez girilmiş.");
-    for (const tur of ["EFatura", "EArsiv"] as const) {
+    for (const tur of ["EFatura", "EArsiv", "EGider"] as const) {
       const turdekiler = liste.filter((s) => s.belgeTuru === tur);
       const varsayilanSayisi = turdekiler.filter((s) => s.varsayilan).length;
       if (varsayilanSayisi > 1) throw ApiError.badRequest(`${tur} için yalnızca bir varsayılan seri seçilebilir.`);

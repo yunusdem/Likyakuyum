@@ -1769,7 +1769,8 @@ export class EbelgeService {
   public static async giderPusulasiGonder(
     girdi: GiderPusulasiGirdi,
     kullanici: string,
-    dbContext?: DbContext
+    dbContext?: DbContext,
+    secenek: { kaynakFisId?: string } = {}
   ): Promise<{
     uuid: string;
     belgeNo: string;
@@ -1860,6 +1861,8 @@ export class EbelgeService {
         semaGecerli: null,
         schematronGecerli: null,
         iceResponseMesaj: "Gönderim kuyruğunda.",
+        // Kaynak anahtarı (Perakende alış fişi): kuyruk sonucu kaynağa ve fişe de işlenir
+        kaynakFisId: secenek.kaynakFisId ?? null,
         xmlIcerik: xml,
         olusturan: kullanici,
         gonderen: kullanici,
