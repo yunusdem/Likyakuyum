@@ -15,7 +15,8 @@ import { GrupOdemesi, PesinOdeme, PosIslem, PosKalem, PosSurucu, PosTerminal, Su
  * → kart okutulur, bilgi fişi basılır (CLOSED) → sonuç "Sipariş Durum Güncelleme" webhook'uyla bize gelir; gelmezse
  * sorgula() siparişi TSM'den okur. Dönen ödemeler aynı fişin POS satırlarına tutara göre dağıtılır (pos.service).
  *
- * GERÇEK CİHAZLA DENENMEDİ (08.10.2026): test cihazı kargoda. Swagger'da açık olmayan noktalar "A15" ile işaretli.
+ * Gerçek M530 test cihazıyla denendi (09–10.10.2026): tek / iki kart, nakit + kart, vazgeçme, internetsiz, meşgul,
+ * webhook. Belgede olmayanlar (kart reddi bildirimi, iade, canlı adres) Inpos'a soruldu.
  */
 
 const ZAMAN_ASIMI_MS = 20_000;
@@ -23,9 +24,18 @@ const ZAMAN_ASIMI_MS = 20_000;
 const ERISIM_PAYI_SN = 120;
 const ESLESME_ONBELLEK_MS = 10 * 60 * 1000;
 
-/** Bilgi fişindeki tek kalem (A15: mali müşavir cevabına kadar kısım 1, KDV %0; kuyumda özel matrah). */
-const KALEM_KISIM = 1;
+/** Kalemler verilemediğinde bilgi fişindeki tek satırın KDV oranı (kuyumda altın bedeli istisna). */
 const KALEM_KDV = 0;
+/** TSM'nin kabul ettiği KDV oranları (swagger: "0, 1, 10 ya da 20"); başka oran siparişi reddettirir. */
+const GECERLI_KDV = new Set([0, 1, 10, 20]);
+/** Bilgi fişi kopya sayısı (swagger document.slipCount; boş bırakılırsa cihaz 2 basar). */
+const FIS_KOPYA = 1;
+/**
+ * Aynı sipariş en fazla bu aralıkla sorgulanır. Swagger: getOrderById'nin periyodik çağrılması limit aşımına ve
+ * yavaşlamaya yol açar; sonuç için webhook önerilir. Sonuç asıl olarak "Sipariş Durum Güncelleme" bildirimiyle gelir,
+ * sorgu yalnız bildirim ulaşmazsa yedek yoldur.
+ */
+const SORGU_ARALIK_MS = 10_000;
 
 /** TSM'nin ödeme tipleri (PaymentTypeEnum) */
 const ODEME_TIPI = { kart: "CreditCardPayment", nakit: "CashPayment", havale: "MoneyTransfer", cari: "OpenAccount" } as const;
@@ -189,18 +199,23 @@ const eslesmeBul = async (csn: string): Promise<Eslesme> => {
 
 const pesinTipi = (tur: PesinOdeme["tur"]): string => ODEME_TIPI[tur];
 
-/** Bilgi fişi kalemleri: fiş satırları toplamı sipariş toplamını tutuyorsa satırlar, değilse tek satır. Tutar KDV dahil. */
+/**
+ * Bilgi fişi kalemleri: fiş satırları toplamı sipariş toplamını tutuyor ve oranlar TSM'nin kabul ettikleriyse satırlar,
+ * değilse tek satır. Tutar KDV dahil. Kısım (section) hiçbir satırda gönderilmez.
+ */
 export const inposKalemleri = (kalemler: PosKalem[] | undefined, toplam: number) => {
-  const tek = [{ name: "Fatura toplamı", unitPrice: toplam, vat: KALEM_KDV, quantity: 1, unit: "adet", section: KALEM_KISIM }];
+  const tek = [{ name: "Fatura toplamı", unitPrice: toplam, vat: KALEM_KDV, quantity: 1, unit: "adet" }];
   if (!kalemler?.length) return tek;
   const kalemToplam = para(kalemler.reduce((t, k) => t + k.tutar, 0));
   if (Math.abs(kalemToplam - toplam) > 0.011) return tek;
+  // TSM yalnız 0 / 1 / 10 / 20 kabul eder (eski %18 / %8 oranlı fiş "geçersiz KDV oranı" ile reddedilirdi)
+  if (kalemler.some((k) => !GECERLI_KDV.has(Math.round(k.kdvOrani)))) return tek;
   // Kısım gönderilmez: M530'da her kısmın sabit KDV oranı var; kısım verilince oran tutmazsa cihaz "geçersiz KDV oranı" der.
-  // Cihaz, orana uyan kısmı kendisi seçer (cihazda o oranda bir kısım tanımlı olmalı). Oran fişteki gibi gider (test cihazında %18 var).
+  // Cihaz, orana uyan kısmı kendisi seçer (cihazda o oranda bir kısım tanımlı olmalı).
   return kalemler.map((k) => ({
     name: k.ad.slice(0, 100),
     unitPrice: para(k.tutar / k.miktar),
-    vat: Math.min(100, Math.max(0, Math.round(k.kdvOrani))),
+    vat: Math.round(k.kdvOrani),
     quantity: k.miktar,
     unit: "adet",
   }));
@@ -229,6 +244,7 @@ export const inposSiparisi = (i: SurucuIstek, matchId: string, csn: string) => {
       ...(i.aliciVkn ? { taxNo: i.aliciVkn } : {}),
       ...(i.islem.belgeNo ? { no: i.islem.belgeNo } : {}),
       date: new Date().toISOString(),
+      slipCount: FIS_KOPYA,
       deliveryNote: false,
     },
     // Fişte nakit / havale / cari kısmı varsa cihazda "ödenmiş" sayılır; cihaz yalnız kart tutarını çeker
@@ -303,6 +319,16 @@ export const inposSiparisIslendi = async (ref: string, csn: string | null): Prom
   }
 };
 
+/** Son sorgu cevabı (sipariş kimliğine göre); süresi geçenler yazarken temizlenir. */
+const sorguOnbellegi = new Map<string, { zaman: number; sonuc: SurucuSonuc | null }>();
+const sorguOnbellegiYaz = (ref: string, sonuc: SurucuSonuc | null) => {
+  const simdi = Date.now();
+  for (const [k, v] of sorguOnbellegi) if (simdi - v.zaman >= SORGU_ARALIK_MS) sorguOnbellegi.delete(k);
+  sorguOnbellegi.set(ref, { zaman: simdi, sonuc });
+};
+/** Test için: sorgu önbelleğini boşaltır. */
+export const inposSorguOnbelleginiTemizle = () => sorguOnbellegi.clear();
+
 export const InposSurucu: PosSurucu = {
   async gonder(i: SurucuIstek) {
     const csn = inposCsn(i.terminal);
@@ -315,12 +341,18 @@ export const InposSurucu: PosSurucu = {
 
   async sorgula(islem: PosIslem, terminal: PosTerminal): Promise<SurucuSonuc | null> {
     if (!islem.surucuRef) return null;
+    // Pencere 2 sn'de bir yokluyor ve aynı siparişin her kart satırı ayrı soruyor: TSM'ye aynı sipariş için en fazla
+    // SORGU_ARALIK_MS'de bir gidilir, arada son cevap verilir (sonuç zaten webhook'la gelir)
+    const onceki = sorguOnbellegi.get(islem.surucuRef);
+    if (onceki && Date.now() - onceki.zaman < SORGU_ARALIK_MS) return onceki.sonuc;
     const { durum, veri } = await istek(`Inpos sipariş sorgu ${islem.posIslemId}`, "GET", "/api/getOrderById", undefined, { id: islem.surucuRef, csn: inposCsn(terminal) });
-    if (durum === 404) return { durum: "IPTAL", hata: "Sipariş cihaz servisinde bulunamadı (silinmiş).", grupOdemeleri: [] };
-    if (durum >= 400) throw inposHatasi(durum, veri, "Sipariş sorgulanamadı.");
-    const sonuc = inposSonucuCoz(veri);
+    let sonuc: SurucuSonuc | null;
+    if (durum === 404) sonuc = { durum: "IPTAL", hata: "Sipariş cihaz servisinde bulunamadı (silinmiş).", grupOdemeleri: [] };
+    else if (durum >= 400) throw inposHatasi(durum, veri, "Sipariş sorgulanamadı.");
     // "İşlendi" işareti sonucu satırlara yazan tarafta (pos.service grupSonucunuIsle) bir kez konur; burada da konunca
     // aynı sipariş için iki istek gidiyor, ikincisi 400 dönüyordu (10.10.2026 günlüğü).
+    else sonuc = inposSonucuCoz(veri);
+    sorguOnbellegiYaz(islem.surucuRef, sonuc);
     return sonuc;
   },
 
