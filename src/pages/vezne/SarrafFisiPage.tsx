@@ -757,12 +757,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
   // Grid State (Kalemler)
   const [lines, setLines] = useState<GridRow[]>([createEmptyRow(1)]);
+  const linesRef = useRef<GridRow[]>(lines);
+  linesRef.current = lines;
   const [activeRowIndex, setActiveRowIndex] = useState(0);
   const [invalidRowIds, setInvalidRowIds] = useState<Record<string, boolean>>({});
   const rowInputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
 
   // Ödeme / Tahsilat Tablosu Grid State
   const [odemeRows, setOdemeRows] = useState<OdemeRow[]>([createEmptyOdemeRow(1)]);
+  const odemeRowsRef = useRef<OdemeRow[]>(odemeRows);
+  odemeRowsRef.current = odemeRows;
   const [activeOdemeRowIndex, setActiveOdemeRowIndex] = useState(0);
   const [invalidOdemeRowIds, setInvalidOdemeRowIds] = useState<Record<string, boolean>>({});
   const odemeInputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
@@ -2755,11 +2759,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const isSarrafRowCompletelyEmpty = useCallback((r?: GridRow): boolean => {
     if (!r) return true;
     const hasCode = Boolean((r.urunKodu && r.urunKodu.trim() !== "") || (r.urunAdi && r.urunAdi.trim() !== ""));
-    const hasAdet = Boolean(r.adet && Number(r.adet) > 0);
-    const hasMiktar = Boolean(r.miktar && parseDecimal(r.miktar) > 0);
-    const hasTutar = Boolean(r.tutar && parseDecimal(r.tutar) > 0);
-    const hasKur = Boolean(r.kur && parseDecimal(r.kur) > 0);
-    return !hasCode && !hasAdet && !hasMiktar && !hasTutar && !hasKur;
+    const hasAdet = Boolean(r.adet !== "" && r.adet !== null && Number(r.adet) > 0);
+    const hasMiktar = Boolean(r.miktar !== "" && r.miktar !== null && parseDecimal(r.miktar) > 0);
+    const hasTutar = Boolean(r.tutar !== "" && r.tutar !== null && parseDecimal(r.tutar) > 0);
+    const hasGram = Boolean(r.hasGram !== "" && r.hasGram !== null && parseDecimal(r.hasGram) > 0);
+    // Ürün kodu veya adı seçilmemişse veya hiçbir miktar/adet/tutar/gram girilmemişse satır boştur
+    if (!hasCode) return true;
+    if (!hasAdet && !hasMiktar && !hasTutar && !hasGram) return true;
+    return false;
   }, []);
 
   // Satırın geçerli şekilde doldurulup doldurulmadığını kontrol eder (Kalemler)
@@ -2791,25 +2798,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // Satırın tamamen boş olup olmadığını kontrol eder (Ödeme / Tahsilat)
   const isOdemeRowCompletelyEmpty = useCallback((r?: OdemeRow): boolean => {
     if (!r) return true;
-    const hasMiktar = Boolean(r.miktar && parseDecimal(r.miktar) > 0);
-    const hasTutar = Boolean(r.tutar && parseDecimal(r.tutar) > 0);
-    const hasAdet = Boolean(r.adet && Number(r.adet) > 0);
-    const hasHasGram = Boolean(r.hasGram && parseDecimal(r.hasGram) > 0);
-    const hasNonDefaultTur = r.odemeAraciTuru !== 0 && r.odemeAraciTuru !== undefined;
-    const hasCariOrBank = Boolean(r.cariKod || r.cariKartId || r.bankaId || r.posCihaziId || r.iskontoId);
-    const hasCustomCode = Boolean(
+    const hasCode = Boolean(
       r.paraKodu &&
       r.paraKodu.trim() !== "" &&
       r.paraKodu.toUpperCase() !== "TL" &&
       r.paraKodu.toUpperCase() !== "TRY"
     );
-    const hasCustomName = Boolean(
-      r.aciklama &&
-      r.aciklama.trim() !== "" &&
-      r.aciklama.toUpperCase() !== "TÜRK LİRASI" &&
-      r.aciklama.toUpperCase() !== "TURK LIRASI"
+    const hasName = Boolean(
+      r.paraAdi &&
+      r.paraAdi.trim() !== "" &&
+      r.paraAdi.toUpperCase() !== "TÜRK LİRASI" &&
+      r.paraAdi.toUpperCase() !== "TURK LIRASI"
     );
-    return !hasMiktar && !hasTutar && !hasAdet && !hasHasGram && !hasNonDefaultTur && !hasCariOrBank && !hasCustomCode && !hasCustomName;
+    const hasMiktar = Boolean(r.miktar !== "" && r.miktar !== null && parseDecimal(r.miktar) > 0);
+    const hasTutar = Boolean(r.tutar !== "" && r.tutar !== null && parseDecimal(r.tutar) > 0);
+    const hasAdet = Boolean(r.adet !== "" && r.adet !== null && Number(r.adet) > 0);
+    const hasHasGram = Boolean(r.hasGram !== "" && r.hasGram !== null && parseDecimal(r.hasGram) > 0);
+    const hasNonDefaultTur = r.odemeAraciTuru !== 0 && r.odemeAraciTuru !== undefined;
+    const hasCariOrBank = Boolean(r.cariKod || r.cariKartId || r.bankaId || r.posCihaziId || r.iskontoId);
+
+    return !hasMiktar && !hasTutar && !hasAdet && !hasHasGram && !hasNonDefaultTur && !hasCariOrBank && !hasCode && !hasName;
   }, []);
 
   // Satırın geçerli şekilde doldurulup doldurulmadığını kontrol eder (Ödeme / Tahsilat)
@@ -2823,27 +2831,36 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     return hasCode && hasAdet && hasMiktar && hasKurOrTutar;
   }, []);
 
-const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
-  if (!row) return true;
-  const hasParaKodu = Boolean(row.paraKodu && String(row.paraKodu).trim());
-  const hasParaAdi = Boolean(row.paraAdi && String(row.paraAdi).trim());
-  const hasAciklama = Boolean(row.aciklama && String(row.aciklama).trim());
-  const hasCariKod = Boolean(row.cariKod && String(row.cariKod).trim());
-  const hasAdet = Boolean(row.adet !== "" && row.adet !== null && Number(row.adet) > 0);
-  const hasMiktar = Boolean(row.miktar !== "" && row.miktar !== null && Number(row.miktar) > 0);
-  const hasMilyem = Boolean(row.milyem !== "" && row.milyem !== null && Number(row.milyem) > 0);
-  const hasHasGram = Boolean(row.hasGram !== "" && row.hasGram !== null && Number(row.hasGram) > 0);
-  const hasKur = Boolean(row.kur !== "" && row.kur !== null && Number(row.kur) > 0);
-  const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && Number(row.tutar) > 0);
-  const hasCari = Boolean(row.cariKartId);
-  const hasBanka = Boolean(row.bankaId);
-  const hasParaId = Boolean(row.paraId);
-  const hasIskontoId = Boolean(row.iskontoId);
-  const hasPosCihaziId = Boolean(row.posCihaziId);
-  const hasModifiedTur = row.odemeAraciTuru !== 0 && row.odemeAraciTuru !== undefined;
+  const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
+    if (!row) return true;
+    const hasParaKodu = Boolean(
+      row.paraKodu &&
+      String(row.paraKodu).trim() !== "" &&
+      String(row.paraKodu).trim().toUpperCase() !== "TL" &&
+      String(row.paraKodu).trim().toUpperCase() !== "TRY"
+    );
+    const hasParaAdi = Boolean(
+      row.paraAdi &&
+      String(row.paraAdi).trim() !== "" &&
+      String(row.paraAdi).trim().toUpperCase() !== "TÜRK LİRASI" &&
+      String(row.paraAdi).trim().toUpperCase() !== "TURK LIRASI"
+    );
+    const hasAciklama = Boolean(row.aciklama && String(row.aciklama).trim());
+    const hasCariKod = Boolean(row.cariKod && String(row.cariKod).trim());
+    const hasAdet = Boolean(row.adet !== "" && row.adet !== null && Number(row.adet) > 0);
+    const hasMiktar = Boolean(row.miktar !== "" && row.miktar !== null && Number(row.miktar) > 0);
+    const hasMilyem = Boolean(row.milyem !== "" && row.milyem !== null && Number(row.milyem) > 0);
+    const hasHasGram = Boolean(row.hasGram !== "" && row.hasGram !== null && Number(row.hasGram) > 0);
+    const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && Number(row.tutar) > 0);
+    const hasCari = Boolean(row.cariKartId);
+    const hasBanka = Boolean(row.bankaId);
+    const hasParaId = Boolean(row.paraId);
+    const hasIskontoId = Boolean(row.iskontoId);
+    const hasPosCihaziId = Boolean(row.posCihaziId);
+    const hasModifiedTur = row.odemeAraciTuru !== 0 && row.odemeAraciTuru !== undefined;
 
-  return !hasParaKodu && !hasParaAdi && !hasAciklama && !hasCariKod && !hasAdet && !hasMiktar && !hasMilyem && !hasHasGram && !hasKur && !hasTutar && !hasCari && !hasBanka && !hasParaId && !hasIskontoId && !hasPosCihaziId && !hasModifiedTur;
-};
+    return !hasParaKodu && !hasParaAdi && !hasAciklama && !hasCariKod && !hasAdet && !hasMiktar && !hasMilyem && !hasHasGram && !hasTutar && !hasCari && !hasBanka && !hasParaId && !hasIskontoId && !hasPosCihaziId && !hasModifiedTur;
+  };
 
   // Boş satırları otomatik temizler (Ödeme / Tahsilat)
   const cleanupEmptyOdemeRows = useCallback((keepActiveIndex?: number | null) => {
@@ -3152,17 +3169,44 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
   }, []);
 
   const handleAddSarrafRow = useCallback(() => {
-    const newRow = createEmptyRow(lines.length + 1);
-    setLines((prev) => [...prev, newRow]);
-    setActiveRowIndex(lines.length);
+    const currentLines = linesRef.current;
+    if (currentLines.length > 0) {
+      const lastRow = currentLines[currentLines.length - 1];
+      if (isSarrafRowCompletelyEmpty(lastRow)) {
+        setActiveRowIndex(currentLines.length - 1);
+        setTimeout(() => focusGridCell(lastRow.id, "urunKodu", "select"), 30);
+        return false;
+      }
+    }
+    const newRow = createEmptyRow(currentLines.length + 1);
+    setLines((prev) => {
+      if (prev.length > 0 && isSarrafRowCompletelyEmpty(prev[prev.length - 1])) {
+        return prev;
+      }
+      return [...prev, newRow];
+    });
+    setActiveRowIndex(currentLines.length);
     setTimeout(() => focusGridCell(newRow.id, "urunKodu", "select"), 30);
     return true;
-  }, [lines.length, focusGridCell]);
+  }, [isSarrafRowCompletelyEmpty, focusGridCell]);
 
   const handleAddOdemeRow = useCallback((afterIndex?: number) => {
-    const newRow = createEmptyOdemeRow(odemeRows.length + 1);
-    const newIdx = typeof afterIndex === "number" && afterIndex >= 0 ? afterIndex + 1 : odemeRows.length;
+    const currentOdemeRows = odemeRowsRef.current;
+    if (currentOdemeRows.length > 0) {
+      const lastRow = currentOdemeRows[currentOdemeRows.length - 1];
+      if (isOdemeRowEmpty(lastRow) || isOdemeRowCompletelyEmpty(lastRow)) {
+        const lastIdx = currentOdemeRows.length - 1;
+        setActiveOdemeRowIndex(lastIdx);
+        setTimeout(() => focusOdemeGridCell(lastRow.id, "odemeAraciTuru", "select"), 20);
+        return false;
+      }
+    }
+    const newRow = createEmptyOdemeRow(currentOdemeRows.length + 1);
+    const newIdx = typeof afterIndex === "number" && afterIndex >= 0 ? afterIndex + 1 : currentOdemeRows.length;
     setOdemeRows((prev) => {
+      if (prev.length > 0 && (isOdemeRowEmpty(prev[prev.length - 1]) || isOdemeRowCompletelyEmpty(prev[prev.length - 1]))) {
+        return prev;
+      }
       if (typeof afterIndex === "number" && afterIndex >= 0) {
         const next = [...prev];
         next.splice(afterIndex + 1, 0, newRow);
@@ -3174,7 +3218,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
     setTimeout(() => focusOdemeGridCell(newRow.id, "odemeAraciTuru", "select"), 20);
     setTimeout(() => focusOdemeGridCell(newRow.id, "odemeAraciTuru", "select"), 80);
     return true;
-  }, [odemeRows.length, focusOdemeGridCell]);
+  }, [isOdemeRowEmpty, isOdemeRowCompletelyEmpty, focusOdemeGridCell]);
 
   // Sağ tık menüsü eylemleri (Kalanı Kapat, Satırı Sil & Yeni Satır Ekle - Her iki tablo için duyarlı)
   useEffect(() => {
@@ -3204,7 +3248,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       const rowId = e.detail?.rowId;
 
       if (tableType === "odeme" || (rowId && odemeRows.some((o) => o.id === rowId))) {
-        setOdemeRows((prev) => [...prev, createEmptyOdemeRow(prev.length + 1)]);
+        handleAddOdemeRow();
       } else {
         handleAddSarrafRow();
       }
@@ -3218,7 +3262,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       window.removeEventListener("erp-grid-row-delete", handleGridDelete);
       window.removeEventListener("erp-grid-row-add", handleGridAdd);
     };
-  }, [handleDeleteLine, handleDeleteOdemeRow, handleKapatRow, odemeRows, handleAddSarrafRow]);
+  }, [handleDeleteLine, handleDeleteOdemeRow, handleKapatRow, odemeRows, handleAddSarrafRow, handleAddOdemeRow]);
 
   // Bildirimlerin belli süre sonra otomatik kaybolması
   useEffect(() => {

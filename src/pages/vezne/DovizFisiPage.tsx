@@ -370,10 +370,10 @@ export const DovizFisiPage: React.FC = () => {
     PrinterService.getYazicilar().then(setPrinters).catch(() => { });
   }, []);
 
-  // Kuruş ve ondalık basamak sayıları (Firma Tanımlarından alınır)
+  // Kuruş ve ondalık basamak sayıları (Firma Tanımlarından alınır, TL kuruşu her zaman en az 2 basamak)
   const tlKurusSayisi = useMemo(() => {
     return companyDefinitions?.TL_KURUS_SAYISI !== undefined && companyDefinitions?.TL_KURUS_SAYISI !== null
-      ? Number(companyDefinitions.TL_KURUS_SAYISI)
+      ? Math.max(2, Number(companyDefinitions.TL_KURUS_SAYISI))
       : 2;
   }, [companyDefinitions]);
 
@@ -1641,11 +1641,10 @@ export const DovizFisiPage: React.FC = () => {
   const calculateRowTutar = useCallback((miktar: number | string, kur: number | string, paraKodu?: string): number => {
     const m = parseMiktar(miktar);
     const isTL = (paraKodu || "").toUpperCase().trim() === "TL" || (paraKodu || "").toUpperCase().trim() === "TRY" || (paraKodu || "").toUpperCase().trim() === "TRL";
-    if (isTL) return m;
+    if (isTL) return parseFloat(m.toFixed(2));
     const k = parseKur(kur);
-    const factor = Math.pow(10, tlKurusSayisi);
-    return Math.round(m * k * factor) / factor;
-  }, [tlKurusSayisi]);
+    return parseFloat((m * k).toFixed(2));
+  }, []);
 
   const calculateRowValues = useCallback(
     (params: {
@@ -1663,7 +1662,6 @@ export const DovizFisiPage: React.FC = () => {
       const kmvMode = params.customKmvMode !== undefined
         ? params.customKmvMode
         : getEffectiveKmvMode(compDef);
-      const factor = Math.pow(10, tlKurusSayisi);
 
       const m = parseMiktar(params.miktar);
       const k = parseKur(params.kur);
@@ -1672,7 +1670,7 @@ export const DovizFisiPage: React.FC = () => {
         (params.paraKodu || "").toUpperCase().trim() === "TRY" ||
         (params.paraKodu || "").toUpperCase().trim() === "TRL";
 
-      const brutTutar = m > 0 ? (isTL ? m : Math.round(m * k * factor) / factor) : 0;
+      const brutTutar = m > 0 ? (isTL ? m : parseFloat((m * k).toFixed(2))) : 0;
 
       let bmvVal = "";
       let kmvVal = "";
@@ -1685,11 +1683,11 @@ export const DovizFisiPage: React.FC = () => {
       const komRate = parseDecimal(params.komisyonOrani || "0");
 
       if (komRate > 0 && brutTutar > 0) {
-        komVal = (Math.round(brutTutar * (komRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
+        komVal = parseFloat((brutTutar * (komRate / 100)).toFixed(2)).toFixed(2);
       }
 
       if (bmvRate > 0 && brutTutar > 0) {
-        bmvVal = (Math.round(brutTutar * (bmvRate / 100) * factor) / factor).toFixed(tlKurusSayisi);
+        bmvVal = parseFloat((brutTutar * (bmvRate / 100)).toFixed(2)).toFixed(2);
       }
 
       if (kmvMode === 1) {
@@ -1700,18 +1698,18 @@ export const DovizFisiPage: React.FC = () => {
         // 2 - Kura Dahil (KMV kura dahil: tutardan KMV düşülmez, miktar * kur olarak kalır; KMV ise KMV alanında ayrıyeten belirtilir)
         tutarVal = brutTutar > 0 ? brutTutar : "";
         if (kmvRate > 0 && brutTutar > 0) {
-          const vergisizMatrah = Math.round((brutTutar / (1 + kmvRate / 100)) * factor) / factor;
-          const calculatedKmv = Math.round((brutTutar - vergisizMatrah) * factor) / factor;
-          kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(tlKurusSayisi) : "";
+          const vergisizMatrah = parseFloat((brutTutar / (1 + kmvRate / 100)).toFixed(2));
+          const calculatedKmv = parseFloat((brutTutar - vergisizMatrah).toFixed(2));
+          kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
         } else {
           kmvVal = "";
         }
       } else {
-        // 3 - Kurdan Hariç (Dış Yüzde Yöntemi)
+        // 3 - Kurdan Hariç (Dış Yüzde Yöntemi: KMV Tutarı = Tutar * KMV_Orani / 100)
         tutarVal = brutTutar > 0 ? brutTutar : "";
         if (kmvRate > 0 && brutTutar > 0) {
-          const calculatedKmv = Math.round(brutTutar * (kmvRate / 100) * factor) / factor;
-          kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(tlKurusSayisi) : "";
+          const calculatedKmv = parseFloat((brutTutar * (kmvRate / 100)).toFixed(2));
+          kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
         } else {
           kmvVal = "";
         }
@@ -1726,7 +1724,7 @@ export const DovizFisiPage: React.FC = () => {
         komisyon: komVal,
       };
     },
-    [companyDefinitions, tip, tlKurusSayisi]
+    [companyDefinitions, tip]
   );
 
   const handleAddRow = () => {
@@ -1909,7 +1907,7 @@ export const DovizFisiPage: React.FC = () => {
           const komVal = parseDecimal(value);
           const brut = calculateRowTutar(m, k, updated.paraKodu);
           if (brut > 0 && komVal > 0) {
-            updated.komisyonOrani = (Math.round((komVal / brut) * 100 * 100) / 100).toString();
+            updated.komisyonOrani = parseFloat(((komVal / brut) * 100).toFixed(2)).toString();
           } else if (!value) {
             updated.komisyonOrani = "";
           }
@@ -2619,24 +2617,28 @@ export const DovizFisiPage: React.FC = () => {
     }, 0);
   }, [lines]);
 
-  // Toplam Masraf: Tablodaki satırların toplam BMV, KMV ve Komisyon toplamıdır.
+  // Toplam Masraf: 
+  // KMV Uygulama Şekli:
+  // 1 - Uygulanmasın: Toplam Masraf = Komisyon + BMV (KMV = 0)
+  // 2 - Kura Dahil: Toplam Masraf = Komisyon + BMV (KMV kura dahil olduğu için masraf kutusuna eklenmez)
+  // 3 - Kurdan Hariç: Toplam Masraf = Komisyon + BMV + KMV
   const totalMasraf = useMemo(() => {
-    const factor = Math.pow(10, tlKurusSayisi);
-    return Math.round((calculatedBsmv + totalKmv + totalKomisyon) * factor) / factor;
-  }, [calculatedBsmv, totalKmv, totalKomisyon, tlKurusSayisi]);
-
-  // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + (Kura dahil değilse KMV) + BMV + Komisyon)
-  const sonToplam = useMemo(() => {
     const compDef = companyDefinitionsRef.current || companyDefinitions;
     const kmvMode = getEffectiveKmvMode(compDef);
-    const factor = Math.pow(10, tlKurusSayisi);
+    const effectiveKmv = kmvMode === 3 ? totalKmv : 0;
+    return parseFloat((calculatedBsmv + effectiveKmv + totalKomisyon).toFixed(2));
+  }, [calculatedBsmv, totalKmv, totalKomisyon, companyDefinitions]);
+
+  // Son Toplam:
+  // ALIŞ fişinde (tip === 0): Ödenecek TL = Toplam Tutar - Toplam Masraf
+  // SATIŞ fişinde (tip === 1): Alınacak TL = Toplam Tutar + Toplam Masraf
+  const sonToplam = useMemo(() => {
     if (tip === 1) {
-      const addedKmv = kmvMode === 2 ? 0 : totalKmv;
-      return Math.round((totalTutar + addedKmv + calculatedBsmv + totalKomisyon) * factor) / factor;
+      return parseFloat((totalTutar + totalMasraf).toFixed(2));
     } else {
-      return Math.round((totalTutar - totalMasraf) * factor) / factor;
+      return parseFloat((totalTutar - totalMasraf).toFixed(2));
     }
-  }, [totalTutar, totalKmv, calculatedBsmv, totalKomisyon, totalMasraf, tip, tlKurusSayisi, companyDefinitions]);
+  }, [totalTutar, totalMasraf, tip]);
 
   // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
   const isMasakLimitExceeded = useMemo(() => {
@@ -5567,7 +5569,7 @@ export const DovizFisiPage: React.FC = () => {
                       {/* Tutar */}
                       <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
                         {row.tutar !== "" && row.tutar !== undefined && row.tutar !== null && parseDecimal(row.tutar) > 0
-                          ? parseDecimal(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })
+                          ? parseDecimal(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                           : ""}
                       </td>
                     </tr>
@@ -5589,7 +5591,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                  value={totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                  value={totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
               <div className="d-flex align-items-center">
@@ -5600,7 +5602,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                  value={totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                  value={totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
             </Col>
@@ -5645,7 +5647,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
-                  value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                  value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
               <div className="d-flex align-items-center">
@@ -5656,7 +5658,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold text-primary bg-light"
-                  value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}
+                  value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
             </Col>

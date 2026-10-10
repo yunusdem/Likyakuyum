@@ -141,6 +141,7 @@ export class UserSqlRepository {
         const isSysAdmin = toBool(entity.SISTEM_YONETICISI);
         const id = String(entity.KULLANICI_ID);
         const username = (entity.AD || "").trim();
+        const vezneKod = entity.VEZNE_KOD ? String(entity.VEZNE_KOD).trim() : (entity.VEZNE_ID !== undefined && entity.VEZNE_ID !== null ? String(entity.VEZNE_ID) : "00");
         return {
             id,
             username,
@@ -149,7 +150,7 @@ export class UserSqlRepository {
             password: entity.SIFRE || "",
             passwordHash: entity.SIFRE || "",
             role: isSysAdmin ? UserRole.ADMIN : UserRole.CASHIER,
-            cashierCode: String(entity.VEZNE_ID ?? "0"),
+            cashierCode: vezneKod,
             isActive: true,
             // Left column permissions
             isSysAdmin,
@@ -364,29 +365,31 @@ export class UserSqlRepository {
      */
     static async resolveValidVezneId(pool, inputVezneId) {
         const rawStr = String(inputVezneId || "").trim();
+        if (!rawStr)
+            return 0;
+        // 1. Önce KOD olarak tam eşleşme ara (örn: "01", "00", "02")
+        const checkKod = await pool.request()
+            .input("chkKod", sql.VarChar(50), rawStr)
+            .query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] WHERE UPPER(LTRIM(RTRIM([KOD]))) = UPPER(LTRIM(RTRIM(@chkKod)))");
+        if (checkKod.recordset && checkKod.recordset.length > 0) {
+            return checkKod.recordset[0].VEZNE_ID;
+        }
+        // 2. ID olarak eşleşme ara
         const rawId = toInt(inputVezneId, -1);
         if (rawId >= 0) {
             const check = await pool.request()
                 .input("chkId", sql.Int, rawId)
                 .query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] WHERE [VEZNE_ID] = @chkId");
             if (check.recordset && check.recordset.length > 0) {
-                return rawId;
+                return check.recordset[0].VEZNE_ID;
             }
         }
-        if (rawStr) {
-            const checkKod = await pool.request()
-                .input("chkKod", sql.VarChar(50), rawStr)
-                .query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] WHERE [KOD] = @chkKod");
-            if (checkKod.recordset && checkKod.recordset.length > 0) {
-                return checkKod.recordset[0].VEZNE_ID;
-            }
-        }
-        // Fallback to first available vezne in TODVZ_VEZNE
+        // 3. Fallback to first available vezne in TODVZ_VEZNE
         const firstVezne = await pool.request().query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] ORDER BY [VEZNE_ID] ASC");
         if (firstVezne.recordset && firstVezne.recordset.length > 0) {
             return firstVezne.recordset[0].VEZNE_ID;
         }
-        return rawId >= 0 ? rawId : 1;
+        return rawId >= 0 ? rawId : 0;
     }
     /**
      * Creates a new user in [dbo].[TODVZ_KULLANICI] with safe parameterized inputs in the target database

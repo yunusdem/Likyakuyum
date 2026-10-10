@@ -52,6 +52,9 @@ export interface UserModel {
   passwordHash?: string;
   role: UserRoleType;
   cashierCode: string;
+  vezneId?: number;
+  vezneKod?: string;
+  vezneAd?: string;
   isActive: boolean;
 
   // Permissions & Hardware

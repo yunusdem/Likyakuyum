@@ -492,6 +492,7 @@ const UserDefinitionsPage: React.FC = () => {
   const [showEDocumentModal, setShowEDocumentModal] = useState<boolean>(false);
   const [showCashierModal, setShowCashierModal] = useState<boolean>(false);
   const [cashierList, setCashierList] = useState<{ id: number; kod: string; name: string }[]>([]);
+  const [showUserLookupModal, setShowUserLookupModal] = useState<boolean>(false);
   const [showPrinterModal, setShowPrinterModal] = useState<boolean>(false);
   const [printerList, setPrinterList] = useState<YaziciItem[]>([]);
 
@@ -503,17 +504,46 @@ const UserDefinitionsPage: React.FC = () => {
     title: string;
   }>({ show: false, field: "buyStatCode", title: "" });
 
+  // Check if current user in form is the logged-in user
+  const isCurrentUserSelf = useMemo(() => {
+    if (!currentUser) return false;
+    if (authUser?.id && currentUser.id && String(currentUser.id) === String(authUser.id)) {
+      return true;
+    }
+    if (authUser?.username && currentUser.username && currentUser.username.toLowerCase().trim() === authUser.username.toLowerCase().trim()) {
+      return true;
+    }
+    return false;
+  }, [authUser, currentUser]);
+
   // Selected cashier matching helper for dropdown
   const selectedCashierValue = useMemo(() => {
-    const raw = String(currentUser?.cashierCode || "").trim();
+    const raw = String(currentUser?.cashierCode || (currentUser as any)?.vezneId || "").trim();
     if (!raw) return "";
-    const matched = cashierList.find(
-      (c) =>
-        String(c.kod).toLowerCase() === raw.toLowerCase() ||
-        String(c.id) === raw
+
+    // 1. Direct match by id
+    const rawNum = parseInt(raw, 10);
+    if (!isNaN(rawNum)) {
+      const byId = cashierList.find((c) => Number(c.id) === rawNum);
+      if (byId) return String(byId.id);
+    }
+
+    // 2. Match by exact kod
+    const byExactKod = cashierList.find(
+      (c) => String(c.kod).toLowerCase() === raw.toLowerCase()
     );
-    return matched ? (matched.kod || String(matched.id)) : raw;
-  }, [currentUser?.cashierCode, cashierList]);
+    if (byExactKod) return String(byExactKod.id);
+
+    // 3. Numeric match on kod
+    if (!isNaN(rawNum)) {
+      const byNumKod = cashierList.find(
+        (c) => parseInt(String(c.kod), 10) === rawNum
+      );
+      if (byNumKod) return String(byNumKod.id);
+    }
+
+    return raw;
+  }, [currentUser?.cashierCode, (currentUser as any)?.vezneId, cashierList]);
 
   // Selected printer matching helper
   const selectedPrinter = useMemo(() => {
@@ -552,7 +582,9 @@ const UserDefinitionsPage: React.FC = () => {
 
       const mappedCashiers = (cashiers || []).map((v: any) => ({
         id: v.id,
-        kod: (v.kod || "").trim() || String(v.id),
+        kod: (v.kod !== undefined && v.kod !== null && String(v.kod).trim() !== "")
+          ? String(v.kod).trim()
+          : String(v.id),
         name: (v.ad || v.name || "").trim() || `Vezne ${v.id}`,
       }));
       setCashierList(mappedCashiers);
@@ -595,7 +627,7 @@ const UserDefinitionsPage: React.FC = () => {
           username: "",
           fullName: "",
           password: "",
-          cashierCode: mappedCashiers.length > 0 ? (mappedCashiers[0].kod || String(mappedCashiers[0].id)) : "00",
+          cashierCode: mappedCashiers.length > 0 ? String(mappedCashiers[0].id) : "01",
           isActive: true,
         });
         setIsNewRecord(true);
@@ -717,6 +749,14 @@ const UserDefinitionsPage: React.FC = () => {
 
       if (!isNewRecord && currentUser.id) {
         // Mevcut kullanıcıyı güncelle
+        if (!isCurrentUserSelf) {
+          const originalUser = users.find((u) => String(u.id) === String(currentUser.id));
+          if (originalUser && String(originalUser.cashierCode).trim() !== cashierVal) {
+            setAlertError("Güvenlik Kısıtlaması: Başka bir kullanıcının veznesini değiştiremezsiniz. Yalnızca kendi veznenizi değiştirebilirsiniz.");
+            return;
+          }
+        }
+
         const updated = await UserService.updateUser(currentUser.id, {
           ...currentUser,
           username: trimmedUsername.replace(/\s+/g, ""),
@@ -858,11 +898,17 @@ const UserDefinitionsPage: React.FC = () => {
         onSave={handleSave}
         onPrint={handlePrint}
         onRefresh={handleRefresh}
+        onFirst={() => handleNavigate("first")}
+        onPrev={() => handleNavigate("prev")}
+        onNext={() => handleNavigate("next")}
+        onLast={() => handleNavigate("last")}
+        onSearch={() => setShowUserLookupModal(true)}
+        onDelete={handleDelete}
         onEDocument={() => setShowEDocumentModal(true)}
         onConsolidatedDB={() => setShowConsolidatedModal(true)}
-        hideSearch={true}
-        hideDelete={true}
-        hideNavigation={true}
+        hideSearch={false}
+        hideDelete={false}
+        hideNavigation={false}
       />
 
 
@@ -910,6 +956,15 @@ const UserDefinitionsPage: React.FC = () => {
                       onChange={(e) => updateField("username", e.target.value.replace(/\s+/g, ""))}
                       className="border"
                     />
+                    <Button
+                      variant="outline-secondary"
+                      disabled={isLoading}
+                      onClick={() => setShowUserLookupModal(true)}
+                      title="Kullanıcı Listesinde Ara & Seç (F3)"
+                      className="d-flex align-items-center justify-content-center px-2.5 bg-light"
+                    >
+                      <IconSearch size={16} />
+                    </Button>
                   </InputGroup>
                 </Col>
               </Form.Group>
@@ -979,26 +1034,33 @@ const UserDefinitionsPage: React.FC = () => {
                     <Form.Select
                       size="sm"
                       value={selectedCashierValue}
-                      disabled={isLoading}
+                      disabled={isLoading || (!isNewRecord && !isCurrentUserSelf)}
                       onChange={(e) => updateField("cashierCode", e.target.value)}
                       className="border fw-bold font-monospace"
                     >
                       <option value="">-- Vezne Seçiniz --</option>
                       {cashierList.map((c) => (
-                        <option key={c.id} value={c.kod || String(c.id)}>
-                          [{c.kod}] {c.name}
+                        <option key={c.id} value={String(c.id)}>
+                          [{c.kod || c.id}] {c.name}
                         </option>
                       ))}
                     </Form.Select>
                     <Button
                       variant="outline-secondary"
+                      disabled={isLoading || (!isNewRecord && !isCurrentUserSelf)}
                       onClick={() => setShowCashierModal(true)}
-                      title="Vezne Listesinde Ara & Seç"
+                      title={!isNewRecord && !isCurrentUserSelf ? "Yalnızca kendi veznenizi değiştirebilirsiniz" : "Vezne Listesinde Ara & Seç"}
                       className="d-flex align-items-center justify-content-center px-2.5 bg-light"
                     >
                       <IconSearch size={16} />
                     </Button>
                   </InputGroup>
+                  {!isNewRecord && !isCurrentUserSelf && (
+                    <div className="text-danger mt-1 fw-semibold d-flex align-items-center gap-1" style={{ fontSize: "11px" }}>
+                      <IconShieldLock size={13} />
+                      Yalnızca kendi veznenizi değiştirebilirsiniz.
+                    </div>
+                  )}
                 </Col>
               </Form.Group>
             </Col>
@@ -2236,13 +2298,14 @@ const UserDefinitionsPage: React.FC = () => {
         onHide={() => setShowCashierModal(false)}
         title="Vezne Listesi & Arama"
         items={cashierList}
+        selectedId={selectedCashierValue}
         searchPlaceholder="Vezne kodu veya adı ile arayın..."
         columns={[
           {
             header: "Vezne Kodu",
             width: "120px",
             align: "center",
-            render: (v) => <span className="badge bg-light text-primary border font-monospace fw-bold px-2 py-1">{v.kod}</span>,
+            render: (v) => <span className="badge bg-light text-primary border font-monospace fw-bold px-2 py-1">{v.kod || v.id}</span>,
           },
           {
             header: "Vezne Adı",
@@ -2252,20 +2315,71 @@ const UserDefinitionsPage: React.FC = () => {
             header: "No / ID",
             width: "100px",
             align: "center",
-            render: (v) => <span className="text-muted small font-monospace">#{v.id}</span>,
+            render: (v) => <span className="text-muted small font-monospace">{v.id}</span>,
           },
         ]}
         filterFn={(item, term) => {
           const t = term.toLowerCase();
           return (
-            item.kod.toLowerCase().includes(t) ||
-            item.name.toLowerCase().includes(t) ||
+            String(item.kod || "").toLowerCase().includes(t) ||
+            String(item.name || "").toLowerCase().includes(t) ||
             String(item.id).includes(t)
           );
         }}
         onSelect={(item) => {
-          updateField("cashierCode", item.kod || String(item.id));
+          updateField("cashierCode", String(item.id));
           setShowCashierModal(false);
+        }}
+      />
+
+      {/* Modal 3.5: Kullanıcı Arama & Seçici (LookupModal) */}
+      <LookupModal<UserProfile>
+        show={showUserLookupModal}
+        onHide={() => setShowUserLookupModal(false)}
+        title="Kullanıcı Listesi & Arama"
+        items={users}
+        selectedId={currentUser?.id}
+        searchPlaceholder="Kullanıcı adı, isim veya vezne ile arayın..."
+        columns={[
+          {
+            header: "Kullanıcı Adı",
+            width: "160px",
+            render: (u) => <span className="fw-bold text-dark font-monospace">{u.username}</span>,
+          },
+          {
+            header: "Adı Soyadı",
+            render: (u) => <span>{u.fullName || u.username}</span>,
+          },
+          {
+            header: "Vezne Kodu",
+            width: "110px",
+            align: "center",
+            render: (u) => <Badge bg="light" className="text-primary border font-monospace px-2 py-1">{u.cashierCode || "-"}</Badge>,
+          },
+          {
+            header: "Yetki Rolü",
+            width: "110px",
+            align: "center",
+            render: (u) => <Badge bg={u.isSysAdmin ? "danger" : "secondary"}>{u.isSysAdmin ? "Yönetici" : "Kullanıcı"}</Badge>,
+          },
+        ]}
+        filterFn={(item, term) => {
+          const t = term.toLowerCase();
+          return (
+            (item.username || "").toLowerCase().includes(t) ||
+            (item.fullName || "").toLowerCase().includes(t) ||
+            (item.cashierCode || "").toLowerCase().includes(t) ||
+            String(item.id || "").includes(t)
+          );
+        }}
+        onSelect={(selectedU) => {
+          const idx = users.findIndex((u) => String(u.id) === String(selectedU.id));
+          if (idx !== -1) {
+            setUserIndex(idx);
+            setCurrentUser(JSON.parse(JSON.stringify(users[idx])));
+            setIsNewRecord(false);
+          }
+          setShowUserLookupModal(false);
         }}
       />
 
