@@ -304,15 +304,17 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       .then((list) => {
         if (!isMounted || !list || list.length === 0) return;
         const code = String(user?.cashierCode || "").trim();
+        const vezneId = (user as any)?.vezneId;
         const matched = list.find(
           (v) =>
+            (vezneId !== undefined && vezneId !== null && Number(v.id) === Number(vezneId)) ||
             String(v.id) === code ||
             (v.kod && v.kod.trim().toLowerCase() === code.toLowerCase())
         );
         if (matched) {
-          setVezneName(matched.ad || matched.kod);
+          setVezneName(matched.ad || matched.kod || `Vezne ${matched.id}`);
         } else if (list.length > 0) {
-          setVezneName(list[0].ad || list[0].kod);
+          setVezneName(list[0].ad || list[0].kod || `Vezne ${list[0].id}`);
         }
       })
       .catch(() => {});
@@ -320,7 +322,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     return () => {
       isMounted = false;
     };
-  }, [user?.cashierCode]);
+  }, [user?.cashierCode, (user as any)?.vezneId]);
 
   const [currentDate, setCurrentDate] = useState<string>(() => {
     return new Date().toLocaleDateString("tr-TR", {
@@ -994,7 +996,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
               style={{ fontSize: "0.75rem" }}
             >
               {(() => {
-                const raw = (vezneName || user?.cashierCode || "Ana Vezne").trim();
+                const raw = (vezneName || user?.vezneAd || user?.cashierCode || "Ana Vezne").trim();
                 const cleaned = raw.replace(/^(vezne\s*[:\-]?\s*)+/i, "").trim() || raw;
                 return (
                   <span

@@ -22,6 +22,9 @@ export const BELGE_NO_BICIMI = /^[A-Z0-9]{3}\d{13}$/;
 /** UN/ECE birim kodu (P12) */
 export const birimKodu = (birim) => {
     const b = temiz(birim).toLocaleUpperCase("tr-TR");
+    // Zaten UN/ECE kodu gelmişse (Sarraf satır görünümü GRM / NIU verir) olduğu gibi kalır
+    if (/^(GRM|KGM|C62|NIU)$/.test(b))
+        return b;
     if (/^(GR|GRAM|G)$/.test(b))
         return "GRM";
     if (/^(KG|KILOGRAM)$/.test(b))

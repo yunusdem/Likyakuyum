@@ -4,6 +4,7 @@ import { SureliOnbellek } from "../utils/sureliOnbellek.js";
 import { getPoolKey } from "../config/mssql.config.js";
 import { FATURA_NO_BICIMI, faturaNoUret } from "../utils/faturaNo.utils.js";
 import { EbelgeSeriRepository } from "../models/ebelgeSeri.repository.js";
+import { VARSAYILAN_ON_EK } from "./ebelgePerakende.js";
 import { isEncryptionConfigured } from "../utils/crypto.utils.js";
 import { EbelgeSqlRepository, } from "../models/ebelgeSql.repository.js";
 import { getInvoiceCount, getInvoiceHtml, getInvoicePdf, getInvoiceStatusDetail, getInvoices, getMusteriCariAdresleri, getOncekiBelgeAdresi, ublTarafAdresi, getSonBelgeId, getUserListEFatura, gonderimSatirlari, invoiceCheckValidate, invoiceRedKabul, parseAmount, parseCurrency, parseIceDate, sendDraftDocumentApproval, sendInvoiceTaslak, setInvoiceStatus, } from "./ice/ice.efatura.js";
@@ -1805,6 +1806,22 @@ export class EbelgeService {
             sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1), varsayilan });
         }
         return sonuc;
+    }
+    /**
+     * Gönderim anında numara verilen kaynak fişler için (Sarraf): fişin kendi numarası hangi biçimde olursa olsun
+     * kullanılmaz. Seri, e-Belge Ayarları'nda bu tür için varsayılan seri (yoksa ilk tanımlı, o da yoksa EAR / GIB / GDR);
+     * sıra, ICE + giden kutusu + henüz gönderilmemiş Perakende fiş numaralarının en büyüğünden bir fazla
+     * (Perakende fişinin önceden aldığı numarayla çakışmasın). Gider pusulası ICE'nin fatura sayaçlarında olmadığı için
+     * yalnız yerel kayıtlardan sayılır.
+     */
+    static async siradakiBelgeNo(belgeTuru, yil, dbContext) {
+        const tanimli = await EbelgeSeriRepository.listele(belgeTuru, dbContext);
+        const secili = String((tanimli.find((s) => s.varsayilan) || tanimli[0])?.seri || "").trim().toUpperCase();
+        const seri = /^[A-Z0-9]{3}$/.test(secili) ? secili : VARSAYILAN_ON_EK[belgeTuru];
+        const sonSira = belgeTuru === "EGider"
+            ? await EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext, true)
+            : await this.seriSonSira(await EbelgeSqlRepository.getConnectionConfig(dbContext), seri, yil, dbContext, true);
+        return faturaNoUret(seri, yil, sonSira + 1);
     }
     /**
      * Bir serinin o yıldaki son sırası (28.09.2026): ICE son numarayı belge türüne göre AYRI tutar (Get_Son_Belge_ID

@@ -6532,7 +6532,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     <td style={{ textAlign: "right" }}>{totalOdemeHas ? Number(totalOdemeHas).toFixed(4) : ""}</td>
                     <td></td>
                     <td style={{ textAlign: "right" }}>
-                      {totalOdemeTutar ? totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) + " TL" : ""}
+                      {totalOdemeTutar ? totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
                     </td>
                   </tr>
                 </tfoot>
@@ -6557,12 +6557,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 <tbody>
                   <tr>
                     <td className="fw-semibold text-secondary">{faturaTipi === 0 ? "Alış" : "Satış"}</td>
-                    <td className="text-end font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</td>
+                    <td className="text-end font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</td>
                     <td className="text-end font-monospace">{alisHas.toFixed(4)}</td>
                   </tr>
                   <tr>
                     <td className="fw-semibold text-secondary">{faturaTipi === 0 ? "Ödeme" : "Tahsilat"}</td>
-                    <td className="text-end font-monospace">{totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</td>
+                    <td className="text-end font-monospace">{totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</td>
                     <td className="text-end font-monospace">{odemeHas.toFixed(4)}</td>
                   </tr>
                   <tr style={{ background: farkTL < -0.01 ? "#fee2e2" : (Math.abs(farkTL) > 0.01 || Math.abs(farkHas) > 0.0001) ? "#fff5f5" : "#f8f9fa" }}>
@@ -6570,10 +6570,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     <td className="text-end fw-bold font-monospace" style={{ color: farkTL < -0.01 ? "#991b1b" : Math.abs(farkTL) > 0.01 ? "#dc3545" : "inherit" }}>
                       {farkTL < -0.01 ? (
                         <span className="badge bg-danger text-white px-2 py-1 shadow-2xs" style={{ fontSize: "11.5px" }}>
-                          {farkTL.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                          {farkTL.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
                         </span>
                       ) : (
-                        <span>{farkTL.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</span>
+                        <span>{farkTL.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</span>
                       )}
                     </td>
                     <td className="text-end fw-bold font-monospace" style={{ color: Math.abs(farkHas) > 0.0001 ? "#dc3545" : "inherit" }}>
@@ -6585,7 +6585,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                       <td colSpan={3} className="p-1.5 text-center" style={{ background: "#fef2f2" }}>
                         <div className="text-danger small fw-bold d-flex align-items-center justify-content-center gap-1">
                           <i className="bi bi-exclamation-triangle-fill"></i>
-                          <span>Ödeme fiş toplamından {(Math.abs(farkTL)).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺ fazladır!</span>
+                          <span>Ödeme fiş toplamından {(Math.abs(farkTL)).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺ fazladır!</span>
                         </div>
                       </td>
                     </tr>
@@ -6606,11 +6606,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               </div>
               <div className="d-flex justify-content-between mb-1">
                 <span className="text-muted">Ara Toplam:</span>
-                <strong className="font-monospace">{araToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</strong>
+                <strong className="font-monospace">{araToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</strong>
               </div>
               <div className="d-flex justify-content-between mb-1">
                 <span className="text-muted">Toplam KDV:</span>
-                <strong className="font-monospace">{toplamKdv.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</strong>
+                <strong className="font-monospace">{toplamKdv.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</strong>
               </div>
 
               {/* İskonto & İndirim Özeti */}
@@ -6626,14 +6626,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     {calculatedIskontoOrani > 0 ? `(%${calculatedIskontoOrani})` : ""}:
                   </span>
                   <strong className="font-monospace">
-                    -{calculatedIskontoTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                    -{calculatedIskontoTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
                   </strong>
                 </div>
               )}
 
               <div className="d-flex justify-content-between pt-1 fw-bold text-success" style={{ fontSize: "13px" }}>
                 <span>GENEL TOPLAM:</span>
-                <span className="font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</span>
+                <span className="font-monospace">{genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</span>
               </div>
             </div>
           </div>

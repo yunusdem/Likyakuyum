@@ -32,6 +32,9 @@ export interface UserProfileDto {
   role: string;
   password?: string;
   cashierCode: string;
+  vezneId?: number;
+  vezneKod?: string;
+  vezneAd?: string;
   isActive: boolean;
 
   // General Tab - Left Permissions
