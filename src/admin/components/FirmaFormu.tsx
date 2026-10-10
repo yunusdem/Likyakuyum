@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Button, Col, Form, Row, Spinner } from "react-bootstrap";
-import { BulutDurum, BulutFirmaGirdi, FirmaDto, FirmaGirdi } from "../services/adminApi";
+import { BulutDurum, BulutFirmaGirdi, FirmaDto, FirmaGirdi, PaketListesi } from "../services/adminApi";
+import UrunSecici from "./UrunSecici";
+import { paketleriHazirla, secilebilirUrunler } from "./paketOrtak";
 
 interface Props {
   /** Verilirse düzenleme, verilmezse yeni kayıt */
@@ -66,9 +68,19 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec, bulut, bulutKaydet
   const [ilkKullaniciAdSoyad, setIlkKullaniciAdSoyad] = useState("");
   const [lisansBitis, setLisansBitis] = useState(birYilSonra);
   const [kullaniciLimiti, setKullaniciLimiti] = useState(1);
+  // İlk lisansın ürünleri (docs/LISANS_URUN_PAKETLERI.md); paket tabloları kurulu değilse seçim görünmez
+  const [urunler, setUrunler] = useState<string[]>([]);
+  const [paketListe, setPaketListe] = useState<PaketListesi | null>(null);
 
   const bulutSecenegi = !firma && !!bulut && !!bulutKaydet && veri.baglantiModu === "cloud";
   const yeniDbAktif = bulutSecenegi && !!bulut?.klonAcik && yeniDb;
+
+  useEffect(() => {
+    if (!yeniDbAktif || paketListe) return;
+    paketleriHazirla()
+      .then(setPaketListe)
+      .catch(() => setPaketListe({ kurulu: false, paketler: [] }));
+  }, [yeniDbAktif, paketListe]);
 
   const alan = <K extends keyof FirmaGirdi>(ad: K) => ({
     value: (veri[ad] ?? "") as string,
@@ -94,6 +106,7 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec, bulut, bulutKaydet
           ilkKullaniciAdSoyad: ilkKullaniciAdSoyad.trim(),
           lisansBitis,
           kullaniciLimiti,
+          ...(paketListe?.kurulu && urunler.length ? { urunler } : {}),
         });
       } else if (veri.baglantiModu === "setup") {
         // Veritabanı müşteride: sunucu tarafı benzersiz bir yer tutucu yazar
@@ -358,6 +371,15 @@ const FirmaFormu: React.FC<Props> = ({ firma, kaydet, vazgec, bulut, bulutKaydet
                 <Form.Text muted>İlk kullanıcı dahil, tanımlanabilecek kullanıcı sayısı.</Form.Text>
               </Form.Group>
             </Col>
+            {paketListe?.kurulu && (
+              <Col xs={12}>
+                <Form.Label className="mb-1">Ürünler</Form.Label>
+                <UrunSecici kimlik="frmUrun" urunler={secilebilirUrunler(paketListe)} secili={urunler} onDegistir={setUrunler} />
+                <Form.Text muted className="d-block">
+                  Seçilen ürünlerin sayfaları firmaya açık gelir; sonradan Modüller sekmesinden elle değiştirilebilir. Seçilmezse tüm menü açık başlar.
+                </Form.Text>
+              </Col>
+            )}
           </Row>
         </>
       )}

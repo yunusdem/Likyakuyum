@@ -5,6 +5,7 @@ import { IconPlus } from "@tabler/icons-react";
 import { adminApi, BulutDurum, FirmaDto, FirmaDurum } from "../services/adminApi";
 import FirmaFormu from "../components/FirmaFormu";
 import { DogrulamaRozeti, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
+import { UrunRozetleri } from "../components/UrunSecici";
 
 type DurumFiltresi = "HEPSI" | FirmaDurum;
 
@@ -23,6 +24,8 @@ const FirmalarPage: React.FC = () => {
     ilkKullanici: { kullaniciAdi: string; geciciSifre: string };
   } | null>(null);
   const [kopyalandi, setKopyalandi] = useState(false);
+  // Lisans ürünleri (docs/LISANS_URUN_PAKETLERI.md): firmaId → ürün kodları; paket tabloları yoksa boş
+  const [urunler, setUrunler] = useState<Record<number, string[]>>({});
 
   const ekleAc = async () => {
     setEkleAcik(true);
@@ -44,6 +47,10 @@ const FirmalarPage: React.FC = () => {
     try {
       setFirmalar(await adminApi.firmalar());
       setHata(null);
+      adminApi
+        .firmaUrunleri()
+        .then(setUrunler)
+        .catch(() => setUrunler({}));
     } catch (err: any) {
       setHata(err?.message || "Firmalar getirilemedi.");
     } finally {
@@ -113,6 +120,7 @@ const FirmalarPage: React.FC = () => {
                   <th>Unvan</th>
                   <th>Durum</th>
                   <th>Lisans bitiş</th>
+                  <th>Ürün</th>
                   <th>Kullanıcı</th>
                   <th>Doğrulama</th>
                   <th>Veritabanı</th>
@@ -129,6 +137,13 @@ const FirmalarPage: React.FC = () => {
                     </td>
                     <td>
                       <LisansRozeti firma={f} />
+                    </td>
+                    <td>
+                      {urunler[f.firmaId]?.length ? (
+                        <UrunRozetleri urunler={urunler[f.firmaId]} kisa />
+                      ) : (
+                        <span className="text-muted small">{f.aktifLisans?.paketAdi || "-"}</span>
+                      )}
                     </td>
                     <td>
                       {f.kullaniciSayisi}

@@ -204,6 +204,8 @@ export class FirmaSqlRepository {
         DELETE FROM dbo.ADM_KULLANICI WHERE FIRMA_ID = @id;
         DELETE FROM dbo.ADM_LISANS WHERE FIRMA_ID = @id;
         DELETE FROM dbo.ADM_FIRMA_MODUL WHERE FIRMA_ID = @id;
+        IF OBJECT_ID('dbo.ADM_FIRMA_MODUL_ISTISNA') IS NOT NULL
+          EXEC sp_executesql N'DELETE FROM dbo.ADM_FIRMA_MODUL_ISTISNA WHERE FIRMA_ID = @id', N'@id INT', @id = @id;
         DELETE FROM dbo.ADM_FIRMA WHERE FIRMA_ID = @id;
       `);
       await tx.commit();

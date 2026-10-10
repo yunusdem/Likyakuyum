@@ -9,6 +9,7 @@ import PanoPage from "./pages/PanoPage";
 import AdminlerPage from "./pages/AdminlerPage";
 import FirmalarPage from "./pages/FirmalarPage";
 import FirmaDetayPage from "./pages/FirmaDetayPage";
+import PaketlerPage from "./pages/PaketlerPage";
 import KullanicilarPage from "./pages/KullanicilarPage";
 import CevrimiciPage from "./pages/CevrimiciPage";
 import GirisGecmisiPage from "./pages/GirisGecmisiPage";
@@ -54,6 +55,7 @@ const AdminApp: React.FC = () => (
       <Route path="/" element={<PanoPage />} />
       <Route path="/firmalar" element={<FirmalarPage />} />
       <Route path="/firmalar/:id" element={<FirmaDetayPage />} />
+      <Route path="/paketler" element={<PaketlerPage />} />
       <Route path="/kullanicilar" element={<KullanicilarPage />} />
       <Route path="/cevrimici" element={<CevrimiciPage />} />
       <Route path="/giris-gecmisi" element={<GirisGecmisiPage />} />

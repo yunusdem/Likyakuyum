@@ -30,6 +30,8 @@ export interface LisansVerisi {
   kullaniciLimiti: number;
   /** Açık modül kodları; null = kısıt yok */
   moduller: string[] | null;
+  /** Lisanstaki ürün paketleri (yalnız gösterim; kısıt moduller'dedir). Eski kodlarda yoktur. */
+  urunler?: string[] | null;
   iletisim: LisansIletisim;
   /** Kodun üretildiği an (ISO) */
   verilme: string;
@@ -121,6 +123,7 @@ export const lisansKoduCoz = (kod: string, acikB64?: string): LisansVerisi => {
     Number.isInteger(v.kullaniciLimiti) &&
     v.kullaniciLimiti > 0 &&
     (v.moduller === null || Array.isArray(v.moduller)) &&
+    (v.urunler === undefined || v.urunler === null || Array.isArray(v.urunler)) &&
     !!v.iletisim;
   if (!alanlarDogru) throw new LisansKoduGecersiz("BICIM", "Kod içeriği eksik veya hatalı.");
   return v;

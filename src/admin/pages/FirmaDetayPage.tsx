@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Tab, Table, Tabs } from "react-bootstrap";
-import { adminApi, FirmaDto, FirmaDurum, gunYaz, LisansDto, LisansGirdi, tarihYaz } from "../services/adminApi";
+import { adminApi, FirmaDto, FirmaDurum, gunYaz, LisansDto, LisansGirdi, PaketListesi, PaketOnizleme, tarihYaz } from "../services/adminApi";
 import FirmaFormu from "../components/FirmaFormu";
 import FirmaKullanicilari from "../components/FirmaKullanicilari";
 import FirmaModulleri from "../components/FirmaModulleri";
@@ -10,6 +10,8 @@ import FirmaEpostaDogrulama from "../components/FirmaEpostaDogrulama";
 import FirmaYedekSilme from "../components/FirmaYedekSilme";
 import LisansKoduIslemleri from "../components/LisansKoduIslemleri";
 import FirmaKurulum from "../components/FirmaKurulum";
+import UrunSecici, { UrunRozetleri } from "../components/UrunSecici";
+import { paketleriHazirla, secilebilirUrunler } from "../components/paketOrtak";
 import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
 
 const DURUM_ACIKLAMASI: Record<FirmaDurum, string> = {
@@ -22,6 +24,8 @@ const DURUM_ACIKLAMASI: Record<FirmaDurum, string> = {
 };
 
 const bugun = () => new Date().toISOString().slice(0, 10);
+const ozetle = (liste: { baslik: string }[]) =>
+  liste.length ? liste.slice(0, 12).map((m) => m.baslik).join(", ") + (liste.length > 12 ? " …" : "") : "-";
 const birYilSonra = () => {
   const d = new Date();
   d.setFullYear(d.getFullYear() + 1);
@@ -49,6 +53,11 @@ const FirmaDetayPage: React.FC = () => {
     notlar: "",
   });
   const [lisansHata, setLisansHata] = useState<string | null>(null);
+  // Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md): pencere açılınca yüklenir; kurulu değilse eski serbest "Paket" alanı
+  const [paketListe, setPaketListe] = useState<PaketListesi | null>(null);
+  const [onizleme, setOnizleme] = useState<PaketOnizleme | null>(null);
+
+  const paketAdlari = Object.fromEntries((paketListe?.paketler || []).map((p) => [p.paketKodu, p.ad]));
 
   const yukle = useCallback(async () => {
     try {
@@ -65,6 +74,13 @@ const FirmaDetayPage: React.FC = () => {
   useEffect(() => {
     yukle();
   }, [yukle]);
+
+  // Lisans tablosundaki ürün rozetlerinin adları (paket tabloları kurulu değilse boş kalır)
+  useEffect(() => {
+    paketleriHazirla()
+      .then(setPaketListe)
+      .catch(() => setPaketListe({ kurulu: false, paketler: [] }));
+  }, []);
 
   /** Tek seferde bir işlem; sonucu firmaya yazar, hata/bilgi şeridini günceller. */
   const calistir = async (ad: string, is: () => Promise<string | void>) => {
@@ -101,17 +117,36 @@ const FirmaDetayPage: React.FC = () => {
       return `Firma durumu: ${DURUM_ETIKETI[hedef]}.`;
     });
 
+  const mevcutUrunler = lisanslar.find((l) => l.aktif)?.urunler ?? [];
+  const urunlerDegisti = (u: string[]) => u.length !== mevcutUrunler.length || u.some((k) => !mevcutUrunler.includes(k));
+
   const lisansKaydet = async (e: React.FormEvent) => {
     e.preventDefault();
     setLisansHata(null);
     if (lisans.bitis < lisans.baslangic) return setLisansHata("Bitiş tarihi başlangıçtan önce olamaz.");
+    const urunler = paketListe?.kurulu ? lisans.urunler ?? [] : undefined;
     setMesgul("lisans");
     try {
-      const sonuc = await adminApi.lisansEkle(firmaId, lisans);
+      // Ürün değiştiyse önce açılacak / kapanacak sayfalar gösterilir; ikinci "Kaydet" onaydır
+      if (urunler && urunler.length > 0 && urunlerDegisti(urunler) && !onizleme) {
+        const o = await adminApi.paketOnizleme(firmaId, urunler);
+        if (o.degisiyor) {
+          setOnizleme(o);
+          return;
+        }
+      }
+      const sonuc = await adminApi.lisansEkle(firmaId, { ...lisans, urunler });
       setFirma(sonuc.firma);
       setLisanslar(sonuc.lisanslar);
       setLisansAcik(false);
-      setBilgi("Lisans eklendi.");
+      setOnizleme(null);
+      const ayarlandi = !!urunler && urunler.length > 0 && urunlerDegisti(urunler);
+      setBilgi(
+        ayarlandi
+          ? "Lisans eklendi; firmanın sayfaları seçilen ürünlere göre ayarlandı." +
+              (firma.baglantiModu === "setup" ? " Kurulum firması: yeni lisans kodu üretin." : "")
+          : "Lisans eklendi."
+      );
     } catch (err: any) {
       setLisansHata(err?.message || "Lisans eklenemedi.");
     } finally {
@@ -138,9 +173,14 @@ const FirmaDetayPage: React.FC = () => {
       kullaniciLimiti: mevcut?.kullaniciLimiti ?? Math.max(1, firma.kullaniciSayisi),
       paketAdi: mevcut?.paketAdi ?? "",
       notlar: "",
+      urunler: mevcutUrunler,
     });
     setLisansHata(null);
+    setOnizleme(null);
     setLisansAcik(true);
+    paketleriHazirla()
+      .then(setPaketListe)
+      .catch(() => setPaketListe({ kurulu: false, paketler: [] }));
   };
 
   return (
@@ -396,7 +436,7 @@ const FirmaDetayPage: React.FC = () => {
                         <td>{gunYaz(l.baslangic)}</td>
                         <td>{gunYaz(l.bitis)}</td>
                         <td>{l.kullaniciLimiti}</td>
-                        <td>{l.paketAdi || "-"}</td>
+                        <td>{l.urunler?.length ? <UrunRozetleri urunler={l.urunler} adlar={paketAdlari} /> : l.paketAdi || "-"}</td>
                         <td>{l.lisansAnahtari || "-"}</td>
                         <td style={{ maxWidth: 260 }}>{l.notlar || "-"}</td>
                         <td>{tarihYaz(l.olusturmaTarihi)}</td>
@@ -484,12 +524,43 @@ const FirmaDetayPage: React.FC = () => {
                   />
                 </Form.Group>
               </Col>
-              <Col xs={6}>
-                <Form.Group controlId="lisPaket">
-                  <Form.Label>Paket</Form.Label>
-                  <Form.Control maxLength={100} placeholder="ör. MASAK + e-Belge" value={lisans.paketAdi} onChange={(e) => setLisans({ ...lisans, paketAdi: e.target.value })} />
-                </Form.Group>
-              </Col>
+              {!paketListe?.kurulu || !(lisans.urunler ?? []).length ? (
+                <Col xs={6}>
+                  <Form.Group controlId="lisPaket">
+                    <Form.Label>Paket adı</Form.Label>
+                    <Form.Control maxLength={100} placeholder="ör. MASAK + e-Belge" value={lisans.paketAdi} onChange={(e) => setLisans({ ...lisans, paketAdi: e.target.value })} />
+                  </Form.Group>
+                </Col>
+              ) : (
+                <Col xs={6} className="d-flex align-items-end">
+                  <div className="small text-muted">Paket adı ürünlerden yazılır.</div>
+                </Col>
+              )}
+              {paketListe === null ? (
+                <Col xs={12} className="small text-muted">
+                  <Spinner animation="border" size="sm" /> Ürünler yükleniyor…
+                </Col>
+              ) : (
+                paketListe.kurulu && (
+                  <Col xs={12}>
+                    <Form.Label className="mb-1">Ürünler</Form.Label>
+                    <UrunSecici
+                      kimlik={`lisUrun-${firmaId}`}
+                      urunler={secilebilirUrunler(paketListe)}
+                      secili={lisans.urunler ?? []}
+                      disabled={!!onizleme}
+                      onDegistir={(u) => setLisans({ ...lisans, urunler: u })}
+                    />
+                    <Form.Text className="text-muted d-block">
+                      {(lisans.urunler ?? []).length === 0
+                        ? "Ürün seçilmezse modüller Modüller sekmesinden elle ayarlanır (eski usul)."
+                        : urunlerDegisti(lisans.urunler ?? [])
+                          ? "Kayıtta firmanın sayfaları seçilen ürünlere göre ayarlanır; önce değişiklik listesi gösterilir."
+                          : "Ürünler aynı: kayıt firmanın sayfalarına dokunmaz."}
+                    </Form.Text>
+                  </Col>
+                )
+              )}
               <Col xs={12}>
                 <Form.Group controlId="lisAnahtar">
                   <Form.Label>Lisans anahtarı / sözleşme no</Form.Label>
@@ -503,13 +574,32 @@ const FirmaDetayPage: React.FC = () => {
                 </Form.Group>
               </Col>
             </Row>
+            {onizleme && (
+              <Alert variant="warning" className="mt-3 mb-0">
+                <div className="fw-semibold mb-1">Kayıtla firmanın sayfaları değişecek</div>
+                {onizleme.kisitsizdi && <div className="small mb-1">Firma şu an kısıtsız (tüm sayfalar açık).</div>}
+                <div className="small">
+                  <strong>Açılacak ({onizleme.acilacak.length}):</strong> {ozetle(onizleme.acilacak)}
+                </div>
+                <div className="small">
+                  <strong>Kapanacak ({onizleme.kapanacak.length}):</strong> {ozetle(onizleme.kapanacak)}
+                </div>
+                <div className="small mt-1">Onaylıyorsanız “Onayla ve Kaydet”e basın; ürünleri değiştirmek için “Geri”.</div>
+              </Alert>
+            )}
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="outline-secondary" onClick={() => setLisansAcik(false)} disabled={mesgul === "lisans"}>
-              Vazgeç
-            </Button>
-            <Button type="submit" className="btn-adm" disabled={mesgul === "lisans"}>
-              {mesgul === "lisans" ? <Spinner animation="border" size="sm" /> : "Kaydet"}
+            {onizleme ? (
+              <Button variant="outline-secondary" onClick={() => setOnizleme(null)} disabled={mesgul === "lisans"}>
+                Geri
+              </Button>
+            ) : (
+              <Button variant="outline-secondary" onClick={() => setLisansAcik(false)} disabled={mesgul === "lisans"}>
+                Vazgeç
+              </Button>
+            )}
+            <Button type="submit" className="btn-adm" disabled={mesgul === "lisans" || paketListe === null}>
+              {mesgul === "lisans" ? <Spinner animation="border" size="sm" /> : onizleme ? "Onayla ve Kaydet" : "Kaydet"}
             </Button>
           </Modal.Footer>
         </Form>

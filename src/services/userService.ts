@@ -11,6 +11,8 @@ export interface MerkezOturumBilgisi {
   kullaniciLimiti: number | null;
   kullaniciSayisi: number;
   paketAdi?: string | null;
+  /** Lisanstaki ürün paketleri ("kuyum", "connector" …; docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz */
+  urunler?: string[];
   /** Firmaya açık modül kodları; null = kısıt yok */
   moduller: string[] | null;
   /** Lisans uyarı bandı / kilit penceresindeki iletişim bilgisi */

@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { PaketService } from "./paket.service.js";
 import { env } from "../../config/env.config.js";
 import { AyarSqlRepository } from "../../models/admin/ayarSql.repository.js";
 import { bugunTr } from "../../utils/zaman.utils.js";
@@ -129,6 +130,8 @@ export class KlonService {
     const sifreHatasi = dbSifreKuralHatasi(dbSifre, dbUser);
     if (sifreHatasi) throw ApiError.badRequest(sifreHatasi);
     if (girdi.lisansBitis < bugunTr()) throw ApiError.badRequest("Lisans bitiş tarihi bugünden önce olamaz.");
+    // Ürünler veritabanı açılmadan doğrulanır (hatalıysa geri alınacak iş olmasın)
+    if (girdi.urunler?.length) girdi.urunler = await PaketService.urunleriDenetle(girdi.urunler);
 
     const { anahtar } = firmaDbAnahtari(sunucu, dbName);
     const cakisma = await FirmaSqlRepository.cakismaVarMi(firmaKodu, anahtar);
@@ -261,6 +264,7 @@ export class KlonService {
         bitis: girdi.lisansBitis,
         kullaniciLimiti: girdi.kullaniciLimiti,
         notlar: "Bulut firma oluşturulurken verildi.",
+        urunler: girdi.urunler?.length ? girdi.urunler : undefined,
       });
 
       const { kullanici, geciciSifre } = await KullaniciService.ekle(yapan, firmaId, {

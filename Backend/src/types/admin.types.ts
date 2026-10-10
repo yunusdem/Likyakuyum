@@ -55,6 +55,8 @@ export type AdminIslem =
   | "KULLANICI_ICE_AKTARILDI"
   | "MODUL_DEGISTI"
   | "MODUL_KATALOG_ESITLENDI"
+  | "PAKET_ILK_ICERIK"
+  | "PAKET_DEGISTI"
   | "OTURUM_KAPATILDI"
   | "EPOSTA_DOGRULAMA_GONDERILDI"
   | "EPOSTA_DOGRULANDI"
@@ -115,6 +117,8 @@ export interface LisansDto {
   iptal: boolean;
   teslim: "KOD" | "HEARTBEAT" | null;
   teslimTarihi: Date | null;
+  /** Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz */
+  urunler: string[];
 }
 
 /** İstemciye dönen firma. Veritabanı şifresi hiçbir zaman dönmez; yalnızca tanımlı olup olmadığı bildirilir. */
@@ -209,6 +213,8 @@ export interface BulutFirmaGirdi extends Omit<FirmaGirdi, "baglantiModu" | "dbSe
   ilkKullaniciAdSoyad?: string | null;
   lisansBitis: string;
   kullaniciLimiti: number;
+  /** İlk lisansın ürün paketleri (docs/LISANS_URUN_PAKETLERI.md) */
+  urunler?: string[];
 }
 
 export type KullaniciDurum = "AKTIF" | "PASIF";
@@ -251,6 +257,8 @@ export interface MerkezOturumBilgisi {
   kullaniciLimiti: number | null;
   kullaniciSayisi: number;
   paketAdi?: string | null;
+  /** Lisanstaki ürün paketleri ("kuyum", "connector" …); boş = ürünsüz */
+  urunler?: string[];
   /** Firmaya açık modül kodları; null = modül ayarı yapılmamış, kısıt yok (her şey açık) */
   moduller: string[] | null;
   /** Lisans uyarı bandı ve kilit penceresindeki iletişim bilgisi */

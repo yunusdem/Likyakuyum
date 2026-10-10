@@ -25,6 +25,8 @@ const ISLEM_ETIKETI: Record<string, string> = {
   KULLANICI_ICE_AKTARILDI: "Kullanıcılar içe aktarıldı",
   MODUL_DEGISTI: "Modül ayarı",
   MODUL_KATALOG_ESITLENDI: "Modül kataloğu eşitlendi",
+  PAKET_ILK_ICERIK: "Paket ilk içeriği yüklendi",
+  PAKET_DEGISTI: "Paket içeriği değişti",
   OTURUM_KAPATILDI: "Oturum kapatıldı",
   EPOSTA_DOGRULAMA_GONDERILDI: "Doğrulama maili gönderildi",
   EPOSTA_DOGRULANDI: "E-posta doğrulandı",

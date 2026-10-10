@@ -4,6 +4,7 @@ import { AdminYonetimController } from "../controllers/admin/adminYonetim.contro
 import { FirmaController } from "../controllers/admin/firma.controller.js";
 import { KullaniciController } from "../controllers/admin/kullanici.controller.js";
 import { ModulController } from "../controllers/admin/modul.controller.js";
+import { PaketController } from "../controllers/admin/paket.controller.js";
 import { IzlemeController } from "../controllers/admin/izleme.controller.js";
 import { PosAdminController } from "../controllers/admin/posAdmin.controller.js";
 import { DestekAdminController } from "../controllers/admin/destekAdmin.controller.js";
@@ -53,6 +54,9 @@ import {
   oturumKapatSchema,
   epostaDogrulamaElleSchema,
   epostaOnaySchema,
+  paketIlkIcerikSchema,
+  paketYazSchema,
+  paketOnizlemeSchema,
 } from "../schemas/admin.schema.js";
 
 // Ana admin paneli API'si (docs/ADMIN_PANEL_YOL_HARITASI.md). Kullanıcı tarafının authenticate'i burada kullanılmaz.
@@ -128,6 +132,13 @@ router.get("/moduller", ModulController.katalog);
 router.put("/moduller/katalog", validate(modulKatalogSchema), ModulController.katalogEsitle);
 router.get("/firmalar/:id/moduller", validate(adminIdSchema), ModulController.firmaAyari);
 router.put("/firmalar/:id/moduller", validate(firmaModulSchema), ModulController.firmaAyariniYaz);
+
+// Lisans ürün paketleri (docs/LISANS_URUN_PAKETLERI.md)
+router.get("/paketler", PaketController.liste);
+router.get("/paketler/firma-urunleri", PaketController.firmaUrunleri);
+router.put("/paketler/ilk-icerik", validate(paketIlkIcerikSchema), PaketController.ilkIcerik);
+router.put("/paketler/:kod", validate(paketYazSchema), PaketController.yaz);
+router.post("/firmalar/:id/paket-onizleme", validate(paketOnizlemeSchema), PaketController.onizleme);
 
 router.get("/izleme/cevrimici", IzlemeController.cevrimici);
 router.get("/izleme/giris-log", validate(girisLogSchema), IzlemeController.girisLoglari);

@@ -70,6 +70,7 @@ export class AuthService {
       kullaniciLimiti: d.kullaniciLimiti,
       kullaniciSayisi: sayi,
       moduller: d.moduller,
+      urunler: d.urunler ?? [],
       iletisim: d.iletisim,
     };
   }

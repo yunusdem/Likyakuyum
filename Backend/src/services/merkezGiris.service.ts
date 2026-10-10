@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { PaketSqlRepository } from "../models/admin/paketSql.repository.js";
 import { env } from "../config/env.config.js";
 import { getDbPool } from "../config/mssql.config.js";
 import { FirmaSqlRepository } from "../models/admin/firmaSql.repository.js";
@@ -317,6 +318,8 @@ export class MerkezGirisService {
       kullaniciLimiti: b.firma.aktifLisans?.kullaniciLimiti ?? null,
       kullaniciSayisi: b.firma.kullaniciSayisi,
       paketAdi: b.firma.aktifLisans?.paketAdi ?? null,
+      // Ürün tabloları kurulu değilse ya da okunamazsa giriş bozulmasın: boş (ürünsüz) sayılır
+      urunler: await PaketSqlRepository.firmaUrunleri(b.firma.firmaId).catch(() => []),
       moduller: await ModulSqlRepository.firmaAcikModulleri(b.firma.firmaId),
       iletisim: await AyarSqlRepository.tumu().then((a) => ({
         telefon: a.LISANS_ILETISIM_TELEFON,

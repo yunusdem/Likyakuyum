@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "reac
 import { apiClient } from "../../services/apiClient";
 import { SistemService } from "../../services/sistemService";
 import { useAuth } from "../../context/AuthContext";
+import { URUN_ADLARI, PaketKodu } from "../../config/urunPaketleri";
 
 interface GuncellemeDurumu {
   surum: string;
@@ -18,6 +19,8 @@ interface GuncellemeDurumu {
     bitis: string | null;
     kalanGun: number | null;
     kullaniciLimiti: number | null;
+    /** Lisanstaki ürün paketleri (docs/LISANS_URUN_PAKETLERI.md); eski kodlarda yok */
+    urunler?: string[] | null;
     iletisim: { telefon: string; eposta: string; metin: string };
   };
 }
@@ -106,6 +109,12 @@ const LisansSurumPage: React.FC = () => {
                   <th className="fw-normal text-muted">Firma</th>
                   <td>{l.firmaUnvan || "-"}</td>
                 </tr>
+                {!!l.urunler?.length && (
+                  <tr>
+                    <th className="fw-normal text-muted">Ürünler</th>
+                    <td>{l.urunler.map((u) => URUN_ADLARI[u as PaketKodu] || u).join(" + ")}</td>
+                  </tr>
+                )}
                 <tr>
                   <th className="fw-normal text-muted">Bitiş</th>
                   <td>

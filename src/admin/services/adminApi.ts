@@ -45,6 +45,8 @@ export interface LisansDto {
   iptal: boolean;
   teslim: "KOD" | "HEARTBEAT" | null;
   teslimTarihi: string | null;
+  /** Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz */
+  urunler: string[];
 }
 
 export type AyarAnahtari =
@@ -167,6 +169,7 @@ export interface BulutFirmaGirdi extends Omit<FirmaGirdi, "baglantiModu" | "dbSe
   ilkKullaniciAdSoyad: string;
   lisansBitis: string;
   kullaniciLimiti: number;
+  urunler?: string[];
 }
 
 export interface BulutDurum {
@@ -182,6 +185,8 @@ export interface LisansGirdi {
   kullaniciLimiti: number;
   paketAdi: string;
   notlar: string;
+  /** Gönderilirse lisansın ürünleri bu olur (paket tabloları kurulu değilse gönderilmez) */
+  urunler?: string[];
 }
 
 export interface KullaniciDto {
@@ -213,6 +218,42 @@ export interface ModulKaydi {
 export interface FirmaModulAyari {
   kisitsiz: boolean;
   acik: string[];
+  /** Aktif lisanstaki ürünler; boş = ürünsüz (eski usul elle ayar) */
+  urunler: string[];
+  /** Ürünlü firmada paketlerin verdiği liste ve elle istisnalar */
+  taban: string[];
+  ek: string[];
+  cikar: string[];
+  paketKurulu: boolean;
+}
+
+/** Lisans ürün paketi (docs/LISANS_URUN_PAKETLERI.md) */
+export interface PaketDto {
+  paketKodu: string;
+  ad: string;
+  sira: number;
+  /** Her ürünle birlikte açılan ortak sayfalar */
+  cekirdek: boolean;
+  /** Tüm sayfalar (ERP); içeriği düzenlenmez */
+  hepsi: boolean;
+  ilkIcerik: boolean;
+  guncellemeTarihi: string | null;
+  guncelleyen: string | null;
+  moduller: string[];
+  firmaSayisi: number;
+  kurulumFirmaSayisi: number;
+}
+
+export interface PaketListesi {
+  kurulu: boolean;
+  paketler: PaketDto[];
+}
+
+export interface PaketOnizleme {
+  degisiyor: boolean;
+  kisitsizdi: boolean;
+  acilacak: { modulKodu: string; baslik: string; ustKodu: string | null }[];
+  kapanacak: { modulKodu: string; baslik: string; ustKodu: string | null }[];
 }
 
 export interface CevrimiciOturum {
@@ -609,8 +650,15 @@ export const adminApi = {
 
   modulKatalogEsitle: (moduller: ModulKaydi[]) => istek<ModulKaydi[]>("PUT", "/moduller/katalog", { moduller }),
   firmaModulleri: (firmaId: number) => istek<FirmaModulAyari>("GET", `/firmalar/${firmaId}/moduller`),
-  firmaModulleriniYaz: (firmaId: number, veri: { kisitsiz?: boolean; acik?: string[] }) =>
+  firmaModulleriniYaz: (firmaId: number, veri: { kisitsiz?: boolean; acik?: string[]; paketeDon?: boolean }) =>
     istek<FirmaModulAyari>("PUT", `/firmalar/${firmaId}/moduller`, veri),
+
+  paketler: () => istek<PaketListesi>("GET", "/paketler"),
+  paketIlkIcerik: (icerik: Record<string, string[]>) => istek<PaketListesi>("PUT", "/paketler/ilk-icerik", { icerik }),
+  paketYaz: (kod: string, veri: { moduller: string[]; uygula: boolean }) =>
+    istek<{ paket: PaketDto; etkilenenFirma: number; kurulumFirmalari: string[] }>("PUT", `/paketler/${kod}`, veri),
+  firmaUrunleri: () => istek<Record<number, string[]>>("GET", "/paketler/firma-urunleri"),
+  paketOnizleme: (firmaId: number, urunler: string[]) => istek<PaketOnizleme>("POST", `/firmalar/${firmaId}/paket-onizleme`, { urunler }),
 
   cevrimici: () => istek<{ dakika: number; oturumlar: CevrimiciOturum[] }>("GET", "/izleme/cevrimici"),
   girisLoglari: (p: { sayfa: number; boyut?: number; arama?: string; tur?: string; basarili?: string; firmaId?: number }) =>

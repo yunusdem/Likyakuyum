@@ -35,45 +35,34 @@ export const API_MODULLERI: Record<string, string[]> = {
   "/rapor": ["raporlar", "vezne", "kasa", "kur", "cari", "yonetici", "banka", "ust:masak", "etiket"],
 };
 
-/**
- * Ağaç kuralları: ana modül kapalıysa altındakiler de kapalıdır; alt öğesi olan bir ana modülün hiçbir alt öğesi
- * açık değilse ana modül de kapalıdır. Katalogda olmayan kodlar atılır.
- */
-export const modulleriDuzenle = (katalog: ModulKaydi[], istenen: string[]): string[] => {
-  const gecerli = new Set(katalog.map((m) => m.modulKodu));
-  const acik = new Set(istenen.filter((k) => gecerli.has(k)));
-  const ust = new Map(katalog.map((m) => [m.modulKodu, m.ustKodu]));
-
-  // Üstü kapalı olanı kapat (ağaç derinliği kadar tekrarla)
-  for (let degisti = true; degisti; ) {
-    degisti = false;
-    for (const kod of [...acik]) {
-      const u = ust.get(kod);
-      if (u && !acik.has(u)) {
-        acik.delete(kod);
-        degisti = true;
-      }
-    }
-  }
-  // Alt öğesi olup hiçbiri açık olmayan düğümü kapat (yapraklardan yukarı)
-  for (let degisti = true; degisti; ) {
-    degisti = false;
-    for (const m of katalog) {
-      if (!acik.has(m.modulKodu)) continue;
-      const cocuklar = katalog.filter((c) => c.ustKodu === m.modulKodu);
-      if (cocuklar.length > 0 && !cocuklar.some((c) => acik.has(c.modulKodu))) {
-        acik.delete(m.modulKodu);
-        degisti = true;
-      }
-    }
-  }
-  return [...acik];
-};
+// Ağaç kuralı saf dosyada (paket hesabı da kullanır); eski içe aktarmalar için buradan da verilir
+export { modulleriDuzenle } from "./modulAgaci.js";
+import { modulleriDuzenle } from "./modulAgaci.js";
 
 const ONBELLEK_MS = 60_000;
 const onbellek = new Map<string, { moduller: string[] | null; zaman: number }>();
 
+// Paket servisi bu servisi içe aktarır; döngü olmasın diye ters yönde çağrı anında yüklenir
+const paketServisi = async () => (await import("./paket.service.js")).PaketService;
+
+export interface FirmaModulAyari {
+  kisitsiz: boolean;
+  acik: string[];
+  /** Aktif lisanstaki ürünler (docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz, eski usul elle ayar */
+  urunler: string[];
+  /** Ürünlü firmada paketlerin verdiği liste ve elle istisnalar; ürünsüzde boş */
+  taban: string[];
+  ek: string[];
+  cikar: string[];
+  /** Paket tabloları kurulu mu */
+  paketKurulu: boolean;
+}
+
 export class ModulService {
+  public static onbellegiTemizle(): void {
+    onbellek.clear();
+  }
+
   public static katalog(): Promise<ModulKaydi[]> {
     return ModulSqlRepository.katalog();
   }
@@ -88,25 +77,44 @@ export class ModulService {
     if (sonuc.eklenen > 0 || sonuc.silinen > 0) {
       onbellek.clear();
       await AdminLogSqlRepository.islemLogu({ adminId: yapan.adminId, islem: "MODUL_KATALOG_ESITLENDI", yeni: sonuc });
+      await (await paketServisi()).katalogDegisti(yapan.adminId);
+      onbellek.clear();
     }
     return ModulSqlRepository.katalog();
   }
 
   /** Panel için: firmanın ayarı. kisitsiz=true → hiç ayar yapılmamış, her şey açık. */
-  public static async firmaAyari(firmaId: number): Promise<{ kisitsiz: boolean; acik: string[] }> {
+  public static async firmaAyari(firmaId: number): Promise<FirmaModulAyari> {
     if (!(await FirmaSqlRepository.idIleBul(firmaId))) throw ApiError.notFound("Firma bulunamadı.");
     const acik = await ModulSqlRepository.firmaAcikModulleri(firmaId);
-    return { kisitsiz: acik === null, acik: acik ?? [] };
+    const urun = await (await paketServisi()).firmaUrunAyari(firmaId);
+    return {
+      kisitsiz: acik === null,
+      acik: acik ?? [],
+      urunler: urun?.urunler ?? [],
+      taban: urun?.taban ?? [],
+      ek: urun?.ek ?? [],
+      cikar: urun?.cikar ?? [],
+      paketKurulu: urun !== null,
+    };
   }
 
   public static async firmaAyariniYaz(
     yapan: AdminBaglam,
     firmaId: number,
-    girdi: { kisitsiz?: boolean; acik?: string[] }
-  ): Promise<{ kisitsiz: boolean; acik: string[] }> {
+    girdi: { kisitsiz?: boolean; acik?: string[]; paketeDon?: boolean }
+  ): Promise<FirmaModulAyari> {
     const eski = await this.firmaAyari(firmaId);
 
-    if (girdi.kisitsiz) {
+    if (eski.urunler.length > 0) {
+      // Ürünlü firma: tikler paket tabanına göre istisna olarak saklanır (paket değişse de korunur)
+      const paket = await paketServisi();
+      if (girdi.kisitsiz) throw ApiError.badRequest("Ürün seçili firmada modüller paketten gelir; kısıtlama kapatılamaz. Lisanstan ERP'yi seçin.");
+      if (girdi.paketeDon) await paket.paketeDon(firmaId, eski.urunler, yapan.adminId);
+      else await paket.firmaIstenenListe(firmaId, eski.urunler, girdi.acik ?? [], yapan.adminId);
+    } else if (girdi.paketeDon) {
+      throw ApiError.badRequest("Bu firmanın lisansında ürün seçili değil.");
+    } else if (girdi.kisitsiz) {
       await ModulSqlRepository.firmaModulleriniSifirla(firmaId);
     } else {
       const katalog = await ModulSqlRepository.katalog();

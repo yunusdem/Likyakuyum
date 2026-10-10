@@ -15,6 +15,16 @@ export function getAppBrand(user?: UserProfileDto | null): BrandInfo {
   const paketUpper = rawPaket.toUpperCase();
   const moduller = user?.merkez?.moduller; // null veya undefined = kısıtsız (Tüm modüller açık)
 
+  // 0. Lisansta seçilen ürünler (docs/LISANS_URUN_PAKETLERI.md): varsa başlık doğrudan bunlardan gelir.
+  //    ERP → "ERP"; Connector yalnız tek başınaysa yazılır; birden fazla ürün "KUYUM + DÖVİZ" gibi birleşir.
+  const urunler = user?.merkez?.urunler || [];
+  if (urunler.length) {
+    const URUN_SONEKI: Record<string, string> = { kuyum: "KUYUM", doviz: "DÖVİZ", gumus: "GÜMÜŞ", ticari: "TİCARİ" };
+    const ana = urunler.map((u) => URUN_SONEKI[u]).filter(Boolean);
+    const suffix = urunler.includes("erp") ? "ERP" : ana.length ? ana.join(" + ") : "CONNECTOR";
+    return { prefix: "LİKYA", suffix, fullTitle: `LİKYA ${suffix}` };
+  }
+
   // 1. Doğrudan Lisans Paket Adı Kontrolü (Admin Panelinden Tanımlanan Paket)
   if (paketUpper) {
     if (

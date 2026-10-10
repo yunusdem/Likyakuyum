@@ -16,6 +16,7 @@ import {
   IconPackage,
   IconMessage2,
   IconSpeakerphone,
+  IconPackages,
 } from "@tabler/icons-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { adminApi, DestekOzet } from "../services/adminApi";
@@ -23,6 +24,7 @@ import { adminApi, DestekOzet } from "../services/adminApi";
 const MENU = [
   { yol: "/", baslik: "Pano", ikon: <IconLayoutDashboard size={18} />, tam: true },
   { yol: "/firmalar", baslik: "Firmalar", ikon: <IconBuildingStore size={18} />, tam: false },
+  { yol: "/paketler", baslik: "Paket Tanımları", ikon: <IconPackages size={18} />, tam: false },
   { yol: "/kullanicilar", baslik: "Kullanıcılar", ikon: <IconUsers size={18} />, tam: false },
   { yol: "/cevrimici", baslik: "Çevrimiçi", ikon: <IconWifi size={18} />, tam: false },
   { yol: "/giris-gecmisi", baslik: "Giriş Geçmişi", ikon: <IconLogin2 size={18} />, tam: false },

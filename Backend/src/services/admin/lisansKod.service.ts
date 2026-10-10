@@ -37,6 +37,7 @@ export const lisansKoduHazirla = async (lisans: LisansDto, firmaKodu: string, ma
     bitis: lisans.bitis,
     kullaniciLimiti: lisans.kullaniciLimiti,
     moduller: await ModulSqlRepository.firmaAcikModulleri(lisans.firmaId),
+    urunler: lisans.urunler.length ? lisans.urunler : null,
     iletisim: await iletisimOku(),
     verilme: new Date().toISOString(),
   };

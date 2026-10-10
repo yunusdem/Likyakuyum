@@ -2,6 +2,8 @@ import sql from "mssql";
 import { getAdminPool } from "../../config/adminDb.config.js";
 import { LisansDto } from "../../types/admin.types.js";
 import { gunYaz } from "./firmaSql.repository.js";
+import { PaketSqlRepository } from "./paketSql.repository.js";
+import { urunleriOku } from "../../services/admin/paketHesap.js";
 
 const satirdan = (r: any): LisansDto => ({
   lisansId: r.LISANS_ID,
@@ -21,23 +23,26 @@ const satirdan = (r: any): LisansDto => ({
   iptal: !!r.IPTAL,
   teslim: r.TESLIM ?? null,
   teslimTarihi: r.TESLIM_TARIHI ?? null,
+  urunler: urunleriOku(r.URUNLER),
 });
 
-const SECIM = `
+// URUNLER kolonu ürün paketi betiği çalıştırılınca gelir (docs/sql/LIKYA_ADMIN_URUN_PAKET.sql); yoksa NULL okunur
+const secim = async () => `
   SELECT LISANS_ID, FIRMA_ID, LISANS_ANAHTARI, BASLANGIC, BITIS, KULLANICI_LIMITI, PAKET_ADI, NOTLAR, AKTIF,
-         OLUSTURAN_ADMIN_ID, OLUSTURMA_TARIHI, LISANS_KODU, MAKINE_KIMLIGI, SERI_NO, IPTAL, TESLIM, TESLIM_TARIHI
+         OLUSTURAN_ADMIN_ID, OLUSTURMA_TARIHI, LISANS_KODU, MAKINE_KIMLIGI, SERI_NO, IPTAL, TESLIM, TESLIM_TARIHI,
+         ${await PaketSqlRepository.urunKolonu()}
   FROM dbo.ADM_LISANS`;
 
 export class LisansSqlRepository {
   public static async firmaLisanslari(firmaId: number): Promise<LisansDto[]> {
     const pool = await getAdminPool();
-    const res = await pool.request().input("firmaId", sql.Int, firmaId).query(`${SECIM} WHERE FIRMA_ID = @firmaId ORDER BY LISANS_ID DESC`);
+    const res = await pool.request().input("firmaId", sql.Int, firmaId).query(`${await secim()} WHERE FIRMA_ID = @firmaId ORDER BY LISANS_ID DESC`);
     return res.recordset.map(satirdan);
   }
 
   public static async getir(lisansId: number): Promise<LisansDto | null> {
     const pool = await getAdminPool();
-    const res = await pool.request().input("id", sql.Int, lisansId).query(`${SECIM} WHERE LISANS_ID = @id`);
+    const res = await pool.request().input("id", sql.Int, lisansId).query(`${await secim()} WHERE LISANS_ID = @id`);
     return res.recordset[0] ? satirdan(res.recordset[0]) : null;
   }
 

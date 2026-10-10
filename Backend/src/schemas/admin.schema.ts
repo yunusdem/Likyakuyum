@@ -11,6 +11,11 @@ const adSoyad = z.string().trim().min(2, "Ad Soyad en az 2 karakter olmalıdır"
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 
+// Ürün paketi kodu (docs/LISANS_URUN_PAKETLERI.md)
+const paketKodu = z.string().trim().regex(/^[a-z]{2,20}$/, "Geçersiz paket kodu");
+/** Lisansın ürünleri; gönderilmezse lisansın ürün alanına dokunulmaz (eski usul serbest paket adı) */
+export const urunlerAlani = z.array(paketKodu).max(10).optional();
+
 export const adminGirisSchema = z.object({
   body: z.object({
     kullaniciAdi: z.string().min(1, "Kullanıcı adı girilmelidir").max(50),
@@ -101,6 +106,7 @@ export const bulutFirmaSchema = z.object({
     ilkKullaniciAdSoyad: secmeli(100),
     lisansBitis: gun,
     kullaniciLimiti: z.coerce.number().int().min(1, "Kullanıcı limiti en az 1 olmalıdır").max(10000),
+    urunler: urunlerAlani,
   }),
 });
 export const firmaGuncelleSchema = z.object({ params: idParam, body: firmaGovdesi });
@@ -195,7 +201,28 @@ export const modulKatalogSchema = z.object({
 
 export const firmaModulSchema = z.object({
   params: idParam,
-  body: z.object({ kisitsiz: z.boolean().optional(), acik: z.array(modulKodu).max(2000).optional() }),
+  body: z.object({
+    kisitsiz: z.boolean().optional(),
+    acik: z.array(modulKodu).max(2000).optional(),
+    paketeDon: z.boolean().optional(),
+  }),
+});
+
+// ------------------------------------------------- Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md) ---
+
+
+export const paketIlkIcerikSchema = z.object({
+  body: z.object({ icerik: z.record(paketKodu, z.array(modulKodu).max(2000)) }),
+});
+
+export const paketYazSchema = z.object({
+  params: z.object({ kod: paketKodu }),
+  body: z.object({ moduller: z.array(modulKodu).max(2000), uygula: z.boolean() }),
+});
+
+export const paketOnizlemeSchema = z.object({
+  params: idParam,
+  body: z.object({ urunler: z.array(paketKodu).max(10) }),
 });
 
 // ------------------------------------------------------------------ İzleme ---
@@ -248,5 +275,6 @@ export const lisansEkleSchema = z.object({
     kullaniciLimiti: z.coerce.number().int().min(1, "Kullanıcı limiti en az 1 olmalıdır").max(10000),
     paketAdi: secmeli(100),
     notlar: secmeli(1000),
+    urunler: urunlerAlani,
   }),
 });
