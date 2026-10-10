@@ -366,7 +366,7 @@ export class EbelgeController {
         const anahtarlar = liste.map((s) => `${s.belgeTuru}:${s.seri}`);
         if (new Set(anahtarlar).size !== anahtarlar.length)
             throw ApiError.badRequest("Aynı seri aynı türde iki kez girilmiş.");
-        for (const tur of ["EFatura", "EArsiv"]) {
+        for (const tur of ["EFatura", "EArsiv", "EGider"]) {
             const turdekiler = liste.filter((s) => s.belgeTuru === tur);
             const varsayilanSayisi = turdekiler.filter((s) => s.varsayilan).length;
             if (varsayilanSayisi > 1)

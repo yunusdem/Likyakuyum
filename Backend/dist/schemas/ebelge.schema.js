@@ -391,6 +391,10 @@ export const ebelgeKaynakKimlikSchema = z.union([
         evrakTuru: z.literal(99), belgeId: z.number().int().positive(), belgeTuru: z.number().int().min(0).max(255),
         belgeNo: z.string().trim().min(1).max(40).optional(),
     }),
+    // Perakende fişi (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P11): belgeTuru = fiş tipi (0 alış, 1 satış, 2 iade)
+    z.object({
+        evrakTuru: z.literal(98), belgeId: z.number().int().positive(), belgeTuru: z.number().int().min(0).max(2),
+    }),
 ]);
 export const ebelgeKaynakGonderSchema = z.intersection(ebelgeKaynakKimlikSchema, z.object({
     parmakizi: z.string().regex(/^[a-f0-9]{64}$/),
@@ -401,7 +405,7 @@ const kaynakTarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => Number.i
 export const ebelgeKaynakListeSchema = z.object({
     arama: z.string().trim().max(150).optional(), durum: z.string().max(30).optional(),
     belgeTuru: z.coerce.number().int().min(0).max(255).optional(),
-    kaynak: z.enum(["FATURA", "IRSALIYE", "GIDER", "DOVIZ"]).optional(),
+    kaynak: z.enum(["FATURA", "IRSALIYE", "GIDER", "DOVIZ", "PERAKENDE_SATIS", "PERAKENDE_ALIS"]).optional(),
     sayfa: z.coerce.number().int().min(1).max(100000).default(1),
     baslangicTarihi: kaynakTarih.optional(), bitisTarihi: kaynakTarih.optional(),
 }).refine(v => !v.baslangicTarihi || !v.bitisTarihi || v.baslangicTarihi <= v.bitisTarihi, "Tarih aralığı geçersiz.");
@@ -430,7 +434,7 @@ export const ebelgeYerelTaslakKaydetSchema = z.object({
 /** Fatura serileri — E-Belge Ayarları (docs/GIRIS_VE_EBELGE_DUZENLEME.md R3) */
 export const ebelgeSeriKaydetSchema = z.object({
     liste: z.array(z.object({
-        belgeTuru: z.enum(["EFatura", "EArsiv"]),
+        belgeTuru: z.enum(["EFatura", "EArsiv", "EGider"]),
         seri: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{3}$/, "Seri 3 karakter (harf/rakam) olmalıdır."),
         varsayilan: z.boolean().default(false),
     })).max(30, "En fazla 30 seri tanımlanabilir."),

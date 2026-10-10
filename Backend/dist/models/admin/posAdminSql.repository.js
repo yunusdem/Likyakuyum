@@ -15,6 +15,11 @@ export class PosAdminSqlRepository {
             tokenApiUrl: metin(r.TOKEN_API_URL),
             donusKok: metin(r.DONUS_KOK),
             inposUygulamaNo: metin(r.INPOS_UYGULAMA_NO),
+            inposApiUrl: metin(r.INPOS_API_URL),
+            inposKullanici: metin(r.INPOS_KULLANICI),
+            inposSifreSifreli: r.INPOS_SIFRE_ENC || null,
+            inposWebhookKullanici: metin(r.INPOS_WEBHOOK_KULLANICI),
+            inposWebhookSifreSifreli: r.INPOS_WEBHOOK_SIFRE_ENC || null,
             guncellemeTarihi: r.GUNCELLEME_TARIHI ?? null,
         };
     }
@@ -28,18 +33,61 @@ export class PosAdminSqlRepository {
         req.input("apiUrl", sql.VarChar(300), dto.tokenApiUrl);
         req.input("donusKok", sql.VarChar(300), dto.donusKok);
         req.input("inposNo", sql.VarChar(50), dto.inposUygulamaNo);
+        req.input("inposApiUrl", sql.VarChar(300), dto.inposApiUrl);
+        req.input("inposKullanici", sql.VarChar(200), dto.inposKullanici);
+        req.input("inposSifreDegisti", sql.Bit, dto.inposSifreSifreli !== undefined ? 1 : 0);
+        req.input("inposSifre", sql.VarChar(1000), dto.inposSifreSifreli ?? null);
+        req.input("whKullanici", sql.VarChar(200), dto.inposWebhookKullanici);
+        req.input("whSifreDegisti", sql.Bit, dto.inposWebhookSifreSifreli !== undefined ? 1 : 0);
+        req.input("whSifre", sql.VarChar(1000), dto.inposWebhookSifreSifreli ?? null);
         req.input("adminId", sql.Int, adminId);
-        // Kimlik ya da adres değişince eski erişim anahtarı geçersizdir
+        // Kimlik ya da adres değişince eski erişim anahtarları geçersizdir
         await req.query(`
       IF NOT EXISTS (SELECT 1 FROM dbo.ADM_POS_AYAR WHERE AYAR_ID = 1) INSERT INTO dbo.ADM_POS_AYAR (AYAR_ID) VALUES (1);
       UPDATE dbo.ADM_POS_AYAR SET
         TOKEN_CLIENT_ID = @clientId,
         TOKEN_CLIENT_SECRET_ENC = CASE WHEN @secretDegisti = 1 THEN @secret ELSE TOKEN_CLIENT_SECRET_ENC END,
         TOKEN_AUTH_URL = @authUrl, TOKEN_API_URL = @apiUrl, DONUS_KOK = @donusKok, INPOS_UYGULAMA_NO = @inposNo,
-        TOKEN_ERISIM_ENC = NULL, TOKEN_ERISIM_BITIS = NULL,
+        INPOS_API_URL = @inposApiUrl, INPOS_KULLANICI = @inposKullanici,
+        INPOS_SIFRE_ENC = CASE WHEN @inposSifreDegisti = 1 THEN @inposSifre ELSE INPOS_SIFRE_ENC END,
+        INPOS_WEBHOOK_KULLANICI = @whKullanici,
+        INPOS_WEBHOOK_SIFRE_ENC = CASE WHEN @whSifreDegisti = 1 THEN @whSifre ELSE INPOS_WEBHOOK_SIFRE_ENC END,
+        TOKEN_ERISIM_ENC = NULL, TOKEN_ERISIM_BITIS = NULL, INPOS_ERISIM_ENC = NULL, INPOS_ERISIM_BITIS = NULL,
         GUNCELLEYEN_ADMIN_ID = @adminId, GUNCELLEME_TARIHI = GETDATE()
       WHERE AYAR_ID = 1;
     `);
+    }
+    /** Inpos TSM erişim anahtarı (JWT, şifreli). Süresi veritabanı saatiyle denetlenir. */
+    static async inposErisimGetir() {
+        const pool = await getAdminPool();
+        const r = (await pool.request().query(`SELECT INPOS_ERISIM_ENC AS T FROM dbo.ADM_POS_AYAR WHERE AYAR_ID = 1 AND INPOS_ERISIM_BITIS > GETDATE()`)).recordset[0];
+        return r?.T || null;
+    }
+    static async inposErisimYaz(sifreli, omurSaniye) {
+        const pool = await getAdminPool();
+        await pool
+            .request()
+            .input("t", sql.VarChar(sql.MAX), sifreli)
+            .input("omur", sql.Int, omurSaniye)
+            .query(`UPDATE dbo.ADM_POS_AYAR SET INPOS_ERISIM_ENC = @t, INPOS_ERISIM_BITIS = CASE WHEN @t IS NULL THEN NULL ELSE DATEADD(SECOND, @omur, GETDATE()) END WHERE AYAR_ID = 1`);
+    }
+    // ─── Sipariş / sepet → firma ───────────────────────────────────────────────
+    static async sepetYaz(k) {
+        const pool = await getAdminPool();
+        await pool
+            .request()
+            .input("saglayici", sql.VarChar(10), k.saglayici)
+            .input("kimlik", sql.VarChar(100), k.sepetKimlik)
+            .input("firmaId", sql.Int, k.firmaId)
+            .query(`
+        IF NOT EXISTS (SELECT 1 FROM dbo.ADM_POS_SEPET WHERE SAGLAYICI = @saglayici AND SEPET_KIMLIK = @kimlik)
+          INSERT INTO dbo.ADM_POS_SEPET (SAGLAYICI, SEPET_KIMLIK, FIRMA_ID) VALUES (@saglayici, @kimlik, @firmaId);
+      `);
+    }
+    static async sepetFirmasi(saglayici, sepetKimlik) {
+        const pool = await getAdminPool();
+        const r = (await pool.request().input("saglayici", sql.VarChar(10), saglayici).input("kimlik", sql.VarChar(100), sepetKimlik).query(`SELECT FIRMA_ID FROM dbo.ADM_POS_SEPET WHERE SAGLAYICI = @saglayici AND SEPET_KIMLIK = @kimlik`)).recordset[0];
+        return r?.FIRMA_ID ?? null;
     }
     /** Token'ın 24 saatlik erişim anahtarı (şifreli). Süresi veritabanı saatiyle denetlenir. */
     static async erisimGetir() {

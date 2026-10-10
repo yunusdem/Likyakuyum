@@ -7,6 +7,7 @@ import { sifrele } from "../../utils/kripto.utils.js";
 import { PosService } from "../pos/pos.service.js";
 import { MODELLER } from "../pos/pos.types.js";
 import { PosMerkezService } from "../pos/posMerkez.service.js";
+import { inposKimlikTesti, inposWebhookAdresi } from "../pos/inpos.surucu.js";
 import { tokenKimlikTesti } from "../pos/token.surucu.js";
 import { firmaDbContextHazirla } from "./firmaBaglanti.service.js";
 // Yönetim paneli > POS Entegrasyonu — docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5
@@ -90,12 +91,23 @@ export class PosAdminService {
             tokenApiUrl: a?.tokenApiUrl ?? "",
             donusKok: a?.donusKok ?? "",
             inposUygulamaNo: a?.inposUygulamaNo ?? "",
+            inposApiUrl: a?.inposApiUrl ?? "",
+            inposKullanici: a?.inposKullanici ?? "",
+            inposSifreTanimli: Boolean(a?.inposSifreSifreli),
+            inposWebhookKullanici: a?.inposWebhookKullanici ?? "",
+            inposWebhookSifreTanimli: Boolean(a?.inposWebhookSifreSifreli),
+            /** Inpos portalına (Webhook Konfigürasyonu › Sipariş Durum Güncelleme) yazılacak adres */
+            inposWebhookAdresi: inposWebhookAdresi(a?.donusKok) ?? "",
             guncellemeTarihi: a?.guncellemeTarihi ?? null,
         };
     }
     static async ayarKaydet(yapan, g) {
         const tokenClientId = temiz(g.tokenClientId, 200);
         const secret = temiz(g.tokenClientSecret, 500);
+        const inposKullanici = temiz(g.inposKullanici, 200);
+        const inposSifre = temiz(g.inposSifre, 500);
+        const inposWebhookKullanici = temiz(g.inposWebhookKullanici, 200);
+        const inposWebhookSifre = temiz(g.inposWebhookSifre, 500);
         await kurulu(() => PosAdminSqlRepository.ayarKaydet({
             tokenClientId,
             // Kimlik silindiyse şifresi de silinir; yeni şifre girilmediyse kayıtlı olan korunur
@@ -104,8 +116,17 @@ export class PosAdminService {
             tokenApiUrl: adres(g.tokenApiUrl, "Token servis adresi"),
             donusKok: adres(g.donusKok, "Sunucunun dış adresi"),
             inposUygulamaNo: temiz(g.inposUygulamaNo, 50),
+            inposApiUrl: adres(g.inposApiUrl, "Inpos servis adresi"),
+            inposKullanici,
+            inposSifreSifreli: !inposKullanici ? null : inposSifre ? sifrele(inposSifre) : undefined,
+            inposWebhookKullanici,
+            inposWebhookSifreSifreli: !inposWebhookKullanici ? null : inposWebhookSifre ? sifrele(inposWebhookSifre) : undefined,
         }, yapan.adminId));
-        await AdminLogSqlRepository.islemLogu({ adminId: yapan.adminId, islem: "POS_AYAR_DEGISTI", yeni: { tokenClientId, sifreDegisti: Boolean(secret) } });
+        await AdminLogSqlRepository.islemLogu({
+            adminId: yapan.adminId,
+            islem: "POS_AYAR_DEGISTI",
+            yeni: { tokenClientId, sifreDegisti: Boolean(secret), inposKullanici, inposSifreDegisti: Boolean(inposSifre), inposWebhookSifreDegisti: Boolean(inposWebhookSifre) },
+        });
         return this.ayarGetir();
     }
     // ─── Firma bazında mod ─────────────────────────────────────────────────────
@@ -168,8 +189,9 @@ export class PosAdminService {
     static async konsolTerminaller(firmaId) {
         return PosEntegrasyonSqlRepository.terminalleriListele(await firmaBaglami(firmaId));
     }
-    static async kimlikTesti() {
-        return { ayrinti: await kurulu(() => tokenKimlikTesti()) };
+    /** saglayici: "token" (Beko) ya da "inpos" */
+    static async kimlikTesti(saglayici) {
+        return { ayrinti: await kurulu(() => (saglayici === "inpos" ? inposKimlikTesti() : tokenKimlikTesti())) };
     }
     /** gercek=false → sahte cihaz; gercek=true → firmanın modundan bağımsız, gerçek cihaz servisi. */
     static async konsolBaglantiTesti(firmaId, posTerminalId, gercek) {

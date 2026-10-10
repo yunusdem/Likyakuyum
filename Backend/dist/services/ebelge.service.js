@@ -907,7 +907,7 @@ export class EbelgeService {
         // 2) Alıcı etiketi
         const aliciAlias = await this.aliciAliasCoz(config, girdi.alici.vknTckn, girdi.aliciAlias);
         // 3) Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
-        const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
+        const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext, false);
         if (Number(belgeNo.slice(7)) <= sonSira) {
             throw ApiError.conflict(`Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`);
         }
@@ -1246,7 +1246,7 @@ export class EbelgeService {
         const { ozet } = buildGiderPusulasiXml({ ...girdi, gonderici });
         return { ozet, iceDogrulamasiYapildi: false };
     }
-    static async giderPusulasiGonder(girdi, kullanici, dbContext) {
+    static async giderPusulasiGonder(girdi, kullanici, dbContext, secenek = {}) {
         const belgeNo = girdi.belgeNo.trim().toUpperCase();
         const tarih = girdi.tarih || new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
         girdi = { ...girdi, belgeNo, tarih };
@@ -1301,6 +1301,8 @@ export class EbelgeService {
             semaGecerli: null,
             schematronGecerli: null,
             iceResponseMesaj: "Gönderim kuyruğunda.",
+            // Kaynak anahtarı (Perakende alış fişi): kuyruk sonucu kaynağa ve fişe de işlenir
+            kaynakFisId: secenek.kaynakFisId ?? null,
             xmlIcerik: xml,
             olusturan: kullanici,
             gonderen: kullanici,
@@ -1421,7 +1423,7 @@ export class EbelgeService {
             throw ApiError.unprocessable("Alıcı e-Fatura mükellefi; bu akıştan e-Arşiv gönderilemez.");
         }
         // Serinin son sırası — e-Fatura + e-Arşiv + yerel kayıt ortak (aynı seri iki türde kullanılabilir)
-        const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext);
+        const sonSira = await this.seriSonSira(config, belgeNo.slice(0, 3), Number(belgeNo.slice(3, 7)), dbContext, false);
         if (Number(belgeNo.slice(7)) <= sonSira) {
             throw ApiError.conflict(`Fatura numarası ${belgeNo.slice(0, 3)} serisinde kullanılan son sıradan (${sonSira}) büyük olmalıdır; numarayı yenileyin.`);
         }
@@ -1809,7 +1811,7 @@ export class EbelgeService {
      * EFatura / EArsiv); aynı seri iki türde kullanılınca biri ilerlerken diğeri geride kalıp kullanılmış numarayı
      * önerir. Fatura numarası firma içinde türden bağımsız tek olmalı → e-Fatura, e-Arşiv ve yerel giden kaydının en büyüğü.
      */
-    static async seriSonSira(config, seri, yil, dbContext) {
+    static async seriSonSira(config, seri, yil, dbContext, perakendeDahil = true) {
         const iceSon = async (tur) => {
             const son = await getSonBelgeId(config, seri, tur, yil);
             const sira = Number(son?.Son_Belge_ID);
@@ -1821,7 +1823,7 @@ export class EbelgeService {
         const [efatura, earsiv, yerel] = await Promise.all([
             iceSon("EFatura"),
             iceSon("EArsiv"),
-            EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext),
+            EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext, perakendeDahil),
         ]);
         return Math.max(efatura, earsiv, yerel);
     }

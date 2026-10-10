@@ -476,7 +476,26 @@ export class DovizFisSqlRepository {
                 IF @SERI_NO IS NOT NULL
                 BEGIN
                   SET @SATIR_NO = 0;
-                  SET @SAYAC = CAST(RIGHT(RTRIM(@SERI_NO), LEN(@SERI_NO) - LEN(ISNULL(@ONEK,''))) AS BIGINT);
+                  DECLARE @DIGITS_SERI VARCHAR(30) = '';
+                  DECLARE @PREFIX_SERI VARCHAR(30) = '';
+                  DECLARE @P_IDX INT = 1;
+                  WHILE @P_IDX <= LEN(RTRIM(@SERI_NO))
+                  BEGIN
+                    DECLARE @CH_SERI CHAR(1) = SUBSTRING(RTRIM(@SERI_NO), @P_IDX, 1);
+                    IF @CH_SERI LIKE '[0-9]'
+                      SET @DIGITS_SERI = @DIGITS_SERI + @CH_SERI;
+                    ELSE IF LEN(@DIGITS_SERI) = 0
+                      SET @PREFIX_SERI = @PREFIX_SERI + @CH_SERI;
+                    SET @P_IDX = @P_IDX + 1;
+                  END;
+
+                  DECLARE @SERI_DIGIT_LEN INT = LEN(@DIGITS_SERI);
+                  IF @SERI_DIGIT_LEN > 0
+                    SET @SAYAC = TRY_CAST(@DIGITS_SERI AS BIGINT);
+                  ELSE
+                    SET @SAYAC = 1;
+                  IF @SAYAC IS NULL SET @SAYAC = 1;
+
                   SET @NO = @SERI_NO;
                   WHILE @SATIR_NO < @SATIR_SAYISI
                   BEGIN
@@ -485,10 +504,10 @@ export class DovizFisSqlRepository {
                     IF @SATIR_NO % @CIKTI_SATIR_SAYISI = 0
                     BEGIN
                       SET @SAYAC = @SAYAC + 1;
-                      SET @NO = STR(@SAYAC, LEN(@SERI_NO) - LEN(ISNULL(@ONEK,'')));
-                      IF @ONUNE_SIFIR_KOY = 1 SET @NO = REPLACE(RTRIM(@NO), ' ' , '0');
-                      ELSE SET @NO = LTRIM(@NO);
-                      SET @NO = ISNULL(@ONEK, '') + @NO;
+                      DECLARE @RAW_SERI_STR VARCHAR(30) = CAST(@SAYAC AS VARCHAR(30));
+                      IF @ONUNE_SIFIR_KOY = 1 AND LEN(@RAW_SERI_STR) < @SERI_DIGIT_LEN
+                        SET @RAW_SERI_STR = REPLICATE('0', @SERI_DIGIT_LEN - LEN(@RAW_SERI_STR)) + @RAW_SERI_STR;
+                      SET @NO = ISNULL(@PREFIX_SERI, '') + @RAW_SERI_STR;
                     END;
                   END;
                 END;
@@ -533,7 +552,26 @@ export class DovizFisSqlRepository {
                 IF @BELGE_NO IS NOT NULL
                 BEGIN
                   SET @SATIR_NO = 0;
-                  SET @SAYAC = CAST(RIGHT(RTRIM(@BELGE_NO), LEN(@BELGE_NO) - LEN(ISNULL(@ONEK,''))) AS BIGINT);
+                  DECLARE @DIGITS_BELGE VARCHAR(30) = '';
+                  DECLARE @PREFIX_BELGE VARCHAR(30) = '';
+                  DECLARE @B_IDX INT = 1;
+                  WHILE @B_IDX <= LEN(RTRIM(@BELGE_NO))
+                  BEGIN
+                    DECLARE @CH_B CHAR(1) = SUBSTRING(RTRIM(@BELGE_NO), @B_IDX, 1);
+                    IF @CH_B LIKE '[0-9]'
+                      SET @DIGITS_BELGE = @DIGITS_BELGE + @CH_B;
+                    ELSE IF LEN(@DIGITS_BELGE) = 0
+                      SET @PREFIX_BELGE = @PREFIX_BELGE + @CH_B;
+                    SET @B_IDX = @B_IDX + 1;
+                  END;
+
+                  DECLARE @BELGE_DIGIT_LEN INT = LEN(@DIGITS_BELGE);
+                  IF @BELGE_DIGIT_LEN > 0
+                    SET @SAYAC = TRY_CAST(@DIGITS_BELGE AS BIGINT);
+                  ELSE
+                    SET @SAYAC = 1;
+                  IF @SAYAC IS NULL SET @SAYAC = 1;
+
                   SET @NO = @BELGE_NO;
                   WHILE @SATIR_NO < @SATIR_SAYISI
                   BEGIN
@@ -542,10 +580,10 @@ export class DovizFisSqlRepository {
                     IF @SATIR_NO % @CIKTI_SATIR_SAYISI = 0
                     BEGIN
                       SET @SAYAC = @SAYAC + 1;
-                      SET @NO = STR(@SAYAC, LEN(@BELGE_NO) - LEN(ISNULL(@ONEK,'')));
-                      IF @ONUNE_SIFIR_KOY = 1 SET @NO = REPLACE(RTRIM(@NO), ' ' , '0');
-                      ELSE SET @NO = LTRIM(@NO);
-                      SET @NO = ISNULL(@ONEK, '') + @NO;
+                      DECLARE @RAW_BELGE_STR VARCHAR(30) = CAST(@SAYAC AS VARCHAR(30));
+                      IF @ONUNE_SIFIR_KOY = 1 AND LEN(@RAW_BELGE_STR) < @BELGE_DIGIT_LEN
+                        SET @RAW_BELGE_STR = REPLICATE('0', @BELGE_DIGIT_LEN - LEN(@RAW_BELGE_STR)) + @RAW_BELGE_STR;
+                      SET @NO = ISNULL(@PREFIX_BELGE, '') + @RAW_BELGE_STR;
                     END;
                   END;
                 END;
@@ -893,6 +931,19 @@ export class DovizFisSqlRepository {
                 str.startsWith("1900-01-01")) {
                 return new Date();
             }
+            // Check Turkish DD.MM.YYYY format
+            if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(str)) {
+                const parts = str.split(/[. :]/);
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                const year = parseInt(parts[2], 10);
+                const hours = parts[3] ? parseInt(parts[3], 10) : 0;
+                const mins = parts[4] ? parseInt(parts[4], 10) : 0;
+                const secs = parts[5] ? parseInt(parts[5], 10) : 0;
+                const dt = new Date(year, month, day, hours, mins, secs);
+                if (!isNaN(dt.getTime()) && year > 1900 && year <= 9999)
+                    return dt;
+            }
             const dt = new Date(str);
             if (isNaN(dt.getTime()))
                 return new Date();
@@ -924,6 +975,19 @@ export class DovizFisSqlRepository {
                 str.startsWith("1900-01-01")) {
                 return null;
             }
+            // Check Turkish DD.MM.YYYY format
+            if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(str)) {
+                const parts = str.split(/[. :]/);
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                const year = parseInt(parts[2], 10);
+                const hours = parts[3] ? parseInt(parts[3], 10) : 0;
+                const mins = parts[4] ? parseInt(parts[4], 10) : 0;
+                const secs = parts[5] ? parseInt(parts[5], 10) : 0;
+                const dt = new Date(year, month, day, hours, mins, secs);
+                if (!isNaN(dt.getTime()) && year > 1900 && year <= 9999)
+                    return dt;
+            }
             const dt = new Date(str);
             if (isNaN(dt.getTime()))
                 return null;
@@ -933,13 +997,19 @@ export class DovizFisSqlRepository {
             return dt;
         };
         const parsedTarih = parseDate(dto.tarih);
-        // Ekran fiş saatini tek başına "SS:DD" (düzeltmede "SS:DD:SS") gönderir; tarih olarak okunamadığından önceden her kayıtta ve düzeltmede "şimdi"
-        // yazılıyordu (rapor denetimi 01.10.2026). Saat, fişin tarihiyle birleştirilip sunucu saatine göre okunur.
-        const saatParcalari = String(dto.zaman ?? "").trim().split(":");
-        const tarihMetni = String(dto.tarih ?? "").trim().slice(0, 10);
-        const saatliZaman = saatParcalari.length >= 2 && saatParcalari.length <= 3 && saatParcalari.every((x) => /^\d{1,2}$/.test(x)) && /^\d{4}-\d{2}-\d{2}$/.test(tarihMetni)
-            ? new Date(`${tarihMetni}T${saatParcalari.map((x) => x.padStart(2, "0")).join(":")}`) : null;
-        const parsedZaman = saatliZaman && !isNaN(saatliZaman.getTime()) ? saatliZaman : parseDate(dto.zaman || dto.tarih);
+        let parsedZaman = new Date(parsedTarih);
+        if (dto.zaman) {
+            const zamanStr = String(dto.zaman).trim();
+            const saatParcalari = zamanStr.split(":");
+            if (saatParcalari.length >= 2 && saatParcalari.length <= 3 && saatParcalari.every((x) => /^\d{1,2}$/.test(x))) {
+                parsedZaman.setHours(parseInt(saatParcalari[0], 10), parseInt(saatParcalari[1], 10), saatParcalari[2] ? parseInt(saatParcalari[2], 10) : 0, 0);
+            }
+            else {
+                const zDate = safeDate(dto.zaman);
+                if (zDate)
+                    parsedZaman = zDate;
+            }
+        }
         const currentYear = parsedTarih.getFullYear();
         // User provided sequential numbers or leave empty for stored procedure auto-generation
         let seriNo = (dto.seriNo || "").trim();
@@ -1020,7 +1090,7 @@ export class DovizFisSqlRepository {
         const istatistikId = dto.istatistikId || (tip === 1 ? 10285 : 9249);
         const kullaniciId = Number(dto.kullaniciId) || 1;
         const vezneId = (dto.vezneId && Number(dto.vezneId) > 0) ? Number(dto.vezneId) : kullaniciId;
-        const guid = dto.guid || crypto.randomUUID();
+        const guid = (dto.guid && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(dto.guid)) ? dto.guid : crypto.randomUUID();
         // Helper: Safely resolve positive integer ID or null (never pass 0 or negative ID into foreign key parameters)
         const toValidId = (v) => {
             const n = Number(v);
@@ -1057,10 +1127,10 @@ export class DovizFisSqlRepository {
         try {
             const procReq = pool.request();
             const userRawSeriNo = (dto.seriNo && dto.seriNo.trim()) ? dto.seriNo.trim().slice(0, 20) : null;
-            const userRawBelgeNo = (dto.belgeNo && dto.belgeNo.trim()) ? dto.belgeNo.trim().slice(0, 20) : null;
+            const userRawBelgeNo = (dto.belgeNo && dto.belgeNo.trim()) ? dto.belgeNo.trim().slice(0, 50) : null;
             const userRawGelisNedeni = (dto.gelisNedeni && dto.gelisNedeni.trim()) ? dto.gelisNedeni.trim().slice(0, 100) : null;
             const userRawVkn = (dto.vergiKimlikNo && dto.vergiKimlikNo.trim()) ? dto.vergiKimlikNo.trim().slice(0, 20) : null;
-            const userRawAdres = (dto.adres && dto.adres.trim()) ? dto.adres.trim().slice(0, 100) : null;
+            const userRawAdres = (dto.adres && dto.adres.trim()) ? dto.adres.trim().slice(0, 250) : null;
             const cleanSeriNo = userRawSeriNo;
             const cleanBelgeNo = userRawBelgeNo;
             const cleanUnvan = unvan.slice(0, 200);
@@ -1068,21 +1138,21 @@ export class DovizFisSqlRepository {
             const cleanVkn = userRawVkn || "11111111111";
             const cleanAdres = userRawAdres || "-";
             const cleanKisilikTipi = isIsimBeyanEdilmemis ? 0 : (dto.kisilikTipi || 0);
-            const cleanTel = (dto.telefonNo || "").trim().slice(0, 20) || null;
-            const cleanPasaport = (dto.pasaportNo || "").trim().slice(0, 20) || null;
-            const cleanBaba = (dto.babaAdi || "").trim().slice(0, 200) || null;
-            const cleanAnne = (dto.anneAdi || "").trim().slice(0, 200) || null;
+            const cleanTel = (dto.telefonNo || "").trim().slice(0, 30) || null;
+            const cleanPasaport = (dto.pasaportNo || "").trim().slice(0, 30) || null;
+            const cleanBaba = (dto.babaAdi || "").trim().slice(0, 50) || null;
+            const cleanAnne = (dto.anneAdi || "").trim().slice(0, 50) || null;
             const cleanDogumYeri = (dto.dogumYeri || "").trim().slice(0, 100) || null;
-            const cleanKimlikSeriNo = (dto.kimlikSeriNo || "").trim().slice(0, 20) || null;
-            const cleanVekilAdi = (dto.vekilAdi || "").trim().slice(0, 200) || null;
+            const cleanKimlikSeriNo = (dto.kimlikSeriNo || "").trim().slice(0, 30) || null;
+            const cleanVekilAdi = (dto.vekilAdi || "").trim().slice(0, 50) || null;
             const cleanVekilKimlik = (dto.vekilKimlikNo || "").trim().slice(0, 20) || null;
             const cleanEposta = (dto.eposta || "").trim().slice(0, 100) || null;
-            const cleanGmBeyannameNo = (dto.gmBeyannameNo || "").trim().slice(0, 20) || null;
-            const cleanGmDovizSayi = (dto.gmDovizSayi || "").trim().slice(0, 20) || null;
-            const cleanGmTeyitSayi = (dto.gmTeyitSayi || "").trim().slice(0, 20) || null;
-            const cleanGmFaturaNo = (dto.gmFaturaNo || "").trim().slice(0, 20) || null;
+            const cleanGmBeyannameNo = (dto.gmBeyannameNo || "").trim().slice(0, 30) || null;
+            const cleanGmDovizSayi = (dto.gmDovizSayi || "").trim().slice(0, 30) || null;
+            const cleanGmTeyitSayi = (dto.gmTeyitSayi || "").trim().slice(0, 30) || null;
+            const cleanGmFaturaNo = (dto.gmFaturaNo || "").trim().slice(0, 30) || null;
             const cleanDernekAmaci = (dto.dernekAmaci || "").trim().slice(0, 200) || null;
-            const cleanPostaKutusu = (dto.eFaturaPostaKutusu || "").trim().slice(0, 200) || null;
+            const cleanPostaKutusu = (dto.eFaturaPostaKutusu || "").trim().slice(0, 100) || null;
             // Header / Procedure Input Parameters
             procReq.input("FIS_ID_IN", sql.Int, targetFisId || null);
             procReq.input("VEZNE_ID", sql.Int, vezneId);
@@ -1090,7 +1160,7 @@ export class DovizFisSqlRepository {
             procReq.input("TARIH", sql.DateTime, parsedTarih);
             procReq.input("ZAMAN", sql.DateTime, parsedZaman);
             procReq.input("SERI_NO_IN", sql.VarChar(20), cleanSeriNo);
-            procReq.input("BELGE_NO_IN", sql.VarChar(20), cleanBelgeNo);
+            procReq.input("BELGE_NO_IN", sql.VarChar(50), cleanBelgeNo);
             procReq.input("GELIS_NEDENI", sql.VarChar(100), cleanGelisNedeni);
             procReq.input("KUR_TURU", sql.TinyInt, kurTuru);
             procReq.input("ISTATISTIK_ID", sql.Int, istatistikId);
@@ -1098,24 +1168,24 @@ export class DovizFisSqlRepository {
             procReq.input("UNVAN", sql.VarChar(200), cleanUnvan);
             procReq.input("KISILIK_TIPI", sql.TinyInt, cleanKisilikTipi);
             procReq.input("USER_RAW_SERI_NO", sql.VarChar(20), userRawSeriNo);
-            procReq.input("USER_RAW_BELGE_NO", sql.VarChar(20), userRawBelgeNo);
+            procReq.input("USER_RAW_BELGE_NO", sql.VarChar(50), userRawBelgeNo);
             procReq.input("USER_RAW_GELIS_NEDENI", sql.VarChar(100), userRawGelisNedeni);
             procReq.input("USER_RAW_VKN", sql.VarChar(20), userRawVkn);
-            procReq.input("USER_RAW_ADRES", sql.VarChar(100), userRawAdres);
+            procReq.input("USER_RAW_ADRES", sql.VarChar(250), userRawAdres);
             procReq.input("UYRUK_ID", sql.Int, toValidId(dto.uyrukId));
             procReq.input("ULKE_ID", sql.Int, toValidId(dto.ulkeId));
-            procReq.input("PASAPORT_NO", sql.VarChar(20), cleanPasaport);
+            procReq.input("PASAPORT_NO", sql.VarChar(30), cleanPasaport);
             procReq.input("HUKUKI_YAPI_ID", sql.Int, toValidId(dto.hukukiYapiId));
             procReq.input("VERGI_DAIRESI_ID", sql.Int, toValidId(dto.vergiDairesiId));
             procReq.input("VERGI_KIMLIK_NO", sql.VarChar(20), cleanVkn);
-            procReq.input("BABA_ADI", sql.VarChar(200), cleanBaba);
-            procReq.input("ADRES", sql.VarChar(100), cleanAdres);
+            procReq.input("BABA_ADI", sql.VarChar(50), cleanBaba);
+            procReq.input("ADRES", sql.VarChar(250), cleanAdres);
             procReq.input("ILCE_ID", sql.Int, toValidId(dto.ilceId));
             procReq.input("POSTA_KODU_ID", sql.Int, toValidId(dto.postaKoduId));
             procReq.input("IL_ID", sql.Int, toValidId(dto.ilId));
             procReq.input("VEKIL_TURU", sql.TinyInt, dto.vekilTuru || 0);
             procReq.input("VEKIL_KISILIK_TIPI", sql.TinyInt, dto.vekilKisilikTipi || 0);
-            procReq.input("VEKIL_ADI", sql.VarChar(200), cleanVekilAdi);
+            procReq.input("VEKIL_ADI", sql.VarChar(50), cleanVekilAdi);
             procReq.input("VEKIL_KIMLIK_NO", sql.VarChar(20), cleanVekilKimlik);
             procReq.input("TOPLAM_TUTAR", sql.Float, finalToplamTutar);
             procReq.input("YUVARLAMA", sql.Float, yuvarlama);
@@ -1126,26 +1196,26 @@ export class DovizFisSqlRepository {
             procReq.input("MERKEZ_USD_KURU", sql.Float, dto.merkezUsdKuru || 1.0);
             procReq.input("GISE_USD_KURU", sql.Float, dto.giseUsdKuru || 1.0);
             procReq.input("GM_BEYANNAME_TARIH", sql.DateTime, safeDate(dto.gmBeyannameTarih));
-            procReq.input("GM_BEYANNAME_NO", sql.VarChar(20), cleanGmBeyannameNo);
+            procReq.input("GM_BEYANNAME_NO", sql.VarChar(30), cleanGmBeyannameNo);
             procReq.input("GM_DOVIZ_TARIH", sql.DateTime, safeDate(dto.gmDovizTarih));
-            procReq.input("GM_DOVIZ_SAYI", sql.VarChar(20), cleanGmDovizSayi);
+            procReq.input("GM_DOVIZ_SAYI", sql.VarChar(30), cleanGmDovizSayi);
             procReq.input("GM_TEYIT_TARIH", sql.DateTime, safeDate(dto.gmTeyitTarih));
-            procReq.input("GM_TEYIT_SAYI", sql.VarChar(20), cleanGmTeyitSayi);
-            procReq.input("GM_FATURA_NO", sql.VarChar(20), cleanGmFaturaNo);
+            procReq.input("GM_TEYIT_SAYI", sql.VarChar(30), cleanGmTeyitSayi);
+            procReq.input("GM_FATURA_NO", sql.VarChar(30), cleanGmFaturaNo);
             procReq.input("ARBITRAJ_ID", sql.Int, toValidId(dto.arbitrajId));
-            procReq.input("TELEFON_NO", sql.VarChar(20), cleanTel);
+            procReq.input("TELEFON_NO", sql.VarChar(30), cleanTel);
             procReq.input("MESLEK_ID", sql.Int, toValidId(dto.meslekId));
             procReq.input("DOGUM_TARIHI", sql.DateTime, safeDate(dto.dogumTarihi));
             procReq.input("DOGUM_YERI", sql.VarChar(100), cleanDogumYeri);
-            procReq.input("KIMLIK_SERI_NO", sql.VarChar(20), cleanKimlikSeriNo);
-            procReq.input("ANNE_ADI", sql.VarChar(200), cleanAnne);
+            procReq.input("KIMLIK_SERI_NO", sql.VarChar(30), cleanKimlikSeriNo);
+            procReq.input("ANNE_ADI", sql.VarChar(50), cleanAnne);
             procReq.input("IPTAL", sql.Bit, dto.iptal ? 1 : 0);
             procReq.input("IPTAL_TARIHI", sql.DateTime, safeDate(dto.iptalTarihi));
             procReq.input("MASAK_LISTESINDE_VAR", sql.Bit, dto.masakListesindeVar ? 1 : 0);
             procReq.input("SUPHELI_ISLEMLER_YETKILI_ID", sql.Int, toValidId(dto.supheliIslemlerYetkiliId));
             procReq.input("YUVARLAMA_ARALIGI", sql.Float, dto.yuvarlamaAraligi || 0);
             procReq.input("YUVARLAMA_ESIGI", sql.Float, dto.yuvarlamaEsigi || 0);
-            procReq.input("E_FATURA_POSTA_KUTUSU", sql.VarChar(200), cleanPostaKutusu);
+            procReq.input("E_FATURA_POSTA_KUTUSU", sql.VarChar(100), cleanPostaKutusu);
             procReq.input("BELGE_TURU", sql.TinyInt, dto.belgeTuru || 0);
             procReq.input("KIMLIK_GECERLILIK_TARIHI", sql.DateTime, safeDate(dto.kimlikGecerlilikTarihi));
             procReq.input("KIMLIK_BELGE_TURU", sql.TinyInt, dto.kimlikBelgeTuru || 0);
@@ -1161,34 +1231,46 @@ export class DovizFisSqlRepository {
             procReq.input("CLEAN_IL", sql.VarChar(100), (dto.il || "").trim().slice(0, 100) || null);
             procReq.input("KULLANICI_ID", sql.Int, kullaniciId);
             procReq.input("YAZICI_ID", sql.Int, toValidId(dto.yaziciId));
-            procReq.input("GUID_STR", sql.VarChar(40), guid.slice(0, 40));
+            procReq.input("GUID_STR", sql.VarChar(50), guid);
             procReq.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar ? 1 : 0);
             // Row Parameter definitions
             const rowValuesSql = [];
             items.forEach((item, idx) => {
-                const m = item.miktar;
-                const k = item.kur;
-                const tutar = item.tutar;
+                const m = Number(item.miktar) || 0;
+                const k = Number(item.kur) || 1.0;
+                const tutar = Number(item.tutar) || (m * k);
+                const iscilik = Number(item.iscilik) || 0;
+                const giseKuru = Number(item.giseKuru) || k;
+                const komOrani = Number(item.komisyonOrani) || 0;
+                const kom = Number(item.komisyon) || 0;
+                const bmvOrani = Number(item.bmvOrani) || 0;
+                const bmv = Number(item.bmv) || 0;
+                const kmvOrani = Number(item.kmvOrani) || 0;
+                const kmv = Number(item.kmv) || 0;
+                const kdvOrani = Number(item.kdvOrani) || 0;
+                const kdv = Number(item.kdv) || 0;
+                const pId = Number(item.paraId) || defaultParaId;
+                const bankaId = toValidId(item.bankaHesabiId);
                 const satirSeri = (item.seriNo || seriNo || "").slice(0, 20);
                 const satirBelge = (item.belgeNo || belgeNo || "").slice(0, 50);
                 rowValuesSql.push(`(
           @GUID_STR,
           ${idx},
           ${m},
-          ${item.paraId},
+          ${pId},
           ${k},
-          ${item.iscilik},
-          ${item.giseKuru},
+          ${iscilik},
+          ${giseKuru},
           ${tutar},
-          ${item.komisyonOrani},
-          ${item.komisyon},
-          ${item.bmvOrani},
-          ${item.bmv},
-          ${item.kmvOrani},
-          ${item.kmv},
-          ${item.kdvOrani},
-          ${item.kdv},
-          ${item.bankaHesabiId ? Number(item.bankaHesabiId) : "NULL"},
+          ${komOrani},
+          ${kom},
+          ${bmvOrani},
+          ${bmv},
+          ${kmvOrani},
+          ${kmv},
+          ${kdvOrani},
+          ${kdv},
+          ${bankaId ? bankaId : "NULL"},
           ${satirSeri ? `'${satirSeri.replace(/'/g, "''")}'` : "NULL"},
           ${satirBelge ? `'${satirBelge.replace(/'/g, "''")}'` : "NULL"}
         )`);
@@ -1233,9 +1315,10 @@ export class DovizFisSqlRepository {
 
         DECLARE @P_FIS_ID INT = @FIS_ID_IN;
         DECLARE @P_SERI_NO VARCHAR(20) = @SERI_NO_IN;
-        DECLARE @P_BELGE_NO VARCHAR(20) = @BELGE_NO_IN;
+        DECLARE @P_BELGE_NO VARCHAR(50) = @BELGE_NO_IN;
         DECLARE @P_YENI_KAYIT BIT = 0;
-        DECLARE @P_GUID VARCHAR(40) = @GUID_STR;
+        DECLARE @EFF_GUID UNIQUEIDENTIFIER = TRY_CONVERT(UNIQUEIDENTIFIER, @GUID_STR);
+        IF @EFF_GUID IS NULL SET @EFF_GUID = NEWID();
 
         -- 1. Cari Kart Doğrulama (Seçili cari yoksa veya geçersizse NULL yapılır)
         DECLARE @EFF_CARI_KART_ID INT = CASE WHEN @CARI_KART_ID > 0 THEN @CARI_KART_ID ELSE NULL END;
@@ -1791,7 +1874,7 @@ export class DovizFisSqlRepository {
           @KIMLIK_BELGE_TURU = @KIMLIK_BELGE_TURU,
           @KULLANICI_ID = @EFF_KULLANICI_ID,
           @YAZICI_ID = @EFF_YAZICI_ID,
-          @GUID = @P_GUID,
+          @GUID = @EFF_GUID,
           @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR,
           @YENI_KAYIT = @P_YENI_KAYIT OUTPUT;
 

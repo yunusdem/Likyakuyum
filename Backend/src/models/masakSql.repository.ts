@@ -852,21 +852,25 @@ export class MasakSqlRepository {
 
     const orKosullar: string[] = [];
     if (kimlik) {
+      // Kimlik / TCKN / VKN belirtilmişse: KESİNLİKLE kimlik eşleşmesi aranır.
+      // TC tutmuyorsa sadece isim tutuyor diye kayıt getirilmez.
       orKosullar.push("([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[' OR [DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[')");
-    }
-    if (adNorm) {
+    } else if (adNorm) {
+      // Kimlik yoksa yalnızca ada göre aranır; bulunan kayıtların TC/kimlik bilgileri doğrudan sonuç tablosunda döner.
       orKosullar.push("[AD_UNVAN_NORM] = @adNorm");
       orKosullar.push("[DIGER_ISIMLER_NORM] LIKE @adLike ESCAPE '['");
+
+      // Kelime bazlı: sorgudaki tüm kelimeler ad içinde geçiyorsa (sıra fark etmez)
+      if (kelimeler.length) {
+        const kelimeKosullari = kelimeler.map((kelime, i) => {
+          req.input(`w${i}`, sql.NVarChar(200), `%${MasakSqlRepository.likeKacir(kelime)}%`);
+          return `[AD_UNVAN_NORM] LIKE @w${i} ESCAPE '['`;
+        });
+        orKosullar.push(`(${kelimeKosullari.join(" AND ")})`);
+      }
     }
 
-    // Kelime bazlı: sorgudaki tüm kelimeler ad içinde geçiyorsa (sıra fark etmez)
-    if (kelimeler.length) {
-      const kelimeKosullari = kelimeler.map((kelime, i) => {
-        req.input(`w${i}`, sql.NVarChar(200), `%${MasakSqlRepository.likeKacir(kelime)}%`);
-        return `[AD_UNVAN_NORM] LIKE @w${i} ESCAPE '['`;
-      });
-      orKosullar.push(`(${kelimeKosullari.join(" AND ")})`);
-    }
+    if (!orKosullar.length) return [];
 
     // İki adım: önce yalnız MASAK_ID + skorla eşleşenler süzülüp sıralanır (geniş NVARCHAR(MAX) kolonlar
     // sıralamaya taşınmaz), sonra seçilen en çok @limit satırın kullanılan kolonları anahtarla okunur.
@@ -875,7 +879,9 @@ export class MasakSqlRepository {
       WITH [SECILEN] AS (
       SELECT TOP (@limit) [MASAK_ID],
         CASE
-          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[') THEN 100
+          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[')
+               AND (@adNorm IS NOT NULL AND ([AD_UNVAN_NORM] = @adNorm OR [DIGER_ISIMLER_NORM] LIKE @adLike ESCAPE '[')) THEN 100
+          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[') THEN 95
           WHEN @kimlik IS NOT NULL AND ([DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[') THEN 85
           WHEN @adNorm IS NOT NULL AND [AD_UNVAN_NORM] = @adNorm THEN 90
           WHEN @adLike IS NOT NULL AND [DIGER_ISIMLER_NORM] LIKE @adLike ESCAPE '[' THEN 70
@@ -899,12 +905,12 @@ export class MasakSqlRepository {
       const kayit = MasakSqlRepository.mapKayit(r);
       const skor: number = r.SKOR ?? 50;
       const eslesmeTipi: MasakEslesmeTipi =
-        skor >= 95
+        skor === 100
           ? (kimlik ? "KIMLIK_TAM" : "AD_TAM")
-          : skor === 90
-            ? "AD_TAM"
-            : skor >= 80
-              ? (kimlik ? "KIMLIK_TAM" : "AD_KELIME")
+          : skor >= 85
+            ? "KIMLIK_TAM"
+            : skor === 90
+              ? "AD_TAM"
               : skor === 70
                 ? "ALIAS_TAM"
                 : "AD_KELIME";

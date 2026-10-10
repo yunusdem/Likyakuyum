@@ -2,6 +2,8 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { EbelgeSeriRepository } from "./ebelgeSeri.repository.js";
+import { perakendeOnEki, perakendeSeriTuru } from "../services/ebelgePerakende.js";
 /**
  * Perakende fişinin vezne etkisini geri alan SQL (@FID faturası, veritabanındaki hâlinden) — düzeltmede başlık güncellenmeden önce ve silmede kullanılır.
  * Barkodsuz satır: satırda saklanan stok parası / miktarı (STOK_PARA_ID / STOK_MIKTAR); 01.10.2026 öncesi satırlarda kaydetmedeki eski kural ve eşleştirme.
@@ -424,6 +426,21 @@ export class PerakendeSqlRepository {
     /**
      * Generates next Invoice Number (guaranteed unused and synchronized with TODVZ_NUMERATOR & TODVZ_FATURA)
      */
+    /**
+     * Numaratör ön eki (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3): e-Belge Ayarları'ndaki varsayılan seri
+     * (satış e-Arşiv → EArsiv, satış e-Fatura → EFatura, alış → EGider); tanımlı değilse eski ön ek (EAR / GIB / GDR).
+     */
+    static async numaratorOnEki(faturaTipi, senaryo, dbContext) {
+        const tur = perakendeSeriTuru(faturaTipi, senaryo);
+        let varsayilan = null;
+        try {
+            varsayilan = (await EbelgeSeriRepository.listele(tur, dbContext)).find((x) => x.varsayilan)?.seri ?? null;
+        }
+        catch (err) {
+            logger.warn(`[Perakende] Varsayılan seri okunamadı (${tur}): ${err?.message}`);
+        }
+        return perakendeOnEki(faturaTipi, senaryo, varsayilan);
+    }
     static async getNextFaturaNo(prefix = "EAR", dbContext) {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
@@ -468,9 +485,20 @@ export class PerakendeSqlRepository {
         DECLARE @SAYAC_BOYU INT = @UZUNLUK - LEN(@ONEK);
         IF @SAYAC_BOYU < 2 SET @SAYAC_BOYU = 2;
 
-        -- Candidate loop to guarantee non-duplicate against TODVZ_FATURA
+        -- Kayıtlı en büyük numaradan devam (fiş tablosu + giden kutusu); sayaç geride kalmışsa yakalar
+        DECLARE @SON_SIRA INT = 0;
+        SELECT @SON_SIRA = ISNULL(MAX(TRY_CAST(RIGHT(FATURA_NO, @SAYAC_BOYU) AS INT)), 0) FROM dbo.TODVZ_FATURA
+          WHERE LEN(FATURA_NO) = @UZUNLUK AND LEFT(FATURA_NO, LEN(@ONEK)) = @ONEK;
+        -- Giden kutusu her veritabanında olmayabilir: doğrudan yazılırsa toplu işlem derlenmez, bu yüzden dinamik SQL
+        IF OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN') IS NOT NULL
+          EXEC sp_executesql N'SELECT @s = ISNULL(MAX(TRY_CAST(RIGHT(BELGE_NO, @b) AS INT)), @s) FROM dbo.TODVZ_EBELGE_GIDEN WHERE LEN(BELGE_NO) = @u AND LEFT(BELGE_NO, LEN(@o)) = @o AND TRY_CAST(RIGHT(BELGE_NO, @b) AS INT) > @s',
+            N'@s INT OUTPUT, @b INT, @u INT, @o VARCHAR(20)', @s = @SON_SIRA OUTPUT, @b = @SAYAC_BOYU, @u = @UZUNLUK, @o = @ONEK;
+        IF @SON_SIRA + 1 > @SAYAC SET @SAYAC = @SON_SIRA + 1;
+
+        -- Candidate loop to guarantee non-duplicate against TODVZ_FATURA and the outbox
         DECLARE @CANDIDATE VARCHAR(50);
         DECLARE @EXISTS BIT = 1;
+        DECLARE @GIDEN_VAR BIT = 0;
 
         WHILE @EXISTS = 1
         BEGIN
@@ -478,7 +506,11 @@ export class PerakendeSqlRepository {
           IF @ONUNE_SIFIR = 1 SET @NUM_STR = REPLACE(@NUM_STR, ' ', '0');
           SET @CANDIDATE = RTRIM(@ONEK) + LTRIM(@NUM_STR);
 
-          IF EXISTS (SELECT 1 FROM dbo.TODVZ_FATURA WHERE FATURA_NO = @CANDIDATE)
+          SET @GIDEN_VAR = 0;
+          IF OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN') IS NOT NULL
+            EXEC sp_executesql N'SELECT @v = CASE WHEN EXISTS (SELECT 1 FROM dbo.TODVZ_EBELGE_GIDEN WHERE BELGE_NO = @n) THEN 1 ELSE 0 END',
+              N'@v BIT OUTPUT, @n VARCHAR(50)', @v = @GIDEN_VAR OUTPUT, @n = @CANDIDATE;
+          IF EXISTS (SELECT 1 FROM dbo.TODVZ_FATURA WHERE FATURA_NO = @CANDIDATE) OR @GIDEN_VAR = 1
           BEGIN
             SET @SAYAC = @SAYAC + 1;
           END
@@ -688,11 +720,14 @@ export class PerakendeSqlRepository {
             req.input("IN_FATURA_ID", sql.Int, dto.faturaId || 0);
             req.input("IN_FATURA_NO", sql.VarChar(50), faturaNo || null);
             req.input("IN_SENARYO", sql.VarChar(50), senaryo);
+            // Ön ek e-Belge Ayarları'ndaki varsayılan seriden (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3)
+            req.input("IN_PREFIX", sql.VarChar(10), await PerakendeSqlRepository.numaratorOnEki(faturaTipi, senaryo, dbContext));
+            req.input("IN_FATURA_TIPI", sql.Int, faturaTipi);
             const numGenQuery = `
         DECLARE @CURRENT_FID INT = @IN_FATURA_ID;
         DECLARE @GEN_NO VARCHAR(50) = @IN_FATURA_NO;
-        DECLARE @PREFIX_KEY VARCHAR(10) = CASE WHEN @IN_SENARYO = 'EARSIVFATURA' THEN 'EAR' ELSE 'GIB' END;
-        DECLARE @TARGET_TUR INT = CASE WHEN @IN_SENARYO = 'EARSIVFATURA' THEN 26 ELSE 24 END;
+        DECLARE @PREFIX_KEY VARCHAR(10) = @IN_PREFIX;
+        DECLARE @TARGET_TUR INT = CASE WHEN @IN_FATURA_TIPI = 0 THEN 28 WHEN @IN_SENARYO = 'EARSIVFATURA' THEN 26 ELSE 24 END;
         DECLARE @ONEK VARCHAR(20) = NULL;
         DECLARE @ONUNE_SIFIR BIT = 1;
         DECLARE @SAYAC INT = 1;
@@ -743,15 +778,30 @@ export class PerakendeSqlRepository {
 
         IF @IS_COLLISION = 1
         BEGIN
-          -- Find next guaranteed unused sequence number for this prefix
+          -- Kayıtlı en büyük numaradan devam (fiş tablosu + giden kutusu); sayaç geride kalmışsa yakalar
+          DECLARE @SON_SIRA INT = 0;
+          SELECT @SON_SIRA = ISNULL(MAX(TRY_CAST(RIGHT(FATURA_NO, @SAYAC_BOYU) AS INT)), 0) FROM dbo.TODVZ_FATURA
+            WHERE LEN(FATURA_NO) = @UZUNLUK AND LEFT(FATURA_NO, LEN(@ONEK)) = @ONEK AND (@CURRENT_FID = 0 OR FATURA_ID <> @CURRENT_FID);
+          -- Giden kutusu her veritabanında olmayabilir: dinamik SQL ile okunur
+          IF OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN') IS NOT NULL
+            EXEC sp_executesql N'SELECT @s = ISNULL(MAX(TRY_CAST(RIGHT(BELGE_NO, @b) AS INT)), @s) FROM dbo.TODVZ_EBELGE_GIDEN WHERE LEN(BELGE_NO) = @u AND LEFT(BELGE_NO, LEN(@o)) = @o AND TRY_CAST(RIGHT(BELGE_NO, @b) AS INT) > @s',
+              N'@s INT OUTPUT, @b INT, @u INT, @o VARCHAR(20)', @s = @SON_SIRA OUTPUT, @b = @SAYAC_BOYU, @u = @UZUNLUK, @o = @ONEK;
+          IF @SON_SIRA + 1 > @SAYAC SET @SAYAC = @SON_SIRA + 1;
+
+          -- Find next guaranteed unused sequence number for this prefix (fiş tablosu + giden kutusu)
           DECLARE @EXISTS BIT = 1;
+          DECLARE @GIDEN_VAR BIT = 0;
           WHILE @EXISTS = 1
           BEGIN
             DECLARE @NUM_S VARCHAR(20) = STR(@SAYAC, @SAYAC_BOYU, 0);
             IF @ONUNE_SIFIR = 1 SET @NUM_S = REPLACE(@NUM_S, ' ', '0');
             SET @GEN_NO = RTRIM(@ONEK) + LTRIM(@NUM_S);
 
-            IF EXISTS (SELECT 1 FROM dbo.TODVZ_FATURA WHERE FATURA_NO = @GEN_NO AND (@CURRENT_FID = 0 OR FATURA_ID <> @CURRENT_FID))
+            SET @GIDEN_VAR = 0;
+            IF OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN') IS NOT NULL
+              EXEC sp_executesql N'SELECT @v = CASE WHEN EXISTS (SELECT 1 FROM dbo.TODVZ_EBELGE_GIDEN WHERE BELGE_NO = @n) THEN 1 ELSE 0 END',
+                N'@v BIT OUTPUT, @n VARCHAR(50)', @v = @GIDEN_VAR OUTPUT, @n = @GEN_NO;
+            IF EXISTS (SELECT 1 FROM dbo.TODVZ_FATURA WHERE FATURA_NO = @GEN_NO AND (@CURRENT_FID = 0 OR FATURA_ID <> @CURRENT_FID)) OR @GIDEN_VAR = 1
             BEGIN
               SET @SAYAC = @SAYAC + 1;
             END
@@ -788,7 +838,7 @@ export class PerakendeSqlRepository {
             }
             if (!finalFaturaNo) {
                 const year = new Date().getFullYear();
-                const pfx = senaryo === "EARSIVFATURA" ? "EAR" : "GIB";
+                const pfx = await PerakendeSqlRepository.numaratorOnEki(faturaTipi, senaryo, dbContext);
                 finalFaturaNo = `${pfx}${year}000000001`;
             }
             // 1.b Düzeltme: faturanın eski vezne etkisi (barkodsuz satırlar + vezneden tahsilat) başlık güncellenmeden, eski vezne / tiple geri alınır

@@ -2,6 +2,12 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { EbelgeSqlRepository } from "./ebelgeSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
+import { logger } from "../utils/logger.js";
+import { PERAKENDE_EVRAK_TURU } from "../services/ebelgePerakende.js";
+import { PerakendeSqlRepository } from "./perakendeSql.repository.js";
+import { PosEntegrasyonSqlRepository } from "./posEntegrasyonSql.repository.js";
+/** Perakende fişi (TODVZ_FATURA) — docs/PERAKENDE_EBELGE_YOL_HARITASI.md P11 */
+export const perakendeMi = (k) => k.evrakTuru === PERAKENDE_EVRAK_TURU;
 /**
  * e-Döviz fişleri ayrı bir görünümden gelir ve `EVRAK_TURU` taşımaz.
  * Tek bir anahtar şemasında toplamak için bu sabit kullanılır; fatura görünümü
@@ -20,7 +26,14 @@ export function kaynakSecim(k) {
     let engel = null;
     if (k.uuid)
         engel = 'Belge giden kutusunda mevcut. Gönderim durumunu giden kutusundan kontrol edin.';
-    else if (k.kaynak !== 'DOVIZ' && ![0, 1].includes(k.belgeTuru))
+    // Perakende (P1, P6): iade gönderilmez; VKN'li cariden alışta belgeyi karşı taraf keser; POS onayı bitmeden satış gönderilmez
+    else if (k.kaynak === 'PERAKENDE' && k.belgeTuru === 2)
+        engel = 'İade fişi bu ekrandan gönderilmez.';
+    else if (k.kaynak === 'PERAKENDE' && k.belgeTuru === 0 && String(k.aliciVkn || '').replace(/\D/g, '').length === 10)
+        engel = 'Gönderilmez: mükellef (VKN\'li) cariden alışta faturayı karşı taraf keser.';
+    else if (k.kaynak === 'PERAKENDE' && Number(k.posBekliyor) === 1)
+        engel = 'POS tahsilatı bekleniyor: kart ödemesi cihazda onaylanmadan e-belge gönderilmez.';
+    else if (k.kaynak !== 'DOVIZ' && k.kaynak !== 'PERAKENDE' && ![0, 1].includes(k.belgeTuru))
         engel = 'Bu belge türünü kendi e-İrsaliye / e-Gider ekranından gönderin.';
     else if (Number(k.eskiDurum || 0) !== 0)
         engel = `Kaynak sistemde işlem kaydı var (durum ${k.eskiDurum}). ICE durumunu kontrol edin.`;
@@ -36,6 +49,9 @@ export class EbelgeKaynakRepository {
     static async pool(ctx) {
         const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
         await EbelgeSqlRepository.ensureTablesExist(pool);
+        // Liste sorgusu Perakende ve POS tablolarına doğrudan başvurur; henüz hiç kullanılmamış veritabanında da var olsunlar
+        await PerakendeSqlRepository.ensureTablesAndProcedures(pool);
+        await PosEntegrasyonSqlRepository.ensureTables(pool);
         await pool.request().query(`
       IF OBJECT_ID('dbo.TODVZ_EBELGE_KAYNAK','U') IS NULL
       BEGIN TRY
@@ -55,7 +71,7 @@ export class EbelgeKaynakRepository {
         const pool = await this.pool(ctx);
         const r = pool.request().input("arama", sql.NVarChar(200), `%${f.arama || ""}%`)
             .input("durum", sql.VarChar(30), f.durum || null).input("tur", sql.Int, f.belgeTuru ?? null)
-            .input("kaynak", sql.VarChar(10), f.kaynak || null)
+            .input("kaynak", sql.VarChar(20), f.kaynak || null)
             .input("ilk", sql.Date, f.baslangicTarihi || null).input("son", sql.Date, f.bitisTarihi || null)
             .input("atla", sql.Int, (f.sayfa - 1) * 50);
         // İki kaynak tek listede birleşir: sarraf/fatura görünümü ve e-Döviz fişi görünümü.
@@ -64,7 +80,7 @@ export class EbelgeKaynakRepository {
         const result = await r.query(`
       WITH Kaynaklar AS (
         SELECT V.EVRAK_TURU evrakTuru, V.BELGE_ID belgeId, V.BELGE_TURU belgeTuru,
-          'FATURA' kaynak, RTRIM(V.BELGE_NO) belgeNo, V.TARIH tarih, RTRIM(V.UNVAN) unvan,
+          CAST('FATURA' AS varchar(20)) kaynak, RTRIM(V.BELGE_NO) belgeNo, V.TARIH tarih, RTRIM(V.UNVAN) unvan,
           V.MIKTAR tutar, RTRIM(V.PARA_KODU) paraBirimi, RTRIM(V.ETTN) eskiEttn,
           V.E_BELGE_DURUMU eskiDurum, V.E_BELGE_HATA_ACIKLAMASI eskiHata
         FROM dbo.VODVZ_GONDERIME_HAZIR_E_BELGE V
@@ -85,7 +101,8 @@ export class EbelgeKaynakRepository {
             WHEN ISNULL(K.eskiDurum,0)=0 AND (K.kaynak='DOVIZ' OR NULLIF(K.eskiEttn,'') IS NULL) THEN 'GONDERILMEDI'
             ELSE 'KONTROL_GEREKLI' END) durum,
         CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA,K.eskiHata) END hata,
-        G.UUID uuid
+        G.UUID uuid,
+        CAST(NULL AS varchar(20)) aliciVkn, CAST(0 AS int) posBekliyor
       INTO #Kaynak
       FROM Kaynaklar K
       OUTER APPLY (SELECT TOP 1 R.* FROM dbo.TODVZ_EBELGE_KAYNAK R
@@ -105,6 +122,32 @@ export class EbelgeKaynakRepository {
         AND (@tur IS NULL OR K.belgeTuru=@tur)
         AND (@ilk IS NULL OR K.tarih>=@ilk) AND (@son IS NULL OR K.tarih<DATEADD(day,1,@son))
         AND (K.belgeNo LIKE @arama OR K.unvan LIKE @arama);
+
+      -- Perakende fişleri (docs/PERAKENDE_EBELGE_YOL_HARITASI.md): evrakTuru 98, belgeTuru = fiş tipi (0 alış, 1 satış, 2 iade).
+      -- Durum yalnız bizim kayıtlarımızdan (giden kutusu / kaynak kaydı) gelir; eskiDurum 0 sayılır.
+      -- posBekliyor (P6): fişin POS işlemi varken bekleyen / belirsiz işlem var ya da onaylı tutar POS satır toplamını karşılamıyor.
+      IF (@kaynak IS NULL OR @kaynak IN ('PERAKENDE_SATIS','PERAKENDE_ALIS'))
+      INSERT INTO #Kaynak (evrakTuru,belgeId,belgeTuru,kaynak,belgeNo,tarih,unvan,tutar,paraBirimi,eskiEttn,eskiDurum,eskiHata,durum,hata,uuid,aliciVkn,posBekliyor)
+      SELECT ${PERAKENDE_EVRAK_TURU}, F.FATURA_ID, F.FATURA_TIPI, 'PERAKENDE', RTRIM(F.FATURA_NO), F.TARIH, RTRIM(F.ALICI_UNVAN),
+        F.GENEL_TOPLAM, CASE WHEN ISNULL(RTRIM(PB.KOD),'TL') IN ('TL','TRY') THEN 'TRY' ELSE RTRIM(PB.KOD) END, NULL, 0, NULL,
+        COALESCE(CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN 'GONDERILDI' ELSE G.GONDERIM_DURUMU END, R.DURUM, 'GONDERILMEDI'),
+        CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA) END,
+        G.UUID, RTRIM(F.ALICI_VKN_TCKN),
+        CASE WHEN EXISTS (SELECT 1 FROM dbo.TODVZ_POS_ISLEM I WHERE I.BELGE_TURU='perakende' AND I.BELGE_ID=F.FATURA_ID)
+          AND (EXISTS (SELECT 1 FROM dbo.TODVZ_POS_ISLEM I WHERE I.BELGE_TURU='perakende' AND I.BELGE_ID=F.FATURA_ID AND I.DURUM IN ('BEKLIYOR','BELIRSIZ'))
+            OR ISNULL((SELECT SUM(O.TUTAR) FROM dbo.TODVZ_FATURA_ODEME O WHERE O.FATURA_ID=F.FATURA_ID AND O.ODEME_ARACI_TURU=2),0)
+             > ISNULL((SELECT SUM(I.TUTAR) FROM dbo.TODVZ_POS_ISLEM I WHERE I.BELGE_TURU='perakende' AND I.BELGE_ID=F.FATURA_ID AND I.DURUM='ONAY' AND I.IADE_DURUMU=0),0) + 0.005)
+          THEN 1 ELSE 0 END
+      FROM dbo.TODVZ_FATURA F
+      LEFT JOIN dbo.TODVZ_PARA PB ON PB.PARA_ID=F.PARA_ID
+      OUTER APPLY (SELECT TOP 1 R.* FROM dbo.TODVZ_EBELGE_KAYNAK R WHERE R.ANAHTAR=CONCAT('${PERAKENDE_EVRAK_TURU}:',F.FATURA_ID,':',F.FATURA_TIPI)
+        ORDER BY CASE WHEN R.DURUM='HATA' THEN 1 ELSE 0 END,R.TARIH DESC) R
+      OUTER APPLY (SELECT TOP 1 * FROM dbo.TODVZ_EBELGE_GIDEN G WHERE G.BELGE_NO=RTRIM(F.FATURA_NO) OR G.UUID=CAST(F.ETTN AS varchar(40))
+        ORDER BY G.OLUSTURMA_TARIHI DESC) G
+      WHERE (@kaynak IS NULL OR (@kaynak='PERAKENDE_SATIS' AND F.FATURA_TIPI<>0) OR (@kaynak='PERAKENDE_ALIS' AND F.FATURA_TIPI=0))
+        AND (@tur IS NULL OR F.FATURA_TIPI=@tur)
+        AND (@ilk IS NULL OR F.TARIH>=@ilk) AND (@son IS NULL OR F.TARIH<DATEADD(day,1,@son))
+        AND (F.FATURA_NO LIKE @arama OR F.ALICI_UNVAN LIKE @arama);
       -- Ekranda tek 'Hatalı' filtresi vardır: gönderilmiş ve gönderilmemiş dışındaki her durum
       -- (KONTROL_GEREKLI, BELIRSIZ, GONDERILIYOR…) onun altında listelenir. Bkz. docs/ebelge-revizyon.md K6
       SELECT COUNT(*) toplam FROM #Kaynak WHERE (@durum IS NULL OR durum=@durum OR (@durum='HATA' AND durum NOT IN('GONDERILDI','GONDERILMEDI')));
@@ -159,6 +202,22 @@ export class EbelgeKaynakRepository {
             throw ApiError.notFound("Kaynak belge bulunamadı veya tekil değil.");
         return { baslik: sets[0][0], satirlar: sets[1] };
     }
+    /** Perakende fişi başlık + satırlar; firma e-Belge tanımındaki KDV muafiyet kodu Sarraf'taki gibi başlığa eklenir (P2). */
+    static async perakendeDetay(k, ctx) {
+        const pool = await this.pool(ctx);
+        const res = await pool.request().input("id", sql.Int, k.belgeId).input("tip", sql.Int, k.belgeTuru).query(`
+      SELECT F.*, RTRIM(PB.KOD) AS PARA_KODU, T.E_FATURA_KDV_MUAFIYET_KODU, T.E_FATURA_KDV_MUAFIYET_ADI
+      FROM dbo.TODVZ_FATURA F
+      LEFT JOIN dbo.TODVZ_PARA PB ON PB.PARA_ID=F.PARA_ID
+      OUTER APPLY (SELECT TOP 1 E_FATURA_KDV_MUAFIYET_KODU, E_FATURA_KDV_MUAFIYET_ADI FROM dbo.VODVZ_E_BELGE_TANIMI) T
+      WHERE F.FATURA_ID=@id AND F.FATURA_TIPI=@tip;
+      SELECT * FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID=@id ORDER BY SATIR_NO, FATURA_SATIR_ID;
+    `);
+        const sets = res.recordsets;
+        if (sets[0].length !== 1)
+            throw ApiError.notFound("Perakende fişi bulunamadı.");
+        return { baslik: sets[0][0], satirlar: sets[1] };
+    }
     static async reserve(k, belgeNo, ctx) {
         const pool = await this.pool(ctx);
         try {
@@ -188,5 +247,17 @@ export class EbelgeKaynakRepository {
         const pool = await this.pool(ctx);
         await pool.request().input("key", sql.VarChar(80), kaynakAnahtar(k)).input("durum", sql.VarChar(30), durum)
             .input("mesaj", sql.NVarChar(2000), mesaj.slice(0, 2000)).query(`UPDATE dbo.TODVZ_EBELGE_KAYNAK SET DURUM=@durum,HATA=@mesaj,TARIH=SYSDATETIME() WHERE ANAHTAR=@key`);
+        // Perakende fişine geri yazılır (P5): 1 = Gönderildi, diğerlerinde 0. GIB_STATU_KODU'na yazılmaz: canlı veritabanında
+        // kolonun tipi farklı olabiliyor (metin yazınca "Conversion failed" verdi, 10.10.2026). Belge ICE'ye gitmiş olabilir;
+        // fişe geri yazamamak gönderimi hatalı göstermemeli.
+        if (perakendeMi(k)) {
+            try {
+                await pool.request().input("id", sql.Int, k.belgeId).input("durum", sql.VarChar(30), durum)
+                    .query(`UPDATE dbo.TODVZ_FATURA SET E_BELGE_DURUMU = CASE WHEN @durum='GONDERILDI' THEN 1 ELSE 0 END WHERE FATURA_ID=@id`);
+            }
+            catch (err) {
+                logger.warn(`[e-Belge] Perakende fişine durum yazılamadı (${k.belgeId}): ${err?.message}`);
+            }
+        }
     }
 }

@@ -1498,6 +1498,99 @@ export const DovizFisiPage: React.FC = () => {
     []
   );
 
+  // Anlık Kur Değişikliklerini Canlı / Otomatik Dinleme ve Tablo Satırlarına Senkronize Etme
+  useEffect(() => {
+    const unsubscribe = KurService.onKurUpdated((updatedTablo) => {
+      if (!updatedTablo || !updatedTablo.satirlar) return;
+
+      const newSatirlar = updatedTablo.satirlar;
+      setKurSatirlar((prev) => {
+        const mergedKurMap = new Map<string, KurRowItem>();
+        prev.forEach((k) => {
+          const cCode = (k.kod || "").toUpperCase().trim();
+          if (cCode) mergedKurMap.set(cCode, k);
+        });
+        newSatirlar.forEach((k) => {
+          const cCode = (k.kod || "").toUpperCase().trim();
+          if (cCode) {
+            const existing = mergedKurMap.get(cCode);
+            mergedKurMap.set(cCode, {
+              ...existing,
+              ...k,
+              efektifAlis: k.efektifAlis ?? existing?.efektifAlis ?? null,
+              efektifSatis: k.efektifSatis ?? existing?.efektifSatis ?? null,
+              dovizAlis: k.dovizAlis ?? existing?.dovizAlis ?? null,
+              dovizSatis: k.dovizSatis ?? existing?.dovizSatis ?? null,
+              parite: k.parite ?? existing?.parite ?? null,
+            });
+          }
+        });
+        const kurSatirlari = Array.from(mergedKurMap.values());
+
+        // Para listesini de güncel kurlarla senkronize et
+        setParaList((prevParalar) => {
+          return prevParalar.map((p) => {
+            const cCode = (p.kod || "").toUpperCase().trim();
+            const kurMatch = kurSatirlari.find(
+              (k) => (k.paraId && Number(k.paraId) === Number(p.id)) || (k.kod || "").toUpperCase().trim() === cCode
+            );
+            if (!kurMatch) return p;
+            return {
+              ...p,
+              parite: parseRate(kurMatch.parite) || p.parite || 1,
+              dovizAlis: parseRate(kurMatch.dovizAlis) || p.dovizAlis,
+              dovizSatis: parseRate(kurMatch.dovizSatis) || p.dovizSatis,
+              efektifAlis: parseRate(kurMatch.efektifAlis) || p.efektifAlis,
+              efektifSatis: parseRate(kurMatch.efektifSatis) || p.efektifSatis,
+            };
+          });
+        });
+
+        // Tablo satırlarındaki döviz kurlarını ve tutarları da güncel kurlara göre güncelle
+        if (!isDuzeltmeMode) {
+          setLines((prevLines) =>
+            prevLines.map((row) => {
+              const code = (row.paraKodu || "").toUpperCase().trim();
+              if (!code || code === "TL" || code === "TRY" || code === "TRL") return row;
+              const kurMatch = kurSatirlari.find(
+                (k) =>
+                  (row.paraId && Number(k.paraId) === Number(row.paraId)) ||
+                  (k.kod || "").toUpperCase().trim() === code ||
+                  (row.paraAdi && (k.ad || "").toUpperCase().trim() === (row.paraAdi || "").toUpperCase().trim())
+              );
+              if (!kurMatch) return row;
+              const paraItem: ParaItem = {
+                id: kurMatch.paraId || row.paraId,
+                kod: code,
+                ad: kurMatch.ad || row.paraAdi,
+                parite: parseRate(kurMatch.parite) || 1,
+                dovizAlis: parseRate(kurMatch.dovizAlis),
+                dovizSatis: parseRate(kurMatch.dovizSatis),
+                efektifAlis: parseRate(kurMatch.efektifAlis),
+                efektifSatis: parseRate(kurMatch.efektifSatis),
+              };
+              const newRate = resolveCurrencyRate(paraItem, tip, kurTuru);
+              if (newRate > 0) {
+                const miktarNum = parseMiktar(row.miktar);
+                const newTutar = miktarNum > 0 ? parseFloat((miktarNum * newRate).toFixed(2)) : row.tutar;
+                return {
+                  ...row,
+                  kur: newRate,
+                  tutar: newTutar,
+                };
+              }
+              return row;
+            })
+          );
+        }
+
+        return kurSatirlari;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [tip, kurTuru, isDuzeltmeMode, resolveCurrencyRate]);
+
   // Satırın dolu olup olmadığını kontrol eder (Para seçilmiş, miktar > 0 ve kur > 0 olmalıdır; TL için kur aranmaz)
   const isRowFilled = useCallback((row?: GridLineItem): boolean => {
     if (!row) return false;
@@ -1605,16 +1698,13 @@ export const DovizFisiPage: React.FC = () => {
         tutarVal = brutTutar > 0 ? brutTutar : "";
         kmvVal = "";
       } else if (kmvMode === 2) {
-        // 2 - Kura Dahil (İç Yüzde Yöntemi)
-        // Müşteriden alınacak toplam = brutTutar (Miktar * Kur)
-        // Satış kuru ASLA değişmez.
+        // 2 - Kura Dahil (KMV kura dahil: tutardan KMV düşülmez, miktar * kur olarak kalır; KMV ise KMV alanında ayrıyeten belirtilir)
+        tutarVal = brutTutar > 0 ? brutTutar : "";
         if (kmvRate > 0 && brutTutar > 0) {
           const vergisizMatrah = Math.round((brutTutar / (1 + kmvRate / 100)) * factor) / factor;
           const calculatedKmv = Math.round((brutTutar - vergisizMatrah) * factor) / factor;
-          tutarVal = vergisizMatrah > 0 ? vergisizMatrah : "";
           kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(tlKurusSayisi) : "";
         } else {
-          tutarVal = brutTutar > 0 ? brutTutar : "";
           kmvVal = "";
         }
       } else {
@@ -1836,12 +1926,6 @@ export const DovizFisiPage: React.FC = () => {
 
         if (field === "kmv") {
           updated.kmv = value;
-          if (tip === 1 && kmvMode === 2) {
-            const brut = calculateRowTutar(m, k, updated.paraKodu);
-            const userKmv = parseDecimal(value);
-            const matrah = brut > userKmv ? Math.round((brut - userKmv) * factor) / factor : brut;
-            updated.tutar = matrah > 0 ? matrah : "";
-          }
         } else if (field === "kmvOrani") {
           updated.kmvOrani = value;
         }
@@ -2544,15 +2628,18 @@ export const DovizFisiPage: React.FC = () => {
     return Math.round((calculatedBsmv + totalKmv + totalKomisyon) * factor) / factor;
   }, [calculatedBsmv, totalKmv, totalKomisyon, tlKurusSayisi]);
 
-  // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + Toplam KMV + Toplam BMV)
+  // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + (Kura dahil değilse KMV) + BMV)
   const sonToplam = useMemo(() => {
+    const compDef = companyDefinitionsRef.current || companyDefinitions;
+    const kmvMode = getEffectiveKmvMode(compDef);
     const factor = Math.pow(10, tlKurusSayisi);
     if (tip === 1) {
-      return Math.round((totalTutar + totalKmv + calculatedBsmv) * factor) / factor;
+      const addedKmv = kmvMode === 2 ? 0 : totalKmv;
+      return Math.round((totalTutar + addedKmv + calculatedBsmv) * factor) / factor;
     } else {
       return Math.round((totalTutar - totalMasraf) * factor) / factor;
     }
-  }, [totalTutar, totalKmv, calculatedBsmv, totalMasraf, tip, tlKurusSayisi]);
+  }, [totalTutar, totalKmv, calculatedBsmv, totalMasraf, tip, tlKurusSayisi, companyDefinitions]);
 
   // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
   const isMasakLimitExceeded = useMemo(() => {
@@ -3256,11 +3343,21 @@ export const DovizFisiPage: React.FC = () => {
         return;
       }
 
-      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır
+      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır (Önceden sorgulanmışsa yeniden bekletmeden devam eder)
       try {
         const cleanName = isAnon ? "" : unvan.trim();
         const cleanId = (vergiKimlikNo || "").trim();
-        if (cleanName || cleanId) {
+        const currentTargetName = cleanName || cleanId;
+        if (masakResult.searched && masakResult.queriedId === cleanId && masakResult.queriedName === currentTargetName) {
+          if (masakResult.matches && masakResult.matches.length > 0) {
+            setMasakModalOpen(true);
+            setNotification({
+              type: "danger",
+              message: `🚨 DİKKAT: "${currentTargetName}" için MASAK listelerinde ${masakResult.matches.length} eşleşme bulundu!`,
+            });
+            return;
+          }
+        } else if (cleanName || cleanId) {
           const res = await MasakService.sorgula({
             ad: cleanName || undefined,
             kimlikNo: cleanId || undefined,
@@ -3268,7 +3365,7 @@ export const DovizFisiPage: React.FC = () => {
           });
           const matches = res?.kayitlar || [];
           setMasakResult({
-            queriedName: cleanName || cleanId,
+            queriedName: currentTargetName,
             queriedId: cleanId,
             matches,
             searched: true,
@@ -3277,8 +3374,9 @@ export const DovizFisiPage: React.FC = () => {
             setMasakModalOpen(true);
             setNotification({
               type: "danger",
-              message: `🚨 DİKKAT: "${cleanName || cleanId}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`,
+              message: `🚨 DİKKAT: "${currentTargetName}" için MASAK listelerinde ${matches.length} eşleşme bulundu!`,
             });
+            return;
           }
         }
       } catch (err) {
@@ -3405,8 +3503,23 @@ export const DovizFisiPage: React.FC = () => {
       const pad = (n: number) => String(n).padStart(2, "0");
       const liveTarih = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
       const liveSaat = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-      const finalTarih = isDuzeltmeMode ? tarih : liveTarih;
-      const finalZaman = isDuzeltmeMode ? saat : liveSaat;
+      const formatIsoDate = (dStr?: string) => {
+        if (!dStr) return liveTarih;
+        const s = dStr.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(s)) {
+          const parts = s.split(/[. :]/);
+          return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+        }
+        const dt = new Date(s);
+        if (!isNaN(dt.getTime())) {
+          return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+        }
+        return liveTarih;
+      };
+
+      const finalTarih = isDuzeltmeMode ? formatIsoDate(tarih) : liveTarih;
+      const finalZaman = (isDuzeltmeMode ? (saat || liveSaat) : liveSaat).trim().slice(0, 8);
 
       const payload: SaveDovizFisPayload = {
         fisId: fisId || undefined,
@@ -3445,10 +3558,10 @@ export const DovizFisiPage: React.FC = () => {
         vekilKisilikTipi: detayVekilTipi === "Firma" ? 2 : 1,
         vekilAdi: detayVekilAdi.trim() || undefined,
         vekilKimlikNo: detayVekilKimlikNo.trim() || undefined,
-        dogumTarihi: detayDogumTarihi.trim() || undefined,
+        dogumTarihi: detayDogumTarihi.trim() ? formatIsoDate(detayDogumTarihi) : undefined,
         dogumYeri: detayDogumYeri.trim() || undefined,
         kimlikSeriNo: detayKimlikSeriNo.trim() || undefined,
-        kimlikGecerlilikTarihi: detayGecerlilikTarihi.trim() || undefined,
+        kimlikGecerlilikTarihi: detayGecerlilikTarihi.trim() ? formatIsoDate(detayGecerlilikTarihi) : undefined,
         sirketTuru: detaySirketTuru ? Number(detaySirketTuru) || undefined : undefined,
         dernekAmaci: detayDernekAmaci.trim() || undefined,
         yetkiliKisi: detayYetkiliKisi.trim() || undefined,
@@ -3456,14 +3569,15 @@ export const DovizFisiPage: React.FC = () => {
         kimlikKaynagi: detayKimlikKaynagi.trim() || undefined,
         masakListesindeVar: (masakResult.matches && masakResult.matches.length > 0) ? true : false,
         gmBeyannameNo: gmBeyannameNo.trim() || undefined,
-        gmBeyannameTarih: (gmBeyannameTarih.trim() && !gmBeyannameTarih.startsWith("1899") && !gmBeyannameTarih.startsWith("1900") && !gmBeyannameTarih.startsWith("0001")) ? gmBeyannameTarih.trim() : undefined,
+        gmBeyannameTarih: (gmBeyannameTarih.trim() && !gmBeyannameTarih.startsWith("1899") && !gmBeyannameTarih.startsWith("1900") && !gmBeyannameTarih.startsWith("0001")) ? formatIsoDate(gmBeyannameTarih) : undefined,
         gmDovizSayi: gmDovizSayi.trim() || undefined,
-        gmDovizTarih: (gmDovizTarih.trim() && !gmDovizTarih.startsWith("1899") && !gmDovizTarih.startsWith("1900") && !gmDovizTarih.startsWith("0001")) ? gmDovizTarih.trim() : undefined,
+        gmDovizTarih: (gmDovizTarih.trim() && !gmDovizTarih.startsWith("1899") && !gmDovizTarih.startsWith("1900") && !gmDovizTarih.startsWith("0001")) ? formatIsoDate(gmDovizTarih) : undefined,
         gmTeyitSayi: gmTeyitSayi.trim() || undefined,
-        gmTeyitTarih: (gmTeyitTarih.trim() && !gmTeyitTarih.startsWith("1899") && !gmTeyitTarih.startsWith("1900") && !gmTeyitTarih.startsWith("0001")) ? gmTeyitTarih.trim() : undefined,
+        gmTeyitTarih: (gmTeyitTarih.trim() && !gmTeyitTarih.startsWith("1899") && !gmTeyitTarih.startsWith("1900") && !gmTeyitTarih.startsWith("0001")) ? formatIsoDate(gmTeyitTarih) : undefined,
         gmFaturaNo: gmFaturaNo.trim() || undefined,
-        toplamTutar: totalTutar,
-        odemeTutari: sonToplam,
+        toplamTutar: Number(totalTutar) || 0,
+        odemeTutari: Number(sonToplam) || 0,
+        yuvarlama: 0,
         satirlar: validLines.map((l, idx) => {
           let pId = Number(l.paraId);
           if (!pId || pId <= 0) {
@@ -3472,6 +3586,7 @@ export const DovizFisiPage: React.FC = () => {
           }
           const m = parseMiktar(l.miktar);
           const k = parseKur(l.kur);
+          const tutarNum = parseDecimal(l.tutar || "0");
           return {
             satirNo: idx,
             paraId: pId,
@@ -3481,13 +3596,13 @@ export const DovizFisiPage: React.FC = () => {
             kur: k,
             iscilik: 0,
             giseKuru: k,
-            tutar: parseDecimal(l.tutar || "0"),
-            komisyonOrani: parseDecimal(l.komisyonOrani || "0"),
-            komisyon: parseDecimal(l.komisyon || "0"),
-            bmvOrani: parseDecimal(l.bmvOrani || "0"),
-            bmv: parseDecimal(l.bmv || "0"),
-            kmvOrani: parseDecimal(l.kmvOrani || "0"),
-            kmv: parseDecimal(l.kmv || "0"),
+            tutar: tutarNum > 0 ? tutarNum : (m * k),
+            komisyonOrani: Number(parseDecimal(l.komisyonOrani || "0")) || 0,
+            komisyon: Number(parseDecimal(l.komisyon || "0")) || 0,
+            bmvOrani: Number(parseDecimal(l.bmvOrani || "0")) || 0,
+            bmv: Number(parseDecimal(l.bmv || "0")) || 0,
+            kmvOrani: Number(parseDecimal(l.kmvOrani || "0")) || 0,
+            kmv: Number(parseDecimal(l.kmv || "0")) || 0,
             kdvOrani: 0,
             kdv: 0,
           };

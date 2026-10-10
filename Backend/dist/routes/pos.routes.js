@@ -16,6 +16,7 @@ router.put("/banka-eslemeleri", PosController.bankaEslemeleriniYaz);
 // Tahsilat
 router.get("/islemler", PosController.liste);
 router.post("/islemler", PosController.baslat);
+router.post("/islemler/toplu", PosController.baslatToplu);
 router.post("/islemler/elle-alindi", PosController.elleAlindi);
 router.post("/islemler/belgeye-bagla", PosController.belgeyeBagla);
 router.get("/islemler/belge", PosController.belgeIslemleri);
