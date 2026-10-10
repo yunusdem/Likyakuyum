@@ -8,9 +8,12 @@ export const SIRKET = {
   marka: "Likya ERP",
   /** Resmi unvan netleşince yazılır; KVKK ve gizlilik metinleri bunu kullanır */
   unvan: "",
-  adres: "Kuyumcukent Plaza & Kapalıçarşı / İstanbul",
+  adres: ILETISIM.adres,
   telefon: ILETISIM.telefon,
   telefonHam: ILETISIM.telefonHam,
+  /** Sabit hat; WhatsApp cep numarasındadır */
+  telefon2: ILETISIM.telefon2,
+  telefon2Ham: ILETISIM.telefon2Ham,
   whatsapp: ILETISIM.whatsapp,
   eposta: ILETISIM.eposta,
   site: "https://www.likyaerp.com",
@@ -19,6 +22,7 @@ export const SIRKET = {
 } as const;
 
 export const TEL_LINK = `tel:${SIRKET.telefonHam}`;
+export const TEL2_LINK = `tel:${SIRKET.telefon2Ham}`;
 export const MAIL_LINK = `mailto:${SIRKET.eposta}`;
 
 /** Veri sorumlusu adı: unvan girilmemişse marka */

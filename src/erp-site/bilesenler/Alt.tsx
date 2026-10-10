@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { IconBrandWhatsapp, IconMail, IconMapPin, IconPhone } from "@tabler/icons-react";
 import { URUNLER } from "../veri/urunler";
-import { MAIL_LINK, SIRKET, TEL_LINK } from "../veri/sirket";
+import { MAIL_LINK, SIRKET, TEL2_LINK, TEL_LINK } from "../veri/sirket";
 import { Logo } from "./Logo";
 
 export const Alt: React.FC = () => (
@@ -19,8 +19,11 @@ export const Alt: React.FC = () => (
             <a href={TEL_LINK}>
               <IconPhone size={16} aria-hidden="true" /> {SIRKET.telefon}
             </a>
+            <a href={TEL2_LINK}>
+              <IconPhone size={16} aria-hidden="true" /> {SIRKET.telefon2}
+            </a>
             <a href={SIRKET.whatsapp} target="_blank" rel="noopener noreferrer">
-              <IconBrandWhatsapp size={16} aria-hidden="true" /> WhatsApp
+              <IconBrandWhatsapp size={16} aria-hidden="true" /> WhatsApp: {SIRKET.telefon}
             </a>
             <a href={MAIL_LINK}>
               <IconMail size={16} aria-hidden="true" /> {SIRKET.eposta}

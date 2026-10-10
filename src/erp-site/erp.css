@@ -776,6 +776,9 @@ button {
 /* ---------- Temsili ekran ---------- */
 .ekran {
   position: relative;
+  margin: 0;
+  /* Düzen ekranın kendi genişliğine göre değişir (hero sütunu daraldığında tablo sıkışmasın) */
+  container-type: inline-size;
   border-radius: 16px;
   background: #fff;
   box-shadow: var(--golge-3);
@@ -851,7 +854,8 @@ button {
   color: #fff;
 }
 .ekran-icerik {
-  padding: 16px;
+  /* Altta "Temsili ekran" etiketine yer */
+  padding: 16px 16px 40px;
   background: #f8fafc;
   min-width: 0;
 }
@@ -933,9 +937,16 @@ button {
   border-radius: 999px;
   border: 1px solid var(--kenar);
 }
-@media (max-width: 520px) {
+/* İlk sütun (ürün / şube adı) daha geniş */
+.ekran-tablo th:first-child,
+.ekran-tablo td:first-child {
+  width: 36%;
+}
+/* Dar ekran: yan menü üstte sekme şeridine döner, tablo tüm genişliği kullanır */
+@container (max-width: 600px) {
   .ekran-govde {
     grid-template-columns: 1fr;
+    min-height: 0;
   }
   .ekran-yan {
     flex-direction: row;
@@ -948,9 +959,16 @@ button {
   .ekran-yan span {
     white-space: nowrap;
   }
+}
+/* Çok dar: ikinci sütun gizlenir */
+@container (max-width: 400px) {
   .ekran-tablo th:nth-child(2),
   .ekran-tablo td:nth-child(2) {
     display: none;
+  }
+  .ekran-tablo th:first-child,
+  .ekran-tablo td:first-child {
+    width: 46%;
   }
 }
 

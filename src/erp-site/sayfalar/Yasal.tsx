@@ -31,8 +31,8 @@ export const Kvkk: React.FC = () => {
       <h2>Veri sorumlusu</h2>
       <p>
         Bu metin, {VERI_SORUMLUSU} ("Likya") tarafından www.likyaerp.com üzerinden toplanan kişisel veriler için hazırlanmıştır.
-        Bize {SIRKET.adres} adresinden, <a href={MAIL_LINK}>{SIRKET.eposta}</a> e-posta adresinden ve {SIRKET.telefon}{" "}
-        numarasından ulaşabilirsiniz.
+        Bize {SIRKET.adres} adresinden, <a href={MAIL_LINK}>{SIRKET.eposta}</a> e-posta adresinden, {SIRKET.telefon} ve{" "}
+        {SIRKET.telefon2} numaralarından ulaşabilirsiniz.
       </p>
       <h2>İşlenen veriler ve amaçlar</h2>
       <p>Demo / teklif formunu doldurduğunuzda aşağıdaki veriler işlenir:</p>

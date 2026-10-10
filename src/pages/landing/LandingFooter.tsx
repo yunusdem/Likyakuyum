@@ -18,7 +18,7 @@ import {
   IconScale,
   IconDatabase,
 } from "@tabler/icons-react";
-import { ILETISIM, MAIL_LINK, TEL_LINK } from "./iletisimBilgileri";
+import { ILETISIM, MAIL_LINK, TEL2_LINK, TEL_LINK } from "./iletisimBilgileri";
 
 export const LandingFooter: React.FC = () => {
   const navigate = useNavigate();
@@ -98,6 +98,10 @@ export const LandingFooter: React.FC = () => {
                 <IconPhone size={16} style={{ color: "#f59e0b" }} />
                 <span>{ILETISIM.telefon}</span>
               </a>
+              <a href={TEL2_LINK} className="d-flex align-items-center gap-2 text-decoration-none" style={{ color: "#cbd5e1" }}>
+                <IconPhone size={16} style={{ color: "#f59e0b" }} />
+                <span>{ILETISIM.telefon2}</span>
+              </a>
               <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="d-flex align-items-center gap-2 text-decoration-none" style={{ color: "#cbd5e1" }}>
                 <IconBrandWhatsapp size={16} style={{ color: "#25d366" }} />
                 <span>WhatsApp: {ILETISIM.telefon}</span>
@@ -108,7 +112,7 @@ export const LandingFooter: React.FC = () => {
               </a>
               <div className="d-flex align-items-center gap-2" style={{ color: "#cbd5e1" }}>
                 <IconMapPin size={16} style={{ color: "#f59e0b" }} />
-                <span>Kuyumcukent Plaza & Kapalıçarşı / İstanbul</span>
+                <span>{ILETISIM.adres}</span>
               </div>
             </div>
           </div>

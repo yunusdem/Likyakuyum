@@ -31,7 +31,7 @@ import {
 import LandingNavbar from "./landing/LandingNavbar";
 import IletisimFormu from "./landing/IletisimFormu";
 import HeroCarousel from "./landing/HeroCarousel";
-import { ILETISIM, MAIL_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
+import { ILETISIM, MAIL_LINK, TEL2_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
 import "../styles/LandingFurni.css";
 
 export const LandingPage: React.FC = () => {
@@ -538,6 +538,15 @@ export const LandingPage: React.FC = () => {
                     <div className="fw-bold fs-5 text-dark">{ILETISIM.telefon}</div>
                   </div>
                 </a>
+                <a href={TEL2_LINK} className="furni-contact-card text-decoration-none">
+                  <div className="furni-contact-icon" style={{ background: "#3b5d50" }}>
+                    <IconPhone size={24} color="#ffffff" />
+                  </div>
+                  <div>
+                    <div className="small text-secondary">Sabit Hat</div>
+                    <div className="fw-bold fs-5 text-dark">{ILETISIM.telefon2}</div>
+                  </div>
+                </a>
                 <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="furni-contact-card text-decoration-none">
                   <div className="furni-contact-icon" style={{ background: "#25d366" }}>
                     <IconBrandWhatsapp size={24} color="#ffffff" />
@@ -614,6 +623,10 @@ export const LandingPage: React.FC = () => {
                   <IconPhone size={16} style={{ color: "#f9bf29" }} />
                   <span>{ILETISIM.telefon}</span>
                 </a>
+                <a href={TEL2_LINK} className="furni-footer-link d-flex align-items-center gap-2">
+                  <IconPhone size={16} style={{ color: "#f9bf29" }} />
+                  <span>{ILETISIM.telefon2}</span>
+                </a>
                 <a href={ILETISIM.whatsapp} target="_blank" rel="noopener noreferrer" className="furni-footer-link d-flex align-items-center gap-2">
                   <IconBrandWhatsapp size={16} style={{ color: "#25d366" }} />
                   <span>WhatsApp: {ILETISIM.telefon}</span>
@@ -622,6 +635,10 @@ export const LandingPage: React.FC = () => {
                   <IconMail size={16} style={{ color: "#f9bf29" }} />
                   <span>{ILETISIM.eposta}</span>
                 </a>
+                <div className="furni-footer-link d-flex align-items-center gap-2">
+                  <IconMapPin size={16} style={{ color: "#f9bf29" }} />
+                  <span>{ILETISIM.adres}</span>
+                </div>
               </div>
 
               <div className="d-flex align-items-center gap-2">

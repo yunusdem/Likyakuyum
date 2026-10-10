@@ -14,7 +14,7 @@ import {
 import LandingNavbar from "./LandingNavbar";
 import LandingFooter from "./LandingFooter";
 import IletisimFormu from "./IletisimFormu";
-import { ILETISIM, MAIL_LINK, TEL_LINK } from "./iletisimBilgileri";
+import { ILETISIM, MAIL_LINK, TEL2_LINK, TEL_LINK } from "./iletisimBilgileri";
 
 export const LandingAboutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -102,7 +102,9 @@ export const LandingAboutPage: React.FC = () => {
                 </div>
                 <h5 className="fw-bold text-dark mb-1">Hemen Arayın</h5>
                 <p className="text-secondary small mb-2">Satış & Destek Hattı</p>
-                <a href={TEL_LINK} className="fw-bold fs-5 text-dark text-decoration-none">{ILETISIM.telefon}</a>
+                <a href={TEL_LINK} className="fw-bold fs-5 text-dark text-decoration-none d-block">{ILETISIM.telefon}</a>
+                <a href={TEL2_LINK} className="fw-bold fs-6 text-secondary text-decoration-none d-block mt-1">{ILETISIM.telefon2}</a>
+                <div className="small text-secondary mt-2">{ILETISIM.adres}</div>
               </div>
             </div>
 

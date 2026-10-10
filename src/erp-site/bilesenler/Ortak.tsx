@@ -1,8 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { IconArrowRight, IconBrandWhatsapp, IconCheck, IconChevronDown, IconMail, IconPhone, IconQuote } from "@tabler/icons-react";
+import { IconArrowRight, IconBrandWhatsapp, IconCheck, IconChevronDown, IconMail, IconMapPin, IconPhone, IconQuote } from "@tabler/icons-react";
 import type { Urun, UrunKodu } from "../veri/urunler";
-import { MAIL_LINK, SIRKET, TEL_LINK, YORUMLAR } from "../veri/sirket";
+import { MAIL_LINK, SIRKET, TEL2_LINK, TEL_LINK, YORUMLAR } from "../veri/sirket";
 import { IletisimFormu } from "./IletisimFormu";
 import { urunStili } from "./UrunStil";
 
@@ -113,13 +113,22 @@ export const CagriBolumu: React.FC<{ urun?: UrunKodu; baslik?: string; aciklama?
                 <strong>{SIRKET.telefon}</strong>
               </span>
             </a>
+            <a href={TEL2_LINK} className="iletisim-satir">
+              <span className="ikon-kutu">
+                <IconPhone size={22} aria-hidden="true" />
+              </span>
+              <span>
+                <small>Sabit hat</small>
+                <strong>{SIRKET.telefon2}</strong>
+              </span>
+            </a>
             <a href={SIRKET.whatsapp} target="_blank" rel="noopener noreferrer" className="iletisim-satir">
               <span className="ikon-kutu">
                 <IconBrandWhatsapp size={22} aria-hidden="true" />
               </span>
               <span>
                 <small>WhatsApp'tan yazın</small>
-                <strong>Anında yanıt</strong>
+                <strong>{SIRKET.telefon}</strong>
               </span>
             </a>
             <a href={MAIL_LINK} className="iletisim-satir">
@@ -131,6 +140,15 @@ export const CagriBolumu: React.FC<{ urun?: UrunKodu; baslik?: string; aciklama?
                 <strong>{SIRKET.eposta}</strong>
               </span>
             </a>
+            <div className="iletisim-satir">
+              <span className="ikon-kutu">
+                <IconMapPin size={22} aria-hidden="true" />
+              </span>
+              <span>
+                <small>Adres</small>
+                <strong>{SIRKET.adres}</strong>
+              </span>
+            </div>
           </div>
         </div>
         <div className="form-kutu">
