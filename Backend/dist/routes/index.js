@@ -44,6 +44,7 @@ import { lisansKapisi } from "../middlewares/lisans.middleware.js";
 import { KurulumController } from "../controllers/kurulum.controller.js";
 import merkezRoutes from "./merkez.routes.js";
 import destekRoutes from "./destek.routes.js";
+import iletisimRoutes from "./iletisim.routes.js";
 const apiRouter = Router();
 // Firma bazlı modül kısıtı: önek → kullanan modüller eşlemesi services/admin/modul.service.ts API_MODULLERI'nde.
 // MERKEZ_GIRIS kapalıyken ve modül ayarı yapılmamış firmada hiçbir şeyi kısıtlamaz.
@@ -59,6 +60,8 @@ apiRouter.use("/merkez", merkezRoutes);
 apiRouter.use("/health", healthRoutes);
 apiRouter.use("/admin", adminRoutes);
 apiRouter.use("/destek", destekRoutes);
+// Tanıtım sitesi iletişim formu (giriş yok; docs/ILETISIM_FORMU_YOL_HARITASI.md)
+apiRouter.use("/iletisim", iletisimRoutes);
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
@@ -76,6 +79,7 @@ apiRouter.all(DONUS_YOLU, EBankaController.vposDonus);
 apiRouter.use("/pos", kapi("/pos"), posRoutes);
 // Cihaz servisinin (Token) sonuç bildirimi. Oturumsuzdur; adres işlem başına imzalıdır.
 apiRouter.post("/pos-donus/token/:firmaId/:islemId/:imza", PosController.tokenDonus);
+apiRouter.post("/pos-donus/inpos", PosController.inposDonus);
 apiRouter.use("/kasa", kapi("/kasa"), kasaRoutes);
 apiRouter.use("/etiket", kapi("/etiket"), etiketRoutes);
 apiRouter.use("/vezne/izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);

@@ -767,6 +767,119 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [invalidOdemeRowIds, setInvalidOdemeRowIds] = useState<Record<string, boolean>>({});
   const odemeInputRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
 
+  // Anlık Kur Değişikliklerini Canlı / Otomatik Dinleme ve Tablolara Senkronize Etme
+  useEffect(() => {
+    const unsubscribe = KurService.onKurUpdated((updatedTablo) => {
+      if (!updatedTablo || !updatedTablo.satirlar) return;
+      setKurSatirlar((prev) => {
+        const mergedKurMap = new Map<string, KurRowItem>();
+        prev.forEach((k) => {
+          const key = k.kod ? k.kod.toUpperCase().trim() : (k.paraId ? `ID_${k.paraId}` : (k.ad ? k.ad.toUpperCase().trim() : ""));
+          if (key) mergedKurMap.set(key, k);
+        });
+        updatedTablo.satirlar.forEach((k) => {
+          const key = k.kod ? k.kod.toUpperCase().trim() : (k.paraId ? `ID_${k.paraId}` : (k.ad ? k.ad.toUpperCase().trim() : ""));
+          if (key) {
+            const existing = mergedKurMap.get(key);
+            mergedKurMap.set(key, {
+              ...existing,
+              ...k,
+              efektifAlis: (k.efektifAlis !== null && k.efektifAlis !== undefined && Number(k.efektifAlis) > 0) ? k.efektifAlis : (existing?.efektifAlis ?? null),
+              efektifSatis: (k.efektifSatis !== null && k.efektifSatis !== undefined && Number(k.efektifSatis) > 0) ? k.efektifSatis : (existing?.efektifSatis ?? null),
+              dovizAlis: (k.dovizAlis !== null && k.dovizAlis !== undefined && Number(k.dovizAlis) > 0) ? k.dovizAlis : (existing?.dovizAlis ?? null),
+              dovizSatis: (k.dovizSatis !== null && k.dovizSatis !== undefined && Number(k.dovizSatis) > 0) ? k.dovizSatis : (existing?.dovizSatis ?? null),
+              parite: k.parite ?? existing?.parite ?? null,
+            });
+          }
+        });
+        const allKurList = Array.from(mergedKurMap.values());
+
+        const hasKurItem = allKurList.find((k) =>
+          ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()) ||
+          (k.ad && ["HAS ALTIN", "HAS"].includes(k.ad.toUpperCase().trim()))
+        );
+        const newHas = hasKurItem
+          ? (tip === 0
+              ? (hasKurItem.efektifAlis || hasKurItem.dovizAlis)
+              : (hasKurItem.efektifSatis || hasKurItem.dovizSatis))
+          : "";
+
+        const gumusKurItem = allKurList.find((k) =>
+          ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes((k.kod || "").toUpperCase().trim()) ||
+          (k.ad && ["HAS GÜMÜŞ", "GÜMÜŞ", "GUMUS"].includes(k.ad.toUpperCase().trim()))
+        );
+        const newGumus = gumusKurItem
+          ? (tip === 0
+              ? (gumusKurItem.efektifAlis || gumusKurItem.dovizAlis)
+              : (gumusKurItem.efektifSatis || gumusKurItem.dovizSatis))
+          : "";
+
+        // Kayıt modunda üst bilgi kurlarını ve tablodaki satırların kurlarını anında canlı güncelle
+        if (!isDuzeltmeMode) {
+          if (newHas) setAltinHasKuru(newHas);
+          if (newGumus) setGumusHasKuru(newGumus);
+
+          // Kalemler Tablosundaki (Lines) ürün satırlarının kurlarını canlı güncelle
+          setLines((prevLines) =>
+            prevLines.map((line) => {
+              if (!line.urunKodu) return line;
+              const pId = line.urunId;
+              const code = (line.urunKodu || "").toUpperCase().trim();
+              const name = (line.urunAdi || "").toUpperCase().trim();
+              const curKurItem = allKurList.find(
+                (k) =>
+                  (pId && k.paraId === pId) ||
+                  (code && k.kod && k.kod.toUpperCase().trim() === code) ||
+                  (name && k.ad && k.ad.toUpperCase().trim() === name)
+              );
+              let newKur = line.kur;
+              if (curKurItem) {
+                const rate = tip === 0
+                  ? (curKurItem.efektifAlis ?? curKurItem.dovizAlis ?? 0)
+                  : (curKurItem.efektifSatis ?? curKurItem.dovizSatis ?? 0);
+                if (Number(rate) > 0) newKur = Number(rate);
+              } else if (line.urunTipi === 2) {
+                newKur = newGumus || line.kur;
+              } else if (line.urunTipi === 1 || !line.urunTipi) {
+                newKur = newHas || line.kur;
+              }
+              const updated = { ...line, kur: newKur };
+              return recomputeRow(updated, Number(newKur) || Number(newHas) || 0);
+            })
+          );
+
+          // Ödeme Tablosundaki (OdemeRows) satırların kurlarını canlı güncelle
+          setOdemeRows((prevOdeme) =>
+            prevOdeme.map((oRow) => {
+              const code = (oRow.paraKodu || "").toUpperCase().trim();
+              if (!code || code === "TL" || code === "TRY") return oRow;
+              const curKurItem = allKurList.find(
+                (k) =>
+                  (oRow.paraId && k.paraId === oRow.paraId) ||
+                  (code && k.kod && k.kod.toUpperCase().trim() === code) ||
+                  (oRow.paraAdi && k.ad && k.ad.toUpperCase().trim() === oRow.paraAdi.toUpperCase().trim())
+              );
+              const odemeTip: 0 | 1 = tip === 0 ? 1 : 0;
+              let newKur = oRow.kur;
+              if (curKurItem) {
+                const rate = odemeTip === 0
+                  ? (curKurItem.efektifAlis ?? curKurItem.dovizAlis ?? 0)
+                  : (curKurItem.efektifSatis ?? curKurItem.dovizSatis ?? 0);
+                if (Number(rate) > 0) newKur = Number(rate);
+              }
+              const updated = { ...oRow, kur: newKur };
+              return recomputeOdemeRow(updated, Number(newHas) || 0);
+            })
+          );
+        }
+
+        return allKurList;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [tip, isDuzeltmeMode]);
+
   // Header Element Refs for Keyboard Navigation
   const islemRef = useRef<HTMLSelectElement | null>(null);
   const tcknRef = useRef<HTMLInputElement | null>(null);
@@ -1754,11 +1867,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         return;
       }
 
-      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır
+      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır (Önceden sorgulanmışsa yeniden bekletmeden devam eder)
       try {
         const cleanName = isAnon ? "" : (unvan || detayUnvan || "").trim();
         const cleanId = (detayVergiKimlikNo || "").trim();
-        if (cleanName || cleanId) {
+        const currentTargetName = cleanName || cleanId;
+        if (masakResult.searched && masakResult.queriedId === cleanId && masakResult.queriedName === currentTargetName) {
+          if (masakResult.matches && masakResult.matches.length > 0) {
+            setMasakModalOpen(true);
+            showNotif("danger", `🚨 DİKKAT: "${currentTargetName}" MASAK Malvarlığı Dondurulanlar Listesinde bulundu! İşlem kesinlikle engellendi.`);
+            return;
+          }
+        } else if (cleanName || cleanId) {
           const res = await MasakService.sorgula({
             ad: cleanName || undefined,
             kimlikNo: cleanId || undefined,
@@ -1766,14 +1886,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           });
           const matches = res?.kayitlar || [];
           setMasakResult({
-            queriedName: cleanName || cleanId,
+            queriedName: currentTargetName,
             queriedId: cleanId,
             matches,
             searched: true,
           });
           if (matches.length > 0) {
             setMasakModalOpen(true);
-            showNotif("danger", `🚨 DİKKAT: "${cleanName || cleanId}" MASAK Malvarlığı Dondurulanlar Listesinde bulundu! İşlem kesinlikle engellendi.`);
+            showNotif("danger", `🚨 DİKKAT: "${currentTargetName}" MASAK Malvarlığı Dondurulanlar Listesinde bulundu! İşlem kesinlikle engellendi.`);
             return;
           }
         }
@@ -2559,7 +2679,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (r.id !== rowId) return r;
 
       const adet = isParaOrZiynet ? "" : (overrideAdet !== undefined ? overrideAdet : (Number(r.adet) > 0 ? Number(r.adet) : 1));
-      const miktar = isParaOrZiynet ? (Number(r.miktar) > 0 ? r.miktar : "1") : (Number(item.gramaj) > 0 ? Number(item.gramaj) * (Number(adet) || 1) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
+      const miktar = isParaOrZiynet ? (Number(r.miktar) > 0 ? r.miktar : "1") : (Number(item.gramaj) > 0 ? formatMiktar(Number(item.gramaj) * (Number(adet) || 1)) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
       const iscilikiMiktari = isParaOrZiynet ? "" : (item.iscilik && Number(item.iscilik) > 0 ? Number(item.iscilik) : (r.iscilikiMiktari || ""));
       const milyem = isParaOrZiynet ? "" : (autoMilyem !== "" ? autoMilyem : (r.milyem || ""));
 
@@ -2611,7 +2731,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (r.id !== rowId) return r;
 
       const adet = isParaOrZiynet ? "" : (overrideAdet !== undefined ? overrideAdet : (Number(r.adet) > 0 ? Number(r.adet) : 1));
-      const miktar = isParaOrZiynet ? (Number(r.miktar) > 0 ? r.miktar : "1") : (Number(item.gramaj) > 0 ? Number(item.gramaj) * (Number(adet) || 1) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
+      const miktar = isParaOrZiynet ? (Number(r.miktar) > 0 ? r.miktar : "1") : (Number(item.gramaj) > 0 ? formatMiktar(Number(item.gramaj) * (Number(adet) || 1)) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
       const milyem = isParaOrZiynet ? "" : (autoMilyem !== "" ? autoMilyem : (r.milyem || ""));
 
       const updated: OdemeRow = {
@@ -3603,7 +3723,8 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
       const currentRow = lines[rIdx];
       const isPara = currentRow && currentRow.urunTipi === 0 && Boolean(currentRow.urunKodu && currentRow.urunKodu.trim());
       const isZiynet = currentRow && (currentRow.urunTipi === 3 || isZiynetProduct({ urunTipi: currentRow.urunTipi, kod: currentRow.urunKodu, ad: currentRow.urunAdi }));
-      if ((isPara || isZiynet) && (col === "adet" || col === "milyem" || col === "iscilikHesaplamaSekli" || col === "iscilikiMiktari")) {
+      const isParaOrZiynet = isPara || isZiynet;
+      if (isParaOrZiynet && (col === "adet" || col === "milyem" || col === "iscilikHesaplamaSekli" || col === "iscilikiMiktari")) {
         return true;
       }
       return false;
@@ -3649,8 +3770,10 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           lastModalCallerRef.current = null;
           lastKalemModalRowIdRef.current = null;
           applyProductToRow(rowId, matches[0]);
+          const isZiynet = matches[0].urunTipi === 3 || isZiynetProduct(matches[0]);
           const isPara = matches[0].urunTipi === 0;
-          setTimeout(() => focusGridCell(rowId, isPara ? "miktar" : "adet", "select"), 20);
+          const isParaOrZiynet = isPara || isZiynet;
+          setTimeout(() => focusGridCell(rowId, isParaOrZiynet ? "miktar" : "adet", "select"), 20);
           return;
         } else {
           lastModalCallerRef.current = "gridKalem";
@@ -3806,7 +3929,8 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           isTL
         )
       );
-      if ((isPara || isZiynet) && (col === "adet" || col === "milyem")) {
+      const isParaOrZiynet = isPara || isZiynet;
+      if (isParaOrZiynet && (col === "adet" || col === "milyem")) {
         return true;
       }
       return false;
@@ -3990,8 +4114,10 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
             lastModalCallerRef.current = null;
             lastOdemeModalRowIdRef.current = null;
             applyProductToOdemeRow(rowId, exactProd);
+            const isZiynet = exactProd.urunTipi === 3 || isZiynetProduct(exactProd);
             const isPara = exactProd.urunTipi === 0 || exactProd.kod?.toUpperCase() === "TL" || exactProd.kod?.toUpperCase() === "TRY";
-            setTimeout(() => focusOdemeGridCell(rowId, isPara ? "miktar" : "adet", "select"), 20);
+            const isParaOrZiynet = isPara || isZiynet;
+            setTimeout(() => focusOdemeGridCell(rowId, isParaOrZiynet ? "miktar" : "adet", "select"), 20);
             return;
           }
           const iskMatches = iskontoList.filter((isk) =>
@@ -4012,8 +4138,10 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
             lastOdemeModalRowIdRef.current = null;
             const found = prodMatches[0];
             applyProductToOdemeRow(rowId, found);
+            const isZiynet = found.urunTipi === 3 || isZiynetProduct(found);
             const isPara = found.urunTipi === 0 || found.kod?.toUpperCase() === "TL" || found.kod?.toUpperCase() === "TRY";
-            setTimeout(() => focusOdemeGridCell(rowId, isPara ? "miktar" : "adet", "select"), 20);
+            const isParaOrZiynet = isPara || isZiynet;
+            setTimeout(() => focusOdemeGridCell(rowId, isParaOrZiynet ? "miktar" : "adet", "select"), 20);
             return;
           } else {
             lastModalCallerRef.current = "gridOdeme";
@@ -4024,8 +4152,10 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
         }
 
         if (row.paraId && row.paraKodu && row.paraKodu.trim().toLowerCase() === val.toLowerCase()) {
+          const isZiynet = row.urunTipi === 3 || isZiynetProduct({ urunTipi: row.urunTipi, kod: row.paraKodu, ad: row.paraAdi });
           const isPara = row.urunTipi === 0 || row.paraKodu?.toUpperCase() === "TL" || row.paraKodu?.toUpperCase() === "TRY";
-          setTimeout(() => focusOdemeGridCell(rowId, isPara ? "miktar" : "adet", "select"), 20);
+          const isParaOrZiynet = isPara || isZiynet;
+          setTimeout(() => focusOdemeGridCell(rowId, isParaOrZiynet ? "miktar" : "adet", "select"), 20);
           return;
         }
 
@@ -4034,8 +4164,10 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           lastModalCallerRef.current = null;
           lastOdemeModalRowIdRef.current = null;
           applyProductToOdemeRow(rowId, exactProd);
+          const isZiynet = exactProd.urunTipi === 3 || isZiynetProduct(exactProd);
           const isPara = exactProd.urunTipi === 0 || exactProd.kod?.toUpperCase() === "TL" || exactProd.kod?.toUpperCase() === "TRY";
-          setTimeout(() => focusOdemeGridCell(rowId, isPara ? "miktar" : "adet", "select"), 20);
+          const isParaOrZiynet = isPara || isZiynet;
+          setTimeout(() => focusOdemeGridCell(rowId, isParaOrZiynet ? "miktar" : "adet", "select"), 20);
           return;
         }
 
@@ -4048,8 +4180,10 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
           lastOdemeModalRowIdRef.current = null;
           const found = matches[0];
           applyProductToOdemeRow(rowId, found);
+          const isZiynet = found.urunTipi === 3 || isZiynetProduct(found);
           const isPara = found.urunTipi === 0 || found.kod?.toUpperCase() === "TL" || found.kod?.toUpperCase() === "TRY";
-          setTimeout(() => focusOdemeGridCell(rowId, isPara ? "miktar" : "adet", "select"), 20);
+          const isParaOrZiynet = isPara || isZiynet;
+          setTimeout(() => focusOdemeGridCell(rowId, isParaOrZiynet ? "miktar" : "adet", "select"), 20);
           return;
         } else {
           lastModalCallerRef.current = "gridOdeme";
@@ -5368,7 +5502,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                   const isPara = row.urunTipi === 0 && Boolean(row.urunKodu && row.urunKodu.trim());
                   const isZiynet = row.urunTipi === 3 || isZiynetProduct({ urunTipi: row.urunTipi, kod: row.urunKodu, ad: row.urunAdi });
                   const isParaOrZiynet = isPara || isZiynet;
-                  const isAdetMissing = hasProduct && !isParaOrZiynet && (!row.adet || String(row.adet).trim() === "" || Number(row.adet) <= 0);
+                  const isAdetMissing = hasProduct && !isPara && (!row.adet || String(row.adet).trim() === "" || Number(row.adet) <= 0);
                   const isMiktarMissing = hasProduct && (!row.miktar || String(row.miktar).trim() === "" || parseDecimal(row.miktar) <= 0);
                   const isKurMissing = !row.kur || parseDecimal(row.kur) <= 0;
 
@@ -5513,7 +5647,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                             boxShadow: (!isParaOrZiynet && isAdetMissing) ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                             cursor: isParaOrZiynet ? "not-allowed" : undefined,
                           }}
-                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde adet girilmez, miktar kullanılır" : isAdetMissing ? "Lütfen adet veya miktar giriniz" : undefined}
+                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde adet girilmez, miktar kullanılır" : isAdetMissing ? "Lütfen adet giriniz" : undefined}
                         />
                       </td>
 
@@ -6268,7 +6402,7 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
                               boxShadow: (!isOdemeParaOrZiynet && isOdemeAdetMissing) ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                               cursor: isOdemeParaOrZiynet ? "not-allowed" : undefined,
                             }}
-                            title={isOdemeParaOrZiynet ? "Döviz ve Ziynet işlemlerinde adet girilmez, miktar kullanılır" : isOdemeAdetMissing ? "Lütfen adet veya miktar giriniz" : undefined}
+                            title={isOdemeParaOrZiynet ? "Döviz ve Ziynet işlemlerinde adet girilmez, miktar kullanılır" : isOdemeAdetMissing ? "Lütfen adet giriniz" : undefined}
                           />
                         </td>
 
@@ -6709,15 +6843,19 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
 
           if (targetKalemRowId) {
             applyProductToRow(targetKalemRowId, item);
+            const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
             const isPara = item.urunTipi === 0;
+            const isParaOrZiynet = isPara || isZiynet;
             setTimeout(() => {
-              focusGridCell(targetKalemRowId, isPara ? "miktar" : "adet", "select");
+              focusGridCell(targetKalemRowId, isParaOrZiynet ? "miktar" : "adet", "select");
             }, 30);
           } else if (targetOdemeRowId) {
             applyProductToOdemeRow(targetOdemeRowId, item);
+            const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
             const isPara = item.urunTipi === 0 || item.kod?.toUpperCase() === "TL" || item.kod?.toUpperCase() === "TRY";
+            const isParaOrZiynet = isPara || isZiynet;
             setTimeout(() => {
-              focusOdemeGridCell(targetOdemeRowId, isPara ? "miktar" : "adet", "select");
+              focusOdemeGridCell(targetOdemeRowId, isParaOrZiynet ? "miktar" : "adet", "select");
             }, 30);
           }
           setShowUrunModal(false);
@@ -6837,9 +6975,11 @@ const isOdemeRowEmpty = (row?: OdemeRow): boolean => {
               }, 30);
             } else if (item.rawProduct) {
               applyProductToOdemeRow(targetOdemeRowIdForLookup, item.rawProduct);
+              const isZiynet = item.rawProduct.urunTipi === 3 || isZiynetProduct(item.rawProduct);
               const isPara = item.rawProduct.urunTipi === 0 || item.rawProduct.kod?.toUpperCase() === "TL" || item.rawProduct.kod?.toUpperCase() === "TRY";
+              const isParaOrZiynet = isPara || isZiynet;
               setTimeout(() => {
-                focusOdemeGridCell(targetOdemeRowIdForLookup, isPara ? "miktar" : "adet", "select");
+                focusOdemeGridCell(targetOdemeRowIdForLookup, isParaOrZiynet ? "miktar" : "adet", "select");
               }, 30);
             }
           }

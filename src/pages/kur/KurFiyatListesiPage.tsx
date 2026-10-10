@@ -192,6 +192,37 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     return `${h}:${min}`;
   };
 
+  // Real-time live clock for Anlık Fiyat Listesi
+  const [currentClock, setCurrentClock] = useState<Date>(new Date());
+
+  useEffect(() => {
+    if (effectivePageType === "anlik") {
+      const timer = setInterval(() => {
+        const now = new Date();
+        setCurrentClock(now);
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, "0");
+        const d = String(now.getDate()).padStart(2, "0");
+        setTarih(`${y}-${m}-${d}`);
+        const h = String(now.getHours()).padStart(2, "0");
+        const min = String(now.getMinutes()).padStart(2, "0");
+        setSaat(`${h}:${min}`);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [effectivePageType]);
+
+  const liveDateStr = currentClock.toLocaleDateString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const liveTimeStr = currentClock.toLocaleTimeString("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
   // Data states
   const [tabloId, setTabloId] = useState<number>(0);
   const [kapanisKurTablosuId, setKapanisKurTablosuId] = useState<number | null>(null);
@@ -793,9 +824,14 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         return;
       }
 
-      const [hours, minutes] = saat.split(":").map(Number);
-      const combinedDateTime = new Date(tarih);
-      combinedDateTime.setHours(hours || 12, minutes || 0, 0, 0);
+      let combinedDateTime: Date;
+      if (effectivePageType === "anlik") {
+        combinedDateTime = new Date();
+      } else {
+        const [hours, minutes] = saat.split(":").map(Number);
+        combinedDateTime = new Date(tarih);
+        combinedDateTime.setHours(hours || 12, minutes || 0, 0, 0);
+      }
 
       // Veritabanı NOT NULL kısıtlamalarına tam uyum için boş alanları 0 olarak hazırlıyoruz
       const satirlarPayload = rows.map((r) => ({
@@ -833,9 +869,13 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       setLastSavedZaman(result.zaman);
       setIsDirty(false);
       setStatusText(effectivePageType === "anlik" ? "Son kayıt" : `Saklanan Kayıt (ID: ${result.id})`);
+      const savedTimeDisplay =
+        effectivePageType === "anlik"
+          ? new Date(result.zaman).toLocaleTimeString("tr-TR")
+          : saat;
       setAlertSuccess(
         effectivePageType === "anlik"
-          ? `Gişede o an işlem gören canlı kurlar ve saati (${saat}) başarıyla kaydedildi.`
+          ? `Gişede o an işlem gören canlı kurlar ve saati (${savedTimeDisplay}) başarıyla kaydedildi.`
           : "Kur tablosu başarıyla kaydedildi."
       );
       setTimeout(() => setAlertSuccess(null), 3500);
@@ -1544,39 +1584,60 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         disabled={isLoading || isSaving}
         pageTitle={pageTitle}
         rightContent={
-          <div className="d-flex align-items-center gap-2">
-            <span className="fw-bold text-secondary small">Zaman:</span>
+          effectivePageType === "anlik" ? (
+            <div className="d-flex align-items-center gap-2">
+              <span className="fw-bold text-dark small">Zaman:</span>
+              <div
+                className="d-flex align-items-center gap-2 px-2.5 py-1 bg-white border rounded shadow-sm font-monospace text-dark fw-bold"
+                style={{ fontSize: "0.85rem", letterSpacing: "0.5px" }}
+                title="Anlık Sistem Zamanı"
+              >
+                <div className="d-flex align-items-center gap-1 text-dark">
+                  <IconCalendar size={15} className="text-dark" />
+                  <span className="text-dark">{liveDateStr}</span>
+                </div>
+                <span className="text-secondary opacity-50">|</span>
+                <div className="d-flex align-items-center gap-1 text-dark">
+                  <IconClock size={15} className="text-dark" />
+                  <span className="text-dark">{liveTimeStr}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="d-flex align-items-center gap-2">
+              <span className="fw-bold text-secondary small">Zaman:</span>
 
-            {/* Date Input */}
-            <InputGroup size="sm" style={{ width: "140px" }}>
-              <InputGroup.Text className="bg-light px-2">
-                <IconCalendar size={14} className="text-primary" />
-              </InputGroup.Text>
-              <Form.Control
-                type="date"
-                value={tarih}
-                onChange={(e) => {
-                  setTarih(e.target.value);
-                  loadTabloData({ tarih: e.target.value });
-                }}
-                className="font-monospace text-center px-1"
-              />
-            </InputGroup>
+              {/* Date Input */}
+              <InputGroup size="sm" style={{ width: "140px" }}>
+                <InputGroup.Text className="bg-light px-2">
+                  <IconCalendar size={14} className="text-primary" />
+                </InputGroup.Text>
+                <Form.Control
+                  type="date"
+                  value={tarih}
+                  onChange={(e) => {
+                    setTarih(e.target.value);
+                    loadTabloData({ tarih: e.target.value });
+                  }}
+                  className="font-monospace text-center px-1"
+                />
+              </InputGroup>
 
-            {/* Time Input */}
-            <InputGroup size="sm" style={{ width: "105px" }}>
-              <InputGroup.Text className="bg-light px-2">
-                <IconClock size={14} className="text-primary" />
-              </InputGroup.Text>
-              <Form.Control
-                type="time"
-                value={saat}
-                onChange={(e) => setSaat(e.target.value)}
-                className="font-monospace text-center px-1"
-                title="İşlem Saati"
-              />
-            </InputGroup>
-          </div>
+              {/* Time Input */}
+              <InputGroup size="sm" style={{ width: "105px" }}>
+                <InputGroup.Text className="bg-light px-2">
+                  <IconClock size={14} className="text-primary" />
+                </InputGroup.Text>
+                <Form.Control
+                  type="time"
+                  value={saat}
+                  onChange={(e) => setSaat(e.target.value)}
+                  className="font-monospace text-center px-1"
+                  title="İşlem Saati"
+                />
+              </InputGroup>
+            </div>
+          )
         }
       />
 

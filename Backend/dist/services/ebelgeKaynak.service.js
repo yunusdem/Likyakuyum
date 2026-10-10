@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { EbelgeKaynakRepository, dovizMi, kaynakAnahtar, kaynakKimlikCoz } from "../models/ebelgeKaynak.repository.js";
+import { EbelgeKaynakRepository, dovizMi, kaynakAnahtar, kaynakKimlikCoz, perakendeMi } from "../models/ebelgeKaynak.repository.js";
+import { NIHAI_TUKETICI, perakendeFaturaGirdisi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
 import { getEDovizCikti, getEDovizStatus, previewEDoviz } from "./ice/ice.edoviz.js";
 import { EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
 import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
@@ -56,6 +57,13 @@ export function kaynakFaturaGirdisi(kaynak) {
 }
 export class EbelgeKaynakService {
     static async detay(k, ctx) {
+        if (perakendeMi(k)) {
+            const { baslik: b, satirlar } = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
+            return { belgeNo: temiz(b.FATURA_NO), tarih: new Date(b.TARIH).toISOString(), unvan: temiz(b.ALICI_UNVAN),
+                tur: { 0: 'Perakende Alış (e-Gider)', 1: 'Perakende Satış', 2: 'Perakende İade' }[Number(b.FATURA_TIPI)] || 'Perakende',
+                paraBirimi: 'TRY', tutar: Number(b.GENEL_TOPLAM) || 0, ettn: temiz(b.ETTN), durum: Number(b.E_BELGE_DURUMU || 0), firma: '', vergiKimlikNo: temiz(b.ALICI_VKN_TCKN),
+                satirlar: satirlar.map((s) => ({ ad: [temiz(s.URUN_ADI), temiz(s.AYAR) ? `${temiz(s.AYAR)} ayar` : ''].filter(Boolean).join(' '), miktar: Number(s.MIKTAR) || 0, tutar: Number(s.TUTAR) || 0, kdv: Number(s.KDV_TUTARI) || 0 })) };
+        }
         const kaynak = dovizMi(k) ? await EbelgeKaynakRepository.dovizDetay(k, ctx) : await EbelgeKaynakRepository.detay(k, ctx);
         const b = kaynak.baslik;
         const paraBirimi = temiz(dovizMi(k) ? b.PayableAmountCurrency || b.PARA_KODU : b.PARA_KODU).replace(/^TL$/, 'TRY');
@@ -158,9 +166,93 @@ export class EbelgeKaynakService {
         const g = await EbelgeSqlRepository.getGiden(uuid, ctx).catch(() => null);
         return g?.gonderimDurumu === "HATA" ? "HATA" : "GONDERILDI";
     }
+    /** Perakende satışta senaryo: nihai tüketici → e-Arşiv (P9); diğerinde ICE mükellef sorgusu */
+    static async perakendeSenaryo(vkn, kullanici, ctx) {
+        if (vkn === NIHAI_TUKETICI)
+            return "EARSIVFATURA";
+        const m = await EbelgeService.mukellefSorgulaCanli(vkn, kullanici, ctx);
+        return m.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
+    }
+    /**
+     * UBL-TR alıcı adresinde il ve ilçe ister; Perakende'de nihai tüketicinin adresi çoğu zaman boştur.
+     * Boşsa firmanın kendi il / ilçesi (E-Belge Bağlantı Ayarları) yazılır, adres satırı "Belirtilmemiş" olur.
+     */
+    static async aliciAdresiniTamamla(girdi, ctx) {
+        const a = girdi.alici;
+        if (temiz(a.il) && temiz(a.ilce))
+            return girdi;
+        const ayar = await EbelgeSqlRepository.getAyar(ctx);
+        const il = temiz(a.il) || temiz(ayar?.firmaIl);
+        const ilce = temiz(a.ilce) || temiz(ayar?.firmaIlce);
+        if (!il || !ilce) {
+            throw ApiError.badRequest("Alıcı adresinde il / ilçe yok ve E-Belge Bağlantı Ayarları'nda firma il / ilçesi tanımlı değil; biri doldurulmalı.");
+        }
+        return { ...girdi, alici: { ...a, il, ilce, adres: temiz(a.adres) || "Belirtilmemiş" } };
+    }
+    /** Perakende fişi hazırlama (P4): satış → fatura doğrulaması, alış → gider pusulası ön izleme. Hiçbir şey gönderilmez. */
+    static async perakendeHazirla(k, kullanici, ctx) {
+        const kaynak = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
+        if (Number(kaynak.baslik.FATURA_TIPI) === 0) {
+            const girdi = await this.aliciAdresiniTamamla(perakendeGiderGirdisi(kaynak), ctx);
+            if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx))
+                throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
+            const { ozet } = await EbelgeService.giderPusulasiOnizle(girdi, ctx);
+            return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan || "", belgeTuruAdi: "e-Gider pusulası", parmakizi: kaynakParmakizi(kaynak), senaryo: "GIDERPUSULASI", tutar: ozet.odenecekTutar, durum: "HAZIR" };
+        }
+        const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(kaynak), ctx);
+        if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx))
+            throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
+        girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
+        const sonuc = await EbelgeService.dogrulaGidenBelge(girdi, kullanici, false, ctx);
+        if (!sonuc.semaGecerli || !sonuc.schematronGecerli)
+            throw ApiError.unprocessable(sonuc.mesaj || "Perakende fişi ICE doğrulamasından geçmedi.");
+        return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan, belgeTuruAdi: girdi.senaryo === "TICARIFATURA" ? "e-Fatura" : "e-Arşiv",
+            parmakizi: kaynakParmakizi(kaynak), senaryo: girdi.senaryo, tutar: sonuc.ozet.odenecekTutar, durum: "HAZIR" };
+    }
+    /** Perakende fişi gönderimi (P4, P5): Sarraf akışıyla aynı güvenlik sırası; sonuç kaynak kaydına ve fişe yazılır. */
+    static async perakendeGonder(k, parmakizi, senaryo, kullanici, ctx) {
+        const kaynak = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
+        if (kaynakParmakizi(kaynak) !== parmakizi)
+            throw ApiError.conflict("Fiş değişmiş. Yeniden hazırlayın ve onaylayın.");
+        const alis = Number(kaynak.baslik.FATURA_TIPI) === 0;
+        const belgeNo = alis ? perakendeGiderGirdisi(kaynak).belgeNo : perakendeFaturaGirdisi(kaynak).belgeNo;
+        if (await EbelgeSqlRepository.gidenBelgeNoVarMi(belgeNo, ctx))
+            throw ApiError.conflict("Belge giden kutusunda zaten mevcut; yeniden gönderilmedi.");
+        await EbelgeKaynakRepository.reserve(k, belgeNo, ctx);
+        try {
+            const guncel = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
+            if (kaynakParmakizi(guncel) !== parmakizi)
+                throw ApiError.conflict("Fiş değişmiş; gönderim durduruldu.");
+            const secenek = { kaynakFisId: kaynakAnahtar(k) };
+            let sonuc;
+            if (alis) {
+                if (senaryo !== "GIDERPUSULASI")
+                    throw ApiError.conflict("Belge türü değişmiş. Yeniden hazırlayın.");
+                sonuc = await EbelgeService.giderPusulasiGonder((await this.aliciAdresiniTamamla(perakendeGiderGirdisi(guncel), ctx)), kullanici, ctx, secenek);
+            }
+            else {
+                const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(guncel), ctx);
+                girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
+                if (girdi.senaryo !== senaryo)
+                    throw ApiError.conflict("Alıcının mükellefiyeti değişmiş. Yeniden hazırlayın.");
+                sonuc = girdi.senaryo === "TICARIFATURA"
+                    ? await EbelgeService.faturaGonder(girdi, kullanici, ctx, secenek)
+                    : await EbelgeService.earsivGonder(girdi, kullanici, ctx, secenek);
+            }
+            await EbelgeKaynakRepository.sonuc(k, await this.kuyrukKaynakDurumu(sonuc.uuid, ctx), sonuc.mesaj, ctx);
+            return sonuc;
+        }
+        catch (e) {
+            const mevcut = await EbelgeSqlRepository.gidenBelgeNoVarMi(belgeNo, ctx).catch(() => true);
+            await EbelgeKaynakRepository.sonuc(k, mevcut ? "KONTROL_GEREKLI" : "HATA", e.message || "İşlem tamamlanamadı.", ctx).catch(() => undefined);
+            throw e;
+        }
+    }
     static async hazirla(k, kullanici, ctx) {
         if (dovizMi(k))
             return this.dovizHazirla(k, ctx);
+        if (perakendeMi(k))
+            return this.perakendeHazirla(k, kullanici, ctx);
         const kaynak = await EbelgeKaynakRepository.detay(k, ctx);
         const girdi = kaynakFaturaGirdisi(kaynak);
         if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx))
@@ -176,6 +268,8 @@ export class EbelgeKaynakService {
     static async gonder(k, parmakizi, senaryo, kullanici, ctx) {
         if (dovizMi(k))
             return this.dovizGonder(k, parmakizi, kullanici, ctx);
+        if (perakendeMi(k))
+            return this.perakendeGonder(k, parmakizi, senaryo, kullanici, ctx);
         const kaynak = await EbelgeKaynakRepository.detay(k, ctx);
         if (kaynakParmakizi(kaynak) !== parmakizi)
             throw ApiError.conflict("Kaynak belge değişmiş. Yeniden hazırlayın ve onaylayın.");

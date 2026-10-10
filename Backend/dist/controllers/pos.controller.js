@@ -4,6 +4,7 @@ import { PosAdminSqlRepository } from "../models/admin/posAdminSql.repository.js
 import { MerkezGirisService } from "../services/merkezGiris.service.js";
 import { PosService } from "../services/pos/pos.service.js";
 import { PosMerkezService } from "../services/pos/posMerkez.service.js";
+import { inposSonucuCoz, inposWebhookYetkili } from "../services/pos/inpos.surucu.js";
 import { tokenSonucuCoz } from "../services/pos/token.surucu.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -52,6 +53,11 @@ export class PosController {
     // ─── Tahsilat ──────────────────────────────────────────────────────────────
     static baslat = asyncHandler(async (req, res) => {
         const data = await PosService.baslat(req.body || {}, PosController.oturum(req), PosController.kullaniciId(req), PosController.getDbContext(req));
+        return ApiResponse.ok(res, "Tahsilat cihaza gönderildi.", data);
+    });
+    /** Fiş başına tek sipariş (Inpos bulut): aynı fişin bütün POS satırları birlikte gönderilir. */
+    static baslatToplu = asyncHandler(async (req, res) => {
+        const data = await PosService.baslatToplu(req.body || {}, PosController.oturum(req), PosController.kullaniciId(req), PosController.getDbContext(req));
         return ApiResponse.ok(res, "Tahsilat cihaza gönderildi.", data);
     });
     static elleAlindi = asyncHandler(async (req, res) => {
@@ -123,5 +129,46 @@ export class PosController {
         }
         await PosAdminSqlRepository.logYaz({ tur: "DONUS", firmaId, ozet, yanit: req.body, basarili });
         return res.status(200).json({ success: true });
+    });
+    /**
+     * Inpos'un sipariş durum bildirimi (oturumsuz; Basic Auth, kullanıcı adı / şifre yönetim panelinde). Adres tektir:
+     * siparişin firması merkezdeki sipariş kaydından bulunur. Bilinmeyen sipariş ya da işlenemeyen bildirimde kayda
+     * dokunulmaz; Inpos yeniden denemesin diye 200 dönülür, ayrıntı merkezdeki POS günlüğündedir.
+     */
+    static inposDonus = asyncHandler(async (req, res) => {
+        if (!adminYapilandirildiMi() || !(await inposWebhookYetkili(req.headers.authorization))) {
+            await PosAdminSqlRepository.logYaz({ tur: "DONUS", ozet: "Inpos bildirimi: kimlik geçersiz, yok sayıldı", yanit: req.body, basarili: false });
+            res.setHeader("WWW-Authenticate", 'Basic realm="pos-donus"');
+            return res.status(401).json({ success: false, message: "Yetkisiz." });
+        }
+        const govde = req.body || {};
+        const ref = govde.id ? String(govde.id) : "";
+        const durum = String(govde.status || "?");
+        let ozet = `Inpos bildirimi: ${durum} (sipariş ${ref || "?"})`;
+        let basarili = true;
+        let firmaId = null;
+        try {
+            firmaId = ref ? await PosAdminSqlRepository.sepetFirmasi("inpos", ref) : null;
+            if (!firmaId) {
+                ozet += " → sipariş bilinmiyor, yok sayıldı";
+            }
+            else {
+                const sonuc = inposSonucuCoz(govde);
+                if (sonuc) {
+                    const b = await MerkezGirisService.firmaBaglantisi(firmaId);
+                    setDbCredentials(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
+                    const n = await PosService.disaridanGrupSonuc(ref, sonuc, { dbServer: b.dbServer, dbName: b.dbName });
+                    ozet += ` → ${sonuc.durum} (${n} satır)`;
+                }
+            }
+        }
+        catch (err) {
+            basarili = false;
+            ozet += ` → işlenemedi: ${err?.message || err}`;
+            logger.error(`[POS] ${ozet}`);
+        }
+        await PosAdminSqlRepository.logYaz({ tur: "DONUS", firmaId, ozet, yanit: govde, basarili });
+        // Inpos "Sipariş Durum Güncelleme" cevabında sipariş detayını bekler; elimizdekini yankılarız
+        return res.status(200).json({ id: ref, no: Number(govde.no) || 0, name: "", status: govde.status || "", createdAt: new Date().toISOString() });
     });
 }

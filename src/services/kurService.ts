@@ -87,6 +87,77 @@ export class KurService {
     return res.data;
   }
 
+  public static notifyKurUpdated(tablo: KurTablosuItem) {
+    FastLookupCache.invalidate("kurTablo_");
+    try {
+      window.dispatchEvent(new CustomEvent("likya:kur_updated", { detail: tablo }));
+    } catch {}
+
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        const channel = new BroadcastChannel("likya_kur_channel");
+        channel.postMessage({ type: "KUR_UPDATED", data: tablo, timestamp: Date.now() });
+        channel.close();
+      }
+    } catch {}
+
+    try {
+      localStorage.setItem(
+        "likya_kur_last_update",
+        JSON.stringify({
+          tabloId: tablo.id,
+          tur: tablo.tur,
+          zaman: tablo.zaman,
+          timestamp: Date.now(),
+        })
+      );
+    } catch {}
+  }
+
+  public static onKurUpdated(callback: (tablo: KurTablosuItem) => void): () => void {
+    const handleCustomEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<KurTablosuItem>;
+      if (customEvent.detail) {
+        callback(customEvent.detail);
+      }
+    };
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        channel = new BroadcastChannel("likya_kur_channel");
+        channel.onmessage = (event) => {
+          if (event.data?.type === "KUR_UPDATED" && event.data?.data) {
+            callback(event.data.data);
+          }
+        };
+      }
+    } catch {}
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === "likya_kur_last_update" && e.newValue) {
+        KurService.getKurTablosu({ tur: 0, forceRefresh: true })
+          .then((fresh) => {
+            if (fresh) callback(fresh);
+          })
+          .catch(() => {});
+      }
+    };
+
+    window.addEventListener("likya:kur_updated", handleCustomEvent);
+    window.addEventListener("storage", handleStorageEvent);
+
+    return () => {
+      window.removeEventListener("likya:kur_updated", handleCustomEvent);
+      window.removeEventListener("storage", handleStorageEvent);
+      if (channel) {
+        try {
+          channel.close();
+        } catch {}
+      }
+    };
+  }
+
   public static async saveKurTablosu(
     payload: SaveKurTablosuPayload
   ): Promise<KurTablosuItem> {
@@ -95,6 +166,7 @@ export class KurService {
       body: JSON.stringify(payload),
     });
     FastLookupCache.invalidate("kurTablo_");
+    KurService.notifyKurUpdated(res.data);
     return res.data;
   }
 
@@ -108,6 +180,7 @@ export class KurService {
       body: JSON.stringify(params),
     });
     FastLookupCache.invalidate("kurTablo_");
+    KurService.notifyKurUpdated(res.data);
     return res.data;
   }
 

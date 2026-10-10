@@ -818,14 +818,25 @@ export class EbelgeSqlRepository {
         return res.recordset.length > 0;
     }
     /** Serinin o yıl yerel giden kaydındaki en büyük sırası (tür fark etmez; reddedilen de numarayı kilitler) */
-    static async seriYerelSonSira(seri, yil, dbContext) {
+    /**
+     * perakendeDahil: fatura formunun numara önerisinde Perakende fiş numaraları da sayılır (aynı seriyi kullanırlar, çakışmasın).
+     * Gönderim kontrolünde sayılmaz: gönderilen belge zaten bir Perakende fişi olabilir; orada yalnız ICE + giden kutusu bakılır.
+     */
+    static async seriYerelSonSira(seri, yil, dbContext, perakendeDahil = true) {
         const pool = await this.getPool(dbContext);
         const res = await pool
             .request()
             .input("onEk", sql.VarChar(7), `${seri}${yil}`)
+            .input("perakende", sql.Bit, perakendeDahil ? 1 : 0)
             .query(`SELECT MAX(TRY_CAST(RIGHT([BELGE_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_EBELGE_GIDEN]
-              WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk`);
-        return Number(res.recordset[0]?.SIRA) || 0;
+              WHERE LEN([BELGE_NO]) = 16 AND LEFT([BELGE_NO], 7) = @onEk;
+              -- Perakende fişleri aynı seriyi kullanır (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3); henüz gönderilmemiş olanlar da atlanır.
+              -- Tablo her veritabanında olmayabilir: dinamik SQL ile okunur
+              IF @perakende = 1 AND OBJECT_ID('dbo.TODVZ_FATURA', 'U') IS NOT NULL
+                EXEC sp_executesql N'SELECT MAX(TRY_CAST(RIGHT([FATURA_NO], 9) AS BIGINT)) AS SIRA FROM [dbo].[TODVZ_FATURA] WHERE LEN([FATURA_NO]) = 16 AND LEFT([FATURA_NO], 7) = @o', N'@o VARCHAR(7)', @o = @onEk;
+              ELSE SELECT CAST(NULL AS BIGINT) AS SIRA;`);
+        const sets = res.recordsets;
+        return Math.max(Number(sets[0]?.[0]?.SIRA) || 0, Number(sets[1]?.[0]?.SIRA) || 0);
     }
     /** Bu hesaptan kesilmiş belgelerin serileri (fatura no önerisi için), ör. ["ABC", "EAR"] */
     static async gidenSerileri(belgeTuru, dbContext) {

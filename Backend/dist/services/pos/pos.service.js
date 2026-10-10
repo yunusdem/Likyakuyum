@@ -1,6 +1,8 @@
+import { PosAdminSqlRepository } from "../../models/admin/posAdminSql.repository.js";
 import { PosEntegrasyonSqlRepository as Repo } from "../../models/posEntegrasyonSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
-import { InposSurucu } from "./inpos.surucu.js";
+import { logger } from "../../utils/logger.js";
+import { InposSurucu, inposCsn, inposSiparisIslendi } from "./inpos.surucu.js";
 import { ENTEGRASYONLAR, MODELLER, ZAMAN_ASIMI_SN, } from "./pos.types.js";
 import { PosMerkezService } from "./posMerkez.service.js";
 import { SahteSurucu } from "./sahte.surucu.js";
@@ -14,6 +16,15 @@ const temiz = (v, azami) => {
 };
 const tamSayi = (v) => (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : null);
 const gunMu = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+const ayniTutar = (a, b) => Math.abs(a - b) < 0.005;
+/** Alıcı VKN (10) / TCKN (11); nihai tüketicinin 11111111111'i bilgi fişine basılmaz, cihaz kendi kuralını uygular */
+const vknCoz = (v) => {
+    const s = typeof v === "string" ? v.replace(/\D/g, "") : "";
+    return (s.length === 10 || s.length === 11) && s !== "11111111111" ? s : null;
+};
+const PESIN_TURLERI = ["nakit", "havale", "cari"];
+/** Fiş başına tek siparişte en çok bu kadar POS satırı gider */
+const AZAMI_GRUP_SATIRI = 10;
 /** Test modunda her cihaz sahte sürücüyle çalışır; hiçbir yere istek gitmez. */
 const surucuSec = (mod, entegrasyon) => (mod === "test" ? SahteSurucu : entegrasyon === "inpos" ? InposSurucu : TokenSurucu);
 const girdiyiCoz = (g) => {
@@ -36,7 +47,40 @@ const girdiyiCoz = (g) => {
         posCihaziId: tamSayi(g.posCihaziId),
         vezneId: tamSayi(g.vezneId),
         aliciAd: temiz(g.aliciAd, 100),
+        aliciVkn: vknCoz(g.aliciVkn),
     };
+};
+/**
+ * Fiş başına tek siparişte cihazdan dönen kart ödemelerini POS satırlarına dağıtır (K7'nin bulut hali).
+ * Önce tutarı birebir tutan satırlar eşlenir; kalan satırların toplamı kalan ödemelerin toplamına eşitse hepsi onaylanır
+ * (kasiyer cihazda farklı böldü), değilse kalan satırlar ret olur. Sonuç satır sırasıyla döner.
+ */
+export const grupOdemeleriniDagit = (satirlar, odemeler) => {
+    const kalanOdemeler = [...odemeler];
+    const sonuclar = new Map();
+    const eslesmeyenler = [];
+    for (const s of satirlar) {
+        const i = kalanOdemeler.findIndex((o) => ayniTutar(o.tutar, s.tutar));
+        if (i < 0) {
+            eslesmeyenler.push(s);
+            continue;
+        }
+        const [o] = kalanOdemeler.splice(i, 1);
+        sonuclar.set(s.posIslemId, { durum: "ONAY", bankaKodu: o.bankaKodu, bankaAdi: o.bankaAdi });
+    }
+    const kalanTutar = kalanOdemeler.reduce((t, o) => t + o.tutar, 0);
+    const eslesmeyenTutar = eslesmeyenler.reduce((t, s) => t + s.tutar, 0);
+    const ortakBanka = kalanOdemeler.slice().sort((a, b) => b.tutar - a.tutar)[0];
+    for (const s of eslesmeyenler) {
+        if (eslesmeyenler.length && ayniTutar(kalanTutar, eslesmeyenTutar)) {
+            sonuclar.set(s.posIslemId, { durum: "ONAY", bankaKodu: ortakBanka?.bankaKodu ?? null, bankaAdi: ortakBanka?.bankaAdi ?? null });
+        }
+        else {
+            const alinan = odemeler.map((o) => o.tutar.toFixed(2)).join(" + ") || "yok";
+            sonuclar.set(s.posIslemId, { durum: "RET", hata: `Cihazda bu satır için ${s.tutar.toFixed(2)} TL kart ödemesi görünmüyor (cihazda alınan: ${alinan}).` });
+        }
+    }
+    return satirlar.map((s) => ({ posIslemId: s.posIslemId, sonuc: sonuclar.get(s.posIslemId) }));
 };
 /**
  * Bankanın sonradan bildirdiği POS hareketlerini bizim tahsilatlarımızla eşler: aynı gün + aynı tutar; birden çok aday
@@ -193,13 +237,161 @@ export class PosService {
         try {
             const ayar = mod === "canli" && terminal.entegrasyon === "beko" ? await PosMerkezService.ayar() : null;
             const donusAdresi = PosMerkezService.donusAdresi(ayar?.donusKok, "token", firmaId, islem.posIslemId);
-            const { ref } = await surucuSec(mod, terminal.entegrasyon).gonder({ islem, terminal, aliciAd: g.aliciAd, donusAdresi });
+            const { ref } = await surucuSec(mod, terminal.entegrasyon).gonder({ islem, terminal, aliciAd: g.aliciAd, aliciVkn: g.aliciVkn, donusAdresi });
             await Repo.refYaz(islem.posIslemId, ref, dbContext);
+            await this.sepetKaydet(mod, terminal.entegrasyon, ref, firmaId);
         }
         catch (err) {
             await Repo.bekleyeniKapat(islem.posIslemId, "RET", err?.message || "Cihaza gönderilemedi.", dbContext);
         }
         return (await Repo.islemGetir(islem.posIslemId, dbContext));
+    }
+    /** Bulut sağlayıcının sonuç bildirimi tek adrese gelir; sipariş kimliğinin firması merkezde tutulur. */
+    static async sepetKaydet(mod, entegrasyon, ref, firmaId) {
+        if (mod !== "canli" || entegrasyon !== "inpos" || !ref || !firmaId)
+            return;
+        try {
+            await PosAdminSqlRepository.sepetYaz({ saglayici: "inpos", sepetKimlik: ref, firmaId });
+        }
+        catch (err) {
+            // Kayıt yazılamazsa sonuç bildirimle işlenemez; sorgulayarak yine öğrenilir
+            logger.warn(`[POS] Sipariş-firma kaydı yazılamadı (${ref}): ${err?.message}`);
+        }
+    }
+    /**
+     * Fiş başına tek sipariş (Inpos bulut, K34): aynı fişin bütün POS satırları birlikte açılır ve cihaza tek sipariş gider.
+     * Test modunda her satır örnek cihaza ayrı gider (sahte sürücü satır başına çalışır). Aynı grup kimliği ikinci kez
+     * gelirse açık satırlar döner, cihaza yeniden gönderilmez.
+     */
+    static async baslatToplu(girdi, oturum, kullaniciId, dbContext) {
+        const { mod, firmaId } = await this.acikMod(oturum);
+        const grupKimlik = girdi.grupKimlik && KIMLIK.test(girdi.grupKimlik) ? girdi.grupKimlik.toLowerCase() : null;
+        if (!grupKimlik)
+            throw ApiError.badRequest("Grup kimliği geçersiz.");
+        const satirlar = Array.isArray(girdi.satirlar) ? girdi.satirlar : [];
+        if (!satirlar.length)
+            throw ApiError.badRequest("Gönderilecek POS satırı yok.");
+        if (satirlar.length > AZAMI_GRUP_SATIRI)
+            throw ApiError.badRequest(`Bir fişte en çok ${AZAMI_GRUP_SATIRI} POS satırı cihaza gönderilebilir.`);
+        const terminal = await this.terminalBul(girdi.posTerminalId, dbContext);
+        if (!terminal.aktif)
+            throw ApiError.badRequest(`"${terminal.ad}" pasif; tahsilat gönderilemez.`);
+        if (terminal.entegrasyon !== "inpos")
+            throw ApiError.badRequest("Toplu gönderim yalnız Inpos cihazlarında kullanılır.");
+        const cozulenler = satirlar.map((s) => girdiyiCoz({
+            istekKimlik: s.istekKimlik,
+            posTerminalId: terminal.posTerminalId,
+            tutar: s.tutar,
+            belgeTuru: girdi.belgeTuru,
+            belgeId: girdi.belgeId,
+            belgeNo: girdi.belgeNo,
+            belgeTipi: girdi.belgeTipi,
+            posCihaziId: s.posCihaziId,
+            vezneId: girdi.vezneId,
+            aliciAd: girdi.aliciAd,
+            aliciVkn: girdi.aliciVkn,
+        }));
+        const ilk = cozulenler[0];
+        if (ilk.belgeTuru !== "deneme" && terminal.vezneIdler.length > 0 && (!ilk.vezneId || !terminal.vezneIdler.includes(ilk.vezneId))) {
+            throw ApiError.forbidden(`"${terminal.ad}" bu vezneye tanımlı değil.`);
+        }
+        const pesinOdemeler = (Array.isArray(girdi.pesinOdemeler) ? girdi.pesinOdemeler : [])
+            .map((p) => ({ tur: p?.tur, tutar: Math.round(Number(p?.tutar) * 100) / 100 }))
+            .filter((p) => PESIN_TURLERI.includes(p.tur) && Number.isFinite(p.tutar) && p.tutar > 0 && p.tutar <= AZAMI_TUTAR);
+        const kalemler = (Array.isArray(girdi.kalemler) ? girdi.kalemler : [])
+            .slice(0, 50)
+            .map((k) => ({ ad: temiz(k?.ad, 100) || "Ürün", miktar: Number(k?.miktar) || 1, tutar: Math.round(Number(k?.tutar) * 100) / 100, kdvOrani: Number(k?.kdvOrani) || 0 }))
+            .filter((k) => Number.isFinite(k.tutar) && k.tutar > 0 && k.miktar > 0 && k.kdvOrani >= 0 && k.kdvOrani <= 100);
+        // Satırlar sırayla açılır; ilk satır cihazın meşgul olup olmadığını sınar, aynı gruptakiler birbirini meşgul saymaz
+        let yeniAcildi = false;
+        for (const g of cozulenler) {
+            const acilan = await Repo.islemOlustur({
+                istekKimlik: g.istekKimlik,
+                grupKimlik,
+                posTerminalId: terminal.posTerminalId,
+                entegrasyon: terminal.entegrasyon,
+                mod,
+                belgeTuru: g.belgeTuru,
+                belgeId: g.belgeId,
+                belgeNo: g.belgeNo,
+                belgeTipi: g.belgeTipi,
+                tutar: g.tutar,
+                durum: "BEKLIYOR",
+                elle: false,
+                posCihaziId: g.posCihaziId ?? terminal.posCihaziId,
+                vezneId: g.vezneId,
+                kullaniciId,
+            }, ZAMAN_ASIMI_SN[mod], dbContext);
+            if (acilan === "mesgul") {
+                // Önce açılan satırlar cihaza gitmeden kapatılır
+                for (const acik of await Repo.grupIslemleri(grupKimlik, dbContext))
+                    await Repo.bekleyeniKapat(acik.posIslemId, "IPTAL", "Cihaz başka bir işlemdeydi.", dbContext);
+                throw ApiError.conflict(`"${terminal.ad}" şu anda başka bir işlemde. İşlem bitince yeniden deneyin ya da başka cihaz seçin.`);
+            }
+            if (acilan.yeni)
+                yeniAcildi = true;
+        }
+        const islemler = await Repo.grupIslemleri(grupKimlik, dbContext);
+        // Aynı istek ikinci kez geldi: cihaza yeniden gönderilmez
+        if (!yeniAcildi)
+            return Promise.all(islemler.map((i) => this.ilerlet(i, dbContext)));
+        const surucu = surucuSec(mod, terminal.entegrasyon);
+        if (mod === "test") {
+            for (const islem of islemler) {
+                try {
+                    const { ref } = await surucu.gonder({ islem, terminal, aliciAd: ilk.aliciAd, aliciVkn: ilk.aliciVkn, donusAdresi: null });
+                    await Repo.refYaz(islem.posIslemId, ref, dbContext);
+                }
+                catch (err) {
+                    await Repo.bekleyeniKapat(islem.posIslemId, "RET", err?.message || "Cihaza gönderilemedi.", dbContext);
+                }
+            }
+            return Repo.grupIslemleri(grupKimlik, dbContext);
+        }
+        try {
+            const { ref } = await surucu.gonder({ islem: islemler[0], terminal, aliciAd: ilk.aliciAd, aliciVkn: ilk.aliciVkn, donusAdresi: null, grup: { islemler, pesinOdemeler, kalemler } });
+            await Repo.grubaRefYaz(grupKimlik, ref, dbContext);
+            await this.sepetKaydet(mod, terminal.entegrasyon, ref, firmaId);
+        }
+        catch (err) {
+            for (const islem of islemler)
+                await Repo.bekleyeniKapat(islem.posIslemId, "RET", err?.message || "Cihaza gönderilemedi.", dbContext);
+        }
+        return Repo.grupIslemleri(grupKimlik, dbContext);
+    }
+    /**
+     * Fiş başına tek siparişin sonucu: aynı sipariş referansına bağlı bütün satırlara yazılır. Onayda cihazda alınan kart
+     * ödemeleri satırlara tutara göre dağıtılır; ret / iptalde hepsi aynı sonucu alır. Yalnız bekleyen ya da Belirsiz satırlar değişir.
+     */
+    static async grupSonucunuIsle(islemler, terminal, sonuc, dbContext) {
+        const acikOlanlar = islemler.filter((i) => (i.durum === "BEKLIYOR" || i.durum === "BELIRSIZ") && !i.elle);
+        if (!acikOlanlar.length)
+            return;
+        const dagitim = sonuc.durum === "ONAY" ? grupOdemeleriniDagit(acikOlanlar, sonuc.grupOdemeleri || []) : acikOlanlar.map((i) => ({ posIslemId: i.posIslemId, sonuc }));
+        for (const d of dagitim) {
+            const islem = acikOlanlar.find((i) => i.posIslemId === d.posIslemId);
+            await this.sonucuIsle(islem, terminal, { ...sonuc, ...d.sonuc, bankaKodu: d.sonuc.bankaKodu ?? null, bankaAdi: d.sonuc.bankaAdi ?? null, hata: d.sonuc.hata ?? sonuc.hata ?? null }, dbContext);
+        }
+        const ref = islemler[0]?.surucuRef;
+        if (sonuc.durum === "ONAY" && ref && terminal && islemler[0].entegrasyon === "inpos" && islemler[0].mod === "canli") {
+            let csn = null;
+            try {
+                csn = inposCsn(terminal);
+            }
+            catch {
+                csn = null;
+            }
+            void inposSiparisIslendi(ref, csn);
+        }
+    }
+    /** Bulut sağlayıcının bildirdiği sipariş sonucu (Inpos webhook). Sipariş bilinmiyorsa hiçbir kayda dokunulmaz. */
+    static async disaridanGrupSonuc(ref, sonuc, dbContext) {
+        const islemler = await Repo.refIslemleri(ref, dbContext);
+        if (!islemler.length)
+            return 0;
+        const terminal = islemler[0].posTerminalId ? await Repo.terminalGetir(islemler[0].posTerminalId, dbContext) : null;
+        await this.grupSonucunuIsle(islemler, terminal, sonuc, dbContext);
+        return islemler.length;
     }
     static async sonucuIsle(islem, terminal, sonuc, dbContext) {
         // Muhasebe POS kartı: dönen bankanın eşlemesi → cihazın varsayılan kartı → fiş satırında seçili kart (K15)
@@ -215,7 +407,10 @@ export class PosService {
             return islem;
         const terminal = islem.posTerminalId ? await Repo.terminalGetir(islem.posTerminalId, dbContext) : null;
         const sonuc = terminal ? await surucuSec(islem.mod, islem.entegrasyon).sorgula(islem, terminal).catch(() => null) : null;
-        if (sonuc) {
+        if (sonuc && sonuc.grupOdemeleri !== undefined && islem.surucuRef) {
+            await this.grupSonucunuIsle(await Repo.refIslemleri(islem.surucuRef, dbContext), terminal, sonuc, dbContext);
+        }
+        else if (sonuc) {
             await this.sonucuIsle(islem, terminal, sonuc, dbContext);
         }
         else if ((islem.gecenSaniye ?? 0) >= ZAMAN_ASIMI_SN[islem.mod]) {
@@ -262,6 +457,13 @@ export class PosService {
             }
         }
         await Repo.bekleyeniKapat(posIslemId, "IPTAL", "Kullanıcı vazgeçti.", dbContext);
+        // Fiş başına tek siparişte sipariş silinince aynı siparişin öbür satırları da cihazda kalmaz
+        if (islem.surucuRef && islem.grupKimlik) {
+            for (const es of await Repo.refIslemleri(islem.surucuRef, dbContext)) {
+                if (es.posIslemId !== posIslemId && es.durum === "BEKLIYOR")
+                    await Repo.bekleyeniKapat(es.posIslemId, "IPTAL", "Aynı fişin siparişi iptal edildi.", dbContext);
+            }
+        }
         return (await Repo.islemGetir(posIslemId, dbContext));
     }
     /** Cevap gelmeyen işlemi kullanıcı işaretler: Alındı / Alınmadı (K10, K17). */

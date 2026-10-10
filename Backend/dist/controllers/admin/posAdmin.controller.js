@@ -28,7 +28,7 @@ export class PosAdminController {
         return ApiResponse.ok(res, "Cihazlar getirildi.", await PosAdminService.konsolTerminaller(id(req)));
     });
     static kimlikTesti = asyncHandler(async (req, res) => {
-        return ApiResponse.ok(res, "Kimlik denendi.", await PosAdminService.kimlikTesti());
+        return ApiResponse.ok(res, "Kimlik denendi.", await PosAdminService.kimlikTesti(req.body?.saglayici));
     });
     static konsolBaglantiTesti = asyncHandler(async (req, res) => {
         const data = await PosAdminService.konsolBaglantiTesti(id(req), Number(req.body?.posTerminalId), req.body?.gercek === true);
