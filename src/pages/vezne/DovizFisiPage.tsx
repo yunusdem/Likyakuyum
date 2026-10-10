@@ -66,7 +66,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generateDovizReceiptHtml } from "../../utils/receiptHtmlGenerator";
-import { onlyDecimal, blockNonNumericKeys, parseDecimal, formatMiktar } from "../../utils/numericInput";
+import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -106,7 +106,6 @@ interface GridLineItem {
 }
 
 const parseMiktar = (val: any): number => parseDecimal(val);
-const parseKur = (val: any): number => parseDecimal(val);
 
 const DEFAULT_POSTA_KODLARI = [
   { id: 34110, kod: "34110", ad: "Kapalıçarşı / Fatih", il: "İstanbul", ilce: "Fatih" },
@@ -2600,20 +2599,18 @@ export const DovizFisiPage: React.FC = () => {
   }, [lines]);
 
   const calculatedBsmv = useMemo(() => {
-    if (tip !== 1) return 0;
     return lines.reduce((acc, row) => {
       const b = parseDecimal(row.bmv);
       return acc + b;
     }, 0);
-  }, [lines, tip]);
+  }, [lines]);
 
   const totalKmv = useMemo(() => {
-    if (tip !== 1) return 0;
     return lines.reduce((acc, row) => {
       const k = parseDecimal(row.kmv);
       return acc + k;
     }, 0);
-  }, [lines, tip]);
+  }, [lines]);
 
   const totalKomisyon = useMemo(() => {
     return lines.reduce((acc, row) => {
@@ -2628,18 +2625,18 @@ export const DovizFisiPage: React.FC = () => {
     return Math.round((calculatedBsmv + totalKmv + totalKomisyon) * factor) / factor;
   }, [calculatedBsmv, totalKmv, totalKomisyon, tlKurusSayisi]);
 
-  // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + (Kura dahil değilse KMV) + BMV)
+  // Son Toplam / Alışta: (Toplam Tutar - Masraflar), Satışta: (Toplam Tutar + (Kura dahil değilse KMV) + BMV + Komisyon)
   const sonToplam = useMemo(() => {
     const compDef = companyDefinitionsRef.current || companyDefinitions;
     const kmvMode = getEffectiveKmvMode(compDef);
     const factor = Math.pow(10, tlKurusSayisi);
     if (tip === 1) {
       const addedKmv = kmvMode === 2 ? 0 : totalKmv;
-      return Math.round((totalTutar + addedKmv + calculatedBsmv) * factor) / factor;
+      return Math.round((totalTutar + addedKmv + calculatedBsmv + totalKomisyon) * factor) / factor;
     } else {
       return Math.round((totalTutar - totalMasraf) * factor) / factor;
     }
-  }, [totalTutar, totalKmv, calculatedBsmv, totalMasraf, tip, tlKurusSayisi, companyDefinitions]);
+  }, [totalTutar, totalKmv, calculatedBsmv, totalKomisyon, totalMasraf, tip, tlKurusSayisi, companyDefinitions]);
 
   // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
   const isMasakLimitExceeded = useMemo(() => {
@@ -3283,9 +3280,10 @@ export const DovizFisiPage: React.FC = () => {
     );
 
     const validLines = lines.filter((row) => {
+      const isTL = (row.paraKodu || "").toUpperCase().trim() === "TL" || (row.paraKodu || "").toUpperCase().trim() === "TRY" || (row.paraKodu || "").toUpperCase().trim() === "TRL";
       const m = parseMiktar(row.miktar);
       const k = parseKur(row.kur);
-      return (row.paraId > 0 || row.paraKodu.trim() !== "") && m > 0 && k > 0;
+      return (row.paraId > 0 || row.paraKodu.trim() !== "") && m > 0 && (isTL || k > 0);
     });
 
     if (!hasAnyInput || validLines.length === 0) {
@@ -3295,6 +3293,7 @@ export const DovizFisiPage: React.FC = () => {
     for (let i = 0; i < lines.length; i++) {
       const row = lines[i];
       const hasCode = row.paraId > 0 || row.paraKodu.trim() !== "" || row.paraAdi.trim() !== "";
+      const isTL = (row.paraKodu || "").toUpperCase().trim() === "TL" || (row.paraKodu || "").toUpperCase().trim() === "TRY" || (row.paraKodu || "").toUpperCase().trim() === "TRL";
       const m = parseMiktar(row.miktar);
       const k = parseKur(row.kur);
 
@@ -3316,7 +3315,7 @@ export const DovizFisiPage: React.FC = () => {
           window.scrollTo({ top: 0, behavior: "smooth" });
           return;
         }
-        if (k <= 0) {
+        if (!isTL && k <= 0) {
           setNotification({
             type: "warning",
             message: `${i + 1}. satırdaki (${row.paraKodu || row.paraAdi || "Döviz"}) için kur 0 veya boş olamaz. Lütfen geçerli bir kur oranı giriniz.`,

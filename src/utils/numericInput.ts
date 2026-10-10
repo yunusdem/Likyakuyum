@@ -71,8 +71,21 @@ export function formatMiktar(val: string | number | undefined | null): string {
 }
 
 /**
+ * Döviz ve altın kurlarını doğru ondalıklı sayıya çevirir.
+ * Kurlar binlik ayracı içermez; nokta ve virgül her zaman ondalık ayracı olarak kabul edilir.
+ * 24.545 -> 24.545, 34,50 -> 34.50, 1.0850 -> 1.085
+ */
+export function parseKur(val: any): number {
+  if (val === null || val === undefined || val === "") return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  const str = String(val).trim().replace(/\s/g, "").replace(",", ".");
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+}
+
+/**
  * Binlik basamaklı ve/veya virgüllü metinleri doğru sayıya çevirir.
- * 1.000.000 -> 1000000, 5.000 -> 5000, 4.800 -> 4800, 5000 -> 5000, 5000.50 -> 5000.5, 5000,50 -> 5000.5
+ * 1.000.000 -> 1000000, 5.000 -> 5000, 4.800 -> 4800, 5000 -> 5000, 2454.5 -> 2454.5, 2454,5 -> 2454.5
  */
 export function parseDecimal(val: any): number {
   if (val === null || val === undefined || val === "") return 0;
@@ -85,12 +98,12 @@ export function parseDecimal(val: any): number {
     const lastComma = str.lastIndexOf(",");
     const lastDot = str.lastIndexOf(".");
     if (lastComma > lastDot) {
-      // Türkçe: "500.000,50" veya "2.300,00" veya "4.800,00" -> noktalar binlik, virgül ondalık
+      // Türkçe: "500.000,50" veya "2.454,50" -> noktalar binlik, virgül ondalık
       const clean = str.replace(/\./g, "").replace(",", ".");
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     } else {
-      // İngilizce: "500,000.50" veya "2,300.00" -> virgüller binlik, nokta ondalık
+      // İngilizce: "500,000.50" veya "2,454.50" -> virgüller binlik, nokta ondalık
       const clean = str.replace(/,/g, "");
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
@@ -106,7 +119,7 @@ export function parseDecimal(val: any): number {
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
-    // Tek virgül ("2300,50", "34,50", "0,25", "4800,00") -> ondalık
+    // Tek virgül ("2454,5", "34,50", "0,25", "4800,00") -> ondalık
     const clean = str.replace(",", ".");
     const num = parseFloat(clean);
     return isNaN(num) ? 0 : num;
@@ -114,14 +127,21 @@ export function parseDecimal(val: any): number {
 
   // 3. Sadece nokta içeriyorsa
   if (str.includes(".")) {
-    // Başında 0. veya . varsa ondalıktır (0.25, 0.5)
-    if (str.startsWith("0.") || str.startsWith(".")) {
-      const num = parseFloat(str.startsWith(".") ? "0" + str : str);
+    const dotParts = str.split(".");
+    // Birden fazla nokta varsa ("1.000.000" veya "23.000.000") kesinlikle binlik ayracıdır
+    if (dotParts.length > 2) {
+      const clean = str.replace(/\./g, "");
+      const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
-    // Aksi halde Türkiye ERP standardında nokta binlik ayracıdır (50.000 -> 50000, 50.00 -> 5000, 5.000 -> 5000)
-    const clean = str.replace(/\./g, "");
-    const num = parseFloat(clean);
+    // Tek nokta: 1-3 basamak . 3 basamak ise (örn: "50.000", "5.000", "500.000") ve başı 0 değilse binlik ayracıdır
+    if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1].length === 3) {
+      const clean = str.replace(/\./g, "");
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : num;
+    }
+    // Aksi halde JS ondalık formatıdır (örn: "2454.5", "34.50", "0.25", "1234.56", "0.5")
+    const num = parseFloat(str);
     return isNaN(num) ? 0 : num;
   }
 
