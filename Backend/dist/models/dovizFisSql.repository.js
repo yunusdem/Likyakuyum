@@ -1231,7 +1231,7 @@ export class DovizFisSqlRepository {
             procReq.input("CLEAN_IL", sql.VarChar(100), (dto.il || "").trim().slice(0, 100) || null);
             procReq.input("KULLANICI_ID", sql.Int, kullaniciId);
             procReq.input("YAZICI_ID", sql.Int, toValidId(dto.yaziciId));
-            procReq.input("GUID_STR", sql.VarChar(50), guid);
+            procReq.input("IN_GUID", sql.VarChar(40), guid || null);
             procReq.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar ? 1 : 0);
             // Row Parameter definitions
             const rowValuesSql = [];
@@ -1254,7 +1254,7 @@ export class DovizFisSqlRepository {
                 const satirSeri = (item.seriNo || seriNo || "").slice(0, 20);
                 const satirBelge = (item.belgeNo || belgeNo || "").slice(0, 50);
                 rowValuesSql.push(`(
-          @GUID_STR,
+          @IN_GUID,
           ${idx},
           ${m},
           ${pId},
@@ -1317,8 +1317,6 @@ export class DovizFisSqlRepository {
         DECLARE @P_SERI_NO VARCHAR(20) = @SERI_NO_IN;
         DECLARE @P_BELGE_NO VARCHAR(50) = @BELGE_NO_IN;
         DECLARE @P_YENI_KAYIT BIT = 0;
-        DECLARE @EFF_GUID UNIQUEIDENTIFIER = TRY_CONVERT(UNIQUEIDENTIFIER, @GUID_STR);
-        IF @EFF_GUID IS NULL SET @EFF_GUID = NEWID();
 
         -- 1. Cari Kart Doğrulama (Seçili cari yoksa veya geçersizse NULL yapılır)
         DECLARE @EFF_CARI_KART_ID INT = CASE WHEN @CARI_KART_ID > 0 THEN @CARI_KART_ID ELSE NULL END;
@@ -1874,7 +1872,7 @@ export class DovizFisSqlRepository {
           @KIMLIK_BELGE_TURU = @KIMLIK_BELGE_TURU,
           @KULLANICI_ID = @EFF_KULLANICI_ID,
           @YAZICI_ID = @EFF_YAZICI_ID,
-          @GUID = @EFF_GUID,
+          @GUID = @IN_GUID,
           @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR,
           @YENI_KAYIT = @P_YENI_KAYIT OUTPUT;
 

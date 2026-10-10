@@ -11,6 +11,7 @@
     "ilk-admin": "tsx src/scripts/ilk-admin.ts",
     "lisans-anahtar": "tsx src/scripts/lisans-anahtar-uret.ts",
     "surum:yayinla": "tsx src/scripts/surum-yayinla.ts",
+    "sema:goc": "tsx src/scripts/sema-goc.ts",
     "kurulum:paketi": "tsx src/scripts/kurulum-paketi.ts",
     "clean": "rimraf dist"
   },

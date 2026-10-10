@@ -30,6 +30,7 @@ import {
 } from "@tabler/icons-react";
 import LandingNavbar from "./landing/LandingNavbar";
 import IletisimFormu from "./landing/IletisimFormu";
+import HeroCarousel from "./landing/HeroCarousel";
 import { ILETISIM, MAIL_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
 import "../styles/LandingFurni.css";
 
@@ -79,7 +80,7 @@ export const LandingPage: React.FC = () => {
 
       {/* ─── 2. FURNI HERO SECTION (Dark Green / Gold Accent) ─── */}
       <section className="furni-hero" id="home">
-        <div className="container" style={{ maxWidth: "1280px" }}>
+        <div className="container" style={{ maxWidth: "1360px" }}>
           <div className="row align-items-center justify-content-between g-5">
             {/* Left Hero Intro */}
             <div className="col-lg-5">
@@ -109,15 +110,9 @@ export const LandingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Right Hero Showcase with Dot Matrix */}
+            {/* Right Hero Showcase with Dynamic Rotating Carousel */}
             <div className="col-lg-7 position-relative">
-              <div className="furni-hero-img-box">
-                <div className="furni-dots-pattern"></div>
-                <img
-                  src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=900&h=600&fit=crop&auto=format"
-                  alt="Kuyumculuk ve Mücevherat ERP"
-                />
-              </div>
+              <HeroCarousel />
             </div>
           </div>
         </div>
