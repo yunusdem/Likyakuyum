@@ -28,7 +28,7 @@ const faturaAdresi = (f: MutabakatFisi): string | null => {
   if (f.fisTuru === "perakende") return null;
   // sec: listede bulunup seçili gelecek kaynak belge (evrak türü: döviz 99, sarraf 0) — M17
   const q = new URLSearchParams({
-    kaynak: f.fisTuru === "doviz" ? "DOVIZ" : "FATURA", ...(f.tarih ? { tarih: f.tarih.slice(0, 10) } : {}), ...(f.fisNo ? { ara: f.fisNo } : {}),
+    ...(f.fisTuru === "doviz" ? { kaynak: "DOVIZ" } : {}), ...(f.tarih ? { tarih: f.tarih.slice(0, 10) } : {}), ...(f.fisNo ? { ara: f.fisNo } : {}),
     sec: `${f.fisTuru === "doviz" ? 99 : 0}:${f.fisId}`,
   });
   return `/e-belge/kaynak?${q.toString()}`;

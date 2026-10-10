@@ -389,7 +389,7 @@ export interface EbelgeKaynakKimlik { evrakTuru: number; belgeId: number; belgeT
 /** Kaynak listesi iki görünümden gelir: fatura (evrakTuru 0) ve e-Döviz fişi (evrakTuru 99). */
 export const EBELGE_DOVIZ_EVRAK_TURU = 99;
 export interface EbelgeKaynakSatiri extends EbelgeKaynakKimlik {
-  kaynak: "FATURA" | "DOVIZ" | "PERAKENDE";
+  kaynak: "FATURA" | "SARRAF" | "DOVIZ" | "PERAKENDE";
   belgeNo: string; tarih: string; unvan: string; tutar: number; paraBirimi: string; durum: string; hata: string | null;
   eskiEttn: string | null; eskiDurum: number; uuid: string | null; secilebilir: boolean; engel: string | null;
 }

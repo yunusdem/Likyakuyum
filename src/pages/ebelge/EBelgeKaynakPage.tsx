@@ -15,6 +15,8 @@ const turAdi = (k: { kaynak?: string; belgeTuru: number }) =>
   k.kaynak === 'DOVIZ' ? 'e-Döviz'
     // Perakende fişi (docs/PERAKENDE_EBELGE_YOL_HARITASI.md): belgeTuru = fiş tipi
     : k.kaynak === 'PERAKENDE' ? ({ 0: 'Perakende Alış (e-Gider)', 1: 'Perakende Satış', 2: 'Perakende İade' }[k.belgeTuru] || 'Perakende')
+    // Sarraf fişi: belgeTuru 1 satış, 2 e-İrsaliye seçili satış, 3 alış (e-Gider)
+    : k.kaynak === 'SARRAF' ? ({ 1: 'Sarraf Satış', 2: 'Sarraf Satış (e-İrsaliye)', 3: 'Sarraf Alış (e-Gider)' }[k.belgeTuru] || 'Sarraf')
     : ({ 0: 'Fatura', 1: 'Fatura', 2: 'e-İrsaliye', 3: 'e-Gider' }[k.belgeTuru] || `Tür ${k.belgeTuru}`);
 // Ekranda yalnızca Gönderildi / Gönderilmedi / Hatalı gösterilir; arka plandaki kilit durumları
 // (KONTROL_GEREKLI, BELIRSIZ, GONDERILIYOR…) "Hatalı" rozetiyle görünür. Bkz. docs/ebelge-revizyon.md K6
@@ -98,7 +100,7 @@ export default function EBelgeKaynakPage() {
       <Form.Group controlId="kaynak-arama"><Form.Label>Belge no / ünvan</Form.Label><Form.Control size="sm" value={arama} onChange={e => setArama(e.target.value)} /></Form.Group>
       <Form.Group controlId="kaynak-ilk"><Form.Label>İlk tarih</Form.Label><Form.Control size="sm" type="date" value={ilk} onChange={e => setIlk(e.target.value)} /></Form.Group>
       <Form.Group controlId="kaynak-son"><Form.Label>Son tarih</Form.Label><Form.Control size="sm" type="date" value={son} onChange={e => setSon(e.target.value)} /></Form.Group>
-      <Form.Group controlId="kaynak-tur"><Form.Label>Kaynak</Form.Label><Form.Select size="sm" value={kaynak} onChange={e => setKaynak(e.target.value as Kaynak)}><option value="">Tümü</option><option value="FATURA">Fatura</option><option value="IRSALIYE">e-İrsaliye</option><option value="GIDER">e-Gider pusulası</option><option value="DOVIZ">e-Döviz fişi</option><option value="PERAKENDE_SATIS">Perakende Satış</option><option value="PERAKENDE_ALIS">Perakende Alış (e-Gider)</option></Form.Select></Form.Group>
+      <Form.Group controlId="kaynak-tur"><Form.Label>Kaynak</Form.Label><Form.Select size="sm" value={kaynak} onChange={e => setKaynak(e.target.value as Kaynak)}><option value="">Tümü</option><option value="FATURA">Sarraf Satış</option><option value="GIDER">Sarraf Alış (e-Gider)</option><option value="IRSALIYE">Sarraf e-İrsaliye</option><option value="DOVIZ">e-Döviz fişi</option><option value="PERAKENDE_SATIS">Perakende Satış</option><option value="PERAKENDE_ALIS">Perakende Alış (e-Gider)</option></Form.Select></Form.Group>
       <Form.Group controlId="kaynak-durum"><Form.Label>Durum</Form.Label><Form.Select size="sm" value={durum} onChange={e => setDurum(e.target.value)}><option value="">Tümü</option><option value="GONDERILMEDI">Gönderilmedi</option><option value="GONDERILDI">Gönderildi</option><option value="HATA">Gönderilemedi</option></Form.Select></Form.Group>
       {kaynak === 'DOVIZ' && <Form.Group controlId="kaynak-doviz-tipi"><Form.Label>Alış / Satış</Form.Label><Form.Select size="sm" value={dovizTipi} onChange={e => setDovizTipi(e.target.value)}><option value="">Tümü</option><option value="0">Alış</option><option value="1">Satış</option></Form.Select></Form.Group>}
       <Button size="sm" type="submit">{busy ? 'Bekleyin…' : 'Listele'}</Button><Link className="text-nowrap pb-1" to="/e-belge/giden">Giden Kutusu</Link>

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { EbelgeKaynakRepository, KaynakKimlik, dovizMi, kaynakAnahtar, kaynakKimlikCoz, perakendeMi } from "../models/ebelgeKaynak.repository.js";
+import { EbelgeKaynakRepository, KaynakKimlik, dovizMi, kaynakAnahtar, kaynakKimlikCoz, perakendeMi, sarrafMi } from "../models/ebelgeKaynak.repository.js";
 import { NIHAI_TUKETICI, perakendeFaturaGirdisi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
+import { sarrafAliciVkn, sarrafFaturaGirdisi, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafToplam } from "./ebelgeSarraf.js";
 import { EDovizGirdi, getEDovizCikti, getEDovizStatus, previewEDoviz } from "./ice/ice.edoviz.js";
 import { EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
 import { DbContext, EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
@@ -61,7 +62,14 @@ export class EbelgeKaynakService {
         paraBirimi: 'TRY', tutar: Number(b.GENEL_TOPLAM) || 0, ettn: temiz(b.ETTN), durum: Number(b.E_BELGE_DURUMU || 0), firma: '', vergiKimlikNo: temiz(b.ALICI_VKN_TCKN),
         satirlar: satirlar.map((s: any) => ({ ad: [temiz(s.URUN_ADI), temiz(s.AYAR) ? `${temiz(s.AYAR)} ayar` : ''].filter(Boolean).join(' '), miktar: Number(s.MIKTAR) || 0, tutar: Number(s.TUTAR) || 0, kdv: Number(s.KDV_TUTARI) || 0 })) };
     }
-    const kaynak = dovizMi(k) ? await EbelgeKaynakRepository.dovizDetay(k, ctx) : await EbelgeKaynakRepository.detay(k, ctx);
+    if (sarrafMi(k)) {
+      const { baslik: b, satirlar } = await EbelgeKaynakRepository.detay(k, ctx);
+      return { belgeNo: temiz(b.FIS_NO), tarih: new Date(b.TARIH).toISOString(), unvan: temiz(b.UNVAN),
+        tur: ({ 1: 'Sarraf Satış', 2: 'Sarraf Satış (e-İrsaliye)', 3: 'Sarraf Alış (e-Gider)' } as Record<number, string>)[sarrafKaynakTuru(b.TIP, b.BELGE_TURU)],
+        paraBirimi: 'TRY', tutar: sarrafToplam(satirlar), ettn: '', durum: Number(b.E_FATURA_DURUMU || 0), firma: '', vergiKimlikNo: temiz(b.VERGI_KIMLIK_NO),
+        satirlar: satirlar.map((s: any) => ({ ad: temiz(s.PARA_ADI), miktar: Number(s.MIKTAR) || 0, tutar: Number(s.TUTAR) || 0, kdv: Number(s.KDV) || 0 })) };
+    }
+    const kaynak = await EbelgeKaynakRepository.dovizDetay(k, ctx);
     const b = kaynak.baslik;
     const paraBirimi = temiz(dovizMi(k) ? b.PayableAmountCurrency || b.PARA_KODU : b.PARA_KODU).replace(/^TL$/, 'TRY');
     return { belgeNo: temiz(b.BELGE_NO), tarih: new Date(b.TARIH).toISOString(), unvan: temiz(b.UNVAN),
@@ -240,46 +248,88 @@ export class EbelgeKaynakService {
     }
   }
 
+  /**
+   * Sarraf fişi okunur ve listedeki kimlikle (belge türü) hâlâ uyuştuğu doğrulanır. Numara fişten alınmaz:
+   * gönderim anında e-Belge Ayarları'ndaki seriden verilir (fiş numarası biçimi firmadan firmaya değişebilir).
+   */
+  private static async sarrafOku(k: KaynakKimlik, ctx?: DbContext) {
+    const kaynak = await EbelgeKaynakRepository.detay(k, ctx);
+    const tur = sarrafKaynakTuru(kaynak.baslik.TIP, kaynak.baslik.BELGE_TURU);
+    if (tur !== k.belgeTuru) throw ApiError.conflict("Fişin türü değişmiş. Listeyi yenileyin.");
+    if (tur === 2) throw ApiError.badRequest("Fişte belge türü e-İrsaliye seçili; e-İrsaliye ekranından gönderin.");
+    if (Number(kaynak.baslik.E_FATURA_DURUMU || 0) !== 0) throw ApiError.conflict("Fiş e-belge olarak gönderilmiş görünüyor; giden kutusunu kontrol edin.");
+    const tarih = new Date(kaynak.baslik.TARIH);
+    if (Number.isNaN(tarih.getTime())) throw ApiError.badRequest("Fiş tarihi okunamadı.");
+    return { kaynak, alis: tur === 3, yil: Number(tarih.toISOString().slice(0, 4)) };
+  }
+
+  /** Sarraf satışında senaryo: Perakende ile aynı (nihai tüketici → e-Arşiv, diğerinde ICE mükellef sorgusu) */
+  private static async sarrafGirdisi(k: KaynakKimlik, kullanici: string, ctx?: DbContext) {
+    const { kaynak, alis, yil } = await this.sarrafOku(k, ctx);
+    if (alis) {
+      const belgeNo = await EbelgeService.siradakiBelgeNo("EGider", yil, ctx);
+      return { kaynak, alis, girdi: await this.aliciAdresiniTamamla(sarrafGiderGirdisi(kaynak, belgeNo), ctx), senaryo: "GIDERPUSULASI" };
+    }
+    const senaryo = await this.perakendeSenaryo(sarrafAliciVkn(kaynak.baslik), kullanici, ctx);
+    const belgeNo = await EbelgeService.siradakiBelgeNo(senaryo === "TICARIFATURA" ? "EFatura" : "EArsiv", yil, ctx);
+    const girdi = await this.aliciAdresiniTamamla(sarrafFaturaGirdisi(kaynak, belgeNo), ctx);
+    girdi.senaryo = senaryo;
+    return { kaynak, alis, girdi, senaryo };
+  }
+
+  /** Sarraf hazırlama: satış → ICE doğrulaması, alış → gider pusulası ön izleme. Hiçbir şey gönderilmez. */
+  private static async sarrafHazirla(k: KaynakKimlik, kullanici: string, ctx?: DbContext) {
+    const { kaynak, alis, girdi, senaryo } = await this.sarrafGirdisi(k, kullanici, ctx);
+    if (alis) {
+      const { ozet } = await EbelgeService.giderPusulasiOnizle(girdi as any, ctx);
+      return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan || "", belgeTuruAdi: "e-Gider pusulası", parmakizi: kaynakParmakizi(kaynak), senaryo, tutar: ozet.odenecekTutar, durum: "HAZIR" };
+    }
+    const sonuc = await EbelgeService.dogrulaGidenBelge(girdi as UblFaturaGirdi, kullanici, false, ctx);
+    if (!sonuc.semaGecerli || !sonuc.schematronGecerli) throw ApiError.unprocessable(sonuc.mesaj || "Sarraf fişi ICE doğrulamasından geçmedi.");
+    return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan, belgeTuruAdi: senaryo === "TICARIFATURA" ? "e-Fatura" : "e-Arşiv",
+      parmakizi: kaynakParmakizi(kaynak), senaryo, tutar: sonuc.ozet.odenecekTutar, durum: "HAZIR" };
+  }
+
+  /**
+   * Sarraf gönderimi: Perakende ile aynı güvenlik sırası. Numara burada yeniden alınır (hazırlamadan beri seri
+   * ilerlemiş olabilir); kaynak kaydı bu numarayla yer tutulur, sonuç kaynak kaydına ve fişe yazılır.
+   */
+  private static async sarrafGonder(k: KaynakKimlik, parmakizi: string, senaryo: string, kullanici: string, ctx?: DbContext) {
+    const ilk = await this.sarrafGirdisi(k, kullanici, ctx);
+    if (kaynakParmakizi(ilk.kaynak) !== parmakizi) throw ApiError.conflict("Fiş değişmiş. Yeniden hazırlayın ve onaylayın.");
+    if (ilk.senaryo !== senaryo) throw ApiError.conflict(ilk.alis ? "Belge türü değişmiş. Yeniden hazırlayın." : "Alıcının mükellefiyeti değişmiş. Yeniden hazırlayın.");
+    const belgeNo = ilk.girdi.belgeNo;
+    if (await EbelgeSqlRepository.gidenBelgeNoVarMi(belgeNo, ctx)) throw ApiError.conflict(`${belgeNo} numarası giden kutusunda zaten var; yeniden deneyin.`);
+    await EbelgeKaynakRepository.reserve(k, belgeNo, ctx);
+    try {
+      const guncel = await EbelgeKaynakRepository.detay(k, ctx);
+      if (kaynakParmakizi(guncel) !== parmakizi) throw ApiError.conflict("Fiş değişmiş; gönderim durduruldu.");
+      const secenek = { kaynakFisId: kaynakAnahtar(k) };
+      const sonuc = ilk.alis
+        ? await EbelgeService.giderPusulasiGonder(ilk.girdi as any, kullanici, ctx, secenek)
+        : ilk.senaryo === "TICARIFATURA"
+          ? await EbelgeService.faturaGonder(ilk.girdi as UblFaturaGirdi, kullanici, ctx, secenek)
+          : await EbelgeService.earsivGonder(ilk.girdi as UblFaturaGirdi, kullanici, ctx, secenek);
+      await EbelgeKaynakRepository.sonuc(k, await this.kuyrukKaynakDurumu(sonuc.uuid, ctx), sonuc.mesaj, ctx);
+      return sonuc;
+    } catch (e: any) {
+      const mevcut = await EbelgeSqlRepository.gidenBelgeNoVarMi(belgeNo, ctx).catch(() => true);
+      await EbelgeKaynakRepository.sonuc(k, mevcut ? "KONTROL_GEREKLI" : "HATA", e.message || "İşlem tamamlanamadı.", ctx).catch(() => undefined);
+      throw e;
+    }
+  }
+
   static async hazirla(k: KaynakKimlik, kullanici: string, ctx?: DbContext) {
     if (dovizMi(k)) return this.dovizHazirla(k, ctx);
     if (perakendeMi(k)) return this.perakendeHazirla(k, kullanici, ctx);
-    const kaynak = await EbelgeKaynakRepository.detay(k, ctx);
-    const girdi = kaynakFaturaGirdisi(kaynak);
-    if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
-    const mukellef = await EbelgeService.mukellefSorgulaCanli(girdi.alici.vknTckn, kullanici, ctx);
-    girdi.senaryo = mukellef.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
-    const sonuc = await EbelgeService.dogrulaGidenBelge(girdi as UblFaturaGirdi, kullanici, false, ctx);
-    if (!sonuc.semaGecerli || !sonuc.schematronGecerli) throw ApiError.unprocessable(sonuc.mesaj || "Kaynak belge ICE doğrulamasından geçmedi.");
-    return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan, belgeTuruAdi: mukellef.mukellefMi ? "e-Fatura" : "e-Arşiv",
-      parmakizi: kaynakParmakizi(kaynak), senaryo: girdi.senaryo, tutar: sonuc.ozet.odenecekTutar, durum: "HAZIR" };
+    if (sarrafMi(k)) return this.sarrafHazirla(k, kullanici, ctx);
+    throw ApiError.badRequest("Bilinmeyen kaynak belge türü.");
   }
   static async gonder(k: KaynakKimlik, parmakizi: string, senaryo: string, kullanici: string, ctx?: DbContext) {
     if (dovizMi(k)) return this.dovizGonder(k, parmakizi, kullanici, ctx);
     if (perakendeMi(k)) return this.perakendeGonder(k, parmakizi, senaryo, kullanici, ctx);
-    const kaynak = await EbelgeKaynakRepository.detay(k, ctx);
-    if (kaynakParmakizi(kaynak) !== parmakizi) throw ApiError.conflict("Kaynak belge değişmiş. Yeniden hazırlayın ve onaylayın.");
-    const girdi = kaynakFaturaGirdisi(kaynak);
-    if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx)) throw ApiError.conflict("Belge giden kutusunda zaten mevcut; yeniden gönderilmedi.");
-    await EbelgeKaynakRepository.reserve(k, girdi.belgeNo, ctx);
-    try {
-      const mukellef = await EbelgeService.mukellefSorgulaCanli(girdi.alici.vknTckn, kullanici, ctx);
-      girdi.senaryo = mukellef.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
-      if (girdi.senaryo !== senaryo) throw ApiError.conflict("Alıcının mükellefiyeti değişmiş. Yeniden hazırlayın.");
-      const guncel = await EbelgeKaynakRepository.detay(k,ctx);
-      if (kaynakParmakizi(guncel) !== parmakizi) throw ApiError.conflict("Kaynak belge değişmiş; gönderim durduruldu.");
-      // Kaynak anahtarı giden kaydına yazılır: kuyruk sonucu (Gönderilemedi) kaynağa da işlenir
-      const secenek = { kaynakFisId: kaynakAnahtar(k) };
-      const sonuc = mukellef.mukellefMi
-        ? await EbelgeService.faturaGonder(girdi as UblFaturaGirdi, kullanici, ctx, secenek)
-        : await EbelgeService.earsivGonder(girdi as UblFaturaGirdi, kullanici, ctx, secenek);
-      await EbelgeKaynakRepository.sonuc(k,await this.kuyrukKaynakDurumu(sonuc.uuid,ctx),sonuc.mesaj,ctx);
-      return sonuc;
-    } catch (e: any) {
-      // A persisted giden row means ICE may already have seen the document. Do not reopen the claim.
-      const mevcut = await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo,ctx).catch(() => true);
-      await EbelgeKaynakRepository.sonuc(k,mevcut ? "KONTROL_GEREKLI" : "HATA",e.message || "İşlem tamamlanamadı.",ctx).catch(() => undefined);
-      throw e;
-    }
+    if (sarrafMi(k)) return this.sarrafGonder(k, parmakizi, senaryo, kullanici, ctx);
+    throw ApiError.badRequest("Bilinmeyen kaynak belge türü.");
   }
 
   /**

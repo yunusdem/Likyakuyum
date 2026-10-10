@@ -10,6 +10,8 @@ import { PosEntegrasyonSqlRepository } from "./posEntegrasyonSql.repository.js";
 export type KaynakKimlik = { evrakTuru: number; belgeId: number; belgeTuru: number; belgeNo?: string };
 /** Perakende fişi (TODVZ_FATURA) — docs/PERAKENDE_EBELGE_YOL_HARITASI.md P11 */
 export const perakendeMi = (k: { evrakTuru: number }) => k.evrakTuru === PERAKENDE_EVRAK_TURU;
+/** Sarraf fişi (TODVZ_SARRAF_FISI); eski anahtarlarla uyum için evrakTuru 0 kalır (e-Banka mutabakatı da 0 kullanır) */
+export const sarrafMi = (k: { evrakTuru: number }) => k.evrakTuru === 0;
 /**
  * e-Döviz fişleri ayrı bir görünümden gelir ve `EVRAK_TURU` taşımaz.
  * Tek bir anahtar şemasında toplamak için bu sabit kullanılır; fatura görünümü
@@ -30,8 +32,11 @@ export function kaynakSecim(k: any): { secilebilir: boolean; engel: string | nul
   // Perakende (P1, P6): iade gönderilmez; VKN'li cariden alışta belgeyi karşı taraf keser; POS onayı bitmeden satış gönderilmez
   else if (k.kaynak === 'PERAKENDE' && k.belgeTuru === 2) engel = 'İade fişi bu ekrandan gönderilmez.';
   else if (k.kaynak === 'PERAKENDE' && k.belgeTuru === 0 && String(k.aliciVkn || '').replace(/\D/g, '').length === 10) engel = 'Gönderilmez: mükellef (VKN\'li) cariden alışta faturayı karşı taraf keser.';
-  else if (k.kaynak === 'PERAKENDE' && Number(k.posBekliyor) === 1) engel = 'POS tahsilatı bekleniyor: kart ödemesi cihazda onaylanmadan e-belge gönderilmez.';
-  else if (k.kaynak !== 'DOVIZ' && k.kaynak !== 'PERAKENDE' && ![0, 1].includes(k.belgeTuru)) engel = 'Bu belge türünü kendi e-İrsaliye / e-Gider ekranından gönderin.';
+  // Sarraf (evrakTuru 0; belgeTuru 1 satış, 2 e-İrsaliye seçili satış, 3 alış → e-Gider): Perakende ile aynı kurallar
+  else if (k.kaynak === 'SARRAF' && k.belgeTuru === 2) engel = 'Fişte belge türü e-İrsaliye seçili; e-İrsaliye ekranından gönderin.';
+  else if (k.kaynak === 'SARRAF' && k.belgeTuru === 3 && String(k.aliciVkn || '').replace(/\D/g, '').length === 10) engel = 'Gönderilmez: mükellef (VKN\'li) kişiden alışta faturayı karşı taraf keser.';
+  else if ((k.kaynak === 'PERAKENDE' || k.kaynak === 'SARRAF') && Number(k.posBekliyor) === 1) engel = 'POS tahsilatı bekleniyor: kart ödemesi cihazda onaylanmadan e-belge gönderilmez.';
+  else if (k.kaynak !== 'DOVIZ' && k.kaynak !== 'PERAKENDE' && k.kaynak !== 'SARRAF' && ![0, 1].includes(k.belgeTuru)) engel = 'Bu belge türünü kendi e-İrsaliye / e-Gider ekranından gönderin.';
   else if (Number(k.eskiDurum || 0) !== 0) engel = `Kaynak sistemde işlem kaydı var (durum ${k.eskiDurum}). ICE durumunu kontrol edin.`;
   else if (k.eskiHata?.trim()) engel = `Kaynak sistem hata açıklaması: ${k.eskiHata.trim()}`;
   else if (k.kaynak !== 'DOVIZ' && k.eskiEttn) engel = 'Kaynak faturada ETTN mevcut. Yeniden göndermeden önce ICE durumunu kontrol edin.';
@@ -53,8 +58,8 @@ export class EbelgeKaynakRepository {
           DURUM varchar(30) NOT NULL, HATA nvarchar(2000) NULL, TARIH datetime2 NOT NULL DEFAULT SYSDATETIME()
         );
       END TRY BEGIN CATCH IF ERROR_NUMBER() <> 2714 THROW; END CATCH;
-      IF OBJECT_ID('dbo.VODVZ_GONDERIME_HAZIR_E_BELGE','V') IS NULL
-        THROW 50001, 'Kaynak e-Belge görünümü bu veritabanında bulunamadı.', 1;
+      IF OBJECT_ID('dbo.VODVZ_E_FATURA_SATIRI','V') IS NULL OR OBJECT_ID('dbo.VODVZ_SARRAF_FISI','V') IS NULL
+        THROW 50001, 'Sarraf fatura görünümleri (VODVZ_E_FATURA_SATIRI / VODVZ_SARRAF_FISI) bu veritabanında bulunamadı.', 1;
       IF OBJECT_ID('dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI','V') IS NULL
         THROW 50002, 'Kaynak e-Döviz görünümü bu veritabanında bulunamadı.', 1;
     `);
@@ -67,54 +72,64 @@ export class EbelgeKaynakRepository {
       .input("kaynak", sql.VarChar(20), f.kaynak || null)
       .input("ilk", sql.Date, f.baslangicTarihi || null).input("son", sql.Date, f.bitisTarihi || null)
       .input("atla", sql.Int, (f.sayfa - 1) * 50);
-    // İki kaynak tek listede birleşir: sarraf/fatura görünümü ve e-Döviz fişi görünümü.
-    // e-Döviz'de EVRAK_TURU yoktur; DOVIZ_EVRAK_TURU sabitiyle temsil edilir.
-    // İptal edilmiş döviz fişleri hiç listelenmez.
+    // e-Döviz fişleri görünümden gelir (EVRAK_TURU yoktur; DOVIZ_EVRAK_TURU sabitiyle temsil edilir).
+    // İptal edilmiş döviz fişleri hiç listelenmez. Sarraf ve Perakende fişleri aşağıda doğrudan tablolarından eklenir.
     const result = await r.query(`
-      WITH Kaynaklar AS (
-        SELECT V.EVRAK_TURU evrakTuru, V.BELGE_ID belgeId, V.BELGE_TURU belgeTuru,
-          CAST('FATURA' AS varchar(20)) kaynak, RTRIM(V.BELGE_NO) belgeNo, V.TARIH tarih, RTRIM(V.UNVAN) unvan,
-          V.MIKTAR tutar, RTRIM(V.PARA_KODU) paraBirimi, RTRIM(V.ETTN) eskiEttn,
-          V.E_BELGE_DURUMU eskiDurum, V.E_BELGE_HATA_ACIKLAMASI eskiHata
-        FROM dbo.VODVZ_GONDERIME_HAZIR_E_BELGE V
-        WHERE V.EVRAK_TURU=0 AND V.BELGE_TURU IN(0,1,2,3)
-        UNION ALL
-        SELECT ${DOVIZ_EVRAK_TURU}, D.BELGE_ID, D.FIS_TIPI,
-          'DOVIZ', RTRIM(D.BELGE_NO), D.TARIH, RTRIM(D.UNVAN),
-          D.MIKTAR, RTRIM(D.PARA_KODU), RTRIM(D.ETTN),
-          D.E_BELGE_DURUMU, D.E_BELGE_HATA_ACIKLAMASI
-        FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
-        WHERE ISNULL(D.IPTAL,0)=0
-      )
-      SELECT K.evrakTuru,K.belgeId,K.belgeTuru,K.kaynak,K.belgeNo,K.tarih,K.unvan,K.tutar,K.paraBirimi,
-        K.eskiEttn,K.eskiDurum,K.eskiHata,
+      SELECT ${DOVIZ_EVRAK_TURU} evrakTuru, D.BELGE_ID belgeId, D.FIS_TIPI belgeTuru,
+        CAST('DOVIZ' AS varchar(20)) kaynak, CAST(RTRIM(D.BELGE_NO) AS varchar(40)) belgeNo, D.TARIH tarih, CAST(RTRIM(D.UNVAN) AS nvarchar(300)) unvan,
+        CAST(D.MIKTAR AS decimal(19,4)) tutar, CAST(RTRIM(D.PARA_KODU) AS varchar(10)) paraBirimi, CAST(RTRIM(D.ETTN) AS varchar(40)) eskiEttn,
+        CAST(D.E_BELGE_DURUMU AS int) eskiDurum, CAST(D.E_BELGE_HATA_ACIKLAMASI AS nvarchar(2000)) eskiHata,
         -- Gönderim kuyruğu görünmez (docs/EBELGE_KUYRUK_YOL_HARITASI.md): sonucu beklenen belge "Gönderildi"
         COALESCE(CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN 'GONDERILDI' ELSE G.GONDERIM_DURUMU END,R.DURUM,
-          CASE WHEN NULLIF(RTRIM(K.eskiHata),'') IS NOT NULL THEN 'HATA'
-            WHEN ISNULL(K.eskiDurum,0)=0 AND (K.kaynak='DOVIZ' OR NULLIF(K.eskiEttn,'') IS NULL) THEN 'GONDERILMEDI'
+          CASE WHEN NULLIF(RTRIM(D.E_BELGE_HATA_ACIKLAMASI),'') IS NOT NULL THEN 'HATA'
+            WHEN ISNULL(D.E_BELGE_DURUMU,0)=0 THEN 'GONDERILMEDI'
             ELSE 'KONTROL_GEREKLI' END) durum,
-        CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA,K.eskiHata) END hata,
+        CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA,D.E_BELGE_HATA_ACIKLAMASI) END hata,
         G.UUID uuid,
         CAST(NULL AS varchar(20)) aliciVkn, CAST(0 AS int) posBekliyor
       INTO #Kaynak
-      FROM Kaynaklar K
+      FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
       OUTER APPLY (SELECT TOP 1 R.* FROM dbo.TODVZ_EBELGE_KAYNAK R
-        WHERE R.ANAHTAR=CONCAT(K.evrakTuru,':',K.belgeId,':',K.belgeTuru)
-          OR (K.kaynak='DOVIZ' AND R.ANAHTAR=CONCAT(K.evrakTuru,':',K.belgeId,':',K.belgeTuru,':',K.belgeNo))
+        WHERE R.ANAHTAR=CONCAT('${DOVIZ_EVRAK_TURU}:',D.BELGE_ID,':',D.FIS_TIPI)
+          OR R.ANAHTAR=CONCAT('${DOVIZ_EVRAK_TURU}:',D.BELGE_ID,':',D.FIS_TIPI,':',RTRIM(D.BELGE_NO))
         ORDER BY CASE WHEN R.DURUM='HATA' THEN 1 ELSE 0 END,R.TARIH DESC) R
       OUTER APPLY (SELECT TOP 1 * FROM dbo.TODVZ_EBELGE_GIDEN G
         -- ICE, reddettiği belgenin numarasını da kaydeder ("bu tarihte zaten
         -- oluşturulmuş"); HATA dahil her giden kaydı numarayı kilitler. Düzeltme
         -- yeni numaralı fişle yapılır.
-        WHERE G.BELGE_NO=K.belgeNo OR G.UUID=NULLIF(K.eskiEttn,'')
+        WHERE G.BELGE_NO=RTRIM(D.BELGE_NO) OR G.UUID=NULLIF(RTRIM(D.ETTN),'')
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
-      WHERE (@kaynak IS NULL OR (@kaynak='DOVIZ' AND K.kaynak='DOVIZ')
-        OR (@kaynak='FATURA' AND K.kaynak='FATURA' AND K.belgeTuru IN(0,1))
-        OR (@kaynak='IRSALIYE' AND K.kaynak='FATURA' AND K.belgeTuru=2)
-        OR (@kaynak='GIDER' AND K.kaynak='FATURA' AND K.belgeTuru=3))
-        AND (@tur IS NULL OR K.belgeTuru=@tur)
-        AND (@ilk IS NULL OR K.tarih>=@ilk) AND (@son IS NULL OR K.tarih<DATEADD(day,1,@son))
-        AND (K.belgeNo LIKE @arama OR K.unvan LIKE @arama);
+      WHERE ISNULL(D.IPTAL,0)=0 AND (@kaynak IS NULL OR @kaynak='DOVIZ')
+        AND (@tur IS NULL OR D.FIS_TIPI=@tur)
+        AND (@ilk IS NULL OR D.TARIH>=@ilk) AND (@son IS NULL OR D.TARIH<DATEADD(day,1,@son))
+        AND (D.BELGE_NO LIKE @arama OR D.UNVAN LIKE @arama);
+
+      -- Sarraf fişleri doğrudan tablodan (eski görünüm yalnız "e-Fatura" seçili ve e-belge başlangıç tarihi tanımlı
+      -- fişleri veriyordu, numara olarak da fişin iç numarasını). Fiş, belge türü ve numara biçimi ne olursa olsun
+      -- listelenir; e-Belge numarası gönderimde seriden verilir ve kaynak kaydına yazılır (belgeNo: verilmiş e-Belge
+      -- numarası, yoksa fişin kendi numarası). belgeTuru: 1 satış, 2 e-İrsaliye seçili satış, 3 alış (e-Gider).
+      -- Fişin kayıtta üretilmiş ETTN'si gönderim sayılmaz (eskiEttn boş); durum yalnız bizim kayıtlarımızdan.
+      -- Reddedilen gönderimden sonra yeni numarayla yeniden gönderilebilsin diye HATA'daki giden kaydı seçimi kilitlemez.
+      IF (@kaynak IS NULL OR @kaynak IN ('FATURA','IRSALIYE','GIDER'))
+      INSERT INTO #Kaynak (evrakTuru,belgeId,belgeTuru,kaynak,belgeNo,tarih,unvan,tutar,paraBirimi,eskiEttn,eskiDurum,eskiHata,durum,hata,uuid,aliciVkn,posBekliyor)
+      SELECT 0, S.SARRAF_FISI_ID, S.kaynakTuru, 'SARRAF', COALESCE(NULLIF(RTRIM(R.BELGE_NO),''), NULLIF(RTRIM(S.FIS_NO),''), CAST(S.SARRAF_FISI_ID AS varchar(20))),
+        S.TARIH, RTRIM(S.UNVAN), ISNULL(T.TOPLAM,0), 'TRY', NULL, ISNULL(S.E_FATURA_DURUMU,0), NULLIF(RTRIM(S.E_FATURA_HATA_ACIKLAMASI),''),
+        COALESCE(CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN 'GONDERILDI' ELSE G.GONDERIM_DURUMU END, R.DURUM,
+          CASE WHEN NULLIF(RTRIM(S.E_FATURA_HATA_ACIKLAMASI),'') IS NOT NULL THEN 'HATA' WHEN ISNULL(S.E_FATURA_DURUMU,0)=0 THEN 'GONDERILMEDI' ELSE 'KONTROL_GEREKLI' END),
+        CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA,NULLIF(RTRIM(S.E_FATURA_HATA_ACIKLAMASI),'')) END,
+        CASE WHEN G.GONDERIM_DURUMU='HATA' THEN NULL ELSE G.UUID END, RTRIM(S.VERGI_KIMLIK_NO),
+        CASE WHEN EXISTS (SELECT 1 FROM dbo.TODVZ_POS_ISLEM I WHERE I.BELGE_TURU='sarraf' AND I.BELGE_ID=S.SARRAF_FISI_ID AND I.DURUM IN ('BEKLIYOR','BELIRSIZ'))
+          THEN 1 ELSE 0 END
+      FROM (SELECT X.*, CASE WHEN X.TIP=0 THEN 3 WHEN X.BELGE_TURU=2 THEN 2 ELSE 1 END kaynakTuru FROM dbo.TODVZ_SARRAF_FISI X) S
+      OUTER APPLY (SELECT TOP 1 R.* FROM dbo.TODVZ_EBELGE_KAYNAK R WHERE R.ANAHTAR=CONCAT('0:',S.SARRAF_FISI_ID,':',S.kaynakTuru)
+        ORDER BY R.TARIH DESC) R
+      OUTER APPLY (SELECT TOP 1 * FROM dbo.TODVZ_EBELGE_GIDEN G WHERE G.KAYNAK_FIS_ID=CONCAT('0:',S.SARRAF_FISI_ID,':',S.kaynakTuru)
+        ORDER BY G.OLUSTURMA_TARIHI DESC) G
+      OUTER APPLY (SELECT SUM(ISNULL(E.TUTAR,0)+ISNULL(E.KDV,0)) TOPLAM FROM dbo.VODVZ_E_FATURA_SATIRI E WHERE E.EVRAK_TURU=0 AND E.EVRAK_ID=S.SARRAF_FISI_ID) T
+      WHERE (@kaynak IS NULL OR (@kaynak='FATURA' AND S.kaynakTuru=1) OR (@kaynak='IRSALIYE' AND S.kaynakTuru=2) OR (@kaynak='GIDER' AND S.kaynakTuru=3))
+        AND (@tur IS NULL OR S.kaynakTuru=@tur)
+        AND (@ilk IS NULL OR S.TARIH>=@ilk) AND (@son IS NULL OR S.TARIH<DATEADD(day,1,@son))
+        AND (S.FIS_NO LIKE @arama OR S.IRSALIYE_NO LIKE @arama OR S.UNVAN LIKE @arama OR R.BELGE_NO LIKE @arama);
 
       -- Perakende fişleri (docs/PERAKENDE_EBELGE_YOL_HARITASI.md): evrakTuru 98, belgeTuru = fiş tipi (0 alış, 1 satış, 2 iade).
       -- Durum yalnız bizim kayıtlarımızdan (giden kutusu / kaynak kaydı) gelir; eskiDurum 0 sayılır.
@@ -178,20 +193,24 @@ export class EbelgeKaynakRepository {
     return { baslik: { ...sets[1][0], ...sets[0][0] }, satirlar: [] as any[] };
   }
 
+  /**
+   * Sarraf fişi başlık + fatura satırları (evrakTuru 0). Başlık fiş görünümünden (il / ilçe / vergi dairesi adları),
+   * gönderim durumu tablodan; satırlar ERP'nin fatura satırı görünümünden. Eski "gönderime hazır" görünümü kullanılmaz:
+   * yalnız "e-Fatura" seçili ve e-belge başlangıç tarihi tanımlı fişleri veriyordu.
+   */
   static async detay(k: KaynakKimlik, ctx?: DbContext) {
     const pool = await this.pool(ctx);
-    const res = await pool.request().input("evrak", sql.Int, k.evrakTuru).input("id", sql.Int, k.belgeId).input("tur", sql.Int, k.belgeTuru).query(`
-      SELECT V.*,F.VERGI_KIMLIK_NO,F.VERGI_DAIRESI_ADI,F.IL_ADI,F.ILCE_ADI,F.ADRES,
-        T.E_FATURA_KDV_MUAFIYET_KODU,T.E_FATURA_KDV_MUAFIYET_ADI
-      FROM dbo.VODVZ_GONDERIME_HAZIR_E_BELGE V
-      JOIN dbo.VODVZ_SARRAF_FISI F ON F.SARRAF_FISI_ID=V.BELGE_ID
-      CROSS JOIN dbo.VODVZ_E_BELGE_TANIMI T
-      WHERE V.EVRAK_TURU=@evrak AND V.EVRAK_TURU=0 AND V.BELGE_ID=@id AND V.BELGE_TURU=@tur;
+    const res = await pool.request().input("id", sql.Int, k.belgeId).query(`
+      SELECT F.*, S.E_FATURA_DURUMU, S.E_FATURA_HATA_ACIKLAMASI, T.E_FATURA_KDV_MUAFIYET_KODU, T.E_FATURA_KDV_MUAFIYET_ADI
+      FROM dbo.VODVZ_SARRAF_FISI F
+      JOIN dbo.TODVZ_SARRAF_FISI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
+      OUTER APPLY (SELECT TOP 1 E_FATURA_KDV_MUAFIYET_KODU, E_FATURA_KDV_MUAFIYET_ADI FROM dbo.VODVZ_E_BELGE_TANIMI) T
+      WHERE F.SARRAF_FISI_ID=@id;
       SELECT SATIR_NO,PARA_ADI,BIRIM_ADI,MIKTAR,TUTAR,KDV_ORANI,KDV
-        FROM dbo.VODVZ_E_FATURA_SATIRI WHERE EVRAK_TURU=@evrak AND EVRAK_ID=@id ORDER BY SATIR_NO;
+        FROM dbo.VODVZ_E_FATURA_SATIRI WHERE EVRAK_TURU=0 AND EVRAK_ID=@id ORDER BY SATIR_NO;
     `);
     const sets = res.recordsets as any;
-    if (sets[0].length !== 1) throw ApiError.notFound("Kaynak belge bulunamadı veya tekil değil.");
+    if (sets[0].length !== 1) throw ApiError.notFound("Sarraf fişi bulunamadı veya tekil değil.");
     return { baslik: sets[0][0], satirlar: sets[1] as any[] };
   }
   /** Perakende fişi başlık + satırlar; firma e-Belge tanımındaki KDV muafiyet kodu Sarraf'taki gibi başlığa eklenir (P2). */
@@ -238,6 +257,16 @@ export class EbelgeKaynakRepository {
     // Perakende fişine geri yazılır (P5): 1 = Gönderildi, diğerlerinde 0. GIB_STATU_KODU'na yazılmaz: canlı veritabanında
     // kolonun tipi farklı olabiliyor (metin yazınca "Conversion failed" verdi, 10.10.2026). Belge ICE'ye gitmiş olabilir;
     // fişe geri yazamamak gönderimi hatalı göstermemeli.
+    if (sarrafMi(k)) {
+      // Sarraf fişine geri yazılır: 1 = Gönderildi; diğerlerinde 0 (reddedilen fiş yeniden gönderilebilsin). Hiç
+      // yazılmamış (boş) alan boş kalır: fiş değişmemiş sayılsın, yeniden hazırlamadan tekrar gönderilebilsin.
+      try {
+        await pool.request().input("id", sql.Int, k.belgeId).input("durum", sql.VarChar(30), durum)
+          .query(`UPDATE dbo.TODVZ_SARRAF_FISI SET E_FATURA_DURUMU = CASE WHEN @durum='GONDERILDI' THEN 1 WHEN E_FATURA_DURUMU IS NULL THEN NULL ELSE 0 END WHERE SARRAF_FISI_ID=@id`);
+      } catch (err: any) {
+        logger.warn(`[e-Belge] Sarraf fişine durum yazılamadı (${k.belgeId}): ${err?.message}`);
+      }
+    }
     if (perakendeMi(k)) {
       try {
         await pool.request().input("id", sql.Int, k.belgeId).input("durum", sql.VarChar(30), durum)
