@@ -227,7 +227,23 @@ const bankaCoz = (acq) => {
  * TSM siparişini (getOrderById cevabı ya da webhook gövdesi) işlem sonucuna çevirir.
  * OPEN / LOCKED → null (hâlâ bekleniyor). CLOSED → onay + cihazda alınan kart ödemeleri. ERROR → ret.
  */
-export const inposSonucuCoz = (siparis) => {
+/**
+ * Anahtarları camelCase'e çevirir (ilk harf küçük, iç içe). Inpos'un webhook gövdesi üst düzeyde küçük harf, iç
+ * nesnelerde büyük harf gönderiyor (payments[].Type / Amount / Details.Acquirer, receipt.No / ZNo; 10.10.2026 günlüğü);
+ * sorgu cevabı ise hep küçük harf. İkisi aynı biçime getirilir.
+ */
+export const anahtarlariKucult = (v) => {
+    if (Array.isArray(v))
+        return v.map(anahtarlariKucult);
+    if (!v || typeof v !== "object")
+        return v;
+    const sonuc = {};
+    for (const [k, deger] of Object.entries(v))
+        sonuc[k ? k[0].toLowerCase() + k.slice(1) : k] = anahtarlariKucult(deger);
+    return sonuc;
+};
+export const inposSonucuCoz = (hamSiparis) => {
+    const siparis = anahtarlariKucult(hamSiparis);
     const durum = String(siparis?.status || "").toUpperCase();
     if (durum === "OPEN" || durum === "LOCKED" || !durum)
         return null;
@@ -284,8 +300,8 @@ export const InposSurucu = {
         if (durum >= 400)
             throw inposHatasi(durum, veri, "Sipariş sorgulanamadı.");
         const sonuc = inposSonucuCoz(veri);
-        if (sonuc?.durum === "ONAY")
-            void inposSiparisIslendi(islem.surucuRef, inposCsn(terminal));
+        // "İşlendi" işareti sonucu satırlara yazan tarafta (pos.service grupSonucunuIsle) bir kez konur; burada da konunca
+        // aynı sipariş için iki istek gidiyor, ikincisi 400 dönüyordu (10.10.2026 günlüğü).
         return sonuc;
     },
     async iptal(islem) {

@@ -34,11 +34,12 @@ export const getAdminPool = async () => {
         };
         poolPromise = new sql.ConnectionPool(config)
             .connect()
-            .then((pool) => {
+            .then(async (pool) => {
             pool.on("error", (err) => {
                 logger.error("[ADMIN DB] Havuz hatası, bağlantı yenilenecek.", err);
                 poolPromise = null;
             });
+            await ensureAdminSchema(pool);
             return pool;
         })
             .catch((err) => {
@@ -48,6 +49,79 @@ export const getAdminPool = async () => {
         });
     }
     return poolPromise;
+};
+const ensureAdminSchema = async (pool) => {
+    try {
+        await pool.request().query(`
+      IF COL_LENGTH('dbo.ADM_FIRMA', 'SILINME_PLANI') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[ADM_FIRMA] ADD
+          [SILINME_PLANI]               DATETIME      NULL,
+          [SILINME_ISTEYEN_ADMIN_ID]    INT           NULL,
+          [SILINDI_TARIHI]              DATETIME      NULL,
+          [YEDEK_DOSYA]                 NVARCHAR(400) NULL,
+          [YEDEK_TARIHI]                DATETIME      NULL,
+          [YEDEK_BOYUT]                 BIGINT        NULL,
+          [YEDEK_SILINME_PLANI]         DATETIME      NULL;
+      END;
+
+      IF COL_LENGTH('dbo.ADM_FIRMA', 'BILDIRILEN_KULLANICI_SAYISI') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[ADM_FIRMA] ADD
+          [MAKINE_KIMLIGI]              VARCHAR(40)   NULL,
+          [MAKINE_KIMLIGI_TARIHI]       DATETIME      NULL,
+          [SURUM]                       VARCHAR(30)   NULL,
+          [HEDEF_SURUM]                 VARCHAR(30)   NULL,
+          [SON_GORULME]                 DATETIME      NULL,
+          [BILDIRILEN_LISANS_DURUMU]    VARCHAR(20)   NULL,
+          [BILDIRILEN_KILIT_NEDENI]     VARCHAR(30)   NULL,
+          [BILDIRILEN_KULLANICI_SAYISI] INT           NULL,
+          [SEMA_SURUMU]                 INT           NULL;
+      END;
+
+      IF COL_LENGTH('dbo.ADM_LISANS', 'LISANS_KODU') IS NULL
+      BEGIN
+        ALTER TABLE [dbo].[ADM_LISANS] ADD
+          [LISANS_KODU]                 VARCHAR(4000) NULL,
+          [MAKINE_KIMLIGI]              VARCHAR(40)   NULL,
+          [SERI_NO]                     INT           NULL,
+          [IPTAL]                       BIT           NOT NULL CONSTRAINT [DF_ADM_LISANS_IPTAL] DEFAULT 0,
+          [IPTAL_TARIHI]                DATETIME      NULL,
+          [IPTAL_EDEN_ADMIN_ID]         INT           NULL,
+          [TESLIM]                      VARCHAR(10)   NULL,
+          [TESLIM_TARIHI]               DATETIME      NULL;
+      END;
+
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ADM_SURUM')
+      BEGIN
+        CREATE TABLE [dbo].[ADM_SURUM] (
+          [SURUM]        VARCHAR(30)    NOT NULL PRIMARY KEY,
+          [YAYIN_TARIHI] DATETIME       NOT NULL DEFAULT GETDATE(),
+          [DOSYA_YOLU]   NVARCHAR(400)  NOT NULL,
+          [BOYUT]        BIGINT         NOT NULL,
+          [SHA256]       CHAR(64)       NOT NULL,
+          [IMZA]         VARCHAR(200)   NOT NULL,
+          [SEMA_SURUMU]  INT            NULL,
+          [NOTLAR]       NVARCHAR(2000) NULL,
+          [AKTIF]        BIT            NOT NULL DEFAULT 1
+        );
+      END;
+
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ADM_AYAR')
+      BEGIN
+        CREATE TABLE [dbo].[ADM_AYAR] (
+          [ANAHTAR]             VARCHAR(60)    NOT NULL PRIMARY KEY,
+          [DEGER]               NVARCHAR(2000) NULL,
+          [DEGISTIREN_ADMIN_ID] INT            NULL,
+          [TARIH]               DATETIME       NOT NULL DEFAULT GETDATE()
+        );
+      END;
+    `);
+        logger.info("[ADMIN DB] Şema ve kolon kontrolleri başarıyla doğrulandı / güncellendi.");
+    }
+    catch (err) {
+        logger.warn(`[ADMIN DB] Otomatik şema güncelleme uyarısı: ${err?.message}`);
+    }
 };
 export const closeAdminPool = async () => {
     if (!poolPromise)

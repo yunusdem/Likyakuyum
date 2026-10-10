@@ -977,74 +977,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       }
     }).catch(console.error);
 
-  // Anlık Kur Değişikliklerini Canlı / Otomatik Dinleme ve Senkronize Etme
-  useEffect(() => {
-    const unsubscribe = KurService.onKurUpdated((updatedTablo) => {
-      if (!updatedTablo || !updatedTablo.satirlar) return;
-      setKurMap((prev) => {
-        const mergedKurMap = new Map<string, any>(prev);
-        (updatedTablo.satirlar || []).forEach((k) => {
-          const cCode = (k.kod || "").toUpperCase().trim();
-          if (cCode) {
-            const existing = mergedKurMap.get(cCode);
-            const mergedItem = {
-              ...existing,
-              ...k,
-              efektifAlis: k.efektifAlis ?? existing?.efektifAlis ?? null,
-              efektifSatis: k.efektifSatis ?? existing?.efektifSatis ?? null,
-              dovizAlis: k.dovizAlis ?? existing?.dovizAlis ?? null,
-              dovizSatis: k.dovizSatis ?? existing?.dovizSatis ?? null,
-              parite: k.parite ?? existing?.parite ?? null,
-            };
-            mergedKurMap.set(cCode, mergedItem);
-            if (k.paraId) mergedKurMap.set(String(k.paraId), mergedItem);
-            if (k.ad) mergedKurMap.set(k.ad.toUpperCase().trim(), mergedItem);
-          }
-        });
-
-        const allKurList = Array.from(mergedKurMap.values());
-        const hasKurItem = allKurList.find((k) =>
-          ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim())
-        );
-        const rate = hasKurItem
-          ? (faturaTipi === 0
-              ? Number(hasKurItem.efektifAlis ?? hasKurItem.dovizAlis ?? hasKurItem.efektifSatis ?? hasKurItem.dovizSatis) || 0
-              : Number(hasKurItem.efektifSatis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizAlis) || 0)
-          : 0;
-
-        if (rate > 0 && !isDuzeltmeMode) {
-          setAltinHasKuru(rate);
-
-          // Ödeme satırlarının (odemeRows) kurlarını ve tutarlarını canlı güncelle
-          setOdemeRows((prevOdeme) =>
-            prevOdeme.map((r) => {
-              const code = (r.paraKodu || "").toUpperCase().trim();
-              if (!code || code === "TL" || code === "VERESIYE") return r;
-              const curKurItem = allKurList.find(
-                (k) =>
-                  (r.paraId && k.paraId === r.paraId) ||
-                  (code && k.kod && k.kod.toUpperCase().trim() === code) ||
-                  (r.paraAdi && k.ad && k.ad.toUpperCase().trim() === r.paraAdi.toUpperCase().trim())
-              );
-              let newKur = r.kur;
-              if (curKurItem) {
-                const odemeRate = faturaTipi === 0
-                  ? (curKurItem.efektifSatis ?? curKurItem.dovizSatis ?? curKurItem.efektifAlis ?? curKurItem.dovizAlis ?? 0)
-                  : (curKurItem.efektifAlis ?? curKurItem.dovizAlis ?? curKurItem.efektifSatis ?? curKurItem.dovizSatis ?? 0);
-                if (Number(odemeRate) > 0) newKur = Number(odemeRate);
-              }
-              return recomputeOdemeRow({ ...r, kur: newKur }, rate);
-            })
-          );
-        }
-
-        return mergedKurMap;
-      });
-    });
-
-    return () => unsubscribe();
-  }, [faturaTipi, isDuzeltmeMode]);
-
     if (isDuzeltmeMode) {
       PerakendeService.listInvoices({ limit: 500 })
         .then(async (res: any) => {
@@ -1112,6 +1044,74 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       }
     }, 150);
   }, [loadProductsForLookup, resolveUserVezne, isDuzeltmeMode]);
+
+  // Anlık Kur Değişikliklerini Canlı / Otomatik Dinleme ve Senkronize Etme
+  useEffect(() => {
+    const unsubscribe = KurService.onKurUpdated((updatedTablo) => {
+      if (!updatedTablo || !updatedTablo.satirlar) return;
+      setKurMap((prev) => {
+        const mergedKurMap = new Map<string, any>(prev);
+        (updatedTablo.satirlar || []).forEach((k) => {
+          const cCode = (k.kod || "").toUpperCase().trim();
+          if (cCode) {
+            const existing = mergedKurMap.get(cCode);
+            const mergedItem = {
+              ...existing,
+              ...k,
+              efektifAlis: k.efektifAlis ?? existing?.efektifAlis ?? null,
+              efektifSatis: k.efektifSatis ?? existing?.efektifSatis ?? null,
+              dovizAlis: k.dovizAlis ?? existing?.dovizAlis ?? null,
+              dovizSatis: k.dovizSatis ?? existing?.dovizSatis ?? null,
+              parite: k.parite ?? existing?.parite ?? null,
+            };
+            mergedKurMap.set(cCode, mergedItem);
+            if (k.paraId) mergedKurMap.set(String(k.paraId), mergedItem);
+            if (k.ad) mergedKurMap.set(k.ad.toUpperCase().trim(), mergedItem);
+          }
+        });
+
+        const allKurList = Array.from(mergedKurMap.values());
+        const hasKurItem = allKurList.find((k) =>
+          ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim())
+        );
+        const rate = hasKurItem
+          ? (faturaTipi === 0
+              ? Number(hasKurItem.efektifAlis ?? hasKurItem.dovizAlis ?? hasKurItem.efektifSatis ?? hasKurItem.dovizSatis) || 0
+              : Number(hasKurItem.efektifSatis ?? hasKurItem.dovizSatis ?? hasKurItem.efektifAlis ?? hasKurItem.dovizAlis) || 0)
+          : 0;
+
+        if (rate > 0 && !isDuzeltmeMode) {
+          setAltinHasKuru(rate);
+
+          // Ödeme satırlarının (odemeRows) kurlarını ve tutarlarını canlı güncelle
+          setOdemeRows((prevOdeme) =>
+            prevOdeme.map((r) => {
+              const code = (r.paraKodu || "").toUpperCase().trim();
+              if (!code || code === "TL" || code === "VERESIYE") return r;
+              const curKurItem = allKurList.find(
+                (k) =>
+                  (r.paraId && k.paraId === r.paraId) ||
+                  (code && k.kod && k.kod.toUpperCase().trim() === code) ||
+                  (r.paraAdi && k.ad && k.ad.toUpperCase().trim() === r.paraAdi.toUpperCase().trim())
+              );
+              let newKur = r.kur;
+              if (curKurItem) {
+                const odemeRate = faturaTipi === 0
+                  ? (curKurItem.efektifSatis ?? curKurItem.dovizSatis ?? curKurItem.efektifAlis ?? curKurItem.dovizAlis ?? 0)
+                  : (curKurItem.efektifAlis ?? curKurItem.dovizAlis ?? curKurItem.efektifSatis ?? curKurItem.dovizSatis ?? 0);
+                if (Number(odemeRate) > 0) newKur = Number(odemeRate);
+              }
+              return recomputeOdemeRow({ ...r, kur: newKur }, rate);
+            })
+          );
+        }
+
+        return mergedKurMap;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [faturaTipi, isDuzeltmeMode]);
 
   // Recalculate Totals for single Cart line item
   const recalculateLine = (line: Partial<CartLineItem>): CartLineItem => {
