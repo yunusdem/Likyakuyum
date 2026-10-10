@@ -29,7 +29,10 @@ export const iletisimFormSchema = z.object({
     sehir: bosOlabilir(60),
     mesaj: bosOlabilir(2000),
     // Hangi sayfadan geldi (yalnız mail konusunda görünür)
-    kaynak: z.enum(["ana-sayfa", "iletisim"]).default("ana-sayfa"),
+    // "likyaerp": www.likyaerp.com ürün ailesi sitesi (docs/LIKYAERP_TANITIM_SITESI.md)
+    kaynak: z.enum(["ana-sayfa", "iletisim", "likyaerp"]).default("ana-sayfa"),
+    // likyaerp.com'da formun hangi ürün için doldurulduğu (ör. "Likya.Döviz")
+    urun: bosOlabilir(40),
     // Honeypot: gerçek kullanıcı görmez, botlar doldurur
     web: bosOlabilir(500),
   }),

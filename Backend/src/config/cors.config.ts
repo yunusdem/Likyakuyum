@@ -14,7 +14,7 @@ export const corsOptions: CorsOptions = {
     }
 
     // 3. Automatically allow likyakuyum.com and any subdomains (HTTP & HTTPS, any port)
-    if (/^https?:\/\/([a-zA-Z0-9-]+\.)*likyakuyum\.com(:\d+)?$/i.test(origin)) {
+    if (/^https?:\/\/([a-zA-Z0-9-]+\.)*(likyakuyum|likyaerp)\.com(:\d+)?$/i.test(origin)) {
       return callback(null, true);
     }
 
