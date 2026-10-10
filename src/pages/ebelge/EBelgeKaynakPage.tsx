@@ -35,7 +35,7 @@ export default function EBelgeKaynakPage() {
   const [dovizTipi, setDovizTipi] = useState(''); const [listelendi, setListelendi] = useState(false);
   const [sonuclar, setSonuclar] = useState<Record<string, { no: string; durum: string; mesaj: string }>>({});
   const [detay, setDetay] = useState<EbelgeKaynakDetay | null>(null);
-  const [pdf, setPdf] = useState<{ url: string; no: string } | null>(null);
+  const [pdf, setPdf] = useState<{ url: string; no: string; html?: string | null } | null>(null);
   const requestId = useRef(0);
   // ?sec=<evrakTuru>:<belgeId>: mutabakattan gelinen fiş listede bulunup seçili gelir (bir kez)
   const pSec = /^\d+:\d+$/.test(parametreler.get('sec') || '') ? parametreler.get('sec')! : '';
@@ -70,10 +70,10 @@ export default function EBelgeKaynakPage() {
     setBusy(true); setHata('');
     try {
       // e-Döviz fişi: Belge modülünün GİB düzenindeki PDF'i (ETTN'li ve gönderilmişse ICE resmî PDF'i). Bkz. docs/belgeverapor.md
-      const url = k.kaynak === 'DOVIZ'
-        ? (await BelgeService.pdfBlobUrl({ fisId: k.belgeId, belgeNo: k.belgeNo })).url
-        : await ebelgeService.kaynakPdf(k);
-      setPdf({ url, no: k.belgeNo });
+      if (k.kaynak === 'DOVIZ') { setPdf({ url: (await BelgeService.pdfBlobUrl({ fisId: k.belgeId, belgeNo: k.belgeNo })).url, no: k.belgeNo }); return; }
+      // Gönderilmiş belgede ICE'deki belgenin kendisi (Giden kutusundaki önizleme); gönderilmemişte faturanın ön görüntüsü
+      const g = k.uuid && k.durum === 'GONDERILDI' ? await ebelgeService.getGidenOnizleme(k.uuid) : await ebelgeService.kaynakPdf(k);
+      setPdf({ url: g.url, no: k.belgeNo, html: g.html });
     }
     catch (e: any) { setHata(e.message || 'PDF önizlemesi açılamadı.'); }
     finally { setBusy(false); }
@@ -126,7 +126,9 @@ export default function EBelgeKaynakPage() {
       <div className="d-flex gap-2 align-items-center"><Button size="sm" disabled={busy || sayfa<=1} onClick={() => yukle(sayfa-1)}>Önceki</Button><span>{toplam} kayıt · Sayfa {sayfa}</span><Button size="sm" disabled={busy || sayfa*50>=toplam} onClick={() => yukle(sayfa+1)}>Sonraki</Button></div>
     </Card.Body></Card>
     {!!Object.keys(sonuclar).length && <Card className="mt-3"><Card.Body><h6>İşlem sonuçları</h6><Table responsive size="sm"><thead><tr><th>Belge no</th><th>Sonuç</th><th>Açıklama</th></tr></thead><tbody>{Object.entries(sonuclar).map(([id,s]) => <tr key={id}><td>{s.no}</td><td>{s.durum}</td><td className="kaynak-aciklama">{s.mesaj}</td></tr>)}</tbody></Table></Card.Body></Card>}
-    <Modal show={!!pdf} onHide={() => setPdf(null)} size="xl"><Modal.Header closeButton><Modal.Title>{pdf?.no} — PDF önizleme</Modal.Title></Modal.Header><Modal.Body className="p-0">{pdf && <iframe title="Belge PDF önizlemesi" src={pdf.url} style={{ width: '100%', height: '75vh', border: 0 }} />}</Modal.Body><Modal.Footer>{pdf && <a className="btn btn-primary btn-sm" href={pdf.url} download={`${pdf.no}.pdf`}>PDF indir</a>}</Modal.Footer></Modal>
+    <Modal show={!!pdf} onHide={() => setPdf(null)} size="xl"><Modal.Header closeButton><Modal.Title>{pdf?.no} — PDF önizleme</Modal.Title></Modal.Header><Modal.Body className="p-0">{pdf && (pdf.html
+        ? <iframe title="Belge önizlemesi" srcDoc={pdf.html} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{ width: '100%', height: '75vh', border: 0, background: '#fff' }} />
+        : <iframe title="Belge PDF önizlemesi" src={pdf.url} style={{ width: '100%', height: '75vh', border: 0 }} />)}</Modal.Body><Modal.Footer>{pdf && !pdf.html && <a className="btn btn-primary btn-sm" href={pdf.url} download={`${pdf.no}.pdf`}>PDF indir</a>}</Modal.Footer></Modal>
     <Modal show={!!detay} onHide={() => setDetay(null)} size="lg"><Modal.Header closeButton><Modal.Title>{detay?.belgeNo} — Fiş detayı</Modal.Title></Modal.Header><Modal.Body>{detay && <><p>{detay.unvan} · {tarihYaz(detay.tarih)} · {detay.tur}</p><Table responsive><thead><tr><th>Açıklama</th><th>Miktar</th><th>Tutar</th><th>KDV</th></tr></thead><tbody>{detay.satirlar.map((s, i) => <tr key={i}><td>{s.ad}</td><td>{s.miktar}</td><td>{ebelgeTutar(s.tutar, detay.paraBirimi)}</td><td>{ebelgeTutar(s.kdv || 0, detay.paraBirimi)}</td></tr>)}</tbody></Table><strong>Toplam: {ebelgeTutar(detay.tutar, detay.paraBirimi)}</strong></>}</Modal.Body></Modal>
   </div>;
 }

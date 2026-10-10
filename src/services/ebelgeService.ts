@@ -625,7 +625,8 @@ export const ebelgeService = {
   },
   async kaynakDetay(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakDetay>("/e-belge/kaynak/detay",k)).data; },
   async kaynakPdf(k: EbelgeKaynakKimlik) {
-    return ebelgePdfBlobUrl(`/e-belge/kaynak/${k.evrakTuru}/${k.belgeId}/${k.belgeTuru}/pdf${k.belgeNo ? '?belgeNo=' + encodeURIComponent(k.belgeNo) : ''}`);
+    // Sarraf / Perakende satışında ICE'nin fatura görüntüsü (PDF ya da HTML), diğerlerinde fiş önizlemesi PDF'i
+    return ebelgeGoruntuBlob(`/e-belge/kaynak/${k.evrakTuru}/${k.belgeId}/${k.belgeTuru}/pdf${k.belgeNo ? '?belgeNo=' + encodeURIComponent(k.belgeNo) : ''}`);
   },
   async kaynakHazirla(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakHazir>("/e-belge/kaynak/hazirla",k,{ timeoutMs: 180_000 })).data; },
   async kaynakGonder(k: EbelgeKaynakHazir) { return (await apiClient.post<{ durum: string; mesaj: string }>("/e-belge/kaynak/gonder",k,{ timeoutMs: 300_000 })).data; },
