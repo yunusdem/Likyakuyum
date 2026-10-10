@@ -58,8 +58,8 @@ export class EbelgeKaynakRepository {
           DURUM varchar(30) NOT NULL, HATA nvarchar(2000) NULL, TARIH datetime2 NOT NULL DEFAULT SYSDATETIME()
         );
       END TRY BEGIN CATCH IF ERROR_NUMBER() <> 2714 THROW; END CATCH;
-      IF OBJECT_ID('dbo.VODVZ_E_FATURA_SATIRI','V') IS NULL OR OBJECT_ID('dbo.VODVZ_SARRAF_FISI','V') IS NULL
-        THROW 50001, 'Sarraf fatura görünümleri (VODVZ_E_FATURA_SATIRI / VODVZ_SARRAF_FISI) bu veritabanında bulunamadı.', 1;
+      IF OBJECT_ID('dbo.VODVZ_SARRAF_FISI','V') IS NULL
+        THROW 50001, 'Sarraf fişi görünümü (VODVZ_SARRAF_FISI) bu veritabanında bulunamadı.', 1;
       IF OBJECT_ID('dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI','V') IS NULL
         THROW 50002, 'Kaynak e-Döviz görünümü bu veritabanında bulunamadı.', 1;
     `);
@@ -125,7 +125,8 @@ export class EbelgeKaynakRepository {
         ORDER BY R.TARIH DESC) R
       OUTER APPLY (SELECT TOP 1 * FROM dbo.TODVZ_EBELGE_GIDEN G WHERE G.KAYNAK_FIS_ID=CONCAT('0:',S.SARRAF_FISI_ID,':',S.kaynakTuru)
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
-      OUTER APPLY (SELECT SUM(ISNULL(E.TUTAR,0)+ISNULL(E.KDV,0)) TOPLAM FROM dbo.VODVZ_E_FATURA_SATIRI E WHERE E.EVRAK_TURU=0 AND E.EVRAK_ID=S.SARRAF_FISI_ID) T
+      -- Tutar fişin kendi satırlarından (müşterinin ödediği; eski satır görünümü has gram × has kuru veriyordu)
+      OUTER APPLY (SELECT SUM(ISNULL(E.TUTAR,0)) TOPLAM FROM dbo.TODVZ_SARRAF_FISI_SATIRI E WHERE E.SARRAF_FISI_ID=S.SARRAF_FISI_ID) T
       WHERE (@kaynak IS NULL OR (@kaynak='FATURA' AND S.kaynakTuru=1) OR (@kaynak='IRSALIYE' AND S.kaynakTuru=2) OR (@kaynak='GIDER' AND S.kaynakTuru=3))
         AND (@tur IS NULL OR S.kaynakTuru=@tur)
         AND (@ilk IS NULL OR S.TARIH>=@ilk) AND (@son IS NULL OR S.TARIH<DATEADD(day,1,@son))
@@ -194,9 +195,9 @@ export class EbelgeKaynakRepository {
   }
 
   /**
-   * Sarraf fişi başlık + fatura satırları (evrakTuru 0). Başlık fiş görünümünden (il / ilçe / vergi dairesi adları),
-   * gönderim durumu tablodan; satırlar ERP'nin fatura satırı görünümünden. Eski "gönderime hazır" görünümü kullanılmaz:
-   * yalnız "e-Fatura" seçili ve e-belge başlangıç tarihi tanımlı fişleri veriyordu.
+   * Sarraf fişi başlık + satırlar (evrakTuru 0). Başlık fiş görünümünden (il / ilçe / vergi dairesi adları), gönderim
+   * durumu tablodan; satırlar fişin kendi satırlarından (ürün adı ve birimi TODVZ_PARA'dan). Eski "gönderime hazır" ve
+   * "e-fatura satırı" görünümleri kullanılmaz: biri yalnız "e-Fatura" seçili fişleri, diğeri fişten farklı tutar veriyordu.
    */
   static async detay(k: KaynakKimlik, ctx?: DbContext) {
     const pool = await this.pool(ctx);
@@ -206,8 +207,9 @@ export class EbelgeKaynakRepository {
       JOIN dbo.TODVZ_SARRAF_FISI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
       OUTER APPLY (SELECT TOP 1 E_FATURA_KDV_MUAFIYET_KODU, E_FATURA_KDV_MUAFIYET_ADI FROM dbo.VODVZ_E_BELGE_TANIMI) T
       WHERE F.SARRAF_FISI_ID=@id;
-      SELECT SATIR_NO,PARA_ADI,BIRIM_ADI,MIKTAR,TUTAR,KDV_ORANI,KDV
-        FROM dbo.VODVZ_E_FATURA_SATIRI WHERE EVRAK_TURU=0 AND EVRAK_ID=@id ORDER BY SATIR_NO;
+      SELECT S.SATIR_NO, RTRIM(P.AD) URUN_ADI, P.BIRIM URUN_BIRIM, S.MIKTAR, S.ADET, S.ISCILIK_HAS_GRAM, S.TUTAR
+        FROM dbo.TODVZ_SARRAF_FISI_SATIRI S LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.URUN_ID
+        WHERE S.SARRAF_FISI_ID=@id ORDER BY S.SATIR_NO, S.SARRAF_FISI_SATIRI_ID;
     `);
     const sets = res.recordsets as any;
     if (sets[0].length !== 1) throw ApiError.notFound("Sarraf fişi bulunamadı veya tekil değil.");

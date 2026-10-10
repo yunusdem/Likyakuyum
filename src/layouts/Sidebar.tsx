@@ -55,6 +55,7 @@ import { CashDeskService } from "../services/cashDeskService";
 
 import { DashboardMenu } from "routes/DashboardRoute";
 import { menuyuSuz } from "../config/modulKatalogu";
+import { solMenuyuBirlestir } from "../config/solMenuBirlesimi";
 import { SistemService } from "../services/sistemService";
 import { getAppBrand } from "../utils/brandHelper";
 
@@ -276,8 +277,12 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   useEffect(() => {
     SistemService.bilgi().then((b) => setKurulumSurumu(!!b.kurulum));
   }, []);
-  // Yönetim panelinden firmaya kapatılan menüler hiç çizilmez (kısayol tuşları da yalnız görünen menüde çalışır)
-  const gorunenMenu = useMemo(() => menuyuSuz(DashboardMenu, user?.merkez?.moduller), [user?.merkez?.moduller]);
+  // Yönetim panelinden firmaya kapatılan menüler hiç çizilmez (kısayol tuşları da yalnız görünen menüde çalışır).
+  // Süzmeden sonra birleşik sol menü (Vezne/Kur, Kasa/Banka, Etiket/Perakende): docs/SOL_MENU_BIRLESTIRME.md
+  const gorunenMenu = useMemo(
+    () => solMenuyuBirlestir(menuyuSuz(DashboardMenu, user?.merkez?.moduller)),
+    [user?.merkez?.moduller]
+  );
   const gorunenMenuRef = useRef(gorunenMenu);
   gorunenMenuRef.current = gorunenMenu;
 

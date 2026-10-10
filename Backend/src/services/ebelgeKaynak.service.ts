@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EbelgeKaynakRepository, KaynakKimlik, dovizMi, kaynakAnahtar, kaynakKimlikCoz, perakendeMi, sarrafMi } from "../models/ebelgeKaynak.repository.js";
 import { NIHAI_TUKETICI, perakendeFaturaGirdisi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
-import { sarrafAliciVkn, sarrafFaturaGirdisi, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafToplam } from "./ebelgeSarraf.js";
+import { sarrafAliciVkn, sarrafFaturaGirdisi, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafPerakendeBicimi, sarrafSatirKdvleri, sarrafToplam } from "./ebelgeSarraf.js";
 import { EDovizGirdi, getEDovizCikti, getEDovizStatus, previewEDoviz } from "./ice/ice.edoviz.js";
 import { EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
 import { DbContext, EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
@@ -64,10 +64,18 @@ export class EbelgeKaynakService {
     }
     if (sarrafMi(k)) {
       const { baslik: b, satirlar } = await EbelgeKaynakRepository.detay(k, ctx);
+      const kdvler = sarrafSatirKdvleri(b, satirlar);
+      // Önizleme faturaya gidecek satırları gösterir (ad gramla, adet / gram, KDV hariç tutar); dönüşüm kuralına
+      // takılan fişte (eksi tutar vb.) fişin ham satırları gösterilir
+      let fatura: { URUN_ADI?: string | null; MIKTAR?: number | null; TUTAR?: number | null; KDV_TUTARI?: number | null }[] | null = null;
+      try { fatura = sarrafPerakendeBicimi({ baslik: b, satirlar }, '').satirlar; } catch { fatura = null; }
       return { belgeNo: temiz(b.FIS_NO), tarih: new Date(b.TARIH).toISOString(), unvan: temiz(b.UNVAN),
         tur: ({ 1: 'Sarraf Satış', 2: 'Sarraf Satış (e-İrsaliye)', 3: 'Sarraf Alış (e-Gider)' } as Record<number, string>)[sarrafKaynakTuru(b.TIP, b.BELGE_TURU)],
-        paraBirimi: 'TRY', tutar: sarrafToplam(satirlar), ettn: '', durum: Number(b.E_FATURA_DURUMU || 0), firma: '', vergiKimlikNo: temiz(b.VERGI_KIMLIK_NO),
-        satirlar: satirlar.map((s: any) => ({ ad: temiz(s.PARA_ADI), miktar: Number(s.MIKTAR) || 0, tutar: Number(s.TUTAR) || 0, kdv: Number(s.KDV) || 0 })) };
+        paraBirimi: 'TRY', tutar: sarrafToplam(satirlar), ettn: '', durum: Number(b.E_FATURA_DURUMU || 0), firma: '', vergiKimlikNo: sarrafAliciVkn(b),
+        satirlar: fatura
+          ? fatura.map((s) => ({ ad: temiz(s.URUN_ADI) || 'Ürün', miktar: Number(s.MIKTAR) || 0, tutar: Number(s.TUTAR) || 0, kdv: Number(s.KDV_TUTARI) || 0 }))
+          : satirlar.map((s: any, i: number) => ({ ad: temiz(s.URUN_ADI) || 'Ürün', miktar: Number(s.ADET) > 0 ? Number(s.ADET) : Number(s.MIKTAR) || 0,
+            tutar: Math.round(((Number(s.TUTAR) || 0) - kdvler[i]) * 100) / 100, kdv: kdvler[i] })) };
     }
     const kaynak = await EbelgeKaynakRepository.dovizDetay(k, ctx);
     const b = kaynak.baslik;
