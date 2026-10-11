@@ -3,6 +3,7 @@ import { Badge, Button, Card, Col, Form, Row, Spinner } from "react-bootstrap";
 import { IconDeviceFloppy, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { EbelgeSeriKaydi, ebelgeService } from "../../services/ebelgeService";
 import { useToast } from "../../context/ToastContext";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 
 /**
  * Fatura serileri (docs/GIRIS_VE_EBELGE_DUZENLEME.md R3). Fatura formundaki numara listesi yalnızca buradaki serilerden
@@ -13,12 +14,15 @@ type SeriTuru = "EFatura" | "EArsiv" | "EGider";
 const TURLER: { kod: SeriTuru; ad: string; iceBul: boolean }[] = [
   { kod: "EFatura", ad: "e-Fatura", iceBul: true },
   { kod: "EArsiv", ad: "e-Arşiv", iceBul: true },
-  // Perakende alış fişleri bu seriyle numaralanır ve gider pusulası olarak gider (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3)
-  { kod: "EGider", ad: "e-Gider pusulası (Perakende alış)", iceBul: false },
+  // Perakende ve Sarraf alış fişleri bu seriyle numaralanır ve gider pusulası olarak gider (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3)
+  { kod: "EGider", ad: "e-Gider pusulası (Sarraf / Perakende alış)", iceBul: false },
 ];
 
 const EBelgeSeriKarti: React.FC = () => {
   const { showSuccess, showToast } = useToast();
+  // e-Gider serisi yalnız Sarraf ya da Perakende fişi lisanstaysa gösterilir
+  const ozellik = useUrunOzellikleri();
+  const turler = TURLER.filter((t) => t.kod !== "EGider" || ozellik.sarraf || ozellik.perakende);
   const [liste, setListe] = useState<EbelgeSeriKaydi[]>([]);
   const [yeni, setYeni] = useState<Record<string, string>>({ EFatura: "", EArsiv: "", EGider: "" });
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -113,7 +117,7 @@ const EBelgeSeriKarti: React.FC = () => {
         ) : (
           <>
             <Row className="g-3">
-              {TURLER.map((t) => {
+              {turler.map((t) => {
                 const turdekiler = liste.filter((x) => x.belgeTuru === t.kod);
                 return (
                   <Col xs={12} md={4} key={t.kod}>

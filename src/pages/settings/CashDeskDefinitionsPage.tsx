@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { printReportTable } from "../../utils/printReport";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import {
   CashDeskService,
   VezneItem,
@@ -47,6 +48,8 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
   onCancel,
 }) => {
   const [rows, setRows] = useState<CashDeskRowState[]>([]);
+  // Lisansta olmayan fiş türünün seçenek ve kolonları gösterilmez (kayıtlı değer korunur)
+  const ozellik = useUrunOzellikleri();
   const [printers, setPrinters] = useState<LookupPrinter[]>([]);
   const [currencies, setCurrencies] = useState<LookupCurrency[]>([]);
   const [activeCell, setActiveCell] = useState<{ clientId: string; col: string } | null>(null);
@@ -491,6 +494,8 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
                   >
                     Satış Fişi Yazıcısı
                   </th>
+                  {/* Altın yazıcıları yalnız Sarraf fişinde kullanılır */}
+                  {ozellik.sarraf && (<>
                   <th
                     style={{
                       width: "145px",
@@ -517,6 +522,7 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
                   >
                     Altın Satış Yazıcısı
                   </th>
+                  </>)}
                   <th
                     style={{
                       width: "80px",
@@ -694,9 +700,9 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
                             cursor: "pointer",
                           }}
                         >
-                          <option value={1}>1 - Genel Sarraf Fişi</option>
+                          {(ozellik.sarraf || row.fisTipi === 1) && <option value={1}>1 - Genel Sarraf Fişi</option>}
                           <option value={2}>2 - Standart Vezne</option>
-                          <option value={3}>3 - Özel / Perakende</option>
+                          {(ozellik.perakende || row.fisTipi === 3) && <option value={3}>3 - Özel / Perakende</option>}
                         </select>
                       </td>
 
@@ -828,6 +834,7 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
                         </select>
                       </td>
 
+                      {ozellik.sarraf && (<>
                       {/* Altın Alış Yazıcısı */}
                       <td
                         style={{
@@ -913,6 +920,7 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
                           ))}
                         </select>
                       </td>
+                      </>)}
 
                       {/* Alış / Satış İzni Checkbox */}
                       <td
@@ -1022,7 +1030,7 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
                 {rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={12}
+                      colSpan={ozellik.sarraf ? 12 : 10}
                       className="text-center py-4 text-muted"
                       style={{ fontSize: "13px" }}
                     >

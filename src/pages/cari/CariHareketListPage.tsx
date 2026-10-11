@@ -33,6 +33,7 @@ import { CariHareketService, CariHareketItem } from "../../services/cariHareketS
 import { CariService, CariKartItem } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
 import { printReportTable } from "../../utils/printReport";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 
 export const CariHareketListPage: React.FC = () => {
   const navigate = useNavigate();
@@ -52,6 +53,8 @@ export const CariHareketListPage: React.FC = () => {
   const [selectedVezneId, setSelectedVezneId] = useState<string>("all");
   const [selectedTip, setSelectedTip] = useState<string>("all"); // all, 0: Borç, 1: Alacak
   const [selectedHareketTipi, setSelectedHareketTipi] = useState<string>("all");
+  // Lisansta olmayan fiş türlerinin süzgeç seçenekleri gösterilmez
+  const ozellik = useUrunOzellikleri();
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   // Expandable row IDs
@@ -346,9 +349,9 @@ export const CariHareketListPage: React.FC = () => {
                 <option value="3">3 - Dekont</option>
                 <option value="4">4 - Virman</option>
                 <option value="5">5 - Devir</option>
-                <option value="10">10 - Sarraf Fişi</option>
-                <option value="11">11 - Döviz Fişi</option>
-                <option value="12">12 - Perakende Faturası</option>
+                {ozellik.sarraf && <option value="10">10 - Sarraf Fişi</option>}
+                {ozellik.doviz && <option value="11">11 - Döviz Fişi</option>}
+                {ozellik.perakende && <option value="12">12 - Perakende Faturası</option>}
               </Form.Select>
             </Col>
 
@@ -434,7 +437,7 @@ export const CariHareketListPage: React.FC = () => {
               >
                 Cari Hareket Kaydı
               </Button>
-              <Button
+              {ozellik.sarraf && <Button
                 variant={selectedHareketTipi === "10" ? "warning" : "outline-warning"}
                 size="sm"
                 className="py-0.5 px-2 small text-dark"
@@ -452,8 +455,8 @@ export const CariHareketListPage: React.FC = () => {
                 }}
               >
                 Sarraf Fişleri
-              </Button>
-              <Button
+              </Button>}
+              {ozellik.doviz && <Button
                 variant={selectedHareketTipi === "11" ? "info" : "outline-info"}
                 size="sm"
                 className="py-0.5 px-2 small text-dark"
@@ -471,8 +474,8 @@ export const CariHareketListPage: React.FC = () => {
                 }}
               >
                 Döviz Fişleri
-              </Button>
-              <Button
+              </Button>}
+              {ozellik.perakende && <Button
                 variant={selectedHareketTipi === "12" ? "primary" : "outline-primary"}
                 size="sm"
                 className="py-0.5 px-2 small"
@@ -490,7 +493,7 @@ export const CariHareketListPage: React.FC = () => {
                 }}
               >
                 Perakende Fişleri
-              </Button>
+              </Button>}
             </div>
           </div>
 

@@ -620,7 +620,7 @@ const ebelgeGoruntuBlob = async (yol: string): Promise<EbelgeGoruntu> => {
 };
 
 export const ebelgeService = {
-  async kaynakListe(filtre: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ" | "PERAKENDE_SATIS" | "PERAKENDE_ALIS"; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }) {
+  async kaynakListe(filtre: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ" | "PERAKENDE_SATIS" | "PERAKENDE_ALIS"; gruplar?: string; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }) {
     return (await apiClient.get<{ toplam: number; kayitlar: EbelgeKaynakSatiri[] }>("/e-belge/kaynak",filtre)).data;
   },
   async kaynakDetay(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakDetay>("/e-belge/kaynak/detay",k)).data; },

@@ -47,6 +47,7 @@ import {
   ebelgeTutar,
 } from "../../services/ebelgeService";
 import "./ebelgeForm.css";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 
 /**
  * E-Belge — Belge Doğrulama (Faz 5)
@@ -76,6 +77,8 @@ const naceVarsayilanKdv = (oranlar: number[]): number =>
   !oranlar.length || oranlar.includes(20) ? 20 : oranlar.find((o) => o > 0) ?? 20;
 
 const EBelgeDogrulaPage: React.FC = () => {
+  // Kuyumcu kalemleri yalnız kuyum fişleri (Sarraf / Perakende / Etiket) lisanstaysa sunulur
+  const ozellik = useUrunOzellikleri();
   const [belgeNo, setBelgeNo] = useState<string>("");
   const [tarih, setTarih] = useState<string>(bugunISO());
   const [senaryo, setSenaryoHam] = useState<EbelgeSenaryo>("TICARIFATURA");
@@ -1635,13 +1638,13 @@ const EBelgeDogrulaPage: React.FC = () => {
             </span>
             <div className="d-flex gap-2">
               {/* Mevzuattan türetilmiş kuyumcu kalemleri: oran, kod ve fatura tipi kendiliğinden gelir (kuyumcuKdv.ts) */}
-              <Form.Select size="sm" value="" style={{ width: 230 }} onChange={(e) => kuyumcuKalemiEkle(e.target.value)}
+              {ozellik.kuyum && <Form.Select size="sm" value="" style={{ width: 230 }} onChange={(e) => kuyumcuKalemiEkle(e.target.value)}
                 title="Seçilen kalemin KDV oranı, özel matrah / istisna kodu ve fatura tipi resmi mevzuata göre doldurulur">
                 <option value="">Kuyumcu kalemi ekle…</option>
                 {KUYUMCU_KALEM_TURLERI.map((k) => (
                   <option key={k.kod} value={k.kod}>{k.ad} — {k.aciklama}</option>
                 ))}
-              </Form.Select>
+              </Form.Select>}
               <Button
                 size="sm"
                 variant="outline-secondary"

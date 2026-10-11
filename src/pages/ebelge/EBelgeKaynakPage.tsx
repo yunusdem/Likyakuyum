@@ -3,12 +3,19 @@ import { Alert, Badge, Button, Card, Form, Modal, Table } from "react-bootstrap"
 import { Link, useSearchParams } from "react-router-dom";
 import { EbelgeKaynakDetay, EbelgeKaynakSatiri, ebelgeService, ebelgeTutar, ebelgeGidenDurumRozet } from "../../services/ebelgeService";
 import { BelgeService } from "../../services/belgeService";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import './ebelgeKaynak.css';
 
 const bugun = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const tarihYaz = (t: string) => t?.slice(0, 10).split('-').reverse().join('.');
 type Kaynak = '' | 'FATURA' | 'IRSALIYE' | 'GIDER' | 'DOVIZ' | 'PERAKENDE_SATIS' | 'PERAKENDE_ALIS';
 const KAYNAKLAR: Kaynak[] = ['FATURA', 'IRSALIYE', 'GIDER', 'DOVIZ', 'PERAKENDE_SATIS', 'PERAKENDE_ALIS'];
+// Süzgeç seçenekleri ve ait oldukları ürün özelliği: lisansta kapalı ürünün seçeneği gösterilmez
+const KAYNAK_SECENEKLERI: { deger: Exclude<Kaynak, ''>; ad: string; grup: 'sarraf' | 'doviz' | 'perakende' }[] = [
+  { deger: 'FATURA', ad: 'Sarraf Satış', grup: 'sarraf' }, { deger: 'GIDER', ad: 'Sarraf Alış (e-Gider)', grup: 'sarraf' },
+  { deger: 'IRSALIYE', ad: 'Sarraf e-İrsaliye', grup: 'sarraf' }, { deger: 'DOVIZ', ad: 'e-Döviz fişi', grup: 'doviz' },
+  { deger: 'PERAKENDE_SATIS', ad: 'Perakende Satış', grup: 'perakende' }, { deger: 'PERAKENDE_ALIS', ad: 'Perakende Alış (e-Gider)', grup: 'perakende' },
+];
 
 const key = (k: { evrakTuru: number; belgeId: number; belgeTuru: number; belgeNo?: string }) => `${k.evrakTuru}:${k.belgeId}:${k.belgeTuru}${k.evrakTuru === 99 && k.belgeNo ? ':' + k.belgeNo.trim() : ''}`;
 const turAdi = (k: { kaynak?: string; belgeTuru: number }) =>
@@ -22,11 +29,16 @@ const turAdi = (k: { kaynak?: string; belgeTuru: number }) =>
 // (KONTROL_GEREKLI, BELIRSIZ, GONDERILIYOR…) "Hatalı" rozetiyle görünür. Bkz. docs/ebelge-revizyon.md K6
 const durumRozet = (durum: string) => ebelgeGidenDurumRozet(['GONDERILDI', 'GONDERILMEDI', 'IPTAL', 'TASLAK'].includes(durum) ? durum : 'HATA');
 export default function EBelgeKaynakPage() {
+  const ozellik = useUrunOzellikleri();
+  const secenekler = KAYNAK_SECENEKLERI.filter(s => ozellik[s.grup]);
+  // "Tümü" seçiliyken sunucu yalnız lisanstaki fiş gruplarını listeler; hepsi açıksa parametre gönderilmez
+  const gruplar = (['sarraf', 'doviz', 'perakende'] as const).filter(g => ozellik[g]);
   const [kayitlar, setKayitlar] = useState<EbelgeKaynakSatiri[]>([]);
   const [sayfa, setSayfa] = useState(1); const [toplam, setToplam] = useState(0);
   // e-Banka > Tahsilat / Ödeme Mutabakatı'ndaki "Fatura kes" bu ekranı ?kaynak=&tarih=&ara= ile açar; parametre yoksa davranış değişmez
   const [parametreler] = useSearchParams();
-  const pKaynak = (KAYNAKLAR.includes((parametreler.get('kaynak') || '') as Kaynak) ? parametreler.get('kaynak') : '') as Kaynak;
+  const pKaynakHam = (KAYNAKLAR.includes((parametreler.get('kaynak') || '') as Kaynak) ? parametreler.get('kaynak') : '') as Kaynak;
+  const pKaynak = secenekler.some(s => s.deger === pKaynakHam) ? pKaynakHam : '';
   const pTarih = /^\d{4}-\d{2}-\d{2}$/.test(parametreler.get('tarih') || '') ? parametreler.get('tarih')! : '';
   const [arama, setArama] = useState(parametreler.get('ara') || ''); const [durum, setDurum] = useState('');
   const [kaynak, setKaynak] = useState<Kaynak>(pKaynak); const [ilk, setIlk] = useState(pTarih || bugun); const [son, setSon] = useState(pTarih || bugun);
@@ -49,7 +61,7 @@ export default function EBelgeKaynakPage() {
     if (ilk && son && ilk > son) { setBusy(false); setHata('İlk tarih, son tarihten sonra olamaz.'); return; }
     setBusy(true); setHata(''); setListelendi(true);
     try { const data = await ebelgeService.kaynakListe({ sayfa: p, arama: arama.trim() || undefined, durum: durum || undefined,
-      kaynak: kaynak || undefined, belgeTuru: kaynak === 'DOVIZ' && dovizTipi ? Number(dovizTipi) : undefined,
+      kaynak: kaynak || undefined, gruplar: !kaynak && gruplar.length < 3 ? gruplar.join(',') || 'yok' : undefined, belgeTuru: kaynak === 'DOVIZ' && dovizTipi ? Number(dovizTipi) : undefined,
       // Tam belge numarası (3 harf + 13 hane) yazıldıysa tarih aralığına bakılmadan doğrudan bulunur.
       ...(/^[A-Za-z0-9]{3}\d{13}$/.test(arama.trim()) ? {} : { baslangicTarihi: ilk || undefined, bitisTarihi: son || undefined }) });
       if (id === requestId.current) { setKayitlar(data.kayitlar); setToplam(data.toplam); setSayfa(p);
@@ -100,7 +112,7 @@ export default function EBelgeKaynakPage() {
       <Form.Group controlId="kaynak-arama"><Form.Label>Belge no / ünvan</Form.Label><Form.Control size="sm" value={arama} onChange={e => setArama(e.target.value)} /></Form.Group>
       <Form.Group controlId="kaynak-ilk"><Form.Label>İlk tarih</Form.Label><Form.Control size="sm" type="date" value={ilk} onChange={e => setIlk(e.target.value)} /></Form.Group>
       <Form.Group controlId="kaynak-son"><Form.Label>Son tarih</Form.Label><Form.Control size="sm" type="date" value={son} onChange={e => setSon(e.target.value)} /></Form.Group>
-      <Form.Group controlId="kaynak-tur"><Form.Label>Kaynak</Form.Label><Form.Select size="sm" value={kaynak} onChange={e => setKaynak(e.target.value as Kaynak)}><option value="">Tümü</option><option value="FATURA">Sarraf Satış</option><option value="GIDER">Sarraf Alış (e-Gider)</option><option value="IRSALIYE">Sarraf e-İrsaliye</option><option value="DOVIZ">e-Döviz fişi</option><option value="PERAKENDE_SATIS">Perakende Satış</option><option value="PERAKENDE_ALIS">Perakende Alış (e-Gider)</option></Form.Select></Form.Group>
+      <Form.Group controlId="kaynak-tur"><Form.Label>Kaynak</Form.Label><Form.Select size="sm" value={kaynak} onChange={e => setKaynak(e.target.value as Kaynak)}><option value="">Tümü</option>{secenekler.map(s => <option key={s.deger} value={s.deger}>{s.ad}</option>)}</Form.Select></Form.Group>
       <Form.Group controlId="kaynak-durum"><Form.Label>Durum</Form.Label><Form.Select size="sm" value={durum} onChange={e => setDurum(e.target.value)}><option value="">Tümü</option><option value="GONDERILMEDI">Gönderilmedi</option><option value="GONDERILDI">Gönderildi</option><option value="HATA">Gönderilemedi</option></Form.Select></Form.Group>
       {kaynak === 'DOVIZ' && <Form.Group controlId="kaynak-doviz-tipi"><Form.Label>Alış / Satış</Form.Label><Form.Select size="sm" value={dovizTipi} onChange={e => setDovizTipi(e.target.value)}><option value="">Tümü</option><option value="0">Alış</option><option value="1">Satış</option></Form.Select></Form.Group>}
       <Button size="sm" type="submit">{busy ? 'Bekleyin…' : 'Listele'}</Button><Link className="text-nowrap pb-1" to="/e-belge/giden">Giden Kutusu</Link>

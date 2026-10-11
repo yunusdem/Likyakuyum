@@ -39,8 +39,11 @@ import { IskontoService, IskontoItem } from "../../services/iskontoService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 
 export const CompanyDefinitionsPage: React.FC = () => {
+  // Lisansta olmayan ürüne ait ayarlar (kuyum: işçilik, üretim, sarrafiye; döviz: e-Döviz fişi) gösterilmez, değerleri korunur
+  const ozellik = useUrunOzellikleri();
   useERPAutoFocus();
   const labelColStyle = { width: "160px", flex: "0 0 160px", maxWidth: "160px" };
   const labelColStyleIletisim = { width: "95px", flex: "0 0 95px", maxWidth: "95px" };
@@ -1895,6 +1898,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             </Form.Group>
                           </Col>
 
+                          {ozellik.kuyum && (
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Üretim Hesabı:</Form.Label>
@@ -1920,6 +1924,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               </Col>
                             </Form.Group>
                           </Col>
+                          )}
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
@@ -2008,6 +2013,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             </Form.Group>
                           </Col>
 
+                          {ozellik.kuyum && (
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İşçilik Hesabı:</Form.Label>
@@ -2032,6 +2038,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               </Col>
                             </Form.Group>
                           </Col>
+                          )}
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
@@ -2096,6 +2103,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             </Form.Group>
                           </Col>
 
+                          {ozellik.kuyum && (
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İşçilik Giriş Şekli:</Form.Label>
@@ -2112,16 +2120,17 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               </Col>
                             </Form.Group>
                           </Col>
+                          )}
 
                           <Col xs={12} className="mt-3">
                             <div className="d-flex gap-4 flex-wrap">
-                              <Form.Check
+                              {ozellik.kuyum && <Form.Check
                                 type="checkbox"
                                 id="ISCILIK_FIYATA_DAHIL"
                                 label="İşçilik Fiyata Dahil"
                                 checked={formData.ISCILIK_FIYATA_DAHIL ?? false}
                                 onChange={(e) => handleChange("ISCILIK_FIYATA_DAHIL", e.target.checked)}
-                              />
+                              />}
                               <Form.Check
                                 type="checkbox"
                                 id="E_DEFTER_MUKELLEFI"
@@ -2191,6 +2200,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             </Form.Group>
                           </Col>
 
+                          {ozellik.kuyum && (
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Sarrafiye Kimlik Sınırı:</Form.Label>
@@ -2206,6 +2216,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               </Col>
                             </Form.Group>
                           </Col>
+                          )}
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
@@ -2471,13 +2482,13 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
                           <Col xs={12} className="mt-2">
                             <div className="d-flex flex-column gap-2">
-                              <Form.Check
+                              {ozellik.doviz && <Form.Check
                                 type="checkbox"
                                 id="E_DOVIZ_FIS_BASILSIN"
                                 label="E-Döviz Fişi Basılsın"
                                 checked={formData.E_DOVIZ_FIS_BASILSIN ?? true}
                                 onChange={(e) => handleChange("E_DOVIZ_FIS_BASILSIN", e.target.checked)}
-                              />
+                              />}
                               <Form.Check
                                 type="checkbox"
                                 id="ENTEGRATORE_ANLIK_GONDERILSIN"

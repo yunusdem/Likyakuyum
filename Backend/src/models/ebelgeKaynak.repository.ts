@@ -65,11 +65,14 @@ export class EbelgeKaynakRepository {
     `);
     return pool;
   }
-  static async list(f: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ" | "PERAKENDE_SATIS" | "PERAKENDE_ALIS"; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }, ctx?: DbContext) {
+  static async list(f: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ" | "PERAKENDE_SATIS" | "PERAKENDE_ALIS"; gruplar?: string[]; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }, ctx?: DbContext) {
     const pool = await this.pool(ctx);
+    // "Tümü"de yalnız firmanın lisansındaki fiş grupları (gruplar verilmezse hepsi)
+    const grup = (g: string) => !f.gruplar || f.gruplar.includes(g);
     const r = pool.request().input("arama", sql.NVarChar(200), `%${f.arama || ""}%`)
       .input("durum", sql.VarChar(30), f.durum || null).input("tur", sql.Int, f.belgeTuru ?? null)
       .input("kaynak", sql.VarChar(20), f.kaynak || null)
+      .input("gD", sql.Bit, grup("doviz")).input("gS", sql.Bit, grup("sarraf")).input("gP", sql.Bit, grup("perakende"))
       .input("ilk", sql.Date, f.baslangicTarihi || null).input("son", sql.Date, f.bitisTarihi || null)
       .input("atla", sql.Int, (f.sayfa - 1) * 50);
     // e-Döviz fişleri görünümden gelir (EVRAK_TURU yoktur; DOVIZ_EVRAK_TURU sabitiyle temsil edilir).
@@ -99,7 +102,7 @@ export class EbelgeKaynakRepository {
         -- yeni numaralı fişle yapılır.
         WHERE G.BELGE_NO=RTRIM(D.BELGE_NO) OR G.UUID=NULLIF(RTRIM(D.ETTN),'')
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
-      WHERE ISNULL(D.IPTAL,0)=0 AND (@kaynak IS NULL OR @kaynak='DOVIZ')
+      WHERE ISNULL(D.IPTAL,0)=0 AND ((@kaynak IS NULL AND @gD=1) OR @kaynak='DOVIZ')
         AND (@tur IS NULL OR D.FIS_TIPI=@tur)
         AND (@ilk IS NULL OR D.TARIH>=@ilk) AND (@son IS NULL OR D.TARIH<DATEADD(day,1,@son))
         AND (D.BELGE_NO LIKE @arama OR D.UNVAN LIKE @arama);
@@ -110,7 +113,7 @@ export class EbelgeKaynakRepository {
       -- numarası, yoksa fişin kendi numarası). belgeTuru: 1 satış, 2 e-İrsaliye seçili satış, 3 alış (e-Gider).
       -- Fişin kayıtta üretilmiş ETTN'si gönderim sayılmaz (eskiEttn boş); durum yalnız bizim kayıtlarımızdan.
       -- Reddedilen gönderimden sonra yeni numarayla yeniden gönderilebilsin diye HATA'daki giden kaydı seçimi kilitlemez.
-      IF (@kaynak IS NULL OR @kaynak IN ('FATURA','IRSALIYE','GIDER'))
+      IF ((@kaynak IS NULL AND @gS=1) OR @kaynak IN ('FATURA','IRSALIYE','GIDER'))
       INSERT INTO #Kaynak (evrakTuru,belgeId,belgeTuru,kaynak,belgeNo,tarih,unvan,tutar,paraBirimi,eskiEttn,eskiDurum,eskiHata,durum,hata,uuid,aliciVkn,posBekliyor)
       SELECT 0, S.SARRAF_FISI_ID, S.kaynakTuru, 'SARRAF', COALESCE(NULLIF(RTRIM(R.BELGE_NO),''), NULLIF(RTRIM(S.FIS_NO),''), CAST(S.SARRAF_FISI_ID AS varchar(20))),
         S.TARIH, RTRIM(S.UNVAN), ISNULL(T.TOPLAM,0), 'TRY', NULL, ISNULL(S.E_FATURA_DURUMU,0), NULLIF(RTRIM(S.E_FATURA_HATA_ACIKLAMASI),''),
@@ -135,7 +138,7 @@ export class EbelgeKaynakRepository {
       -- Perakende fişleri (docs/PERAKENDE_EBELGE_YOL_HARITASI.md): evrakTuru 98, belgeTuru = fiş tipi (0 alış, 1 satış, 2 iade).
       -- Durum yalnız bizim kayıtlarımızdan (giden kutusu / kaynak kaydı) gelir; eskiDurum 0 sayılır.
       -- posBekliyor (P6): fişin POS işlemi varken bekleyen / belirsiz işlem var ya da onaylı tutar POS satır toplamını karşılamıyor.
-      IF (@kaynak IS NULL OR @kaynak IN ('PERAKENDE_SATIS','PERAKENDE_ALIS'))
+      IF ((@kaynak IS NULL AND @gP=1) OR @kaynak IN ('PERAKENDE_SATIS','PERAKENDE_ALIS'))
       INSERT INTO #Kaynak (evrakTuru,belgeId,belgeTuru,kaynak,belgeNo,tarih,unvan,tutar,paraBirimi,eskiEttn,eskiDurum,eskiHata,durum,hata,uuid,aliciVkn,posBekliyor)
       SELECT ${PERAKENDE_EVRAK_TURU}, F.FATURA_ID, F.FATURA_TIPI, 'PERAKENDE', RTRIM(F.FATURA_NO), F.TARIH, RTRIM(F.ALICI_UNVAN),
         F.GENEL_TOPLAM, CASE WHEN ISNULL(RTRIM(PB.KOD),'TL') IN ('TL','TRY') THEN 'TRY' ELSE RTRIM(PB.KOD) END, NULL, 0, NULL,

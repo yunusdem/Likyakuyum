@@ -137,3 +137,34 @@ export const sayfaKapaliMi = (acik: string[] | null | undefined, pathname: strin
 
   return kodlar.length > 0 && !kodlar.some((k) => acik.includes(k));
 };
+
+/**
+ * Sayfa içindeki ürüne özel seçenekler (süzgeç, sekme, düğme) için: ilgili fiş sayfalarından biri firmaya açıksa özellik
+ * açıktır. Sayfa yoluna göre bakılır; böylece aynı sayfanın Vezne / Yönetici / üst çubuk kodlarından biri açıksa yeter
+ * ve lisans paketi + elle yapılan istisnalar kendiliğinden geçerli olur. acik null → kısıt yok, hepsi açık.
+ */
+const OZELLIK_SAYFALARI = {
+  sarraf: ["vezne/sarraf-fisi-kayit", "vezne/sarraf-fisi-duzeltme", "vezne/genel-sarraf-fisi"],
+  perakende: ["vezne/perakende-fisi-kayit", "vezne/perakende-fisi-duzeltme"],
+  doviz: ["vezne/doviz-fisi-kayit", "vezne/doviz-fisi-duzeltme", "vezne/doviz-fisi"],
+  emanet: ["cari/emanet-dekont", "cari/emanet-duzeltme"],
+  etiket: ["etiket/barkod-fiyat", "etiket/altin-urun-barkodlama", "etiket/ozel-urun-barkodlama", "etiket/barkod-basimi"],
+} as const;
+
+export type UrunOzellikleri = Record<keyof typeof OZELLIK_SAYFALARI | "kuyum", boolean>;
+
+export const urunOzellikleri = (acik: string[] | null | undefined): UrunOzellikleri => {
+  const bak = (yollar: readonly string[]) => !acik || yollar.some((y) => !sayfaKapaliMi(acik, y));
+  const sarraf = bak(OZELLIK_SAYFALARI.sarraf);
+  const perakende = bak(OZELLIK_SAYFALARI.perakende);
+  const etiket = bak(OZELLIK_SAYFALARI.etiket);
+  return {
+    sarraf,
+    perakende,
+    doviz: bak(OZELLIK_SAYFALARI.doviz),
+    emanet: bak(OZELLIK_SAYFALARI.emanet),
+    etiket,
+    // Kuyumcu ayarları (işçilik, has altın, sarrafiye sınırı…): kuyum fişlerinden biri açıksa
+    kuyum: sarraf || perakende || etiket,
+  };
+};

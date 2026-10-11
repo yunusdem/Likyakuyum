@@ -5,6 +5,7 @@ import { IconCheck, IconFileInvoice, IconLink, IconReceipt, IconSearch, IconUnli
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { EBankaService, MutabakatDurumu, MutabakatFisi, MutabakatListesi, MutabakatSatiri } from "../../services/ebankaService";
 import { bugun, CariSecModal, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import { fisKesimAdresi } from "./useEBankaFisKesimi";
 
 // F- e-Banka > J- Tahsilat / Ödeme Mutabakatı (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md)
@@ -35,14 +36,16 @@ const faturaAdresi = (f: MutabakatFisi): string | null => {
 };
 
 /** Fişi olmayan paradan kesilebilecek fişler; perakende faturası yalnız satış (gelen para) için. */
-const KESILECEK_FISLER: { ad: string; yol: string; yalnizGelen?: boolean }[] = [
-  { ad: "Döviz fişi", yol: "/vezne/doviz-fisi-kayit" },
-  { ad: "Sarraf fişi", yol: "/vezne/sarraf-fisi-kayit" },
-  { ad: "Perakende fişi", yol: "/vezne/perakende-fisi-kayit", yalnizGelen: true },
+const KESILECEK_FISLER: { ad: string; yol: string; yalnizGelen?: boolean; ozellik: "doviz" | "sarraf" | "perakende" }[] = [
+  { ad: "Döviz fişi", yol: "/vezne/doviz-fisi-kayit", ozellik: "doviz" },
+  { ad: "Sarraf fişi", yol: "/vezne/sarraf-fisi-kayit", ozellik: "sarraf" },
+  { ad: "Perakende fişi", yol: "/vezne/perakende-fisi-kayit", yalnizGelen: true, ozellik: "perakende" },
 ];
 
 export const EBankaMutabakatPage: React.FC = () => {
   const navigate = useNavigate();
+  // Lisansta olmayan fiş türü için "Fiş kes" düğmesi çizilmez
+  const ozellik = useUrunOzellikleri();
   // Fiş ekranından dönüşte aynı tarih aralığı ve aynı hareket açılır
   const [searchParams] = useSearchParams();
   const tarihParam = (ad: string) => (/^\d{4}-\d{2}-\d{2}$/.test(searchParams.get(ad) || "") ? (searchParams.get(ad) as string) : bugun());
@@ -422,7 +425,7 @@ export const EBankaMutabakatPage: React.FC = () => {
                   {!secili.cari && " Cari bulunamadığı için fiş ekranında seçmeniz gerekir."}
                 </div>
                 <div className="d-flex flex-wrap gap-2">
-                  {KESILECEK_FISLER.filter((k) => !k.yalnizGelen || secili.yon === "gelen").map((k) => (
+                  {KESILECEK_FISLER.filter((k) => ozellik[k.ozellik] && (!k.yalnizGelen || secili.yon === "gelen")).map((k) => (
                     <Button key={k.yol} size="sm" variant="outline-primary"
                       onClick={() => navigate(fisKesimAdresi(k.yol, {
                         vomsisId: secili.vomsisId, cariId: secili.cari?.cariKartId ?? null, tarih: (secili.tarih || bugun()).slice(0, 10),

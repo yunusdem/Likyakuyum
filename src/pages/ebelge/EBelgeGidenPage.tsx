@@ -6,6 +6,7 @@ import { IconSend, IconAlertTriangle, IconMail, IconPrinter } from "@tabler/icon
 import ERPToolbar from "../../components/common/ERPToolbar";
 import EBelgeArsivPanel from "./EBelgeArsivPanel";
 import EBelgeYerelTaslaklar from "./EBelgeYerelTaslaklar";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import {
   EbelgeGidenSatiri,
   ebelgeGidenDurumRozet,
@@ -30,6 +31,8 @@ type AlertInfo = { type: "success" | "danger" | "warning" | "info"; message: str
 const SAYFA_BOYUTU = 50;
 
 const EBelgeGidenPage: React.FC = () => {
+  // Lisansta olmayan fiş türünün belge türü süzgeçte gösterilmez (e-Döviz: döviz fişi; e-Gider: sarraf / perakende alış)
+  const ozellik = useUrunOzellikleri();
   const [kayitlar, setKayitlar] = useState<EbelgeGidenSatiri[]>([]);
   const [toplam, setToplam] = useState<number>(0);
   const [sayfa, setSayfa] = useState<number>(1);
@@ -390,7 +393,7 @@ const EBelgeGidenPage: React.FC = () => {
               <Form.Label className="small mb-1">Belge türü</Form.Label>
               <Form.Select size="sm" value={belgeTuru} onChange={e => setBelgeTuru(e.target.value)} disabled={topluBusy}>
                 <option value="">Tümü</option><option value="EFatura">e-Fatura</option><option value="EArsiv">e-Arşiv</option>
-                <option value="EGiderPusulasi">e-Gider</option><option value="EIrsaliye">e-İrsaliye</option><option value="EDoviz">e-Döviz</option><option value="EMustahsil">e-Müstahsil</option>
+                {(ozellik.sarraf || ozellik.perakende) && <option value="EGiderPusulasi">e-Gider</option>}<option value="EIrsaliye">e-İrsaliye</option>{ozellik.doviz && <option value="EDoviz">e-Döviz</option>}<option value="EMustahsil">e-Müstahsil</option>
               </Form.Select>
             </Col>
             <Col xs={6} md={3} lg={2}><Form.Label className="small mb-1">İlk tarih</Form.Label>
