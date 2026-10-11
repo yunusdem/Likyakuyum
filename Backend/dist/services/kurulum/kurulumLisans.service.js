@@ -172,6 +172,7 @@ export class KurulumLisansService {
             kalanGun: null,
             kullaniciLimiti: null,
             moduller: null,
+            urunler: null,
             seri: null,
             iletisim: VARSAYILAN_ILETISIM,
             ...v,
@@ -205,6 +206,7 @@ export class KurulumLisansService {
             kalanGun: kalanGunHesapla(lisans.bitis),
             kullaniciLimiti: lisans.kullaniciLimiti,
             moduller: lisans.moduller,
+            urunler: lisans.urunler ?? null,
             seri: lisans.seri,
             iletisim: lisans.iletisim || VARSAYILAN_ILETISIM,
         };

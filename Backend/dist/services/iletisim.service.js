@@ -32,7 +32,9 @@ const satir = (etiket, deger) => deger
     ? `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;white-space:nowrap;vertical-align:top">${etiket}</td>` +
         `<td style="padding:6px 0;color:#111827">${htmlKacis(deger).replace(/\n/g, "<br>")}</td></tr>`
     : "";
-const kaynakAdi = (k) => (k === "iletisim" ? "İletişim sayfası" : "Ana sayfa");
+const kaynakAdi = (k) => k === "likyaerp" ? "likyaerp.com" : k === "iletisim" ? "İletişim sayfası" : "Ana sayfa";
+// likyaerp.com'dan gelen form kendi markasıyla cevaplanır (docs/LIKYAERP_TANITIM_SITESI.md)
+const markaAdi = (g) => (g.kaynak === "likyaerp" ? "Likya ERP" : "Likya Kuyum");
 const tarihMetni = () => new Date().toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", dateStyle: "short", timeStyle: "short" });
 /** Bize gelen mail: form içeriği. */
 const bildirimMaili = (g, ip) => {
@@ -43,6 +45,7 @@ const bildirimMaili = (g, ip) => {
         ["E-posta", g.eposta],
         ["Şehir", g.sehir],
         ["Mesaj", g.mesaj],
+        ["İlgilendiği ürün", g.urun],
         ["Kaynak", kaynakAdi(g.kaynak)],
         ["Tarih", tarihMetni()],
         ["IP", ip],
@@ -60,22 +63,24 @@ const bildirimMaili = (g, ip) => {
                 `style="background:#3b5d50;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;display:inline-block">Ara: ${htmlKacis(g.telefon)}</a></p>`
             : "") +
         `</div>`;
-    return { konu: `Web sitesi bilgi talebi — ${g.adSoyad}${g.firma ? ` (${g.firma})` : ""}`, metin, html };
+    const onEk = g.kaynak === "likyaerp" ? `likyaerp.com${g.urun ? ` · ${g.urun}` : ""} bilgi talebi` : "Web sitesi bilgi talebi";
+    return { konu: `${onEk} — ${g.adSoyad}${g.firma ? ` (${g.firma})` : ""}`, metin, html };
 };
 /** Formu dolduran kişiye giden otomatik cevap. */
 const otomatikCevapMaili = (g) => {
     const ad = g.adSoyad;
+    const marka = markaAdi(g);
     const metin = `Merhaba ${ad},\n\n` +
-        `Likya Kuyum web sitesi üzerinden gönderdiğiniz bilgi talebi bize ulaştı. Ekibimiz en kısa sürede sizinle iletişime geçecek.\n\n` +
+        `${marka} web sitesi üzerinden gönderdiğiniz bilgi talebi bize ulaştı. Ekibimiz en kısa sürede sizinle iletişime geçecek.\n\n` +
         `Acil bir konu için bizi arayabilir ya da WhatsApp'tan yazabilirsiniz: +90 532 673 26 22\n\n` +
-        `Likya Kuyum\ninfo@likyakuyum.com`;
+        `${marka}\ninfo@likyakuyum.com`;
     const html = `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1f2937;max-width:520px">` +
         `<p>Merhaba <strong>${htmlKacis(ad)}</strong>,</p>` +
-        `<p>Likya Kuyum web sitesi üzerinden gönderdiğiniz bilgi talebi bize ulaştı. Ekibimiz en kısa sürede sizinle iletişime geçecek.</p>` +
+        `<p>${marka} web sitesi üzerinden gönderdiğiniz bilgi talebi bize ulaştı. Ekibimiz en kısa sürede sizinle iletişime geçecek.</p>` +
         `<p>Acil bir konu için bizi arayabilir ya da WhatsApp'tan yazabilirsiniz: ` +
         `<a href="tel:+905326732622" style="color:#3b5d50;font-weight:600">+90 532 673 26 22</a></p>` +
-        `<p style="color:#6b7280;font-size:13px">Likya Kuyum · info@likyakuyum.com</p></div>`;
-    return { konu: "Likya Kuyum — talebiniz alındı", metin, html };
+        `<p style="color:#6b7280;font-size:13px">${marka} · info@likyakuyum.com</p></div>`;
+    return { konu: `${marka} — talebiniz alındı`, metin, html };
 };
 export class IletisimService {
     static mailHazirMi() {

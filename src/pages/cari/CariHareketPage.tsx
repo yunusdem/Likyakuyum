@@ -202,7 +202,7 @@ export const CariHareketPage: React.FC = () => {
     try {
       setIsLoadingLookups(true);
       const [cariler, vezneRes, paraRes] = await Promise.all([
-        CariService.getCariKartlar().catch(() => []),
+        CariService.getCariKartlar(true).catch(() => []),
         apiClient.get<any[]>("/vezne").catch(() => ({ data: [] })),
         apiClient.get<any[]>("/para").catch(() => ({ data: [] })),
       ]);
@@ -410,6 +410,7 @@ export const CariHareketPage: React.FC = () => {
 
       const payload: CariHareketFormData = {
         cariKartId,
+        cariKod: cariKod?.trim() || undefined,
         vezneId,
         tarih,
         hareketTipi,

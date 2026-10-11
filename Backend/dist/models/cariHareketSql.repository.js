@@ -866,8 +866,23 @@ export class CariHareketSqlRepository {
         const transaction = new sql.Transaction(pool);
         try {
             await transaction.begin();
+            let effectiveCariKartId = data.cariKartId;
+            const chkReq = new sql.Request(transaction);
+            chkReq.input("chkId", sql.Int, Number(data.cariKartId));
+            chkReq.input("chkKod", sql.VarChar(50), (data.cariKod || "").trim());
+            const chkRes = await chkReq.query(`
+        SELECT TOP 1 [CARI_KART_ID] FROM [dbo].[TODVZ_CARI_KART] WITH (NOLOCK)
+        WHERE [CARI_KART_ID] = @chkId
+           OR (@chkKod <> '' AND [KOD] = @chkKod)
+      `);
+            if (chkRes.recordset.length > 0) {
+                effectiveCariKartId = chkRes.recordset[0].CARI_KART_ID;
+            }
+            else {
+                throw ApiError.badRequest(`Seçilen Cari Kart (#${data.cariKartId}${data.cariKod ? ` - ${data.cariKod}` : ""}) veritabanında bulunamadı. Lütfen sayfayı yenileyip güncel cari listesinden seçim yapınız.`);
+            }
             const headerRequest = new sql.Request(transaction);
-            headerRequest.input("CARI_KART_ID", sql.Int, data.cariKartId);
+            headerRequest.input("CARI_KART_ID", sql.Int, effectiveCariKartId);
             headerRequest.input("TARIH", sql.DateTime, data.tarih ? new Date(data.tarih) : new Date());
             headerRequest.input("HAREKET_TIPI", sql.TinyInt, data.hareketTipi ?? 0);
             headerRequest.input("ACIKLAMA", sql.VarChar(100), (data.aciklama || "").trim().slice(0, 100));
@@ -930,9 +945,24 @@ export class CariHareketSqlRepository {
             await transaction.begin();
             const numId = parseInt(String(id), 10);
             await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
+            let effectiveCariKartId = data.cariKartId;
+            const chkReq = new sql.Request(transaction);
+            chkReq.input("chkId", sql.Int, Number(data.cariKartId));
+            chkReq.input("chkKod", sql.VarChar(50), (data.cariKod || "").trim());
+            const chkRes = await chkReq.query(`
+        SELECT TOP 1 [CARI_KART_ID] FROM [dbo].[TODVZ_CARI_KART] WITH (NOLOCK)
+        WHERE [CARI_KART_ID] = @chkId
+           OR (@chkKod <> '' AND [KOD] = @chkKod)
+      `);
+            if (chkRes.recordset.length > 0) {
+                effectiveCariKartId = chkRes.recordset[0].CARI_KART_ID;
+            }
+            else {
+                throw ApiError.badRequest(`Seçilen Cari Kart (#${data.cariKartId}${data.cariKod ? ` - ${data.cariKod}` : ""}) veritabanında bulunamadı. Lütfen sayfayı yenileyip güncel cari listesinden seçim yapınız.`);
+            }
             const headerRequest = new sql.Request(transaction);
             headerRequest.input("CARI_HAREKET_ID", sql.Int, numId);
-            headerRequest.input("CARI_KART_ID", sql.Int, data.cariKartId);
+            headerRequest.input("CARI_KART_ID", sql.Int, effectiveCariKartId);
             headerRequest.input("TARIH", sql.DateTime, data.tarih ? new Date(data.tarih) : new Date());
             headerRequest.input("HAREKET_TIPI", sql.TinyInt, data.hareketTipi ?? 0);
             headerRequest.input("ACIKLAMA", sql.VarChar(100), (data.aciklama || "").trim().slice(0, 100));

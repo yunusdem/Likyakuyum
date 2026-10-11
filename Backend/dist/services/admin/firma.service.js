@@ -1,4 +1,6 @@
 import { FirmaSqlRepository } from "../../models/admin/firmaSql.repository.js";
+import { PaketService } from "./paket.service.js";
+import { PaketSqlRepository } from "../../models/admin/paketSql.repository.js";
 import { LisansSqlRepository } from "../../models/admin/lisansSql.repository.js";
 import { AdminLogSqlRepository } from "../../models/admin/adminLogSql.repository.js";
 import { benzersizIhlalMi } from "../../models/admin/adminSql.repository.js";
@@ -187,6 +189,10 @@ export class FirmaService {
     }
     static async lisansEkle(yapan, firmaId, girdi) {
         const firma = await this.getir(firmaId);
+        // Ürün seçimi: önce doğrula (lisans yazılmadan), PAKET_ADI ürünlerden üretilir
+        const urunler = girdi.urunler === undefined ? undefined : await PaketService.urunleriDenetle(girdi.urunler);
+        const eskiUrunler = urunler === undefined ? [] : await PaketSqlRepository.firmaUrunleri(firmaId);
+        const paketAdi = urunler?.length ? await PaketService.paketAdi(urunler) : girdi.paketAdi;
         if (girdi.bitis < girdi.baslangic)
             throw ApiError.badRequest("Bitiş tarihi başlangıçtan önce olamaz.");
         if (girdi.kullaniciLimiti < firma.kullaniciSayisi) {
@@ -198,11 +204,15 @@ export class FirmaService {
             baslangic: girdi.baslangic,
             bitis: girdi.bitis,
             kullaniciLimiti: girdi.kullaniciLimiti,
-            paketAdi: bosIseNull(girdi.paketAdi),
+            paketAdi: bosIseNull(paketAdi),
             notlar: bosIseNull(girdi.notlar),
             adminId: yapan.adminId,
         };
         const lisansId = await LisansSqlRepository.ekle(veri);
+        // Ürünler aynıysa (salt uzatma) modüllere dokunulmaz; değiştiyse firmanın modülleri paketlerden yeniden hesaplanır
+        const urunSonucu = urunler !== undefined && (await PaketSqlRepository.semaVarMi())
+            ? await PaketService.lisansUrunleriniUygula(yapan, firmaId, lisansId, eskiUrunler, urunler)
+            : null;
         OturumService.onbellegiTemizle(); // lisansı bitmiş firmanın engeli hemen kalksın
         const { adminId: _adminId, ...logVerisi } = veri;
         await AdminLogSqlRepository.islemLogu({
@@ -210,8 +220,8 @@ export class FirmaService {
             islem: "LISANS_EKLENDI",
             hedefTur: "LISANS",
             hedefId: lisansId,
-            eski: firma.aktifLisans ?? undefined,
-            yeni: logVerisi,
+            eski: firma.aktifLisans ? { ...firma.aktifLisans, urunler: eskiUrunler } : undefined,
+            yeni: { ...logVerisi, urunler, moduller: urunSonucu?.moduller },
         });
         return { firma: await this.getir(firmaId), lisanslar: await LisansSqlRepository.firmaLisanslari(firmaId) };
     }

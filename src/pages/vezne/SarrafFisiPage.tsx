@@ -40,6 +40,7 @@ import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import SarrafFisiPrintModal from "./SarrafFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
+import { F10YaziciSecimModal } from "./F10YaziciSecimModal";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { generateSarrafReceiptHtml } from "../../utils/receiptHtmlGenerator";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
@@ -1032,6 +1033,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [istatistikFisDizaynTipi, setIstatistikFisDizaynTipi] = useState<number | null>(null);
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [showF10PrinterModal, setShowF10PrinterModal] = useState<boolean>(false);
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
@@ -1838,7 +1840,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, [fisList, loadFisById]);
 
   // Save
-  const handleSave = useCallback(async (forceMasakApprove = false, andPrint = false, forceFarkApprove = false) => {
+  const handleSave = useCallback(async (
+    forceMasakApprove = false,
+    andPrint = false,
+    forceFarkApprove = false,
+    targetPrinter?: YaziciItem | null,
+    targetCopies?: number
+  ) => {
     // MASAK Malvarlığı Dondurulanlar Listesinde ise kesinlikle kayıt yapılamaz
     if (isMasakBlocked) {
       showNotif("danger", `🚨 İŞLEM ENGELLENDİ: Bu müşteri MASAK Malvarlığı Dondurulanlar / Yaptırım Listesindedir. Kesinlikle fiş ve işlem kaydı yapılamaz!`);
@@ -2143,7 +2151,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           printers,
         });
 
-        const isPos = resolved.recommendedPrintType === "POS";
+        const printerToUse = targetPrinter || resolved.printer;
+        const isPos = targetPrinter ? targetPrinter.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
+        const copiesToUse = targetCopies || resolved.kopyaSayisi || 1;
+
         const sarrafHtml = generateSarrafReceiptHtml({
           fis: snapObj,
           company: companyDefinitions,
@@ -2151,8 +2162,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
         await triggerSilentPrint({
           html: sarrafHtml,
-          printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
-          copies: resolved.kopyaSayisi || 1,
+          printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
+          copies: copiesToUse,
           isPos,
           title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
         });
@@ -4471,7 +4482,30 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowIstatistikModal(false);
     setShowArbitrajModal(false);
     setShowFarkConfirmModal({ show: false, andPrint: false });
+    setShowF10PrinterModal(false);
   }, []);
+
+  const handleTriggerF10 = useCallback(() => {
+    if (isMasakBlocked) {
+      showNotif("danger", `🚨 İŞLEM ENGELLENDİ: Bu müşteri MASAK Malvarlığı Dondurulanlar / Yaptırım Listesindedir. Kesinlikle fiş ve işlem kaydı yapılamaz!`);
+      setMasakModalOpen(true);
+      return;
+    }
+
+    if (!vezneId) {
+      showNotif("warning", "Vezne seçiniz");
+      return;
+    }
+
+    const validLines = lines.filter((l) => (l.urunId > 0 || (l.urunKodu && l.urunKodu.trim() !== "")) && parseDecimal(l.miktar) > 0);
+    if (!validLines.length) {
+      showNotif("warning", "Lütfen en az bir geçerli ürün satırı ekleyiniz.");
+      return;
+    }
+
+    closeAllModals();
+    setShowF10PrinterModal(true);
+  }, [isMasakBlocked, vezneId, lines, closeAllModals, showNotif]);
 
   // ─── Arbitraj Sonucunu Sarraf Fişine Aktarma (F7) ──────────────────────────
   const handleApplyArbitrajToSarrafFis = useCallback(
@@ -4668,12 +4702,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleSave(false, true);
+        handleTriggerF10();
       }
     };
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
-  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals]);
+  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals, handleTriggerF10]);
 
   // LookupModal columns
   const fisColumns: LookupColumn<SarrafFisListItem>[] = [
@@ -6707,7 +6741,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               <span
                 className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
                 style={{ fontSize: "11.5px", cursor: "pointer" }}
-                onClick={() => handleSave(false, true)}
+                onClick={handleTriggerF10}
                 title="Fişi Kaydet / Yazdır (F10)"
               >
                 <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F10</Badge>
@@ -7808,9 +7842,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         hedefTlTutar={totalTutar || 0}
         cariList={cariList}
         statisticList={statisticList}
+        companyDefinitions={companyDefinitions}
         pageType="sarraf"
         fisTip={tip}
         onApplyToFis={handleApplyArbitrajToSarrafFis}
+      />
+
+      {/* F10 Doğrudan Yazdırma Öncesi Küçük Yazıcı Seçim Modalı */}
+      <F10YaziciSecimModal
+        show={showF10PrinterModal}
+        onHide={() => setShowF10PrinterModal(false)}
+        printers={printers}
+        user={user}
+        onConfirm={(selectedPrinter, copies) => {
+          setShowF10PrinterModal(false);
+          void handleSave(false, true, false, selectedPrinter, copies);
+        }}
+        isSaving={isSaving}
       />
     </div>
   );

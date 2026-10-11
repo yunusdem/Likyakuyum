@@ -219,6 +219,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const [resimler, setResimler] = useState<string[]>([]);
   const [seciliResimIndex, setSeciliResimIndex] = useState<number>(0);
 
+  // Konsinye & Katalog İşaretleri
+  const [konsinye, setKonsinye] = useState<boolean>(false);
+  const [katalog, setKatalog] = useState<boolean>(false);
+
   // Canlı Kamera State
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -1129,8 +1133,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       }
       const finalVezneId = targetVezne?.id || null;
       setVezneId(finalVezneId);
-      if (finalVezneId && ayar) {
-        fetchStok(finalVezneId, ayar);
+      if (finalVezneId) {
+        fetchStok(finalVezneId, "14");
       }
 
       if (kurlar.length > 0) {
@@ -1160,28 +1164,45 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       const errorMsg = extractApiErrorMessage(err, "Özel ürün ve etiket tanımlama verileri yüklenirken bir hata oluştu.");
       showNotif("danger", errorMsg);
     }
-  }, [fetchStok, user?.id, user?.cashierCode, ayar]);
+  }, [fetchStok, user?.id, user?.cashierCode]);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  const isInitialMountRef = useRef<boolean>(true);
+  const handledQueryIdRef = useRef<string | null>(null);
+  const prevPathnameRef = useRef<string>(location.pathname);
+
+  useEffect(() => {
+    if (prevPathnameRef.current !== location.pathname) {
+      prevPathnameRef.current = location.pathname;
+      handledQueryIdRef.current = null;
+      handleNew();
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const queryId = queryParams.get("id");
 
     if (isDuzeltmeMode && queryId && ozelList.length > 0) {
-      const match = ozelList.find((u) => u.ozelUrunId === parseInt(queryId, 10));
-      if (match) handleSelectRecord(match);
-    } else {
-      // Hem Kayıt hem de Düzeltme sayfası ilk açılışta boş gelir
+      if (handledQueryIdRef.current !== queryId) {
+        const match = ozelList.find((u) => u.ozelUrunId === parseInt(queryId, 10));
+        if (match) {
+          handledQueryIdRef.current = queryId;
+          handleSelectRecord(match);
+        }
+      }
+    } else if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
       handleNew();
     }
     const timer = setTimeout(() => {
       grupKoduRef.current?.focus();
     }, 150);
     return () => clearTimeout(timer);
-  }, [isDuzeltmeMode, ozelList, location.pathname, location.search]);
+  }, [isDuzeltmeMode, ozelList, location.search]);
 
   // ─── F1 / F9 / F10 Klavye Kısayolları ────────────────────────────────────────
   useEffect(() => {
@@ -1438,6 +1459,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
   // ─── Yeni Kayıt Modu (Temizle - Ayar boş gelir) ─────────────────────────────
   const handleNew = () => {
+    if (location.search) {
+      navigate(location.pathname, { replace: true });
+    }
+    handledQueryIdRef.current = null;
     setOzelUrunId(null);
     setTarih(new Date().toISOString().slice(0, 10));
     setGrupKodu("");
@@ -1481,6 +1506,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setResim(null);
     setResimler([]);
     setSeciliResimIndex(0);
+    setKonsinye(false);
+    setKatalog(false);
 
     setTimeout(() => {
       grupKoduRef.current?.focus();
@@ -1558,11 +1585,15 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setResimler(loadedImages);
     setResim(loadedImages.length > 0 ? loadedImages[0] : null);
     setSeciliResimIndex(0);
+    setKonsinye(Boolean(it.konsinye));
+    setKatalog(Boolean(it.katalog));
     setShowLookup(false);
   };
 
   // ─── Kaydet / Güncelle (F1) ──────────────────────────────────────────────────
-  const handleSave = async () => {
+  // ─── Kaydet / Güncelle (F1) ──────────────────────────────────────────────────
+  const handleSave = async (autoClear?: boolean) => {
+    const shouldClear = autoClear !== false;
     if (!vezneId) {
       showNotif("warning", "Lütfen ürünün düşüleceği Vezneyi seçiniz.");
       return;
@@ -1584,7 +1615,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       return;
     }
 
-    if (!isDuzeltmeMode && vezneStok !== null && parseNum(monturGram) > vezneStok) {
+    if (!isDuzeltmeMode && !konsinye && vezneStok !== null && parseNum(monturGram) > vezneStok) {
       showNotif("danger", `Seçilen veznede yeterli ${ayar} stok bulunmamaktadır! (Vezne Bakiye: ${vezneStok.toFixed(3)} gr, İstenen: ${parseNum(monturGram).toFixed(3)} gr)`);
       return;
     }
@@ -1652,6 +1683,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         resim: resimler.length > 0 ? resimler[seciliResimIndex] || resimler[0] : (resim || null),
         resimler: resimler.length > 0 ? resimler : (resim ? [resim] : []),
         satildi: false,
+        konsinye,
+        katalog,
       };
 
       const saved = await EtiketService.saveOzelUrun(payload);
@@ -1663,11 +1696,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         fetchStok(vezneId, ayar);
       }
 
-      showNotif("success", `Özel ürün "${saved.grupKodu}-${format3Digits(saved.urunNo)}" başarıyla kaydedildi ve vezne stoğundan düşüldü.`);
-
       const updated = await EtiketService.getOzelUrunler({ limit: 500 });
       const sortedUpdated = (updated || []).slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
       setOzelList(sortedUpdated);
+
+      if (shouldClear) {
+        handleNew();
+      }
+
       return saved;
     } catch (err: any) {
       const errorMsg = extractApiErrorMessage(err, "Özel ürün kaydedilirken bir hata oluştu.");
@@ -1792,7 +1828,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
   // ─── Kaydet ve Doğrudan Yazdır (F10) ──────────────────────────────────────────
   const handleSaveAndPrint = async () => {
-    const saved = await handleSave();
+    const saved = await handleSave(false);
     if (saved) {
       const tasSummary = taslar
         .filter((t) => t.tasCinsi)
@@ -1817,6 +1853,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       if (saved.ozelUrunId) {
         EtiketService.markOzelUrunYazdirildi([saved.ozelUrunId], true).catch(() => {});
       }
+      handleNew();
     }
   };
 
@@ -1918,6 +1955,17 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     { header: "Taş Cinsi", width: "120px", render: (it) => it.tasCinsi || "-" },
     { header: "Karat (Ct)", width: "80px", render: (it) => it.tasMiktar || "-" },
     { header: "Satış Fiyatı", width: "110px", render: (it) => `${it.satisFiyati} ${it.satisParaKodu}` },
+    {
+      header: "Durum",
+      width: "140px",
+      render: (it) => (
+        <div className="d-flex gap-1 flex-wrap">
+          {it.konsinye ? <span className="badge bg-warning text-dark px-1.5 py-0.5" style={{ fontSize: "10px" }}>Konsinye</span> : null}
+          {it.katalog ? <span className="badge bg-info text-dark px-1.5 py-0.5" style={{ fontSize: "10px" }}>Katalog</span> : null}
+          {!it.konsinye && !it.katalog ? <span className="text-muted small">-</span> : null}
+        </div>
+      ),
+    },
     { header: "Üretici Firma", render: (it) => it.ureticiFirma || "-" },
   ];
 
@@ -2064,11 +2112,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       {/* ─── Ana Form Kartı ─── */}
       <Card className="shadow-sm border-0 mb-3 bg-white">
         <Card.Body className="p-3">
-          {/* ─── ÜST ŞERİT: Tarih, Grup/No, Barkod Kodu ─── */}
+          {/* ─── ÜST ŞERİT: Tarih, Grup/No, Barkod Kodu, Konsinye/Katalog ─── */}
           <div className="bg-light p-2.5 rounded-3 border mb-3">
             <Row className="g-2 align-items-center">
               {/* Tarih */}
-              <Col xs={12} sm={6} md={3} lg={3}>
+              <Col xs={12} sm={6} md={3} lg={2}>
                 <div className="d-flex align-items-center gap-1.5">
                   <Form.Label className="small fw-bold text-secondary mb-0 text-nowrap">
                     Tarih :
@@ -2084,7 +2132,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
               </Col>
 
               {/* Grup / No */}
-              <Col xs={12} sm={12} md={5} lg={5}>
+              <Col xs={12} sm={12} md={5} lg={4}>
                 <div className="d-flex align-items-center gap-1.5">
                   <Form.Label className="small fw-bold text-secondary mb-0 text-nowrap">
                     Grup / No<span className="text-danger">*</span> :
@@ -2170,7 +2218,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
               </Col>
 
               {/* Barkod Kodu */}
-              <Col xs={12} sm={6} md={4} lg={4}>
+              <Col xs={12} sm={6} md={4} lg={3}>
                 <div className="d-flex align-items-center gap-1.5">
                   <Form.Label className="small fw-bold text-secondary mb-0 text-nowrap">
                     Barkod Kodu :
@@ -2184,6 +2232,30 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     onKeyDown={handleBarkodKeyDown}
                     className="font-monospace fw-bold text-dark bg-white"
                     style={{ maxWidth: "160px" }}
+                  />
+                </div>
+              </Col>
+
+              {/* Konsinye & Katalog Checkboxları */}
+              <Col xs={12} sm={6} md={12} lg={3}>
+                <div className="d-flex align-items-center gap-3 justify-content-lg-end pt-1 pt-lg-0">
+                  <Form.Check
+                    type="checkbox"
+                    id="ozel-konsinye-check"
+                    label={<span className="small fw-bold text-dark user-select-none">Konsinye</span>}
+                    checked={konsinye}
+                    onChange={(e) => setKonsinye(e.target.checked)}
+                    title="Konsinye Ürün (Vezne stoğundan düşmez, konsinye stoğu olarak görünür)"
+                    className="mb-0"
+                  />
+                  <Form.Check
+                    type="checkbox"
+                    id="ozel-katalog-check"
+                    label={<span className="small fw-bold text-dark user-select-none">Katalog</span>}
+                    checked={katalog}
+                    onChange={(e) => setKatalog(e.target.checked)}
+                    title="Katalog Ürünü (Daha sonra slayt/katalog şeklinde sunum ve listeleme için)"
+                    className="mb-0"
                   />
                 </div>
               </Col>
@@ -2534,7 +2606,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                           }
                         }}
                         className={`fw-bold font-monospace text-end bg-white ${
-                          !isDuzeltmeMode && vezneStok !== null && parseNum(monturGram) > vezneStok ? "is-invalid border-danger text-danger" : ""
+                          !isDuzeltmeMode && !konsinye && vezneStok !== null && parseNum(monturGram) > vezneStok ? "is-invalid border-danger text-danger" : ""
                         }`}
                         style={{ maxWidth: "105px" }}
                         placeholder="0.00"
@@ -3261,7 +3333,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
             (it.barkod ? it.barkod.toLowerCase().includes(t) : false) ||
             (it.mamulTipi ? it.mamulTipi.toLowerCase().includes(t) : false) ||
             (it.ureticiFirma ? it.ureticiFirma.toLowerCase().includes(t) : false) ||
-            (it.tasCinsi ? it.tasCinsi.toLowerCase().includes(t) : false)
+            (it.tasCinsi ? it.tasCinsi.toLowerCase().includes(t) : false) ||
+            (t.includes("konsinye") && Boolean(it.konsinye)) ||
+            (t.includes("katalog") && Boolean(it.katalog))
           );
         }}
         onSelect={handleSelectRecord}
@@ -3377,6 +3451,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       <LookupModal<CariKartItem>
         show={showFirmaLookup}
         title="Üretici Firma Seç"
+        selectOnDoubleClick={true}
         initialSearchTerm={firmaInitialSearch}
         columns={[
           { header: "Kod", width: "100px", render: (it) => <span className="font-monospace fw-bold">{it.kod}</span> },

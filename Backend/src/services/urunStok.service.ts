@@ -40,6 +40,8 @@ export interface UrunStokSatir {
   karYuzde: number | null;
   satildi: boolean;
   durum: "Stokta" | "Satıldı";
+  konsinye?: boolean;
+  katalog?: boolean;
   satisTarihi: string | null;
   faturaNo: string;
   musteri: string;
@@ -180,6 +182,8 @@ export class UrunStokService {
       karYuzde,
       satildi,
       durum: satildi ? "Satıldı" : "Stokta",
+      konsinye: Boolean(r.KONSINYE),
+      katalog: Boolean(r.KATALOG),
       satisTarihi: satisGunu,
       faturaNo: (r.FATURA_NO || "").trim(),
       musteri: (r.MUSTERI || "").trim(),

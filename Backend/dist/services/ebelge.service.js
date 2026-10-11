@@ -1678,6 +1678,24 @@ export class EbelgeService {
      * Giden belgenin önizlemesi (Q6: tarihe basınca). Kendi sakladığımız XML'den ICE'nin doğrulama ucu
      * ile üretilir — belge kuyruktayken de açılır, hiçbir şey göndermez. XML'i olmayanlarda ICE çıktısı.
      */
+    /**
+     * Henüz gönderilmemiş faturanın görüntüsü (e-Belge › Kaynak önizlemesi): Giden kutusundaki önizlemeyle aynı ICE
+     * doğrulama servisi (invoice_check_validate) GİB düzenindeki faturayı üretir. Belge gönderilmez, numara harcanmaz.
+     */
+    static async faturaOnizlemeGoruntusu(girdi, kullanici, dbContext) {
+        const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
+        const { xml, uuid } = buildInvoiceXml({ ...girdi, gonderici });
+        const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+        const d = await invoiceCheckValidate(config, toBase64(xml), { html: true, pdf: true });
+        const pdf = typeof d?.invoice_pdf === "string" ? d.invoice_pdf.replace(/\s/g, "") : "";
+        const goruntu = pdf ? goruntuCoz(Buffer.from(pdf, "base64"))
+            : typeof d?.invoice_html === "string" && d.invoice_html.trim() ? { tur: "html", veri: Buffer.from(String(d.invoice_html), "utf8") } : null;
+        await EbelgeSqlRepository.writeLog({ metod: "KAYNAK_ONIZLEME", yon: "GIDEN", basarili: !!goruntu?.veri.length, kullanici, ilgiliUuid: uuid,
+            istekOzet: `belgeNo=${girdi.belgeNo}`, cevapOzet: goruntu ? `${goruntu.tur} · ${goruntu.veri.length} bayt` : (d?.response_message || "görüntü yok") }, dbContext);
+        if (!goruntu?.veri.length)
+            throw ApiError.unprocessable(String(d?.response_message || "").trim() || "Faturanın önizlemesi alınamadı.");
+        return goruntu;
+    }
     static async gidenOnizleme(uuid, kullanici, dbContext) {
         const kayit = await EbelgeSqlRepository.getGiden(uuid, dbContext);
         if (!kayit)

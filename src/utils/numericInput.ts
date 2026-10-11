@@ -134,8 +134,9 @@ export function parseDecimal(val: any): number {
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
-    // Tek nokta: 1-3 basamak . 3 basamak ise (örn: "50.000", "5.000", "500.000") ve başı 0 değilse binlik ayracıdır
-    if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1].length === 3) {
+    // Tek nokta: Tam binlik formatı ise (örn: "50.000", "5.000", "500.000" - sonu tam "000" olan) binlik ayracıdır.
+    // Sonu 000 olmayan "9.858", "1.234" gibi değerler JS ondalık sayısıdır, binliğe dönüştürülmez.
+    if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1] === "000") {
       const clean = str.replace(/\./g, "");
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;

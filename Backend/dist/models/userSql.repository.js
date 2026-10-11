@@ -141,7 +141,9 @@ export class UserSqlRepository {
         const isSysAdmin = toBool(entity.SISTEM_YONETICISI);
         const id = String(entity.KULLANICI_ID);
         const username = (entity.AD || "").trim();
-        const vezneKod = entity.VEZNE_KOD ? String(entity.VEZNE_KOD).trim() : (entity.VEZNE_ID !== undefined && entity.VEZNE_ID !== null ? String(entity.VEZNE_ID) : "00");
+        const vezneId = (entity.VEZNE_ID !== undefined && entity.VEZNE_ID !== null) ? Number(entity.VEZNE_ID) : undefined;
+        const vezneKod = entity.VEZNE_KOD ? String(entity.VEZNE_KOD).trim() : (vezneId !== undefined ? String(vezneId) : "00");
+        const vezneAd = entity.VEZNE_AD ? String(entity.VEZNE_AD).trim() : undefined;
         return {
             id,
             username,
@@ -150,7 +152,10 @@ export class UserSqlRepository {
             password: entity.SIFRE || "",
             passwordHash: entity.SIFRE || "",
             role: isSysAdmin ? UserRole.ADMIN : UserRole.CASHIER,
-            cashierCode: vezneKod,
+            cashierCode: vezneId !== undefined ? String(vezneId) : vezneKod,
+            vezneId,
+            vezneKod,
+            vezneAd,
             isActive: true,
             // Left column permissions
             isSysAdmin,
@@ -239,7 +244,8 @@ export class UserSqlRepository {
       I_SATIS.KOD AS SATIS_ISTATISTIK_KOD,
       I_ARB_ALIS.KOD AS ARBITRAJ_ALIS_ISTATISTIK_KOD,
       I_ARB_SATIS.KOD AS ARBITRAJ_SATIS_ISTATISTIK_KOD,
-      V.KOD AS VEZNE_KOD
+      V.KOD AS VEZNE_KOD,
+      V.AD AS VEZNE_AD
     FROM [dbo].[TODVZ_KULLANICI] U
     LEFT JOIN [dbo].[TODVZ_ISTATISTIK] I_ALIS ON I_ALIS.ISTATISTIK_ID = U.ALIS_ISTATISTIK_ID
     LEFT JOIN [dbo].[TODVZ_ISTATISTIK] I_SATIS ON I_SATIS.ISTATISTIK_ID = U.SATIS_ISTATISTIK_ID
@@ -367,29 +373,29 @@ export class UserSqlRepository {
         const rawStr = String(inputVezneId || "").trim();
         if (!rawStr)
             return 0;
-        // 1. Önce KOD olarak tam eşleşme ara (örn: "01", "00", "02")
+        const rawNum = parseInt(rawStr, 10);
+        // 1. Önce VEZNE_ID olarak doğrudan eşleşme ara (ID birincil anahtar ve benzersizdir)
+        if (!isNaN(rawNum) && rawNum >= 0) {
+            const checkId = await pool.request()
+                .input("chkId", sql.Int, rawNum)
+                .query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] WHERE [VEZNE_ID] = @chkId");
+            if (checkId.recordset && checkId.recordset.length > 0) {
+                return checkId.recordset[0].VEZNE_ID;
+            }
+        }
+        // 2. KOD olarak tam eşleşme ara (örn: "MERKEZ", "01")
         const checkKod = await pool.request()
             .input("chkKod", sql.VarChar(50), rawStr)
             .query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] WHERE UPPER(LTRIM(RTRIM([KOD]))) = UPPER(LTRIM(RTRIM(@chkKod)))");
         if (checkKod.recordset && checkKod.recordset.length > 0) {
             return checkKod.recordset[0].VEZNE_ID;
         }
-        // 2. ID olarak eşleşme ara
-        const rawId = toInt(inputVezneId, -1);
-        if (rawId >= 0) {
-            const check = await pool.request()
-                .input("chkId", sql.Int, rawId)
-                .query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] WHERE [VEZNE_ID] = @chkId");
-            if (check.recordset && check.recordset.length > 0) {
-                return check.recordset[0].VEZNE_ID;
-            }
-        }
         // 3. Fallback to first available vezne in TODVZ_VEZNE
         const firstVezne = await pool.request().query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] ORDER BY [VEZNE_ID] ASC");
         if (firstVezne.recordset && firstVezne.recordset.length > 0) {
             return firstVezne.recordset[0].VEZNE_ID;
         }
-        return rawId >= 0 ? rawId : 0;
+        return rawNum >= 0 ? rawNum : 0;
     }
     /**
      * Creates a new user in [dbo].[TODVZ_KULLANICI] with safe parameterized inputs in the target database

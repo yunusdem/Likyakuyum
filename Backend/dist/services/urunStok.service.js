@@ -120,6 +120,8 @@ export class UrunStokService {
             karYuzde,
             satildi,
             durum: satildi ? "Satıldı" : "Stokta",
+            konsinye: Boolean(r.KONSINYE),
+            katalog: Boolean(r.KATALOG),
             satisTarihi: satisGunu,
             faturaNo: (r.FATURA_NO || "").trim(),
             musteri: (r.MUSTERI || "").trim(),

@@ -38,6 +38,8 @@ export interface AltinUrunItem {
   vezneAd?: string | null;
   rfidEpc?: string | null;
   satildi: boolean;
+  konsinye?: boolean;
+  katalog?: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
   eklemeZamani?: string | null;
@@ -79,6 +81,8 @@ export interface SaveAltinUrunPayload {
   resimler?: string[];
   vezneId?: number | null;
   satildi?: boolean;
+  konsinye?: boolean;
+  katalog?: boolean;
 }
 
 // ─── Özel Ürün (TODVZ_OZEL_URUN) ─────────────────────────────────────────────
@@ -119,6 +123,8 @@ export interface OzelUrunItem {
   vezneKod?: string | null;
   vezneAd?: string | null;
   satildi: boolean;
+  konsinye?: boolean;
+  katalog?: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
   eklemeZamani?: string | null;
@@ -160,6 +166,8 @@ export interface SaveOzelUrunPayload {
   resimler?: string[];
   vezneId?: number | null;
   satildi?: boolean;
+  konsinye?: boolean;
+  katalog?: boolean;
 }
 
 // ─── RFID Veri Yapıları ──────────────────────────────────────────────────────
