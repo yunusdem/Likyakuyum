@@ -58,6 +58,10 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
       MerkezGirisService.firmaBaglantisi(decoded.firmaId)
         .then((b) => {
           setDbCredentials(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
+          if (req.user) {
+            req.user.dbServer = b.dbServer;
+            req.user.dbName = b.dbName;
+          }
           return OturumService.dogrula(decoded, req.originalUrl);
         })
         .then(() => next(), next);

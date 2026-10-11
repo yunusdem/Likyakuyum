@@ -35,6 +35,7 @@ export interface CariHareketItem {
 
 export interface CariHareketFormData {
   cariKartId: number;
+  cariKod?: string;
   tarih: string;
   hareketTipi: number;
   aciklama: string;

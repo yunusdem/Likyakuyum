@@ -40,6 +40,8 @@ export interface OzelUrunModel {
   vezneId?: number | null;
   vezneKod?: string | null;
   vezneAd?: string | null;
+  konsinye?: boolean;
+  katalog?: boolean;
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -87,6 +89,8 @@ export interface SaveOzelUrunDto {
   resim?: string | null;
   resimler?: string[];
   vezneId?: number | null;
+  konsinye?: boolean;
+  katalog?: boolean;
   satildi?: boolean;
 }
 
@@ -131,6 +135,8 @@ export class OzelUrunSqlRepository {
             [TAS_TUTAR] FLOAT NULL,
             [TAS_TUTAR_BIRIMI] VARCHAR(50) NOT NULL DEFAULT 'USD',
             [VEZNE_ID] INT NULL,
+            [KONSINYE] BIT NOT NULL DEFAULT 0,
+            [KATALOG] BIT NOT NULL DEFAULT 0,
             [SATILDI] BIT NOT NULL DEFAULT 0,
             [RESIM] VARBINARY(MAX) NULL,
             [YAZDIRILDI] BIT NOT NULL DEFAULT 0,
@@ -145,6 +151,10 @@ export class OzelUrunSqlRepository {
 
         IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TODVZ_OZEL_URUN')
         BEGIN
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'KONSINYE')
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [KONSINYE] BIT NOT NULL CONSTRAINT DF_TODVZ_OZEL_URUN_KONSINYE DEFAULT(0);
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'KATALOG')
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [KATALOG] BIT NOT NULL CONSTRAINT DF_TODVZ_OZEL_URUN_KATALOG DEFAULT(0);
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'VEZNE_ID')
             ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [VEZNE_ID] INT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'YAZDIRILDI')
@@ -224,6 +234,8 @@ export class OzelUrunSqlRepository {
             @TAS_TUTAR          FLOAT = NULL,
             @TAS_TUTAR_BIRIMI   VARCHAR(50) = 'USD',
             @VEZNE_ID           INT = NULL,
+            @KONSINYE           BIT = 0,
+            @KATALOG            BIT = 0,
             @SATILDI            BIT = 0,
             @RESIM              VARBINARY(MAX) = NULL,
             @KULLANICI_ID       INT = NULL,
@@ -319,77 +331,60 @@ export class OzelUrunSqlRepository {
             BEGIN TRAN;
             DECLARE @STOK_DUSTU BIT = 0;
 
-            -- Stok Kontrolü & Vezne Bakiyesinden Düşme (Montür Gramajı / MIKTAR)
-            IF (@VEZNE_ID IS NOT NULL AND @PARA_ID IS NOT NULL AND @MIKTAR > 0)
+            -- Güncelleme ise ve eski kayıtta stok düşülmüşse (konsinye değilse) iade et
+            IF @YENI_KAYIT = 0
+            BEGIN
+                DECLARE @ESKI_VEZNE_ID INT = NULL;
+                DECLARE @ESKI_AYAR VARCHAR(250) = NULL;
+                DECLARE @ESKI_MIKTAR FLOAT = 0;
+                DECLARE @ESKI_PARA_ID INT = NULL;
+                DECLARE @ESKI_STOK_PARA_ID INT = NULL;
+                DECLARE @ESKI_KONSINYE BIT = 0;
+
+                SELECT @ESKI_VEZNE_ID = COALESCE(STOK_VEZNE_ID, VEZNE_ID), 
+                       @ESKI_AYAR = AYAR, 
+                       @ESKI_MIKTAR = COALESCE(STOK_MIKTAR, ISNULL(MIKTAR, 0)), 
+                       @ESKI_STOK_PARA_ID = STOK_PARA_ID,
+                       @ESKI_KONSINYE = ISNULL(KONSINYE, 0)
+                FROM dbo.TODVZ_OZEL_URUN
+                WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
+
+                IF (@ESKI_KONSINYE = 0 AND @ESKI_VEZNE_ID IS NOT NULL AND @ESKI_MIKTAR > 0)
+                BEGIN
+                    SET @ESKI_PARA_ID = @ESKI_STOK_PARA_ID;
+                    IF @ESKI_PARA_ID IS NULL SELECT TOP 1 @ESKI_PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@ESKI_AYAR)));
+                    IF @ESKI_PARA_ID IS NULL
+                        SELECT TOP 1 @ESKI_PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(AD))) LIKE '%' + UPPER(LTRIM(RTRIM(@ESKI_AYAR))) + '%';
+                    IF @ESKI_PARA_ID IS NULL
+                        SET @ESKI_PARA_ID = @PARA_ID;
+
+                    UPDATE dbo.TODVZ_VEZNE_BAKIYE 
+                    SET MIKTAR = MIKTAR + @ESKI_MIKTAR 
+                    WHERE VEZNE_ID = @ESKI_VEZNE_ID AND PARA_ID = @ESKI_PARA_ID;
+                END
+            END
+
+            -- Stok Kontrolü & Vezne Bakiyesinden Düşme: KONSİNYE DEĞİLSE ÇALIŞIR!
+            IF (ISNULL(@KONSINYE, 0) = 0 AND @VEZNE_ID IS NOT NULL AND @PARA_ID IS NOT NULL AND @MIKTAR > 0)
             BEGIN
                 DECLARE @MEVCUT_STOK FLOAT = 0;
                 SELECT @MEVCUT_STOK = ISNULL(MIKTAR, 0) 
                 FROM dbo.TODVZ_VEZNE_BAKIYE 
                 WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
 
-                IF @YENI_KAYIT = 1
+                IF (@MEVCUT_STOK < @MIKTAR)
                 BEGIN
-                    IF (@MEVCUT_STOK < @MIKTAR)
-                    BEGIN
-                        DECLARE @PARA_ADI_HATA VARCHAR(100);
-                        SELECT @PARA_ADI_HATA = AD FROM dbo.TODVZ_PARA WHERE PARA_ID = @PARA_ID;
-                        SET @HATA_MESAJI = 'Seçili veznede yeterli ' + ISNULL(@PARA_ADI_HATA, @AYAR) + ' stoğu bulunamadı! Mevcut Stok: ' + CAST(@MEVCUT_STOK AS VARCHAR(30)) + ' gr, İstenen: ' + CAST(@MIKTAR AS VARCHAR(30)) + ' gr.';
-                        GOTO UNDO;
-                    END
-
-                    -- Stoktan Düş
-                    IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID)
-                        UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
-                    ELSE
-                        INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @PARA_ID, -@MIKTAR);
-                    SET @STOK_DUSTU = 1;
+                    DECLARE @PARA_ADI_HATA VARCHAR(100);
+                    SELECT @PARA_ADI_HATA = AD FROM dbo.TODVZ_PARA WHERE PARA_ID = @PARA_ID;
+                    SET @HATA_MESAJI = 'Seçili veznede yeterli ' + ISNULL(@PARA_ADI_HATA, @AYAR) + ' stoğu bulunamadı! Mevcut Stok: ' + CAST(@MEVCUT_STOK AS VARCHAR(30)) + ' gr, İstenen: ' + CAST(@MIKTAR AS VARCHAR(30)) + ' gr.';
+                    GOTO UNDO;
                 END
+
+                IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID)
+                    UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
                 ELSE
-                BEGIN
-                    -- Güncelleme: Eski kaydın stoğunu geri iade et
-                    DECLARE @ESKI_VEZNE_ID INT = NULL;
-                    DECLARE @ESKI_AYAR VARCHAR(250) = NULL;
-                    DECLARE @ESKI_MIKTAR FLOAT = 0;
-                    DECLARE @ESKI_PARA_ID INT = NULL;
-
-                    DECLARE @ESKI_STOK_PARA_ID INT = NULL;
-                    SELECT @ESKI_VEZNE_ID = COALESCE(STOK_VEZNE_ID, VEZNE_ID), @ESKI_AYAR = AYAR, @ESKI_MIKTAR = COALESCE(STOK_MIKTAR, ISNULL(MIKTAR, 0)), @ESKI_STOK_PARA_ID = STOK_PARA_ID
-                    FROM dbo.TODVZ_OZEL_URUN
-                    WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
-
-                    IF (@ESKI_VEZNE_ID IS NOT NULL AND @ESKI_MIKTAR > 0)
-                    BEGIN
-                        SET @ESKI_PARA_ID = @ESKI_STOK_PARA_ID;
-                        IF @ESKI_PARA_ID IS NULL SELECT TOP 1 @ESKI_PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@ESKI_AYAR)));
-                        IF @ESKI_PARA_ID IS NULL
-                            SELECT TOP 1 @ESKI_PARA_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(AD))) LIKE '%' + UPPER(LTRIM(RTRIM(@ESKI_AYAR))) + '%';
-                        IF @ESKI_PARA_ID IS NULL
-                            SET @ESKI_PARA_ID = @PARA_ID;
-
-                        UPDATE dbo.TODVZ_VEZNE_BAKIYE 
-                        SET MIKTAR = MIKTAR + @ESKI_MIKTAR 
-                        WHERE VEZNE_ID = @ESKI_VEZNE_ID AND PARA_ID = @ESKI_PARA_ID;
-                    END
-
-                    -- Yeni miktar için kontrol ve düşüş
-                    SELECT @MEVCUT_STOK = ISNULL(MIKTAR, 0) 
-                    FROM dbo.TODVZ_VEZNE_BAKIYE 
-                    WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
-
-                    IF (@MEVCUT_STOK < @MIKTAR)
-                    BEGIN
-                        DECLARE @PARA_ADI_HATA2 VARCHAR(100);
-                        SELECT @PARA_ADI_HATA2 = AD FROM dbo.TODVZ_PARA WHERE PARA_ID = @PARA_ID;
-                        SET @HATA_MESAJI = 'Seçili veznede yeterli ' + ISNULL(@PARA_ADI_HATA2, @AYAR) + ' stoğu bulunamadı! Mevcut Stok: ' + CAST(@MEVCUT_STOK AS VARCHAR(30)) + ' gr, İstenen: ' + CAST(@MIKTAR AS VARCHAR(30)) + ' gr.';
-                        GOTO UNDO;
-                    END
-
-                    IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID)
-                        UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
-                    ELSE
-                        INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @PARA_ID, -@MIKTAR);
-                    SET @STOK_DUSTU = 1;
-                END
+                    INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @PARA_ID, -@MIKTAR);
+                SET @STOK_DUSTU = 1;
             END
 
             IF @YENI_KAYIT = 1
@@ -398,14 +393,16 @@ export class OzelUrunSqlRepository {
                     TARIH, GRUP_KODU, URUN_NO, BARKOD, MAMUL_TIPI, URETICI_FIRMA, MIKTAR, MIKTAR_BIRIMI,
                     ORJINAL_KOD, AYAR, MODEL_OZELLIK_1, MODEL_OZELLIK_2, BANKO, MALIYET, MALIYET_PARA_KODU,
                     KAR_YUZDESI, SABITLE, SATIS_FIYATI, SATIS_PARA_KODU, HIZLI_GIRIS, TAS_CINSI, TAS_MIKTAR,
-                    TAS_BIRIM, TAS_RENK, TAS_SAFLIK, TAS_ADET, TAS_TUTAR, TAS_TUTAR_BIRIMI, VEZNE_ID, SATILDI, RESIM,
+                    TAS_BIRIM, TAS_RENK, TAS_SAFLIK, TAS_ADET, TAS_TUTAR, TAS_TUTAR_BIRIMI, VEZNE_ID, 
+                    KONSINYE, KATALOG, SATILDI, RESIM,
                     EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
                 )
                 VALUES (
                     ISNULL(@TARIH, @SIMDIKI_ZAMAN), @GRUP_KODU, @URUN_NO, @BARKOD, @MAMUL_TIPI, @URETICI_FIRMA, @MIKTAR, @MIKTAR_BIRIMI,
                     @ORJINAL_KOD, @AYAR, @MODEL_OZELLIK_1, @MODEL_OZELLIK_2, @BANKO, @MALIYET, @MALIYET_PARA_KODU,
                     @KAR_YUZDESI, @SABITLE, @SATIS_FIYATI, @SATIS_PARA_KODU, @HIZLI_GIRIS, @TAS_CINSI, @TAS_MIKTAR,
-                    @TAS_BIRIM, @TAS_RENK, @TAS_SAFLIK, @TAS_ADET, @TAS_TUTAR, @TAS_TUTAR_BIRIMI, @VEZNE_ID, @SATILDI, @RESIM,
+                    @TAS_BIRIM, @TAS_RENK, @TAS_SAFLIK, @TAS_ADET, @TAS_TUTAR, @TAS_TUTAR_BIRIMI, @VEZNE_ID,
+                    ISNULL(@KONSINYE, 0), ISNULL(@KATALOG, 0), @SATILDI, @RESIM,
                     @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN
                 );
 
@@ -428,6 +425,8 @@ export class OzelUrunSqlRepository {
                     TAS_CINSI = @TAS_CINSI, TAS_MIKTAR = @TAS_MIKTAR, TAS_BIRIM = @TAS_BIRIM, TAS_RENK = @TAS_RENK,
                     TAS_SAFLIK = @TAS_SAFLIK, TAS_ADET = @TAS_ADET, TAS_TUTAR = @TAS_TUTAR, TAS_TUTAR_BIRIMI = @TAS_TUTAR_BIRIMI,
                     VEZNE_ID = ISNULL(@VEZNE_ID, VEZNE_ID),
+                    KONSINYE = ISNULL(@KONSINYE, 0),
+                    KATALOG = ISNULL(@KATALOG, 0),
                     SATILDI = @SATILDI, RESIM = ISNULL(@RESIM, RESIM), GUNCELLEYEN_ID = @KULLANICI_ID, GUNCELLEME_ZAMANI = @SIMDIKI_ZAMAN
                 WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
 
@@ -440,6 +439,8 @@ export class OzelUrunSqlRepository {
 
             IF @STOK_DUSTU = 1
                 UPDATE dbo.TODVZ_OZEL_URUN SET STOK_VEZNE_ID = @VEZNE_ID, STOK_PARA_ID = @PARA_ID, STOK_MIKTAR = @MIKTAR WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
+            ELSE IF (ISNULL(@KONSINYE, 0) = 1)
+                UPDATE dbo.TODVZ_OZEL_URUN SET STOK_VEZNE_ID = NULL, STOK_PARA_ID = NULL, STOK_MIKTAR = NULL WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
 
             COMMIT TRAN;
             RETURN 0;
@@ -476,14 +477,18 @@ export class OzelUrunSqlRepository {
 
             BEGIN TRAN;
 
-            -- Stoğu vezneye iade et
-            DECLARE @VEZNE_ID INT, @AYAR VARCHAR(250), @MIKTAR FLOAT;
+            -- Stoğu vezneye iade et (KONSİNYE DEĞİLSE)
+            DECLARE @VEZNE_ID INT, @AYAR VARCHAR(250), @MIKTAR FLOAT, @IS_KONSINYE BIT = 0;
             DECLARE @SIL_STOK_PARA_ID INT = NULL;
-            SELECT @VEZNE_ID = COALESCE(STOK_VEZNE_ID, VEZNE_ID), @AYAR = AYAR, @MIKTAR = COALESCE(STOK_MIKTAR, ISNULL(MIKTAR, 0)), @SIL_STOK_PARA_ID = STOK_PARA_ID
+            SELECT @VEZNE_ID = COALESCE(STOK_VEZNE_ID, VEZNE_ID), 
+                   @AYAR = AYAR, 
+                   @MIKTAR = COALESCE(STOK_MIKTAR, ISNULL(MIKTAR, 0)), 
+                   @SIL_STOK_PARA_ID = STOK_PARA_ID,
+                   @IS_KONSINYE = ISNULL(KONSINYE, 0)
             FROM dbo.TODVZ_OZEL_URUN
             WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
 
-            IF (@VEZNE_ID IS NOT NULL AND @MIKTAR > 0)
+            IF (ISNULL(@IS_KONSINYE, 0) = 0 AND @VEZNE_ID IS NOT NULL AND @MIKTAR > 0)
             BEGIN
                 DECLARE @PARA_ID INT = @SIL_STOK_PARA_ID;
                 DECLARE @CLEAN_AYAR VARCHAR(50) = UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(@AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))));
@@ -580,6 +585,8 @@ export class OzelUrunSqlRepository {
       vezneId: r.VEZNE_ID !== null && r.VEZNE_ID !== undefined ? Number(r.VEZNE_ID) : null,
       vezneKod: r.VEZNE_KOD ? (r.VEZNE_KOD || "").trim() : undefined,
       vezneAd: r.VEZNE_AD ? (r.VEZNE_AD || "").trim() : undefined,
+      konsinye: Boolean(r.KONSINYE),
+      katalog: Boolean(r.KATALOG),
       satildi: Boolean(r.SATILDI),
       yazdirildi: Boolean(r.YAZDIRILDI),
       yazdirildiZamani: r.YAZDIRILDI_ZAMANI ? new Date(r.YAZDIRILDI_ZAMANI).toISOString() : null,
@@ -801,6 +808,8 @@ export class OzelUrunSqlRepository {
     const tasTutarBirimiVal = dto.tasTutarBirimi || "USD";
     const vezneIdVal = dto.vezneId && Number(dto.vezneId) > 0 ? Number(dto.vezneId) : null;
     const satildiVal = dto.satildi ? 1 : 0;
+    const konsinyeVal = dto.konsinye ? 1 : 0;
+    const katalogVal = dto.katalog ? 1 : 0;
 
     let savedId: number | null = targetId;
 
@@ -859,6 +868,8 @@ export class OzelUrunSqlRepository {
         if (acceptedParams.has("TAS_TUTAR_BIRIMI")) req.input("TAS_TUTAR_BIRIMI", sql.VarChar(50), tasTutarBirimiVal);
         if (acceptedParams.has("VEZNE_ID")) req.input("VEZNE_ID", sql.Int, vezneIdVal);
         if (acceptedParams.has("SATILDI")) req.input("SATILDI", sql.Bit, satildiVal);
+        if (acceptedParams.has("KONSINYE")) req.input("KONSINYE", sql.Bit, konsinyeVal);
+        if (acceptedParams.has("KATALOG")) req.input("KATALOG", sql.Bit, katalogVal);
         if (acceptedParams.has("RESIM")) req.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
         if (acceptedParams.has("KULLANICI_ID")) req.input("KULLANICI_ID", sql.Int, kullaniciId || null);
         if (acceptedParams.has("YENI_KAYIT")) req.output("YENI_KAYIT", sql.Bit);
@@ -908,6 +919,8 @@ export class OzelUrunSqlRepository {
         directReq.input("TAS_TUTAR_BIRIMI", sql.VarChar(50), tasTutarBirimiVal);
         directReq.input("VEZNE_ID", sql.Int, vezneIdVal);
         directReq.input("SATILDI", sql.Bit, satildiVal);
+        directReq.input("KONSINYE", sql.Bit, konsinyeVal);
+        directReq.input("KATALOG", sql.Bit, katalogVal);
         directReq.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
         directReq.input("KULLANICI_ID", sql.Int, kullaniciId || null);
 
@@ -988,14 +1001,15 @@ export class OzelUrunSqlRepository {
           END
 
           -- Vezne Stok Yönetimi (Montür Gramajı / MIKTAR)
-          IF (@VEZNE_ID IS NOT NULL AND @P_ID IS NOT NULL AND @MIKTAR > 0)
+          -- Konsinye ürünler vezne stoğundan düşülmez!
+          IF (ISNULL(@KONSINYE, 0) = 0 AND @VEZNE_ID IS NOT NULL AND @P_ID IS NOT NULL AND @MIKTAR > 0)
           BEGIN
             IF (@ACTUAL_ID IS NOT NULL AND @ACTUAL_ID > 0)
             BEGIN
-              -- Eski miktarı iade et
-              DECLARE @E_V_ID INT, @E_M FLOAT, @E_A VARCHAR(250), @E_P_ID INT;
-              SELECT @E_V_ID = VEZNE_ID, @E_M = ISNULL(MIKTAR, 0), @E_A = AYAR FROM dbo.TODVZ_OZEL_URUN WHERE OZEL_URUN_ID = @ACTUAL_ID;
-              IF (@E_V_ID IS NOT NULL AND @E_M > 0)
+              -- Eski kaydı kontrol et; eğer konsinye değil idiyse eski miktarı iade et
+              DECLARE @E_V_ID INT, @E_M FLOAT, @E_A VARCHAR(250), @E_P_ID INT, @E_KONSINYE BIT;
+              SELECT @E_V_ID = VEZNE_ID, @E_M = ISNULL(MIKTAR, 0), @E_A = AYAR, @E_KONSINYE = ISNULL(KONSINYE, 0) FROM dbo.TODVZ_OZEL_URUN WHERE OZEL_URUN_ID = @ACTUAL_ID;
+              IF (ISNULL(@E_KONSINYE, 0) = 0 AND @E_V_ID IS NOT NULL AND @E_M > 0)
               BEGIN
                 SELECT TOP 1 @E_P_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@E_A)));
                 IF @E_P_ID IS NULL SET @E_P_ID = @P_ID;
@@ -1019,6 +1033,18 @@ export class OzelUrunSqlRepository {
               UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @P_ID;
             ELSE
               INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @P_ID, -@MIKTAR);
+          END
+          ELSE IF (ISNULL(@KONSINYE, 0) = 1 AND @ACTUAL_ID IS NOT NULL AND @ACTUAL_ID > 0)
+          BEGIN
+            -- Önceden normal ürün olup konsinyeye çevrildiyse önceki düşülen vezne stoğunu iade et
+            DECLARE @PREV_V_ID INT, @PREV_M FLOAT, @PREV_A VARCHAR(250), @PREV_P_ID INT, @PREV_KONSINYE BIT;
+            SELECT @PREV_V_ID = VEZNE_ID, @PREV_M = ISNULL(MIKTAR, 0), @PREV_A = AYAR, @PREV_KONSINYE = ISNULL(KONSINYE, 0) FROM dbo.TODVZ_OZEL_URUN WHERE OZEL_URUN_ID = @ACTUAL_ID;
+            IF (ISNULL(@PREV_KONSINYE, 0) = 0 AND @PREV_V_ID IS NOT NULL AND @PREV_M > 0)
+            BEGIN
+              SELECT TOP 1 @PREV_P_ID = PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@PREV_A)));
+              IF @PREV_P_ID IS NULL SET @PREV_P_ID = @P_ID;
+              UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @PREV_M WHERE VEZNE_ID = @PREV_V_ID AND PARA_ID = @PREV_P_ID;
+            END
           END
 
           IF (@ACTUAL_ID IS NOT NULL AND @ACTUAL_ID > 0)
@@ -1054,6 +1080,8 @@ export class OzelUrunSqlRepository {
                 TAS_TUTAR_BIRIMI = @TAS_TUTAR_BIRIMI,
                 VEZNE_ID = ISNULL(@VEZNE_ID, VEZNE_ID),
                 SATILDI = @SATILDI,
+                KONSINYE = @KONSINYE,
+                KATALOG = @KATALOG,
                 RESIM = CASE WHEN @RESIM IS NOT NULL THEN @RESIM ELSE RESIM END,
                 GUNCELLEYEN_ID = @KULLANICI_ID,
                 GUNCELLEME_ZAMANI = GETDATE()
@@ -1067,14 +1095,16 @@ export class OzelUrunSqlRepository {
               TARIH, GRUP_KODU, URUN_NO, BARKOD, MAMUL_TIPI, URETICI_FIRMA, MIKTAR, MIKTAR_BIRIMI,
               ORJINAL_KOD, AYAR, MODEL_OZELLIK_1, MODEL_OZELLIK_2, BANKO, MALIYET, MALIYET_PARA_KODU,
               KAR_YUZDESI, SABITLE, SATIS_FIYATI, SATIS_PARA_KODU, HIZLI_GIRIS, TAS_CINSI, TAS_MIKTAR,
-              TAS_BIRIM, TAS_RENK, TAS_SAFLIK, TAS_ADET, TAS_TUTAR, TAS_TUTAR_BIRIMI, VEZNE_ID, SATILDI, RESIM,
+              TAS_BIRIM, TAS_RENK, TAS_SAFLIK, TAS_ADET, TAS_TUTAR, TAS_TUTAR_BIRIMI, VEZNE_ID, SATILDI,
+              KONSINYE, KATALOG, RESIM,
               EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
             )
             VALUES (
               ISNULL(@TARIH, GETDATE()), @GRUP_KODU, @URUN_NO, @BARKOD, @MAMUL_TIPI, @URETICI_FIRMA, @MIKTAR, @MIKTAR_BIRIMI,
               @ORJINAL_KOD, @AYAR, @MODEL_OZELLIK_1, @MODEL_OZELLIK_2, @BANKO, @MALIYET, @MALIYET_PARA_KODU,
               @KAR_YUZDESI, @SABITLE, @SATIS_FIYATI, @SATIS_PARA_KODU, @HIZLI_GIRIS, @TAS_CINSI, @TAS_MIKTAR,
-              @TAS_BIRIM, @TAS_RENK, @TAS_SAFLIK, @TAS_ADET, @TAS_TUTAR, @TAS_TUTAR_BIRIMI, @VEZNE_ID, @SATILDI, @RESIM,
+              @TAS_BIRIM, @TAS_RENK, @TAS_SAFLIK, @TAS_ADET, @TAS_TUTAR, @TAS_TUTAR_BIRIMI, @VEZNE_ID, @SATILDI,
+              @KONSINYE, @KATALOG, @RESIM,
               @KULLANICI_ID, GETDATE(), @KULLANICI_ID, GETDATE()
             );
 

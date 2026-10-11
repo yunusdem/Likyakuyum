@@ -319,7 +319,11 @@ const UrunStoguPage: React.FC<Props> = ({ tip }) => {
                     <td className={`text-end fw-semibold ${s.satildi ? karRenk(s.kar) : "text-muted"}`}>{sayi(s.kar, 4)}</td>
                     <td className={`text-end fw-semibold ${s.satildi ? karRenk(s.karTl) : "text-muted"}`}>{sayi(s.karTl)}</td>
                     <td className={`text-end ${s.satildi ? karRenk(s.karTl) : "text-muted"}`}>{s.karYuzde === null ? "" : sayi(s.karYuzde)}</td>
-                    <td className="text-center"><Badge bg={s.satildi ? "warning" : "success"} text={s.satildi ? "dark" : undefined}>{s.durum}</Badge></td>
+                    <td className="text-center">
+                      <Badge bg={s.satildi ? "warning" : "success"} text={s.satildi ? "dark" : undefined}>{s.durum}</Badge>
+                      {s.konsinye && <Badge bg="warning" text="dark" className="ms-1">Konsinye</Badge>}
+                      {s.katalog && <Badge bg="info" text="dark" className="ms-1">Katalog</Badge>}
+                    </td>
                     <td>{tarihTr(s.satisTarihi)}</td>
                     <td className="font-monospace">{s.faturaNo}</td>
                     <td>{s.musteri}</td>

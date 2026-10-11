@@ -81,6 +81,7 @@ export const lisansKoduCoz = (kod, acikB64) => {
         Number.isInteger(v.kullaniciLimiti) &&
         v.kullaniciLimiti > 0 &&
         (v.moduller === null || Array.isArray(v.moduller)) &&
+        (v.urunler === undefined || v.urunler === null || Array.isArray(v.urunler)) &&
         !!v.iletisim;
     if (!alanlarDogru)
         throw new LisansKoduGecersiz("BICIM", "Kod içeriği eksik veya hatalı.");

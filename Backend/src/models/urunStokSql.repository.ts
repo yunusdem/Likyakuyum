@@ -45,6 +45,8 @@ export interface UrunStokSatirHam {
   SATIS_FIYATI: number | null;
   SATIS_PARA_KODU: string | null;
   SATILDI: boolean | null;
+  KONSINYE?: boolean | null;
+  KATALOG?: boolean | null;
   FATURA_ID: number | null;
   FATURA_NO: string | null;
   SATIS_TARIHI: Date | null;
@@ -132,6 +134,7 @@ export class UrunStokSqlRepository {
         U.${idKolon} URUN_ID, U.TARIH, U.GRUP_KODU, U.URUN_NO, U.BARKOD, ${adKolon} URUN_ADI, U.AYAR, U.URETICI_FIRMA, U.ORJINAL_KOD, U.BANKO,
         U.MIKTAR, ${birimKolon} MIKTAR_BIRIMI, ${hasGramKolon} HAS_GRAM, ${iscilikKolonlari},
         U.MALIYET, U.MALIYET_PARA_KODU, U.SATIS_FIYATI, U.SATIS_PARA_KODU, U.SATILDI,
+        ISNULL(U.KONSINYE, 0) KONSINYE, ISNULL(U.KATALOG, 0) KATALOG,
         SAT.FATURA_ID, SAT.FATURA_NO, SAT.SATIS_TARIHI, SAT.CARI_KART_ID, SAT.MUSTERI, SAT.SATIS_TUTAR, SAT.SATIS_TOPLAM_TUTAR, SAT.FATURA_PARA_ID, SAT.FATURA_KUR
       FROM dbo.${tablo} U
       ${satisApply}

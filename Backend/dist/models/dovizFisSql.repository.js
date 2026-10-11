@@ -99,6 +99,10 @@ export class DovizFisSqlRepository {
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [ILCE] VARCHAR(100) NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'IL')
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [IL] VARCHAR(100) NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'IS_ARBITRAJ')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [IS_ARBITRAJ] BIT NOT NULL CONSTRAINT DF_TODVZ_FIS_IS_ARBITRAJ DEFAULT(0);
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'ARBITRAJ_ID')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [ARBITRAJ_ID] INT NULL;
         END
       `);
             // 2. Table: TODVZ_FIS_SATIRI
@@ -302,6 +306,7 @@ export class DovizFisSqlRepository {
             @GM_TEYIT_SAYI VARCHAR(30) = NULL,
             @GM_FATURA_NO VARCHAR(30) = NULL,
             @ARBITRAJ_ID INT = NULL,
+            @IS_ARBITRAJ BIT = 0,
             @TELEFON_NO VARCHAR(30) = NULL,
             @MESLEK_ID INT = NULL,
             @DOGUM_TARIHI DATETIME = NULL,
@@ -465,7 +470,7 @@ export class DovizFisSqlRepository {
 
                   IF @SON_KAYITLI_SERI IS NOT NULL AND ISNUMERIC(RIGHT(RTRIM(@SON_KAYITLI_SERI), 6)) = 1
                   BEGIN
-                    SET @SERI_NO = LEFT(RTRIM(@SON_KAYITLI_SERI), LEN(RTRIM(@SON_KAYITLI_SERI)) - 6) + RIGHT('000000' + CAST(CAST(RIGHT(RTRIM(@SON_KAYITLI_SERI), 6) AS INT) + 1 AS VARCHAR(10)), 6);
+                    SET @SERI_NO = LEFT(RTRIM(@SON_KAYITLI_SERI), LEN(RTRIM(@SON_KAYITLI_SERI)) - 6) + RIGHT('000000' + CAST(ISNULL(TRY_CAST(RIGHT(RTRIM(@SON_KAYITLI_SERI), 6) AS INT), 0) + 1 AS VARCHAR(10)), 6);
                   END
                   ELSE
                   BEGIN
@@ -737,7 +742,7 @@ export class DovizFisSqlRepository {
                 VEKIL_ADI, VEKIL_KIMLIK_NO, TOPLAM_TUTAR, YUVARLAMA, ODEME_TUTARI, BANKA_HESABI_ID,
                 KMV_UYGULAMA_SEKLI, EPOSTA, MERKEZ_USD_KURU, GISE_USD_KURU, GM_BEYANNAME_TARIH,
                 GM_BEYANNAME_NO, GM_DOVIZ_TARIH, GM_DOVIZ_SAYI, GM_TEYIT_TARIH, GM_TEYIT_SAYI,
-                GM_FATURA_NO, ARBITRAJ_ID, TELEFON_NO, MESLEK_ID, DOGUM_TARIHI, DOGUM_YERI,
+                GM_FATURA_NO, ARBITRAJ_ID, IS_ARBITRAJ, TELEFON_NO, MESLEK_ID, DOGUM_TARIHI, DOGUM_YERI,
                 KIMLIK_SERI_NO, ANNE_ADI, IPTAL, IPTAL_TARIHI, MASAK_LISTESINDE_VAR,
                 SUPHELI_ISLEMLER_YETKILI_ID, YUVARLAMA_ARALIGI, YUVARLAMA_ESIGI, E_FATURA_POSTA_KUTUSU,
                 BELGE_TURU, E_FATURA_ETTN, KIMLIK_GECERLILIK_TARIHI, KIMLIK_BELGE_TURU,
@@ -751,7 +756,7 @@ export class DovizFisSqlRepository {
                 @VEKIL_ADI, @VEKIL_KIMLIK_NO, @TOPLAM_TUTAR, @YUVARLAMA, @ODEME_TUTARI, @BANKA_HESABI_ID,
                 @KMV_UYGULAMA_SEKLI, @EPOSTA, @MERKEZ_USD_KURU, @GISE_USD_KURU, @GM_BEYANNAME_TARIH,
                 @GM_BEYANNAME_NO, @GM_DOVIZ_TARIH, @GM_DOVIZ_SAYI, @GM_TEYIT_TARIH, @GM_TEYIT_SAYI,
-                @GM_FATURA_NO, @ARBITRAJ_ID, @TELEFON_NO, @MESLEK_ID, @DOGUM_TARIHI, @DOGUM_YERI,
+                @GM_FATURA_NO, @ARBITRAJ_ID, CASE WHEN @IS_ARBITRAJ = 1 OR @GELIS_NEDENI LIKE '%Arbitraj%' THEN 1 ELSE 0 END, @TELEFON_NO, @MESLEK_ID, @DOGUM_TARIHI, @DOGUM_YERI,
                 @KIMLIK_SERI_NO, @ANNE_ADI, @IPTAL, @IPTAL_TARIHI, @MASAK_LISTESINDE_VAR,
                 @SUPHELI_ISLEMLER_YETKILI_ID, @YUVARLAMA_ARALIGI, @YUVARLAMA_ESIGI, @E_FATURA_POSTA_KUTUSU,
                 @BELGE_TURU, NEWID(), @KIMLIK_GECERLILIK_TARIHI, @KIMLIK_BELGE_TURU,
@@ -810,7 +815,9 @@ export class DovizFisSqlRepository {
                 GM_BEYANNAME_TARIH = @GM_BEYANNAME_TARIH, GM_BEYANNAME_NO = @GM_BEYANNAME_NO,
                 GM_DOVIZ_TARIH = @GM_DOVIZ_TARIH, GM_DOVIZ_SAYI = @GM_DOVIZ_SAYI,
                 GM_TEYIT_TARIH = @GM_TEYIT_TARIH, GM_TEYIT_SAYI = @GM_TEYIT_SAYI,
-                GM_FATURA_NO = @GM_FATURA_NO, ARBITRAJ_ID = @ARBITRAJ_ID, TELEFON_NO = @TELEFON_NO,
+                GM_FATURA_NO = @GM_FATURA_NO, ARBITRAJ_ID = @ARBITRAJ_ID,
+                IS_ARBITRAJ = CASE WHEN @IS_ARBITRAJ = 1 OR @GELIS_NEDENI LIKE '%Arbitraj%' THEN 1 ELSE 0 END,
+                TELEFON_NO = @TELEFON_NO,
                 MESLEK_ID = @MESLEK_ID, DOGUM_TARIHI = @DOGUM_TARIHI, DOGUM_YERI = @DOGUM_YERI,
                 KIMLIK_SERI_NO = @KIMLIK_SERI_NO, ANNE_ADI = @ANNE_ADI, IPTAL = @IPTAL,
                 IPTAL_TARIHI = @IPTAL_TARIHI, MASAK_LISTESINDE_VAR = @MASAK_LISTESINDE_VAR,
@@ -1034,6 +1041,33 @@ export class DovizFisSqlRepository {
             if (firstVal && Number(firstVal) > 0)
                 defaultParaId = Number(firstVal);
         }
+        // Helper: Safely resolve positive integer ID or null (never pass 0 or negative ID into foreign key parameters)
+        const toValidId = (v) => {
+            if (v === undefined || v === null || v === "")
+                return null;
+            const n = typeof v === "number" ? v : parseInt(String(v), 10);
+            return (!isNaN(n) && n > 0) ? n : null;
+        };
+        const parseSafeDecimal = (val, defaultVal = 0) => {
+            if (val === undefined || val === null || val === "")
+                return defaultVal;
+            if (typeof val === "number")
+                return isNaN(val) ? defaultVal : val;
+            let s = String(val).trim();
+            if (s.includes(",") && s.includes(".")) {
+                if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
+                    s = s.replace(/\./g, "").replace(",", ".");
+                }
+                else {
+                    s = s.replace(/,/g, "");
+                }
+            }
+            else if (s.includes(",")) {
+                s = s.replace(",", ".");
+            }
+            const parsed = parseFloat(s);
+            return isNaN(parsed) ? defaultVal : parsed;
+        };
         // Calculate totals from items - ALWAYS 0-indexed satirNo for SODVZ_FIS_KAYDET temp table
         let toplamTutar = 0;
         const items = dto.satirlar.map((s, idx) => {
@@ -1044,13 +1078,30 @@ export class DovizFisSqlRepository {
             if (!pId || pId <= 0) {
                 pId = defaultParaId;
             }
-            const miktar = Number(s.miktar) || 0;
-            const kur = Number(s.kur) || 1.0;
-            const tutar = Number(s.tutar) || (miktar * kur);
+            const miktar = parseSafeDecimal(s.miktar, 0);
+            const kur = parseSafeDecimal(s.kur, 1.0);
+            const tutarVal = parseSafeDecimal(s.tutar, 0);
+            const tutar = tutarVal > 0 ? tutarVal : (miktar * kur);
             toplamTutar += tutar;
             const satirNo = idx; // In SODVZ_FIS_KAYDET, SATIR_NO must always be 0-based for #TODVZ_ISKELE_FIS_SATIRI
-            const bmvOrani = tip === 1 ? (s.bmvOrani !== undefined && s.bmvOrani !== null ? Number(s.bmvOrani) : 0.2) : 0;
-            const bmv = tip === 1 ? (s.bmv !== undefined && s.bmv !== null && Number(s.bmv) > 0 ? Number(s.bmv) : (tutar * 0.002)) : 0;
+            let bmvOrani = parseFloat(parseSafeDecimal(s.bmvOrani, 0).toFixed(4));
+            let bmv = parseFloat(parseSafeDecimal(s.bmv, 0).toFixed(2));
+            const iscilik = parseSafeDecimal(s.iscilik, 0);
+            const giseKuruVal = parseSafeDecimal(s.giseKuru, 0);
+            const giseKuru = giseKuruVal > 0 ? giseKuruVal : kur;
+            const komisyonOrani = parseSafeDecimal(s.komisyonOrani, 0);
+            const komisyon = parseFloat(parseSafeDecimal(s.komisyon, 0).toFixed(2));
+            let kmvOrani = parseFloat(parseSafeDecimal(s.kmvOrani, 0).toFixed(4));
+            let kmv = parseFloat(parseSafeDecimal(s.kmv, 0).toFixed(2));
+            const kdvOrani = parseSafeDecimal(s.kdvOrani, 0);
+            const kdv = parseFloat(parseSafeDecimal(s.kdv, 0).toFixed(2));
+            // ALIŞ fişinde (tip === 0) KMV ve BMV YOKTUR! Sadece komisyon vardır!
+            if (tip === 0) {
+                bmvOrani = 0;
+                bmv = 0;
+                kmvOrani = 0;
+                kmv = 0;
+            }
             return {
                 satirNo,
                 paraId: pId,
@@ -1058,27 +1109,32 @@ export class DovizFisSqlRepository {
                 paraAdi: s.paraAdi || "",
                 miktar,
                 kur,
-                iscilik: Number(s.iscilik) || 0,
-                giseKuru: Number(s.giseKuru) || kur,
+                iscilik,
+                giseKuru,
                 tutar,
-                komisyonOrani: Number(s.komisyonOrani) || 0,
-                komisyon: Number(s.komisyon) || 0,
+                komisyonOrani,
+                komisyon,
                 bmvOrani,
                 bmv,
-                kmvOrani: Number(s.kmvOrani) || 0,
-                kmv: Number(s.kmv) || 0,
-                kdvOrani: Number(s.kdvOrani) || 0,
-                kdv: Number(s.kdv) || 0,
-                bankaHesabiId: s.bankaHesabiId || null,
+                kmvOrani,
+                kmv,
+                kdvOrani,
+                kdv,
+                bankaHesabiId: toValidId(s.bankaHesabiId),
                 seriNo: s.seriNo || seriNo || null,
                 belgeNo: s.belgeNo || belgeNo || null,
             };
         });
-        const bsmvTotal = items.reduce((acc, r) => acc + (r.bmv || 0), 0);
-        const calculatedOdeme = tip === 1 ? (toplamTutar + bsmvTotal) : toplamTutar;
-        const finalToplamTutar = Number(dto.toplamTutar) || toplamTutar;
-        const finalOdemeTutari = Number(dto.odemeTutari) || calculatedOdeme;
-        const yuvarlama = Number(dto.yuvarlama) || 0;
+        const bsmvTotal = tip === 0 ? 0 : items.reduce((acc, r) => acc + (r.bmv || 0), 0);
+        const kmvTotal = tip === 0 ? 0 : items.reduce((acc, r) => acc + (r.kmv || 0), 0);
+        const komTotal = items.reduce((acc, r) => acc + (r.komisyon || 0), 0);
+        const kmvMode = (dto.kmvUygulamaSekli === 1 || dto.kmvUygulamaSekli === 2 || dto.kmvUygulamaSekli === 3) ? dto.kmvUygulamaSekli : 3;
+        const effectiveKmvTotal = (tip === 1 && kmvMode === 3) ? kmvTotal : 0;
+        const totalMasraf = tip === 0 ? komTotal : (bsmvTotal + effectiveKmvTotal + komTotal);
+        const calculatedOdeme = tip === 1 ? (toplamTutar + totalMasraf) : (toplamTutar - totalMasraf);
+        const finalToplamTutar = parseSafeDecimal(dto.toplamTutar, toplamTutar);
+        const finalOdemeTutari = parseSafeDecimal(dto.odemeTutari, calculatedOdeme);
+        const yuvarlama = parseSafeDecimal(dto.yuvarlama, 0);
         const rawUnvan = (dto.unvan || "").trim();
         const isIsimBeyanEdilmemis = !rawUnvan ||
             rawUnvan.toLocaleUpperCase('tr-TR') === "İSİM BEYAN EDİLMEMİŞTİR" ||
@@ -1091,11 +1147,6 @@ export class DovizFisSqlRepository {
         const kullaniciId = Number(dto.kullaniciId) || 1;
         const vezneId = (dto.vezneId && Number(dto.vezneId) > 0) ? Number(dto.vezneId) : kullaniciId;
         const guid = (dto.guid && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(dto.guid)) ? dto.guid : crypto.randomUUID();
-        // Helper: Safely resolve positive integer ID or null (never pass 0 or negative ID into foreign key parameters)
-        const toValidId = (v) => {
-            const n = Number(v);
-            return (!isNaN(n) && n > 0) ? n : null;
-        };
         // Check if SODVZ_FIS_KAYDET exists in the DB
         const procCheck = await pool.request().query(`
       SELECT 1 FROM sys.procedures WHERE name = 'SODVZ_FIS_KAYDET'
@@ -1187,14 +1238,14 @@ export class DovizFisSqlRepository {
             procReq.input("VEKIL_KISILIK_TIPI", sql.TinyInt, dto.vekilKisilikTipi || 0);
             procReq.input("VEKIL_ADI", sql.VarChar(50), cleanVekilAdi);
             procReq.input("VEKIL_KIMLIK_NO", sql.VarChar(20), cleanVekilKimlik);
-            procReq.input("TOPLAM_TUTAR", sql.Float, finalToplamTutar);
-            procReq.input("YUVARLAMA", sql.Float, yuvarlama);
-            procReq.input("ODEME_TUTARI", sql.Float, finalOdemeTutari);
+            procReq.input("TOPLAM_TUTAR", sql.Decimal(18, 4), finalToplamTutar);
+            procReq.input("YUVARLAMA", sql.Decimal(18, 4), yuvarlama);
+            procReq.input("ODEME_TUTARI", sql.Decimal(18, 4), finalOdemeTutari);
             procReq.input("BANKA_HESABI_ID", sql.Int, toValidId(dto.bankaHesabiId));
             procReq.input("KMV_UYGULAMA_SEKLI", sql.TinyInt, dto.kmvUygulamaSekli || 0);
             procReq.input("EPOSTA", sql.VarChar(100), cleanEposta);
-            procReq.input("MERKEZ_USD_KURU", sql.Float, dto.merkezUsdKuru || 1.0);
-            procReq.input("GISE_USD_KURU", sql.Float, dto.giseUsdKuru || 1.0);
+            procReq.input("MERKEZ_USD_KURU", sql.Decimal(18, 6), parseSafeDecimal(dto.merkezUsdKuru, 1.0));
+            procReq.input("GISE_USD_KURU", sql.Decimal(18, 6), parseSafeDecimal(dto.giseUsdKuru, 1.0));
             procReq.input("GM_BEYANNAME_TARIH", sql.DateTime, safeDate(dto.gmBeyannameTarih));
             procReq.input("GM_BEYANNAME_NO", sql.VarChar(30), cleanGmBeyannameNo);
             procReq.input("GM_DOVIZ_TARIH", sql.DateTime, safeDate(dto.gmDovizTarih));
@@ -1203,6 +1254,7 @@ export class DovizFisSqlRepository {
             procReq.input("GM_TEYIT_SAYI", sql.VarChar(30), cleanGmTeyitSayi);
             procReq.input("GM_FATURA_NO", sql.VarChar(30), cleanGmFaturaNo);
             procReq.input("ARBITRAJ_ID", sql.Int, toValidId(dto.arbitrajId));
+            procReq.input("IS_ARBITRAJ", sql.Bit, dto.isArbitraj || (dto.gelisNedeni && dto.gelisNedeni.toLowerCase().includes("arbitraj")) ? 1 : 0);
             procReq.input("TELEFON_NO", sql.VarChar(30), cleanTel);
             procReq.input("MESLEK_ID", sql.Int, toValidId(dto.meslekId));
             procReq.input("DOGUM_TARIHI", sql.DateTime, safeDate(dto.dogumTarihi));
@@ -1213,8 +1265,8 @@ export class DovizFisSqlRepository {
             procReq.input("IPTAL_TARIHI", sql.DateTime, safeDate(dto.iptalTarihi));
             procReq.input("MASAK_LISTESINDE_VAR", sql.Bit, dto.masakListesindeVar ? 1 : 0);
             procReq.input("SUPHELI_ISLEMLER_YETKILI_ID", sql.Int, toValidId(dto.supheliIslemlerYetkiliId));
-            procReq.input("YUVARLAMA_ARALIGI", sql.Float, dto.yuvarlamaAraligi || 0);
-            procReq.input("YUVARLAMA_ESIGI", sql.Float, dto.yuvarlamaEsigi || 0);
+            procReq.input("YUVARLAMA_ARALIGI", sql.Decimal(18, 4), parseSafeDecimal(dto.yuvarlamaAraligi, 0));
+            procReq.input("YUVARLAMA_ESIGI", sql.Decimal(18, 4), parseSafeDecimal(dto.yuvarlamaEsigi, 0));
             procReq.input("E_FATURA_POSTA_KUTUSU", sql.VarChar(100), cleanPostaKutusu);
             procReq.input("BELGE_TURU", sql.TinyInt, dto.belgeTuru || 0);
             procReq.input("KIMLIK_GECERLILIK_TARIHI", sql.DateTime, safeDate(dto.kimlikGecerlilikTarihi));
@@ -1231,45 +1283,45 @@ export class DovizFisSqlRepository {
             procReq.input("CLEAN_IL", sql.VarChar(100), (dto.il || "").trim().slice(0, 100) || null);
             procReq.input("KULLANICI_ID", sql.Int, kullaniciId);
             procReq.input("YAZICI_ID", sql.Int, toValidId(dto.yaziciId));
-            procReq.input("IN_GUID", sql.VarChar(40), guid || null);
+            procReq.input("IN_GUID", sql.UniqueIdentifier, guid);
             procReq.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar ? 1 : 0);
             // Row Parameter definitions
             const rowValuesSql = [];
             items.forEach((item, idx) => {
-                const m = Number(item.miktar) || 0;
-                const k = Number(item.kur) || 1.0;
-                const tutar = Number(item.tutar) || (m * k);
-                const iscilik = Number(item.iscilik) || 0;
-                const giseKuru = Number(item.giseKuru) || k;
-                const komOrani = Number(item.komisyonOrani) || 0;
-                const kom = Number(item.komisyon) || 0;
-                const bmvOrani = Number(item.bmvOrani) || 0;
-                const bmv = Number(item.bmv) || 0;
-                const kmvOrani = Number(item.kmvOrani) || 0;
-                const kmv = Number(item.kmv) || 0;
-                const kdvOrani = Number(item.kdvOrani) || 0;
-                const kdv = Number(item.kdv) || 0;
-                const pId = Number(item.paraId) || defaultParaId;
-                const bankaId = toValidId(item.bankaHesabiId);
+                const m = item.miktar;
+                const k = item.kur;
+                const tutar = item.tutar;
+                const iscilik = item.iscilik;
+                const giseKuru = item.giseKuru;
+                const komOrani = item.komisyonOrani;
+                const kom = item.komisyon;
+                const bmvOrani = item.bmvOrani;
+                const bmv = item.bmv;
+                const kmvOrani = item.kmvOrani;
+                const kmv = item.kmv;
+                const kdvOrani = item.kdvOrani;
+                const kdv = item.kdv;
+                const pId = item.paraId || defaultParaId;
+                const bankaId = item.bankaHesabiId;
                 const satirSeri = (item.seriNo || seriNo || "").slice(0, 20);
                 const satirBelge = (item.belgeNo || belgeNo || "").slice(0, 50);
                 rowValuesSql.push(`(
           @IN_GUID,
           ${idx},
-          ${m},
+          ${m.toFixed(4)},
           ${pId},
-          ${k},
-          ${iscilik},
-          ${giseKuru},
-          ${tutar},
-          ${komOrani},
-          ${kom},
-          ${bmvOrani},
-          ${bmv},
-          ${kmvOrani},
-          ${kmv},
-          ${kdvOrani},
-          ${kdv},
+          ${k.toFixed(6)},
+          ${iscilik.toFixed(4)},
+          ${giseKuru.toFixed(6)},
+          ${tutar.toFixed(4)},
+          ${komOrani.toFixed(4)},
+          ${kom.toFixed(4)},
+          ${bmvOrani.toFixed(4)},
+          ${bmv.toFixed(4)},
+          ${kmvOrani.toFixed(4)},
+          ${kmv.toFixed(4)},
+          ${kdvOrani.toFixed(4)},
+          ${kdv.toFixed(4)},
           ${bankaId ? bankaId : "NULL"},
           ${satirSeri ? `'${satirSeri.replace(/'/g, "''")}'` : "NULL"},
           ${satirBelge ? `'${satirBelge.replace(/'/g, "''")}'` : "NULL"}
@@ -1283,7 +1335,7 @@ export class DovizFisSqlRepository {
           DROP TABLE #TODVZ_ISKELE_FIS_SATIRI;
 
         CREATE TABLE #TODVZ_ISKELE_FIS_SATIRI (
-          [GUID] VARCHAR(50) COLLATE database_default NOT NULL,
+          [GUID] UNIQUEIDENTIFIER NOT NULL,
           [SATIR_NO] INT NOT NULL,
           [MIKTAR] DECIMAL(18,4) NOT NULL,
           [PARA_ID] INT NOT NULL,
@@ -1589,7 +1641,7 @@ export class DovizFisSqlRepository {
               END;
               IF LEN(@DIGITS) > 0
               BEGIN
-                SET @SON_NUM = CAST(@DIGITS AS BIGINT);
+                SET @SON_NUM = ISNULL(TRY_CAST(@DIGITS AS BIGINT), 0);
                 DECLARE @NEXT_SERI_STR VARCHAR(30) = CAST((@SON_NUM + 1) AS VARCHAR(30));
                 IF LEN(@NEXT_SERI_STR) < LEN(@DIGITS)
                   SET @NEXT_SERI_STR = REPLICATE('0', LEN(@DIGITS) - LEN(@NEXT_SERI_STR)) + @NEXT_SERI_STR;
@@ -1743,7 +1795,7 @@ export class DovizFisSqlRepository {
               END;
               IF LEN(@B_DIGITS) > 0
               BEGIN
-                SET @SON_B_NUM = CAST(@B_DIGITS AS BIGINT);
+                SET @SON_B_NUM = ISNULL(TRY_CAST(@B_DIGITS AS BIGINT), 0);
                 DECLARE @NEXT_B_STR VARCHAR(30) = CAST((@SON_B_NUM + 1) AS VARCHAR(30));
                 IF LEN(@NEXT_B_STR) < LEN(@B_DIGITS)
                   SET @NEXT_B_STR = REPLICATE('0', LEN(@B_DIGITS) - LEN(@NEXT_B_STR)) + @NEXT_B_STR;
@@ -1918,7 +1970,7 @@ export class DovizFisSqlRepository {
             FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
             WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@ISCILIK_HESAP_KODU) 
                OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@ISCILIK_HESAP_KODU)
-               OR (ISNUMERIC(@ISCILIK_HESAP_KODU) = 1 AND HESAP_ID = CAST(@ISCILIK_HESAP_KODU AS INT));
+               OR HESAP_ID = TRY_CAST(@ISCILIK_HESAP_KODU AS INT);
           END;
 
           IF (@TARGET_ISCILIK_HESAP_ID IS NOT NULL)
@@ -2127,28 +2179,49 @@ export class DovizFisSqlRepository {
       WHERE S.FIS_ID = @FIS_ID
       ORDER BY S.SATIR_NO ASC
     `);
-        const satirlar = (satirlarRes.recordset || []).map((s) => ({
-            satirNo: Number(s.SATIR_NO) || 1,
-            paraId: Number(s.PARA_ID),
-            paraKodu: (s.PARA_KOD || "").trim().toUpperCase(),
-            paraAdi: (s.PARA_AD || "").trim(),
-            miktar: Number(s.MIKTAR) || 0,
-            kur: Number(s.KUR) || 1.0,
-            iscilik: Number(s.ISCILIK) || 0,
-            giseKuru: Number(s.GISE_KURU) || 1.0,
-            tutar: Number(s.TUTAR) || 0,
-            komisyonOrani: Number(s.KOMISYON_ORANI) || 0,
-            komisyon: Number(s.KOMISYON) || 0,
-            bmvOrani: Number(s.BMV_ORANI) || 0,
-            bmv: Number(s.BMV) || 0,
-            kmvOrani: Number(s.KMV_ORANI) || 0,
-            kmv: Number(s.KMV) || 0,
-            kdvOrani: Number(s.KDV_ORANI) || 0,
-            kdv: Number(s.KDV) || 0,
-            bankaHesabiId: s.BANKA_HESABI_ID || null,
-            seriNo: s.SERI_NO || "",
-            belgeNo: s.BELGE_NO || "",
-        }));
+        const satirlar = (satirlarRes.recordset || []).map((s) => {
+            let bmvOrani = parseFloat((Number(s.BMV_ORANI) || 0).toFixed(4));
+            let bmv = parseFloat((Number(s.BMV) || 0).toFixed(2));
+            let kmvOrani = parseFloat((Number(s.KMV_ORANI) || 0).toFixed(4));
+            let kmv = parseFloat((Number(s.KMV) || 0).toFixed(2));
+            // SATIŞ fişinde (tip === 1) eski kayıtlarda KMV yerine BMV'ye yazılmışsa KMV'ye aktar (kolon kaymasını engelle)
+            const tipVal = Number(row.TIP) || 0;
+            if (tipVal === 1 && kmv === 0 && kmvOrani === 0 && bmv > 0) {
+                kmv = bmv;
+                kmvOrani = bmvOrani || 0.2;
+                bmv = 0;
+                bmvOrani = 0;
+            }
+            else if (tipVal === 0) {
+                // ALIŞ fişinde KMV ve BMV YOKTUR! Sadece komisyon vardır!
+                bmv = 0;
+                bmvOrani = 0;
+                kmv = 0;
+                kmvOrani = 0;
+            }
+            return {
+                satirNo: Number(s.SATIR_NO) || 1,
+                paraId: Number(s.PARA_ID),
+                paraKodu: (s.PARA_KOD || "").trim().toUpperCase(),
+                paraAdi: (s.PARA_AD || "").trim(),
+                miktar: Number(s.MIKTAR) || 0,
+                kur: Number(s.KUR) || 1.0,
+                iscilik: Number(s.ISCILIK) || 0,
+                giseKuru: Number(s.GISE_KURU) || 1.0,
+                tutar: Number(s.TUTAR) || 0,
+                komisyonOrani: Number(s.KOMISYON_ORANI) || 0,
+                komisyon: Number(s.KOMISYON) || 0,
+                bmvOrani,
+                bmv,
+                kmvOrani,
+                kmv,
+                kdvOrani: Number(s.KDV_ORANI) || 0,
+                kdv: Number(s.KDV) || 0,
+                bankaHesabiId: s.BANKA_HESABI_ID || null,
+                seriNo: s.SERI_NO || "",
+                belgeNo: s.BELGE_NO || "",
+            };
+        });
         const tip = Number(row.TIP) || 0;
         const bsmvSum = satirlar.reduce((acc, cur) => acc + cur.bmv, 0);
         const formatDbDate = (d) => {

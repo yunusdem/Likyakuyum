@@ -5,6 +5,7 @@
 
 import { apiClient } from "./apiClient";
 import { UserProfileDto } from "./userService";
+import { FastLookupCache } from "./fastLookupCache";
 
 /** Giriş = Müşteri No + seçilen veritabanı (firmaId) + kullanıcı adı + şifre. DB bağlantısı sunucuda çözülür. */
 export interface LoginCredentials {
@@ -105,6 +106,9 @@ export const AuthService = {
    * Sets token, user and active database in localStorage
    */
   setSession(token: string, user: UserProfileDto, dbServer?: string, dbName?: string): void {
+    try {
+      FastLookupCache.clear();
+    } catch {}
     localStorage.setItem(ACCESS_TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     if (dbServer) {
@@ -125,6 +129,9 @@ export const AuthService = {
    * Clears session from localStorage
    */
   clearSession(): void {
+    try {
+      FastLookupCache.clear();
+    } catch {}
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
   },

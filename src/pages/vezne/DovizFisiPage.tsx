@@ -39,6 +39,7 @@ import MasakModal from "../../components/masak/MasakModal";
 import { DovizFisiPrintModal } from "./DovizFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
+import { F10YaziciSecimModal } from "./F10YaziciSecimModal";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "./MusteriSecimModal";
 import { KurListesiModal } from "./KurListesiModal";
@@ -365,6 +366,10 @@ export const DovizFisiPage: React.FC = () => {
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState<boolean>(false);
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [showF10PrinterModal, setShowF10PrinterModal] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [pendingPrinter, setPendingPrinter] = useState<YaziciItem | null>(null);
+  const [pendingCopies, setPendingCopies] = useState<number>(1);
 
   useEffect(() => {
     PrinterService.getYazicilar().then(setPrinters).catch(() => { });
@@ -611,9 +616,19 @@ export const DovizFisiPage: React.FC = () => {
     const bmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0
       ? Number(activeStat.bmvOrani)
       : 0;
-    const kmvRate = (kmvMode !== 1 && activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null && Number(activeStat.kmvOrani) > 0)
-      ? Number(activeStat.kmvOrani)
+    const rawStatKmv = activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null ? Number(activeStat.kmvOrani) : 0;
+    let kmvRate = (kmvMode !== 1)
+      ? (rawStatKmv > 0 ? rawStatKmv : (tip === 1 ? (bmvRate > 0 ? bmvRate : 0.2) : 0))
       : 0;
+    let effBmvRate = bmvRate;
+    if (tip === 1 && kmvMode !== 1 && rawStatKmv === 0 && effBmvRate > 0) {
+      effBmvRate = 0; // SATIŞ fişinde eski kayıtlarda BMV olarak girilen oran KMV'ye aktarıldı, BMV hücresi temizlendi
+    }
+    // ALIŞ FİŞİNDE KMV VE BMV YOK, SADECE KOMİSYON VAR!
+    if (tip === 0) {
+      effBmvRate = 0;
+      kmvRate = 0;
+    }
     const komRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0
       ? Number(activeStat.komisyonOrani)
       : 0;
@@ -628,7 +643,7 @@ export const DovizFisiPage: React.FC = () => {
       kur: "",
       komisyonOrani: komRate > 0 ? komRate.toString() : "",
       komisyon: "",
-      bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
+      bmvOrani: effBmvRate > 0 ? effBmvRate.toString() : "",
       bmv: "",
       kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
       kmv: "",
@@ -707,14 +722,23 @@ export const DovizFisiPage: React.FC = () => {
   linesRef.current = lines;
   const hasInitialFocusedRef = useRef(false);
 
-  // Auto-focus handler: Focus on Alış / Satış selection on initial open
+  // Auto-focus handler: Focus on Alış / Satış selection on initial open, after save, or on new record
+  const focusTipSelect = useCallback(() => {
+    const focusNow = () => {
+      const el = tipSelectRef.current || (document.getElementById("doviz-fis-tip-select") as HTMLSelectElement | null);
+      if (el) {
+        el.focus({ preventScroll: true });
+      }
+    };
+    focusNow();
+    setTimeout(focusNow, 50);
+    setTimeout(focusNow, 150);
+    setTimeout(focusNow, 300);
+  }, []);
+
   const focusInitialInput = useCallback(() => {
-    if (tipSelectRef.current) {
-      tipSelectRef.current.focus();
-    } else {
-      focusGelisNedeni();
-    }
-  }, [focusGelisNedeni]);
+    focusTipSelect();
+  }, [focusTipSelect]);
 
   // Fetch dynamic balances for current vezne
   const fetchVezneBalances = useCallback(async (vId: number) => {
@@ -1394,12 +1418,34 @@ export const DovizFisiPage: React.FC = () => {
       if (fis.satirlar && fis.satirlar.length > 0) {
         setLines(
           fis.satirlar.map((s, idx) => {
-            const rawKmvOrani = s.kmvOrani ?? (s as any).KMV_ORANI;
-            const rawKmv = s.kmv ?? (s as any).KMV;
-            const rawBmvOrani = s.bmvOrani ?? (s as any).BMV_ORANI;
-            const rawBmv = s.bmv ?? (s as any).BMV;
+            let rawKmvOrani = s.kmvOrani ?? (s as any).KMV_ORANI;
+            let rawKmv = s.kmv ?? (s as any).KMV;
+            let rawBmvOrani = s.bmvOrani ?? (s as any).BMV_ORANI;
+            let rawBmv = s.bmv ?? (s as any).BMV;
             const rawKomOrani = s.komisyonOrani ?? (s as any).KOMISYON_ORANI;
             const rawKom = s.komisyon ?? (s as any).KOMISYON;
+
+            // SATIŞ fişinde eski kayıtlarda KMV yerine BMV'ye yazılmışsa KMV'ye aktar (kolon kaymasını engelle)
+            if (fis.tip === 1) {
+              const numKmv = Number(rawKmv || 0);
+              const numBmv = Number(rawBmv || 0);
+              if (numKmv === 0 && numBmv > 0) {
+                rawKmv = rawBmv;
+                rawKmvOrani = rawBmvOrani || 0.2;
+                rawBmv = 0;
+                rawBmvOrani = 0;
+              }
+            } else if (fis.tip === 0) {
+              // ALIŞ fişinde KMV ve BMV YOKTUR! Sadece komisyon vardır!
+              rawBmv = 0;
+              rawBmvOrani = 0;
+              rawKmv = 0;
+              rawKmvOrani = 0;
+            }
+
+            const parsedBmv = rawBmv != null && Number(rawBmv) > 0 ? parseFloat(Number(rawBmv).toFixed(2)).toFixed(2) : "";
+            const parsedKmv = rawKmv != null && Number(rawKmv) > 0 ? parseFloat(Number(rawKmv).toFixed(2)).toFixed(2) : "";
+
             return {
               id: `row-${idx}-${Date.now()}`,
               satirNo: s.satirNo || idx + 1,
@@ -1409,11 +1455,11 @@ export const DovizFisiPage: React.FC = () => {
               miktar: s.miktar != null ? formatMiktar(s.miktar) : "",
               kur: s.kur ? Number(s.kur).toFixed(kurKurusSayisi) : "",
               komisyonOrani: rawKomOrani != null && Number(rawKomOrani) > 0 ? String(rawKomOrani) : "",
-              komisyon: rawKom != null && Number(rawKom) > 0 ? String(rawKom) : "",
+              komisyon: rawKom != null && Number(rawKom) > 0 ? parseFloat(Number(rawKom).toFixed(2)).toFixed(2) : "",
               bmvOrani: rawBmvOrani != null && Number(rawBmvOrani) > 0 ? String(rawBmvOrani) : "",
-              bmv: rawBmv != null && Number(rawBmv) > 0 ? String(rawBmv) : "",
+              bmv: parsedBmv,
               kmvOrani: rawKmvOrani != null && Number(rawKmvOrani) > 0 ? String(rawKmvOrani) : "",
-              kmv: rawKmv != null && Number(rawKmv) > 0 ? String(rawKmv) : "",
+              kmv: parsedKmv,
               tutar: s.tutar != null ? Number(s.tutar).toFixed(tlKurusSayisi) : "",
             };
           })
@@ -1686,29 +1732,44 @@ export const DovizFisiPage: React.FC = () => {
         komVal = parseFloat((brutTutar * (komRate / 100)).toFixed(2)).toFixed(2);
       }
 
+      // ALIŞ FİŞİNDE KMV VE BMV YOK, SADECE KOMİSYON VAR!
+      if (currentTip === 0) {
+        return {
+          brutTutar,
+          tutar: brutTutar > 0 ? brutTutar : "",
+          bmv: "",
+          kmvOrani: "",
+          kmv: "",
+          komisyon: komVal,
+        };
+      }
+
       if (bmvRate > 0 && brutTutar > 0) {
         bmvVal = parseFloat((brutTutar * (bmvRate / 100)).toFixed(2)).toFixed(2);
       }
+
+      // KMV Oran Çarpanı: Binde 2 (%0.2) için 0.2 / 100 = 0.002.
+      // Eğer oran tam sayı olarak 2 girilmişse (Binde 2), 2 / 1000 = 0.002 olarak değerlendirilir.
+      const effectiveKmvFactor = kmvRate >= 1 && kmvRate <= 10 ? (kmvRate / 1000) : (kmvRate / 100);
 
       if (kmvMode === 1) {
         // 1 - Uygulanmasın
         tutarVal = brutTutar > 0 ? brutTutar : "";
         kmvVal = "";
       } else if (kmvMode === 2) {
-        // 2 - Kura Dahil (KMV kura dahil: tutardan KMV düşülmez, miktar * kur olarak kalır; KMV ise KMV alanında ayrıyeten belirtilir)
+        // 2 - Kura Dahil: Tutar = Miktar * Kur sabit kalır; KMV hücresinde bilgi amaçlı gösterilir (Masraf kutusuna eklenmez)
         tutarVal = brutTutar > 0 ? brutTutar : "";
         if (kmvRate > 0 && brutTutar > 0) {
-          const vergisizMatrah = parseFloat((brutTutar / (1 + kmvRate / 100)).toFixed(2));
-          const calculatedKmv = parseFloat((brutTutar - vergisizMatrah).toFixed(2));
+          const calculatedKmv = parseFloat((brutTutar * effectiveKmvFactor).toFixed(2));
           kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
         } else {
           kmvVal = "";
         }
       } else {
-        // 3 - Kurdan Hariç (Dış Yüzde Yöntemi: KMV Tutarı = Tutar * KMV_Orani / 100)
+        // 3 - Kurdan Hariç: Tutar = Miktar * Kur; KMV Tutarı = Tutar * KMV_Orani / 100
         tutarVal = brutTutar > 0 ? brutTutar : "";
         if (kmvRate > 0 && brutTutar > 0) {
-          const calculatedKmv = parseFloat((brutTutar * (kmvRate / 100)).toFixed(2));
+          const calculatedKmv = parseFloat((brutTutar * effectiveKmvFactor).toFixed(2));
           kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
         } else {
           kmvVal = "";
@@ -1824,15 +1885,16 @@ export const DovizFisiPage: React.FC = () => {
     };
   }, [isLocked, handleRemoveLine, handleAddRow]);
 
-  // Bildirimlerin belli süre sonra otomatik kaybolması
+  // Bildirimlerin belli süre sonra otomatik kaybolması ve odağın Fiş Tipinde kalması
   useEffect(() => {
     if (notification) {
       const timer = setTimeout(() => {
         setNotification(null);
+        focusTipSelect();
       }, 1750);
       return () => clearTimeout(timer);
     }
-  }, [notification]);
+  }, [notification, focusTipSelect]);
 
   // e-Banka'dan fiş kesiliyorsa banka tutarı: döviz seçilince miktar boşsa kalan tutardan kurla hesaplanır (satışta BSMV dahil)
   const ebHedefRef = useRef<{ tutarTl: number; paraKodu: string; tutar: number } | null>(null);
@@ -1852,18 +1914,13 @@ export const DovizFisiPage: React.FC = () => {
     value: string
   ) => {
     if (isLocked) return;
-
-    // Sadece geçerli pozitif sayı ve tek ondalık ayırıcı (nokta veya virgül) girişine izin ver
+    if (field === "bmv" || field === "bmvOrani" || field === "kmv" || field === "kmvOrani") return;
     if (field === "miktar") {
       value = formatMiktar(value);
     } else if (
       field === "kur" ||
       field === "komisyon" ||
-      field === "komisyonOrani" ||
-      field === "bmv" ||
-      field === "bmvOrani" ||
-      field === "kmv" ||
-      field === "kmvOrani"
+      field === "komisyonOrani"
     ) {
       value = onlyDecimal(value);
     }
@@ -1915,19 +1972,7 @@ export const DovizFisiPage: React.FC = () => {
           updated.komisyonOrani = value;
         }
 
-        if (field === "bmv") {
-          updated.bmv = value;
-        } else if (field === "bmvOrani") {
-          updated.bmvOrani = value;
-        }
-
-        if (field === "kmv") {
-          updated.kmv = value;
-        } else if (field === "kmvOrani") {
-          updated.kmvOrani = value;
-        }
-
-        if (field !== "komisyon" && field !== "bmv" && field !== "kmv") {
+        if (field !== "komisyon") {
           const calculated = calculateRowValues({
             miktar: m,
             kur: k,
@@ -1979,12 +2024,21 @@ export const DovizFisiPage: React.FC = () => {
       return;
     }
 
-    const bmvRate = stat?.bmvOrani !== undefined && stat?.bmvOrani !== null && Number(stat.bmvOrani) > 0
+    let bmvRate = stat?.bmvOrani !== undefined && stat?.bmvOrani !== null && Number(stat.bmvOrani) > 0
       ? Number(stat.bmvOrani)
       : 0;
-    const kmvRate = (kmvMode !== 1 && stat?.kmvOrani !== undefined && stat?.kmvOrani !== null && Number(stat.kmvOrani) > 0)
-      ? Number(stat.kmvOrani)
+    const rawStatKmv = stat?.kmvOrani !== undefined && stat?.kmvOrani !== null ? Number(stat.kmvOrani) : 0;
+    let kmvRate = (kmvMode !== 1)
+      ? (rawStatKmv > 0 ? rawStatKmv : (currentTip === 1 ? (bmvRate > 0 ? bmvRate : 0.2) : 0))
       : 0;
+    if (currentTip === 1 && kmvMode !== 1 && rawStatKmv === 0 && bmvRate > 0) {
+      bmvRate = 0; // SATIŞ fişinde eski kayıtlarda BMV olarak girilen oran KMV'ye aktarıldı, BMV hücresi temizlendi
+    }
+    // ALIŞ FİŞİNDE KMV VE BMV YOK, SADECE KOMİSYON VAR!
+    if (currentTip === 0) {
+      bmvRate = 0;
+      kmvRate = 0;
+    }
     const komRate = stat?.komisyonOrani !== undefined && stat?.komisyonOrani !== null && Number(stat.komisyonOrani) > 0
       ? Number(stat.komisyonOrani)
       : 0;
@@ -2024,8 +2078,19 @@ export const DovizFisiPage: React.FC = () => {
     const compDef = companyDefinitionsRef.current || companyDefinitions;
     const kmvMode = getEffectiveKmvMode(compDef);
 
-    const defaultBmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0 ? Number(activeStat.bmvOrani) : 0;
-    const defaultKmvRate = (kmvMode !== 1 && activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null && Number(activeStat.kmvOrani) > 0) ? Number(activeStat.kmvOrani) : 0;
+    let defaultBmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0 ? Number(activeStat.bmvOrani) : 0;
+    const rawStatKmv = activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null ? Number(activeStat.kmvOrani) : 0;
+    let defaultKmvRate = (kmvMode !== 1)
+      ? (rawStatKmv > 0 ? rawStatKmv : (tip === 1 ? (defaultBmvRate > 0 ? defaultBmvRate : 0.2) : 0))
+      : 0;
+    if (tip === 1 && kmvMode !== 1 && rawStatKmv === 0 && defaultBmvRate > 0) {
+      defaultBmvRate = 0;
+    }
+    // ALIŞ FİŞİNDE KMV VE BMV YOK, SADECE KOMİSYON VAR!
+    if (tip === 0) {
+      defaultBmvRate = 0;
+      defaultKmvRate = 0;
+    }
     const defaultKomRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0 ? Number(activeStat.komisyonOrani) : 0;
 
     setLines((prev) =>
@@ -2597,18 +2662,20 @@ export const DovizFisiPage: React.FC = () => {
   }, [lines]);
 
   const calculatedBsmv = useMemo(() => {
+    if (tip === 0) return 0;
     return lines.reduce((acc, row) => {
       const b = parseDecimal(row.bmv);
       return acc + b;
     }, 0);
-  }, [lines]);
+  }, [tip, lines]);
 
   const totalKmv = useMemo(() => {
+    if (tip === 0) return 0;
     return lines.reduce((acc, row) => {
       const k = parseDecimal(row.kmv);
       return acc + k;
     }, 0);
-  }, [lines]);
+  }, [tip, lines]);
 
   const totalKomisyon = useMemo(() => {
     return lines.reduce((acc, row) => {
@@ -2617,17 +2684,21 @@ export const DovizFisiPage: React.FC = () => {
     }, 0);
   }, [lines]);
 
-  // Toplam Masraf: 
-  // KMV Uygulama Şekli:
+  // Toplam Masraf:
+  // ALIŞ fişinde: KMV ve BMV YOK, SADECE KOMİSYON VAR!
+  // SATIŞ fişinde:
   // 1 - Uygulanmasın: Toplam Masraf = Komisyon + BMV (KMV = 0)
   // 2 - Kura Dahil: Toplam Masraf = Komisyon + BMV (KMV kura dahil olduğu için masraf kutusuna eklenmez)
   // 3 - Kurdan Hariç: Toplam Masraf = Komisyon + BMV + KMV
   const totalMasraf = useMemo(() => {
+    if (tip === 0) {
+      return parseFloat(totalKomisyon.toFixed(2));
+    }
     const compDef = companyDefinitionsRef.current || companyDefinitions;
     const kmvMode = getEffectiveKmvMode(compDef);
     const effectiveKmv = kmvMode === 3 ? totalKmv : 0;
     return parseFloat((calculatedBsmv + effectiveKmv + totalKomisyon).toFixed(2));
-  }, [calculatedBsmv, totalKmv, totalKomisyon, companyDefinitions]);
+  }, [tip, calculatedBsmv, totalKmv, totalKomisyon, companyDefinitions]);
 
   // Son Toplam:
   // ALIŞ fişinde (tip === 0): Ödenecek TL = Toplam Tutar - Toplam Masraf
@@ -2926,12 +2997,14 @@ export const DovizFisiPage: React.FC = () => {
           }
         }
         const kurStr = rate > 0 ? rate.toFixed(kurKurusSayisi) : row.kur;
+        const bmvOraniToUse = newTip === 0 ? "" : row.bmvOrani;
+        const kmvOraniToUse = newTip === 0 ? "" : row.kmvOrani;
         const calculated = calculateRowValues({
           miktar: row.miktar,
           kur: kurStr,
           paraKodu: row.paraKodu,
-          bmvOrani: row.bmvOrani,
-          kmvOrani: row.kmvOrani,
+          bmvOrani: bmvOraniToUse,
+          kmvOrani: kmvOraniToUse,
           komisyonOrani: row.komisyonOrani,
           customTip: newTip,
         });
@@ -2939,9 +3012,10 @@ export const DovizFisiPage: React.FC = () => {
           ...row,
           kur: kurStr,
           tutar: calculated.tutar,
+          bmvOrani: newTip === 0 ? "" : (calculated.bmv ? row.bmvOrani : ""),
           bmv: calculated.bmv,
           kmv: calculated.kmv,
-          kmvOrani: calculated.kmvOrani,
+          kmvOrani: newTip === 0 ? "" : calculated.kmvOrani,
           komisyon: calculated.komisyon,
         };
       })
@@ -3029,13 +3103,11 @@ export const DovizFisiPage: React.FC = () => {
     const el = e.currentTarget;
     const maxRow = lines.length - 1;
 
-    // Görünür olan navigasyon sütunlarının dinamik sırası (% BMV ve BMV salt okunur olduğundan atlanır)
+    // Görünür olan navigasyon sütunlarının dinamik sırası (% BMV, BMV, % KMV ve KMV salt okunur olduğundan atlanır)
     const isRowTL = lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TL" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRY" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRL";
     const visibleCols: GridColumnKey[] = isRowTL ? ["kod", "miktar"] : ["kod", "miktar", "kur"];
     if (colVisibility.komisyonOrani) visibleCols.push("komisyonOrani");
     if (colVisibility.komisyon) visibleCols.push("komisyon");
-    if (colVisibility.kmvOrani) visibleCols.push("kmvOrani");
-    if (colVisibility.kmv) visibleCols.push("kmv");
 
     const currentVisIdx = visibleCols.indexOf(field);
     const isLastVisibleCol = currentVisIdx === visibleCols.length - 1;
@@ -3211,10 +3283,16 @@ export const DovizFisiPage: React.FC = () => {
       resetForm();
       setArbitrajActiveInfo(null);
       applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
+      focusTipSelect();
     }
   };
 
-  const handleToolbarSave = async (forceMasakApprove = false, andDirectPrint = false) => {
+  const handleToolbarSave = async (
+    forceMasakApprove = false,
+    andDirectPrint = false,
+    targetPrinter?: YaziciItem | null,
+    targetCopies?: number
+  ) => {
     // MASAK Malvarlığı Dondurulanlar Bloke Kontrolü (Kesinlikle Kayıt Yapılamaz!)
     if (isMasakBlocked) {
       setNotification({
@@ -3386,12 +3464,16 @@ export const DovizFisiPage: React.FC = () => {
 
       // Kullanıcıdan MASAK limit onayı al
       if (!forceMasakApprove) {
+        setIsPendingDirectPrint(andDirectPrint);
+        setPendingPrinter(targetPrinter || null);
+        setPendingCopies(targetCopies || 1);
         setShowMasakConfirmModal(true);
         return;
       }
     }
 
     try {
+      setIsSaving(true);
       let finalIlId = (detayIlId && Number(detayIlId) > 0) ? Number(detayIlId) : undefined;
       if (!finalIlId && detayIl.trim()) {
         const matchIl = lookupData.ilList.find(
@@ -3600,10 +3682,10 @@ export const DovizFisiPage: React.FC = () => {
             tutar: tutarNum > 0 ? tutarNum : (m * k),
             komisyonOrani: Number(parseDecimal(l.komisyonOrani || "0")) || 0,
             komisyon: Number(parseDecimal(l.komisyon || "0")) || 0,
-            bmvOrani: Number(parseDecimal(l.bmvOrani || "0")) || 0,
-            bmv: Number(parseDecimal(l.bmv || "0")) || 0,
-            kmvOrani: Number(parseDecimal(l.kmvOrani || "0")) || 0,
-            kmv: Number(parseDecimal(l.kmv || "0")) || 0,
+            bmvOrani: tip === 0 ? 0 : (Number(parseDecimal(l.bmvOrani || "0")) || 0),
+            bmv: tip === 0 ? 0 : (Number(parseDecimal(l.bmv || "0")) || 0),
+            kmvOrani: tip === 0 ? 0 : (Number(parseDecimal(l.kmvOrani || "0")) || 0),
+            kmv: tip === 0 ? 0 : (Number(parseDecimal(l.kmv || "0")) || 0),
             kdvOrani: 0,
             kdv: 0,
           };
@@ -3655,22 +3737,36 @@ export const DovizFisiPage: React.FC = () => {
       setPrintSnapshot(currentSnapshot);
 
       if (andDirectPrint) {
-        const resolved = resolveEffectivePrinter({
-          pageType: "doviz",
-          tip,
-          vezne: vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null),
-          user,
-          printers,
-        });
-        const isPos = resolved.recommendedPrintType === "POS";
+        let printerToUse: YaziciItem | null = targetPrinter || null;
+        let copiesToUse: number = targetCopies || 1;
+        let isPos = false;
+
+        if (printerToUse) {
+          isPos = printerToUse.belgeYaziciModu !== 0;
+          if (!targetCopies && printerToUse.kopyaSayisi && Number(printerToUse.kopyaSayisi) > 0) {
+            copiesToUse = Number(printerToUse.kopyaSayisi);
+          }
+        } else {
+          const resolved = resolveEffectivePrinter({
+            pageType: "doviz",
+            tip,
+            vezne: vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null),
+            user,
+            printers,
+          });
+          printerToUse = resolved.printer;
+          isPos = resolved.recommendedPrintType === "POS";
+          copiesToUse = resolved.kopyaSayisi || 1;
+        }
+
         const dovizHtml = generateDovizReceiptHtml({
           fis: currentSnapshot,
           company: companyDefinitions,
         });
         await triggerSilentPrint({
           html: dovizHtml,
-          printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
-          copies: resolved.kopyaSayisi || 1,
+          printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
+          copies: copiesToUse,
           isPos,
           title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
         });
@@ -3685,6 +3781,7 @@ export const DovizFisiPage: React.FC = () => {
         await loadFisById(saved.fisId);
         const idx = freshList.findIndex((f) => f.fisId === saved.fisId);
         setCurrentIndex(idx >= 0 ? idx : freshList.length - 1);
+        focusTipSelect();
       } else {
         setNotification({
           type: "success",
@@ -3695,6 +3792,7 @@ export const DovizFisiPage: React.FC = () => {
         // Kayıt sonrasında otomatik yeni kayıt moduna geç ve tüm alanları temizle
         resetForm();
         applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
+        focusTipSelect();
       }
     } catch (err: any) {
       console.error("Döviz Fişi Kaydetme Hatası:", err);
@@ -3718,6 +3816,8 @@ export const DovizFisiPage: React.FC = () => {
         message: userFriendlyMsg,
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -3817,8 +3917,36 @@ export const DovizFisiPage: React.FC = () => {
   // ─── Arbitraj Sonucunu Döviz Fişine Aktarma (F7) ──────────────────────────
   const handleApplyArbitrajToDovizFis = useCallback(
     (result: ArbitrajApplyResult) => {
-      if (result.islemYonu === "alis") {
-        setTip(0); // Alış
+      const isAlis = result.islemYonu === "alis";
+      setTip(isAlis ? 0 : 1);
+
+      if (result.allLines && result.allLines.length > 0) {
+        setLines(
+          result.allLines.map((l, idx) => {
+            let pId = l.paraId;
+            if (!pId || pId <= 0) {
+              const matched = paraList.find((p) => p.kod.toUpperCase() === (l.kod || "").toUpperCase());
+              pId = matched ? matched.id : 1;
+            }
+            return {
+              id: String(Date.now() + idx),
+              satirNo: idx + 1,
+              paraId: pId,
+              paraKodu: l.kod,
+              paraAdi: l.ad || l.kod,
+              miktar: String(l.miktar),
+              kur: String(l.kur),
+              komisyonOrani: String(l.komisyonOrani || ""),
+              komisyon: String(l.komisyon || ""),
+              bmvOrani: isAlis ? "" : String(l.bmvOrani || ""),
+              bmv: isAlis ? "" : String(l.bmv || ""),
+              kmvOrani: isAlis ? "" : String(l.kmvOrani || ""),
+              kmv: isAlis ? "" : String(l.kmv || ""),
+              tutar: String(l.tutar),
+            };
+          })
+        );
+      } else if (result.islemYonu === "alis") {
         const targetPara =
           paraList.find((p) => p.kod.toUpperCase() === result.girisPara.kod.toUpperCase()) || paraList[0];
 
@@ -3846,7 +3974,6 @@ export const DovizFisiPage: React.FC = () => {
           ]);
         }
       } else {
-        setTip(1); // Satış
         const targetPara =
           paraList.find((p) => p.kod.toUpperCase() === result.cikisPara.kod.toUpperCase()) || paraList[0];
 
@@ -3891,6 +4018,39 @@ export const DovizFisiPage: React.FC = () => {
         setIstatistikKodu(result.istatistikKodu);
       }
 
+      if (result.detay) {
+        if (result.detay.cariTipi) setDetayCariTipi(result.detay.cariTipi);
+        if (result.detay.yetkiliKisi) setDetayYetkiliKisi(result.detay.yetkiliKisi);
+        if (result.detay.yetkiliKisiId) setDetayYetkiliKisiId(result.detay.yetkiliKisiId);
+        if (result.detay.sirketTuru !== undefined) setDetaySirketTuru(String(result.detay.sirketTuru));
+        if (result.detay.dernekAmaci) setDetayDernekAmaci(result.detay.dernekAmaci);
+        if (result.detay.pasaportNo) setDetayPasaportNo(result.detay.pasaportNo);
+        if (result.detay.gecerlilikTarihi) setDetayGecerlilikTarihi(result.detay.gecerlilikTarihi);
+        if (result.detay.dogumTarihi) setDetayDogumTarihi(result.detay.dogumTarihi);
+        if (result.detay.dogumYeri) setDetayDogumYeri(result.detay.dogumYeri);
+        if (result.detay.kimlikKaynagi) setDetayKimlikKaynagi(result.detay.kimlikKaynagi);
+        if (result.detay.kimlikSeriNo) setDetayKimlikSeriNo(result.detay.kimlikSeriNo);
+        if (result.detay.babaAdi) setDetayBabaAdi(result.detay.babaAdi);
+        if (result.detay.anneAdi) setDetayAnneAdi(result.detay.anneAdi);
+        if (result.detay.vergiDairesi) setDetayVergiDairesi(result.detay.vergiDairesi);
+        if (result.detay.vergiDairesiId !== undefined) setDetayVergiDairesiId(result.detay.vergiDairesiId);
+        if (result.detay.adres) setDetayAdres(result.detay.adres);
+        if (result.detay.eposta) setDetayEposta(result.detay.eposta);
+        if (result.detay.telefon) setDetayTelefon(result.detay.telefon);
+        if (result.detay.vekil) setDetayVekil(result.detay.vekil);
+        if (result.detay.vekilTipi) setDetayVekilTipi(result.detay.vekilTipi);
+        if (result.detay.vekilAdi) setDetayVekilAdi(result.detay.vekilAdi);
+        if (result.detay.vekilKimlikNo) setDetayVekilKimlikNo(result.detay.vekilKimlikNo);
+        if (result.detay.meslek) setDetayMeslek(result.detay.meslek);
+        if (result.detay.meslekId !== undefined) setDetayMeslekId(result.detay.meslekId);
+        if (result.detay.ulke) setDetayUlke(result.detay.ulke);
+        if (result.detay.uyruk) setDetayUyruk(result.detay.uyruk);
+        if (result.detay.hukukiYapi) setDetayHukukiYapi(result.detay.hukukiYapi);
+        if (result.detay.il) setDetayIl(result.detay.il);
+        if (result.detay.ilce) setDetayIlce(result.detay.ilce);
+        if (result.detay.postaKodu) setDetayPostaKodu(result.detay.postaKodu);
+      }
+
       setArbitrajActiveInfo({
         girisKod: result.girisPara.kod,
         cikisKod: result.cikisPara.kod,
@@ -3905,6 +4065,91 @@ export const DovizFisiPage: React.FC = () => {
     },
     [paraList]
   );
+
+  const handleTriggerF10 = useCallback(() => {
+    // MASAK Malvarlığı Dondurulanlar Bloke Kontrolü
+    if (isMasakBlocked) {
+      setNotification({
+        type: "danger",
+        message: `⛔ İŞLEM ENGELLENDİ: "${masakResult.queriedName || unvan}" MASAK Malvarlığı Dondurulanlar listesindedir! Bu kişi/kuruluş için fiş kaydedilemez.`,
+      });
+      setMasakModalOpen(true);
+      return;
+    }
+
+    if (isLocked && !isDuzeltmeMode) {
+      setNotification({
+        type: "warning",
+        message: "GİB'e gönderilmiş olan bu fiş değiştirilemez.",
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    // 1. Header validations
+    if (!tarih || !tarih.trim()) {
+      setNotification({
+        type: "warning",
+        message: "Lütfen fiş tarihini giriniz.",
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (!saat || !saat.trim()) {
+      setNotification({
+        type: "warning",
+        message: "Lütfen işlem saatini giriniz.",
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (!vezneId || Number(vezneId) <= 0) {
+      setNotification({
+        type: "warning",
+        message: "Lütfen bir vezne seçiniz.",
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (!istatistikKodu || !istatistikKodu.trim()) {
+      setNotification({
+        type: "warning",
+        message: "Fişte istatistik kodu zorunludur. Lütfen F3 kısayolu veya İstatistik Seçim modalından bir istatistik seçiniz.",
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    const validLines = lines.filter((l) => {
+      const m = parseDecimal(l.miktar);
+      return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
+    });
+
+    if (validLines.length === 0) {
+      setNotification({
+        type: "warning",
+        message: "Lütfen en az bir geçerli döviz satırı ekleyiniz.",
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    setShowF10PrinterModal(true);
+  }, [
+    isMasakBlocked,
+    masakResult.queriedName,
+    unvan,
+    isLocked,
+    isDuzeltmeMode,
+    tarih,
+    saat,
+    vezneId,
+    istatistikKodu,
+    lines,
+  ]);
 
   // Keyboard shortcut listener (F1..F10, ESC)
   useEffect(() => {
@@ -3997,6 +4242,11 @@ export const DovizFisiPage: React.FC = () => {
           setShowPrintModal(false);
           return;
         }
+        if (showF10PrinterModal) {
+          e.preventDefault();
+          setShowF10PrinterModal(false);
+          return;
+        }
         if (showCariModal) {
           e.preventDefault();
           setShowCariModal(false);
@@ -4024,6 +4274,7 @@ export const DovizFisiPage: React.FC = () => {
         setShowParaModal(false);
         setShowGumrukModal(false);
         setShowPrintModal(false);
+        setShowF10PrinterModal(false);
         setActiveLookupType(null);
       };
 
@@ -4075,7 +4326,7 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleToolbarSave(false, true);
+        handleTriggerF10();
       }
     };
     window.addEventListener("keydown", handleKeyDown, true);
@@ -4083,6 +4334,8 @@ export const DovizFisiPage: React.FC = () => {
   }, [
     handleToolbarSave,
     handleToolbarDelete,
+    handleTriggerF10,
+    showF10PrinterModal,
     isDuzeltmeMode,
     vezneId,
     showDetayModal,
@@ -4447,11 +4700,20 @@ export const DovizFisiPage: React.FC = () => {
 
       {/* Notifications Alert: Sağ altta beliren ve 3.5 sn sonra yok olan toast */}
       {notification && (
-        <div className="erp-toast-container">
+        <div
+          className="erp-toast-container"
+          onMouseDown={(e) => {
+            // Bildirime veya kapat (X) butonuna tıklandığında odağın Fiş Tipinden çalınmasını engelle
+            e.preventDefault();
+          }}
+        >
           <Alert
             variant={notification.type}
             dismissible
-            onClose={() => setNotification(null)}
+            onClose={() => {
+              setNotification(null);
+              focusTipSelect();
+            }}
             className="erp-toast-item d-flex align-items-center justify-content-between py-2.5 px-3 mb-0 border-0 shadow"
           >
             <span>{notification.message}</span>
@@ -4887,6 +5149,7 @@ export const DovizFisiPage: React.FC = () => {
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       <Form.Select
+                        id="doviz-fis-tip-select"
                         ref={tipSelectRef}
                         size="sm"
                         value={tip}
@@ -4896,6 +5159,10 @@ export const DovizFisiPage: React.FC = () => {
                             e.preventDefault();
                             e.stopPropagation();
                             handleTipChange(tip === 0 ? 1 : 0);
+                          } else if (e.key === "Enter") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            focusCell(0, "kod", "select");
                           }
                         }}
                         className="fw-bold text-uppercase px-2.5 py-1"
@@ -5501,7 +5768,7 @@ export const DovizFisiPage: React.FC = () => {
                             disabled={isLocked}
                             className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
                             style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
-                            value={row.bmvOrani}
+                            value={row.bmvOrani ? String(row.bmvOrani).replace(".", ",") : ""}
                           />
                         </td>
                       )}
@@ -5517,51 +5784,43 @@ export const DovizFisiPage: React.FC = () => {
                             disabled={isLocked}
                             className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
                             style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default" }}
-                            value={row.bmv}
+                            value={row.bmv !== "" && row.bmv !== undefined && row.bmv !== null && parseDecimal(row.bmv) > 0
+                              ? parseDecimal(row.bmv).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : ""}
                           />
                         </td>
                       )}
 
-                      {/* % (KMV %) */}
+                      {/* % (KMV %) - Read-Only (Müdahale edilemez, doğrudan istatistikten gelir) */}
                       {colVisibility.kmvOrani && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-kmvOrani`}
                             type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
+                            readOnly
+                            tabIndex={-1}
                             disabled={isLocked}
                             className="form-control form-control-sm border-0 p-0 px-1 shadow-none text-center font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                            value={row.kmvOrani}
-                            onFocus={() => {
-                              setActiveRowIndex(idx);
-                              cleanupEmptyRows(idx);
-                            }}
-                            onChange={(e) => handleLineFieldChange(row.id, "kmvOrani", e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default", userSelect: "none" }}
+                            value={row.kmvOrani ? String(row.kmvOrani).replace(".", ",") : ""}
                           />
                         </td>
                       )}
 
-                      {/* KMV */}
+                      {/* KMV - Read-Only (Müdahale edilemez, doğrudan istatistikten gelir) */}
                       {colVisibility.kmv && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-kmv`}
                             type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
+                            readOnly
+                            tabIndex={-1}
                             disabled={isLocked}
                             className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace"
-                            style={{ height: "26px", fontSize: "12px", backgroundColor: "transparent" }}
-                            value={row.kmv}
-                            onFocus={() => {
-                              setActiveRowIndex(idx);
-                              cleanupEmptyRows(idx);
-                            }}
-                            onChange={(e) => handleLineFieldChange(row.id, "kmv", e.target.value)}
-                            onKeyDown={(e) => handleCellKeyDown(e, idx, "kmv")}
+                            style={{ height: "26px", fontSize: "12px", backgroundColor: "#f8fafc", cursor: "default", userSelect: "none" }}
+                            value={row.kmv !== "" && row.kmv !== undefined && row.kmv !== null && parseDecimal(row.kmv) > 0
+                              ? parseDecimal(row.kmv).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : ""}
                           />
                         </td>
                       )}
@@ -5672,7 +5931,9 @@ export const DovizFisiPage: React.FC = () => {
         <span><strong>F2</strong> Sil</span>
         <span><strong>F3</strong> Ara</span>
         <span><strong>F7</strong> Arbitraj</span>
-        <span><strong>F10</strong> Kaydet / Yazdır</span>
+        <span role="button" style={{ cursor: "pointer" }} onClick={handleTriggerF10} title="Fişi Kaydet / Yazdır (F10)">
+          <strong>F10</strong> Kaydet / Yazdır
+        </span>
       </div>
 
       {/* DETAY MODAL (F8) matching Screenshot 3 */}
@@ -6771,6 +7032,39 @@ export const DovizFisiPage: React.FC = () => {
         hedefTlTutar={sonToplam || 0}
         cariList={cariList}
         statisticList={statisticList}
+        companyDefinitions={companyDefinitions}
+        initialDetay={{
+          cariTipi: detayCariTipi,
+          yetkiliKisi: detayYetkiliKisi,
+          yetkiliKisiId: detayYetkiliKisiId,
+          sirketTuru: detaySirketTuru,
+          dernekAmaci: detayDernekAmaci,
+          pasaportNo: detayPasaportNo,
+          gecerlilikTarihi: detayGecerlilikTarihi,
+          dogumTarihi: detayDogumTarihi,
+          dogumYeri: detayDogumYeri,
+          kimlikKaynagi: detayKimlikKaynagi,
+          kimlikSeriNo: detayKimlikSeriNo,
+          babaAdi: detayBabaAdi,
+          anneAdi: detayAnneAdi,
+          vergiDairesi: detayVergiDairesi,
+          vergiDairesiId: detayVergiDairesiId,
+          adres: detayAdres,
+          eposta: detayEposta,
+          telefon: detayTelefon,
+          vekil: detayVekil,
+          vekilTipi: detayVekilTipi,
+          vekilAdi: detayVekilAdi,
+          vekilKimlikNo: detayVekilKimlikNo,
+          meslek: detayMeslek,
+          meslekId: detayMeslekId,
+          ulke: detayUlke,
+          uyruk: detayUyruk,
+          hukukiYapi: detayHukukiYapi,
+          il: detayIl,
+          ilce: detayIlce,
+          postaKodu: detayPostaKodu,
+        }}
         pageType="doviz"
         fisTip={tip}
         onApplyToFis={handleApplyArbitrajToDovizFis}
@@ -7136,7 +7430,7 @@ export const DovizFisiPage: React.FC = () => {
             className="fw-bold px-3"
             onClick={() => {
               setShowMasakConfirmModal(false);
-              handleToolbarSave(true, isPendingDirectPrint);
+              handleToolbarSave(true, isPendingDirectPrint, pendingPrinter, pendingCopies);
             }}
           >
             Yine de Kaydet
@@ -7148,6 +7442,19 @@ export const DovizFisiPage: React.FC = () => {
       <MasakModal
         show={masakManagementOpen}
         onHide={() => setMasakManagementOpen(false)}
+      />
+
+      {/* F10 Doğrudan Yazdırma Öncesi Küçük Yazıcı Seçim Modalı */}
+      <F10YaziciSecimModal
+        show={showF10PrinterModal}
+        onHide={() => setShowF10PrinterModal(false)}
+        printers={printers}
+        user={user}
+        onConfirm={(selectedPrinter, copies) => {
+          setShowF10PrinterModal(false);
+          handleToolbarSave(false, true, selectedPrinter, copies);
+        }}
+        isSaving={isSaving}
       />
     </div>
   );

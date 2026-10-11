@@ -591,6 +591,7 @@ export const YuzukBilezikEtiketiPage: React.FC = () => {
       <LookupModal<CariKartItem>
         show={showFirmaLookup}
         title="Üretici Firma / Cari Seçiniz"
+        selectOnDoubleClick={true}
         columns={firmaLookupColumns}
         items={cariList}
         filterFn={(it, term) => {

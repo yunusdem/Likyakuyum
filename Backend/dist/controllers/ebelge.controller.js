@@ -30,11 +30,12 @@ export class EbelgeController {
             belgeTuru: Number(req.params.tur), belgeNo: req.query.belgeNo });
         if (!parsed.success)
             throw ApiError.badRequest('Kaynak belge kimliği geçersiz.');
-        const pdf = await EbelgeKaynakService.pdf(parsed.data, EbelgeController.getDbContext(req));
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="fis-${parsed.data.belgeId}.pdf"`);
+        const goruntu = await EbelgeKaynakService.goruntu(parsed.data, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
+        const html = goruntu.tur === 'html';
+        res.setHeader('Content-Type', html ? 'text/html; charset=utf-8' : 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="fis-${parsed.data.belgeId}.${html ? 'html' : 'pdf'}"`);
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(200).end(pdf);
+        return res.status(200).end(goruntu.veri);
     });
     static kaynakListe = asyncHandler(async (req, res) => {
         const parsed = ebelgeKaynakListeSchema.safeParse(req.query);

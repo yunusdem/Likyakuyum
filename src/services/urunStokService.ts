@@ -21,7 +21,7 @@ export interface UrunStokSatir {
   urunId: number; tarih: string | null; grupKodu: string; urunNo: number | null; grupUrun: string; barkod: string; urunAdi: string;
   ayar: string; ureticiFirma: string; orjinalKod: string; banko: string; miktar: number; miktarBirimi: string; hasGram: number | null; iscilikMaliyet: number; satisIscilik: number;
   birim: string; maliyet: number; maliyetTl: number; satis: number; satisTl: number; kar: number; karTl: number; karYuzde: number | null;
-  satildi: boolean; durum: "Stokta" | "Satıldı"; satisTarihi: string | null; faturaNo: string; musteri: string; cariKartId: number | null; kur: number;
+  satildi: boolean; konsinye?: boolean; katalog?: boolean; durum: "Stokta" | "Satıldı"; satisTarihi: string | null; faturaNo: string; musteri: string; cariKartId: number | null; kur: number;
 }
 
 export interface UrunStokOzet {

@@ -3,6 +3,7 @@ import { EbelgeKaynakRepository, dovizMi, kaynakAnahtar, kaynakKimlikCoz, perake
 import { NIHAI_TUKETICI, perakendeFaturaGirdisi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
 import { sarrafAliciVkn, sarrafFaturaGirdisi, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafPerakendeBicimi, sarrafSatirKdvleri, sarrafToplam } from "./ebelgeSarraf.js";
 import { getEDovizCikti, getEDovizStatus, previewEDoviz } from "./ice/ice.edoviz.js";
+import { logger } from "../utils/logger.js";
 import { EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
 import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { EbelgeService } from "./ebelge.service.js";
@@ -95,6 +96,31 @@ export class EbelgeKaynakService {
             satirlar: dovizMi(k) ? [{ ad: temiz(b.PARA_ADI || b.PARA_KODU), miktar: Number(b.MIKTAR), kur: Number(b.KUR), tutar: Number(b.PayableAmount) }]
                 : kaynak.satirlar.map(s => ({ ad: temiz(s.PARA_ADI), miktar: Number(s.MIKTAR), tutar: Number(s.TUTAR), kdv: Number(s.KDV) })),
         };
+    }
+    /**
+     * Kaynak listesinde tarihe basınca açılan önizleme. Sarraf ve Perakende satışı: faturanın kendisi (ICE'nin GİB düzenindeki
+     * görüntüsü, Giden kutusundaki gibi); numara seriden önerilen sıradaki numaradır. ICE görüntüsü alınamazsa (gider pusulası,
+     * eksik bilgi, bağlantı) fişin sade önizlemesi verilir.
+     */
+    static async goruntu(k, kullanici, ctx) {
+        if (sarrafMi(k) || (perakendeMi(k) && k.belgeTuru === 1)) {
+            try {
+                const girdi = sarrafMi(k)
+                    ? await this.sarrafGirdisi(k, kullanici, ctx).then((x) => (x.alis ? null : x.girdi))
+                    : await this.perakendeOnizlemeGirdisi(k, kullanici, ctx);
+                if (girdi)
+                    return await EbelgeService.faturaOnizlemeGoruntusu(girdi, kullanici, ctx);
+            }
+            catch (e) {
+                logger.warn(`[e-Belge] Kaynak önizlemesi ICE'den alınamadı (${kaynakAnahtar(k)}), sade önizleme verildi: ${e?.message}`);
+            }
+        }
+        return { tur: "pdf", veri: await this.pdf(k, ctx) };
+    }
+    static async perakendeOnizlemeGirdisi(k, kullanici, ctx) {
+        const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(await EbelgeKaynakRepository.perakendeDetay(k, ctx)), ctx);
+        girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
+        return girdi;
     }
     static async pdf(k, ctx) {
         if (!dovizMi(k))

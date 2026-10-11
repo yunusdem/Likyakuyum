@@ -28,6 +28,7 @@ export interface LookupModalProps<T> {
   isItemDisabled?: (item: T) => boolean;
   renderDetail?: (item: T) => React.ReactNode;
   searchByCodeOnly?: boolean;
+  selectOnDoubleClick?: boolean;
 }
 
 const MAX_DISPLAY_COUNT = 150;
@@ -49,6 +50,7 @@ function LookupModalContent<T extends Record<string, any>>({
   isItemDisabled,
   renderDetail,
   searchByCodeOnly = false,
+  selectOnDoubleClick = false,
 }: LookupModalProps<T>) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
@@ -143,10 +145,14 @@ function LookupModalContent<T extends Record<string, any>>({
     }
   }, [selectedIndex]);
 
-  // Single click: Select row (and confirm if no renderDetail)
+  const isDoubleClickMode = Boolean(
+    selectOnDoubleClick || (title && title.toLowerCase().includes("üretici firma"))
+  );
+
+  // Single click: Select row (confirm immediately only if not in double-click mode and no renderDetail)
   const handleRowClick = (index: number, item: T) => {
     setSelectedIndex(index);
-    if (!renderDetail) {
+    if (!isDoubleClickMode && !renderDetail) {
       if (isItemDisabled?.(item)) return;
       onSelect(item);
       onHide();
