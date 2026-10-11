@@ -51,9 +51,14 @@ Source: "{src}\firma.lky"; DestDir: "{commonappdata}\LikyaKuyum"; Flags: externa
 [INI]
 Filename: "{app}\LikyaKuyum.url"; Section: "InternetShortcut"; Key: "URL"; String: "http://localhost:5000"
 
+[Dirs]
+; Firmanın belge klasörü (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K6): kaldırmada silinmez
+Name: "{app}\Belgeler"; Flags: uninsneveruninstall
+
 [Icons]
 Name: "{commondesktop}\Likya Kuyum"; Filename: "{app}\LikyaKuyum.url"
 Name: "{autoprograms}\Likya Kuyum"; Filename: "{app}\LikyaKuyum.url"
+Name: "{autoprograms}\Likya Kuyum Belgeleri"; Filename: "{app}\Belgeler"
 
 [Run]
 Filename: "{app}\LikyaKuyum.url"; Description: "Likya Kuyum'u aç"; Flags: postinstall shellexec nowait skipifsilent

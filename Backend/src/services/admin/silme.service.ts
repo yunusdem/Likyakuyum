@@ -16,6 +16,7 @@ import { MerkezGirisService } from "../merkezGiris.service.js";
 import { FirmaService } from "./firma.service.js";
 import { kd, klonIle, klonYapilandirildiMi, nm } from "./klon.service.js";
 import { veritabaniniYedekle, yedekKlasorleri } from "./yedek.service.js";
+import { bulutFirmaYolu, dbKlasorAdi } from "../firmaKlasoru.js";
 
 /**
  * Bulut firma silme (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, K5 ve 6.2):
@@ -53,6 +54,52 @@ const girisBaskaFirmadaMi = async (firmaId: number, dbServer: string, dbUser: st
 };
 
 const tarihEki = (): string => trZaman().gun.replace(/-/g, "");
+
+/** Silinen firmaların dosya klasörleri: {BELGE_KOK}\_Silinen\{FIRMA_KODU}_{yyyymmdd} */
+export const silinenKlasorKoku = (belgeKok = env.BELGE_KOK): string => path.join(path.resolve(belgeKok), "_Silinen");
+
+/** Firma klasörünü Silinen'e taşır. Klasör yoksa ikisi de boş döner. */
+export function firmaKlasorunuTasi(
+  dbName: string,
+  firmaKodu: string,
+  belgeKok = env.BELGE_KOK,
+  ek = tarihEki()
+): { hedef?: string; hata?: string } {
+  const kaynak = bulutFirmaYolu(dbName, belgeKok);
+  if (!fs.existsSync(kaynak)) return {};
+  const kok = silinenKlasorKoku(belgeKok);
+  let hedef = path.join(kok, `${dbKlasorAdi(firmaKodu)}_${ek}`);
+  for (let i = 2; fs.existsSync(hedef); i++) hedef = path.join(kok, `${dbKlasorAdi(firmaKodu)}_${ek}_${i}`);
+  try {
+    fs.mkdirSync(kok, { recursive: true });
+    fs.renameSync(kaynak, hedef);
+    return { hedef };
+  } catch (err: any) {
+    logger.error(`[SILME] ${firmaKodu} dosya klasörü taşınamadı (${kaynak}): ${err?.message}`);
+    return { hata: err?.code || String(err?.message || err) };
+  }
+}
+
+/** Saklama süresi dolan silinmiş firma klasörlerini kaldırır (ad sonundaki tarihe göre). */
+export function silinenKlasorleriTemizle(belgeKok = env.BELGE_KOK, simdi = new Date(), gun = SILINEN_YEDEK_SAKLAMA_GUN): string[] {
+  const kok = silinenKlasorKoku(belgeKok);
+  if (!fs.existsSync(kok)) return [];
+  const sinir = simdi.getTime() - gun * 86_400_000;
+  const silinenler: string[] = [];
+  for (const ad of fs.readdirSync(kok)) {
+    const m = /_(\d{4})(\d{2})(\d{2})(?:_\d+)?$/.exec(ad);
+    if (!m) continue;
+    const tarih = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+    if (tarih > sinir) continue;
+    try {
+      fs.rmSync(path.join(kok, ad), { recursive: true, force: true });
+      silinenler.push(ad);
+    } catch (err: any) {
+      logger.error(`[SILME] Silinmiş firma klasörü kaldırılamadı (${ad}): ${err?.message}`);
+    }
+  }
+  return silinenler;
+}
 
 export class SilmeService {
   /** Panelden silinemiyorsa nedeni; silinebiliyorsa null. */
@@ -167,6 +214,12 @@ export class SilmeService {
         if (err?.code !== "ENOENT") adimlar.haftalikYedekSilinemedi = err?.code || String(err);
       }
 
+      // Firmanın dosya klasörü de son yedekle aynı kurala uyar: Silinen'e taşınır, 90 gün sonra silinir
+      // (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K10). Taşınamazsa veritabanı silmesi geri alınmaz, günlüğe yazılır.
+      const klasor = firmaKlasorunuTasi(f.dbName, f.firmaKodu);
+      if (klasor.hedef) adimlar.klasorTasindi = klasor.hedef;
+      else if (klasor.hata) adimlar.klasorTasinamadi = klasor.hata;
+
       await BulutSqlRepository.silindiIsaretle(f.firmaId, sahip ? sonYedek : null, boyut, SILINEN_YEDEK_SAKLAMA_GUN);
       await AdminLogSqlRepository.islemLogu({ adminId: null, islem: "FIRMA_DB_SILINDI", hedefTur: "FIRMA", hedefId: f.firmaId, yeni: adimlar });
     } catch (err: any) {
@@ -202,6 +255,10 @@ export class SilmeService {
         hedefId: y.firmaId,
         yeni: { dosya: y.yedekDosya },
       });
+      adet++;
+    }
+    for (const ad of silinenKlasorleriTemizle()) {
+      await AdminLogSqlRepository.islemLogu({ adminId: null, islem: "SILINEN_KLASOR_TEMIZLENDI", hedefTur: "KLASOR", hedefId: ad, yeni: { klasor: ad } });
       adet++;
     }
     return adet;

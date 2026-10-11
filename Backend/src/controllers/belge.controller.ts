@@ -55,6 +55,8 @@ export class BelgeController {
     const indir = ["1", "true", "evet"].includes(String(req.query.indir || "").toLowerCase());
     const istek = { ...p.data, bicim: p.data.bicim || (indir ? "80" as const : "a4" as const) };
     const s = await BelgeService.pdf(istek, BelgeController.kullanici(req), BelgeController.getDbContext(req));
+    // İndirilen fiş, arşivdeki yerine yazılır (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K8); önizleme ve taslak yazılmaz
+    if (indir && !s.onizleme) void BelgeService.kopyala(s, BelgeController.getDbContext(req));
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `${indir ? "attachment" : "inline"}; filename="${s.belgeNo || "belge"}.pdf"`);
     res.setHeader("Content-Length", String(s.pdf.length));

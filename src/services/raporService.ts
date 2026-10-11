@@ -33,7 +33,7 @@ const sorgu = (p: RaporParametreDegerleri) => {
   return q.toString();
 };
 
-async function dosyaGetir(yol: string, kabul: string): Promise<Blob> {
+export async function dosyaGetir(yol: string, kabul: string): Promise<Blob> {
   const token = localStorage.getItem("kuyumcu_erp_access_token");
   const dbServer = localStorage.getItem("kuyumcu_erp_last_server") || localStorage.getItem("kuyumcu_erp_active_server");
   const dbName = localStorage.getItem("kuyumcu_erp_last_db") || localStorage.getItem("kuyumcu_erp_active_db");
@@ -57,7 +57,7 @@ async function dosyaGetir(yol: string, kabul: string): Promise<Blob> {
   return res.blob();
 }
 
-const indirBlob = (blob: Blob, ad: string) => {
+export const indirBlob = (blob: Blob, ad: string) => {
   const url = URL.createObjectURL(blob);
   try { const a = document.createElement("a"); a.href = url; a.download = ad; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); }
   finally { setTimeout(() => URL.revokeObjectURL(url), 1500); }

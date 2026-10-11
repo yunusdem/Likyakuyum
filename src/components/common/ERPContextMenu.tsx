@@ -9,7 +9,9 @@ import {
   IconPrinter,
   IconFolderMinus,
   IconSettings,
+  IconArrowsSort,
 } from "@tabler/icons-react";
+import { ekranAdi, girisSirasiAc } from "../../services/girisSirasiService";
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -18,6 +20,8 @@ interface ContextMenuState {
   targetType: "grid-row" | "sidebar" | "page";
   rowId?: string;
   tableType?: string;
+  /** Sağ tıklanan yer giriş sırası ayarlanabilen bir ekrandaysa adı */
+  ekran?: string | null;
   tableActionHandler?: {
     onDeleteRow?: (rowId: string) => void;
     onAddRow?: () => void;
@@ -100,6 +104,7 @@ export const ERPContextMenu: React.FC = () => {
         targetType,
         rowId,
         tableType,
+        ekran: ekranAdi(target),
       });
     };
 
@@ -152,6 +157,8 @@ export const ERPContextMenu: React.FC = () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "F1" }));
     } else if (actionKey === "print") {
       window.print();
+    } else if (actionKey === "giris-sirasi" && menu.ekran) {
+      girisSirasiAc(menu.ekran);
     } else if (actionKey === "sidebar-collapse-all") {
       // Sidebar tüm menüleri kapat
       const openButtons = document.querySelectorAll<HTMLElement>("#miniSidebar .accordion-button:not(.collapsed)");
@@ -256,6 +263,19 @@ export const ERPContextMenu: React.FC = () => {
         <IconPrinter size={16} className="text-dark" />
         <span>Yazdır (F10)</span>
       </button>
+      {menu.ekran && (
+        <>
+          <div className="erp-context-menu-divider" />
+          <button
+            type="button"
+            className="erp-context-menu-item"
+            onClick={() => handleAction("giris-sirasi")}
+          >
+            <IconArrowsSort size={16} className="text-secondary" />
+            <span>Giriş Sırası…</span>
+          </button>
+        </>
+      )}
     </div>
   );
 };

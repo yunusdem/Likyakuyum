@@ -5,6 +5,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { EbelgeService } from "../services/ebelge.service.js";
 import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
 import { EbelgeKuyrukService } from "../services/ebelgeKuyruk.service.js";
+import { kopyaKaydet } from "../services/firmaKlasoru.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
 import { EbelgeKodRepository } from "../models/ebelgeKod.repository.js";
 import { EbelgeTaslakRepository } from "../models/ebelgeTaslak.repository.js";
@@ -70,6 +71,7 @@ export class EbelgeController {
     const uuid = String(req.params.uuid || "").trim();
     if (!/^[0-9a-f-]{36}$/i.test(uuid)) throw ApiError.badRequest("ETTN geçersiz.");
     const pdf = await EbelgeKaynakService.dovizPdf(uuid,EbelgeController.getKullanici(req),EbelgeController.getDbContext(req));
+    void kopyaKaydet(EbelgeController.getDbContext(req), "eBelge", `EDoviz_${uuid}.pdf`, pdf);
     res.setHeader("Content-Type", "application/pdf"); res.setHeader("Content-Disposition", `inline; filename="${uuid}.pdf"`);
     return res.status(200).end(pdf);
   });
@@ -288,6 +290,7 @@ export class EbelgeController {
 
     if (format === "pdf") {
       const pdf = await EbelgeService.getGelenPdf(uuid, kullanici, dbContext);
+      void kopyaKaydet(dbContext, "eBelge", `Gelen_${uuid}.pdf`, pdf);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `inline; filename="${uuid}.pdf"`);
       res.setHeader("Content-Length", String(pdf.length));
@@ -713,6 +716,7 @@ export class EbelgeController {
 
     // ICE bu uçtan PDF yerine HTML de döndürebiliyor; istemci türe göre gösterir.
     const html = goruntu.tur === "html";
+    void kopyaKaydet(EbelgeController.getDbContext(req), "eBelge", `EArsiv_${uuid}.${html ? "html" : "pdf"}`, goruntu.veri);
     res.setHeader("Content-Type", html ? "text/html; charset=utf-8" : "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${uuid}.${html ? "html" : "pdf"}"`);
     res.setHeader("Content-Length", String(goruntu.veri.length));
@@ -837,6 +841,7 @@ export class EbelgeController {
       EbelgeController.getDbContext(req)
     );
 
+    void kopyaKaydet(EbelgeController.getDbContext(req), "eBelge", `EIrsaliye_${ettn}.pdf`, pdf);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${ettn}.pdf"`);
     res.setHeader("Content-Length", String(pdf.length));
@@ -942,6 +947,7 @@ export class EbelgeController {
       EbelgeController.getDbContext(req)
     );
 
+    void kopyaKaydet(EbelgeController.getDbContext(req), "eBelge", `EGiderPusulasi_${uuid}.pdf`, pdf);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${uuid}.pdf"`);
     res.setHeader("Content-Length", String(pdf.length));

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ekranAdi, girisSirasiService, girisSirasiSonraki, kayitliEkran, sirayiKoru } from "../services/girisSirasiService";
 
 const isDittoKey = (e: KeyboardEvent): boolean => {
   if (
@@ -187,11 +188,14 @@ export const useEnterNavigation = () => {
         return el.offsetParent !== null && !el.hasAttribute("aria-hidden");
       });
 
-      const currentIndex = visibleElements.indexOf(target);
-      if (currentIndex >= 0 && currentIndex < visibleElements.length - 1) {
+      // Sonraki alan: kullanıcının bu ekran için kaydettiği giriş sırası varsa ona göre, yoksa ekrandaki dizilişle
+      const nextElement = girisSirasiSonraki(target, visibleElements);
+      if (nextElement) {
         e.preventDefault();
-        const nextElement = visibleElements[currentIndex + 1];
         nextElement.focus();
+        // Kullanıcının sırası varsa, kendi Enter zinciri olan sayfanın odağı geri çekmesine karşı korunur
+        const siraliEkran = kayitliEkran(target);
+        if (siraliEkran) sirayiKoru(target, nextElement, siraliEkran, visibleElements);
         if (
           nextElement instanceof HTMLInputElement &&
           typeof nextElement.select === "function" &&
@@ -204,9 +208,18 @@ export const useEnterNavigation = () => {
       }
     };
 
+    // Giriş sırası kayıtları açılışta (oturum varsa) ve sırası ayarlanabilen bir ekrana odaklanılınca yüklenir;
+    // Enter anında beklenmez. Oturum değişmişse hazirla() yeniden yükler, değişmemişse hiçbir şey yapmaz.
+    void girisSirasiService.hazirla();
+    const handleFocusIn = (e: FocusEvent) => {
+      if (ekranAdi(e.target as Element | null)) void girisSirasiService.hazirla();
+    };
+
     window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("focusin", handleFocusIn, true);
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("focusin", handleFocusIn, true);
     };
   }, []);
 };

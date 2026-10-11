@@ -58,7 +58,11 @@ function SaglikBekle {
 }
 function KorunanlariTasi([string]$kaynak, [string]$hedef) {
   Copy-Item (Join-Path $kaynak "backend\.env") (Join-Path $hedef "backend\.env") -Force
-  if (Test-Path (Join-Path $kaynak "backend\uploads")) { Copy-Item (Join-Path $kaynak "backend\uploads") (Join-Path $hedef "backend") -Recurse -Force }
+  # Eski surumlerin uygulama icinde tuttugu veriler tasinir; yeni dosyalar {Kok}\Belgeler'dedir ve guncellemede dokunulmaz
+  # (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K6). belge-arsiv, program acilinca bir kez Belgeler'e kopyalanir.
+  foreach ($k in @("uploads", "belge-arsiv", "destek-ekler")) {
+    if (Test-Path (Join-Path $kaynak "backend\$k")) { Copy-Item (Join-Path $kaynak "backend\$k") (Join-Path $hedef "backend") -Recurse -Force }
+  }
   if (-not $Deneme) { & icacls (Join-Path $hedef "backend\.env") /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null }
 }
 

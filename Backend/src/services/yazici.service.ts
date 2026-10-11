@@ -6,6 +6,7 @@ import net from "net";
 import { YaziciSqlRepository, YaziciModel, YaziciInputDto } from "../models/yaziciSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
+import { altKlasorAdiDenetle, firmaKlasoru } from "./firmaKlasoru.js";
 
 export interface DirectPrintDto {
   printerId?: number | string | null;
@@ -153,13 +154,12 @@ export class YaziciService {
       }
     }
 
-    // 2. Klasöre / Arşive Yazdırma (belgeYaziciDizini)
+    // 2. Klasöre / Arşive Yazdırma (belgeYaziciDizini): çıktı firmanın klasörüne, `Yazdirma\[alt klasör]` altına
+    //    yazılır; tanımdaki değer yalnızca alt klasör adıdır (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K7–K8).
     if (yazici?.belgeYaziciDizini && yazici.belgeYaziciDizini.trim()) {
       try {
-        const outDir = yazici.belgeYaziciDizini.trim();
-        if (!fs.existsSync(outDir)) {
-          fs.mkdirSync(outDir, { recursive: true });
-        }
+        const alt = altKlasorAdiDenetle(yazici.belgeYaziciDizini).ad;
+        const outDir = await firmaKlasoru(dbContext, "Yazdirma", ...(alt ? [alt] : []));
         const fileName = `fis_${Date.now()}.${dto.isPos ? "txt" : "html"}`;
         const filePath = path.join(outDir, fileName);
         fs.writeFileSync(filePath, content, "utf8");

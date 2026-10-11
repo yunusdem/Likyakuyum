@@ -107,6 +107,9 @@ const envSchema = z.object({
   KLON_DB_PASSWORD: z.string().default(""),
   KLON_DB_SERVER: z.string().default(""),
   KLON_DB_PORT: z.string().default(""),
+  // Bulutta firmaların dosya klasörü kökü; her firma {BELGE_KOK}\{veritabanı adı} (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K6).
+  // Kurulumda (exe) kullanılmaz, orada {kurulum}\Belgeler'dir.
+  BELGE_KOK: z.string().default("C:\\LikyaBelge"),
   // Bulut firmalarının kaydına yazılan sunucu adresi (kullanıcı girişinde firma bu adresle eşleşir)
   BULUT_DB_SUNUCU: z.string().default("127.0.0.1"),
   // Çevrimdışı lisans imza anahtarı (yalnız merkez sunucu; npm run lisans-anahtar). Boşsa panelden lisans kodu üretilemez.

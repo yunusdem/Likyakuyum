@@ -3,6 +3,21 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import fs from "fs";
 import path from "path";
+import { firmaKlasoru, firmaKoku, guvenliBirlestir, icindeMi } from "../services/firmaKlasoru.js";
+
+/** Firma klasöründeki resimlerin DOSYA_YOLU ön eki (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K9) */
+export const FIRMA_RESIM_ONEKI = "/firma/Resimler/";
+
+/** DOSYA_YOLU → diskteki dosya. Yeni kayıtlar firma klasöründe, eskiler `uploads` altında kalır. */
+export async function resimDiskYolu(dosyaYolu: string, dbContext?: { dbServer?: string; dbName?: string }): Promise<string | null> {
+  if (dosyaYolu.startsWith(FIRMA_RESIM_ONEKI)) {
+    const { yol } = await firmaKoku(dbContext);
+    return guvenliBirlestir(yol, "Resimler", path.basename(dosyaYolu));
+  }
+  const uploads = path.join(process.cwd(), "uploads");
+  const yerel = path.join(process.cwd(), dosyaYolu.replace(/^\//, ""));
+  return icindeMi(uploads, yerel) ? yerel : null;
+}
 
 export interface UrunResimModel {
   resimId: number;
@@ -42,12 +57,6 @@ export class UrunResimSqlRepository {
           END;
         END;
       `);
-
-      // Ensure uploads folder exists on disk as secondary storage
-      const uploadDir = path.join(process.cwd(), "uploads", "urunler");
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
     } catch (err: any) {
       logger.warn(`[UrunResimSqlRepository.ensureTables] Warning: ${err.message}`);
     }
@@ -63,24 +72,20 @@ export class UrunResimSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTables(pool);
 
-    const uploadDir = path.join(process.cwd(), "uploads", "urunler");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
     // Strip base64 header if present
     const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Clean, "base64");
 
-    const ext = path.extname(originalName) || ".jpg";
+    const ext = (path.extname(originalName) || ".jpg").replace(/[^.A-Za-z0-9]/g, "").slice(0, 10) || ".jpg";
     const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
-    const filePath = path.join(uploadDir, uniqueName);
-    const publicUrl = `/uploads/urunler/${uniqueName}`;
+    const publicUrl = `${FIRMA_RESIM_ONEKI}${uniqueName}`;
 
     try {
-      await fs.promises.writeFile(filePath, buffer);
-    } catch {
+      const uploadDir = await firmaKlasoru(dbContext, "Resimler");
+      await fs.promises.writeFile(path.join(uploadDir, uniqueName), buffer);
+    } catch (err: any) {
       // Diske yazma opsiyoneldir, asıl kaynak veritabanıdır
+      logger.warn(`[UrunResimSqlRepository.saveResimFile] Resim firma klasörüne yazılamadı: ${err?.message || err}`);
     }
 
     const fullDataUrl = `data:image/jpeg;base64,${base64Clean}`;
@@ -153,17 +158,16 @@ export class UrunResimSqlRepository {
         ORDER BY [RESIM_ID] ASC;
       `);
 
-      return (result.recordset || [])
-        .map((r: any) => {
+      const resimler = await Promise.all(
+        (result.recordset || []).map(async (r: any) => {
           if (r.RESIM_DATA && Buffer.isBuffer(r.RESIM_DATA)) {
             return `data:image/jpeg;base64,${r.RESIM_DATA.toString("base64")}`;
           }
           if (r.DOSYA_YOLU && typeof r.DOSYA_YOLU === "string") {
             // Eğer diskte varsa oku ve base64 yap
             try {
-              const cleanRel = r.DOSYA_YOLU.replace(/^\//, "");
-              const localPath = path.join(process.cwd(), cleanRel);
-              if (fs.existsSync(localPath)) {
+              const localPath = await resimDiskYolu(r.DOSYA_YOLU, dbContext);
+              if (localPath && fs.existsSync(localPath)) {
                 const fBuf = fs.readFileSync(localPath);
                 return `data:image/jpeg;base64,${fBuf.toString("base64")}`;
               }
@@ -174,7 +178,8 @@ export class UrunResimSqlRepository {
           }
           return null;
         })
-        .filter(Boolean) as string[];
+      );
+      return resimler.filter(Boolean) as string[];
     } catch (err: any) {
       logger.warn(`[UrunResimSqlRepository.getResimlerByIslemId] Warning: ${err.message}`);
       return [];
@@ -211,9 +216,8 @@ export class UrunResimSqlRepository {
           // Var olan relative veya url yolundan buffer bulmaya çalış
           let buffer: Buffer | null = null;
           try {
-            const cleanRel = img.replace(/^\//, "");
-            const localPath = path.join(process.cwd(), cleanRel);
-            if (fs.existsSync(localPath)) {
+            const localPath = await resimDiskYolu(img, dbContext);
+            if (localPath && fs.existsSync(localPath)) {
               buffer = fs.readFileSync(localPath);
             }
           } catch {

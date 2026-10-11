@@ -447,14 +447,15 @@ export const PrinterDefinitionsPage: React.FC = () => {
                     {/* Belge Yazıcı Dizini */}
                     <Form.Group as={Row} className="mb-2 align-items-center g-2">
                       <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                        Çıktı / Arşiv Dizini :
+                        Klasöre Yazdır :
                       </Form.Label>
                       <Col>
                         <div style={{ maxWidth: "340px" }}>
                           <Form.Control
                             type="text"
                             size="sm"
-                            maxLength={100}
+                            maxLength={60}
+                            placeholder="Alt klasör adı (firma klasörü › Yazdirma)"
                             value={formData.belgeYaziciDizini || ""}
                             onChange={(e) => handleInputChange("belgeYaziciDizini", e.target.value)}
                           />

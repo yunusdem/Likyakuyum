@@ -132,6 +132,15 @@ CORS_ORIGIN=*
   }
   Yaz ".env yazildi."
 
+  # --- 4b) Firma belge klasoru (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K6): program SYSTEM ile yazar,
+  # bilgisayarin kullanicilari Gezgin'den acip okuyabilir. Uygulama klasorunun disinda; guncelleme ve kaldirma dokunmaz.
+  $belgeler = Join-Path $Kok "Belgeler"
+  New-Item -ItemType Directory -Force -Path $belgeler | Out-Null
+  if (-not $Deneme) {
+    & icacls $belgeler /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null
+  }
+  Yaz "Belge klasoru hazir: $belgeler"
+
   # --- 5) Baslangic gorevi + guvenlik duvari
   if (-not $Deneme) {
     $node = Join-Path $Kok "node\node.exe"

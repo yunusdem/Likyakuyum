@@ -1,6 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { etkinEkran, girisSirasiAc, siraliEkranVarMi } from "../../services/girisSirasiService";
 import {
+  IconArrowsSort,
   IconNumbers,
   IconPrinter,
   IconCash,
@@ -204,6 +206,25 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
 }) => {
   const location = useLocation();
   const routeMatch = ROUTE_PAGE_MAP[location.pathname];
+
+  // Sayfada giriş sırası ayarlanabilen bir ekran varsa "Giriş Sırası" düğmesi görünür (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md)
+  const [siraliEkranVar, setSiraliEkranVar] = useState(false);
+  useEffect(() => {
+    const bak = siraliEkranVarMi;
+    if (bak()) {
+      setSiraliEkranVar(true);
+      return;
+    }
+    setSiraliEkranVar(false);
+    const gozcu = new MutationObserver(() => {
+      if (bak()) {
+        setSiraliEkranVar(true);
+        gozcu.disconnect();
+      }
+    });
+    gozcu.observe(document.body, { childList: true, subtree: true });
+    return () => gozcu.disconnect();
+  }, [location.pathname]);
   const finalTitle = pageTitle || routeMatch?.title || "";
   const finalIcon = pageIcon || routeMatch?.icon || <IconFileText size={20} />;
 
@@ -627,6 +648,20 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
       {/* Sağ Toolbar Grubu: Custom RightContent + Yenile */}
       <div className="d-flex align-items-center gap-2 ms-auto">
         {rightContent}
+        {siraliEkranVar && (
+          <button
+            type="button"
+            onClick={() => {
+              const ekran = etkinEkran();
+              if (ekran) girisSirasiAc(ekran);
+            }}
+            className="erp-tb-btn erp-tb-btn-secondary"
+            title="Giriş Sırası"
+            aria-label="Giriş Sırası"
+          >
+            <IconArrowsSort size={17} color="#475569" />
+          </button>
+        )}
         <button
           type="button"
           disabled={disabled}

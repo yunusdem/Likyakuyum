@@ -5,7 +5,7 @@ import { belgeCiz, sablonOku, BACKEND_KOK } from "./belgeMotor.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fisBelgeVerisi } from "./belgeVeri.js";
-import { arsivYolu, arsivle } from "./belgeArsiv.js";
+import { belgeArsivYolu, arsivle } from "./belgeArsiv.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
 
@@ -63,11 +63,21 @@ export class BelgeService {
     return { pdf, belgeNo, sablon, kaynak: "SABLON", onizleme: !gonderildi, tarih };
   }
 
+  /** Üretilmiş PDF'in kopyasını arşivdeki yerine yazar; hata indirmeyi durdurmaz. */
+  static async kopyala(s: { pdf: Buffer; belgeNo: string; tarih: string; sablon: BelgeSablonModel }, ctx?: DbContext): Promise<string | null> {
+    try {
+      const yol = await belgeArsivYolu({ ctx, sablonAltKlasor: s.sablon.arsivDizini, tarih: s.tarih, belgeNo: s.belgeNo });
+      return arsivle(s.pdf, yol).yol;
+    } catch (e: any) {
+      logger.warn(`Belge: indirilen PDF arşive yazılamadı (${s.belgeNo}): ${e?.message || e}`);
+      return null;
+    }
+  }
+
   /** PDF'i üretir ve sunucu arşivine yazar (üzerine yazar). */
   static async arsivle(istek: BelgeIstek, kullanici: string, ctx?: DbContext) {
     const s = await this.pdf(istek, kullanici, ctx);
-    const kok = s.sablon.arsivDizini || (await BelgeSqlRepository.firmaBelgeDizini(ctx));
-    const yol = arsivYolu({ kokDizin: kok, dbName: ctx?.dbName, tarih: s.tarih, belgeNo: s.belgeNo });
+    const yol = await belgeArsivYolu({ ctx, sablonAltKlasor: s.sablon.arsivDizini, tarih: s.tarih, belgeNo: s.belgeNo });
     const sonuc = arsivle(s.pdf, yol);
     logger.info(`Belge arşivlendi: ${s.belgeNo} → ${yol} (${sonuc.boyut} bayt, ${s.kaynak}${s.onizleme ? ", önizleme" : ""}) [${kullanici}]`);
     return { belgeNo: s.belgeNo, sablon: s.sablon.kod, kaynak: s.kaynak, onizleme: s.onizleme, yol, boyut: sonuc.boyut };

@@ -1,5 +1,5 @@
 # Likya Kuyum - kaldirma (Inno Setup kaldirma sirasinda calistirir)
-# Program gorevleri ve guvenlik duvari kurali kaldirilir. VERITABANI ve VERI KLASORU SILINMEZ (firmanin verisi).
+# Program gorevleri ve guvenlik duvari kurali kaldirilir. VERITABANI, VERI KLASORU ve {app}\Belgeler SILINMEZ (firmanin verisi).
 $ErrorActionPreference = "SilentlyContinue"
 Stop-ScheduledTask -TaskName "LikyaKuyum"
 Unregister-ScheduledTask -TaskName "LikyaKuyum" -Confirm:$false

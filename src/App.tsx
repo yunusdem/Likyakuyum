@@ -92,6 +92,7 @@ import DestekPage from "./pages/destek/DestekPage";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ERPContextMenu } from "./components/common/ERPContextMenu";
+import GirisSirasiModal from "./components/common/GirisSirasiModal";
 import { UserThemeApplier } from "./components/theme/UserThemeApplier";
 import useMenu from "hooks/useMenu";
 import useEnterNavigation from "./hooks/useEnterNavigation";
@@ -127,7 +128,7 @@ const DashboardLayout: React.FC = () => {
       {/* 3. Main Content Area */}
       <div id="content" className="position-relative min-vh-100 d-flex flex-column">
         <Header />
-        <main className="flex-grow-1 custom-container pt-1 pb-3">
+        <main className="flex-grow-1 custom-container pt-1 pb-3" data-sayfa-icerik="true">
           <LisansUyariBandi />
           <ModulKorumasi />
         </main>
@@ -167,6 +168,7 @@ export default function App() {
         <UserThemeApplier />
         <LisansKilitDinleyici />
         <ERPContextMenu />
+        <GirisSirasiModal />
         <Routes>
 
         {/* Public Routes */}

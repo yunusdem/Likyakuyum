@@ -4,6 +4,7 @@ import type { UrunStokFiltre, UrunStokTipi } from "../models/urunStokSql.reposit
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { kopyaKaydet, zamanDamgasi } from "../services/firmaKlasoru.js";
 
 /** I- Etiket İşlemleri › Altın Ürün Stoğu / Özel Ürün Stoğu — /api/v1/etiket/{altin|ozel}-urun-stogu */
 export class UrunStokController {
@@ -58,6 +59,7 @@ export class UrunStokController {
   public static pdf = asyncHandler(async (req: Request, res: Response) => {
     const { pdf, kod } = await UrunStokService.pdf(UrunStokController.tip(req), UrunStokController.filtre(req), UrunStokController.kullanici(req), UrunStokController.getDbContext(req));
     const indir = ["1", "true"].includes(String(req.query.indir || ""));
+    if (indir) void kopyaKaydet(UrunStokController.getDbContext(req), "Raporlar", `${kod}_${zamanDamgasi()}.pdf`, pdf);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `${indir ? "attachment" : "inline"}; filename="${kod}.pdf"`);
     res.setHeader("Content-Length", String(pdf.length));
@@ -68,6 +70,7 @@ export class UrunStokController {
   /** GET /:tip-urun-stogu/excel */
   public static excel = asyncHandler(async (req: Request, res: Response) => {
     const { xlsx, kod } = await UrunStokService.excel(UrunStokController.tip(req), UrunStokController.filtre(req), UrunStokController.kullanici(req), UrunStokController.getDbContext(req));
+    void kopyaKaydet(UrunStokController.getDbContext(req), "Raporlar", `${kod}_${zamanDamgasi()}.xlsx`, xlsx);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${kod}.xlsx"`);
     res.setHeader("Content-Length", String(xlsx.length));

@@ -31,6 +31,7 @@ import ERPToolbar from "components/common/ERPToolbar";
 import { printReportTable } from "../../utils/printReport";
 import { CompanyService, TodvzTanimDto, defaultCompanyTanim } from "../../services/companyService";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import FirmaKlasoruModal from "../../components/common/FirmaKlasoruModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { CariService, CariLookups, LookupItem, CariKartItem, DEFAULT_POSTA_KODLARI } from "../../services/cariService";
 import { KasaService, HesapItem } from "../../services/kasaService";
@@ -161,6 +162,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
+  const [firmaKlasoru, setFirmaKlasoru] = useState<{ yol: string; uyari: string | null } | null>(null);
+  const [klasorAcik, setKlasorAcik] = useState<boolean>(false);
   const [isGibSorgulaniyor, setIsGibSorgulaniyor] = useState<boolean>(false);
   const [targetGibField, setTargetGibField] = useState<"E_FATURA_POSTA_KUTUSU" | "E_IRSALIYE_POSTA_KUTUSU">("E_FATURA_POSTA_KUTUSU");
   const [gibSecimListesi, setGibSecimListesi] = useState<GibKullanici[]>([]);
@@ -759,6 +762,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
           }
           setFormData(sanitized || emptyCompanyData);
         }
+        CompanyService.getKlasor().then(setFirmaKlasoru).catch(() => setFirmaKlasoru(null));
       } else {
         setFormData(emptyCompanyData);
       }
@@ -844,6 +848,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
       const cleanData = sanitizeData(formData);
       const updated = await CompanyService.updateDefinitions(cleanData);
       setFormData(sanitizeData(updated) || cleanData);
+      CompanyService.getKlasor().then(setFirmaKlasoru).catch(() => setFirmaKlasoru(null));
       setAlertSuccess("Firma tanımları ve genel parametreler başarıyla kaydedildi.");
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
@@ -864,7 +869,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
         { alan: "Vergi Dairesi ID / VKN", deger: `${formData.VERGI_DAIRESI_ID || "-"} / ${formData.VERGI_KIMLIK_NO || "-"}` },
         { alan: "Telefon", deger: formData.TELEFON || "-" },
         { alan: "Adres", deger: formData.ADRES || "-" },
-        { alan: "Belge Dizini", deger: formData.BELGE_DIZINI || "-" },
+        { alan: "Belge Klasörü", deger: firmaKlasoru?.yol || formData.BELGE_DIZINI || "-" },
         { alan: "Sistem Sürümü", deger: formData.SURUM || "-" },
       ],
       columns: [
@@ -2579,14 +2584,25 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Belge Dizini:</Form.Label>
+                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Belge Alt Klasörü:</Form.Label>
                               <Col>
                                 <Form.Control
                                   type="text"
+                                  maxLength={60}
+                                  placeholder="Boş bırakılabilir (örn. Merkez)"
                                   value={formData.BELGE_DIZINI || ""}
                                   onChange={(e) => handleChange("BELGE_DIZINI", e.target.value)}
                                   className="bg-white border font-monospace"
                                 />
+                                {firmaKlasoru && (
+                                  <div className="small text-muted mt-1 d-flex align-items-center gap-2 flex-wrap">
+                                    <span className="font-monospace text-break">Klasör: {firmaKlasoru.yol}</span>
+                                    <Button size="sm" variant="outline-secondary" className="py-0 px-2" onClick={() => setKlasorAcik(true)}>
+                                      Klasörü Aç
+                                    </Button>
+                                  </div>
+                                )}
+                                {firmaKlasoru?.uyari && <div className="small text-danger mt-1">{firmaKlasoru.uyari}</div>}
                               </Col>
                             </Form.Group>
                           </Col>
@@ -2780,6 +2796,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
             <Button variant="secondary" size="sm" onClick={() => setGibSecimListesi([])}>Vazgeç</Button>
           </Modal.Footer>
         </Modal>
+
+        <FirmaKlasoruModal show={klasorAcik} onHide={() => setKlasorAcik(false)} kokYol={firmaKlasoru?.yol} />
 
         {/* Reusable Lookup Modal for all Dürbün selections */}
         <LookupModal

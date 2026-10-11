@@ -1,4 +1,5 @@
 import { apiClient, ApiResponse } from "./apiClient";
+import { dosyaGetir, indirBlob } from "./raporService";
 
 export interface TodvzTanimDto {
   SURUM?: string;
@@ -310,4 +311,28 @@ export class CompanyService {
     CompanyService.cachedDefinitions = null;
     return response.data;
   }
+
+  /** Firmanın dosya klasörü (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md) */
+  public static async getKlasor(): Promise<{ yol: string; altKlasor: string | null; uyari: string | null }> {
+    const response = await apiClient.get<{ yol: string; altKlasor: string | null; uyari: string | null }>("/company/klasor");
+    return response.data;
+  }
+
+  /** Firma klasöründeki bir klasörün içeriği; yol "Belgeler/2026" gibi göreli */
+  public static async klasorListe(yol: string): Promise<FirmaKlasorOgesi[]> {
+    const response = await apiClient.get<FirmaKlasorOgesi[]>("/company/klasor/liste", { yol });
+    return response.data || [];
+  }
+
+  public static async klasorIndir(yol: string): Promise<void> {
+    const blob = await dosyaGetir(`/company/klasor/indir?yol=${encodeURIComponent(yol)}`, "*/*");
+    indirBlob(blob, yol.split("/").pop() || "dosya");
+  }
+}
+
+export interface FirmaKlasorOgesi {
+  ad: string;
+  klasor: boolean;
+  boyut: number;
+  tarih: string;
 }
