@@ -189,14 +189,17 @@ function ekranKimlikleri(ekran: string): { els: HTMLElement[]; adlar: (string | 
   return { els, adlar: kimlikler(els, ekran) };
 }
 
-/** Ekrandaki görünür, adlı alanlar ekrandaki dizilişle (pencereler ve iç içe başka ekranlar hariç, ad başına bir kez) */
+/**
+ * Ekrandaki tablo satırı alanları (sütunlar) ekrandaki dizilişle — giriş sırası penceresi yalnız tablolar içindir;
+ * üstteki kutuların yeri ve sırası sürükle-bırak yerleşimle belirlenir (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, Y6).
+ */
 export function ekranAlanlari(ekran: string): EkranAlani[] {
   const { els, adlar } = ekranKimlikleri(ekran);
   const sonuc: EkranAlani[] = [];
   const etiketSayisi = new Map<string, number>();
   els.forEach((el, i) => {
     const alan = adlar[i];
-    if (!alan || sonuc.some((x) => x.alan === alan)) return;
+    if (!alan || !el.closest("td") || sonuc.some((x) => x.alan === alan)) return;
     const etiket = alanEtiketi(el) || el.getAttribute("name") || alan;
     const n = (etiketSayisi.get(etiket) || 0) + 1;
     etiketSayisi.set(etiket, n);
@@ -206,10 +209,14 @@ export function ekranAlanlari(ekran: string): EkranAlani[] {
   return sonuc;
 }
 
-/** Hedefin ekranında kullanıcının kayıtlı sırası varsa ekran adı */
+/** Ekranın yerleşim kaydının anahtarı (aynı tabloda, şema değişmeden) */
+export const yerlesimAnahtari = (ekran: string) => `${ekran}.yer`.slice(0, 80);
+
+/** Hedefin ekranında kullanıcının kayıtlı tablo sırası ya da yerleşimi varsa ekran adı */
 export function kayitliEkran(hedef: Element): string | null {
   const ekran = ekranAdi(hedef);
-  return ekran && girisSirasiService.kayit(ekran)?.length ? ekran : null;
+  if (!ekran) return null;
+  return girisSirasiService.kayit(ekran)?.length || girisSirasiService.kayit(yerlesimAnahtari(ekran))?.length ? ekran : null;
 }
 
 /** Kendi Enter işleyişi olan sayfalarda kullanıcının sırasını koruma süresi (ms) */
@@ -261,13 +268,14 @@ export function girisSirasiSonraki(hedef: HTMLElement, adaylar: HTMLElement[]): 
   const ekran = ekranAdi(hedef);
   const kayit = ekran ? girisSirasiService.kayit(ekran) : undefined;
   if (!ekran || !kayit?.length) return mevcut < adaylar.length - 1 ? adaylar[mevcut + 1] : null;
-  // Satırlı tablolarda aynı alan her satırda tekrar eder: sıra yalnızca hedefin satırında uygulanır
+  // Kayıt yalnız tablo satırları içindir ve yalnız hedefin satırında uygulanır (aynı sütun her satırda tekrar eder).
+  // Üstteki kutuların sırası yerleşimden gelir: aday listesi zaten ekrandaki görünür dizilişe göre sıralıdır.
   const satir = hedef.closest("tr");
   const { els, adlar } = ekranKimlikleri(ekran);
   const ad = new Map(els.map((el, i) => [el, adlar[i]]));
   const ogeler: SiraOgesi[] = adaylar.map((el) => ({
-    // başka ekrana ya da başka satıra ait alanlar sıralanmaz, yerinde kalır
-    alan: el.closest("tr") === satir ? ad.get(el) ?? null : null,
+    // başka ekrana ya da başka satıra ait alanlar ve satır dışı alanlar sıralanmaz, yerinde kalır
+    alan: satir && el.closest("tr") === satir ? ad.get(el) ?? null : null,
     zorunlu: zorunluMu(el),
   }));
   const i = sonrakiKonum(ogeler, mevcut, kayit);

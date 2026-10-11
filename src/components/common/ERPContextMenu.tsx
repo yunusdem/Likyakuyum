@@ -10,8 +10,10 @@ import {
   IconFolderMinus,
   IconSettings,
   IconArrowsSort,
+  IconArrowsMove,
 } from "@tabler/icons-react";
 import { ekranAdi, girisSirasiAc } from "../../services/girisSirasiService";
+import { yerlesimDuzenle } from "../../services/yerlesimService";
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -22,6 +24,8 @@ interface ContextMenuState {
   tableType?: string;
   /** Sağ tıklanan yer giriş sırası ayarlanabilen bir ekrandaysa adı */
   ekran?: string | null;
+  /** sağ tıklanan yer bir tablo hücresi mi */
+  tabloda?: boolean;
   tableActionHandler?: {
     onDeleteRow?: (rowId: string) => void;
     onAddRow?: () => void;
@@ -105,6 +109,7 @@ export const ERPContextMenu: React.FC = () => {
         rowId,
         tableType,
         ekran: ekranAdi(target),
+        tabloda: !!target.closest("td"),
       });
     };
 
@@ -159,6 +164,8 @@ export const ERPContextMenu: React.FC = () => {
       window.print();
     } else if (actionKey === "giris-sirasi" && menu.ekran) {
       girisSirasiAc(menu.ekran);
+    } else if (actionKey === "yerlesim" && menu.ekran) {
+      yerlesimDuzenle(menu.ekran);
     } else if (actionKey === "sidebar-collapse-all") {
       // Sidebar tüm menüleri kapat
       const openButtons = document.querySelectorAll<HTMLElement>("#miniSidebar .accordion-button:not(.collapsed)");
@@ -269,11 +276,21 @@ export const ERPContextMenu: React.FC = () => {
           <button
             type="button"
             className="erp-context-menu-item"
-            onClick={() => handleAction("giris-sirasi")}
+            onClick={() => handleAction("yerlesim")}
           >
-            <IconArrowsSort size={16} className="text-secondary" />
-            <span>Giriş Sırası…</span>
+            <IconArrowsMove size={16} className="text-secondary" />
+            <span>Yerleşimi Düzenle</span>
           </button>
+          {menu.tabloda && (
+            <button
+              type="button"
+              className="erp-context-menu-item"
+              onClick={() => handleAction("giris-sirasi")}
+            >
+              <IconArrowsSort size={16} className="text-secondary" />
+              <span>Tablo Satırı Sırası…</span>
+            </button>
+          )}
         </>
       )}
     </div>

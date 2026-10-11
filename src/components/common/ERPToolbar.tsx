@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { etkinEkran, girisSirasiAc, siraliEkranVarMi } from "../../services/girisSirasiService";
+import { etkinEkran, siraliEkranVarMi } from "../../services/girisSirasiService";
+import { yerlesimDuzenle } from "../../services/yerlesimService";
 import {
-  IconArrowsSort,
+  IconArrowsMove,
   IconNumbers,
   IconPrinter,
   IconCash,
@@ -653,13 +654,13 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
             type="button"
             onClick={() => {
               const ekran = etkinEkran();
-              if (ekran) girisSirasiAc(ekran);
+              if (ekran) yerlesimDuzenle(ekran);
             }}
             className="erp-tb-btn erp-tb-btn-secondary"
-            title="Giriş Sırası"
-            aria-label="Giriş Sırası"
+            title="Yerleşimi Düzenle (kutuları sürükleyerek yerini değiştirin)"
+            aria-label="Yerleşimi Düzenle"
           >
-            <IconArrowsSort size={17} color="#475569" />
+            <IconArrowsMove size={17} color="#475569" />
           </button>
         )}
         <button

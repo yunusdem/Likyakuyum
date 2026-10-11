@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { ekranAdi, girisSirasiService, girisSirasiSonraki, kayitliEkran, sirayiKoru } from "../services/girisSirasiService";
+import { gorunurSirala, yerlesimVarMi } from "../services/yerlesimService";
 
 const isDittoKey = (e: KeyboardEvent): boolean => {
   if (
@@ -188,14 +189,16 @@ export const useEnterNavigation = () => {
         return el.offsetParent !== null && !el.hasAttribute("aria-hidden");
       });
 
-      // Sonraki alan: kullanıcının bu ekran için kaydettiği giriş sırası varsa ona göre, yoksa ekrandaki dizilişle
-      const nextElement = girisSirasiSonraki(target, visibleElements);
+      // Kullanıcı bu ekranda kutuların yerini değiştirdiyse Enter ekranda görünen dizilişi izler
+      const siraliAdaylar = yerlesimVarMi(ekranAdi(target)) ? gorunurSirala(visibleElements) : visibleElements;
+      // Sonraki alan: tablo satırında kullanıcının kaydettiği sıra varsa ona göre, yoksa ekrandaki dizilişle
+      const nextElement = girisSirasiSonraki(target, siraliAdaylar);
       if (nextElement) {
         e.preventDefault();
         nextElement.focus();
         // Kullanıcının sırası varsa, kendi Enter zinciri olan sayfanın odağı geri çekmesine karşı korunur
         const siraliEkran = kayitliEkran(target);
-        if (siraliEkran) sirayiKoru(target, nextElement, siraliEkran, visibleElements);
+        if (siraliEkran) sirayiKoru(target, nextElement, siraliEkran, siraliAdaylar);
         if (
           nextElement instanceof HTMLInputElement &&
           typeof nextElement.select === "function" &&

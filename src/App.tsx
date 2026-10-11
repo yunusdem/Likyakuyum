@@ -93,6 +93,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ERPContextMenu } from "./components/common/ERPContextMenu";
 import GirisSirasiModal from "./components/common/GirisSirasiModal";
+import YerlesimDuzenleyici from "./components/common/YerlesimDuzenleyici";
 import { UserThemeApplier } from "./components/theme/UserThemeApplier";
 import useMenu from "hooks/useMenu";
 import useEnterNavigation from "./hooks/useEnterNavigation";
@@ -169,6 +170,7 @@ export default function App() {
         <LisansKilitDinleyici />
         <ERPContextMenu />
         <GirisSirasiModal />
+        <YerlesimDuzenleyici />
         <Routes>
 
         {/* Public Routes */}

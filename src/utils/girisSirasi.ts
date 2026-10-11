@@ -99,6 +99,27 @@ export function ilkKonum(ogeler: SiraOgesi[], kayit: SiraAlani[] | null | undefi
   return null;
 }
 
+/**
+ * Yerleşim (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, Y1–Y5): bir bölümün çocuklarının CSS `order` değerleri.
+ * `birimYerleri` kutuların bölümdeki çocuk konumları (ekrandaki dizilişle), `dizilis` etkinSira sonucu
+ * (yuva k'ye hangi kutu gelir). Kutu olmayan çocuklar kendi konumunda kalır. Değişiklik yoksa null.
+ */
+export function cssSiralari(cocukSayisi: number, birimYerleri: number[], dizilis: number[]): number[] | null {
+  if (dizilis.every((d, k) => d === k)) return null;
+  const sira = Array.from({ length: cocukSayisi }, (_, i) => i);
+  dizilis.forEach((kutu, yuva) => (sira[birimYerleri[kutu]] = birimYerleri[yuva]));
+  return sira;
+}
+
+/** Listede bir öğeyi başka bir öğenin yerine taşır (sürükle-bırak) */
+export function listedeTasi<T>(liste: T[], kaynak: number, hedef: number): T[] {
+  if (kaynak === hedef || kaynak < 0 || hedef < 0 || kaynak >= liste.length || hedef >= liste.length) return liste;
+  const yeni = [...liste];
+  const [o] = yeni.splice(kaynak, 1);
+  yeni.splice(hedef, 0, o);
+  return yeni;
+}
+
 /** Ayar penceresinde gösterilecek liste: kayıt sırası + kayıtta olmayanlar ekrandaki yerinde */
 export function ayarListesi(
   alanlar: { alan: string; etiket: string; zorunlu?: boolean }[],

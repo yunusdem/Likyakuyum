@@ -84,12 +84,12 @@ const GirisSirasiModal: React.FC = () => {
   return (
     <Modal show={!!ekran} onHide={kapat} centered size="lg" onKeyDown={tusla}>
       <Modal.Header closeButton className="py-2">
-        <Modal.Title className="fs-6 fw-semibold">Giriş Sırası{ekran?.endsWith(".detay") ? " — Satır Alanları" : ""}</Modal.Title>
+        <Modal.Title className="fs-6 fw-semibold">Tablo Satırı Giriş Sırası</Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-2">
         {hata && <Alert variant="danger" className="py-1 px-2 small mb-2">{hata}</Alert>}
         {satirlar.length === 0 ? (
-          <div className="text-muted small p-3 text-center">Bu ekranda sırası ayarlanabilen alan yok.</div>
+          <div className="text-muted small p-3 text-center">Bu ekranda satır girişli tablo yok.</div>
         ) : (
           <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
             <Table size="sm" hover className="mb-0 small align-middle">
