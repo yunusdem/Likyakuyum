@@ -140,6 +140,7 @@ export interface SaveDovizFisDto {
   gelisNedeni?: string;
   kurTuru?: number;
   istatistikId?: number | null;
+  istatistikKodu?: string | null;
   cariKartId?: number | null;
   unvan?: string;
   kisilikTipi?: number;
@@ -580,11 +581,13 @@ export class DovizFisSqlRepository {
 
             IF OBJECT_ID('TODVZ_ISTATISTIK') IS NOT NULL AND @ISTATISTIK_ID IS NOT NULL
             BEGIN
+              DECLARE @IST_FIS_TIPI INT;
               SELECT 
                 @DONEM_ONAY_TARIHI = T.DONEM_ONAY_TARIHI, 
                 @ISTATISTIK_KODU = IST.KOD, 
                 @FIS_DIZAYN_TIPI = ISNULL(IST.FIS_DIZAYN_TIPI, 0), 
                 @CIKTI_SATIR_SAYISI = ISNULL(IST.CIKTI_SATIR_SAYISI, 1),
+                @IST_FIS_TIPI = ISNULL(IST.FIS_TIPI, 0),
                 @E_DOVIZ_FIS_BASLANGIC_TARIHI = CASE ISNULL(IST.FIS_DIZAYN_TIPI, 0) + 1
                   WHEN 1 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_1
                   WHEN 2 THEN T.E_DOVIZ_FIS_BASLANGIC_TARIHI_2
@@ -593,6 +596,20 @@ export class DovizFisSqlRepository {
                 END
               FROM TODVZ_TANIM T, TODVZ_ISTATISTIK IST
               WHERE IST.ISTATISTIK_ID = @ISTATISTIK_ID;
+
+              -- Alış fişinde sadece Alış (0) ve Alış-Satış (2)
+              IF @TIP = 0 AND @IST_FIS_TIPI NOT IN (0, 2)
+              BEGIN
+                SET @HATA_MESAJI = 'Alış fişinde sadece Alış (0) veya Alış-Satış (2) istatistik kodları kullanılabilir.';
+                GOTO UNDO;
+              END;
+
+              -- Satış fişinde sadece Satış (1) ve Alış-Satış (2)
+              IF @TIP = 1 AND @IST_FIS_TIPI NOT IN (1, 2)
+              BEGIN
+                SET @HATA_MESAJI = 'Satış fişinde sadece Satış (1) veya Alış-Satış (2) istatistik kodları kullanılabilir.';
+                GOTO UNDO;
+              END;
             END;
 
             IF @E_DOVIZ_FIS_BASLANGIC_TARIHI IS NOT NULL AND @TARIH >= @E_DOVIZ_FIS_BASLANGIC_TARIHI 
@@ -1125,6 +1142,37 @@ export class DovizFisSqlRepository {
     const isUpdate = dto.fisId !== undefined && dto.fisId !== null && Number(dto.fisId) > 0;
     const targetFisId = isUpdate ? Number(dto.fisId) : null;
     const tip = dto.tip === 1 ? 1 : 0; // 0: Alış, 1: Satış
+
+    // İstatistik Kodu ve Fiş Tipi Uyumluluk Doğrulaması
+    let resolvedIstatistikId = dto.istatistikId ? Number(dto.istatistikId) : null;
+    if (resolvedIstatistikId || (dto.istatistikKodu && dto.istatistikKodu.trim())) {
+      const istCheckReq = pool.request();
+      let istCheckQuery = "SELECT TOP 1 ISTATISTIK_ID, KOD, FIS_TIPI FROM TODVZ_ISTATISTIK WHERE ";
+      if (resolvedIstatistikId) {
+        istCheckReq.input("chkIstId", sql.Int, resolvedIstatistikId);
+        istCheckQuery += "ISTATISTIK_ID = @chkIstId";
+      } else {
+        istCheckReq.input("chkIstKod", sql.VarChar(50), dto.istatistikKodu!.trim());
+        istCheckQuery += "KOD = @chkIstKod";
+      }
+      const istResult = await istCheckReq.query(istCheckQuery);
+      if (istResult.recordset.length === 0) {
+        throw ApiError.badRequest(`Tanımsız istatistik kodu: "${dto.istatistikKodu || resolvedIstatistikId}" veritabanında bulunamadı.`);
+      }
+      const istRecord = istResult.recordset[0];
+      dto.istatistikId = istRecord.ISTATISTIK_ID;
+      dto.istatistikKodu = istRecord.KOD;
+      const istFisTipi = Number(istRecord.FIS_TIPI ?? 0);
+
+      if (tip === 0 && istFisTipi !== 0 && istFisTipi !== 2) {
+        throw ApiError.badRequest(`Alış fişinde sadece Alış (0) veya Alış-Satış (2) istatistik kodları kullanılabilir. Girilen "${istRecord.KOD}" kodu Satış fişine aittir.`);
+      }
+      if (tip === 1 && istFisTipi !== 1 && istFisTipi !== 2) {
+        throw ApiError.badRequest(`Satış fişinde sadece Satış (1) veya Alış-Satış (2) istatistik kodları kullanılabilir. Girilen "${istRecord.KOD}" kodu Alış fişine aittir.`);
+      }
+    } else {
+      throw ApiError.badRequest("Fişte istatistik kodu zorunludur. Lütfen geçerli bir istatistik kodu seçiniz.");
+    }
 
     const parseDate = (d: any): Date => {
       if (!d) return new Date();

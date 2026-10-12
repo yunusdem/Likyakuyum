@@ -13,7 +13,27 @@ interface IstatistikSecimModalProps {
   onSelect: (item: IstatistikSecimItem) => void;
   currentKod?: string;
   initialSearchTerm?: string;
+  allStatistics?: import("../../services/statisticService").StatisticItem[];
 }
+
+const normalizeText = (str: string = "") => {
+  return str
+    .replace(/İ/g, "i")
+    .replace(/I/g, "ı")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/Ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/Ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/Ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/Ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/Ç/g, "c")
+    .toLowerCase()
+    .trim();
+};
 
 export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
   show,
@@ -22,6 +42,7 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
   onSelect,
   currentKod,
   initialSearchTerm = "",
+  allStatistics,
 }) => {
   const [items, setItems] = useState<IstatistikSecimItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -32,42 +53,46 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
+  const mapStats = useCallback((allStats: import("../../services/statisticService").StatisticItem[]) => {
+    const filtered = allStats.filter((s) => {
+      const fType = Number(s.fisTipi);
+      if (tip === 0) {
+        // ALIŞ ekranı: SADECE 0 (Alış) ve 2 (Alış-Satış)
+        return fType === 0 || fType === 2;
+      } else if (tip === 1) {
+        // SATIŞ ekranı: SADECE 1 (Satış) ve 2 (Alış-Satış)
+        return fType === 1 || fType === 2;
+      }
+      return false;
+    });
+
+    return filtered.map((s) => {
+      const dizayn = parseInt(String(s.fisDizaynTipi ?? 0), 10);
+      const rawAd = ((s as any).ad || (s as any).AD || s.aciklama || (s as any).ACIKLAMA || "").trim();
+      return {
+        id: s.id,
+        kod: (s.kod || (s as any).KOD || "").trim(),
+        ad: rawAd,
+        aciklama: (s.aciklama || (s as any).ACIKLAMA || rawAd).trim(),
+        tip: Number(s.fisTipi),
+        fisTipi: Number(s.fisTipi),
+        fisDizaynTipi: isNaN(dizayn) ? 0 : dizayn,
+        ciktiSatirSayisi: Number(s.ciktiSatirSayisi || 0),
+        bmvOrani: Number(s.bmvOrani ?? 0),
+        kmvOrani: Number(s.kmvOrani ?? 0),
+        komisyonOrani: Number(s.komisyonOrani ?? 0),
+        komisyonYetkisi: s.komisyonYetkisi,
+        odemeSekliVar: s.odemeSekliVar,
+        odemeSekli: s.odemeSekli,
+      };
+    });
+  }, [tip]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const allStats = await StatisticService.getStatistics();
-      const filtered = allStats.filter((s) => {
-        const fType = Number(s.fisTipi);
-        if (tip === 0) {
-          // ALIŞ ekranı: 0 (Alış) ve 2 (Alış-Satış)
-          return fType === 0 || fType === 2;
-        } else if (tip === 1) {
-          // SATIŞ ekranı: 1 (Satış) ve 2 (Alış-Satış)
-          return fType === 1 || fType === 2;
-        }
-        return true;
-      });
-
-      const mapped = filtered.map((s) => {
-        const dizayn = parseInt(String(s.fisDizaynTipi ?? 0), 10);
-        return {
-          id: s.id,
-          kod: (s.kod || "").trim(),
-          ad: (s.aciklama || "").trim(),
-          aciklama: (s.aciklama || "").trim(),
-          tip: Number(s.fisTipi),
-          fisTipi: Number(s.fisTipi),
-          fisDizaynTipi: isNaN(dizayn) ? 0 : dizayn,
-          ciktiSatirSayisi: Number(s.ciktiSatirSayisi || 0),
-          bmvOrani: Number(s.bmvOrani ?? 0),
-          kmvOrani: Number(s.kmvOrani ?? 0),
-          komisyonOrani: Number(s.komisyonOrani ?? 0),
-          komisyonYetkisi: s.komisyonYetkisi,
-          odemeSekliVar: s.odemeSekliVar,
-          odemeSekli: s.odemeSekli,
-        };
-      });
-
+      const mapped = mapStats(allStats);
       setItems(mapped);
       return mapped;
     } catch (err) {
@@ -76,40 +101,76 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [tip]);
+  }, [mapStats]);
 
-  // Verileri yükle
+  // allStatistics prop'u güncellendiğinde veya ilk geldiğinde items'ı güncelle
   useEffect(() => {
-    if (!show) return;
+    if (allStatistics && allStatistics.length > 0) {
+      const mapped = mapStats(allStatistics);
+      setItems(mapped);
+      setLoading(false);
+    }
+  }, [allStatistics, mapStats]);
 
-    const term = initialSearchTerm || "";
+  // Modal her açıldığında ve initialSearchTerm geldiğinde arama terimini hazırla ve verileri yükle
+  useEffect(() => {
+    if (!show) {
+      return;
+    }
+
+    const term = (initialSearchTerm ?? "").trim();
+
     setSearchTerm(term);
-    setSelectedIndex(null);
+    setSelectedIndex(0);
 
-    loadData().then(() => {
-      setTimeout(() => {
-        if (searchInputRef.current) {
-          searchInputRef.current.focus();
-          if (term) searchInputRef.current.select();
-        }
-      }, 100);
-    });
-  }, [show, tip, initialSearchTerm, loadData]);
+    if (allStatistics && allStatistics.length > 0) {
+      const mapped = mapStats(allStatistics);
+      setItems(mapped);
+      setLoading(false);
+    } else {
+      void loadData();
+    }
+
+    setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        if (term) searchInputRef.current.select();
+      }
+    }, 60);
+  }, [show, initialSearchTerm, allStatistics, mapStats, loadData]);
 
   // Arama filtrelemesi
   const filteredItems = useMemo(() => {
-    if (!searchTerm.trim()) return items;
-    const term = searchTerm.toLowerCase().trim();
-    return items.filter((item) => {
-      const kodMatch = item.kod?.toLowerCase().includes(term);
-      const adMatch = (item.ad || item.aciklama || "").toLowerCase().includes(term);
-      return kodMatch || adMatch;
+    const rawTerm = (searchTerm || "").trim();
+    if (!rawTerm) return items;
+    const normTerm = normalizeText(rawTerm);
+
+    const matches = items.filter((item) => {
+      const normKod = normalizeText(item.kod);
+      const normAd = normalizeText(item.ad || item.aciklama || "");
+      const idStr = String(item.id);
+      return (
+        normKod.includes(normTerm) ||
+        normAd.includes(normTerm) ||
+        idStr === rawTerm ||
+        idStr.includes(rawTerm)
+      );
+    });
+
+    return matches.sort((a, b) => {
+      const aKod = normalizeText(a.kod);
+      const bKod = normalizeText(b.kod);
+      if (aKod === normTerm && bKod !== normTerm) return -1;
+      if (aKod !== normTerm && bKod === normTerm) return 1;
+      if (aKod.startsWith(normTerm) && !bKod.startsWith(normTerm)) return -1;
+      if (!aKod.startsWith(normTerm) && bKod.startsWith(normTerm)) return 1;
+      return 0;
     });
   }, [items, searchTerm]);
 
   const initialSelectedDoneRef = useRef(false);
 
-  // İlk açılışta mevcut koda göre veya ilk satırı seç (yalnızca 1 kez)
+  // İlk açılışta mevcut koda göre veya ilk satırı seç
   useEffect(() => {
     if (!show) {
       initialSelectedDoneRef.current = false;
@@ -160,6 +221,21 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
     }
   };
 
+  const modalOpenedAtRef = useRef<number>(0);
+  const prevShowRef = useRef(false);
+  if (!prevShowRef.current && show) {
+    modalOpenedAtRef.current = Date.now();
+  }
+  prevShowRef.current = show;
+
+  useEffect(() => {
+    if (show) {
+      modalOpenedAtRef.current = Date.now();
+    } else {
+      modalOpenedAtRef.current = 0;
+    }
+  }, [show]);
+
   // Klavye navigasyonu (Yukarı/Aşağı, Enter, ESC, F Tuşları)
   useEffect(() => {
     if (!show || showNewStatisticModal) return;
@@ -184,16 +260,22 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
           return prev > 0 ? prev - 1 : 0;
         });
       } else if (e.key === "Enter") {
+        // Modalın açıldığı ilk 300ms içinde basılan Enter'ı yok say (üst inputtan gelen Enter ile anında kapanmasını önler)
+        if (Date.now() - modalOpenedAtRef.current < 300) {
+          return;
+        }
         e.preventDefault();
+        e.stopPropagation();
         handleConfirm();
       } else if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keydown", handleKeyDown, false);
+    return () => window.removeEventListener("keydown", handleKeyDown, false);
   }, [show, showNewStatisticModal, selectedIndex, filteredItems, onClose]);
 
   const tipLabel = tip === 0 ? "Alış İstatistikleri" : "Satış İstatistikleri";
@@ -279,12 +361,12 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
               F3) İstatistik Kodu Seçimi
             </span>
             <Badge
-              bg={tip === 0 ? "info" : "warning"}
-              text={tip === 0 ? "white" : "dark"}
+              bg={tip === 0 ? "success" : "danger"}
+              text="white"
               className="ms-1 px-2 py-1"
               style={{ fontSize: "11px", fontWeight: 600 }}
             >
-              {tipLabel} (Tip: {tip})
+              {tip === 0 ? "Alış Fişi (0: Alış, 2: Alış-Satış)" : "Satış Fişi (1: Satış, 2: Alış-Satış)"}
             </Badge>
           </div>
 
@@ -320,7 +402,35 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
-                setSelectedIndex(null);
+                setSelectedIndex(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedIndex((prev) => {
+                    if (prev === null) return 0;
+                    return prev < filteredItems.length - 1 ? prev + 1 : prev;
+                  });
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedIndex((prev) => {
+                    if (prev === null) return 0;
+                    return prev > 0 ? prev - 1 : 0;
+                  });
+                } else if (e.key === "Enter") {
+                  if (Date.now() - modalOpenedAtRef.current < 300) {
+                    return;
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleConfirm();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClose();
+                }
               }}
               className="border-start-0 shadow-none"
               style={{ fontSize: "13px" }}
@@ -395,13 +505,16 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
                 }}
               >
                 <tr>
-                  <th style={{ width: "130px", textAlign: "left" }} className="px-3 py-2">
+                  <th style={{ width: "125px", textAlign: "left" }} className="px-3 py-2">
                     İstatistik Kodu
                   </th>
                   <th style={{ textAlign: "left" }} className="px-3 py-2">
                     Tanım / İstatistik Adı
                   </th>
-                  <th style={{ width: "120px", textAlign: "center" }} className="px-3 py-2">
+                  <th style={{ width: "120px", textAlign: "center" }} className="px-2 py-2">
+                    Fiş Tipi
+                  </th>
+                  <th style={{ width: "110px", textAlign: "center" }} className="px-3 py-2">
                     Fiş Dizayn Tipi
                   </th>
                   <th style={{ width: "70px", textAlign: "center" }} className="px-2 py-2">
@@ -432,6 +545,26 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
                       {/* Tanım / İstatistik Adı */}
                       <td className="px-3 py-2 text-start align-middle">
                         <span className="fw-medium">{highlightText(ad, searchTerm)}</span>
+                      </td>
+
+                      {/* Fiş Tipi */}
+                      <td className="px-2 py-2 text-center align-middle">
+                        <span
+                          className={`badge py-0.5 px-2 border ${
+                            Number(item.fisTipi) === 0
+                              ? "bg-success-subtle text-success-emphasis border-success-subtle"
+                              : Number(item.fisTipi) === 1
+                              ? "bg-danger-subtle text-danger-emphasis border-danger-subtle"
+                              : "bg-info-subtle text-info-emphasis border-info-subtle"
+                          }`}
+                          style={{ fontSize: "11px" }}
+                        >
+                          {Number(item.fisTipi) === 0
+                            ? "Alış (0)"
+                            : Number(item.fisTipi) === 1
+                            ? "Satış (1)"
+                            : "Alış-Satış (2)"}
+                        </span>
                       </td>
 
                       {/* Fiş Dizayn Tipi */}

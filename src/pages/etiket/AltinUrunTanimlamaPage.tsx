@@ -386,21 +386,24 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
   // ─── Kur Dönüşüm Fonksiyonları (HAS <-> Döviz / TL) ──────────────────────────
   // Alt banttaki HAS Alış/Satış ve USD Alış/Satış kurlarını doğrudan referans alır
-  const getRateForCurrency = useCallback(
-    (paraKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
-      const pKod = (paraKodu || "HAS").toUpperCase();
-      if (pKod === "HAS") return 1;
+  const getHasKur = useCallback(
+    (ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
+      const activeH1 = overrides?.hasKuru1 !== undefined ? String(overrides.hasKuru1) : hasKuru1;
+      const activeH2 = overrides?.hasKuru2 !== undefined ? String(overrides.hasKuru2) : hasKuru2;
+      const val = ref === "alis" ? parseNum(activeH1) : parseNum(activeH2);
+      if (val > 0) return val;
+      const hasRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "HAS");
+      return ref === "alis"
+        ? (hasRow?.efektifAlis || hasRow?.dovizAlis || 1)
+        : (hasRow?.efektifSatis || hasRow?.dovizSatis || 1);
+    },
+    [hasKuru1, hasKuru2, kurRows]
+  );
 
-      if (pKod === "TL" || pKod === "TRY") {
-        const activeH1 = overrides?.hasKuru1 !== undefined ? String(overrides.hasKuru1) : hasKuru1;
-        const activeH2 = overrides?.hasKuru2 !== undefined ? String(overrides.hasKuru2) : hasKuru2;
-        const val = ref === "alis" ? parseNum(activeH1) : parseNum(activeH2);
-        if (val > 0) return val;
-        const hasRow = kurRows.find((k) => (k.kod || "").toUpperCase() === "HAS");
-        return ref === "alis"
-          ? (hasRow?.efektifAlis || hasRow?.dovizAlis || 1)
-          : (hasRow?.efektifSatis || hasRow?.dovizSatis || 1);
-      }
+  const getCurrencyKur = useCallback(
+    (paraKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
+      const pKod = (paraKodu || "USD").toUpperCase();
+      if (pKod === "TL" || pKod === "TRY") return 1;
 
       if (pKod === "USD" || pKod === "$") {
         const activeU1 = overrides?.usdKuru1 !== undefined ? String(overrides.usdKuru1) : usdKuru1;
@@ -421,29 +424,52 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       }
       return 1;
     },
-    [hasKuru1, hasKuru2, usdKuru1, usdKuru2, kurRows]
+    [usdKuru1, usdKuru2, kurRows]
   );
 
-  const convertToHas = useCallback(
-    (amount: number, paraKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
-      if (!amount || isNaN(amount)) return 0;
-      const pKod = (paraKodu || "HAS").toUpperCase();
-      if (pKod === "HAS") return amount;
-      const rate = getRateForCurrency(pKod, ref, overrides);
-      return rate > 0 ? amount / rate : 0;
-    },
-    [getRateForCurrency]
-  );
-
+  // 1. Ürünün Toplam TL Değeri = ToplamHas * HAS_KURU
+  // 2. USD Tutarı = Ürünün Toplam TL Değeri / USD_KURU
   const convertFromHas = useCallback(
     (hasAmount: number, targetParaKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
       if (!hasAmount || isNaN(hasAmount)) return 0;
       const pKod = (targetParaKodu || "HAS").toUpperCase();
       if (pKod === "HAS") return hasAmount;
-      const rate = getRateForCurrency(pKod, ref, overrides);
-      return hasAmount * rate;
+
+      const hasKuru = getHasKur(ref, overrides);
+      const toplamTL = hasAmount * hasKuru;
+
+      if (pKod === "TL" || pKod === "TRY") {
+        return toplamTL;
+      }
+
+      const curKuru = getCurrencyKur(pKod, ref, overrides);
+      if (curKuru <= 0) return 0;
+      return toplamTL / curKuru;
     },
-    [getRateForCurrency]
+    [getHasKur, getCurrencyKur]
+  );
+
+  // Döviz veya TL'den HAS'a çevrim:
+  // TL Tutarı = Amount * Currency Kuru
+  // Has Tutarı = TL Tutarı / HAS_KURU
+  const convertToHas = useCallback(
+    (amount: number, paraKodu: string, ref: "alis" | "satis" = "alis", overrides?: RateOverrides): number => {
+      if (!amount || isNaN(amount)) return 0;
+      const pKod = (paraKodu || "HAS").toUpperCase();
+      if (pKod === "HAS") return amount;
+
+      const hasKuru = getHasKur(ref, overrides);
+      if (hasKuru <= 0) return 0;
+
+      if (pKod === "TL" || pKod === "TRY") {
+        return amount / hasKuru;
+      }
+
+      const curKuru = getCurrencyKur(pKod, ref, overrides);
+      const toplamTL = amount * curKuru;
+      return toplamTL / hasKuru;
+    },
+    [getHasKur, getCurrencyKur]
   );
 
   // ─── Otomatik Hesaplama Motoru (Kesin Kuyumculuk Formülleri) ──────────────────
@@ -1187,11 +1213,6 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
     const mPKod = it.maliyetParaKodu || "USD";
     setMaliyetParaKodu(mPKod);
-    if (mHas) {
-      setMaliyetDoviz(format2(convertFromHas(parseNum(mHas), mPKod, kurRef)));
-    } else {
-      setMaliyetDoviz("");
-    }
 
     const calcExpectedSatisHas = (itHasGram > 0 ? itHasGram : calcHasNum) + (itSatisTutari > 0 ? itSatisTutari : calcSatisIscilikHas);
     const sHas = it.satisFiyati ? format5(it.satisFiyati) : (calcExpectedSatisHas > 0 ? format5(calcExpectedSatisHas) : "");
@@ -1199,11 +1220,6 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
     const sPKod = it.satisParaKodu || "USD";
     setSatisParaKodu(sPKod);
-    if (sHas) {
-      setSatisDoviz(format2(convertFromHas(parseNum(sHas), sPKod, kurRef)));
-    } else {
-      setSatisDoviz("");
-    }
 
     if (it.satisKariYuzde !== undefined && it.satisKariYuzde !== null && String(it.satisKariYuzde) !== "") {
       setSatisKariYuzde(String(it.satisKariYuzde));
@@ -1245,6 +1261,25 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     if (activeHas2) setHasKuru2(activeHas2);
     if (activeUsd1) setUsdKuru1(activeUsd1);
     if (activeUsd2) setUsdKuru2(activeUsd2);
+
+    const popOverrides: RateOverrides = {
+      hasKuru1: activeHas1,
+      hasKuru2: activeHas2,
+      usdKuru1: activeUsd1,
+      usdKuru2: activeUsd2,
+    };
+
+    if (mHas) {
+      setMaliyetDoviz(format2(convertFromHas(parseNum(mHas), mPKod, kurRef, popOverrides)));
+    } else {
+      setMaliyetDoviz("");
+    }
+
+    if (sHas) {
+      setSatisDoviz(format2(convertFromHas(parseNum(sHas), sPKod, kurRef, popOverrides)));
+    } else {
+      setSatisDoviz("");
+    }
     const loadedImages = (it.resimler && it.resimler.length > 0) ? it.resimler : (it.resim ? [it.resim] : []);
     setResimler(loadedImages);
     setResim(loadedImages.length > 0 ? loadedImages[0] : null);
@@ -2199,7 +2234,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           readOnly
                           value={satisDoviz || ""}
                           className="fw-bold font-monospace text-primary text-end bg-light fs-6"
-                          title={`Satış ${satisParaKodu} Karşılığı (Satış Fiyatı HAS * Seçilen Kur)`}
+                          title={`Satış ${satisParaKodu} Karşılığı (Satış HAS * HAS Kuru / ${satisParaKodu} Kuru)`}
                         />
                         <Form.Control
                           type="text"
@@ -2255,7 +2290,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
                           readOnly
                           value={maliyetDoviz || ""}
                           className="fw-bold font-monospace text-end bg-light"
-                          title={`Maliyet ${maliyetParaKodu} Karşılığı (Maliyet HAS * Seçilen Kur)`}
+                          title={`Maliyet ${maliyetParaKodu} Karşılığı (Maliyet HAS * HAS Kuru / ${maliyetParaKodu} Kuru)`}
                         />
                         <Form.Control
                           type="text"

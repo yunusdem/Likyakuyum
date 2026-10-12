@@ -419,6 +419,9 @@ export const DovizFisiPage: React.FC = () => {
   const hasUserSelectedStatRef = useRef<boolean>(false);
   const lastModalCallerRef = useRef<"cariKod" | "unvan" | "vkn" | "istatistik" | "paraGrid" | null>(null);
   const lastParaModalRowIndexRef = useRef<number | null>(null);
+  const isOpeningIstatistikModalRef = useRef<boolean>(false);
+  const hasEditedIstatistikSinceConfirmRef = useRef<boolean>(false);
+  const hasUserTypedIstatistikRef = useRef<boolean>(false);
 
   // Common Search Lookup Modal State for Detay fields
   type DetayLookupType =
@@ -534,6 +537,52 @@ export const DovizFisiPage: React.FC = () => {
   const [kurTuru, setKurTuru] = useState<number>(0); // 0: Efektif, 1: Döviz
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("9249");
+
+  // İstatistik Kodu ve Fiş Tipi (0: Alış, 1: Satış) Uyumluluk Doğrulaması
+  // Alış fişinde (0): Sadece 0 (Alış) ve 2 (Alış-Satış)
+  // Satış fişinde (1): Sadece 1 (Satış) ve 2 (Alış-Satış)
+  const istatistikValidation = useMemo(() => {
+    const val = (istatistikKodu || "").trim();
+    if (!val) {
+      return {
+        isValid: false,
+        errorType: "EMPTY" as const,
+        errorMessage: "İstatistik kodu boş bırakılamaz!",
+        item: null as StatisticItem | null,
+      };
+    }
+    const q = val.toLowerCase();
+    const found = statisticList.find(
+      (s) => (s.kod || "").toLowerCase() === q || String(s.id) === q
+    );
+    if (!found) {
+      return {
+        isValid: false,
+        errorType: "NOT_FOUND" as const,
+        errorMessage: `Tanımsız istatistik kodu: "${val}" bulunamadı!`,
+        item: null as StatisticItem | null,
+      };
+    }
+    const fType = Number(found.fisTipi);
+    const isAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+    if (!isAllowed) {
+      const currentTypeText = tip === 0 ? "Alış" : "Satış";
+      const allowedText = tip === 0 ? "Alış (0) ve Alış-Satış (2)" : "Satış (1) ve Alış-Satış (2)";
+      const foundTypeText = fType === 0 ? "Alış (0)" : fType === 1 ? "Satış (1)" : "Alış-Satış (2)";
+      return {
+        isValid: false,
+        errorType: "TYPE_MISMATCH" as const,
+        errorMessage: `${currentTypeText} fişinde "${found.kod}" (${foundTypeText}) kullanılamaz! Sadece ${allowedText} girilebilir.`,
+        item: found,
+      };
+    }
+    return {
+      isValid: true,
+      errorType: null,
+      errorMessage: null,
+      item: found,
+    };
+  }, [istatistikKodu, statisticList, tip]);
 
   // MASAK Sorgulama ve Limit Takip Durumu
   const [isSearchingMasak, setIsSearchingMasak] = useState<boolean>(false);
@@ -1240,6 +1289,7 @@ export const DovizFisiPage: React.FC = () => {
       setIstatistikId(fis.istatistikId);
       setIstatistikKodu(fis.istatistikKodu || (fis.tip === 1 ? "10285" : "9249"));
       hasUserSelectedStatRef.current = true;
+      hasEditedIstatistikSinceConfirmRef.current = false;
 
       lastFocusedCariKodRef.current = matchedCari;
       lastFocusedUnvanRef.current = fis.unvan || DEFAULT_CUSTOMER_NAME;
@@ -2142,7 +2192,22 @@ export const DovizFisiPage: React.FC = () => {
 
   const handleSelectIstatistik = (item: IstatistikSecimItem | StatisticItem) => {
     if (isLocked) return;
+    const fType = Number(item.fisTipi);
+    const isAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+    if (!isAllowed) {
+      const currentTypeText = tip === 0 ? "Alış" : "Satış";
+      const allowedText = tip === 0 ? "Alış (0) ve Alış-Satış (2)" : "Satış (1) ve Alış-Satış (2)";
+      const foundTypeText = fType === 0 ? "Alış (0)" : fType === 1 ? "Satış (1)" : "Alış-Satış (2)";
+      setNotification({
+        type: "danger",
+        message: `⛔ GEÇERSİZ İSTATİSTİK KODU: "${item.kod}" (${foundTypeText}) kodu ${currentTypeText} fişine uygun değildir! ${currentTypeText} fişinde sadece ${allowedText} istatistik kodları kullanılabilir.`,
+      });
+      return;
+    }
     hasUserSelectedStatRef.current = true;
+    hasUserTypedIstatistikRef.current = false;
+    hasEditedIstatistikSinceConfirmRef.current = false;
+    isOpeningIstatistikModalRef.current = false;
     setIstatistikId(item.id);
     setIstatistikKodu(item.kod);
     setSelectedStatistic(item as any);
@@ -2155,6 +2220,13 @@ export const DovizFisiPage: React.FC = () => {
       focusCell(0, "kod");
     }, 50);
   };
+
+  const openIstatistikModalWithTerm = useCallback((term: string) => {
+    isOpeningIstatistikModalRef.current = true;
+    lastModalCallerRef.current = "istatistik";
+    setIstatistikSearchTerm(term);
+    setShowIstatistikModal(true);
+  }, []);
 
   const handleSelectCustomer = (result: SelectedCustomerResult) => {
     const nextUnvan = result.unvan || DEFAULT_CUSTOMER_NAME;
@@ -2344,6 +2416,38 @@ export const DovizFisiPage: React.FC = () => {
       totalCount: matchedCariler.length + matchedKayitsizlar.length,
     };
   };
+
+  const findMatchingStatistics = useCallback(
+    (query: string) => {
+      const q = query.toLowerCase().trim();
+      if (!q) return { matches: [] as StatisticItem[], totalCount: 0 };
+
+      // Bu fiş tipine uygun olanlar (Alış: 0 ve 2, Satış: 1 ve 2):
+      const allowed = statisticList.filter((s) => {
+        const fType = Number(s.fisTipi);
+        return tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+      });
+
+      // 1. Tam kod veya ID eşleşmesi:
+      const exact = allowed.filter(
+        (s) => (s.kod || "").trim().toLowerCase() === q || String(s.id) === q
+      );
+      if (exact.length === 1) {
+        return { matches: exact, totalCount: 1 };
+      }
+
+      // 2. Kısmi kod veya ad / açıklama eşleşmesi:
+      const partial = allowed.filter((s) => {
+        const kod = (s.kod || "").toLowerCase();
+        const ad = ((s as any).ad || (s as any).AD || s.aciklama || "").toLowerCase();
+        const aciklama = (s.aciklama || "").toLowerCase();
+        return kod.includes(q) || ad.includes(q) || aciklama.includes(q) || String(s.id) === q;
+      });
+
+      return { matches: partial, totalCount: partial.length };
+    },
+    [statisticList, tip]
+  );
 
   // TC / VKN Girişi / Değişiminde Otomatik Cari, Kayıtsız Müşteri veya GİP Sorgulama
   const handleVknLookup = useCallback(async (inputVal: string, isEnterOrBlur = false) => {
@@ -2904,6 +3008,7 @@ export const DovizFisiPage: React.FC = () => {
       setIstatistikId(item.id);
       setIstatistikKodu(item.kod || "");
       setSelectedStatistic(item);
+      hasEditedIstatistikSinceConfirmRef.current = false;
       setIstatistikFisDizaynTipi(Number(item.fisDizaynTipi ?? 0));
       lastFocusedIstatistikKodRef.current = item.kod || "";
       applyStatisticToLines(item, fisTipi);
@@ -2918,8 +3023,12 @@ export const DovizFisiPage: React.FC = () => {
           (s) => s.id === Number(companyStatId) || Number(s.id) === Number(companyStatId)
         );
         if (foundCompany) {
-          setMatched(foundCompany);
-          return;
+          const fType = Number(foundCompany.fisTipi);
+          const isAllowed = fisTipi === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+          if (isAllowed) {
+            setMatched(foundCompany);
+            return;
+          }
         }
       }
     }
@@ -2934,8 +3043,12 @@ export const DovizFisiPage: React.FC = () => {
           String(s.id) === cleanUserCode
       );
       if (foundUser) {
-        setMatched(foundUser);
-        return;
+        const fType = Number(foundUser.fisTipi);
+        const isAllowed = fisTipi === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+        if (isAllowed) {
+          setMatched(foundUser);
+          return;
+        }
       }
     }
 
@@ -2960,8 +3073,12 @@ export const DovizFisiPage: React.FC = () => {
       (s) => (s.kod || "").trim() === fallbackKod
     );
     if (fallbackMatched) {
-      setMatched(fallbackMatched);
-      return;
+      const fType = Number(fallbackMatched.fisTipi);
+      const isAllowed = fisTipi === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+      if (isAllowed) {
+        setMatched(fallbackMatched);
+        return;
+      }
     }
 
     // 5. Hiçbiri yoksa varsayılan kodu direkt yaz
@@ -2980,9 +3097,15 @@ export const DovizFisiPage: React.FC = () => {
 
   const handleTipChange = (newTip: number) => {
     setTip(newTip);
-    hasUserSelectedStatRef.current = false;
-    // Tip değişince istatistiği de güncelle — tüm güncel değerleri parametre olarak geçir
-    applyDefaultIstatistik(newTip, statisticList, companyDefinitions, user);
+    // Tip değişince mevcut istatistiğin yeni tipe uygun olup olmadığını kontrol et
+    const currentStat = selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod.toLowerCase() === (istatistikKodu || "").trim().toLowerCase()));
+    const curFType = currentStat ? Number(currentStat.fisTipi) : null;
+    const isStillAllowed = curFType !== null && (newTip === 0 ? (curFType === 0 || curFType === 2) : (curFType === 1 || curFType === 2));
+
+    if (!isStillAllowed) {
+      hasUserSelectedStatRef.current = false;
+      applyDefaultIstatistik(newTip, statisticList, companyDefinitions, user);
+    }
     setLines((prev) =>
       prev.map((row) => {
         let rate = parseFloat(String(row.kur).replace(/,/g, ".")) || 0;
@@ -3340,11 +3463,12 @@ export const DovizFisiPage: React.FC = () => {
       return;
     }
 
-    if (!istatistikKodu || !istatistikKodu.trim()) {
+    if (!istatistikValidation.isValid) {
       setNotification({
-        type: "warning",
-        message: "Fişte istatistik kodu zorunludur. Lütfen F3 kısayolu veya İstatistik Seçim modalından bir istatistik seçiniz.",
+        type: "danger",
+        message: `⛔ İSTATİSTİK KODU HATASI: ${istatistikValidation.errorMessage || "Geçerli bir istatistik kodu seçiniz."}`,
       });
+      istatistikRef.current?.focus();
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -4120,11 +4244,12 @@ export const DovizFisiPage: React.FC = () => {
       return;
     }
 
-    if (!istatistikKodu || !istatistikKodu.trim()) {
+    if (!istatistikValidation.isValid) {
       setNotification({
-        type: "warning",
-        message: "Fişte istatistik kodu zorunludur. Lütfen F3 kısayolu veya İstatistik Seçim modalından bir istatistik seçiniz.",
+        type: "danger",
+        message: `⛔ İSTATİSTİK KODU HATASI: ${istatistikValidation.errorMessage || "Geçerli bir istatistik kodu seçiniz."}`,
       });
+      istatistikRef.current?.focus();
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -4300,7 +4425,8 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        setShowIstatistikModal(true);
+        const rawVal = istatistikRef.current?.value ?? istatistikKodu ?? "";
+        openIstatistikModalWithTerm((rawVal || "").trim());
       } else if (isF4) {
         e.preventDefault();
         e.stopPropagation();
@@ -5343,11 +5469,18 @@ export const DovizFisiPage: React.FC = () => {
                           value={istatistikKodu}
                           maxLength={20}
                           onFocus={() => {
-                            lastFocusedIstatistikKodRef.current = istatistikKodu;
+                            hasUserTypedIstatistikRef.current = false;
+                            lastFocusedIstatistikKodRef.current = (istatistikKodu || "").trim();
                           }}
                           onChange={(e) => {
+                            hasUserTypedIstatistikRef.current = true;
                             const nextVal = e.target.value.slice(0, 20);
                             setIstatistikKodu(nextVal);
+                            const curConfirmedKod = (selectedStatistic ? (selectedStatistic.kod || "") : "").trim();
+                            if (nextVal.trim().toLowerCase() !== curConfirmedKod.toLowerCase()) {
+                              setSelectedStatistic(null);
+                              setIstatistikId(null);
+                            }
                             if (!nextVal.trim()) {
                               hasUserSelectedStatRef.current = true;
                               setIstatistikId(null);
@@ -5357,77 +5490,142 @@ export const DovizFisiPage: React.FC = () => {
                               applyStatisticToLines(null, tip);
                             }
                           }}
-                          onBlur={() => {
-                            const val = (istatistikKodu || "").trim();
-                            if (!val) {
-                              hasUserSelectedStatRef.current = true;
-                              setIstatistikId(null);
-                              setSelectedStatistic(null);
-                              setIstatistikFisDizaynTipi(0);
-                              lastFocusedIstatistikKodRef.current = "";
-                              applyStatisticToLines(null, tip);
+                          onBlur={(e) => {
+                            if (showIstatistikModal || isOpeningIstatistikModalRef.current) return;
+                            const related = e.relatedTarget as HTMLElement | null;
+                            if (
+                              related &&
+                              (related.getAttribute("title")?.includes("İstatistik") ||
+                                related.closest("[data-istatistik-trigger]") ||
+                                related.closest(".modal"))
+                            ) {
                               return;
                             }
-                            const q = val.toLowerCase();
-                            const matched = statisticList.find((s) => {
-                              const fType = Number(s.fisTipi);
-                              const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-                              return typeMatch && ((s.kod || "").toLowerCase() === q || String(s.id) === q);
-                            });
-                            if (matched) {
-                              handleSelectIstatistik(matched);
-                            }
+                            // Güvenlik gecikmesi: Modal açılıyorsa (Enter veya dürbün tıklaması) inputu sıfırlama!
+                            setTimeout(() => {
+                              if (showIstatistikModal || isOpeningIstatistikModalRef.current) return;
+                              const rawVal = istatistikRef.current?.value ?? "";
+                              const val = (rawVal || istatistikKodu || "").trim();
+                              if (!val) {
+                                setIstatistikKodu("");
+                                setIstatistikId(null);
+                                setSelectedStatistic(null);
+                                setIstatistikFisDizaynTipi(0);
+                                lastFocusedIstatistikKodRef.current = "";
+                                applyStatisticToLines(null, tip);
+                                return;
+                              }
+
+                              // Alış ise (tip === 0): fisTipi 0 veya 2
+                              // Satış ise (tip === 1): fisTipi 1 veya 2
+                              const valLower = val.toLowerCase();
+                              const validStat = statisticList.find((s) => {
+                                const fType = Number(s.fisTipi);
+                                const isTypeAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                                if (!isTypeAllowed) return false;
+                                const kod = (s.kod || "").trim().toLowerCase();
+                                const idStr = String(s.id);
+                                return kod === valLower || idStr === valLower;
+                              });
+
+                              if (validStat) {
+                                handleSelectIstatistik(validStat);
+                                lastFocusedIstatistikKodRef.current = validStat.kod || "";
+                              } else {
+                                // Alışsa alış, satışsa satış değerlerinden biri değilse otomatik boşalt:
+                                setIstatistikKodu("");
+                                setIstatistikId(null);
+                                setSelectedStatistic(null);
+                                setIstatistikFisDizaynTipi(0);
+                                lastFocusedIstatistikKodRef.current = "";
+                                applyStatisticToLines(null, tip);
+                              }
+                            }, 100);
                           }}
+                          id="doviz-fis-istatistik-kodu"
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              const val = (istatistikKodu || "").trim();
+                              e.stopPropagation();
+                              const rawVal = istatistikRef.current?.value ?? (e.currentTarget as HTMLInputElement)?.value ?? "";
+                              const val = (rawVal || istatistikKodu || "").trim();
                               const prevVal = (lastFocusedIstatistikKodRef.current || "").trim();
-                              if (val && val.toLowerCase() === prevVal.toLowerCase() && selectedStatistic) {
-                                focusCell(0, "kod");
+
+                              // SADECE BU SENARYODA modal açılmayacak:
+                              // İstatistik kodu bölümü öncesinde dolu ise ve değiştirilmeden enter tuşlanırsa:
+                              const wasFilledBefore = prevVal !== "";
+                              const isUnchanged = wasFilledBefore && val.toLowerCase() === prevVal.toLowerCase() && !hasUserTypedIstatistikRef.current;
+
+                              if (isUnchanged) {
+                                isOpeningIstatistikModalRef.current = false;
+                                focusCell(0, "kod", "select");
                                 return;
                               }
-                              if (!val) {
-                                focusCell(0, "kod");
-                                return;
-                              }
-                              const q = val.toLowerCase();
-                              const matched = statisticList.filter((s) => {
+
+                              // Bunun dışındaki tüm durumlarda (değiştirildiyse, 90 vb. yazıldıysa veya öncesinde boş idiyse) modal açılacak:
+                              isOpeningIstatistikModalRef.current = true;
+                              openIstatistikModalWithTerm(val);
+                            } else if (e.key === "Tab") {
+                              const rawVal = istatistikRef.current?.value ?? "";
+                              const val = (rawVal || istatistikKodu || "").trim();
+                              if (!val) return;
+                              const valLower = val.toLowerCase();
+                              const validStat = statisticList.find((s) => {
                                 const fType = Number(s.fisTipi);
-                                const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-                                return typeMatch && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || "").toLowerCase().includes(q));
+                                const isTypeAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                                if (!isTypeAllowed) return false;
+                                const kod = (s.kod || "").trim().toLowerCase();
+                                const idStr = String(s.id);
+                                return kod === valLower || idStr === valLower;
                               });
-                              if (matched.length === 1) {
-                                const single = matched[0];
-                                handleSelectIstatistik(single);
-                                return;
+
+                              if (validStat) {
+                                handleSelectIstatistik(validStat);
+                                lastFocusedIstatistikKodRef.current = validStat.kod || "";
+                              } else {
+                                setIstatistikKodu("");
+                                setIstatistikId(null);
+                                setSelectedStatistic(null);
+                                setIstatistikFisDizaynTipi(0);
+                                lastFocusedIstatistikKodRef.current = "";
+                                applyStatisticToLines(null, tip);
                               }
-                              lastModalCallerRef.current = "istatistik";
-                              setIstatistikSearchTerm(val);
-                              setShowIstatistikModal(true);
                             } else if (e.key === "F3") {
                               e.preventDefault();
                               e.stopPropagation();
-                              const val = (istatistikKodu || "").trim();
-                              lastModalCallerRef.current = "istatistik";
-                              setIstatistikSearchTerm(val);
-                              setShowIstatistikModal(true);
+                              isOpeningIstatistikModalRef.current = true;
+                              const rawVal = istatistikRef.current?.value ?? "";
+                              const val = (rawVal || istatistikKodu || "").trim();
+                              openIstatistikModalWithTerm(val);
                             }
                           }}
-                          className="font-monospace text-center px-2.5 py-1"
+                          className={`font-monospace text-center px-2.5 py-1 ${
+                            !istatistikValidation.isValid && istatistikKodu ? "is-invalid border-danger bg-danger-subtle text-danger fw-bold" : ""
+                          }`}
                           title="İstatistik Kodu (Enter veya F3 ile seçebilirsiniz)"
-                          style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                          style={{
+                            minWidth: 0,
+                            height: "30px",
+                            fontSize: "12.5px",
+                            borderColor: !istatistikValidation.isValid && istatistikKodu ? "#dc2626" : "#cbd5e1",
+                            backgroundColor: !istatistikValidation.isValid && istatistikKodu ? "#fef2f2" : "#ffffff",
+                          }}
                         />
                         <Button
-                          variant="outline-secondary"
+                          data-istatistik-trigger="true"
+                          variant={!istatistikValidation.isValid && istatistikKodu ? "outline-danger" : "outline-secondary"}
                           className="px-2 py-0 d-flex align-items-center justify-content-center"
-                          style={{ height: "30px", borderColor: "#cbd5e1" }}
+                          style={{ height: "30px", borderColor: !istatistikValidation.isValid && istatistikKodu ? "#dc2626" : "#cbd5e1" }}
                           disabled={isLocked}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            isOpeningIstatistikModalRef.current = true;
+                          }}
                           onClick={() => {
-                            const val = (istatistikKodu || "").trim();
-                            lastModalCallerRef.current = "istatistik";
-                            setIstatistikSearchTerm(val);
-                            setShowIstatistikModal(true);
+                            isOpeningIstatistikModalRef.current = true;
+                            const rawVal = istatistikRef.current?.value ?? "";
+                            const val = (rawVal || istatistikKodu || "").trim();
+                            openIstatistikModalWithTerm(val);
                           }}
                           title="F3) İstatistik Kodu Seçimi"
                         >
@@ -7251,7 +7449,9 @@ export const DovizFisiPage: React.FC = () => {
       <IstatistikSecimModal
         show={showIstatistikModal}
         onClose={() => {
+          isOpeningIstatistikModalRef.current = false;
           setShowIstatistikModal(false);
+          setIstatistikSearchTerm("");
           const caller = lastModalCallerRef.current;
           lastModalCallerRef.current = null;
           if (caller === "istatistik") {
@@ -7262,7 +7462,10 @@ export const DovizFisiPage: React.FC = () => {
           }
         }}
         tip={tip}
+        allStatistics={statisticList}
         onSelect={(item) => {
+          isOpeningIstatistikModalRef.current = false;
+          setIstatistikSearchTerm("");
           lastModalCallerRef.current = null;
           handleSelectIstatistik(item);
         }}
