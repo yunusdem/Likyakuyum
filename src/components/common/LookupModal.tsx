@@ -29,6 +29,8 @@ export interface LookupModalProps<T> {
   renderDetail?: (item: T) => React.ReactNode;
   searchByCodeOnly?: boolean;
   selectOnDoubleClick?: boolean;
+  getRowClassName?: (item: T) => string;
+  getRowStyle?: (item: T) => React.CSSProperties | undefined;
 }
 
 const MAX_DISPLAY_COUNT = 150;
@@ -51,6 +53,8 @@ function LookupModalContent<T extends Record<string, any>>({
   renderDetail,
   searchByCodeOnly = false,
   selectOnDoubleClick = false,
+  getRowClassName,
+  getRowStyle,
 }: LookupModalProps<T>) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
@@ -345,6 +349,24 @@ function LookupModalContent<T extends Record<string, any>>({
             box-shadow: inset 0 0 0 9999px #e0f2fe !important;
             color: #0369a1 !important;
           }
+          .lookup-table tbody tr.lookup-danger-row:not(.lookup-selected-row),
+          .lookup-table tbody tr.lookup-danger-row:not(.lookup-selected-row) > td,
+          .lookup-table tbody tr.lookup-danger-row:not(.lookup-selected-row) > th {
+            background-color: #fff1f2 !important;
+            --bs-table-bg: #fff1f2 !important;
+            --bs-table-accent-bg: #fff1f2 !important;
+            color: #b91c1c !important;
+          }
+          .lookup-table tbody tr.lookup-danger-row:not(.lookup-selected-row):hover,
+          .lookup-table tbody tr.lookup-danger-row:not(.lookup-selected-row):hover > td,
+          .lookup-table tbody tr.lookup-danger-row:not(.lookup-selected-row):hover > th {
+            background-color: #fee2e2 !important;
+            --bs-table-bg: #fee2e2 !important;
+            --bs-table-accent-bg: #fee2e2 !important;
+            --bs-table-hover-bg: #fee2e2 !important;
+            box-shadow: inset 0 0 0 9999px #fee2e2 !important;
+            color: #991b1b !important;
+          }
         `}</style>
 
         {/* Table Content */}
@@ -380,6 +402,9 @@ function LookupModalContent<T extends Record<string, any>>({
                   const itemId = getItemId(item);
                   const isSelected = index === selectedIndex;
                   const isDisabled = Boolean(isItemDisabled?.(item));
+                  const customRowClass = getRowClassName ? getRowClassName(item) : "";
+                  const customRowStyle = getRowStyle ? getRowStyle(item) : undefined;
+                  const isDangerRow = customRowClass.includes("lookup-danger-row");
 
                   return (
                     <tr
@@ -387,11 +412,13 @@ function LookupModalContent<T extends Record<string, any>>({
                       ref={(el) => { rowRefs.current[index] = el; }}
                       onClick={() => !isDisabled && handleRowClick(index, item)}
                       onDoubleClick={() => !isDisabled && handleRowDoubleClick(item)}
-                      className={isSelected && !isDisabled ? "lookup-selected-row fw-semibold" : isDisabled ? "text-muted" : ""}
+                      className={`${isSelected && !isDisabled ? "lookup-selected-row fw-semibold" : isDisabled ? "text-muted" : ""} ${customRowClass}`.trim()}
                       style={{
                         cursor: isDisabled ? "not-allowed" : "pointer",
                         opacity: isDisabled ? 0.45 : 1,
-                        backgroundColor: isDisabled ? "#f8fafc" : undefined,
+                        backgroundColor: isDisabled ? "#f8fafc" : (isSelected ? undefined : customRowStyle?.backgroundColor),
+                        color: customRowStyle?.color,
+                        ...customRowStyle,
                       }}
                       title={isDisabled ? "Bu ürün bu tabloda seçilemez" : undefined}
                     >
@@ -423,7 +450,7 @@ function LookupModalContent<T extends Record<string, any>>({
                         <Button
                           size="sm"
                           disabled={isDisabled}
-                          variant={isDisabled ? "secondary" : (isSelected ? "primary" : "outline-secondary")}
+                          variant={isDisabled ? "secondary" : (isSelected ? "primary" : isDangerRow ? "outline-danger" : "outline-secondary")}
                           className={`py-0 px-2 fs-7 ${isSelected && !isDisabled ? "fw-bold shadow-sm" : ""}`}
                           onClick={(e) => !isDisabled && handleSecButtonClick(e, item)}
                           title={isDisabled ? "Bu ürün bu tabloda seçilemez" : "Bu kaydı seç ve aktar"}

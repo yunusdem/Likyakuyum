@@ -178,6 +178,143 @@ export const CariHareketPage: React.FC = () => {
   const [bakiyeSummary, setBakiyeSummary] = useState<CariBakiyeSummary | null>(null);
   const [isLoadingBakiye, setIsLoadingBakiye] = useState<boolean>(false);
 
+  // Canlı Girilen Kalemlerin Özeti
+  const liveGridSummary = useMemo(() => {
+    const map: Record<string, number> = {};
+    lines.forEach((l) => {
+      const kod = (l.paraKodu || "").trim().toUpperCase();
+      const m = parseDecimal(l.meblag);
+      if (kod && m > 0) {
+        map[kod] = (map[kod] || 0) + m;
+      }
+    });
+    return Object.entries(map).map(([kod, tutar]) => ({ kod, tutar }));
+  }, [lines]);
+
+  // Canlı Bakiye Tablosu Satırları: Formdaki girişler mevcut bakiye üzerine anında yansır
+  const liveBakiyeRows = useMemo(() => {
+    const rowMap = new Map<
+      string,
+      {
+        paraId: number;
+        kod: string;
+        ad: string;
+        baseBorc: number;
+        baseAlacak: number;
+        currentEntryBorc: number;
+        currentEntryAlacak: number;
+      }
+    >();
+
+    (bakiyeSummary?.satirlar || []).forEach((r) => {
+      rowMap.set(r.kod.toUpperCase(), {
+        paraId: r.paraId,
+        kod: r.kod.toUpperCase(),
+        ad: r.ad,
+        baseBorc: Number(r.borcBakiye) || 0,
+        baseAlacak: Number(r.alacakBakiye) || 0,
+        currentEntryBorc: 0,
+        currentEntryAlacak: 0,
+      });
+    });
+
+    lines.forEach((l) => {
+      const kod = (l.paraKodu || "").trim().toUpperCase();
+      const m = parseDecimal(l.meblag);
+      if (!kod || m <= 0) return;
+
+      let item = rowMap.get(kod);
+      if (!item) {
+        const matchedPara = paraList.find(
+          (p) => p.kod.toUpperCase() === kod || p.id === l.paraId
+        );
+        item = {
+          paraId: l.paraId || matchedPara?.id || 0,
+          kod,
+          ad: matchedPara?.ad || kod,
+          baseBorc: 0,
+          baseAlacak: 0,
+          currentEntryBorc: 0,
+          currentEntryAlacak: 0,
+        };
+        rowMap.set(kod, item);
+      }
+
+      if (cariTipi === 0) {
+        item.currentEntryBorc += m;
+      } else if (cariTipi === 1) {
+        item.currentEntryAlacak += m;
+      }
+    });
+
+    return Array.from(rowMap.values()).map((r) => {
+      const totalBorc = r.baseBorc + r.currentEntryBorc;
+      const totalAlacak = r.baseAlacak + r.currentEntryAlacak;
+      let net = totalAlacak - totalBorc;
+      let yon: "B" | "A" | "-" = "-";
+      if (net > 0.0001) {
+        yon = "A";
+      } else if (net < -0.0001) {
+        yon = "B";
+        net = Math.abs(net);
+      } else {
+        net = 0;
+      }
+
+      return {
+        paraId: r.paraId,
+        kod: r.kod,
+        ad: r.ad,
+        borcBakiye: totalBorc,
+        alacakBakiye: totalAlacak,
+        netBakiye: net,
+        yon,
+        currentEntryBorc: r.currentEntryBorc,
+        currentEntryAlacak: r.currentEntryAlacak,
+      };
+    });
+  }, [bakiyeSummary, lines, cariTipi, paraList]);
+
+  // Canlı Net HAS Bakiyesi
+  const liveNetHas = useMemo(() => {
+    if (!cariKartId) return null;
+    let baseHas = bakiyeSummary?.netHasBakiye || 0;
+    if (bakiyeSummary?.netHasYon === "A") baseHas = baseHas;
+    else if (bakiyeSummary?.netHasYon === "B") baseHas = -baseHas;
+
+    let deltaHas = 0;
+    lines.forEach((l) => {
+      const kod = (l.paraKodu || "").trim().toUpperCase();
+      const m = parseDecimal(l.meblag);
+      if (!kod || m <= 0) return;
+      const matchedPara = paraList.find((p) => p.kod.toUpperCase() === kod || p.id === l.paraId);
+      const hasOrani = matchedPara?.hasOrani ?? (kod === "HAS" ? 1 : 0);
+      const itemHas = m * hasOrani;
+      if (cariTipi === 0) {
+        deltaHas -= itemHas; // Borç
+      } else {
+        deltaHas += itemHas; // Alacak
+      }
+    });
+
+    const totalHas = baseHas + deltaHas;
+    let yon: "B" | "A" | "-" = "-";
+    let absVal = 0;
+    if (totalHas < -0.0001) {
+      yon = "B";
+      absVal = Math.abs(totalHas);
+    } else if (totalHas > 0.0001) {
+      yon = "A";
+      absVal = totalHas;
+    }
+
+    return {
+      netHasBakiye: absVal,
+      netHasYon: yon,
+      hasDelta: deltaHas !== 0,
+    };
+  }, [cariKartId, bakiyeSummary, lines, cariTipi, paraList]);
+
   // UI state
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -240,12 +377,14 @@ export const CariHareketPage: React.FC = () => {
 
 
 
-  // Load record if queryId present (Hem Kayıt hem Düzeltme ilk açılışta boş başlar)
+  // Load record if queryId present (Düzeltme modunda id yoksa son kaydı otomatik yükler)
   useEffect(() => {
     if (queryId) {
       loadRecordById(Number(queryId));
+    } else if (isEditMode) {
+      loadLastRecord();
     } else {
-      // Hem kayit hem de duzeltme sayfasında temiz boş form açılır
+      // Kayıt sayfasında temiz boş form açılır
       setCurrentHareketId(null);
       setCariKartId(null);
       setCariKod("");
@@ -308,8 +447,8 @@ export const CariHareketPage: React.FC = () => {
           setLines([{ id: "line-1", paraId: 0, paraKodu: "", meblag: "" }]);
         }
 
-        // Fetch balance
-        loadCariBakiye(item.cariKartId);
+        // Fetch balance canlı olarak
+        await loadCariBakiye(item.cariKartId);
 
         // Fetch navigation info
         const nav = await CariHareketService.getNavigation(item.id);
@@ -324,7 +463,7 @@ export const CariHareketPage: React.FC = () => {
     try {
       const nav = await CariHareketService.getNavigation();
       if (nav.lastId) {
-        loadRecordById(nav.lastId);
+        await loadRecordById(nav.lastId);
       }
     } catch (err) {
       console.error("Son kayıt yüklenemedi:", err);
@@ -356,7 +495,7 @@ export const CariHareketPage: React.FC = () => {
 
   const handleRefresh = useCallback(async () => {
     await fetchInitialLookups();
-    if (cariKartId) loadCariBakiye(cariKartId);
+    if (cariKartId) await loadCariBakiye(cariKartId);
     if (currentHareketId) {
       await loadRecordById(currentHareketId);
     } else if (isEditMode) {
@@ -423,20 +562,22 @@ export const CariHareketPage: React.FC = () => {
       if (currentHareketId) {
         saved = await CariHareketService.update(currentHareketId, payload);
         setSuccessMsg(`Cari hareket #${saved.id} başarıyla güncellendi.`);
+        // Düzeltme modunda: Güncellenen kaydı canlı olarak ekranda tut
+        await loadRecordById(saved.id);
       } else {
         saved = await CariHareketService.create(payload);
         setSuccessMsg(`Cari hareket #${saved.id} başarıyla kaydedildi.`);
+        // Yeni kayıt modunda: Üst kısımlar kalsın, sadece grid ve açıklama sıfırlansın
+        setAciklama("");
+        setLines([{ id: `line-${Date.now()}`, paraId: 0, paraKodu: "", meblag: "" }]);
+        setCurrentHareketId(null);
+        setActiveGridRowIdx(0);
       }
 
-      // Kayıttan sonra üst kısımlar (Cari Kart, Vezne, Tarih, Hareket Tipi, Borç/Alacak vb.) AYNI kalsın,
-      // SADECE Açıklama satırı ve Grid satırları boşalsın:
-      setAciklama("");
-      setLines([{ id: `line-${Date.now()}`, paraId: 0, paraKodu: "", meblag: "" }]);
-      setCurrentHareketId(null);
-      setActiveGridRowIdx(0);
-
-      // Refresh balance and navigation
-      loadCariBakiye(cariKartId);
+      // Refresh balance and navigation canlı olarak
+      if (cariKartId) {
+        await loadCariBakiye(cariKartId);
+      }
       const nav = await CariHareketService.getNavigation(saved.id);
       setNavInfo(nav);
 
@@ -461,11 +602,14 @@ export const CariHareketPage: React.FC = () => {
       setSuccessMsg(`Cari hareket #${currentHareketId} başarıyla silindi.`);
       // Load next or previous record if exists
       if (navInfo.nextId) {
-        loadRecordById(navInfo.nextId);
+        await loadRecordById(navInfo.nextId);
       } else if (navInfo.prevId) {
-        loadRecordById(navInfo.prevId);
+        await loadRecordById(navInfo.prevId);
       } else {
         handleNewRecord();
+      }
+      if (cariKartId) {
+        await loadCariBakiye(cariKartId);
       }
     } catch (err: any) {
       setError(err.message || "Kayıt silinirken hata oluştu.");
@@ -525,13 +669,13 @@ export const CariHareketPage: React.FC = () => {
 
   const handleLineSmbTextChange = (index: number, val: string) => {
     const upper = val.toUpperCase();
-    const matched = paraList.find((p) => p.kod.toUpperCase() === upper.trim());
+    const matched = paraList.find((p) => p.kod.toUpperCase() === upper.trim() || p.ad.toLowerCase() === val.trim().toLowerCase());
 
     setLines((prev) => {
       const updated = [...prev];
       updated[index] = {
         ...updated[index],
-        paraKodu: val,
+        paraKodu: upper,
         paraId: matched ? matched.id : 0,
       };
       return updated;
@@ -563,11 +707,12 @@ export const CariHareketPage: React.FC = () => {
     });
   };
 
-  // Cari Kod Input & Suggestions (do NOT auto-fill Ad immediately, show dropdown)
+  // Cari Kod Input & Suggestions (anında canlı eşleşme ve yükleme)
   const handleCariKodChange = (val: string) => {
     setCariKod(val);
-    if (val.trim().length > 0) {
-      const term = val.trim().toLowerCase();
+    const cleanVal = val.trim();
+    if (cleanVal.length > 0) {
+      const term = cleanVal.toLowerCase();
       const matched = cariList.filter(
         (c) =>
           c.kod.toLowerCase().includes(term) ||
@@ -576,6 +721,21 @@ export const CariHareketPage: React.FC = () => {
       setCariSuggestItems(matched.slice(0, 10));
       setShowCariSuggest(matched.length > 0);
       setSelectedCariSuggestIdx(0);
+
+      // CANLI: Eğer girilen kod tam olarak bir cari kartla eşleşiyorsa beklemeden ad ve bakiyeyi yükle
+      const exactMatch = cariList.find((c) => c.kod.toLowerCase() === term);
+      if (exactMatch) {
+        setCariKartId(exactMatch.id);
+        setCariAd(exactMatch.ad);
+        loadCariBakiye(exactMatch.id);
+        if (isEditMode) {
+          CariHareketService.list({ cariKartId: exactMatch.id }).then((cariHareketler) => {
+            if (cariHareketler && cariHareketler.length > 0) {
+              loadRecordById(cariHareketler[0].id);
+            }
+          }).catch(() => {});
+        }
+      }
     } else {
       setCariSuggestItems([]);
       setShowCariSuggest(false);
@@ -589,7 +749,7 @@ export const CariHareketPage: React.FC = () => {
     setCariKod(c.kod);
     setCariAd(c.ad); // Seçilince Ad alanını doldur
     setCariKartId(c.id);
-    loadCariBakiye(c.id);
+    await loadCariBakiye(c.id);
     setShowCariSuggest(false);
     setCariSuggestItems([]);
 
@@ -657,7 +817,7 @@ export const CariHareketPage: React.FC = () => {
     setCariKartId(c.id);
     setCariKod(c.kod);
     setCariAd(c.ad);
-    loadCariBakiye(c.id);
+    await loadCariBakiye(c.id);
     setShowCariSuggest(false);
     setShowCariModal(false);
 
@@ -961,7 +1121,19 @@ export const CariHareketPage: React.FC = () => {
                       value={cariKod}
                       onChange={(e) => handleCariKodChange(e.target.value)}
                       onKeyDown={handleCariKodKeyDown}
-                      onBlur={() => setTimeout(() => setShowCariSuggest(false), 250)}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          setShowCariSuggest(false);
+                          const term = (cariKod || "").trim().toLowerCase();
+                          if (term && (!cariKartId || !cariList.some((c) => c.id === cariKartId && c.kod.toLowerCase() === term))) {
+                            const exact = cariList.find((c) => c.kod.toLowerCase() === term);
+                            const fallback = exact || (cariSuggestItems.length > 0 ? cariSuggestItems[0] : null) || cariList.find((c) => c.kod.toLowerCase().startsWith(term));
+                            if (fallback) {
+                              handleSelectCari(fallback);
+                            }
+                          }
+                        }, 250);
+                      }}
                       onLookupClick={() => setShowCariModal(true)}
                       placeholder=""
                       data-custom-enter="true"
@@ -1238,7 +1410,24 @@ export const CariHareketPage: React.FC = () => {
                                     onFocus={() => setActiveGridRowIdx(idx)}
                                     onChange={(e) => handleLineSmbTextChange(idx, e.target.value)}
                                     onKeyDown={(e) => handleSmbKeyDown(e, idx)}
-                                    onBlur={() => setTimeout(() => setActiveSmbSuggestIdx(null), 250)}
+                                     onBlur={() => {
+                                      setTimeout(() => {
+                                        setActiveSmbSuggestIdx(null);
+                                        setLines((prev) => {
+                                          const cur = prev[idx];
+                                          if (!cur) return prev;
+                                          const clean = (cur.paraKodu || "").trim().toUpperCase();
+                                          if (!clean) return prev;
+                                          const matched = paraList.find((p) => p.kod.toUpperCase() === clean || p.ad.toLowerCase() === clean.toLowerCase());
+                                          if (matched && (cur.paraId !== matched.id || cur.paraKodu !== matched.kod)) {
+                                            const next = [...prev];
+                                            next[idx] = { ...next[idx], paraId: matched.id, paraKodu: matched.kod };
+                                            return next;
+                                          }
+                                          return prev;
+                                        });
+                                      }, 200);
+                                    }}
                                     placeholder=""
                                     style={{
                                       border: "none",
@@ -1426,6 +1615,21 @@ export const CariHareketPage: React.FC = () => {
                         })}
                       </tbody>
                     </table>
+
+                    {/* Canlı İşlem Toplamı Şeridi */}
+                    {liveGridSummary.length > 0 && (
+                      <div
+                        className="py-1 px-2.5 border-top d-flex align-items-center justify-content-between flex-wrap gap-1"
+                        style={{ backgroundColor: "#f8fafc", fontSize: "11.5px" }}
+                      >
+                        <span className="text-muted fw-semibold">
+                          İşlem: <Badge bg={cariTipi === 0 ? "danger" : "success"}>{cariTipi === 0 ? "BORÇ" : "ALACAK"}</Badge>
+                        </span>
+                        <span className="font-monospace fw-bold text-dark">
+                          {liveGridSummary.map((s) => `${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(s.tutar)} ${s.kod}`).join(" + ")}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </Col>
               </div>
@@ -1475,14 +1679,14 @@ export const CariHareketPage: React.FC = () => {
               </div>
               <h3 className="mb-0 fw-bold font-monospace d-flex align-items-center justify-content-center flex-wrap" style={{ letterSpacing: "-0.5px" }}>
                 <span>
-                  {new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(bakiyeSummary?.netHasBakiye || 0)} HAS
+                  {new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format((liveNetHas?.netHasBakiye ?? bakiyeSummary?.netHasBakiye) || 0)} HAS
                 </span>
-                {bakiyeSummary?.netHasYon === "A" && (bakiyeSummary.netHasBakiye > 0.0001) && (
+                {((liveNetHas ? liveNetHas.netHasYon : bakiyeSummary?.netHasYon) === "A") && (((liveNetHas?.netHasBakiye ?? bakiyeSummary?.netHasBakiye) || 0) > 0.0001) && (
                   <span className="ms-1" style={{ fontSize: "14px", fontWeight: "700", color: "#dc2626" }}>
                     (Alacak)
                   </span>
                 )}
-                {bakiyeSummary?.netHasYon === "B" && (bakiyeSummary.netHasBakiye > 0.0001) && (
+                {((liveNetHas ? liveNetHas.netHasYon : bakiyeSummary?.netHasYon) === "B") && (((liveNetHas?.netHasBakiye ?? bakiyeSummary?.netHasBakiye) || 0) > 0.0001) && (
                   <span className="ms-1" style={{ fontSize: "14px", fontWeight: "700", color: "#16a34a" }}>
                     (Borç)
                   </span>
@@ -1509,7 +1713,7 @@ export const CariHareketPage: React.FC = () => {
                     Bakiye durumunu anlık görüntülemek için soldan cari kart seçiniz.
                   </p>
                 </div>
-              ) : !bakiyeSummary || bakiyeSummary.satirlar.length === 0 ? (
+              ) : !bakiyeSummary || (liveBakiyeRows.length === 0 && bakiyeSummary.satirlar.length === 0) ? (
                 <div className="p-4 text-center text-muted">
                   <p className="mb-0 small">Bu cariye ait henüz kayıtlı hareket veya bakiye bulunmuyor.</p>
                 </div>
@@ -1532,8 +1736,8 @@ export const CariHareketPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {bakiyeSummary.satirlar.map((row) => (
-                        <tr key={row.paraId}>
+                      {liveBakiyeRows.map((row) => (
+                        <tr key={row.paraId || row.kod}>
                           <td className="py-2 px-3 font-monospace fw-bold text-dark">
                             {row.kod}
                           </td>
@@ -1544,6 +1748,11 @@ export const CariHareketPage: React.FC = () => {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 }).format(row.borcBakiye)}
+                                {row.currentEntryBorc > 0 && (
+                                  <span className="badge bg-danger-subtle text-danger ms-1" style={{ fontSize: "10px" }} title="Bu işlemle eklendi">
+                                    +{new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.currentEntryBorc)}
+                                  </span>
+                                )}
                               </span>
                             ) : (
                               <span className="text-muted opacity-40">-</span>
@@ -1556,6 +1765,11 @@ export const CariHareketPage: React.FC = () => {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 }).format(row.alacakBakiye)}
+                                {row.currentEntryAlacak > 0 && (
+                                  <span className="badge bg-success-subtle text-success ms-1" style={{ fontSize: "10px" }} title="Bu işlemle eklendi">
+                                    +{new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.currentEntryAlacak)}
+                                  </span>
+                                )}
                               </span>
                             ) : (
                               <span className="text-muted opacity-40">-</span>
