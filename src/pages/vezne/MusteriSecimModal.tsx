@@ -162,18 +162,27 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
 
   const currentList = useMemo((): UnifiedItem[] => {
     const sourceList = activeTab === "registered" ? effectiveCariler : effectiveKayitsizlar;
-    const term = searchTerm.toLowerCase().trim();
+
+    const normalizeTr = (val: any) =>
+      val != null
+        ? String(val)
+            .replace(/İ/g, "i")
+            .replace(/I/g, "ı")
+            .toLocaleLowerCase("tr-TR")
+        : "";
+
+    const term = normalizeTr(searchTerm).trim();
 
     const filtered = sourceList.filter((item) => {
       if (!term) return true;
-      const kod = (item as any).kod ? String((item as any).kod).toLowerCase() : "";
-      const ad = item.ad ? item.ad.toLowerCase() : "";
-      const unvan = (item as any).unvan ? String((item as any).unvan).toLowerCase() : "";
-      const vkn = item.vergiKimlikNo ? item.vergiKimlikNo.replace(/\s+/g, "").toLowerCase() : "";
-      const tel = item.telefon ? item.telefon.toLowerCase() : "";
-      const adres = (item as any).adres ? String((item as any).adres).toLowerCase() : "";
-      const il = (item as any).il ? String((item as any).il).toLowerCase() : "";
-      const ilce = (item as any).ilce ? String((item as any).ilce).toLowerCase() : "";
+      const kod = normalizeTr((item as any).kod);
+      const ad = normalizeTr(item.ad);
+      const unvan = normalizeTr((item as any).unvan);
+      const vkn = (item.vergiKimlikNo || "").replace(/\s+/g, "").toLowerCase();
+      const tel = normalizeTr(item.telefon);
+      const adres = normalizeTr((item as any).adres);
+      const il = normalizeTr((item as any).il);
+      const ilce = normalizeTr((item as any).ilce);
       if (searchField === "kod") return kod.includes(term);
       if (searchField === "unvan") return ad.includes(term) || unvan.includes(term);
       if (searchField === "vkn") return vkn.includes(term.replace(/\s+/g, ""));

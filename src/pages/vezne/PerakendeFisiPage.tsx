@@ -1307,23 +1307,25 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       const miktar = parseDecimal(row.miktar);
       const milyem = parseDecimal(row.milyem);
       let tutar = 0;
-      let hasGram = parseDecimal(row.hasGram);
+      let hasGram = 0;
 
-      if (milyem > 0 && miktar > 0) {
-        const effMil = milyem > 1 ? (milyem <= 100 ? milyem / 100 : milyem / 1000) : milyem;
-        hasGram = miktar * effMil;
-        tutar = kur > 0 ? miktar * kur : (hasKuru > 0 ? hasGram * hasKuru : 0);
-      } else if (miktar > 0) {
-        tutar = kur > 0 ? miktar * kur : (hasKuru > 0 ? miktar * hasKuru : 0);
-        hasGram = hasKuru > 0 && tutar > 0 ? tutar / hasKuru : 0;
+      if (miktar > 0) {
+        if (milyem > 0) {
+          const effMil = milyem > 1 ? (milyem <= 100 ? milyem / 100 : milyem / 1000) : milyem;
+          hasGram = miktar * effMil;
+          tutar = kur > 0 ? miktar * kur : (hasKuru > 0 ? hasGram * hasKuru : 0);
+        } else {
+          tutar = kur > 0 ? miktar * kur : (hasKuru > 0 ? miktar * hasKuru : 0);
+          hasGram = hasKuru > 0 && tutar > 0 ? tutar / hasKuru : 0;
+        }
       }
 
       return {
         ...row,
         adet: "",
         kur: isTL ? "" : (row.kur ? row.kur : (hasKuru > 0 ? hasKuru : "")),
-        hasGram: hasGram > 0 ? Number(hasGram.toFixed(4)) : (row.hasGram === "" ? "" : 0),
-        tutar: tutar > 0 ? Number(tutar.toFixed(2)) : (row.tutar === "" ? "" : 0),
+        hasGram: hasGram > 0 ? Number(hasGram.toFixed(4)) : (row.miktar === "" ? "" : 0),
+        tutar: tutar > 0 ? Number(tutar.toFixed(2)) : (row.miktar === "" ? "" : 0),
       };
     }
   };
@@ -1707,7 +1709,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const genelToplam = Math.max(0, Math.round((brutToplam - calculatedIskontoTutari) * 100) / 100);
 
   const totalOdemeAdet = odemeRows.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
-  const totalOdemeMiktar = odemeRows.reduce((s, r) => s + (parseDecimal(r.miktar) || 0), 0);
+  const totalOdemeMiktar = odemeRows.reduce((s, r) => {
+    const isMetal = isAltinOrGumusRow(r, odemeUrunList);
+    if (!isMetal) return s;
+    return s + (parseDecimal(r.miktar) || 0);
+  }, 0);
   const totalOdemeHas = odemeRows.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
   const totalOdemeTutar = odemeRows.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
 
@@ -1752,6 +1758,21 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   }, [farkTL, alisHas, odemeHas]);
 
   // Dinamik sütun genişlikleri
+  const odemeAdetColWidth = useMemo(() => {
+    let maxLen = 4;
+    for (const r of odemeRows) {
+      const valStr = (r.adet != null ? String(r.adet) : "").trim();
+      if (valStr.length > maxLen) {
+        maxLen = valStr.length;
+      }
+    }
+    const totalStr = totalOdemeAdet > 0 ? String(totalOdemeAdet) : "";
+    if (totalStr.length > maxLen) {
+      maxLen = totalStr.length;
+    }
+    return Math.max(55, Math.ceil(maxLen * 9.5 + 24));
+  }, [odemeRows, totalOdemeAdet]);
+
   const odemeMiktarColWidth = useMemo(() => {
     let maxLen = 6;
     for (const r of odemeRows) {
@@ -2214,6 +2235,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           updated.miktar = "";
         } else if (!isZD && field === "miktar") {
           updated.adet = "";
+          if (!sanitizedValue || parseDecimal(sanitizedValue) <= 0) {
+            updated.hasGram = "";
+            updated.tutar = "";
+          }
         }
         if (field === "tutar") {
           const tVal = parseDecimal(sanitizedValue);
@@ -5385,6 +5410,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 <Form.Control
                   ref={aliciUnvanRef}
                   value={aliciUnvan}
+                  onFocus={(e) => {
+                    e.target.select();
+                  }}
                   onChange={(e) => {
                     const newUnvan = e.target.value;
                     setAliciUnvan(newUnvan);
@@ -5403,7 +5431,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     if (e.key === "Enter") {
                       e.preventDefault();
                       const raw = (aliciUnvan || "").trim();
-                      if (isAnonymousCustomerName(raw)) {
+                      if (!raw || isAnonymousCustomerName(raw)) {
                         setAliciUnvan(DEFAULT_CUSTOMER_NAME);
                         setCariKod("");
                         setCariKartId(null);
@@ -5412,51 +5440,19 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         }
                         return;
                       }
-                      const val = raw;
-                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("unvan", val);
-                      if (totalCount === 1) {
-                        if (mc.length === 1) {
-                          const single = mc[0];
-                          void handleSelectCustomer({
-                            type: "registered",
-                            id: single.id,
-                            kod: single.kod,
-                            unvan: single.ad || (single as any).unvan || "",
-                            vergiKimlikNo: single.vergiKimlikNo || "",
-                            adres: single.adres || "",
-                            telefon: single.telefon || "",
-                            raw: single,
-                          });
-                        } else if (mk.length === 1) {
-                          const singleK = mk[0];
-                          void handleSelectCustomer({
-                            type: "unregistered",
-                            id: null,
-                            kod: "",
-                            unvan: singleK.ad || singleK.unvan || "",
-                            vergiKimlikNo: singleK.vergiKimlikNo || "",
-                            adres: singleK.adres || "",
-                            telefon: singleK.telefon || "",
-                            raw: singleK,
-                          });
-                        }
+
+                      // Eğer cari zaten seçilmiş ve unvan değiştirilmemişse doğrudan sonraki alana geç
+                      if (cariKartId && lastFocusedUnvanRef.current && lastFocusedUnvanRef.current.toLowerCase() === raw.toLowerCase()) {
                         if (items.length > 0) {
                           focusGridCell(items[0].id, "barkod", "select");
                         }
                         return;
                       }
-                      if (totalCount > 1) {
-                        lastModalCallerRef.current = "unvan";
-                        setMusteriSearchTerm(val);
-                        setCariSearchField("unvan");
-                        setShowMusteriModal(true);
-                      } else {
-                        setCariKod("");
-                        setCariKartId(null);
-                        if (items.length > 0) {
-                          focusGridCell(items[0].id, "barkod", "select");
-                        }
-                      }
+
+                      lastModalCallerRef.current = "unvan";
+                      setMusteriSearchTerm(raw);
+                      setCariSearchField("unvan");
+                      setShowMusteriModal(true);
                     }
                   }}
                 />
@@ -6066,7 +6062,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     <th style={{ width: 110 }} className="text-center">Kod</th>
                     <th style={{ width: 140 }} className="text-center">Açıklama</th>
                     <th style={{ width: 110 }} className="text-center">Para / İskonto</th>
-                    <th style={{ width: 55 }} className="text-center">Adet</th>
+                    <th style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth }} className="text-center">Adet</th>
                     <th style={{ width: odemeMiktarColWidth, minWidth: odemeMiktarColWidth }} className="text-center">Miktar</th>
                     <th style={{ width: 70 }} className="text-center">Milyem</th>
                     <th style={{ width: 85 }} className="text-center">Has Gr</th>
@@ -6672,7 +6668,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         </td>
 
                         {/* Adet */}
-                        <td style={{ padding: "2px 4px", backgroundColor: isOdemeAdetMissing ? "#fee2e2" : rowBg, borderColor: isOdemeAdetMissing ? "#dc2626" : rowBorderColor, verticalAlign: "middle" }}>
+                        <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth, padding: "2px 4px", backgroundColor: isOdemeAdetMissing ? "#fee2e2" : rowBg, borderColor: isOdemeAdetMissing ? "#dc2626" : rowBorderColor, verticalAlign: "middle" }}>
                           <Form.Control
                             ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
                             inputMode="numeric"
@@ -6837,14 +6833,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 </tbody>
                 <tfoot style={{ background: "#f2f4f7", fontWeight: 600, fontSize: "11px" }}>
                   <tr>
-                    <td colSpan={3} className="text-end small">Toplam</td>
-                    <td style={{ textAlign: "right" }}>{totalOdemeAdet || ""}</td>
-                    <td style={{ textAlign: "right" }}>{totalOdemeMiktar ? Number(totalOdemeMiktar).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>
+                    <td colSpan={5} className="text-end small">Toplam</td>
+                    <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth, textAlign: "right" }}>{totalOdemeAdet > 0 ? totalOdemeAdet : ""}</td>
+                    <td style={{ width: odemeMiktarColWidth, minWidth: odemeMiktarColWidth, textAlign: "right" }}>{totalOdemeMiktar > 0.0001 ? Number(totalOdemeMiktar).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>
                     <td></td>
-                    <td style={{ textAlign: "right" }}>{totalOdemeHas ? Number(totalOdemeHas).toFixed(4) : ""}</td>
+                    <td style={{ textAlign: "right" }}>{totalOdemeHas > 0.00001 ? Number(totalOdemeHas).toFixed(4) : ""}</td>
                     <td></td>
                     <td style={{ textAlign: "right" }}>
-                      {totalOdemeTutar ? totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
+                      {totalOdemeTutar > 0.001 ? totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
                     </td>
                   </tr>
                 </tfoot>
@@ -7294,11 +7290,25 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           cariler={cariler}
           kayitsizMusteriler={kayitsizMusteriler}
           onSelectCustomer={(res) => {
+            const caller = lastModalCallerRef.current;
             lastModalCallerRef.current = null;
             void handleSelectCustomer(res);
             setShowMusteriModal(false);
             setMusteriSearchTerm("");
             setCariSearchField("all");
+            setTimeout(() => {
+              if (caller === "vkn") {
+                cariKodRef.current?.focus();
+                cariKodRef.current?.select();
+              } else if (caller === "cariKod") {
+                aliciUnvanRef.current?.focus();
+                aliciUnvanRef.current?.select();
+              } else {
+                if (items.length > 0) {
+                  focusGridCell(items[0].id, "barkod", "select");
+                }
+              }
+            }, 60);
           }}
           currentUnvan={aliciUnvan}
           initialSearchTerm={musteriSearchTerm}

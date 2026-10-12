@@ -40,8 +40,8 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
 
   // 2. Başında 0. veya . olan ondalık girişler (örn: "0.25", ".5")
   if (s.startsWith("0.") || s.startsWith(".")) {
-    const decPart = s.replace(/^0?\./, "").replace(/\D/g, "");
-    return `0,${decPart}`;
+    const decPart = s.replace(/^0?\./, "").replace(/[^0-9]/g, "");
+    return s.includes(",") ? `0,${decPart}` : `0.${decPart}`;
   }
 
   // 3. Düz rakamlar ve nokta içeren binlik girişler (örn: "50000" -> "50.000", silerken "50.00" -> "5.000", "5.00" -> "500")
@@ -52,22 +52,20 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
 
 /**
  * Miktar alanları için temizleme ve metin yönetimi.
- * Kullanıcı girdisini kesmez, sınırlandırmaz ve nokta (.) ile basamakları ayırır.
+ * Kullanıcı girdisini kesmez, sınırlandırmaz.
  * Kullanıcı virgül girmeden ASLA otomatik virgül koymaz.
  */
 export function formatMiktar(val: string | number | undefined | null): string {
   if (val === undefined || val === null || val === "") return "";
   if (typeof val === "number") {
     if (isNaN(val)) return "";
-    const str = String(val);
-    if (str.includes(".")) {
-      const parts = str.split(".");
-      const formattedInt = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-      return `${formattedInt},${parts[1]}`;
-    }
-    return str.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return String(val);
   }
-  return formatWithThousandDot(val);
+  const s = String(val).trim();
+  if (s.includes(",")) {
+    return formatWithThousandDot(s);
+  }
+  return s;
 }
 
 /**
@@ -134,9 +132,8 @@ export function parseDecimal(val: any): number {
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;
     }
-    // Tek nokta: Tam binlik formatı ise (örn: "50.000", "5.000", "500.000" - sonu tam "000" olan) binlik ayracıdır.
-    // Sonu 000 olmayan "9.858", "1.234" gibi değerler JS ondalık sayısıdır, binliğe dönüştürülmez.
-    if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1] === "000") {
+    // Tek nokta: Binlik formatı ise (örn: "1.000", "1.111", "5.000", "50.000", "500.000" - noktadan sonra tam 3 basamak var ve başı 0 değil) binlik ayracıdır.
+    if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1].length === 3) {
       const clean = str.replace(/\./g, "");
       const num = parseFloat(clean);
       return isNaN(num) ? 0 : num;

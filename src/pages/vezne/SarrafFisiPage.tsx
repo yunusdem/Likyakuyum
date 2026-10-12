@@ -238,12 +238,25 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   }
 
   // Maden / Hurda Altın / Gümüş (Gramaj & Milyem bazlı) -> Miktardan devam etmeli
+  if (changedField === "miktar" && (!r.miktar || miktar <= 0)) {
+    return {
+      ...r,
+      adet: "",
+      miktar: "",
+      hasGram: "",
+      tutar: "",
+      kur: isKurFixed ? "" : (kur !== "" ? kur : (defaultHasKuru > 0 ? defaultHasKuru : "")),
+    };
+  }
+
   const base = miktar > 0 ? miktar : parseDecimal(r.hasGram);
   if (changedField !== "hasGram") {
     if (base > 0 && effectiveMilyem > 0) {
       hasGram = parseFloat((base * effectiveMilyem).toFixed(4));
     } else if (base > 0) {
       hasGram = base;
+    } else {
+      hasGram = "";
     }
   }
   if (changedField !== "tutar") {
@@ -251,6 +264,8 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
     const mKur = kurNum > 0 ? kurNum : (defaultHasKuru > 0 ? defaultHasKuru : 1);
     if (effHas > 0 && mKur > 0) {
       tutar = parseFloat((effHas * mKur).toFixed(2));
+    } else {
+      tutar = "";
     }
   }
 
@@ -335,8 +350,8 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
         // Toplam seçilirse
         iscilikHasGram = parseFloat(iscilikiMiktari.toFixed(4));
       }
-    } else if (r.iscilikHasGram !== "" && parseDecimal(r.iscilikHasGram) > 0) {
-      iscilikHasGram = parseDecimal(r.iscilikHasGram);
+    } else {
+      iscilikHasGram = "";
     }
   }
 
@@ -952,7 +967,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
   // Totals (Ödeme / Tahsilat)
   const totalOdemeAdet = odemeRows.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
-  const totalOdemeMiktar = odemeRows.reduce((s, r) => s + (parseDecimal(r.miktar) || 0), 0);
+  const totalOdemeMiktar = odemeRows.reduce((s, r) => {
+    const isZiynet = r.urunTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
+    const isPara = (r.urunTipi === 0 || (r.paraKodu || "").toUpperCase() === "TL" || (r.paraKodu || "").toUpperCase() === "TRY");
+    const isCariOrKartOrHesap = r.odemeAraciTuru === 1 || r.odemeAraciTuru === 2 || r.odemeAraciTuru === 3;
+    const isIskonto = Boolean(
+      r.iskontoId ||
+      (r.paraKodu && r.paraKodu.trim().toUpperCase().startsWith("ISK")) ||
+      (r.paraAdi && (r.paraAdi.toUpperCase().includes("İSKONTO") || r.paraAdi.toUpperCase().includes("ISKONTO")))
+    );
+    if (isZiynet || isPara || isCariOrKartOrHesap || isIskonto) return s;
+    return s + (parseDecimal(r.miktar) || 0);
+  }, 0);
   const totalOdemeHas = odemeRows.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
   const totalOdemeTutar = odemeRows.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
 
@@ -997,6 +1023,22 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (Math.abs(diff) < 0.0001) return 0;
     return parseFloat(diff.toFixed(4));
   }, [farkTL, alisHas, odemeHas]);
+
+  // Ödeme / Tahsilat tablosundaki Adet sütununun girilen sayı uzunluğuna göre dinamik genişliği
+  const odemeAdetColWidth = useMemo(() => {
+    let maxLen = 4;
+    for (const r of odemeRows) {
+      const valStr = (r.adet != null ? String(r.adet) : "").trim();
+      if (valStr.length > maxLen) {
+        maxLen = valStr.length;
+      }
+    }
+    const totalStr = totalOdemeAdet > 0 ? totalOdemeAdet.toLocaleString("tr-TR") : "";
+    if (totalStr.length > maxLen) {
+      maxLen = totalStr.length;
+    }
+    return Math.max(55, Math.ceil(maxLen * 9.5 + 24));
+  }, [odemeRows, totalOdemeAdet]);
 
   // Ödeme / Tahsilat tablosundaki Miktar sütununun girilen sayı uzunluğuna göre dinamik genişliği
   const odemeMiktarColWidth = useMemo(() => {
@@ -1386,11 +1428,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             urunKodu: s.urunKodu || "",
             urunAdi: s.urunAdi || "",
             adet: s.adet != null ? s.adet : "",
-            miktar: s.miktar != null ? formatMiktar(s.miktar) : "",
+            miktar: s.miktar != null && s.miktar !== "" ? s.miktar : "",
             milyem: itemMilyem,
             hasGram: s.hasGram != null ? s.hasGram : "",
             iscilikHesaplamaSekli: s.iscilikHesaplamaSekli || 0,
-            iscilikiMiktari: s.iscilikiMiktari != null ? formatMiktar(s.iscilikiMiktari) : "",
+            iscilikiMiktari: s.iscilikiMiktari != null && s.iscilikiMiktari !== "" ? s.iscilikiMiktari : "",
             iscilikHasGram: s.iscilikHasGram != null ? s.iscilikHasGram : "",
             kur: s.kur != null ? s.kur : "",
             tutar: s.tutar != null ? s.tutar : "",
@@ -1489,7 +1531,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             paraKodu: resolvedParaKodu,
             paraAdi: resolvedParaAdi || matchedUrun?.ad || (resolvedParaKodu === "TL" ? "TÜRK LİRASI" : ""),
             adet: calcAdet,
-            miktar: o.miktar != null ? formatMiktar(o.miktar) : "",
+            miktar: o.miktar != null && o.miktar !== "" ? o.miktar : "",
             milyem: oMilyem,
             hasGram: o.hasGram != null ? o.hasGram : "",
             kur: o.kur != null ? o.kur : 1,
@@ -2714,7 +2756,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         : "";
       const miktar = isParaOrZiynet
         ? ""
-        : (Number(item.gramaj) > 0 ? formatMiktar(Number(item.gramaj) * (Number(overrideAdet || 1))) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
+        : (Number(item.gramaj) > 0 ? (Number(item.gramaj) * (Number(overrideAdet || 1))) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
       const iscilikiMiktari = isParaOrZiynet ? "" : (item.iscilik && Number(item.iscilik) > 0 ? Number(item.iscilik) : (r.iscilikiMiktari || ""));
       const milyem = isParaOrZiynet ? "" : (autoMilyem !== "" ? autoMilyem : (r.milyem || ""));
 
@@ -2778,7 +2820,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         : "";
       const miktar = isParaOrZiynet
         ? ""
-        : (Number(item.gramaj) > 0 ? formatMiktar(Number(item.gramaj) * (Number(overrideAdet || 1))) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
+        : (Number(item.gramaj) > 0 ? (Number(item.gramaj) * (Number(overrideAdet || 1))) : (Number(r.miktar) > 0 ? Number(r.miktar) : ""));
       const milyem = isParaOrZiynet ? "" : (autoMilyem !== "" ? autoMilyem : (r.milyem || ""));
 
       const updated: OdemeRow = {
@@ -2973,7 +3015,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             paraKodu: "TL",
             paraAdi: "TÜRK LİRASI",
             adet: kalanTL > 0 ? kalanTL : "",
-            miktar: kalanTL > 0 ? formatMiktar(kalanTL) : "",
+            miktar: "",
             kur: "",
             tutar: kalanTL > 0 ? kalanTL : "",
             hasGram: "",
@@ -3005,7 +3047,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             ...r,
             tutar: kalanTL > 0 ? kalanTL : "",
             hasGram: hasVal,
-            miktar: miktarVal !== "" ? formatMiktar(miktarVal) : "",
+            miktar: miktarVal !== "" ? miktarVal : "",
             adet: "",
             kur: rowKur,
           };
@@ -3017,7 +3059,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           return {
             ...r,
             adet: adetVal,
-            miktar: formatMiktar(adetVal),
+            miktar: "",
             tutar: tutarVal,
             hasGram: hasVal,
             kur: rowKur,
@@ -3046,11 +3088,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     let sanitizedValue = value;
     if (field === "adet") {
       sanitizedValue = onlyDigits(String(value));
-    } else if (field === "miktar" || field === "iscilikiMiktari") {
-      sanitizedValue = formatMiktar(value);
     } else if (
+      field === "miktar" ||
       field === "milyem" ||
       field === "hasGram" ||
+      field === "iscilikiMiktari" ||
       field === "iscilikHasGram" ||
       field === "kur" ||
       field === "tutar" ||
@@ -3074,7 +3116,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         } else {
           const found = urunList.find((u) => u.kod.trim().toLowerCase() === (r.urunKodu || "").trim().toLowerCase());
           if (found && Number(found.gramaj) > 0 && numAdet > 0) {
-            miktar = formatMiktar(Number(found.gramaj) * numAdet);
+            miktar = Number(found.gramaj) * numAdet;
           }
         }
       }
@@ -3096,9 +3138,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
       }
-      if (field === "miktar" || field === "iscilikiMiktari") {
-        val = formatMiktar(val);
-      }
       const curHasKuru = Number(altinHasKuru) || 0;
       return recomputeRow({ ...r, [field]: val }, curHasKuru, field);
     }));
@@ -3108,9 +3147,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     let sanitizedValue = value;
     if (field === "adet") {
       sanitizedValue = onlyDigits(String(value));
-    } else if (field === "miktar") {
-      sanitizedValue = formatMiktar(value);
     } else if (
+      field === "miktar" ||
       field === "milyem" ||
       field === "hasGram" ||
       field === "kur" ||
@@ -3139,9 +3177,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         } else {
           const found = urunList.find((u) => u.kod.trim().toLowerCase() === (r.paraKodu || "").trim().toLowerCase());
           if (found && Number(found.gramaj) > 0 && numAdet > 0) {
-            miktar = formatMiktar(Number(found.gramaj) * numAdet);
+            miktar = Number(found.gramaj) * numAdet;
           } else if (numAdet > 0 && (!miktar || Number(miktar) === 0)) {
-            miktar = formatMiktar(numAdet);
+            miktar = numAdet;
           }
         }
       }
@@ -3157,9 +3195,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       let val = r[field];
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
-      }
-      if (field === "miktar") {
-        val = formatMiktar(val);
       }
       const curHasKuru = Number(altinHasKuru) || 0;
       return recomputeOdemeRow({ ...r, [field]: val }, curHasKuru, field);
@@ -4604,7 +4639,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           urunKodu: mainUrun?.kod || result.girisPara.kod,
           urunAdi: mainUrun?.ad || result.girisPara.ad || result.girisPara.kod,
           adet: 1,
-          miktar: formatMiktar(result.girisMiktar),
+          miktar: result.girisMiktar,
           milyem: mainMilyem,
           hasGram: mainMilyem > 0 ? (result.girisMiktar * mainMilyem) / 1000 : result.girisMiktar,
           iscilikHesaplamaSekli: 0,
@@ -4633,7 +4668,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           paraKodu: result.cikisPara.kod,
           paraAdi: result.cikisPara.ad,
           adet: 1,
-          miktar: formatMiktar(result.cikisMiktar),
+          miktar: result.cikisMiktar,
           milyem: 0,
           hasGram: 0,
           kur: cikisKur,
@@ -4664,7 +4699,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           urunKodu: mainUrun?.kod || result.cikisPara.kod,
           urunAdi: mainUrun?.ad || result.cikisPara.ad || result.cikisPara.kod,
           adet: 1,
-          miktar: formatMiktar(result.cikisMiktar),
+          miktar: result.cikisMiktar,
           milyem: mainMilyem,
           hasGram: mainMilyem > 0 ? (result.cikisMiktar * mainMilyem) / 1000 : result.cikisMiktar,
           iscilikHesaplamaSekli: 0,
@@ -4693,7 +4728,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           paraKodu: result.girisPara.kod,
           paraAdi: result.girisPara.ad,
           adet: 1,
-          miktar: formatMiktar(result.girisMiktar),
+          miktar: result.girisMiktar,
           milyem: 0,
           hasGram: 0,
           kur: girisKur,
@@ -4935,7 +4970,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         paraKodu: doviz ? (doviz.kod || kod) : "TL",
         paraAdi: doviz ? (doviz.ad || kod) : "TÜRK LİRASI",
         urunTipi: 0,
-        miktar: formatMiktar(doviz ? b.tutar : b.tutarTl),
+        miktar: doviz ? b.tutar : b.tutarTl,
         kur: doviz ? parseFloat((b.tutarTl / b.tutar).toFixed(4)) : "",
       };
       setOdemeRows([recomputeOdemeRow(satir, Number(altinHasKuru) || 0)]);
@@ -6029,7 +6064,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         <th style={{ width: 110 }} className="text-center">Kod</th>
                         <th style={{ width: 140 }} className="text-center">Açıklama</th>
                         <th style={{ width: 110 }} className="text-center">Para / İskonto</th>
-                        <th style={{ width: 55 }} className="text-center">Adet</th>
+                        <th style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth }} className="text-center">Adet</th>
                         <th style={{ width: odemeMiktarColWidth, minWidth: odemeMiktarColWidth }} className="text-center">Miktar</th>
                         <th style={{ width: 70 }} className="text-center">Milyem</th>
                         <th style={{ width: 85 }} className="text-center">Has</th>
@@ -6531,7 +6566,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         </td>
 
                         {/* Adet */}
-                        <td>
+                        <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth }}>
                           <Form.Control
                             ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
                             inputMode="numeric"
@@ -6674,14 +6709,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   </tbody>
                   <tfoot style={{ background: "#f2f4f7", fontWeight: 600, fontSize: "11px" }}>
                     <tr>
-                      <td colSpan={4} className="text-end small">Toplam</td>
-                      <td style={{ textAlign: "right" }}>{totalOdemeAdet ? totalOdemeAdet.toLocaleString("tr-TR") : ""}</td>
-                      <td style={{ textAlign: "right" }}>{totalOdemeMiktar ? Number(totalOdemeMiktar).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>
+                      <td colSpan={5} className="text-end small">Toplam</td>
+                      <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth, textAlign: "right" }}>{totalOdemeAdet > 0 ? totalOdemeAdet.toLocaleString("tr-TR") : ""}</td>
+                      <td style={{ width: odemeMiktarColWidth, minWidth: odemeMiktarColWidth, textAlign: "right" }}>{totalOdemeMiktar > 0.0001 ? Number(totalOdemeMiktar).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>
                       <td></td>
-                      <td style={{ textAlign: "right" }}>{totalOdemeHas ? Number(totalOdemeHas).toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>
+                      <td style={{ textAlign: "right" }}>{totalOdemeHas > 0.00001 ? Number(totalOdemeHas).toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>
                       <td></td>
                       <td style={{ textAlign: "right" }}>
-                        {totalOdemeTutar ? totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
+                        {totalOdemeTutar > 0.001 ? totalOdemeTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
                       </td>
                     </tr>
                   </tfoot>
