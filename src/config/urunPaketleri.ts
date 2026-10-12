@@ -61,6 +61,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
       "ayarlar:ayarlar/yazici-tanimlari",
       "ayarlar:ayarlar/numeratorler",
       "ayarlar:ayarlar/firma-tanimlari",
+      "ayarlar:ayarlar/belge-tasarimi",
       "ayarlar:ayarlar/devir-islemi",
       "ayarlar:ayarlar/servis-islemleri",
     ],

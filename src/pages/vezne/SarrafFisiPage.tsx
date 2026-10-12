@@ -42,7 +42,7 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { F10YaziciSecimModal } from "./F10YaziciSecimModal";
 import { triggerSilentPrint } from "../../services/silentPrintService";
-import { generateSarrafReceiptHtml } from "../../utils/receiptHtmlGenerator";
+import { sarrafFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -2155,18 +2155,21 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const isPos = targetPrinter ? targetPrinter.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
         const copiesToUse = targetCopies || resolved.kopyaSayisi || 1;
 
-        const sarrafHtml = generateSarrafReceiptHtml({
-          fis: snapObj,
-          company: companyDefinitions,
-        });
-
-        await triggerSilentPrint({
-          html: sarrafHtml,
-          printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
-          copies: copiesToUse,
-          isPos,
-          title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
-        });
+        // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; docs/FIS_TASARIM_YOL_HARITASI.md).
+        // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
+        try {
+          const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
+          const sonuc = await triggerSilentPrint({
+            html: fisCikti.html,
+            printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
+            copies: copiesToUse,
+            isPos,
+            title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
+          });
+          if (!sonuc.success) showNotif("warning", `Fiş kaydedildi ancak yazdırılamadı: ${sonuc.message}`);
+        } catch (printErr: any) {
+          showNotif("warning", `Fiş kaydedildi ancak yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`);
+        }
       }
       if (isDuzeltmeMode || fisId) {
         // Düzeltme modunda formu boşaltma, kaydedilen kaydı tekrar yükle

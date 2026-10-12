@@ -244,6 +244,7 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "K- MASAK Malvarlıkları Dondurulanlar", link: "ayarlar/masak-dondurulanlar" },
       { id: uuid(), name: "L- Firma Tanımları", link: "ayarlar/firma-tanimlari" },
       { id: uuid(), name: "M- GİB Sorgu Ayarları", link: "ayarlar/gib-sorgu" },
+      { id: uuid(), name: "N- Belge Tasarımı", link: "ayarlar/belge-tasarimi" },
     ],
   },
 ];

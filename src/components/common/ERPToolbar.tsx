@@ -92,6 +92,7 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/cari/detayli-kart-listesi": { title: "I- Detaylı Cari Kart Listesi", icon: <IconFileText size={20} /> },
   "/ayarlar/firma-tanimlari": { title: "Firma Tanımları", icon: <IconBuilding size={20} /> },
   "/ayarlar/gib-sorgu": { title: "GİB Sorgu Ayarları", icon: <IconBuilding size={20} /> },
+  "/ayarlar/belge-tasarimi": { title: "Belge Tasarımı", icon: <IconBuilding size={20} /> },
   "/ayarlar/kullanici-tanimlari": { title: "Kullanıcı Tanımları", icon: <IconUser size={20} /> },
   "/kur/anlik-fiyat-listesi": { title: "A- Anlık Fiyat Listesi", icon: <IconChartLine size={20} /> },
   "/kur/saklanan-fiyat-listesi": { title: "B- Saklanan Fiyat Listesi", icon: <IconChartLine size={20} /> },

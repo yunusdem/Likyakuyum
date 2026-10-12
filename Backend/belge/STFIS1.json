@@ -5,11 +5,11 @@
   "kenar": 28,
   "yaziBoyutu": 8,
   "ogeler": [
-    { "tip": "filigran", "kosul": "{{onizleme}}", "metin": "ÖNİZLEME – GİB'e gönderilmemiştir" },
-    { "tip": "filigran", "kosul": "{{iptal}}", "metin": "İPTAL EDİLMİŞ FİŞ", "renk": "#b00020" },
+    { "id": "filigran-onizleme", "tip": "filigran", "kosul": "{{onizleme}}", "metin": "ÖNİZLEME – GİB'e gönderilmemiştir" },
+    { "id": "filigran-iptal", "tip": "filigran", "kosul": "{{iptal}}", "metin": "İPTAL EDİLMİŞ FİŞ", "renk": "#b00020" },
 
-    { "tip": "metin", "x": 0, "y": 0, "g": 260, "metin": "DÜZENLEYEN YETKİLİ", "kalin": true, "boyut": 9, "altCizgi": true },
-    { "tip": "satirlar", "x": 0, "y": 16, "g": 260, "aralik": 2.5, "satirlar": [
+    { "id": "firma-baslik", "tip": "metin", "x": 0, "y": 0, "g": 260, "metin": "DÜZENLEYEN YETKİLİ", "kalin": true, "boyut": 9, "altCizgi": true },
+    { "id": "firma-bilgileri", "ad": "Düzenleyen bilgileri", "zorunlu": true, "tip": "satirlar", "x": 0, "y": 16, "g": 260, "aralik": 2.5, "satirlar": [
       "{{firma.unvan}}",
       "{{firma.adres}}",
       "{{firma.ilce}}/ {{firma.sehir}}",
@@ -22,14 +22,14 @@
       "?**TICARETSICILNO**: {{firma.ticaretSicilNo}}"
     ] },
 
-    { "tip": "resim", "dosya": "logo-gib.png", "x": 389, "y": 0, "g": 60, "h": 58 },
-    { "tip": "metin", "x": 300, "y": 62, "g": 239, "metin": "e-DÖVİZ ve KIYMETLİ MADEN {{tipAdi}} BELGESİ", "kalin": true, "boyut": 8, "hiza": "center" },
-    { "tip": "qr", "x": 349, "y": 76, "boyut": 140, "icerik": "{{qrBuyuk}}" },
+    { "id": "gib-amblem", "ad": "GİB amblemi", "zorunlu": true, "tip": "resim", "dosya": "logo-gib.png", "x": 389, "y": 0, "g": 60, "h": 58 },
+    { "id": "belge-basligi", "ad": "Belge başlığı", "zorunlu": true, "tip": "metin", "x": 300, "y": 62, "g": 239, "metin": "e-DÖVİZ ve KIYMETLİ MADEN {{tipAdi}} BELGESİ", "kalin": true, "boyut": 8, "hiza": "center" },
+    { "id": "karekod", "ad": "Karekod", "zorunlu": true, "tip": "qr", "x": 349, "y": 76, "boyut": 140, "icerik": "{{qrBuyuk}}" },
 
-    { "tip": "cizgi", "x1": 0, "y1": 226, "x2": 539, "y2": 226 },
+    { "id": "ayrac-1", "tip": "cizgi", "x1": 0, "y1": 226, "x2": 539, "y2": 226 },
 
-    { "tip": "metin", "x": 0, "y": 232, "g": 260, "metin": "ALAN KİŞİ/KURULUŞ", "kalin": true, "boyut": 9, "altCizgi": true },
-    { "tip": "satirlar", "x": 0, "y": 248, "g": 260, "aralik": 2.5, "satirlar": [
+    { "id": "musteri-baslik", "tip": "metin", "x": 0, "y": 232, "g": 260, "metin": "ALAN KİŞİ/KURULUŞ", "kalin": true, "boyut": 9, "altCizgi": true },
+    { "id": "musteri-bilgileri", "ad": "Alan / satan bilgileri", "zorunlu": true, "tip": "satirlar", "x": 0, "y": 248, "g": 260, "aralik": 2.5, "satirlar": [
       "{{musteri.unvan}}",
       "?{{musteri.adSoyad}}",
       "{{musteri.adres}}",
@@ -42,8 +42,8 @@
       "?MUSTERITURU: {{musteri.musteriTuru}}"
     ] },
 
-    { "tip": "metin", "x": 300, "y": 232, "g": 239, "metin": "BELGE BİLGİLERİ", "kalin": true, "boyut": 9, "altCizgi": true },
-    { "tip": "tablo", "x": 300, "y": 246, "g": 239, "etiketG": 105, "satirH": 15, "satirlar": [
+    { "id": "belge-bilgileri-baslik", "tip": "metin", "x": 300, "y": 232, "g": 239, "metin": "BELGE BİLGİLERİ", "kalin": true, "boyut": 9, "altCizgi": true },
+    { "id": "belge-bilgileri", "ad": "Belge bilgileri", "zorunlu": true, "tip": "tablo", "x": 300, "y": 246, "g": 239, "etiketG": 105, "satirH": 15, "satirlar": [
       ["Belge No", "{{belgeNo}}"],
       ["Oluşturma Tarihi", "{{tarih}}"],
       ["Oluşturma Zamanı", "{{saat}}"],
@@ -53,11 +53,11 @@
       ["Tip:", "{{tipAdi}}"]
     ] },
 
-    { "tip": "cizgi", "x1": 0, "y1": 360, "x2": 539, "y2": 360 },
-    { "tip": "metin", "x": 0, "y": 366, "g": 539, "metin": "**ETTN:** {{ettn}}", "boyut": 8.5 },
+    { "id": "ayrac-2", "tip": "cizgi", "x1": 0, "y1": 360, "x2": 539, "y2": 360 },
+    { "id": "ettn", "ad": "ETTN", "zorunlu": true, "tip": "metin", "x": 0, "y": 366, "g": 539, "metin": "**ETTN:** {{ettn}}", "boyut": 8.5 },
 
-    { "tip": "metin", "x": 0, "y": 388, "g": 539, "metin": "{{islemEtiketi}} DÖVİZE/KIYMETLİ MADENE AİT BİLGİLER", "kalin": true, "boyut": 10, "hiza": "center" },
-    { "tip": "tablo", "x": 0, "y": 406, "g": 539, "etiketG": 320, "satirH": 16, "hizaDeger": "right", "satirlar": [
+    { "id": "tutar-baslik", "tip": "metin", "x": 0, "y": 388, "g": 539, "metin": "{{islemEtiketi}} DÖVİZE/KIYMETLİ MADENE AİT BİLGİLER", "kalin": true, "boyut": 10, "hiza": "center" },
+    { "id": "tutar-bilgileri", "ad": "Döviz / tutar bilgileri", "zorunlu": true, "tip": "tablo", "x": 0, "y": 406, "g": 539, "etiketG": 320, "satirH": 16, "hizaDeger": "right", "satirlar": [
       ["{{urunEtiketi}}", ""],
       ["Döviz/Kıymetli Maden Miktarı", "{{tutar.miktar|sayi}}"],
       ["Döviz/Kıymetli Maden Cinsi", "{{tutar.kod}}"],
@@ -68,15 +68,15 @@
       ["NET TUTAR", "{{tutar.net|sayi}}TL", true]
     ] },
 
-    { "tip": "kutu", "x": 0, "y": 542, "g": 539, "h": 54 },
-    { "tip": "satirlar", "x": 6, "y": 548, "g": 527, "aralik": 4, "satirlar": [
+    { "id": "alt-kutu", "tip": "kutu", "x": 0, "y": 542, "g": 539, "h": 54 },
+    { "id": "yaziyla", "ad": "Yazıyla / vezne / uyruk", "zorunlu": true, "tip": "satirlar", "x": 6, "y": 548, "g": 527, "aralik": 4, "satirlar": [
       "Yalnız : {{tutar.yaziyla}}",
       "VEZNE : {{vezne}}",
       "Uyruk : {{musteri.ulke}}"
     ] },
 
-    { "tip": "qr", "x": 0, "y": 606, "boyut": 120, "icerik": "{{qrKucuk}}", "kosul": "{{qrKucuk}}" },
-    { "tip": "metin", "x": 140, "y": 650, "g": 300, "boyut": 8.5, "renk": "#333", "kosul": "{{erisimAdresi}}",
+    { "id": "erisim-karekod", "ad": "Erişim karekodu", "tip": "qr", "x": 0, "y": 606, "boyut": 120, "icerik": "{{qrKucuk}}", "kosul": "{{qrKucuk}}" },
+    { "id": "erisim-adresi", "ad": "Erişim adresi", "tip": "metin", "x": 140, "y": 650, "g": 300, "boyut": 8.5, "renk": "#333", "kosul": "{{erisimAdresi}}",
       "metin": "e-Döviz ve Kıymetli Maden belgesine {{erisimAdresi}} adresinden erişebilirsiniz." }
   ]
 }

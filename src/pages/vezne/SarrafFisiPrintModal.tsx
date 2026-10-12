@@ -1,18 +1,12 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Modal, Button, Form } from "react-bootstrap";
-import {
-  IconPrinter,
-  IconX,
-  IconCheck,
-  IconReceipt,
-  IconFileText,
-} from "@tabler/icons-react";
-import QRCode from "qrcode";
-import { CompanyService, TodvzTanimDto } from "../../services/companyService";
+import { IconPrinter, IconX, IconReceipt, IconFileText } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
-import { VezneItem } from "../../services/cashDeskService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
+import { sarrafFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
+import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
+import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 
 export interface SarrafPrintLineItem {
   satirNo?: number;
@@ -77,274 +71,62 @@ export interface SarrafFisiPrintModalProps {
 }
 
 /**
- * Converts numeric amount to Turkish textual representation ("Yazıyla")
+ * Sarraf fişi önizleme / yazdırma (80 mm POS veya A4).
+ * Fiş, firmanın şablonundan çizilir (docs/FIS_TASARIM_YOL_HARITASI.md); düzen kodda değil şablondadır.
  */
-export function tutarYaziyla(sayi: number, isSatis: boolean): string {
-  if (isNaN(sayi) || sayi === 0) return isSatis ? "#Sıfır TL#" : "Sıfır TL";
-
-  const birler = ["", "Bir", "İki", "Üç", "Dört", "Beş", "Altı", "Yedi", "Sekiz", "Dokuz"];
-  const onlar = ["", "On", "Yirmi", "Otuz", "Kırk", "Elli", "Altmış", "Yetmiş", "Seksen", "Doksan"];
-  const basamaklar = ["", "Bin", "Milyon", "Milyar", "Trilyon"];
-
-  function ucluGrupOku(n: number): string {
-    const yuzler = Math.floor(n / 100);
-    const onlarBas = Math.floor((n % 100) / 10);
-    const birlerBas = n % 10;
-    let sonuc = "";
-    if (yuzler > 1) sonuc += birler[yuzler] + "Yüz";
-    else if (yuzler === 1) sonuc += "Yüz";
-    sonuc += onlar[onlarBas];
-    sonuc += birler[birlerBas];
-    return sonuc;
-  }
-
-  const tamKisim = Math.floor(Math.abs(sayi));
-  const kurusKisim = Math.round((Math.abs(sayi) - tamKisim) * 100);
-
-  let sonuc = "";
-  let kalan = tamKisim;
-  let grupIndex = 0;
-
-  if (tamKisim === 0) {
-    sonuc = "Sıfır";
-  } else {
-    while (kalan > 0) {
-      const grup = kalan % 1000;
-      if (grup > 0) {
-        if (grupIndex === 1 && grup === 1) {
-          sonuc = "Bin" + sonuc;
-        } else {
-          sonuc = ucluGrupOku(grup) + basamaklar[grupIndex] + sonuc;
-        }
-      }
-      kalan = Math.floor(kalan / 1000);
-      grupIndex++;
-    }
-  }
-
-  let metin = isSatis ? `#${sonuc} TL` : `${sonuc} TL`;
-  if (kurusKisim > 0) {
-    metin += ` ${ucluGrupOku(kurusKisim)} Krş`;
-  }
-  if (isSatis) metin += "#";
-
-  return metin;
-}
-
-export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = ({
-  show,
-  onHide,
-  autoPrint = false,
-  fisId,
-  tip,
-  tarih,
-  saat,
-  seriNo,
-  belgeNo,
-  unvan,
-  vergiKimlikNo,
-  detayIl,
-  detayIlce,
-  detayUyruk,
-  detayPasaportNo,
-  detayMeslek,
-  detayCariTipi,
-  detayAdres,
-  detayTelefonNo,
-  vezneKod,
-  vezne,
-  kullaniciAdi,
-  satirlar,
-  odemeSatirlari = [],
-  toplamTutar = 0,
-  toplamHas = 0,
-  odenenTutar = 0,
-  kalanTutar = 0,
-}) => {
+export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props) => {
+  const { show, onHide, autoPrint = false, tip, vezne } = props;
   const { user } = useAuth();
   const [printType, setPrintType] = useState<"A4" | "POS">("POS");
-  const [company, setCompany] = useState<TodvzTanimDto | null>(null);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [resolvedResult, setResolvedResult] = useState<ResolvedPrinterResult | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
-  const printAreaRef = useRef<HTMLDivElement>(null);
-
+  const [yaziciHazir, setYaziciHazir] = useState(false);
   const isSatis = Number(tip) === 1;
-  const isAlis = Number(tip) === 0;
   const fisTuruBaslik = isSatis ? "SARRAF SATIŞ FİŞİ" : "SARRAF ALIŞ FİŞİ";
-  const fisNoStr = (seriNo ? `${seriNo}-` : "") + (belgeNo || (fisId ? String(fisId) : ""));
+  const propsRef = useRef(props);
+  propsRef.current = props;
 
   useEffect(() => {
-    if (show) {
-      CompanyService.getDefinitions().then(setCompany).catch(console.error);
-      PrinterService.getYazicilar()
-        .then((list) => {
-          setPrinters(list);
-          const resolved = resolveEffectivePrinter({
-            pageType: "sarraf",
-            tip,
-            vezne,
-            user,
-            printers: list,
-          });
-          setResolvedResult(resolved);
-          setSelectedPrinterId(resolved.printerId);
-          if (resolved.recommendedPrintType) {
-            setPrintType(resolved.recommendedPrintType);
-          }
-        })
-        .catch(() => {
-          const resolved = resolveEffectivePrinter({
-            pageType: "sarraf",
-            tip,
-            vezne,
-            user,
-            printers: [],
-          });
-          setResolvedResult(resolved);
-        });
-    }
+    if (!show) { setYaziciHazir(false); return; }
+    PrinterService.getYazicilar()
+      .then((list) => {
+        setPrinters(list);
+        const resolved = resolveEffectivePrinter({ pageType: "sarraf", tip, vezne, user, printers: list });
+        setResolvedResult(resolved);
+        setSelectedPrinterId(resolved.printerId);
+        if (resolved.recommendedPrintType) setPrintType(resolved.recommendedPrintType);
+      })
+      .catch(() => {
+        setResolvedResult(resolveEffectivePrinter({ pageType: "sarraf", tip, vezne, user, printers: [] }));
+      })
+      .finally(() => setYaziciHazir(true));
   }, [show, tip, vezne, user]);
 
+  // Kâğıt türü yazıcıdan belli olunca (ve kullanıcı değiştirdikçe) şablondan üretilir.
+  const { fis, hata } = useSablonluFis(show && yaziciHazir, printType, () => {
+    const { show: _s, onHide: _o, autoPrint: _a, vezne: _v, ...girdi } = propsRef.current;
+    return sarrafFisHtml(girdi, printType === "POS" ? "80" : "A4");
+  });
+
+  const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
+    if (!hazir) return;
+    await fisiYazdir(hazir, {
+      printerId: selectedPrinterId,
+      printerName: resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad,
+      copies: resolvedResult?.kopyaSayisi || 1,
+      isPos: printType === "POS",
+    });
+  }, [fis, selectedPrinterId, resolvedResult, printType]);
+
+  // Doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açılır, hata görünür.
+  const otomatikBasildi = useRef(false);
+  useEffect(() => { if (!show) otomatikBasildi.current = false; }, [show]);
   useEffect(() => {
-    if (show) {
-      const qrContent = `VKN:${company?.VERGI_KIMLIK_NO || "0000000000"}|NO:${fisNoStr}|TAR:${tarih}|TOP:${toplamTutar.toFixed(2)}|HAS:${toplamHas.toFixed(4)}`;
-      QRCode.toDataURL(qrContent, { width: 120, margin: 1 })
-        .then(setQrDataUrl)
-        .catch(() => setQrDataUrl(""));
-    }
-  }, [show, company, fisNoStr, tarih, toplamTutar, toplamHas]);
-
-  const handlePrint = async () => {
-    const isPos = printType === "POS";
-    const targetId = isPos ? "sarraf-pos-print-target" : "sarraf-a4-print-target";
-    const slipEl = document.getElementById(targetId);
-    if (!slipEl) return;
-    const contentHtml = slipEl.innerHTML;
-
-    // 1. Doğrudan donanım/ağ yazıcısına çıktı göndermeyi dene
-    try {
-      const res = await PrinterService.directPrint({
-        printerId: selectedPrinterId,
-        printerName: resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad,
-        documentTitle: `${fisTuruBaslik} - ${fisNoStr}`,
-        htmlContent: contentHtml,
-        isPos,
-        copies: resolvedResult?.kopyaSayisi || 1,
-      });
-
-      if (res.success && !res.fallbackToBrowser) {
-        return;
-      }
-    } catch {
-      // Tarayıcı fallback akışına devam edilir
-    }
-
-    // 2. Tarayıcı gizli iframe yazdırma motoru (Sadece fişi yazdırır, sayfayı asla yazdırmaz)
-    let iframe = document.getElementById("sarraf-print-iframe") as HTMLIFrameElement;
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.id = "sarraf-print-iframe";
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      document.body.appendChild(iframe);
-    }
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) return;
-
-    doc.open();
-    doc.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>${fisTuruBaslik} - ${fisNoStr}</title>
-          <style>
-            @page {
-              size: ${isPos ? "80mm auto" : "A4 portrait"};
-              margin: ${isPos ? "0mm !important" : "8mm !important"};
-            }
-            * {
-              box-sizing: border-box;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            html, body {
-              width: 100%;
-              max-width: ${isPos ? "80mm" : "100%"};
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #ffffff;
-              font-family: ${isPos ? "'Courier New', Courier, monospace, Arial, sans-serif" : "Arial, Helvetica, sans-serif"};
-              color: #000000;
-            }
-            .thermal-paper {
-              width: 100%;
-              max-width: 78mm;
-              margin: 0 auto !important;
-              padding: 1.5mm 2.5mm 3mm 2.5mm !important;
-              font-size: 10px;
-              line-height: 1.18;
-            }
-            .a4-paper {
-              width: 100%;
-              max-width: 210mm;
-              margin: 0 auto !important;
-              padding: 8mm !important;
-              font-size: 11px;
-              line-height: 1.35;
-            }
-            .dashed-line {
-              border-top: 1px dashed #000000;
-              margin: 3px 0;
-            }
-            .solid-line {
-              border-top: 1px solid #000000;
-              margin: 3px 0;
-            }
-            table {
-              border-collapse: collapse;
-              width: 100%;
-            }
-            th, td {
-              padding: 1px 2px;
-            }
-            .text-right { text-align: right; }
-            .text-center { text-align: center; }
-            .fw-bold { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="${isPos ? "thermal-paper" : "a4-paper"}">
-            ${contentHtml}
-          </div>
-        </body>
-      </html>
-    `);
-    doc.close();
-
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-    }, 100);
-  };
-
-  // Auto print trigger when opened via F10 or direct-print
-  useEffect(() => {
-    if (show && autoPrint) {
-      const timer = setTimeout(() => {
-        handlePrint();
-        onHide();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [show, autoPrint]);
+    if (!show || !autoPrint || otomatikBasildi.current || !fis) return;
+    otomatikBasildi.current = true;
+    handlePrint(fis).finally(() => onHide());
+  }, [show, autoPrint, fis, handlePrint, onHide]);
 
   // F8/F10 Shortcuts inside Print Modal
   useEffect(() => {
@@ -362,490 +144,80 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = ({
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [show, printType]);
-
-  const activeSatirlar = satirlar.filter(
-    (l) => Number(l.miktar) > 0 || Number(l.tutar) > 0 || Number(l.adet) > 0 || (l.urunAdi && l.urunAdi.trim() !== "")
-  );
-
-  const activeOdemeler = odemeSatirlari.filter(
-    (o) => Number(o.miktar) > 0 || Number(o.tutar) > 0 || Number(o.adet) > 0 || (o.paraKodu && o.paraKodu.trim() !== "")
-  );
-
-  const renderPosContent = () => (
-    <div
-      id="sarraf-pos-print-target"
-      ref={printAreaRef}
-      className="bg-white p-3 shadow-sm border text-dark"
-      style={{
-        width: "360px",
-        fontFamily: "'Courier New', Courier, monospace",
-        fontSize: "11px",
-        lineHeight: "1.25",
-        color: "#000",
-      }}
-    >
-      {/* Firma Başlığı */}
-      <div className="text-center mb-2">
-        <div className="fw-bold" style={{ fontSize: "13px" }}>
-          {company?.FIRMA_ADI || "LİKYA KUYUMCULUK"}
-        </div>
-        {company?.SUBE_ADI && <div style={{ fontSize: "10px" }}>{company.SUBE_ADI}</div>}
-        {company?.ADRES && <div style={{ fontSize: "9.5px" }}>{company.ADRES}</div>}
-        {company?.VERGI_KIMLIK_NO && (
-          <div style={{ fontSize: "9.5px" }}>VKN: {company.VERGI_KIMLIK_NO}</div>
-        )}
-        {company?.TELEFON && <div style={{ fontSize: "9.5px" }}>Tel: {company.TELEFON}</div>}
-      </div>
-
-      <div className="dashed-line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-
-      {/* Belge Başlığı ve Bilgileri */}
-      <div className="text-center fw-bold my-1" style={{ fontSize: "12px", textDecoration: "underline" }}>
-        {fisTuruBaslik}
-      </div>
-
-      <div style={{ fontSize: "10.5px" }}>
-        <div className="d-flex justify-content-between">
-          <span>Fiş No: <b>{fisNoStr || "-"}</b></span>
-          <span>Tarih: <b>{tarih || "-"}</b></span>
-        </div>
-        <div className="d-flex justify-content-between">
-          <span>Vezne: <b>{vezneKod || "-"}</b></span>
-          <span>Saat: <b>{saat || new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</b></span>
-        </div>
-        {kullaniciAdi && <div>Kasiyer: <b>{kullaniciAdi}</b></div>}
-      </div>
-
-      <div className="dashed-line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-
-      {/* Müşteri Bilgileri */}
-      <div style={{ fontSize: "10.5px" }}>
-        <div>Müşteri: <b>{unvan || "PERAKENDE MÜŞTERİ"}</b></div>
-        {vergiKimlikNo && <div>TCKN / VKN: <b>{vergiKimlikNo}</b></div>}
-        {detayTelefonNo && <div>Tel: {detayTelefonNo}</div>}
-        {detayAdres && <div>Adres: {detayAdres}</div>}
-      </div>
-
-      <div className="dashed-line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-
-      {/* Satırlar Tablosu */}
-      <div className="fw-bold mb-1" style={{ fontSize: "10px" }}>
-        <span>ÜRÜN / HAREKET DETAYLARI</span>
-      </div>
-      <table style={{ width: "100%", fontSize: "10px", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid #000" }}>
-            <th style={{ textAlign: "left", paddingBottom: "2px" }}>Ürün / Cinsi</th>
-            <th style={{ textAlign: "right", paddingBottom: "2px" }}>Miktar</th>
-            <th style={{ textAlign: "right", paddingBottom: "2px" }}>Ayar/Kur</th>
-            <th style={{ textAlign: "right", paddingBottom: "2px" }}>Tutar (TL)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {activeSatirlar.map((s, idx) => {
-            const miktarNum = Number(s.miktar) || 0;
-            const adetNum = Number(s.adet) || 0;
-            const milyemNum = Number(s.milyem) || 0;
-            const kurNum = Number(s.kur) || 0;
-            const tutarNum = Number(s.tutar) || 0;
-            const hasNum = Number(s.hasGram) || 0;
-
-            return (
-              <tr key={idx} style={{ verticalAlign: "top" }}>
-                <td style={{ padding: "2px 0" }}>
-                  <div className="fw-bold">{s.urunAdi || s.urunKodu || `Satır ${idx + 1}`}</div>
-                  {hasNum > 0 && (
-                    <div style={{ fontSize: "9px", color: "#333" }}>
-                      Has: {hasNum.toFixed(4)} gr
-                    </div>
-                  )}
-                  {s.aciklama && <div style={{ fontSize: "9px", fontStyle: "italic" }}>{s.aciklama}</div>}
-                </td>
-                <td style={{ textAlign: "right", padding: "2px 0", whiteSpace: "nowrap" }}>
-                  {miktarNum > 0 ? `${miktarNum.toFixed(2)} gr` : (adetNum > 0 ? `${adetNum} ad` : "-")}
-                </td>
-                <td style={{ textAlign: "right", padding: "2px 0", whiteSpace: "nowrap" }}>
-                  {milyemNum > 0 ? milyemNum : (kurNum > 0 ? kurNum.toFixed(2) : "-")}
-                </td>
-                <td style={{ textAlign: "right", padding: "2px 0", fontWeight: "bold", whiteSpace: "nowrap" }}>
-                  {tutarNum.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <div className="solid-line" style={{ borderTop: "1px solid #000", margin: "4px 0" }} />
-
-      {/* Ödemeler / Tahsilat Tablosu (Varsa) */}
-      {activeOdemeler.length > 0 && (
-        <>
-          <div className="fw-bold mb-1" style={{ fontSize: "10px" }}>
-            <span>ÖDEME / TAHSİLAT DETAYI</span>
-          </div>
-          <table style={{ width: "100%", fontSize: "10px", borderCollapse: "collapse", marginBottom: "4px" }}>
-            <tbody>
-              {activeOdemeler.map((o, oIdx) => {
-                const oMiktar = Number(o.miktar) || Number(o.adet) || 0;
-                const oTutar = Number(o.tutar) || 0;
-                return (
-                  <tr key={oIdx}>
-                    <td>{o.paraKodu || o.paraAdi || "Nakit TL"}</td>
-                    <td style={{ textAlign: "right" }}>{oMiktar > 0 ? oMiktar.toFixed(2) : ""}</td>
-                    <td style={{ textAlign: "right", fontWeight: "bold" }}>
-                      {oTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="dashed-line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-        </>
-      )}
-
-      {/* Toplamlar Bölümü */}
-      <div style={{ fontSize: "11px" }}>
-        {toplamHas > 0 && (
-          <div className="d-flex justify-content-between">
-            <span>Toplam Has Gram:</span>
-            <span className="fw-bold">{toplamHas.toFixed(4)} gr</span>
-          </div>
-        )}
-        <div className="d-flex justify-content-between fw-bold" style={{ fontSize: "12px" }}>
-          <span>GENEL TOPLAM:</span>
-          <span>{toplamTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</span>
-        </div>
-        {odenenTutar > 0 && (
-          <div className="d-flex justify-content-between">
-            <span>Ödenen / Alınan:</span>
-            <span>{odenenTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</span>
-          </div>
-        )}
-        {kalanTutar !== 0 && (
-          <div className="d-flex justify-content-between text-danger">
-            <span>Kalan Bakiye:</span>
-            <span>{Math.abs(kalanTutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</span>
-          </div>
-        )}
-      </div>
-
-      <div className="dashed-line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-
-      {/* Yazıyla Tutar */}
-      <div className="text-center fst-italic my-1" style={{ fontSize: "9.5px" }}>
-        Yalnız: <b>{tutarYaziyla(toplamTutar, isSatis)}</b>
-      </div>
-
-      <div className="dashed-line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-
-      {/* QR Kod ve İmza Alanı */}
-      <div className="d-flex align-items-center justify-content-between my-2">
-        {qrDataUrl && (
-          <img src={qrDataUrl} alt="QR Code" style={{ width: "55px", height: "55px" }} />
-        )}
-        <div className="text-center flex-grow-1" style={{ fontSize: "9px" }}>
-          <div>BİLGİ FİŞİDİR</div>
-          <div>MALİ DEĞERİ YOKTUR</div>
-          <div className="fw-bold mt-1">İyi Günlerde Kullanınız</div>
-        </div>
-      </div>
-
-      {/* İmza Alanı */}
-      <div className="d-flex justify-content-between text-center mt-3 pt-2" style={{ borderTop: "1px dotted #888", fontSize: "9.5px" }}>
-        <div>
-          <div>Teslim Eden</div>
-          <div className="mt-3">İmza</div>
-        </div>
-        <div>
-          <div>Teslim Alan</div>
-          <div className="mt-3">İmza</div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderA4Content = () => (
-    <div
-      id="sarraf-a4-print-target"
-      ref={printAreaRef}
-      className="bg-white p-4 shadow-sm border text-dark"
-      style={{
-        width: "750px",
-        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-        fontSize: "12px",
-        lineHeight: "1.4",
-        color: "#000",
-      }}
-    >
-      {/* A4 Header */}
-      <div className="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
-        <div>
-          <h4 className="fw-bold mb-1 text-primary">{company?.FIRMA_ADI || "LİKYA KUYUMCULUK"}</h4>
-          {company?.SUBE_ADI && <div className="text-muted small">{company.SUBE_ADI}</div>}
-          {company?.ADRES && <div>{company.ADRES}</div>}
-          {company?.VERGI_KIMLIK_NO && <div>VKN: {company.VERGI_KIMLIK_NO}</div>}
-          {company?.TELEFON && <div>Tel: {company.TELEFON}</div>}
-        </div>
-        <div className="text-end">
-          <h4 className="fw-bold mb-1">{fisTuruBaslik}</h4>
-          <div className="text-muted">Fiş No: <b>{fisNoStr || "-"}</b></div>
-          <div>Tarih: <b>{tarih || "-"}</b></div>
-          <div>Saat: <b>{saat || new Date().toLocaleTimeString("tr-TR")}</b></div>
-          <div>Vezne: <b>{vezneKod || "-"}</b></div>
-          {kullaniciAdi && <div>Kasiyer: <b>{kullaniciAdi}</b></div>}
-        </div>
-      </div>
-
-      {/* A4 Cari Bilgileri */}
-      <div className="card p-2 bg-light mb-3">
-        <div className="row">
-          <div className="col-8">
-            <div className="fw-bold">SAYIN / ÜNVAN: {unvan || "PERAKENDE MÜŞTERİ"}</div>
-            {vergiKimlikNo && <div>TCKN / VKN: {vergiKimlikNo}</div>}
-            {detayAdres && <div>Adres: {detayAdres} {detayIlce ? `${detayIlce} / ` : ""}{detayIl || ""}</div>}
-          </div>
-          <div className="col-4 text-end">
-            {detayTelefonNo && <div>Tel: {detayTelefonNo}</div>}
-            {detayPasaportNo && <div>Pasaport No: {detayPasaportNo}</div>}
-          </div>
-        </div>
-      </div>
-
-      {/* A4 Tablo */}
-      <table className="table table-bordered table-sm mb-3" style={{ fontSize: "11px" }}>
-        <thead className="table-secondary">
-          <tr>
-            <th style={{ width: "40px" }} className="text-center">S.No</th>
-            <th>Ürün / İşlem Açıklaması</th>
-            <th style={{ width: "80px" }} className="text-end">Adet</th>
-            <th style={{ width: "90px" }} className="text-end">Miktar (Gr)</th>
-            <th style={{ width: "80px" }} className="text-end">Milyem</th>
-            <th style={{ width: "90px" }} className="text-end">Has Gram</th>
-            <th style={{ width: "90px" }} className="text-end">Birim Fiyat</th>
-            <th style={{ width: "110px" }} className="text-end">Tutar (TL)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {activeSatirlar.map((s, idx) => {
-            const miktarNum = Number(s.miktar) || 0;
-            const adetNum = Number(s.adet) || 0;
-            const milyemNum = Number(s.milyem) || 0;
-            const hasNum = Number(s.hasGram) || 0;
-            const kurNum = Number(s.kur) || 0;
-            const tutarNum = Number(s.tutar) || 0;
-
-            return (
-              <tr key={idx}>
-                <td className="text-center">{idx + 1}</td>
-                <td>
-                  <div className="fw-bold">{s.urunAdi || s.urunKodu || "-"}</div>
-                  {s.aciklama && <div className="text-muted small">{s.aciklama}</div>}
-                </td>
-                <td className="text-end">{adetNum > 0 ? adetNum : "-"}</td>
-                <td className="text-end">{miktarNum > 0 ? miktarNum.toFixed(2) : "-"}</td>
-                <td className="text-end">{milyemNum > 0 ? milyemNum : "-"}</td>
-                <td className="text-end">{hasNum > 0 ? hasNum.toFixed(4) : "-"}</td>
-                <td className="text-end">{kurNum > 0 ? kurNum.toFixed(2) : "-"}</td>
-                <td className="text-end fw-bold">
-                  {tutarNum.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      {/* A4 Özet ve Alt Alan */}
-      <div className="row">
-        <div className="col-7">
-          {activeOdemeler.length > 0 && (
-            <div className="card p-2 mb-2 bg-light">
-              <div className="fw-bold small mb-1">Ödeme / Tahsilat Dökümü:</div>
-              <table className="table table-sm table-borderless mb-0" style={{ fontSize: "10.5px" }}>
-                <tbody>
-                  {activeOdemeler.map((o, oIdx) => (
-                    <tr key={oIdx}>
-                      <td>{o.paraKodu || o.paraAdi || "Nakit TL"}</td>
-                      <td className="text-end">{Number(o.miktar) > 0 ? Number(o.miktar).toFixed(2) : ""}</td>
-                      <td className="text-end fw-bold">
-                        {Number(o.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <div className="p-2 border rounded bg-light small mb-2">
-            <div>Yazıyla: <b>{tutarYaziyla(toplamTutar, isSatis)}</b></div>
-          </div>
-          <div className="d-flex align-items-center gap-3">
-            {qrDataUrl && (
-              <img src={qrDataUrl} alt="QR Code" style={{ width: "65px", height: "65px" }} />
-            )}
-            <div className="small text-muted">
-              <div>Bu belge bilgi amaçlıdır, mali mühür yerine geçmez.</div>
-              <div>İşlemlerinizde bizi tercih ettiğiniz için teşekkür ederiz.</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-5">
-          <div className="card p-3 bg-light">
-            <table className="table table-sm table-borderless mb-0" style={{ fontSize: "11.5px" }}>
-              <tbody>
-                {toplamHas > 0 && (
-                  <tr>
-                    <td>Toplam Has Gram:</td>
-                    <td className="text-end fw-bold">{toplamHas.toFixed(4)} gr</td>
-                  </tr>
-                )}
-                <tr className="border-top">
-                  <td className="fw-bold" style={{ fontSize: "13px" }}>GENEL TOPLAM:</td>
-                  <td className="text-end fw-bold" style={{ fontSize: "13px" }}>
-                    {toplamTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
-                  </td>
-                </tr>
-                {odenenTutar > 0 && (
-                  <tr>
-                    <td>Ödenen / Alınan:</td>
-                    <td className="text-end">{odenenTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</td>
-                  </tr>
-                )}
-                {kalanTutar !== 0 && (
-                  <tr className="text-danger">
-                    <td>Kalan Bakiye:</td>
-                    <td className="text-end fw-bold">{Math.abs(kalanTutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="row text-center mt-4 pt-3 border-top" style={{ fontSize: "11px" }}>
-            <div className="col-6">
-              <div>Teslim Eden</div>
-              <div className="mt-4">İmza</div>
-            </div>
-            <div className="col-6">
-              <div>Teslim Alan</div>
-              <div className="mt-4">İmza</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  }, [show, handlePrint, onHide]);
 
   return (
-    <>
-      {/* Hidden off-screen slip for direct printing (F10) */}
-      {show && (
-        <div
-          style={{
-            position: "fixed",
-            left: "-99999px",
-            top: "-99999px",
-            opacity: 0,
-            pointerEvents: "none",
-            zIndex: -1,
-          }}
-        >
-          {renderPosContent()}
-          {renderA4Content()}
+    <Modal show={show && (!autoPrint || !!hata)} onHide={onHide} size="lg" centered className="sarraf-print-modal">
+      <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom d-print-none">
+        <div className="d-flex align-items-center justify-content-between w-100 me-3 flex-wrap gap-2">
+          <div className="d-flex align-items-center gap-2">
+            <IconReceipt size={20} className="text-primary" />
+            <h6 className="mb-0 fw-bold">{fisTuruBaslik}</h6>
+          </div>
+
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <div className="d-flex align-items-center gap-1">
+              <span className="text-secondary small fw-bold">Yazıcı:</span>
+              <Form.Select
+                size="sm"
+                value={selectedPrinterId || ""}
+                onChange={(e) => setSelectedPrinterId(e.target.value ? Number(e.target.value) : null)}
+                style={{ width: "190px", fontSize: "11.5px", fontWeight: 600 }}
+              >
+                {printers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.ad || p.cihazAdi || `Yazıcı #${p.id}`} {p.kopyaSayisi ? `(${p.kopyaSayisi} Kopya)` : ""}
+                  </option>
+                ))}
+                {printers.length === 0 && <option value="">Sistem Varsayılan Yazıcısı</option>}
+              </Form.Select>
+              {resolvedResult?.sourceLabel && (
+                <span className="badge bg-secondary bg-opacity-10 text-secondary border px-1.5 py-1" style={{ fontSize: "9.5px" }}>
+                  {resolvedResult.sourceLabel}
+                </span>
+              )}
+            </div>
+
+            <div className="btn-group btn-group-sm" role="group">
+              <button type="button" className={`btn ${printType === "POS" ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setPrintType("POS")}>
+                <IconReceipt size={14} className="me-1" />
+                80mm POS
+              </button>
+              <button type="button" className={`btn ${printType === "A4" ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setPrintType("A4")}>
+                <IconFileText size={14} className="me-1" />
+                A4 Belge
+              </button>
+            </div>
+            <Button variant="success" size="sm" onClick={() => handlePrint()} disabled={!fis} className="px-3 fw-bold">
+              <IconPrinter size={15} className="me-1" />
+              Yazdır (F10)
+            </Button>
+          </div>
         </div>
-      )}
+      </Modal.Header>
 
-      {/* Screen Preview Modal (F9 / Manual Preview) */}
-      <Modal
-        show={show && !autoPrint}
-        onHide={onHide}
-        size="lg"
-        centered
-        className="sarraf-print-modal"
-      >
-        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom d-print-none">
-          <div className="d-flex align-items-center justify-content-between w-100 me-3 flex-wrap gap-2">
-            <div className="d-flex align-items-center gap-2">
-              <IconReceipt size={20} className="text-primary" />
-              <h6 className="mb-0 fw-bold">{fisTuruBaslik}</h6>
-            </div>
+      <Modal.Body className="p-3 bg-secondary bg-opacity-10" style={{ maxHeight: "75vh", overflow: "auto" }}>
+        <SablonluFisOnizleme fis={fis} hata={hata} />
+      </Modal.Body>
 
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <div className="d-flex align-items-center gap-1">
-                <span className="text-secondary small fw-bold">Yazıcı:</span>
-                <Form.Select
-                  size="sm"
-                  value={selectedPrinterId || ""}
-                  onChange={(e) => setSelectedPrinterId(e.target.value ? Number(e.target.value) : null)}
-                  style={{ width: "190px", fontSize: "11.5px", fontWeight: 600 }}
-                >
-                  {printers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.ad || p.cihazAdi || `Yazıcı #${p.id}`} {p.kopyaSayisi ? `(${p.kopyaSayisi} Kopya)` : ""}
-                    </option>
-                  ))}
-                  {printers.length === 0 && <option value="">Sistem Varsayılan Yazıcısı</option>}
-                </Form.Select>
-                {resolvedResult?.sourceLabel && (
-                  <span className="badge bg-secondary bg-opacity-10 text-secondary border px-1.5 py-1" style={{ fontSize: "9.5px" }}>
-                    {resolvedResult.sourceLabel}
-                  </span>
-                )}
-              </div>
-
-              <div className="btn-group btn-group-sm" role="group">
-                <button
-                  type="button"
-                  className={`btn ${printType === "POS" ? "btn-primary" : "btn-outline-secondary"}`}
-                  onClick={() => setPrintType("POS")}
-                >
-                  <IconReceipt size={14} className="me-1" />
-                  80mm POS
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${printType === "A4" ? "btn-primary" : "btn-outline-secondary"}`}
-                  onClick={() => setPrintType("A4")}
-                >
-                  <IconFileText size={14} className="me-1" />
-                  A4 Belge
-                </button>
-              </div>
-              <Button variant="success" size="sm" onClick={handlePrint} className="px-3 fw-bold">
-                <IconPrinter size={15} className="me-1" />
-                Yazdır (F10)
-              </Button>
-            </div>
+      <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none">
+        <div className="d-flex justify-content-between w-100 align-items-center">
+          <small className="text-muted">
+            Kısayol: <kbd>F10</kbd> veya <kbd>F8</kbd> Yazdır | <kbd>ESC</kbd> Kapat
+          </small>
+          <div className="d-flex gap-2">
+            <Button variant="outline-secondary" size="sm" onClick={onHide}>
+              <IconX size={15} className="me-1" />
+              Kapat (ESC)
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis}>
+              <IconPrinter size={15} className="me-1" />
+              Yazdır (F10)
+            </Button>
           </div>
-        </Modal.Header>
-
-        <Modal.Body className="p-3 bg-secondary bg-opacity-10 d-flex justify-content-center" style={{ maxHeight: "75vh", overflowY: "auto" }}>
-          {printType === "POS" ? renderPosContent() : renderA4Content()}
-        </Modal.Body>
-
-        <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none">
-          <div className="d-flex justify-content-between w-100 align-items-center">
-            <small className="text-muted">
-              Kısayol: <kbd>F10</kbd> veya <kbd>F8</kbd> Yazdır | <kbd>ESC</kbd> Kapat
-            </small>
-            <div className="d-flex gap-2">
-              <Button variant="outline-secondary" size="sm" onClick={onHide}>
-                <IconX size={15} className="me-1" />
-                Kapat (ESC)
-              </Button>
-              <Button variant="primary" size="sm" onClick={handlePrint}>
-                <IconPrinter size={15} className="me-1" />
-                Yazdır (F10)
-              </Button>
-            </div>
-          </div>
-        </Modal.Footer>
-      </Modal>
-    </>
+        </div>
+      </Modal.Footer>
+    </Modal>
   );
 };
 

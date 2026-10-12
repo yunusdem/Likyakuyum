@@ -85,7 +85,7 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { CompanyService } from "../../services/companyService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { triggerSilentPrint } from "../../services/silentPrintService";
-import { generatePerakendeReceiptHtml } from "../../utils/receiptHtmlGenerator";
+import { perakendeFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -4029,18 +4029,21 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           printers,
         });
         const isPos = resolved.recommendedPrintType === "POS";
-        const receiptHtml = generatePerakendeReceiptHtml({
-          fatura: result || payload,
-          company: companyDefinitions,
-          isPos,
-        });
-        await triggerSilentPrint({
-          html: receiptHtml,
-          printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
-          copies: resolved.kopyaSayisi || 1,
-          isPos,
-          title: `Perakende_Fisi_${result?.faturaNo || payload?.faturaNo || "Yazdir"}`,
-        });
+        // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; docs/FIS_TASARIM_YOL_HARITASI.md).
+        // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
+        try {
+          const fisCikti = await perakendeFisHtml(result || payload, isPos ? "80" : "A4");
+          const sonuc = await triggerSilentPrint({
+            html: fisCikti.html,
+            printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+            copies: resolved.kopyaSayisi || 1,
+            isPos,
+            title: `Perakende_Fisi_${result?.faturaNo || payload?.faturaNo || "Yazdir"}`,
+          });
+          if (!sonuc.success) showWarning(`Fiş kaydedildi ancak yazdırılamadı: ${sonuc.message}`);
+        } catch (printErr: any) {
+          showWarning(`Fiş kaydedildi ancak yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`);
+        }
       }
 
       if (isDuzeltmeMode) {

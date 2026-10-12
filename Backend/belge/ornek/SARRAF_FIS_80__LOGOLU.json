@@ -1,0 +1,483 @@
+{
+  "kod": "SRFFIS_80",
+  "ad": "Sarraf Fişi (80 mm termal) — logolu ve kaşeli",
+  "aciklama": "Varsayılan düzen; üstte firma logosu, altta kaşe. Firmanın yüklediği ilk logo ve kaşe kullanılır; yoksa o öğe eklenmez.",
+  "kagit": [
+    226.77,
+    0
+  ],
+  "kenar": 8.5,
+  "yaziBoyutu": 7.5,
+  "yaziTipi": "mono",
+  "ogeler": [
+    {
+      "id": "filigran-onizleme",
+      "tip": "filigran",
+      "kosul": "{{onizleme}}",
+      "metin": "ÖNİZLEME"
+    },
+    {
+      "id": "filigran-iptal",
+      "tip": "filigran",
+      "kosul": "{{iptal}}",
+      "metin": "İPTAL",
+      "renk": "#b00020"
+    },
+    {
+      "id": "firma-logo",
+      "ad": "Firma logosu",
+      "tip": "logo",
+      "gorsel": "{LOGO}",
+      "x": 50,
+      "y": 0,
+      "g": 110,
+      "h": 34
+    },
+    {
+      "id": "firma-unvan",
+      "ad": "Firma ünvanı",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 40,
+      "g": 209.77,
+      "metin": "{{firma.unvan}}",
+      "boyut": 9.75,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "firma-bilgileri",
+      "ad": "Firma bilgileri",
+      "tip": "satirlar",
+      "x": 0,
+      "y": 53,
+      "g": 209.77,
+      "boyut": 7.1,
+      "aralik": 0.5,
+      "hiza": "center",
+      "daralt": true,
+      "satirlar": [
+        "?{{firma.subeAdi}}",
+        "?{{firma.adres}}",
+        "?VKN: {{firma.vkn}}",
+        "?Tel: {{firma.telefon}}"
+      ]
+    },
+    {
+      "id": "ayrac-1",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 91,
+      "x2": 209.77,
+      "y2": 91,
+      "kalinlik": 0.75,
+      "kesikli": true
+    },
+    {
+      "id": "belge-basligi",
+      "ad": "Belge başlığı",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 95,
+      "g": 209.77,
+      "metin": "{{baslik}}",
+      "boyut": 9,
+      "kalin": true,
+      "hiza": "center",
+      "altCizgi": true
+    },
+    {
+      "id": "fis-no",
+      "ad": "Fiş no",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 109,
+      "g": 120,
+      "metin": "Fiş No: **{{fisNo}}**",
+      "boyut": 7.5
+    },
+    {
+      "id": "tarih",
+      "ad": "Tarih",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 120,
+      "y": 109,
+      "g": 89.77,
+      "metin": "Tarih: **{{tarih}}**",
+      "boyut": 7.5,
+      "hiza": "right"
+    },
+    {
+      "id": "vezne",
+      "ad": "Vezne",
+      "tip": "metin",
+      "x": 0,
+      "y": 119,
+      "g": 120,
+      "metin": "Vezne: **{{vezne}}**",
+      "boyut": 7.5
+    },
+    {
+      "id": "saat",
+      "ad": "Saat",
+      "tip": "metin",
+      "x": 120,
+      "y": 119,
+      "g": 89.77,
+      "metin": "Saat: **{{saat}}**",
+      "boyut": 7.5,
+      "hiza": "right"
+    },
+    {
+      "id": "kasiyer",
+      "ad": "Kasiyer",
+      "tip": "metin",
+      "kosul": "{{kasiyer}}",
+      "daralt": true,
+      "x": 0,
+      "y": 129,
+      "g": 209.77,
+      "metin": "Kasiyer: **{{kasiyer}}**",
+      "boyut": 7.5
+    },
+    {
+      "id": "ayrac-2",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 141,
+      "x2": 209.77,
+      "y2": 141,
+      "kalinlik": 0.75,
+      "kesikli": true
+    },
+    {
+      "id": "musteri-bilgileri",
+      "ad": "Müşteri bilgileri",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 144,
+      "g": 209.77,
+      "boyut": 7.5,
+      "aralik": 0.5,
+      "daralt": true,
+      "satirlar": [
+        "Müşteri: **{{musteri.unvan}}**",
+        "?TCKN / VKN: **{{musteri.kimlikNo}}**",
+        "?Tel: {{musteri.telefon}}",
+        "?Adres: {{musteri.adres}}"
+      ]
+    },
+    {
+      "id": "ayrac-3",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 182,
+      "x2": 209.77,
+      "y2": 182,
+      "kalinlik": 0.75,
+      "kesikli": true
+    },
+    {
+      "id": "urun-baslik",
+      "tip": "metin",
+      "x": 0,
+      "y": 185,
+      "g": 209.77,
+      "metin": "ÜRÜN / HAREKET DETAYLARI",
+      "boyut": 7.1,
+      "kalin": true
+    },
+    {
+      "id": "urun-satirlari",
+      "ad": "Ürün satırları",
+      "zorunlu": true,
+      "tip": "liste",
+      "kaynak": "satirlar",
+      "x": 0,
+      "y": 195,
+      "g": 209.77,
+      "satirH": 10,
+      "boyut": 7,
+      "baslikSatiri": true,
+      "baslikBoyut": 7,
+      "daralt": true,
+      "sutunlar": [
+        {
+          "baslik": "Ürün / Cinsi",
+          "deger": "{{s.ad}}",
+          "g": 58,
+          "kalin": true,
+          "cokSatir": true
+        },
+        {
+          "baslik": "Miktar",
+          "deger": "{{s.miktarYazi}}",
+          "g": 50,
+          "hiza": "right"
+        },
+        {
+          "baslik": "Ayar/Kur",
+          "deger": "{{s.ayarKur}}",
+          "g": 40,
+          "hiza": "right"
+        },
+        {
+          "baslik": "Tutar (TL)",
+          "deger": "{{s.tutar|sayi}}",
+          "g": 61.77,
+          "hiza": "right",
+          "kalin": true
+        }
+      ],
+      "altSatirlar": [
+        {
+          "metin": "Has: {{s.has|sayi4}} gr",
+          "sutun": 0,
+          "kosul": "{{s.hasVar}}",
+          "boyut": 6.5
+        },
+        {
+          "metin": "{{s.aciklama}}",
+          "sutun": 0,
+          "kosul": "{{s.aciklama}}",
+          "boyut": 6.5
+        }
+      ]
+    },
+    {
+      "id": "ayrac-4",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 218,
+      "x2": 209.77,
+      "y2": 218,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "odeme-baslik",
+      "tip": "metin",
+      "kosul": "{{odemeVar}}",
+      "daralt": true,
+      "x": 0,
+      "y": 221,
+      "g": 209.77,
+      "metin": "ÖDEME / TAHSİLAT DETAYI",
+      "boyut": 7.1,
+      "kalin": true
+    },
+    {
+      "id": "odeme-satirlari",
+      "ad": "Ödeme satırları",
+      "tip": "liste",
+      "kaynak": "odemeler",
+      "kosul": "{{odemeVar}}",
+      "daralt": true,
+      "x": 0,
+      "y": 231,
+      "g": 209.77,
+      "satirH": 10,
+      "boyut": 7,
+      "sutunlar": [
+        {
+          "deger": "{{s.ad}}",
+          "g": 80
+        },
+        {
+          "deger": "{{s.miktarYazi}}",
+          "g": 50,
+          "hiza": "right"
+        },
+        {
+          "deger": "{{s.tutar|sayi}} TL",
+          "g": 79.77,
+          "hiza": "right",
+          "kalin": true
+        }
+      ]
+    },
+    {
+      "id": "ayrac-5",
+      "tip": "cizgi",
+      "kosul": "{{odemeVar}}",
+      "daralt": true,
+      "x1": 0,
+      "y1": 243,
+      "x2": 209.77,
+      "y2": 243,
+      "kalinlik": 0.75,
+      "kesikli": true
+    },
+    {
+      "id": "toplamlar",
+      "ad": "Toplamlar",
+      "zorunlu": true,
+      "tip": "tablo",
+      "x": 0,
+      "y": 246,
+      "g": 209.77,
+      "etiketG": 110,
+      "satirH": 10.5,
+      "boyut": 7.9,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "daralt": true,
+      "satirlar": [
+        {
+          "etiket": "Toplam Has Gram:",
+          "deger": "{{toplam.has|sayi4}} gr",
+          "kosul": "{{toplam.hasVar}}"
+        },
+        {
+          "etiket": "GENEL TOPLAM:",
+          "deger": "{{toplam.tutar|sayi}} TL",
+          "kalin": true
+        },
+        {
+          "etiket": "Ödenen / Alınan:",
+          "deger": "{{toplam.odenen|sayi}} TL",
+          "kosul": "{{toplam.odenenVar}}"
+        },
+        {
+          "etiket": "Kalan Bakiye:",
+          "deger": "{{toplam.kalan|sayi}} TL",
+          "kosul": "{{toplam.kalanVar}}"
+        }
+      ]
+    },
+    {
+      "id": "ayrac-6",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 291,
+      "x2": 209.77,
+      "y2": 291,
+      "kalinlik": 0.75,
+      "kesikli": true
+    },
+    {
+      "id": "yaziyla-satis",
+      "ad": "Yazıyla (satış)",
+      "tip": "metin",
+      "kosul": "{{satim}}",
+      "x": 0,
+      "y": 294,
+      "g": 209.77,
+      "metin": "Yalnız: **#{{toplam.yaziyla}}#**",
+      "boyut": 7.1,
+      "hiza": "center"
+    },
+    {
+      "id": "yaziyla-alis",
+      "ad": "Yazıyla (alış)",
+      "tip": "metin",
+      "kosul": "!{{satim}}",
+      "x": 0,
+      "y": 294,
+      "g": 209.77,
+      "metin": "Yalnız: **{{toplam.yaziyla}}**",
+      "boyut": 7.1,
+      "hiza": "center"
+    },
+    {
+      "id": "ayrac-7",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 305,
+      "x2": 209.77,
+      "y2": 305,
+      "kalinlik": 0.75,
+      "kesikli": true
+    },
+    {
+      "id": "karekod",
+      "ad": "Karekod",
+      "tip": "qr",
+      "x": 0,
+      "y": 309,
+      "boyut": 41,
+      "icerik": "{{qr}}"
+    },
+    {
+      "id": "bilgi-fisi",
+      "ad": "Bilgi fişi ibaresi",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 45,
+      "y": 316,
+      "g": 164.77,
+      "boyut": 6.75,
+      "aralik": 0.5,
+      "hiza": "center",
+      "satirlar": [
+        "BİLGİ FİŞİDİR",
+        "MALİ DEĞERİ YOKTUR",
+        "**İyi Günlerde Kullanınız**"
+      ]
+    },
+    {
+      "id": "imza-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 356,
+      "x2": 209.77,
+      "y2": 356,
+      "kalinlik": 0.5,
+      "kesikli": true
+    },
+    {
+      "id": "teslim-eden",
+      "tip": "metin",
+      "x": 0,
+      "y": 360,
+      "g": 104,
+      "metin": "Teslim Eden",
+      "boyut": 7.1,
+      "hiza": "center"
+    },
+    {
+      "id": "teslim-alan",
+      "tip": "metin",
+      "x": 105.77,
+      "y": 360,
+      "g": 104,
+      "metin": "Teslim Alan",
+      "boyut": 7.1,
+      "hiza": "center"
+    },
+    {
+      "id": "imza-sol",
+      "tip": "metin",
+      "x": 0,
+      "y": 381,
+      "g": 104,
+      "metin": "İmza",
+      "boyut": 7.1,
+      "hiza": "center"
+    },
+    {
+      "id": "imza-sag",
+      "tip": "metin",
+      "x": 105.77,
+      "y": 381,
+      "g": 104,
+      "metin": "İmza",
+      "boyut": 7.1,
+      "hiza": "center"
+    },
+    {
+      "id": "firma-kase",
+      "ad": "Firma kaşesi",
+      "tip": "imza",
+      "gorsel": "{KASE}",
+      "x": 60,
+      "y": 416,
+      "g": 90,
+      "h": 45
+    }
+  ]
+}

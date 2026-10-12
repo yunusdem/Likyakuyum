@@ -1,4 +1,5 @@
 import { apiClient, getEffectiveApiUrl } from "./apiClient";
+import type { BelgeSablon as BelgeDuzeni } from "../../Backend/src/services/belge/sablonCekirdek";
 
 /**
  * Belge (fiş PDF) servisleri — Backend: /api/v1/belge
@@ -38,6 +39,22 @@ export interface BelgeIstek { fisId?: number | null; belgeNo?: string | null; ko
 
 export interface BelgeArsivSonucu { belgeNo: string; sablon: string; kaynak: "ICE" | "SABLON"; onizleme: boolean; yol: string; boyut: number }
 
+/** Yazıcıya giden fişin şablonu + verisi (docs/FIS_TASARIM_YOL_HARITASI.md). */
+export interface FisCiktisi { tur: string; sablon: BelgeDuzeni; veri: Record<string, any>; gorseller: Record<string, string> }
+
+/** Firmanın düzenleyebildiği belge türü (docs/FIS_TASARIM_YOL_HARITASI.md, Faz 3). */
+export interface SablonTuru { tur: string; ad: string; grup: string; bicim: "80" | "A4"; firmaSablonu: boolean; guncelleme: string | null; surumSayisi: number }
+export interface SablonSurumu { ad: string; tarih: string; boyut: number }
+export interface SablonDenetimHatasi { oge?: string; alan?: string; mesaj: string }
+export interface EtkinSablon { tur: string; ad: string; sablon: BelgeDuzeni; kaynak: "FIRMA" | "VARSAYILAN"; uyari?: string; surumler: SablonSurumu[] }
+export interface SablonOnizleme { gecerli: boolean; hatalar: SablonDenetimHatasi[]; tur?: string; sablon?: BelgeDuzeni; veri?: Record<string, any>; gorseller?: Record<string, string> }
+export interface AlanKatalogu { alanlar: string[]; listeler: Record<string, string[]>; ornek: Record<string, any>; aciklamalar?: Record<string, string> }
+export interface OrnekSablonBilgisi { kod: string; ad: string; aciklama: string }
+/** Firmanın logo / imza-kaşe görseli (docs/FIS_TASARIM_YOL_HARITASI.md, Faz 4). */
+export interface BelgeGorseli { id: number; ad: string; tur: "LOGO" | "IMZA"; mime: string; boyut: number; tarih: string | null; dataUrl: string; kullanildigiBelgeler: string[] }
+/** Şablon gövdesi: düzenlenen nesne ya da yüklenen dosyanın metni */
+export type SablonGovdesi = { sablon: BelgeDuzeni } | { icerik: string };
+
 export const BELGE_NO_DESENI = /^[A-Z]{3}\d{13}$/;
 export const belgeNoMu = (v: string) => BELGE_NO_DESENI.test(v.trim().toUpperCase());
 
@@ -55,7 +72,8 @@ const sorgu = (i: BelgeIstek, ek: Record<string, string> = {}) => {
  * düz bağlantıda Bearer token gitmediği için 401 alınır). Dönen adres kullanıldıktan sonra
  * URL.revokeObjectURL ile bırakılmalıdır.
  */
-async function pdfGetir(yol: string): Promise<{ blob: Blob; kaynak: string; onizleme: boolean }> {
+/** Kimlik başlıklarıyla dosya indirme (PDF, şablon JSON). */
+async function korumaliGetir(yol: string, kabul: string): Promise<Response> {
   const token = localStorage.getItem("kuyumcu_erp_access_token");
   const dbServer = localStorage.getItem("kuyumcu_erp_last_server") || localStorage.getItem("kuyumcu_erp_active_server");
   const dbName = localStorage.getItem("kuyumcu_erp_last_db") || localStorage.getItem("kuyumcu_erp_active_db");
@@ -64,7 +82,7 @@ async function pdfGetir(yol: string): Promise<{ blob: Blob; kaynak: string; oniz
   const res = await fetch(`${getEffectiveApiUrl()}${yol}`, {
     method: "GET",
     headers: {
-      Accept: "application/pdf",
+      Accept: kabul,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(dbServer ? { "x-db-server": dbServer } : {}),
       ...(dbName ? { "x-db-name": dbName } : {}),
@@ -73,10 +91,15 @@ async function pdfGetir(yol: string): Promise<{ blob: Blob; kaynak: string; oniz
     },
   });
   if (!res.ok) {
-    let mesaj = `PDF alınamadı (HTTP ${res.status}).`;
+    let mesaj = `Dosya alınamadı (HTTP ${res.status}).`;
     try { const g = await res.json(); if (g?.message) mesaj = g.message; } catch { /* gövde JSON değil */ }
     throw new Error(mesaj);
   }
+  return res;
+}
+
+async function pdfGetir(yol: string): Promise<{ blob: Blob; kaynak: string; onizleme: boolean }> {
+  const res = await korumaliGetir(yol, "application/pdf");
   return { blob: await res.blob(), kaynak: res.headers.get("X-Belge-Kaynak") || "", onizleme: res.headers.get("X-Belge-Onizleme") === "1" };
 }
 
@@ -111,6 +134,82 @@ export const BelgeService = {
     try {
       const a = document.createElement("a");
       a.href = url; a.download = `${dosyaAdi || "belge"}.pdf`; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+    } finally { setTimeout(() => URL.revokeObjectURL(url), 1500); }
+  },
+
+  /** Döviz fişi ekranının yazdırma anındaki görüntüsünden termal fiş şablonu + verisi. */
+  async dovizCikti(girdi: Record<string, any>): Promise<FisCiktisi> {
+    const r = await apiClient.post<FisCiktisi>("/belge/cikti/doviz", girdi);
+    return r.data;
+  },
+
+  /** Sarraf fişi ekranının yazdırma anındaki görüntüsünden 80 mm / A4 şablon + veri. */
+  async sarrafCikti(girdi: Record<string, any>, bicim: "80" | "A4"): Promise<FisCiktisi> {
+    const r = await apiClient.post<FisCiktisi>("/belge/cikti/sarraf", { ...girdi, bicim });
+    return r.data;
+  },
+
+  /** Perakende faturasından (kayıtlı ya da kayıt yükü) 80 mm / A4 şablon + veri. */
+  async perakendeCikti(fatura: Record<string, any>, bicim: "80" | "A4"): Promise<FisCiktisi> {
+    const r = await apiClient.post<FisCiktisi>("/belge/cikti/perakende", { fatura, bicim });
+    return r.data;
+  },
+
+  // ── Fiş şablonu yönetimi (yalnızca sistem yöneticisi) ──
+  async sablonTurleri(): Promise<SablonTuru[]> {
+    return (await apiClient.get<SablonTuru[]>("/belge/sablon-turleri")).data || [];
+  },
+  async sablonGetir(tur: string): Promise<EtkinSablon> {
+    return (await apiClient.get<EtkinSablon>(`/belge/sablon/${encodeURIComponent(tur)}`)).data;
+  },
+  async sablonAlanlari(tur: string): Promise<AlanKatalogu> {
+    return (await apiClient.get<AlanKatalogu>(`/belge/sablon/${encodeURIComponent(tur)}/alanlar`)).data;
+  },
+  async sablonDenetle(tur: string, govde: SablonGovdesi): Promise<{ gecerli: boolean; hatalar: SablonDenetimHatasi[] }> {
+    return (await apiClient.post<{ gecerli: boolean; hatalar: SablonDenetimHatasi[] }>(`/belge/sablon/${encodeURIComponent(tur)}/denetle`, govde)).data;
+  },
+  /** Kaydeder; geçersizse hata fırlatır, hatalar `ayrinti.hatalar` içindedir. */
+  async sablonKaydet(tur: string, govde: SablonGovdesi): Promise<{ sablon: BelgeDuzeni; oncekiSurum: string | null }> {
+    return (await apiClient.put<{ sablon: BelgeDuzeni; oncekiSurum: string | null }>(`/belge/sablon/${encodeURIComponent(tur)}`, govde)).data;
+  },
+  async sablonOnizle(tur: string, govde: Partial<SablonGovdesi> & { satim?: boolean } = {}): Promise<SablonOnizleme> {
+    return (await apiClient.post<SablonOnizleme>(`/belge/sablon/${encodeURIComponent(tur)}/onizle`, govde)).data;
+  },
+  async varsayilanaDon(tur: string): Promise<{ oncekiSurum: string | null }> {
+    return (await apiClient.post<{ oncekiSurum: string | null }>(`/belge/sablon/${encodeURIComponent(tur)}/varsayilan`, {})).data;
+  },
+  async sablonSurumleri(tur: string): Promise<SablonSurumu[]> {
+    return (await apiClient.get<SablonSurumu[]>(`/belge/sablon/${encodeURIComponent(tur)}/surumler`)).data || [];
+  },
+  async surumeDon(tur: string, surum?: string): Promise<{ surum: string }> {
+    return (await apiClient.post<{ surum: string }>(`/belge/sablon/${encodeURIComponent(tur)}/geri-al`, surum ? { surum } : {})).data;
+  },
+  async ornekler(tur: string): Promise<OrnekSablonBilgisi[]> {
+    return (await apiClient.get<OrnekSablonBilgisi[]>(`/belge/sablon/${encodeURIComponent(tur)}/ornekler`)).data || [];
+  },
+  /** Firmanın görselleriyle doldurulmuş, denetimden geçmiş örnek şablon (kaydetmez). */
+  async ornekGetir(tur: string, kod: string): Promise<BelgeDuzeni> {
+    return (await apiClient.get<{ sablon: BelgeDuzeni }>(`/belge/sablon/${encodeURIComponent(tur)}/ornek/${encodeURIComponent(kod)}`)).data.sablon;
+  },
+  async gorseller(): Promise<BelgeGorseli[]> {
+    return (await apiClient.get<BelgeGorseli[]>("/belge/gorseller")).data || [];
+  },
+  async gorselEkle(g: { ad: string; tur: "LOGO" | "IMZA"; dataUrl: string }): Promise<{ id: number; ad: string }> {
+    return (await apiClient.post<{ id: number; ad: string }>("/belge/gorseller", g)).data;
+  },
+  /** Şablonda kullanılan görsel `zorla` olmadan silinmez; hata `ayrinti.kullanan` listesini taşır. */
+  async gorselSil(id: number, zorla = false): Promise<void> {
+    await apiClient.delete(`/belge/gorseller/${id}${zorla ? "?zorla=1" : ""}`);
+  },
+
+  /** Etkin şablonu `TUR.json` olarak bilgisayara indirir. */
+  async sablonIndir(tur: string): Promise<void> {
+    const res = await korumaliGetir(`/belge/sablon/${encodeURIComponent(tur)}/indir`, "application/json");
+    const url = URL.createObjectURL(await res.blob());
+    try {
+      const a = document.createElement("a");
+      a.href = url; a.download = `${tur}.json`; a.rel = "noopener";
       document.body.appendChild(a); a.click(); a.remove();
     } finally { setTimeout(() => URL.revokeObjectURL(url), 1500); }
   },

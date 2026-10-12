@@ -74,6 +74,7 @@ import EBelgeKaynakPage from "./pages/ebelge/EBelgeKaynakPage";
 import EBelgeMustahsilPage from "./pages/ebelge/EBelgeMustahsilPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import GibHesapSettingsPage from "./pages/settings/GibHesapSettingsPage";
+import BelgeTasarimiPage from "./pages/settings/BelgeTasarimiPage";
 import LoginPage from "./pages/auth/LoginPage";
 import LandingPage from "./pages/LandingPage";
 import LandingFeaturesPage from "./pages/landing/LandingFeaturesPage";
@@ -234,6 +235,7 @@ export default function App() {
             <Route path="e-belge/mustahsil" element={<EBelgeMustahsilPage />} />
             <Route path="ayarlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="ayarlar/gib-sorgu" element={<GibHesapSettingsPage />} />
+            <Route path="ayarlar/belge-tasarimi" element={<BelgeTasarimiPage />} />
             <Route path="tanimlar/e-belge" element={<EBelgeSettingsPage />} />
             <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
             <Route path="cari/kart-kayit" element={<CariCardRegistrationPage />} />

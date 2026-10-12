@@ -66,7 +66,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint } from "../../services/silentPrintService";
-import { generateDovizReceiptHtml } from "../../utils/receiptHtmlGenerator";
+import { dovizFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
@@ -3736,6 +3736,7 @@ export const DovizFisiPage: React.FC = () => {
       };
       setPrintSnapshot(currentSnapshot);
 
+      let yazdirmaHatasi: string | null = null;
       if (andDirectPrint) {
         let printerToUse: YaziciItem | null = targetPrinter || null;
         let copiesToUse: number = targetCopies || 1;
@@ -3759,23 +3760,28 @@ export const DovizFisiPage: React.FC = () => {
           copiesToUse = resolved.kopyaSayisi || 1;
         }
 
-        const dovizHtml = generateDovizReceiptHtml({
-          fis: currentSnapshot,
-          company: companyDefinitions,
-        });
-        await triggerSilentPrint({
-          html: dovizHtml,
-          printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
-          copies: copiesToUse,
-          isPos,
-          title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
-        });
+        // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; docs/FIS_TASARIM_YOL_HARITASI.md).
+        // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
+        try {
+          const fisCikti = await dovizFisHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
+          const sonuc = await triggerSilentPrint({
+            html: fisCikti.html,
+            printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
+            copies: copiesToUse,
+            isPos,
+            title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
+          });
+          if (!sonuc.success) yazdirmaHatasi = sonuc.message;
+        } catch (printErr: any) {
+          yazdirmaHatasi = printErr?.message || "Fiş yazdırılamadı.";
+        }
       }
+      const yazdirmaNotu = andDirectPrint ? (yazdirmaHatasi ? ` Yazdırılamadı: ${yazdirmaHatasi}` : " Yazıcıya gönderildi.") : "";
 
       if (isDuzeltmeMode) {
         setNotification({
-          type: "success",
-          message: `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${andDirectPrint ? " Yazıcıya gönderildi." : ""}`,
+          type: yazdirmaHatasi ? "warning" : "success",
+          message: `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${yazdirmaNotu}`,
         });
         window.scrollTo({ top: 0, behavior: "smooth" });
         await loadFisById(saved.fisId);
@@ -3784,8 +3790,8 @@ export const DovizFisiPage: React.FC = () => {
         focusTipSelect();
       } else {
         setNotification({
-          type: "success",
-          message: `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi.${andDirectPrint ? " Yazıcıya gönderildi." : ""} Yeni fiş kaydına geçildi.`,
+          type: yazdirmaHatasi ? "warning" : "success",
+          message: `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi.${yazdirmaNotu} Yeni fiş kaydına geçildi.`,
         });
         window.scrollTo({ top: 0, behavior: "smooth" });
         if (await ebFis.kaydedildi(saved.fisId)) return;

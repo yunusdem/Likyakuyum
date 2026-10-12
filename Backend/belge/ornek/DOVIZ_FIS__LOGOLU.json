@@ -1,0 +1,554 @@
+{
+  "kod": "DVZFIS_80",
+  "ad": "e-Döviz Fişi (80 mm termal) — logolu ve kaşeli",
+  "aciklama": "Varsayılan düzen; üstte firma logosu, altta kaşe. Firmanın yüklediği ilk logo ve kaşe kullanılır; yoksa o öğe eklenmez.",
+  "kagit": [
+    226.77,
+    0
+  ],
+  "kenar": 8.5,
+  "yaziBoyutu": 7.5,
+  "yaziTipi": "mono",
+  "ogeler": [
+    {
+      "id": "filigran-onizleme",
+      "tip": "filigran",
+      "kosul": "{{onizleme}}",
+      "metin": "ÖNİZLEME"
+    },
+    {
+      "id": "filigran-iptal",
+      "tip": "filigran",
+      "kosul": "{{iptal}}",
+      "metin": "İPTAL",
+      "renk": "#b00020"
+    },
+    {
+      "id": "firma-logo",
+      "ad": "Firma logosu",
+      "tip": "logo",
+      "gorsel": "{LOGO}",
+      "x": 50,
+      "y": 0,
+      "g": 110,
+      "h": 34
+    },
+    {
+      "id": "gib-amblem",
+      "ad": "GİB amblemi",
+      "zorunlu": true,
+      "tip": "resim",
+      "dosya": "logo-gib.png",
+      "x": 0,
+      "y": 40,
+      "g": 39,
+      "h": 39
+    },
+    {
+      "id": "belge-basligi",
+      "ad": "Belge başlığı",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 82,
+      "g": 125,
+      "boyut": 7.9,
+      "kalin": true,
+      "aralik": 1,
+      "satirlar": [
+        "e-DÖVİZ VE KIYMETLİ",
+        "MADEN {{tipAdi}} BELGESİ"
+      ]
+    },
+    {
+      "id": "karekod",
+      "ad": "Karekod",
+      "zorunlu": true,
+      "tip": "qr",
+      "x": 143.8,
+      "y": 40,
+      "boyut": 66,
+      "icerik": "{{qr}}"
+    },
+    {
+      "id": "ayrac-1",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 110,
+      "x2": 209.77,
+      "y2": 110,
+      "kalinlik": 0.75,
+      "kesikli": true
+    },
+    {
+      "id": "firma-baslik",
+      "ad": "Düzenleyen başlığı",
+      "tip": "metin",
+      "x": 0,
+      "y": 114,
+      "g": 209.77,
+      "metin": "DÜZENLEYEN YETKİLİ MÜESSESE BİLGİLERİ",
+      "boyut": 8.25,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "firma-unvan",
+      "ad": "Firma ünvanı",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 125,
+      "g": 209.77,
+      "metin": "{{firma.unvan}}",
+      "boyut": 8.25,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "firma-adres",
+      "ad": "Firma adresi",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 136,
+      "g": 209.77,
+      "metin": "{{firma.adres}}",
+      "boyut": 7.9,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "firma-bilgileri",
+      "ad": "Firma iletişim / vergi",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 148,
+      "g": 209.77,
+      "boyut": 7.5,
+      "aralik": 0.5,
+      "daralt": true,
+      "satirlar": [
+        "Tel               : {{firma.telefon}}",
+        "?Web Sitesi        : {{firma.web}}",
+        "?E-posta           : {{firma.eposta}}",
+        "VD / VKN          : {{firma.vdVkn}}",
+        "?Mersis/Tic.Sic.No : {{firma.mersisSicil}}"
+      ]
+    },
+    {
+      "id": "belge-kutusu",
+      "tip": "kutu",
+      "x": 0,
+      "y": 196,
+      "g": 209.77,
+      "h": 59,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "belge-kutusu-baslik",
+      "tip": "metin",
+      "x": 2,
+      "y": 198,
+      "g": 205.77,
+      "metin": "{{tipAdi}} BELGESİ BİLGİLERİ",
+      "boyut": 7.9,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "belge-kutusu-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 208.5,
+      "x2": 209.77,
+      "y2": 208.5,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "belge-bilgileri",
+      "ad": "Belge bilgileri",
+      "zorunlu": true,
+      "tip": "tablo",
+      "x": 2,
+      "y": 211,
+      "g": 205.77,
+      "etiketG": 56,
+      "satirH": 10.5,
+      "boyut": 7.9,
+      "cerceve": "yok",
+      "hizaDeger": "left",
+      "kalinDeger": true,
+      "satirlar": [
+        [
+          "Belge No",
+          "{{belgeNo}}"
+        ],
+        [
+          "Tarih",
+          "{{tarih}}   {{saat}}"
+        ],
+        [
+          "Şube/İst.No",
+          "{{subeNo}}    / {{istatistikNo}}"
+        ],
+        [
+          "Seri / Tip",
+          "{{seri}} / {{tipAdi}}"
+        ]
+      ]
+    },
+    {
+      "id": "musteri-baslik-alis",
+      "tip": "metin",
+      "kosul": "!{{satim}}",
+      "x": 0,
+      "y": 259,
+      "g": 209.77,
+      "metin": "DÖVİZ SATAN KİŞİ/KURULUŞ BİLGİLERİ",
+      "boyut": 7.5,
+      "kalin": true
+    },
+    {
+      "id": "musteri-baslik-satis",
+      "tip": "metin",
+      "kosul": "{{satim}}",
+      "x": 0,
+      "y": 259,
+      "g": 209.77,
+      "metin": "DÖVİZ ALAN KİŞİ / KURULUŞ BİLGİLERİ",
+      "boyut": 7.5,
+      "kalin": true
+    },
+    {
+      "id": "musteri-bilgileri",
+      "ad": "Müşteri bilgileri",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 269,
+      "g": 209.77,
+      "boyut": 7.5,
+      "aralik": 1,
+      "daralt": true,
+      "satirlar": [
+        "**{{musteri.unvan}}**",
+        "?**{{musteri.ilceSehir}}**",
+        "Uyruk : {{musteri.uyruk}} / Pasaport no : {{musteri.pasaportNo}}",
+        "VD : {{musteri.vergiDairesi}} / TCKN: {{musteri.kimlikNo}}",
+        "MüşteriTürü : {{musteri.musteriTuru}} / Mesleği : {{musteri.meslek}}"
+      ]
+    },
+    {
+      "id": "ettn",
+      "ad": "ETTN",
+      "zorunlu": true,
+      "tip": "metin",
+      "kosul": "{{ettn}}",
+      "daralt": true,
+      "x": 0,
+      "y": 318,
+      "g": 209.77,
+      "metin": "ETTN : {{ettn}}",
+      "boyut": 7.1,
+      "kalin": true
+    },
+    {
+      "id": "doviz-kutusu",
+      "tip": "kutu",
+      "x": 0,
+      "y": 331,
+      "g": 209.77,
+      "h": 80,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "doviz-baslik-alis",
+      "tip": "metin",
+      "kosul": "!{{satim}}",
+      "x": 2,
+      "y": 333,
+      "g": 205.77,
+      "metin": "SATIN ALINAN DÖVİZE/EFEKTİFE AİT BİLGİLER",
+      "boyut": 7.5,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "doviz-baslik-satis",
+      "tip": "metin",
+      "kosul": "{{satim}}",
+      "x": 2,
+      "y": 333,
+      "g": 205.77,
+      "metin": "SATILAN DÖVİZE/EFEKTİFE AİT BİLGİLER",
+      "boyut": 7.5,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "doviz-kutusu-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 343,
+      "x2": 209.77,
+      "y2": 343,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "doviz-satirlari",
+      "ad": "Döviz satırları",
+      "zorunlu": true,
+      "tip": "liste",
+      "kaynak": "satirlar",
+      "x": 2,
+      "y": 345,
+      "g": 205.77,
+      "etiketG": 124,
+      "satirH": 10,
+      "boyut": 7.5,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "kalinDeger": true,
+      "aralik": 2,
+      "daralt": true,
+      "bosMetin": "Döviz satırı bulunamadı",
+      "satirlar": [
+        [
+          "Döviz/Efektifin Mik. / Brm",
+          "{{s.miktar|doviz}} {{s.kod}}"
+        ],
+        [
+          "Uygulanan Kur",
+          "{{s.kur|kurb}}"
+        ],
+        [
+          "TL Karşılığı",
+          "{{s.tl|tl}} TL"
+        ],
+        {
+          "etiket": "ABD Doları Karşılığı",
+          "deger": "{{s.usd|sayi}} USD",
+          "kosul": "{{s.usdVar}}"
+        }
+      ]
+    },
+    {
+      "id": "bsmv",
+      "ad": "BSMV",
+      "zorunlu": true,
+      "tip": "tablo",
+      "kosul": "{{toplam.bsmvVar}}",
+      "daralt": true,
+      "x": 2,
+      "y": 385,
+      "g": 205.77,
+      "etiketG": 124,
+      "satirH": 10,
+      "boyut": 7.5,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "kalinDeger": true,
+      "satirlar": [
+        [
+          "BSMV",
+          "{{toplam.bsmv|tl}} TL"
+        ]
+      ]
+    },
+    {
+      "id": "toplam-cizgi",
+      "tip": "cizgi",
+      "x1": 2,
+      "y1": 396,
+      "x2": 207.77,
+      "y2": 396,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "toplam",
+      "ad": "Toplam tutar",
+      "zorunlu": true,
+      "tip": "tablo",
+      "x": 2,
+      "y": 397,
+      "g": 205.77,
+      "etiketG": 100,
+      "satirH": 12,
+      "boyut": 8.6,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "satirlar": [
+        [
+          "Toplam Tutar",
+          "{{toplam.genel|tl}} TL",
+          true
+        ]
+      ]
+    },
+    {
+      "id": "alt-kutu-alis",
+      "tip": "kutu",
+      "kosul": "!{{satim}}",
+      "x": 0,
+      "y": 415,
+      "g": 209.77,
+      "h": 34,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "alt-alis-ulke",
+      "tip": "tablo",
+      "kosul": "!{{satim}}",
+      "x": 2,
+      "y": 417,
+      "g": 205.77,
+      "etiketG": 110,
+      "satirH": 9.5,
+      "boyut": 7.5,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "kalinDeger": true,
+      "satirlar": [
+        [
+          "Geldiği Ülke",
+          "{{geldigiUlke}}"
+        ]
+      ]
+    },
+    {
+      "id": "alt-alis-komisyon",
+      "tip": "tablo",
+      "kosul": "!{{satim}}",
+      "x": 2,
+      "y": 426.5,
+      "g": 205.77,
+      "etiketG": 120,
+      "satirH": 9.5,
+      "boyut": 7.5,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "satirlar": [
+        [
+          "Komisyon      :    {{toplam.komisyon|tl}}",
+          "Vezne adı : {{vezne}}"
+        ]
+      ]
+    },
+    {
+      "id": "yaziyla-alis",
+      "ad": "Yazıyla (alım)",
+      "tip": "metin",
+      "kosul": "!{{satim}}",
+      "x": 2,
+      "y": 437,
+      "g": 205.77,
+      "metin": "Yazıyla {{toplam.yaziyla}}",
+      "boyut": 7.5,
+      "kalin": true
+    },
+    {
+      "id": "alt-kutu-satis",
+      "tip": "kutu",
+      "kosul": "{{satim}}",
+      "x": 0,
+      "y": 415,
+      "g": 209.77,
+      "h": 67,
+      "kalinlik": 0.75
+    },
+    {
+      "id": "alt-satis-komisyon",
+      "tip": "tablo",
+      "kosul": "{{satim}}",
+      "x": 2,
+      "y": 417,
+      "g": 205.77,
+      "etiketG": 110,
+      "satirH": 9.5,
+      "boyut": 7.5,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "kalinDeger": true,
+      "satirlar": [
+        [
+          "Komisyon",
+          "{{toplam.komisyon|tl}}"
+        ]
+      ]
+    },
+    {
+      "id": "yaziyla-satis",
+      "ad": "Yazıyla (satım)",
+      "tip": "metin",
+      "kosul": "{{satim}}",
+      "x": 2,
+      "y": 427.5,
+      "g": 205.77,
+      "metin": "Yazıyla #{{toplam.yaziyla}}#",
+      "boyut": 7.5,
+      "kalin": true
+    },
+    {
+      "id": "kmv-notu",
+      "tip": "metin",
+      "kosul": "{{satim}}",
+      "x": 2,
+      "y": 437.5,
+      "g": 205.77,
+      "metin": "Kmv kura dahil değildir.",
+      "boyut": 6.75
+    },
+    {
+      "id": "alt-satis-ulke",
+      "tip": "metin",
+      "kosul": "{{satim}}",
+      "x": 2,
+      "y": 446,
+      "g": 205.77,
+      "metin": "Ülke Kodu: {{musteri.ulkeKodu}}  Uyruk:: {{musteri.uyruk}}  Vezne adı : {{vezne}}",
+      "boyut": 7.5
+    },
+    {
+      "id": "satis-dayanagi",
+      "tip": "metin",
+      "kosul": "{{satim}}",
+      "x": 2,
+      "y": 456,
+      "g": 205.77,
+      "metin": "Satışın Dayanağı    {{satisDayanagi}}",
+      "boyut": 7.5
+    },
+    {
+      "id": "alt-satis-ap",
+      "tip": "tablo",
+      "kosul": "{{satim}}",
+      "x": 2,
+      "y": 467,
+      "g": 205.77,
+      "etiketG": 120,
+      "satirH": 12,
+      "boyut": 8.25,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "satirlar": [
+        [
+          "A.P.: {{toplam.genel|tl}}",
+          "P.U.: 0,00",
+          true
+        ]
+      ]
+    },
+    {
+      "id": "firma-kase",
+      "ad": "Firma kaşesi",
+      "tip": "imza",
+      "gorsel": "{KASE}",
+      "x": 60,
+      "y": 497,
+      "g": 90,
+      "h": 45
+    }
+  ]
+}

@@ -15,7 +15,7 @@ import { kurulumKoku } from "./kurulum/guncelleyici.js";
  * kabul edilmez (K7). Firmanın yazdığı her dosya buradan üretilen yolun içinde kalır.
  */
 
-export const KLASOR_TURLERI = ["Belgeler", "Raporlar", "eBelge", "Yazdirma", "Resimler", "Logolar"] as const;
+export const KLASOR_TURLERI = ["Belgeler", "Raporlar", "eBelge", "Yazdirma", "Resimler", "Logolar", "Sablonlar"] as const;
 export type KlasorTuru = (typeof KLASOR_TURLERI)[number];
 
 const ALT_KLASOR_AZAMI = 60;

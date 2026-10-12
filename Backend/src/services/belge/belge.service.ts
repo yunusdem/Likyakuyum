@@ -1,7 +1,10 @@
 import { BelgeSqlRepository, type BelgeSablonModel, type DbContext } from "../../models/belgeSql.repository.js";
 import { EbelgeSqlRepository } from "../../models/ebelgeSql.repository.js";
 import { EbelgeKaynakService } from "../ebelgeKaynak.service.js";
-import { belgeCiz, sablonOku, BACKEND_KOK } from "./belgeMotor.js";
+import { belgeCiz, belgeKlasoruGorseli, sablonOku, BACKEND_KOK } from "./belgeMotor.js";
+import { pdfTuru } from "./belgeTurleri.js";
+import { etkinSablon } from "./sablonDeposu.js";
+import { BelgeGorselService } from "./belgeGorsel.service.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fisBelgeVerisi } from "./belgeVeri.js";
@@ -59,7 +62,11 @@ export class BelgeService {
       EbelgeSqlRepository.getFirmaBilgisi(ctx).catch(() => ({ dosyaNo: "" } as any)),
     ]);
     const veri = fisBelgeVerisi(b, sablon.kod, { hesapVkn: ayar?.firmaVkn, dosyaNo: firma?.dosyaNo, onizleme: !gonderildi });
-    const pdf = await belgeCiz(sablonOku(duzenDosyasi(sablon, istek.bicim)), veri, `${belgeNo} - ${sablon.ad}`);
+    // ALFIS1 / STFIS1: firmanın Belge Tasarımı'nda düzenlediği düzen (yoksa dosyadaki varsayılan); diğer kodlar dosyadan
+    const tur = pdfTuru(sablon.kod, istek.bicim);
+    const duzen = tur ? (await etkinSablon(tur, ctx)).sablon : sablonOku(duzenDosyasi(sablon, istek.bicim));
+    const gorsel = await BelgeGorselService.cozucu(duzen, belgeKlasoruGorseli, ctx);
+    const pdf = await belgeCiz(duzen, veri, `${belgeNo} - ${sablon.ad}`, gorsel);
     return { pdf, belgeNo, sablon, kaynak: "SABLON", onizleme: !gonderildi, tarih };
   }
 

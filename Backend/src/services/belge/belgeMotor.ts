@@ -4,37 +4,19 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ApiError } from "../../utils/ApiError.js";
+import { sahneKur, kalinParcala, SATIR_ORANI, type BelgeSablon, type Cizim } from "./sablonCekirdek.js";
 
 /**
- * Belge / rapor şablon motoru.
+ * Belge / rapor şablon motoru — PDF çizici.
  *
- * Şablon: `Backend/belge/*.json` (ileride `Backend/rapor/*.json`) — düzen dosyada,
- * veri çağıran taraftan gelir. Crystal Reports'taki "rpt + parametre" mantığının
- * web karşılığıdır: şablon değişikliği kod değişikliği gerektirmez.
- *
- * Çizim temeli `ebelgeKaynakPdf.ts` → `eDovizBelgePdf` ile aynıdır (pdfkit, A4,
- * Türkçe TTF); o dosya değiştirilmemiş, mantık buraya genelleştirilmiştir.
+ * Şablon: `Backend/belge/*.json` — düzen dosyada, veri çağıran taraftan gelir. Crystal Reports'taki
+ * "rpt + parametre" mantığının web karşılığıdır: şablon değişikliği kod değişikliği gerektirmez.
+ * Yerleşim (koşullar, yer tutucular, liste, kayma) `sablonCekirdek.ts`'te; burada yalnızca çizilir.
+ * Termal yazıcının HTML çizicisi aynı çekirdeği kullanır (docs/FIS_TASARIM_YOL_HARITASI.md).
  */
 
-export type BelgeOge =
-  | { tip: "metin"; x: number; y: number; g?: number; metin: string; boyut?: number; kalin?: boolean; hiza?: "left" | "center" | "right"; renk?: string; altCizgi?: boolean; kosul?: string }
-  | { tip: "satirlar"; x: number; y: number; g: number; satirlar: string[]; boyut?: number; aralik?: number; kosul?: string }
-  | { tip: "tablo"; x: number; y: number; g: number; etiketG: number; satirH?: number; satirlar: [string, string, boolean?][]; boyut?: number; hizaDeger?: "left" | "right"; kosul?: string }
-  | { tip: "kutu"; x: number; y: number; g: number; h: number; kosul?: string }
-  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kosul?: string }
-  | { tip: "resim"; dosya: string; x: number; y: number; g?: number; h?: number; kosul?: string }
-  | { tip: "qr"; x: number; y: number; boyut: number; icerik: string; kosul?: string }
-  | { tip: "filigran"; metin: string; renk?: string; kosul?: string };
-
-export interface BelgeSablon {
-  kod: string;
-  ad: string;
-  /** "A4", "A5" veya punto cinsinden [genişlik, yükseklik] (80 mm fiş: [227, 1000]). */
-  kagit?: "A4" | "A5" | [number, number];
-  kenar?: number;
-  yaziBoyutu?: number;
-  ogeler: BelgeOge[];
-}
+export { doldur, kosulGecti } from "./sablonCekirdek.js";
+export type { BelgeOge, BelgeSablon } from "./sablonCekirdek.js";
 
 const buDosya = fileURLToPath(import.meta.url);
 /** `Backend/` kökü: hem `src/services/belge` hem `dist/services/belge` için üç üst dizin. */
@@ -57,162 +39,130 @@ export function sablonOku(duzenDosyasi: string): BelgeSablon {
   return sablon;
 }
 
+const ilkVar = (adaylar: (string | undefined)[]) => adaylar.find((f): f is string => !!f && existsSync(f));
+const fontKlasoru = path.join(process.env.WINDIR || "C:/Windows", "Fonts");
+
 /** Türkçe destekli TTF yazı tipi; e-Döviz PDF'i ile aynı arama sırası (EBELGE_PDF_FONT). */
 export function yaziTipleri(): { normal: string; kalin: string } {
-  const adaylar = [process.env.EBELGE_PDF_FONT,
-    path.join(process.env.WINDIR || "C:/Windows", "Fonts", "arial.ttf"),
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"];
-  const normal = adaylar.find((f): f is string => !!f && existsSync(f));
+  const normal = ilkVar([process.env.EBELGE_PDF_FONT, path.join(fontKlasoru, "arial.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"]);
   if (!normal) throw ApiError.badRequest("PDF yazı tipi bulunamadı. Sunucuda EBELGE_PDF_FONT ile Türkçe destekli bir TTF yazı tipi tanımlayın.");
-  const kalin = [process.env.EBELGE_PDF_FONT_BOLD,
-    path.join(process.env.WINDIR || "C:/Windows", "Fonts", "arialbd.ttf"),
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"].find((f): f is string => !!f && existsSync(f));
+  const kalin = ilkVar([process.env.EBELGE_PDF_FONT_BOLD, path.join(fontKlasoru, "arialbd.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"]);
   return { normal, kalin: kalin || normal };
 }
 
-const trSayi = (n: number, basamak = 2) =>
-  Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: basamak, maximumFractionDigits: basamak });
-
-/** `{{yol.alt|bicim}}` yer tutucularını veriden doldurur. */
-export function doldur(metin: string, veri: Record<string, any>): string {
-  return String(metin ?? "").replace(/\{\{\s*([\w.]+)\s*(?:\|\s*(\w+))?\s*\}\}/g, (_m, yol: string, bicim?: string) => {
-    const deger = yol.split(".").reduce<any>((o, k) => (o == null ? undefined : o[k]), veri);
-    if (deger === undefined || deger === null || deger === false) return "";
-    switch (bicim) {
-      case "sayi": return trSayi(Number(deger));
-      case "sayi4": return trSayi(Number(deger), 4);
-      // Kur: ICE çıktısındaki gibi en az 2, en çok 5 hane (0,02062).
-      case "kur": return Number(deger || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 5 });
-      case "buyuk": return String(deger).toLocaleUpperCase("tr-TR");
-      default: return String(deger);
-    }
-  });
+/** Termal fiş görünümü için eş aralıklı yazı tipi; yoksa normal yazı tipine düşer. */
+export function monoYaziTipleri(): { normal: string; kalin: string } {
+  const normal = ilkVar([path.join(fontKlasoru, "cour.ttf"), "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf"]);
+  if (!normal) return yaziTipleri();
+  const kalin = ilkVar([path.join(fontKlasoru, "courbd.ttf"), "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationMono-Bold.ttf"]);
+  return { normal, kalin: kalin || normal };
 }
 
-const yerTutucuVar = (m: string) => /\{\{[^}]+\}\}/.test(m);
-/** Koşul: yer tutucu doldurulunca boş, "0", "false" ise öğe çizilmez. */
-const kosulGecti = (kosul: string | undefined, veri: Record<string, any>) => {
-  if (!kosul) return true;
-  const d = doldur(kosul, veri).trim();
-  return d !== "" && d !== "0" && d !== "false";
+/**
+ * Görsel dosyası çözücü: şablondaki `dosya` adını PNG/JPG baytına çevirir. Varsayılan: `Backend/belge/` klasörü.
+ * Firma görselleri (logo, imza) Faz 4'te çağıran tarafından verilir.
+ */
+export type GorselCozucu = (dosya: string) => Buffer | null;
+export const belgeKlasoruGorseli: GorselCozucu = (dosya) => {
+  const tam = path.join(BELGE_DIZINI, path.basename(String(dosya || "")));
+  return /\.(png|jpe?g)$/i.test(tam) && existsSync(tam) ? readFileSync(tam) : null;
 };
 
 /**
  * Şablonu veriyle çizer, PDF baytlarını döner.
- * Sayfa: A4 (595×842), A5 veya [g,h] punto (80 mm fiş için 227 pt genişlik); kenar boşluğu şablondan.
+ * Sayfa: A4, A5 veya [g,h] punto; h=0 ise içeriğe göre (termal rulo).
  */
-export async function belgeCiz(sablon: BelgeSablon, veri: Record<string, any>, baslik?: string): Promise<Buffer> {
-  const font = yaziTipleri();
-  const kenar = sablon.kenar ?? 28;
-  const varsayilanBoyut = sablon.yaziBoyutu ?? 8;
+export async function belgeCiz(sablon: BelgeSablon, veri: Record<string, any>, baslik?: string, gorsel: GorselCozucu = belgeKlasoruGorseli): Promise<Buffer> {
+  const font = sablon.yaziTipi === "mono" ? monoYaziTipleri() : yaziTipleri();
+  const sahne = sahneKur(sablon, veri);
 
   // QR görüntüleri önceden üretilir (pdfkit senkron çizer).
-  const qrler = new Map<BelgeOge, Buffer>();
-  for (const o of sablon.ogeler) {
-    if (o.tip !== "qr" || !kosulGecti(o.kosul, veri)) continue;
-    const icerik = doldur(o.icerik, veri).trim();
-    if (!icerik) continue;
-    qrler.set(o, await QRCode.toBuffer(icerik, { type: "png", margin: 0, errorCorrectionLevel: "M", width: Math.round(o.boyut * 4) }));
+  const qrler = new Map<Cizim, Buffer>();
+  for (const c of sahne.cizimler) {
+    if (c.tip !== "qr") continue;
+    qrler.set(c, await QRCode.toBuffer(c.icerik, { type: "png", margin: 0, errorCorrectionLevel: "M", width: Math.round(c.boyut * 4) }));
   }
 
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: sablon.kagit || "A4", margin: kenar, info: { Title: baslik || sablon.ad || sablon.kod } });
+    const doc = new PDFDocument({ size: [sahne.genislik, sahne.yukseklik], margin: sahne.kenar, info: { Title: baslik || sablon.ad || sablon.kod } });
     const parcalar: Buffer[] = [];
     doc.on("data", p => parcalar.push(p));
     doc.on("end", () => resolve(Buffer.concat(parcalar)));
     doc.on("error", reject);
 
-    const sol = doc.page.margins.left, ust = doc.page.margins.top;
-    const genislik = doc.page.width - sol - doc.page.margins.right;
+    const sol = sahne.kenar, ust = sahne.kenar;
     const N = () => doc.font(font.normal), K = () => doc.font(font.kalin);
     const X = (x: number) => sol + x, Y = (y: number) => ust + y;
 
-    /** `**kalın**` parçalarını destekleyen tek satır metin. */
-    const zenginMetin = (metin: string, x: number, y: number, g: number, boyut: number, hiza: "left" | "center" | "right", kalinHepsi: boolean, renk: string) => {
-      doc.fontSize(boyut).fillColor(renk);
-      const parcalar = metin.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
-      if (parcalar.length <= 1 || hiza !== "left") {
-        (kalinHepsi ? K() : N()).text(metin.replace(/\*\*/g, ""), x, y, { width: g, align: hiza, lineBreak: true });
-        return;
-      }
-      let cx = x;
-      for (const p of parcalar) {
-        const kalin = p.startsWith("**");
-        const t = kalin ? p.slice(2, -2) : p;
-        (kalin || kalinHepsi ? K() : N());
-        doc.text(t, cx, y, { lineBreak: false, continued: false });
-        cx += doc.widthOfString(t);
-      }
-    };
-
-    for (const o of sablon.ogeler) {
-      if (!kosulGecti((o as any).kosul, veri)) continue;
-      switch (o.tip) {
+    // Katman sırası HTML çiziciyle aynı: filigran → kutu / çizgi → yazı, görsel, karekod.
+    const katman = (c: Cizim) => (c.tip === "filigran" ? 0 : c.tip === "kutu" || c.tip === "cizgi" ? 1 : 2);
+    const sirali = sahne.cizimler.map((c, i) => ({ c, i })).sort((a, b) => katman(a.c) - katman(b.c) || a.i - b.i).map(x => x.c);
+    for (const c of sirali) {
+      switch (c.tip) {
         case "filigran": {
           doc.save();
           const cx = doc.page.width / 2, cy = doc.page.height / 2;
           doc.rotate(-35, { origin: [cx, cy] });
-          K().fontSize(34).fillColor(o.renk || "#9a9a9a").opacity(0.22)
-            .text(doldur(o.metin, veri), cx - 300, cy - 20, { width: 600, align: "center" });
+          K().fontSize(Math.min(34, doc.page.width / 8)).fillColor(c.renk).opacity(0.22)
+            .text(c.metin, cx - 300, cy - 20, { width: 600, align: "center" });
           doc.restore();
           break;
         }
         case "metin": {
-          const metin = doldur(o.metin, veri);
-          const g = o.g ?? genislik - o.x;
-          const boyut = o.boyut ?? varsayilanBoyut;
-          zenginMetin(metin, X(o.x), Y(o.y), g, boyut, o.hiza || "left", !!o.kalin, o.renk || "#000");
-          if (o.altCizgi) {
-            const w = Math.min(g, (o.kalin ? K() : N()).fontSize(boyut).widthOfString(metin.replace(/\*\*/g, "")));
-            const bx = o.hiza === "center" ? X(o.x) + (g - w) / 2 : o.hiza === "right" ? X(o.x) + g - w : X(o.x);
-            doc.moveTo(bx, Y(o.y) + boyut + 1.5).lineTo(bx + w, Y(o.y) + boyut + 1.5).lineWidth(0.6).strokeColor(o.renk || "#000").stroke();
+          doc.fontSize(c.boyut).fillColor(c.renk);
+          const x = X(c.x), y = Y(c.y);
+          const parcalar = kalinParcala(c.metin);
+          const duz = parcalar.map(p => p.metin).join("");
+          const secenek = { width: c.g, align: c.hiza, lineBreak: !c.tekSatir, height: c.tekSatir ? c.boyut * SATIR_ORANI : undefined, ellipsis: c.tekSatir ? true : undefined, lineGap: c.boyut * (SATIR_ORANI - 1.15) };
+          // Satır içi kalın, ortalı / sağa hizalı metinde tek satıra sığıyorsa parçaların toplam genişliğiyle hizalanır.
+          const parcaGenisligi = () => parcalar.reduce((t, p) => t + (p.kalin || c.kalin ? K() : N()).fontSize(c.boyut).widthOfString(p.metin), 0);
+          const hizaliParca = parcalar.length > 1 && c.hiza !== "left" && !c.kalin && parcaGenisligi() <= c.g;
+          if (parcalar.length <= 1 || (c.hiza !== "left" && !hizaliParca)) {
+            (c.kalin || (parcalar.length === 1 && parcalar[0].kalin) ? K() : N()).text(duz, x, y, secenek);
+          } else {
+            // Satır içi kalın: parçalar art arda (tek satır).
+            const w = parcaGenisligi();
+            let cx = c.hiza === "center" ? x + (c.g - w) / 2 : c.hiza === "right" ? x + c.g - w : x;
+            for (const p of parcalar) {
+              (p.kalin || c.kalin ? K() : N()).fontSize(c.boyut);
+              doc.text(p.metin, cx, y, { lineBreak: false });
+              cx += doc.widthOfString(p.metin);
+            }
           }
-          break;
-        }
-        case "satirlar": {
-          const boyut = o.boyut ?? varsayilanBoyut;
-          let y = Y(o.y);
-          for (const ham of o.satirlar) {
-            const istegeBagli = ham.startsWith("?");
-            const kaynak = istegeBagli ? ham.slice(1) : ham;
-            const dolu = doldur(kaynak, veri);
-            // İsteğe bağlı satır: yer tutucuların hepsi boşsa basılmaz.
-            if (istegeBagli && yerTutucuVar(kaynak) && dolu.replace(/\*\*/g, "").trim() === kaynak.replace(/\{\{[^}]+\}\}/g, "").replace(/\*\*/g, "").trim()) continue;
-            zenginMetin(dolu, X(o.x), y, o.g, boyut, "left", false, "#000");
-            y += N().fontSize(boyut).heightOfString(dolu.replace(/\*\*/g, "") || " ", { width: o.g }) + (o.aralik ?? 2);
-          }
-          break;
-        }
-        case "tablo": {
-          const boyut = o.boyut ?? varsayilanBoyut;
-          const satirH = o.satirH ?? 15;
-          let y = Y(o.y);
-          for (const [etiketHam, degerHam, kalin] of o.satirlar) {
-            const etiket = doldur(etiketHam, veri), deger = doldur(degerHam, veri);
-            doc.rect(X(o.x), y, o.g, satirH).lineWidth(0.5).strokeColor("#333").stroke();
-            doc.moveTo(X(o.x) + o.etiketG, y).lineTo(X(o.x) + o.etiketG, y + satirH).stroke();
-            (kalin ? K() : N()).fontSize(boyut).fillColor("#000").text(etiket, X(o.x) + 3, y + (satirH - boyut) / 2 - 0.5, { width: o.etiketG - 6, lineBreak: false });
-            (kalin ? K() : N()).text(deger, X(o.x) + o.etiketG + 3, y + (satirH - boyut) / 2 - 0.5, { width: o.g - o.etiketG - 6, align: o.hizaDeger || "right", lineBreak: false });
-            y += satirH;
+          if (c.altCizgi) {
+            const w = Math.min(c.g, (c.kalin ? K() : N()).fontSize(c.boyut).widthOfString(duz));
+            const bx = c.hiza === "center" ? x + (c.g - w) / 2 : c.hiza === "right" ? x + c.g - w : x;
+            doc.moveTo(bx, y + c.boyut + 1.5).lineTo(bx + w, y + c.boyut + 1.5).lineWidth(0.6).strokeColor(c.renk).stroke();
           }
           break;
         }
         case "kutu":
-          doc.rect(X(o.x), Y(o.y), o.g, o.h).lineWidth(0.6).strokeColor("#333").stroke();
+          doc.rect(X(c.x), Y(c.y), c.g, c.h);
+          if (c.zemin && c.kalinlik > 0) doc.lineWidth(c.kalinlik).fillAndStroke(c.zemin, "#333");
+          else if (c.zemin) doc.fill(c.zemin);
+          else if (c.kalinlik > 0) doc.lineWidth(c.kalinlik).strokeColor("#333").stroke();
           break;
         case "cizgi":
-          doc.moveTo(X(o.x1), Y(o.y1)).lineTo(X(o.x2), Y(o.y2)).lineWidth(0.8).strokeColor("#000").stroke();
+          doc.save();
+          if (c.kesikli) doc.dash(2.5, { space: 2 });
+          doc.moveTo(X(c.x1), Y(c.y1)).lineTo(X(c.x2), Y(c.y2)).lineWidth(c.kalinlik).strokeColor("#000").stroke();
+          doc.restore();
           break;
         case "resim": {
-          const dosya = path.join(BELGE_DIZINI, path.basename(o.dosya));
-          if (existsSync(dosya)) doc.image(dosya, X(o.x), Y(o.y), { fit: [o.g ?? 60, o.h ?? 60], align: "center", valign: "center" });
+          const bayt = gorsel(c.dosya);
+          if (bayt) {
+            try { doc.image(bayt, X(c.x), Y(c.y), { fit: [c.g, c.h], align: "center", valign: "center" }); }
+            catch { /* bozuk görsel belgeyi durdurmaz */ }
+          }
           break;
         }
         case "qr": {
-          const png = qrler.get(o);
-          if (png) doc.image(png, X(o.x), Y(o.y), { width: o.boyut, height: o.boyut });
+          const png = qrler.get(c);
+          if (png) doc.image(png, X(c.x), Y(c.y), { width: c.boyut, height: c.boyut });
           break;
         }
       }
