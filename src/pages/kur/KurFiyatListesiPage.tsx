@@ -40,6 +40,8 @@ import {
   StoredKurDateItem,
 } from "../../services/kurService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
+import { KurKaynakService } from "../../services/kurKaynakService";
+import KurKaynakPaneli from "../../components/kur/KurKaynakPaneli";
 import { printReportTable } from "../../utils/printReport";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
@@ -229,6 +231,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   const [tarih, setTarih] = useState<string>(getCurrentDateStr);
   const [saat, setSaat] = useState<string>(getCurrentTimeStr);
   const [rows, setRows] = useState<KurRowItem[]>([]);
+  const rowsRef = useRef<KurRowItem[]>([]);
+  rowsRef.current = rows;
   const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [lastSavedZaman, setLastSavedZaman] = useState<string>("");
@@ -276,6 +280,14 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isArchiving, setIsArchiving] = useState<boolean>(false);
   const [isTcmbLoading, setIsTcmbLoading] = useState<boolean>(false);
+  // Kur kaynağı (docs/KUR_KAYNAGI_YOL_HARITASI.md): soldaki panelden seçilir, firma bazında saklanır
+  const [kurKaynagi, setKurKaynagi] = useState<string>("tcmb");
+  const [kurKaynagiAd, setKurKaynagiAd] = useState<string>("Merkez Bankası");
+  const kurKaynagiRef = useRef<string>("tcmb");
+  const [kaynakOzeti, setKaynakOzeti] = useState<string>("");
+  // Kaynaktan çekimden sonra sırayla F12 altın hesabı ve (otomatik modda) kayıt; güncel satırlarla çalışsınlar diye efektle
+  const [kaynakZinciri, setKaynakZinciri] = useState<{ adim: "altin" | "kaydet"; kaydet: boolean } | null>(null);
+  const sessizKayitRef = useRef<boolean>(false);
   const [statusText, setStatusText] = useState<string>("Son kayıt");
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
@@ -873,12 +885,14 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         effectivePageType === "anlik"
           ? new Date(result.zaman).toLocaleTimeString("tr-TR")
           : saat;
-      setAlertSuccess(
-        effectivePageType === "anlik"
-          ? `Gişede o an işlem gören canlı kurlar ve saati (${savedTimeDisplay}) başarıyla kaydedildi.`
-          : "Kur tablosu başarıyla kaydedildi."
-      );
-      setTimeout(() => setAlertSuccess(null), 3500);
+      if (!sessizKayitRef.current) {
+        setAlertSuccess(
+          effectivePageType === "anlik"
+            ? `Gişede o an işlem gören canlı kurlar ve saati (${savedTimeDisplay}) başarıyla kaydedildi.`
+            : "Kur tablosu başarıyla kaydedildi."
+        );
+        setTimeout(() => setAlertSuccess(null), 3500);
+      }
 
       if (effectivePageType === "saklanan") {
         const updatedDates = await KurService.getStoredDates(2);
@@ -901,6 +915,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       setAlertError(errMsg);
     } finally {
       setIsSaving(false);
+      sessizKayitRef.current = false;
     }
   };
 
@@ -1082,81 +1097,93 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     inputRefs.current[firstEfKey]?.select();
   };
 
-  // Fetch TCMB Rates (F8 Merkez Bankası)
-  const handleFetchTcmb = async () => {
+  // F8 / soldaki kaynak paneli: seçili kaynaktan kur çek (docs/KUR_KAYNAGI_YOL_HARITASI.md).
+  // Döviz kolonları kaynağın ham fiyatı, efektif kolonlar komisyonlu fiyat (komisyon sunucuda uygulanır).
+  const handleFetchTcmb = async (kaynakArg?: unknown, otomatik = false) => {
+    const kaynak = typeof kaynakArg === "string" ? kaynakArg : kurKaynagiRef.current;
     try {
       setIsTcmbLoading(true);
-      setAlertError(null);
-
-      const tcmbData = await KurService.fetchTcmb();
-      if (!tcmbData || Object.keys(tcmbData).length === 0) {
-        setAlertError("Merkez Bankası kurları alınamadı.");
+      if (!otomatik) {
+        setAlertError(null);
+        setAlertSuccess(null);
+      }
+      const sonuc = await KurKaynakService.cek(kaynak);
+      const gelen = new Map(sonuc.satirlar.map((s) => [s.paraId, s]));
+      const eksik = sonuc.eksikBirimler.length ? ` · kaynakta yok: ${sonuc.eksikBirimler.join(", ")}` : "";
+      setKaynakOzeti(`${sonuc.kaynakAd} · ${new Date().toLocaleTimeString("tr-TR")} · ${gelen.size} birim alındı${eksik}`);
+      if (gelen.size === 0) {
+        setAlertError(`${sonuc.kaynakAd} kaynağında listedeki birimlerden hiçbiri bulunamadı.`);
         return;
       }
 
-      setRows((prev) => {
-        const updated = prev.map((r, idx) => {
-          const code = r.kod.trim().toUpperCase();
-          const tcmbRate = tcmbData[code];
-          if (!tcmbRate) return r;
+      const onceki = rowsRef.current;
+      const updated = onceki.map((r) => {
+        const g = gelen.get(r.paraId);
+        return g
+          ? { ...r, dovizAlis: g.dovizAlis, dovizSatis: g.dovizSatis, efektifAlis: g.efektifAlis, efektifSatis: g.efektifSatis }
+          : { ...r };
+      });
+      // Otomatik çekimde fiyat değişmediyse dokunma (gereksiz kayıt olmasın)
+      const ayni = updated.every(
+        (r, i) =>
+          r.dovizAlis === onceki[i].dovizAlis &&
+          r.dovizSatis === onceki[i].dovizSatis &&
+          r.efektifAlis === onceki[i].efektifAlis &&
+          r.efektifSatis === onceki[i].efektifSatis
+      );
+      if (otomatik && ayni) return;
 
-          const dovizAlis = tcmbRate.forexBuying ?? r.dovizAlis;
-          const dovizSatis = tcmbRate.forexSelling ?? r.dovizSatis;
-          const efektifAlis = tcmbRate.banknoteBuying ?? dovizAlis ?? r.efektifAlis;
-          const efektifSatis = tcmbRate.banknoteSelling ?? dovizSatis ?? r.efektifSatis;
-
-          setRawInputs((p) => ({
-            ...p,
-            [getCellKey(idx, "dovizAlis")]: dovizAlis !== null && dovizAlis !== undefined ? dovizAlis.toFixed(6) : "",
-            [getCellKey(idx, "dovizSatis")]: dovizSatis !== null && dovizSatis !== undefined ? dovizSatis.toFixed(6) : "",
-            [getCellKey(idx, "efektifAlis")]: efektifAlis !== null && efektifAlis !== undefined ? efektifAlis.toFixed(6) : "",
-            [getCellKey(idx, "efektifSatis")]: efektifSatis !== null && efektifSatis !== undefined ? efektifSatis.toFixed(6) : "",
-          }));
-
-          return {
-            ...r,
-            dovizAlis,
-            dovizSatis,
-            efektifAlis,
-            efektifSatis,
-          };
+      // Pariteler USD'ye göre (komisyonlu efektif fiyatlardan)
+      const usdRow = updated.find((r) => r.kod.trim().toUpperCase() === "USD");
+      const usdRate = usdRow ? usdRow.efektifAlis || usdRow.dovizAlis : null;
+      if (usdRate && usdRate > 0) {
+        updated.forEach((r) => {
+          if (r.kod.trim().toUpperCase() === "USD") {
+            r.parite = 1.0;
+          } else if (gelen.has(r.paraId)) {
+            const rowRate = r.efektifAlis || r.dovizAlis;
+            if (rowRate && rowRate > 0) r.parite = rowRate / usdRate;
+          }
         });
+      }
 
-        // Recalculate parities based on USD
-        const usdRow = updated.find((r) => r.kod.trim().toUpperCase() === "USD");
-        const usdRate = usdRow ? usdRow.efektifAlis || usdRow.dovizAlis : null;
-
-        if (usdRate && usdRate > 0) {
-          updated.forEach((r, idx) => {
-            if (r.kod.trim().toUpperCase() === "USD") {
-              r.parite = 1.0;
-              setRawInputs((p) => ({ ...p, [getCellKey(idx, "parite")]: "1.000000" }));
-            } else {
-              const rowRate = r.efektifAlis || r.dovizAlis;
-              if (rowRate && rowRate > 0) {
-                const par = rowRate / usdRate;
-                r.parite = par;
-                setRawInputs((p) => ({ ...p, [getCellKey(idx, "parite")]: par.toFixed(6) }));
-              }
-            }
-          });
-        }
-
-        return updated;
+      const girdiler: Record<string, string> = {};
+      updated.forEach((r, idx) => {
+        if (!gelen.has(r.paraId) && r.kod.trim().toUpperCase() !== "USD") return;
+        (["dovizAlis", "dovizSatis", "efektifAlis", "efektifSatis", "parite"] as const).forEach((col) => {
+          const v = r[col];
+          girdiler[getCellKey(idx, col as EditableCol)] = v !== null && v !== undefined ? v.toFixed(6) : "";
+        });
       });
 
-      setStatusText("Merkez Bankası kurları uygulandı");
-      setAlertSuccess("TCMB güncel kurları başarıyla aktarıldı.");
-      setTimeout(() => setAlertSuccess(null), 3000);
+      setRows(updated);
+      setRawInputs((p) => ({ ...p, ...girdiler }));
+      setIsDirty(true);
+      setStatusText(`${sonuc.kaynakAd} kurları uygulandı`);
+      // HAS geldiyse altınlar F12 ile hesaplanır; otomatik modda ardından kaydedilir
+      if (sonuc.hasGeldi) setKaynakZinciri({ adim: "altin", kaydet: otomatik });
+      else if (otomatik) setKaynakZinciri({ adim: "kaydet", kaydet: true });
+      if (!otomatik) {
+        setAlertSuccess(`${sonuc.kaynakAd} kurları aktarıldı.`);
+        setTimeout(() => setAlertSuccess(null), 3000);
+      }
     } catch (err: any) {
-      console.error("TCMB çekme hatası:", err);
-      setAlertError(err?.message || "Merkez Bankası verisi alınamadı.");
+      console.error("Kur kaynağı çekme hatası:", err);
+      setAlertError(err?.message || "Kur kaynağından veri alınamadı.");
     } finally {
       setIsTcmbLoading(false);
     }
   };
 
-  // HAS Altın Fiyatına Göre Diğer Altın Kurlarını Otomatik Hesaplama
+  // Soldaki panelden kaynak seçimi: firma bazında saklanır, hemen çekilir
+  const handleKaynakSec = (kod: string, ad: string) => {
+    kurKaynagiRef.current = kod;
+    setKurKaynagi(kod);
+    setKurKaynagiAd(ad);
+    KurKaynakService.seciliKaydet(kod).catch((e) => setAlertError(e?.message || "Kur kaynağı kaydedilemedi."));
+    handleFetchTcmb(kod);
+  };
+
   const handleAutoCalculateGoldRates = () => {
     try {
       setAlertError(null);
@@ -1565,6 +1592,35 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [rows.length, showSearchModal, showCopyDateModal, effectivePageType, handleAutoCalculateGoldRates]);
 
+  // Kaynaktan çekim zinciri: önce F12 (HAS geldiyse), otomatik modda ardından sessiz kayıt
+  useEffect(() => {
+    if (!kaynakZinciri) return;
+    if (kaynakZinciri.adim === "altin") {
+      handleAutoCalculateGoldRates();
+      setKaynakZinciri(kaynakZinciri.kaydet ? { adim: "kaydet", kaydet: true } : null);
+    } else {
+      setKaynakZinciri(null);
+      sessizKayitRef.current = true;
+      handleSave();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kaynakZinciri]);
+
+  // Otomatik çekme (Firma Tanımları › Kur Kaynağı): yalnız Anlık Fiyat Listesi açıkken, tazeleme süresinde bir
+  const otomatikKur = effectivePageType === "anlik" && !!companyDefinitions?.MERKEZ_BANKASI_KURUNU_AL;
+  const tazelemeSn = Math.max(1, Number(companyDefinitions?.TAZELEME_SURESI) || 5);
+  const otomatikCekRef = useRef<() => void>(() => undefined);
+  otomatikCekRef.current = () => {
+    // Kullanıcının kaydedilmemiş elle girişini ezme
+    if (isLoading || isSaving || isTcmbLoading || kaynakZinciri || isDirty || rows.length === 0) return;
+    handleFetchTcmb(kurKaynagiRef.current, true);
+  };
+  useEffect(() => {
+    if (!otomatikKur) return;
+    const t = setInterval(() => otomatikCekRef.current(), tazelemeSn * 1000);
+    return () => clearInterval(t);
+  }, [otomatikKur, tazelemeSn]);
+
   return (
     <div className="kuyumcu-kur-container w-100 pb-3" style={{ overflowX: "hidden" }}>
       {/* 1. Sol Üst Standart ERP Toolbar (Anlık Fiyat Listesi'nde Kaydetme Butonu Aktif, Saklanan'da Gezinme Aktif) */}
@@ -1755,12 +1811,26 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           }
         `}</style>
 
+        <div className="d-flex flex-column flex-md-row" style={{ minWidth: 0 }}>
+        {effectivePageType === "anlik" && (
+          <KurKaynakPaneli
+            secili={kurKaynagi}
+            yukleniyor={isTcmbLoading}
+            onKayitliSecili={(kod, ad) => {
+              kurKaynagiRef.current = kod;
+              setKurKaynagi(kod);
+              setKurKaynagiAd(ad);
+            }}
+            onSec={handleKaynakSec}
+          />
+        )}
         {/* Table Content - Max height set for ~20 rows with smooth scrolling */}
         <div
           className="flex-grow-1 overflow-auto bg-white"
           style={{
             maxHeight: "calc(100vh - 280px)",
             minHeight: "450px",
+            minWidth: 0,
           }}
         >
           {isLoading ? (
@@ -2178,6 +2248,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             </table>
           )}
         </div>
+        </div>
 
         {/* Desktop ERP Function Keys Status Bar */}
         <div
@@ -2197,6 +2268,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             <span className="text-muted small">
               Toplam {rows.length} para birimi
             </span>
+            {kaynakOzeti && <span className="text-muted small">· {kaynakOzeti}</span>}
           </div>
 
           {/* Hotkey Buttons on Right */}
@@ -2265,11 +2337,11 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               variant="light"
               size="sm"
               className="px-2 py-0 border text-dark bg-white shadow-xs fw-semibold small"
-              onClick={handleFetchTcmb}
+              onClick={() => handleFetchTcmb()}
               disabled={isTcmbLoading}
-              title="F8: TCMB Merkez Bankası güncel kurlarını çeker"
+              title={`F8: ${kurKaynagiAd} güncel kurlarını çeker`}
             >
-              {isTcmbLoading ? <Spinner size="sm" /> : "F8)Merkez Bankası"}
+              {isTcmbLoading ? <Spinner size="sm" /> : `F8)${kurKaynagiAd}`}
             </Button>
 
             <Button
@@ -2548,7 +2620,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           >
             <div className="d-flex align-items-center gap-2">
               <IconRefresh size={15} className="text-info" />
-              <span>TCMB Merkez Bankası</span>
+              <span>{kurKaynagiAd}</span>
             </div>
             <span className="text-muted font-monospace" style={{ fontSize: "10px" }}>F8</span>
           </button>

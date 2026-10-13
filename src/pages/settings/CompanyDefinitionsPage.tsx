@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   Row,
@@ -16,6 +16,7 @@ import {
 import {
   IconBuildingStore,
   IconCoin,
+  IconArrowsExchange,
   IconReceipt2,
   IconScale,
   IconAdjustments,
@@ -40,6 +41,7 @@ import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numeri
 import { ebelgeService } from "../../services/ebelgeService";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
+import KurKomisyonTablosu, { type KurKomisyonTablosuRef } from "../../components/kur/KurKomisyonTablosu";
 
 export const CompanyDefinitionsPage: React.FC = () => {
   // Lisansta olmayan ürüne ait ayarlar (kuyum: işçilik, üretim, sarrafiye; döviz: e-Döviz fişi) gösterilmez, değerleri korunur
@@ -838,11 +840,15 @@ export const CompanyDefinitionsPage: React.FC = () => {
     }
   };
 
+  const komisyonRef = useRef<KurKomisyonTablosuRef>(null);
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     try {
       setIsSaving(true);
       setAlertError(null);
+      // Kur Kaynağı sekmesindeki komisyon tablosu (değiştiyse)
+      await komisyonRef.current?.kaydet();
       if (formData.URETIM_HESABI_ID) {
         localStorage.setItem("kuyumcu_erp_uretim_hesabi_id", String(formData.URETIM_HESABI_ID));
       } else {
@@ -888,6 +894,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
   const companyTabs = [
     { key: "genel", label: "Genel", icon: <IconBuildingStore size={14} className="me-1 flex-shrink-0" />, color: "#0d6efd" },
     { key: "para", label: "Para", icon: <IconCoin size={14} className="me-1 flex-shrink-0" />, color: "#e67e22" },
+    { key: "kurKaynagi", label: "Kur Kaynağı", icon: <IconArrowsExchange size={14} className="me-1 flex-shrink-0" />, color: "#b7791f" },
     { key: "muhasebe", label: "Muhasebe", icon: <IconReceipt2 size={14} className="me-1 flex-shrink-0" />, color: "#198754" },
     { key: "limitler", label: "Limit", icon: <IconScale size={14} className="me-1 flex-shrink-0" />, color: "#0891b2" },
     { key: "ebelge", label: "E-Server", icon: <IconFileCertificate size={14} className="me-1 flex-shrink-0" />, color: "#dc3545" },
@@ -1607,13 +1614,6 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <div className="d-flex flex-column gap-2">
                               <Form.Check
                                 type="checkbox"
-                                id="MERKEZ_BANKASI_KURUNU_AL"
-                                label="Merkez Bankası Kurunu Otomatik Al"
-                                checked={formData.MERKEZ_BANKASI_KURUNU_AL ?? false}
-                                onChange={(e) => handleChange("MERKEZ_BANKASI_KURUNU_AL", e.target.checked)}
-                              />
-                              <Form.Check
-                                type="checkbox"
                                 id="FISDE_KUR_TURU_DEGISEBILIR"
                                 label="Fişte Kur Türü Değiştirilebilir"
                                 checked={formData.FISDE_KUR_TURU_DEGISEBILIR ?? false}
@@ -1818,6 +1818,26 @@ export const CompanyDefinitionsPage: React.FC = () => {
                 </Tab.Pane>
 
                 {/* ─── TAB 3: MUHASEBE & HESAP PLANI ─── */}
+                {/* ─── KUR KAYNAĞI: otomatik çekme + birim bazında komisyon (docs/KUR_KAYNAGI_YOL_HARITASI.md) ─── */}
+                <Tab.Pane eventKey="kurKaynagi">
+                  <div className="p-3 bg-light rounded-3 border mb-3">
+                    <Form.Check
+                      type="checkbox"
+                      id="MERKEZ_BANKASI_KURUNU_AL"
+                      label="Kuru seçili kaynaktan otomatik al"
+                      checked={formData.MERKEZ_BANKASI_KURUNU_AL ?? false}
+                      onChange={(e) => handleChange("MERKEZ_BANKASI_KURUNU_AL", e.target.checked)}
+                    />
+                    <div className="small text-secondary mt-1">
+                      İşaretliyse Anlık Fiyat Listesi açıkken kurlar, listede seçili kaynaktan Sistem sekmesindeki tazeleme süresinde bir çekilip kaydedilir.
+                    </div>
+                  </div>
+                  <div className="p-3 bg-light rounded-3 border">
+                    <div className="fw-semibold mb-2" style={{ fontSize: 13 }}>Komisyon (birim bazında)</div>
+                    <KurKomisyonTablosu ref={komisyonRef} />
+                  </div>
+                </Tab.Pane>
+
                 <Tab.Pane eventKey="muhasebe">
                   <Row className="g-3">
                     <Col xs={12} md={6}>

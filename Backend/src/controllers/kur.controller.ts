@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { KurService } from "../services/kur.service.js";
+import { KurKaynakService } from "../services/kur/kurKaynak.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
@@ -97,5 +98,47 @@ export class KurController {
   public static fetchTcmb = asyncHandler(async (_req: Request, res: Response) => {
     const rates = await KurService.fetchTcmbRates();
     return ApiResponse.ok(res, "TCMB kurları başarıyla alındı.", rates);
+  });
+
+  /**
+   * GET /api/v1/kur/kaynaklar — Anlık Fiyat Listesi'nin sol paneli (kaynaklar + durum + seçili)
+   */
+  public static kaynaklar = asyncHandler(async (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    return ApiResponse.ok(res, "Kur kaynakları", await KurKaynakService.kaynaklar(KurController.getDbContext(req)));
+  });
+
+  /**
+   * PUT /api/v1/kur/kaynak-secili  Body: { kaynak }
+   */
+  public static seciliKaydet = asyncHandler(async (req: Request, res: Response) => {
+    const kaynak = String(req.body?.kaynak ?? "").trim();
+    await KurKaynakService.seciliKaydet(kaynak, req.user?.username ?? null, KurController.getDbContext(req));
+    return ApiResponse.ok(res, "Kur kaynağı seçildi.", { kaynak });
+  });
+
+  /**
+   * GET /api/v1/kur/kaynak/:kaynak — kaynaktan çekilmiş, komisyonu uygulanmış kurlar (kaydetmez)
+   */
+  public static kaynaktanCek = asyncHandler(async (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    const sonuc = await KurKaynakService.cek(String(req.params.kaynak), KurController.getDbContext(req));
+    return ApiResponse.ok(res, `${sonuc.kaynakAd} kurları alındı.`, sonuc);
+  });
+
+  /**
+   * GET /api/v1/kur/komisyon — birim bazında komisyon tablosu (Firma Tanımları › Kur Kaynağı)
+   */
+  public static komisyonlar = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "Kur komisyonları", await KurKaynakService.komisyonlar(KurController.getDbContext(req)));
+  });
+
+  /**
+   * PUT /api/v1/kur/komisyon  Body: { satirlar: [{ paraId, alisTur, alisDeger, satisTur, satisDeger }] }
+   */
+  public static komisyonKaydet = asyncHandler(async (req: Request, res: Response) => {
+    const ctx = KurController.getDbContext(req);
+    await KurKaynakService.komisyonKaydet(req.body?.satirlar, ctx);
+    return ApiResponse.ok(res, "Kur komisyonları kaydedildi.", await KurKaynakService.komisyonlar(ctx));
   });
 }
