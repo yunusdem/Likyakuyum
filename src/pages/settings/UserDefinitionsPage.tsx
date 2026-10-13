@@ -1497,7 +1497,7 @@ const UserDefinitionsPage: React.FC = () => {
                       <h6 className="fw-bold text-dark border-bottom pb-2 mb-3 small">
                         İstatistik Grubu Atama
                         <span className="text-muted fw-normal ms-2" style={{ fontSize: "11px" }}>
-                          (Döviz fişi açılışında otomatik uygulanır)
+                          (Döviz, Sarraf ve Perakende fişlerinde otomatik uygulanır)
                         </span>
                       </h6>
                       <Row className="g-3">

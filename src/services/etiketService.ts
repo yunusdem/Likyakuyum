@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { notifyProductChanged } from "./productSyncService";
 
 // ─── Altın Ürün (TODVZ_ALTIN_URUN) ───────────────────────────────────────────
 export interface AltinUrunItem {
@@ -399,10 +400,13 @@ export const EtiketService = {
   },
   async saveAltinUrun(payload: SaveAltinUrunPayload): Promise<AltinUrunItem> {
     const res = await apiClient.post<AltinUrunItem>("/etiket/altin-urun", payload);
-    return (res.data as any)?.data ?? res.data;
+    const saved = (res.data as any)?.data ?? res.data;
+    notifyProductChanged("altin", saved, "create");
+    return saved;
   },
   async deleteAltinUrun(id: number): Promise<void> {
     await apiClient.delete(`/etiket/altin-urun/${id}`);
+    notifyProductChanged("altin", { id }, "delete");
   },
   async markAltinUrunYazdirildi(ids: number[], yazdirildi: boolean): Promise<void> {
     await apiClient.post("/etiket/altin-urun/yazdirildi-isaretle", { ids, yazdirildi });
@@ -428,10 +432,13 @@ export const EtiketService = {
   },
   async saveOzelUrun(payload: SaveOzelUrunPayload): Promise<OzelUrunItem> {
     const res = await apiClient.post<OzelUrunItem>("/etiket/ozel-urun", payload);
-    return (res.data as any)?.data ?? res.data;
+    const saved = (res.data as any)?.data ?? res.data;
+    notifyProductChanged("ozel", saved, "create");
+    return saved;
   },
   async deleteOzelUrun(id: number): Promise<void> {
     await apiClient.delete(`/etiket/ozel-urun/${id}`);
+    notifyProductChanged("ozel", { id }, "delete");
   },
   async markOzelUrunYazdirildi(ids: number[], yazdirildi: boolean): Promise<void> {
     await apiClient.post("/etiket/ozel-urun/yazdirildi-isaretle", { ids, yazdirildi });

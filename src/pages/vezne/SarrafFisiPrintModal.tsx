@@ -128,11 +128,11 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
     handlePrint(fis).finally(() => onHide());
   }, [show, autoPrint, fis, handlePrint, onHide]);
 
-  // F8/F10 Shortcuts inside Print Modal
+  // F8/F10 / Enter Shortcuts inside Print Modal
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!show) return;
-      if (e.key === "F8" || e.key === "F10") {
+      if (e.key === "Enter" || e.key === "F8" || e.key === "F10") {
         e.preventDefault();
         e.stopPropagation();
         handlePrint();

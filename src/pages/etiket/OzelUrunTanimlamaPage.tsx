@@ -26,8 +26,10 @@ import { MenuService, MenuItem, notifyKatalogUpdate } from "../../services/menuS
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { AyarSecimModal } from "../../components/common/AyarSecimModal";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import { TabloMaddesiSecimModal } from "../../components/common/TabloMaddesiSecimModal";
 import EtiketYazdirModal, { EtiketYazdirItem } from "./EtiketYazdirModal";
+import { onProductChanged } from "../../services/productSyncService";
 import {
   EtiketService,
   OzelUrunItem,
@@ -1191,6 +1193,23 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     loadAll();
   }, [loadAll]);
 
+  // Canlı Ürün Senkronizasyonu (Sayfa yenilemesi olmadan Özel Ürün Seçim modalında anında güncelleme)
+  useEffect(() => {
+    const unsub = onProductChanged((event) => {
+      if (event.type === "all" || event.type === "ozel") {
+        EtiketService.getOzelUrunler({ limit: 500 })
+          .then((fresh) => {
+            if (fresh) {
+              const sorted = fresh.slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
+              setOzelList(sorted);
+            }
+          })
+          .catch(() => {});
+      }
+    });
+    return unsub;
+  }, []);
+
   const isInitialMountRef = useRef<boolean>(true);
   const handledQueryIdRef = useRef<string | null>(null);
   const prevPathnameRef = useRef<string>(location.pathname);
@@ -1268,6 +1287,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   // ─── F1 / F9 / F10 Klavye Kısayolları (Her render güncel ref çağırır) ─────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlN = isCtrlNEvent(e);
+      if (isCtrlN) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleNew();
+        return;
+      }
+
       if (showLookup || showMenuModal || showDeleteConfirm) return;
 
       if (e.key === "F1") {
@@ -1288,8 +1315,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         setShowLookup(true);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [isDuzeltmeMode, ozelUrunId, showLookup, showMenuModal, showDeleteConfirm]);
 
   // ─── Grup Seçimi & Sıradaki Numarayı Alma (3 Haneli) ─────────────────────────
@@ -2378,7 +2405,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           {/* ─── ORTA BÖLÜM: SOL (Ürün Kimliği) + SAĞ (Montür & Birleşik Fiyatlandırma) ─── */}
           <Row className="g-3 mb-3">
             {/* ─── SOL BLOK: Ürün Kimliği ─── */}
-            <Col xs={12} lg={6}>
+            <Col xs={12} lg="auto" style={{ width: "360px", maxWidth: "100%" }}>
               <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column justify-content-between">
                 <div>
                   <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
@@ -2683,8 +2710,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
             </Col>
 
             {/* ─── SAĞ BLOK: Montür Maliyeti + Birleşik Fiyatlandırma ─── */}
-            <Col xs={12} lg={6}>
-              <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column justify-content-between gap-2.5">
+            <Col xs={12} lg="auto" style={{ width: "550px", maxWidth: "100%" }}>
+              <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column gap-2.5">
                 {/* Montür (Gövde Altın / Metal) Hesap Alanı */}
                 <div>
                   <div className="fw-bold text-primary border-bottom pb-1.5 mb-2 d-flex align-items-center justify-content-between">
@@ -2757,11 +2784,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   </div>
 
                   {/* Montür İşçilik & Dürbünlü Para Tablosu Seçimi */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
-                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
-                      Montür İşçilik :
-                    </div>
-                    <div className="flex-grow-1 d-flex align-items-center gap-1.5">
+                    <div className="d-flex align-items-center mb-2 gap-1.5">
+                      <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                        Montür İşçilik :
+                      </div>
+                      <div className="flex-grow-1 d-flex align-items-center gap-1.5" style={{ maxWidth: "330px" }}>
                       <Form.Control
                         ref={monturIscilikRef}
                         type="text"
@@ -2817,17 +2844,17 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   </div>
 
                   {/* Toplam Maliyet */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                  <div className="d-flex align-items-center mb-1.5 gap-1.5">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Toplam Maliyet :
                     </div>
-                    <div style={{ maxWidth: "220px" }}>
+                    <div style={{ maxWidth: "165px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
                           readOnly
                           value={maliyet ?? ""}
-                          className="fw-bold font-monospace text-end bg-light"
+                          className="fw-bold font-monospace text-end bg-light px-1.5"
                           title="Toplam Montür Maliyeti + Taşlar Tutarı (Kilitli)"
                         />
                         <Form.Control
@@ -2835,11 +2862,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                           readOnly
                           value={maliyetParaKodu}
                           className="bg-light font-monospace fw-bold text-center px-1"
-                          style={{ maxWidth: "55px" }}
+                          style={{ maxWidth: "48px" }}
                         />
                         <Button
                           variant="outline-secondary"
-                          className="px-2"
+                          className="px-1.5"
                           onClick={() => setShowKurLookup("maliyet")}
                           title="Para Tablosundan Seç (Dürbün)"
                         >
@@ -2850,20 +2877,20 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   </div>
 
                   {/* Satış Kârı % */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                  <div className="d-flex align-items-center mb-1.5 gap-1.5">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Satış Kârı % :
                     </div>
-                    <div style={{ maxWidth: "140px" }}>
+                    <div style={{ maxWidth: "90px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
                           inputMode="decimal"
                           value={satisKariYuzde ?? ""}
                           onChange={(e) => handleKarYuzdeChange(cleanInputStr(e.target.value))}
-                          className="font-monospace text-end fw-bold text-success bg-white"
+                          className="font-monospace text-end fw-bold text-success bg-white px-1.5"
                         />
-                        <InputGroup.Text className="bg-light fw-bold px-2">%</InputGroup.Text>
+                        <InputGroup.Text className="bg-light fw-bold px-1.5">%</InputGroup.Text>
                       </InputGroup>
                     </div>
                   </div>
@@ -2873,25 +2900,25 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
                       Satış Fiyatı :
                     </div>
-                    <div style={{ maxWidth: "220px" }}>
+                    <div style={{ maxWidth: "165px" }}>
                       <InputGroup size="sm">
                         <Form.Control
                           type="text"
                           inputMode="decimal"
                           value={satisFiyati ?? ""}
                           onChange={(e) => handleSatisFiyatiChange(cleanInputStr(e.target.value))}
-                          className="fw-bold font-monospace text-primary text-end bg-white fs-6"
+                          className="fw-bold font-monospace text-primary text-end bg-white fs-6 px-1.5"
                         />
                         <Form.Control
                           type="text"
                           readOnly
                           value={satisParaKodu}
                           className="bg-light font-monospace fw-bold text-primary text-center px-1"
-                          style={{ maxWidth: "55px" }}
+                          style={{ maxWidth: "48px" }}
                         />
                         <Button
                           variant="outline-secondary"
-                          className="px-2"
+                          className="px-1.5"
                           onClick={() => setShowKurLookup("satis")}
                           title="Para Tablosundan Seç (Dürbün)"
                         >
@@ -3463,6 +3490,15 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
               >
                 <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F10</Badge>
                 <span className="fw-bold text-dark">Kaydet / Yazdır</span>
+              </span>
+              <span
+                className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                style={{ fontSize: "11.5px", cursor: "pointer" }}
+                onClick={() => handleNew()}
+                title="Yeni Kayıt (Ctrl+N)"
+              >
+                <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>Ctrl+N</Badge>
+                <span className="fw-bold text-dark">Yeni Kayıt</span>
               </span>
             </div>
           </div>

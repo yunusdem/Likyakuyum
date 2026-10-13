@@ -24,6 +24,7 @@ import {
   IconDeviceFloppy,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal from "../../components/common/LookupModal";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
@@ -726,14 +727,14 @@ export const CariEmanetDekontPage: React.FC = () => {
     setActiveSmbSuggest(null);
 
     // SMB seçildikten sonra otomatik olarak Miktar hücresine odaklan
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const meblagInput = document.getElementById(`grid-input-${side}-${index}-meblag`) as HTMLInputElement | null;
       if (meblagInput) {
         meblagInput.focus();
         meblagInput.select();
         setActiveField("meblag");
       }
-    }, 40);
+    });
   };
 
   // Grid Değer Güncelleme (Atomik ve Güvenli)
@@ -869,7 +870,7 @@ export const CariEmanetDekontPage: React.FC = () => {
     else setSelectedSagIndex(targetRow);
     setActiveRowIndex(targetRow);
 
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const targetId = `grid-input-${nextSide}-${targetRow}-${activeField}`;
       const el = document.getElementById(targetId) as HTMLInputElement | null;
       if (el) {
@@ -884,7 +885,7 @@ export const CariEmanetDekontPage: React.FC = () => {
           fallback.select();
         }
       }
-    }, 40);
+    });
   }, [activeSide, activeRowIndex, activeField, solSatirlar, sagSatirlar]);
 
   // Hücreler İçi Klavye (Yön Okları ile Gezinme ve Enter ile Yeni Satır)
@@ -975,13 +976,13 @@ export const CariEmanetDekontPage: React.FC = () => {
         if (side === "sol") setSelectedSolIndex(nextIdx);
         else setSelectedSagIndex(nextIdx);
         setActiveField("smb");
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           const nextInput = document.getElementById(`grid-input-${side}-${nextIdx}-smb`) as HTMLInputElement | null;
           if (nextInput) {
             nextInput.focus();
             nextInput.select();
           }
-        }, 50);
+        });
         return;
       }
     }
@@ -1295,6 +1296,14 @@ export const CariEmanetDekontPage: React.FC = () => {
   // Global Klavye Kısayolları
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlN = isCtrlNEvent(e);
+      if (isCtrlN) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleNew();
+        return;
+      }
+
       if (e.key === "F1") {
         e.preventDefault();
         handleSave();
@@ -1310,9 +1319,9 @@ export const CariEmanetDekontPage: React.FC = () => {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleSave, handleHesapKapat, handleF9Switch]);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [handleSave, handleHesapKapat, handleF9Switch, handleNew]);
 
   // Tablo 3. Sütun Başlığı ve Dip Toplam Etiketi
   const col3Header = useMemo(() => {
@@ -2537,8 +2546,16 @@ export const CariEmanetDekontPage: React.FC = () => {
           >
             <strong>F9)</strong> Sağ/Sol
           </span>
-          <span>
+          <span className="me-3">
             <strong>F10)</strong> Kes
+          </span>
+          <span
+            className="cursor-pointer text-success fw-bold"
+            onClick={handleNew}
+            style={{ cursor: "pointer" }}
+            title="Yeni Kayıt (Ctrl+N)"
+          >
+            <strong>Ctrl+N)</strong> Yeni Kayıt
           </span>
         </div>
       </div>

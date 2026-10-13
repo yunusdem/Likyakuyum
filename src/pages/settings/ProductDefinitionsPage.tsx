@@ -38,6 +38,7 @@ import {
   ProductItem,
   ProductFormData,
 } from "../../services/productDefinitionService";
+import { onProductChanged } from "../../services/productSyncService";
 import { CariService, LookupItem } from "../../services/cariService";
 
 
@@ -152,6 +153,20 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
   useEffect(() => {
     loadData();
     loadParaList();
+  }, []);
+
+  // Canlı senkronizasyon (başka sekme veya pencereden ürün güncellendiğinde liste yenilenir)
+  useEffect(() => {
+    const unsub = onProductChanged((event) => {
+      if (event.type === "all" || event.type === "para") {
+        ProductDefinitionService.getProducts().then((list) => {
+          if (list) {
+            setProducts(list);
+          }
+        }).catch(() => {});
+      }
+    });
+    return unsub;
   }, []);
 
   const handleSelectProduct = (item: ProductItem, idx?: number) => {

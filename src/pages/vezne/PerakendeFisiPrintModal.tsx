@@ -70,18 +70,23 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
     handlePrint(fis).finally(() => onHide());
   }, [show, autoPrint, fis, handlePrint, onHide]);
 
-  // Keyboard shortcut listener (F8 / F10 inside print modal)
+  // Keyboard shortcut listener (Enter / F8 / F10 inside print modal)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!show) return;
-      if (e.key === "F8" || e.key === "F10") {
+      if (e.key === "Enter" || e.key === "F8" || e.key === "F10") {
         e.preventDefault();
+        e.stopPropagation();
         handlePrint();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onHide();
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [show, handlePrint]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [show, handlePrint, onHide]);
 
   if (!fatura) return null;
 

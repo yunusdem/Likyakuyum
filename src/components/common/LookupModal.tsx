@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Modal, Form, InputGroup, Table, Button, Spinner, Badge } from "react-bootstrap";
 import { IconSearch, IconBinoculars, IconX, IconCheck, IconPlus } from "@tabler/icons-react";
 import { highlightText } from "./HighlightText";
+import { isCtrlNEvent, triggerGlobalNewRecord } from "../../utils/keyboardShortcuts";
 
 export interface LookupColumn<T> {
   header: string;
@@ -198,6 +199,19 @@ function LookupModalContent<T extends Record<string, any>>({
   useEffect(() => {
     if (!show) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isCtrlNEvent(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (onAddNew) {
+          onAddNew();
+        } else {
+          onHide();
+          triggerGlobalNewRecord();
+        }
+        return;
+      }
+
       // Herhangi bir F1..F12 tuşuna basıldığında açık modalı kapat ve eylemin üst sayfada işlenmesine izin ver
       if (/^F([1-9]|1[0-2])$/.test(e.key)) {
         onHide();

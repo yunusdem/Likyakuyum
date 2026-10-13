@@ -29,6 +29,7 @@ import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import EtiketYazdirModal, { EtiketYazdirItem } from "./EtiketYazdirModal";
 import { EtiketService, AltinUrunItem, OzelUrunItem, EtiketSablonItem } from "../../services/etiketService";
+import { onProductChanged } from "../../services/productSyncService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { MenuSecimModal } from "../../components/katalog/MenuSecimModal";
 import { MenuService, MenuItem, notifyKatalogUpdate } from "../../services/menuService";
@@ -88,6 +89,13 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
   const openLookup = (initialTerm = "") => {
     setLookupInitialTerm(initialTerm);
     setShowLookup(true);
+    Promise.all([
+      EtiketService.getAltinUrunler({ limit: 1000 }),
+      EtiketService.getOzelUrunler({ limit: 1000 }),
+    ]).then(([altin, ozel]) => {
+      if (altin) setAltinList(altin);
+      if (ozel) setOzelList(ozel);
+    }).catch(() => {});
   };
 
   const loadAll = useCallback(async () => {
@@ -251,6 +259,22 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
     loadAll();
     barkodRef.current?.focus();
   }, [loadAll]);
+
+  // Canlı Ürün Senkronizasyonu (Sayfa yenilemesi olmadan Ürün Seçim modalında anında güncelleme)
+  useEffect(() => {
+    const unsub = onProductChanged((event) => {
+      if (event.type === "all" || event.type === "altin" || event.type === "ozel") {
+        Promise.all([
+          EtiketService.getAltinUrunler({ limit: 1000 }),
+          EtiketService.getOzelUrunler({ limit: 1000 }),
+        ]).then(([altin, ozel]) => {
+          if (altin) setAltinList(altin);
+          if (ozel) setOzelList(ozel);
+        }).catch(() => {});
+      }
+    });
+    return unsub;
+  }, []);
 
   const handleAra = useCallback(async () => {
     const kod = barkodInput.trim();
@@ -517,6 +541,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
         }
         hideDelete
         hideNavigation
+        onNew={handleClear}
         onSearch={() => openLookup(barkodInput.trim())}
         onRefresh={loadAll}
         onPrint={() => (bulunan ? setShowPrintModal(true) : showNotif("warning", "Önce bir ürün bulun veya seçin."))}

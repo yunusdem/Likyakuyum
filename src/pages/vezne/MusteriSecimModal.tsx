@@ -7,6 +7,7 @@ import { CariCardRegistrationPage } from "../cari/CariCardRegistrationPage";
 import { highlightText } from "../../components/common/HighlightText";
 import { ebelgeService } from "../../services/ebelgeService";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 
 export type CustomerSelectionType = "registered" | "unregistered" | "anonymous";
 
@@ -294,6 +295,13 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
   useEffect(() => {
     if (!show || showNewCariModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isCtrlNEvent(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setShowNewCariModal(true);
+        return;
+      }
       if (/^F([1-9]|1[0-2])$/.test(e.key)) { onClose(); return; }
       if (e.key === "ArrowDown") {
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();

@@ -107,16 +107,23 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
     }
   }, [show, autoPrint, fis, handlePrint, onHide]);
 
-  // F8 Shortcut for print when modal is open
+  // Enter / F8 / F10 / Escape Shortcuts for print when modal is open
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!show || e.key !== "F8") return;
-      e.preventDefault();
-      handlePrint();
+      if (!show) return;
+      if (e.key === "Enter" || e.key === "F8" || e.key === "F10") {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePrint();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onHide();
+      }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [show, handlePrint]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [show, handlePrint, onHide]);
 
   return (
     <Modal show={show && (!autoPrint || !!hata)} onHide={onHide} size="lg" centered backdrop="static">

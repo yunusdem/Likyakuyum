@@ -84,8 +84,9 @@ export const F10YaziciSecimModal: React.FC<F10YaziciSecimModalProps> = ({
   }, [activePrinter, userPrinter]);
 
   const handleConfirm = () => {
-    if (!activePrinter) return;
-    onConfirm(activePrinter, copies);
+    const printer = activePrinter || (printers && printers.length > 0 ? printers[0] : null);
+    if (!printer) return;
+    onConfirm(printer, copies);
   };
 
   // Keyboard navigation: Enter onayla, Escape kapat
@@ -106,7 +107,7 @@ export const F10YaziciSecimModal: React.FC<F10YaziciSecimModalProps> = ({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [show, activePrinter, copies, onConfirm, onHide]);
+  }, [show, activePrinter, printers, copies, onConfirm, onHide]);
 
   return (
     <Modal
