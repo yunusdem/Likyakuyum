@@ -32,6 +32,8 @@ export const API_MODULLERI: Record<string, string[]> = {
   "/e-belge": ["ebelge", "ust:e-belge", "vezne", "perakende", "ayarlar"],
   "/masak": ["ust:masak", "vezne", "cari", "perakende", "raporlar"],
   "/etiket": ["etiket", "ust:fiyat", "perakende"],
+  // Piyasa (canlı fiyat panosu): yalnız üst çubuktaki kısayoldan açılır
+  "/piyasa": ["ust:piyasa"],
   "/rapor": ["raporlar", "vezne", "kasa", "kur", "cari", "yonetici", "banka", "ust:masak", "etiket"],
 };
 

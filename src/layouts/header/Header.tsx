@@ -91,6 +91,7 @@ const Header: React.FC = () => {
     return !kisayol || modulAcikMi(acikModuller, kisayol.key);
   });
   const masakAcik = modulAcikMi(acikModuller, "ust:masak");
+  const piyasaAcik = modulAcikMi(acikModuller, "ust:piyasa");
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const { handleCollapsed, collapsed } = useMenu();
@@ -213,22 +214,24 @@ const Header: React.FC = () => {
                 {/* MASAK Quick Action Dropdown (Beside E-Belge) */}
                 {masakAcik && <MasakMenu onUpdate={() => setIsMasakModalOpen(true)} />}
 
-                {/* Piyasa: herkese açık, modül kataloğunda yok (kapatılamaz) */}
-                <Link
-                  to="/piyasa"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigateWithDashboardHop("/piyasa");
-                  }}
-                  className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
-                >
-                  <span className="d-flex align-items-center justify-content-center" style={{ marginBottom: "2px" }}>
-                    <IconChartCandle size={19} strokeWidth={2.2} style={{ color: "#b8860b" }} />
-                  </span>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#b8860b", lineHeight: 1, whiteSpace: "nowrap", letterSpacing: "-0.1px" }}>
-                    Piyasa
-                  </span>
-                </Link>
+                {/* Piyasa: quickActions dışında çizilir (kendi rengi var); yönetim panelinden kapatılabilir (ust:piyasa) */}
+                {piyasaAcik && (
+                  <Link
+                    to="/piyasa"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateWithDashboardHop("/piyasa");
+                    }}
+                    className="d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
+                  >
+                    <span className="d-flex align-items-center justify-content-center" style={{ marginBottom: "2px" }}>
+                      <IconChartCandle size={19} strokeWidth={2.2} style={{ color: "#b8860b" }} />
+                    </span>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#b8860b", lineHeight: 1, whiteSpace: "nowrap", letterSpacing: "-0.1px" }}>
+                      Piyasa
+                    </span>
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -312,17 +315,19 @@ const Header: React.FC = () => {
 
             {masakAcik && <MasakMenu mobile onUpdate={() => setIsMasakModalOpen(true)} />}
 
-            <Link
-              to="/piyasa"
-              onClick={(e) => {
-                e.preventDefault();
-                navigateWithDashboardHop("/piyasa");
-              }}
-              className="d-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill"
-            >
-              <IconChartCandle size={16} strokeWidth={2} style={{ color: "#b8860b" }} />
-              <span style={{ fontSize: "11px", fontWeight: 700, color: "#b8860b" }}>Piyasa</span>
-            </Link>
+            {piyasaAcik && (
+              <Link
+                to="/piyasa"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateWithDashboardHop("/piyasa");
+                }}
+                className="d-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill"
+              >
+                <IconChartCandle size={16} strokeWidth={2} style={{ color: "#b8860b" }} />
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#b8860b" }}>Piyasa</span>
+              </Link>
+            )}
           </div>
         </Container>
       </header>

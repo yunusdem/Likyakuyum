@@ -112,7 +112,7 @@ apiRouter.use("/vezne/doviz-fis", kapi("/doviz-fis"), dovizFisRoutes);
 apiRouter.use("/tanimlar", tanimlarRoutes);
 apiRouter.use("/gib", gibRoutes);
 apiRouter.use("/kur", kurRoutes);
-apiRouter.use("/piyasa", piyasaRoutes);
+apiRouter.use("/piyasa", kapi("/piyasa"), piyasaRoutes);
 apiRouter.use("/pano", panoRoutes);
 apiRouter.use("/kur/pano-tanimi", panoRoutes);
 apiRouter.use("/banknot", banknotRoutes);

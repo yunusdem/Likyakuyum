@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Form, Button, Alert, Spinner, Row, Col, InputGroup, Modal } from "react-bootstrap";
+import { Form, Button, Alert, Spinner, Modal } from "react-bootstrap";
 import {
   IconUser,
   IconLock,
@@ -11,9 +11,8 @@ import {
   IconArrowLeft,
   IconDatabase,
   IconId,
-  IconBuildingStore,
-  IconChartBar,
-  IconReceipt2,
+  IconSearch,
+  IconCircleCheck,
 } from "@tabler/icons-react";
 import { useAuth } from "../../context/AuthContext";
 import { AuthService, MusteriVeritabani } from "../../services/authService";
@@ -127,46 +126,68 @@ export const LoginPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Müşteri no yazıldıkça (kısa bekleme ile) veritabanları listelenir
-  useEffect(() => {
-    if (kurulum) return;
+  // Müşteri no yazarken sorgulanmaz; Enter ya da Sorgula düğmesiyle veritabanları listelenir.
+  // Dönen değer: tek veritabanı (ya da hatırlanan seçim) varsa onun firmaId'si, yoksa 0.
+  const kullaniciAdiRef = useRef<HTMLInputElement>(null);
+  const [sorgulanan, setSorgulanan] = useState<string>("");
+
+  const sorgula = async (odaklan = true): Promise<number> => {
     const no = musteriNoTemizle(musteriNo);
     setVeritabanlari([]);
     setFirmaId(0);
     setDbHata(null);
-    if (no.length < 3) return;
-
-    let iptal = false;
-    const timer = setTimeout(async () => {
-      setDbAraniyor(true);
-      try {
-        const liste = await AuthService.musteriVeritabanlari(no);
-        if (iptal) return;
-        setVeritabanlari(liste);
-        if (liste.length === 0) {
-          setDbHata("Bu müşteri noya ait veritabanı bulunamadı.");
-        } else if (liste.length === 1) {
-          setFirmaId(liste[0].firmaId);
-        } else {
-          const son = Number(localStorage.getItem(FIRMA_ID_KEY) || 0);
-          setFirmaId(liste.some((v) => v.firmaId === son) ? son : 0);
-        }
-      } catch (err: any) {
-        if (!iptal) {
-          const mesaj = String(err?.message || "");
-          setDbHata(!mesaj || /^HTTP Hata|ulaşılamadı|zaman aşımı/i.test(mesaj)
-            ? "Veritabanları alınamadı; sunucuya ulaşılamıyor. Biraz sonra tekrar deneyin."
-            : mesaj);
-        }
-      } finally {
-        if (!iptal) setDbAraniyor(false);
+    setSorgulanan("");
+    if (no.length < 3) {
+      setDbHata("Müşteri numaranızı eksiksiz giriniz.");
+      return 0;
+    }
+    setDbAraniyor(true);
+    try {
+      const liste = await AuthService.musteriVeritabanlari(no);
+      setVeritabanlari(liste);
+      setSorgulanan(no);
+      if (liste.length === 0) {
+        setDbHata("Bu müşteri numarasına ait veritabanı bulunamadı.");
+        return 0;
       }
-    }, 400);
-    return () => {
-      iptal = true;
-      clearTimeout(timer);
-    };
-  }, [musteriNo, kurulum]);
+      let secilen = 0;
+      if (liste.length === 1) {
+        secilen = liste[0].firmaId;
+      } else {
+        const son = Number(localStorage.getItem(FIRMA_ID_KEY) || 0);
+        if (liste.some((v) => v.firmaId === son)) secilen = son;
+      }
+      setFirmaId(secilen);
+      if (odaklan && secilen) setTimeout(() => kullaniciAdiRef.current?.focus(), 0);
+      return secilen;
+    } catch (err: any) {
+      const mesaj = String(err?.message || "");
+      setDbHata(!mesaj || /^HTTP Hata|ulaşılamadı|zaman aşımı/i.test(mesaj)
+        ? "Veritabanları alınamadı; sunucuya ulaşılamıyor. Biraz sonra tekrar deneyin."
+        : mesaj);
+      return 0;
+    } finally {
+      setDbAraniyor(false);
+    }
+  };
+
+  // Hatırlanan müşteri no açılışta bir kez sorgulanır (her girişte Sorgula'ya basılmasın)
+  useEffect(() => {
+    if (sistem && !sistem.kurulum && musteriNoTemizle(musteriNo).length >= 3) sorgula(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sistem?.kurulum]);
+
+  const handleMusteriNoChange = (val: string) => {
+    const temiz = musteriNoTemizle(val);
+    setMusteriNo(temiz);
+    // Numara değişince önceki sorgunun sonucu geçersizdir
+    if (temiz !== sorgulanan) {
+      setVeritabanlari([]);
+      setFirmaId(0);
+      setSorgulanan("");
+    }
+    setDbHata(null);
+  };
 
   const handleUsernameChange = (val: string) => {
     const clean = val.replace(/\s+/g, "");
@@ -223,13 +244,21 @@ export const LoginPage: React.FC = () => {
       setErrorMsg("Lütfen müşteri numaranızı giriniz.");
       return;
     }
-    if (!firmaId) {
-      setErrorMsg(
-        veritabanlari.length > 1
-          ? "Lütfen giriş yapılacak veritabanını seçiniz."
-          : dbHata || "Müşteri noya ait veritabanı bulunamadı."
-      );
-      return;
+    // Sorgulanmadan giriş istenirse önce sorgulanır; tek veritabanı çıkarsa giriş sürer
+    // (sonuç alanın altında ya da veritabanı listesinde görünür)
+    let secilenFirma = firmaId;
+    if (!secilenFirma) {
+      if (sorgulanan !== no) {
+        secilenFirma = await sorgula(false);
+        if (!secilenFirma) return;
+      } else {
+        setErrorMsg(
+          veritabanlari.length > 1
+            ? "Lütfen giriş yapılacak veritabanını seçiniz."
+            : dbHata || "Müşteri numarasına ait veritabanı bulunamadı."
+        );
+        return;
+      }
     }
     if (!cleanUsername) {
       setErrorMsg("Lütfen kullanıcı adınızı giriniz.");
@@ -243,7 +272,7 @@ export const LoginPage: React.FC = () => {
     try {
       setIsLoading(true);
       localStorage.setItem(MUSTERI_NO_KEY, no);
-      localStorage.setItem(FIRMA_ID_KEY, String(firmaId));
+      localStorage.setItem(FIRMA_ID_KEY, String(secilenFirma));
       if (rememberMe) {
         localStorage.setItem("kuyumcu_erp_remember_me", "true");
         localStorage.setItem("kuyumcu_erp_remember_user", cleanUsername);
@@ -252,7 +281,7 @@ export const LoginPage: React.FC = () => {
         localStorage.removeItem("kuyumcu_erp_remember_user");
       }
 
-      await login({ musteriNo: no, firmaId, username: cleanUsername, password });
+      await login({ musteriNo: no, firmaId: secilenFirma, username: cleanUsername, password });
       navigate("/dashboard", { replace: true });
     } catch (err: any) {
       if (engelGoster(err)) return;
@@ -270,504 +299,406 @@ export const LoginPage: React.FC = () => {
   const secili = veritabanlari.find((v) => v.firmaId === firmaId);
 
   return (
-    <div
-      className="min-vh-100 w-100 d-flex align-items-center justify-content-center p-3 p-md-4 login-page-wrapper"
-      style={{
-        background: "linear-gradient(135deg, #faf7f2 0%, #f3ede2 50%, #f7f3ea 100%)",
-        fontFamily: "'Segoe UI', 'Inter', -apple-system, sans-serif",
-      }}
-    >
+    <div className="login-sayfa">
       <style>{`
-        .custom-login-dropdown .dropdown-item:hover {
-          background-color: #f7f3ea !important;
-          color: #1c1917 !important;
+        .login-sayfa {
+          min-height: 100vh;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 5rem 1rem 2.5rem;
+          position: relative;
+          overflow: hidden;
+          background:
+            radial-gradient(900px 500px at 85% -10%, rgba(200, 143, 24, 0.14), transparent 60%),
+            radial-gradient(700px 450px at -10% 110%, rgba(158, 100, 11, 0.10), transparent 60%),
+            linear-gradient(160deg, #fbf8f3 0%, #f4eee3 100%);
+          font-family: 'Segoe UI', 'Inter', -apple-system, sans-serif;
         }
-        .custom-login-dropdown .dropdown-item:active {
-          background-color: #ede4d3 !important;
+        .login-sayfa::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background-image: radial-gradient(rgba(120, 68, 5, 0.07) 1px, transparent 1px);
+          background-size: 22px 22px;
+          mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+          -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+          pointer-events: none;
         }
-        .login-form-panel .form-control:focus {
-          border-color: #c88f18 !important;
-          box-shadow: 0 0 0 0.2rem rgba(200, 143, 24, 0.18) !important;
+        .login-icerik { position: relative; z-index: 1; width: 100%; max-width: 440px; }
+        .login-marka { text-align: center; margin-bottom: 1.75rem; }
+        .login-marka-ad { font-size: 2.1rem; line-height: 1.1; margin: 0; }
+        /* Genel marka yazısı koyu zemin için açık altın; açık zeminde okunsun diye koyu altın */
+        .login-marka .brand-text-likya,
+        .login-marka .brand-text-kuyum {
+          background: linear-gradient(135deg, #d9a632 0%, #b07a16 55%, #7a4a07 100%) !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
         }
-        .login-form-panel .form-check-input:checked {
-          background-color: #c88f18 !important;
-          border-color: #c88f18 !important;
+        .login-marka-alt {
+          display: inline-block;
+          margin-top: 0.55rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #9e640b;
         }
-        .login-submit-btn {
+        .login-kart {
+          position: relative;
+          background: #ffffff;
+          border: 1px solid #ece3d4;
+          border-radius: 20px;
+          padding: 2rem 2rem 1.75rem;
+          box-shadow: 0 1px 2px rgba(60, 35, 5, 0.04), 0 24px 48px -20px rgba(90, 50, 10, 0.22);
+          overflow: hidden;
+        }
+        .login-kart::before {
+          content: "";
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 4px;
+          background: linear-gradient(90deg, #e8b84b, #c88f18 50%, #9e640b);
+        }
+        .login-baslik { font-size: 1.4rem; font-weight: 700; color: #3b2306; margin-bottom: 0.2rem; }
+        .login-aciklama { font-size: 0.85rem; color: #8a7a66; margin-bottom: 1.5rem; }
+        .login-alan { margin-bottom: 1rem; }
+        .login-alan .form-label { font-size: 0.8rem; font-weight: 600; color: #5c4a35; margin-bottom: 0.35rem; }
+        .login-grup {
+          display: flex;
+          align-items: stretch;
+          border: 1px solid #e4d9c8;
+          border-radius: 12px;
+          background: #ffffff;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+          overflow: hidden;
+        }
+        .login-grup:focus-within { border-color: #c88f18; box-shadow: 0 0 0 4px rgba(200, 143, 24, 0.14); }
+        .login-grup.hatali { border-color: #dc3545; }
+        .login-grup.hatali:focus-within { box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.12); }
+        .login-grup.bulundu { border-color: #86c79b; }
+        .login-grup-ikon { display: flex; align-items: center; padding: 0 0.15rem 0 0.85rem; color: #b09a7c; }
+        .login-grup .form-control,
+        .login-grup .form-select {
+          border: none !important;
+          box-shadow: none !important;
+          background-color: transparent !important;
+          height: 46px;
+          font-size: 0.95rem;
+          color: #2b1d0e;
+        }
+        .login-grup .form-control[readonly] { color: #2b1d0e; cursor: default; }
+        .login-grup .form-control::placeholder { color: #bcae9a; }
+        .login-goz { border: none; background: transparent; color: #a08a6b; padding: 0 0.9rem; }
+        .login-goz:hover { color: #784405; }
+        .login-sorgula {
+          border: none;
+          margin: 4px;
+          padding: 0 1rem;
+          border-radius: 9px;
+          background: linear-gradient(135deg, #22a559 0%, #15803d 100%);
+          color: #ffffff;
+          font-weight: 600;
+          font-size: 0.85rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          white-space: nowrap;
+          transition: filter 0.15s ease, transform 0.15s ease;
+        }
+        .login-sorgula:hover:not(:disabled) { filter: brightness(1.08); }
+        .login-sorgula:active:not(:disabled) { transform: translateY(1px); }
+        .login-sorgula:disabled { opacity: 0.65; }
+        .login-ipucu { font-size: 0.76rem; color: #9a8b78; margin-top: 0.35rem; }
+        .login-hata { font-size: 0.78rem; color: #c0392b; margin-top: 0.35rem; display: flex; align-items: center; gap: 0.3rem; }
+        .login-sayfa .form-check-input:checked { background-color: #c88f18; border-color: #c88f18; }
+        .login-sayfa .form-check-input:focus { box-shadow: 0 0 0 0.2rem rgba(200, 143, 24, 0.18); border-color: #c88f18; }
+        .login-gir {
+          width: 100%;
+          height: 48px;
+          border: none !important;
+          border-radius: 12px !important;
           background: linear-gradient(135deg, #c88f18 0%, #9e640b 100%) !important;
           color: #ffffff !important;
-          box-shadow: 0 4px 12px rgba(184, 123, 25, 0.28) !important;
-          border: none !important;
-          transition: all 0.2s ease !important;
+          font-weight: 600;
+          box-shadow: 0 8px 18px -8px rgba(158, 100, 11, 0.6) !important;
+          transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease !important;
         }
-        .login-submit-btn:hover {
-          background: linear-gradient(135deg, #d89e24 0%, #ad6f0e 100%) !important;
-          box-shadow: 0 6px 16px rgba(184, 123, 25, 0.38) !important;
-          transform: translateY(-1px) !important;
+        .login-gir:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 12px 22px -10px rgba(158, 100, 11, 0.7) !important; }
+        .login-alt { text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: #a3937e; letter-spacing: 0.3px; }
+        .login-geri {
+          position: absolute;
+          top: 1.25rem;
+          left: 1.25rem;
+          z-index: 2;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.5rem 1rem;
+          border-radius: 999px;
+          border: 1px solid #e7dcce;
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(8px);
+          color: #784405;
+          font-size: 0.84rem;
+          font-weight: 600;
+          transition: all 0.2s ease;
         }
-        .back-to-home-btn {
-          background-color: rgba(255, 255, 255, 0.92) !important;
-          backdrop-filter: blur(8px) !important;
-          border: 1px solid #e7dcce !important;
-          color: #784405 !important;
-          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
-        .back-to-home-btn:hover {
-          background-color: #ffffff !important;
-          border-color: #c88f18 !important;
-          color: #9e640b !important;
-          box-shadow: 0 4px 15px rgba(200, 143, 24, 0.22) !important;
-          transform: translateX(-3px);
-        }
-        @media (max-width: 991.98px) {
-          .login-page-wrapper {
-            padding-top: max(7.5rem, 15vh) !important;
-            padding-bottom: 5rem !important;
-            align-items: flex-start !important;
-          }
-          .login-card-container {
-            background: transparent !important;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          .login-form-panel {
-            border-radius: 1rem !important;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
-            border: 1px solid #e2e8f0 !important;
-            margin-left: auto !important;
-            margin-right: auto !important;
-          }
-          .login-brand-panel {
-            border-radius: 1rem !important;
-            box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.08) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            margin-top: 2rem !important;
-            margin-left: auto !important;
-            margin-right: auto !important;
-          }
+        .login-geri:hover { background: #ffffff; border-color: #c88f18; color: #9e640b; transform: translateX(-2px); }
+        @media (max-width: 575.98px) {
+          .login-kart { padding: 1.5rem 1.25rem 1.25rem; border-radius: 16px; }
+          .login-marka-ad { font-size: 1.75rem; }
+          .login-geri span { display: none; }
+          .login-geri { padding: 0.5rem 0.65rem; top: 1rem; left: 1rem; }
         }
       `}</style>
-      {/* Top-Left Back to Home Button */}
-      <button
-        type="button"
-        onClick={() => navigate("/")}
-        className="btn d-inline-flex align-items-center gap-2 position-absolute top-0 start-0 m-3 m-md-4 z-3 shadow-sm rounded-pill back-to-home-btn"
-        style={{
-          fontSize: "0.86rem",
-          fontWeight: 600,
-          padding: "0.55rem 1.15rem",
-          cursor: "pointer",
-        }}
-        title="Tanıtım ve Ana Sayfaya Dön"
-      >
-        <IconArrowLeft size={19} style={{ color: "#c88f18" }} />
+
+      <button type="button" onClick={() => navigate("/")} className="login-geri" title="Tanıtım ve Ana Sayfaya Dön">
+        <IconArrowLeft size={18} style={{ color: "#c88f18" }} />
         <span>Ana Sayfaya Dön</span>
       </button>
 
-      {/* Background Decorative Circles */}
-      <div
-        className="position-absolute rounded-circle"
-        style={{
-          width: "450px",
-          height: "450px",
-          background: "radial-gradient(circle, rgba(200, 143, 24, 0.1) 0%, rgba(200, 143, 24, 0) 70%)",
-          top: "5%",
-          right: "5%",
-          filter: "blur(40px)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        className="position-absolute rounded-circle"
-        style={{
-          width: "400px",
-          height: "400px",
-          background: "radial-gradient(circle, rgba(168, 101, 10, 0.08) 0%, rgba(168, 101, 10, 0) 70%)",
-          bottom: "5%",
-          left: "5%",
-          filter: "blur(40px)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* Main Login Card */}
-      <div className="container position-relative z-1" style={{ maxWidth: "1120px" }}>
-        <div
-          className="row g-0 justify-content-center login-card-container rounded-4 overflow-hidden bg-white shadow-lg border"
-          style={{ borderColor: "#ede4d3", boxShadow: "0 20px 40px -15px rgba(90, 50, 10, 0.1)" }}
-        >
-          {/* Left / Mobile Bottom Panel: Dashboard Matching Dark Slate Brand Area */}
-          <div
-            className="col-12 col-md-10 col-lg-5 order-2 order-lg-1 d-flex flex-column justify-content-between p-4 p-lg-5 text-white position-relative login-brand-panel"
-            style={{
-              background: "linear-gradient(160deg, #14120e 0%, #1f1a14 60%, #2b2218 100%)",
-            }}
-          >
-            <div>
-              {/* Brand Logo & Name */}
-              <div className="mb-4">
-                {/* Logo and Likya Kuyum side by side */}
-                <div className="d-flex align-items-center mb-2">
-                  <img
-                    src="/images/logo/logo.svg"
-                    alt="Likya Kuyum Logo"
-                    className="flex-shrink-0 me-3"
-                    style={{ width: "64px", height: "64px", objectFit: "contain" }}
-                  />
-                  <h3 className="fw-bold mb-0 letter-spacing-1" style={{ fontSize: "2rem", lineHeight: "1.15" }}>
-                    <span className="brand-text-likya">Likya</span>{" "}
-                    <span className="brand-text-kuyum">Kuyum</span>
-                  </h3>
-                </div>
-
-                {/* Subtitle below */}
-                <span className="small text-uppercase fw-semibold d-inline-block ps-1" style={{ color: "#e5b54f", fontSize: "0.78rem", letterSpacing: "1.2px" }}>
-                  Döviz & Altın Yönetim Platformu
-                </span>
-              </div>
-
-              {/* Tagline & Feature Highlights */}
-              <div className="my-4 pt-2">
-                <h4 className="fw-bold text-white mb-3" style={{ lineHeight: "1.3" }}>
-                  Kurumsal Kuyumculuk ve Sarrafiye <br />
-                  <span style={{ color: "#f5c344" }}>Entegrasyon Sistemi</span>
-                </h4>
-                <p className="small mb-4" style={{ color: "#d6cfc4", lineHeight: "1.6" }}>
-                  Kasa, vezne, döviz kurları, cari hesaplar ve e-belge süreçlerinizi SQL veritabanı ile güvenle yönetin.
-                </p>
-
-                <div className="d-flex flex-column gap-3">
-                  <div className="d-flex align-items-center gap-3 small">
-                    <span
-                      className="p-2 rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
-                      style={{
-                        backgroundColor: "rgba(229, 181, 79, 0.15)",
-                        color: "#f5c344",
-                        border: "1px solid rgba(229, 181, 79, 0.3)",
-                      }}
-                    >
-                      <IconBuildingStore size={18} />
-                    </span>
-                    <span className="fw-medium text-white" style={{ fontSize: "0.875rem" }}>
-                      Çoklu Veritabanı ve Sunucu Seçimi
-                    </span>
-                  </div>
-                  <div className="d-flex align-items-center gap-3 small">
-                    <span
-                      className="p-2 rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
-                      style={{
-                        backgroundColor: "rgba(229, 181, 79, 0.15)",
-                        color: "#f5c344",
-                        border: "1px solid rgba(229, 181, 79, 0.3)",
-                      }}
-                    >
-                      <IconChartBar size={18} />
-                    </span>
-                    <span className="fw-medium text-white" style={{ fontSize: "0.875rem" }}>
-                      Canlı Kur ve Arbitraj Yönetimi
-                    </span>
-                  </div>
-                  <div className="d-flex align-items-center gap-3 small">
-                    <span
-                      className="p-2 rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
-                      style={{
-                        backgroundColor: "rgba(229, 181, 79, 0.15)",
-                        color: "#f5c344",
-                        border: "1px solid rgba(229, 181, 79, 0.3)",
-                      }}
-                    >
-                      <IconReceipt2 size={18} />
-                    </span>
-                    <span className="fw-medium text-white" style={{ fontSize: "0.875rem" }}>
-                      E-Fatura, E-Arşiv & Masak Bildirimi
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Left Bottom Footer */}
-            <div className="pt-3 border-top border-secondary border-opacity-25 d-flex align-items-center justify-content-end text-muted small" style={{ fontSize: "0.78rem" }}>
-              <span style={{ color: "#94a3b8" }}>v2026 Enterprise</span>
-            </div>
+      <div className="login-icerik">
+        {/* Marka */}
+        <div className="login-marka">
+          <div className="d-inline-flex align-items-center gap-3">
+            <img src="/images/logo/logo.svg" alt="Likya ERP Logo" style={{ width: "56px", height: "56px", objectFit: "contain" }} />
+            <h1 className="login-marka-ad fw-bold">
+              <span className="brand-text-likya">Likya</span> <span className="brand-text-kuyum">ERP</span>
+            </h1>
           </div>
+          <div>
+            <span className="login-marka-alt">Döviz &amp; Altın Yönetim Platformu</span>
+          </div>
+        </div>
 
-          {/* Right / Mobile Top Panel: Clean Dashboard-Styled Form Area */}
-          <div className="col-12 col-md-10 col-lg-7 order-1 order-lg-2 p-4 p-sm-5 d-flex flex-column justify-content-center bg-white login-form-panel">
-            <div className="w-100" style={{ maxWidth: "520px", margin: "0 auto" }}>
+        <div className="login-kart">
+          <div className="login-baslik">Giriş Yap</div>
+          <div className="login-aciklama">Devam etmek için hesap bilgilerinizi girin.</div>
 
+          {errorMsg && (
+            <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 px-3 mb-3 rounded-3 small">
+              <IconAlertCircle size={18} className="flex-shrink-0 text-danger" />
+              <span>{errorMsg}</span>
+            </Alert>
+          )}
 
-              {/* Form Title */}
-              <div className="text-center mb-3">
-                <h3 className="fw-bold mb-1" style={{ color: "#784405" }}>Giriş Yap</h3>
-              </div>
+          {kurulum && (
+            <Alert variant={ilkYonetici ? "info" : "light"} className="py-2 small border rounded-3">
+              <div className="fw-semibold">{sistem?.firma?.unvan || "Likya ERP"}</div>
+              {ilkYonetici
+                ? "İlk kurulum: programın yöneticisi olacak kullanıcıyı oluşturun. Diğer kullanıcıları içeriden açabilirsiniz."
+                : `Sürüm ${sistem?.surum || ""}`}
+            </Alert>
+          )}
 
-              {/* Error Alert */}
-              {errorMsg && (
-                <Alert
-                  variant="danger"
-                  className="d-flex align-items-center gap-2 py-2 px-3 mb-3 rounded-3 border small"
-                >
-                  <IconAlertCircle size={18} className="flex-shrink-0 text-danger" />
-                  <span>{errorMsg}</span>
-                </Alert>
-              )}
-
-              {kurulum && (
-                <Alert variant={ilkYonetici ? "info" : "light"} className="py-2 small border">
-                  <div className="fw-semibold">{sistem?.firma?.unvan || "Likya Kuyum"}</div>
-                  {ilkYonetici
-                    ? "İlk kurulum: programın yöneticisi olacak kullanıcıyı oluşturun. Diğer kullanıcıları içeriden açabilirsiniz."
-                    : `Sürüm ${sistem?.surum || ""}`}
-                </Alert>
-              )}
-
-              {/* Giriş: Müşteri No → Veritabanı → Kullanıcı Adı → Şifre */}
-              <Form onSubmit={handleSubmit} autoComplete="off">
-                {!kurulum && (<>
-                {/* Müşteri No */}
-                <Form.Group as={Row} className="align-items-center mb-3">
-                  <Col xs={12} sm={4} className="mb-1 mb-sm-0">
-                    <Form.Label className="d-flex flex-column mb-0" htmlFor="musteriNoInput">
-                      <span className="small fw-semibold text-secondary">
-                        Müşteri No <span className="text-danger">*</span>
-                      </span>
-                    </Form.Label>
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <InputGroup>
-                      <InputGroup.Text className="bg-light border-end-0 text-muted px-2.5">
-                        <IconId size={18} />
-                      </InputGroup.Text>
-                      <Form.Control
-                        id="musteriNoInput"
-                        type="text"
-                        autoFocus={!musteriNo}
-                        value={musteriNo}
-                        disabled={isLoading}
-                        onChange={(e) => setMusteriNo(musteriNoTemizle(e.target.value))}
-                        placeholder="Örn: D20AC0001"
-                        className="border-start-0 bg-white"
-                        style={{ height: "42px", letterSpacing: "0.5px" }}
-                        autoComplete="off"
-                        maxLength={20}
-                      />
-                      {dbAraniyor && (
-                        <InputGroup.Text className="bg-white">
-                          <Spinner animation="border" size="sm" />
-                        </InputGroup.Text>
-                      )}
-                    </InputGroup>
-                  </Col>
+          {/* Giriş: Müşteri No (Sorgula) → Veritabanı → Kullanıcı Adı → Şifre */}
+          <Form onSubmit={handleSubmit} autoComplete="off" noValidate>
+            {!kurulum && (
+              <>
+                <Form.Group className="login-alan">
+                  <Form.Label htmlFor="musteriNoInput">
+                    Müşteri No <span className="text-danger">*</span>
+                  </Form.Label>
+                  <div className={`login-grup ${dbHata ? "hatali" : secili ? "bulundu" : ""}`}>
+                    <span className="login-grup-ikon">
+                      <IconId size={18} />
+                    </span>
+                    <Form.Control
+                      id="musteriNoInput"
+                      type="text"
+                      autoFocus={!musteriNo}
+                      value={musteriNo}
+                      disabled={isLoading}
+                      onChange={(e) => handleMusteriNoChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        // Enter formu göndermez, yalnız sorgular
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (!dbAraniyor) sorgula();
+                        }
+                      }}
+                      placeholder="Örn: D20AC0001"
+                      style={{ letterSpacing: "0.5px" }}
+                      autoComplete="off"
+                      maxLength={20}
+                    />
+                    <button
+                      type="button"
+                      className="login-sorgula"
+                      disabled={isLoading || dbAraniyor || !musteriNo}
+                      onClick={() => sorgula()}
+                      title="Müşteri numarasına ait veritabanlarını getir"
+                    >
+                      {dbAraniyor ? <Spinner animation="border" size="sm" /> : <IconSearch size={16} />}
+                      <span>Sorgula</span>
+                    </button>
+                  </div>
+                  {dbHata ? (
+                    <div className="login-hata">
+                      <IconAlertCircle size={14} />
+                      {dbHata}
+                    </div>
+                  ) : !sorgulanan ? (
+                    <div className="login-ipucu">Numarayı yazıp Enter'a basın ya da Sorgula'ya tıklayın.</div>
+                  ) : null}
                 </Form.Group>
 
                 {/* Veritabanı: tek ise doğrudan gösterilir, birden çoksa seçilir */}
-                <Form.Group as={Row} className="align-items-center mb-3">
-                  <Col xs={12} sm={4} className="mb-1 mb-sm-0">
-                    <Form.Label className="d-flex flex-column mb-0" htmlFor="veritabaniSecim">
-                      <span className="small fw-semibold text-secondary">
-                        Veritabanı <span className="text-danger">*</span>
-                      </span>
-                    </Form.Label>
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <InputGroup>
-                      <InputGroup.Text className="bg-light border-end-0 text-muted px-2.5">
-                        <IconDatabase size={18} />
-                      </InputGroup.Text>
-                      {veritabanlari.length > 1 ? (
-                        <Form.Select
-                          id="veritabaniSecim"
-                          value={firmaId || ""}
-                          disabled={isLoading}
-                          onChange={(e) => setFirmaId(Number(e.target.value) || 0)}
-                          className="border-start-0 bg-white"
-                          style={{ height: "42px" }}
-                        >
-                          <option value="">Veritabanı seçiniz ({veritabanlari.length})</option>
-                          {veritabanlari.map((v) => (
-                            <option key={v.firmaId} value={v.firmaId}>
-                              {v.unvan} — {v.dbName}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      ) : (
-                        <Form.Control
-                          id="veritabaniSecim"
-                          type="text"
-                          readOnly
-                          tabIndex={-1}
-                          value={secili ? `${secili.unvan} — ${secili.dbName}` : ""}
-                          placeholder={dbAraniyor ? "Aranıyor..." : "Müşteri no yazınca gelir"}
-                          className={`border-start-0 bg-white ${dbHata ? "is-invalid" : ""}`}
-                          style={{ height: "42px" }}
-                        />
-                      )}
-                    </InputGroup>
-                    {dbHata && <div className="small text-danger mt-1">{dbHata}</div>}
-                  </Col>
-                </Form.Group>
-                </>)}
-
-                {kurulum && ilkYonetici && (
-                  <Form.Group as={Row} className="align-items-center mb-3">
-                    <Col xs={12} sm={4} className="mb-1 mb-sm-0">
-                      <Form.Label className="small fw-semibold text-secondary mb-0">Ad Soyad</Form.Label>
-                    </Col>
-                    <Col xs={12} sm={8}>
-                      <Form.Control
-                        value={ilkAdSoyad}
+                <Form.Group className="login-alan">
+                  <Form.Label htmlFor="veritabaniSecim">
+                    Veritabanı <span className="text-danger">*</span>
+                  </Form.Label>
+                  <div className={`login-grup ${secili ? "bulundu" : ""}`}>
+                    <span className="login-grup-ikon">
+                      <IconDatabase size={18} />
+                    </span>
+                    {veritabanlari.length > 1 ? (
+                      <Form.Select
+                        id="veritabaniSecim"
+                        value={firmaId || ""}
                         disabled={isLoading}
-                        onChange={(e) => setIlkAdSoyad(e.target.value)}
-                        style={{ height: "42px" }}
-                        maxLength={100}
-                      />
-                    </Col>
-                  </Form.Group>
-                )}
-
-                {/* Kullanıcı Adı */}
-                <Form.Group as={Row} className="align-items-center mb-3">
-                  <Col xs={12} sm={4} className="mb-1 mb-sm-0">
-                    <Form.Label className="d-flex flex-column mb-0">
-                      <span className="small fw-semibold text-secondary">
-                        Kullanıcı Adı <span className="text-danger">*</span>
-                      </span>
-                    </Form.Label>
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <InputGroup>
-                      <InputGroup.Text className="bg-light border-end-0 text-muted px-2.5">
-                        <IconUser size={18} />
-                      </InputGroup.Text>
-                      <Form.Control
-                        type="text"
-                        autoFocus={!!musteriNo}
-                        value={username}
-                        disabled={isLoading}
-                        onChange={(e) => handleUsernameChange(e.target.value)}
-                        placeholder=""
-                        className="border-start-0 bg-white"
-                        style={{ height: "42px" }}
-                        autoComplete="username"
-                      />
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
-
-                {/* Şifre */}
-                <Form.Group as={Row} className="align-items-center mb-3">
-                  <Col xs={12} sm={4} className="mb-1 mb-sm-0">
-                    <Form.Label className="d-flex flex-column mb-0">
-                      <span className="small fw-semibold text-secondary">
-                        Şifre <span className="text-danger">*</span>
-                      </span>
-                    </Form.Label>
-                  </Col>
-                  <Col xs={12} sm={8}>
-                    <InputGroup>
-                      <InputGroup.Text className="bg-light border-end-0 text-muted px-2.5">
-                        <IconLock size={18} />
-                      </InputGroup.Text>
-                      <Form.Control
-                        type={showPassword ? "text" : "password"}
-                        name="no_autofill_pwd"
-                        id="passwordInput"
-                        autoComplete="new-password"
-                        value={password}
-                        disabled={isLoading}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder=""
-                        className="border-start-0 border-end-0 bg-white"
-                        style={{ height: "42px" }}
-                        data-lpignore="true"
-                        data-1p-ignore="true"
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        tabIndex={-1}
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="border-start-0 bg-light text-muted"
-                        title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
+                        onChange={(e) => setFirmaId(Number(e.target.value) || 0)}
                       >
-                        {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
-                      </Button>
-                    </InputGroup>
-                  </Col>
-                </Form.Group>
-
-                {kurulum && ilkYonetici && (
-                  <Form.Group as={Row} className="align-items-center mb-3">
-                    <Col xs={12} sm={4} className="mb-1 mb-sm-0">
-                      <Form.Label className="small fw-semibold text-secondary mb-0">Şifre tekrar</Form.Label>
-                    </Col>
-                    <Col xs={12} sm={8}>
+                        <option value="">Veritabanı seçiniz ({veritabanlari.length})</option>
+                        {veritabanlari.map((v) => (
+                          <option key={v.firmaId} value={v.firmaId}>
+                            {v.unvan} — {v.dbName}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    ) : (
                       <Form.Control
-                        type={showPassword ? "text" : "password"}
-                        autoComplete="new-password"
-                        value={sifreTekrar}
-                        disabled={isLoading}
-                        onChange={(e) => setSifreTekrar(e.target.value)}
-                        style={{ height: "42px" }}
+                        id="veritabaniSecim"
+                        type="text"
+                        readOnly
+                        tabIndex={-1}
+                        value={secili ? `${secili.unvan} — ${secili.dbName}` : ""}
+                        placeholder={dbAraniyor ? "Aranıyor..." : "Müşteri no sorgulanınca gelir"}
                       />
-                      <div className="small text-muted mt-1">En az 8 karakter; harf ve rakam içermeli.</div>
-                    </Col>
-                  </Form.Group>
-                )}
+                    )}
+                    {secili && (
+                      <span className="login-grup-ikon pe-3" style={{ color: "#15803d" }}>
+                        <IconCircleCheck size={18} />
+                      </span>
+                    )}
+                  </div>
+                </Form.Group>
+              </>
+            )}
 
-                {/* Remember Me */}
-                <Row className="mb-4">
-                  <Col xs={12} sm={{ span: 8, offset: 4 }}>
-                    <Form.Check
-                      type="checkbox"
-                      id="rememberMeCheck"
-                      checked={rememberMe}
-                      onChange={(e) => handleRememberMeChange(e.target.checked)}
-                      label={<span className="small text-secondary">Beni hatırla</span>}
-                    />
-                  </Col>
-                </Row>
-
-                {/* Submit Button */}
-                <Row className="mb-2">
-                  <Col xs={12} sm={{ span: 8, offset: 4 }}>
-                    <Button
-                      type="submit"
-                      disabled={isLoading}
-                      className="w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 rounded-3 login-submit-btn"
-                      style={{ height: "44px" }}
-                    >
-                      {isLoading ? (
-                        <>
-                          <Spinner animation="border" size="sm" />
-                          <span>Giriş Yapılıyor...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>{kurulum && ilkYonetici ? "Yöneticiyi Oluştur ve Gir" : "Sisteme Giriş Yap"}</span>
-                          <IconArrowRight size={18} />
-                        </>
-                      )}
-                    </Button>
-                  </Col>
-                </Row>
-              </Form>
-
-              {/* Security Footer Note */}
-              <div className="mt-4 pt-3 border-top text-center">
-                <div className="d-inline-flex align-items-center gap-2 text-muted small" style={{ fontSize: "0.78rem" }}>
-                  <img
-                    src="/images/logo/logo.svg"
-                    alt="Likya.Kuyum Logo"
-                    className="flex-shrink-0"
-                    style={{ width: "15px", height: "15px", objectFit: "contain" }}
-                  />
-                  <span><strong className="brand-text-likya">Likya</strong> <strong className="brand-text-kuyum">Kuyum</strong> Çoklu Veritabanı ve Oturum Yönetimi</span>
+            {kurulum && ilkYonetici && (
+              <Form.Group className="login-alan">
+                <Form.Label>Ad Soyad</Form.Label>
+                <div className="login-grup">
+                  <span className="login-grup-ikon">
+                    <IconUser size={18} />
+                  </span>
+                  <Form.Control value={ilkAdSoyad} disabled={isLoading} onChange={(e) => setIlkAdSoyad(e.target.value)} maxLength={100} />
                 </div>
+              </Form.Group>
+            )}
+
+            <Form.Group className="login-alan">
+              <Form.Label htmlFor="kullaniciAdiInput">
+                Kullanıcı Adı <span className="text-danger">*</span>
+              </Form.Label>
+              <div className="login-grup">
+                <span className="login-grup-ikon">
+                  <IconUser size={18} />
+                </span>
+                <Form.Control
+                  ref={kullaniciAdiRef}
+                  id="kullaniciAdiInput"
+                  type="text"
+                  autoFocus={!!musteriNo || kurulum}
+                  value={username}
+                  disabled={isLoading}
+                  onChange={(e) => handleUsernameChange(e.target.value)}
+                  autoComplete="username"
+                />
               </div>
-            </div>
-          </div>
+            </Form.Group>
+
+            <Form.Group className="login-alan">
+              <Form.Label htmlFor="passwordInput">
+                Şifre <span className="text-danger">*</span>
+              </Form.Label>
+              <div className="login-grup">
+                <span className="login-grup-ikon">
+                  <IconLock size={18} />
+                </span>
+                <Form.Control
+                  type={showPassword ? "text" : "password"}
+                  name="no_autofill_pwd"
+                  id="passwordInput"
+                  autoComplete="new-password"
+                  value={password}
+                  disabled={isLoading}
+                  onChange={(e) => setPassword(e.target.value)}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                />
+                <button
+                  type="button"
+                  className="login-goz"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
+                >
+                  {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                </button>
+              </div>
+            </Form.Group>
+
+            {kurulum && ilkYonetici && (
+              <Form.Group className="login-alan">
+                <Form.Label>Şifre tekrar</Form.Label>
+                <div className="login-grup">
+                  <span className="login-grup-ikon">
+                    <IconLock size={18} />
+                  </span>
+                  <Form.Control
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    value={sifreTekrar}
+                    disabled={isLoading}
+                    onChange={(e) => setSifreTekrar(e.target.value)}
+                  />
+                </div>
+                <div className="login-ipucu">En az 8 karakter; harf ve rakam içermeli.</div>
+              </Form.Group>
+            )}
+
+            <Form.Check
+              type="checkbox"
+              id="rememberMeCheck"
+              className="mb-4"
+              checked={rememberMe}
+              onChange={(e) => handleRememberMeChange(e.target.checked)}
+              label={<span className="small" style={{ color: "#6b5a45" }}>Beni hatırla</span>}
+            />
+
+            <Button type="submit" disabled={isLoading} className="login-gir d-flex align-items-center justify-content-center gap-2">
+              {isLoading ? (
+                <>
+                  <Spinner animation="border" size="sm" />
+                  <span>Giriş Yapılıyor...</span>
+                </>
+              ) : (
+                <>
+                  <span>{kurulum && ilkYonetici ? "Yöneticiyi Oluştur ve Gir" : "Sisteme Giriş Yap"}</span>
+                  <IconArrowRight size={18} />
+                </>
+              )}
+            </Button>
+          </Form>
         </div>
+
+        <div className="login-alt">Likya ERP · v2026 Enterprise</div>
       </div>
 
       <LisansKilitPenceresi

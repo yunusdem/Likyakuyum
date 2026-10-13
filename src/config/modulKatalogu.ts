@@ -35,6 +35,7 @@ export const UST_KISAYOLLAR: { key: string; baslik: string; to?: string }[] = [
   { key: "ust:c-hareket", baslik: "C. Hareket", to: "/cari/hareket-kayit" },
   { key: "ust:e-belge", baslik: "e-Belge", to: "/e-belge" },
   { key: "ust:masak", baslik: "MASAK" },
+  { key: "ust:piyasa", baslik: "Piyasa", to: "/piyasa" },
 ];
 
 export const UST_KISAYOL_GRUBU = "ust";

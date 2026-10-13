@@ -165,6 +165,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   [["ust:banka", "ust:e-belge"], [D, G, K, T, C]],
   [["ust:c-hareket"], [D, G, K, T]],
   [["ust:masak"], [D, G, K]],
+  [["ust:piyasa"], [D, G, K, T, C]],
 ];
 
 const kalipla = (secici: string): RegExp =>
