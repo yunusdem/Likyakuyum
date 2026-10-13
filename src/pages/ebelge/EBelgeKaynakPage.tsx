@@ -8,13 +8,14 @@ import './ebelgeKaynak.css';
 
 const bugun = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const tarihYaz = (t: string) => t?.slice(0, 10).split('-').reverse().join('.');
-type Kaynak = '' | 'FATURA' | 'IRSALIYE' | 'GIDER' | 'DOVIZ' | 'PERAKENDE_SATIS' | 'PERAKENDE_ALIS';
-const KAYNAKLAR: Kaynak[] = ['FATURA', 'IRSALIYE', 'GIDER', 'DOVIZ', 'PERAKENDE_SATIS', 'PERAKENDE_ALIS'];
+type Kaynak = '' | 'FATURA' | 'IRSALIYE' | 'GIDER' | 'DOVIZ' | 'PERAKENDE_SATIS' | 'PERAKENDE_ALIS' | 'TICARI_SATIS';
+const KAYNAKLAR: Kaynak[] = ['FATURA', 'IRSALIYE', 'GIDER', 'DOVIZ', 'PERAKENDE_SATIS', 'PERAKENDE_ALIS', 'TICARI_SATIS'];
 // Süzgeç seçenekleri ve ait oldukları ürün özelliği: lisansta kapalı ürünün seçeneği gösterilmez
-const KAYNAK_SECENEKLERI: { deger: Exclude<Kaynak, ''>; ad: string; grup: 'sarraf' | 'doviz' | 'perakende' }[] = [
+const KAYNAK_SECENEKLERI: { deger: Exclude<Kaynak, ''>; ad: string; grup: 'sarraf' | 'doviz' | 'perakende' | 'ticari' }[] = [
   { deger: 'FATURA', ad: 'Sarraf Satış', grup: 'sarraf' }, { deger: 'GIDER', ad: 'Sarraf Alış (e-Gider)', grup: 'sarraf' },
   { deger: 'IRSALIYE', ad: 'Sarraf e-İrsaliye', grup: 'sarraf' }, { deger: 'DOVIZ', ad: 'e-Döviz fişi', grup: 'doviz' },
   { deger: 'PERAKENDE_SATIS', ad: 'Perakende Satış', grup: 'perakende' }, { deger: 'PERAKENDE_ALIS', ad: 'Perakende Alış (e-Gider)', grup: 'perakende' },
+  { deger: 'TICARI_SATIS', ad: 'Ticari Satış', grup: 'ticari' },
 ];
 
 const key = (k: { evrakTuru: number; belgeId: number; belgeTuru: number; belgeNo?: string }) => `${k.evrakTuru}:${k.belgeId}:${k.belgeTuru}${k.evrakTuru === 99 && k.belgeNo ? ':' + k.belgeNo.trim() : ''}`;
@@ -22,6 +23,8 @@ const turAdi = (k: { kaynak?: string; belgeTuru: number }) =>
   k.kaynak === 'DOVIZ' ? 'e-Döviz'
     // Perakende fişi (docs/PERAKENDE_EBELGE_YOL_HARITASI.md): belgeTuru = fiş tipi
     : k.kaynak === 'PERAKENDE' ? ({ 0: 'Perakende Alış (e-Gider)', 1: 'Perakende Satış', 2: 'Perakende İade' }[k.belgeTuru] || 'Perakende')
+    // Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md): Perakende tablolarından, yalnız satış
+    : k.kaynak === 'TICARI' ? 'Ticari Satış'
     // Sarraf fişi: belgeTuru 1 satış, 2 e-İrsaliye seçili satış, 3 alış (e-Gider)
     : k.kaynak === 'SARRAF' ? ({ 1: 'Sarraf Satış', 2: 'Sarraf Satış (e-İrsaliye)', 3: 'Sarraf Alış (e-Gider)' }[k.belgeTuru] || 'Sarraf')
     : ({ 0: 'Fatura', 1: 'Fatura', 2: 'e-İrsaliye', 3: 'e-Gider' }[k.belgeTuru] || `Tür ${k.belgeTuru}`);
@@ -32,7 +35,7 @@ export default function EBelgeKaynakPage() {
   const ozellik = useUrunOzellikleri();
   const secenekler = KAYNAK_SECENEKLERI.filter(s => ozellik[s.grup]);
   // "Tümü" seçiliyken sunucu yalnız lisanstaki fiş gruplarını listeler; hepsi açıksa parametre gönderilmez
-  const gruplar = (['sarraf', 'doviz', 'perakende'] as const).filter(g => ozellik[g]);
+  const gruplar = (['sarraf', 'doviz', 'perakende', 'ticari'] as const).filter(g => ozellik[g]);
   const [kayitlar, setKayitlar] = useState<EbelgeKaynakSatiri[]>([]);
   const [sayfa, setSayfa] = useState(1); const [toplam, setToplam] = useState(0);
   // e-Banka > Tahsilat / Ödeme Mutabakatı'ndaki "Fatura kes" bu ekranı ?kaynak=&tarih=&ara= ile açar; parametre yoksa davranış değişmez
@@ -61,7 +64,7 @@ export default function EBelgeKaynakPage() {
     if (ilk && son && ilk > son) { setBusy(false); setHata('İlk tarih, son tarihten sonra olamaz.'); return; }
     setBusy(true); setHata(''); setListelendi(true);
     try { const data = await ebelgeService.kaynakListe({ sayfa: p, arama: arama.trim() || undefined, durum: durum || undefined,
-      kaynak: kaynak || undefined, gruplar: !kaynak && gruplar.length < 3 ? gruplar.join(',') || 'yok' : undefined, belgeTuru: kaynak === 'DOVIZ' && dovizTipi ? Number(dovizTipi) : undefined,
+      kaynak: kaynak || undefined, gruplar: !kaynak && gruplar.length < 4 ? gruplar.join(',') || 'yok' : undefined, belgeTuru: kaynak === 'DOVIZ' && dovizTipi ? Number(dovizTipi) : undefined,
       // Tam belge numarası (3 harf + 13 hane) yazıldıysa tarih aralığına bakılmadan doğrudan bulunur.
       ...(/^[A-Za-z0-9]{3}\d{13}$/.test(arama.trim()) ? {} : { baslangicTarihi: ilk || undefined, bitisTarihi: son || undefined }) });
       if (id === requestId.current) { setKayitlar(data.kayitlar); setToplam(data.toplam); setSayfa(p);

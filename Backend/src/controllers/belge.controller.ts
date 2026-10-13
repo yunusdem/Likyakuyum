@@ -59,6 +59,22 @@ const sarrafCiktiSema = z.object({
   odemeSatirlari: z.array(z.object({ paraKodu: metinAlani(20), paraAdi: metinAlani(100), adet: sayiAlani, miktar: sayiAlani, tutar: sayiAlani }).passthrough()).max(100).optional(),
   toplamTutar: sayiAlani, toplamHas: sayiAlani, odenenTutar: sayiAlani, kalanTutar: sayiAlani,
 }).passthrough();
+/** Ticari satış fişi: kayıtlı fiş (TicariSatisFisi) ya da ekrandaki fiş */
+const ticariCiktiSema = z.object({
+  bicim: bicimAlani,
+  fatura: z.object({
+    faturaId: z.coerce.number().int().nonnegative().optional().nullable(),
+    faturaNo: metinAlani(40), ettn: metinAlani(60), tarih: metinAlani(40), senaryo: metinAlani(40), vezneKod: metinAlani(20),
+    aliciVknTckn: metinAlani(20), aliciUnvan: metinAlani(300), adres: metinAlani(500), ilce: metinAlani(100), il: metinAlani(100),
+    vergiDairesi: metinAlani(100), eposta: metinAlani(200), telefon: metinAlani(40),
+    iskontoTuru: sayiAlani, iskontoDegeri: sayiAlani,
+    satirlar: z.array(z.object({
+      kod: metinAlani(60), barkod: metinAlani(60), urunAdi: metinAlani(300), birim: metinAlani(20),
+      satirNo: sayiAlani, miktar: sayiAlani, kdvDahilFiyat: sayiAlani, kdvOrani: sayiAlani, iskontoTuru: sayiAlani, iskontoDegeri: sayiAlani,
+    }).passthrough()).max(300).optional().nullable(),
+    odemeler: z.array(z.object({ odemeAraciTuru: sayiAlani, paraKodu: metinAlani(20), paraAdi: metinAlani(100), cariUnvan: metinAlani(300), miktar: sayiAlani, tutar: sayiAlani }).passthrough()).max(100).optional().nullable(),
+  }).passthrough(),
+});
 /** Perakende fişi: kayıtlı fatura (PerakendeFaturaModel) ya da kayıt yükü. */
 const perakendeCiktiSema = z.object({
   bicim: bicimAlani,
@@ -142,6 +158,20 @@ export class BelgeController {
     const p = perakendeCiktiSema.safeParse(req.body || {});
     if (!p.success) throw ApiError.badRequest(p.error.issues[0]?.message || "Fiş çıktısı isteği geçersiz.");
     const sonuc = await FisCiktiService.perakende(p.data.fatura as any, p.data.bicim, BelgeController.getDbContext(req));
+    return ApiResponse.ok(res, "Fiş çıktısı hazırlandı.", sonuc);
+  });
+
+  /** POST /api/v1/belge/cikti/ticari  { bicim: "80" | "A4", fatura } — Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17) */
+  public static ticariCiktisi = asyncHandler(async (req: Request, res: Response) => {
+    const p = ticariCiktiSema.safeParse(req.body || {});
+    if (!p.success) throw ApiError.badRequest(p.error.issues[0]?.message || "Fiş çıktısı isteği geçersiz.");
+    let sonuc;
+    try {
+      sonuc = await FisCiktiService.ticari(p.data.fatura as any, p.data.bicim, BelgeController.getDbContext(req));
+    } catch (e: any) {
+      if (e instanceof ApiError) throw e;
+      throw ApiError.badRequest(e?.message || "Fiş hesaplanamadı.");
+    }
     return ApiResponse.ok(res, "Fiş çıktısı hazırlandı.", sonuc);
   });
 

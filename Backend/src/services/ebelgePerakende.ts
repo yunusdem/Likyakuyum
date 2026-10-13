@@ -1,6 +1,7 @@
 import { ApiError } from "../utils/ApiError.js";
 import { GiderPusulasiGirdi } from "./ice/ubl/giderPusulasiBuilder.js";
 import { FaturaTipi, UblFaturaGirdi, UblFaturaSatiri, hesapla } from "./ice/ubl/invoiceBuilder.js";
+import { birimKoduTicari } from "./ticari/ticariHesap.js";
 
 /**
  * Perakende fişi (TODVZ_FATURA) → e-Belge girdisi — docs/PERAKENDE_EBELGE_YOL_HARITASI.md (P1, P2, P9, P10, P12).
@@ -40,6 +41,8 @@ export interface PerakendeBaslik {
   /** Firma e-Belge tanımı (VODVZ_E_BELGE_TANIMI): %0 satırların istisna kodu */
   E_FATURA_KDV_MUAFIYET_KODU?: string | null;
   E_FATURA_KDV_MUAFIYET_ADI?: string | null;
+  /** 1: Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md) — satır iskontosu satırda, fiş iskontosu satırlara zaten dağıtılmış */
+  FIS_KAYNAGI?: number | null;
 }
 
 export interface PerakendeSatir {
@@ -55,6 +58,8 @@ export interface PerakendeSatir {
   TUTAR?: number | null;
   KDV_ORANI?: number | null;
   KDV_TUTARI?: number | null;
+  /** Ticari satır: e-Belge satır iskontosu (KDV hariç; fiş iskontosu payı dahil) */
+  SATIR_ISKONTO_TUTARI?: number | null;
 }
 
 const temiz = (v: unknown): string => String(v ?? "").trim();
@@ -147,7 +152,9 @@ export function perakendeFaturaGirdisi(kaynak: { baslik: PerakendeBaslik; satirl
   const istisnaGerekcesi = temiz(b.E_FATURA_KDV_MUAFIYET_ADI);
 
   const tutarlar = kaynak.satirlar.map((s) => yuvarla(sayi(s.TUTAR)));
-  const iskontolar = iskontoDagit(tutarlar, sayi(b.ISKONTO_TUTARI));
+  // Ticari fişte iskonto satırda hazırdır (satır + fiş iskontosu, KDV hariç); Perakende'de fiş iskontosu satırlara dağıtılır (P10)
+  const ticari = Number(b.FIS_KAYNAGI) === 1;
+  const iskontolar = ticari ? kaynak.satirlar.map((s) => yuvarla(sayi(s.SATIR_ISKONTO_TUTARI))) : iskontoDagit(tutarlar, sayi(b.ISKONTO_TUTARI));
   let ozelMatrahVar = false;
   let istisnaVar = false;
 
@@ -157,12 +164,13 @@ export function perakendeFaturaGirdisi(kaynak: { baslik: PerakendeBaslik; satirl
     const kdvOrani = sayi(s.KDV_ORANI);
     const kdvTutari = yuvarla(sayi(s.KDV_TUTARI));
     if (miktar <= 0 || tutar < 0) throw ApiError.badRequest(`${i + 1}. satırda miktar / tutar geçersiz.`);
-    const birimFiyat = yuvarla(tutar / miktar);
+    // Ticari satırın birim fiyatı kayıtta 2 hane olarak tutulur (kesirli miktarda tutar ÷ miktar sapmasın)
+    const birimFiyat = ticari ? yuvarla(sayi(s.BIRIM_FIYAT)) : yuvarla(tutar / miktar);
     if (Math.abs(yuvarla(miktar * birimFiyat) - tutar) > 0.011) {
       throw ApiError.badRequest(`${i + 1}. satırın tutarı miktar × birim fiyat ile uyuşmuyor (${tutar} ≠ ${miktar} × ${birimFiyat}); gönderim durduruldu.`);
     }
     const ad = [temiz(s.URUN_ADI) || "Ürün", temiz(s.AYAR) ? `${temiz(s.AYAR)} ayar` : ""].filter(Boolean).join(" ");
-    const satir: UblFaturaSatiri = { ad, miktar, birimKodu: birimKodu(s.BIRIM), birimFiyat, kdvOrani, ...(iskontolar[i] > 0 ? { iskontoTutari: iskontolar[i] } : {}) };
+    const satir: UblFaturaSatiri = { ad, miktar, birimKodu: ticari ? birimKoduTicari(s.BIRIM) : birimKodu(s.BIRIM), birimFiyat, kdvOrani, ...(iskontolar[i] > 0 ? { iskontoTutari: iskontolar[i] } : {}) };
 
     if (kdvOrani === 0) {
       // Sarraf'taki kural: %0 satır firma tanımındaki muafiyet koduyla gider (P2)

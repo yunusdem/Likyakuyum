@@ -71,6 +71,16 @@ import EBelgeGidenPage from "./pages/ebelge/EBelgeGidenPage";
 import EBelgeIrsaliyePage from "./pages/ebelge/EBelgeIrsaliyePage";
 import EBelgeGiderPage from "./pages/ebelge/EBelgeGiderPage";
 import EBelgeKaynakPage from "./pages/ebelge/EBelgeKaynakPage";
+// Ticari İşlemler (docs/TICARI_ISLEMLER_YOL_HARITASI.md)
+import TicariSatisFisiPage from "./pages/ticari/TicariSatisFisiPage";
+import TicariSatisListesiPage from "./pages/ticari/TicariSatisListesiPage";
+import StokGirisFisiPage from "./pages/ticari/StokGirisFisiPage";
+import StokGirisListesiPage from "./pages/ticari/StokGirisListesiPage";
+import StokKartlariPage from "./pages/ticari/StokKartlariPage";
+import UrunGruplariPage from "./pages/ticari/UrunGruplariPage";
+import StokDurumListesiPage from "./pages/ticari/StokDurumListesiPage";
+import UrunHareketListesiPage from "./pages/ticari/UrunHareketListesiPage";
+import StokAyarlariPage from "./pages/ticari/StokAyarlariPage";
 import EBelgeMustahsilPage from "./pages/ebelge/EBelgeMustahsilPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import GibHesapSettingsPage from "./pages/settings/GibHesapSettingsPage";
@@ -297,6 +307,16 @@ export default function App() {
             <Route path="perakende/satis-listesi" element={<SatisListesiPage />} />
             <Route path="perakende/satis" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
             <Route path="perakende/liste" element={<SatisListesiPage />} />
+            <Route path="ticari/satis-fisi" element={<TicariSatisFisiPage key="ticari-kayit" isDuzeltme={false} />} />
+            <Route path="ticari/satis-fisi-duzeltme" element={<TicariSatisFisiPage key="ticari-duzeltme" isDuzeltme={true} />} />
+            <Route path="ticari/satis-listesi" element={<TicariSatisListesiPage />} />
+            <Route path="ticari/stok-giris-fisi" element={<StokGirisFisiPage />} />
+            <Route path="ticari/stok-giris-listesi" element={<StokGirisListesiPage />} />
+            <Route path="ticari/stok-kartlari" element={<StokKartlariPage />} />
+            <Route path="ticari/urun-gruplari" element={<UrunGruplariPage />} />
+            <Route path="ticari/stok-durum-listesi" element={<StokDurumListesiPage />} />
+            <Route path="ticari/urun-hareket-listesi" element={<UrunHareketListesiPage />} />
+            <Route path="ticari/stok-ayarlari" element={<StokAyarlariPage />} />
             <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
             <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
             <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
