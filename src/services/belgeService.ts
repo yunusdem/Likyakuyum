@@ -155,6 +155,11 @@ export const BelgeService = {
     const r = await apiClient.post<FisCiktisi>("/belge/cikti/perakende", { fatura, bicim });
     return r.data;
   },
+  /** Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17) */
+  async ticariCikti(fatura: Record<string, any>, bicim: "80" | "A4"): Promise<FisCiktisi> {
+    const r = await apiClient.post<FisCiktisi>("/belge/cikti/ticari", { fatura, bicim });
+    return r.data;
+  },
 
   // ── Fiş şablonu yönetimi (yalnızca sistem yöneticisi) ──
   async sablonTurleri(): Promise<SablonTuru[]> {

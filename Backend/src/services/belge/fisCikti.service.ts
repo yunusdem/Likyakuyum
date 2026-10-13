@@ -5,8 +5,8 @@ import { BelgeGorselService } from "./belgeGorsel.service.js";
 import type { BelgeSablon } from "./sablonCekirdek.js";
 import { turBul, type FisBicimi, type FisTuru } from "./belgeTurleri.js";
 import {
-  dovizFisVerisi, firmaKimlikOku, perakendeFisVerisi, sarrafFisVerisi,
-  type DovizFisGirdisi, type PerakendeFisGirdisi, type SarrafFisGirdisi,
+  dovizFisVerisi, firmaKimlikOku, perakendeFisVerisi, sarrafFisVerisi, ticariFisVerisi,
+  type DovizFisGirdisi, type PerakendeFisGirdisi, type SarrafFisGirdisi, type TicariFisGirdisi,
 } from "./fisCiktiVeri.js";
 
 /** Tarayıcının fişi çizmesi için gereken her şey: şablon, veri ve şablondaki görseller (data URL). */
@@ -61,5 +61,11 @@ export class FisCiktiService {
   static async perakende(girdi: PerakendeFisGirdisi, bicim: FisBicimi, ctx?: DbContext): Promise<FisCiktisi> {
     const firma = firmaKimlikOku(await BelgeSqlRepository.firmaKimlikSatiri(ctx));
     return this.paketle(turBul("PERAKENDE", bicim), perakendeFisVerisi(girdi, firma), ctx);
+  }
+
+  /** Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17): kayıtlı fiş ya da ekrandaki fiş; kâğıt 80 mm veya A4. */
+  static async ticari(girdi: TicariFisGirdisi, bicim: FisBicimi, ctx?: DbContext): Promise<FisCiktisi> {
+    const firma = firmaKimlikOku(await BelgeSqlRepository.firmaKimlikSatiri(ctx));
+    return this.paketle(turBul("TICARI", bicim), ticariFisVerisi(girdi, firma), ctx);
   }
 }

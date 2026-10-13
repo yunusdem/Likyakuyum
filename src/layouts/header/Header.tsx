@@ -16,6 +16,7 @@ import {
   IconRefresh,
   IconEye,
   IconChartCandle,
+  IconShoppingBag,
 } from "@tabler/icons-react";
 import { Container, ListGroup, Button } from "react-bootstrap";
 
@@ -62,6 +63,12 @@ const quickActions = [
     title: "Perakende",
     to: "/vezne/perakende-fisi-kayit",
     icon: <IconShoppingCart size={19} strokeWidth={2.2} style={{ color: "#b91c1c" }} />,
+  },
+  {
+    // Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T18); yalnız Ticari İşlemler modülü açık firmada
+    title: "Satış Fişi",
+    to: "/ticari/satis-fisi",
+    icon: <IconShoppingBag size={19} strokeWidth={2.2} style={{ color: "#c2410c" }} />,
   },
   {
     title: "Banka",

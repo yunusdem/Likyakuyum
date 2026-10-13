@@ -12,6 +12,7 @@ import {
   IconFileTypePdf,
   IconBuildingStore,
   IconSettings,
+  IconBuildingWarehouse,
 } from "@tabler/icons-react";
 
 //import custom type
@@ -226,11 +227,32 @@ export const DashboardMenu: MenuItemType[] = [
     ],
   },
 
-  // K- Ayarlar
+  // K- Ticari İşlemler: altın dışı ürün stoğu ve satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md). Sol menüde
+  // Etiket / Perakende'den sonra G- olarak görünür (solMenuBirlesimi harfleri baştan dizer).
+  {
+    id: uuid(),
+    key: "ticari", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
+    title: "K- Ticari İşlemler",
+    icon: <IconBuildingWarehouse size={18} />,
+    children: [
+      { id: uuid(), name: "A- Satış Fişi", link: "ticari/satis-fisi" },
+      { id: uuid(), name: "B- Satış Fişi Düzeltme", link: "ticari/satis-fisi-duzeltme" },
+      { id: uuid(), name: "C- Satış Listesi", link: "ticari/satis-listesi" },
+      { id: uuid(), name: "D- Stok Giriş Fişi", link: "ticari/stok-giris-fisi" },
+      { id: uuid(), name: "E- Stok Giriş Listesi", link: "ticari/stok-giris-listesi" },
+      { id: uuid(), name: "F- Stok Kartları", link: "ticari/stok-kartlari" },
+      { id: uuid(), name: "G- Ürün Grupları", link: "ticari/urun-gruplari" },
+      { id: uuid(), name: "H- Stok Durum Listesi", link: "ticari/stok-durum-listesi" },
+      { id: uuid(), name: "I- Ürün Hareket Listesi", link: "ticari/urun-hareket-listesi" },
+      { id: uuid(), name: "J- Stok Ayarları", link: "ticari/stok-ayarlari" },
+    ],
+  },
+
+  // L- Ayarlar
   {
     id: uuid(),
     key: "ayarlar", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
-    title: "K- Ayarlar",
+    title: "L- Ayarlar",
     icon: <IconSettings size={18} />,
     children: [
       { id: uuid(), name: "A- Ürün Tanımları", link: "ayarlar/urun-tanimlari" },

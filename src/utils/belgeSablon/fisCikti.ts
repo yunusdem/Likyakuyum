@@ -31,3 +31,9 @@ export async function perakendeFisHtml(fatura: Record<string, any>, bicim: FisBi
   const c = await BelgeService.perakendeCikti(fatura, bicim);
   return ciz(c, `${bicim === "80" ? "Perakende Bilgi Fişi" : "e-Arşiv Fatura"}${c.veri?.faturaNo ? ` - ${c.veri.faturaNo}` : ""}`);
 }
+
+/** Ticari satış fişi: kayıtlı fiş ya da ekrandaki fiş (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17). */
+export async function ticariFisHtml(fatura: Record<string, any>, bicim: FisBicimi): Promise<FisHtml> {
+  const c = await BelgeService.ticariCikti(fatura, bicim);
+  return ciz(c, `${bicim === "80" ? "Satış Bilgi Fişi" : "Satış Faturası"}${c.veri?.faturaNo ? ` - ${c.veri.faturaNo}` : ""}`);
+}

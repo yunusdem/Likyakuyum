@@ -13,7 +13,9 @@ import { TL_PARA_SQL } from "./raporOrtak.js";
 export interface BelgeTablolari {
   kasa: boolean; transfer: boolean; dekont: boolean; sarraf: boolean; odemeCari: boolean; pos: boolean;
   /** Uygulamaya özgü belgeler (eski programda yok): perakende fişi (TODVZ_FATURA*), barkodlu altın / özel ürün tanımı; saklanan stok kolonları ve TODVZ_AYAR */
-  perakende: boolean; perakendeStok: boolean; altinUrun: boolean; altinStok: boolean; ozelUrun: boolean; ozelStok: boolean; ayar: boolean;
+  perakende: boolean; perakendeStok: boolean;
+  /** Ticari satış fişi satırı (STOK_KART_ID dolu) perakende vezne stoğu değildir (docs/TICARI_ISLEMLER_YOL_HARITASI.md) */
+  ticariSatir: boolean; altinUrun: boolean; altinStok: boolean; ozelUrun: boolean; ozelStok: boolean; ayar: boolean;
   /** Vezne bakiye düzeltmeleri (Vezne İzleme'den elle değiştirilen bakiye + ilk kurulumdaki açılış farkı; vezneBakiyeDuzeltmeSql.repository.ts) */
   duzeltme: boolean;
 }
@@ -28,6 +30,7 @@ export async function belgeTablolari(pool: sql.ConnectionPool): Promise<BelgeTab
     CASE WHEN OBJECT_ID('dbo.TODVZ_POS_CIHAZI','U') IS NULL THEN 0 ELSE 1 END pos,
     CASE WHEN OBJECT_ID('dbo.TODVZ_FATURA','U') IS NULL OR OBJECT_ID('dbo.TODVZ_FATURA_SATIRI','U') IS NULL OR OBJECT_ID('dbo.TODVZ_FATURA_ODEME','U') IS NULL THEN 0 ELSE 1 END perakende,
     CASE WHEN COL_LENGTH('dbo.TODVZ_FATURA_SATIRI','STOK_PARA_ID') IS NULL OR COL_LENGTH('dbo.TODVZ_FATURA_SATIRI','STOK_MIKTAR') IS NULL THEN 0 ELSE 1 END perakendeStok,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FATURA_SATIRI','STOK_KART_ID') IS NULL THEN 0 ELSE 1 END ticariSatir,
     CASE WHEN OBJECT_ID('dbo.TODVZ_ALTIN_URUN','U') IS NULL THEN 0 ELSE 1 END altinUrun,
     CASE WHEN COL_LENGTH('dbo.TODVZ_ALTIN_URUN','STOK_PARA_ID') IS NULL THEN 0 ELSE 1 END altinStok,
     CASE WHEN OBJECT_ID('dbo.TODVZ_OZEL_URUN','U') IS NULL THEN 0 ELSE 1 END ozelUrun,
@@ -35,7 +38,7 @@ export async function belgeTablolari(pool: sql.ConnectionPool): Promise<BelgeTab
     CASE WHEN OBJECT_ID('dbo.TODVZ_AYAR','U') IS NULL THEN 0 ELSE 1 END ayar,
     CASE WHEN OBJECT_ID('dbo.TODVZ_VEZNE_BAKIYE_DUZELTME','U') IS NULL THEN 0 ELSE 1 END duzeltme`)).recordset[0] || {};
   return { kasa: !!r.kasa, transfer: !!r.transfer, dekont: !!r.dekont, sarraf: !!r.sarraf, odemeCari: !!r.sarraf && !!r.odemeCari, pos: !!r.pos,
-    perakende: !!r.perakende, perakendeStok: !!r.perakende && !!r.perakendeStok, altinUrun: !!r.altinUrun, altinStok: !!r.altinUrun && !!r.altinStok,
+    perakende: !!r.perakende, perakendeStok: !!r.perakende && !!r.perakendeStok, ticariSatir: !!r.perakende && !!r.ticariSatir, altinUrun: !!r.altinUrun, altinStok: !!r.altinUrun && !!r.altinStok,
     ozelUrun: !!r.ozelUrun, ozelStok: !!r.ozelUrun && !!r.ozelStok, ayar: !!r.ayar, duzeltme: !!r.duzeltme };
 }
 
@@ -137,7 +140,7 @@ export function vezneHareketleriSql(d: BelgeTablolari, tipFiltresi = false): str
          CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE ${q} END, CASE WHEN F.FATURA_TIPI=1 THEN ${q} ELSE 0 END, ISNULL(S.BIRIM_FIYAT,0), RTRIM(ISNULL(F.FATURA_NO,'')), NULL, ${fTip},
          RTRIM(ISNULL(F.FATURA_NO,'')), RTRIM(ISNULL(F.ALICI_UNVAN,'')), ISNULL(S.TUTAR,0), 0, 0
        FROM dbo.TODVZ_FATURA F JOIN dbo.TODVZ_FATURA_SATIRI S ON S.FATURA_ID=F.FATURA_ID ${PERAKENDE_SATIR_PARASI("S")}
-       WHERE ISNULL(F.VEZNE_ID,0)>0 AND ISNULL(S.ALTIN_URUN_ID,0)=0 AND LEN(LTRIM(RTRIM(ISNULL(S.BARKOD,''))))=0 AND ${q}>0${tip(fTip)}`,
+       WHERE ISNULL(F.VEZNE_ID,0)>0 AND ISNULL(S.ALTIN_URUN_ID,0)=0 AND LEN(LTRIM(RTRIM(ISNULL(S.BARKOD,''))))=0 AND ${q}>0${d.ticariSatir ? " AND S.STOK_KART_ID IS NULL" : ""}${tip(fTip)}`,
       `SELECT 6, F.FATURA_ID, O.SATIR_NO, 1, F.VEZNE_ID, ${YEREL_GUN("F.TARIH")}, F.TARIH, O.PARA_ID,
          CASE WHEN F.FATURA_TIPI=1 THEN ${FATURA_ODEME_MIKTARI} ELSE 0 END, CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE ${FATURA_ODEME_MIKTARI} END, ISNULL(O.KUR,1),
          RTRIM(ISNULL(F.FATURA_NO,'')), NULL, ${fTip}, RTRIM(ISNULL(F.FATURA_NO,'')), RTRIM(ISNULL(F.ALICI_UNVAN,'')), ISNULL(O.TUTAR,0), 0, 0

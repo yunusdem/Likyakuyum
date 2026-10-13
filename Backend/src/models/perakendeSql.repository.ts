@@ -262,6 +262,8 @@ export class PerakendeSqlRepository {
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISTATISTIK_ID] INT NULL;
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISTATISTIK_KODU') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISTATISTIK_KODU] VARCHAR(50) NULL;
         END;
+        -- 0 Perakende fişi · 1 Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T14); Perakende ekranları yalnız 0'ı görür
+        IF COL_LENGTH('dbo.TODVZ_FATURA', 'FIS_KAYNAGI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [FIS_KAYNAGI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_FATURA_FIS_KAYNAGI DEFAULT 0;
       `);
 
       // 2. TODVZ_FATURA_SATIRI Detail Table
@@ -309,6 +311,8 @@ export class PerakendeSqlRepository {
         -- Barkodsuz satırın vezne stoğundan düşen parası ve miktarı (düzeltme / silme aynısını geri alır; raporlar da bunu okur)
         IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_PARA_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_PARA_ID] INT NULL;
         IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_MIKTAR') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_MIKTAR] FLOAT NULL;
+        -- Ticari satış fişi satırının stok kartı (raporlar perakende vezne stoğundan ayırır)
+        IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_KART_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_KART_ID] INT NULL;
       `);
 
       // 2.b TODVZ_FATURA_ODEME Detail Table
@@ -920,6 +924,8 @@ export class PerakendeSqlRepository {
 
     let outFaturaId: number = 0;
     let finalFaturaNo: string = faturaNo;
+
+    if (dto.faturaId && dto.faturaId > 0) await PerakendeSqlRepository.ticariFisiDegil(pool, dto.faturaId);
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -1742,7 +1748,7 @@ export class PerakendeSqlRepository {
       LEFT JOIN [dbo].[TODVZ_VEZNE] v ON f.[VEZNE_ID] = v.[VEZNE_ID]
       LEFT JOIN [dbo].[TODVZ_PARA] p ON f.[PARA_ID] = p.[PARA_ID]
       LEFT JOIN [dbo].[TODVZ_CARI_KART] c ON f.[CARI_KART_ID] = c.[CARI_KART_ID]
-      WHERE 1=1
+      WHERE ISNULL(f.[FIS_KAYNAGI], 0) = 0
     `;
 
     if (filter.baslangicTarihi && filter.baslangicTarihi.trim()) {
@@ -1814,6 +1820,15 @@ export class PerakendeSqlRepository {
     }));
   }
 
+  /** Ticari satış fişi Perakende ekranından düzeltilip silinmez: stoğu ve satırları Ticari deposu yönetir (T14) */
+  public static async ticariFisiDegil(pool: sql.ConnectionPool, faturaId: number): Promise<void> {
+    const r = await pool.request().input("FID", sql.Int, faturaId)
+      .query(`SELECT ISNULL(FIS_KAYNAGI, 0) AS K FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FID`);
+    if (Number(r.recordset[0]?.K) === 1) {
+      throw ApiError.badRequest("Bu fiş Ticari Satış Fişi'dir; Ticari İşlemler › Satış Fişi Düzeltme ekranından değiştirin.");
+    }
+  }
+
   /**
    * Delete invoice and return products back to stock using dbo.SODVZ_FATURA_SIL
    */
@@ -1823,6 +1838,7 @@ export class PerakendeSqlRepository {
   ): Promise<void> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTablesAndProcedures(pool);
+    await PerakendeSqlRepository.ticariFisiDegil(pool, faturaId);
 
     try {
       const req = pool.request();

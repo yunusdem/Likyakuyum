@@ -31,6 +31,8 @@ export const UST_KISAYOLLAR: { key: string; baslik: string; to?: string }[] = [
   { key: "ust:sarraf", baslik: "Sarraf", to: "/vezne/genel-sarraf-fisi" },
   { key: "ust:doviz", baslik: "Döviz", to: "/vezne/doviz-fisi" },
   { key: "ust:perakende", baslik: "Perakende", to: "/vezne/perakende-fisi-kayit" },
+  // Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T18)
+  { key: "ust:ticari", baslik: "Satış Fişi", to: "/ticari/satis-fisi" },
   { key: "ust:banka", baslik: "Banka", to: "/banka/hareketler" },
   { key: "ust:c-hareket", baslik: "C. Hareket", to: "/cari/hareket-kayit" },
   { key: "ust:e-belge", baslik: "e-Belge", to: "/e-belge" },
@@ -150,6 +152,7 @@ const OZELLIK_SAYFALARI = {
   doviz: ["vezne/doviz-fisi-kayit", "vezne/doviz-fisi-duzeltme", "vezne/doviz-fisi"],
   emanet: ["cari/emanet-dekont", "cari/emanet-duzeltme"],
   etiket: ["etiket/barkod-fiyat", "etiket/altin-urun-barkodlama", "etiket/ozel-urun-barkodlama", "etiket/barkod-basimi"],
+  ticari: ["ticari/satis-fisi", "ticari/satis-fisi-duzeltme", "ticari/satis-listesi"],
 } as const;
 
 export type UrunOzellikleri = Record<keyof typeof OZELLIK_SAYFALARI | "kuyum", boolean>;
@@ -165,6 +168,7 @@ export const urunOzellikleri = (acik: string[] | null | undefined): UrunOzellikl
     doviz: bak(OZELLIK_SAYFALARI.doviz),
     emanet: bak(OZELLIK_SAYFALARI.emanet),
     etiket,
+    ticari: bak(OZELLIK_SAYFALARI.ticari),
     // Kuyumcu ayarları (işçilik, has altın, sarrafiye sınırı…): kuyum fişlerinden biri açıksa
     kuyum: sarraf || perakende || etiket,
   };

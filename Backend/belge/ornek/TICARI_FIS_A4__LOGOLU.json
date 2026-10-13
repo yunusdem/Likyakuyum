@@ -1,0 +1,474 @@
+{
+  "kod": "TCRFIS_A4",
+  "ad": "Ticari Satış Fatura (A4) — logolu ve kaşeli",
+  "aciklama": "Varsayılan düzen; üstte firma logosu, altta kaşe. Firmanın yüklediği ilk logo ve kaşe kullanılır; yoksa o öğe eklenmez.",
+  "kagit": "A4",
+  "kenar": 28,
+  "yaziBoyutu": 8.25,
+  "yaziTipi": "sans",
+  "ogeler": [
+    {
+      "id": "filigran-onizleme",
+      "tip": "filigran",
+      "kosul": "{{onizleme}}",
+      "metin": "ÖNİZLEME"
+    },
+    {
+      "id": "filigran-iptal",
+      "tip": "filigran",
+      "kosul": "{{iptal}}",
+      "metin": "İPTAL",
+      "renk": "#b00020"
+    },
+    {
+      "id": "firma-logo",
+      "ad": "Firma logosu",
+      "tip": "logo",
+      "gorsel": "{LOGO}",
+      "x": 0,
+      "y": 0,
+      "g": 150,
+      "h": 44
+    },
+    {
+      "id": "firma-unvan",
+      "ad": "Firma ünvanı",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 54,
+      "g": 330,
+      "metin": "{{firma.unvan}}",
+      "boyut": 11.25,
+      "kalin": true
+    },
+    {
+      "id": "firma-bilgileri",
+      "ad": "Firma bilgileri",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 72,
+      "g": 330,
+      "boyut": 8.25,
+      "aralik": 1.5,
+      "daralt": true,
+      "satirlar": [
+        "?{{firma.adres}}",
+        "?{{firma.subeAdi}}",
+        "**Tel:** {{firma.telefon}} | **E-Posta:** {{firma.eposta}}",
+        "**VKN:** {{firma.vkn}} | **Tic.Sicil No:** {{firma.ticaretSicilNo}}"
+      ]
+    },
+    {
+      "id": "senaryo-kutusu",
+      "tip": "kutu",
+      "x": 374.28,
+      "y": 54,
+      "g": 165,
+      "h": 52,
+      "kalinlik": 0.75,
+      "zemin": "#f8f9fa"
+    },
+    {
+      "id": "senaryo",
+      "ad": "Senaryo",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 377.28,
+      "y": 59,
+      "g": 159,
+      "metin": "{{senaryo}}",
+      "boyut": 7.5,
+      "kalin": true,
+      "hiza": "center",
+      "renk": "#0d47a1"
+    },
+    {
+      "id": "fatura-no",
+      "ad": "Fatura no",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 377.28,
+      "y": 71,
+      "g": 159,
+      "metin": "{{faturaNo}}",
+      "boyut": 9.75,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "ettn",
+      "ad": "ETTN",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 377.28,
+      "y": 85,
+      "g": 159,
+      "metin": "ETTN: {{ettn}}",
+      "boyut": 7,
+      "hiza": "center",
+      "renk": "#555"
+    },
+    {
+      "id": "karekod",
+      "ad": "Karekod",
+      "zorunlu": true,
+      "tip": "qr",
+      "x": 479.28,
+      "y": 112,
+      "boyut": 60,
+      "icerik": "{{qr}}"
+    },
+    {
+      "id": "ust-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 178,
+      "x2": 539.28,
+      "y2": 178,
+      "kalinlik": 0.6
+    },
+    {
+      "id": "musteri-kutusu",
+      "tip": "kutu",
+      "x": 0,
+      "y": 186,
+      "g": 320,
+      "h": 94,
+      "kalinlik": 0.5,
+      "zemin": "#f8f9fa"
+    },
+    {
+      "id": "musteri-baslik",
+      "tip": "metin",
+      "x": 6,
+      "y": 191,
+      "g": 308,
+      "metin": "SAYIN (MÜŞTERİ BİLGİLERİ)",
+      "boyut": 7.5,
+      "kalin": true,
+      "renk": "#0d47a1"
+    },
+    {
+      "id": "musteri-cizgi",
+      "tip": "cizgi",
+      "x1": 6,
+      "y1": 202,
+      "x2": 314,
+      "y2": 202,
+      "kalinlik": 0.4
+    },
+    {
+      "id": "musteri-bilgileri",
+      "ad": "Müşteri bilgileri",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 6,
+      "y": 206,
+      "g": 308,
+      "boyut": 8.25,
+      "aralik": 1.5,
+      "daralt": true,
+      "satirlar": [
+        "**{{musteri.unvan}}**",
+        "**TCKN / VKN:** {{musteri.kimlikNo}}",
+        "?**Vergi Dairesi:** {{musteri.vergiDairesi}}",
+        "**Adres:** {{musteri.adres}}",
+        "**İl / İlçe:** {{musteri.ilce}} / {{musteri.il}}",
+        "?**Tel:** {{musteri.telefon}}"
+      ]
+    },
+    {
+      "id": "detay-kutusu",
+      "tip": "kutu",
+      "x": 330,
+      "y": 186,
+      "g": 209.28,
+      "h": 94,
+      "kalinlik": 0.5,
+      "zemin": "#f8f9fa"
+    },
+    {
+      "id": "detay-baslik",
+      "tip": "metin",
+      "x": 336,
+      "y": 191,
+      "g": 197.28,
+      "metin": "FATURA DETAYLARI",
+      "boyut": 7.5,
+      "kalin": true,
+      "renk": "#0d47a1"
+    },
+    {
+      "id": "detay-cizgi",
+      "tip": "cizgi",
+      "x1": 336,
+      "y1": 202,
+      "x2": 533.28,
+      "y2": 202,
+      "kalinlik": 0.4
+    },
+    {
+      "id": "fatura-detaylari",
+      "ad": "Fatura detayları",
+      "zorunlu": true,
+      "tip": "tablo",
+      "x": 336,
+      "y": 205,
+      "g": 197.28,
+      "etiketG": 100,
+      "satirH": 11.5,
+      "boyut": 8.25,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "kalinDeger": true,
+      "satirlar": [
+        [
+          "Özelleştirme No:",
+          "TR1.2"
+        ],
+        [
+          "Senaryo:",
+          "{{senaryo}}"
+        ],
+        [
+          "Fatura Tipi:",
+          "{{faturaTipiAdi}}"
+        ],
+        [
+          "Düzenleme Tarihi:",
+          "{{tarih}}"
+        ],
+        [
+          "Düzenleme Zamanı:",
+          "{{saat}}"
+        ],
+        [
+          "Para Birimi / Kur:",
+          "{{paraKodu}} (1.00)"
+        ]
+      ]
+    },
+    {
+      "id": "urun-satirlari",
+      "ad": "Ürün satırları",
+      "zorunlu": true,
+      "tip": "liste",
+      "kaynak": "satirlar",
+      "x": 0,
+      "y": 290,
+      "g": 539.28,
+      "satirH": 15,
+      "boyut": 7.5,
+      "cerceve": "hucre",
+      "baslikSatiri": true,
+      "baslikZemin": "#e2e3e5",
+      "baslikBoyut": 7.1,
+      "daralt": true,
+      "sutunlar": [
+        {
+          "baslik": "No",
+          "deger": "{{s.sira}}",
+          "g": 24,
+          "hiza": "center"
+        },
+        {
+          "baslik": "Kod",
+          "deger": "{{s.kod}}",
+          "g": 52,
+          "hiza": "center"
+        },
+        {
+          "baslik": "Mal / Hizmet Açıklaması",
+          "deger": "{{s.ad}}",
+          "g": 124.28,
+          "kalin": true,
+          "cokSatir": true
+        },
+        {
+          "baslik": "Miktar",
+          "deger": "{{s.miktarYazi}}",
+          "g": 50,
+          "hiza": "right"
+        },
+        {
+          "baslik": "Birim Fiyat",
+          "deger": "{{s.birimFiyat|sayi}}",
+          "g": 52,
+          "hiza": "right"
+        },
+        {
+          "baslik": "İskonto",
+          "deger": "{{s.iskontoYazi}}",
+          "g": 42,
+          "hiza": "right"
+        },
+        {
+          "baslik": "KDV %",
+          "deger": "%{{s.kdvOrani}}",
+          "g": 32,
+          "hiza": "center"
+        },
+        {
+          "baslik": "KDV Tutarı",
+          "deger": "{{s.kdvTutari|sayi}}",
+          "g": 50,
+          "hiza": "right"
+        },
+        {
+          "baslik": "Toplam Tutar",
+          "deger": "{{s.toplam|sayi}} TL",
+          "g": 113,
+          "hiza": "right",
+          "kalin": true
+        }
+      ]
+    },
+    {
+      "id": "yalniz-kutusu",
+      "tip": "kutu",
+      "x": 0,
+      "y": 330,
+      "g": 320,
+      "h": 50,
+      "kalinlik": 0.5,
+      "zemin": "#f8f9fa"
+    },
+    {
+      "id": "yalniz-baslik",
+      "tip": "metin",
+      "x": 6,
+      "y": 335,
+      "g": 308,
+      "metin": "Yalnız:",
+      "boyut": 8.25,
+      "kalin": true,
+      "renk": "#555"
+    },
+    {
+      "id": "yaziyla",
+      "ad": "Yazıyla",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 6,
+      "y": 347,
+      "g": 308,
+      "metin": "#{{toplam.yaziyla}}#",
+      "boyut": 8.25,
+      "kalin": true
+    },
+    {
+      "id": "yasal-not",
+      "ad": "Yasal not",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 6,
+      "y": 364,
+      "g": 308,
+      "boyut": 7.5,
+      "renk": "#555",
+      "metin": "**Not:** Bu belge 213 Sayılı Vergi Usul Kanunu hükümlerine göre düzenlenmiştir. E-Arşiv Fatura Tebliği uyarınca elektronik ortamda düzenlenmiş ve imzalanmıştır."
+    },
+    {
+      "id": "toplamlar",
+      "ad": "Toplamlar",
+      "zorunlu": true,
+      "tip": "tablo",
+      "x": 330,
+      "y": 330,
+      "g": 209.28,
+      "etiketG": 105,
+      "satirH": 14,
+      "boyut": 8.25,
+      "daralt": true,
+      "satirlar": [
+        [
+          "Brüt Toplam (KDV dahil):",
+          "{{toplam.brut|sayi}} TL"
+        ],
+        {
+          "etiket": "Toplam İskonto:",
+          "deger": "-{{toplam.iskonto|sayi}} TL",
+          "kosul": "{{toplam.iskontoVar}}"
+        },
+        [
+          "Mal Hizmet Toplamı:",
+          "{{toplam.ara|sayi}} TL"
+        ],
+        [
+          "Hesaplanan KDV:",
+          "{{toplam.kdv|sayi}} TL"
+        ],
+        [
+          "Ödenecek Tutar:",
+          "{{toplam.genel|sayi}} TL",
+          true
+        ]
+      ]
+    },
+    {
+      "id": "imza-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 416,
+      "x2": 539.28,
+      "y2": 416,
+      "kalinlik": 0.5
+    },
+    {
+      "id": "teslim-eden",
+      "tip": "metin",
+      "x": 20,
+      "y": 424,
+      "g": 200,
+      "metin": "Teslim Eden",
+      "boyut": 8.25,
+      "hiza": "center",
+      "renk": "#555"
+    },
+    {
+      "id": "teslim-alan",
+      "tip": "metin",
+      "x": 319.28,
+      "y": 424,
+      "g": 200,
+      "metin": "Teslim Alan",
+      "boyut": 8.25,
+      "hiza": "center",
+      "renk": "#555"
+    },
+    {
+      "id": "imza-kase",
+      "tip": "metin",
+      "x": 20,
+      "y": 452,
+      "g": 200,
+      "metin": "İmza / Kaşe",
+      "boyut": 8.25,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "alici-unvan",
+      "tip": "metin",
+      "x": 319.28,
+      "y": 452,
+      "g": 200,
+      "metin": "{{musteri.unvan}}",
+      "boyut": 8.25,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "firma-kase",
+      "ad": "Firma kaşesi",
+      "tip": "imza",
+      "gorsel": "{KASE}",
+      "x": 409.5,
+      "y": 468,
+      "g": 120,
+      "h": 50
+    }
+  ]
+}

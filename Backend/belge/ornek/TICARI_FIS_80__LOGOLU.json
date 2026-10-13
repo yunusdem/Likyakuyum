@@ -1,0 +1,304 @@
+{
+  "kod": "TCRFIS_80",
+  "ad": "Ticari Satış Bilgi Fişi (80 mm termal) — logolu ve kaşeli",
+  "aciklama": "Varsayılan düzen; üstte firma logosu, altta kaşe. Firmanın yüklediği ilk logo ve kaşe kullanılır; yoksa o öğe eklenmez.",
+  "kagit": [
+    226.77,
+    0
+  ],
+  "kenar": 8.5,
+  "yaziBoyutu": 7.5,
+  "yaziTipi": "mono",
+  "ogeler": [
+    {
+      "id": "filigran-onizleme",
+      "tip": "filigran",
+      "kosul": "{{onizleme}}",
+      "metin": "ÖNİZLEME"
+    },
+    {
+      "id": "filigran-iptal",
+      "tip": "filigran",
+      "kosul": "{{iptal}}",
+      "metin": "İPTAL",
+      "renk": "#b00020"
+    },
+    {
+      "id": "firma-logo",
+      "ad": "Firma logosu",
+      "tip": "logo",
+      "gorsel": "{LOGO}",
+      "x": 50,
+      "y": 0,
+      "g": 110,
+      "h": 34
+    },
+    {
+      "id": "firma-unvan",
+      "ad": "Firma ünvanı",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 40,
+      "g": 209.77,
+      "metin": "{{firma.unvan}}",
+      "boyut": 9.75,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "firma-bilgileri",
+      "ad": "Firma bilgileri",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 53,
+      "g": 209.77,
+      "boyut": 7.5,
+      "aralik": 0.5,
+      "hiza": "center",
+      "daralt": true,
+      "satirlar": [
+        "?{{firma.adres}}",
+        "?{{firma.subeAdi}}",
+        "VKN: {{firma.vkn}} | TEL: {{firma.telefon}}"
+      ]
+    },
+    {
+      "id": "baslik-ust-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 82,
+      "x2": 209.77,
+      "y2": 82,
+      "kalinlik": 0.6
+    },
+    {
+      "id": "belge-basligi",
+      "ad": "Belge başlığı",
+      "zorunlu": true,
+      "tip": "metin",
+      "x": 0,
+      "y": 85,
+      "g": 209.77,
+      "metin": "{{baslik}}",
+      "boyut": 8.25,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "baslik-alt-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 97,
+      "x2": 209.77,
+      "y2": 97,
+      "kalinlik": 0.6
+    },
+    {
+      "id": "fatura-bilgileri",
+      "ad": "Fatura bilgileri",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 101,
+      "g": 209.77,
+      "boyut": 7.5,
+      "aralik": 0.5,
+      "satirlar": [
+        "**Fatura No:** {{faturaNo}}",
+        "**Tarih:** {{tarih}} {{saat}}",
+        "**Müşteri:** {{musteri.unvan}}",
+        "**TCKN/VKN:** {{musteri.kimlikNo}}",
+        "**Senaryo:** {{senaryo}}"
+      ]
+    },
+    {
+      "id": "urun-ust-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 149,
+      "x2": 209.77,
+      "y2": 149,
+      "kalinlik": 0.6
+    },
+    {
+      "id": "urun-satirlari",
+      "ad": "Ürün satırları",
+      "zorunlu": true,
+      "tip": "liste",
+      "kaynak": "satirlar",
+      "x": 0,
+      "y": 151,
+      "g": 209.77,
+      "satirH": 10,
+      "boyut": 7.1,
+      "baslikSatiri": true,
+      "daralt": true,
+      "sutunlar": [
+        {
+          "baslik": "Ürün",
+          "deger": "{{s.ad}}",
+          "g": 105,
+          "cokSatir": true
+        },
+        {
+          "baslik": "Miktar",
+          "deger": "{{s.fiyatYazi}}",
+          "g": 50,
+          "hiza": "right"
+        },
+        {
+          "baslik": "Tutar",
+          "deger": "{{s.toplam|sayi}}",
+          "g": 54.77,
+          "hiza": "right",
+          "kalin": true
+        }
+      ],
+      "altSatirlar": [
+        {
+          "metin": "{{s.kodBarkod}}",
+          "sutun": 0,
+          "boyut": 6.4
+        },
+        {
+          "metin": "İsk. {{s.iskontoYazi}}",
+          "sutun": 1,
+          "boyut": 6.4,
+          "kosul": "{{s.iskontoVar}}"
+        }
+      ]
+    },
+    {
+      "id": "urun-alt-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 174,
+      "x2": 209.77,
+      "y2": 174,
+      "kalinlik": 0.6
+    },
+    {
+      "id": "ara-toplamlar",
+      "ad": "Ara toplam / KDV / iskonto",
+      "zorunlu": true,
+      "tip": "tablo",
+      "x": 0,
+      "y": 177,
+      "g": 209.77,
+      "etiketG": 120,
+      "satirH": 10,
+      "boyut": 7.9,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "daralt": true,
+      "satirlar": [
+        [
+          "Brüt Toplam:",
+          "{{toplam.brut|sayi}} TL"
+        ],
+        {
+          "etiket": "İskonto:",
+          "deger": "-{{toplam.iskonto|sayi}} TL",
+          "kosul": "{{toplam.iskontoVar}}"
+        },
+        [
+          "KDV Hariç:",
+          "{{toplam.ara|sayi}} TL"
+        ],
+        [
+          "KDV:",
+          "{{toplam.kdv|sayi}} TL"
+        ]
+      ]
+    },
+    {
+      "id": "genel-cizgi",
+      "tip": "cizgi",
+      "x1": 90,
+      "y1": 218,
+      "x2": 209.77,
+      "y2": 218,
+      "kalinlik": 0.6
+    },
+    {
+      "id": "genel-toplam",
+      "ad": "Genel toplam",
+      "zorunlu": true,
+      "tip": "tablo",
+      "x": 0,
+      "y": 219,
+      "g": 209.77,
+      "etiketG": 100,
+      "satirH": 12,
+      "boyut": 8.6,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "satirlar": [
+        [
+          "GENEL TOPLAM:",
+          "{{toplam.genel|sayi}} TL",
+          true
+        ]
+      ]
+    },
+    {
+      "id": "karekod",
+      "ad": "Karekod",
+      "tip": "qr",
+      "x": 80.4,
+      "y": 236,
+      "boyut": 49,
+      "icerik": "{{qr}}"
+    },
+    {
+      "id": "ettn",
+      "ad": "ETTN",
+      "tip": "metin",
+      "kosul": "{{ettn}}",
+      "daralt": true,
+      "x": 0,
+      "y": 288,
+      "g": 209.77,
+      "metin": "ETTN: {{ettn}}",
+      "boyut": 6,
+      "hiza": "center"
+    },
+    {
+      "id": "alt-cizgi",
+      "tip": "cizgi",
+      "x1": 0,
+      "y1": 299,
+      "x2": 209.77,
+      "y2": 299,
+      "kalinlik": 0.5
+    },
+    {
+      "id": "bilgi-fisi",
+      "ad": "Bilgi fişi ibaresi",
+      "zorunlu": true,
+      "tip": "satirlar",
+      "x": 0,
+      "y": 302,
+      "g": 209.77,
+      "boyut": 6.75,
+      "aralik": 0.5,
+      "hiza": "center",
+      "satirlar": [
+        "İyi günlerde kullanmanız dileğiyle.",
+        "Mali değeri yoktur, bilgi fişidir."
+      ]
+    },
+    {
+      "id": "firma-kase",
+      "ad": "Firma kaşesi",
+      "tip": "imza",
+      "gorsel": "{KASE}",
+      "x": 60,
+      "y": 334,
+      "g": 90,
+      "h": 45
+    }
+  ]
+}

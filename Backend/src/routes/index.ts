@@ -29,6 +29,7 @@ import kasaRoutes from "./kasa.routes.js";
 import etiketRoutes from "./etiket.routes.js";
 import ayarRoutes from "./ayar.routes.js";
 import perakendeRoutes from "./perakende.routes.js";
+import ticariRoutes from "./ticari.routes.js";
 import adminRoutes from "./admin.routes.js";
 import sayimRoutes from "./sayim.routes.js";
 import iskontoRoutes from "./iskonto.routes.js";
@@ -128,6 +129,8 @@ apiRouter.use("/sarraf-fis", kapi("/sarraf-fis"), sarrafFisRoutes);
 apiRouter.use("/vezne/sarraf-fis", kapi("/sarraf-fis"), sarrafFisRoutes);
 apiRouter.use("/perakende", kapi("/perakende"), perakendeRoutes);
 apiRouter.use("/vezne/perakende", kapi("/perakende"), perakendeRoutes);
+// Ticari İşlemler: stok kartı, stok girişi, ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md)
+apiRouter.use("/ticari", kapi("/ticari"), ticariRoutes);
 
 export default apiRouter;
 
