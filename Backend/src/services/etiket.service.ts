@@ -1,3 +1,4 @@
+import sql from "mssql";
 import { AltinUrunSqlRepository, AltinUrunModel, SaveAltinUrunDto } from "../models/altinUrunSql.repository.js";
 import { OzelUrunSqlRepository, OzelUrunModel, SaveOzelUrunDto } from "../models/ozelUrunSql.repository.js";
 import { EtiketSablonSqlRepository, EtiketSablonModel, SaveEtiketSablonDto } from "../models/etiketSablonSql.repository.js";
@@ -436,5 +437,42 @@ export class EtiketService {
       durum: "BILINMEYEN",
     };
   }
+
+  // ─── Katalog / Menü Güncelleme (Hızlı Ekle / Çıkar / Değiştir) ───────────
+  public static async updateUrunKatalog(
+    data: { tip: "altin" | "ozel"; id: number; katalog: boolean; menuId?: number | null },
+    dbContext?: DbCtx
+  ): Promise<{ success: boolean; katalog: boolean; menuId: number | null; menuAdi: string | null }> {
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    const req = pool.request();
+    req.input("ID", sql.Int, data.id);
+    req.input("KATALOG", sql.Bit, data.katalog ? 1 : 0);
+    req.input("MENU_ID", sql.Int, data.menuId || null);
+
+    if (data.tip === "altin") {
+      await req.query(`
+        UPDATE [dbo].[TODVZ_ALTIN_URUN]
+        SET [KATALOG] = @KATALOG, [MENU_ID] = @MENU_ID
+        WHERE [ALTIN_URUN_ID] = @ID
+      `);
+    } else {
+      await req.query(`
+        UPDATE [dbo].[TODVZ_OZEL_URUN]
+        SET [KATALOG] = @KATALOG, [MENU_ID] = @MENU_ID
+        WHERE [OZEL_URUN_ID] = @ID
+      `);
+    }
+
+    let menuAdi: string | null = null;
+    if (data.menuId) {
+      const mReq = pool.request();
+      mReq.input("MENU_ID", sql.Int, data.menuId);
+      const mRes = await mReq.query(`SELECT TOP 1 MENU_ADI FROM [dbo].[TODVZ_MENU] WHERE MENU_ID = @MENU_ID`);
+      menuAdi = mRes.recordset[0]?.MENU_ADI || null;
+    }
+
+    return { success: true, katalog: data.katalog, menuId: data.menuId || null, menuAdi };
+  }
 }
+
 
