@@ -4,6 +4,7 @@ import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { EtiketNumeratorSqlRepository } from "./etiketNumeratorSql.repository.js";
 import { UrunResimSqlRepository } from "./urunResimSql.repository.js";
+import { MenuSqlRepository } from "./menuSql.repository.js";
 
 export interface AltinUrunModel {
   altinUrunId: number;
@@ -42,6 +43,8 @@ export interface AltinUrunModel {
   vezneAd?: string | null;
   konsinye?: boolean;
   katalog?: boolean;
+  menuId?: number | null;
+  menuAdi?: string | null;
   satildi: boolean;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
@@ -91,6 +94,7 @@ export interface SaveAltinUrunDto {
   vezneId?: number | null;
   konsinye?: boolean;
   katalog?: boolean;
+  menuId?: number | null;
   satildi?: boolean;
 }
 
@@ -99,9 +103,26 @@ export class AltinUrunSqlRepository {
   private static acceptedParamsCache: Set<string> | null = null;
 
   public static async ensureTables(pool: sql.ConnectionPool): Promise<void> {
+    await MenuSqlRepository.ensureTablesAndProcs(pool);
     if (this.ensuredPools.has(pool)) return;
     try {
       await pool.request().batch(`
+        IF OBJECT_ID('TODVZ_MENU', 'U') IS NULL
+        BEGIN
+          CREATE TABLE [dbo].[TODVZ_MENU] (
+            [MENU_ID]           INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+            [MENU_KODU]         VARCHAR(50) NULL,
+            [MENU_ADI]          VARCHAR(250) NOT NULL,
+            [ACIKLAMA]          VARCHAR(500) NULL,
+            [SIRA_NO]           INT NOT NULL DEFAULT 0,
+            [AKTIF]             BIT NOT NULL DEFAULT 1,
+            [EKLEYEN_ID]        INT NULL,
+            [EKLEME_ZAMANI]     DATETIME NOT NULL DEFAULT GETDATE(),
+            [GUNCELLEYEN_ID]    INT NULL,
+            [GUNCELLEME_ZAMANI] DATETIME NULL
+          );
+        END;
+
         IF OBJECT_ID('TODVZ_ALTIN_URUN', 'U') IS NULL
         BEGIN
           CREATE TABLE [dbo].[TODVZ_ALTIN_URUN] (
@@ -155,6 +176,8 @@ export class AltinUrunSqlRepository {
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [KONSINYE] BIT NOT NULL CONSTRAINT DF_TODVZ_ALTIN_URUN_KONSINYE DEFAULT(0);
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'KATALOG')
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [KATALOG] BIT NOT NULL CONSTRAINT DF_TODVZ_ALTIN_URUN_KATALOG DEFAULT(0);
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'MENU_ID')
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [MENU_ID] INT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'VEZNE_ID')
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [VEZNE_ID] INT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'YAZDIRILDI')
@@ -260,6 +283,7 @@ export class AltinUrunSqlRepository {
             @VEZNE_ID                   INT = NULL,
             @KONSINYE                   BIT = 0,
             @KATALOG                    BIT = 0,
+            @MENU_ID                    INT = NULL,
             @KULLANICI_ID               INT = NULL,
             @YENI_KAYIT                 BIT OUTPUT
         AS
@@ -389,19 +413,7 @@ export class AltinUrunSqlRepository {
             -- Stok Kontrolü & Vezne Bakiyesinden Düşme: KONSİNYE DEĞİLSE ÇALIŞIR!
             IF (ISNULL(@KONSINYE, 0) = 0 AND @VEZNE_ID IS NOT NULL AND @PARA_ID IS NOT NULL AND @MIKTAR > 0)
             BEGIN
-                DECLARE @MEVCUT_STOK FLOAT = 0;
-                SELECT @MEVCUT_STOK = ISNULL(MIKTAR, 0) 
-                FROM dbo.TODVZ_VEZNE_BAKIYE 
-                WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
-
-                IF (@MEVCUT_STOK < @MIKTAR)
-                BEGIN
-                    DECLARE @PARA_ADI_HATA VARCHAR(100);
-                    SELECT @PARA_ADI_HATA = AD FROM dbo.TODVZ_PARA WHERE PARA_ID = @PARA_ID;
-                    SET @HATA_MESAJI = 'Seçili veznede yeterli ' + ISNULL(@PARA_ADI_HATA, @AYAR) + ' stoğu bulunamadı! Mevcut Stok: ' + CAST(@MEVCUT_STOK AS VARCHAR(30)) + ' gr, İstenen: ' + CAST(@MIKTAR AS VARCHAR(30)) + ' gr.';
-                    GOTO UNDO;
-                END
-
+                -- Stok Düşme: KONSİNYE DEĞİLSE ÇALIŞIR (Yetersiz stok olsa dahi eksi bakiyeyle kaydedilir)
                 IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID)
                     UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @PARA_ID;
                 ELSE
@@ -416,7 +428,7 @@ export class AltinUrunSqlRepository {
                     MIKTAR, HAS_GRAM, MALIYET_ISCILIK, MALIYET_ISCILIK_PARA_KODU, MALIYET_ISCILIK_BIRIM,
                     MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK, SATIS_ISCILIK_TUTARI, ISCILIK_KARI, MALIYET,
                     MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
-                    ALTIN_KURU, USD_KURU_1, USD_KURU_2, SATILDI, RESIM, VEZNE_ID, KONSINYE, KATALOG,
+                    ALTIN_KURU, USD_KURU_1, USD_KURU_2, SATILDI, RESIM, VEZNE_ID, KONSINYE, KATALOG, MENU_ID,
                     EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
                 )
                 VALUES (
@@ -424,7 +436,7 @@ export class AltinUrunSqlRepository {
                     @MIKTAR, @HAS_GRAM, @MALIYET_ISCILIK, @MALIYET_ISCILIK_PARA_KODU, @MALIYET_ISCILIK_BIRIM,
                     @MALIYET_ISCILIK_TUTARI, @SATIS_ISCILIK, @SATIS_ISCILIK_TUTARI, @ISCILIK_KARI, @MALIYET,
                     @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
-                    @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @SATILDI, @RESIM, @VEZNE_ID, ISNULL(@KONSINYE, 0), ISNULL(@KATALOG, 0),
+                    @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @SATILDI, @RESIM, @VEZNE_ID, ISNULL(@KONSINYE, 0), ISNULL(@KATALOG, 0), @MENU_ID,
                     @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN
                 );
 
@@ -451,6 +463,7 @@ export class AltinUrunSqlRepository {
                     VEZNE_ID = ISNULL(@VEZNE_ID, VEZNE_ID),
                     KONSINYE = ISNULL(@KONSINYE, 0),
                     KATALOG = ISNULL(@KATALOG, 0),
+                    MENU_ID = @MENU_ID,
                     GUNCELLEYEN_ID = @KULLANICI_ID, GUNCELLEME_ZAMANI = @SIMDIKI_ZAMAN
                 WHERE ALTIN_URUN_ID = @ALTIN_URUN_ID;
 
@@ -572,6 +585,7 @@ export class AltinUrunSqlRepository {
     } catch (e: any) {
       logger.warn("[AltinUrunSqlRepository.ensureProcedures] Warning:", e.message || e);
     }
+    this.acceptedParamsCache = null;
   }
 
   private static mapRow(r: any): AltinUrunModel {
@@ -611,6 +625,8 @@ export class AltinUrunSqlRepository {
       vezneAd: r.VEZNE_AD ? (r.VEZNE_AD || "").trim() : undefined,
       konsinye: Boolean(r.KONSINYE),
       katalog: Boolean(r.KATALOG),
+      menuId: r.MENU_ID !== null && r.MENU_ID !== undefined ? Number(r.MENU_ID) : null,
+      menuAdi: r.MENU_ADI ? String(r.MENU_ADI).trim() : null,
       satildi: Boolean(r.SATILDI),
       yazdirildi: Boolean(r.YAZDIRILDI),
       yazdirildiZamani: r.YAZDIRILDI_ZAMANI ? new Date(r.YAZDIRILDI_ZAMANI).toISOString() : null,
@@ -643,9 +659,10 @@ export class AltinUrunSqlRepository {
 
     const topLimit = filter?.limit && filter.limit > 0 ? filter.limit : 500;
     let query = `
-      SELECT TOP (${topLimit}) u.*, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD 
+      SELECT TOP (${topLimit}) u.*, m.MENU_ADI, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD 
       FROM TODVZ_ALTIN_URUN u
       LEFT JOIN TODVZ_VEZNE v ON v.VEZNE_ID = u.VEZNE_ID
+      LEFT JOIN TODVZ_MENU m ON m.MENU_ID = u.MENU_ID
       WHERE 1=1
     `;
     const req = pool.request();
@@ -733,9 +750,10 @@ export class AltinUrunSqlRepository {
       .request()
       .input("ALTIN_URUN_ID", sql.Int, altinUrunId)
       .query(`
-        SELECT TOP 1 u.*, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD 
+        SELECT TOP 1 u.*, m.MENU_ADI, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD 
         FROM TODVZ_ALTIN_URUN u
         LEFT JOIN TODVZ_VEZNE v ON v.VEZNE_ID = u.VEZNE_ID
+        LEFT JOIN TODVZ_MENU m ON m.MENU_ID = u.MENU_ID
         WHERE u.ALTIN_URUN_ID = @ALTIN_URUN_ID
       `);
 
@@ -760,9 +778,10 @@ export class AltinUrunSqlRepository {
       .request()
       .input("BARKOD", sql.VarChar(50), barkod.trim())
       .query(`
-        SELECT TOP 1 u.*, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD 
+        SELECT TOP 1 u.*, m.MENU_ADI, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD 
         FROM TODVZ_ALTIN_URUN u
         LEFT JOIN TODVZ_VEZNE v ON v.VEZNE_ID = u.VEZNE_ID
+        LEFT JOIN TODVZ_MENU m ON m.MENU_ID = u.MENU_ID
         WHERE u.BARKOD = @BARKOD
            OR (u.GRUP_KODU + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
            OR (u.GRUP_KODU + '-' + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
@@ -996,6 +1015,22 @@ export class AltinUrunSqlRepository {
     const satildiVal = dto.satildi ? 1 : 0;
     const konsinyeVal = dto.konsinye ? 1 : 0;
     const katalogVal = dto.katalog ? 1 : 0;
+    let menuIdVal = dto.menuId && Number(dto.menuId) > 0 ? Number(dto.menuId) : null;
+    if (katalogVal === 1 && !menuIdVal) {
+      try {
+        const defMenuRes = await pool.request().query(`
+          SELECT TOP 1 MENU_ID 
+          FROM dbo.TODVZ_MENU 
+          WHERE AKTIF = 1 
+          ORDER BY SIRA_NO ASC, MENU_ID ASC
+        `);
+        if (defMenuRes.recordset && defMenuRes.recordset.length > 0) {
+          menuIdVal = Number(defMenuRes.recordset[0].MENU_ID);
+        }
+      } catch (err) {
+        logger.warn("[AltinUrunSqlRepository.save] Failed to resolve default menu for katalog product:", err);
+      }
+    }
 
     let savedId: number | null = targetId;
 
@@ -1060,6 +1095,7 @@ export class AltinUrunSqlRepository {
         if (acceptedParams.has("VEZNE_ID")) req.input("VEZNE_ID", sql.Int, vezneIdVal);
         if (acceptedParams.has("KONSINYE")) req.input("KONSINYE", sql.Bit, konsinyeVal);
         if (acceptedParams.has("KATALOG")) req.input("KATALOG", sql.Bit, katalogVal);
+        if (acceptedParams.has("MENU_ID")) req.input("MENU_ID", sql.Int, menuIdVal);
         if (acceptedParams.has("SATILDI")) req.input("SATILDI", sql.Bit, satildiVal);
         if (acceptedParams.has("RESIM")) req.input("RESIM", sql.VarBinary(sql.MAX), resimBuffer);
         if (acceptedParams.has("KULLANICI_ID")) req.input("KULLANICI_ID", sql.Int, kullaniciId || null);
@@ -1111,6 +1147,7 @@ export class AltinUrunSqlRepository {
         directReq.input("VEZNE_ID", sql.Int, vezneIdVal);
         directReq.input("KONSINYE", sql.Bit, konsinyeVal);
         directReq.input("KATALOG", sql.Bit, katalogVal);
+        directReq.input("MENU_ID", sql.Int, menuIdVal);
         directReq.input("SATILDI", sql.Bit, satildiVal);
         directReq.input("RESIM", sql.VarBinary(sql.MAX), withResim ? resimBuffer : null);
         directReq.input("KULLANICI_ID", sql.Int, kullaniciId || null);
@@ -1207,18 +1244,7 @@ export class AltinUrunSqlRepository {
 
           IF (@KONSINYE = 0 AND @VEZNE_ID IS NOT NULL AND @P_ID IS NOT NULL AND @MIKTAR > 0)
           BEGIN
-            -- Yeni miktar için stok kontrolü
-            DECLARE @CURR_STOK FLOAT = 0;
-            SELECT @CURR_STOK = ISNULL(MIKTAR, 0) FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @P_ID;
-            IF (@CURR_STOK < @MIKTAR)
-            BEGIN
-              DECLARE @ERR_P_AD VARCHAR(100);
-              SELECT @ERR_P_AD = AD FROM dbo.TODVZ_PARA WHERE PARA_ID = @P_ID;
-              DECLARE @ERR_MSG VARCHAR(500) = 'Seçili veznede yeterli ' + ISNULL(@ERR_P_AD, @AYAR) + ' stoğu bulunamadı! Mevcut Stok: ' + CAST(@CURR_STOK AS VARCHAR(30)) + ' gr, İstenen: ' + CAST(@MIKTAR AS VARCHAR(30)) + ' gr.';
-              RAISERROR (@ERR_MSG, 16, 1);
-              RETURN;
-            END
-
+            -- Yeni miktar için stok düşümü (yetersiz stok olsa dahi eksi bakiyeyle kaydedilir)
             IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @P_ID)
               UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR - @MIKTAR WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @P_ID;
             ELSE
@@ -1259,6 +1285,7 @@ export class AltinUrunSqlRepository {
                 VEZNE_ID = ISNULL(@VEZNE_ID, VEZNE_ID),
                 KONSINYE = @KONSINYE,
                 KATALOG = @KATALOG,
+                MENU_ID = @MENU_ID,
                 SATILDI = @SATILDI,
                 RESIM = CASE WHEN @RESIM IS NOT NULL THEN @RESIM ELSE RESIM END,
                 GUNCELLEYEN_ID = @KULLANICI_ID,
@@ -1274,14 +1301,14 @@ export class AltinUrunSqlRepository {
               MIKTAR, HAS_GRAM, MALIYET_ISCILIK, MALIYET_ISCILIK_PARA_KODU, MALIYET_ISCILIK_BIRIM,
               MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK, SATIS_ISCILIK_TUTARI, ISCILIK_KARI, MALIYET,
               MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
-              ALTIN_KURU, USD_KURU_1, USD_KURU_2, VEZNE_ID, KONSINYE, KATALOG, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
+              ALTIN_KURU, USD_KURU_1, USD_KURU_2, VEZNE_ID, KONSINYE, KATALOG, MENU_ID, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
             )
             VALUES (
               ISNULL(@TARIH, GETDATE()), @GRUP_KODU, @URUN_NO, @BARKOD, @AYAR, @URETICI_FIRMA, @ORJINAL_KOD, @MODEL, @BANKO,
               @MIKTAR, @HAS_GRAM, @MALIYET_ISCILIK, @MALIYET_ISCILIK_PARA_KODU, @MALIYET_ISCILIK_BIRIM,
               @MALIYET_ISCILIK_TUTARI, @SATIS_ISCILIK, @SATIS_ISCILIK_TUTARI, @ISCILIK_KARI, @MALIYET,
               @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
-              @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @VEZNE_ID, @KONSINYE, @KATALOG, @SATILDI, @RESIM, @KULLANICI_ID, GETDATE(), @KULLANICI_ID, GETDATE()
+              @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @VEZNE_ID, @KONSINYE, @KATALOG, @MENU_ID, @SATILDI, @RESIM, @KULLANICI_ID, GETDATE(), @KULLANICI_ID, GETDATE()
             );
 
             SELECT SCOPE_IDENTITY() AS ALTIN_URUN_ID;
@@ -1329,22 +1356,26 @@ export class AltinUrunSqlRepository {
 
     if (!savedId) throw ApiError.internal("Altın ürün kaydedildi ancak kimlik bilgisi alınamadı.");
 
-    // Update USD_KURU and VEZNE_ID columns if available
+    // Update USD_KURU, VEZNE_ID, KATALOG, MENU_ID columns to guarantee persistence
     try {
       await pool.request()
         .input("SAVED_ID", sql.Int, savedId)
         .input("USD_1", sql.Float, usdKuru1Val)
         .input("USD_2", sql.Float, usdKuru2Val)
         .input("VEZNE_ID", sql.Int, vezneIdVal)
+        .input("KATALOG", sql.Bit, katalogVal)
+        .input("MENU_ID", sql.Int, menuIdVal)
         .query(`
           UPDATE dbo.TODVZ_ALTIN_URUN
           SET USD_KURU_1 = COALESCE(@USD_1, USD_KURU_1),
               USD_KURU_2 = COALESCE(@USD_2, USD_KURU_2),
-              VEZNE_ID = COALESCE(@VEZNE_ID, VEZNE_ID)
+              VEZNE_ID = COALESCE(@VEZNE_ID, VEZNE_ID),
+              KATALOG = @KATALOG,
+              MENU_ID = @MENU_ID
           WHERE ALTIN_URUN_ID = @SAVED_ID
         `);
-    } catch {
-      // Ignore if columns are not present
+    } catch (postErr) {
+      logger.warn("[AltinUrunSqlRepository.save] Post-save update error:", postErr);
     }
 
     // Sync multi images if provided

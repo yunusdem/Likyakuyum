@@ -1,11 +1,14 @@
 import { BelgeSqlRepository } from "../../models/belgeSql.repository.js";
 import { EbelgeSqlRepository } from "../../models/ebelgeSql.repository.js";
 import { EbelgeKaynakService } from "../ebelgeKaynak.service.js";
-import { belgeCiz, sablonOku, BACKEND_KOK } from "./belgeMotor.js";
+import { belgeCiz, belgeKlasoruGorseli, sablonOku, BACKEND_KOK } from "./belgeMotor.js";
+import { pdfTuru } from "./belgeTurleri.js";
+import { etkinSablon } from "./sablonDeposu.js";
+import { BelgeGorselService } from "./belgeGorsel.service.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fisBelgeVerisi } from "./belgeVeri.js";
-import { arsivYolu, arsivle } from "./belgeArsiv.js";
+import { belgeArsivYolu, arsivle } from "./belgeArsiv.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
 /** 80 mm düzeni: `<kod>_80.json` varsa o, yoksa A4 şablonu. */
@@ -53,14 +56,28 @@ export class BelgeService {
             EbelgeSqlRepository.getFirmaBilgisi(ctx).catch(() => ({ dosyaNo: "" })),
         ]);
         const veri = fisBelgeVerisi(b, sablon.kod, { hesapVkn: ayar?.firmaVkn, dosyaNo: firma?.dosyaNo, onizleme: !gonderildi });
-        const pdf = await belgeCiz(sablonOku(duzenDosyasi(sablon, istek.bicim)), veri, `${belgeNo} - ${sablon.ad}`);
+        // ALFIS1 / STFIS1: firmanın Belge Tasarımı'nda düzenlediği düzen (yoksa dosyadaki varsayılan); diğer kodlar dosyadan
+        const tur = pdfTuru(sablon.kod, istek.bicim);
+        const duzen = tur ? (await etkinSablon(tur, ctx)).sablon : sablonOku(duzenDosyasi(sablon, istek.bicim));
+        const gorsel = await BelgeGorselService.cozucu(duzen, belgeKlasoruGorseli, ctx);
+        const pdf = await belgeCiz(duzen, veri, `${belgeNo} - ${sablon.ad}`, gorsel);
         return { pdf, belgeNo, sablon, kaynak: "SABLON", onizleme: !gonderildi, tarih };
+    }
+    /** Üretilmiş PDF'in kopyasını arşivdeki yerine yazar; hata indirmeyi durdurmaz. */
+    static async kopyala(s, ctx) {
+        try {
+            const yol = await belgeArsivYolu({ ctx, sablonAltKlasor: s.sablon.arsivDizini, tarih: s.tarih, belgeNo: s.belgeNo });
+            return arsivle(s.pdf, yol).yol;
+        }
+        catch (e) {
+            logger.warn(`Belge: indirilen PDF arşive yazılamadı (${s.belgeNo}): ${e?.message || e}`);
+            return null;
+        }
     }
     /** PDF'i üretir ve sunucu arşivine yazar (üzerine yazar). */
     static async arsivle(istek, kullanici, ctx) {
         const s = await this.pdf(istek, kullanici, ctx);
-        const kok = s.sablon.arsivDizini || (await BelgeSqlRepository.firmaBelgeDizini(ctx));
-        const yol = arsivYolu({ kokDizin: kok, dbName: ctx?.dbName, tarih: s.tarih, belgeNo: s.belgeNo });
+        const yol = await belgeArsivYolu({ ctx, sablonAltKlasor: s.sablon.arsivDizini, tarih: s.tarih, belgeNo: s.belgeNo });
         const sonuc = arsivle(s.pdf, yol);
         logger.info(`Belge arşivlendi: ${s.belgeNo} → ${yol} (${sonuc.boyut} bayt, ${s.kaynak}${s.onizleme ? ", önizleme" : ""}) [${kullanici}]`);
         return { belgeNo: s.belgeNo, sablon: s.sablon.kod, kaynak: s.kaynak, onizleme: s.onizleme, yol, boyut: sonuc.boyut };

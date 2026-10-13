@@ -406,17 +406,17 @@ export const LoginPage: React.FC = () => {
             <div>
               {/* Brand Logo & Name */}
               <div className="mb-4">
-                {/* Logo and Likya Kuyum side by side */}
+                {/* Logo and Likya ERP side by side */}
                 <div className="d-flex align-items-center mb-2">
                   <img
                     src="/images/logo/logo.svg"
-                    alt="Likya Kuyum Logo"
+                    alt="Likya ERP Logo"
                     className="flex-shrink-0 me-3"
                     style={{ width: "64px", height: "64px", objectFit: "contain" }}
                   />
                   <h3 className="fw-bold mb-0 letter-spacing-1" style={{ fontSize: "2rem", lineHeight: "1.15" }}>
                     <span className="brand-text-likya">Likya</span>{" "}
-                    <span className="brand-text-kuyum">Kuyum</span>
+                    <span className="brand-text-kuyum">ERP</span>
                   </h3>
                 </div>
 
@@ -515,7 +515,7 @@ export const LoginPage: React.FC = () => {
 
               {kurulum && (
                 <Alert variant={ilkYonetici ? "info" : "light"} className="py-2 small border">
-                  <div className="fw-semibold">{sistem?.firma?.unvan || "Likya Kuyum"}</div>
+                  <div className="fw-semibold">{sistem?.firma?.unvan || "Likya ERP"}</div>
                   {ilkYonetici
                     ? "İlk kurulum: programın yöneticisi olacak kullanıcıyı oluşturun. Diğer kullanıcıları içeriden açabilirsiniz."
                     : `Sürüm ${sistem?.surum || ""}`}
@@ -758,11 +758,11 @@ export const LoginPage: React.FC = () => {
                 <div className="d-inline-flex align-items-center gap-2 text-muted small" style={{ fontSize: "0.78rem" }}>
                   <img
                     src="/images/logo/logo.svg"
-                    alt="Likya.Kuyum Logo"
+                    alt="Likya ERP Logo"
                     className="flex-shrink-0"
                     style={{ width: "15px", height: "15px", objectFit: "contain" }}
                   />
-                  <span><strong className="brand-text-likya">Likya</strong> <strong className="brand-text-kuyum">Kuyum</strong> Çoklu Veritabanı ve Oturum Yönetimi</span>
+                  <span><strong className="brand-text-likya">Likya</strong> <strong className="brand-text-kuyum">ERP</strong> Çoklu Veritabanı ve Oturum Yönetimi</span>
                 </div>
               </div>
             </div>

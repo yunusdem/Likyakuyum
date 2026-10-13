@@ -3,6 +3,7 @@ import { RaporService } from "../services/rapor/rapor.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
+import { kopyaKaydet, zamanDamgasi } from "../services/firmaKlasoru.js";
 const tarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG olmalı").optional();
 const saat = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Saat SS:DD olmalı").transform(s => (s.length === 5 ? s + ":00" : s)).optional();
 const idOpt = z.preprocess(v => (v === "" || v === undefined || v === null ? undefined : v), z.coerce.number().int().positive().optional());
@@ -86,6 +87,9 @@ export class RaporController {
     static pdf = asyncHandler(async (req, res) => {
         const { pdf, tanim } = await RaporService.pdf(RaporController.kod(req), RaporController.parametreler(req), RaporController.kullanici(req), RaporController.getDbContext(req));
         const indir = ["1", "true"].includes(String(req.query.indir || ""));
+        // İndirilen çıktının kopyası firma klasörüne (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K8); önizleme kaydedilmez
+        if (indir)
+            void kopyaKaydet(RaporController.getDbContext(req), "Raporlar", `${tanim.kod}_${zamanDamgasi()}.pdf`, pdf);
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `${indir ? "attachment" : "inline"}; filename="${tanim.kod}.pdf"`);
         res.setHeader("Content-Length", String(pdf.length));
@@ -113,6 +117,7 @@ export class RaporController {
     /** GET /api/v1/rapor/:kod/excel?... */
     static excel = asyncHandler(async (req, res) => {
         const { xlsx, tanim } = await RaporService.excel(RaporController.kod(req), RaporController.parametreler(req), RaporController.kullanici(req), RaporController.getDbContext(req));
+        void kopyaKaydet(RaporController.getDbContext(req), "Raporlar", `${tanim.kod}_${zamanDamgasi()}.xlsx`, xlsx);
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         res.setHeader("Content-Disposition", `attachment; filename="${tanim.kod}.xlsx"`);
         res.setHeader("Content-Length", String(xlsx.length));
