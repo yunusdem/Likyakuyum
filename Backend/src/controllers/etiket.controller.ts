@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { EtiketService } from "../services/etiket.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export class EtiketController {
@@ -297,4 +298,24 @@ export class EtiketController {
     await EtiketService.deleteBanko(Number(req.params.id), dbContext);
     return ApiResponse.ok(res, "Banko silindi.");
   });
+
+  // ─── Ürün Katalog / Menü Güncelleme ────────────────────────────────────────
+  public static updateUrunKatalog = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = EtiketController.getDbContext(req);
+    const { tip, id, katalog, menuId } = req.body;
+    if (!tip || !id) {
+      throw ApiError.badRequest("Ürün tipi ('altin' | 'ozel') ve id zorunludur.");
+    }
+    const data = await EtiketService.updateUrunKatalog(
+      {
+        tip,
+        id: Number(id),
+        katalog: Boolean(katalog),
+        menuId: menuId ? Number(menuId) : null,
+      },
+      dbContext
+    );
+    return ApiResponse.ok(res, "Ürün katalog durumu başarıyla güncellendi.", data);
+  });
 }
+
