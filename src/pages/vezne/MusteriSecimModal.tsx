@@ -328,6 +328,16 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
           box-shadow: none !important;
           padding: 0 !important;
         }
+        .cari-nested-backdrop {
+          z-index: 1060 !important;
+        }
+        .cari-nested-modal {
+          z-index: 1065 !important;
+        }
+        .cari-nested-modal .modal-dialog {
+          max-width: 95vw !important;
+          margin: 1.5rem auto !important;
+        }
         .musteri-row { cursor: pointer; transition: background-color 0.15s ease; }
         .musteri-row:not(.musteri-selected-row):hover,
         .musteri-row:not(.musteri-selected-row):hover > td,
@@ -749,34 +759,61 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
         </div>
       </Modal>
 
+      {/* Modal üstünde Modal: Yeni Cari Kart Tanımı */}
       {showNewCariModal && (
-        <CariCardRegistrationPage
-          isModal={true}
-          onCancel={() => setShowNewCariModal(false)}
-          onSuccess={async (newCari) => {
-            setShowNewCariModal(false);
-            if (newCari) {
-              const updatedCariler = await CariService.getCariKartlar().catch(() => internalCariler);
-              setInternalCariler(updatedCariler);
-              onSelectCustomer({
-                type: "registered",
-                id: newCari.id,
-                kod: newCari.kod,
-                unvan: newCari.ad || (newCari as any).unvan || "",
-                vergiKimlikNo: newCari.vergiKimlikNo || "",
-                adres: newCari.adres || "",
-                telefon: newCari.telefon || "",
-                eposta: newCari.eposta || "",
-                eFaturaPostaKutusu: (newCari as any).eFaturaPostaKutusu || "",
-                vergiDairesi: (newCari as any).vergiDairesi || "",
-                il: (newCari as any).il || "",
-                ilce: (newCari as any).ilce || "",
-                raw: newCari,
-              });
-              onClose();
-            }
-          }}
-        />
+        <Modal
+          show={showNewCariModal}
+          onHide={() => setShowNewCariModal(false)}
+          size="xl"
+          centered
+          backdrop="static"
+          backdropClassName="cari-nested-backdrop"
+          dialogClassName="cari-nested-modal modal-95w"
+          style={{ zIndex: 1065 }}
+        >
+          <Modal.Header closeButton className="py-2.5 px-3 bg-light border-bottom">
+            <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
+              <div
+                className="d-flex align-items-center justify-content-center rounded-circle"
+                style={{ width: "24px", height: "24px", backgroundColor: "#16a34a", color: "#fff" }}
+              >
+                <IconPlus size={15} stroke={2.5} />
+              </div>
+              <span className="text-dark">Yeni Cari Kart Tanımı</span>
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body className="p-2 p-md-3" style={{ maxHeight: "85vh", overflowY: "auto" }}>
+            <CariCardRegistrationPage
+              isModal={true}
+              initialName={searchTerm && !/^\d+$/.test(searchTerm.trim()) ? searchTerm.trim() : undefined}
+              initialVkn={searchTerm && /^\d+$/.test(searchTerm.trim()) ? searchTerm.trim() : undefined}
+              onCancel={() => setShowNewCariModal(false)}
+              onSuccess={async (newCari) => {
+                setShowNewCariModal(false);
+                if (newCari) {
+                  const updatedCariler = await CariService.getCariKartlar().catch(() => internalCariler);
+                  setInternalCariler(updatedCariler);
+                  onSelectCustomer({
+                    type: "registered",
+                    id: newCari.id,
+                    kod: newCari.kod,
+                    unvan: newCari.ad || (newCari as any).unvan || "",
+                    vergiKimlikNo: newCari.vergiKimlikNo || "",
+                    adres: newCari.adres || "",
+                    telefon: newCari.telefon || "",
+                    eposta: newCari.eposta || "",
+                    eFaturaPostaKutusu: (newCari as any).eFaturaPostaKutusu || "",
+                    vergiDairesi: (newCari as any).vergiDairesi || "",
+                    il: (newCari as any).il || "",
+                    ilce: (newCari as any).ilce || "",
+                    raw: newCari,
+                  });
+                  onClose();
+                }
+              }}
+            />
+          </Modal.Body>
+        </Modal>
       )}
     </>
   );

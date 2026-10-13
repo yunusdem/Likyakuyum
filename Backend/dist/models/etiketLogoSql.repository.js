@@ -2,6 +2,9 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { kopyaKaydet } from "../services/firmaKlasoru.js";
+/** Logonun kopyası firma klasörüne (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K8); asıl kayıt veritabanında kalır. */
+const logoKopyala = (id, ad, veri, ctx) => kopyaKaydet(ctx, "Logolar", `${id}_${ad}`, veri);
 // URUN_TIPI: 0: Altın, 1: Özel Ürün, 9: Etiket Sektörel Logo & Damga
 export const ETIKET_LOGO_URUN_TIPI = 9;
 export class EtiketLogoSqlRepository {
@@ -95,6 +98,7 @@ export class EtiketLogoSqlRepository {
             req.input("KULLANICI_ID", sql.Int, kullaniciId || null);
             const spResult = await req.execute("dbo.SODVZ_FOTOGRAF_KAYDET");
             const fotografId = spResult.output.FOTOGRAF_ID || spResult.recordset?.[0]?.FOTOGRAF_ID;
+            void logoKopyala(Number(fotografId), dosyaAdi, buffer, dbContext);
             return {
                 fotografId: Number(fotografId),
                 urunTipi: tip,
@@ -125,6 +129,7 @@ export class EtiketLogoSqlRepository {
         );
       `);
             const fotografId = res.recordset[0]?.FOTOGRAF_ID;
+            void logoKopyala(Number(fotografId), dosyaAdi, buffer, dbContext);
             return {
                 fotografId: Number(fotografId),
                 urunTipi: tip,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BelgeService } from "../services/belge/belge.service.js";
+import { FisCiktiService } from "../services/belge/fisCikti.service.js";
 import { BELGE_DURUMLARI } from "../models/belgeSql.repository.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -20,6 +21,53 @@ const listeSema = z.object({
     arama: z.string().trim().max(100).optional(),
     sayfa: z.coerce.number().int().min(1).optional(),
     boyut: z.coerce.number().int().min(1).max(200).optional(),
+});
+const sayiAlani = z.union([z.number(), z.string().max(40)]).optional().nullable();
+const metinAlani = (n = 200) => z.string().max(n).optional().nullable().transform(v => v ?? undefined);
+/** Döviz fişi ekranının yazdırma anındaki görüntüsü (DovizFisiPrintModal). */
+const dovizCiktiSema = z.object({
+    fisId: z.coerce.number().int().nonnegative().optional().nullable(),
+    tip: z.coerce.number().int().min(0).max(1),
+    tarih: metinAlani(30), saat: metinAlani(20), seriNo: metinAlani(40), belgeNo: metinAlani(40),
+    unvan: metinAlani(300), vergiKimlikNo: metinAlani(20), detayIl: metinAlani(100), detayIlce: metinAlani(100),
+    detayUyruk: metinAlani(100), detayPasaportNo: metinAlani(40), detayMeslek: metinAlani(100), detayCariTipi: metinAlani(40),
+    vezneKod: metinAlani(20), istatistikKodu: metinAlani(20), guid: metinAlani(60),
+    lines: z.array(z.object({
+        paraKodu: metinAlani(10), paraAdi: metinAlani(100), miktar: sayiAlani, kur: sayiAlani, tutar: sayiAlani,
+    }).passthrough()).max(200),
+    toplamTutar: sayiAlani, odemeTutari: sayiAlani, bsmvTutari: sayiAlani, komisyonTutari: sayiAlani, giseUsdKuru: sayiAlani,
+    dovizKurusSayisi: sayiAlani, kurKurusSayisi: sayiAlani, tlKurusSayisi: sayiAlani,
+}).passthrough();
+const bicimAlani = z.enum(["80", "A4"]).optional().default("80");
+/** Sarraf fişi ekranının yazdırma anındaki görüntüsü (SarrafFisiPrintModal). */
+const sarrafCiktiSema = z.object({
+    bicim: bicimAlani,
+    fisId: z.coerce.number().int().nonnegative().optional().nullable(),
+    tip: z.coerce.number().int().min(0).max(1),
+    tarih: metinAlani(30), saat: metinAlani(20), seriNo: metinAlani(40), belgeNo: metinAlani(40),
+    unvan: metinAlani(300), vergiKimlikNo: metinAlani(20), detayIl: metinAlani(100), detayIlce: metinAlani(100),
+    detayPasaportNo: metinAlani(40), detayAdres: metinAlani(500), detayTelefonNo: metinAlani(40), vezneKod: metinAlani(20), kullaniciAdi: metinAlani(100),
+    satirlar: z.array(z.object({
+        urunKodu: metinAlani(60), urunAdi: metinAlani(300), aciklama: metinAlani(500),
+        adet: sayiAlani, miktar: sayiAlani, milyem: sayiAlani, hasGram: sayiAlani, kur: sayiAlani, tutar: sayiAlani,
+    }).passthrough()).max(300),
+    odemeSatirlari: z.array(z.object({ paraKodu: metinAlani(20), paraAdi: metinAlani(100), adet: sayiAlani, miktar: sayiAlani, tutar: sayiAlani }).passthrough()).max(100).optional(),
+    toplamTutar: sayiAlani, toplamHas: sayiAlani, odenenTutar: sayiAlani, kalanTutar: sayiAlani,
+}).passthrough();
+/** Perakende fişi: kayıtlı fatura (PerakendeFaturaModel) ya da kayıt yükü. */
+const perakendeCiktiSema = z.object({
+    bicim: bicimAlani,
+    fatura: z.object({
+        faturaId: z.coerce.number().int().nonnegative().optional().nullable(),
+        faturaNo: metinAlani(40), ettn: metinAlani(60), tarih: metinAlani(40), faturaTipi: z.coerce.number().int().optional().nullable(), senaryo: metinAlani(40),
+        aliciVknTckn: metinAlani(20), aliciUnvan: metinAlani(300), adres: metinAlani(500), ilce: metinAlani(100), il: metinAlani(100),
+        vergiDairesi: metinAlani(100), eposta: metinAlani(200), telefon: metinAlani(40), paraKodu: metinAlani(10),
+        araToplam: sayiAlani, toplamKdv: sayiAlani, iskontoOrani: sayiAlani, iskontoTutari: sayiAlani, genelToplam: sayiAlani,
+        satirlar: z.array(z.object({
+            barkod: metinAlani(60), urunAdi: metinAlani(300), ayar: metinAlani(40), birim: metinAlani(20),
+            satirNo: sayiAlani, miktar: sayiAlani, gram: sayiAlani, hasGram: sayiAlani, birimFiyat: sayiAlani, kdvOrani: sayiAlani, kdvTutari: sayiAlani, toplamTutar: sayiAlani,
+        }).passthrough()).max(300).optional().nullable(),
+    }).passthrough(),
 });
 export class BelgeController {
     static getDbContext(req) {
@@ -51,6 +99,9 @@ export class BelgeController {
         const indir = ["1", "true", "evet"].includes(String(req.query.indir || "").toLowerCase());
         const istek = { ...p.data, bicim: p.data.bicim || (indir ? "80" : "a4") };
         const s = await BelgeService.pdf(istek, BelgeController.kullanici(req), BelgeController.getDbContext(req));
+        // İndirilen fiş, arşivdeki yerine yazılır (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K8); önizleme ve taslak yazılmaz
+        if (indir && !s.onizleme)
+            void BelgeService.kopyala(s, BelgeController.getDbContext(req));
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `${indir ? "attachment" : "inline"}; filename="${s.belgeNo || "belge"}.pdf"`);
         res.setHeader("Content-Length", String(s.pdf.length));
@@ -59,6 +110,34 @@ export class BelgeController {
         res.setHeader("X-Belge-Onizleme", s.onizleme ? "1" : "0");
         res.setHeader("X-Belge-Bicim", istek.bicim);
         return res.status(200).end(s.pdf);
+    });
+    /**
+     * POST /api/v1/belge/cikti/doviz  { ...döviz fişi ekran görüntüsü }
+     * Yazıcı / önizleme için şablon + veri + görseller döner; fiş verisini değiştirmez.
+     */
+    static dovizCiktisi = asyncHandler(async (req, res) => {
+        const p = dovizCiktiSema.safeParse(req.body || {});
+        if (!p.success)
+            throw ApiError.badRequest(p.error.issues[0]?.message || "Fiş çıktısı isteği geçersiz.");
+        const sonuc = await FisCiktiService.doviz(p.data, BelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "Fiş çıktısı hazırlandı.", sonuc);
+    });
+    /** POST /api/v1/belge/cikti/sarraf  { bicim: "80" | "A4", ...sarraf fişi ekran görüntüsü } */
+    static sarrafCiktisi = asyncHandler(async (req, res) => {
+        const p = sarrafCiktiSema.safeParse(req.body || {});
+        if (!p.success)
+            throw ApiError.badRequest(p.error.issues[0]?.message || "Fiş çıktısı isteği geçersiz.");
+        const { bicim, ...girdi } = p.data;
+        const sonuc = await FisCiktiService.sarraf(girdi, bicim, BelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "Fiş çıktısı hazırlandı.", sonuc);
+    });
+    /** POST /api/v1/belge/cikti/perakende  { bicim: "80" | "A4", fatura } */
+    static perakendeCiktisi = asyncHandler(async (req, res) => {
+        const p = perakendeCiktiSema.safeParse(req.body || {});
+        if (!p.success)
+            throw ApiError.badRequest(p.error.issues[0]?.message || "Fiş çıktısı isteği geçersiz.");
+        const sonuc = await FisCiktiService.perakende(p.data.fatura, p.data.bicim, BelgeController.getDbContext(req));
+        return ApiResponse.ok(res, "Fiş çıktısı hazırlandı.", sonuc);
     });
     /** POST /api/v1/belge/arsivle  { fisId | belgeNo, kod? } */
     static arsivle = asyncHandler(async (req, res) => {

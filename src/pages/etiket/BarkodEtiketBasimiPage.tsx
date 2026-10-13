@@ -21,12 +21,18 @@ import {
   IconZoomIn,
   IconMaximize,
   IconX,
+  IconDeviceTv,
+  IconPlus,
+  IconTrash,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import EtiketYazdirModal, { EtiketYazdirItem } from "./EtiketYazdirModal";
 import { EtiketService, AltinUrunItem, OzelUrunItem, EtiketSablonItem } from "../../services/etiketService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
+import { MenuSecimModal } from "../../components/katalog/MenuSecimModal";
+import { MenuService, MenuItem, notifyKatalogUpdate } from "../../services/menuService";
+
 
 type Bulunan =
   | { tip: "altin"; urun: AltinUrunItem }
@@ -68,6 +74,9 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
   const [lookupInitialTerm, setLookupInitialTerm] = useState("");
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showFotoModal, setShowFotoModal] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [menuList, setMenuList] = useState<MenuItem[]>([]);
+  const [katalogSubmitting, setKatalogSubmitting] = useState(false);
 
   const barkodRef = useRef<HTMLInputElement | null>(null);
 
@@ -83,20 +92,160 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
 
   const loadAll = useCallback(async () => {
     try {
-      const [altin, ozel, sabl, yzc] = await Promise.all([
+      const [altin, ozel, sabl, yzc, mn] = await Promise.all([
         EtiketService.getAltinUrunler({ limit: 1000 }),
         EtiketService.getOzelUrunler({ limit: 1000 }),
         EtiketService.getSablonlar(),
         PrinterService.getYazicilar().catch(() => []),
+        MenuService.getMenus().catch(() => []),
       ]);
       setAltinList(altin);
       setOzelList(ozel);
       setSablonlar(sabl);
       setYazicilar(yzc);
+      setMenuList(mn);
     } catch (err: any) {
       showNotif("danger", err?.message || "Veriler yüklenemedi.");
     }
   }, []);
+
+  const isInKatalog = Boolean(bulunan?.urun?.katalog || bulunan?.urun?.menuId);
+  const currentMenuAdi =
+    bulunan?.urun?.menuAdi ||
+    (bulunan?.urun?.menuId ? menuList.find((m) => m.menuId === bulunan?.urun?.menuId)?.menuAdi : "") ||
+    "";
+
+  const handleMenuSelect = async (menu: { menuId: number; menuAdi: string }) => {
+    if (!bulunan) return;
+    const isAltin = bulunan.tip === "altin";
+    const id = isAltin ? bulunan.urun.altinUrunId : (bulunan.urun as OzelUrunItem).ozelUrunId;
+    try {
+      setKatalogSubmitting(true);
+      const res = await EtiketService.updateUrunKatalog({
+        tip: bulunan.tip,
+        id,
+        katalog: true,
+        menuId: menu.menuId,
+      });
+
+      const finalMenuAdi = res.menuAdi || menu.menuAdi;
+
+      setBulunan((prev) => {
+        if (!prev) return null;
+        if (prev.tip === "altin") {
+          return {
+            tip: "altin",
+            urun: {
+              ...prev.urun,
+              katalog: true,
+              menuId: menu.menuId,
+              menuAdi: finalMenuAdi,
+            },
+          };
+        }
+        return {
+          tip: "ozel",
+          urun: {
+            ...prev.urun,
+            katalog: true,
+            menuId: menu.menuId,
+            menuAdi: finalMenuAdi,
+          },
+        };
+      });
+
+      if (isAltin) {
+        setAltinList((prev) =>
+          prev.map((item) =>
+            item.altinUrunId === id
+              ? { ...item, katalog: true, menuId: menu.menuId, menuAdi: finalMenuAdi }
+              : item
+          )
+        );
+      } else {
+        setOzelList((prev) =>
+          prev.map((item) =>
+            item.ozelUrunId === id
+              ? { ...item, katalog: true, menuId: menu.menuId, menuAdi: finalMenuAdi }
+              : item
+          )
+        );
+      }
+
+      notifyKatalogUpdate();
+      setShowMenuModal(false);
+      showNotif("success", `Ürün "${finalMenuAdi}" kataloğuna eklendi.`);
+    } catch (err: any) {
+      showNotif("danger", `Katalog güncellenirken hata: ${err?.message || err}`);
+    } finally {
+      setKatalogSubmitting(false);
+    }
+  };
+
+  const handleKatalogdanCikar = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!bulunan) return;
+    const isAltin = bulunan.tip === "altin";
+    const id = isAltin ? bulunan.urun.altinUrunId : (bulunan.urun as OzelUrunItem).ozelUrunId;
+    try {
+      setKatalogSubmitting(true);
+      await EtiketService.updateUrunKatalog({
+        tip: bulunan.tip,
+        id,
+        katalog: false,
+        menuId: null,
+      });
+
+      setBulunan((prev) => {
+        if (!prev) return null;
+        if (prev.tip === "altin") {
+          return {
+            tip: "altin",
+            urun: {
+              ...prev.urun,
+              katalog: false,
+              menuId: null,
+              menuAdi: null,
+            },
+          };
+        }
+        return {
+          tip: "ozel",
+          urun: {
+            ...prev.urun,
+            katalog: false,
+            menuId: null,
+            menuAdi: null,
+          },
+        };
+      });
+
+      if (isAltin) {
+        setAltinList((prev) =>
+          prev.map((item) =>
+            item.altinUrunId === id
+              ? { ...item, katalog: false, menuId: null, menuAdi: null }
+              : item
+          )
+        );
+      } else {
+        setOzelList((prev) =>
+          prev.map((item) =>
+            item.ozelUrunId === id
+              ? { ...item, katalog: false, menuId: null, menuAdi: null }
+              : item
+          )
+        );
+      }
+
+      notifyKatalogUpdate();
+      showNotif("warning", "Ürün katalogdan çıkarıldı.");
+    } catch (err: any) {
+      showNotif("danger", `Katalogdan çıkarılırken hata: ${err?.message || err}`);
+    } finally {
+      setKatalogSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     loadAll();
@@ -553,7 +702,7 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
                     )}
                   </div>
                   <div>
-                    <div className="d-flex align-items-center gap-2">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
                       <span className="fw-bolder fs-5 tracking-wide font-monospace">
                         {bulunan.urun.grupKodu}-{bulunan.urun.urunNo}
                       </span>
@@ -567,6 +716,29 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
                       </Badge>
                       {bulunan.urun.satildi && (
                         <Badge bg="danger" className="px-2 py-1 shadow-xs">SATILDI</Badge>
+                      )}
+                      {isInKatalog ? (
+                        <span
+                          className="badge bg-warning text-dark px-2 py-1 shadow-xs d-inline-flex align-items-center gap-1.5"
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => setShowMenuModal(true)}
+                          title={`Katalog: ${currentMenuAdi} (Değiştirmek için tıklayın)`}
+                        >
+                          <IconDeviceTv size={13} />
+                          <span>Katalog: <strong>{currentMenuAdi || "Ekli"}</strong></span>
+                          <IconBinoculars size={12} className="ms-0.5 opacity-75" />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm py-0.5 px-2 fw-bold text-dark bg-white bg-opacity-95 border-0 shadow-xs d-inline-flex align-items-center gap-1 rounded-pill"
+                          style={{ fontSize: "11px" }}
+                          onClick={() => setShowMenuModal(true)}
+                          title="Ürünü TV / Slayt Kataloğuna Ekle"
+                        >
+                          <IconDeviceTv size={13} className="text-primary" />
+                          <span>Kataloğa Ekle</span>
+                        </button>
                       )}
                     </div>
                     <div className="small text-white text-opacity-90 fw-semibold mt-0.5">
@@ -845,28 +1017,118 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
                               </Col>
                             </>
                           )}
+
+                          <Col xs={6} sm={4}>
+                            <div className="text-muted small" style={{ fontSize: "11px" }}>Katalog Menüsü</div>
+                            <div className="d-flex align-items-center gap-1.5 mt-0.5">
+                              {isInKatalog ? (
+                                <>
+                                  <span
+                                    className="badge bg-warning text-dark text-truncate fw-bold"
+                                    style={{ maxWidth: "120px", fontSize: "11px", cursor: "pointer" }}
+                                    onClick={() => setShowMenuModal(true)}
+                                    title={`Katalog: ${currentMenuAdi} (Değiştirmek için tıklayın)`}
+                                  >
+                                    {currentMenuAdi || "Ekli"}
+                                  </span>
+                                  <Button
+                                    variant="outline-primary"
+                                    size="sm"
+                                    className="p-0.5 px-1.5 d-inline-flex align-items-center bg-white"
+                                    onClick={() => setShowMenuModal(true)}
+                                    disabled={katalogSubmitting}
+                                    title="Kataloğu Değiştir (Dürbün)"
+                                  >
+                                    <IconBinoculars size={13} className="text-primary" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  variant="outline-primary"
+                                  size="sm"
+                                  className="px-2 py-0.5 d-inline-flex align-items-center gap-1 fw-bold"
+                                  style={{ fontSize: "11px" }}
+                                  onClick={() => setShowMenuModal(true)}
+                                  disabled={katalogSubmitting}
+                                  title="Ürünü Kataloğa Ekle"
+                                >
+                                  <IconPlus size={12} />
+                                  <span>Kataloğa Ekle</span>
+                                </Button>
+                              )}
+                            </div>
+                          </Col>
                         </Row>
                       </div>
 
-                      {/* Aksiyon Butonları */}
-                      <div className="d-flex align-items-center justify-content-end gap-2 pt-1">
-                        <Button
-                          variant="light"
-                          className="border text-secondary fw-semibold px-3 d-flex align-items-center gap-1.5"
-                          onClick={handleClear}
-                        >
-                          <IconRefresh size={16} />
-                          <span>Yeni Arama</span>
-                        </Button>
-                        <Button
-                          variant="success"
-                          size="lg"
-                          onClick={() => setShowPrintModal(true)}
-                          className="px-4 fw-bold shadow-sm d-flex align-items-center gap-2"
-                        >
-                          <IconPrinter size={20} />
-                          <span>Etikete Bas</span>
-                        </Button>
+                      {/* Aksiyon Butonları & Katalog Yönetimi */}
+                      <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 border-top">
+                        {/* Sol Kısım: Kataloğa Ekle / Katalog Durumu (Dürbün ile Değiştir) */}
+                        <div className="d-flex align-items-center gap-2">
+                          {isInKatalog ? (
+                            <div className="d-inline-flex align-items-center gap-1.5 p-1 px-2.5 rounded-3 border bg-warning bg-opacity-10 border-warning border-opacity-40 shadow-2xs">
+                              <IconDeviceTv size={17} className="text-warning-emphasis" />
+                              <span className="small text-secondary fw-semibold">Katalog:</span>
+                              <strong className="text-dark small text-truncate" style={{ maxWidth: "160px" }}>
+                                {currentMenuAdi || "Katalog Ürünü"}
+                              </strong>
+                              <Button
+                                variant="outline-dark"
+                                size="sm"
+                                className="p-1 px-1.5 ms-1 d-inline-flex align-items-center bg-white border shadow-2xs rounded"
+                                onClick={() => setShowMenuModal(true)}
+                                disabled={katalogSubmitting}
+                                title="Kataloğu Değiştir (Dürbün)"
+                              >
+                                <IconBinoculars size={14} className="text-primary" />
+                              </Button>
+                              <button
+                                type="button"
+                                onClick={handleKatalogdanCikar}
+                                disabled={katalogSubmitting}
+                                className="btn btn-sm btn-link text-danger p-0 ms-1 text-decoration-none"
+                                title="Katalogdan Çıkar"
+                                style={{ fontSize: "11px" }}
+                              >
+                                <IconTrash size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline-warning"
+                              size="sm"
+                              className="d-inline-flex align-items-center gap-1.5 fw-bold text-dark px-3 py-1.5 rounded-3 shadow-2xs border-warning"
+                              style={{ backgroundColor: "#fffbeb" }}
+                              onClick={() => setShowMenuModal(true)}
+                              disabled={katalogSubmitting}
+                              title="Bu ürünü TV / Slayt kataloğuna ekle"
+                            >
+                              <IconDeviceTv size={17} className="text-warning-emphasis" />
+                              <span>Kataloğa Ekle</span>
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Sağ Kısım: Yeni Arama ve Etikete Bas */}
+                        <div className="d-flex align-items-center gap-2">
+                          <Button
+                            variant="light"
+                            className="border text-secondary fw-semibold px-3 d-flex align-items-center gap-1.5"
+                            onClick={handleClear}
+                          >
+                            <IconRefresh size={16} />
+                            <span>Yeni Arama</span>
+                          </Button>
+                          <Button
+                            variant="success"
+                            size="lg"
+                            onClick={() => setShowPrintModal(true)}
+                            className="px-4 fw-bold shadow-sm d-flex align-items-center gap-2"
+                          >
+                            <IconPrinter size={20} />
+                            <span>Etikete Bas</span>
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </Col>
@@ -907,6 +1169,14 @@ export const BarkodEtiketBasimiPage: React.FC = () => {
             await EtiketService.markOzelUrunYazdirildi([(bulunan.urun as OzelUrunItem).ozelUrunId], true);
           }
         }}
+      />
+
+      {/* ─── MODAL 3: Katalog / Menü Seçim Modalı (Dürbün / Ekle) ─── */}
+      <MenuSecimModal
+        show={showMenuModal}
+        onClose={() => setShowMenuModal(false)}
+        selectedMenuId={bulunan?.urun?.menuId || null}
+        onSelect={handleMenuSelect}
       />
 
       {/* ─── Fotoğraf Büyütme Lightbox Modalı ─── */}

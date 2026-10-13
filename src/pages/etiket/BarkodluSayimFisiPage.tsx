@@ -1736,12 +1736,34 @@ export const BarkodluSayimFisiPage: React.FC = () => {
 
         {/* Tablo Alt Bilgi / Kısayollar ve İpucu Şeridi */}
         <Card.Footer className="bg-light py-1.5 px-3 d-flex align-items-center justify-content-between text-muted" style={{ fontSize: "11.5px" }}>
-          <div className="d-flex align-items-center gap-3">
-            <span><strong className="text-dark">F1:</strong> Kaydet</span>
-            <span className="text-secondary opacity-50">|</span>
-            <span><strong className="text-dark">F2:</strong> Sil</span>
-            <span className="text-secondary opacity-50">|</span>
-            <span><strong className="text-dark">F4:</strong> Yeni</span>
+          <div className="d-flex align-items-center gap-2">
+            <span
+              className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-white shadow-2xs"
+              style={{ fontSize: "11.5px", cursor: "pointer" }}
+              onClick={() => handleKaydet()}
+              title="Fişi Kaydet (F1)"
+            >
+              <Badge bg="primary" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F1</Badge>
+              <span className="fw-bold text-dark">Kaydet</span>
+            </span>
+            <span
+              className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-white shadow-2xs"
+              style={{ fontSize: "11.5px", cursor: "pointer" }}
+              onClick={() => handleSil()}
+              title="Fişi Sil (F2)"
+            >
+              <Badge bg="danger" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F2</Badge>
+              <span className="fw-bold text-dark">Sil</span>
+            </span>
+            <span
+              className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-white shadow-2xs"
+              style={{ fontSize: "11.5px", cursor: "pointer" }}
+              onClick={() => handleYeni()}
+              title="Yeni Sayım Fişi Aç (F4)"
+            >
+              <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F4</Badge>
+              <span className="fw-bold text-dark">Yeni</span>
+            </span>
           </div>
           <div className="fst-italic text-secondary">
             (Sağ tık: Satır Ekle / Sil)
