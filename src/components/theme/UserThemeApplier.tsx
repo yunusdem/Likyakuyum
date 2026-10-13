@@ -188,12 +188,12 @@ export const UserThemeApplier: React.FC = () => {
          ───────────────────────────────────────────────────────────── */
 
       /* 1. Global Typography & Base Body */
-      html,
-      body, 
+      html:not(.tv-katalog-active),
+      body:not(.tv-katalog-active), 
       .dashboard-layout-root, 
       #content, 
       .custom-container, 
-      main,
+      main:not(.tv-katalog-main):not(.tv-katalog-container *),
       .company-definitions-container,
       .user-definitions-container {
         font-family: var(--user-program-font, "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif) !important;
@@ -205,7 +205,7 @@ export const UserThemeApplier: React.FC = () => {
       #content > nav.navbar,
       .navbar,
       .top-header,
-      header {
+      header:not(.tv-katalog-header):not(.tv-katalog-container *) {
         background-color: var(--user-window-bg, #ffffff) !important;
         color: var(--user-window-text, #0f172a) !important;
         border-color: rgba(128, 128, 128, 0.15) !important;

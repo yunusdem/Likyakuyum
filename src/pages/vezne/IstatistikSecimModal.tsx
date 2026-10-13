@@ -285,13 +285,19 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
       <Modal
         show={show}
         onHide={onClose}
+        size="lg"
         centered
         backdrop="static"
         dialogClassName="modal-istatistik-secim-dialog"
-        contentClassName="p-0 border-0 shadow-2xl rounded-2 overflow-hidden"
+        contentClassName="p-0 border-0 shadow-2xl rounded-3 overflow-hidden"
       >
       {/* Özel Vurgulama CSS - Diğer modallarla ve ERP standardıyla uyumlu */}
       <style>{`
+        .modal-istatistik-secim-dialog {
+          max-width: 820px !important;
+          width: 95% !important;
+          margin: 1.75rem auto !important;
+        }
         .istatistik-selected-row,
         .istatistik-selected-row > td,
         .istatistik-selected-row > th {
@@ -327,13 +333,13 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
       <div
         className="d-flex flex-column"
         style={{
-          border: "1px solid #475569",
-          borderRadius: "4px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "6px",
           backgroundColor: "#ffffff",
           boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.45)",
           width: "100%",
-          maxWidth: "750px",
           margin: "0 auto",
+          overflow: "hidden",
         }}
       >
         {/* Başlık Çubuğu */}
@@ -605,54 +611,90 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
 
         {/* Alt Bilgi ve Aksiyon Çubuğu */}
         <div
-          className="d-flex align-items-center justify-content-between px-3 py-2 bg-light border-top"
-          style={{ fontSize: "12.5px" }}
+          className="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-2.5 bg-light border-top"
+          style={{ fontSize: "12.5px", boxSizing: "border-box" }}
         >
-          <div className="text-muted">
-            Toplam: <strong>{filteredItems.length}</strong> kayıt{" "}
-            {searchTerm && `(${items.length} kayıttan filtrelendi)`}
+          {/* Sol: Kayıt Sayısı Bilgisi */}
+          <div
+            className="d-flex align-items-center gap-2 text-muted text-truncate"
+            style={{ minWidth: 0, fontSize: "12px" }}
+          >
+            <span
+              className="px-2 py-1 rounded bg-white border text-secondary fw-medium shadow-2xs"
+              style={{ fontSize: "11.5px" }}
+            >
+              Toplam: <strong className="text-dark">{filteredItems.length}</strong> kayıt
+            </span>
+            {searchTerm && (
+              <span
+                className="text-secondary small text-truncate"
+                style={{ maxWidth: "240px" }}
+                title={`${items.length} kayıttan filtrelendi`}
+              >
+                ({items.length} kayıttan filtrelendi)
+              </span>
+            )}
           </div>
 
-          <div className="d-flex align-items-center gap-2">
+          {/* Sağ: İşlem Butonları */}
+          <div className="d-flex align-items-center gap-2 ms-auto flex-nowrap">
             <Button
               variant="success"
               size="sm"
               onClick={() => setShowNewStatisticModal(true)}
-              className="px-3 py-1 d-flex align-items-center gap-1 fw-bold text-white shadow-xs"
+              className="px-3 py-1.5 d-inline-flex align-items-center gap-1.5 fw-semibold text-white shadow-sm border-0"
               style={{
                 fontSize: "12px",
-                height: "30px",
+                height: "32px",
                 backgroundColor: "#16a34a",
-                borderColor: "#15803d",
+                borderRadius: "5px",
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
               title="Yeni İstatistik Tanımı Ekle"
             >
-              <IconPlus size={15} />
+              <IconPlus size={15} stroke={2.2} />
               <span>Yeni Kayıt</span>
             </Button>
             <Button
               variant="outline-secondary"
               size="sm"
               onClick={onClose}
-              className="px-3 py-1"
-              style={{ fontSize: "12px", height: "30px" }}
+              className="px-3 py-1.5 d-inline-flex align-items-center gap-1 fw-medium bg-white shadow-sm"
+              style={{
+                fontSize: "12px",
+                height: "32px",
+                borderRadius: "5px",
+                borderColor: "#cbd5e1",
+                color: "#475569",
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+              title="Kapat (ESC)"
             >
-              Vazgeç (ESC)
+              <IconX size={14} />
+              <span>Vazgeç (ESC)</span>
             </Button>
             <Button
               variant="primary"
               size="sm"
               onClick={handleConfirm}
               disabled={selectedIndex === null || !filteredItems[selectedIndex]}
-              className="px-3 py-1 d-flex align-items-center gap-1"
+              className="px-3.5 py-1.5 d-inline-flex align-items-center gap-1.5 fw-semibold text-white shadow-sm border-0"
               style={{
                 fontSize: "12px",
-                height: "30px",
-                backgroundColor: "#0284c7",
-                borderColor: "#0284c7",
+                height: "32px",
+                backgroundColor: selectedIndex !== null && filteredItems[selectedIndex] ? "#0284c7" : "#94a3b8",
+                borderRadius: "5px",
+                whiteSpace: "nowrap",
+                cursor: selectedIndex !== null && filteredItems[selectedIndex] ? "pointer" : "not-allowed",
+                transition: "all 0.15s ease",
               }}
+              title="Seçilen Kaydı Aktar (Enter)"
             >
-              <IconCornerDownLeft size={14} />
+              <IconCornerDownLeft size={14} stroke={2.2} />
               <span>Seç (Enter)</span>
             </Button>
           </div>
