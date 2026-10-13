@@ -680,7 +680,7 @@ export class OzelUrunSqlRepository {
         const ids = items.map((x) => x.ozelUrunId).filter(Boolean);
         if (ids.length > 0) {
           const resimRes = await pool.request().query(
-            `SELECT ISLEM_ID, DOSYA_YOLU, RESIM_DATA FROM TODVZ_URUN_RESIM WHERE TIP = 1 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`
+            `SELECT RESIM_ID, ISLEM_ID, DOSYA_YOLU, RESIM_DATA FROM TODVZ_URUN_RESIM WHERE TIP = 1 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`
           );
           const resimMap = new Map<number, string[]>();
           for (const row of resimRes.recordset || []) {
@@ -700,6 +700,7 @@ export class OzelUrunSqlRepository {
             const imgs = resimMap.get(item.ozelUrunId);
             if (imgs && imgs.length > 0) {
               item.resimler = imgs;
+              if (!item.resim) item.resim = imgs[0];
             } else if (item.resim) {
               item.resimler = [item.resim];
             } else {

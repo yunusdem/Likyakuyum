@@ -3407,17 +3407,63 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Sağ Kısım: Kısayol Bilgilendirme Metinleri */}
-            <div className="d-flex align-items-center gap-3 text-secondary user-select-none py-1" style={{ fontSize: "13px" }}>
-              <span><strong className="text-dark">F1</strong> Kaydet</span>
+            {/* Sağ Kısım: Tıklanabilir Kısayol Butonları (Sarraf Fişi Standartı) */}
+            <div className="d-flex align-items-center gap-2 flex-wrap text-secondary user-select-none py-1">
+              <span
+                className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                style={{ fontSize: "11.5px", cursor: "pointer" }}
+                onClick={() => handleSave()}
+                title="Ürünü Kaydet (F1)"
+              >
+                <Badge bg="primary" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F1</Badge>
+                <span className="fw-bold text-dark">Kaydet</span>
+              </span>
               {isDuzeltmeMode && (
                 <>
-                  <span><strong className="text-dark">F2</strong> Sil</span>
-                  <span><strong className="text-dark">F3</strong> Ara</span>
+                  <span
+                    className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                    style={{ fontSize: "11.5px", cursor: "pointer" }}
+                    onClick={() => {
+                      if (ozelUrunId) {
+                        setShowDeleteConfirm(true);
+                      } else {
+                        showNotif("warning", "Silinecek kayıt bulunmamaktadır.");
+                      }
+                    }}
+                    title="Ürünü Sil (F2)"
+                  >
+                    <Badge bg="danger" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F2</Badge>
+                    <span className="fw-bold text-dark">Sil</span>
+                  </span>
+                  <span
+                    className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                    style={{ fontSize: "11.5px", cursor: "pointer" }}
+                    onClick={() => setShowLookup(true)}
+                    title="Ürün Ara (F3)"
+                  >
+                    <Badge bg="dark" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F3</Badge>
+                    <span className="fw-bold text-dark">Ara</span>
+                  </span>
                 </>
               )}
-              <span><strong className="text-dark">F9</strong> Yazdır</span>
-              <span><strong className="text-dark">F10</strong> Kaydet / Yazdır</span>
+              <span
+                className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                style={{ fontSize: "11.5px", cursor: "pointer" }}
+                onClick={() => handleDirectPrint()}
+                title="Doğrudan Yazdır (F9)"
+              >
+                <Badge bg="info" className="text-dark px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F9</Badge>
+                <span className="fw-bold text-dark">Yazdır</span>
+              </span>
+              <span
+                className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                style={{ fontSize: "11.5px", cursor: "pointer" }}
+                onClick={() => handleSaveAndPrint()}
+                title="Kaydet ve Yazdır (F10)"
+              >
+                <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F10</Badge>
+                <span className="fw-bold text-dark">Kaydet / Yazdır</span>
+              </span>
             </div>
           </div>
         </Card.Body>
