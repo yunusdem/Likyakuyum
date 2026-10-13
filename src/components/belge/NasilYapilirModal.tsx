@@ -33,8 +33,16 @@ export const NasilYapilirModal: React.FC<{ show: boolean; onHide: () => void; tu
             <Accordion.Body>
               <ol className="mb-0">
                 <li>Soldan belgeyi seçin, <b>Düzenle</b>'ye basın.</li>
-                <li>Öğeleri sürükleyerek taşıyın, sağ-alt köşedeki mavi kareden boyutlandırın. Oklar 0,5 pt, Shift + oklar 5 pt kaydırır.</li>
-                <li>Sağ panelden yazı, boyut, hizalama, kalınlık, renk ve koşulu değiştirin. Soldaki <b>Alanlar</b> listesinden tıklayarak veri alanı ekleyin.</li>
+                <li>Fişteki her şey değiştirilebilir ve silinebilir. Değiştirmek istediğiniz yerin üzerine tıklayın; özellikleri sağda açılır.
+                  Sürükleyerek taşıyın, sağ-alt köşedeki mavi kareden boyutlandırın. Ölçüler milimetredir.</li>
+                <li><b>İçerik</b>: tabloya <b>+ Satır ekle</b>, ürün listesine <b>+ Kolon ekle</b>. Her değer üç yoldan seçilir:
+                  <b>Bilgi</b> (fişin bir bilgisi, ör. Müşteri adı), <b>Hesap</b> (bilgi ya da sayı ile + − × ÷; ör. TL karşılığı × 0,20 = KDV)
+                  ve <b>Yazı</b> (elle sabit yazı). Önüne / sonuna yazı eklenebilir (ör. "TL").</li>
+                <li><b>Yazı</b>: yazı tipi (Arial, Times New Roman, Verdana …), boyut (− / +), kalın, italik, altı çizili, hizalama, renk.</li>
+                <li><b>Ne zaman görünsün?</b>: her zaman, ya da seçtiğiniz bilgi dolu / boşken.</li>
+                <li><b>Logo</b> ve <b>İmza / Kaşe</b> düğmesinden <b>Bilgisayardan yükle…</b> ile görseli doğrudan ekleyin.</li>
+                <li>Üst üste gelen yerler <span className="text-danger fw-semibold">kırmızı çerçeveyle</span> gösterilir; kayıt yapılabilir ama basılınca yazılar karışabilir.
+                  Tabloya satır eklediğinizde alttaki yerler kendiliğinden aşağı kayar.</li>
                 <li><b>Kaydet</b>. Sistem şablonu denetler; hata varsa kaydetmez ve hatalı öğeyi gösterir.</li>
                 <li>Beğenmezseniz <b>Önceki Sürüm</b> ya da <b>Varsayılana Dön</b>. Eski düzen silinmez.</li>
               </ol>
@@ -70,10 +78,12 @@ export const NasilYapilirModal: React.FC<{ show: boolean; onHide: () => void; tu
                   <tr><td>Yer</td><td>{kod("x")}, {kod("y")}</td><td>{kod('"y": 120')} → 120 pt aşağı</td></tr>
                   <tr><td>Genişlik / yükseklik</td><td>{kod("g")}, {kod("h")}</td><td>{kod('"g": 200')}</td></tr>
                   <tr><td>Yazı boyutu / kalınlık</td><td>{kod("boyut")}, {kod("kalin")}</td><td>{kod('"boyut": 9, "kalin": true')}</td></tr>
+                  <tr><td>Yazı tipi / italik</td><td>{kod("font")}, {kod("italik")}</td><td>{kod('"font": "Georgia", "italik": true')} — Arial, Courier New, Times New Roman, Verdana, Tahoma, Georgia</td></tr>
                   <tr><td>Hizalama</td><td>{kod("hiza")}</td><td>{kod('"left"')}, {kod('"center"')}, {kod('"right"')}</td></tr>
                   <tr><td>Sabit yazı</td><td>{kod("metin")}</td><td>{kod('"metin": "Bizi tercih ettiğiniz için teşekkürler"')}</td></tr>
                   <tr><td>Veri alanı</td><td>{kod("{{alan}}")}</td><td>{kod('"metin": "Belge No: {{belgeNo}}"')}</td></tr>
                   <tr><td>Sayı biçimi</td><td>{kod("{{alan|sayi}}")}</td><td>{kod("|sayi")} 2 hane, {kod("|sayi:3")} 3 hane, {kod("|tl")} {kod("|doviz")} {kod("|kurb")} firma kuruş ayarı, {kod("|buyuk")} BÜYÜK HARF</td></tr>
+                  <tr><td>Hesap</td><td>{kod("{{= a işlem b | biçim}}")}</td><td>{kod("{{= toplam.tl * 0.20 | tl}}")} — işlem + − * /, terim alan ya da sayı</td></tr>
                   <tr><td>Kalın parça</td><td>{kod("**yazı**")}</td><td>{kod('"Fiş No: **{{fisNo}}**"')}</td></tr>
                   <tr><td>Koşul</td><td>{kod("kosul")}</td><td>{kod('"kosul": "{{ettn}}"')} doluysa basılır; {kod('"!{{satim}}"')} alışta basılır</td></tr>
                   <tr><td>Boşsa yukarı kaysın</td><td>{kod("daralt")}</td><td>{kod('"daralt": true')}</td></tr>
@@ -83,14 +93,6 @@ export const NasilYapilirModal: React.FC<{ show: boolean; onHide: () => void; tu
               </Table>
               <p className="mb-1">Öğe türleri: {kod("metin")} {kod("satirlar")} {kod("tablo")} {kod("liste")} {kod("kutu")} {kod("cizgi")} {kod("resim")} {kod("logo")} {kod("imza")} {kod("qr")} {kod("filigran")}.
                 Satırlar öğesinde {kod("?")} ile başlayan satır, alanı boşsa basılmaz.</p>
-            </Accordion.Body>
-          </Accordion.Item>
-          <Accordion.Item eventKey="3">
-            <Accordion.Header>Kilitli (yasal zorunlu) alanlar</Accordion.Header>
-            <Accordion.Body>
-              <p className="mb-1">{kod('"zorunlu": true')} işaretli öğeler (belge no, tarih, firma ve müşteri bilgileri, ETTN, karekod, tutarlar …)
-                yasal alanlardır: <b>yeri, boyutu ve etiket yazısı değişebilir</b>; silinemez, türü ve koşulu değiştirilemez, içindeki veri alanları
-                ({kod("{{...}}")}) çıkarılamaz. Dosyadan silinirse yükleme reddedilir. Editörde kilit simgesiyle gösterilir.</p>
             </Accordion.Body>
           </Accordion.Item>
           <Accordion.Item eventKey="4">

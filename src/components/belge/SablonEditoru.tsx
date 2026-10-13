@@ -1,22 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Alert, Badge, Button, ButtonGroup, Dropdown, Form, InputGroup, Spinner } from "react-bootstrap";
+import { Alert, Badge, Button, ButtonGroup, Dropdown, Form, Spinner } from "react-bootstrap";
 import {
-  IconArrowBackUp, IconArrowForwardUp, IconCheck, IconCopy, IconDeviceFloppy, IconLock, IconTrash, IconX,
-  IconZoomIn, IconZoomOut, IconArrowsMaximize, IconChevronUp, IconChevronDown,
+  IconAlertTriangle, IconArrowBackUp, IconArrowForwardUp, IconCheck, IconDeviceFloppy, IconUpload, IconX,
+  IconZoomIn, IconZoomOut, IconArrowsMaximize,
 } from "@tabler/icons-react";
-import type { BelgeOge, BelgeSablon, Sahne } from "../../../Backend/src/services/belge/sablonCekirdek";
+import { ustUsteBinenler, type BelgeSablon, type Sahne } from "../../../Backend/src/services/belge/sablonCekirdek";
 import { BelgeService, type BelgeGorseli, type SablonDenetimHatasi } from "../../services/belgeService";
 import { sablonHtml } from "../../utils/belgeSablon/htmlCiz";
 import {
-  OGE_ADLARI, alanEkle, metindenTablo, ogeBoyutla, ogeGuncelle, ogeKopyala, ogeSil, ogeSirala, ogeTasi, tabloMetni, yeniOge,
+  OGE_ADLARI, alanEkle, ogeBoyutla, ogeKopyala, ogeSil, ogeTasi, yeniOge,
   type EklenebilirTip,
 } from "../../utils/belgeSablon/editorYardim";
+import { OzellikPaneli } from "./OzellikPaneli";
 
 /**
  * Görsel şablon editörü (docs/FIS_TASARIM_YOL_HARITASI.md, 4.4 ve Faz 5).
  * Ortada şablon, örnek veriyle canlı çizilir; üstündeki kutular sürüklenerek taşınır, sağ-alt köşeden boyutlanır.
  * Sağ panel seçili öğenin özellikleri; sol panel öğe ekleme ve kullanılabilir alanlar. Kayıt sunucuda denetlenir
- * (zorunlu öğeler, alan adları); hata varsa kaydedilmez ve hatalı öğe seçilebilir.
+ * (yapı ve alan adları; yasal alan kilidi yok — bölüm 11, K12); hata varsa kaydedilmez ve hatalı öğe seçilebilir.
+ * Üst üste binen öğeler kırmızı çerçeveyle gösterilir, kayıt engellenmez (K17). Logo / imza düğmesi doğrudan
+ * dosya seçtirip yükler (K16).
  */
 
 interface Props {
@@ -33,7 +36,7 @@ interface Props {
 const PX = 96 / 72; // 1 pt kaç CSS pikseli
 const GECMIS_AZAMI = 60;
 const kopya = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
-const sayiOku = (v: string) => { const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : undefined; };
+const AZAMI_GORSEL = 1024 * 1024;
 const EKLENEBILIR: EklenebilirTip[] = ["metin", "satirlar", "tablo", "kutu", "cizgi", "qr", "logo", "imza"];
 
 type Surukleme = { i: number; mod: "tasi" | "boyut"; x0: number; y0: number; dx: number; dy: number };
@@ -77,9 +80,9 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
   const [bilgi, setBilgi] = useState<{ type: "success" | "danger" | "info"; message: string } | null>(null);
   const [islem, setIslem] = useState<"kaydet" | "denetle" | null>(null);
   const [surukleme, setSurukleme] = useState<Surukleme | null>(null);
-  const [jsonMetni, setJsonMetni] = useState("");
-  const [jsonHata, setJsonHata] = useState<string | null>(null);
   const tuval = useRef<HTMLDivElement>(null);
+  const dosyaGirdisi = useRef<HTMLInputElement>(null);
+  const bekleyenYukleme = useRef<{ tur: "LOGO" | "IMZA"; coz: (ad: string | null) => void } | null>(null);
   const suruklemeRef = useRef<Surukleme | null>(null);
   suruklemeRef.current = surukleme;
   const degisti = JSON.stringify(sablon) !== kaydedilen;
@@ -123,8 +126,6 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
   const geriAl = useCallback(() => gonder({ tur: "geri" }), []);
   const yinele = useCallback(() => gonder({ tur: "ileri" }), []);
 
-  const oge: BelgeOge | null = secili !== null ? (sablon.ogeler[secili] ?? null) : null;
-  useEffect(() => { setJsonMetni(oge ? JSON.stringify(oge, null, 2) : ""); setJsonHata(null); }, [oge]);
   useEffect(() => { if (secili !== null && secili >= sablon.ogeler.length) setSecili(null); }, [sablon, secili]);
 
   const enAlt = useMemo(() => Math.max(0, ...(cizim?.sahne.ogeKutulari || []).filter(k => k.gorunur).map(k => k.y + k.h)), [cizim]);
@@ -134,7 +135,42 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
     degistir(y);
     setSecili(y.ogeler.length - 1);
   };
-  const guncelle = (alanlar_: Record<string, unknown>, anahtar?: string) => { if (secili !== null) degistir(ogeGuncelle(sablon, secili, alanlar_), anahtar ? `${secili}:${anahtar}` : undefined); };
+
+  // ── Logo / imza: dosya seçtirip doğrudan yükler (bölüm 11, K16); yüklenen görselin adını döner
+  const gorselYukle = (tur: "LOGO" | "IMZA") => new Promise<string | null>((coz) => {
+    bekleyenYukleme.current?.coz(null);
+    bekleyenYukleme.current = { tur, coz };
+    dosyaGirdisi.current?.click();
+  });
+  const dosyaSecildi = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    const bekleyen = bekleyenYukleme.current;
+    bekleyenYukleme.current = null;
+    if (!bekleyen) return;
+    if (!f) { bekleyen.coz(null); return; }
+    if (!/^image\/(png|jpeg)$/.test(f.type) && !/\.(png|jpe?g)$/i.test(f.name)) { setBilgi({ type: "danger", message: "Yalnızca PNG ve JPG görseller yüklenebilir." }); bekleyen.coz(null); return; }
+    if (f.size > AZAMI_GORSEL) { setBilgi({ type: "danger", message: "Görsel çok büyük (en çok 1 MB)." }); bekleyen.coz(null); return; }
+    const okuyucu = new FileReader();
+    okuyucu.onerror = () => { setBilgi({ type: "danger", message: "Dosya okunamadı." }); bekleyen.coz(null); };
+    okuyucu.onload = async () => {
+      const dataUrl = String(okuyucu.result || "");
+      // Ad dosya adından; aynı ad varsa sonuna sayı eklenir
+      const kok = (f.name.replace(/\.[^.]+$/, "").replace(/[^\p{L}\p{N} _.-]/gu, " ").replace(/\s+/g, " ").trim() || (bekleyen.tur === "LOGO" ? "Logo" : "Kaşe")).slice(0, 34);
+      const adlar = new Set(firmaGorselleri.map((g) => g.ad.toLocaleLowerCase("tr-TR")));
+      let ad = /^[\p{L}\p{N}]/u.test(kok) ? kok : `G ${kok}`;
+      for (let n = 2; adlar.has(ad.toLocaleLowerCase("tr-TR")); n++) ad = `${kok} ${n}`;
+      try {
+        const sonuc = await BelgeService.gorselEkle({ ad, tur: bekleyen.tur, dataUrl });
+        const yeni: BelgeGorseli = { id: sonuc.id, ad: sonuc.ad || ad, tur: bekleyen.tur, dataUrl } as BelgeGorseli;
+        setFirmaGorselleri((l) => [...l, yeni]);
+        setGorseller((h) => ({ ...h, [`firma:${yeni.ad}`]: dataUrl }));
+        setBilgi({ type: "success", message: `"${yeni.ad}" yüklendi.` });
+        bekleyen.coz(yeni.ad);
+      } catch (err: any) { setBilgi({ type: "danger", message: err?.message || "Görsel yüklenemedi." }); bekleyen.coz(null); }
+    };
+    okuyucu.readAsDataURL(f);
+  };
 
   // ── Klavye: oklar (0,5 pt; Shift 5 pt), Delete, Ctrl+Z / Ctrl+Y, Ctrl+D
   useEffect(() => {
@@ -148,7 +184,7 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
       const adim = e.shiftKey ? 5 : 0.5;
       const ok: Record<string, [number, number]> = { ArrowLeft: [-adim, 0], ArrowRight: [adim, 0], ArrowUp: [0, -adim], ArrowDown: [0, adim] };
       if (ok[e.key]) { e.preventDefault(); degistir(ogeTasi(sablon, secili, ...ok[e.key]), `${secili}:ok`); return; }
-      if (e.key === "Delete" && !sablon.ogeler[secili]?.zorunlu) { e.preventDefault(); degistir(ogeSil(sablon, secili)); setSecili(null); return; }
+      if (e.key === "Delete") { e.preventDefault(); degistir(ogeSil(sablon, secili)); setSecili(null); return; }
       if (ctrl && e.key.toLowerCase() === "d") { e.preventDefault(); const k = ogeKopyala(sablon, secili); degistir(k.sablon); setSecili(k.yeni); return; }
       if (e.key === "Escape") setSecili(null);
     };
@@ -184,6 +220,7 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
     finally { setIslem(null); }
   };
   const kaydet = async () => {
+    if (binenler.size && !window.confirm(`${binenler.size} öğe üst üste geliyor (kırmızı çerçeveli); basılınca yazılar karışabilir. Yine de kaydedilsin mi?`)) return;
     setIslem("kaydet"); setBilgi(null);
     try {
       await BelgeService.sablonKaydet(tur, { sablon });
@@ -197,15 +234,6 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
   };
   const kapat = () => { if (!degisti || window.confirm("Kaydedilmemiş değişiklikler kaybolacak. Çıkılsın mı?")) onKapat(); };
 
-  // ── Özellik paneli yardımcıları
-  const o: any = oge;
-  // Düz fonksiyon (bileşen değil): her çizimde yeniden bağlanıp odağı kaybetmesin
-  const sayiAlani = (ad: string, etiket: string, adim = 0.5) => (
-    <Form.Group className="mb-1" key={ad}>
-      <Form.Label className="mb-0" style={{ fontSize: 11 }}>{etiket}</Form.Label>
-      <Form.Control size="sm" type="number" step={adim} value={typeof o?.[ad] === "number" ? Math.round(o[ad] * 100) / 100 : ""} onChange={(e) => guncelle({ [ad]: sayiOku(e.target.value) }, ad)} />
-    </Form.Group>
-  );
   const alanEtiketi = (yol: string) => {
     const v = yol.split(".").reduce<any>((x, k) => (x == null ? undefined : x[k]), alanlar?.ornek);
     return v === undefined || v === null ? "" : typeof v === "object" ? "" : String(v);
@@ -213,10 +241,15 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
   const ara = alanAra.toLocaleLowerCase("tr-TR");
   const gorunenAlanlar = (alanlar?.alanlar || []).filter((a) => !ara || a.toLocaleLowerCase("tr-TR").includes(ara) || (alanlar?.aciklamalar?.[a] || "").toLocaleLowerCase("tr-TR").includes(ara));
   const kutular = cizim?.sahne.ogeKutulari || [];
+  // Üst üste binen öğeler (kırmızı çerçeve, kaydı engellemez — K17)
+  const ciftler = useMemo(() => (cizim ? ustUsteBinenler(cizim.sahne) : []), [cizim]);
+  const binenler = useMemo(() => new Set(ciftler.flat()), [ciftler]);
+  const ogeAdi = (i: number) => { const x: any = sablon.ogeler[i]; return x ? x.ad || x.id || OGE_ADLARI[x.tip] || x.tip : ""; };
   const k0 = cizim?.sahne.kenar || 0;
 
   return (
     <div className="d-flex flex-column" style={{ height: "calc(100vh - 170px)", minHeight: 560 }}>
+      <input ref={dosyaGirdisi} type="file" accept="image/png,image/jpeg" className="d-none" onChange={dosyaSecildi} />
       {/* Araç çubuğu */}
       <div className="d-flex flex-wrap align-items-center gap-2 p-2 border-bottom bg-light">
         <div className="fw-bold small me-2">Düzenleniyor: {turAdi}{degisti && <Badge bg="warning" text="dark" className="ms-2">Kaydedilmedi</Badge>}</div>
@@ -241,6 +274,15 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
         </div>
       </div>
       {bilgi && <Alert variant={bilgi.type} dismissible onClose={() => setBilgi(null)} className="m-2 mb-0 py-1 small">{bilgi.message}</Alert>}
+      {ciftler.length > 0 && (
+        <div className="mx-2 mt-2 px-2 py-1 border border-danger rounded small text-danger d-flex flex-wrap gap-2 align-items-center" style={{ background: "#fff5f5" }}>
+          <IconAlertTriangle size={15} /> Üst üste gelen yerler var (kırmızı çerçeveli). Kayıt yapılabilir ama basılınca yazılar karışabilir:
+          {ciftler.slice(0, 6).map(([a, b]) => (
+            <span key={`${a}-${b}`} role="button" className="text-decoration-underline" onClick={() => setSecili(a)}>{ogeAdi(a)} ↔ {ogeAdi(b)}</span>
+          ))}
+          {ciftler.length > 6 && <span>… (+{ciftler.length - 6})</span>}
+        </div>
+      )}
       {hatalar.length > 0 && (
         <div className="mx-2 mt-2 p-2 border border-danger rounded small" style={{ maxHeight: 120, overflowY: "auto", background: "#fff5f5" }}>
           {hatalar.map((h, n) => (
@@ -260,30 +302,32 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
               <Dropdown key={t}>
                 <Dropdown.Toggle size="sm" variant="outline-primary" className="py-0 px-2" style={{ fontSize: 12 }}>{OGE_ADLARI[t]}</Dropdown.Toggle>
                 <Dropdown.Menu>
+                  <Dropdown.Item onClick={async () => { const ad = await gorselYukle(t === "logo" ? "LOGO" : "IMZA"); if (ad) ekle(t, ad); }}>
+                    <IconUpload size={14} className="me-2" />Bilgisayardan yükle…
+                  </Dropdown.Item>
+                  {firmaGorselleri.some((g) => g.tur === (t === "logo" ? "LOGO" : "IMZA")) && <Dropdown.Divider />}
                   {firmaGorselleri.filter((g) => g.tur === (t === "logo" ? "LOGO" : "IMZA")).map((g) => (
                     <Dropdown.Item key={g.id} onClick={() => ekle(t, g.ad)}><img src={g.dataUrl} alt="" style={{ height: 20, maxWidth: 50, objectFit: "contain" }} className="me-2" />{g.ad}</Dropdown.Item>
                   ))}
-                  {!firmaGorselleri.some((g) => g.tur === (t === "logo" ? "LOGO" : "IMZA")) && <Dropdown.ItemText className="small text-muted">Önce "Logolar ve İmzalar"dan yükleyin.</Dropdown.ItemText>}
                 </Dropdown.Menu>
               </Dropdown>
             ) : (
               <Button key={t} size="sm" variant="outline-primary" className="py-0 px-2" style={{ fontSize: 12 }} onClick={() => ekle(t)}>{OGE_ADLARI[t]}</Button>
             ))}
           </div>
-          <div className="fw-bold small mb-1">Alanlar</div>
-          <div className="text-muted mb-1" style={{ fontSize: 11 }}>Tıklayınca seçili metne eklenir; seçili metin yoksa yeni metin olarak eklenir.</div>
+          <div className="fw-bold small mb-1">Fişin bilgileri</div>
+          <div className="text-muted mb-1" style={{ fontSize: 11 }}>Tıklayınca seçili yazının sonuna eklenir; seçili yazı yoksa fişin altına yeni yazı olarak eklenir.</div>
           <Form.Control size="sm" placeholder="Ara…" value={alanAra} onChange={(e) => setAlanAra(e.target.value)} className="mb-1" />
           <div style={{ fontSize: 11 }}>
             {gorunenAlanlar.map((a) => (
               <div key={a} role="button" className="py-1 border-bottom" title={`{{${a}}}`}
                 onClick={() => { const r = alanEkle(sablon, secili, a, enAlt); degistir(r.sablon); setSecili(r.yeni); }}>
-                <code style={{ fontSize: 11 }}>{a}</code>
-                {alanlar?.aciklamalar?.[a] && <div style={{ fontSize: 10.5 }}>{alanlar.aciklamalar[a]}</div>}
+                <div className="fw-semibold">{alanlar?.aciklamalar?.[a] || a}</div>
                 {alanEtiketi(a) && <div className="text-muted text-truncate">örn. {alanEtiketi(a)}</div>}
               </div>
             ))}
             {alanlar && Object.entries(alanlar.listeler).map(([kaynak, l]) => (
-              <div key={kaynak} className="mt-2 text-muted">Liste <code>{kaynak}</code> (yalnız liste öğesinde): {l.map((x) => <code key={x} className="me-1">{x}</code>)}</div>
+              <div key={kaynak} className="mt-2 text-muted">Satır bilgileri (ürün / döviz listesi seçiliyken sağ panelde, "Bilgi" kutusunda çıkar): {l.map((x) => alanlar?.aciklamalar?.[x] || x).join(", ")}</div>
             ))}
           </div>
         </div>
@@ -302,15 +346,15 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
                 const dx = s?.mod === "tasi" ? s.dx : 0, dy = s?.mod === "tasi" ? s.dy : 0;
                 const dg = s?.mod === "boyut" ? s.dx : 0, dh = s?.mod === "boyut" ? s.dy : 0;
                 const seciliMi = secili === k.i;
+                const binen = binenler.has(k.i);
                 return (
-                  <div key={k.i} title={`${og.ad || OGE_ADLARI[og.tip] || og.tip}${og.id ? ` (${og.id})` : ""}${og.zorunlu ? " · zorunlu" : ""}`}
+                  <div key={k.i} title={`${og.ad || OGE_ADLARI[og.tip] || og.tip}${og.id ? ` (${og.id})` : ""}`}
                     onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setSecili(k.i); setSurukleme({ i: k.i, mod: "tasi", x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 }); }}
                     style={{
                       position: "absolute", left: `${k0 + k.x + dx}pt`, top: `${k0 + k.y + dy}pt`, width: `${Math.max(2, k.g + dg)}pt`, height: `${Math.max(2, k.h + dh)}pt`,
-                      outline: seciliMi ? "1.5px solid #0d6efd" : k.gorunur ? "1px dashed rgba(13,110,253,.35)" : "1px dotted rgba(120,120,120,.6)",
-                      background: seciliMi ? "rgba(13,110,253,.06)" : "transparent", cursor: "move", zIndex: seciliMi ? 3 : 2,
+                      outline: seciliMi ? "1.5px solid #0d6efd" : binen ? "1.5px solid #dc3545" : k.gorunur ? "1px dashed rgba(13,110,253,.35)" : "1px dotted rgba(120,120,120,.6)",
+                      background: seciliMi ? "rgba(13,110,253,.06)" : binen ? "rgba(220,53,69,.08)" : "transparent", cursor: "move", zIndex: seciliMi ? 3 : 2,
                     }}>
-                    {og.zorunlu && <IconLock size={9} style={{ position: "absolute", right: 1, top: 1, color: "#b26a00" }} />}
                     {seciliMi && (
                       <div title="Boyutlandır" onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setSurukleme({ i: k.i, mod: "boyut", x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 }); }}
                         style={{ position: "absolute", right: -4, bottom: -4, width: 8, height: 8, background: "#0d6efd", cursor: "nwse-resize" }} />
@@ -323,126 +367,16 @@ export const SablonEditoru: React.FC<Props> = ({ tur, turAdi, baslangic, kayitsi
         </div>
 
         {/* Sağ: özellikler */}
-        <div className="border-start p-2" style={{ width: 280, minWidth: 280, overflowY: "auto" }}>
-          {!o ? (
+        <div className="border-start p-2" style={{ width: 310, minWidth: 310, overflowY: "auto" }}>
+          {secili === null || !sablon.ogeler[secili] ? (
             <div className="small text-muted">
-              Bir öğeyi seçmek için üzerine tıklayın. Sürükleyerek taşıyın, sağ-alt köşeden boyutlandırın.<br /><br />
-              Klavye: oklar 0,5 pt (Shift ile 5 pt) kaydırır · Delete siler · Ctrl+D kopyalar · Ctrl+Z / Ctrl+Y geri al / yinele.<br /><br />
-              <IconLock size={12} /> işaretli öğeler yasal zorunlu alanlardır: yeri ve boyutu değişir, silinemez.
+              Değiştirmek istediğiniz yerin üzerine tıklayın; özellikleri burada açılır.<br /><br />
+              Taşımak için sürükleyin, boyutunu sağ-alt köşedeki mavi kareden değiştirin.<br /><br />
+              Klavye: oklar az kaydırır (Shift ile daha çok) · Delete siler · Ctrl+D kopyalar · Ctrl+Z / Ctrl+Y geri al / yinele.
             </div>
           ) : (
-            <>
-              <div className="d-flex align-items-center gap-1 mb-2">
-                <Badge bg="secondary">{OGE_ADLARI[o.tip] || o.tip}</Badge>
-                <span className="small text-truncate">{o.ad || o.id}</span>
-                {o.zorunlu && <Badge bg="warning" text="dark" className="ms-auto"><IconLock size={11} /> Zorunlu</Badge>}
-              </div>
-              <div className="d-flex gap-1 mb-2">
-                <Button size="sm" variant="outline-secondary" title="Kopyala (Ctrl+D)" onClick={() => { const r = ogeKopyala(sablon, secili!); degistir(r.sablon); setSecili(r.yeni); }}><IconCopy size={14} /></Button>
-                <Button size="sm" variant="outline-secondary" title="Arkaya al" onClick={() => { const r = ogeSirala(sablon, secili!, -1); degistir(r.sablon); setSecili(r.yeni); }}><IconChevronDown size={14} /></Button>
-                <Button size="sm" variant="outline-secondary" title="Öne al" onClick={() => { const r = ogeSirala(sablon, secili!, 1); degistir(r.sablon); setSecili(r.yeni); }}><IconChevronUp size={14} /></Button>
-                <Button size="sm" variant="outline-danger" className="ms-auto" disabled={!!o.zorunlu} title={o.zorunlu ? "Zorunlu öğe silinemez" : "Sil (Delete)"} onClick={() => { degistir(ogeSil(sablon, secili!)); setSecili(null); }}><IconTrash size={14} /></Button>
-              </div>
-
-              {o.tip === "cizgi" ? (
-                <div className="d-grid gap-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                  {sayiAlani("x1", "x1")}{sayiAlani("y1", "y1")}{sayiAlani("x2", "x2")}{sayiAlani("y2", "y2")}
-                </div>
-              ) : o.tip !== "filigran" && (
-                <div className="d-grid gap-1" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                  {sayiAlani("x", "Soldan (x, pt)")}{sayiAlani("y", "Üstten (y, pt)")}
-                  {o.tip === "qr" ? sayiAlani("boyut", "Kenar (pt)") : sayiAlani("g", "Genişlik (g)")}
-                  {["kutu", "resim", "logo", "imza"].includes(o.tip) && sayiAlani("h", "Yükseklik (h)")}
-                  {["metin", "satirlar", "tablo", "liste"].includes(o.tip) && sayiAlani("boyut", "Yazı boyutu")}
-                  {["tablo", "liste"].includes(o.tip) && sayiAlani("satirH", "Satır yüksekliği")}
-                  {(o.tip === "tablo" || (o.tip === "liste" && !o.sutunlar)) && sayiAlani("etiketG", "Etiket genişliği")}
-                  {o.tip === "satirlar" && sayiAlani("aralik", "Satır arası")}
-                  {["kutu", "cizgi"].includes(o.tip) && sayiAlani("kalinlik", "Çizgi kalınlığı", 0.25)}
-                </div>
-              )}
-
-              {(o.tip === "metin" || o.tip === "filigran") && (
-                <Form.Group className="mt-2">
-                  <Form.Label className="mb-0" style={{ fontSize: 11 }}>Yazı (alan: {"{{alan}}"}, kalın: **yazı**)</Form.Label>
-                  <Form.Control as="textarea" rows={3} size="sm" value={o.metin ?? ""} onChange={(e) => guncelle({ metin: e.target.value }, "metin")} />
-                </Form.Group>
-              )}
-              {o.tip === "satirlar" && (
-                <Form.Group className="mt-2">
-                  <Form.Label className="mb-0" style={{ fontSize: 11 }}>Satırlar (her satır ayrı; "?" ile başlayan, alanı boşsa basılmaz)</Form.Label>
-                  <Form.Control as="textarea" rows={5} size="sm" value={(o.satirlar || []).join("\n")} onChange={(e) => guncelle({ satirlar: e.target.value.split("\n") }, "satirlar")} />
-                </Form.Group>
-              )}
-              {(o.tip === "tablo" || (o.tip === "liste" && !o.sutunlar)) && (
-                <Form.Group className="mt-2">
-                  <Form.Label className="mb-0" style={{ fontSize: 11 }}>Satırlar: Etiket | Değer (kalın: | *, koşul: | ?{"{{alan}}"})</Form.Label>
-                  <Form.Control as="textarea" rows={5} size="sm" value={tabloMetni(o.satirlar)} onChange={(e) => guncelle({ satirlar: metindenTablo(e.target.value) }, "satirlar")} />
-                </Form.Group>
-              )}
-              {o.tip === "qr" && (
-                <Form.Group className="mt-2">
-                  <Form.Label className="mb-0" style={{ fontSize: 11 }}>Karekod içeriği</Form.Label>
-                  <Form.Control size="sm" value={o.icerik ?? ""} onChange={(e) => guncelle({ icerik: e.target.value }, "icerik")} />
-                </Form.Group>
-              )}
-              {(o.tip === "logo" || o.tip === "imza") && (
-                <Form.Group className="mt-2">
-                  <Form.Label className="mb-0" style={{ fontSize: 11 }}>Görsel</Form.Label>
-                  <Form.Select size="sm" value={o.gorsel ?? ""} onChange={(e) => guncelle({ gorsel: e.target.value })}>
-                    {!firmaGorselleri.some((g) => g.ad === o.gorsel) && <option value={o.gorsel}>{o.gorsel || "(seçin)"} — yok</option>}
-                    {firmaGorselleri.filter((g) => g.tur === (o.tip === "logo" ? "LOGO" : "IMZA")).map((g) => <option key={g.id} value={g.ad}>{g.ad}</option>)}
-                  </Form.Select>
-                </Form.Group>
-              )}
-
-              {["metin", "satirlar", "tablo", "liste"].includes(o.tip) && (
-                <div className="d-flex flex-wrap gap-2 mt-2 align-items-center">
-                  {o.tip !== "tablo" && o.tip !== "liste" && (
-                    <Form.Check type="checkbox" id="kalin" label="Kalın" checked={!!o.kalin} onChange={(e) => guncelle({ kalin: e.target.checked || undefined })} />
-                  )}
-                  {o.tip === "metin" && <Form.Check type="checkbox" id="alt" label="Altı çizili" checked={!!o.altCizgi} onChange={(e) => guncelle({ altCizgi: e.target.checked || undefined })} />}
-                  {(o.tip === "tablo" || o.tip === "liste") && <Form.Check type="checkbox" id="kd" label="Değerler kalın" checked={!!o.kalinDeger} onChange={(e) => guncelle({ kalinDeger: e.target.checked || undefined })} />}
-                  {(o.tip === "tablo" || o.tip === "liste") && <Form.Check type="checkbox" id="cer" label="Hücre çizgisi" checked={(o.cerceve ?? "hucre") === "hucre"} onChange={(e) => guncelle({ cerceve: e.target.checked ? "hucre" : "yok" })} />}
-                  <Form.Select size="sm" style={{ width: 110 }} value={(o.tip === "tablo" || o.tip === "liste") ? (o.hizaDeger || "right") : (o.hiza || "left")}
-                    onChange={(e) => guncelle(o.tip === "tablo" || o.tip === "liste" ? { hizaDeger: e.target.value } : { hiza: e.target.value })}>
-                    <option value="left">Sola</option><option value="center">Ortaya</option><option value="right">Sağa</option>
-                  </Form.Select>
-                </div>
-              )}
-              {o.tip === "metin" && (
-                <InputGroup size="sm" className="mt-2">
-                  <InputGroup.Text style={{ fontSize: 11 }}>Renk</InputGroup.Text>
-                  <Form.Control type="color" value={o.renk || "#000000"} onChange={(e) => guncelle({ renk: e.target.value }, "renk")} />
-                </InputGroup>
-              )}
-              {o.tip === "kutu" && (
-                <InputGroup size="sm" className="mt-2">
-                  <InputGroup.Text style={{ fontSize: 11 }}>Zemin</InputGroup.Text>
-                  <Form.Control type="color" value={o.zemin || "#ffffff"} onChange={(e) => guncelle({ zemin: e.target.value }, "zemin")} />
-                  <Button variant="outline-secondary" onClick={() => guncelle({ zemin: undefined })}>Yok</Button>
-                </InputGroup>
-              )}
-              {o.tip === "cizgi" && <Form.Check className="mt-2" type="checkbox" id="kes" label="Kesikli" checked={!!o.kesikli} onChange={(e) => guncelle({ kesikli: e.target.checked || undefined })} />}
-
-              <Form.Group className="mt-2">
-                <Form.Label className="mb-0" style={{ fontSize: 11 }}>Koşul (alan doluysa basılır; tersi için başına !)</Form.Label>
-                <Form.Control size="sm" disabled={!!o.zorunlu} value={o.kosul ?? ""} placeholder="ör. {{ettn}}" onChange={(e) => guncelle({ kosul: e.target.value || undefined }, "kosul")} />
-              </Form.Group>
-              <Form.Check className="mt-1" type="checkbox" id="dar" label="Boşsa alttakiler yukarı kaysın" checked={!!o.daralt} onChange={(e) => guncelle({ daralt: e.target.checked || undefined })} />
-
-              <details className="mt-3">
-                <summary className="small fw-semibold">Gelişmiş (JSON)</summary>
-                <Form.Control as="textarea" rows={10} size="sm" className="mt-1 font-monospace" style={{ fontSize: 11 }} value={jsonMetni} onChange={(e) => { setJsonMetni(e.target.value); setJsonHata(null); }} />
-                {jsonHata && <div className="text-danger small">{jsonHata}</div>}
-                <Button size="sm" className="mt-1" variant="outline-primary" onClick={() => {
-                  try {
-                    const yeni = JSON.parse(jsonMetni);
-                    if (!yeni || typeof yeni !== "object" || Array.isArray(yeni) || typeof yeni.tip !== "string") throw new Error("Öğe { \"tip\": … } biçiminde olmalı.");
-                    const y = kopya(sablon); y.ogeler[secili!] = yeni; degistir(y);
-                  } catch (err: any) { setJsonHata(err?.message || "JSON okunamadı."); }
-                }}>Uygula</Button>
-              </details>
-            </>
+            <OzellikPaneli sablon={sablon} secili={secili} katalog={alanlar} firmaGorselleri={firmaGorselleri}
+              degistir={degistir} setSecili={setSecili} gorselYukle={gorselYukle} />
           )}
         </div>
       </div>

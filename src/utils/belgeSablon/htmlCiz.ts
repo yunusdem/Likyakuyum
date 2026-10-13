@@ -1,6 +1,6 @@
 import QRCode from "qrcode";
 import {
-  sahneKur, kalinParcala, SATIR_ORANI,
+  sahneKur, kalinParcala, SATIR_ORANI, YAZI_TIPLERI,
   type BelgeSablon, type Cizim, type Sahne,
 } from "../../../Backend/src/services/belge/sablonCekirdek";
 
@@ -38,6 +38,8 @@ function metinHtml(c: Extract<Cizim, { tip: "metin" }>, sol: number, ust: number
     `font-size:${pt(c.boyut)}`, `line-height:${pt(c.boyut * SATIR_ORANI)}`, `font-weight:${c.kalin ? 700 : 400}`,
     `text-align:${hiza}`, `color:${renk(c.renk)}`, "margin:0", "padding:0",
     c.tekSatir ? `white-space:pre;overflow:hidden;text-overflow:ellipsis;height:${pt(c.boyut * SATIR_ORANI)}` : "white-space:pre-wrap;overflow-wrap:anywhere",
+    c.font && YAZI_TIPLERI[c.font] ? `font-family:${YAZI_TIPLERI[c.font].css}` : "",
+    c.italik ? "font-style:italic" : "",
     c.altCizgi ? "text-decoration:underline;text-underline-offset:1.5pt" : "",
   ].filter(Boolean).join(";");
   return `<div style="${stil}">${parcalar}</div>`;

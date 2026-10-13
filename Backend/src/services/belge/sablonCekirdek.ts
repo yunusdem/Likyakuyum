@@ -32,6 +32,9 @@ interface OgeOrtak {
   zorunlu?: boolean;
   /** Kısalınca / gizlenince alttakiler yukarı kayar. */
   daralt?: boolean;
+  /** Yazı tipi (YAZI_TIPLERI) ve italik — yazılı öğelerde (bölüm 11, K14). */
+  font?: string;
+  italik?: boolean;
 }
 
 /** Çok sütunlu listede sütun: başlık, değer (`{{s.alan}}`), genişlik. `cokSatir` sığmayan metni alt satıra kaydırır. */
@@ -75,7 +78,7 @@ export interface BelgeSablon {
 // ── Çizim listesi (çözülmüş sahne) ──────────────────────────────────────────
 
 export type Cizim =
-  | { tip: "metin"; x: number; y: number; g: number; metin: string; boyut: number; kalin: boolean; hiza: Hiza; renk: string; altCizgi: boolean; tekSatir: boolean }
+  | { tip: "metin"; x: number; y: number; g: number; metin: string; boyut: number; kalin: boolean; hiza: Hiza; renk: string; altCizgi: boolean; tekSatir: boolean; font?: string; italik?: boolean }
   | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik: number; kesikli: boolean }
   | { tip: "kutu"; x: number; y: number; g: number; h: number; kalinlik: number; zemin?: string }
   /** `dosya`: belge klasöründeki dosya adı ya da firma görseli için `firma:<ad>`; `siyahBeyaz`: termal ruloda firma görseli */
@@ -100,6 +103,8 @@ export interface Sahne {
    * Filigran ve gizli öğeler de vardır (gizliyse `gorunur: false`, nominal yerinde).
    */
   ogeKutulari: { i: number; x: number; y: number; g: number; h: number; gorunur: boolean }[];
+  /** `cizimler[n]` hangi öğeden geldi (ogeler dizisindeki sıra) — editörde üst üste binme denetimi için. */
+  cizimOgesi: number[];
 }
 
 /** Satır yüksekliği = yazı boyutu × bu oran (Arial’in PDF satır yüksekliği; HTML de aynı değeri kullanır). */
@@ -127,22 +132,61 @@ const basamak = (veri: Record<string, any>, ad: string, varsayilan: number) => {
  * Biçimler: sayi (2 hane), sayi4, sayi:N, kur (2–5 hane), buyuk,
  * doviz / kurb / tl (firma kuruş ayarı: `basamak.doviz|kur|tl`).
  */
+function bicimle(deger: any, veri: Record<string, any>, bicim?: string, hane?: string): string {
+  switch (bicim) {
+    case "sayi": return trSayi(Number(deger), hane !== undefined ? Number(hane) : 2);
+    case "sayi4": return trSayi(Number(deger), 4);
+    // Kur: ICE çıktısındaki gibi en az 2, en çok 5 hane (0,02062).
+    case "kur": return trSayi(Number(deger), 5, 2);
+    case "doviz": return trSayi(Number(deger), basamak(veri, "doviz", 2));
+    case "kurb": return trSayi(Number(deger), basamak(veri, "kur", 4));
+    case "tl": return trSayi(Number(deger), basamak(veri, "tl", 2));
+    case "buyuk": return String(deger).toLocaleUpperCase("tr-TR");
+    default: return String(deger);
+  }
+}
+
+/** Hesap terimi: alan yolu ya da sayı ("0.20", "0,20", "-5") */
+export const HESAP_TERIMI = /^(-?\d+(?:[.,]\d+)?|[A-Za-z_][\w.]*)$/;
+export const HESAP_ISLEMLERI = ["+", "-", "*", "/"] as const;
+/** `{{= a işlem b | biçim}}` — iki terimli hesap (bölüm 11, K13). */
+export const HESAP_DESENI = /\{\{\s*=\s*([^\s|}+*/]+|-\d[^\s|}+*/]*)\s*([+\-*/])\s*([^\s|}+*/]+|-\d[^\s|}+*/]*)\s*(?:\|\s*(\w+)(?::(\d))?)?\s*\}\}/g;
+
+function terimDegeri(t: string, veri: Record<string, any>): number | null {
+  if (/^-?\d+(?:[.,]\d+)?$/.test(t)) return Number(t.replace(",", "."));
+  const v = Number(alanOku(veri, t));
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Hesabın sayısal sonucu; terim okunamazsa ya da sıfıra bölmede null. */
+export function hesapla(a: string, islem: string, b: string, veri: Record<string, any>): number | null {
+  const x = terimDegeri(a, veri), y = terimDegeri(b, veri);
+  if (x === null || y === null) return null;
+  switch (islem) {
+    case "+": return x + y;
+    case "-": return x - y;
+    case "*": return x * y;
+    case "/": return y === 0 ? null : x / y;
+    default: return null;
+  }
+}
+
+/**
+ * `{{yol.alt|bicim}}` yer tutucularını veriden doldurur; `{{= a işlem b | biçim}}` hesabı yapılır.
+ * Biçimler: sayi (2 hane), sayi4, sayi:N, kur (2–5 hane), buyuk,
+ * doviz / kurb / tl (firma kuruş ayarı: `basamak.doviz|kur|tl`). Hesapta biçim yoksa 2 haneli sayı.
+ */
 export function doldur(metin: string, veri: Record<string, any>): string {
-  return String(metin ?? "").replace(/\{\{\s*([\w.]+)\s*(?:\|\s*(\w+)(?::(\d))?)?\s*\}\}/g, (_m, yol: string, bicim?: string, hane?: string) => {
-    const deger = alanOku(veri, yol);
-    if (deger === undefined || deger === null || deger === false) return "";
-    switch (bicim) {
-      case "sayi": return trSayi(Number(deger), hane !== undefined ? Number(hane) : 2);
-      case "sayi4": return trSayi(Number(deger), 4);
-      // Kur: ICE çıktısındaki gibi en az 2, en çok 5 hane (0,02062).
-      case "kur": return trSayi(Number(deger), 5, 2);
-      case "doviz": return trSayi(Number(deger), basamak(veri, "doviz", 2));
-      case "kurb": return trSayi(Number(deger), basamak(veri, "kur", 4));
-      case "tl": return trSayi(Number(deger), basamak(veri, "tl", 2));
-      case "buyuk": return String(deger).toLocaleUpperCase("tr-TR");
-      default: return String(deger);
-    }
-  });
+  return String(metin ?? "")
+    .replace(HESAP_DESENI, (_m, a: string, islem: string, b: string, bicim?: string, hane?: string) => {
+      const sonuc = hesapla(a, islem, b, veri);
+      return sonuc === null ? "" : bicimle(sonuc, veri, bicim || "sayi", hane);
+    })
+    .replace(/\{\{\s*([\w.]+)\s*(?:\|\s*(\w+)(?::(\d))?)?\s*\}\}/g, (_m, yol: string, bicim?: string, hane?: string) => {
+      const deger = alanOku(veri, yol);
+      if (deger === undefined || deger === null || deger === false) return "";
+      return bicimle(deger, veri, bicim, hane);
+    });
 }
 
 export const yerTutucuVar = (m: string) => /\{\{[^}]+\}\}/.test(m);
@@ -212,9 +256,29 @@ function harfGenisligi(h: string, kalin: boolean): number {
 }
 
 /** Metnin punto cinsinden genişliği (`**kalın**` parçaları kalın ölçülür). Eş aralıklı yazıda her harf 0,6 em. */
-export function metinGenisligi(metin: string, boyut: number, yaziTipi: "sans" | "mono" = "sans", kalin = false): number {
+/**
+ * Seçilebilen yazı tipleri (bölüm 11, K14). `oran`: Arial'e göre ortalama genişlik (satır kırma tahmini);
+ * eş aralıklı yazıda her harf 0,6 em. PDF'te Windows yazı tipi dosyaları, tarayıcıda CSS ailesi kullanılır.
+ */
+export const YAZI_TIPLERI: Record<string, { css: string; oran: number; mono?: boolean }> = {
+  "Arial": { css: "Arial, Helvetica, sans-serif", oran: 1 },
+  "Courier New": { css: "'Courier New', Courier, monospace", oran: 1, mono: true },
+  "Times New Roman": { css: "'Times New Roman', Times, serif", oran: 0.92 },
+  "Verdana": { css: "Verdana, Geneva, sans-serif", oran: 1.18 },
+  "Tahoma": { css: "Tahoma, Geneva, sans-serif", oran: 1.04 },
+  "Georgia": { css: "Georgia, 'Times New Roman', serif", oran: 1.1 },
+};
+/** Öğenin yazı tipi: kendi seçimi, yoksa şablonun ("mono" → Courier New, değilse Arial). */
+export const fontAdi = (font: unknown, yt: "sans" | "mono"): string =>
+  typeof font === "string" && YAZI_TIPLERI[font] ? font : yt === "mono" ? "Courier New" : "Arial";
+
+/** `yaziTipi`: "sans" / "mono" ya da YAZI_TIPLERI'ndeki bir ad. */
+export function metinGenisligi(metin: string, boyut: number, yaziTipi: string = "sans", kalin = false): number {
+  const yt = YAZI_TIPLERI[yaziTipi];
+  const mono = yaziTipi === "mono" || !!yt?.mono;
+  const oran = yt?.oran ?? 1;
   let t = 0;
-  for (const p of kalinParcala(metin)) for (const h of p.metin) t += yaziTipi === "mono" ? 600 : harfGenisligi(h, kalin || p.kalin);
+  for (const p of kalinParcala(metin)) for (const h of p.metin) t += mono ? 600 : harfGenisligi(h, kalin || p.kalin) * oran;
   return (t * boyut) / 1000;
 }
 
@@ -222,7 +286,7 @@ export function metinGenisligi(metin: string, boyut: number, yaziTipi: "sans" | 
  * Metnin `g` genişliğinde kaç satıra kırılacağı: kelime kelime (açgözlü) kırma, sığmayan uzun kelime harf harf bölünür
  * — PDF (pdfkit) ve tarayıcı (overflow-wrap) ile aynı yöntem. İki çizici aynı sonucu kullanır.
  */
-export function tahminiSatir(metin: string, boyut: number, g: number, yaziTipi: "sans" | "mono" = "sans", kalin = false): number {
+export function tahminiSatir(metin: string, boyut: number, g: number, yaziTipi: string = "sans", kalin = false): number {
   if (!g || g <= 0) return 1;
   const sinir = g + 0.01;
   let satir = 1, x = 0;
@@ -290,7 +354,7 @@ export const renkGecerli = (r: unknown): r is string => typeof r === "string" &&
 function sutunluListe(
   o: { x: number; y: number; g: number; satirH?: number; boyut?: number; aralik?: number; bosMetin?: string; cerceve?: "hucre" | "yok";
     sutunlar: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; altSatirlar?: ListeAltSatiri[] },
-  dizi: any[], veri: Record<string, any>, varsayilanBoyut: number, yt: "sans" | "mono", c: Cizim[],
+  dizi: any[], veri: Record<string, any>, varsayilanBoyut: number, yt: string, c: Cizim[],
 ): number {
   const boyut = o.boyut ?? varsayilanBoyut;
   const satirH = o.satirH ?? 15;
@@ -363,6 +427,7 @@ function sutunluListe(
 function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: number, icG: number, yt: "sans" | "mono", rulo: boolean): Hazir {
   const { ust, h: nomH } = ogeKutusu(o, varsayilanBoyut);
   const gorunur = kosulGecti(o.kosul, veri);
+  const ogeFont = fontAdi(o.font, yt);
   const [xs, xe] = yatayAralik(o, icG);
   const h: Hazir = { o, gorunur, ust, nomH, etkinH: nomH, delta: 0, xs, xe, cizimler: [], dy: 0 };
   if (!gorunur) {
@@ -380,7 +445,7 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
       const g = o.g || Math.max(10, icG - o.x);
       const metin = doldur(o.metin, veri);
       c.push({ tip: "metin", x: o.x, y: o.y, g, metin, boyut, kalin: !!o.kalin, hiza: o.hiza || "left", renk: o.renk || "#000", altCizgi: !!o.altCizgi, tekSatir: false });
-      gercekH = tahminiSatir(metin, boyut, g, yt, !!o.kalin) * boyut * SATIR_ORANI;
+      gercekH = tahminiSatir(metin, boyut, g, ogeFont, !!o.kalin) * boyut * SATIR_ORANI;
       break;
     }
     case "satirlar": {
@@ -390,7 +455,7 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
         const dolu = istegeBagliSatir(String(ham ?? ""), veri);
         if (dolu === null) continue;
         c.push({ tip: "metin", x: o.x, y, g: o.g, metin: dolu, boyut, kalin: !!o.kalin, hiza: o.hiza || "left", renk: "#000", altCizgi: false, tekSatir: false });
-        y += adim + (tahminiSatir(dolu, boyut, o.g, yt, !!o.kalin) - 1) * boyut * SATIR_ORANI;
+        y += adim + (tahminiSatir(dolu, boyut, o.g, ogeFont, !!o.kalin) - 1) * boyut * SATIR_ORANI;
       }
       gercekH = y - o.y;
       break;
@@ -405,7 +470,7 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
       const kayitlar = alanOku(veri, o.kaynak);
       const dizi: any[] = Array.isArray(kayitlar) ? kayitlar : [];
       if (Array.isArray(o.sutunlar) && o.sutunlar.length) {
-        gercekH = sutunluListe(o as any, dizi, veri, varsayilanBoyut, yt, c);
+        gercekH = sutunluListe(o as any, dizi, veri, varsayilanBoyut, ogeFont, c);
         break;
       }
       const etiketli = { ...o, etiketG: o.etiketG ?? o.g * 0.55 };
@@ -445,6 +510,8 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
       break;
     }
   }
+  // Öğenin yazı tipi ve italiği, ürettiği bütün yazılara
+  for (const z of c) if (z.tip === "metin") { z.font = ogeFont; if (o.italik) z.italik = true; }
   // Uzama her zaman alttakileri iter; kısalma yalnızca `daralt` ile yukarı çeker (yoksa boşluk kalır).
   h.etkinH = gercekH >= nomH || o.daralt ? gercekH : nomH;
   h.delta = o.daralt && gercekH < nomH ? gercekH - nomH : 0;
@@ -541,17 +608,51 @@ export function sahneKur(sablon: BelgeSablon, veri: Record<string, any>): Sahne 
     const yukseklik = h.o.tip === "kutu" && h.gorunur ? kutuAlti(h, sira) - ust : h.gorunur ? h.etkinH : h.nomH;
     ogeKutulari.push({ i, x: h.xs, y: ust, g: h.xe - h.xs, h: Math.max(1, yukseklik), gorunur: h.gorunur });
   });
-  for (const h of hazir) {
-    if (h.o.tip === "filigran") { cizimler.push(...h.cizimler); continue; }
+  const cizimOgesi: number[] = [];
+  hazir.forEach((h, i) => {
+    if (h.o.tip === "filigran") { for (const c of h.cizimler) { cizimler.push(c); cizimOgesi.push(i); } return; }
     const yeniKutuH = h.o.tip === "kutu" && h.gorunur ? kutuAlti(h, sira) - (h.ust + h.dy) : null;
     for (const c of h.cizimler) {
       const k = kaydir(c, h.dy);
       cizimler.push(k.tip === "kutu" && yeniKutuH !== null ? { ...k, h: Math.max(0, yeniKutuH) } : k);
+      cizimOgesi.push(i);
     }
     if (h.gorunur) enAlt = Math.max(enAlt, altKenar(h, sira));
-  }
+  });
   const yukseklik = kh > 0 ? kh : Math.ceil(enAlt + 2 * kenar + 4);
-  return { genislik: kg, yukseklik, kenar, yaziTipi: yt, cizimler, ogeKutulari };
+  return { genislik: kg, yukseklik, kenar, yaziTipi: yt, cizimler, ogeKutulari, cizimOgesi };
+}
+
+/**
+ * Üst üste binen öğe çiftleri (bölüm 11, K17): farklı öğelerin basılan içerikleri (yazının gerçek genişliği,
+ * görsel, karekod) 1 pt'den fazla kesişiyorsa. Kutu, çizgi ve filigran zemin sayılır, denetlenmez.
+ * Kaydı engellemez; editör kırmızıyla gösterir.
+ */
+export function ustUsteBinenler(sahne: Sahne): [number, number][] {
+  const alanlar: { i: number; x1: number; y1: number; x2: number; y2: number }[] = [];
+  sahne.cizimler.forEach((c, n) => {
+    const i = sahne.cizimOgesi[n];
+    if (c.tip === "metin") {
+      const duz = c.metin.replace(/\*\*/g, "");
+      if (!duz.trim()) return;
+      const w = Math.min(c.g, metinGenisligi(c.metin, c.boyut, c.font ?? sahne.yaziTipi, c.kalin));
+      const satir = c.tekSatir ? 1 : tahminiSatir(c.metin, c.boyut, c.g, c.font ?? sahne.yaziTipi, c.kalin);
+      const x1 = c.hiza === "right" ? c.x + c.g - w : c.hiza === "center" ? c.x + (c.g - w) / 2 : c.x;
+      // Yazının görünen yüksekliği: satır aralığının alt boşluğu sayılmaz
+      alanlar.push({ i, x1, y1: c.y, x2: x1 + w, y2: c.y + (satir - 1) * c.boyut * SATIR_ORANI + c.boyut });
+    } else if (c.tip === "resim") alanlar.push({ i, x1: c.x, y1: c.y, x2: c.x + c.g, y2: c.y + c.h });
+    else if (c.tip === "qr") alanlar.push({ i, x1: c.x, y1: c.y, x2: c.x + c.boyut, y2: c.y + c.boyut });
+  });
+  const ciftler = new Map<string, [number, number]>();
+  for (let a = 0; a < alanlar.length; a++) for (let b = a + 1; b < alanlar.length; b++) {
+    const p = alanlar[a], q = alanlar[b];
+    if (p.i === q.i) continue;
+    if (Math.min(p.x2, q.x2) - Math.max(p.x1, q.x1) > 1 && Math.min(p.y2, q.y2) - Math.max(p.y1, q.y1) > 1) {
+      const c: [number, number] = p.i < q.i ? [p.i, q.i] : [q.i, p.i];
+      ciftler.set(c.join(","), c);
+    }
+  }
+  return [...ciftler.values()];
 }
 /** `**kalın**` işaretli metni parçalara ayırır. */
 export function kalinParcala(metin: string): { metin: string; kalin: boolean }[] {
