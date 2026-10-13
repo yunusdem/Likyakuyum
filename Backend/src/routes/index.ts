@@ -47,6 +47,7 @@ import { KurulumController } from "../controllers/kurulum.controller.js";
 import merkezRoutes from "./merkez.routes.js";
 import destekRoutes from "./destek.routes.js";
 import iletisimRoutes from "./iletisim.routes.js";
+import menuRoutes from "./menu.routes.js";
 
 const apiRouter = Router();
 
@@ -87,6 +88,8 @@ apiRouter.use("/pos", kapi("/pos"), posRoutes);
 apiRouter.post("/pos-donus/token/:firmaId/:islemId/:imza", PosController.tokenDonus);
 apiRouter.post("/pos-donus/inpos", PosController.inposDonus);
 apiRouter.use("/kasa", kapi("/kasa"), kasaRoutes);
+apiRouter.use("/menu", menuRoutes);
+apiRouter.use("/etiket/menu", menuRoutes);
 apiRouter.use("/etiket", kapi("/etiket"), etiketRoutes);
 apiRouter.use("/vezne/izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);
 apiRouter.use("/vezne-izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);

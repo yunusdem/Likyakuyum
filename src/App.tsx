@@ -21,6 +21,7 @@ import CariHareketListPage from "./pages/cari/CariHareketListPage";
 import KurFiyatListesiPage from "./pages/kur/KurFiyatListesiPage";
 import PanoTanimiPage from "./pages/kur/PanoTanimiPage";
 import PanoPage from "./pages/kur/PanoPage";
+import TvKatalogPage from "./pages/katalog/TvKatalogPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
 import RaporPage from "./pages/rapor/RaporPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
@@ -64,6 +65,7 @@ import FiyatAyarEtiketleriPage from "./pages/etiket/FiyatAyarEtiketleriPage";
 import UrunStoguPage from "./pages/etiket/UrunStoguPage";
 import RfidEtiketUretimPage from "./pages/etiket/RfidEtiketUretimPage";
 import RfidSayimPage from "./pages/etiket/RfidSayimPage";
+import ConsinyeUrunPanoPage from "./pages/etiket/ConsinyeUrunPanoPage";
 import EBelgeHomePage from "./pages/ebelge/EBelgeHomePage";
 import EBelgeGelenPage from "./pages/ebelge/EBelgeGelenPage";
 import EBelgeDogrulaPage from "./pages/ebelge/EBelgeDogrulaPage";
@@ -93,7 +95,6 @@ import LandingPanoPage from "./pages/landing/LandingPanoPage";
 import LandingSecurityPage from "./pages/landing/LandingSecurityPage";
 import LandingFaqPage from "./pages/landing/LandingFaqPage";
 import LandingAboutPage from "./pages/landing/LandingAboutPage";
-
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import LisansKilitDinleyici from "./components/lisans/LisansKilitDinleyici";
@@ -157,8 +158,6 @@ const DashboardLayout: React.FC = () => {
             </span>
           </div>
         </footer>
-
-
       </div>
     </div>
   );
@@ -184,215 +183,211 @@ export default function App() {
         <YerlesimDuzenleyici />
         <Routes>
 
-        {/* Public Routes */}
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/ozellikler" element={<LandingFeaturesPage />} />
-        <Route path="/moduller" element={<LandingModulesPage />} />
-        <Route path="/canli-pano" element={<LandingPanoPage />} />
-        <Route path="/canli-kur" element={<LandingPanoPage />} />
-        <Route path="/guvenlik" element={<LandingSecurityPage />} />
-        <Route path="/mevzuat" element={<LandingSecurityPage />} />
-        <Route path="/sss" element={<LandingFaqPage />} />
-        <Route path="/hakkimizda" element={<LandingAboutPage />} />
-        <Route path="/iletisim" element={<LandingAboutPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/sign-in" element={<Navigate to="/login" replace />} />
+          {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/ozellikler" element={<LandingFeaturesPage />} />
+          <Route path="/moduller" element={<LandingModulesPage />} />
+          <Route path="/canli-pano" element={<LandingPanoPage />} />
+          <Route path="/canli-kur" element={<LandingPanoPage />} />
+          <Route path="/guvenlik" element={<LandingSecurityPage />} />
+          <Route path="/mevzuat" element={<LandingSecurityPage />} />
+          <Route path="/sss" element={<LandingFaqPage />} />
+          <Route path="/hakkimizda" element={<LandingAboutPage />} />
+          <Route path="/iletisim" element={<LandingAboutPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/sign-in" element={<Navigate to="/login" replace />} />
 
-        {/* Protected Standalone Pano Route - Fullscreen TV & Tablet Mode */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="kur/pano" element={<PanoPage />} />
-        </Route>
-
-        {/* Protected Dashboard Routes - Requires Valid JWT Token */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/" element={<DashboardLayout />}>
-            <Route path="dashboard" element={<HomePage />} />
-            <Route path="sifre-degistir" element={<ChangePasswordPage />} />
-            <Route path="lisans-surum" element={<LisansSurumPage />} />
-            <Route path="destek" element={<DestekPage />} />
-            <Route path="ayarlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
-            <Route path="tanimlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
-            <Route path="ayarlar/firma-tanimlari" element={<CompanyDefinitionsPage />} />
-            <Route path="tanimlar/firma-tanimlari" element={<CompanyDefinitionsPage />} />
-            <Route path="ayarlar/vezne-tanimlari" element={<CashDeskDefinitionsPage />} />
-            <Route path="tanimlar/vezne-tanimlari" element={<CashDeskDefinitionsPage />} />
-            <Route path="ayarlar/yazici-tanimlari" element={<PrinterDefinitionsPage />} />
-            <Route path="tanimlar/yazici-tanimlari" element={<PrinterDefinitionsPage />} />
-            <Route path="ayarlar/urun-tanimlari" element={<ProductDefinitionsPage />} />
-            <Route path="tanimlar/urun-tanimlari" element={<ProductDefinitionsPage />} />
-            <Route path="ayarlar/istatistik-tanimlari" element={<StatisticDefinitionsPage />} />
-            <Route path="tanimlar/istatistik-tanimlari" element={<StatisticDefinitionsPage />} />
-            <Route path="ayarlar/numeratorler" element={<NumeratorDefinitionsPage />} />
-            <Route path="tanimlar/numeratorler" element={<NumeratorDefinitionsPage />} />
-            <Route path="ayarlar/numaratorler" element={<NumeratorDefinitionsPage />} />
-            <Route path="ayarlar/numarator-tanimlari" element={<NumeratorDefinitionsPage />} />
-            <Route path="tanimlar/numarator-tanimlari" element={<NumeratorDefinitionsPage />} />
-            <Route path="ayarlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
-            <Route path="tanimlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
-            <Route path="ayarlar/iskonto-tanimlari" element={<IskontoDefinitionsPage />} />
-            <Route path="tanimlar/iskonto-tanimlari" element={<IskontoDefinitionsPage />} />
-            <Route path="ayarlar/iskonto" element={<IskontoDefinitionsPage />} />
-            <Route path="tanimlar/iskonto" element={<IskontoDefinitionsPage />} />
-            <Route path="ayarlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
-            {/* e-Belge (ICE entegratör) */}
-            <Route path="e-belge" element={<EBelgeHomePage />} />
-            <Route path="e-belge/gelen" element={<EBelgeGelenPage />} />
-            <Route path="e-belge/dogrula" element={<EBelgeDogrulaPage />} />
-            <Route path="e-belge/giden" element={<EBelgeGidenPage />} />
-            <Route path="e-belge/irsaliye" element={<EBelgeIrsaliyePage />} />
-            <Route path="e-belge/gider" element={<EBelgeGiderPage />} />
-            <Route path="e-belge/kaynak" element={<EBelgeKaynakPage />} />
-            <Route path="e-belge/mustahsil" element={<EBelgeMustahsilPage />} />
-            <Route path="ayarlar/e-belge" element={<EBelgeSettingsPage />} />
-            <Route path="ayarlar/gib-sorgu" element={<GibHesapSettingsPage />} />
-            <Route path="ayarlar/belge-tasarimi" element={<BelgeTasarimiPage />} />
-            <Route path="tanimlar/e-belge" element={<EBelgeSettingsPage />} />
-            <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
-            <Route path="cari/kart-kayit" element={<CariCardRegistrationPage />} />
-            <Route path="cari/kayit" element={<CariCardRegistrationPage />} />
-            <Route path="cari/kart-duzeltme" element={<CariCardRegistrationPage />} />
-            <Route path="cari/cari-kart-kayit" element={<CariCardRegistrationPage />} />
-            <Route path="cari/kart-listesi" element={<CariCardListPage />} />
-            <Route path="cari/listesi" element={<CariCardListPage />} />
-            <Route path="cari/cari-kart-listesi" element={<CariCardListPage />} />
-            <Route path="cari/detayli-kart-listesi" element={<CariCardListPage />} />
-            <Route path="cari/hesap-ad-listesi" element={<CariCardListPage />} />
-            <Route path="kasa/hesap-ad-listesi" element={<CariCardListPage />} />
-            <Route path="cari/hareket-kayit" element={<CariHareketPage />} />
-            <Route path="cari/hareket-duzeltme" element={<CariHareketPage />} />
-            <Route path="cari/hareket-listesi" element={<CariHareketListPage />} />
-            <Route path="cari/hareketler" element={<CariHareketListPage />} />
-            <Route path="cari/emanet-dekont" element={<CariEmanetDekontPage />} />
-            <Route path="cari/emanet-duzeltme" element={<CariEmanetDekontPage />} />
-            <Route path="cari/emanet-dekont-duzeltme" element={<CariEmanetDekontPage />} />
-            <Route path="cari/emanet-dekont-kayit" element={<CariEmanetDekontPage />} />
-            <Route path="cari/emanet-kayit" element={<CariEmanetDekontPage />} />
-            <Route path="cari/cari-emanet-dekont" element={<CariEmanetDekontPage />} />
-                        <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
-            <Route path="vezne/doviz-fisi" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fis" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fisi-kayit" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fisi-duzeltme" element={<DovizFisiPage />} />
-            <Route path="vezne/doviz-fis-duzeltme" element={<DovizFisiPage />} />
-            <Route path="vezne/transfer-kayit" element={<VezneTransferiPage />} />
-            <Route path="vezne/transfer-duzeltme" element={<VezneTransferiPage />} />
-            <Route path="vezne/vezne-transferi-kayit" element={<VezneTransferiPage />} />
-            <Route path="vezne/vezne-transferi-duzeltme" element={<VezneTransferiPage />} />
-            <Route path="vezne/vezne-transferi" element={<VezneTransferiPage />} />
-            <Route path="vezne/transfer" element={<VezneTransferiPage />} />
-            <Route path="piyasa" element={<PiyasaPage />} />
-            <Route path="vezne/izleme" element={<VezneIzlemePage />} />
-            <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
-            <Route path="vezne/para-say" element={<VezneParaSayPage />} />
-            <Route path="vezne/para-sayma" element={<VezneParaSayPage />} />
-            <Route path="vezne/vezne-para-say" element={<VezneParaSayPage />} />
-            <Route path="vezne/sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
-            <Route path="vezne/sarraf-fisi-kayit" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
-            <Route path="vezne/genel-sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
-            <Route path="vezne/sarraf-fisi-duzeltme" element={<SarrafFisiPage key="sarraf-duzeltme" isDuzeltme={true} />} />
-            <Route path="vezne/perakende-fisi" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
-            <Route path="vezne/perakende-fis" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
-            <Route path="vezne/perakende-fisi-kayit" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
-            <Route path="vezne/perakende" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
-            <Route path="vezne/perakende-fisi-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
-            <Route path="vezne/perakende-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
-            <Route path="perakende/perakende-fisi-kayit" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
-            <Route path="perakende/perakende-fisi-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
-            <Route path="perakende/vitrin-stok" element={<VitrinStokTakibiPage />} />
-            <Route path="perakende/vitrin-stok-takibi" element={<VitrinStokTakibiPage />} />
-            <Route path="perakende/barkodlu-altin-listesi" element={<BarkodluAltinListesiPage />} />
-            <Route path="perakende/altin-listesi" element={<BarkodluAltinListesiPage />} />
-            <Route path="perakende/barkodlu-ozel-urun-listesi" element={<BarkodluOzelUrunListesiPage />} />
-            <Route path="perakende/ozel-urun-listesi" element={<BarkodluOzelUrunListesiPage />} />
-            <Route path="perakende/satis-listesi" element={<SatisListesiPage />} />
-            <Route path="perakende/satis" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
-            <Route path="perakende/liste" element={<SatisListesiPage />} />
-            <Route path="ticari/satis-fisi" element={<TicariSatisFisiPage key="ticari-kayit" isDuzeltme={false} />} />
-            <Route path="ticari/satis-fisi-duzeltme" element={<TicariSatisFisiPage key="ticari-duzeltme" isDuzeltme={true} />} />
-            <Route path="ticari/satis-listesi" element={<TicariSatisListesiPage />} />
-            <Route path="ticari/stok-giris-fisi" element={<StokGirisFisiPage />} />
-            <Route path="ticari/stok-giris-listesi" element={<StokGirisListesiPage />} />
-            <Route path="ticari/stok-kartlari" element={<StokKartlariPage />} />
-            <Route path="ticari/urun-gruplari" element={<UrunGruplariPage />} />
-            <Route path="ticari/stok-durum-listesi" element={<StokDurumListesiPage />} />
-            <Route path="ticari/urun-hareket-listesi" element={<UrunHareketListesiPage />} />
-            <Route path="ticari/stok-ayarlari" element={<StokAyarlariPage />} />
-            <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
-            <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
-            <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
-            <Route path="kur/pano-tanimi" element={<PanoTanimiPage />} />
-            <Route path="tanimlar/pano-tanimi" element={<PanoTanimiPage />} />
-            <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
-            <Route path="masak" element={<MasakListsPage />} />
-            {/* Eski "Belge / Fiş PDF" adresleri e-Belge ana sayfasına gider */}
-            <Route path="belge" element={<Navigate to="/e-belge" replace />} />
-            <Route path="raporlar/belge" element={<Navigate to="/e-belge" replace />} />
-            <Route path="raporlar/:yol" element={<RaporPage />} />
-            <Route path="banka/hesap-kartlari" element={<BankaHesapKartiPage />} />
-            <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />
-            <Route path="banka/pos-tanimlari" element={<PosCihaziTanimlariPage />} />
-            <Route path="banka/pos-cihazi-tanimlari" element={<PosCihaziTanimlariPage />} />
-            <Route path="banka/pos-cihazlari" element={<PosCihazlariPage />} />
-            <Route path="banka/pos-islemleri" element={<PosIslemleriPage />} />
-            <Route path="banka/hareketler" element={<BankaHareketiPage />} />
-            <Route path="banka/hesap-hareketleri" element={<BankaHareketiPage />} />
-            <Route path="ebanka/ozet" element={<EBankaOzetPage />} />
-            <Route path="ebanka/hesaplar" element={<EBankaHesaplarPage />} />
-            <Route path="ebanka/hareketler" element={<EBankaHareketlerPage />} />
-            <Route path="ebanka/bekleyenler" element={<EBankaBekleyenlerPage />} />
-            <Route path="ebanka/pos" element={<EBankaPosPage />} />
-            <Route path="ebanka/sanal-pos-tahsilat" element={<EBankaVposTahsilatPage />} />
-            <Route path="ebanka/odeme-linkleri" element={<EBankaOdemeLinkleriPage />} />
-            <Route path="ebanka/sanal-pos-islemleri" element={<EBankaVposIslemlerPage />} />
-            <Route path="ebanka/ayarlar" element={<EBankaAyarlarPage />} />
-            <Route path="ebanka/mutabakat" element={<EBankaMutabakatPage />} />
-            <Route path="kasa/hesap-kayit" element={<KasaHesapKayitPage />} />
-            <Route path="kasa/hesap-duzeltme" element={<KasaHesapKayitPage />} />
-            <Route path="kasa/hareket-kayit" element={<KasaHareketPage />} />
-            <Route path="kasa/hareket-duzeltme" element={<KasaHareketPage />} />
-            <Route path="kasa/kasa-hareket-kayit" element={<KasaHareketPage />} />
-            <Route path="kasa/kasa-hareket-duzeltme" element={<KasaHareketPage />} />
-            <Route path="kasa/hareket" element={<KasaHareketPage />} />
-            <Route path="kasa/kasa-hareket" element={<KasaHareketPage />} />
-            <Route path="etiket/barkod-fiyat" element={<BarkodEtiketBasimiPage />} />
-            <Route path="etiket/barkod-basimi" element={<BarkodEtiketBasimiPage />} />
-            <Route path="etiket/altin-urun-barkodlama" element={<AltinUrunTanimlamaPage />} />
-            <Route path="etiket/altin-urun-duzeltme" element={<AltinUrunTanimlamaPage />} />
-            <Route path="etiket/altin-urun-tanimlama" element={<AltinUrunTanimlamaPage />} />
-            <Route path="etiket/ozel-urun-barkodlama" element={<OzelUrunTanimlamaPage />} />
-            <Route path="etiket/ozel-urun-duzeltme" element={<OzelUrunTanimlamaPage />} />
-            <Route path="etiket/ozel-urun-tanimlama" element={<OzelUrunTanimlamaPage />} />
-            <Route path="etiket/altin-etiket-tasarimi" element={<UrunEtiketTasarimiPage />} />
-            <Route path="etiket/ozel-urun-etiket-tasarimi" element={<UrunEtiketTasarimiPage />} />
-            <Route path="etiket/tasarim" element={<UrunEtiketTasarimiPage />} />
-            <Route path="etiket/fiyat-etiketi" element={<FiyatAyarEtiketleriPage />} />
-            <Route path="etiket/sayim-fisi" element={<BarkodluSayimFisiPage />} />
-            <Route path="etiket/barkodlu-sayim-fisi" element={<BarkodluSayimFisiPage />} />
-            <Route path="etiket/altin-urun-stogu" element={<UrunStoguPage tip="altin" />} />
-            <Route path="etiket/ozel-urun-stogu" element={<UrunStoguPage tip="ozel" />} />
-            <Route path="etiket/rfid" element={<RfidEtiketUretimPage />} />
-            <Route path="etiket/rfid-etiket-uretim" element={<RfidEtiketUretimPage />} />
-            <Route path="etiket/rfid-sayim" element={<RfidSayimPage />} />
-            <Route path=":section/*" element={<ModulePage />} />
-
-
-
-            <Route path="*" element={<ModulePage />} />
+          {/* Protected Standalone Pano & TV Katalog Route - Fullscreen TV & Tablet Mode */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="kur/pano" element={<PanoPage />} />
+            <Route path="tv-katalog" element={<TvKatalogPage />} />
+            <Route path="katalog-ekrani" element={<TvKatalogPage />} />
           </Route>
-        </Route>
 
+          {/* Protected Dashboard Routes - Requires Valid JWT Token */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<DashboardLayout />}>
+              <Route path="dashboard" element={<HomePage />} />
+              <Route path="sifre-degistir" element={<ChangePasswordPage />} />
+              <Route path="lisans-surum" element={<LisansSurumPage />} />
+              <Route path="destek" element={<DestekPage />} />
+              <Route path="ayarlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
+              <Route path="tanimlar/kullanici-tanimlari" element={<UserDefinitionsPage />} />
+              <Route path="ayarlar/firma-tanimlari" element={<CompanyDefinitionsPage />} />
+              <Route path="tanimlar/firma-tanimlari" element={<CompanyDefinitionsPage />} />
+              <Route path="ayarlar/vezne-tanimlari" element={<CashDeskDefinitionsPage />} />
+              <Route path="tanimlar/vezne-tanimlari" element={<CashDeskDefinitionsPage />} />
+              <Route path="ayarlar/yazici-tanimlari" element={<PrinterDefinitionsPage />} />
+              <Route path="tanimlar/yazici-tanimlari" element={<PrinterDefinitionsPage />} />
+              <Route path="ayarlar/urun-tanimlari" element={<ProductDefinitionsPage />} />
+              <Route path="tanimlar/urun-tanimlari" element={<ProductDefinitionsPage />} />
+              <Route path="ayarlar/istatistik-tanimlari" element={<StatisticDefinitionsPage />} />
+              <Route path="tanimlar/istatistik-tanimlari" element={<StatisticDefinitionsPage />} />
+              <Route path="ayarlar/numeratorler" element={<NumeratorDefinitionsPage />} />
+              <Route path="tanimlar/numeratorler" element={<NumeratorDefinitionsPage />} />
+              <Route path="ayarlar/numaratorler" element={<NumeratorDefinitionsPage />} />
+              <Route path="ayarlar/numarator-tanimlari" element={<NumeratorDefinitionsPage />} />
+              <Route path="tanimlar/numarator-tanimlari" element={<NumeratorDefinitionsPage />} />
+              <Route path="ayarlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
+              <Route path="tanimlar/numerator-tanimlari" element={<NumeratorDefinitionsPage />} />
+              <Route path="ayarlar/iskonto-tanimlari" element={<IskontoDefinitionsPage />} />
+              <Route path="tanimlar/iskonto-tanimlari" element={<IskontoDefinitionsPage />} />
+              <Route path="ayarlar/iskonto" element={<IskontoDefinitionsPage />} />
+              <Route path="tanimlar/iskonto" element={<IskontoDefinitionsPage />} />
+              <Route path="ayarlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
+              {/* e-Belge (ICE entegratör) */}
+              <Route path="e-belge" element={<EBelgeHomePage />} />
+              <Route path="e-belge/gelen" element={<EBelgeGelenPage />} />
+              <Route path="e-belge/dogrula" element={<EBelgeDogrulaPage />} />
+              <Route path="e-belge/giden" element={<EBelgeGidenPage />} />
+              <Route path="e-belge/irsaliye" element={<EBelgeIrsaliyePage />} />
+              <Route path="e-belge/gider" element={<EBelgeGiderPage />} />
+              <Route path="e-belge/kaynak" element={<EBelgeKaynakPage />} />
+              <Route path="e-belge/mustahsil" element={<EBelgeMustahsilPage />} />
+              <Route path="ayarlar/e-belge" element={<EBelgeSettingsPage />} />
+              <Route path="ayarlar/gib-sorgu" element={<GibHesapSettingsPage />} />
+              <Route path="ayarlar/belge-tasarimi" element={<BelgeTasarimiPage />} />
+              <Route path="tanimlar/e-belge" element={<EBelgeSettingsPage />} />
+              <Route path="tanimlar/banknot-tanimlari" element={<BanknotDefinitionsPage />} />
+              <Route path="cari/kart-kayit" element={<CariCardRegistrationPage />} />
+              <Route path="cari/kayit" element={<CariCardRegistrationPage />} />
+              <Route path="cari/kart-duzeltme" element={<CariCardRegistrationPage />} />
+              <Route path="cari/cari-kart-kayit" element={<CariCardRegistrationPage />} />
+              <Route path="cari/kart-listesi" element={<CariCardListPage />} />
+              <Route path="cari/listesi" element={<CariCardListPage />} />
+              <Route path="cari/cari-kart-listesi" element={<CariCardListPage />} />
+              <Route path="cari/detayli-kart-listesi" element={<CariCardListPage />} />
+              <Route path="cari/hesap-ad-listesi" element={<CariCardListPage />} />
+              <Route path="kasa/hesap-ad-listesi" element={<CariCardListPage />} />
+              <Route path="cari/hareket-kayit" element={<CariHareketPage />} />
+              <Route path="cari/hareket-duzeltme" element={<CariHareketPage />} />
+              <Route path="cari/hareket-listesi" element={<CariHareketListPage />} />
+              <Route path="cari/hareketler" element={<CariHareketListPage />} />
+              <Route path="cari/emanet-dekont" element={<CariEmanetDekontPage />} />
+              <Route path="cari/emanet-duzeltme" element={<CariEmanetDekontPage />} />
+              <Route path="cari/emanet-dekont-duzeltme" element={<CariEmanetDekontPage />} />
+              <Route path="cari/emanet-dekont-kayit" element={<CariEmanetDekontPage />} />
+              <Route path="cari/emanet-kayit" element={<CariEmanetDekontPage />} />
+              <Route path="cari/cari-emanet-dekont" element={<CariEmanetDekontPage />} />
+              <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
+              <Route path="vezne/doviz-fisi" element={<DovizFisiPage />} />
+              <Route path="vezne/doviz-fis" element={<DovizFisiPage />} />
+              <Route path="vezne/doviz-fisi-kayit" element={<DovizFisiPage />} />
+              <Route path="vezne/doviz-fisi-duzeltme" element={<DovizFisiPage />} />
+              <Route path="vezne/doviz-fis-duzeltme" element={<DovizFisiPage />} />
+              <Route path="vezne/transfer-kayit" element={<VezneTransferiPage />} />
+              <Route path="vezne/transfer-duzeltme" element={<VezneTransferiPage />} />
+              <Route path="vezne/vezne-transferi-kayit" element={<VezneTransferiPage />} />
+              <Route path="vezne/vezne-transferi-duzeltme" element={<VezneTransferiPage />} />
+              <Route path="vezne/vezne-transferi" element={<VezneTransferiPage />} />
+              <Route path="vezne/transfer" element={<VezneTransferiPage />} />
+              <Route path="piyasa" element={<PiyasaPage />} />
+              <Route path="vezne/izleme" element={<VezneIzlemePage />} />
+              <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
+              <Route path="vezne/para-say" element={<VezneParaSayPage />} />
+              <Route path="vezne/para-sayma" element={<VezneParaSayPage />} />
+              <Route path="vezne/vezne-para-say" element={<VezneParaSayPage />} />
+              <Route path="vezne/sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
+              <Route path="vezne/sarraf-fisi-kayit" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
+              <Route path="vezne/genel-sarraf-fisi" element={<SarrafFisiPage key="sarraf-kayit" isDuzeltme={false} />} />
+              <Route path="vezne/sarraf-fisi-duzeltme" element={<SarrafFisiPage key="sarraf-duzeltme" isDuzeltme={true} />} />
+              <Route path="vezne/perakende-fisi" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+              <Route path="vezne/perakende-fis" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+              <Route path="vezne/perakende-fisi-kayit" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+              <Route path="vezne/perakende" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+              <Route path="vezne/perakende-fisi-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
+              <Route path="vezne/perakende-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
+              <Route path="perakende/perakende-fisi-kayit" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+              <Route path="perakende/perakende-fisi-duzeltme" element={<PerakendeFisiPage key="perakende-duzeltme" isDuzeltme={true} />} />
+              <Route path="perakende/vitrin-stok" element={<VitrinStokTakibiPage />} />
+              <Route path="perakende/vitrin-stok-takibi" element={<VitrinStokTakibiPage />} />
+              <Route path="perakende/barkodlu-altin-listesi" element={<BarkodluAltinListesiPage />} />
+              <Route path="perakende/altin-listesi" element={<BarkodluAltinListesiPage />} />
+              <Route path="perakende/barkodlu-ozel-urun-listesi" element={<BarkodluOzelUrunListesiPage />} />
+              <Route path="perakende/ozel-urun-listesi" element={<BarkodluOzelUrunListesiPage />} />
+              <Route path="perakende/satis-listesi" element={<SatisListesiPage />} />
+              <Route path="perakende/satis" element={<PerakendeFisiPage key="perakende-kayit" isDuzeltme={false} />} />
+              <Route path="perakende/liste" element={<SatisListesiPage />} />
+              <Route path="ticari/satis-fisi" element={<TicariSatisFisiPage key="ticari-kayit" isDuzeltme={false} />} />
+              <Route path="ticari/satis-fisi-duzeltme" element={<TicariSatisFisiPage key="ticari-duzeltme" isDuzeltme={true} />} />
+              <Route path="ticari/satis-listesi" element={<TicariSatisListesiPage />} />
+              <Route path="ticari/stok-giris-fisi" element={<StokGirisFisiPage />} />
+              <Route path="ticari/stok-giris-listesi" element={<StokGirisListesiPage />} />
+              <Route path="ticari/stok-kartlari" element={<StokKartlariPage />} />
+              <Route path="ticari/urun-gruplari" element={<UrunGruplariPage />} />
+              <Route path="ticari/stok-durum-listesi" element={<StokDurumListesiPage />} />
+              <Route path="ticari/urun-hareket-listesi" element={<UrunHareketListesiPage />} />
+              <Route path="ticari/stok-ayarlari" element={<StokAyarlariPage />} />
+              <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
+              <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
+              <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
+              <Route path="kur/pano-tanimi" element={<PanoTanimiPage />} />
+              <Route path="tanimlar/pano-tanimi" element={<PanoTanimiPage />} />
+              <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
+              <Route path="masak" element={<MasakListsPage />} />
+              {/* Eski "Belge / Fiş PDF" adresleri e-Belge ana sayfasına gider */}
+              <Route path="belge" element={<Navigate to="/e-belge" replace />} />
+              <Route path="raporlar/belge" element={<Navigate to="/e-belge" replace />} />
+              <Route path="raporlar/:yol" element={<RaporPage />} />
+              <Route path="banka/hesap-kartlari" element={<BankaHesapKartiPage />} />
+              <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />
+              <Route path="banka/pos-tanimlari" element={<PosCihaziTanimlariPage />} />
+              <Route path="banka/pos-cihazi-tanimlari" element={<PosCihaziTanimlariPage />} />
+              <Route path="banka/pos-cihazlari" element={<PosCihazlariPage />} />
+              <Route path="banka/pos-islemleri" element={<PosIslemleriPage />} />
+              <Route path="banka/hareketler" element={<BankaHareketiPage />} />
+              <Route path="banka/hesap-hareketleri" element={<BankaHareketiPage />} />
+              <Route path="ebanka/ozet" element={<EBankaOzetPage />} />
+              <Route path="ebanka/hesaplar" element={<EBankaHesaplarPage />} />
+              <Route path="ebanka/hareketler" element={<EBankaHareketlerPage />} />
+              <Route path="ebanka/bekleyenler" element={<EBankaBekleyenlerPage />} />
+              <Route path="ebanka/pos" element={<EBankaPosPage />} />
+              <Route path="ebanka/sanal-pos-tahsilat" element={<EBankaVposTahsilatPage />} />
+              <Route path="ebanka/odeme-linkleri" element={<EBankaOdemeLinkleriPage />} />
+              <Route path="ebanka/sanal-pos-islemleri" element={<EBankaVposIslemlerPage />} />
+              <Route path="ebanka/ayarlar" element={<EBankaAyarlarPage />} />
+              <Route path="ebanka/mutabakat" element={<EBankaMutabakatPage />} />
+              <Route path="kasa/hesap-kayit" element={<KasaHesapKayitPage />} />
+              <Route path="kasa/hesap-duzeltme" element={<KasaHesapKayitPage />} />
+              <Route path="kasa/hareket-kayit" element={<KasaHareketPage />} />
+              <Route path="kasa/hareket-duzeltme" element={<KasaHareketPage />} />
+              <Route path="kasa/kasa-hareket-kayit" element={<KasaHareketPage />} />
+              <Route path="kasa/kasa-hareket-duzeltme" element={<KasaHareketPage />} />
+              <Route path="kasa/hareket" element={<KasaHareketPage />} />
+              <Route path="kasa/kasa-hareket" element={<KasaHareketPage />} />
+              <Route path="etiket/barkod-fiyat" element={<BarkodEtiketBasimiPage />} />
+              <Route path="etiket/barkod-basimi" element={<BarkodEtiketBasimiPage />} />
+              <Route path="etiket/altin-urun-barkodlama" element={<AltinUrunTanimlamaPage />} />
+              <Route path="etiket/altin-urun-duzeltme" element={<AltinUrunTanimlamaPage />} />
+              <Route path="etiket/altin-urun-tanimlama" element={<AltinUrunTanimlamaPage />} />
+              <Route path="etiket/ozel-urun-barkodlama" element={<OzelUrunTanimlamaPage />} />
+              <Route path="etiket/ozel-urun-duzeltme" element={<OzelUrunTanimlamaPage />} />
+              <Route path="etiket/ozel-urun-tanimlama" element={<OzelUrunTanimlamaPage />} />
+              <Route path="etiket/consinye-altin-urun" element={<ConsinyeUrunPanoPage tip="altin" />} />
+              <Route path="etiket/konsinye-altin-urun" element={<ConsinyeUrunPanoPage tip="altin" />} />
+              <Route path="etiket/consinye-ozel-urun" element={<ConsinyeUrunPanoPage tip="ozel" />} />
+              <Route path="etiket/konsinye-ozel-urun" element={<ConsinyeUrunPanoPage tip="ozel" />} />
+              <Route path="etiket/altin-etiket-tasarimi" element={<UrunEtiketTasarimiPage />} />
+              <Route path="etiket/ozel-urun-etiket-tasarimi" element={<UrunEtiketTasarimiPage />} />
+              <Route path="etiket/tasarim" element={<UrunEtiketTasarimiPage />} />
+              <Route path="etiket/fiyat-etiketi" element={<FiyatAyarEtiketleriPage />} />
+              <Route path="etiket/sayim-fisi" element={<BarkodluSayimFisiPage />} />
+              <Route path="etiket/barkodlu-sayim-fisi" element={<BarkodluSayimFisiPage />} />
+              <Route path="etiket/altin-urun-stogu" element={<UrunStoguPage tip="altin" />} />
+              <Route path="etiket/ozel-urun-stogu" element={<UrunStoguPage tip="ozel" />} />
+              <Route path="etiket/rfid" element={<RfidEtiketUretimPage />} />
+              <Route path="etiket/rfid-etiket-uretim" element={<RfidEtiketUretimPage />} />
+              <Route path="etiket/rfid-sayim" element={<RfidSayimPage />} />
+              <Route path=":section/*" element={<ModulePage />} />
 
+              <Route path="*" element={<ModulePage />} />
+            </Route>
+          </Route>
 
-
-
-
-        {/* Catch-all redirect to /dashboard (which will route to /login if unauthenticated) */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
+          {/* Catch-all redirect to /dashboard (which will route to /login if unauthenticated) */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
       </ToastProvider>
     </AuthProvider>
   );
 }
-
-
-

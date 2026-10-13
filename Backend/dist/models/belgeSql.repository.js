@@ -209,6 +209,41 @@ export class BelgeSqlRepository {
         });
         return { toplam: Number(sets[0][0]?.toplam || 0), sayfa, boyut, kayitlar };
     }
+    /**
+     * Fiş çıktıları için firma kimliği: TODVZ_TANIM + vergi dairesi / il / ilçe adları (TODVZ_TABLO_MADDESI).
+     * Okunamazsa null (fiş yine basılır, firma alanları boş kalır). Belge tablolarının hazırlığından (döviz görünümü
+     * denetimi) geçmez: döviz görünümü olmayan firmada da (kuyum / perakende fişi) firma bilgisi gelmelidir.
+     */
+    static async firmaKimlikSatiri(ctx) {
+        try {
+            const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
+            const res = await pool.request().query(`
+        SELECT TOP 1 T.*, RTRIM(ISNULL(VD.AD,'')) VERGI_DAIRESI_ADI, RTRIM(ISNULL(ILC.AD,'')) ILCE_ADI, RTRIM(ISNULL(IL.AD,'')) IL_ADI
+        FROM dbo.TODVZ_TANIM T
+        LEFT JOIN dbo.TODVZ_TABLO_MADDESI VD ON VD.TABLO_MADDESI_ID=T.VERGI_DAIRESI_ID AND VD.TUR=0
+        LEFT JOIN dbo.TODVZ_TABLO_MADDESI ILC ON ILC.TABLO_MADDESI_ID=T.ILCE_ID AND ILC.TUR=2
+        LEFT JOIN dbo.TODVZ_TABLO_MADDESI IL ON IL.TABLO_MADDESI_ID=T.IL_ID AND IL.TUR=3`);
+            return res.recordset[0] || null;
+        }
+        catch (e) {
+            logger.warn("Belge: firma kimliği okunamadı.", e);
+            return null;
+        }
+    }
+    /** Kayıtlı döviz fişinin belge numarası ve ETTN'si (fiş çıktısında ekrandakinden önceliklidir). */
+    static async dovizFisKimligi(fisId, ctx) {
+        try {
+            const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
+            const res = await pool.request().input("id", sql.Int, fisId).query(`
+        SELECT TOP 1 RTRIM(ISNULL(D.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(D.ETTN,'')) ettn
+        FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D WHERE D.BELGE_ID=@id`);
+            return res.recordset[0] || null;
+        }
+        catch (e) {
+            logger.warn(`Belge: fiş ${fisId} kimliği okunamadı.`, e);
+            return null;
+        }
+    }
     /** Firma tanımındaki belge dizini (arşiv kökü için ikinci öncelik). */
     static async firmaBelgeDizini(ctx) {
         try {

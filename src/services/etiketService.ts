@@ -40,6 +40,8 @@ export interface AltinUrunItem {
   satildi: boolean;
   konsinye?: boolean;
   katalog?: boolean;
+  menuId?: number | null;
+  menuAdi?: string | null;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
   eklemeZamani?: string | null;
@@ -83,6 +85,7 @@ export interface SaveAltinUrunPayload {
   satildi?: boolean;
   konsinye?: boolean;
   katalog?: boolean;
+  menuId?: number | null;
 }
 
 // ─── Özel Ürün (TODVZ_OZEL_URUN) ─────────────────────────────────────────────
@@ -125,6 +128,8 @@ export interface OzelUrunItem {
   satildi: boolean;
   konsinye?: boolean;
   katalog?: boolean;
+  menuId?: number | null;
+  menuAdi?: string | null;
   yazdirildi: boolean;
   yazdirildiZamani?: string | null;
   eklemeZamani?: string | null;
@@ -168,6 +173,7 @@ export interface SaveOzelUrunPayload {
   satildi?: boolean;
   konsinye?: boolean;
   katalog?: boolean;
+  menuId?: number | null;
 }
 
 // ─── RFID Veri Yapıları ──────────────────────────────────────────────────────
@@ -586,6 +592,19 @@ export const EtiketService = {
 
   async deleteTabloMaddesi(id: number): Promise<void> {
     await apiClient.delete(`/tanimlar/tablo-maddesi/${id}`);
+  },
+
+  async updateUrunKatalog(payload: {
+    tip: "altin" | "ozel";
+    id: number;
+    katalog: boolean;
+    menuId?: number | null;
+  }): Promise<{ success: boolean; katalog: boolean; menuId: number | null; menuAdi: string | null }> {
+    const res = await apiClient.post<{ success: boolean; katalog: boolean; menuId: number | null; menuAdi: string | null }>(
+      "/etiket/katalog-guncelle",
+      payload
+    );
+    return (res.data as any)?.data ?? res.data;
   },
 };
 
