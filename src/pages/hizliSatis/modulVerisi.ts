@@ -201,7 +201,8 @@ export async function barkoddanSatir(girdi: string, v: ModulVerisi, tip: 0 | 1, 
       const u = await PerakendeService.getProductByBarcode(kod);
       if (u?.satildi) return `"${kod}" barkodlu ürün satılmış.`;
       if (u && (u.altinUrunId || u.barkod)) {
-        const fiyat = Number(u.satisFiyati) || 0;
+        // Alışta (Perakende) satış fiyatı geçmez: alış fiyatı sorulur
+        const fiyat = tip === 1 ? Number(u.satisFiyati) || 0 : 0;
         return {
           satir: {
             anahtar: satirAnahtari(), ad: u.urunAdi || "Altın Ürün", kod: u.barkod || kod, tur: "barkod", miktar: 1, birim: u.birim || "Adet",

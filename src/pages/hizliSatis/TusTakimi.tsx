@@ -46,7 +46,7 @@ export const TusTakimi: React.FC<Props> = ({ giris, setGiris, onKomut, fiyatYetk
       <div className="d-grid gap-1" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         {r("7")}{r("8")}{r("9")}{k("Miktar", "miktar", "btn-outline-primary")}
         {r("4")}{r("5")}{r("6")}{k("Fiyat Değiştir", "fiyat", "btn-outline-primary", !fiyatYetkisi, fiyatYetkisi ? undefined : "Hızlı Satış – Fiyat/İndirim yetkisi gerekli")}
-        {r("1")}{r("2")}{r("3")}{k("İndirim", "indirim", "btn-outline-primary", !fiyatYetkisi || !indirimVar, !indirimVar ? "Bu modülde fiş indirimi yok" : fiyatYetkisi ? undefined : "Hızlı Satış – Fiyat/İndirim yetkisi gerekli")}
+        {r("1")}{r("2")}{r("3")}{k("İskonto", "indirim", "btn-outline-primary", !indirimVar, indirimVar ? "Tanımlı iskonto seçin (elle iskonto yetkiliye açık)" : "Bu modülde ya da alışta iskonto yok")}
         {r("0")}{r("00")}{r(",")}{k("Satır Sil", "satirSil", "btn-outline-danger")}
         <button type="button" className="btn btn-light border" style={TUS} disabled={disabled} title="Geri sil" onClick={() => setGiris((g) => g.slice(0, -1))}><IconBackspace size={20} /></button>
         <button type="button" className="btn btn-light border" style={TUS} disabled={disabled} onClick={() => setGiris(() => "")}>C</button>

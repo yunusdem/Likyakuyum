@@ -39,9 +39,14 @@ export const modulGecerliMi = (m: unknown): m is HizliSatisModul => HIZLI_SATIS_
 
 export const renkGecerliMi = (r: unknown): boolean => typeof r === "string" && /^#[0-9a-fA-F]{6}$/.test(r);
 
-/** Fiş toplamı (KDV dahil) sınıra eşit ya da üstündeyse alıcı bilgisi zorunlu */
-export const faturaSiniriAsildiMi = (modul: HizliSatisModul, toplam: number, sinir: number): boolean =>
-  FATURA_SINIRI_MODULLERI.includes(modul) && sinir > 0 && Math.round(toplam * 100) >= Math.round(sinir * 100);
+/** Satış fişi toplamı (KDV dahil) sınıra eşit ya da üstündeyse alıcı bilgisi zorunlu; alışta (tip 0) uygulanmaz */
+export const faturaSiniriAsildiMi = (modul: HizliSatisModul, toplam: number, sinir: number, tip: 0 | 1 = 1): boolean =>
+  tip === 1 && FATURA_SINIRI_MODULLERI.includes(modul) && sinir > 0 && Math.round(toplam * 100) >= Math.round(sinir * 100);
+
+/** Alış / Satış düğmesi olan modüller (H10, H11; Perakende alışı 14.10.2026) */
+export const ALIS_SATIS_MODULLERI: HizliSatisModul[] = ["perakende", "sarraf", "doviz"];
+/** İskonto kullanılabilen modüller (yalnız satışta) */
+export const ISKONTO_MODULLERI: HizliSatisModul[] = ["perakende", "ticari", "sarraf"];
 
 export const sinirOku = (deger: unknown): number => {
   const s = typeof deger === "string" ? (deger.includes(",") ? deger.replace(/\./g, "").replace(",", ".") : deger) : deger;

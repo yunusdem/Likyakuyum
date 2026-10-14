@@ -1,4 +1,4 @@
--- Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H1–H21)
+-- Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H1–H21). Göç 010 (ilk adı 008'di; 008_sidebar_gorunum ile çakıştığı için 14.10.2026'da yeniden numaralandı)
 -- Buton düzeni firma bazında (modül → sekme → buton), ayarlar (fatura sınırı), Fiyat/İndirim yetkisi ve
 -- hızlı satıştan kaydedilen fişlerin işareti. Eski programın fiş tablolarına kolon eklenmez; işaret ayrı tabloda.
 -- Tekrar çalıştırılabilir.

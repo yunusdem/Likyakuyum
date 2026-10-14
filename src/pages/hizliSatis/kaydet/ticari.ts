@@ -1,6 +1,7 @@
 import { TicariSatisGirdi, TicariService, eksiStokUyarisiMi } from "../../../services/ticariService";
 import { ticariFisHtml } from "../../../utils/belgeSablon/fisCikti";
 import type { PosKarti } from "../../../components/pos/PosTahsilat";
+import { etkinIndirim, yuvarla2 } from "../../../../Backend/src/services/hizliSatis/hizliSatisHesap";
 import { TL_PARA_KODLARI, fisiBas, odemeVeyaNakit, pesinOdemeler, posSatirlari, simdi } from "./ortak";
 import type { KaydetBaglami, KaydetSonucu } from "./tipler";
 
@@ -13,6 +14,8 @@ export function ticariYuku(b: KaydetBaglami, eksiStokOnay = false, kartlar: Reco
   const m = b.musteri;
   const anonim = m.tur === "anonim";
   const tl = b.veri.paralar.find((p) => TL_PARA_KODLARI.includes(String(p.kod).trim().toUpperCase()));
+  // Tanımın en çok / en az sınırı devreye girdiyse yüzde yerine tutar gider
+  const isk = etkinIndirim(yuvarla2(b.toplam.genelToplam + b.toplam.indirim), b.indirim);
   return {
     faturaId: null,
     vezneId: b.veri.vezne?.id ?? null,
@@ -23,10 +26,10 @@ export function ticariYuku(b: KaydetBaglami, eksiStokOnay = false, kartlar: Reco
     aliciVknTckn: anonim ? "11111111111" : m.vknTckn || "11111111111",
     aliciUnvan: anonim ? "NİHAİ TÜKETİCİ" : m.unvan.trim(),
     adres: m.adres, ilce: m.ilce, il: m.il, vergiDairesi: m.vergiDairesi, eposta: m.eposta, telefon: m.telefon,
-    iskontoId: null,
-    iskontoKodu: null,
-    iskontoTuru: b.indirim ? b.indirim.turu : 0,
-    iskontoDegeri: b.indirim ? b.indirim.deger : null,
+    iskontoId: isk ? b.indirim?.iskontoId ?? null : null,
+    iskontoKodu: isk ? b.indirim?.kod ?? null : null,
+    iskontoTuru: isk ? isk.turu : 0,
+    iskontoDegeri: isk ? isk.deger : null,
     satirlar: b.sepet.map((s) =>
       s.tur === "stok"
         ? { stokKartId: Number(s.urunId), miktar: s.miktar, kdvDahilFiyat: s.birimFiyat }

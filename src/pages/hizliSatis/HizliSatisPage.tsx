@@ -23,7 +23,8 @@ import { HizliSatisService, HizliSatisSekme, HizliSatisYetki } from "../../servi
 import { PosCihaziItem, PosCihaziService } from "../../services/posCihaziService";
 import { BankaHesapItem, BankaService } from "../../services/bankaService";
 import { CariService } from "../../services/cariService";
-import { HizliSatisModul, MODUL_ADI, MODUL_URUN_TURLERI, URUN_TURU, aliciEksikleri, faturaSiniriAsildiMi, modulGecerliMi } from "../../../Backend/src/services/hizliSatis/hizliSatisKural";
+import { ALIS_SATIS_MODULLERI, HizliSatisModul, ISKONTO_MODULLERI, MODUL_ADI, MODUL_URUN_TURLERI, URUN_TURU, aliciEksikleri, faturaSiniriAsildiMi, modulGecerliMi } from "../../../Backend/src/services/hizliSatis/hizliSatisKural";
+import { IskontoModal } from "./IskontoModal";
 import { MasakService } from "../../services/masakService";
 import { AliciModal, AliciZorunlulugu } from "./AliciModal";
 import { SonFislerModal } from "./SonFislerModal";
@@ -40,6 +41,7 @@ import {
   odemeDurumu,
   urunKuru,
   sepetHesapla,
+  yuvarla2,
 } from "../../../Backend/src/services/hizliSatis/hizliSatisHesap";
 import { HizliSatisKutusu } from "./HizliSatisKutusu";
 import { TusKomutu, TusTakimi, girisSayi } from "./TusTakimi";
@@ -99,6 +101,7 @@ export const HizliSatisPage: React.FC = () => {
   const [bankalar, setBankalar] = useState<BankaHesapItem[] | null>(null);
   const barkodRef = useRef<HTMLInputElement>(null);
   const [sonFislerAcik, setSonFislerAcik] = useState(false);
+  const [iskontoAcik, setIskontoAcik] = useState(false);
   /** Alıcı penceresi: zorunlu ise (fatura sınırı / MASAK) onaydan sonra satış kaldığı yerden sürer */
   const [aliciSorusu, setAliciSorusu] = useState<{ zorunlu: AliciZorunlulugu | null; kayitliGerekli?: boolean; sonra?: (m: HizliMusteri) => void } | null>(null);
 
@@ -155,9 +158,12 @@ export const HizliSatisPage: React.FC = () => {
   const tipDegistir = (t: 0 | 1) => {
     if (t === tip || !veri) return;
     const ist = varsayilanIstatistik(veri.istatistikler, veri.tanim, t, t === 1 ? (user as any)?.sellStatCode : (user as any)?.buyStatCode);
+    if (t === 0 && sepet.some((x) => x.tur === "serbest")) return showError("Sepette serbest ürün var; alışta serbest ürün olmaz. Önce o satırı silin.");
     setTip(t);
     setSepet((s) => s.map((x) => satiriYenidenFiyatla(x, veri, t, ist)));
     setOdemeler([]);
+    // İskonto yalnız satışta
+    if (t === 0) setIndirim(null);
   };
 
   // ───── Sepete ekleme ─────
@@ -213,6 +219,7 @@ export const HizliSatisPage: React.FC = () => {
 
   const butonaBas = (b: HizliSatisSekme["butonlar"][number]) => {
     if (!veri || kaydediliyor) return;
+    if (tip === 0 && b.urunTuru === URUN_TURU.SERBEST) return showError("Alışta serbest ürün olmaz.");
     const n = girisSayi(giris);
     setGiris("");
     taslakIsle(butondanSatir(b, veri, tip, istatistik), n);
@@ -240,21 +247,10 @@ export const HizliSatisPage: React.FC = () => {
       return;
     }
     if (k === "indirim") {
-      if (!yetki.fiyatYetkisi) return showError("Hızlı Satış – Fiyat/İndirim yetkiniz yok.");
+      // İskonto (14.10.2026): tanımlı iskontolar herkese, elle yüzde / tutar yetkiliye; yalnız satışta
+      if (tip === 0) return showError("Alışta iskonto uygulanmaz.");
       if (!sepet.length) return showError("Sepet boş.");
-      setSayiSorusu({
-        baslik: "Fiş indirimi",
-        aciklama: indirim ? "Var olan indirim değiştirilir. Kaldırmak için sepetteki indirim satırındaki × düğmesini kullanın." : undefined,
-        birim: "TL",
-        yuzdeSecimi: true,
-        ilk: n,
-        onay: (d, yuzde) => {
-          if (yuzde && d > 100) return showError("İndirim yüzdesi 100'den büyük olamaz.");
-          setIndirim({ turu: yuzde ? 1 : 2, deger: d });
-          setOdemeler([]);
-        },
-      });
-      setGiris("");
+      setIskontoAcik(true);
       return;
     }
     if (!seciliSatir) {
@@ -360,7 +356,7 @@ export const HizliSatisPage: React.FC = () => {
     if (odemeListesi.length && d.kalan > 0.01) return showError(`Kalan ${para(d.kalan)} TL ödenmedi.`);
 
     // 12.000 TL fatura sınırı (H12) ve MASAK (H14): alıcı bilgisi eksikse pencere açılır, onaydan sonra kaldığı yerden
-    const faturaSiniri = faturaSiniriAsildiMi(modul, toplam.genelToplam, yetki.faturaSiniri);
+    const faturaSiniri = faturaSiniriAsildiMi(modul, toplam.genelToplam, yetki.faturaSiniri, tip);
     const masak = masakGerekli(modul, sepet, toplam, {
       hasKuru: urunKuru(veri.kurlar, { kod: "HAS", urunTipi: 1 }, tip),
       usdKuru: urunKuru(veri.kurlar, { kod: "USD", urunTipi: 0 }, tip),
@@ -420,9 +416,11 @@ export const HizliSatisPage: React.FC = () => {
   const sekme = duzen.find((s) => s.sekmeId === aktifSekme) || null;
   // Alışta (Sarraf/Döviz) müşteriye ödeme yapılır: POS yok
   const odemeTurleri = MODUL_ODEMELERI[modul].filter((t) => !(tip === 0 && t === 2));
-  const alisSatis = modul === "sarraf" || modul === "doviz";
-  const indirimVar = modul === "perakende" || modul === "ticari";
-  const serbestVar = MODUL_URUN_TURLERI[modul].includes(URUN_TURU.SERBEST);
+  const alisSatis = ALIS_SATIS_MODULLERI.includes(modul);
+  /** Fiyat sütunu kur mu (Sarraf/Döviz) */
+  const kurlu = modul === "sarraf" || modul === "doviz";
+  const indirimVar = ISKONTO_MODULLERI.includes(modul) && tip === 1;
+  const serbestVar = MODUL_URUN_TURLERI[modul].includes(URUN_TURU.SERBEST) && tip === 1;
   const tutarBirimi = "TL";
 
   return (
@@ -477,7 +475,7 @@ export const HizliSatisPage: React.FC = () => {
             <div className="flex-grow-1 overflow-auto px-2" style={{ minHeight: 0 }}>
               <table className="table table-sm table-hover align-middle mb-0" style={{ fontSize: 14 }}>
                 <thead className="table-light sticky-top">
-                  <tr className="small text-secondary"><th>Ürün</th><th className="text-end">Miktar</th><th className="text-end">{alisSatis ? "Kur" : "Fiyat"}</th><th className="text-end">Tutar</th></tr>
+                  <tr className="small text-secondary"><th>Ürün</th><th className="text-end">Miktar</th><th className="text-end">{kurlu ? "Kur" : "Fiyat"}</th><th className="text-end">Tutar</th></tr>
                 </thead>
                 <tbody>
                   {sepet.map((s, i) => (
@@ -485,7 +483,7 @@ export const HizliSatisPage: React.FC = () => {
                       <td className="fw-semibold">
                         {s.ad}
                         {s.fiyatElle && <Badge bg="warning" text="dark" className="ms-1" title="Fiyat elle değiştirildi">E</Badge>}
-                        {s.kdvOrani > 0 && !alisSatis && <span className="text-muted small ms-1">%{s.kdvOrani}</span>}
+                        {s.kdvOrani > 0 && !kurlu && <span className="text-muted small ms-1">%{s.kdvOrani}</span>}
                       </td>
                       <td className="text-end text-nowrap">{miktarYaz(s.miktar)} <span className="text-muted small">{s.birim}</span></td>
                       <td className="text-end text-nowrap">{para(s.birimFiyat)}</td>
@@ -506,12 +504,15 @@ export const HizliSatisPage: React.FC = () => {
               </table>
             </div>
             <div className="border-top p-2 small">
-              {(indirimVar && (toplam.kdv > 0 || toplam.indirim > 0)) && (
+              {(modul === "perakende" || modul === "ticari") && (toplam.kdv > 0 || toplam.indirim > 0) && (
                 <div className="d-flex justify-content-between"><span className="text-muted">Ara toplam / KDV</span><span>{para(toplam.araToplam)} / {para(toplam.kdv)}</span></div>
+              )}
+              {modul === "sarraf" && toplam.indirim > 0 && (
+                <div className="d-flex justify-content-between"><span className="text-muted">Fiş tutarı</span><span>{para(toplam.araToplam)}</span></div>
               )}
               {toplam.indirim > 0 && (
                 <div className="d-flex justify-content-between text-danger">
-                  <span>İndirim {indirim?.turu === 1 ? `%${indirim.deger}` : ""} <button type="button" className="btn btn-link btn-sm p-0 text-danger" title="İndirimi kaldır" onClick={() => { setIndirim(null); setOdemeler([]); }}><IconX size={14} /></button></span>
+                  <span>İskonto {indirim?.ad ? `(${indirim.ad})` : indirim?.turu === 1 ? `%${indirim.deger}` : ""} <button type="button" className="btn btn-link btn-sm p-0 text-danger" title="İskontoyu kaldır" onClick={() => { setIndirim(null); setOdemeler([]); }}><IconX size={14} /></button></span>
                   <span>-{para(toplam.indirim)}</span>
                 </div>
               )}
@@ -568,7 +569,7 @@ export const HizliSatisPage: React.FC = () => {
                 </div>
               )}
               <div className="d-grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))" }}>
-                {sekme?.butonlar.filter((b) => !b.gecersiz).map((b) => {
+                {sekme?.butonlar.filter((b) => !b.gecersiz && !(tip === 0 && b.urunTuru === URUN_TURU.SERBEST)).map((b) => {
                   const t = veri ? butondanSatir(b, veri, tip, istatistik) : null;
                   const fiyatYazi = !t || typeof t === "string" || !(t.satir.birimFiyat > 0) ? null : `${para(t.satir.birimFiyat)}${t.gramGerekli ? "/gr" : ""}`;
                   return <HizliSatisKutusu key={b.butonId} ad={b.ad} kod={b.urunKodu} renk={b.renk} resim={b.resim} altYazi={fiyatYazi} pasif={kaydediliyor} onClick={() => butonaBas(b)} />;
@@ -584,6 +585,9 @@ export const HizliSatisPage: React.FC = () => {
         onay={(ad, fiyat, kdv) => sepeteEkle({ anahtar: satirAnahtari(), ad, tur: "serbest", miktar: girisSayi(giris) || 1, birim: "Adet", birimFiyat: fiyat, kdvOrani: kdv })} />
       <SecimModal soru={secimSorusu} kapat={() => setSecimSorusu(null)} />
       <SonFislerModal modul={modul} acik={sonFislerAcik} kapat={() => setSonFislerAcik(false)} />
+      <IskontoModal acik={iskontoAcik} brut={yuvarla2(toplam.genelToplam + toplam.indirim)} hasKuru={veri ? urunKuru(veri.kurlar, { kod: "HAS", urunTipi: 1 }, 1) : 0}
+        fiyatYetkisi={yetki.fiyatYetkisi} elleVar mevcut={indirim} kapat={() => setIskontoAcik(false)}
+        onay={(i) => { setIndirim(i); setOdemeler([]); setIskontoAcik(false); }} />
       <AliciModal acik={!!aliciSorusu} musteri={musteri} zorunlu={aliciSorusu?.zorunlu ?? null} kayitliGerekli={aliciSorusu?.kayitliGerekli}
         kapat={() => setAliciSorusu(null)} onay={(m) => { const f = aliciSorusu?.sonra; setAliciSorusu(null); if (f) f(m); else setMusteri(m); }} />
     </div>

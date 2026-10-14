@@ -137,6 +137,31 @@ export interface IndirimGirdisi {
   /** 1 yüzde, 2 tutar */
   turu: 1 | 2;
   deger: number;
+  /** İskonto Tanımları'ndan seçildiyse (TODVZ_ISKONTO) */
+  iskontoId?: number | null;
+  kod?: string | null;
+  ad?: string | null;
+  /** Tanımdaki en çok iskonto tutarı (0/boş = sınırsız) */
+  azami?: number | null;
+  /** Tanımdaki en az fiş tutarı: altındaysa iskonto uygulanmaz */
+  enAz?: number | null;
+}
+
+/** Fiş iskontosu tutarı: yüzde ya da tutar, tanımın en çok / en az sınırlarıyla; toplamı aşamaz */
+export function indirimTutari(brut: number, ind: IndirimGirdisi | null | undefined): number {
+  if (!ind || !(ind.deger > 0) || !(brut > 0)) return 0;
+  if ((Number(ind.enAz) || 0) > 0 && brut < Number(ind.enAz)) return 0;
+  let t = ind.turu === 1 ? yuvarla2(brut * (Math.min(ind.deger, 100) / 100)) : yuvarla2(ind.deger);
+  if ((Number(ind.azami) || 0) > 0) t = Math.min(t, yuvarla2(Number(ind.azami)));
+  return Math.min(t, brut);
+}
+
+/** Sunucuya gidecek iskonto: sınır devreye girdiyse yüzde yerine tutar (Ticari ticariFisHesapla yalnız tür + değer bilir) */
+export function etkinIndirim(brut: number, ind: IndirimGirdisi | null | undefined): { turu: 1 | 2; deger: number } | null {
+  const t = indirimTutari(brut, ind);
+  if (!ind || !(t > 0)) return null;
+  if (ind.turu === 1 && yuvarla2(brut * (Math.min(ind.deger, 100) / 100)) === t) return { turu: 1, deger: ind.deger };
+  return { turu: 2, deger: t };
 }
 
 export interface SepetToplami {
@@ -167,16 +192,14 @@ export function sepetHesapla(
     const ara = yuvarla2(r.reduce((a, x) => a + x.tutar, 0));
     const kdv = yuvarla2(r.reduce((a, x) => a + x.kdvTutari, 0));
     const brut = yuvarla2(ara + kdv);
-    const ind = secenek.indirim;
-    const indirim = !ind || !(ind.deger > 0) ? 0 : ind.turu === 1 ? yuvarla2(brut * (Math.min(ind.deger, 100) / 100)) : Math.min(yuvarla2(ind.deger), brut);
+    const indirim = indirimTutari(brut, secenek.indirim);
     return { ...bos, satirTutarlari: r.map((x) => x.toplam), araToplam: ara, kdv, indirim, genelToplam: Math.max(0, yuvarla2(brut - indirim)) };
   }
 
   if (modul === "ticari") {
-    const h = ticariFisHesapla(
-      satirlar.map((s) => ({ miktar: s.miktar, kdvDahilFiyat: s.birimFiyat, kdvOrani: s.kdvOrani })),
-      secenek.indirim ? { turu: secenek.indirim.turu, deger: secenek.indirim.deger } : null
-    );
+    const girdi = satirlar.map((s) => ({ miktar: s.miktar, kdvDahilFiyat: s.birimFiyat, kdvOrani: s.kdvOrani }));
+    const brut = ticariFisHesapla(girdi, null).genelToplam;
+    const h = ticariFisHesapla(girdi, etkinIndirim(brut, secenek.indirim));
     return {
       ...bos,
       satirTutarlari: h.satirlar.map((x) => x.brutDahil),
@@ -190,7 +213,9 @@ export function sepetHesapla(
   if (modul === "sarraf") {
     const r = satirlar.map(sarrafSatir);
     const toplam = yuvarla2(r.reduce((a, x) => a + x.tutar, 0));
-    return { ...bos, satirTutarlari: r.map((x) => x.tutar), araToplam: toplam, genelToplam: toplam, hasToplam: yuvarla4(r.reduce((a, x) => a + x.hasGram + x.iscilikHasGram, 0)) };
+    // Sarraf iskontosu fişte ödeme satırıdır (SarrafFisiPage): fiş tutarı aynı kalır, müşterinin ödeyeceği azalır
+    const indirim = tip === 1 ? indirimTutari(toplam, secenek.indirim) : 0;
+    return { ...bos, satirTutarlari: r.map((x) => x.tutar), araToplam: toplam, indirim, genelToplam: yuvarla2(toplam - indirim), hasToplam: yuvarla4(r.reduce((a, x) => a + x.hasGram + x.iscilikHasGram, 0)) };
   }
 
   // döviz

@@ -2,7 +2,7 @@ import { PerakendeService, SavePerakendeFaturaPayload } from "../../../services/
 import { perakendeFisHtml } from "../../../utils/belgeSablon/fisCikti";
 import { DEFAULT_CUSTOMER_NAME, detectScenario } from "../../vezne/PerakendeFisiPage";
 import type { PosKarti } from "../../../components/pos/PosTahsilat";
-import { SepetOdemesi, adetliMi, perakendeSatir, yuvarla4 } from "../../../../Backend/src/services/hizliSatis/hizliSatisHesap";
+import { SepetOdemesi, adetliMi, etkinIndirim, perakendeSatir, yuvarla2, yuvarla4 } from "../../../../Backend/src/services/hizliSatis/hizliSatisHesap";
 import { TL_PARA_KODLARI, fisiBas, odemeVeyaNakit, pesinOdemeler, posSatirlari, simdi } from "./ortak";
 import type { KaydetBaglami, KaydetSonucu } from "./tipler";
 
@@ -46,7 +46,11 @@ export function perakendeYuku(b: KaydetBaglami, kartlar: Record<string, PosKarti
     vezneId: b.veri.vezne?.id || 1,
     faturaNo: "",
     tarih: `${tarih}T${saat}:00`,
-    faturaTipi: 1,
+    // 1 satış, 0 alış (müşteriden alış; nakit vezneden çıkar, nihai tüketiciden alış e-Gider pusulası olur)
+    faturaTipi: b.tip,
+    // Perakende fişindeki istatistik (Firma Tanımları satış/alış istatistiği; gayri resmi ise MASAK atlanır)
+    istatistikId: b.istatistik?.id ?? null,
+    istatistikKodu: b.istatistik?.kod ?? null,
     senaryo,
     cariKartId: m.tur === "kayitli" ? m.cariKartId ?? null : null,
     aliciVknTckn: vkn || "11111111111",
@@ -59,9 +63,9 @@ export function perakendeYuku(b: KaydetBaglami, kartlar: Record<string, PosKarti
     eposta: m.eposta.trim() || undefined,
     paraId: 1,
     kur: 1,
-    iskontoId: null,
-    iskontoKodu: "",
-    iskontoOrani: b.indirim?.turu === 1 ? b.indirim.deger : 0,
+    iskontoId: b.indirim?.iskontoId ?? null,
+    iskontoKodu: b.indirim?.kod ?? "",
+    iskontoOrani: etkinIndirim(yuvarla2(b.toplam.genelToplam + b.toplam.indirim), b.indirim)?.turu === 1 ? b.indirim!.deger : 0,
     iskontoTutari: b.toplam.indirim,
     satirlar,
     odemeler,
@@ -78,7 +82,8 @@ export async function perakendeKaydet(b: KaydetBaglami): Promise<KaydetSonucu> {
   const odemeler = odemeVeyaNakit(b);
 
   // POS: fiş önce kaydedilir, kart sonra çekilir (POS_ENTEGRASYON K28); vazgeçilirse fiş kayıtlı kalır (K29)
-  if (odemeler.some((o) => o.tur === 2)) {
+  if (b.tip === 0 && odemeler.some((o) => o.tur === 2)) throw new Error("Alışta POS ile ödeme yapılamaz.");
+  if (b.tip === 1 && odemeler.some((o) => o.tur === 2)) {
     const m = b.musteri;
     const pos = await b.pos.tahsilEt({
       belgeTuru: "perakende",

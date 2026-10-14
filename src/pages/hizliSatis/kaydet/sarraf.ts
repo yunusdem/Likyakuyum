@@ -2,6 +2,7 @@ import { SarrafFisService, SaveSarrafFisPayload } from "../../../services/sarraf
 import { sarrafFisHtml } from "../../../utils/belgeSablon/fisCikti";
 import type { PosKarti } from "../../../components/pos/PosTahsilat";
 import { SepetOdemesi, adetliMi, milyemOrani, sarrafSatir, urunKuru, yuvarla2, yuvarla4 } from "../../../../Backend/src/services/hizliSatis/hizliSatisHesap";
+import { oranlaDagit } from "../../../../Backend/src/services/ticari/ticariHesap";
 import { TL_PARA_KODLARI, fisiBas, odemeVeyaNakit, pesinOdemeler, posSatirlari, simdi } from "./ortak";
 import type { KaydetBaglami, KaydetSonucu } from "./tipler";
 
@@ -20,9 +21,17 @@ export function sarrafYuku(b: KaydetBaglami, kartlar: Record<string, PosKarti> =
   const has = b.veri.paralar.find((p) => String(p.kod).trim().toUpperCase() === "HAS");
   const tl = b.veri.paralar.find((p) => TL_PARA_KODLARI.includes(String(p.kod).trim().toUpperCase()));
 
+  // İskonto kurdan düşülür (14.10.2026 karar): satır tutarlarına oranla dağıtılır, kur = yeni tutar ÷ (adet ya da has + işçilik has).
+  // Ödeme satırı olarak yazılsaydı eski kayıt yordamı onu vezneye nakit sayıyordu (vezne fazla görünüyordu).
+  const hamlar = b.sepet.map((s) => sarrafSatir(s));
+  const iskonto = b.tip === 1 ? b.toplam.indirim : 0;
+  const paylar = iskonto > 0 ? oranlaDagit(hamlar.map((h) => h.tutar), iskonto) : hamlar.map(() => 0);
   const satirlar = b.sepet.map((s, i) => {
-    const h = sarrafSatir(s);
+    const h = hamlar[i];
     const adetli = adetliMi(s.urunTipi);
+    const tutar = yuvarla2(h.tutar - paylar[i]);
+    const bolen = adetli ? s.miktar : h.hasGram + h.iscilikHasGram;
+    const kur = paylar[i] > 0 && bolen > 0 ? yuvarla4(tutar / bolen) : s.birimFiyat;
     return {
       satirNo: i + 1,
       urunId: Number(s.urunId),
@@ -35,8 +44,8 @@ export function sarrafYuku(b: KaydetBaglami, kartlar: Record<string, PosKarti> =
       iscilikHasGram: h.iscilikHasGram,
       iscilikHesaplamaSekli: 0,
       aciklama: null,
-      kur: s.birimFiyat,
-      tutar: h.tutar,
+      kur,
+      tutar,
       urunTipi: Number(s.urunTipi) || 0,
       karat: null,
     };
@@ -44,7 +53,7 @@ export function sarrafYuku(b: KaydetBaglami, kartlar: Record<string, PosKarti> =
 
   const odemeler = odemeVeyaNakit(b);
   // Tek ödeme cariye ve satırların hepsi gram ürünse has toplamı birebir cariye gider; yoksa tutar ÷ has kuru
-  const tamHas = odemeler.length === 1 && odemeler[0].tur === 1 && b.sepet.every((s) => !adetliMi(s.urunTipi));
+  const tamHas = !(iskonto > 0) && odemeler.length === 1 && odemeler[0].tur === 1 && b.sepet.every((s) => !adetliMi(s.urunTipi));
   const odemeSatirlari = odemeler.map((o: SepetOdemesi, i) => {
     const kart = o.tur === 2 ? kartlar[o.anahtar] : undefined;
     const tlOrtak = { satirNo: i + 1, adet: o.tutar, miktar: o.tutar, milyem: 0, hasGram: 0, kur: 1, tutar: o.tutar, paraKodu: "TL" };
@@ -129,7 +138,7 @@ export async function sarrafKaydet(b: KaydetBaglami): Promise<KaydetSonucu> {
     if (!pos.tamam) uyarilar.push(`Fiş ${no} kaydedildi ancak POS tahsilatı alınmadı. Sarraf Fişi Düzeltme'den ödemeyi düzeltin.`);
   }
 
-  const toplamTutar = b.toplam.genelToplam;
+  const toplamTutar = b.toplam.genelToplam; // iskonto kurdan düşülmüş fiş tutarı
   const odenen = yuvarla2(yuk.odemeSatirlari.reduce((a, o) => a + (Number(o.tutar) || 0), 0));
   const snap = {
     fisId: id,
