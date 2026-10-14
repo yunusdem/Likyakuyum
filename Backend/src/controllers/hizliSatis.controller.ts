@@ -13,6 +13,17 @@ const kullanici = (req: Request): number | undefined => {
   return Number.isFinite(id) && id > 0 ? id : undefined;
 };
 const yoneticiMi = (req: Request) => (req.user as any)?.role === "admin";
+const kimlikNo = (req: Request): number => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw ApiError.badRequest("Geçersiz kayıt numarası.");
+  return id;
+};
+/** Bekleyen sepet erişimi: kasiyerin kartında vezne tanımlıysa istekteki vezne yok sayılır (başka veznenin sepetleri görülmesin) */
+const erisim = async (req: Request) => {
+  const yonetici = yoneticiMi(req);
+  const kartVeznesi = yonetici ? null : await H.kullaniciVeznesi(kullanici(req), baglam(req));
+  return { vezneId: kartVeznesi ?? (Number(req.query.vezneId) || null), kullaniciId: kullanici(req), yonetici };
+};
 
 type Isleyici = (req: Request, res: Response) => Promise<unknown>;
 const sar = (f: Isleyici) => (req: Request, res: Response, next: NextFunction) => {
@@ -61,6 +72,16 @@ export const HizliSatisController = {
 
   isaretle: sar(async (req) => {
     await H.fisIsaretle(req.body?.modul, req.body?.fisId, kullanici(req), baglam(req));
+    return { tamam: true };
+  }),
+  bekleyenler: sar(async (req) => H.bekleyenler(req.params.modul, { ...(await erisim(req)), tumu: req.query.tumu === "1" }, baglam(req))),
+  bekleyenGetir: sar(async (req) => H.bekleyenGetir(kimlikNo(req), await erisim(req), baglam(req))),
+  bekleyenKaydet: sar(async (req) => {
+    const e = await erisim(req);
+    return H.bekleyenKaydet({ ...(req.body || {}), vezneId: e.yonetici ? req.body?.vezneId : e.vezneId ?? req.body?.vezneId }, kullanici(req), baglam(req));
+  }),
+  bekleyenSil: sar(async (req) => {
+    await H.bekleyenSil(kimlikNo(req), await erisim(req), baglam(req));
     return { tamam: true };
   }),
   fisler: sar(async (req) => H.fisler(req.params.modul, req.query.gun, baglam(req))),

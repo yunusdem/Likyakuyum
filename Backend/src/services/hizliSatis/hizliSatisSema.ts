@@ -23,5 +23,13 @@ export async function hizliSatisSemaHazirla(pool: sql.ConnectionPool): Promise<v
     for (const b of dosya.batchler) await pool.request().batch(b);
     logger.info("[HizliSatis] Tablolar kuruldu (göç 010 ilk kullanımda uygulandı).");
   }
+  // Bekleyen sepetler (göç 011)
+  const bekleyenYok = Number((await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_HIZLI_SATIS_BEKLEYEN','U') IS NULL THEN 1 ELSE 0 END AS E`)).recordset[0]?.E);
+  if (bekleyenYok) {
+    const dosya = gocDosyalari().find((d) => d.no === 11);
+    if (!dosya) throw new Error("Hızlı Satış bekleyen sepet şema dosyası (migrations/011_hizli_satis_bekleyen.sql) bulunamadı.");
+    for (const b of dosya.batchler) await pool.request().batch(b);
+    logger.info("[HizliSatis] Bekleyen sepet tablosu kuruldu (göç 011 ilk kullanımda uygulandı).");
+  }
   hazir.add(pool);
 }

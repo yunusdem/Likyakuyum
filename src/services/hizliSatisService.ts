@@ -87,6 +87,20 @@ export interface HizliSatisFisi {
   zaman: string;
 }
 
+export interface BekleyenSepet {
+  bekleyenId: number;
+  vezneId: number | null;
+  kullaniciId: number | null;
+  kullaniciAdi: string | null;
+  tip: 0 | 1;
+  musteri: string | null;
+  aciklama: string | null;
+  kalem: number;
+  toplam: number;
+  zaman: string;
+  eski: boolean;
+}
+
 export const HizliSatisService = {
   async yetki(): Promise<HizliSatisYetki> {
     return (await apiClient.get("/hizli-satis/yetki")).data;
@@ -110,6 +124,19 @@ export const HizliSatisService = {
   /** Hızlı satıştan kaydedilen fişler (son `gun` gün) */
   async fisler(modul: HizliSatisModul, gun = 1): Promise<HizliSatisFisi[]> {
     return (await apiClient.get(`/hizli-satis/fisler/${modul}`, { gun })).data || [];
+  },
+  // ── Bekleyen sepetler (H25–H28) ──
+  async bekleyenler(modul: HizliSatisModul, vezneId: number | null, tumu = false): Promise<BekleyenSepet[]> {
+    return (await apiClient.get(`/hizli-satis/bekleyen/liste/${modul}`, { ...(vezneId ? { vezneId } : {}), ...(tumu ? { tumu: "1" } : {}) })).data || [];
+  },
+  async bekleyenGetir(id: number, vezneId: number | null): Promise<{ bekleyenId: number; modul: string; tip: 0 | 1; icerik: any }> {
+    return (await apiClient.get(`/hizli-satis/bekleyen/${id}`, vezneId ? { vezneId } : undefined)).data;
+  },
+  async bekleyenKaydet(g: { modul: HizliSatisModul; vezneId: number | null; tip: 0 | 1; musteri: string | null; aciklama: string | null; kalem: number; toplam: number; icerik: unknown }): Promise<{ bekleyenId: number }> {
+    return (await apiClient.post("/hizli-satis/bekleyen", g)).data;
+  },
+  async bekleyenSil(id: number, vezneId: number | null): Promise<void> {
+    await apiClient.delete(`/hizli-satis/bekleyen/${id}${vezneId ? `?vezneId=${vezneId}` : ""}`);
   },
   async isaretle(modul: HizliSatisModul, fisId: number): Promise<void> {
     await apiClient.post("/hizli-satis/isaretle", { modul, fisId });

@@ -9,6 +9,8 @@ import {
   IconCreditCard,
   IconLayoutGrid,
   IconListDetails,
+  IconClockPause,
+  IconClockPlay,
   IconRefresh,
   IconTrash,
   IconUser,
@@ -28,6 +30,10 @@ import { IskontoModal } from "./IskontoModal";
 import { MasakService } from "../../services/masakService";
 import { AliciModal, AliciZorunlulugu } from "./AliciModal";
 import { SonFislerModal } from "./SonFislerModal";
+import { BekletModal, BekleyenlerModal } from "./BekleyenModallari";
+import { geriCagir, icerikHazirla } from "./bekleyenSepet";
+import { CikisUyarisiModal, useCikisUyarisi } from "./cikisUyarisi";
+import { BekleyenSepet } from "../../services/hizliSatisService";
 import {
   IndirimGirdisi,
   MODUL_ODEMELERI,
@@ -46,7 +52,7 @@ import {
 import { HizliSatisKutusu } from "./HizliSatisKutusu";
 import { TusKomutu, TusTakimi, girisSayi } from "./TusTakimi";
 import { SayiSorModal, SayiSorusu, SecimModal, SecimSorusu, SerbestUrunModal } from "./HizliSatisModallari";
-import { ModulVerisi, SatirTaslagi, barkoddanSatir, butondanSatir, gayriResmiMi, modulVerisiYukle, satirAnahtari, satiriYenidenFiyatla, varsayilanIstatistik } from "./modulVerisi";
+import { ModulVerisi, SatirTaslagi, barkoddanSatir, butondanSatir, gayriResmiMi, kurlariGetir, modulVerisiYukle, satirAnahtari, satiriYenidenFiyatla, varsayilanIstatistik } from "./modulVerisi";
 import { KAYDEDICILER } from "./kaydet";
 import { ANONIM_MUSTERI, HizliMusteri } from "./kaydet/tipler";
 
@@ -101,6 +107,11 @@ export const HizliSatisPage: React.FC = () => {
   const [bankalar, setBankalar] = useState<BankaHesapItem[] | null>(null);
   const barkodRef = useRef<HTMLInputElement>(null);
   const [sonFislerAcik, setSonFislerAcik] = useState(false);
+  // Bekleyen sepetler (H25–H28)
+  const [bekletAcik, setBekletAcik] = useState(false);
+  const [bekleyenlerAcik, setBekleyenlerAcik] = useState(false);
+  const [bekleyenSayisi, setBekleyenSayisi] = useState(0);
+  const [bekletiliyor, setBekletiliyor] = useState(false);
   const [iskontoAcik, setIskontoAcik] = useState(false);
   /** Alıcı penceresi: zorunlu ise (fatura sınırı / MASAK) onaydan sonra satış kaldığı yerden sürer */
   const [aliciSorusu, setAliciSorusu] = useState<{ zorunlu: AliciZorunlulugu | null; kayitliGerekli?: boolean; sonra?: (m: HizliMusteri) => void } | null>(null);
@@ -129,6 +140,7 @@ export const HizliSatisPage: React.FC = () => {
       setDuzen(d);
       setAktifSekme(d[0]?.sekmeId ?? null);
       setVeri(v);
+      HizliSatisService.bekleyenler(modul, v.vezne?.id ?? null).then((l) => setBekleyenSayisi(l.length)).catch(() => setBekleyenSayisi(0));
     } catch (e: any) {
       setHata(e?.message || "Hızlı satış verileri alınamadı.");
     } finally {
@@ -236,7 +248,7 @@ export const HizliSatisPage: React.FC = () => {
   // ───── Tuş takımı komutları ─────
   const seciliSatir = sepet.find((s) => s.anahtar === secili) || null;
   const satirGuncelle = (anahtar: string, alan: Partial<SepetSatiri>) => {
-    setSepet((s) => s.map((x) => (x.anahtar === anahtar ? { ...x, ...alan } : x)));
+    setSepet((s) => s.map((x) => (x.anahtar === anahtar ? { ...x, ...alan, ...("birimFiyat" in alan ? { fiyatDegisti: false } : {}) } : x)));
     setOdemeler([]);
   };
 
@@ -337,6 +349,96 @@ export const HizliSatisPage: React.FC = () => {
   };
 
   // ───── Kaydet ─────
+  // ───── Bekleyen sepet ─────
+  const sayaciTazele = () => {
+    if (modul) HizliSatisService.bekleyenler(modul, veri?.vezne?.id ?? null).then((l) => setBekleyenSayisi(l.length)).catch(() => undefined);
+  };
+
+  /** Mevcut sepeti beklemeye alır; başarılıysa sepeti boşaltır */
+  const sepetiBeklet = async (not: string): Promise<boolean> => {
+    if (!modul || !sepet.length) return false;
+    setBekletiliyor(true);
+    try {
+      await HizliSatisService.bekleyenKaydet({
+        modul,
+        vezneId: veri?.vezne?.id ?? null,
+        tip,
+        musteri: musteri.tur === "anonim" ? null : musteri.unvan || null,
+        aciklama: not.trim() || null,
+        kalem: sepet.length,
+        toplam: toplam.genelToplam,
+        icerik: icerikHazirla(tip, sepet, odemeler, musteri, indirim),
+      });
+      temizle();
+      setSonFis(null);
+      sayaciTazele();
+      showSuccess("Sepet beklemeye alındı.");
+      return true;
+    } catch (e: any) {
+      showError(e?.message || "Sepet beklemeye alınamadı.");
+      return false;
+    } finally {
+      setBekletiliyor(false);
+    }
+  };
+
+  const bekleyeniAc = async (b: BekleyenSepet) => {
+    if (!modul || !veri) return;
+    if (sepet.length) {
+      if (!window.confirm("Ekranda dolu bir sepet var. Önce beklemeye alınsın mı? (Hayır derseniz açma iptal edilir.)")) return;
+      if (!(await sepetiBeklet(""))) return;
+    }
+    try {
+      const k = await HizliSatisService.bekleyenGetir(b.bekleyenId, veri.vezne?.id ?? null);
+      if (k.modul !== modul) return showError("Bu sepet başka bir modüle ait.");
+      const { PerakendeService } = await import("../../services/perakendeService");
+      // Kurlar beklerken değişmiş olabilir: sunucudan tazelenir (H26)
+      const guncel = { ...veri, kurlar: modul === "ticari" ? veri.kurlar : await kurlariGetir(true).catch(() => veri.kurlar) };
+      setVeri(guncel);
+      const r = await geriCagir(
+        k.icerik,
+        guncel,
+        (t) => varsayilanIstatistik(veri.istatistikler, veri.tanim, t, t === 1 ? (user as any)?.sellStatCode : (user as any)?.buyStatCode),
+        async (barkod) => {
+          if (modul !== "perakende") return false;
+          try { const u = await PerakendeService.getProductByBarcode(barkod); return !!u?.satildi; } catch { return true; }
+        }
+      );
+      setTip(alisSatis ? r.tip : 1);
+      setSepet(r.sepet);
+      setOdemeler(r.odemeler);
+      setMusteri(r.musteri || ANONIM_MUSTERI);
+      setIndirim(r.indirim);
+      setSecili(null);
+      setSonFis(null);
+      setBekleyenlerAcik(false);
+      await HizliSatisService.bekleyenSil(b.bekleyenId, veri.vezne?.id ?? null).catch(() => undefined);
+      sayaciTazele();
+      for (const u of r.uyarilar) showWarning(u, 8000);
+      if (r.degisen) showWarning(`${r.degisen} satırın fiyatı güncel kurdan yenilendi (işaretli).`, 6000);
+      else showSuccess("Bekleyen sepet açıldı.");
+    } catch (e: any) {
+      showError(e?.message || "Bekleyen sepet açılamadı.");
+      sayaciTazele();
+    }
+  };
+
+  // Fiş kesilmeden çıkış / yenileme uyarısı
+  const cikis = useCikisUyarisi(sepet.length > 0);
+
+  // Sağ tık menüsü (ERPContextMenu) › Satırı Sil
+  useEffect(() => {
+    const sil = (e: Event) => {
+      const d = (e as CustomEvent<{ rowId?: string; tableType?: string }>).detail;
+      if (d?.tableType !== "hizli-sepet" || !d.rowId) return;
+      setSepet((s) => s.filter((x) => x.anahtar !== d.rowId));
+      setSecili((x) => (x === d.rowId ? null : x));
+      setOdemeler([]);
+    };
+    window.addEventListener("erp-grid-row-delete", sil);
+    return () => window.removeEventListener("erp-grid-row-delete", sil);
+  }, []);
+
   const temizle = () => {
     setSepet([]);
     setOdemeler([]);
@@ -428,7 +530,7 @@ export const HizliSatisPage: React.FC = () => {
       {pos.pencere}
       {/* Üst şerit: modül sekmeleri, Alış/Satış, müşteri, düzen */}
       <div className="d-flex align-items-center gap-2 flex-wrap">
-        <Nav variant="pills" className="p-1 bg-light rounded-3 gap-1" activeKey={modul} onSelect={(k) => k && k !== modul && (!sepet.length || window.confirm("Sepet boşaltılsın mı?")) && navigate(hizliSatisYolu(k as HizliSatisModul))}>
+        <Nav variant="pills" className="p-1 bg-light rounded-3 gap-1" activeKey={modul} onSelect={(k) => k && k !== modul && navigate(hizliSatisYolu(k as HizliSatisModul))}>
           {acikModuller.map((m) => (
             <Nav.Item key={m}><Nav.Link eventKey={m} className="py-1 px-3 fw-semibold">{MODUL_ADI[m]}</Nav.Link></Nav.Item>
           ))}
@@ -445,6 +547,10 @@ export const HizliSatisPage: React.FC = () => {
         </Button>
         {veri?.vezne && <Badge bg="light" text="dark" className="border">Vezne: {veri.vezne.ad}</Badge>}
         <div className="ms-auto d-flex gap-1">
+          <Button variant="outline-warning" size="sm" title="Sepeti beklemeye al" disabled={!sepet.length || kaydediliyor} onClick={() => setBekletAcik(true)}><IconClockPause size={16} className="me-1" />Beklet</Button>
+          <Button variant={bekleyenSayisi ? "warning" : "outline-secondary"} size="sm" title="Bekleyen sepetler" disabled={kaydediliyor} onClick={() => setBekleyenlerAcik(true)}>
+            <IconClockPlay size={16} className="me-1" />Bekleyenler{bekleyenSayisi ? <Badge bg="dark" className="ms-1">{bekleyenSayisi}</Badge> : null}
+          </Button>
           <Button variant="outline-secondary" size="sm" title="Hızlı satış fişleri (düzeltme / iade için)" onClick={() => setSonFislerAcik(true)}><IconListDetails size={16} className="me-1" />Fişler</Button>
           <Button variant="outline-secondary" size="sm" title="Kurları ve düzeni yenile" onClick={() => void yukle()}><IconRefresh size={16} /></Button>
           {yetki.sistemYoneticisi && <Link to="/ayarlar/hizli-satis-duzeni" className="btn btn-sm btn-outline-secondary" title="Hızlı Satış Düzeni"><IconLayoutGrid size={16} /></Link>}
@@ -479,10 +585,11 @@ export const HizliSatisPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {sepet.map((s, i) => (
-                    <tr key={s.anahtar} onClick={() => setSecili(s.anahtar)} className={s.anahtar === secili ? "table-primary" : ""} style={{ cursor: "pointer", height: 40 }}>
+                    <tr key={s.anahtar} data-row-id={s.anahtar} data-table-type="hizli-sepet" onClick={() => setSecili(s.anahtar)} className={s.anahtar === secili ? "table-primary" : ""} style={{ cursor: "pointer", height: 40 }}>
                       <td className="fw-semibold">
                         {s.ad}
                         {s.fiyatElle && <Badge bg="warning" text="dark" className="ms-1" title="Fiyat elle değiştirildi">E</Badge>}
+                        {s.fiyatDegisti && <Badge bg="info" className="ms-1" title="Bekleyen sepetten açılınca güncel kurdan yenilendi">Kur</Badge>}
                         {s.kdvOrani > 0 && !kurlu && <span className="text-muted small ms-1">%{s.kdvOrani}</span>}
                       </td>
                       <td className="text-end text-nowrap">{miktarYaz(s.miktar)} <span className="text-muted small">{s.birim}</span></td>
@@ -584,7 +691,14 @@ export const HizliSatisPage: React.FC = () => {
       <SerbestUrunModal acik={serbestAcik} kapat={() => setSerbestAcik(false)}
         onay={(ad, fiyat, kdv) => sepeteEkle({ anahtar: satirAnahtari(), ad, tur: "serbest", miktar: girisSayi(giris) || 1, birim: "Adet", birimFiyat: fiyat, kdvOrani: kdv })} />
       <SecimModal soru={secimSorusu} kapat={() => setSecimSorusu(null)} />
+      <CikisUyarisiModal acik={!!cikis.bekleyenGecis} bekletiliyor={bekletiliyor}
+        ozet={`${sepet.length} kalem · ${para(toplam.genelToplam)} TL${odemeler.length ? ` · ${odemeler.length} ödeme satırı` : ""}`}
+        kal={cikis.vazgec} cik={cikis.devam} beklet={() => { void sepetiBeklet("").then((ok) => (ok ? cikis.devam() : cikis.vazgec())); }} />
       <SonFislerModal modul={modul} acik={sonFislerAcik} kapat={() => setSonFislerAcik(false)} />
+      <BekletModal acik={bekletAcik} bekliyor={bekletiliyor} ozet={`${sepet.length} kalem · ${para(toplam.genelToplam)} TL${musteri.tur !== "anonim" && musteri.unvan ? ` · ${musteri.unvan}` : ""}${odemeler.length ? ` · ${odemeler.length} ödeme satırı da saklanır` : ""}`}
+        kapat={() => setBekletAcik(false)} onay={(n) => { void sepetiBeklet(n).then((ok) => ok && setBekletAcik(false)); }} />
+      <BekleyenlerModal acik={bekleyenlerAcik} modul={modul} vezneId={veri?.vezne?.id ?? null} yonetici={yetki.sistemYoneticisi}
+        kapat={() => setBekleyenlerAcik(false)} ac={(b) => void bekleyeniAc(b)} degisti={sayaciTazele} />
       <IskontoModal acik={iskontoAcik} brut={yuvarla2(toplam.genelToplam + toplam.indirim)} hasKuru={veri ? urunKuru(veri.kurlar, { kod: "HAS", urunTipi: 1 }, 1) : 0}
         fiyatYetkisi={yetki.fiyatYetkisi} elleVar mevcut={indirim} kapat={() => setIskontoAcik(false)}
         onay={(i) => { setIndirim(i); setOdemeler([]); setIskontoAcik(false); }} />

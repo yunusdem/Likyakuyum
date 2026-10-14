@@ -84,6 +84,38 @@ export interface HizliSatisFisi {
   zaman: string;
 }
 
+/** Bekleyen sepet içeriğinin en büyük boyutu (karakter) ve "eski" sayılma günü (H28) */
+export const BEKLEYEN_AZAMI = 500_000;
+export const BEKLEYEN_ESKI_GUN = 7;
+
+export interface BekleyenSepet {
+  bekleyenId: number;
+  vezneId: number | null;
+  kullaniciId: number | null;
+  kullaniciAdi: string | null;
+  tip: 0 | 1;
+  musteri: string | null;
+  aciklama: string | null;
+  kalem: number;
+  toplam: number;
+  zaman: string;
+  /** 7 günden eski */
+  eski: boolean;
+}
+
+export interface BekleyenErisim {
+  vezneId?: number | null;
+  kullaniciId?: number;
+  yonetici: boolean;
+}
+
+/** Yönetici her şeyi; diğerleri aynı vezne (vezne bilinmiyorsa kendi bıraktığı) */
+export const bekleyenErisimi = (x: { VEZNE_ID?: unknown; KULLANICI_ID?: unknown }, f: BekleyenErisim): boolean => {
+  if (f.yonetici) return true;
+  if (f.vezneId) return Number(x.VEZNE_ID) === Number(f.vezneId);
+  return !!f.kullaniciId && Number(x.KULLANICI_ID) === Number(f.kullaniciId);
+};
+
 export interface DuzenGirdisi {
   sekmeler: Array<{
     sekmeId?: number | null;
@@ -484,6 +516,98 @@ export class HizliSatisSqlRepository {
       kullanici: temiz(x.KULLANICI) || null,
       zaman: x.EKLEME_ZAMANI,
     }));
+  }
+
+  // ───────────── Bekleyen sepetler (H25–H28) ─────────────
+
+  /** Kullanıcı kartındaki vezne (TODVZ_KULLANICI.VEZNE_ID); tanımlıysa istekteki vezne yerine bu esas alınır */
+  static async kullaniciVeznesi(kullaniciId: number | undefined, ctx?: DbBaglam): Promise<number | null> {
+    if (!kullaniciId) return null;
+    const pool = await this.havuz(ctx);
+    const r = await pool.request().input("K", sql.Int, kullaniciId).query(`SELECT VEZNE_ID FROM dbo.TODVZ_KULLANICI WHERE KULLANICI_ID = @K`).catch(() => ({ recordset: [] as any[] }));
+    const v = Number(r.recordset[0]?.VEZNE_ID);
+    return v > 0 ? v : null;
+  }
+
+  /**
+   * Bekleyen sepet listesi (içeriksiz). Yönetici `tumu` ile bütün vezneleri görür; diğerleri yalnız verilen veznenin
+   * (vezne yoksa kendi bıraktıklarını) görür.
+   */
+  static async bekleyenler(modul: unknown, f: BekleyenErisim & { tumu?: boolean }, ctx?: DbBaglam): Promise<BekleyenSepet[]> {
+    const m = modulDogrula(modul);
+    const pool = await this.havuz(ctx);
+    const req = pool.request().input("M", sql.VarChar(20), m);
+    let kosul = "B.MODUL = @M";
+    if (!(f.yonetici && f.tumu)) {
+      if (f.vezneId) { req.input("V", sql.Int, f.vezneId); kosul += " AND B.VEZNE_ID = @V"; }
+      else { req.input("K", sql.Int, f.kullaniciId || 0); kosul += " AND B.KULLANICI_ID = @K"; }
+    }
+    const r = await req.query(`
+      SELECT TOP 300 B.BEKLEYEN_ID, B.VEZNE_ID, B.KULLANICI_ID, B.TIP, B.MUSTERI, B.ACIKLAMA, B.KALEM, B.TOPLAM, B.EKLEME_ZAMANI,
+        (SELECT TOP 1 RTRIM(U.AD) FROM dbo.TODVZ_KULLANICI U WHERE U.KULLANICI_ID = B.KULLANICI_ID) AS KULLANICI_ADI,
+        DATEDIFF(day, B.EKLEME_ZAMANI, GETDATE()) AS GUN
+      FROM dbo.TODVZ_HIZLI_SATIS_BEKLEYEN B WHERE ${kosul} ORDER BY B.EKLEME_ZAMANI DESC, B.BEKLEYEN_ID DESC`);
+    return r.recordset.map((x: any) => ({
+      bekleyenId: Number(x.BEKLEYEN_ID),
+      vezneId: x.VEZNE_ID === null ? null : Number(x.VEZNE_ID),
+      kullaniciId: x.KULLANICI_ID === null ? null : Number(x.KULLANICI_ID),
+      kullaniciAdi: temiz(x.KULLANICI_ADI) || null,
+      tip: Number(x.TIP) === 0 ? 0 : 1,
+      musteri: temiz(x.MUSTERI) || null,
+      aciklama: temiz(x.ACIKLAMA) || null,
+      kalem: Number(x.KALEM) || 0,
+      toplam: Math.round((Number(x.TOPLAM) || 0) * 100) / 100,
+      zaman: x.EKLEME_ZAMANI,
+      eski: Number(x.GUN) >= BEKLEYEN_ESKI_GUN,
+    }));
+  }
+
+  static async bekleyenKaydet(
+    g: { modul?: unknown; vezneId?: unknown; tip?: unknown; musteri?: unknown; aciklama?: unknown; kalem?: unknown; toplam?: unknown; icerik?: unknown },
+    kullaniciId: number | undefined,
+    ctx?: DbBaglam
+  ): Promise<{ bekleyenId: number }> {
+    const m = modulDogrula(g.modul);
+    const icerik = typeof g.icerik === "string" ? g.icerik : JSON.stringify(g.icerik ?? null);
+    if (!icerik || icerik === "null") throw ApiError.badRequest("Sepet içeriği gelmedi.");
+    if (icerik.length > BEKLEYEN_AZAMI) throw ApiError.badRequest("Sepet çok büyük; beklemeye alınamaz.");
+    let ic: any;
+    try { ic = JSON.parse(icerik); } catch { throw ApiError.badRequest("Sepet içeriği okunamadı."); }
+    if (!Array.isArray(ic?.sepet) || !ic.sepet.length) throw ApiError.badRequest("Boş sepet beklemeye alınamaz.");
+    const pool = await this.havuz(ctx);
+    const r = await pool.request()
+      .input("M", sql.VarChar(20), m).input("V", sql.Int, sayiVeyaNull(g.vezneId)).input("K", sql.Int, kullaniciId || null)
+      .input("T", sql.TinyInt, Number(g.tip) === 0 ? 0 : 1)
+      .input("MU", sql.NVarChar(200), temiz(g.musteri).slice(0, 200) || null)
+      .input("A", sql.NVarChar(200), temiz(g.aciklama).slice(0, 200) || null)
+      .input("KA", sql.Int, Math.max(0, Math.floor(Number(g.kalem) || ic.sepet.length)))
+      .input("TO", sql.Float, sayiVeyaNull(g.toplam) ?? 0)
+      .input("I", sql.NVarChar(sql.MAX), icerik)
+      .query(`INSERT INTO dbo.TODVZ_HIZLI_SATIS_BEKLEYEN (MODUL, VEZNE_ID, KULLANICI_ID, TIP, MUSTERI, ACIKLAMA, KALEM, TOPLAM, ICERIK)
+        OUTPUT INSERTED.BEKLEYEN_ID VALUES (@M, @V, @K, @T, @MU, @A, @KA, @TO, @I)`);
+    return { bekleyenId: Number(r.recordset[0].BEKLEYEN_ID) };
+  }
+
+  /** Bekleyen sepetin içeriği. Yönetici her şeyi; diğerleri aynı vezne (vezne yoksa kendi bıraktığı). */
+  static async bekleyenGetir(id: number, f: BekleyenErisim, ctx?: DbBaglam) {
+    const pool = await this.havuz(ctx);
+    const r = await pool.request().input("ID", sql.Int, id)
+      .query(`SELECT BEKLEYEN_ID, MODUL, VEZNE_ID, KULLANICI_ID, TIP, ICERIK FROM dbo.TODVZ_HIZLI_SATIS_BEKLEYEN WHERE BEKLEYEN_ID = @ID`);
+    const x = r.recordset[0];
+    if (!x) throw ApiError.notFound("Bekleyen sepet bulunamadı (başka biri geri çağırmış ya da silmiş olabilir).");
+    if (!bekleyenErisimi(x, f)) throw ApiError.forbidden("Bu bekleyen sepet başka bir vezneye ait.");
+    let icerik: any = null;
+    try { icerik = JSON.parse(x.ICERIK); } catch { /* bozuk içerik: null döner */ }
+    return { bekleyenId: Number(x.BEKLEYEN_ID), modul: temiz(x.MODUL), tip: Number(x.TIP) === 0 ? 0 : 1, icerik };
+  }
+
+  static async bekleyenSil(id: number, f: BekleyenErisim, ctx?: DbBaglam): Promise<void> {
+    const pool = await this.havuz(ctx);
+    const r = await pool.request().input("ID", sql.Int, id).query(`SELECT VEZNE_ID, KULLANICI_ID FROM dbo.TODVZ_HIZLI_SATIS_BEKLEYEN WHERE BEKLEYEN_ID = @ID`);
+    const x = r.recordset[0];
+    if (!x) return;
+    if (!bekleyenErisimi(x, f)) throw ApiError.forbidden("Bu bekleyen sepet başka bir vezneye ait.");
+    await pool.request().input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_HIZLI_SATIS_BEKLEYEN WHERE BEKLEYEN_ID = @ID`);
   }
 
   // ───────────── Fiş işareti (H20) ─────────────

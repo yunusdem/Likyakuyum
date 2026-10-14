@@ -26,6 +26,8 @@ export interface SepetSatiri {
   kdvOrani: number;
   /** Fiyat elle değiştirildi (yetkili) */
   fiyatElle?: boolean;
+  /** Bekleyen sepetten geri çağırınca fiyatı güncel kurla değişti (ekranda işaretlenir) */
+  fiyatDegisti?: boolean;
   ek?: SatirEk;
 }
 

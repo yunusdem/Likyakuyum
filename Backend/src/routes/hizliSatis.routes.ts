@@ -20,4 +20,10 @@ router.post("/isaretle", C.isaretle);
 router.post("/isaretliler", C.isaretliler);
 router.get("/fisler/:modul", C.fisler);
 
+// Bekleyen sepetler (beklemeye al / geri çağır)
+router.get("/bekleyen/liste/:modul", C.bekleyenler);
+router.get("/bekleyen/:id", C.bekleyenGetir);
+router.post("/bekleyen", C.bekleyenKaydet);
+router.delete("/bekleyen/:id", C.bekleyenSil);
+
 export default router;
