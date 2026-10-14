@@ -68,4 +68,18 @@ export const PiyasaService = {
             kaynaklar: KAYNAKLAR.map((k) => yonEkle(k.anlik())),
         };
     },
+    /**
+     * Anlık Fiyat Listesi için ham görüntü (yön hesabına dokunmaz, panonun okları kaymaz).
+     * kod verilirse yalnız o kaynağın verisi beklenir.
+     */
+    async hamAnlik(kod) {
+        sonIstek = Date.now();
+        const hedef = KAYNAKLAR.filter((k) => !kod || k.kod === kod);
+        if (!calisiyor)
+            baslat();
+        const bitis = Date.now() + ILK_BEKLEME_MS;
+        while (Date.now() < bitis && hedef.some((k) => k.anlik().durum === "bekliyor"))
+            await bekle(150);
+        return KAYNAKLAR.map((k) => k.anlik());
+    },
 };

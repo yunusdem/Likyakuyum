@@ -13,6 +13,7 @@ import { MenuItemType } from "types/menuTypes";
 import CustomToggle, { CustomToggleLevel2 } from "./SidebarMenuToggle";
 import {
   IconX,
+  IconChevronRight,
   IconLogin2,
   IconKey,
   IconLicense,
@@ -58,6 +59,7 @@ import { menuyuSuz } from "../config/modulKatalogu";
 import { solMenuyuBirlestir } from "../config/solMenuBirlesimi";
 import { SistemService } from "../services/sistemService";
 import { getAppBrand } from "../utils/brandHelper";
+import useSidebarStyle from "../hooks/useSidebarStyle";
 
 interface SidebarProps {
   hideLogo: boolean;
@@ -285,6 +287,67 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   );
   const gorunenMenuRef = useRef(gorunenMenu);
   gorunenMenuRef.current = gorunenMenu;
+
+  const sidebarStyle = useSidebarStyle();
+  const [flyoutIndex, setFlyoutIndex] = useState<number | null>(null);
+  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const flyoutTimerRef = useRef<any>(null);
+  const [activeDualIndex, setActiveDualIndex] = useState<number>(0);
+
+  const clearFlyoutTimer = () => {
+    if (flyoutTimerRef.current) {
+      clearTimeout(flyoutTimerRef.current);
+      flyoutTimerRef.current = null;
+    }
+  };
+
+  const openFlyoutAt = (index: number, el: HTMLElement) => {
+    clearFlyoutTimer();
+    const rect = el.getBoundingClientRect();
+    const top = Math.max(8, Math.min(window.innerHeight - 480, rect.top));
+    const left = rect.right + 6;
+    setFlyoutPos({ top, left });
+    setFlyoutIndex(index);
+  };
+
+  const closeFlyoutWithDelay = () => {
+    clearFlyoutTimer();
+    flyoutTimerRef.current = setTimeout(() => {
+      setFlyoutIndex(null);
+      setFlyoutPos(null);
+    }, 160);
+  };
+
+  const closeFlyoutImmediate = () => {
+    clearFlyoutTimer();
+    setFlyoutIndex(null);
+    setFlyoutPos(null);
+  };
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".sidebar-flyout-card") && !target.closest(".sidebar-flyout-trigger") && !target.closest(".sidebar-flyout-section")) {
+        closeFlyoutImmediate();
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
+  useEffect(() => {
+    closeFlyoutImmediate();
+  }, [location.pathname]);
+
+  const handleFlyoutToggle = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (flyoutIndex === index) {
+      closeFlyoutImmediate();
+    } else {
+      openFlyoutAt(index, e.currentTarget as HTMLElement);
+    }
+  };
 
   const [activeMenuKey, setActiveMenuKey] = useState<string>("");
   const [pendingMenuIndex, setPendingMenuIndex] = useState<number | null>(null);
@@ -521,6 +584,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
     if (matchedIndex !== -1) {
       setActiveMenuKey(matchedIndex.toString());
+      setActiveDualIndex(matchedIndex);
       setTimeout(() => {
         const activeLinkEl = document.querySelector("#miniSidebar .sidebar-sub-link.active, #miniSidebar .nav-link.active");
         if (activeLinkEl) {
@@ -530,9 +594,10 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     }
   }, [currentPath, gorunenMenu]);
 
-  // Reset pending state on route change
+  // Reset pending and flyout state on route change
   useEffect(() => {
     setPending(null);
+    setFlyoutIndex(null);
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
   }, [location.pathname]);
 
@@ -667,14 +732,221 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   return (
     <div
       id={containerId}
-      className="d-flex flex-column h-100"
-      onClick={() => {
-        if (collapsed === "collapsed") {
-          handleCollapsed("expanded");
-        }
-      }}
+      className={`d-flex flex-column h-100 ${sidebarStyle === "dual" ? "sidebar-dual-mode" : ""}`}
     >
-      {/* 1. Brand Logo Header */}
+      {/* ─── DUAL MODU: Çift Kademeli İkon Şeridi + Yan Panel (Style 5) ─── */}
+      {sidebarStyle === "dual" ? (
+        <div className="d-flex flex-column h-100 w-100 overflow-hidden">
+          {/* En Üstte Yeşil Brand Logo Başlığı (Likya ERP) */}
+          <div className="brand-logo d-flex align-items-center justify-content-between justify-content-xl-center px-3 flex-shrink-0">
+            <Link
+              to="/dashboard"
+              onClick={() => {
+                if (collapsed === "collapsed") {
+                  handleCollapsed("expanded");
+                }
+                setActiveMenuKey("");
+              }}
+              className="d-flex align-items-center text-decoration-none py-1 overflow-hidden"
+              style={{ minWidth: 0, cursor: "pointer" }}
+              title="Ana Sayfa"
+            >
+              <img
+                src="/images/logo/logo.svg"
+                alt="Likya Kuyum Logo"
+                className="site-logo-img flex-shrink-0 me-2"
+                style={{ width: "36px", height: "36px", objectFit: "contain", display: "inline-block" }}
+              />
+              <span className="fw-bold site-logo-text text-nowrap" style={{ fontSize: "1.2rem" }}>
+                <span className="brand-text-likya">{getAppBrand(user).prefix}</span>{" "}
+                <span className="brand-text-kuyum">{getAppBrand(user).suffix}</span>
+              </span>
+            </Link>
+          </div>
+
+          {/* Alt Kısım: Sol Dar İkon Şeridi (64px) + Sağ Alt Başlıklar Paneli (206px) */}
+          <div className="d-flex flex-row flex-grow-1 overflow-hidden">
+            {/* Sol Dar İkon Şeridi (64px) */}
+            <div
+              className="d-flex flex-column align-items-center flex-shrink-0 h-100 py-2 border-end"
+              style={{
+                width: "64px",
+                backgroundColor: "var(--user-menu-bg, #ffffff)",
+                borderColor: "#e2e8f0",
+              }}
+            >
+              {/* Modül Butonları */}
+              <div className="d-flex flex-column align-items-center gap-2 flex-grow-1 overflow-y-auto w-100 px-1 scrollbar-none">
+              {gorunenMenu.map((m, idx) => {
+                if (m.grouptitle) return null;
+                const theme = getThemeForMenu(m, idx);
+                const isDualActive = activeDualIndex === idx;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      if (collapsed === "collapsed") {
+                        handleCollapsed("expanded");
+                      }
+                      setActiveDualIndex(idx);
+                      if (m.link && (!m.children || m.children.length === 0)) {
+                        navigateWithDashboardHop(m.link);
+                      }
+                    }}
+                    title={m.title}
+                    className={`btn p-0 d-flex align-items-center justify-content-center rounded-3 border-0 transition-all ${
+                      isDualActive ? "shadow-sm" : ""
+                    }`}
+                    style={{
+                      width: "42px",
+                      height: "42px",
+                      backgroundColor: isDualActive ? theme.color : theme.bg,
+                      color: isDualActive ? "#ffffff" : theme.color,
+                      border: isDualActive
+                        ? `2px solid ${theme.color}`
+                        : `1px solid ${theme.borderColor || "transparent"}`,
+                    }}
+                  >
+                    {m.icon}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Alt Profil Butonu */}
+            <div
+              className="mt-auto d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+              style={{
+                width: "36px",
+                height: "36px",
+                backgroundColor: "#f1f5f9",
+                border: "1.5px solid #cbd5e1",
+                cursor: "pointer",
+              }}
+              title={displayName}
+              onClick={() => navigate("/sifre-degistir")}
+            >
+              <IconUser size={18} className="text-dark" />
+            </div>
+          </div>
+
+          {/* Sağ Alt Başlıklar Paneli (204px) */}
+          <div
+            className="sidebar-dual-subpanel d-flex flex-column flex-grow-1 h-100 overflow-hidden"
+            style={{
+              width: "204px",
+              backgroundColor: "#f8fafc",
+            }}
+          >
+            {(() => {
+              const activeModule = gorunenMenu[activeDualIndex] || gorunenMenu[0];
+              const theme = getThemeForMenu(activeModule, activeDualIndex);
+              return (
+                <Fragment>
+                  <div
+                    className="p-3 border-bottom d-flex align-items-center justify-content-between flex-shrink-0"
+                    style={{
+                      borderColor: "#e2e8f0",
+                      backgroundColor: "#ffffff",
+                      minHeight: "65px",
+                    }}
+                  >
+                    <div className="d-flex align-items-center gap-2 overflow-hidden">
+                      <span
+                        className="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                        style={{
+                          width: "24px",
+                          height: "24px",
+                          backgroundColor: theme.bg,
+                          color: theme.color,
+                          fontSize: "0.75rem",
+                        }}
+                      >
+                        {activeModule.icon}
+                      </span>
+                      <span className="fw-bold text-dark text-truncate" style={{ fontSize: "0.86rem" }}>
+                        {activeModule.title}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex-grow-1 overflow-y-auto p-2 d-flex flex-column gap-1">
+                    {activeModule.children && activeModule.children.length > 0 ? (
+                      activeModule.children.map((child1, c1Idx) => {
+                        if (child1.children && child1.children.length > 0) {
+                          return (
+                            <div key={c1Idx} className="mb-2">
+                              <div
+                                className="text-muted fw-bold text-uppercase px-2 py-1 small"
+                                style={{ fontSize: "0.68rem" }}
+                              >
+                                {child1.title}
+                              </div>
+                              {child1.children.map((child2, c2Idx) => {
+                                const to2 = child2.link?.startsWith("/") ? child2.link : `/${child2.link}`;
+                                const isActive = isRouteMatch(to2, currentPath);
+                                return (
+                                  <Link
+                                    key={c2Idx}
+                                    to={to2}
+                                    onClick={(e) => handleLinkClick(e, to2)}
+                                    className={`sidebar-flyout-item ${isActive ? "active text-primary fw-bold" : ""}`}
+                                  >
+                                    {getSubmenuIcon(child2.name || child2.title || "")}
+                                    <span className="text-truncate">{child2.name || child2.title}</span>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          );
+                        } else {
+                          const to1 = child1.link?.startsWith("/") ? child1.link : `/${child1.link}`;
+                          const isActive = isRouteMatch(to1, currentPath);
+                          return (
+                            <Link
+                              key={c1Idx}
+                              to={to1}
+                              onClick={(e) => handleLinkClick(e, to1)}
+                              className={`sidebar-flyout-item ${isActive ? "active text-primary fw-bold" : ""}`}
+                            >
+                              {getSubmenuIcon(child1.name || child1.title || "")}
+                              <span className="text-truncate">{child1.name || child1.title}</span>
+                            </Link>
+                          );
+                        }
+                      })
+                    ) : activeModule.link ? (
+                      <Link
+                        to={activeModule.link}
+                        onClick={(e) => handleLinkClick(e, activeModule.link!)}
+                        className="sidebar-flyout-item active"
+                      >
+                        <span>{activeModule.title}</span>
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  <div className="p-2 border-top bg-white d-flex align-items-center justify-content-between flex-shrink-0">
+                    <span className="small text-muted font-monospace">{currentTime}</span>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="btn btn-outline-danger btn-sm p-1 rounded-2"
+                      title="Çıkış"
+                    >
+                      <IconLogin2 size={15} />
+                    </button>
+                  </div>
+                </Fragment>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+      ) : (
+        <Fragment>
+          {/* 1. Brand Logo Header */}
       {hideLogo || (
         <div className="brand-logo d-flex align-items-center justify-content-between justify-content-xl-center px-3">
           <Link
@@ -756,123 +1028,256 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
               );
             } else {
               if (menu.children) {
+                const isFlyoutOpen = sidebarStyle === "flyout" && flyoutIndex === index;
                 return (
-                  <div key={index} className="sidebar-menu-section">
+                  <div
+                    key={index}
+                    className={`sidebar-menu-section position-relative ${sidebarStyle === "flyout" ? "sidebar-flyout-section" : ""}`}
+                    onMouseEnter={(e) => {
+                      if (sidebarStyle === "flyout") {
+                        openFlyoutAt(index, e.currentTarget);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (sidebarStyle === "flyout") {
+                        closeFlyoutWithDelay();
+                      }
+                    }}
+                  >
                     {/* Dropdown Parent Menu with Colorful Icon Badge */}
-                    <CustomToggle
-                      eventKey={index.toString()}
-                      icon={menu.icon}
-                      theme={theme}
-                    >
-                      {menu.title}
-                    </CustomToggle>
-
-                    <Accordion.Collapse eventKey={index.toString()}>
-                      <ListGroup
-                        as="ul"
-                        className="sidebar-submenu-list flex-column show position-static bg-transparent py-1"
+                    {sidebarStyle === "flyout" ? (
+                      <div
+                        onClick={(e) => handleFlyoutToggle(index, e)}
+                        className={`nav-link accordion-button sidebar-flyout-trigger d-flex align-items-center justify-content-between cursor-pointer ${
+                          isFlyoutOpen ? "active" : ""
+                        }`}
+                        style={{ cursor: "pointer" }}
+                        title={menu.title}
                       >
-                        {menu.children.map(function (
-                          menuLevel1Item,
-                          menuLevel1Index
-                        ) {
-                          if (menuLevel1Item.children) {
-                            return (
-                              <ListGroup.Item
-                                as="li"
-                                bsPrefix="nav-item"
-                                key={menuLevel1Index}
-                                className="w-100 mb-0.5"
-                              >
-                                {/* Nested Level 2 Accordion */}
-                                <Accordion
-                                  activeKey={
-                                    menuLevel1Item.children.some((c2) => isRouteMatch(c2.link, currentPath))
-                                      ? `sub-${menuLevel1Index}`
-                                      : undefined
-                                  }
-                                  defaultActiveKey={
-                                    menuLevel1Item.children.some((c2) => isRouteMatch(c2.link, currentPath))
-                                      ? `sub-${menuLevel1Index}`
-                                      : ""
-                                  }
-                                  className="nav flex-column w-100 p-0 m-0"
-                                >
-                                  <CustomToggleLevel2
-                                    eventKey={`sub-${menuLevel1Index}`}
-                                    href="#link"
+                        <div className="d-flex align-items-center gap-2 overflow-hidden w-100">
+                          <span
+                            className="sidebar-icon-pill d-inline-flex align-items-center justify-content-center rounded-2 p-1 flex-shrink-0"
+                            style={{
+                              width: "28px",
+                              height: "28px",
+                              backgroundColor: theme.bg,
+                              color: theme.color,
+                              border: `1px solid ${theme.borderColor || "transparent"}`,
+                            }}
+                          >
+                            {menu.icon}
+                          </span>
+                          <span className="sidebar-menu-title fw-semibold text-dark text-truncate" style={{ fontSize: "0.88rem" }}>
+                            {menu.title}
+                          </span>
+                        </div>
+                        <IconChevronRight
+                          size={15}
+                          className={`sidebar-chevron text-secondary opacity-75 transition-transform flex-shrink-0 ${isFlyoutOpen ? "rotate-90 text-primary" : ""}`}
+                        />
+                      </div>
+                    ) : (
+                      <CustomToggle
+                        eventKey={index.toString()}
+                        icon={menu.icon}
+                        theme={theme}
+                      >
+                        {menu.title}
+                      </CustomToggle>
+                    )}
+
+                    {/* Style 3: Floating Card Popover to the RIGHT (Position: fixed ile viewport seviyesinde asla kesilmez!) */}
+                    {sidebarStyle === "flyout" && isFlyoutOpen && flyoutPos && (
+                      <div
+                        className="sidebar-flyout-card position-fixed"
+                        style={{
+                          left: `${flyoutPos.left}px`,
+                          top: `${flyoutPos.top}px`,
+                          zIndex: 1250,
+                          backgroundColor: "#ffffff",
+                          border: "1.5px solid #cbd5e1",
+                          borderRadius: "14px",
+                          boxShadow: "0 22px 50px rgba(0, 0, 0, 0.28), 0 8px 20px rgba(0, 0, 0, 0.12)",
+                          minWidth: "260px",
+                          maxWidth: "340px",
+                          maxHeight: "85vh",
+                          overflowY: "auto",
+                        }}
+                        onMouseEnter={clearFlyoutTimer}
+                        onMouseLeave={closeFlyoutWithDelay}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="d-flex flex-column gap-1">
+                          {menu.children.map(function (menuLevel1Item, menuLevel1Index) {
+                            const l1Title = menuLevel1Item.title || menuLevel1Item.name || "";
+                            if (menuLevel1Item.children && menuLevel1Item.children.length > 0) {
+                              return (
+                                <div key={menuLevel1Index} className="px-1 py-0.5">
+                                  <div
+                                    className="text-muted fw-bold text-uppercase px-2 py-1"
+                                    style={{ fontSize: "0.7rem", letterSpacing: "0.5px" }}
                                   >
-                                    {menuLevel1Item.title}
-                                  </CustomToggleLevel2>
-                                  <Accordion.Collapse eventKey={`sub-${menuLevel1Index}`}>
-                                    <ListGroup
-                                      as="ul"
-                                      className="nav flex-column ps-2 py-1"
-                                    >
-                                      {menuLevel1Item.children.map(function (
-                                        menuLevel2Item,
-                                        menuLevel2Index
-                                      ) {
-                                        const to2 = menuLevel2Item.link?.startsWith("/")
-                                          ? menuLevel2Item.link
-                                          : `/${menuLevel2Item.link}`;
-                                        const isActive2 = isRouteMatch(to2, currentPath);
-                                        return (
-                                          <ListGroup.Item
-                                            key={menuLevel2Index}
-                                            as="li"
-                                            bsPrefix="nav-item"
-                                          >
-                                            <Link
-                                              to={to2}
-                                              onClick={(e) => handleLinkClick(e, to2)}
-                                              className={`nav-link sidebar-sub-link py-1 px-2.5 ${
-                                                isActive2 ? "active" : ""
-                                              }`}
-                                            >
-                                              {getSubmenuIcon(menuLevel2Item.name || menuLevel2Item.title || "")}
-                                              <span className="text ms-1">
-                                                {menuLevel2Item.name || menuLevel2Item.title}
-                                              </span>
-                                            </Link>
-                                          </ListGroup.Item>
-                                        );
-                                      })}
-                                    </ListGroup>
-                                  </Accordion.Collapse>
-                                </Accordion>
-                              </ListGroup.Item>
-                            );
-                          } else {
-                            const to1 = menuLevel1Item.link?.startsWith("/")
-                              ? menuLevel1Item.link
-                              : `/${menuLevel1Item.link}`;
-                            const isActive1 = isRouteMatch(to1, currentPath);
-                            return (
-                              <ListGroup.Item
-                                as="li"
-                                bsPrefix="nav-item"
-                                key={menuLevel1Index}
-                                className="mb-0.5"
-                              >
+                                    {l1Title}
+                                  </div>
+                                  {menuLevel1Item.children.map(function (menuLevel2Item, menuLevel2Index) {
+                                    const l2Title = menuLevel2Item.title || menuLevel2Item.name || "";
+                                    const to2 = menuLevel2Item.link?.startsWith("/")
+                                      ? menuLevel2Item.link
+                                      : `/${menuLevel2Item.link}`;
+                                    const isActive2 = isRouteMatch(to2, currentPath);
+                                    return (
+                                      <Link
+                                        key={menuLevel2Index}
+                                        to={to2}
+                                        onClick={(e) => {
+                                          setFlyoutIndex(null);
+                                          setFlyoutPos(null);
+                                          handleLinkClick(e, to2);
+                                        }}
+                                        className={`sidebar-flyout-item ${isActive2 ? "active text-primary fw-bold" : ""}`}
+                                      >
+                                        {getSubmenuIcon(l2Title)}
+                                        <span>{l2Title}</span>
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            } else {
+                              const to1 = menuLevel1Item.link?.startsWith("/")
+                                ? menuLevel1Item.link
+                                : `/${menuLevel1Item.link}`;
+                              const isActive1 = isRouteMatch(to1, currentPath);
+                              return (
                                 <Link
+                                  key={menuLevel1Index}
                                   to={to1}
-                                  onClick={(e) => handleLinkClick(e, to1)}
-                                  className={`nav-link sidebar-sub-link py-1 px-2.5 ${
-                                    isActive1 ? "active" : ""
-                                  }`}
+                                  onClick={(e) => {
+                                    setFlyoutIndex(null);
+                                    setFlyoutPos(null);
+                                    handleLinkClick(e, to1);
+                                  }}
+                                  className={`sidebar-flyout-item ${isActive1 ? "active text-primary fw-bold" : ""}`}
                                 >
-                                  {getSubmenuIcon(menuLevel1Item.name || menuLevel1Item.title || "")}
-                                  <span className="text ms-1">
-                                    {menuLevel1Item.name || menuLevel1Item.title}
-                                  </span>
+                                  {getSubmenuIcon(l1Title)}
+                                  <span>{l1Title}</span>
                                 </Link>
-                              </ListGroup.Item>
-                            );
-                          }
-                        })}
-                      </ListGroup>
-                    </Accordion.Collapse>
+                              );
+                            }
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Normal Downward Accordion Collapse (Hidden in Flyout Mode) */}
+                    {sidebarStyle !== "flyout" && (
+                      <Accordion.Collapse eventKey={index.toString()}>
+                        <ListGroup
+                          as="ul"
+                          className="sidebar-submenu-list flex-column show position-static bg-transparent py-1"
+                        >
+                          {menu.children.map(function (
+                            menuLevel1Item,
+                            menuLevel1Index
+                          ) {
+                            if (menuLevel1Item.children) {
+                              return (
+                                <ListGroup.Item
+                                  as="li"
+                                  bsPrefix="nav-item"
+                                  key={menuLevel1Index}
+                                  className="w-100 mb-0.5"
+                                >
+                                  {/* Nested Level 2 Accordion */}
+                                  <Accordion
+                                    activeKey={
+                                      menuLevel1Item.children.some((c2) => isRouteMatch(c2.link, currentPath))
+                                        ? `sub-${menuLevel1Index}`
+                                        : undefined
+                                    }
+                                    defaultActiveKey={
+                                      menuLevel1Item.children.some((c2) => isRouteMatch(c2.link, currentPath))
+                                        ? `sub-${menuLevel1Index}`
+                                        : ""
+                                    }
+                                    className="nav flex-column w-100 p-0 m-0"
+                                  >
+                                    <CustomToggleLevel2
+                                      eventKey={`sub-${menuLevel1Index}`}
+                                      href="#link"
+                                    >
+                                      {menuLevel1Item.title}
+                                    </CustomToggleLevel2>
+                                    <Accordion.Collapse eventKey={`sub-${menuLevel1Index}`}>
+                                      <ListGroup
+                                        as="ul"
+                                        className="nav flex-column ps-2 py-1"
+                                      >
+                                        {menuLevel1Item.children.map(function (
+                                          menuLevel2Item,
+                                          menuLevel2Index
+                                        ) {
+                                          const to2 = menuLevel2Item.link?.startsWith("/")
+                                            ? menuLevel2Item.link
+                                            : `/${menuLevel2Item.link}`;
+                                          const isActive2 = isRouteMatch(to2, currentPath);
+                                          return (
+                                            <ListGroup.Item
+                                              key={menuLevel2Index}
+                                              as="li"
+                                              bsPrefix="nav-item"
+                                            >
+                                              <Link
+                                                to={to2}
+                                                onClick={(e) => handleLinkClick(e, to2)}
+                                                className={`nav-link sidebar-sub-link py-1 px-2.5 ${
+                                                  isActive2 ? "active" : ""
+                                                }`}
+                                              >
+                                                {getSubmenuIcon(menuLevel2Item.name || menuLevel2Item.title || "")}
+                                                <span className="text ms-1">
+                                                  {menuLevel2Item.name || menuLevel2Item.title}
+                                                </span>
+                                              </Link>
+                                            </ListGroup.Item>
+                                          );
+                                        })}
+                                      </ListGroup>
+                                    </Accordion.Collapse>
+                                  </Accordion>
+                                </ListGroup.Item>
+                              );
+                            } else {
+                              const to1 = menuLevel1Item.link?.startsWith("/")
+                                ? menuLevel1Item.link
+                                : `/${menuLevel1Item.link}`;
+                              const isActive1 = isRouteMatch(to1, currentPath);
+                              return (
+                                <ListGroup.Item
+                                  as="li"
+                                  bsPrefix="nav-item"
+                                  key={menuLevel1Index}
+                                  className="mb-0.5"
+                                >
+                                  <Link
+                                    to={to1}
+                                    onClick={(e) => handleLinkClick(e, to1)}
+                                    className={`nav-link sidebar-sub-link py-1 px-2.5 ${
+                                      isActive1 ? "active" : ""
+                                    }`}
+                                  >
+                                    {getSubmenuIcon(menuLevel1Item.name || menuLevel1Item.title || "")}
+                                    <span className="text ms-1">
+                                      {menuLevel1Item.name || menuLevel1Item.title}
+                                    </span>
+                                  </Link>
+                                </ListGroup.Item>
+                              );
+                            }
+                          })}
+                        </ListGroup>
+                      </Accordion.Collapse>
+                    )}
                   </div>
                 );
               } else {
@@ -1049,6 +1454,8 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           </div>
         </div>
       </div>
+        </Fragment>
+      )}
     </div>
   );
 };

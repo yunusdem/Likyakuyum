@@ -79,6 +79,8 @@ export interface PerakendeFaturaModel {
   iskontoOrani?: number;
   iskontoTutari?: number;
   genelToplam: number;
+  istatistikId?: number | null;
+  istatistikKodu?: string | null;
   eBelgeDurumu: number; // 0: Taslak, 1: İletildi, 2: Onaylandı, 3: Hata, 4: İptal
   gibStatuKodu?: string | null;
   ekleyenId?: number | null;
@@ -137,6 +139,8 @@ export interface SavePerakendeFaturaPayload {
   telefon?: string | null;
   paraId?: number;
   kur?: number;
+  istatistikId?: number | null;
+  istatistikKodu?: string | null;
   iskontoId?: number | null;
   iskontoKodu?: string | null;
   iskontoOrani?: number | null;
@@ -155,6 +159,8 @@ export interface PerakendeFaturaListItem {
   tarih: string;
   faturaTipi: number;
   senaryo: string;
+  istatistikId?: number | null;
+  istatistikKodu?: string | null;
   cariKartId?: number | null;
   cariKod?: string | null;
   cariUnvan?: string | null;

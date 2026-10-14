@@ -61,6 +61,31 @@ export function monoYaziTipleri() {
         "/usr/share/fonts/truetype/liberation2/LiberationMono-Bold.ttf"]);
     return { normal, kalin: kalin || normal };
 }
+/** Seçilebilen yazı tiplerinin Windows dosyaları: [normal, kalın, italik, kalın italik] (bölüm 11, K14). */
+const YAZI_DOSYALARI = {
+    "Arial": ["arial", "arialbd", "ariali", "arialbi"],
+    "Courier New": ["cour", "courbd", "couri", "courbi"],
+    "Times New Roman": ["times", "timesbd", "timesi", "timesbi"],
+    "Verdana": ["verdana", "verdanab", "verdanai", "verdanaz"],
+    "Tahoma": ["tahoma", "tahomabd", "tahoma", "tahomabd"],
+    "Georgia": ["georgia", "georgiab", "georgiai", "georgiaz"],
+};
+/**
+ * Öğenin yazı tipi dosyası. Bulunamayan biçim (ör. Linux'ta Verdana) önce aynı ailenin düz / kalınına,
+ * sonra Arial'e (ya da şablonun mono / sans yazı tipine) düşer; belge hiçbir zaman yazı tipi yüzünden durmaz.
+ */
+export function yaziTipiDosyasi(ad, kalin, italik, yedek) {
+    const d = ad ? YAZI_DOSYALARI[ad] : undefined;
+    if (!d)
+        return kalin ? yedek.kalin : yedek.normal;
+    // Arial ve Courier New'in düz / kalını sunucu ayarına (EBELGE_PDF_FONT) uyan yedekten gelir.
+    if (!italik && (ad === "Arial" || ad === "Courier New")) {
+        const aile = ad === "Arial" ? yaziTipleri() : monoYaziTipleri();
+        return kalin ? aile.kalin : aile.normal;
+    }
+    const dosya = (i) => path.join(fontKlasoru, `${d[i]}.ttf`);
+    return ilkVar([dosya((kalin ? 1 : 0) + (italik ? 2 : 0)), dosya(kalin ? 1 : 0)]) ?? (kalin ? yedek.kalin : yedek.normal);
+}
 export const belgeKlasoruGorseli = (dosya) => {
     const tam = path.join(BELGE_DIZINI, path.basename(String(dosya || "")));
     return /\.(png|jpe?g)$/i.test(tam) && existsSync(tam) ? readFileSync(tam) : null;
@@ -86,7 +111,18 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
         doc.on("end", () => resolve(Buffer.concat(parcalar)));
         doc.on("error", reject);
         const sol = sahne.kenar, ust = sahne.kenar;
-        const N = () => doc.font(font.normal), K = () => doc.font(font.kalin);
+        const K = () => doc.font(font.kalin);
+        const dosyalar = new Map();
+        /** Metin öğesinin yazı tipi (ad + kalın + italik); dosya yolu önbellekte. */
+        const F = (c, kalin) => {
+            const anahtar = `${c.font}|${kalin}|${!!c.italik}`;
+            let d = dosyalar.get(anahtar);
+            if (!d) {
+                d = yaziTipiDosyasi(c.font, kalin, !!c.italik, font);
+                dosyalar.set(anahtar, d);
+            }
+            return doc.font(d);
+        };
         const X = (x) => sol + x, Y = (y) => ust + y;
         // Katman sırası HTML çiziciyle aynı: filigran → kutu / çizgi → yazı, görsel, karekod.
         const katman = (c) => (c.tip === "filigran" ? 0 : c.tip === "kutu" || c.tip === "cizgi" ? 1 : 2);
@@ -109,23 +145,23 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
                     const duz = parcalar.map(p => p.metin).join("");
                     const secenek = { width: c.g, align: c.hiza, lineBreak: !c.tekSatir, height: c.tekSatir ? c.boyut * SATIR_ORANI : undefined, ellipsis: c.tekSatir ? true : undefined, lineGap: c.boyut * (SATIR_ORANI - 1.15) };
                     // Satır içi kalın, ortalı / sağa hizalı metinde tek satıra sığıyorsa parçaların toplam genişliğiyle hizalanır.
-                    const parcaGenisligi = () => parcalar.reduce((t, p) => t + (p.kalin || c.kalin ? K() : N()).fontSize(c.boyut).widthOfString(p.metin), 0);
+                    const parcaGenisligi = () => parcalar.reduce((t, p) => t + F(c, !!(p.kalin || c.kalin)).fontSize(c.boyut).widthOfString(p.metin), 0);
                     const hizaliParca = parcalar.length > 1 && c.hiza !== "left" && !c.kalin && parcaGenisligi() <= c.g;
                     if (parcalar.length <= 1 || (c.hiza !== "left" && !hizaliParca)) {
-                        (c.kalin || (parcalar.length === 1 && parcalar[0].kalin) ? K() : N()).text(duz, x, y, secenek);
+                        F(c, !!(c.kalin || (parcalar.length === 1 && parcalar[0].kalin))).text(duz, x, y, secenek);
                     }
                     else {
                         // Satır içi kalın: parçalar art arda (tek satır).
                         const w = parcaGenisligi();
                         let cx = c.hiza === "center" ? x + (c.g - w) / 2 : c.hiza === "right" ? x + c.g - w : x;
                         for (const p of parcalar) {
-                            (p.kalin || c.kalin ? K() : N()).fontSize(c.boyut);
+                            F(c, !!(p.kalin || c.kalin)).fontSize(c.boyut);
                             doc.text(p.metin, cx, y, { lineBreak: false });
                             cx += doc.widthOfString(p.metin);
                         }
                     }
                     if (c.altCizgi) {
-                        const w = Math.min(c.g, (c.kalin ? K() : N()).fontSize(c.boyut).widthOfString(duz));
+                        const w = Math.min(c.g, F(c, !!c.kalin).fontSize(c.boyut).widthOfString(duz));
                         const bx = c.hiza === "center" ? x + (c.g - w) / 2 : c.hiza === "right" ? x + c.g - w : x;
                         doc.moveTo(bx, y + c.boyut + 1.5).lineTo(bx + w, y + c.boyut + 1.5).lineWidth(0.6).strokeColor(c.renk).stroke();
                     }

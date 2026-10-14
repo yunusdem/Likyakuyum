@@ -41,6 +41,8 @@ export interface UserAppearanceTheme {
   enableSellHeaderTheme: boolean;
   sellHeaderBgColor: string;
   sellHeaderTextColor: string;
+
+  sidebarStyle?: "hover" | "classic" | "flyout" | "topbar" | "dual" | "drawer" | string;
 }
 
 export interface UserModel {
@@ -175,5 +177,6 @@ export interface TodvzKullaniciEntity {
   SAPMA_UYARISI_VERILMESIN?: number | boolean | null;
   GISE_KURU_DISINDA_OLABILIR?: number | boolean | null;
   CAPRAZ_KUR_KONTROLU_YOK?: number | boolean | null;
+  SIDEBAR_GORUNUM?: string | null;
 }
 

@@ -34,6 +34,11 @@ export interface KatalogUrun {
   miktarBirimi: string;
   satisFiyati: number;
   satisParaKodu: string;
+  hasKuru1?: number | null;
+  hasKuru2?: number | null;
+  usdKuru1?: number | null;
+  usdKuru2?: number | null;
+  altinKuru?: number | null;
   menuId: number | null;
   menuAdi: string | null;
   katalog: boolean;

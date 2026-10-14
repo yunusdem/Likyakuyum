@@ -405,9 +405,9 @@ const kaynakTarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => Number.i
 export const ebelgeKaynakListeSchema = z.object({
     arama: z.string().trim().max(150).optional(), durum: z.string().max(30).optional(),
     belgeTuru: z.coerce.number().int().min(0).max(255).optional(),
-    kaynak: z.enum(["FATURA", "IRSALIYE", "GIDER", "DOVIZ", "PERAKENDE_SATIS", "PERAKENDE_ALIS"]).optional(),
-    // Lisanstaki fiş grupları ("sarraf,doviz"); "yok" hiçbiri. Verilmezse hepsi listelenir.
-    gruplar: z.string().regex(/^(yok|(sarraf|doviz|perakende)(,(sarraf|doviz|perakende))*)$/).transform(v => v === 'yok' ? [] : v.split(',')).optional(),
+    kaynak: z.enum(["FATURA", "IRSALIYE", "GIDER", "DOVIZ", "PERAKENDE_SATIS", "PERAKENDE_ALIS", "TICARI_SATIS"]).optional(),
+    // Lisanstaki fiş grupları ("sarraf,doviz"); "yok" hiçbiri. Verilmezse hepsi listelenir. ticari: Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md)
+    gruplar: z.string().regex(/^(yok|(sarraf|doviz|perakende|ticari)(,(sarraf|doviz|perakende|ticari))*)$/).transform(v => v === 'yok' ? [] : v.split(',')).optional(),
     sayfa: z.coerce.number().int().min(1).max(100000).default(1),
     baslangicTarihi: kaynakTarih.optional(), bitisTarihi: kaynakTarih.optional(),
 }).refine(v => !v.baslangicTarihi || !v.bitisTarihi || v.baslangicTarihi <= v.bitisTarihi, "Tarih aralığı geçersiz.");

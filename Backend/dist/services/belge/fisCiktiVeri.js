@@ -5,6 +5,7 @@
  * kuruş ayarları ve kayıtlı fişin ETTN'si sunucuda tamamlanır (docs/FIS_TASARIM_YOL_HARITASI.md).
  * Alan adları şablondaki `{{...}}` yer tutucularıdır; kılavuzdaki alan listesi buradan üretilir.
  */
+import { ticariFisHesapla, yuvarla2 } from "../ticari/ticariHesap.js";
 const yazi = (v) => (v === null || v === undefined ? "" : String(v).trim());
 export const sayiOku = (v) => {
     if (typeof v === "number")
@@ -214,6 +215,62 @@ export function perakendeFisVerisi(g, firma) {
             iskontoEtiket: iskontoOrani > 0 ? `İskonto (%${iskontoOrani})` : "İskonto", genel, yaziyla: fisYaziyla(genel),
         },
         qr: `VKN:${firma.vkn}|AVKN:${kimlik}|NO:${faturaNo}|ETTN:${ettn}|TAR:${yazi(g.tarih)}|TOP:${genel.toFixed(2)}`,
+        onizleme: false, iptal: false,
+    };
+}
+const ODEME_TURU_ADI = { 0: "Nakit", 1: "Cari (veresiye)", 2: "Kredi kartı", 3: "Havale / EFT" };
+export function ticariFisVerisi(g, firma) {
+    const ham = Array.isArray(g.satirlar) ? g.satirlar : [];
+    const hesap = ticariFisHesapla(ham.map((s) => ({ miktar: sayiOku(s.miktar) || 0.0001, kdvDahilFiyat: sayiOku(s.kdvDahilFiyat), kdvOrani: sayiOku(s.kdvOrani),
+        iskontoTuru: (Number(s.iskontoTuru) || 0), iskontoDegeri: sayiOku(s.iskontoDegeri) })), { turu: (Number(g.iskontoTuru) || 0), deger: sayiOku(g.iskontoDegeri) });
+    const satirlar = hesap.satirlar.map((h, i) => {
+        const s = ham[i];
+        const tur = Number(s.iskontoTuru) || 0;
+        const iskontoYazi = tur === 1 ? `%${tr(sayiOku(s.iskontoDegeri), 0)}` : tur === 2 ? `${tr(sayiOku(s.iskontoDegeri))} TL` : "";
+        return {
+            sira: sayiOku(s.satirNo) || i + 1, kod: yazi(s.kod), barkod: yazi(s.barkod), ad: yazi(s.urunAdi), miktar: h.miktar, miktarYazi: `${tr(h.miktar, Number.isInteger(h.miktar) ? 0 : 3)} ${yazi(s.birim)}`.trim(),
+            birim: yazi(s.birim), kdvDahilFiyat: h.kdvDahilFiyat, birimFiyat: h.birimFiyat, kdvOrani: h.kdvOrani, kdvTutari: h.kdvTutari,
+            brut: h.brutDahil, iskontoYazi, iskontoVar: h.satirIskontoDahil > 0, satirIskonto: h.satirIskontoDahil, matrah: h.matrah, toplam: h.toplamTutar,
+            kodBarkod: [yazi(s.kod), yazi(s.barkod)].filter(Boolean).join(" | "), fiyatYazi: `${tr(h.miktar, Number.isInteger(h.miktar) ? 0 : 3)} x ${tr(h.kdvDahilFiyat)}`,
+            // Perakende şablonundan gelen alanlar boş kalmasın
+            ayar: "", gram: 0, has: 0, barkodAyar: yazi(s.barkod), gramYazi: `${tr(h.miktar, Number.isInteger(h.miktar) ? 0 : 3)} ${yazi(s.birim)}`.trim(),
+        };
+    });
+    const kdvOranlari = [...new Set(hesap.satirlar.map((s) => s.kdvOrani))].sort((a, b) => a - b);
+    const kdvDokumu = kdvOranlari.map((oran) => {
+        const ss = hesap.satirlar.filter((s) => s.kdvOrani === oran);
+        return { oran, matrah: yuvarla2(ss.reduce((t, s) => t + s.matrah, 0)), kdv: yuvarla2(ss.reduce((t, s) => t + s.kdvTutari, 0)) };
+    });
+    const odemeler = (Array.isArray(g.odemeler) ? g.odemeler : []).filter((o) => sayiOku(o.tutar) > 0).map((o, i) => {
+        const tur = Number(o.odemeAraciTuru) || 0;
+        const kod = yazi(o.paraKodu) || "TL";
+        return { sira: i + 1, tur: ODEME_TURU_ADI[tur] || "Nakit", ad: tur === 1 ? yazi(o.cariUnvan) || "Cari" : tur === 0 && !["TL", "TRY"].includes(kod) ? `${kod} ${tr(sayiOku(o.miktar))}` : ODEME_TURU_ADI[tur] || "Nakit", tutar: sayiOku(o.tutar) };
+    });
+    const odenen = yuvarla2(odemeler.reduce((t, o) => t + o.tutar, 0));
+    const satirIskonto = yuvarla2(hesap.satirlar.reduce((t, s) => t + s.satirIskontoDahil, 0));
+    const iskonto = yuvarla2(satirIskonto + hesap.baslikIskontoDahil);
+    const faturaNo = yazi(g.faturaNo), ettn = yazi(g.ettn), kimlik = yazi(g.aliciVknTckn) || "11111111111";
+    const iskontoOrani = Number(g.iskontoTuru) === 1 ? sayiOku(g.iskontoDegeri) : 0;
+    return {
+        belgeTuru: "TICARI_FIS", faturaId: Number(g.faturaId) || 0, faturaNo, ettn, senaryo: yazi(g.senaryo) || "EARSIVFATURA",
+        iade: false, faturaTipiAdi: "SATIS", baslik: "SATIŞ BİLGİ FİŞİ", tarih: tarihNokta(g.tarih), saat: saatYaz(g.tarih), paraKodu: "TL", vezne: yazi(g.vezneKod),
+        firma,
+        musteri: {
+            unvan: yazi(g.aliciUnvan) || "NİHAİ TÜKETİCİ", kimlikNo: kimlik, vergiDairesi: yazi(g.vergiDairesi), adres: yazi(g.adres) || "-",
+            ilce: yazi(g.ilce) || "-", il: yazi(g.il) || "-", telefon: yazi(g.telefon), eposta: yazi(g.eposta),
+        },
+        satirlar,
+        kdvDokumu,
+        odemeler, odemeVar: odemeler.length > 0,
+        toplam: {
+            kalem: satirlar.length, miktar: yuvarla2(satirlar.reduce((t, s) => t + s.miktar, 0)),
+            brut: hesap.brutDahil, satirIskonto, fisIskonto: hesap.baslikIskontoDahil, fisIskontoVar: hesap.baslikIskontoDahil > 0,
+            iskonto, iskontoVar: iskonto > 0, iskontoOrani, iskontoEtiket: iskontoOrani > 0 ? `İskonto (%${tr(iskontoOrani, 0)})` : "İskonto",
+            ara: hesap.matrah, kdv: hesap.toplamKdv, genel: hesap.genelToplam, yaziyla: fisYaziyla(hesap.genelToplam),
+            odenen, paraUstu: yuvarla2(Math.max(0, odenen - hesap.genelToplam)), paraUstuVar: odenen - hesap.genelToplam > 0.004,
+            gram: 0, has: 0,
+        },
+        qr: `VKN:${firma.vkn}|AVKN:${kimlik}|NO:${faturaNo}|ETTN:${ettn}|TAR:${yazi(g.tarih)}|TOP:${hesap.genelToplam.toFixed(2)}`,
         onizleme: false, iptal: false,
     };
 }

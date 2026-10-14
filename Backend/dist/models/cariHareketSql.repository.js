@@ -9,6 +9,7 @@ const HAREKET_TIPI_LABELS = {
     3: "Dekont",
     4: "Virman",
     5: "Devir",
+    6: "Stok Girişi",
 };
 export class CariHareketSqlRepository {
     /**
@@ -459,6 +460,7 @@ export class CariHareketSqlRepository {
                 3: "Dekont",
                 4: "Virman",
                 5: "Devir",
+                6: "Stok Girişi",
                 10: "Sarraf Fişi",
                 11: "Döviz Fişi",
                 12: "Perakende Faturası",
@@ -944,6 +946,7 @@ export class CariHareketSqlRepository {
         try {
             await transaction.begin();
             const numId = parseInt(String(id), 10);
+            await CariHareketSqlRepository.stokGirisiDegil(transaction, numId);
             await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
             let effectiveCariKartId = data.cariKartId;
             const chkReq = new sql.Request(transaction);
@@ -1023,6 +1026,7 @@ export class CariHareketSqlRepository {
         try {
             await transaction.begin();
             const numId = parseInt(String(id), 10);
+            await CariHareketSqlRepository.stokGirisiDegil(transaction, numId);
             await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
             const delLines = new sql.Request(transaction);
             delLines.input("CARI_HAREKET_ID", sql.Int, numId);
@@ -1037,6 +1041,13 @@ export class CariHareketSqlRepository {
             await transaction.rollback();
             logger.error(`CariHareketSqlRepository.delete(${id}) error:`, error);
             throw error;
+        }
+    }
+    /** Stok giriş fişinden oluşan alacak kaydı (HAREKET_TIPI 6) yalnız kendi fişinden değişir (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T9) */
+    static async stokGirisiDegil(transaction, id) {
+        const r = await new sql.Request(transaction).input("ID", sql.Int, id).query(`SELECT HAREKET_TIPI FROM [dbo].[TODVZ_CARI_HAREKET] WHERE [CARI_HAREKET_ID] = @ID`);
+        if (Number(r.recordset[0]?.HAREKET_TIPI) === 6) {
+            throw ApiError.badRequest("Bu kayıt bir Stok Giriş Fişi'nden oluştu; Ticari İşlemler › Stok Giriş Fişi'nden düzeltin ya da silin.");
         }
     }
     static async getNavigationIds(currentId, dbContext) {

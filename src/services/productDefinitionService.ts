@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { notifyProductChanged } from "./productSyncService";
 
 export interface ProductItem {
   id: number;
@@ -74,16 +75,19 @@ export class ProductDefinitionService {
 
   public static async createProduct(data: ProductFormData): Promise<ProductItem> {
     const res = await apiClient.post<ProductItem>("/para", data);
+    notifyProductChanged("para", res.data, "create");
     return res.data;
   }
 
   public static async updateProduct(id: number | string, data: ProductFormData): Promise<ProductItem> {
     const res = await apiClient.put<ProductItem>(`/para/${id}`, data);
+    notifyProductChanged("para", res.data, "update");
     return res.data;
   }
 
   public static async deleteProduct(id: number | string): Promise<boolean> {
     const res = await apiClient.delete<{ id: string }>(`/para/${id}`);
+    notifyProductChanged("para", { id }, "delete");
     return res.success;
   }
 }

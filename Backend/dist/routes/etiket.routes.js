@@ -47,6 +47,8 @@ router.get("/ozel-urun/:id", EtiketController.getOzelUrunById);
 router.post("/ozel-urun", EtiketController.saveOzelUrun);
 router.delete("/ozel-urun/:id", EtiketController.deleteOzelUrun);
 router.post("/ozel-urun/yazdirildi-isaretle", EtiketController.markOzelUrunYazdirildi);
+// Katalog / Menü Hızlı Güncelleme
+router.post("/katalog-guncelle", EtiketController.updateUrunKatalog);
 // Etiket Şablonları (TODVZ_ETIKET_SABLON)
 router.get("/sablon", EtiketController.listSablon);
 router.get("/sablon/:id", EtiketController.getSablonById);

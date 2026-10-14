@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Row, Col, Card, Form, Button, Alert, InputGroup, Modal, Dropdown, Table, Badge } from "react-bootstrap";
 import JsBarcode from "jsbarcode";
@@ -20,14 +20,18 @@ import {
   IconChevronRight,
   IconPrinter,
   IconExternalLink,
+  IconBuildingBank,
 } from "@tabler/icons-react";
 import { MenuSecimModal } from "../../components/katalog/MenuSecimModal";
+import { TvKatalogMenuSecimModal } from "../../components/katalog/TvKatalogMenuSecimModal";
 import { MenuService, MenuItem, notifyKatalogUpdate } from "../../services/menuService";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { AyarSecimModal } from "../../components/common/AyarSecimModal";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import { TabloMaddesiSecimModal } from "../../components/common/TabloMaddesiSecimModal";
 import EtiketYazdirModal, { EtiketYazdirItem } from "./EtiketYazdirModal";
+import { onProductChanged } from "../../services/productSyncService";
 import {
   EtiketService,
   OzelUrunItem,
@@ -209,6 +213,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const [satisFiyati, setSatisFiyati] = useState<number | string>("");
   const [satisParaKodu, setSatisParaKodu] = useState<string>("USD");
   const [satisKariYuzde, setSatisKariYuzde] = useState<number | string>(100);
+  const [kurRefMode, setKurRefMode] = useState<"alis" | "satis">("alis");
 
   // Anlık Kur Alanları (HAS & USD Alış/Satış)
   const [hasAlis, setHasAlis] = useState<number | string>("");
@@ -229,6 +234,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const [menuAdi, setMenuAdi] = useState<string>("");
   const [menuList, setMenuList] = useState<MenuItem[]>([]);
   const [showMenuModal, setShowMenuModal] = useState<boolean>(false);
+  const [showTvMenuModal, setShowTvMenuModal] = useState<boolean>(false);
 
   useEffect(() => {
     if (menuId && !menuAdi && menuList.length > 0) {
@@ -328,6 +334,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const monturGramRef = useRef<HTMLInputElement | null>(null);
   const monturAyarRef = useRef<HTMLInputElement | null>(null);
   const monturIscilikRef = useRef<HTMLInputElement | null>(null);
+  const satisKariRef = useRef<HTMLInputElement | null>(null);
+  const satisFiyatiRef = useRef<HTMLInputElement | null>(null);
 
   // Sağ Tık (Context Menu) State
   const [contextMenu, setContextMenu] = useState<{
@@ -397,8 +405,25 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
   const parseNum = (val: number | string | undefined | null): number => {
     if (val === undefined || val === null || val === "") return 0;
-    const normalized = String(val).replace(/,/g, ".");
-    const parsed = parseFloat(normalized);
+    if (typeof val === "number") return isNaN(val) ? 0 : val;
+    let str = String(val).trim();
+    if (!str) return 0;
+
+    // Hem nokta hem virgül içeriyorsa
+    if (str.includes(".") && str.includes(",")) {
+      const lastDot = str.lastIndexOf(".");
+      const lastComma = str.lastIndexOf(",");
+      if (lastComma > lastDot) {
+        // Türkçe format: 3.150,50 -> noktayı kaldır, virgülü nokta yap
+        str = str.replace(/\./g, "").replace(",", ".");
+      } else {
+        // US format: 3,150.50 -> virgülü kaldır
+        str = str.replace(/,/g, "");
+      }
+    } else if (str.includes(",")) {
+      str = str.replace(/,/g, ".");
+    }
+    const parsed = parseFloat(str);
     return isNaN(parsed) ? 0 : parsed;
   };
 
@@ -409,9 +434,18 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     return parsed.toFixed(5).replace(".", ",");
   };
 
-  const formatNumber = (num: number, maxDecimals: number = 2): string => {
-    if (num === undefined || num === null || isNaN(num) || num <= 0) return "";
-    return Number(num.toFixed(maxDecimals)).toString();
+  const format2 = (num: number | string | undefined | null): string => {
+    if (num === undefined || num === null || num === "") return "";
+    const parsed = typeof num === "number" ? num : parseNum(num);
+    if (isNaN(parsed) || parsed <= 0) return "";
+    return parsed.toFixed(2);
+  };
+
+  const formatNumber = (num: number | string | undefined | null, maxDecimals: number = 2): string => {
+    if (num === undefined || num === null || num === "") return "";
+    const parsed = typeof num === "number" ? num : parseNum(num);
+    if (isNaN(parsed) || parsed <= 0) return "";
+    return parsed.toFixed(maxDecimals);
   };
 
   const getMilyemFromAyar = useCallback((ayarStr: string): number => {
@@ -503,57 +537,60 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     return 0;
   }, [ayarList]);
 
-  const kurRef = {
-    hasAlis: parseNum(hasAlis),
-    hasSatis: parseNum(hasSatis),
-    usdAlis: parseNum(usdAlis),
-    usdSatis: parseNum(usdSatis),
-    usd: parseNum(usdSatis) > 0 ? parseNum(usdSatis) : parseNum(usdAlis),
-    eur: parseNum(eurKuru),
-  };
+  const kurRef = useMemo(() => {
+    const isAlis = kurRefMode === "alis";
+    const hAlis = parseNum(hasAlis);
+    const hSatis = parseNum(hasSatis);
+    const uAlis = parseNum(usdAlis);
+    const uSatis = parseNum(usdSatis);
+    const activeHas = isAlis ? (hAlis > 0 ? hAlis : hSatis) : (hSatis > 0 ? hSatis : hAlis);
+    const activeUsd = isAlis ? (uAlis > 0 ? uAlis : uSatis) : (uSatis > 0 ? uSatis : uAlis);
+
+    return {
+      hasAlis: hAlis,
+      hasSatis: hSatis,
+      usdAlis: uAlis,
+      usdSatis: uSatis,
+      activeHas,
+      activeUsd,
+      usd: activeUsd > 0 ? activeUsd : 1,
+      eur: parseNum(eurKuru),
+    };
+  }, [kurRefMode, hasAlis, hasSatis, usdAlis, usdSatis, eurKuru]);
 
   const getKurVal = useCallback(
-    (code: string, ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number }): number => {
+    (code: string, ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number; activeHas?: number; activeUsd?: number }): number => {
       const c = (code || "").toUpperCase().trim();
-      if (c === "HAS" || c === "ALTIN") return ref.hasSatis > 0 ? ref.hasSatis : (ref.hasAlis > 0 ? ref.hasAlis : 1);
-      if (c === "USD" || c === "$") return ref.usdSatis > 0 ? ref.usdSatis : (ref.usdAlis > 0 ? ref.usdAlis : (ref.usd > 0 ? ref.usd : 1));
+      const hasRate = ref.activeHas || (ref.hasSatis > 0 ? ref.hasSatis : (ref.hasAlis > 0 ? ref.hasAlis : 1));
+      const usdRate = ref.activeUsd || (ref.usdSatis > 0 ? ref.usdSatis : (ref.usdAlis > 0 ? ref.usdAlis : (ref.usd > 0 ? ref.usd : 1)));
+      if (c === "HAS" || c === "ALTIN") return hasRate;
+      if (c === "USD" || c === "$") return usdRate;
       if (c === "EUR" || c === "€") return ref.eur > 0 ? ref.eur : 1;
       if (c === "TL" || c === "TRY" || c === "₺") return 1;
 
       // Kurlar tablosunda ara
       const row = kurRows.find((k) => (k.kod || "").toUpperCase() === c);
       if (row) {
-        const rate = row.efektifSatis || row.efektifAlis || row.dovizSatis || row.dovizAlis;
+        const rate = kurRefMode === "alis"
+          ? (row.efektifAlis || row.dovizAlis || row.efektifSatis || row.dovizSatis)
+          : (row.efektifSatis || row.dovizSatis || row.efektifAlis || row.dovizAlis);
         if (rate && rate > 0) return rate;
       }
       return 1;
     },
-    [kurRows]
+    [kurRows, kurRefMode]
   );
 
   // 1 Gram Has Altının USD Cinsinden Değerini (Parite / Altın Kuru) Hesaplar
   const getHasGramUsdRate = useCallback(
-    (ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number }): number => {
-      const hasRate = ref.hasSatis > 0 ? ref.hasSatis : (ref.hasAlis > 0 ? ref.hasAlis : 0);
-      const usdRate = ref.usdSatis > 0 ? ref.usdSatis : (ref.usdAlis > 0 ? ref.usdAlis : (ref.usd > 0 ? ref.usd : 1));
+    (ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number; activeHas?: number; activeUsd?: number }): number => {
+      const hasRate = ref.activeHas || (kurRefMode === "alis" ? ref.hasAlis : ref.hasSatis) || ref.hasAlis || ref.hasSatis || 0;
+      const usdRate = ref.activeUsd || (kurRefMode === "alis" ? ref.usdAlis : ref.usdSatis) || ref.usdAlis || ref.usdSatis || ref.usd || 1;
       if (hasRate <= 0) return 0;
       const validUsd = usdRate > 0 ? usdRate : 1;
-
-      // Durum 1: Ekrana 3.50 veya 3.45 gibi binlik katsayı (3,500 TL/gr HAS) girildiyse
-      if (hasRate < 10) {
-        return (hasRate * 1000) / validUsd;
-      }
-      // Durum 2: Ekrana 3500 TL gibi tam TL/gr HAS girildiyse
-      if (hasRate >= 500) {
-        return hasRate / validUsd;
-      }
-      // Durum 3: Ekrana doğrudan gram altın USD fiyatı (örn: 75 - 150 USD/gr) girildiyse
-      if (hasRate >= 40 && hasRate < 500 && validUsd > 10) {
-        return hasRate;
-      }
       return hasRate / validUsd;
     },
-    []
+    [kurRefMode]
   );
 
   // Verilen tutarı ve para birimini USD'ye çevirir
@@ -561,7 +598,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     (
       amount: number,
       fromCode: string,
-      ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number }
+      ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number; activeHas?: number; activeUsd?: number }
     ): number => {
       if (!amount || amount <= 0) return 0;
       const f = (fromCode || "").toUpperCase().trim();
@@ -570,7 +607,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         const hasUsd = getHasGramUsdRate(ref);
         return amount * hasUsd;
       }
-      const usdRate = ref.usdSatis > 0 ? ref.usdSatis : (ref.usdAlis > 0 ? ref.usdAlis : (ref.usd > 0 ? ref.usd : 1));
+      const usdRate = ref.activeUsd || (kurRefMode === "alis" ? ref.usdAlis : ref.usdSatis) || ref.usdAlis || ref.usdSatis || ref.usd || 1;
       if (f === "TL" || f === "TRY" || f === "₺") {
         return usdRate > 0 ? amount / usdRate : amount;
       }
@@ -580,12 +617,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       }
       const row = kurRows.find((k) => (k.kod || "").toUpperCase() === f);
       if (row) {
-        const rateTl = row.efektifSatis || row.efektifAlis || row.dovizSatis || row.dovizAlis || 1;
+        const rateTl = kurRefMode === "alis"
+          ? (row.efektifAlis || row.dovizAlis || row.efektifSatis || row.dovizSatis || 1)
+          : (row.efektifSatis || row.dovizSatis || row.efektifAlis || row.dovizAlis || 1);
         return usdRate > 0 ? (amount * rateTl) / usdRate : amount;
       }
       return amount;
     },
-    [getHasGramUsdRate, kurRows]
+    [getHasGramUsdRate, kurRows, kurRefMode]
   );
 
   // Verilen USD tutarını hedef para birimine çevirir
@@ -593,7 +632,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     (
       amountUsd: number,
       toCode: string,
-      ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number }
+      ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number; activeHas?: number; activeUsd?: number }
     ): number => {
       if (!amountUsd || amountUsd <= 0) return 0;
       const t = (toCode || "").toUpperCase().trim();
@@ -602,7 +641,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         const hasUsd = getHasGramUsdRate(ref);
         return hasUsd > 0 ? amountUsd / hasUsd : amountUsd;
       }
-      const usdRate = ref.usdSatis > 0 ? ref.usdSatis : (ref.usdAlis > 0 ? ref.usdAlis : (ref.usd > 0 ? ref.usd : 1));
+      const usdRate = ref.activeUsd || (kurRefMode === "alis" ? ref.usdAlis : ref.usdSatis) || ref.usdAlis || ref.usdSatis || ref.usd || 1;
       if (t === "TL" || t === "TRY" || t === "₺") {
         return amountUsd * usdRate;
       }
@@ -612,12 +651,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       }
       const row = kurRows.find((k) => (k.kod || "").toUpperCase() === t);
       if (row) {
-        const rateTl = row.efektifSatis || row.efektifAlis || row.dovizSatis || row.dovizAlis || 1;
+        const rateTl = kurRefMode === "alis"
+          ? (row.efektifAlis || row.dovizAlis || row.efektifSatis || row.dovizSatis || 1)
+          : (row.efektifSatis || row.dovizSatis || row.efektifAlis || row.dovizAlis || 1);
         return rateTl > 0 ? (amountUsd * usdRate) / rateTl : amountUsd;
       }
       return amountUsd;
     },
-    [getHasGramUsdRate, kurRows]
+    [getHasGramUsdRate, kurRows, kurRefMode]
   );
 
   const convertCurrency = useCallback(
@@ -625,7 +666,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       amount: number,
       fromCode: string,
       toCode: string,
-      ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number }
+      ref: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number; activeHas?: number; activeUsd?: number }
     ): number => {
       if (!amount || amount <= 0) return 0;
       const f = (fromCode || "").toUpperCase().trim();
@@ -649,37 +690,42 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       curMaliyetPara: string,
       curSatisPara: string,
       curSatisKarYuzde: number | string,
-      curKurRef: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number }
+      curKurRef: { hasAlis: number; hasSatis: number; usdAlis: number; usdSatis: number; usd: number; eur: number; activeHas?: number; activeUsd?: number }
     ) => {
       const mGram = parseNum(curMonturGram);
-      const milyem = getMilyemFromAyar(curAyar);
+      const rawMilyem = getMilyemFromAyar(curAyar);
+      // Ayar Milyem Değeri (0-1 arası oran, örn: 22 -> 0.916, 14 -> 0.585, 18 -> 0.750)
+      const ayarMilyem = rawMilyem > 1 ? rawMilyem / 1000 : (rawMilyem > 0 ? rawMilyem : 0.916);
 
       // 1. Montür Has Miktarı: Montür Gr * Ayar Milyemi (5 hane: 0.00000 Has)
-      const calcMonturHasNum = mGram > 0 && milyem > 0 ? mGram * (milyem / 1000) : 0;
+      const calcMonturHasNum = mGram > 0 ? mGram * ayarMilyem : 0;
       setMonturHas(calcMonturHasNum > 0 ? format5(calcMonturHasNum) : "");
 
       // 2. 1 Gram Has Altının USD Değeri ve Montür Altın Tutarı (USD)
+      //    Montür Altın USD Maliyeti = Montür HAS * (HAS_Alis / USD_Alis)
       const hasGramUsd = getHasGramUsdRate(curKurRef);
       const monturAltinUSD = calcMonturHasNum * hasGramUsd;
 
       // 3. Montür İşçilik Tutarı (USD):
-      //    Birim '/ Gram' ise: Montür Gr * Montür İşçilik
+      //    Birim '/ Gram' ise: Montür Gr * Montür İşçilik (Birim Fiyat)
       //    Birim '/ Adet' ise: Doğrudan girilen işçilik değeri
+      //    (Örn: 5 gram * 20 USD/gr = 100 USD. Ekranda 0.00 USD kalmamalı!)
       const mIscilik = parseNum(curMonturIscilik);
-      const rawMonturIscilikTutari =
-        mIscilik > 0
-          ? curMonturIscilikBirim === "Gram"
-            ? mIscilik * mGram
-            : mIscilik
-          : 0;
-      setMonturIscilikTutari(rawMonturIscilikTutari > 0 ? formatNumber(rawMonturIscilikTutari, 2) : "");
+      const isGramBirim = curMonturIscilikBirim === "Gram";
+      let rawMonturIscilikTutari = 0;
+      if (mIscilik > 0) {
+        rawMonturIscilikTutari = isGramBirim
+          ? (mGram > 0 ? mGram * mIscilik : mIscilik)
+          : mIscilik;
+      }
+      setMonturIscilikTutari(rawMonturIscilikTutari > 0 ? format2(rawMonturIscilikTutari) : "0.00");
 
       const monturIscilikUSD = convertToUSD(rawMonturIscilikTutari, curMonturIscilikPara || "USD", curKurRef);
 
-      // 4. Toplam Montür Maliyeti (USD / Hedef Para Cinsinden): Montür Altın Bedeli + Montür İşçilik Bedeli
+      // 4. Toplam Montür Maliyeti USD = Montür Altın USD Maliyeti + İşçilik Tutarı USD
       const toplamMonturUSD = monturAltinUSD + monturIscilikUSD;
       const targetMonturMaliyet = convertFromUSD(toplamMonturUSD, curMaliyetPara || "USD", curKurRef);
-      setMonturMaliyet(targetMonturMaliyet > 0 ? formatNumber(targetMonturMaliyet, 2) : "");
+      setMonturMaliyet(targetMonturMaliyet > 0 ? format2(targetMonturMaliyet) : "0.00");
 
       // 5. Çoklu Taşlar Toplam Maliyeti (Hedef Maliyet Para Birimi Cinsinden)
       let toplamTasUSD = 0;
@@ -691,21 +737,22 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       });
       const targetTaslarMaliyet = convertFromUSD(toplamTasUSD, curMaliyetPara || "USD", curKurRef);
 
-      // 6. Toplam Maliyet (USD / Hedef Para): Toplam Montür Maliyeti + Taşlar Tutarı (Kilitli / Read-only)
+      // 6. Toplam Ürün Maliyeti USD = Toplam Montür Maliyeti USD + Taşlar Tutarı USD
       const calcToplamMaliyet = targetMonturMaliyet + targetTaslarMaliyet;
-      const formattedMaliyet = calcToplamMaliyet > 0 ? formatNumber(calcToplamMaliyet, 2) : "";
+      const formattedMaliyet = calcToplamMaliyet > 0 ? format2(calcToplamMaliyet) : "";
       setMaliyet(formattedMaliyet);
 
-      // 7. Satış Fiyatı = Toplam Maliyet * (1 + (Satış Kârı % / 100)) (Kilitli / Otomatik)
+      // 7. Satış Fiyatı USD = Maliyet USD * (1 + (Satış Kârı % / 100))
       const karY =
         typeof curSatisKarYuzde === "number" || (typeof curSatisKarYuzde === "string" && curSatisKarYuzde !== "")
           ? parseNum(curSatisKarYuzde)
           : 100;
 
       if (calcToplamMaliyet > 0) {
-        const calcSatisInMaliyetPara = calcToplamMaliyet * (1 + karY / 100);
+        const effectiveKarY = karY >= 0 ? karY : 0;
+        const calcSatisInMaliyetPara = calcToplamMaliyet * (1 + effectiveKarY / 100);
         const calcSatisInTarget = convertCurrency(calcSatisInMaliyetPara, curMaliyetPara || "USD", curSatisPara || "USD", curKurRef);
-        setSatisFiyati(formatNumber(calcSatisInTarget, 2));
+        setSatisFiyati(format2(calcSatisInTarget));
       } else {
         setSatisFiyati("");
       }
@@ -963,27 +1010,76 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     );
   };
 
+  const handleKurRefModeChange = (mode: "alis" | "satis") => {
+    setKurRefMode(mode);
+    const isAlis = mode === "alis";
+    const hAlis = parseNum(hasAlis);
+    const hSatis = parseNum(hasSatis);
+    const uAlis = parseNum(usdAlis);
+    const uSatis = parseNum(usdSatis);
+    const activeHas = isAlis ? (hAlis > 0 ? hAlis : hSatis) : (hSatis > 0 ? hSatis : hAlis);
+    const activeUsd = isAlis ? (uAlis > 0 ? uAlis : uSatis) : (uSatis > 0 ? uSatis : uAlis);
+    const updatedRef = {
+      hasAlis: hAlis,
+      hasSatis: hSatis,
+      usdAlis: uAlis,
+      usdSatis: uSatis,
+      activeHas,
+      activeUsd,
+      usd: activeUsd > 0 ? activeUsd : 1,
+      eur: parseNum(eurKuru),
+    };
+    recalculateAll(
+      monturGram,
+      ayar,
+      monturIscilik,
+      monturIscilikBirim,
+      monturIscilikParaKodu,
+      taslar,
+      maliyetParaKodu,
+      satisParaKodu,
+      satisKariYuzde,
+      updatedRef
+    );
+  };
+
   const handleHasAlisChange = (val: string) => {
     setHasAlis(val);
-    const updatedRef = { ...kurRef, hasAlis: parseNum(val) };
+    const isAlis = kurRefMode === "alis";
+    const hAlis = parseNum(val);
+    const hSatis = parseNum(hasSatis);
+    const activeHas = isAlis ? (hAlis > 0 ? hAlis : hSatis) : (hSatis > 0 ? hSatis : hAlis);
+    const updatedRef = { ...kurRef, hasAlis: hAlis, activeHas };
     recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, updatedRef);
   };
 
   const handleHasSatisChange = (val: string) => {
     setHasSatis(val);
-    const updatedRef = { ...kurRef, hasSatis: parseNum(val) };
+    const isAlis = kurRefMode === "alis";
+    const hAlis = parseNum(hasAlis);
+    const hSatis = parseNum(val);
+    const activeHas = isAlis ? (hAlis > 0 ? hAlis : hSatis) : (hSatis > 0 ? hSatis : hAlis);
+    const updatedRef = { ...kurRef, hasSatis: hSatis, activeHas };
     recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, updatedRef);
   };
 
   const handleUsdAlisChange = (val: string) => {
     setUsdAlis(val);
-    const updatedRef = { ...kurRef, usdAlis: parseNum(val) };
+    const isAlis = kurRefMode === "alis";
+    const uAlis = parseNum(val);
+    const uSatis = parseNum(usdSatis);
+    const activeUsd = isAlis ? (uAlis > 0 ? uAlis : uSatis) : (uSatis > 0 ? uSatis : uAlis);
+    const updatedRef = { ...kurRef, usdAlis: uAlis, activeUsd, usd: activeUsd > 0 ? activeUsd : 1 };
     recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, updatedRef);
   };
 
   const handleUsdSatisChange = (val: string) => {
     setUsdSatis(val);
-    const updatedRef = { ...kurRef, usdSatis: parseNum(val), usd: parseNum(val) };
+    const isAlis = kurRefMode === "alis";
+    const uAlis = parseNum(usdAlis);
+    const uSatis = parseNum(val);
+    const activeUsd = isAlis ? (uAlis > 0 ? uAlis : uSatis) : (uSatis > 0 ? uSatis : uAlis);
+    const updatedRef = { ...kurRef, usdSatis: uSatis, activeUsd, usd: activeUsd > 0 ? activeUsd : 1 };
     recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, updatedRef);
   };
 
@@ -1191,6 +1287,23 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     loadAll();
   }, [loadAll]);
 
+  // Canlı Ürün Senkronizasyonu (Sayfa yenilemesi olmadan Özel Ürün Seçim modalında anında güncelleme)
+  useEffect(() => {
+    const unsub = onProductChanged((event) => {
+      if (event.type === "all" || event.type === "ozel") {
+        EtiketService.getOzelUrunler({ limit: 500 })
+          .then((fresh) => {
+            if (fresh) {
+              const sorted = fresh.slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
+              setOzelList(sorted);
+            }
+          })
+          .catch(() => {});
+      }
+    });
+    return unsub;
+  }, []);
+
   const isInitialMountRef = useRef<boolean>(true);
   const handledQueryIdRef = useRef<string | null>(null);
   const prevPathnameRef = useRef<string>(location.pathname);
@@ -1268,6 +1381,14 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   // ─── F1 / F9 / F10 Klavye Kısayolları (Her render güncel ref çağırır) ─────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlN = isCtrlNEvent(e);
+      if (isCtrlN) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleNew();
+        return;
+      }
+
       if (showLookup || showMenuModal || showDeleteConfirm) return;
 
       if (e.key === "F1") {
@@ -1288,8 +1409,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         setShowLookup(true);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [isDuzeltmeMode, ozelUrunId, showLookup, showMenuModal, showDeleteConfirm]);
 
   // ─── Grup Seçimi & Sıradaki Numarayı Alma (3 Haneli) ─────────────────────────
@@ -1420,7 +1541,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const handleMamulKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      ureticiFirmaRef.current?.focus();
+      monturAyarRef.current?.focus();
     }
   };
 
@@ -1486,7 +1607,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       );
       if (exact) {
         handleAyarChange(exact.ayarKodu || exact.ayarAdi);
-        monturIscilikRef.current?.focus();
+        ureticiFirmaRef.current?.focus();
       } else {
         setShowAyarModal(true);
       }
@@ -1576,14 +1697,31 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setBanko(it.banko || "Banko 1");
 
     let loadedTaslar: TasSatiri[] = [];
+    let loadedMonturGram = it.miktar || "";
+    let loadedMonturIscilik = "";
+    let loadedMonturIscilikBirim = "Gram";
+    let loadedMonturIscilikPara = "USD";
+
     if (it.modelOzellik2) {
       try {
         const extra = JSON.parse(it.modelOzellik2);
-        if (extra.monturGram !== undefined) setMonturGram(extra.monturGram);
+        if (extra.monturGram !== undefined) {
+          setMonturGram(extra.monturGram);
+          loadedMonturGram = extra.monturGram;
+        }
         if (extra.monturHas !== undefined) setMonturHas(extra.monturHas);
-        if (extra.monturIscilik !== undefined) setMonturIscilik(extra.monturIscilik);
-        if (extra.monturIscilikBirim !== undefined) setMonturIscilikBirim(extra.monturIscilikBirim);
-        if (extra.monturIscilikParaKodu !== undefined) setMonturIscilikParaKodu(extra.monturIscilikParaKodu);
+        if (extra.monturIscilik !== undefined) {
+          setMonturIscilik(extra.monturIscilik);
+          loadedMonturIscilik = extra.monturIscilik;
+        }
+        if (extra.monturIscilikBirim !== undefined) {
+          setMonturIscilikBirim(extra.monturIscilikBirim);
+          loadedMonturIscilikBirim = extra.monturIscilikBirim;
+        }
+        if (extra.monturIscilikParaKodu !== undefined) {
+          setMonturIscilikParaKodu(extra.monturIscilikParaKodu);
+          loadedMonturIscilikPara = extra.monturIscilikParaKodu;
+        }
         if (extra.monturMaliyet !== undefined) setMonturMaliyet(extra.monturMaliyet);
         if (Array.isArray(extra.taslar) && extra.taslar.length > 0) {
           loadedTaslar = extra.taslar;
@@ -1595,6 +1733,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
     if (loadedTaslar.length === 0) {
       setMonturGram(it.miktar || "");
+      loadedMonturGram = it.miktar || "";
       loadedTaslar = [
         {
           id: "tas_1",
@@ -1613,11 +1752,41 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     }
     setTaslar(loadedTaslar);
 
-    setMaliyet(it.maliyet !== undefined && it.maliyet !== null ? it.maliyet : "");
+    const rawMaliyet = it.maliyet !== undefined && it.maliyet !== null ? parseNum(it.maliyet) : 0;
+    const rawSatis = it.satisFiyati !== undefined && it.satisFiyati !== null ? parseNum(it.satisFiyati) : 0;
+    let effectiveMaliyet = rawMaliyet;
+    let effectiveSatis = rawSatis;
+    let effectiveKar = it.karYuzdesi !== undefined && it.karYuzdesi !== null ? parseNum(it.karYuzdesi) : 100;
+
+    // Eğer eski veritabanı kaydında Maliyet ile Satış Fiyatı birbirine eşit kaydedilmişse düzelt:
+    if (effectiveMaliyet > 0 && effectiveSatis > 0 && Math.abs(effectiveMaliyet - effectiveSatis) < 0.01) {
+      if (effectiveKar > 0) {
+        effectiveMaliyet = Number((effectiveSatis / (1 + effectiveKar / 100)).toFixed(2));
+      } else {
+        effectiveKar = 50;
+        effectiveSatis = Number((effectiveMaliyet * 1.5).toFixed(2));
+      }
+    }
+
+    setMaliyet(effectiveMaliyet > 0 ? formatNumber(effectiveMaliyet, 2) : (rawMaliyet > 0 ? formatNumber(rawMaliyet, 2) : ""));
     setMaliyetParaKodu(it.maliyetParaKodu || "USD");
-    setSatisFiyati(it.satisFiyati !== undefined && it.satisFiyati !== null ? it.satisFiyati : "");
+    setSatisFiyati(effectiveSatis > 0 ? formatNumber(effectiveSatis, 2) : (rawSatis > 0 ? formatNumber(rawSatis, 2) : ""));
     setSatisParaKodu(it.satisParaKodu || "USD");
-    setSatisKariYuzde(it.karYuzdesi !== undefined && it.karYuzdesi !== null ? it.karYuzdesi : 100);
+    setSatisKariYuzde(effectiveKar);
+
+    // Otomatik hesaplama motorunu yüklenen değerlerle anında tetikle:
+    recalculateAll(
+      loadedMonturGram,
+      it.ayar || ayar || "14",
+      loadedMonturIscilik,
+      loadedMonturIscilikBirim,
+      loadedMonturIscilikPara,
+      loadedTaslar,
+      it.maliyetParaKodu || "USD",
+      it.satisParaKodu || "USD",
+      effectiveKar,
+      kurRef
+    );
 
     const loadedImages = (it.resimler && it.resimler.length > 0) ? it.resimler : (it.resim ? [it.resim] : []);
     setResimler(loadedImages);
@@ -2144,17 +2313,16 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         disabled={isSaving}
         modeText={ozelUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${ozelList.length})` : (isDuzeltmeMode ? "Düzeltme Modu" : "Yeni Kayıt Modu")}
         rightContent={
-          <a
-            href={`/tv-katalog${menuId ? `?menuId=${menuId}` : ""}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="d-inline-flex align-items-center gap-1 px-2.5 py-1 rounded border border-primary-subtle bg-white text-primary fw-semibold shadow-xs"
-            title="Katalog TV Sunum Ekranını Yeni Sekmede Aç"
+          <button
+            type="button"
+            onClick={() => setShowTvMenuModal(true)}
+            className="btn btn-sm d-inline-flex align-items-center gap-1 px-2.5 py-1 rounded border border-primary-subtle bg-white text-primary fw-semibold shadow-xs"
+            title="Katalog TV Menü Seç ve Aç"
             style={{ fontSize: "12px", textDecoration: "none", height: "30px", whiteSpace: "nowrap" }}
           >
             <span>Menüyü Aç</span>
             <IconExternalLink size={14} />
-          </a>
+          </button>
         }
       />
 
@@ -2375,10 +2543,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
             </div>
           </div>
 
-          {/* ─── ORTA BÖLÜM: SOL (Ürün Kimliği) + SAĞ (Montür & Birleşik Fiyatlandırma) ─── */}
+          {/* ─── ÜÇ SÜTUNLU GÖVDE (Ürün Kimliği | Montür & İşçilik | Fotoğraf & Maliyet/Kâr) ─── */}
           <Row className="g-3 mb-3">
-            {/* ─── SOL BLOK: Ürün Kimliği ─── */}
-            <Col xs={12} lg={6}>
+            {/* ─── 1. SÜTUN: Ürün Kimliği ─── */}
+            <Col xs={12} lg="auto" style={{ width: "360px", maxWidth: "100%" }}>
               <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column justify-content-between">
                 <div>
                   <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
@@ -2386,8 +2554,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <span>Ürün Kimliği</span>
                   </div>
 
-                  {/* Mamul Tipi (Kullanıcı Kendi Girer / Datalist) */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                  {/* Mamul Tipi */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Mamul Tipi :
                     </div>
@@ -2401,12 +2569,48 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         onChange={(e) => setMamulTipi(e.target.value)}
                         onKeyDown={handleMamulKeyDown}
                         className="fw-bold bg-white"
+                        placeholder="Örn: Yüzük, Kolye"
                       />
                     </div>
                   </div>
 
+                  {/* Ayar */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
+                      Ayar :
+                    </div>
+                    <div style={{ maxWidth: "180px" }}>
+                      <InputGroup size="sm">
+                        <Form.Control
+                          ref={monturAyarRef}
+                          type="text"
+                          list="ozelAyarListesi"
+                          value={ayar}
+                          onChange={(e) => handleAyarChange(e.target.value)}
+                          onKeyDown={handleAyarKeyDown}
+                          className="bg-white fw-bold font-monospace text-end"
+                          placeholder="Ayar seçin / yazın"
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          onClick={() => setShowAyarModal(true)}
+                          title="Ayar Tanımları & Seçim (Dürbün)"
+                        >
+                          <IconBinoculars size={15} />
+                        </Button>
+                      </InputGroup>
+                      <datalist id="ozelAyarListesi">
+                        {ayarList.map((a) => (
+                          <option key={a.ayarId} value={a.ayarKodu}>
+                            {a.ayarAdi} ({Math.round(a.milyem * 1000)})
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
+                  </div>
+
                   {/* Üretici Firma */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                  <div className="d-flex align-items-center mb-2 gap-2">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Üretici Firma :
                     </div>
@@ -2436,11 +2640,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   </div>
 
                   {/* Orjinal Kod */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                  <div className="d-flex align-items-center mb-2 gap-2">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Orjinal Kod :
                     </div>
-                    <div style={{ maxWidth: "200px" }}>
+                    <div style={{ maxWidth: "160px" }}>
                       <Form.Control
                         ref={orjinalKodRef}
                         type="text"
@@ -2461,12 +2665,12 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Model (Alt Satırda) */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
+                  {/* Model */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Model :
                     </div>
-                    <div style={{ maxWidth: "200px" }}>
+                    <div style={{ maxWidth: "190px" }}>
                       <Form.Control
                         ref={modelRef}
                         type="text"
@@ -2488,7 +2692,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                   </div>
 
                   {/* Banko */}
-                  <div className="d-flex align-items-center gap-1.5 mb-2">
+                  <div className="d-flex align-items-center gap-2 mb-2">
                     <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "95px" }}>
                       Banko :
                     </div>
@@ -2533,72 +2737,230 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </Col>
 
-                {/* ─── Fotoğraf Yönetimi (Ürün Kimliği İçinde En Altta) ─── */}
-                <div className="pt-2.5 mt-2 border-top">
-                  <div className="d-flex align-items-center gap-3">
+            {/* ─── 2. SÜTUN: Montür & İşçilik ─── */}
+            <Col xs={12} md={6} xl="auto" style={{ width: "380px", maxWidth: "100%" }}>
+              <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column gap-2.5">
+                <div>
+                  <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center justify-content-between">
+                    <div className="d-flex align-items-center gap-1.5">
+                      <IconScale size={18} />
+                      <span>Montür & İşçilik</span>
+                    </div>
+                    {monturHas && parseNum(monturHas) > 0 ? (
+                      <Badge bg="primary" className="font-monospace px-2 py-1">
+                        {monturHas} HAS
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  {/* Montür Gramajı + Has Rozeti */}
+                  <div className="d-flex flex-column gap-1 mb-2">
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                        Montür (Gram)<span className="text-danger">*</span> :
+                      </div>
+                      <div className="flex-grow-1 d-flex align-items-center gap-2">
+                        <Form.Control
+                          ref={monturGramRef}
+                          type="text"
+                          inputMode="decimal"
+                          size="sm"
+                          value={monturGram ?? ""}
+                          onChange={(e) => handleMonturGramChange(cleanInputStr(e.target.value))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === "ArrowDown") {
+                              e.preventDefault();
+                              monturIscilikRef.current?.focus();
+                            }
+                          }}
+                          className={`fw-bold font-monospace text-end bg-white ${
+                            !isDuzeltmeMode && !konsinye && vezneStok !== null && parseNum(monturGram) > vezneStok ? "is-invalid border-danger text-danger" : ""
+                          }`}
+                          style={{ maxWidth: "140px" }}
+                          placeholder="0.00"
+                        />
+                        <span className="badge bg-light text-primary border px-2 py-1.5 font-monospace fs-7 fw-bold text-nowrap">
+                          {monturHas && parseNum(monturHas) > 0 ? format5(parseNum(monturHas)) : "0.00000"} Has
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Canlı Vezne Stok Rozeti */}
+                    <div className="d-flex align-items-center gap-2 ms-auto pe-1" style={{ fontSize: "11.5px" }}>
+                      <span
+                        className={`badge ${vezneStok !== null && vezneStok > 0 ? "bg-info-subtle text-info-emphasis border-info-subtle" : "bg-secondary-subtle text-secondary border-secondary-subtle"} border px-2 py-1 font-monospace`}
+                        title="Giriş yapan kullanıcının veznesindeki güncel stok bakiyesi"
+                      >
+                        <IconBuildingBank size={12} className="me-1" />
+                        Vezne Stoğu ({vezneStokParaKodu || ayar || "14"}): {loadingStok ? "..." : (vezneStok !== null ? `${vezneStok.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} gr` : "0.00 gr")}
+                      </span>
+                      {vezneStok !== null && parseNum(monturGram) > vezneStok && (
+                        <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 fw-bold">
+                          <IconAlertTriangle size={12} className="me-1" /> Yetersiz Stok!
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Montür İşçilik & Birim & Para Kodu */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                      Montür İşçilik :
+                    </div>
+                    <div className="flex-grow-1 d-flex align-items-center gap-1.5" style={{ maxWidth: "250px" }}>
+                      <Form.Control
+                        ref={monturIscilikRef}
+                        type="text"
+                        inputMode="decimal"
+                        size="sm"
+                        value={monturIscilik ?? ""}
+                        onChange={(e) => handleMonturIscilikChange(cleanInputStr(e.target.value))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === "ArrowDown") {
+                            e.preventDefault();
+                            satisKariRef.current?.focus();
+                          }
+                        }}
+                        className="font-monospace text-end bg-white"
+                        style={{ maxWidth: "80px" }}
+                        placeholder="0.00"
+                      />
+                      <Form.Select
+                        size="sm"
+                        value={monturIscilikBirim}
+                        onChange={(e) => handleMonturIscilikBirimChange(e.target.value)}
+                        className="bg-white fw-semibold"
+                        style={{ maxWidth: "85px" }}
+                      >
+                        <option value="Gram">/ Gram</option>
+                        <option value="Adet">/ Adet</option>
+                      </Form.Select>
+                      <InputGroup size="sm" style={{ width: "85px" }}>
+                        <Form.Control
+                          type="text"
+                          readOnly
+                          value={monturIscilikParaKodu}
+                          className="font-monospace bg-light fw-bold text-center px-1"
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          className="px-1.5"
+                          onClick={() => setShowKurLookup("monturIscilik")}
+                          title="Para Tablosundan Seç (Dürbün)"
+                        >
+                          <IconBinoculars size={14} />
+                        </Button>
+                      </InputGroup>
+                    </div>
+                  </div>
+
+                  {/* Montür İşçilik Tutarı */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                      İşçilik Tutarı :
+                    </div>
+                    <div className="flex-grow-1">
+                      <span className="badge bg-light text-dark border px-2.5 py-1.5 font-monospace fw-semibold">
+                        {monturIscilikTutari && parseNum(monturIscilikTutari) > 0 ? formatNumber(parseNum(monturIscilikTutari), 2) : "0.00"} {monturIscilikParaKodu}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Toplam Montür Maliyeti */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                      Montür Maliyeti :
+                    </div>
+                    <div className="flex-grow-1">
+                      <span className="badge bg-light text-primary border px-2.5 py-1.5 font-monospace fw-bold fs-7">
+                        {monturMaliyet && parseNum(monturMaliyet) > 0 ? formatNumber(parseNum(monturMaliyet), 2) : "0.00"} {maliyetParaKodu}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Taşlar Özeti */}
+                  <div className="d-flex align-items-center mb-1 gap-2 pt-2 border-top">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                      Taşlar Tutarı :
+                    </div>
+                    <div className="flex-grow-1 d-flex align-items-center gap-1.5 flex-wrap">
+                      <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle px-2 py-1 font-monospace">
+                        {toplamTasAdedi} Adet
+                      </span>
+                      <span className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 font-monospace">
+                        {formatNumber(toplamTasKarat, 2)} Ct
+                      </span>
+                      <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 font-monospace fw-bold">
+                        {formatNumber(toplamTasTutariUSD, 2)} USD
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Col>
+
+            {/* ─── 3. SÜTUN: Fotoğraf Yükleme (Üstte) & Maliyet / Kâr (Altında) ─── */}
+            <Col xs={12} lg={12} xl="auto" style={{ width: "450px", maxWidth: "100%" }}>
+              <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column justify-content-between gap-3">
+                {/* 1. Fotoğraf Yönetimi (ÜSTTE) */}
+                <div>
+                  <div className="fw-bold text-primary border-bottom pb-1.5 mb-2.5 d-flex align-items-center gap-1.5">
+                    <IconCamera size={18} />
+                    <span>Fotoğraf Yönetimi</span>
+                  </div>
+
+                  <div className="d-flex align-items-start gap-3">
                     {/* Ana Fotoğraf Önizleme Kutusu */}
                     <div
-                      className="rounded-3 border d-flex flex-column align-items-center justify-content-center bg-white position-relative overflow-hidden flex-shrink-0 group"
+                      className="rounded border bg-light d-flex align-items-center justify-content-center overflow-hidden position-relative"
                       style={{
-                        width: "125px",
-                        height: "100px",
-                        boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
-                        cursor: (resimler.length > 0 || resim) ? "zoom-in" : "default",
+                        width: "110px",
+                        height: "110px",
+                        flexShrink: 0,
+                        cursor: (resim || (resimler && resimler.length > 0)) ? "pointer" : "default",
                       }}
                       onClick={() => {
-                        if (resimler.length > 0 || resim) setShowFotoModal(true);
+                        if (resim || (resimler && resimler.length > 0)) {
+                          setShowFotoModal(true);
+                        }
                       }}
-                      title={(resimler.length > 0 || resim) ? "Büyütmek için tıklayın" : ""}
+                      title={resim || (resimler && resimler.length > 0) ? "Fotoğrafı Büyüt (Tıkla)" : "Fotoğraf Yok"}
                     >
                       {resimler.length > 0 && resimler[seciliResimIndex] ? (
                         <img
                           src={resolveImageUrl(resimler[seciliResimIndex])}
                           alt={`Özel Ürün Fotoğrafı ${seciliResimIndex + 1}`}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "contain",
-                            padding: "4px",
-                          }}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         />
                       ) : resim ? (
                         <img
                           src={resolveImageUrl(resim)}
                           alt="Özel Ürün Fotoğrafı"
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "contain",
-                            padding: "4px",
-                          }}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         />
                       ) : (
-                        <div className="d-flex flex-column align-items-center text-muted p-2 text-center">
+                        <div className="d-flex flex-column align-items-center justify-content-center text-muted p-2 text-center">
                           <IconCamera size={26} className="text-secondary opacity-50 mb-1" />
                           <span className="small fw-semibold text-secondary" style={{ fontSize: "11px" }}>Fotoğraf Yok</span>
                         </div>
                       )}
 
-                      {/* Büyütme Butonu */}
-                      {(resimler.length > 0 || resim) && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowFotoModal(true);
-                          }}
-                          className="btn btn-sm btn-light border position-absolute end-0 top-0 m-1 rounded-circle d-flex align-items-center justify-content-center shadow-xs"
-                          style={{ width: "22px", height: "22px", zIndex: 6, opacity: 0.85, padding: 0 }}
+                      {(resim || (resimler && resimler.length > 0)) && (
+                        <span
+                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-50 text-white px-1.5 py-0.5 rounded-top-start"
+                          style={{ fontSize: "10px" }}
                           title="Fotoğrafı Büyüt"
                         >
-                          <IconMaximize size={12} className="text-dark" />
-                        </button>
+                          <IconMaximize size={12} />
+                        </span>
                       )}
 
                       {resimler.length > 1 && (
                         <span
-                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5 rounded-top-start small font-monospace"
+                          className="position-absolute top-0 start-0 bg-dark bg-opacity-60 text-white px-1.5 py-0.5 rounded-bottom-end font-monospace"
                           style={{ fontSize: "10px" }}
                         >
                           {seciliResimIndex + 1}/{resimler.length}
@@ -2606,31 +2968,31 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* YÜKLE & SİL Eylem Butonları */}
-                    <div className="d-flex flex-column gap-1.5" style={{ width: "120px" }}>
+                    {/* YÜKLE (Kamera / Dosya) & SİL Butonları */}
+                    <div className="d-flex flex-column gap-2" style={{ width: "130px" }}>
                       <Dropdown className="w-100">
                         <Dropdown.Toggle
                           variant="outline-success"
                           size="sm"
                           className="fw-bold w-100 d-flex align-items-center justify-content-center gap-1"
-                          id="dropdown-ozel-foto-yukle"
+                          id="dropdown-foto-yukle-ozel"
                         >
-                          <IconCamera size={14} />
+                          <IconCamera size={15} />
                           <span>YÜKLE</span>
                         </Dropdown.Toggle>
-                        <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: "140px" }}>
+                        <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: "150px" }}>
                           <Dropdown.Item
                             onClick={startCamera}
-                            className="d-flex align-items-center gap-2 small py-1.5"
+                            className="d-flex align-items-center gap-2 small py-2"
                           >
-                            <IconCamera size={15} className="text-success" />
+                            <IconCamera size={16} className="text-success" />
                             <span className="fw-semibold">Kameradan Çek</span>
                           </Dropdown.Item>
                           <Dropdown.Item
                             onClick={() => fileInputRef.current?.click()}
-                            className="d-flex align-items-center gap-2 small py-1.5"
+                            className="d-flex align-items-center gap-2 small py-2"
                           >
-                            <IconFolder size={15} className="text-primary" />
+                            <IconFolder size={16} className="text-primary" />
                             <span className="fw-semibold">Dosyadan Seç</span>
                           </Dropdown.Item>
                         </Dropdown.Menu>
@@ -2647,240 +3009,125 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         SİL
                       </Button>
                     </div>
-
-                    {/* Çoklu Fotoğraf Küçük Kareler Listesi (Thumbnails) */}
-                    {resimler.length > 1 && (
-                      <div className="d-flex align-items-center gap-1.5 overflow-auto py-1 flex-grow-1" style={{ maxWidth: "100%" }}>
-                        {resimler.map((imgUrl, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              setSeciliResimIndex(idx);
-                              setResim(imgUrl);
-                            }}
-                            className={`rounded border p-0.5 cursor-pointer ${idx === seciliResimIndex ? "border-primary border-2 shadow-sm" : "border-light opacity-75"
-                              }`}
-                            style={{
-                              width: "32px",
-                              height: "32px",
-                              flexShrink: 0,
-                              cursor: "pointer",
-                              background: "#fff",
-                            }}
-                          >
-                            <img
-                              src={resolveImageUrl(imgUrl)}
-                              alt={`thumb-${idx}`}
-                              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "2px" }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Col>
-
-            {/* ─── SAĞ BLOK: Montür Maliyeti + Birleşik Fiyatlandırma ─── */}
-            <Col xs={12} lg={6}>
-              <div className="border rounded-3 p-3 bg-white h-100 d-flex flex-column justify-content-between gap-2.5">
-                {/* Montür (Gövde Altın / Metal) Hesap Alanı */}
-                <div>
-                  <div className="fw-bold text-primary border-bottom pb-1.5 mb-2 d-flex align-items-center justify-content-between">
-                    <div className="d-flex align-items-center gap-1.5">
-                      <IconScale size={18} />
-                      <span>Montür Maliyeti</span>
-                    </div>
-                    {monturHas && parseNum(monturHas) > 0 ? (
-                      <Badge bg="primary" className="font-monospace px-2 py-1">
-                        {monturHas} HAS
-                      </Badge>
-                    ) : null}
                   </div>
 
-                  {/* Montür Gramajı & Ayar (Kullanıcı Kendi Yazar / Seçer, başlangıçta boş) */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5 flex-wrap">
-                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
-                      Montür Gr / Ayar :
-                    </div>
-                    <div className="flex-grow-1 d-flex align-items-center gap-1.5" style={{ maxWidth: "270px" }}>
-                      <Form.Control
-                        ref={monturGramRef}
-                        type="text"
-                        inputMode="decimal"
-                        size="sm"
-                        value={monturGram ?? ""}
-                        onChange={(e) => handleMonturGramChange(cleanInputStr(e.target.value))}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            monturAyarRef.current?.focus();
-                          }
-                        }}
-                        className={`fw-bold font-monospace text-end bg-white ${
-                          !isDuzeltmeMode && !konsinye && vezneStok !== null && parseNum(monturGram) > vezneStok ? "is-invalid border-danger text-danger" : ""
-                        }`}
-                        style={{ maxWidth: "105px" }}
-                        placeholder="0.00"
-                      />
-                      <InputGroup size="sm" style={{ maxWidth: "160px" }}>
-                        <Form.Control
-                          ref={monturAyarRef}
-                          type="text"
-                          list="ayarListesi"
-                          value={ayar}
-                          onChange={(e) => handleAyarChange(e.target.value)}
-                          onKeyDown={handleAyarKeyDown}
-                          className="bg-white fw-bold font-monospace text-end"
-                          placeholder="Ayar seçin / yazın"
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          onClick={() => setShowAyarModal(true)}
-                          title="Ayar Tanımları & Seçim (Dürbün)"
+                  {/* Çoklu Fotoğraf Önizleme Küçük Resim Listesi */}
+                  {resimler.length > 1 && (
+                    <div className="d-flex align-items-center gap-1.5 overflow-auto py-1 mt-2" style={{ maxWidth: "100%" }}>
+                      {resimler.map((imgUrl, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setSeciliResimIndex(idx);
+                            setResim(imgUrl);
+                          }}
+                          className={`rounded border p-0.5 cursor-pointer ${
+                            idx === seciliResimIndex ? "border-primary border-2 shadow-sm" : "border-light opacity-75"
+                          }`}
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            flexShrink: 0,
+                            cursor: "pointer",
+                            background: "#fff",
+                          }}
                         >
-                          <IconBinoculars size={15} />
-                        </Button>
-                      </InputGroup>
+                          <img
+                            src={resolveImageUrl(imgUrl)}
+                            alt={`thumb-${idx}`}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "2px" }}
+                          />
+                        </div>
+                      ))}
                     </div>
-                    {vezneStok !== null && (
-                      <Badge 
-                        bg={vezneStok <= 0 ? "danger" : parseNum(monturGram) > vezneStok ? "danger" : "light"}
-                        text={vezneStok > 0 && parseNum(monturGram) <= vezneStok ? "dark" : "white"}
-                        className="border ms-1 py-1 px-2 text-nowrap font-monospace"
-                        style={{ fontSize: "11px" }}
-                      >
-                        Vezne Stoğu ({vezneStokParaKodu || ayar || "22"}): {vezneStok.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} gr
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Montür İşçilik & Dürbünlü Para Tablosu Seçimi */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
-                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
-                      Montür İşçilik :
-                    </div>
-                    <div className="flex-grow-1 d-flex align-items-center gap-1.5">
-                      <Form.Control
-                        ref={monturIscilikRef}
-                        type="text"
-                        inputMode="decimal"
-                        size="sm"
-                        value={monturIscilik ?? ""}
-                        onChange={(e) => handleMonturIscilikChange(cleanInputStr(e.target.value))}
-                        className="font-monospace text-end bg-white"
-                        style={{ maxWidth: "110px" }}
-                      />
-                      <Form.Select
-                        size="sm"
-                        value={monturIscilikBirim}
-                        onChange={(e) => handleMonturIscilikBirimChange(e.target.value)}
-                        className="bg-white fw-semibold"
-                        style={{ maxWidth: "90px" }}
-                      >
-                        <option value="Gram">/ Gram</option>
-                        <option value="Adet">/ Adet</option>
-                      </Form.Select>
-                      <InputGroup size="sm" style={{ width: "120px" }}>
-                        <Form.Control
-                          type="text"
-                          readOnly
-                          value={monturIscilikParaKodu}
-                          className="font-monospace bg-light fw-bold text-center px-1"
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          className="px-2"
-                          onClick={() => setShowKurLookup("monturIscilik")}
-                          title="Para Tablosundan Seç (Dürbün)"
-                        >
-                          <IconBinoculars size={14} />
-                        </Button>
-                      </InputGroup>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
-                {/* Birleşik Maliyet, Satış & Kâr Motoru (Dürbün İkonu ile Para Tablosundan Seçim) */}
+                {/* 2. Maliyet / Kâr (ALTINDA) */}
                 <div className="pt-2 border-top">
-                  <div className="fw-bold text-primary border-bottom pb-1 mb-2 d-flex align-items-center justify-content-between">
-                    <div className="d-flex align-items-center gap-1.5">
-                      <IconCoin size={17} />
-                      <span>Maliyet / Satış Fiyatlandırması</span>
+                  <div className="d-flex align-items-center justify-content-between border-bottom pb-1.5 mb-2.5">
+                    <div className="fw-bold text-primary d-flex align-items-center gap-1.5">
+                      <IconCoin size={18} />
+                      <span>Maliyet / Kâr</span>
                     </div>
-                    {monturMaliyet && parseNum(monturMaliyet) > 0 ? (
-                      <span className="small text-muted font-monospace" style={{ fontSize: "11px" }}>
-                        Montür: <strong className="text-dark">{monturMaliyet} {maliyetParaKodu}</strong>
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {/* Toplam Maliyet */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
-                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
-                      Toplam Maliyet :
-                    </div>
-                    <div style={{ maxWidth: "220px" }}>
-                      <InputGroup size="sm">
-                        <Form.Control
-                          type="text"
-                          readOnly
-                          value={maliyet ?? ""}
-                          className="fw-bold font-monospace text-end bg-light"
-                          title="Toplam Montür Maliyeti + Taşlar Tutarı (Kilitli)"
-                        />
-                        <Form.Control
-                          type="text"
-                          readOnly
-                          value={maliyetParaKodu}
-                          className="bg-light font-monospace fw-bold text-center px-1"
-                          style={{ maxWidth: "55px" }}
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          className="px-2"
-                          onClick={() => setShowKurLookup("maliyet")}
-                          title="Para Tablosundan Seç (Dürbün)"
-                        >
-                          <IconBinoculars size={14} />
-                        </Button>
-                      </InputGroup>
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="small fw-bold text-secondary" style={{ fontSize: "11px" }}>Kur Ref:</span>
+                      <Form.Check
+                        inline
+                        type="radio"
+                        id="kurRefAlisOzel"
+                        name="kurRefRadioOzel"
+                        label="Alış"
+                        checked={kurRefMode === "alis"}
+                        onChange={() => handleKurRefModeChange("alis")}
+                        className="small mb-0 text-secondary fw-semibold"
+                        style={{ fontSize: "12px" }}
+                      />
+                      <Form.Check
+                        inline
+                        type="radio"
+                        id="kurRefSatisOzel"
+                        name="kurRefRadioOzel"
+                        label="Satış"
+                        checked={kurRefMode === "satis"}
+                        onChange={() => handleKurRefModeChange("satis")}
+                        className="small mb-0 text-secondary fw-semibold"
+                        style={{ fontSize: "12px" }}
+                      />
                     </div>
                   </div>
 
                   {/* Satış Kârı % */}
-                  <div className="d-flex align-items-center mb-2 gap-1.5">
-                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
                       Satış Kârı % :
                     </div>
-                    <div style={{ maxWidth: "140px" }}>
-                      <InputGroup size="sm">
+                    <div className="flex-grow-1">
+                      <InputGroup size="sm" style={{ maxWidth: "135px" }}>
                         <Form.Control
+                          ref={satisKariRef}
                           type="text"
                           inputMode="decimal"
-                          value={satisKariYuzde ?? ""}
+                          value={satisKariYuzde !== "" ? `${satisKariYuzde}` : ""}
                           onChange={(e) => handleKarYuzdeChange(cleanInputStr(e.target.value))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleSave();
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              monturIscilikRef.current?.focus();
+                            }
+                          }}
                           className="font-monospace text-end fw-bold text-success bg-white"
+                          title="Satış Kârı %: Kâr oranını serbestçe girebilirsiniz. Satış fiyatı otomatik güncellenir."
                         />
-                        <InputGroup.Text className="bg-light fw-bold px-2">%</InputGroup.Text>
+                        <InputGroup.Text className="bg-light">%</InputGroup.Text>
                       </InputGroup>
                     </div>
                   </div>
 
                   {/* Satış Fiyatı */}
-                  <div className="d-flex align-items-center mb-1 gap-1.5">
-                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "115px" }}>
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
                       Satış Fiyatı :
                     </div>
-                    <div style={{ maxWidth: "220px" }}>
-                      <InputGroup size="sm">
+                    <div className="flex-grow-1 d-flex align-items-center gap-2" style={{ maxWidth: "330px" }}>
+                      <InputGroup size="sm" style={{ maxWidth: "220px" }}>
                         <Form.Control
+                          ref={satisFiyatiRef}
                           type="text"
                           inputMode="decimal"
                           value={satisFiyati ?? ""}
                           onChange={(e) => handleSatisFiyatiChange(cleanInputStr(e.target.value))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleSave();
+                            }
+                          }}
                           className="fw-bold font-monospace text-primary text-end bg-white fs-6"
+                          title="Satış Fiyatı: Maliyet + Kâr"
                         />
                         <Form.Control
                           type="text"
@@ -2891,8 +3138,41 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         />
                         <Button
                           variant="outline-secondary"
-                          className="px-2"
+                          className="px-1.5"
                           onClick={() => setShowKurLookup("satis")}
+                          title="Para Tablosundan Seç (Dürbün)"
+                        >
+                          <IconBinoculars size={14} />
+                        </Button>
+                      </InputGroup>
+                    </div>
+                  </div>
+
+                  {/* Maliyet */}
+                  <div className="d-flex align-items-center mb-2 gap-2">
+                    <div className="small fw-bold text-secondary text-nowrap flex-shrink-0" style={{ width: "100px" }}>
+                      Maliyet :
+                    </div>
+                    <div className="flex-grow-1 d-flex align-items-center gap-2" style={{ maxWidth: "330px" }}>
+                      <InputGroup size="sm" style={{ maxWidth: "220px" }}>
+                        <Form.Control
+                          type="text"
+                          readOnly
+                          value={maliyet ?? ""}
+                          className="fw-bold font-monospace text-end bg-light"
+                          title="Gerçek Maliyet: Toplam Montür Maliyeti + Taşlar Tutarı (Kilitli)"
+                        />
+                        <Form.Control
+                          type="text"
+                          readOnly
+                          value={maliyetParaKodu}
+                          className="bg-light font-monospace fw-bold text-center px-1"
+                          style={{ maxWidth: "55px" }}
+                        />
+                        <Button
+                          variant="outline-secondary"
+                          className="px-1.5"
+                          onClick={() => setShowKurLookup("maliyet")}
                           title="Para Tablosundan Seç (Dürbün)"
                         >
                           <IconBinoculars size={14} />
@@ -3463,6 +3743,15 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
               >
                 <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F10</Badge>
                 <span className="fw-bold text-dark">Kaydet / Yazdır</span>
+              </span>
+              <span
+                className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                style={{ fontSize: "11.5px", cursor: "pointer" }}
+                onClick={() => handleNew()}
+                title="Yeni Kayıt (Ctrl+N)"
+              >
+                <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>Ctrl+N</Badge>
+                <span className="fw-bold text-dark">Yeni Kayıt</span>
               </span>
             </div>
           </div>
@@ -4079,6 +4368,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           setMenuAdi(m.menuAdi);
           setKatalog(true);
         }}
+      />
+
+      <TvKatalogMenuSecimModal
+        show={showTvMenuModal}
+        onClose={() => setShowTvMenuModal(false)}
       />
 
       {/* Kayıt / İşlem Sırasında Yüklenme Spinner Rozeti & Katmanı */}

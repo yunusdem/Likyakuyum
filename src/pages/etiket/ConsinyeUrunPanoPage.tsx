@@ -363,6 +363,8 @@ export const ConsinyeUrunPanoPage: React.FC<ConsinyeUrunPanoPageProps> = ({ tip 
           </div>
         }
         pageIcon={isAltin ? <IconCoin size={20} className="text-warning" /> : <IconDiamond size={20} className="text-info" />}
+        hideSave
+        onNew={() => navigate(isAltin ? "/etiket/altin-urun-barkodlama" : "/etiket/ozel-urun-barkodlama")}
         onRefresh={() => loadData(false)}
         onPrint={handlePrint}
         rightContent={
@@ -503,7 +505,7 @@ export const ConsinyeUrunPanoPage: React.FC<ConsinyeUrunPanoPageProps> = ({ tip 
         style={{ fontSize: "13px" }}
       >
         {/* Arama Inputu */}
-        <div className="flex-grow-1" style={{ minWidth: "180px" }}>
+        <div style={{ width: "260px", maxWidth: "280px", flexShrink: 0 }}>
           <InputGroup size="sm">
             <InputGroup.Text className="bg-light border-end-0 text-muted px-2.5">
               <IconSearch size={14} />

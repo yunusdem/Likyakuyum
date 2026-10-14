@@ -1,4 +1,4 @@
-import { kagitOlcusu, renkGecerli } from "./sablonCekirdek.js";
+import { HESAP_TERIMI, YAZI_TIPLERI, kagitOlcusu, renkGecerli } from "./sablonCekirdek.js";
 import { alanKatalogu } from "./alanKatalogu.js";
 export const SABLON_AZAMI_BAYT = 300 * 1024;
 const OGE_AZAMI = 400;
@@ -42,8 +42,6 @@ function ogeMetinleri(o, kosullarla = true) {
     }
     return m;
 }
-/** Zorunlu öğenin basılan veri alanları (koşullar hariç: öğenin koşulu ayrıca birebir denetlenir). */
-const yolKumesi = (o) => new Set(ogeMetinleri(o, false).flatMap(t => yerTutuculari(t).map(y => y.yol)));
 /**
  * @param gorselAdlari firmanın yüklediği logo / imza görsellerinin adları; verilirse şablondaki görsel adları bunlarda
  *   olmalıdır (yükleme / kayıt). Verilmezse (etkin şablonu okurken) görsel adı denetlenmez, eksik görsel boş basılır.
@@ -161,6 +159,10 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
         for (const r of ["renk", "zemin", "baslikZemin"])
             if (o[r] !== undefined && !renkGecerli(o[r]))
                 hata(`"${r}" #rgb ya da #rrggbb biçiminde renk olmalı.`, ad, r);
+        if (o.font !== undefined && !(typeof o.font === "string" && YAZI_TIPLERI[o.font]))
+            hata(`"font" şunlardan biri olmalı: ${Object.keys(YAZI_TIPLERI).join(", ")}.`, ad, "font");
+        if (o.italik !== undefined && typeof o.italik !== "boolean")
+            hata(`"italik" true ya da false olmalı.`, ad, "italik");
         for (const h of ["hiza", "hizaDeger"])
             if (o[h] !== undefined && !HIZALAR.includes(o[h]))
                 hata(`"${h}" left, center ya da right olmalı.`, ad, h);
@@ -257,7 +259,21 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
         }
         for (const t of ogeMetinleri(o))
             for (const y of yerTutuculari(t)) {
-                if (!izinli.has(y.yol))
+                // Hesap: {{= a işlem b | biçim}} — iki terim alan ya da sayı, işlem + − × ÷ (bölüm 11, K13)
+                if (y.yol.startsWith("=")) {
+                    const m = /^=\s*(\S+)\s*([+\-*/])\s*(\S+)$/.exec(y.yol);
+                    if (!m) {
+                        hata(`Hesap anlaşılamadı: {{${y.yol}}}. Biçim: alan ya da sayı, işlem (+ − × ÷), alan ya da sayı.`, ad);
+                        continue;
+                    }
+                    for (const terim of [m[1], m[3]]) {
+                        if (!HESAP_TERIMI.test(terim))
+                            hata(`Hesapta geçersiz terim "${terim}".`, ad);
+                        else if (!/^-?\d/.test(terim) && !izinli.has(terim))
+                            hata(`Hesapta bilinmeyen alan {{${terim}}}.`, ad);
+                    }
+                }
+                else if (!izinli.has(y.yol))
                     hata(`Bilinmeyen alan {{${y.yol}}}. Kullanılabilir alanlar "Nasıl yapılır?" penceresindeki tabloda.`, ad);
                 if (y.bicim !== undefined && !BICIMLER.includes(y.bicim))
                     hata(`Bilinmeyen biçim |${y.bicim}. Geçerli: ${BICIMLER.join(", ")}, sayi:N.`, ad);
@@ -265,43 +281,16 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
                     hata(`"|${y.bicim}:${y.hane}" geçersiz; yalnızca sayi:0–9 kullanılabilir.`, ad);
             }
     });
-    // Yasal zorunlu öğeler: silinemez; türü, koşulu, veri alanları ve görseli değiştirilemez (yeri / boyutu değişebilir)
-    const gelenler = new Map(sablon.ogeler.filter(o => o && typeof o.id === "string").map(o => [o.id, o]));
-    for (const z of varsayilan.ogeler.filter(o => o.zorunlu && o.id)) {
-        const ad = z.ad || z.id;
-        const g = gelenler.get(z.id);
-        if (!g) {
-            hata(`Zorunlu öğe silinmiş: "${ad}" (id: ${z.id}). Yasal alanlar kaldırılamaz, yalnızca yeri ve boyutu değişebilir.`, z.id);
-            continue;
-        }
-        if (g.tip !== z.tip) {
-            hata(`Zorunlu öğenin türü değiştirilemez ("${z.tip}" olmalı).`, z.id, "tip");
-            continue;
-        }
-        if (String(g.kosul ?? "").trim() !== String(z.kosul ?? "").trim())
-            hata(`Zorunlu öğenin koşulu değiştirilemez${z.kosul ? ` ("${z.kosul}" olmalı)` : " (koşul eklenemez)"}.`, z.id, "kosul");
-        const eksik = [...yolKumesi(z)].filter(y => !yolKumesi(g).has(y));
-        if (eksik.length)
-            hata(`Zorunlu öğeden veri alanı çıkarılamaz: ${eksik.map(e => `{{${e}}}`).join(", ")}.`, z.id);
-        if (z.tip === "resim" && g.dosya !== z.dosya)
-            hata(`Zorunlu görsel değiştirilemez ("${z.dosya}").`, z.id, "dosya");
-        if (z.tip === "liste" && g.kaynak !== z.kaynak)
-            hata(`Zorunlu listenin kaynağı değiştirilemez ("${z.kaynak}").`, z.id, "kaynak");
-    }
     if (hatalar.length)
         return { gecerli: false, hatalar };
-    // Temiz kopya: kod varsayılandan, kimliksiz öğelere kimlik, zorunlu işaretleri varsayılandan
-    const zorunluIdler = new Set(varsayilan.ogeler.filter(o => o.zorunlu && o.id).map(o => o.id));
+    // Temiz kopya: kod varsayılandan, kimliksiz öğelere kimlik; "zorunlu" işareti artık kullanılmaz (K12)
     let sayac = 1;
     const yeniId = () => { let id; do
         id = `oge-${sayac++}`;
     while (idler.has(id)); idler.add(id); return id; };
     const ogeler = sablon.ogeler.map((o) => {
         const k = { ...o, id: o.id || yeniId() };
-        if (zorunluIdler.has(k.id))
-            k.zorunlu = true;
-        else
-            delete k.zorunlu;
+        delete k.zorunlu;
         return k;
     });
     const temiz = {

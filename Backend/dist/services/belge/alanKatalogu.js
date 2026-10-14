@@ -1,4 +1,4 @@
-import { dovizFisVerisi, firmaKimlikOku, perakendeFisVerisi, sarrafFisVerisi } from "./fisCiktiVeri.js";
+import { dovizFisVerisi, firmaKimlikOku, perakendeFisVerisi, sarrafFisVerisi, ticariFisVerisi } from "./fisCiktiVeri.js";
 import { fisBelgeVerisi } from "./belgeVeri.js";
 /**
  * Şablonda kullanılabilecek `{{alan}}` adları — her belge türü için örnek veriden türetilir (veri yordamıyla
@@ -41,6 +41,18 @@ export function ornekVeri(tur, firma = ORNEK_FIRMA, satim = true) {
             satirlar: [{ urunKodu: "B22", urunAdi: "22 Ayar Bilezik", miktar: 12.5, milyem: 916, hasGram: 11.45, kur: 3950, tutar: 45230.5, aciklama: "Burgu model" }],
             odemeSatirlari: [{ paraKodu: "TL", miktar: 45230.5, tutar: 45230.5 }],
             toplamTutar: 45230.5, toplamHas: 11.45, odenenTutar: 45000, kalanTutar: 230.5,
+        }, firma);
+    }
+    if (tur === "TICARI_FIS_80" || tur === "TICARI_FIS_A4") {
+        return ticariFisVerisi({
+            faturaId: 1, faturaNo: "EAR2026000000001", ettn: "0F3C2B1A-9D8E-4C7B-A6F5-E4D3C2B1A098", tarih: "2026-10-12T11:30:00Z", senaryo: "EARSIVFATURA", vezneKod: "01",
+            aliciVknTckn: "11111111111", aliciUnvan: "AHMET YILMAZ", adres: "Cumhuriyet Mah. No: 1", ilce: "Fethiye", il: "Muğla", vergiDairesi: "Fethiye", telefon: "0532 000 00 00", eposta: "ahmet@ornek.com",
+            iskontoTuru: 2, iskontoDegeri: 5,
+            satirlar: [
+                { satirNo: 1, kod: "KLM001", barkod: "8690000000011", urunAdi: "Tükenmez Kalem Mavi", miktar: 3, birim: "Adet", kdvDahilFiyat: 25, kdvOrani: 20, iskontoTuru: 1, iskontoDegeri: 10 },
+                { satirNo: 2, kod: "DFT004", barkod: "8690000000035", urunAdi: "Defter A4 Kareli", miktar: 2, birim: "Adet", kdvDahilFiyat: 45, kdvOrani: 10 },
+            ],
+            odemeler: [{ odemeAraciTuru: 0, paraKodu: "TL", tutar: 100 }, { odemeAraciTuru: 2, paraKodu: "TL", tutar: 52.5 }],
         }, firma);
     }
     return perakendeFisVerisi({
@@ -116,4 +128,11 @@ export const ALAN_ACIKLAMALARI = {
     "s.miktarGr": "Gram (yoksa -)", "s.milyemYazi": "Milyem (yoksa -)", "s.hasYazi": "Has gram (yoksa -)", "s.kurYazi": "Birim fiyat (yoksa -)",
     "s.barkod": "Barkod", "s.ayar": "Ayar", "s.birim": "Birim", "s.gram": "Gram", "s.birimFiyat": "Birim fiyat", "s.kdvOrani": "KDV oranı", "s.kdvTutari": "KDV tutarı",
     "s.toplam": "Satır toplamı", "s.barkodAyar": "\"barkod | ayar\"", "s.gramYazi": "\"7,25g\"",
+    // Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17)
+    kdvDokumu: "KDV oranlarına göre döküm (liste)", "s.oran": "KDV oranı", "s.matrah": "KDV hariç tutar (iskontolar düşülmüş)", "s.kdv": "KDV tutarı",
+    "s.kdvDahilFiyat": "KDV dahil birim fiyat", "s.brut": "Miktar × fiyat (KDV dahil)", "s.iskontoYazi": "Satır iskontosu (\"%10\" / \"5,00 TL\")",
+    "s.iskontoVar": "Satır iskontosu varsa dolu", "s.satirIskonto": "Satır iskontosu tutarı (KDV dahil)", "s.kodBarkod": "\"kod | barkod\"",
+    "s.fiyatYazi": "\"3 x 25,00\"", "s.tur": "Ödeme türü (Nakit, Kredi kartı …)",
+    "toplam.kalem": "Kalem sayısı", "toplam.miktar": "Toplam miktar", "toplam.brut": "Brüt toplam (KDV dahil, iskontosuz)", "toplam.satirIskonto": "Satır iskontoları toplamı",
+    "toplam.fisIskonto": "Fiş iskontosu", "toplam.fisIskontoVar": "Fiş iskontosu varsa dolu", "toplam.paraUstu": "Para üstü", "toplam.paraUstuVar": "Para üstü varsa dolu",
 };

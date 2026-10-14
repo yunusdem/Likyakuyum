@@ -17,6 +17,7 @@ router.post("/arsivle", BelgeController.arsivle);
 router.post("/cikti/doviz", BelgeController.dovizCiktisi);
 router.post("/cikti/sarraf", BelgeController.sarrafCiktisi);
 router.post("/cikti/perakende", BelgeController.perakendeCiktisi);
+router.post("/cikti/ticari", BelgeController.ticariCiktisi);
 // Fiş şablonu yönetimi: yalnızca firmanın sistem yöneticisi (docs/FIS_TASARIM_YOL_HARITASI.md, 4.7)
 const yonetici = authorizeRoles("admin");
 router.get("/sablon-turleri", yonetici, BelgeSablonController.turler);

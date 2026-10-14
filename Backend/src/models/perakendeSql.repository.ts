@@ -76,6 +76,8 @@ export interface FaturaModel {
   iskontoOrani?: number;
   iskontoTutari?: number;
   genelToplam: number;
+  istatistikId?: number | null;
+  istatistikKodu?: string | null;
   eBelgeDurumu: number; // 0: Taslak, 1: İletildi, 2: Onaylandı, 3: Hata, 4: İptal
   gibStatuKodu?: string | null;
   ekleyenId?: number | null;
@@ -142,6 +144,8 @@ export interface CreateFaturaDto {
   iskontoOrani?: number | null;
   iskontoTutari?: number | null;
   genelToplam?: number;
+  istatistikId?: number | null;
+  istatistikKodu?: string | null;
   satirlar: CreateFaturaSatiriDto[];
   odemeler?: CreateFaturaOdemeDto[];
 }
@@ -255,6 +259,8 @@ export class PerakendeSqlRepository {
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_KODU') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_KODU] VARCHAR(50) NULL;
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_ORANI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_ORANI] FLOAT NOT NULL DEFAULT 0;
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_TUTARI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_TUTARI] FLOAT NOT NULL DEFAULT 0;
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISTATISTIK_ID] INT NULL;
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISTATISTIK_KODU') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISTATISTIK_KODU] VARCHAR(50) NULL;
         END;
         -- 0 Perakende fişi · 1 Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T14); Perakende ekranları yalnız 0'ı görür
         IF COL_LENGTH('dbo.TODVZ_FATURA', 'FIS_KAYNAGI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [FIS_KAYNAGI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_FATURA_FIS_KAYNAGI DEFAULT 0;
@@ -893,6 +899,8 @@ export class PerakendeSqlRepository {
     const iskontoKodu = dto.iskontoKodu ? dto.iskontoKodu.trim() : null;
     const iskontoOrani = Number(dto.iskontoOrani) || 0;
     let iskontoTutari = Number(dto.iskontoTutari) || 0;
+    const istatistikId = dto.istatistikId ? Number(dto.istatistikId) : null;
+    const istatistikKodu = dto.istatistikKodu ? String(dto.istatistikKodu).trim() : null;
 
     let araToplam = 0;
     let toplamKdv = 0;
@@ -1086,6 +1094,8 @@ export class PerakendeSqlRepository {
       saveHeadReq.input("ISKONTO_ORANI", sql.Float, iskontoOrani);
       saveHeadReq.input("ISKONTO_TUTARI", sql.Float, iskontoTutari);
       saveHeadReq.input("GENEL_TOPLAM", sql.Float, genelToplam);
+      saveHeadReq.input("ISTATISTIK_ID", sql.Int, istatistikId);
+      saveHeadReq.input("ISTATISTIK_KODU", sql.VarChar(50), istatistikKodu);
       saveHeadReq.input("KULLANICI_ID", sql.Int, userId || null);
 
       const headQuery = `
@@ -1098,6 +1108,7 @@ export class PerakendeSqlRepository {
             CARI_KART_ID, ALICI_VKN_TCKN, ALICI_UNVAN, ADRES, ILCE, IL,
             VERGI_DAIRESI, EPOSTA, TELEFON, PARA_ID, KUR,
             ARA_TOPLAM, TOPLAM_KDV, ISKONTO_ID, ISKONTO_KODU, ISKONTO_ORANI, ISKONTO_TUTARI, GENEL_TOPLAM,
+            ISTATISTIK_ID, ISTATISTIK_KODU,
             E_BELGE_DURUMU, EKLEYEN_ID, EKLEME_ZAMANI
           )
           OUTPUT INSERTED.FATURA_ID
@@ -1106,6 +1117,7 @@ export class PerakendeSqlRepository {
             @CARI_KART_ID, @ALICI_VKN_TCKN, @ALICI_UNVAN, @ADRES, @ILCE, @IL,
             @VERGI_DAIRESI, @EPOSTA, @TELEFON, @PARA_ID, @KUR,
             @ARA_TOPLAM, @TOPLAM_KDV, @ISKONTO_ID, @ISKONTO_KODU, @ISKONTO_ORANI, @ISKONTO_TUTARI, @GENEL_TOPLAM,
+            @ISTATISTIK_ID, @ISTATISTIK_KODU,
             0, @KULLANICI_ID, GETDATE()
           );
         END
@@ -1135,6 +1147,8 @@ export class PerakendeSqlRepository {
               ISKONTO_ORANI     = @ISKONTO_ORANI,
               ISKONTO_TUTARI    = @ISKONTO_TUTARI,
               GENEL_TOPLAM      = @GENEL_TOPLAM,
+              ISTATISTIK_ID     = @ISTATISTIK_ID,
+              ISTATISTIK_KODU   = @ISTATISTIK_KODU,
               GUNCELLEYEN_ID    = @KULLANICI_ID,
               GUNCELLEME_ZAMANI = GETDATE()
           WHERE FATURA_ID = @OUT_ID;
@@ -1487,6 +1501,8 @@ export class PerakendeSqlRepository {
         ISNULL(f.[ISKONTO_KODU], '') AS [ISKONTO_KODU],
         ISNULL(f.[ISKONTO_ORANI], 0) AS [ISKONTO_ORANI],
         ISNULL(f.[ISKONTO_TUTARI], 0) AS [ISKONTO_TUTARI],
+        ISNULL(f.[ISTATISTIK_ID], NULL) AS [ISTATISTIK_ID],
+        ISNULL(f.[ISTATISTIK_KODU], '') AS [ISTATISTIK_KODU],
         f.[GENEL_TOPLAM], f.[E_BELGE_DURUMU], f.[GIB_STATU_KODU],
         f.[EKLEYEN_ID], f.[EKLEME_ZAMANI],
         v.[KOD] AS [VEZNE_KOD], v.[AD] AS [VEZNE_AD],
@@ -1670,6 +1686,8 @@ export class PerakendeSqlRepository {
       iskontoOrani: Number(row.ISKONTO_ORANI) || 0,
       iskontoTutari: Number(row.ISKONTO_TUTARI) || 0,
       genelToplam: Number(row.GENEL_TOPLAM) || 0,
+      istatistikId: row.ISTATISTIK_ID || null,
+      istatistikKodu: row.ISTATISTIK_KODU || null,
       eBelgeDurumu: row.E_BELGE_DURUMU ?? 0,
       gibStatuKodu: row.GIB_STATU_KODU,
       ekleyenId: row.EKLEYEN_ID,
@@ -1793,6 +1811,8 @@ export class PerakendeSqlRepository {
       iskontoOrani: Number(row.ISKONTO_ORANI) || 0,
       iskontoTutari: Number(row.ISKONTO_TUTARI) || 0,
       genelToplam: Number(row.GENEL_TOPLAM) || 0,
+      istatistikId: row.ISTATISTIK_ID || null,
+      istatistikKodu: row.ISTATISTIK_KODU || null,
       eBelgeDurumu: Number(row.E_BELGE_DURUMU) || 0,
       gibStatuKodu: row.GIB_STATU_KODU,
       ekleyenId: row.EKLEYEN_ID,

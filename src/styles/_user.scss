@@ -478,6 +478,18 @@ main.custom-container,
           display: none !important;
         }
       }
+      .sidebar-menu-title,
+      .sidebar-chevron {
+        display: none !important;
+      }
+      .sidebar-flyout-trigger {
+        padding: 10px 0 !important;
+        justify-content: center !important;
+
+        > div {
+          justify-content: center !important;
+        }
+      }
       .upgrade-ui {
         display: none !important;
       }
@@ -745,35 +757,20 @@ tr.lookup-selected-row:hover > td {
 }
 
 // ----------------------------------------------------
-// Solid Dual-Tone Logo Text matching LK Monogram
-// Likya: Gold/Yellow | Kuyum: Dark Gold/Bronze (No gradient)
+// Standardized Global Brand Text Styling - Matches 1. Sidebar Everywhere
 // ----------------------------------------------------
-.brand-text-likya {
-  font-family: 'Cinzel', 'Playfair Display', 'Bodoni Moda', 'Marcellus', 'Georgia', serif !important;
-  font-weight: 700 !important;
-  color: #C88F18 !important;
-  letter-spacing: 0.5px;
-  display: inline-block;
-}
-
+.brand-text-likya,
 .brand-text-kuyum {
-  font-family: 'Cinzel', 'Playfair Display', 'Bodoni Moda', 'Marcellus', 'Georgia', serif !important;
-  font-weight: 700 !important;
-  color: #6D3D04 !important;
-  letter-spacing: 0.5px;
-  display: inline-block;
-}
-
-// Dark backgrounds (login brand panel, dark mode)
-.login-brand-panel,
-.dark-theme,
-[data-bs-theme="dark"] {
-  .brand-text-likya {
-    color: #F6C543 !important;
-  }
-  .brand-text-kuyum {
-    color: #BA8021 !important;
-  }
+  font-family: 'Cinzel', 'Playfair Display', 'Bodoni Moda', 'Marcellus', 'Georgia', serif, sans-serif !important;
+  font-weight: 800 !important;
+  background: linear-gradient(135deg, #FFFFDE 0%, #FDE075 35%, #E8B84B 70%, #B8822E 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: #FDE075 !important;
+  letter-spacing: 0.8px !important;
+  display: inline-block !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45)) !important;
 }
 
 // ----------------------------------------------------

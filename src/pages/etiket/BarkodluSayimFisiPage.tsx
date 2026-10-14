@@ -29,8 +29,10 @@ import {
   IconRotate,
 } from "@tabler/icons-react";
 import { ERPToolbar } from "../../components/common/ERPToolbar";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { EtiketService, AltinUrunItem, OzelUrunItem } from "../../services/etiketService";
+import { onProductChanged } from "../../services/productSyncService";
 
 export interface SayimSatirItem {
   id: string;
@@ -389,6 +391,16 @@ export const BarkodluSayimFisiPage: React.FC = () => {
 
     initPage();
   }, [loadSavedSlips, handleKayitliFisYukle, populateAllDbProducts, assignNextFisNo]);
+
+  // Canlı Ürün Senkronizasyonu (Sayfa yenilemesi olmadan Ürün Seçim modalında güncelleme)
+  useEffect(() => {
+    const unsub = onProductChanged((event) => {
+      if (event.type === "all" || event.type === "altin" || event.type === "ozel") {
+        fetchAllDbProducts();
+      }
+    });
+    return unsub;
+  }, [fetchAllDbProducts]);
 
   // ─── 15 Saniyede Bir Otomatik Kayıt & Taslak Yedekleme ───────────────────────
   const currentStateRef = useRef({
@@ -1203,6 +1215,14 @@ export const BarkodluSayimFisiPage: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlN = isCtrlNEvent(e);
+      if (isCtrlN) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleYeniRef.current();
+        return;
+      }
+
       if (e.key === "F1") {
         e.preventDefault();
         handleKaydetRef.current();
@@ -1214,8 +1234,8 @@ export const BarkodluSayimFisiPage: React.FC = () => {
         handleYeniRef.current();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, []);
 
   // ─── Kayıtlı Sayım Fişleri Lookup Kolonları (B- Hesap Düzeltme Standartı) ─
@@ -1759,10 +1779,11 @@ export const BarkodluSayimFisiPage: React.FC = () => {
               className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-white shadow-2xs"
               style={{ fontSize: "11.5px", cursor: "pointer" }}
               onClick={() => handleYeni()}
-              title="Yeni Sayım Fişi Aç (F4)"
+              title="Yeni Sayım Fişi Aç (F4 / Ctrl+N)"
             >
               <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F4</Badge>
-              <span className="fw-bold text-dark">Yeni</span>
+              <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>Ctrl+N</Badge>
+              <span className="fw-bold text-dark">Yeni Kayıt</span>
             </span>
           </div>
           <div className="fst-italic text-secondary">

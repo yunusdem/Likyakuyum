@@ -62,7 +62,8 @@ export class EbelgeKaynakService {
         if (perakendeMi(k)) {
             const { baslik: b, satirlar } = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
             return { belgeNo: temiz(b.FATURA_NO), tarih: new Date(b.TARIH).toISOString(), unvan: temiz(b.ALICI_UNVAN),
-                tur: { 0: 'Perakende Alış (e-Gider)', 1: 'Perakende Satış', 2: 'Perakende İade' }[Number(b.FATURA_TIPI)] || 'Perakende',
+                tur: Number(b.FIS_KAYNAGI) === 1 ? 'Ticari Satış'
+                    : { 0: 'Perakende Alış (e-Gider)', 1: 'Perakende Satış', 2: 'Perakende İade' }[Number(b.FATURA_TIPI)] || 'Perakende',
                 paraBirimi: 'TRY', tutar: Number(b.GENEL_TOPLAM) || 0, ettn: temiz(b.ETTN), durum: Number(b.E_BELGE_DURUMU || 0), firma: '', vergiKimlikNo: temiz(b.ALICI_VKN_TCKN),
                 satirlar: satirlar.map((s) => ({ ad: [temiz(s.URUN_ADI), temiz(s.AYAR) ? `${temiz(s.AYAR)} ayar` : ''].filter(Boolean).join(' '), miktar: Number(s.MIKTAR) || 0, tutar: Number(s.TUTAR) || 0, kdv: Number(s.KDV_TUTARI) || 0 })) };
         }

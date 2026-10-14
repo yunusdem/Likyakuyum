@@ -32,6 +32,7 @@ import {
   IconArrowsExchange,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { MasakService, MasakEslesme } from "../../services/masakService";
 import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
@@ -1285,11 +1286,14 @@ export const DovizFisiPage: React.FC = () => {
       setCariKod(matchedCari);
       setVergiKimlikNo(fis.vergiKimlikNo || "");
       setGelisNedeni(fis.gelisNedeni || "");
-      setKurTuru(fis.kurTuru ?? 0);
-      setIstatistikId(fis.istatistikId);
-      setIstatistikKodu(fis.istatistikKodu || (fis.tip === 1 ? "10285" : "9249"));
-      hasUserSelectedStatRef.current = true;
-      hasEditedIstatistikSinceConfirmRef.current = false;
+      if (fis.istatistikId || fis.istatistikKodu) {
+        setIstatistikId(fis.istatistikId);
+        setIstatistikKodu(fis.istatistikKodu || (fis.tip === 1 ? "10285" : "9249"));
+        hasUserSelectedStatRef.current = true;
+        hasEditedIstatistikSinceConfirmRef.current = false;
+      } else {
+        applyDefaultIstatistik(fis.tip, statisticList, companyDefinitions, user);
+      }
 
       lastFocusedCariKodRef.current = matchedCari;
       lastFocusedUnvanRef.current = fis.unvan || DEFAULT_CUSTOMER_NAME;
@@ -1857,9 +1861,9 @@ export const DovizFisiPage: React.FC = () => {
     setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
     const nextIdx = lines.length;
     setActiveRowIndex(nextIdx);
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       focusCell(nextIdx, "kod", "select");
-    }, 50);
+    });
   };
 
   const handleRemoveLine = (id: string) => {
@@ -1914,8 +1918,31 @@ export const DovizFisiPage: React.FC = () => {
     setDragOverRowIndex(null);
   };
 
-  // Sağ tık menüsü eylemleri (Satırı Sil & Yeni Satır Ekle)
+  // Sağ tık menüsü eylemleri (Kalanı Kapat, Satırı Sil & Yeni Satır Ekle)
   useEffect(() => {
+    const handleGridKapat = (e: any) => {
+      if (isLocked) return;
+      const rowId = e.detail?.rowId;
+      if (ebHedefRef.current) {
+        const targetRow = lines.find((r) => r.id === rowId) || lines[lines.length - 1];
+        if (targetRow) {
+          const kurVal = parseKur(targetRow.kur);
+          const autoM = ebMiktar(lines, targetRow.id, targetRow.paraKodu || "TL", kurVal);
+          if (autoM) {
+            handleLineFieldChange(targetRow.id, "miktar", autoM);
+            setNotification({
+              type: "success",
+              message: `Kalan tutar (${autoM} ${targetRow.paraKodu || "TL"}) otomatik kapatıldı.`,
+            });
+          }
+        }
+      } else {
+        setNotification({
+          type: "info",
+          message: "Döviz fişinde kapatılacak açık bakiye bulunmamaktadır.",
+        });
+      }
+    };
     const handleGridDelete = (e: any) => {
       if (isLocked) return;
       const rowId = e.detail?.rowId;
@@ -1927,13 +1954,15 @@ export const DovizFisiPage: React.FC = () => {
       if (isLocked) return;
       handleAddRow();
     };
+    window.addEventListener("erp-grid-row-kapat", handleGridKapat);
     window.addEventListener("erp-grid-row-delete", handleGridDelete);
     window.addEventListener("erp-grid-row-add", handleGridAdd);
     return () => {
+      window.removeEventListener("erp-grid-row-kapat", handleGridKapat);
       window.removeEventListener("erp-grid-row-delete", handleGridDelete);
       window.removeEventListener("erp-grid-row-add", handleGridAdd);
     };
-  }, [isLocked, handleRemoveLine, handleAddRow]);
+  }, [isLocked, handleRemoveLine, handleAddRow, lines]);
 
   // Bildirimlerin belli süre sonra otomatik kaybolması ve odağın Fiş Tipinde kalması
   useEffect(() => {
@@ -2178,7 +2207,7 @@ export const DovizFisiPage: React.FC = () => {
       })
     );
 
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const idx = lines.findIndex((r) => r.id === rowId);
       if (idx >= 0) {
         const miktarEl = document.getElementById(`grid-input-${idx}-miktar`) as HTMLInputElement | null;
@@ -2187,7 +2216,7 @@ export const DovizFisiPage: React.FC = () => {
           miktarEl.select();
         }
       }
-    }, 50);
+    });
   };
 
   const handleSelectIstatistik = (item: IstatistikSecimItem | StatisticItem) => {
@@ -2216,9 +2245,9 @@ export const DovizFisiPage: React.FC = () => {
     lastFocusedIstatistikKodRef.current = item.kod;
     applyStatisticToLines(item, tip);
     setShowIstatistikModal(false);
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       focusCell(0, "kod");
-    }, 50);
+    });
   };
 
   const openIstatistikModalWithTerm = useCallback((term: string) => {
@@ -2748,13 +2777,13 @@ export const DovizFisiPage: React.FC = () => {
     }
 
     setActiveRowIndex(targetIdx);
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const miktarEl = document.getElementById(`grid-input-${targetIdx}-miktar`) as HTMLInputElement | null;
       if (miktarEl) {
         miktarEl.focus();
         miktarEl.select();
       }
-    }, 50);
+    });
   };
 
   // Calculations for summary boxes
@@ -3014,26 +3043,7 @@ export const DovizFisiPage: React.FC = () => {
       applyStatisticToLines(item, fisTipi);
     };
 
-    // 1. Firma Tanımları Kontrolü (Öncelikli)
-    if (compDef) {
-      const companyStatId =
-        fisTipi === 0 ? compDef.ALIS_ISTATISTIK_ID : compDef.SATIS_ISTATISTIK_ID;
-      if (companyStatId) {
-        const foundCompany = istatistikler.find(
-          (s) => s.id === Number(companyStatId) || Number(s.id) === Number(companyStatId)
-        );
-        if (foundCompany) {
-          const fType = Number(foundCompany.fisTipi);
-          const isAllowed = fisTipi === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-          if (isAllowed) {
-            setMatched(foundCompany);
-            return;
-          }
-        }
-      }
-    }
-
-    // 2. Kullanıcı Tanımları Kontrolü
+    // 1. Kullanıcı Tanımları Kontrolü (Öncelikli)
     const userStatCode = fisTipi === 0 ? currentUser?.buyStatCode : currentUser?.sellStatCode;
     if (userStatCode && userStatCode.trim()) {
       const cleanUserCode = userStatCode.trim().toLowerCase();
@@ -3043,10 +3053,29 @@ export const DovizFisiPage: React.FC = () => {
           String(s.id) === cleanUserCode
       );
       if (foundUser) {
-        const fType = Number(foundUser.fisTipi);
-        const isAllowed = fisTipi === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-        if (isAllowed) {
-          setMatched(foundUser);
+        setMatched(foundUser);
+        return;
+      }
+      setIstatistikId(null);
+      setIstatistikKodu(userStatCode.trim());
+      lastFocusedIstatistikKodRef.current = userStatCode.trim();
+      applyStatisticToLines(null, fisTipi);
+      return;
+    }
+
+    // 2. Firma Tanımları Kontrolü (Kullanıcıda yoksa)
+    if (compDef) {
+      const companyStatId =
+        fisTipi === 0 ? compDef.ALIS_ISTATISTIK_ID : compDef.SATIS_ISTATISTIK_ID;
+      if (companyStatId) {
+        const cleanCompanyId = String(companyStatId).trim().toLowerCase();
+        const foundCompany = istatistikler.find(
+          (s) =>
+            String(s.id).trim() === cleanCompanyId ||
+            (s.kod && s.kod.trim().toLowerCase() === cleanCompanyId)
+        );
+        if (foundCompany) {
+          setMatched(foundCompany);
           return;
         }
       }
@@ -3214,7 +3243,7 @@ export const DovizFisiPage: React.FC = () => {
         } else if (field === "kmv") {
           handleLineFieldChange(currentRow.id, "kmv", prevRow.kmv ? String(prevRow.kmv) : "");
         }
-        setTimeout(() => focusCell(rowIndex, field, "select"), 20);
+        requestAnimationFrame(() => focusCell(rowIndex, field, "select"));
       }
       return;
     }
@@ -3400,14 +3429,13 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const handleToolbarNew = () => {
-    if (isDuzeltmeMode) {
-      navigate("/vezne/doviz-fisi-kayit");
-    } else {
-      resetForm();
-      setArbitrajActiveInfo(null);
-      applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
-      focusTipSelect();
+    if (location.search) {
+      navigate(location.pathname, { replace: true });
     }
+    resetForm();
+    setArbitrajActiveInfo(null);
+    applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
+    focusTipSelect();
   };
 
   const handleToolbarSave = async (
@@ -3902,28 +3930,18 @@ export const DovizFisiPage: React.FC = () => {
       }
       const yazdirmaNotu = andDirectPrint ? (yazdirmaHatasi ? ` Yazdırılamadı: ${yazdirmaHatasi}` : " Yazıcıya gönderildi.") : "";
 
-      if (isDuzeltmeMode) {
-        setNotification({
-          type: yazdirmaHatasi ? "warning" : "success",
-          message: `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${yazdirmaNotu}`,
-        });
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        await loadFisById(saved.fisId);
-        const idx = freshList.findIndex((f) => f.fisId === saved.fisId);
-        setCurrentIndex(idx >= 0 ? idx : freshList.length - 1);
-        focusTipSelect();
-      } else {
-        setNotification({
-          type: yazdirmaHatasi ? "warning" : "success",
-          message: `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi.${yazdirmaNotu} Yeni fiş kaydına geçildi.`,
-        });
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        if (await ebFis.kaydedildi(saved.fisId)) return;
-        // Kayıt sonrasında otomatik yeni kayıt moduna geç ve tüm alanları temizle
-        resetForm();
-        applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
-        focusTipSelect();
-      }
+      setNotification({
+        type: yazdirmaHatasi ? "warning" : "success",
+        message: isDuzeltmeMode
+          ? `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${yazdirmaNotu} Sayfa temizlendi.`
+          : `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi.${yazdirmaNotu} Yeni fiş kaydına geçildi.`,
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (await ebFis.kaydedildi(saved.fisId)) return;
+      // Kayıt ve düzeltme sonrasında tüm alanları temizle ve yeni fişe geç
+      resetForm();
+      applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
+      focusTipSelect();
     } catch (err: any) {
       console.error("Döviz Fişi Kaydetme Hatası:", err);
       let userFriendlyMsg = "Fiş kaydedilirken bir hata oluştu.";
@@ -4408,6 +4426,15 @@ export const DovizFisiPage: React.FC = () => {
         setShowF10PrinterModal(false);
         setActiveLookupType(null);
       };
+
+      const isCtrlN = isCtrlNEvent(e);
+      if (isCtrlN) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeAllModals();
+        handleToolbarNew();
+        return;
+      }
 
       if (isF1) {
         e.preventDefault();
@@ -4916,7 +4943,7 @@ export const DovizFisiPage: React.FC = () => {
                         value={tarih}
                         onChange={(e) => setTarih(e.target.value)}
                         className={`font-monospace px-2 py-1 ${!isDuzeltmeMode ? "bg-light text-muted" : ""}`}
-                        style={{ minWidth: 0, flex: "1 1 auto", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
+                        style={{ width: "130px", flexShrink: 0, height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                         title={!isDuzeltmeMode ? "Kayıt anında otomatik (anlık) tarih alınır" : "Fiş Tarihi (Düzenlenebilir)"}
                       />
                       <Form.Control
@@ -4952,7 +4979,7 @@ export const DovizFisiPage: React.FC = () => {
                         maxLength={100}
                         onChange={(e) => setGelisNedeni(e.target.value.slice(0, 100))}
                         className="px-2.5 py-1"
-                        style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       />
                     </div>
                   </div>
@@ -4978,7 +5005,7 @@ export const DovizFisiPage: React.FC = () => {
                           }
                         }}
                         className="fw-semibold px-2.5 py-1"
-                        style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       >
                         <option value={0}>Efektif Kurları</option>
                         <option value={1}>Döviz Kurları</option>
@@ -5008,7 +5035,7 @@ export const DovizFisiPage: React.FC = () => {
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       {isDuzeltmeMode ? (
-                        <InputGroup size="sm" style={{ height: "30px" }}>
+                        <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px" }}>
                           <Form.Control
                             type="text"
                             autoComplete="off"
@@ -5041,7 +5068,7 @@ export const DovizFisiPage: React.FC = () => {
                           maxLength={20}
                           onChange={(e) => setSeriNo(e.target.value.slice(0, 20))}
                           className="font-monospace fw-bold px-2.5 py-1"
-                          style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                          style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           placeholder="Otomatik (Boş ise atanır)"
                           title="Fiş Seri No (Boş bırakılırsa numaradörden otomatik atanır)"
                         />
@@ -5058,7 +5085,7 @@ export const DovizFisiPage: React.FC = () => {
                       Cari Kodu
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px" }}>
                         <Form.Control
                           ref={cariKodRef}
                           type="text"
@@ -5161,7 +5188,7 @@ export const DovizFisiPage: React.FC = () => {
                       Ünvan
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "260px" }}>
                         <Form.Control
                           ref={unvanRef}
                           type="text"
@@ -5298,7 +5325,7 @@ export const DovizFisiPage: React.FC = () => {
                           }
                         }}
                         className="fw-bold text-uppercase px-2.5 py-1"
-                        style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ minWidth: 0, maxWidth: "120px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       >
                         <option value={0}>ALIŞ</option>
                         <option value={1}>SATIŞ</option>
@@ -5328,7 +5355,7 @@ export const DovizFisiPage: React.FC = () => {
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       {isDuzeltmeMode ? (
-                        <InputGroup size="sm" style={{ height: "30px" }}>
+                        <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px" }}>
                           <Form.Control
                             type="text"
                             autoComplete="off"
@@ -5361,7 +5388,7 @@ export const DovizFisiPage: React.FC = () => {
                           maxLength={30}
                           onChange={(e) => setBelgeNo(e.target.value.slice(0, 30))}
                           className="font-monospace fw-bold px-2.5 py-1"
-                          style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                          style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           placeholder="Otomatik (Boş ise atanır)"
                           title="Belge No (Boş bırakılırsa numaradörden otomatik atanır)"
                         />
@@ -5377,7 +5404,7 @@ export const DovizFisiPage: React.FC = () => {
                       VKN / TCKN
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "185px" }}>
                         <Form.Control
                           ref={vknRef}
                           type="text"
@@ -5409,12 +5436,12 @@ export const DovizFisiPage: React.FC = () => {
                               void handleVknLookup(vergiKimlikNo, true);
                             }
                           }}
-                          onKeyDown={async (e) => {
+                          onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              await handleVknLookup(vergiKimlikNo, true);
                               istatistikRef.current?.focus();
                               istatistikRef.current?.select();
+                              void handleVknLookup(vergiKimlikNo, true);
                             }
                           }}
                           className="font-monospace px-2.5 py-1"
@@ -5459,7 +5486,7 @@ export const DovizFisiPage: React.FC = () => {
                       İstatistik kodu
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm">
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px", width: "160px" }}>
                         <Form.Control
                           ref={istatistikRef}
                           type="text"
@@ -6054,6 +6081,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
+                  style={{ maxWidth: "140px" }}
                   value={totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
@@ -6065,6 +6093,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
+                  style={{ maxWidth: "140px" }}
                   value={totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
@@ -6097,6 +6126,16 @@ export const DovizFisiPage: React.FC = () => {
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenBanknotSay}>
                   F9) Banknot Say
                 </Button>
+                <Button
+                  size="sm"
+                  variant="light"
+                  className="px-2 py-0.5 border text-success fw-bold"
+                  style={{ fontSize: "11.5px" }}
+                  onClick={handleToolbarNew}
+                  title="Yeni Fiş / Kayıt (Ctrl+N)"
+                >
+                  Ctrl+N) Yeni Kayıt
+                </Button>
               </div>
             </Col>
 
@@ -6110,6 +6149,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold bg-light"
+                  style={{ maxWidth: "140px" }}
                   value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
@@ -6121,6 +6161,7 @@ export const DovizFisiPage: React.FC = () => {
                   type="text"
                   readOnly
                   className="form-control form-control-sm text-end font-monospace fw-bold text-primary bg-light"
+                  style={{ maxWidth: "140px" }}
                   value={sonToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 />
               </div>
@@ -6129,16 +6170,7 @@ export const DovizFisiPage: React.FC = () => {
         </Card.Body>
       </Card>
 
-      {/* Sayfa En Altı Kısayol Bilgilendirme Metni */}
-      <div className="d-flex align-items-center gap-3 mt-2 px-1 text-secondary user-select-none" style={{ fontSize: "12.5px" }}>
-        <span><strong>F1</strong> Kaydet</span>
-        <span><strong>F2</strong> Sil</span>
-        <span><strong>F3</strong> Ara</span>
-        <span><strong>F7</strong> Arbitraj</span>
-        <span role="button" style={{ cursor: "pointer" }} onClick={handleTriggerF10} title="Fişi Kaydet / Yazdır (F10)">
-          <strong>F10</strong> Kaydet / Yazdır
-        </span>
-      </div>
+
 
       {/* DETAY MODAL (F8) matching Screenshot 3 */}
       <Modal

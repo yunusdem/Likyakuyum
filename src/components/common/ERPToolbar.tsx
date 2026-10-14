@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { etkinEkran, siraliEkranVarMi } from "../../services/girisSirasiService";
 import { yerlesimDuzenle } from "../../services/yerlesimService";
+import { isCtrlNEvent, triggerGlobalNewRecord } from "../../utils/keyboardShortcuts";
 import {
   IconArrowsMove,
   IconNumbers,
@@ -58,6 +59,7 @@ export interface ERPToolbarProps {
   hideDelete?: boolean;
   hideNavigation?: boolean;
   hidePrint?: boolean;
+  hideBottomBar?: boolean;
   disableShortcuts?: boolean;
 }
 
@@ -209,6 +211,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
   hideDelete,
   hideNavigation,
   hidePrint,
+  hideBottomBar = false,
   disableShortcuts = false,
 }) => {
   const location = useLocation();
@@ -302,6 +305,18 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (disabled || disableShortcuts) return;
 
+      const isCtrlN = isCtrlNEvent(e);
+      if (isCtrlN) {
+        if (shouldShowNew) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (onNew) onNew();
+          else if (onClear) onClear();
+          else defaultHandler("Yeni Kayıt");
+        }
+        return;
+      }
+
       if (e.key === "F1") {
         if (shouldShowSave && onSave) {
           e.preventDefault();
@@ -352,11 +367,15 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [onSave, onDelete, onSearch, onNew, onClear, onRefresh, onPrint, onDirectPrint, onSaveAndPrint, hidePrint, disabled, disableShortcuts, shouldShowSearch, shouldShowDelete, shouldShowNew, shouldShowSave]);
 
   const defaultHandler = (actionName: string) => {
+    if (actionName === "Yeni Kayıt") {
+      triggerGlobalNewRecord();
+      return;
+    }
     if (actionName === "Ara/Bul") {
       const searchInput = document.querySelector<HTMLInputElement>(
         "input[type='search'], input[placeholder*='ara' i], input[placeholder*='Ara' i]"
@@ -377,15 +396,15 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     <div className="erp-action-toolbar-wrapper mb-2 p-1.5 d-flex align-items-center justify-content-between flex-wrap gap-1 bg-white border rounded shadow-2xs">
       {/* Sol Toolbar Buton Grubu - Sıfır Sayfa Titremesi / Sıfır Kayma */}
       <div className="d-flex align-items-center flex-wrap erp-toolbar-strip gap-1">
-        {/* 1. Yeni Kayıt (F4) - Boş Belge & Üst Köşesinde Artı (+) İkonu */}
+        {/* 1. Yeni Kayıt (Ctrl+N) - Boş Belge & Üst Köşesinde Artı (+) İkonu */}
         {shouldShowNew && (
           <button
             type="button"
             disabled={disabled}
             onClick={onNew || onClear || (() => defaultHandler("Yeni Kayıt"))}
             className="erp-tb-btn"
-            title="Yeni Kayıt (F4)"
-            aria-label="Yeni Kayıt"
+            title="Yeni Kayıt (Ctrl+N)"
+            aria-label="Yeni Kayıt (Ctrl+N)"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               {/* Boş Beyaz Belge Gövdesi */}

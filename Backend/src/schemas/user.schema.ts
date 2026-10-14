@@ -52,6 +52,8 @@ const appearanceThemeSchema = z.object({
   enableSellHeaderTheme: z.boolean().default(false),
   sellHeaderBgColor: z.string().default("#e2e8f0"),
   sellHeaderTextColor: z.string().default("#000000"),
+
+  sidebarStyle: z.string().default("classic"),
 });
 
 export const createUserSchema = z.object({

@@ -23,6 +23,7 @@ import {
   IconChevronDown,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { ProductDefinitionService, ProductItem } from "../../services/productDefinitionService";
@@ -748,8 +749,14 @@ export const VezneTransferiPage: React.FC = () => {
     setLines((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Sağ tık menüsü eylemleri (Satırı Sil & Yeni Satır Ekle)
+  // Sağ tık menüsü eylemleri (Kalanı Kapat, Satırı Sil & Yeni Satır Ekle)
   useEffect(() => {
+    const handleGridKapat = () => {
+      setNotification({
+        type: "info",
+        message: "Vezne transferinde kapatılacak açık bakiye bulunmamaktadır.",
+      });
+    };
     const handleGridDelete = (e: any) => {
       const rowId = e.detail?.rowId;
       if (rowId !== undefined) {
@@ -764,9 +771,11 @@ export const VezneTransferiPage: React.FC = () => {
     const handleGridAdd = () => {
       setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
     };
+    window.addEventListener("erp-grid-row-kapat", handleGridKapat);
     window.addEventListener("erp-grid-row-delete", handleGridDelete);
     window.addEventListener("erp-grid-row-add", handleGridAdd);
     return () => {
+      window.removeEventListener("erp-grid-row-kapat", handleGridKapat);
       window.removeEventListener("erp-grid-row-delete", handleGridDelete);
       window.removeEventListener("erp-grid-row-add", handleGridAdd);
     };
@@ -1034,6 +1043,14 @@ export const VezneTransferiPage: React.FC = () => {
   // Keyboard shortcuts F1, F4, F5, F9, F10
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlN = isCtrlNEvent(e);
+      if (isCtrlN) {
+        e.preventDefault();
+        e.stopPropagation();
+        resetForm();
+        return;
+      }
+
       if (showVerenVezneModal || showParaModal || showSearchModal || showParaSayModal || showPrintModal || showDeleteConfirmModal) {
         return;
       }
@@ -1056,8 +1073,8 @@ export const VezneTransferiPage: React.FC = () => {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [
     handleSave,
     resetForm,
@@ -1123,6 +1140,7 @@ export const VezneTransferiPage: React.FC = () => {
     <div className="vezne-transferi-container w-100 pb-2">
       {/* Top ERP Toolbar */}
       <ERPToolbar
+        hideBottomBar={true}
         onNew={resetForm}
         onSave={handleSave}
         onSearch={isDuzeltmeMode ? handleOpenSearchModal : undefined}
@@ -1339,7 +1357,7 @@ export const VezneTransferiPage: React.FC = () => {
               value={aciklama}
               onChange={(e) => setAciklama(e.target.value)}
               placeholder="Transfer açıklaması..."
-              style={{ width: "320px", height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
+              style={{ width: "210px", height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
             />
           </div>
         </div>
@@ -1479,6 +1497,14 @@ export const VezneTransferiPage: React.FC = () => {
             title="Transfer Makbuzunu Yazdır / Kes (F10)"
           >
             F10) Kes
+          </span>
+          <span
+            onClick={resetForm}
+            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-success fw-bold"
+            role="button"
+            title="Yeni Kayıt (Ctrl+N)"
+          >
+            Ctrl+N) Yeni Kayıt
           </span>
         </div>
       </div>

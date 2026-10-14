@@ -3,7 +3,7 @@ import { belgeKlasoruGorseli } from "./belgeMotor.js";
 import { etkinSablon } from "./sablonDeposu.js";
 import { BelgeGorselService } from "./belgeGorsel.service.js";
 import { turBul } from "./belgeTurleri.js";
-import { dovizFisVerisi, firmaKimlikOku, perakendeFisVerisi, sarrafFisVerisi, } from "./fisCiktiVeri.js";
+import { dovizFisVerisi, firmaKimlikOku, perakendeFisVerisi, sarrafFisVerisi, ticariFisVerisi, } from "./fisCiktiVeri.js";
 const MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg" };
 /** Şablondaki resim öğelerinin dosyalarını data URL olarak toplar (yazıcı HTML'i tek parça gider). */
 export function sablonGorselleri(sablon) {
@@ -44,5 +44,10 @@ export class FisCiktiService {
     static async perakende(girdi, bicim, ctx) {
         const firma = firmaKimlikOku(await BelgeSqlRepository.firmaKimlikSatiri(ctx));
         return this.paketle(turBul("PERAKENDE", bicim), perakendeFisVerisi(girdi, firma), ctx);
+    }
+    /** Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17): kayıtlı fiş ya da ekrandaki fiş; kâğıt 80 mm veya A4. */
+    static async ticari(girdi, bicim, ctx) {
+        const firma = firmaKimlikOku(await BelgeSqlRepository.firmaKimlikSatiri(ctx));
+        return this.paketle(turBul("TICARI", bicim), ticariFisVerisi(girdi, firma), ctx);
     }
 }

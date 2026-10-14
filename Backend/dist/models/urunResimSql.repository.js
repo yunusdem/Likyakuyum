@@ -20,7 +20,7 @@ export class UrunResimSqlRepository {
     static async ensureTables(pool) {
         try {
             await pool.request().batch(`
-        IF OBJECT_ID('TODVZ_URUN_RESIM', 'U') IS NULL
+        IF OBJECT_ID('dbo.TODVZ_URUN_RESIM', 'U') IS NULL
         BEGIN
           CREATE TABLE [dbo].[TODVZ_URUN_RESIM] (
             [RESIM_ID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -36,9 +36,33 @@ export class UrunResimSqlRepository {
         END
         ELSE
         BEGIN
-          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TODVZ_URUN_RESIM') AND name = 'RESIM_DATA')
+          IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_URUN_RESIM') AND name = 'RESIM_DATA')
           BEGIN
             ALTER TABLE [dbo].[TODVZ_URUN_RESIM] ADD [RESIM_DATA] VARBINARY(MAX) NULL;
+          END;
+        END;
+
+        IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN')
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'RESIM')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [RESIM] VARBINARY(MAX) NULL;
+          END
+          ELSE IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'RESIM' AND (DATA_TYPE <> 'varbinary' OR CHARACTER_MAXIMUM_LENGTH <> -1))
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ALTER COLUMN [RESIM] VARBINARY(MAX) NULL;
+          END;
+        END;
+
+        IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TODVZ_OZEL_URUN')
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'RESIM')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [RESIM] VARBINARY(MAX) NULL;
+          END
+          ELSE IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_OZEL_URUN' AND COLUMN_NAME = 'RESIM' AND (DATA_TYPE <> 'varbinary' OR CHARACTER_MAXIMUM_LENGTH <> -1))
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ALTER COLUMN [RESIM] VARBINARY(MAX) NULL;
           END;
         END;
       `);
@@ -113,7 +137,7 @@ export class UrunResimSqlRepository {
             req.input("TIP", sql.TinyInt, tip);
             req.input("ISLEM_ID", sql.Int, islemId);
             const result = await req.query(`
-        SELECT [DOSYA_YOLU], [RESIM_DATA] FROM [dbo].[TODVZ_URUN_RESIM]
+        SELECT [RESIM_ID], [DOSYA_YOLU], [RESIM_DATA] FROM [dbo].[TODVZ_URUN_RESIM]
         WHERE [TIP] = @TIP AND [ISLEM_ID] = @ISLEM_ID
         ORDER BY [RESIM_ID] ASC;
       `);
@@ -122,11 +146,16 @@ export class UrunResimSqlRepository {
                     return `data:image/jpeg;base64,${r.RESIM_DATA.toString("base64")}`;
                 }
                 if (r.DOSYA_YOLU && typeof r.DOSYA_YOLU === "string") {
-                    // Eğer diskte varsa oku ve base64 yap
+                    // Eğer diskte varsa oku ve base64 yap ve veritabanına doğrudan göm
                     try {
                         const localPath = await resimDiskYolu(r.DOSYA_YOLU, dbContext);
                         if (localPath && fs.existsSync(localPath)) {
                             const fBuf = fs.readFileSync(localPath);
+                            pool.request()
+                                .input("RESIM_DATA", sql.VarBinary(sql.MAX), fBuf)
+                                .input("RESIM_ID", sql.Int, r.RESIM_ID)
+                                .query(`UPDATE [dbo].[TODVZ_URUN_RESIM] SET [RESIM_DATA] = @RESIM_DATA WHERE [RESIM_ID] = @RESIM_ID`)
+                                .catch(() => { });
                             return `data:image/jpeg;base64,${fBuf.toString("base64")}`;
                         }
                     }

@@ -82,6 +82,7 @@ import {
   AltinUrunItem,
   OzelUrunItem,
 } from "../../services/etiketService";
+import { onProductChanged } from "../../services/productSyncService";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 
 // ─── Yardımcı İkonlar ──────────────────────────────────────────────────────────
@@ -3553,6 +3554,16 @@ const UrunEtiketTasarimiPage: React.FC = () => {
 
   useEffect(() => {
     loadProductsList();
+  }, [loadProductsList]);
+
+  // Canlı Ürün Senkronizasyonu (Sayfa yenilemesi olmadan Ürün Seçim modalında anında güncelleme)
+  useEffect(() => {
+    const unsub = onProductChanged((event) => {
+      if (event.type === "all" || event.type === "altin" || event.type === "ozel") {
+        loadProductsList();
+      }
+    });
+    return unsub;
   }, [loadProductsList]);
 
   useEffect(() => {

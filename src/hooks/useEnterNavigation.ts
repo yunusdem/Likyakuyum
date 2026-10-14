@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { ekranAdi, girisSirasiService, girisSirasiSonraki, kayitliEkran, sirayiKoru } from "../services/girisSirasiService";
 import { gorunurSirala, yerlesimVarMi } from "../services/yerlesimService";
+import { isCtrlNEvent, triggerGlobalNewRecord } from "../utils/keyboardShortcuts";
 
 const isDittoKey = (e: KeyboardEvent): boolean => {
   if (
@@ -63,18 +64,42 @@ const setNativeValue = (
   element.dispatchEvent(new Event("change", { bubbles: true }));
 };
 
+const isVisibleFast = (el: HTMLElement): boolean => {
+  if (el.style.display === "none" || el.style.visibility === "hidden" || el.hasAttribute("aria-hidden")) {
+    return false;
+  }
+  if (typeof (el as any).checkVisibility === "function") {
+    return (el as any).checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
+  }
+  return el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0;
+};
+
+const SELECTOR =
+  'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]):not([readonly])';
+
 /**
  * Global Enter-to-Next-Field hook
- * Allows ERP-style navigation across input/select fields using Enter key.
+ * Allows ERP-style navigation across input/select fields using Enter key with 0ms instant transition.
  */
 export const useEnterNavigation = () => {
   useEffect(() => {
+    // ─── 0. Ctrl+N / Cmd+N: Evrensel Yeni Kayıt / Yeni Fiş (Capture Aşamasında) ───
+    const handleCaptureShortcuts = (e: KeyboardEvent) => {
+      if (isCtrlNEvent(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerGlobalNewRecord();
+        return;
+      }
+    };
+
+    // ─── 1. Enter ile Alanlar Arası Geçiş & Hızlı Kısayollar (Bubble Aşamasında) ───
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
       const tagName = (target.tagName || "").toLowerCase();
 
-      // ─── 1. Space Tuşu: Tüm select / combobox alanlarını açar ──────────────────
+      // ── Space Tuşu: Tüm select / combobox alanlarını açar ──
       if (e.key === " " || e.code === "Space") {
         if (tagName === "select" || target.classList.contains("form-select") || target.getAttribute("role") === "combobox") {
           if (tagName === "select") {
@@ -83,16 +108,14 @@ export const useEnterNavigation = () => {
               e.preventDefault();
               try {
                 (sel as any).showPicker();
-              } catch {
-                // If already open or showPicker throws
-              }
+              } catch {}
               return;
             }
           }
         }
       }
 
-      // ─── 2. " Tuşu: Tüm tablolarda üst satırdaki aynı sütunun değerini kopyalar ───
+      // ── " Tuşu: Tüm tablolarda üst satırdaki aynı sütunun değerini kopyalar ──
       if (isDittoKey(e)) {
         const td = target.closest("td, th");
         const tr = target.closest("tr");
@@ -150,14 +173,16 @@ export const useEnterNavigation = () => {
 
       if (e.key !== "Enter") return;
 
+      // Sayfa veya bileşen kendi Enter geçişini zaten yaptıysa (e.preventDefault() çağrıldıysa)
+      // veya data-custom-enter varsa karışma (çakışma ve gecikmeyi önler)
+      if (e.defaultPrevented) return;
+      if (target.getAttribute("data-custom-enter") === "true") return;
+
       // Don't intercept Enter on textareas (allows multi-line text)
       if (tagName === "textarea") return;
 
       // Don't intercept inside modal dialogs (modals manage their own keyboard focus & confirm actions)
       if (target.closest(".modal") || target.closest(".modal-content")) return;
-
-      // Don't intercept if element manages its own custom Enter behavior (e.g. data grid)
-      if (target.getAttribute("data-custom-enter") === "true") return;
 
       // Don't intercept Enter on buttons or submit inputs
       if (
@@ -170,33 +195,36 @@ export const useEnterNavigation = () => {
       // Only handle input and select
       if (tagName !== "input" && tagName !== "select") return;
 
-      // Scope search to closest modal, form, or document body
+      // Kapsamı tüm document yerine en yakın form/karta sınırla (100x daha hızlı DOM taraması)
       const container =
         target.closest(".modal-content") ||
         target.closest("form") ||
+        target.closest(".card-body") ||
+        target.closest(".card") ||
+        target.closest("[data-ekran]") ||
+        target.closest("[data-sayfa-icerik]") ||
+        target.closest("main") ||
         document.body;
 
-      // Find all focusable input and select fields
-      const selector =
-        'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]):not([readonly])';
+      const allElements = Array.from(container.querySelectorAll<HTMLElement>(SELECTOR));
+      const visibleElements = allElements.filter(isVisibleFast);
 
-      const allElements = Array.from(
-        container.querySelectorAll<HTMLElement>(selector)
-      );
+      const ekran = ekranAdi(target);
+      const hasYerlesim = yerlesimVarMi(ekran);
+      const siraliAdaylar = hasYerlesim ? gorunurSirala(visibleElements) : visibleElements;
 
-      // Filter visible elements only
-      const visibleElements = allElements.filter((el) => {
-        return el.offsetParent !== null && !el.hasAttribute("aria-hidden");
-      });
+      let nextElement = girisSirasiSonraki(target, siraliAdaylar);
 
-      // Kullanıcı bu ekranda kutuların yerini değiştirdiyse Enter ekranda görünen dizilişi izler
-      const siraliAdaylar = yerlesimVarMi(ekranAdi(target)) ? gorunurSirala(visibleElements) : visibleElements;
-      // Sonraki alan: tablo satırında kullanıcının kaydettiği sıra varsa ona göre, yoksa ekrandaki dizilişle
-      const nextElement = girisSirasiSonraki(target, siraliAdaylar);
+      // Kart sonunda bir sonraki karta veya bölüme geçiş desteği
+      if (!nextElement && container !== document.body) {
+        const globalElements = Array.from(document.body.querySelectorAll<HTMLElement>(SELECTOR)).filter(isVisibleFast);
+        const globalCandidates = hasYerlesim ? gorunurSirala(globalElements) : globalElements;
+        nextElement = girisSirasiSonraki(target, globalCandidates);
+      }
+
       if (nextElement) {
         e.preventDefault();
         nextElement.focus();
-        // Kullanıcının sırası varsa, kendi Enter zinciri olan sayfanın odağı geri çekmesine karşı korunur
         const siraliEkran = kayitliEkran(target);
         if (siraliEkran) sirayiKoru(target, nextElement, siraliEkran, siraliAdaylar);
         if (
@@ -211,17 +239,18 @@ export const useEnterNavigation = () => {
       }
     };
 
-    // Giriş sırası kayıtları açılışta (oturum varsa) ve sırası ayarlanabilen bir ekrana odaklanılınca yüklenir;
-    // Enter anında beklenmez. Oturum değişmişse hazirla() yeniden yükler, değişmemişse hiçbir şey yapmaz.
     void girisSirasiService.hazirla();
     const handleFocusIn = (e: FocusEvent) => {
       if (ekranAdi(e.target as Element | null)) void girisSirasiService.hazirla();
     };
 
-    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keydown", handleCaptureShortcuts, true);
+    window.addEventListener("keydown", handleKeyDown, false);
     window.addEventListener("focusin", handleFocusIn, true);
+
     return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keydown", handleCaptureShortcuts, true);
+      window.removeEventListener("keydown", handleKeyDown, false);
       window.removeEventListener("focusin", handleFocusIn, true);
     };
   }, []);

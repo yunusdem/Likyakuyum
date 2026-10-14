@@ -111,7 +111,15 @@ export const girisSirasiAc = (ekran: string) => window.dispatchEvent(new CustomE
 /** Odaklanabilir giriş alanları (genel Enter işleyişiyle aynı seçici) */
 export const GIRIS_ALANI_SECICI =
   'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]):not([readonly])';
-const gorunur = (el: HTMLElement) => el.offsetParent !== null && !el.hasAttribute("aria-hidden");
+const gorunur = (el: HTMLElement) => {
+  if (el.style.display === "none" || el.style.visibility === "hidden" || el.hasAttribute("aria-hidden")) {
+    return false;
+  }
+  if (typeof (el as any).checkVisibility === "function") {
+    return (el as any).checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
+  }
+  return el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0;
+};
 
 /** Sayfada sırası ayarlanabilen ekran var mı (araç çubuğu düğmesi için) */
 export const siraliEkranVarMi = (): boolean =>

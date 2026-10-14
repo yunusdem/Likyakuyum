@@ -38,6 +38,11 @@ export interface KatalogUrunModel {
   miktarBirimi: string;
   satisFiyati: number;
   satisParaKodu: string;
+  hasKuru1?: number | null;
+  hasKuru2?: number | null;
+  usdKuru1?: number | null;
+  usdKuru2?: number | null;
+  altinKuru?: number | null;
   menuId: number | null;
   menuAdi: string | null;
   katalog: boolean;
@@ -204,6 +209,11 @@ export class MenuSqlRepository {
                 'Gr' AS MIKTAR_BIRIMI,
                 a.SATIS_FIYATI,
                 a.SATIS_PARA_KODU,
+                a.HAS_KURU_1,
+                a.HAS_KURU_2,
+                a.USD_KURU_1,
+                a.USD_KURU_2,
+                a.ALTIN_KURU,
                 a.MENU_ID,
                 m.MENU_ADI,
                 a.KATALOG,
@@ -237,6 +247,11 @@ export class MenuSqlRepository {
                 ISNULL(o.MIKTAR_BIRIMI, 'Adet') AS MIKTAR_BIRIMI,
                 o.SATIS_FIYATI,
                 o.SATIS_PARA_KODU,
+                NULL AS HAS_KURU_1,
+                NULL AS HAS_KURU_2,
+                NULL AS USD_KURU_1,
+                NULL AS USD_KURU_2,
+                NULL AS ALTIN_KURU,
                 o.MENU_ID,
                 m.MENU_ADI,
                 o.KATALOG,
@@ -390,6 +405,11 @@ export class MenuSqlRepository {
         miktarBirimi: String(r.MIKTAR_BIRIMI || (r.URUN_TIPI === "ozel" ? "Adet" : "Gr")).trim(),
         satisFiyati: Number(r.SATIS_FIYATI) || 0,
         satisParaKodu: String(r.SATIS_PARA_KODU || "TL").trim(),
+        hasKuru1: r.HAS_KURU_1 !== null && r.HAS_KURU_1 !== undefined ? Number(r.HAS_KURU_1) : null,
+        hasKuru2: r.HAS_KURU_2 !== null && r.HAS_KURU_2 !== undefined ? Number(r.HAS_KURU_2) : null,
+        usdKuru1: r.USD_KURU_1 !== null && r.USD_KURU_1 !== undefined ? Number(r.USD_KURU_1) : null,
+        usdKuru2: r.USD_KURU_2 !== null && r.USD_KURU_2 !== undefined ? Number(r.USD_KURU_2) : null,
+        altinKuru: r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null,
         menuId: r.MENU_ID !== null && r.MENU_ID !== undefined ? Number(r.MENU_ID) : null,
         menuAdi: r.MENU_ADI ? String(r.MENU_ADI).trim() : null,
         katalog: Boolean(r.KATALOG),

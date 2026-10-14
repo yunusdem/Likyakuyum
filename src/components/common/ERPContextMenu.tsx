@@ -14,6 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { ekranAdi, girisSirasiAc } from "../../services/girisSirasiService";
 import { yerlesimDuzenle } from "../../services/yerlesimService";
+import { triggerGlobalNewRecord } from "../../utils/keyboardShortcuts";
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -157,6 +158,8 @@ export const ERPContextMenu: React.FC = () => {
     } else if (actionKey === "refresh") {
       window.location.reload();
     } else if (actionKey === "new-record") {
+      triggerGlobalNewRecord();
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "n", ctrlKey: true, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "F4" }));
     } else if (actionKey === "save-record") {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "F1" }));
@@ -244,7 +247,7 @@ export const ERPContextMenu: React.FC = () => {
         onClick={() => handleAction("new-record")}
       >
         <IconFilePlus size={16} className="text-success" />
-        <span>Yeni Kayıt (F4)</span>
+        <span>Yeni Kayıt (Ctrl+N)</span>
       </button>
       <button
         type="button"

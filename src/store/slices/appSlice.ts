@@ -28,10 +28,17 @@ const appSlice = createSlice({
       state.showMenu = action.payload.showMenu;
     },
     setCollapsed: (state, action: PayloadAction<{ value: MenuToggleType }>) => {
-      document
-        .querySelector("html")
-        ?.setAttribute("class", action.payload.value),
-        (state.collapsed = action.payload.value);
+      const html = document.querySelector("html");
+      if (html) {
+        if (action.payload.value === "collapsed") {
+          html.classList.remove("expanded");
+          html.classList.add("collapsed");
+        } else {
+          html.classList.remove("collapsed");
+          html.classList.add("expanded");
+        }
+      }
+      state.collapsed = action.payload.value;
     },
   },
 });

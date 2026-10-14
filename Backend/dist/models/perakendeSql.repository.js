@@ -98,7 +98,11 @@ export class PerakendeSqlRepository {
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_KODU') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_KODU] VARCHAR(50) NULL;
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_ORANI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_ORANI] FLOAT NOT NULL DEFAULT 0;
           IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISKONTO_TUTARI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISKONTO_TUTARI] FLOAT NOT NULL DEFAULT 0;
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISTATISTIK_ID] INT NULL;
+          IF COL_LENGTH('dbo.TODVZ_FATURA', 'ISTATISTIK_KODU') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [ISTATISTIK_KODU] VARCHAR(50) NULL;
         END;
+        -- 0 Perakende fişi · 1 Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T14); Perakende ekranları yalnız 0'ı görür
+        IF COL_LENGTH('dbo.TODVZ_FATURA', 'FIS_KAYNAGI') IS NULL ALTER TABLE dbo.TODVZ_FATURA ADD [FIS_KAYNAGI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_FATURA_FIS_KAYNAGI DEFAULT 0;
       `);
             // 2. TODVZ_FATURA_SATIRI Detail Table
             await pool.request().batch(`
@@ -145,6 +149,8 @@ export class PerakendeSqlRepository {
         -- Barkodsuz satırın vezne stoğundan düşen parası ve miktarı (düzeltme / silme aynısını geri alır; raporlar da bunu okur)
         IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_PARA_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_PARA_ID] INT NULL;
         IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_MIKTAR') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_MIKTAR] FLOAT NULL;
+        -- Ticari satış fişi satırının stok kartı (raporlar perakende vezne stoğundan ayırır)
+        IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_KART_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_KART_ID] INT NULL;
       `);
             // 2.b TODVZ_FATURA_ODEME Detail Table
             await pool.request().batch(`
@@ -694,6 +700,8 @@ export class PerakendeSqlRepository {
         const iskontoKodu = dto.iskontoKodu ? dto.iskontoKodu.trim() : null;
         const iskontoOrani = Number(dto.iskontoOrani) || 0;
         let iskontoTutari = Number(dto.iskontoTutari) || 0;
+        const istatistikId = dto.istatistikId ? Number(dto.istatistikId) : null;
+        const istatistikKodu = dto.istatistikKodu ? String(dto.istatistikKodu).trim() : null;
         let araToplam = 0;
         let toplamKdv = 0;
         dto.satirlar.forEach((s) => {
@@ -712,6 +720,8 @@ export class PerakendeSqlRepository {
         const genelToplam = Math.max(0, Math.round((brutToplam - iskontoTutari) * 100) / 100);
         let outFaturaId = 0;
         let finalFaturaNo = faturaNo;
+        if (dto.faturaId && dto.faturaId > 0)
+            await PerakendeSqlRepository.ticariFisiDegil(pool, dto.faturaId);
         const transaction = new sql.Transaction(pool);
         await transaction.begin();
         try {
@@ -872,6 +882,8 @@ export class PerakendeSqlRepository {
             saveHeadReq.input("ISKONTO_ORANI", sql.Float, iskontoOrani);
             saveHeadReq.input("ISKONTO_TUTARI", sql.Float, iskontoTutari);
             saveHeadReq.input("GENEL_TOPLAM", sql.Float, genelToplam);
+            saveHeadReq.input("ISTATISTIK_ID", sql.Int, istatistikId);
+            saveHeadReq.input("ISTATISTIK_KODU", sql.VarChar(50), istatistikKodu);
             saveHeadReq.input("KULLANICI_ID", sql.Int, userId || null);
             const headQuery = `
         DECLARE @OUT_ID INT = @FATURA_ID;
@@ -883,6 +895,7 @@ export class PerakendeSqlRepository {
             CARI_KART_ID, ALICI_VKN_TCKN, ALICI_UNVAN, ADRES, ILCE, IL,
             VERGI_DAIRESI, EPOSTA, TELEFON, PARA_ID, KUR,
             ARA_TOPLAM, TOPLAM_KDV, ISKONTO_ID, ISKONTO_KODU, ISKONTO_ORANI, ISKONTO_TUTARI, GENEL_TOPLAM,
+            ISTATISTIK_ID, ISTATISTIK_KODU,
             E_BELGE_DURUMU, EKLEYEN_ID, EKLEME_ZAMANI
           )
           OUTPUT INSERTED.FATURA_ID
@@ -891,6 +904,7 @@ export class PerakendeSqlRepository {
             @CARI_KART_ID, @ALICI_VKN_TCKN, @ALICI_UNVAN, @ADRES, @ILCE, @IL,
             @VERGI_DAIRESI, @EPOSTA, @TELEFON, @PARA_ID, @KUR,
             @ARA_TOPLAM, @TOPLAM_KDV, @ISKONTO_ID, @ISKONTO_KODU, @ISKONTO_ORANI, @ISKONTO_TUTARI, @GENEL_TOPLAM,
+            @ISTATISTIK_ID, @ISTATISTIK_KODU,
             0, @KULLANICI_ID, GETDATE()
           );
         END
@@ -920,6 +934,8 @@ export class PerakendeSqlRepository {
               ISKONTO_ORANI     = @ISKONTO_ORANI,
               ISKONTO_TUTARI    = @ISKONTO_TUTARI,
               GENEL_TOPLAM      = @GENEL_TOPLAM,
+              ISTATISTIK_ID     = @ISTATISTIK_ID,
+              ISTATISTIK_KODU   = @ISTATISTIK_KODU,
               GUNCELLEYEN_ID    = @KULLANICI_ID,
               GUNCELLEME_ZAMANI = GETDATE()
           WHERE FATURA_ID = @OUT_ID;
@@ -1251,6 +1267,8 @@ export class PerakendeSqlRepository {
         ISNULL(f.[ISKONTO_KODU], '') AS [ISKONTO_KODU],
         ISNULL(f.[ISKONTO_ORANI], 0) AS [ISKONTO_ORANI],
         ISNULL(f.[ISKONTO_TUTARI], 0) AS [ISKONTO_TUTARI],
+        ISNULL(f.[ISTATISTIK_ID], NULL) AS [ISTATISTIK_ID],
+        ISNULL(f.[ISTATISTIK_KODU], '') AS [ISTATISTIK_KODU],
         f.[GENEL_TOPLAM], f.[E_BELGE_DURUMU], f.[GIB_STATU_KODU],
         f.[EKLEYEN_ID], f.[EKLEME_ZAMANI],
         v.[KOD] AS [VEZNE_KOD], v.[AD] AS [VEZNE_AD],
@@ -1427,6 +1445,8 @@ export class PerakendeSqlRepository {
             iskontoOrani: Number(row.ISKONTO_ORANI) || 0,
             iskontoTutari: Number(row.ISKONTO_TUTARI) || 0,
             genelToplam: Number(row.GENEL_TOPLAM) || 0,
+            istatistikId: row.ISTATISTIK_ID || null,
+            istatistikKodu: row.ISTATISTIK_KODU || null,
             eBelgeDurumu: row.E_BELGE_DURUMU ?? 0,
             gibStatuKodu: row.GIB_STATU_KODU,
             ekleyenId: row.EKLEYEN_ID,
@@ -1482,7 +1502,7 @@ export class PerakendeSqlRepository {
       LEFT JOIN [dbo].[TODVZ_VEZNE] v ON f.[VEZNE_ID] = v.[VEZNE_ID]
       LEFT JOIN [dbo].[TODVZ_PARA] p ON f.[PARA_ID] = p.[PARA_ID]
       LEFT JOIN [dbo].[TODVZ_CARI_KART] c ON f.[CARI_KART_ID] = c.[CARI_KART_ID]
-      WHERE 1=1
+      WHERE ISNULL(f.[FIS_KAYNAGI], 0) = 0
     `;
         if (filter.baslangicTarihi && filter.baslangicTarihi.trim()) {
             query += ` AND CAST(f.[TARIH] AS DATE) >= CAST(@BASLANGIC AS DATE)`;
@@ -1537,11 +1557,21 @@ export class PerakendeSqlRepository {
             iskontoOrani: Number(row.ISKONTO_ORANI) || 0,
             iskontoTutari: Number(row.ISKONTO_TUTARI) || 0,
             genelToplam: Number(row.GENEL_TOPLAM) || 0,
+            istatistikId: row.ISTATISTIK_ID || null,
+            istatistikKodu: row.ISTATISTIK_KODU || null,
             eBelgeDurumu: Number(row.E_BELGE_DURUMU) || 0,
             gibStatuKodu: row.GIB_STATU_KODU,
             ekleyenId: row.EKLEYEN_ID,
             eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : null,
         }));
+    }
+    /** Ticari satış fişi Perakende ekranından düzeltilip silinmez: stoğu ve satırları Ticari deposu yönetir (T14) */
+    static async ticariFisiDegil(pool, faturaId) {
+        const r = await pool.request().input("FID", sql.Int, faturaId)
+            .query(`SELECT ISNULL(FIS_KAYNAGI, 0) AS K FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FID`);
+        if (Number(r.recordset[0]?.K) === 1) {
+            throw ApiError.badRequest("Bu fiş Ticari Satış Fişi'dir; Ticari İşlemler › Satış Fişi Düzeltme ekranından değiştirin.");
+        }
     }
     /**
      * Delete invoice and return products back to stock using dbo.SODVZ_FATURA_SIL
@@ -1549,6 +1579,7 @@ export class PerakendeSqlRepository {
     static async deleteInvoice(faturaId, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTablesAndProcedures(pool);
+        await PerakendeSqlRepository.ticariFisiDegil(pool, faturaId);
         try {
             const req = pool.request();
             req.input("FATURA_ID", sql.Int, faturaId);
