@@ -92,7 +92,8 @@ export interface StokGiris {
 
 export interface TicariSatisSatiri {
   satirNo: number;
-  stokKartId: number;
+  /** Serbest ürün satırında (Hızlı Satış) boş */
+  stokKartId: number | null;
   kod: string;
   barkod: string;
   urunAdi: string;
@@ -182,7 +183,8 @@ export interface TicariSatisGirdi {
   iskontoKodu?: string | null;
   iskontoTuru?: number | null;
   iskontoDegeri?: number | null;
-  satirlar: { stokKartId: number; miktar: number; kdvDahilFiyat?: number | null; iskontoTuru?: number | null; iskontoDegeri?: number | null }[];
+  /** stokKartId boş + urunAdi/kdvOrani dolu: serbest ürün (Hızlı Satış, stoktan düşmez) */
+  satirlar: { stokKartId: number | null; urunAdi?: string; birim?: string; kdvOrani?: number; miktar: number; kdvDahilFiyat?: number | null; iskontoTuru?: number | null; iskontoDegeri?: number | null }[];
   odemeler?: TicariOdeme[];
   eksiStokOnay?: boolean;
 }

@@ -38,6 +38,8 @@ export const UST_KISAYOLLAR: { key: string; baslik: string; to?: string }[] = [
   { key: "ust:e-belge", baslik: "e-Belge", to: "/e-belge" },
   { key: "ust:masak", baslik: "MASAK" },
   { key: "ust:piyasa", baslik: "Piyasa", to: "/piyasa" },
+  // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H2–H3): firmada açık modüllerin hızlı satışına götürür
+  { key: "ust:hizli-satis", baslik: "Hızlı Satış", to: "/hizli-satis" },
 ];
 
 export const UST_KISAYOL_GRUBU = "ust";

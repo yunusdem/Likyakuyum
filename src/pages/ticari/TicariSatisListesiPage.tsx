@@ -7,6 +7,7 @@ import { useToast } from "../../context/ToastContext";
 import { printReportTable } from "../../utils/printReport";
 import { TicariSatisFisi, TicariSatisListeSatiri, TicariService, para, saatYaz, tarihYaz } from "../../services/ticariService";
 import { TicariFisPrintModal } from "./TicariFisPrintModal";
+import { KaynakSuzgeci, kaynakUyar, useHizliSatisIsaretleri } from "../hizliSatis/useHizliSatisIsaretleri";
 
 const ayBasi = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; };
 const bugun = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -22,6 +23,8 @@ export const TicariSatisListesiPage: React.FC = () => {
   const [arama, setArama] = useState("");
   const [eBelge, setEBelge] = useState<string>("");
   const [yazdirilacak, setYazdirilacak] = useState<TicariSatisFisi | null>(null);
+  // Hızlı Satış süzgeci (docs/HIZLI_SATIS_YOL_HARITASI.md, H20)
+  const [kaynak, setKaynak] = useState<KaynakSuzgeci>("all");
 
   const istek = React.useRef(0);
   const yukle = async () => {
@@ -33,11 +36,14 @@ export const TicariSatisListesiPage: React.FC = () => {
   };
   useEffect(() => { void yukle(); }, [bas, bit, eBelge]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const hizliFisler = useHizliSatisIsaretleri("ticari", useMemo(() => liste.map((x) => x.faturaId), [liste]));
+  const gorunen = useMemo(() => liste.filter((x) => kaynakUyar(kaynak, hizliFisler.has(x.faturaId))), [liste, kaynak, hizliFisler]);
+
   const t = useMemo(() => {
-    const top = (f: (x: TicariSatisListeSatiri) => number) => liste.reduce((a, x) => a + f(x), 0);
-    return { adet: liste.length, brut: top((x) => x.brutDahil), iskonto: top((x) => x.iskonto), kdv: top((x) => x.toplamKdv), genel: top((x) => x.genelToplam),
+    const top = (f: (x: TicariSatisListeSatiri) => number) => gorunen.reduce((a, x) => a + f(x), 0);
+    return { adet: gorunen.length, brut: top((x) => x.brutDahil), iskonto: top((x) => x.iskonto), kdv: top((x) => x.toplamKdv), genel: top((x) => x.genelToplam),
       nakit: top((x) => x.nakit), kart: top((x) => x.kart), cari: top((x) => x.cari), havale: top((x) => x.havale) };
-  }, [liste]);
+  }, [gorunen]);
 
   const yazdir = async (f: TicariSatisListeSatiri) => {
     try { setYazdirilacak(await TicariService.satis(f.faturaId)); } catch (e: any) { showError(e?.message || "Fiş okunamadı."); }
@@ -54,7 +60,7 @@ export const TicariSatisListesiPage: React.FC = () => {
       { header: "Nakit", render: (x: TicariSatisListeSatiri) => para(x.nakit) }, { header: "Kart", render: (x: TicariSatisListeSatiri) => para(x.kart) },
       { header: "Cari", render: (x: TicariSatisListeSatiri) => para(x.cari) }, { header: "Havale", render: (x: TicariSatisListeSatiri) => para(x.havale) },
     ] as any,
-    data: liste,
+    data: gorunen,
   });
 
   const kartlar: [string, number, string][] = [["Fiş", t.adet, "primary"], ["Brüt", t.brut, "secondary"], ["İskonto", t.iskonto, "success"], ["Genel Toplam", t.genel, "dark"]];
@@ -85,7 +91,13 @@ export const TicariSatisListesiPage: React.FC = () => {
                 <option value="">Hepsi</option><option value="0">Gönderilmedi</option><option value="1">Gönderildi</option>
               </Form.Select>
             </Col>
-            <Col md={6}>
+            <Col md={2}>
+              <Form.Label className="small text-muted mb-1 fw-bold">Kaynak</Form.Label>
+              <Form.Select size="sm" value={kaynak} onChange={(e) => setKaynak(e.target.value as KaynakSuzgeci)} aria-label="Kaynak">
+                <option value="all">Tüm Fişler</option><option value="hizli">Hızlı Satış</option><option value="diger">Fiş Ekranı</option>
+              </Form.Select>
+            </Col>
+            <Col md={4}>
               <Form.Label className="small text-muted mb-1 fw-bold">Ara</Form.Label>
               <InputGroup size="sm">
                 <InputGroup.Text className="bg-light"><IconSearch size={15} /></InputGroup.Text>
@@ -108,11 +120,11 @@ export const TicariSatisListesiPage: React.FC = () => {
             </thead>
             <tbody>
               {yukleniyor ? <tr><td colSpan={16} className="text-center py-5"><Spinner size="sm" className="me-2" />Yükleniyor...</td></tr>
-                : liste.length === 0 ? <tr><td colSpan={16} className="text-center py-5 text-muted">Bu aralıkta satış fişi yok.</td></tr>
-                : liste.map((f, i) => (
+                : gorunen.length === 0 ? <tr><td colSpan={16} className="text-center py-5 text-muted">Bu aralıkta satış fişi yok.</td></tr>
+                : gorunen.map((f, i) => (
                   <tr key={f.faturaId} onDoubleClick={() => navigate(`/ticari/satis-fisi-duzeltme?id=${f.faturaId}`)} style={{ cursor: "pointer" }}>
                     <td className="text-center text-muted small">{i + 1}</td>
-                    <td className="fw-bold font-monospace text-primary">{f.faturaNo}</td>
+                    <td className="fw-bold font-monospace text-primary">{f.faturaNo}{hizliFisler.has(f.faturaId) && <Badge bg="success" className="ms-1" title="Hızlı satıştan">Hızlı</Badge>}</td>
                     <td className="small">{tarihYaz(f.tarih)} <span className="text-muted">{saatYaz(f.tarih)}</span></td>
                     <td className="fw-semibold text-truncate" style={{ maxWidth: 220 }} title={f.aliciUnvan}>{f.aliciUnvan}</td>
                     <td className="font-monospace small">{f.aliciVknTckn}</td>
@@ -136,7 +148,7 @@ export const TicariSatisListesiPage: React.FC = () => {
                   </tr>
                 ))}
             </tbody>
-            {liste.length > 0 && (
+            {gorunen.length > 0 && (
               <tfoot className="table-light fw-bold small">
                 <tr>
                   <td colSpan={6} className="text-end">Toplam</td>

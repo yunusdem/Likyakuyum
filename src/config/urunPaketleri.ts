@@ -87,6 +87,10 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
     [D, G, K],
   ],
   [["vezne:vezne/fiyat-kontrolu"], [K]],
+  // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H3): her biri kendi fişinin paketinde; Perakende/Ticari maddeleri ana menüyle gelir
+  [["vezne:hizli-satis/sarraf"], [K]],
+  [["vezne:hizli-satis/doviz"], [D, G]],
+  [["ust:hizli-satis", "ayarlar:ayarlar/hizli-satis-duzeni"], [D, G, K, T]],
 
   // B- Kasa
   [["kasa"], [D, G, K, T]],

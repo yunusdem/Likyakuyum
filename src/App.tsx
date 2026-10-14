@@ -31,6 +31,9 @@ import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
 import VezneParaSayPage from "./pages/vezne/VezneParaSayPage";
 import PiyasaPage from "./pages/piyasa/PiyasaPage";
+import HizliSatisPage from "./pages/hizliSatis/HizliSatisPage";
+import HizliSatisYonlendir from "./pages/hizliSatis/HizliSatisYonlendir";
+import HizliSatisDuzeniPage from "./pages/hizliSatis/HizliSatisDuzeniPage";
 import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
 import PerakendeFisiPage from "./pages/vezne/PerakendeFisiPage";
 import VitrinStokTakibiPage from "./pages/perakende/VitrinStokTakibiPage";
@@ -282,6 +285,10 @@ export default function App() {
               <Route path="vezne/vezne-transferi" element={<VezneTransferiPage />} />
               <Route path="vezne/transfer" element={<VezneTransferiPage />} />
               <Route path="piyasa" element={<PiyasaPage />} />
+              {/* Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md) */}
+              <Route path="hizli-satis" element={<HizliSatisYonlendir />} />
+              <Route path="hizli-satis/:modul" element={<HizliSatisPage />} />
+              <Route path="ayarlar/hizli-satis-duzeni" element={<HizliSatisDuzeniPage />} />
               <Route path="vezne/izleme" element={<VezneIzlemePage />} />
               <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
               <Route path="vezne/para-say" element={<VezneParaSayPage />} />

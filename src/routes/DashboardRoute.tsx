@@ -47,6 +47,9 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "N- Vezne İzleme", link: "vezne/izleme" },
       { id: uuid(), name: "O- Kur Kontrolü", link: raporLinki("KURKON2") },
       { id: uuid(), name: "P- Kur Sapma Raporu", link: raporLinki("KURKON1") },
+      // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H3): her modülde ayrı madde, firma bazında ayrı kapatılır
+      { id: uuid(), name: "Q- Hızlı Satış (Sarraf)", link: "hizli-satis/sarraf" },
+      { id: uuid(), name: "R- Hızlı Satış (Döviz)", link: "hizli-satis/doviz" },
     ],
   },
 
@@ -224,6 +227,7 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "D- Barkodlu Altın Listesi", link: "perakende/barkodlu-altin-listesi" },
       { id: uuid(), name: "E- Barkodlu Özel Ürün Listesi", link: "perakende/barkodlu-ozel-urun-listesi" },
       { id: uuid(), name: "F- Satış Listesi", link: "perakende/satis-listesi" },
+      { id: uuid(), name: "G- Hızlı Satış", link: "hizli-satis/perakende" },
     ],
   },
 
@@ -245,6 +249,7 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "H- Stok Durum Listesi", link: "ticari/stok-durum-listesi" },
       { id: uuid(), name: "I- Ürün Hareket Listesi", link: "ticari/urun-hareket-listesi" },
       { id: uuid(), name: "J- Stok Ayarları", link: "ticari/stok-ayarlari" },
+      { id: uuid(), name: "K- Hızlı Satış", link: "hizli-satis/ticari" },
     ],
   },
 
@@ -269,6 +274,7 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "L- Firma Tanımları", link: "ayarlar/firma-tanimlari" },
       { id: uuid(), name: "M- GİB Sorgu Ayarları", link: "ayarlar/gib-sorgu" },
       { id: uuid(), name: "N- Belge Tasarımı", link: "ayarlar/belge-tasarimi" },
+      { id: uuid(), name: "O- Hızlı Satış Düzeni", link: "ayarlar/hizli-satis-duzeni" },
     ],
   },
 ];

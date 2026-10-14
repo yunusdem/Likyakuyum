@@ -42,6 +42,7 @@ import { ebelgeService } from "../../services/ebelgeService";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import KurKomisyonTablosu, { type KurKomisyonTablosuRef } from "../../components/kur/KurKomisyonTablosu";
+import FaturaSiniriAlani, { type FaturaSiniriAlaniRef } from "../hizliSatis/FaturaSiniriAlani";
 
 export const CompanyDefinitionsPage: React.FC = () => {
   // Lisansta olmayan ürüne ait ayarlar (kuyum: işçilik, üretim, sarrafiye; döviz: e-Döviz fişi) gösterilmez, değerleri korunur
@@ -841,6 +842,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
   };
 
   const komisyonRef = useRef<KurKomisyonTablosuRef>(null);
+  const faturaSiniriRef = useRef<FaturaSiniriAlaniRef>(null);
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -849,6 +851,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
       setAlertError(null);
       // Kur Kaynağı sekmesindeki komisyon tablosu (değiştiyse)
       await komisyonRef.current?.kaydet();
+      // Hızlı Satış fatura sınırı (docs/HIZLI_SATIS_YOL_HARITASI.md, H12)
+      await faturaSiniriRef.current?.kaydet();
       if (formData.URETIM_HESABI_ID) {
         localStorage.setItem("kuyumcu_erp_uretim_hesabi_id", String(formData.URETIM_HESABI_ID));
       } else {
@@ -2218,6 +2222,10 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 />
                               </Col>
                             </Form.Group>
+                          </Col>
+
+                          <Col xs={12}>
+                            <FaturaSiniriAlani ref={faturaSiniriRef} labelStyle={labelColStyle} />
                           </Col>
 
                           {ozellik.kuyum && (

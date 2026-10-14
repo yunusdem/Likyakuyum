@@ -17,6 +17,7 @@ import {
   IconEye,
   IconChartCandle,
   IconShoppingBag,
+  IconBolt,
 } from "@tabler/icons-react";
 import { Container, ListGroup, Button } from "react-bootstrap";
 
@@ -69,6 +70,12 @@ const quickActions = [
     title: "Satış Fişi",
     to: "/ticari/satis-fisi",
     icon: <IconShoppingBag size={19} strokeWidth={2.2} style={{ color: "#c2410c" }} />,
+  },
+  {
+    // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H3): en son kullanılan açık modülün dokunmatik satış ekranı
+    title: "Hızlı Satış",
+    to: "/hizli-satis",
+    icon: <IconBolt size={19} strokeWidth={2.2} style={{ color: "#15803d" }} />,
   },
   {
     title: "Banka",

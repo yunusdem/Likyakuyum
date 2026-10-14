@@ -36,6 +36,7 @@ import iskontoRoutes from "./iskonto.routes.js";
 import ebankaRoutes from "./ebanka.routes.js";
 import gibRoutes from "./gib.routes.js";
 import piyasaRoutes from "./piyasa.routes.js";
+import hizliSatisRoutes from "./hizliSatis.routes.js";
 import posRoutes from "./pos.routes.js";
 import { PosController } from "../controllers/pos.controller.js";
 import { EBankaController } from "../controllers/ebanka.controller.js";
@@ -131,6 +132,8 @@ apiRouter.use("/perakende", kapi("/perakende"), perakendeRoutes);
 apiRouter.use("/vezne/perakende", kapi("/perakende"), perakendeRoutes);
 // Ticari İşlemler: stok kartı, stok girişi, ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md)
 apiRouter.use("/ticari", kapi("/ticari"), ticariRoutes);
+// Hızlı Satış: buton düzeni, ayarlar, fiş işareti (docs/HIZLI_SATIS_YOL_HARITASI.md)
+apiRouter.use("/hizli-satis", kapi("/hizli-satis"), hizliSatisRoutes);
 
 export default apiRouter;
 

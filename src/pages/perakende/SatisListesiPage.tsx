@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { KaynakSuzgeci, kaynakUyar, useHizliSatisIsaretleri } from "../hizliSatis/useHizliSatisIsaretleri";
 import {
   Card,
   Table,
@@ -40,6 +41,8 @@ export const SatisListesiPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedType, setSelectedType] = useState<string>("all"); // all, 1 (Satis), 2 (Iade)
   const [selectedVezne, setSelectedVezne] = useState<string>("all");
+  // Hızlı Satış süzgeci (docs/HIZLI_SATIS_YOL_HARITASI.md, H20)
+  const [kaynak, setKaynak] = useState<KaynakSuzgeci>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
@@ -77,9 +80,12 @@ export const SatisListesiPage: React.FC = () => {
     return Array.from(set).filter(Boolean).sort();
   }, [invoices]);
 
+  const hizliFisler = useHizliSatisIsaretleri("perakende", useMemo(() => invoices.map((i) => Number(i.faturaId)).filter(Boolean), [invoices]));
+
   // Filtrelenmiş liste
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
+      if (!kaynakUyar(kaynak, hizliFisler.has(Number(inv.faturaId)))) return false;
       if (selectedVezne !== "all" && (inv.vezneAd !== selectedVezne && inv.vezneKod !== selectedVezne)) {
         return false;
       }
@@ -93,7 +99,7 @@ export const SatisListesiPage: React.FC = () => {
         (inv.cariKod && inv.cariKod.toLowerCase().includes(term))
       );
     });
-  }, [invoices, selectedVezne, searchTerm]);
+  }, [invoices, selectedVezne, searchTerm, kaynak, hizliFisler]);
 
   // Özet Toplamlar
   const summary = useMemo(() => {
@@ -265,6 +271,17 @@ export const SatisListesiPage: React.FC = () => {
 
             <Col xs={12} sm={6} md={2}>
               <Form.Group>
+                <Form.Label className="small text-muted mb-1 fw-bold">Kaynak</Form.Label>
+                <Form.Select size="sm" value={kaynak} onChange={(e) => setKaynak(e.target.value as KaynakSuzgeci)} aria-label="Kaynak">
+                  <option value="all">Tüm Fişler</option>
+                  <option value="hizli">Hızlı Satış</option>
+                  <option value="diger">Fiş Ekranı</option>
+                </Form.Select>
+              </Form.Group>
+            </Col>
+
+            <Col xs={12} sm={6} md={2}>
+              <Form.Group>
                 <Form.Label className="small text-muted mb-1 fw-bold">Vezne</Form.Label>
                 <Form.Select
                   size="sm"
@@ -370,7 +387,10 @@ export const SatisListesiPage: React.FC = () => {
                     style={{ cursor: "pointer" }}
                   >
                     <td className="text-center text-muted small">{idx + 1}</td>
-                    <td className="fw-bold font-monospace text-primary">{inv.faturaNo}</td>
+                    <td className="fw-bold font-monospace text-primary">
+                      {inv.faturaNo}
+                      {hizliFisler.has(Number(inv.faturaId)) && <Badge bg="success" className="ms-1 fw-semibold" title="Hızlı satıştan">Hızlı</Badge>}
+                    </td>
                     <td className="small text-muted">
                       {inv.tarih ? new Date(inv.tarih).toLocaleDateString("tr-TR") : "-"}
                     </td>

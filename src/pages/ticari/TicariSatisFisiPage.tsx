@@ -47,6 +47,8 @@ interface Satir {
   iskTur: 0 | 1 | 2;
   iskDeger: string;
   stok: number | null;
+  /** Hızlı Satış'tan gelen serbest ürün satırı: stok kartı yok, stoktan düşmez (docs/HIZLI_SATIS_YOL_HARITASI.md, H9) */
+  serbest?: boolean;
 }
 
 interface Odeme {
@@ -78,6 +80,8 @@ const yerelSaat = (d = new Date()) => `${iki(d.getHours())}:${iki(d.getMinutes()
 let sayac = 0;
 const anahtar = () => `t${Date.now()}-${++sayac}`;
 const bosSatir = (): Satir => ({ anahtar: anahtar(), stokKartId: null, kod: "", barkod: "", ad: "", birim: "", kdvOrani: 0, miktar: "", fiyat: "", iskTur: 0, iskDeger: "", stok: null });
+/** Dolu satır: stok kartlı ya da serbest ürün */
+const doluMu = (s: Satir) => !!s.stokKartId || !!s.serbest;
 const bosOdeme = (): Odeme => ({ anahtar: anahtar(), tur: 0, paraId: null, paraKodu: "TL", kur: "1", miktar: "", tutar: "", cariKartId: null, cariKod: "", cariUnvan: "", posCihaziId: null, bankaId: null });
 const TL = (k: string) => ["TL", "TRY", "TRL"].includes(String(k || "").trim().toUpperCase());
 const ODEME_TURLERI: Record<number, string> = { 0: "Vezne", 1: "Cari", 2: "POS", 3: "Hesap" };
@@ -197,7 +201,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   }, []);
 
   // ── Hesap ──
-  const dolu = useMemo(() => satirlar.filter((s) => s.stokKartId), [satirlar]);
+  const dolu = useMemo(() => satirlar.filter(doluMu), [satirlar]);
   const hesap = useMemo(() => {
     try {
       return { sonuc: ticariFisHesapla(dolu.map((s) => ({ miktar: sayi(s.miktar) || 0, kdvDahilFiyat: sayi(s.fiyat), kdvOrani: s.kdvOrani, iskontoTuru: s.iskTur, iskontoDegeri: sayi(s.iskDeger) })).map((g) => ({ ...g, miktar: g.miktar > 0 ? g.miktar : 0.0000001 })),
@@ -231,7 +235,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       setVkn(f.aliciVknTckn || ""); setCariKod(f.cariKod || ""); setUnvan(f.aliciUnvan || DEFAULT_CUSTOMER_NAME); setCariKartId(f.cariKartId ?? null);
       setVergiDairesi(f.vergiDairesi || ""); setIl(f.il || ""); setIlce(f.ilce || ""); setTelefon(f.telefon || ""); setEposta(f.eposta || ""); setAdres(f.adres || "");
       setSatirlar([...f.satirlar.map((s) => ({
-        anahtar: anahtar(), stokKartId: s.stokKartId, kod: s.kod, barkod: s.barkod, ad: s.urunAdi, birim: s.birim, kdvOrani: s.kdvOrani,
+        anahtar: anahtar(), stokKartId: s.stokKartId, serbest: !s.stokKartId, kod: s.kod, barkod: s.barkod, ad: s.urunAdi, birim: s.birim, kdvOrani: s.kdvOrani,
         miktar: metin(s.miktar, 4), fiyat: metin(s.kdvDahilFiyat, 4), iskTur: (s.iskontoTuru || 0) as 0 | 1 | 2, iskDeger: s.iskontoTuru ? metin(s.iskontoDegeri, 2) : "", stok: null,
       })), bosSatir()]);
       setFisIskTur((f.iskontoTuru || 0) as 0 | 1 | 2); setFisIskDeger(f.iskontoTuru ? metin(f.iskontoDegeri) : ""); setIskontoId(f.iskontoId ?? null);
@@ -275,15 +279,15 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       // Aynı ürün tekrar okutulursa miktarı artar
       const var_ = p.find((s) => s.stokKartId === k.stokKartId && s.anahtar !== satirAnahtari);
       let yeni: Satir[];
-      if (var_ && (!satirAnahtari || !p.find((s) => s.anahtar === satirAnahtari)?.stokKartId)) {
+      if (var_ && (!satirAnahtari || !((x?: Satir) => !!x && doluMu(x))(p.find((s) => s.anahtar === satirAnahtari)))) {
         yeni = p.map((s) => (s === var_ ? { ...s, miktar: metin(sayi(s.miktar) + adet, 4) } : s.anahtar === satirAnahtari ? { ...s, barkod: "", ad: "" } : s));
       } else {
         const dolum: Partial<Satir> = { stokKartId: k.stokKartId, kod: k.kod, barkod: k.barkodlar[0] || "", ad: k.ad, birim: k.birim, kdvOrani: k.kdvOrani, miktar: metin(adet, 4), fiyat: metin(kartFiyati(k), 4), iskTur: 0, iskDeger: "", stok: k.bakiye };
-        const hedef = satirAnahtari ? p.find((s) => s.anahtar === satirAnahtari) : p.find((s) => !s.stokKartId);
+        const hedef = satirAnahtari ? p.find((s) => s.anahtar === satirAnahtari) : p.find((s) => !doluMu(s));
         yeni = hedef ? p.map((s) => (s === hedef ? { ...s, ...dolum } : s)) : [...p, { ...bosSatir(), ...dolum }];
       }
-      if (!yeni.some((s) => !s.stokKartId)) yeni = [...yeni, bosSatir()];
-      const sonBos = yeni.filter((s) => !s.stokKartId).pop();
+      if (!yeni.some((s) => !doluMu(s))) yeni = [...yeni, bosSatir()];
+      const sonBos = yeni.filter((s) => !doluMu(s)).pop();
       if (sonBos) odak(`${sonBos.anahtar}_barkod`);
       return yeni;
     });
@@ -304,7 +308,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   };
 
   const satirDegis = (a: string, alan: keyof Satir, v: any) => setSatirlar((p) => p.map((s) => (s.anahtar === a ? { ...s, [alan]: v } : s)));
-  const satirSil = (a: string) => setSatirlar((p) => { const y = p.filter((s) => s.anahtar !== a); return y.some((s) => !s.stokKartId) ? y : [...y, bosSatir()]; });
+  const satirSil = (a: string) => setSatirlar((p) => { const y = p.filter((s) => s.anahtar !== a); return y.some((s) => !doluMu(s)) ? y : [...y, bosSatir()]; });
 
   // ── Ödemeler ──
   const odemeDegis = (a: string, d: Partial<Odeme>) => setOdemeler((p) => p.map((o) => {
@@ -387,7 +391,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       cariKartId, aliciVknTckn: temizVkn, aliciUnvan: isAnonymousCustomerName(unvan) ? "NİHAİ TÜKETİCİ" : unvan.trim(),
       adres, ilce, il, vergiDairesi, eposta, telefon,
       iskontoId, iskontoKodu: iskontolar.find((i) => i.iskontoId === iskontoId)?.kod || null, iskontoTuru: fisIskTur, iskontoDegeri: sayi(fisIskDeger),
-      satirlar: dolu.map((s) => ({ stokKartId: s.stokKartId!, miktar: sayi(s.miktar), kdvDahilFiyat: sayi(s.fiyat), iskontoTuru: s.iskTur, iskontoDegeri: s.iskTur ? sayi(s.iskDeger) : null })),
+      satirlar: dolu.map((s) => ({ stokKartId: s.stokKartId, ...(s.serbest ? { urunAdi: s.ad, birim: s.birim, kdvOrani: s.kdvOrani } : {}), miktar: sayi(s.miktar), kdvDahilFiyat: sayi(s.fiyat), iskontoTuru: s.iskTur, iskontoDegeri: s.iskTur ? sayi(s.iskDeger) : null })),
       odemeler: odemeYuku, eksiStokOnay: onay,
     };
   };
@@ -641,12 +645,12 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
               </thead>
               <tbody>
                 {satirlar.map((s, i) => {
-                  const h = s.stokKartId ? satirIsk(doluIndeks(s)) : undefined;
+                  const h = doluMu(s) ? satirIsk(doluIndeks(s)) : undefined;
                   return (
                     <tr key={s.anahtar}>
                       <td className="text-center text-muted fw-bold">{i + 1}</td>
                       <td style={{ padding: "2px 4px" }}>
-                        {s.stokKartId ? <span className="font-monospace fw-semibold">{s.barkod || s.kod}</span> : (
+                        {doluMu(s) ? <span className="font-monospace fw-semibold">{s.serbest ? "Serbest" : s.barkod || s.kod}</span> : (
                           <InputGroup size="sm">
                             <Form.Control ref={(el) => { hucre.current[`${s.anahtar}_barkod`] = el; }} value={s.barkod} placeholder="Barkod okutun" disabled={kilitli}
                               style={{ fontSize: 11.5, fontFamily: "monospace" }}
@@ -661,7 +665,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                         )}
                       </td>
                       <td style={{ padding: "2px 4px" }}>
-                        {s.stokKartId ? <span className="fw-semibold">{s.ad} <span className="text-muted small font-monospace">{s.kod}</span></span> : (
+                        {doluMu(s) ? <span className="fw-semibold">{s.ad} <span className="text-muted small font-monospace">{s.kod}</span></span> : (
                           <Form.Control size="sm" value={s.ad} placeholder="Ürün adı yazıp Enter" disabled={kilitli} style={{ fontSize: 11.5 }}
                             onChange={(e) => satirDegis(s.anahtar, "ad", e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === "F4") { e.preventDefault(); setSecici({ acik: true, satir: s.anahtar, arama: s.ad }); } }} />
@@ -669,16 +673,16 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                       </td>
                       <td className={`text-end ${s.stok !== null && s.stok - sayi(s.miktar) < 0 ? "text-danger fw-bold" : "text-muted"}`}>{s.stokKartId && s.stok !== null ? miktarYaz(s.stok) : ""}</td>
                       <td style={{ padding: "2px 4px" }}>
-                        {s.stokKartId && <Form.Control size="sm" className="text-end fw-semibold" inputMode="decimal" value={s.miktar} disabled={kilitli} ref={(el) => { hucre.current[`${s.anahtar}_miktar`] = el; }}
+                        {doluMu(s) && <Form.Control size="sm" className="text-end fw-semibold" inputMode="decimal" value={s.miktar} disabled={kilitli} ref={(el) => { hucre.current[`${s.anahtar}_miktar`] = el; }}
                           style={{ fontSize: 11.5, background: !(sayi(s.miktar) > 0) ? "#fee2e2" : undefined }} onChange={(e) => satirDegis(s.anahtar, "miktar", sadeceSayi(e.target.value))}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const b = satirlar.find((x) => !x.stokKartId); if (b) odak(`${b.anahtar}_barkod`); } }} />}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const b = satirlar.find((x) => !doluMu(x)); if (b) odak(`${b.anahtar}_barkod`); } }} />}
                       </td>
                       <td className="text-center small">{s.birim}</td>
                       <td style={{ padding: "2px 4px" }}>
-                        {s.stokKartId && <Form.Control size="sm" className="text-end" inputMode="decimal" value={s.fiyat} disabled={kilitli} style={{ fontSize: 11.5 }} onChange={(e) => satirDegis(s.anahtar, "fiyat", sadeceSayi(e.target.value))} />}
+                        {doluMu(s) && <Form.Control size="sm" className="text-end" inputMode="decimal" value={s.fiyat} disabled={kilitli} style={{ fontSize: 11.5 }} onChange={(e) => satirDegis(s.anahtar, "fiyat", sadeceSayi(e.target.value))} />}
                       </td>
                       <td style={{ padding: "2px 4px" }}>
-                        {s.stokKartId && (
+                        {doluMu(s) && (
                           <InputGroup size="sm">
                             <Form.Select value={s.iskTur} disabled={kilitli} style={{ fontSize: 11, maxWidth: 62, minWidth: 62, padding: "1px 18px 1px 4px" }} onChange={(e) => satirDegis(s.anahtar, "iskTur", Number(e.target.value))}>
                               <option value={0}>—</option><option value={1}>%</option><option value={2}>TL</option>
@@ -687,10 +691,10 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                           </InputGroup>
                         )}
                       </td>
-                      <td className="text-center">{s.stokKartId ? `%${s.kdvOrani}` : ""}</td>
+                      <td className="text-center">{doluMu(s) ? `%${s.kdvOrani}` : ""}</td>
                       <td className="text-end text-muted">{h ? para(h.kdvTutari) : ""}</td>
                       <td className="text-end fw-bold">{h ? para(h.toplamTutar) : ""}</td>
-                      <td className="text-center">{s.stokKartId && !kilitli && <Button variant="link" size="sm" className="p-0 text-danger" title="Satırı sil" onClick={() => satirSil(s.anahtar)}><IconTrash size={13} /></Button>}</td>
+                      <td className="text-center">{doluMu(s) && !kilitli && <Button variant="link" size="sm" className="p-0 text-danger" title="Satırı sil" onClick={() => satirSil(s.anahtar)}><IconTrash size={13} /></Button>}</td>
                     </tr>
                   );
                 })}
