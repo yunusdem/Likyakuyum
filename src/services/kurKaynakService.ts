@@ -3,13 +3,10 @@ import { apiClient } from "./apiClient";
 /** Anlık Fiyat Listesi kur kaynağı + komisyon (docs/KUR_KAYNAGI_YOL_HARITASI.md) */
 
 export type KomisyonTuru = "Y" | "T";
-export type KurKaynakDurum = "canli" | "bekliyor" | "kopuk";
 
 export interface KurKaynakBilgi {
   kod: string;
   ad: string;
-  durum: KurKaynakDurum;
-  sonGuncelleme: string | null;
 }
 
 export interface KurKaynakSatiri {
@@ -35,10 +32,16 @@ export interface KurKomisyonSatiri {
   kod: string;
   ad: string;
   urunTipi: number | null;
+  /** Efektif alış/satış komisyonu */
   alisTur: KomisyonTuru;
   alisDeger: number;
   satisTur: KomisyonTuru;
   satisDeger: number;
+  /** Döviz alış/satış komisyonu */
+  dovizAlisTur: KomisyonTuru;
+  dovizAlisDeger: number;
+  dovizSatisTur: KomisyonTuru;
+  dovizSatisDeger: number;
 }
 
 export const KurKaynakService = {
@@ -51,8 +54,9 @@ export const KurKaynakService = {
     await apiClient.request("/kur/kaynak-secili", { method: "PUT", body: JSON.stringify({ kaynak }) });
   },
 
-  async cek(kaynak: string): Promise<KurKaynakSonucu> {
-    const res = await apiClient.request<KurKaynakSonucu>(`/kur/kaynak/${encodeURIComponent(kaynak)}`, { method: "GET" });
+  /** Firma Tanımları › Kur Kaynağı'nda seçili kaynaktan çeker (komisyon uygulanmış, kaydetmez) */
+  async cek(): Promise<KurKaynakSonucu> {
+    const res = await apiClient.request<KurKaynakSonucu>("/kur/kaynak", { method: "GET" });
     return res.data!;
   },
 

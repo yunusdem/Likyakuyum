@@ -4,29 +4,26 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getDbPool, getPoolKey } from "../config/mssql.config.js";
 import { batchlereBol } from "../services/semaGoc.service.js";
-import type { KomisyonTuru } from "../services/kur/kurKomisyon.js";
+import type { Komisyon } from "../services/kur/kurKomisyon.js";
 
 /**
  * Anlık Fiyat Listesi kur kaynağı + birim bazında komisyon (docs/KUR_KAYNAGI_YOL_HARITASI.md).
- * Tablolar göçle (007_kur_kaynagi.sql) gelir; göç uygulanmamış veritabanında ilk kullanımda da oluşturulur.
+ * Tablolar göçle (007_kur_kaynagi.sql, 009_kur_komisyon_doviz.sql) gelir; göç uygulanmamış veritabanında ilk kullanımda da oluşturulur.
  */
 
 export type DbContext = { dbServer?: string; dbName?: string };
 
-export interface KurKomisyonSatiri {
+export interface KurKomisyonSatiri extends Komisyon {
   paraId: number;
   kod: string;
   ad: string;
   urunTipi: number | null;
-  alisTur: KomisyonTuru;
-  alisDeger: number;
-  satisTur: KomisyonTuru;
-  satisDeger: number;
 }
 
+const GOCLER = ["007_kur_kaynagi.sql", "009_kur_komisyon_doviz.sql"];
 const gocBatchleri = (): string[] => {
   const burasi = path.dirname(fileURLToPath(import.meta.url));
-  return batchlereBol(fs.readFileSync(path.resolve(burasi, "../../migrations/007_kur_kaynagi.sql"), "utf8"));
+  return GOCLER.flatMap((ad) => batchlereBol(fs.readFileSync(path.resolve(burasi, "../../migrations", ad), "utf8")));
 };
 
 const hazirHavuzlar = new Set<string>();
@@ -37,7 +34,7 @@ const PARA_SUZGECI = `
   AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TÜRK LİRA%'
   AND UPPER(LTRIM(RTRIM(ISNULL(P.[AD], '')))) NOT LIKE '%TURK LIRA%'`;
 
-const tur = (v: unknown): KomisyonTuru => (String(v ?? "").trim().toUpperCase() === "Y" ? "Y" : "T");
+const tur = (v: unknown): Komisyon["alisTur"] => (String(v ?? "").trim().toUpperCase() === "Y" ? "Y" : "T");
 
 export class KurKaynakRepository {
   private static async pool(ctx?: DbContext): Promise<sql.ConnectionPool> {
@@ -77,7 +74,8 @@ export class KurKaynakRepository {
              LTRIM(RTRIM(ISNULL(P.KOD, ''))) AS KOD,
              LTRIM(RTRIM(ISNULL(P.AD, ''))) AS AD,
              P.URUN_TIPI,
-             K.ALIS_TUR, K.ALIS_DEGER, K.SATIS_TUR, K.SATIS_DEGER
+             K.ALIS_TUR, K.ALIS_DEGER, K.SATIS_TUR, K.SATIS_DEGER,
+             K.DOVIZ_ALIS_TUR, K.DOVIZ_ALIS_DEGER, K.DOVIZ_SATIS_TUR, K.DOVIZ_SATIS_DEGER
       FROM dbo.TODVZ_PARA P
       LEFT JOIN dbo.TODVZ_KUR_KOMISYON K ON K.PARA_ID = P.PARA_ID
       WHERE ${PARA_SUZGECI}
@@ -91,25 +89,35 @@ export class KurKaynakRepository {
       alisDeger: Number(s.ALIS_DEGER) || 0,
       satisTur: tur(s.SATIS_TUR),
       satisDeger: Number(s.SATIS_DEGER) || 0,
+      dovizAlisTur: tur(s.DOVIZ_ALIS_TUR),
+      dovizAlisDeger: Number(s.DOVIZ_ALIS_DEGER) || 0,
+      dovizSatisTur: tur(s.DOVIZ_SATIS_TUR),
+      dovizSatisDeger: Number(s.DOVIZ_SATIS_DEGER) || 0,
     }));
   }
 
-  /** Tabloyu baştan yazar; değeri ikisi de 0 olan birim için kayıt tutulmaz */
-  static async komisyonKaydet(satirlar: Pick<KurKomisyonSatiri, "paraId" | "alisTur" | "alisDeger" | "satisTur" | "satisDeger">[], ctx?: DbContext): Promise<void> {
+  /** Tabloyu baştan yazar; dört değeri de 0 olan birim için kayıt tutulmaz */
+  static async komisyonKaydet(satirlar: (Komisyon & { paraId: number })[], ctx?: DbContext): Promise<void> {
     const pool = await this.pool(ctx);
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
       await new sql.Request(tx).query(`DELETE FROM dbo.TODVZ_KUR_KOMISYON`);
       for (const s of satirlar) {
-        if (!s.alisDeger && !s.satisDeger) continue;
+        if (!s.alisDeger && !s.satisDeger && !s.dovizAlisDeger && !s.dovizSatisDeger) continue;
         await new sql.Request(tx)
           .input("p", sql.Int, s.paraId)
           .input("at", sql.Char(1), s.alisTur)
           .input("ad", sql.Decimal(18, 6), s.alisDeger)
           .input("st", sql.Char(1), s.satisTur)
           .input("sd", sql.Decimal(18, 6), s.satisDeger)
-          .query(`INSERT INTO dbo.TODVZ_KUR_KOMISYON (PARA_ID, ALIS_TUR, ALIS_DEGER, SATIS_TUR, SATIS_DEGER) VALUES (@p, @at, @ad, @st, @sd)`);
+          .input("dat", sql.Char(1), s.dovizAlisTur)
+          .input("dad", sql.Decimal(18, 6), s.dovizAlisDeger)
+          .input("dst", sql.Char(1), s.dovizSatisTur)
+          .input("dsd", sql.Decimal(18, 6), s.dovizSatisDeger)
+          .query(`INSERT INTO dbo.TODVZ_KUR_KOMISYON
+                    (PARA_ID, ALIS_TUR, ALIS_DEGER, SATIS_TUR, SATIS_DEGER, DOVIZ_ALIS_TUR, DOVIZ_ALIS_DEGER, DOVIZ_SATIS_TUR, DOVIZ_SATIS_DEGER)
+                  VALUES (@p, @at, @ad, @st, @sd, @dat, @dad, @dst, @dsd)`);
       }
       await tx.commit();
     } catch (e) {

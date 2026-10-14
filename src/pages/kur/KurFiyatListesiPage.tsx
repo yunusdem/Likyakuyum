@@ -41,7 +41,6 @@ import {
 } from "../../services/kurService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { KurKaynakService } from "../../services/kurKaynakService";
-import KurKaynakPaneli from "../../components/kur/KurKaynakPaneli";
 import { printReportTable } from "../../utils/printReport";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 
@@ -280,10 +279,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isArchiving, setIsArchiving] = useState<boolean>(false);
   const [isTcmbLoading, setIsTcmbLoading] = useState<boolean>(false);
-  // Kur kaynağı (docs/KUR_KAYNAGI_YOL_HARITASI.md): soldaki panelden seçilir, firma bazında saklanır
-  const [kurKaynagi, setKurKaynagi] = useState<string>("tcmb");
+  // Kur kaynağı (docs/KUR_KAYNAGI_YOL_HARITASI.md): Firma Tanımları › Kur Kaynağı'nda seçilir; burada yalnız adı gösterilir
   const [kurKaynagiAd, setKurKaynagiAd] = useState<string>("Merkez Bankası");
-  const kurKaynagiRef = useRef<string>("tcmb");
   const [kaynakOzeti, setKaynakOzeti] = useState<string>("");
   // Kaynaktan çekimden sonra sırayla F12 altın hesabı ve (otomatik modda) kayıt; güncel satırlarla çalışsınlar diye efektle
   const [kaynakZinciri, setKaynakZinciri] = useState<{ adim: "altin" | "kaydet"; kaydet: boolean } | null>(null);
@@ -1097,17 +1094,19 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     inputRefs.current[firstEfKey]?.select();
   };
 
-  // F8 / soldaki kaynak paneli: seçili kaynaktan kur çek (docs/KUR_KAYNAGI_YOL_HARITASI.md).
-  // Döviz kolonları kaynağın ham fiyatı, efektif kolonlar komisyonlu fiyat (komisyon sunucuda uygulanır).
-  const handleFetchTcmb = async (kaynakArg?: unknown, otomatik = false) => {
-    const kaynak = typeof kaynakArg === "string" ? kaynakArg : kurKaynagiRef.current;
+  // F8: Firma Tanımları › Kur Kaynağı'nda seçili kaynaktan kur çek (docs/KUR_KAYNAGI_YOL_HARITASI.md).
+  // Döviz ve efektif kolonlara kendi komisyonları uygulanır (sunucuda).
+  const handleFetchTcmb = async (otomatikArg: unknown = false) => {
+    // Düğmeden çağrılınca ilk argüman tıklama olayıdır; yalnız true otomatik çekimdir
+    const otomatik = otomatikArg === true;
     try {
       setIsTcmbLoading(true);
       if (!otomatik) {
         setAlertError(null);
         setAlertSuccess(null);
       }
-      const sonuc = await KurKaynakService.cek(kaynak);
+      const sonuc = await KurKaynakService.cek();
+      setKurKaynagiAd(sonuc.kaynakAd);
       const gelen = new Map(sonuc.satirlar.map((s) => [s.paraId, s]));
       const eksik = sonuc.eksikBirimler.length ? ` · kaynakta yok: ${sonuc.eksikBirimler.join(", ")}` : "";
       setKaynakOzeti(`${sonuc.kaynakAd} · ${new Date().toLocaleTimeString("tr-TR")} · ${gelen.size} birim alındı${eksik}`);
@@ -1175,14 +1174,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     }
   };
 
-  // Soldaki panelden kaynak seçimi: firma bazında saklanır, hemen çekilir
-  const handleKaynakSec = (kod: string, ad: string) => {
-    kurKaynagiRef.current = kod;
-    setKurKaynagi(kod);
-    setKurKaynagiAd(ad);
-    KurKaynakService.seciliKaydet(kod).catch((e) => setAlertError(e?.message || "Kur kaynağı kaydedilemedi."));
-    handleFetchTcmb(kod);
-  };
+  // F8 düğmesinde seçili kaynağın adı (sitelere bağlanmaz)
+  useEffect(() => {
+    KurKaynakService.kaynaklar()
+      .then((r) => setKurKaynagiAd(r.kaynaklar.find((k) => k.kod === r.secili)?.ad ?? "Merkez Bankası"))
+      .catch(() => undefined);
+  }, []);
 
   const handleAutoCalculateGoldRates = () => {
     try {
@@ -1613,7 +1610,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   otomatikCekRef.current = () => {
     // Kullanıcının kaydedilmemiş elle girişini ezme
     if (isLoading || isSaving || isTcmbLoading || kaynakZinciri || isDirty || rows.length === 0) return;
-    handleFetchTcmb(kurKaynagiRef.current, true);
+    handleFetchTcmb(true);
   };
   useEffect(() => {
     if (!otomatikKur) return;
@@ -1811,26 +1808,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           }
         `}</style>
 
-        <div className="d-flex flex-column flex-md-row" style={{ minWidth: 0 }}>
-        {effectivePageType === "anlik" && (
-          <KurKaynakPaneli
-            secili={kurKaynagi}
-            yukleniyor={isTcmbLoading}
-            onKayitliSecili={(kod, ad) => {
-              kurKaynagiRef.current = kod;
-              setKurKaynagi(kod);
-              setKurKaynagiAd(ad);
-            }}
-            onSec={handleKaynakSec}
-          />
-        )}
         {/* Table Content - Max height set for ~20 rows with smooth scrolling */}
         <div
           className="flex-grow-1 overflow-auto bg-white"
           style={{
             maxHeight: "calc(100vh - 280px)",
             minHeight: "450px",
-            minWidth: 0,
           }}
         >
           {isLoading ? (
@@ -2247,7 +2230,6 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               </tbody>
             </table>
           )}
-        </div>
         </div>
 
         {/* Desktop ERP Function Keys Status Bar */}

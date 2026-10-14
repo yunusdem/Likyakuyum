@@ -5,7 +5,7 @@ import type { KaynakAnlik } from "../../piyasa/tipler.js";
 import { PiyasaService } from "../piyasa.service.js";
 import { KurService } from "../kur.service.js";
 import { ApiError } from "../../utils/ApiError.js";
-import { komisyonUygula, type HamKur, type KomisyonluKur } from "./kurKomisyon.js";
+import { komisyonUygula, type HamKur, type Komisyon, type KomisyonluKur } from "./kurKomisyon.js";
 
 /**
  * Anlık Fiyat Listesi kur kaynağı (docs/KUR_KAYNAGI_YOL_HARITASI.md).
@@ -32,8 +32,6 @@ export type KaynakDurum = "canli" | "bekliyor" | "kopuk";
 export interface KaynakBilgi {
   kod: string;
   ad: string;
-  durum: KaynakDurum;
-  sonGuncelleme: string | null;
 }
 
 export interface KaynakSatiri extends KomisyonluKur {
@@ -103,19 +101,13 @@ export const tcmbHamKurlari = (veri: Awaited<ReturnType<typeof KurService.fetchT
 };
 
 export const KurKaynakService = {
-  /** Soldaki panelin listesi + seçili kaynak */
+  /**
+   * Firma Tanımları › Kur Kaynağı seçim listesi + seçili kaynak.
+   * Sitelere bağlanmaz (K20): bağlantı yalnız çekimde ve yalnız seçili kaynağa açılır.
+   */
   async kaynaklar(ctx: DbContext): Promise<{ secili: string; kaynaklar: KaynakBilgi[] }> {
-    const [secili, siteler] = await Promise.all([KurKaynakRepository.seciliKaynak(ctx), PiyasaService.hamAnlik()]);
-    const tcmb: KaynakBilgi = {
-      kod: TCMB,
-      ad: "Merkez Bankası",
-      durum: tcmbSonHata ? "kopuk" : "canli",
-      sonGuncelleme: tcmbOnbellek ? new Date(tcmbOnbellek.zaman).toISOString() : null,
-    };
-    return {
-      secili,
-      kaynaklar: [tcmb, ...siteler.map((a) => ({ kod: a.kod, ad: a.ad, durum: siteDurumu(a), sonGuncelleme: a.sonGuncelleme }))],
-    };
+    const secili = await KurKaynakRepository.seciliKaynak(ctx);
+    return { secili, kaynaklar: [{ kod: TCMB, ad: "Merkez Bankası" }, ...KAYNAKLAR.map((k) => ({ kod: k.kod, ad: k.ad }))] };
   },
 
   async seciliKaydet(kaynak: string, degistiren: string | null, ctx: DbContext): Promise<void> {
@@ -133,25 +125,36 @@ export const KurKaynakService = {
         if (!Number.isFinite(n) || n > 1_000_000) throw ApiError.badRequest(`${s?.kod ?? ""} ${ad} komisyonu geçersiz.`);
         return n;
       };
-      return {
+      const tur = (v: unknown) => (v === "Y" ? ("Y" as const) : ("T" as const));
+      const k: Komisyon & { paraId: number } = {
         paraId: Number(s?.paraId),
-        alisTur: s?.alisTur === "Y" ? ("Y" as const) : ("T" as const),
-        alisDeger: deger(s?.alisDeger, "alış"),
-        satisTur: s?.satisTur === "Y" ? ("Y" as const) : ("T" as const),
-        satisDeger: deger(s?.satisDeger, "satış"),
+        alisTur: tur(s?.alisTur),
+        alisDeger: deger(s?.alisDeger, "efektif alış"),
+        satisTur: tur(s?.satisTur),
+        satisDeger: deger(s?.satisDeger, "efektif satış"),
+        dovizAlisTur: tur(s?.dovizAlisTur),
+        dovizAlisDeger: deger(s?.dovizAlisDeger, "döviz alış"),
+        dovizSatisTur: tur(s?.dovizSatisTur),
+        dovizSatisDeger: deger(s?.dovizSatisDeger, "döviz satış"),
       };
+      return k;
     });
     for (const s of temiz) {
       if (!Number.isInteger(s.paraId) || s.paraId <= 0) throw ApiError.badRequest("Komisyon satırında para birimi eksik.");
-      if ((s.alisTur === "Y" && s.alisDeger >= 100) || (s.satisTur === "Y" && s.satisDeger >= 100)) {
-        throw ApiError.badRequest("Yüzde komisyon çok büyük.");
-      }
+      const yuzdeler: [string, number][] = [
+        [s.alisTur, s.alisDeger],
+        [s.satisTur, s.satisDeger],
+        [s.dovizAlisTur, s.dovizAlisDeger],
+        [s.dovizSatisTur, s.dovizSatisDeger],
+      ];
+      if (yuzdeler.some(([t, d]) => t === "Y" && d >= 100)) throw ApiError.badRequest("Yüzde komisyon 100'den küçük olmalı.");
     }
     await KurKaynakRepository.komisyonKaydet(temiz, ctx);
   },
 
-  /** Kaynaktan çek, komisyonu uygula, listedeki birimlerle eşle */
-  async cek(kaynak: string, ctx: DbContext): Promise<KaynakSonucu> {
+  /** Kaynaktan çek (verilmezse firmada seçili kaynak), komisyonu uygula, listedeki birimlerle eşle */
+  async cek(kaynakArg: string | undefined, ctx: DbContext): Promise<KaynakSonucu> {
+    const kaynak = kaynakArg || (await KurKaynakRepository.seciliKaynak(ctx));
     let ham: Map<string, HamKur>;
     let kaynakAd: string;
     let sonGuncelleme: string | null;
@@ -164,7 +167,7 @@ export const KurKaynakService = {
       sonGuncelleme = tcmbOnbellek ? new Date(tcmbOnbellek.zaman).toISOString() : null;
     } else {
       if (!KAYNAKLAR.some((k) => k.kod === kaynak)) throw ApiError.badRequest("Geçersiz kur kaynağı.");
-      const a = (await PiyasaService.hamAnlik(kaynak)).find((x) => x.kod === kaynak)!;
+      const a = await PiyasaService.tekKaynak(kaynak);
       if (siteDurumu(a) !== "canli") {
         throw ApiError.badRequest(`${a.ad} kaynağına şu an bağlanılamıyor; fiyatlar uygulanmadı.`);
       }

@@ -42,6 +42,7 @@ import { ebelgeService } from "../../services/ebelgeService";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import KurKomisyonTablosu, { type KurKomisyonTablosuRef } from "../../components/kur/KurKomisyonTablosu";
+import KurKaynakSecici, { type KurKaynakSeciciRef } from "../../components/kur/KurKaynakSecici";
 import FaturaSiniriAlani, { type FaturaSiniriAlaniRef } from "../hizliSatis/FaturaSiniriAlani";
 
 export const CompanyDefinitionsPage: React.FC = () => {
@@ -842,6 +843,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
   };
 
   const komisyonRef = useRef<KurKomisyonTablosuRef>(null);
+  const kurKaynakRef = useRef<KurKaynakSeciciRef>(null);
   const faturaSiniriRef = useRef<FaturaSiniriAlaniRef>(null);
 
   const handleSave = async (e?: React.FormEvent) => {
@@ -849,7 +851,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
     try {
       setIsSaving(true);
       setAlertError(null);
-      // Kur Kaynağı sekmesindeki komisyon tablosu (değiştiyse)
+      // Kur Kaynağı sekmesi: kaynak seçimi ve komisyon tablosu (değiştiyse)
+      await kurKaynakRef.current?.kaydet();
       await komisyonRef.current?.kaydet();
       // Hızlı Satış fatura sınırı (docs/HIZLI_SATIS_YOL_HARITASI.md, H12)
       await faturaSiniriRef.current?.kaydet();
@@ -1825,6 +1828,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                 {/* ─── KUR KAYNAĞI: otomatik çekme + birim bazında komisyon (docs/KUR_KAYNAGI_YOL_HARITASI.md) ─── */}
                 <Tab.Pane eventKey="kurKaynagi">
                   <div className="p-3 bg-light rounded-3 border mb-3">
+                    <KurKaynakSecici ref={kurKaynakRef} />
                     <Form.Check
                       type="checkbox"
                       id="MERKEZ_BANKASI_KURUNU_AL"
@@ -1833,7 +1837,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                       onChange={(e) => handleChange("MERKEZ_BANKASI_KURUNU_AL", e.target.checked)}
                     />
                     <div className="small text-secondary mt-1">
-                      İşaretliyse Anlık Fiyat Listesi açıkken kurlar, listede seçili kaynaktan Sistem sekmesindeki tazeleme süresinde bir çekilip kaydedilir.
+                      Anlık Fiyat Listesi'nde F8 bu kaynaktan çeker. İşaretliyse liste açıkken kurlar Sistem sekmesindeki tazeleme süresinde bir çekilip kaydedilir.
                     </div>
                   </div>
                   <div className="p-3 bg-light rounded-3 border">
