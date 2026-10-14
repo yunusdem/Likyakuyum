@@ -9,6 +9,9 @@ export const FIS_TURLERI = {
     SARRAF_FIS_A4: { ad: "Sarraf Fişi (A4)", grup: "SARRAF", bicim: "A4", varsayilan: "belge/SRFFIS_A4.json" },
     PERAKENDE_FIS_80: { ad: "Perakende Bilgi Fişi (80 mm termal)", grup: "PERAKENDE", bicim: "80", varsayilan: "belge/PRKFIS_80.json" },
     PERAKENDE_FIS_A4: { ad: "Perakende Fatura (A4)", grup: "PERAKENDE", bicim: "A4", varsayilan: "belge/PRKFIS_A4.json" },
+    // Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17): ilk düzeni Perakende fişinden, firma değiştirebilir
+    TICARI_FIS_80: { ad: "Ticari Satış Bilgi Fişi (80 mm termal)", grup: "TICARI", bicim: "80", varsayilan: "belge/TCRFIS_80.json" },
+    TICARI_FIS_A4: { ad: "Ticari Satış Faturası (A4)", grup: "TICARI", bicim: "A4", varsayilan: "belge/TCRFIS_A4.json" },
     // e-Döviz belgesinin PDF'i (önizleme / indirme / arşiv; docs/belgeverapor.md) — Faz 6
     EDOVIZ_PDF_ALIS_A4: { ad: "e-Döviz Belgesi PDF — Alım (A4)", grup: "EDOVIZ_PDF", bicim: "A4", varsayilan: "belge/ALFIS1.json" },
     EDOVIZ_PDF_SATIS_A4: { ad: "e-Döviz Belgesi PDF — Satım (A4)", grup: "EDOVIZ_PDF", bicim: "A4", varsayilan: "belge/STFIS1.json" },

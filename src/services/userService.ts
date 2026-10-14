@@ -122,6 +122,7 @@ export interface UserProfileDto {
     enableSellHeaderTheme: boolean;
     sellHeaderBgColor: string;
     sellHeaderTextColor: string;
+    sidebarStyle?: string;
   };
 }
 

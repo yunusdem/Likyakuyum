@@ -15,6 +15,7 @@ import {
   IconScale,
 } from "@tabler/icons-react";
 import { MenuItem, MenuService, KatalogUrun } from "../../services/menuService";
+import { KurService, KurRowItem } from "../../services/kurService";
 import { useAuth } from "../../context/AuthContext";
 import { getAppBrand } from "../../utils/brandHelper";
 
@@ -28,6 +29,7 @@ export const TvKatalogPage: React.FC = () => {
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const [selectedMenuId, setSelectedMenuId] = useState<number | null>(initialMenuId);
   const [products, setProducts] = useState<KatalogUrun[]>([]);
+  const [kurRows, setKurRows] = useState<KurRowItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,6 +86,29 @@ export const TvKatalogPage: React.FC = () => {
     };
     init();
   }, [fetchMenus]);
+
+  // Canlı Döviz ve Altın Kurlarını Yükle & Dinle
+  useEffect(() => {
+    let isMounted = true;
+    KurService.getKurTablosu({ tur: 0 })
+      .then((t) => {
+        if (isMounted && t?.satirlar) {
+          setKurRows(t.satirlar);
+        }
+      })
+      .catch(() => {});
+
+    const unsub = KurService.onKurUpdated((updated) => {
+      if (isMounted && updated?.satirlar) {
+        setKurRows(updated.satirlar);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      if (unsub) unsub();
+    };
+  }, []);
 
   // Seçili menünün ürünlerini yükle
   const loadProducts = useCallback(async (menuId: number | null, isSilent: boolean = false) => {
@@ -410,8 +435,71 @@ export const TvKatalogPage: React.FC = () => {
     };
   }, []);
 
+  // ─── SATIŞ FİYATI ÇÖZÜMLEME (DÖVİZ HESABI) ───
+  // Kullanıcı Kuralı: "Satış Fiyatı : sağında Has kesinlikle değil dolar euro ne varsa orada 2 farklı hesap var biri has diğer döviz sağda kalan döviz hesabı fiyatı ne kadarsa o fiyat yazmalı"
+  const getResolvedDisplayPrice = useCallback(
+    (product?: KatalogUrun): { tutar: number; paraKodu: string } => {
+      if (!product) return { tutar: 0, paraKodu: "USD" };
+
+      // Özel ürün (ozel): Zaten doğrudan döviz/TL cinsindendir
+      if (product.urunTipi === "ozel") {
+        let pKod = (product.satisParaKodu || "USD").toUpperCase().trim();
+        if (pKod === "HAS" || !pKod) pKod = "USD";
+        return { tutar: Number(product.satisFiyati) || 0, paraKodu: pKod };
+      }
+
+      // Altın ürün (altin):
+      // Altın ürün ekranında sol kutudaki 'satisFiyati' HAS tutarıdır.
+      // Sağ kutuda ise döviz/TL karşılığı (USD, EUR, TL vs.) hesaplanır.
+      // Ekranda sağ kutudaki döviz fiyatı ne kadarsa o fiyat gösterilmelidir!
+      let pKod = (product.satisParaKodu || "USD").toUpperCase().trim();
+      if (pKod === "HAS" || !pKod) {
+        pKod = "USD"; // Asla HAS gösterilmez!
+      }
+
+      const rawHasFiyat = Number(product.satisFiyati) || 0;
+      if (rawHasFiyat <= 0) {
+        return { tutar: 0, paraKodu: pKod };
+      }
+
+      // 1. HAS Kuru Bul (Satış kuru öncelikli)
+      const hasRow = kurRows.find((r) => {
+        const k = (r.kod || "").toUpperCase();
+        return k === "HAS" || k === "ALTIN" || k.includes("HAS");
+      });
+      const systemHasKuru = hasRow
+        ? (Number(hasRow.efektifSatis) || Number(hasRow.dovizSatis) || Number(hasRow.efektifAlis) || Number(hasRow.dovizAlis) || 0)
+        : 0;
+      const itemHasKuru = Number(product.hasKuru2) || Number(product.hasKuru1) || Number(product.altinKuru) || 0;
+      const activeHasKuru = systemHasKuru > 0 ? systemHasKuru : (itemHasKuru > 0 ? itemHasKuru : 1);
+
+      // Toplam TL Değeri = Has Tutarı * Has Kuru
+      const toplamTL = rawHasFiyat * activeHasKuru;
+
+      if (pKod === "TL" || pKod === "TRY" || pKod === "₺") {
+        return { tutar: toplamTL, paraKodu: "TL" };
+      }
+
+      // 2. Hedef Döviz Kuru Bul (USD, EUR, GBP vs.)
+      const targetCurRow = kurRows.find((r) => (r.kod || "").toUpperCase() === pKod);
+      const systemCurKuru = targetCurRow
+        ? (Number(targetCurRow.efektifSatis) || Number(targetCurRow.dovizSatis) || Number(targetCurRow.efektifAlis) || Number(targetCurRow.dovizAlis) || 0)
+        : 0;
+
+      let itemCurKuru = 0;
+      if (pKod === "USD" || pKod === "$") {
+        itemCurKuru = Number(product.usdKuru2) || Number(product.usdKuru1) || 0;
+      }
+      const activeCurKuru = systemCurKuru > 0 ? systemCurKuru : (itemCurKuru > 0 ? itemCurKuru : 1);
+
+      const dovizTutari = activeCurKuru > 0 ? toplamTL / activeCurKuru : toplamTL;
+      return { tutar: dovizTutari, paraKodu: pKod };
+    },
+    [kurRows]
+  );
+
   // ─── SATIŞ FİYATI FORMATLAMA ───
-  // USD -> $ , EUR -> € , TL/TRY -> ₺ ; Asla metin olarak 'USD', 'TL', 'HAS' yazılmaz!
+  // USD -> $ , EUR -> € , TL/TRY -> ₺ ; Asla 'HAS' yazılmaz!
   const formatFiyat = (tutar: number, paraBirimi: string = "") => {
     const formatted = new Intl.NumberFormat("tr-TR", {
       minimumFractionDigits: 2,
@@ -428,8 +516,8 @@ export const TvKatalogPage: React.FC = () => {
       sembol = "£";
     } else if (p === "TL" || p === "TRY" || p === "₺") {
       sembol = "₺";
-    } else if (p === "HAS") {
-      sembol = "₺";
+    } else {
+      sembol = "$";
     }
 
     return `${formatted} ${sembol}`;
@@ -954,170 +1042,179 @@ export const TvKatalogPage: React.FC = () => {
             </div>
 
             {/* ─── SAĞ KART: LÜKS ÜRÜN KİMLİĞİ & KUYUMCU FİYAT ETİKETİ (GÖRSELDEKİ BİREBİR YAPI) ─── */}
-            <div
-              className="tv-info-card d-flex flex-column position-relative"
-              style={{
-                width: "480px",
-                maxWidth: "40vw",
-                padding: "1.25rem 1.5rem",
-                borderRadius: "20px",
-                flexShrink: 0,
-              }}
-            >
-              {/* Görseldeki Sağ Kart Üst Kenar Parlayan Altın Yıldız İğnesi */}
-              <div className="card-sparkle-star" style={{ top: "0%", left: "76%" }}>
-                <div className="card-sparkle-star-center" />
-              </div>
-
-              {/* Üst Bilgiler */}
-              <div className="d-flex flex-column">
-                {/* Rozetler: ALTIN MÜCEVHER (Turuncu) & AYAR (Sarı) */}
-                <div className="d-flex align-items-center gap-2 mb-2">
-                  <span
-                    className="badge text-uppercase fw-bold rounded-pill px-3 py-1"
-                    style={{
-                      background: "#c25e19",
-                      color: "#ffffff",
-                      fontSize: "0.78rem",
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    {currentProduct.urunTipi === "altin" ? "ALTIN MÜCEVHER" : "ÖZEL TASARIM"}
-                  </span>
-
-                  {currentProduct.ayar && (
-                    <span
-                      className="badge fw-bolder rounded-pill px-3 py-1"
-                      style={{
-                        backgroundColor: "#fde047",
-                        color: "#1e293b",
-                        fontSize: "0.78rem",
-                        letterSpacing: "0.5px",
-                      }}
-                    >
-                      <IconSparkles size={14} className="me-1" />
-                      {currentProduct.ayar.toUpperCase().includes("AYAR")
-                        ? currentProduct.ayar.toUpperCase()
-                        : `${currentProduct.ayar.toUpperCase()} AYAR`}
-                    </span>
-                  )}
-                </div>
-
-                {/* Ürün Adı / Modeli (Görseldeki EFSD gibi büyük serif yazı) */}
-                <h1
-                  className="fw-bold mb-1.5 text-white"
-                  style={{
-                    fontFamily: "'Cinzel', 'Playfair Display', serif",
-                    fontSize: "2.3rem",
-                    lineHeight: "1.15",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  {currentProduct.model || "EFSD"}
-                </h1>
-
-                {/* Barkod Kodu Rozeti (Görseldeki ALTDM001004) */}
-                {currentProduct.barkod && (
-                  <div
-                    className="d-inline-flex align-items-center gap-1.5 px-2.5 py-0.5 rounded-pill mb-2 align-self-start"
-                    style={{
-                      background: "#01281d",
-                      border: "1px solid rgba(212, 175, 55, 0.75)",
-                      fontSize: "0.82rem",
-                      color: "#fde047",
-                      fontFamily: "monospace",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <IconBarcode size={15} />
-                    <span>{currentProduct.barkod}</span>
-                  </div>
-                )}
-
-                {/* NET AĞIRLIK / GRAMAJ: 5,00 Gr (Görseldeki Geniş Kapsül) */}
+            {(() => {
+              const displayPrice = getResolvedDisplayPrice(currentProduct);
+              return (
                 <div
-                  className="w-100 py-1.5 px-3 rounded-pill mb-2.5 d-flex align-items-center justify-content-between"
+                  className="tv-info-card d-flex flex-column justify-content-between position-relative"
                   style={{
-                    background: "rgba(0, 0, 0, 0.2)",
-                    border: "1px solid rgba(212, 175, 55, 0.6)",
+                    width: "480px",
+                    maxWidth: "40vw",
+                    padding: "1.35rem 1.6rem",
+                    borderRadius: "20px",
+                    flexShrink: 0,
                   }}
                 >
-                  <div className="d-flex align-items-center gap-1.5">
-                    <IconScale size={16} style={{ color: "#fde047" }} />
-                    <span
-                      className="text-uppercase fw-semibold"
-                      style={{ letterSpacing: "0.5px", fontSize: "0.78rem", color: "#fde047" }}
-                    >
-                      NET AĞIRLIK / GRAMAJ:
-                    </span>
+                  {/* Görseldeki Sağ Kart Üst Kenar Parlayan Altın Yıldız İğnesi */}
+                  <div className="card-sparkle-star" style={{ top: "0%", left: "76%" }}>
+                    <div className="card-sparkle-star-center" />
                   </div>
-                  <div className="fw-bold" style={{ fontSize: "1.05rem" }}>
-                    <span className="text-white me-1">
-                      {new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 5 }).format(currentProduct.miktar)}
-                    </span>
-                    <span style={{ color: "#fde047", fontSize: "0.85rem" }}>
-                      {currentProduct.miktarBirimi || "Gr"}
-                    </span>
-                  </div>
-                </div>
-              </div>
 
-              {/* ─── ALT KISIM: BEYAZ KUYUMCU VİTRİN FİYAT ETİKETİ (GÖRSELDEKİ BİREBİR YAPI) ─── */}
-              <div className="jewelry-price-tag">
-                <div className="tag-inner-border" />
+                  {/* Üst Bilgiler */}
+                  <div className="d-flex flex-column align-items-center text-center w-100">
+                    {/* 1. Rozetler: ALTIN MÜCEVHER (Turuncu) & AYAR (Sarı) - TAM ORTALI */}
+                    <div className="d-flex align-items-center justify-content-center gap-2 mb-2 w-100">
+                      <span
+                        className="badge text-uppercase fw-bold rounded-pill px-3 py-1"
+                        style={{
+                          background: "#c25e19",
+                          color: "#ffffff",
+                          fontSize: "0.8rem",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        {currentProduct.urunTipi === "altin" ? "ALTIN MÜCEVHER" : "ÖZEL TASARIM"}
+                      </span>
 
-                {/* Etiket Başlığı: SATIŞ FİYATI & GÜNCEL FİYAT */}
-                <div className="jewelry-tag-header position-relative">
-                  <div className="d-flex align-items-center gap-1.5">
-                    <IconTag size={16} style={{ color: "#78350f" }} />
-                    <span
-                      className="fw-bold text-uppercase"
+                      {currentProduct.ayar && (
+                        <span
+                          className="badge fw-bolder rounded-pill px-3 py-1"
+                          style={{
+                            backgroundColor: "#fde047",
+                            color: "#1e293b",
+                            fontSize: "0.8rem",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          <IconSparkles size={14} className="me-1" />
+                          {currentProduct.ayar.toUpperCase().includes("AYAR")
+                            ? currentProduct.ayar.toUpperCase()
+                            : `${currentProduct.ayar.toUpperCase()} AYAR`}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 2. Ürün Adı / Modeli (Görseldeki EFSD gibi büyük serif yazı) - TAM ORTALI */}
+                    <h1
+                      className="fw-bold mb-2 text-white text-center w-100"
                       style={{
+                        fontFamily: "'Cinzel', 'Playfair Display', serif",
+                        fontSize: "2.3rem",
+                        lineHeight: "1.15",
                         letterSpacing: "1px",
-                        fontSize: "0.95rem",
-                        color: "#78350f",
-                        fontFamily: "'Cinzel', serif",
+                        wordBreak: "break-word",
                       }}
                     >
-                      SATIŞ FİYATI
-                    </span>
+                      {currentProduct.model || "EFSD"}
+                    </h1>
+
+                    {/* 3. Barkod Kodu Rozeti - TAM ORTALI */}
+                    {currentProduct.barkod && (
+                      <div className="d-flex justify-content-center w-100 mb-2.5">
+                        <div
+                          className="d-inline-flex align-items-center gap-1.5 px-3 py-1 rounded-pill"
+                          style={{
+                            background: "#01281d",
+                            border: "1px solid rgba(212, 175, 55, 0.75)",
+                            fontSize: "0.84rem",
+                            color: "#fde047",
+                            fontFamily: "monospace",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <IconBarcode size={15} />
+                          <span>{currentProduct.barkod}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 4. NET AĞIRLIK / GRAMAJ: 5,00 Gr (Geniş Kapsül) */}
+                    <div
+                      className="w-100 py-1.5 px-3 rounded-pill mb-2.5 d-flex align-items-center justify-content-between"
+                      style={{
+                        background: "rgba(0, 0, 0, 0.2)",
+                        border: "1px solid rgba(212, 175, 55, 0.6)",
+                      }}
+                    >
+                      <div className="d-flex align-items-center gap-1.5">
+                        <IconScale size={16} style={{ color: "#fde047" }} />
+                        <span
+                          className="text-uppercase fw-semibold"
+                          style={{ letterSpacing: "0.5px", fontSize: "0.78rem", color: "#fde047" }}
+                        >
+                          NET AĞIRLIK / GRAMAJ:
+                        </span>
+                      </div>
+                      <div className="fw-bold" style={{ fontSize: "1.05rem" }}>
+                        <span className="text-white me-1">
+                          {new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 5 }).format(currentProduct.miktar)}
+                        </span>
+                        <span style={{ color: "#fde047", fontSize: "0.85rem" }}>
+                          {currentProduct.miktarBirimi || "Gr"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <span
-                    className="badge rounded-pill px-2.5 py-1 text-uppercase fw-semibold"
-                    style={{
-                      backgroundColor: "#ecfdf5",
-                      color: "#047857",
-                      border: "1px solid #a7f3d0",
-                      fontSize: "0.7rem",
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    GÜNCEL FİYAT
-                  </span>
-                </div>
+                  {/* ─── 5. ALT KISIM: BEYAZ KUYUMCU VİTRİN FİYAT ETİKETİ - TAM ORTALI ─── */}
+                  <div className="jewelry-price-tag w-100">
+                    <div className="tag-inner-border" />
 
-                {/* BÜYÜK GÖZ ALICI SATIŞ FİYATI TUTARI (Görseldeki gibi 29,78 $) */}
-                <div className="text-center py-1.5 position-relative">
-                  <div className="jewelry-tag-price" style={{ fontSize: "2.8rem" }}>
-                    {formatFiyat(currentProduct.satisFiyati, currentProduct.satisParaKodu)}
+                    {/* Etiket Başlığı: SATIŞ FİYATI & GÜNCEL FİYAT - ORTALI */}
+                    <div className="jewelry-tag-header position-relative d-flex align-items-center justify-content-center gap-2">
+                      <div className="d-flex align-items-center gap-1.5">
+                        <IconTag size={16} style={{ color: "#78350f" }} />
+                        <span
+                          className="fw-bold text-uppercase"
+                          style={{
+                            letterSpacing: "1px",
+                            fontSize: "0.95rem",
+                            color: "#78350f",
+                            fontFamily: "'Cinzel', serif",
+                          }}
+                        >
+                          SATIŞ FİYATI
+                        </span>
+                      </div>
+
+                      <span
+                        className="badge rounded-pill px-2.5 py-1 text-uppercase fw-semibold"
+                        style={{
+                          backgroundColor: "#ecfdf5",
+                          color: "#047857",
+                          border: "1px solid #a7f3d0",
+                          fontSize: "0.7rem",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        GÜNCEL FİYAT
+                      </span>
+                    </div>
+
+                    {/* BÜYÜK GÖZ ALICI SATIŞ FİYATI TUTARI (DÖVİZ HESABI: $, €, ₺) - TAM ORTALI */}
+                    <div className="text-center py-1.5 position-relative d-flex align-items-center justify-content-center">
+                      <div className="jewelry-tag-price" style={{ fontSize: "2.85rem" }}>
+                        {formatFiyat(displayPrice.tutar, displayPrice.paraKodu)}
+                      </div>
+                    </div>
+
+                    {/* Alt Etiket Dipnotu - ORTALI */}
+                    <div
+                      className="d-flex justify-content-center align-items-center gap-3 pt-2 mt-1 border-top small position-relative text-center"
+                      style={{ fontSize: "0.74rem", borderColor: "#f1f5f9" }}
+                    >
+                      <span style={{ color: "#64748b" }}>
+                        Barkod: <strong className="font-monospace" style={{ color: "#0f172a" }}>{currentProduct.barkod || `${currentProduct.grupKodu}-${currentProduct.urunNo}`}</strong>
+                      </span>
+                      <span className="text-muted">•</span>
+                      <span className="fw-semibold" style={{ color: "#047857" }}>
+                        KDV DAHİLDİR
+                      </span>
+                    </div>
                   </div>
                 </div>
-
-                {/* Alt Etiket Dipnotu */}
-                <div
-                  className="d-flex justify-content-between align-items-center pt-2 mt-1 border-top small position-relative"
-                  style={{ fontSize: "0.74rem", borderColor: "#f1f5f9" }}
-                >
-                  <span style={{ color: "#64748b" }}>
-                    Barkod: <strong className="font-monospace" style={{ color: "#0f172a" }}>{currentProduct.barkod || `${currentProduct.grupKodu}-${currentProduct.urunNo}`}</strong>
-                  </span>
-                  <span className="fw-semibold" style={{ color: "#047857" }}>
-                    KDV DAHİLDİR
-                  </span>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
         ) : null}
       </div>

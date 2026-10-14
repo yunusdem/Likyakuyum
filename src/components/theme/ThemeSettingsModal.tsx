@@ -72,6 +72,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
     enableSellHeaderTheme: boolean;
     sellHeaderBgColor: string;
     sellHeaderTextColor: string;
+    sidebarStyle?: string;
   }>({
     enableProgramTheme: true,
     programBgColor: "#f8fafc",
@@ -99,6 +100,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
     enableSellHeaderTheme: false,
     sellHeaderBgColor: "#e2e8f0",
     sellHeaderTextColor: "#000000",
+    sidebarStyle: "classic",
   });
 
   useEffect(() => {

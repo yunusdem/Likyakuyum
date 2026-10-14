@@ -1,7 +1,9 @@
-import React, { useEffect } from "react";
-import { Routes, Route, Outlet, Navigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
 import Header from "layouts/header/Header";
 import Sidebar from "layouts/Sidebar";
+import TopNavbarMenu from "./layouts/TopNavbarMenu";
+import useSidebarStyle from "./hooks/useSidebarStyle";
 import HomePage from "./pages/HomePage";
 import ModulePage from "./pages/ModulePage";
 import UserDefinitionsPage from "./pages/settings/UserDefinitionsPage";
@@ -115,8 +117,11 @@ import { getAppBrand } from "./utils/brandHelper";
 const DashboardLayout: React.FC = () => {
   const { collapsed, handleCollapsed } = useMenu();
   const { user } = useAuth();
+  const location = useLocation();
+  const sidebarStyle = useSidebarStyle();
   const brand = getAppBrand(user);
   const isExpanded = collapsed === "expanded" || !collapsed;
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (brand?.fullTitle) {
@@ -124,22 +129,63 @@ const DashboardLayout: React.FC = () => {
     }
   }, [brand?.fullTitle]);
 
+  // Collapsed / Expanded durumunu html elementine güvenle yansıt
+  useEffect(() => {
+    const html = document.documentElement;
+    if (collapsed === "collapsed") {
+      html.classList.remove("expanded");
+      html.classList.add("collapsed");
+    } else {
+      html.classList.remove("collapsed");
+      html.classList.add("expanded");
+    }
+  }, [collapsed]);
+
+  // Route değiştiğinde çekmeceyi otomatik kapat
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname]);
+
+  // Drawer modu için DOM sınıflarını yönet
+  useEffect(() => {
+    if (drawerOpen) {
+      document.documentElement.classList.add("drawer-open");
+      document.body.classList.add("drawer-open");
+    } else {
+      document.documentElement.classList.remove("drawer-open");
+      document.body.classList.remove("drawer-open");
+    }
+    return () => {
+      document.documentElement.classList.remove("drawer-open");
+      document.body.classList.remove("drawer-open");
+    };
+  }, [drawerOpen]);
+
   return (
-    <div className="dashboard-layout-root min-vh-100 position-relative">
-      {/* 1. Main Sidebar */}
-      <Sidebar hideLogo={false} containerId="miniSidebar" />
+    <div className={`dashboard-layout-root min-vh-100 position-relative ${drawerOpen ? "drawer-open" : ""}`}>
+      {/* 1. Main Sidebar (Style 4: topbar ve Style 6: megamenu modunda gizlenir) */}
+      {sidebarStyle !== "topbar" && sidebarStyle !== "megamenu" && sidebarStyle !== "drawer" && (
+        <Sidebar hideLogo={false} containerId="miniSidebar" />
+      )}
 
       {/* 2. Mobile Backdrop (closes sidebar on tap outside) */}
-      {isExpanded && (
+      {isExpanded && sidebarStyle !== "topbar" && sidebarStyle !== "megamenu" && sidebarStyle !== "drawer" && (
         <div
           className="sidebar-backdrop d-lg-none"
-          onClick={() => handleCollapsed("collapsed")}
+          onClick={() => {
+            handleCollapsed("collapsed");
+          }}
           aria-hidden="true"
         />
       )}
 
       {/* 3. Main Content Area */}
       <div id="content" className="position-relative min-vh-100 d-flex flex-column">
+        {/* Style 4 & Style 6: En Üstte Header Üstünde Yatay Menü / Mega Menü Çubuğu */}
+        {(sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer") && (
+          <TopNavbarMenu />
+        )}
+
         <Header />
         <main className="flex-grow-1 custom-container pt-1 pb-3" data-sayfa-icerik="true">
           <LisansUyariBandi />

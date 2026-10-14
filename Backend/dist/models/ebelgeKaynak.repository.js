@@ -38,9 +38,9 @@ export function kaynakSecim(k) {
         engel = 'Fişte belge türü e-İrsaliye seçili; e-İrsaliye ekranından gönderin.';
     else if (k.kaynak === 'SARRAF' && k.belgeTuru === 3 && String(k.aliciVkn || '').replace(/\D/g, '').length === 10)
         engel = 'Gönderilmez: mükellef (VKN\'li) kişiden alışta faturayı karşı taraf keser.';
-    else if ((k.kaynak === 'PERAKENDE' || k.kaynak === 'SARRAF') && Number(k.posBekliyor) === 1)
+    else if ((k.kaynak === 'PERAKENDE' || k.kaynak === 'TICARI' || k.kaynak === 'SARRAF') && Number(k.posBekliyor) === 1)
         engel = 'POS tahsilatı bekleniyor: kart ödemesi cihazda onaylanmadan e-belge gönderilmez.';
-    else if (k.kaynak !== 'DOVIZ' && k.kaynak !== 'PERAKENDE' && k.kaynak !== 'SARRAF' && ![0, 1].includes(k.belgeTuru))
+    else if (k.kaynak !== 'DOVIZ' && k.kaynak !== 'PERAKENDE' && k.kaynak !== 'TICARI' && k.kaynak !== 'SARRAF' && ![0, 1].includes(k.belgeTuru))
         engel = 'Bu belge türünü kendi e-İrsaliye / e-Gider ekranından gönderin.';
     else if (Number(k.eskiDurum || 0) !== 0)
         engel = `Kaynak sistemde işlem kaydı var (durum ${k.eskiDurum}). ICE durumunu kontrol edin.`;
@@ -81,7 +81,7 @@ export class EbelgeKaynakRepository {
         const r = pool.request().input("arama", sql.NVarChar(200), `%${f.arama || ""}%`)
             .input("durum", sql.VarChar(30), f.durum || null).input("tur", sql.Int, f.belgeTuru ?? null)
             .input("kaynak", sql.VarChar(20), f.kaynak || null)
-            .input("gD", sql.Bit, grup("doviz")).input("gS", sql.Bit, grup("sarraf")).input("gP", sql.Bit, grup("perakende"))
+            .input("gD", sql.Bit, grup("doviz")).input("gS", sql.Bit, grup("sarraf")).input("gP", sql.Bit, grup("perakende")).input("gT", sql.Bit, grup("ticari"))
             .input("ilk", sql.Date, f.baslangicTarihi || null).input("son", sql.Date, f.bitisTarihi || null)
             .input("atla", sql.Int, (f.sayfa - 1) * 50);
         // e-Döviz fişleri görünümden gelir (EVRAK_TURU yoktur; DOVIZ_EVRAK_TURU sabitiyle temsil edilir).
@@ -147,9 +147,10 @@ export class EbelgeKaynakRepository {
       -- Perakende fişleri (docs/PERAKENDE_EBELGE_YOL_HARITASI.md): evrakTuru 98, belgeTuru = fiş tipi (0 alış, 1 satış, 2 iade).
       -- Durum yalnız bizim kayıtlarımızdan (giden kutusu / kaynak kaydı) gelir; eskiDurum 0 sayılır.
       -- posBekliyor (P6): fişin POS işlemi varken bekleyen / belirsiz işlem var ya da onaylı tutar POS satır toplamını karşılamıyor.
-      IF ((@kaynak IS NULL AND @gP=1) OR @kaynak IN ('PERAKENDE_SATIS','PERAKENDE_ALIS'))
+      -- Ticari satış fişi (FIS_KAYNAGI 1, docs/TICARI_ISLEMLER_YOL_HARITASI.md T16) aynı tablodan, kaynak 'TICARI' ile gelir
+      IF ((@kaynak IS NULL AND (@gP=1 OR @gT=1)) OR @kaynak IN ('PERAKENDE_SATIS','PERAKENDE_ALIS','TICARI_SATIS'))
       INSERT INTO #Kaynak (evrakTuru,belgeId,belgeTuru,kaynak,belgeNo,tarih,unvan,tutar,paraBirimi,eskiEttn,eskiDurum,eskiHata,durum,hata,uuid,aliciVkn,posBekliyor)
-      SELECT ${PERAKENDE_EVRAK_TURU}, F.FATURA_ID, F.FATURA_TIPI, 'PERAKENDE', RTRIM(F.FATURA_NO), F.TARIH, RTRIM(F.ALICI_UNVAN),
+      SELECT ${PERAKENDE_EVRAK_TURU}, F.FATURA_ID, F.FATURA_TIPI, CASE WHEN ISNULL(F.FIS_KAYNAGI,0)=1 THEN 'TICARI' ELSE 'PERAKENDE' END, RTRIM(F.FATURA_NO), F.TARIH, RTRIM(F.ALICI_UNVAN),
         F.GENEL_TOPLAM, CASE WHEN ISNULL(RTRIM(PB.KOD),'TL') IN ('TL','TRY') THEN 'TRY' ELSE RTRIM(PB.KOD) END, NULL, 0, NULL,
         COALESCE(CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN 'GONDERILDI' ELSE G.GONDERIM_DURUMU END, R.DURUM, 'GONDERILMEDI'),
         CASE WHEN G.GONDERIM_DURUMU IN ('KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR') THEN NULL ELSE COALESCE(G.ICE_RESPONSE_MESAJ,R.HATA) END,
@@ -165,7 +166,9 @@ export class EbelgeKaynakRepository {
         ORDER BY CASE WHEN R.DURUM='HATA' THEN 1 ELSE 0 END,R.TARIH DESC) R
       OUTER APPLY (SELECT TOP 1 * FROM dbo.TODVZ_EBELGE_GIDEN G WHERE G.BELGE_NO=RTRIM(F.FATURA_NO) OR G.UUID=CAST(F.ETTN AS varchar(40))
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
-      WHERE (@kaynak IS NULL OR (@kaynak='PERAKENDE_SATIS' AND F.FATURA_TIPI<>0) OR (@kaynak='PERAKENDE_ALIS' AND F.FATURA_TIPI=0))
+      WHERE ((@kaynak IS NULL AND ((@gP=1 AND ISNULL(F.FIS_KAYNAGI,0)=0) OR (@gT=1 AND ISNULL(F.FIS_KAYNAGI,0)=1)))
+          OR (@kaynak='PERAKENDE_SATIS' AND F.FATURA_TIPI<>0 AND ISNULL(F.FIS_KAYNAGI,0)=0) OR (@kaynak='PERAKENDE_ALIS' AND F.FATURA_TIPI=0 AND ISNULL(F.FIS_KAYNAGI,0)=0)
+          OR (@kaynak='TICARI_SATIS' AND ISNULL(F.FIS_KAYNAGI,0)=1))
         AND (@tur IS NULL OR F.FATURA_TIPI=@tur)
         AND (@ilk IS NULL OR F.TARIH>=@ilk) AND (@son IS NULL OR F.TARIH<DATEADD(day,1,@son))
         AND (F.FATURA_NO LIKE @arama OR F.ALICI_UNVAN LIKE @arama);

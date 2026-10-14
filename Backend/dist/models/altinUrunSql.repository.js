@@ -592,7 +592,7 @@ export class AltinUrunSqlRepository {
             try {
                 const ids = items.map((x) => x.altinUrunId).filter(Boolean);
                 if (ids.length > 0) {
-                    const resimRes = await pool.request().query(`SELECT ISLEM_ID, DOSYA_YOLU, RESIM_DATA FROM TODVZ_URUN_RESIM WHERE TIP = 0 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`);
+                    const resimRes = await pool.request().query(`SELECT RESIM_ID, ISLEM_ID, DOSYA_YOLU, RESIM_DATA FROM TODVZ_URUN_RESIM WHERE TIP = 0 AND ISLEM_ID IN (${ids.join(",")}) ORDER BY RESIM_ID ASC`);
                     const resimMap = new Map();
                     for (const row of resimRes.recordset || []) {
                         const list = resimMap.get(row.ISLEM_ID) || [];
@@ -612,6 +612,8 @@ export class AltinUrunSqlRepository {
                         const imgs = resimMap.get(item.altinUrunId);
                         if (imgs && imgs.length > 0) {
                             item.resimler = imgs;
+                            if (!item.resim)
+                                item.resim = imgs[0];
                         }
                         else if (item.resim) {
                             item.resimler = [item.resim];

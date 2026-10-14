@@ -42,6 +42,7 @@ import {
   IconX,
   IconChevronDown,
   IconBinoculars,
+  IconLayoutSidebar,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "components/common/ERPToolbar";
@@ -55,6 +56,8 @@ import { AuthService } from "../../services/authService";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
+import { SIDEBAR_STYLES } from "../../hooks/useSidebarStyle";
+import { SidebarStyleSecimModal } from "../../components/theme/SidebarStyleSecimModal";
 
 
 export type UserProfile = UserProfileDto;
@@ -364,6 +367,8 @@ const defaultNewUserTemplate: UserProfile = {
     enableSellHeaderTheme: false,
     sellHeaderBgColor: "#e2e8f0",
     sellHeaderTextColor: "#000000",
+
+    sidebarStyle: "classic",
   },
 };
 
@@ -384,6 +389,7 @@ const UserDefinitionsPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
+  const [showSidebarStyleModal, setShowSidebarStyleModal] = useState<boolean>(false);
 
 
   const autoSaveTimerRef = useRef<any>(null);
@@ -1664,6 +1670,7 @@ const UserDefinitionsPage: React.FC = () => {
               {/* TAB 2: GÖRÜNÜM AYARLARI */}
               <Tab.Pane eventKey="gorunum">
                 <div className="d-flex flex-column gap-4">
+
                   <Row className="g-4">
                     {/* Sol Kolon: Program & Grid Görünümü */}
                     <Col xs={12} md={6}>
@@ -1974,8 +1981,63 @@ const UserDefinitionsPage: React.FC = () => {
                     </Col>
                   </Row>
 
+                  {/* SIDEBAR & MENÜ YERLEŞİM DÜZENİ (Altta Dürbünlü Seçim Alanı) */}
+                  <div className="p-3 rounded-3 border bg-white shadow-xs">
+                    <div className="d-flex align-items-center justify-content-between mb-2">
+                      <div className="d-flex align-items-center gap-2">
+                        <span
+                          className="d-inline-flex align-items-center justify-content-center rounded-2 bg-primary-subtle text-primary p-1.5"
+                          style={{ width: "32px", height: "32px" }}
+                        >
+                          <IconLayoutSidebar size={18} />
+                        </span>
+                        <div>
+                          <h6 className="mb-0 fw-bold text-dark">
+                            Sidebar &amp; Menü Yerleşim Düzeni
+                          </h6>
+                          <small className="text-muted" style={{ fontSize: "12px" }}>
+                            Menü yerleşim düzenini listeden dürbün butonu ile seçebilirsiniz.
+                          </small>
+                        </div>
+                      </div>
+                      <Badge bg="primary-subtle" className="text-primary border border-primary-subtle px-2.5 py-1 fw-semibold">
+                        Canlı Uygulanır
+                      </Badge>
+                    </div>
+
+                    <div className="d-flex align-items-center gap-2 flex-wrap pt-1">
+                      <InputGroup size="sm" style={{ maxWidth: "460px" }}>
+                        <Form.Control
+                          type="text"
+                          readOnly
+                          value={
+                            SIDEBAR_STYLES.find(
+                              (s) => s.id === (currentUser.appearance?.sidebarStyle || "classic")
+                            )?.title || "2. Klasik Sabit Menü"
+                          }
+                          className="bg-light fw-bold text-primary border-secondary-subtle"
+                          style={{ cursor: "pointer" }}
+                          onClick={() => setShowSidebarStyleModal(true)}
+                        />
+                        <Button
+                          variant="outline-primary"
+                          title="Menü Yerleşim Düzeni Seç (Dürbün)"
+                          className="d-flex align-items-center px-3"
+                          onClick={() => setShowSidebarStyleModal(true)}
+                        >
+                          <IconBinoculars size={16} />
+                        </Button>
+                      </InputGroup>
+                      <span className="text-secondary small fw-medium">
+                        {SIDEBAR_STYLES.find(
+                          (s) => s.id === (currentUser.appearance?.sidebarStyle || "classic")
+                        )?.subtitle}
+                      </span>
+                    </div>
+                  </div>
+
                   {/* HAZIR RENK & UYUMLU TEMA PAKETLERİ (PRESET THEMES) */}
-                  <Card className="border shadow-sm rounded-3 bg-white mt-2">
+                  <Card className="border shadow-sm rounded-3 bg-white mt-1">
                     <Card.Header className="bg-light py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
                       <div className="d-flex align-items-center gap-2">
                         <IconSparkles className="text-warning" size={20} />
@@ -2496,6 +2558,13 @@ const UserDefinitionsPage: React.FC = () => {
           updateField("printerId", String(item.siraNo || item.id));
           setShowPrinterModal(false);
         }}
+      />
+
+      <SidebarStyleSecimModal
+        show={showSidebarStyleModal}
+        onClose={() => setShowSidebarStyleModal(false)}
+        selectedStyle={(currentUser.appearance?.sidebarStyle as any) || "classic"}
+        onSelect={(newStyle) => updateAppearanceField("sidebarStyle", newStyle)}
       />
     </div>
   );

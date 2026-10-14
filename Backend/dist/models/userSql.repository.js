@@ -134,6 +134,19 @@ const kurYetkisiFromDb = (val) => {
     return "Var";
 };
 export class UserSqlRepository {
+    static async ensureSidebarColumn(pool) {
+        try {
+            await pool.request().query(`
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'SIDEBAR_GORUNUM') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [SIDEBAR_GORUNUM] VARCHAR(30) NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_SIDEBAR_GORUNUM DEFAULT 'classic';
+        END;
+      `);
+        }
+        catch (e) {
+            logger.warn("TODVZ_KULLANICI.SIDEBAR_GORUNUM kontrolü sırasında uyarı:", e);
+        }
+    }
     /**
      * Transforms raw TODVZ_KULLANICI SQL row into UserModel DTO
      */
@@ -232,6 +245,7 @@ export class UserSqlRepository {
                 enableSellHeaderTheme: true,
                 sellHeaderBgColor: colorFromDb(entity.SATIS_FISI_BASLIK_ZEMIN_RENGI, "#e2e8f0"),
                 sellHeaderTextColor: colorFromDb(entity.SATIS_FISI_BASLIK_YAZI_RENGI, "#000000"),
+                sidebarStyle: (entity.SIDEBAR_GORUNUM && String(entity.SIDEBAR_GORUNUM).trim()) ? String(entity.SIDEBAR_GORUNUM).trim() : "classic",
             },
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -475,6 +489,8 @@ export class UserSqlRepository {
             request.input("SAPMA_UYARISI_VERILMESIN", sql.Bit, toBit(user.noDeviationWarning));
             request.input("GISE_KURU_DISINDA_OLABILIR", sql.Bit, toBit(user.canBeOutsideCounterRate));
             request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
+            await UserSqlRepository.ensureSidebarColumn(pool);
+            request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
             const insertQuery = `
         INSERT INTO [dbo].[TODVZ_KULLANICI] (
           [AD], [SIFRE], [SISTEM_YONETICISI], [YAZICI_ID], [VEZNE_ID], [KUR_YETKISI],
@@ -492,7 +508,7 @@ export class UserSqlRepository {
           [ALIS_ISTATISTIK_ID], [SATIS_ISTATISTIK_ID], [ARBITRAJ_ALIS_ISTATISTIK_ID], [ARBITRAJ_SATIS_ISTATISTIK_ID],
           [ENTEGRATOR_KULLANICI_ADI], [ENTEGRATOR_KULLANICI_SIFRESI], [E_BELGE_KULLANILIYOR],
           [MASAK_KULLANICI_ADI], [MASAK_KULLANICI_SIFRESI], [MASAK_UYARISI_VERSIN], [SUPHELI_ISLEMLER_YETKILISI],
-          [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK]
+          [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM]
         )
         VALUES (
           @AD, @SIFRE, @SISTEM_YONETICISI, @YAZICI_ID, @VEZNE_ID, @KUR_YETKISI,
@@ -510,7 +526,7 @@ export class UserSqlRepository {
           @ALIS_ISTATISTIK_ID, @SATIS_ISTATISTIK_ID, @ARBITRAJ_ALIS_ISTATISTIK_ID, @ARBITRAJ_SATIS_ISTATISTIK_ID,
           @ENTEGRATOR_KULLANICI_ADI, @ENTEGRATOR_KULLANICI_SIFRESI, @E_BELGE_KULLANILIYOR,
           @MASAK_KULLANICI_ADI, @MASAK_KULLANICI_SIFRESI, @MASAK_UYARISI_VERSIN, @SUPHELI_ISLEMLER_YETKILISI,
-          @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK
+          @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM
         );
 
         DECLARE @NEW_ID INT = SCOPE_IDENTITY();
@@ -607,6 +623,8 @@ export class UserSqlRepository {
             request.input("SAPMA_UYARISI_VERILMESIN", sql.Bit, toBit(user.noDeviationWarning));
             request.input("GISE_KURU_DISINDA_OLABILIR", sql.Bit, toBit(user.canBeOutsideCounterRate));
             request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
+            await UserSqlRepository.ensureSidebarColumn(pool);
+            request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
             const updateQuery = `
         UPDATE [dbo].[TODVZ_KULLANICI]
         SET 
@@ -671,7 +689,8 @@ export class UserSqlRepository {
           [SUPHELI_ISLEMLER_YETKILISI] = @SUPHELI_ISLEMLER_YETKILISI,
           [SAPMA_UYARISI_VERILMESIN] = @SAPMA_UYARISI_VERILMESIN,
           [GISE_KURU_DISINDA_OLABILIR] = @GISE_KURU_DISINDA_OLABILIR,
-          [CAPRAZ_KUR_KONTROLU_YOK] = @CAPRAZ_KUR_KONTROLU_YOK
+          [CAPRAZ_KUR_KONTROLU_YOK] = @CAPRAZ_KUR_KONTROLU_YOK,
+          [SIDEBAR_GORUNUM] = @SIDEBAR_GORUNUM
         WHERE [KULLANICI_ID] = @userId;
 
         ${UserSqlRepository.BASE_SELECT}
@@ -695,6 +714,7 @@ export class UserSqlRepository {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             const request = pool.request();
+            await UserSqlRepository.ensureSidebarColumn(pool);
             request.input("userId", sql.Int, toInt(id));
             request.input("PROGRAM_ZEMIN_RENGI", sql.Int, colorToDb(appearance?.programBgColor, 16316664));
             request.input("PROGRAM_YAZI_RENGI", sql.Int, colorToDb(appearance?.programTextColor, 0));
@@ -712,6 +732,7 @@ export class UserSqlRepository {
             request.input("ALIS_FISI_BASLIK_YAZI_RENGI", sql.Int, colorToDb(appearance?.buyHeaderTextColor, 0));
             request.input("SATIS_FISI_BASLIK_ZEMIN_RENGI", sql.Int, colorToDb(appearance?.sellHeaderBgColor, 14803424));
             request.input("SATIS_FISI_BASLIK_YAZI_RENGI", sql.Int, colorToDb(appearance?.sellHeaderTextColor, 0));
+            request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (appearance?.sidebarStyle || "classic").slice(0, 30));
             const query = `
         UPDATE [dbo].[TODVZ_KULLANICI]
         SET 
@@ -730,7 +751,8 @@ export class UserSqlRepository {
           [ALIS_FISI_BASLIK_ZEMIN_RENGI] = @ALIS_FISI_BASLIK_ZEMIN_RENGI,
           [ALIS_FISI_BASLIK_YAZI_RENGI] = @ALIS_FISI_BASLIK_YAZI_RENGI,
           [SATIS_FISI_BASLIK_ZEMIN_RENGI] = @SATIS_FISI_BASLIK_ZEMIN_RENGI,
-          [SATIS_FISI_BASLIK_YAZI_RENGI] = @SATIS_FISI_BASLIK_YAZI_RENGI
+          [SATIS_FISI_BASLIK_YAZI_RENGI] = @SATIS_FISI_BASLIK_YAZI_RENGI,
+          [SIDEBAR_GORUNUM] = @SIDEBAR_GORUNUM
         WHERE [KULLANICI_ID] = @userId;
 
         ${UserSqlRepository.BASE_SELECT}

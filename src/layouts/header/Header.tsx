@@ -17,6 +17,11 @@ import {
   IconEye,
   IconChartCandle,
   IconShoppingBag,
+  IconDeviceTv,
+  IconCash,
+  IconUser,
+  IconCalendar,
+  IconClock,
 } from "@tabler/icons-react";
 import { Container, ListGroup, Button } from "react-bootstrap";
 
@@ -25,10 +30,13 @@ import UserMenu from "./UserMenu";
 import DestekZil from "components/destek/DestekZil";
 import MasakModal from "components/masak/MasakModal";
 import MasakMenu from "components/masak/MasakMenu";
+import { TvKatalogMenuSecimModal } from "components/katalog/TvKatalogMenuSecimModal";
 import { useAuth } from "../../context/AuthContext";
 import { UST_KISAYOLLAR, modulAcikMi } from "../../config/modulKatalogu";
 import HeaderThemeSelector from "components/theme/HeaderThemeSelector";
 import { getAppBrand } from "../../utils/brandHelper";
+import { CashDeskService } from "../../services/cashDeskService";
+import useSidebarStyle from "../../hooks/useSidebarStyle";
 
 //import custom hooks
 import useMenu from "hooks/useMenu";
@@ -100,6 +108,7 @@ const Header: React.FC = () => {
   const masakAcik = modulAcikMi(acikModuller, "ust:masak");
   const piyasaAcik = modulAcikMi(acikModuller, "ust:piyasa");
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
+  const [isTvMenuModalOpen, setIsTvMenuModalOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const { handleCollapsed, collapsed } = useMenu();
 
@@ -143,6 +152,11 @@ const Header: React.FC = () => {
       }
     }
   };
+
+  const sidebarStyle = useSidebarStyle();
+  const isHeaderNav = sidebarStyle === "topbar" || sidebarStyle === "megamenu";
+
+  const displayName = user?.fullName || user?.username || "Admin";
 
   return (
     <Fragment>
@@ -239,6 +253,31 @@ const Header: React.FC = () => {
                     </span>
                   </Link>
                 )}
+
+                {/* Menü Aç: Katalog & TV Menü Seçim Butonu (Piyasa bölümü sağında) */}
+                <button
+                  type="button"
+                  onClick={() => setIsTvMenuModalOpen(true)}
+                  className="btn p-0 border-0 bg-transparent d-flex flex-column align-items-center justify-content-center text-decoration-none px-2 py-0.5 rounded-2 quick-action-btn"
+                  title="Katalog & TV Menü Aç (Altın & Özel Ürünler)"
+                  style={{ cursor: "pointer" }}
+                >
+                  <span className="d-flex align-items-center justify-content-center" style={{ marginBottom: "2px" }}>
+                    <IconDeviceTv size={19} strokeWidth={2.2} style={{ color: "#0284c7" }} />
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#0284c7",
+                      lineHeight: 1,
+                      whiteSpace: "nowrap",
+                      letterSpacing: "-0.1px",
+                    }}
+                  >
+                    Katalog Aç
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -335,6 +374,18 @@ const Header: React.FC = () => {
                 <span style={{ fontSize: "11px", fontWeight: 700, color: "#b8860b" }}>Piyasa</span>
               </Link>
             )}
+
+            {/* Mobil Menü Aç Butonu */}
+            <button
+              type="button"
+              onClick={() => setIsTvMenuModalOpen(true)}
+              className="d-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill btn p-0"
+              style={{ cursor: "pointer" }}
+              title="Katalog & TV Menü Aç"
+            >
+              <IconDeviceTv size={16} strokeWidth={2} style={{ color: "#0284c7" }} />
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284c7" }}>Menü Aç</span>
+            </button>
           </div>
         </Container>
       </header>
@@ -343,6 +394,12 @@ const Header: React.FC = () => {
       <MasakModal
         show={isMasakModalOpen}
         onHide={() => setIsMasakModalOpen(false)}
+      />
+
+      {/* Katalog & TV Menü Seçim Modalı */}
+      <TvKatalogMenuSecimModal
+        show={isTvMenuModalOpen}
+        onClose={() => setIsTvMenuModalOpen(false)}
       />
 
     </Fragment>

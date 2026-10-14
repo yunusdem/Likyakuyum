@@ -24,6 +24,11 @@ export function applyAppearanceToDOM(appearance?: any) {
   if (!appearance) return;
   const root = document.documentElement;
 
+  // 0. Sidebar Layout Style Mode
+  const sidebarStyle = appearance.sidebarStyle || "classic";
+  root.setAttribute("data-sidebar-style", sidebarStyle);
+  document.body.setAttribute("data-sidebar-style", sidebarStyle);
+
   // 1. Program & Typography
   if (appearance.programBgColor) {
     root.style.setProperty("--user-program-bg", appearance.programBgColor);
@@ -430,6 +435,264 @@ export const UserThemeApplier: React.FC = () => {
       [data-theme-role="sell-header"] {
         background-color: var(--user-sell-header-bg, #fef3c7) !important;
         color: var(--user-sell-header-text, #92400e) !important;
+      }
+
+      /* ─────────────────────────────────────────────────────────────
+         10. 6 FARKLI SIDEBAR YERLEŞİM DÜZENİ VE SAYFA UYUMLULUĞU
+         ───────────────────────────────────────────────────────────── */
+
+      /* 1. HOVER MODU: Mouse gelince açılır, gidince mini olur */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="hover"] #miniSidebar {
+          width: 68px !important;
+          overflow: visible !important;
+          transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease !important;
+          z-index: 1045 !important;
+        }
+        html[data-sidebar-style="hover"] #content {
+          margin-left: 68px !important;
+          width: calc(100% - 68px) !important;
+          transition: margin-left 0.22s ease !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .site-logo-text,
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .sidebar-menu-title,
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .accordion-button::after,
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .sidebar-submenu-list,
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .bottom-user-details,
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .nav-heading {
+          display: none !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .brand-logo {
+          justify-content: center !important;
+          padding: 0.5rem 0.25rem !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .sidebar-parent-item .nav-link,
+        html[data-sidebar-style="hover"] #miniSidebar:not(:hover) .accordion-button {
+          justify-content: center !important;
+          padding: 0.65rem 0.25rem !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:hover {
+          width: 270px !important;
+          z-index: 1060 !important;
+          box-shadow: 6px 0 25px rgba(0, 0, 0, 0.18) !important;
+        }
+      }
+
+      /* 2. KLASİK MOD: Mevcut Standart Dikey Akordeon (Açıkken 270px, Kapatınca 60px) */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="classic"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="classic"].expanded #miniSidebar {
+          width: 270px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="classic"]:not(.collapsed) #content,
+        html[data-sidebar-style="classic"].expanded #content {
+          margin-left: 270px !important;
+          width: calc(100% - 270px) !important;
+        }
+
+        html[data-sidebar-style="classic"].collapsed #miniSidebar {
+          width: 60px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="classic"].collapsed #content {
+          margin-left: 60px !important;
+          width: calc(100% - 60px) !important;
+        }
+      }
+
+      /* 3. FLYOUT MODU: Yan Açılır Bağımsız Kart (Açıkken 270px, Kapatınca 60px) */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="flyout"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="flyout"].expanded #miniSidebar {
+          width: 270px !important;
+          transform: translateX(0) !important;
+          overflow: visible !important;
+          z-index: 1045 !important;
+        }
+        html[data-sidebar-style="flyout"]:not(.collapsed) #content,
+        html[data-sidebar-style="flyout"].expanded #content {
+          margin-left: 270px !important;
+          width: calc(100% - 270px) !important;
+        }
+
+        html[data-sidebar-style="flyout"].collapsed #miniSidebar {
+          width: 60px !important;
+          transform: translateX(0) !important;
+          overflow: visible !important;
+          z-index: 1045 !important;
+        }
+        html[data-sidebar-style="flyout"].collapsed #content {
+          margin-left: 60px !important;
+          width: calc(100% - 60px) !important;
+        }
+        html[data-sidebar-style="flyout"] .sidebar-menu-wrapper {
+          overflow-y: auto !important;
+          overflow-x: visible !important;
+        }
+      }
+
+      html[data-sidebar-style="flyout"].collapsed #miniSidebar .sidebar-menu-title,
+      html[data-sidebar-style="flyout"].collapsed #miniSidebar .sidebar-chevron {
+        display: none !important;
+      }
+      html[data-sidebar-style="flyout"].collapsed #miniSidebar .sidebar-flyout-trigger {
+        padding: 8px 0 !important;
+        justify-content: center !important;
+      }
+      html[data-sidebar-style="flyout"].collapsed #miniSidebar .sidebar-flyout-trigger > div {
+        justify-content: center !important;
+      }
+
+      /* Flyout Menü Kartı Stilleri (Sayfaların altında kalmayan yüksek z-index) */
+      .sidebar-flyout-card {
+        background-color: #ffffff !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 14px !important;
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22), 0 8px 16px rgba(0, 0, 0, 0.12) !important;
+        padding: 8px !important;
+        min-width: 240px !important;
+        max-width: 320px !important;
+        z-index: 1300 !important;
+        animation: flyoutFadeIn 0.15s ease-out;
+      }
+      .sidebar-flyout-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -12px;
+        width: 12px;
+      }
+      @keyframes flyoutFadeIn {
+        from {
+          opacity: 0;
+          transform: translateX(-6px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0) scale(1);
+        }
+      }
+      .sidebar-flyout-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        color: #1e293b;
+        font-size: 0.84rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.15s ease;
+      }
+      .sidebar-flyout-item:hover {
+        background-color: #f1f5f9;
+        color: #0284c7;
+      }
+      .sidebar-flyout-item.active {
+        background-color: #e2e8f0;
+        color: #0f172a;
+        font-weight: 600;
+      }
+
+      /* 4. TOPBAR & 6. MEGAMENU MODLARI: En Üstte Header Üstünde Yatay Menü, Sol Boş */
+      html[data-sidebar-style="topbar"] #miniSidebar,
+      html[data-sidebar-style="megamenu"] #miniSidebar,
+      html[data-sidebar-style="drawer"] #miniSidebar {
+        display: none !important;
+      }
+      html[data-sidebar-style="topbar"] .sidebar-backdrop,
+      html[data-sidebar-style="megamenu"] .sidebar-backdrop,
+      html[data-sidebar-style="drawer"] .sidebar-backdrop {
+        display: none !important;
+      }
+      html[data-sidebar-style="topbar"] #content,
+      html[data-sidebar-style="megamenu"] #content,
+      html[data-sidebar-style="drawer"] #content {
+        margin-left: 0 !important;
+        width: 100% !important;
+        min-width: 100% !important;
+      }
+      html[data-sidebar-style="topbar"] .navbar-glass,
+      html[data-sidebar-style="megamenu"] .navbar-glass,
+      html[data-sidebar-style="drawer"] .navbar-glass {
+        left: 0 !important;
+        width: 100% !important;
+        margin-left: 0 !important;
+      }
+
+      /* 5. DUAL MODU: Çift Kademeli İkon Şeridi + Yan Panel */
+      @media (min-width: 1200px) {
+        /* Açık Durum (Expanded): 270px (64px ikon şeridi + 206px sağ panel) */
+        html[data-sidebar-style="dual"]:not(.collapsed) #miniSidebar {
+          width: 270px !important;
+          transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        html[data-sidebar-style="dual"]:not(.collapsed) #content {
+          margin-left: 270px !important;
+          width: calc(100% - 270px) !important;
+          transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        html[data-sidebar-style="dual"]:not(.collapsed) .navbar-glass {
+          left: 270px !important;
+          width: calc(100% - 270px) !important;
+          transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+
+        /* Kapalı Durum (Collapsed): Kapatma butonuna basıldığında sağ panel kapanır, sadece 64px ikon şeridi kalır */
+        html[data-sidebar-style="dual"].collapsed #miniSidebar {
+          width: 64px !important;
+          overflow: hidden !important;
+          transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        html[data-sidebar-style="dual"].collapsed #miniSidebar .sidebar-dual-subpanel {
+          display: none !important;
+        }
+        html[data-sidebar-style="dual"].collapsed #miniSidebar .brand-logo {
+          padding-left: 6px !important;
+          padding-right: 6px !important;
+          justify-content: center !important;
+        }
+        html[data-sidebar-style="dual"].collapsed #miniSidebar .brand-logo .site-logo-text {
+          display: none !important;
+        }
+        html[data-sidebar-style="dual"].collapsed #miniSidebar .brand-logo img {
+          margin-right: 0 !important;
+        }
+        html[data-sidebar-style="dual"].collapsed #content {
+          margin-left: 64px !important;
+          width: calc(100% - 64px) !important;
+          transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        html[data-sidebar-style="dual"].collapsed .navbar-glass {
+          left: 64px !important;
+          width: calc(100% - 64px) !important;
+          transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+      }
+
+      /* Mobil / Tablet Ekranlar için Dual Mod */
+      @media (max-width: 1199.98px) {
+        html[data-sidebar-style="dual"]:not(.collapsed) #miniSidebar {
+          width: 270px !important;
+          left: 0 !important;
+          transform: translateX(0) !important;
+          display: block !important;
+          z-index: 1050 !important;
+        }
+        html[data-sidebar-style="dual"].collapsed #miniSidebar {
+          transform: translateX(-100%) !important;
+          display: none !important;
+        }
+        html[data-sidebar-style="dual"] #content {
+          margin-left: 0 !important;
+          width: 100% !important;
+        }
+        html[data-sidebar-style="dual"] .navbar-glass {
+          left: 0 !important;
+          width: 100% !important;
+        }
       }
 
     `}</style>

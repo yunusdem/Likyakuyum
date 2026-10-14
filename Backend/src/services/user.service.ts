@@ -172,6 +172,7 @@ export class UserService {
         enableSellHeaderTheme: input.appearance.enableSellHeaderTheme ?? false,
         sellHeaderBgColor: input.appearance.sellHeaderBgColor ?? "#e2e8f0",
         sellHeaderTextColor: input.appearance.sellHeaderTextColor ?? "#000000",
+        sidebarStyle: input.appearance.sidebarStyle ?? "classic",
       } : {
         enableProgramTheme: true,
         programBgColor: "#f8fafc",
@@ -199,6 +200,7 @@ export class UserService {
         enableSellHeaderTheme: false,
         sellHeaderBgColor: "#e2e8f0",
         sellHeaderTextColor: "#000000",
+        sidebarStyle: "classic",
       },
     }, dbContext);
 
