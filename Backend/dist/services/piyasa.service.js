@@ -30,8 +30,10 @@ const durdur = () => {
         return;
     calisiyor = false;
     logger.info("[piyasa] Kimse bakmıyor, kaynaklar durduruldu");
+    // Anlık Fiyat Listesi'nin tek başına kullandığı kaynak açık kalır (tekil denetim kapatır)
     for (const k of KAYNAKLAR)
-        k.durdur();
+        if (!tekilKullanimda(k.kod))
+            k.durdur();
     if (denetim)
         clearInterval(denetim);
     denetim = null;
@@ -53,6 +55,29 @@ const yonEkle = (anlik) => ({
     })),
 });
 const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Anlık Fiyat Listesi'nin tek tek açtığı kaynaklar: kod → son istek */
+const tekilIstek = new Map();
+let tekilDenetim = null;
+const tekilKullanimda = (kod) => Date.now() - (tekilIstek.get(kod) ?? 0) <= BOSTA_KAPAT_MS;
+const tekilDenetimBaslat = () => {
+    if (tekilDenetim)
+        return;
+    tekilDenetim = setInterval(() => {
+        for (const [kod] of tekilIstek) {
+            if (tekilKullanimda(kod))
+                continue;
+            tekilIstek.delete(kod);
+            // Pano açıksa kaynak panoya aittir, onun denetimi kapatır
+            if (!calisiyor)
+                KAYNAKLAR.find((k) => k.kod === kod)?.durdur();
+        }
+        if (tekilIstek.size === 0 && tekilDenetim) {
+            clearInterval(tekilDenetim);
+            tekilDenetim = null;
+        }
+    }, 15_000);
+    tekilDenetim.unref();
+};
 export const PiyasaService = {
     async anlik() {
         sonIstek = Date.now();
@@ -69,17 +94,19 @@ export const PiyasaService = {
         };
     },
     /**
-     * Anlık Fiyat Listesi için ham görüntü (yön hesabına dokunmaz, panonun okları kaymaz).
-     * kod verilirse yalnız o kaynağın verisi beklenir.
+     * Anlık Fiyat Listesi için tek kaynağın ham görüntüsü (yön hesabına dokunmaz, panonun okları kaymaz).
+     * Pano kapalıysa yalnız o site açılır (diğer sitelere yük binmez); boşta kalınca kapanır.
      */
-    async hamAnlik(kod) {
-        sonIstek = Date.now();
-        const hedef = KAYNAKLAR.filter((k) => !kod || k.kod === kod);
-        if (!calisiyor)
-            baslat();
+    async tekKaynak(kod) {
+        const k = KAYNAKLAR.find((x) => x.kod === kod);
+        if (!k)
+            throw new Error(`Bilinmeyen piyasa kaynağı: ${kod}`);
+        tekilIstek.set(kod, Date.now());
+        k.baslat();
+        tekilDenetimBaslat();
         const bitis = Date.now() + ILK_BEKLEME_MS;
-        while (Date.now() < bitis && hedef.some((k) => k.anlik().durum === "bekliyor"))
+        while (Date.now() < bitis && k.anlik().durum === "bekliyor")
             await bekle(150);
-        return KAYNAKLAR.map((k) => k.anlik());
+        return k.anlik();
     },
 };

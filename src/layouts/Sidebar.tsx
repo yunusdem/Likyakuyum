@@ -304,7 +304,23 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   const openFlyoutAt = (index: number, el: HTMLElement) => {
     clearFlyoutTimer();
     const rect = el.getBoundingClientRect();
-    const top = Math.max(8, Math.min(window.innerHeight - 480, rect.top));
+    const targetMenu = gorunenMenu[index];
+    
+    // Alt öğe ve grup başlığı sayısını hesapla
+    const totalItems = (targetMenu?.children || []).reduce(
+      (acc, c) => acc + (c.children?.length ? c.children.length + 1 : 1),
+      0
+    );
+    // Her öğe için ~34px + paddingler + emniyet payı
+    const estimatedHeight = Math.min(window.innerHeight - 24, Math.max(160, totalItems * 35 + 28));
+    
+    // Eğer butonun hizasından başlarsa ekranın altına taşacaksa, kartı yukarı doğru kaydır
+    let top = rect.top;
+    if (top + estimatedHeight > window.innerHeight - 12) {
+      top = Math.max(10, window.innerHeight - 12 - estimatedHeight);
+    }
+    top = Math.max(10, top);
+
     const left = rect.right + 6;
     setFlyoutPos({ top, left });
     setFlyoutIndex(index);
@@ -718,7 +734,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
   const handleLinkClick = (e: React.MouseEvent, to: string) => {
     e.preventDefault();
-    if (collapsed === "collapsed") {
+    if (window.innerWidth < 1200) {
+      handleCollapsed("collapsed");
+    } else if (collapsed === "collapsed") {
       handleCollapsed("expanded");
     }
     const cleanTo = to.startsWith("/") ? to : `/${to}`;
@@ -742,7 +760,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             <Link
               to="/dashboard"
               onClick={() => {
-                if (collapsed === "collapsed") {
+                if (window.innerWidth < 1200) {
+                  handleCollapsed("collapsed");
+                } else if (collapsed === "collapsed") {
                   handleCollapsed("expanded");
                 }
                 setActiveMenuKey("");
@@ -762,6 +782,16 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                 <span className="brand-text-kuyum">{getAppBrand(user).suffix}</span>
               </span>
             </Link>
+
+            {/* Close Button ('X' - visible on all screens <1200px) */}
+            <button
+              type="button"
+              className="btn btn-ghost p-1 d-flex d-xl-none align-items-center justify-content-center rounded-circle text-white"
+              onClick={() => handleCollapsed("collapsed")}
+              title="Menüyü Kapat"
+            >
+              <IconX size={22} />
+            </button>
           </div>
 
           {/* Alt Kısım: Sol Dar İkon Şeridi (64px) + Sağ Alt Başlıklar Paneli (206px) */}
@@ -871,7 +901,10 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                     </div>
                   </div>
 
-                  <div className="flex-grow-1 overflow-y-auto p-2 d-flex flex-column gap-1">
+                  <div
+                    className="flex-grow-1 overflow-y-auto p-2 d-flex flex-column gap-1"
+                    style={{ paddingBottom: "36px" }}
+                  >
                     {activeModule.children && activeModule.children.length > 0 ? (
                       activeModule.children.map((child1, c1Idx) => {
                         if (child1.children && child1.children.length > 0) {
@@ -925,6 +958,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                         <span>{activeModule.title}</span>
                       </Link>
                     ) : null}
+                    <div style={{ height: "24px", flexShrink: 0 }} aria-hidden="true" />
                   </div>
 
                   <div className="p-2 border-top bg-white d-flex align-items-center justify-content-between flex-shrink-0">
@@ -1093,15 +1127,17 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                         style={{
                           left: `${flyoutPos.left}px`,
                           top: `${flyoutPos.top}px`,
-                          zIndex: 1250,
+                          zIndex: 1350,
                           backgroundColor: "#ffffff",
                           border: "1.5px solid #cbd5e1",
-                          borderRadius: "14px",
+                          borderRadius: "12px",
                           boxShadow: "0 22px 50px rgba(0, 0, 0, 0.28), 0 8px 20px rgba(0, 0, 0, 0.12)",
                           minWidth: "260px",
                           maxWidth: "340px",
-                          maxHeight: "85vh",
+                          maxHeight: `calc(100vh - ${flyoutPos.top + 14}px)`,
                           overflowY: "auto",
+                          overflowX: "hidden",
+                          padding: "8px 6px 16px 6px",
                         }}
                         onMouseEnter={clearFlyoutTimer}
                         onMouseLeave={closeFlyoutWithDelay}
@@ -1165,6 +1201,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                               );
                             }
                           })}
+                          <div style={{ height: "16px", flexShrink: 0 }} aria-hidden="true" />
                         </div>
                       </div>
                     )}
@@ -1327,6 +1364,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
               }
             }
           })}
+          <div style={{ height: "48px", flexShrink: 0 }} aria-hidden="true" />
         </Accordion>
       </div>
 

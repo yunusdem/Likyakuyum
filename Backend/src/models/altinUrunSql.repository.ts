@@ -30,6 +30,7 @@ export interface AltinUrunModel {
   maliyetParaKodu: string;
   satisFiyati: number;
   satisParaKodu: string;
+  satisDoviz?: number | null;
   satisKariYuzde: number;
   hasKuru1?: number | null;
   hasKuru2?: number | null;
@@ -83,6 +84,7 @@ export interface SaveAltinUrunDto {
   maliyetParaKodu?: string;
   satisFiyati?: number;
   satisParaKodu?: string;
+  satisDoviz?: number | null;
   satisKariYuzde?: number;
   hasKuru1?: number | null;
   hasKuru2?: number | null;
@@ -188,6 +190,8 @@ export class AltinUrunSqlRepository {
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_1] FLOAT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'USD_KURU_2')
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_2] FLOAT NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'SATIS_DOVIZ')
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [SATIS_DOVIZ] FLOAT NULL;
 
           -- Expand any truncated columns
           IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'AYAR' AND (CHARACTER_MAXIMUM_LENGTH < 250 OR CHARACTER_MAXIMUM_LENGTH = 50))
@@ -272,6 +276,7 @@ export class AltinUrunSqlRepository {
             @MALIYET_PARA_KODU          VARCHAR(50) = 'HAS',
             @SATIS_FIYATI               FLOAT = 0,
             @SATIS_PARA_KODU            VARCHAR(50) = 'HAS',
+            @SATIS_DOVIZ                FLOAT = NULL,
             @SATIS_KARI_YUZDE           FLOAT = 0,
             @HAS_KURU_1                 FLOAT = NULL,
             @HAS_KURU_2                 FLOAT = NULL,
@@ -427,7 +432,7 @@ export class AltinUrunSqlRepository {
                     TARIH, GRUP_KODU, URUN_NO, BARKOD, AYAR, URETICI_FIRMA, ORJINAL_KOD, MODEL, BANKO,
                     MIKTAR, HAS_GRAM, MALIYET_ISCILIK, MALIYET_ISCILIK_PARA_KODU, MALIYET_ISCILIK_BIRIM,
                     MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK, SATIS_ISCILIK_TUTARI, ISCILIK_KARI, MALIYET,
-                    MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
+                    MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_DOVIZ, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
                     ALTIN_KURU, USD_KURU_1, USD_KURU_2, SATILDI, RESIM, VEZNE_ID, KONSINYE, KATALOG, MENU_ID,
                     EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
                 )
@@ -435,7 +440,7 @@ export class AltinUrunSqlRepository {
                     ISNULL(@TARIH, @SIMDIKI_ZAMAN), @GRUP_KODU, @URUN_NO, @BARKOD, @AYAR, @URETICI_FIRMA, @ORJINAL_KOD, @MODEL, @BANKO,
                     @MIKTAR, @HAS_GRAM, @MALIYET_ISCILIK, @MALIYET_ISCILIK_PARA_KODU, @MALIYET_ISCILIK_BIRIM,
                     @MALIYET_ISCILIK_TUTARI, @SATIS_ISCILIK, @SATIS_ISCILIK_TUTARI, @ISCILIK_KARI, @MALIYET,
-                    @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
+                    @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_DOVIZ, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
                     @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @SATILDI, @RESIM, @VEZNE_ID, ISNULL(@KONSINYE, 0), ISNULL(@KATALOG, 0), @MENU_ID,
                     @KULLANICI_ID, @SIMDIKI_ZAMAN, @KULLANICI_ID, @SIMDIKI_ZAMAN
                 );
@@ -458,6 +463,7 @@ export class AltinUrunSqlRepository {
                     MALIYET_ISCILIK_TUTARI = @MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK = @SATIS_ISCILIK,
                     SATIS_ISCILIK_TUTARI = @SATIS_ISCILIK_TUTARI, ISCILIK_KARI = @ISCILIK_KARI, MALIYET = @MALIYET,
                     MALIYET_PARA_KODU = @MALIYET_PARA_KODU, SATIS_FIYATI = @SATIS_FIYATI, SATIS_PARA_KODU = @SATIS_PARA_KODU,
+                    SATIS_DOVIZ = ISNULL(@SATIS_DOVIZ, SATIS_DOVIZ),
                     SATIS_KARI_YUZDE = @SATIS_KARI_YUZDE, HAS_KURU_1 = @HAS_KURU_1, HAS_KURU_2 = @HAS_KURU_2,
                     ALTIN_KURU = @ALTIN_KURU, USD_KURU_1 = @USD_KURU_1, USD_KURU_2 = @USD_KURU_2, SATILDI = @SATILDI, RESIM = ISNULL(@RESIM, RESIM),
                     VEZNE_ID = ISNULL(@VEZNE_ID, VEZNE_ID),
@@ -613,6 +619,7 @@ export class AltinUrunSqlRepository {
       maliyetParaKodu: (r.MALIYET_PARA_KODU || "HAS").trim(),
       satisFiyati: Number(r.SATIS_FIYATI) || 0,
       satisParaKodu: (r.SATIS_PARA_KODU || "HAS").trim(),
+      satisDoviz: r.SATIS_DOVIZ !== null && r.SATIS_DOVIZ !== undefined ? Number(r.SATIS_DOVIZ) : null,
       satisKariYuzde: Number(r.SATIS_KARI_YUZDE) || 0,
       hasKuru1: r.HAS_KURU_1 !== null && r.HAS_KURU_1 !== undefined ? Number(r.HAS_KURU_1) : null,
       hasKuru2: r.HAS_KURU_2 !== null && r.HAS_KURU_2 !== undefined ? Number(r.HAS_KURU_2) : null,
@@ -1006,6 +1013,7 @@ export class AltinUrunSqlRepository {
     const maliyetParaKoduVal = (dto.maliyetParaKodu || "HAS").trim();
     const satisFiyatiVal = safeFloat(dto.satisFiyati);
     const satisParaKoduVal = (dto.satisParaKodu || "HAS").trim();
+    const satisDovizVal = safeNullableFloat(dto.satisDoviz);
     const satisKariYuzdeVal = safeFloat(dto.satisKariYuzde);
     const hasKuru1Val = safeNullableFloat(dto.hasKuru1);
     const hasKuru2Val = safeNullableFloat(dto.hasKuru2);
@@ -1083,6 +1091,7 @@ export class AltinUrunSqlRepository {
         if (acceptedParams.has("MALIYET_PARA_KODU")) req.input("MALIYET_PARA_KODU", sql.VarChar(50), maliyetParaKoduVal);
         if (acceptedParams.has("SATIS_FIYATI")) req.input("SATIS_FIYATI", sql.Float, satisFiyatiVal);
         if (acceptedParams.has("SATIS_PARA_KODU")) req.input("SATIS_PARA_KODU", sql.VarChar(50), satisParaKoduVal);
+        if (acceptedParams.has("SATIS_DOVIZ")) req.input("SATIS_DOVIZ", sql.Float, satisDovizVal);
         if (acceptedParams.has("SATIS_KARI_YUZDE")) {
           req.input("SATIS_KARI_YUZDE", sql.Float, satisKariYuzdeVal);
         } else if (acceptedParams.has("SATIS_KARIYUZDE")) {
@@ -1139,6 +1148,7 @@ export class AltinUrunSqlRepository {
         directReq.input("MALIYET_PARA_KODU", sql.VarChar(50), maliyetParaKoduVal);
         directReq.input("SATIS_FIYATI", sql.Float, satisFiyatiVal);
         directReq.input("SATIS_PARA_KODU", sql.VarChar(50), satisParaKoduVal);
+        directReq.input("SATIS_DOVIZ", sql.Float, satisDovizVal);
         directReq.input("SATIS_KARI_YUZDE", sql.Float, satisKariYuzdeVal);
         directReq.input("HAS_KURU_1", sql.Float, hasKuru1Val);
         directReq.input("HAS_KURU_2", sql.Float, hasKuru2Val);
@@ -1277,6 +1287,7 @@ export class AltinUrunSqlRepository {
                 MALIYET_PARA_KODU = @MALIYET_PARA_KODU,
                 SATIS_FIYATI = @SATIS_FIYATI,
                 SATIS_PARA_KODU = @SATIS_PARA_KODU,
+                SATIS_DOVIZ = ISNULL(@SATIS_DOVIZ, SATIS_DOVIZ),
                 SATIS_KARI_YUZDE = @SATIS_KARI_YUZDE,
                 HAS_KURU_1 = @HAS_KURU_1,
                 HAS_KURU_2 = @HAS_KURU_2,
@@ -1301,14 +1312,14 @@ export class AltinUrunSqlRepository {
               TARIH, GRUP_KODU, URUN_NO, BARKOD, AYAR, URETICI_FIRMA, ORJINAL_KOD, MODEL, BANKO,
               MIKTAR, HAS_GRAM, MALIYET_ISCILIK, MALIYET_ISCILIK_PARA_KODU, MALIYET_ISCILIK_BIRIM,
               MALIYET_ISCILIK_TUTARI, SATIS_ISCILIK, SATIS_ISCILIK_TUTARI, ISCILIK_KARI, MALIYET,
-              MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
+              MALIYET_PARA_KODU, SATIS_FIYATI, SATIS_PARA_KODU, SATIS_DOVIZ, SATIS_KARI_YUZDE, HAS_KURU_1, HAS_KURU_2,
               ALTIN_KURU, USD_KURU_1, USD_KURU_2, VEZNE_ID, KONSINYE, KATALOG, MENU_ID, SATILDI, RESIM, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
             )
             VALUES (
               ISNULL(@TARIH, GETDATE()), @GRUP_KODU, @URUN_NO, @BARKOD, @AYAR, @URETICI_FIRMA, @ORJINAL_KOD, @MODEL, @BANKO,
               @MIKTAR, @HAS_GRAM, @MALIYET_ISCILIK, @MALIYET_ISCILIK_PARA_KODU, @MALIYET_ISCILIK_BIRIM,
               @MALIYET_ISCILIK_TUTARI, @SATIS_ISCILIK, @SATIS_ISCILIK_TUTARI, @ISCILIK_KARI, @MALIYET,
-              @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
+              @MALIYET_PARA_KODU, @SATIS_FIYATI, @SATIS_PARA_KODU, @SATIS_DOVIZ, @SATIS_KARI_YUZDE, @HAS_KURU_1, @HAS_KURU_2,
               @ALTIN_KURU, @USD_KURU_1, @USD_KURU_2, @VEZNE_ID, @KONSINYE, @KATALOG, @MENU_ID, @SATILDI, @RESIM, @KULLANICI_ID, GETDATE(), @KULLANICI_ID, GETDATE()
             );
 

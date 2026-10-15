@@ -73,19 +73,13 @@ export const tcmbHamKurlari = (veri) => {
     return harita;
 };
 export const KurKaynakService = {
-    /** Soldaki panelin listesi + seçili kaynak */
+    /**
+     * Firma Tanımları › Kur Kaynağı seçim listesi + seçili kaynak.
+     * Sitelere bağlanmaz (K20): bağlantı yalnız çekimde ve yalnız seçili kaynağa açılır.
+     */
     async kaynaklar(ctx) {
-        const [secili, siteler] = await Promise.all([KurKaynakRepository.seciliKaynak(ctx), PiyasaService.hamAnlik()]);
-        const tcmb = {
-            kod: TCMB,
-            ad: "Merkez Bankası",
-            durum: tcmbSonHata ? "kopuk" : "canli",
-            sonGuncelleme: tcmbOnbellek ? new Date(tcmbOnbellek.zaman).toISOString() : null,
-        };
-        return {
-            secili,
-            kaynaklar: [tcmb, ...siteler.map((a) => ({ kod: a.kod, ad: a.ad, durum: siteDurumu(a), sonGuncelleme: a.sonGuncelleme }))],
-        };
+        const secili = await KurKaynakRepository.seciliKaynak(ctx);
+        return { secili, kaynaklar: [{ kod: TCMB, ad: "Merkez Bankası" }, ...KAYNAKLAR.map((k) => ({ kod: k.kod, ad: k.ad }))] };
     },
     async seciliKaydet(kaynak, degistiren, ctx) {
         if (kaynak !== TCMB && !KAYNAKLAR.some((k) => k.kod === kaynak))
@@ -103,25 +97,37 @@ export const KurKaynakService = {
                     throw ApiError.badRequest(`${s?.kod ?? ""} ${ad} komisyonu geçersiz.`);
                 return n;
             };
-            return {
+            const tur = (v) => (v === "Y" ? "Y" : "T");
+            const k = {
                 paraId: Number(s?.paraId),
-                alisTur: s?.alisTur === "Y" ? "Y" : "T",
-                alisDeger: deger(s?.alisDeger, "alış"),
-                satisTur: s?.satisTur === "Y" ? "Y" : "T",
-                satisDeger: deger(s?.satisDeger, "satış"),
+                alisTur: tur(s?.alisTur),
+                alisDeger: deger(s?.alisDeger, "efektif alış"),
+                satisTur: tur(s?.satisTur),
+                satisDeger: deger(s?.satisDeger, "efektif satış"),
+                dovizAlisTur: tur(s?.dovizAlisTur),
+                dovizAlisDeger: deger(s?.dovizAlisDeger, "döviz alış"),
+                dovizSatisTur: tur(s?.dovizSatisTur),
+                dovizSatisDeger: deger(s?.dovizSatisDeger, "döviz satış"),
             };
+            return k;
         });
         for (const s of temiz) {
             if (!Number.isInteger(s.paraId) || s.paraId <= 0)
                 throw ApiError.badRequest("Komisyon satırında para birimi eksik.");
-            if ((s.alisTur === "Y" && s.alisDeger >= 100) || (s.satisTur === "Y" && s.satisDeger >= 100)) {
-                throw ApiError.badRequest("Yüzde komisyon çok büyük.");
-            }
+            const yuzdeler = [
+                [s.alisTur, s.alisDeger],
+                [s.satisTur, s.satisDeger],
+                [s.dovizAlisTur, s.dovizAlisDeger],
+                [s.dovizSatisTur, s.dovizSatisDeger],
+            ];
+            if (yuzdeler.some(([t, d]) => t === "Y" && d >= 100))
+                throw ApiError.badRequest("Yüzde komisyon 100'den küçük olmalı.");
         }
         await KurKaynakRepository.komisyonKaydet(temiz, ctx);
     },
-    /** Kaynaktan çek, komisyonu uygula, listedeki birimlerle eşle */
-    async cek(kaynak, ctx) {
+    /** Kaynaktan çek (verilmezse firmada seçili kaynak), komisyonu uygula, listedeki birimlerle eşle */
+    async cek(kaynakArg, ctx) {
+        const kaynak = kaynakArg || (await KurKaynakRepository.seciliKaynak(ctx));
         let ham;
         let kaynakAd;
         let sonGuncelleme;
@@ -136,7 +142,7 @@ export const KurKaynakService = {
         else {
             if (!KAYNAKLAR.some((k) => k.kod === kaynak))
                 throw ApiError.badRequest("Geçersiz kur kaynağı.");
-            const a = (await PiyasaService.hamAnlik(kaynak)).find((x) => x.kod === kaynak);
+            const a = await PiyasaService.tekKaynak(kaynak);
             if (siteDurumu(a) !== "canli") {
                 throw ApiError.badRequest(`${a.ad} kaynağına şu an bağlanılamıyor; fiyatlar uygulanmadı.`);
             }

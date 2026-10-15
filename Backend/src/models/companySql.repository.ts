@@ -14,6 +14,18 @@ export class CompanySqlRepository {
   }): Promise<TodvzTanimEntity | null> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+
+      try {
+        await pool.request().query(`
+          IF COL_LENGTH('dbo.TODVZ_TANIM', 'KATALOG_URUN_SURESI') IS NULL
+            ALTER TABLE [dbo].[TODVZ_TANIM] ADD [KATALOG_URUN_SURESI] INT NULL CONSTRAINT DF_TODVZ_TANIM_KATALOG_URUN_SURESI DEFAULT(5);
+          IF COL_LENGTH('dbo.TODVZ_TANIM', 'KATALOG_RESIM_SURESI') IS NULL
+            ALTER TABLE [dbo].[TODVZ_TANIM] ADD [KATALOG_RESIM_SURESI] INT NULL CONSTRAINT DF_TODVZ_TANIM_KATALOG_RESIM_SURESI DEFAULT(3);
+        `);
+      } catch (colErr: any) {
+        // Ignored if table alteration permissions are restricted
+      }
+
       const result = await pool.request().query<TodvzTanimEntity>(`
         SELECT TOP 1 *
         FROM [dbo].[TODVZ_TANIM]
@@ -517,6 +529,8 @@ export class CompanySqlRepository {
         { name: "ALIS_FIS_BELGESI", type: sql.TinyInt },
         { name: "SATIS_FIS_BELGESI", type: sql.TinyInt },
         { name: "FIRMA_DURUMU_RAPORU", type: sql.Bit },
+        { name: "KATALOG_URUN_SURESI", type: sql.Int },
+        { name: "KATALOG_RESIM_SURESI", type: sql.Int },
         { name: "CARI_EKSTRA_BILGI_KONTROLU", type: sql.Bit },
         { name: "CARI_KAYIT_BILGI_SILME", type: sql.Bit },
         { name: "SARRAFIYE_FAVORI_BELGE_TURU", type: sql.TinyInt },

@@ -476,6 +476,39 @@ export const UserThemeApplier: React.FC = () => {
           z-index: 1060 !important;
           box-shadow: 6px 0 25px rgba(0, 0, 0, 0.18) !important;
         }
+        html[data-sidebar-style="hover"] #miniSidebar:hover .site-logo-text,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-menu-title,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .text,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .accordion-button::after,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-submenu-list,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .bottom-user-details,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .nav-heading,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-chevron,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .badge {
+          display: inline-block !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-menu-title {
+          display: block !important;
+          text-align: left !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:hover .brand-logo {
+          justify-content: flex-start !important;
+          padding: 0.75rem 1rem !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-parent-item .nav-link,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .accordion-button,
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-menu-btn {
+          justify-content: flex-start !important;
+          text-align: left !important;
+          padding: 0.65rem 0.85rem !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-flyout-trigger {
+          justify-content: flex-start !important;
+          padding: 10px 1rem !important;
+        }
+        html[data-sidebar-style="hover"] #miniSidebar:hover .sidebar-flyout-trigger > div {
+          justify-content: flex-start !important;
+        }
       }
 
       /* 2. KLASİK MOD: Mevcut Standart Dikey Akordeon (Açıkken 270px, Kapatınca 60px) */
@@ -544,17 +577,35 @@ export const UserThemeApplier: React.FC = () => {
         justify-content: center !important;
       }
 
-      /* Flyout Menü Kartı Stilleri (Sayfaların altında kalmayan yüksek z-index) */
+      /* Flyout Menü Kartı Stilleri (Sayfaların altında kalmayan yüksek z-index, tam kaydırılabilir) */
       .sidebar-flyout-card {
         background-color: #ffffff !important;
         border: 1.5px solid #cbd5e1 !important;
-        border-radius: 14px !important;
-        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22), 0 8px 16px rgba(0, 0, 0, 0.12) !important;
-        padding: 8px !important;
-        min-width: 240px !important;
-        max-width: 320px !important;
-        z-index: 1300 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.26), 0 6px 18px rgba(0, 0, 0, 0.12) !important;
+        padding: 8px 6px 16px 6px !important;
+        min-width: 250px !important;
+        max-width: 340px !important;
+        z-index: 1350 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: #94a3b8 #f1f5f9 !important;
         animation: flyoutFadeIn 0.15s ease-out;
+      }
+      .sidebar-flyout-card::-webkit-scrollbar {
+        width: 6px !important;
+      }
+      .sidebar-flyout-card::-webkit-scrollbar-track {
+        background: #f8fafc !important;
+        border-radius: 4px !important;
+      }
+      .sidebar-flyout-card::-webkit-scrollbar-thumb {
+        background-color: #94a3b8 !important;
+        border-radius: 4px !important;
+      }
+      .sidebar-flyout-card::-webkit-scrollbar-thumb:hover {
+        background-color: #64748b !important;
       }
       .sidebar-flyout-card::before {
         content: "";
@@ -596,28 +647,33 @@ export const UserThemeApplier: React.FC = () => {
         font-weight: 600;
       }
 
-      /* 4. TOPBAR & 6. MEGAMENU MODLARI: En Üstte Header Üstünde Yatay Menü, Sol Boş */
-      html[data-sidebar-style="topbar"] #miniSidebar,
-      html[data-sidebar-style="megamenu"] #miniSidebar,
-      html[data-sidebar-style="drawer"] #miniSidebar {
-        display: none !important;
+      /* 4. TOPBAR & 6. MEGAMENU MODLARI: Masaüstünde (>=1200px) Dikey Sidebar Gizlenir, Üst Menü Görünür */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="topbar"] #miniSidebar,
+        html[data-sidebar-style="megamenu"] #miniSidebar,
+        html[data-sidebar-style="drawer"] #miniSidebar {
+          display: none !important;
+        }
+        html[data-sidebar-style="topbar"] .sidebar-backdrop,
+        html[data-sidebar-style="megamenu"] .sidebar-backdrop,
+        html[data-sidebar-style="drawer"] .sidebar-backdrop {
+          display: none !important;
+        }
+        html[data-sidebar-style="topbar"] #content,
+        html[data-sidebar-style="megamenu"] #content,
+        html[data-sidebar-style="drawer"] #content {
+          margin-left: 0 !important;
+          width: 100% !important;
+          min-width: 100% !important;
+        }
       }
-      html[data-sidebar-style="topbar"] .sidebar-backdrop,
-      html[data-sidebar-style="megamenu"] .sidebar-backdrop,
-      html[data-sidebar-style="drawer"] .sidebar-backdrop {
-        display: none !important;
-      }
-      html[data-sidebar-style="topbar"] #content,
-      html[data-sidebar-style="megamenu"] #content,
-      html[data-sidebar-style="drawer"] #content {
-        margin-left: 0 !important;
-        width: 100% !important;
-        min-width: 100% !important;
-      }
+
+      .navbar-glass,
       html[data-sidebar-style="topbar"] .navbar-glass,
       html[data-sidebar-style="megamenu"] .navbar-glass,
       html[data-sidebar-style="drawer"] .navbar-glass {
         left: 0 !important;
+        right: 0 !important;
         width: 100% !important;
         margin-left: 0 !important;
       }
@@ -634,10 +690,11 @@ export const UserThemeApplier: React.FC = () => {
           width: calc(100% - 270px) !important;
           transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
-        html[data-sidebar-style="dual"]:not(.collapsed) .navbar-glass {
-          left: 270px !important;
-          width: calc(100% - 270px) !important;
-          transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        html[data-sidebar-style="dual"] .navbar-glass {
+          left: 0 !important;
+          right: 0 !important;
+          width: 100% !important;
+          margin-left: 0 !important;
         }
 
         /* Kapalı Durum (Collapsed): Kapatma butonuna basıldığında sağ panel kapanır, sadece 64px ikon şeridi kalır */
@@ -665,33 +722,41 @@ export const UserThemeApplier: React.FC = () => {
           width: calc(100% - 64px) !important;
           transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
-        html[data-sidebar-style="dual"].collapsed .navbar-glass {
-          left: 64px !important;
-          width: calc(100% - 64px) !important;
-          transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
       }
 
-      /* Mobil / Tablet Ekranlar için Dual Mod */
+      /* Mobil / Tablet Ekranlar için Genel Uyum (< 1200px): TÜM Stillerde Sidebar Yandan Çekmece Olarak Açılır */
       @media (max-width: 1199.98px) {
-        html[data-sidebar-style="dual"]:not(.collapsed) #miniSidebar {
-          width: 270px !important;
+        #miniSidebar {
+          width: 280px !important;
+          max-width: 85vw !important;
+          position: fixed !important;
+          top: 0 !important;
+          bottom: 0 !important;
           left: 0 !important;
-          transform: translateX(0) !important;
+          height: 100vh !important;
           display: block !important;
-          z-index: 1050 !important;
+          z-index: 1065 !important;
+          box-shadow: 0 0 35px rgba(0, 0, 0, 0.35) !important;
+          transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          overflow-y: auto !important;
         }
-        html[data-sidebar-style="dual"].collapsed #miniSidebar {
+        html.collapsed #miniSidebar,
+        html:not(.expanded) #miniSidebar {
           transform: translateX(-100%) !important;
-          display: none !important;
         }
-        html[data-sidebar-style="dual"] #content {
+        html.expanded #miniSidebar {
+          transform: translateX(0) !important;
+        }
+        #content {
           margin-left: 0 !important;
           width: 100% !important;
+          min-width: 100% !important;
         }
-        html[data-sidebar-style="dual"] .navbar-glass {
+        .navbar-glass {
           left: 0 !important;
+          right: 0 !important;
           width: 100% !important;
+          margin-left: 0 !important;
         }
       }
 

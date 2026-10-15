@@ -1097,6 +1097,15 @@ const UserDefinitionsPage: React.FC = () => {
                   <IconPalette size={18} /> Görünüm
                 </Nav.Link>
               </Nav.Item>
+              <Nav.Item>
+                <Nav.Link
+                  role="button"
+                  eventKey="menu"
+                  className="d-flex align-items-center gap-2 py-3 px-3 fw-semibold"
+                >
+                  <IconLayoutSidebar size={18} /> Menü
+                </Nav.Link>
+              </Nav.Item>
             </Nav>
           </Card.Header>
 
@@ -1981,61 +1990,6 @@ const UserDefinitionsPage: React.FC = () => {
                     </Col>
                   </Row>
 
-                  {/* SIDEBAR & MENÜ YERLEŞİM DÜZENİ (Altta Dürbünlü Seçim Alanı) */}
-                  <div className="p-3 rounded-3 border bg-white shadow-xs">
-                    <div className="d-flex align-items-center justify-content-between mb-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <span
-                          className="d-inline-flex align-items-center justify-content-center rounded-2 bg-primary-subtle text-primary p-1.5"
-                          style={{ width: "32px", height: "32px" }}
-                        >
-                          <IconLayoutSidebar size={18} />
-                        </span>
-                        <div>
-                          <h6 className="mb-0 fw-bold text-dark">
-                            Sidebar &amp; Menü Yerleşim Düzeni
-                          </h6>
-                          <small className="text-muted" style={{ fontSize: "12px" }}>
-                            Menü yerleşim düzenini listeden dürbün butonu ile seçebilirsiniz.
-                          </small>
-                        </div>
-                      </div>
-                      <Badge bg="primary-subtle" className="text-primary border border-primary-subtle px-2.5 py-1 fw-semibold">
-                        Canlı Uygulanır
-                      </Badge>
-                    </div>
-
-                    <div className="d-flex align-items-center gap-2 flex-wrap pt-1">
-                      <InputGroup size="sm" style={{ maxWidth: "460px" }}>
-                        <Form.Control
-                          type="text"
-                          readOnly
-                          value={
-                            SIDEBAR_STYLES.find(
-                              (s) => s.id === (currentUser.appearance?.sidebarStyle || "classic")
-                            )?.title || "2. Klasik Sabit Menü"
-                          }
-                          className="bg-light fw-bold text-primary border-secondary-subtle"
-                          style={{ cursor: "pointer" }}
-                          onClick={() => setShowSidebarStyleModal(true)}
-                        />
-                        <Button
-                          variant="outline-primary"
-                          title="Menü Yerleşim Düzeni Seç (Dürbün)"
-                          className="d-flex align-items-center px-3"
-                          onClick={() => setShowSidebarStyleModal(true)}
-                        >
-                          <IconBinoculars size={16} />
-                        </Button>
-                      </InputGroup>
-                      <span className="text-secondary small fw-medium">
-                        {SIDEBAR_STYLES.find(
-                          (s) => s.id === (currentUser.appearance?.sidebarStyle || "classic")
-                        )?.subtitle}
-                      </span>
-                    </div>
-                  </div>
-
                   {/* HAZIR RENK & UYUMLU TEMA PAKETLERİ (PRESET THEMES) */}
                   <Card className="border shadow-sm rounded-3 bg-white mt-1">
                     <Card.Header className="bg-light py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -2110,6 +2064,181 @@ const UserDefinitionsPage: React.FC = () => {
                       </Row>
                     </Card.Body>
                   </Card>
+                </div>
+              </Tab.Pane>
+
+              {/* TAB 3: MENÜ & SİDEBAR YERLEŞİM DÜZENİ */}
+              <Tab.Pane eventKey="menu">
+                <div className="p-1">
+                  <div className="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom flex-wrap gap-2">
+                    <div>
+                      <h5 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
+                        <IconLayoutSidebar size={22} className="text-primary" />
+                        Sidebar &amp; Menü Yerleşim Düzeni
+                      </h5>
+                      <span className="text-muted small">
+                        Kullanım alışkanlığınıza ve ekran boyutunuza en uygun menü düzenini seçebilirsiniz. Seçiminiz anında canlı olarak uygulanır.
+                      </span>
+                    </div>
+                    <Badge bg="primary-subtle" className="text-primary border border-primary-subtle px-3 py-1.5 fw-semibold fs-6">
+                      Aktif: {SIDEBAR_STYLES.find((s) => s.id === (currentUser.appearance?.sidebarStyle || "classic"))?.title}
+                    </Badge>
+                  </div>
+
+                  <Row className="g-3">
+                    {SIDEBAR_STYLES.map((styleItem) => {
+                      const isSelected = (currentUser.appearance?.sidebarStyle || "classic") === styleItem.id;
+                      return (
+                        <Col key={styleItem.id} xs={12} md={6} lg={4}>
+                          <div
+                            onClick={() => updateAppearanceField("sidebarStyle", styleItem.id)}
+                            className={`p-3 rounded-3 border h-100 position-relative transition-all d-flex flex-column justify-content-between ${
+                              isSelected
+                                ? "border-primary bg-primary-subtle bg-opacity-25 shadow-sm"
+                                : "border-light-subtle bg-white hover-shadow"
+                            }`}
+                            style={{
+                              borderWidth: isSelected ? "2px" : "1px",
+                              cursor: "pointer",
+                              transition: "all 0.18s ease-in-out",
+                            }}
+                          >
+                            <div>
+                              <div className="d-flex align-items-center justify-content-between mb-2">
+                                <span
+                                  className={`badge ${
+                                    isSelected ? "bg-primary text-white" : "bg-secondary-subtle text-secondary"
+                                  } rounded-pill px-2 py-0.5 small`}
+                                >
+                                  {styleItem.badge}
+                                </span>
+                                {isSelected ? (
+                                  <span
+                                    className="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white shadow-xs"
+                                    style={{ width: "22px", height: "22px" }}
+                                  >
+                                    <IconCheck size={14} strokeWidth={3} />
+                                  </span>
+                                ) : (
+                                  <Button
+                                    variant="outline-primary"
+                                    size="sm"
+                                    className="py-0 px-2 fw-semibold"
+                                    style={{ fontSize: "11px" }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updateAppearanceField("sidebarStyle", styleItem.id);
+                                    }}
+                                  >
+                                    Seç
+                                  </Button>
+                                )}
+                              </div>
+
+                              <h6 className={`mb-1 fw-bold ${isSelected ? "text-primary" : "text-dark"}`}>
+                                {styleItem.title}
+                              </h6>
+                              <div className="text-secondary small fw-medium mb-1.5" style={{ fontSize: "12px" }}>
+                                {styleItem.subtitle}
+                              </div>
+                              <p
+                                className="text-muted small mb-2.5"
+                                style={{ lineHeight: "1.35", fontSize: "0.8rem", minHeight: "36px" }}
+                              >
+                                {styleItem.description}
+                              </p>
+                            </div>
+
+                            {/* Mini Şematik Önizleme */}
+                            <div
+                              className="rounded-2 p-1.5 border bg-white d-flex overflow-hidden mt-auto"
+                              style={{ height: "42px", borderColor: isSelected ? "#93c5fd" : "#e2e8f0" }}
+                            >
+                              {styleItem.id === "hover" && (
+                                <div className="d-flex w-100 gap-1">
+                                  <div className="rounded-1 bg-primary" style={{ width: "14px", height: "100%" }} />
+                                  <div
+                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
+                                    style={{ fontSize: "0.68rem" }}
+                                  >
+                                    Sayfa Alanı (Fare ile Genişler)
+                                  </div>
+                                </div>
+                              )}
+                              {styleItem.id === "classic" && (
+                                <div className="d-flex w-100 gap-1">
+                                  <div className="rounded-1 bg-primary" style={{ width: "32px", height: "100%" }} />
+                                  <div
+                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
+                                    style={{ fontSize: "0.68rem" }}
+                                  >
+                                    Sayfa Alanı (Sabit Dikey Menü)
+                                  </div>
+                                </div>
+                              )}
+                              {styleItem.id === "flyout" && (
+                                <div className="d-flex w-100 gap-1 position-relative">
+                                  <div className="rounded-1 bg-primary" style={{ width: "26px", height: "100%" }} />
+                                  <div
+                                    className="rounded-1 border border-warning shadow-xs bg-white px-1 d-flex align-items-center text-warning-emphasis"
+                                    style={{ width: "45px", height: "90%", fontSize: "0.62rem", fontWeight: "bold" }}
+                                  >
+                                    Kart &gt;
+                                  </div>
+                                  <div
+                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
+                                    style={{ fontSize: "0.68rem" }}
+                                  >
+                                    Sayfa
+                                  </div>
+                                </div>
+                              )}
+                              {styleItem.id === "topbar" && (
+                                <div className="d-flex flex-column w-100 gap-1">
+                                  <div className="d-flex w-100 gap-1" style={{ height: "12px" }}>
+                                    <div className="rounded-1 bg-success" style={{ width: "24px", height: "100%" }} />
+                                    <div className="rounded-1 bg-primary flex-grow-1" style={{ height: "100%" }} />
+                                  </div>
+                                  <div
+                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
+                                    style={{ fontSize: "0.68rem" }}
+                                  >
+                                    Tam Genişlik Sayfa (En Üstte Sabit Menü)
+                                  </div>
+                                </div>
+                              )}
+                              {styleItem.id === "dual" && (
+                                <div className="d-flex w-100 gap-1">
+                                  <div className="rounded-1 bg-success" style={{ width: "12px", height: "100%" }} />
+                                  <div className="rounded-1 bg-primary-subtle border" style={{ width: "24px", height: "100%" }} />
+                                  <div
+                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
+                                    style={{ fontSize: "0.68rem" }}
+                                  >
+                                    Sayfa Alanı
+                                  </div>
+                                </div>
+                              )}
+                              {(styleItem.id === "megamenu" || styleItem.id === "drawer") && (
+                                <div className="d-flex flex-column w-100 gap-1">
+                                  <div className="d-flex w-100 gap-1" style={{ height: "12px" }}>
+                                    <div className="rounded-1 bg-success" style={{ width: "24px", height: "100%" }} />
+                                    <div className="rounded-1 bg-info flex-grow-1" style={{ height: "100%" }} />
+                                  </div>
+                                  <div
+                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-primary fw-medium"
+                                    style={{ fontSize: "0.68rem" }}
+                                  >
+                                    Çok Sütunlu Mega Panel
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </Col>
+                      );
+                    })}
+                  </Row>
                 </div>
               </Tab.Pane>
 

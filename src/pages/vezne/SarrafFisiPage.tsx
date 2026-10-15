@@ -5,7 +5,7 @@ import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
 import {
   IconCheck, IconBinoculars, IconAlertTriangle, IconPlus, IconShieldExclamation, IconShieldCheck, IconPrinter, IconClock, IconCoins, IconUsers, IconBuildingBank, IconBuildingStore,
-  IconArrowsExchange, IconRefresh,
+  IconRefresh,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -37,7 +37,6 @@ import { IskontoDefinitionsPage } from "../settings/IskontoDefinitionsPage";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { NumeratorService, NumeratorItem } from "../../services/numeratorService";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
-import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import SarrafFisiPrintModal from "./SarrafFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
@@ -1119,8 +1118,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
-  const [showArbitrajModal, setShowArbitrajModal] = useState<boolean>(false);
-  const [arbitrajActiveInfo, setArbitrajActiveInfo] = useState<{ girisKod: string; cikisKod: string; parite: number; islemYonu: string } | null>(null);
   const prevTipRef = useRef<number>(tip);
 
   useEffect(() => {
@@ -1154,7 +1151,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     showDetayModal ||
     showPrintModal ||
     showIstatistikModal ||
-    showArbitrajModal ||
     showFarkConfirmModal.show ||
     masakModalOpen ||
     masakManagementOpen ||
@@ -1619,7 +1615,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setBelgeTuru(0);
     setUnvan(DEFAULT_CUSTOMER_NAME);
     setCariKartId(null);
-    setArbitrajActiveInfo(null);
 
     // Varsayılan HAS Altın ve Gümüş kurları
     let defaultHas: number | string = "";
@@ -4751,7 +4746,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowDetayModal(false);
     setShowPrintModal(false);
     setShowIstatistikModal(false);
-    setShowArbitrajModal(false);
     setShowFarkConfirmModal({ show: false, andPrint: false });
     setShowF10PrinterModal(false);
   }, []);
@@ -4778,164 +4772,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowF10PrinterModal(true);
   }, [isMasakBlocked, vezneId, lines, closeAllModals, showNotif]);
 
-  // ─── Arbitraj Sonucunu Sarraf Fişine Aktarma (F7) ──────────────────────────
-  const handleApplyArbitrajToSarrafFis = useCallback(
-    (result: ArbitrajApplyResult) => {
-      const isAlis = result.islemYonu === "alis";
 
-      if (isAlis) {
-        // ALIŞ FİŞİ (tip = 0): Müşteriden Alınan (Giriş) -> Kalemler, Müşteriye Verilen (Çıkış) -> Ödeme
-        setTip(0);
-        const mainUrun =
-          urunList.find(
-            (u) => (u.kod || "").toUpperCase() === result.girisPara.kod.toUpperCase()
-          ) || urunList[0];
-
-        const mainKur = getKurForProduct(mainUrun, 0) || (result.girisKur > 0 ? result.girisKur : (result.parite > 0 ? result.parite : 1));
-        const mainMilyem = mainUrun?.hasOrani || mainUrun?.alisMilyem || (result.girisPara.isMaden ? 1000 : 0);
-
-        const cikisUrun = urunList.find(
-          (u) => (u.kod || "").toUpperCase() === result.cikisPara.kod.toUpperCase()
-        );
-        const cikisKur = cikisUrun ? getKurForProduct(cikisUrun, 1) : (result.cikisKur > 0 ? result.cikisKur : 1);
-
-        const newGridRow: GridRow = {
-          id: String(Date.now()),
-          satirNo: 1,
-          urunId: mainUrun?.id || result.girisPara.id || 1,
-          urunKodu: mainUrun?.kod || result.girisPara.kod,
-          urunAdi: mainUrun?.ad || result.girisPara.ad || result.girisPara.kod,
-          adet: 1,
-          miktar: result.girisMiktar,
-          milyem: mainMilyem,
-          hasGram: mainMilyem > 0 ? (result.girisMiktar * mainMilyem) / 1000 : result.girisMiktar,
-          iscilikHesaplamaSekli: 0,
-          iscilikiMiktari: 0,
-          iscilikHasGram: 0,
-          kur: mainKur,
-          tutar: mainKur > 0 ? parseFloat((result.girisMiktar * mainKur).toFixed(2)) : result.cikisMiktar,
-          urunTipi: mainUrun?.urunTipi || 0,
-          karat: "",
-          aciklama: result.aciklama || "Arbitraj Alış",
-        };
-        setLines([recomputeRow(newGridRow, Number(altinHasKuru) || 0)]);
-
-        // Ödeme Tablosu: Verilen Çıkış Bacağı
-        const newOdemeRow: OdemeRow = {
-          id: String(Date.now() + 1),
-          satirNo: 1,
-          odemeAraciTuru: 0, // Nakit Vezne
-          bankaId: null,
-          posCihaziId: null,
-          cariKartId: null,
-          cariKod: "",
-          cariUnvan: "",
-          iskontoId: null,
-          paraId: result.cikisPara.id || 1,
-          paraKodu: result.cikisPara.kod,
-          paraAdi: result.cikisPara.ad,
-          adet: 1,
-          miktar: result.cikisMiktar,
-          milyem: 0,
-          hasGram: 0,
-          kur: cikisKur,
-          tutar: cikisKur > 0 ? parseFloat((result.cikisMiktar * cikisKur).toFixed(2)) : result.cikisMiktar,
-          urunTipi: 0,
-        };
-        setOdemeRows([recomputeOdemeRow(newOdemeRow, Number(altinHasKuru) || 0)]);
-      } else {
-        // SATIŞ FİŞİ (tip = 1): Müşteriye Satılan (Çıkış) -> Kalemler, Müşteriden Alınan (Giriş) -> Tahsilat
-        setTip(1);
-        const mainUrun =
-          urunList.find(
-            (u) => (u.kod || "").toUpperCase() === result.cikisPara.kod.toUpperCase()
-          ) || urunList[0];
-
-        const mainKur = getKurForProduct(mainUrun, 1) || (result.cikisKur > 0 ? result.cikisKur : (result.parite > 0 ? result.parite : 1));
-        const mainMilyem = mainUrun?.hasOrani || mainUrun?.satisMilyem || (result.cikisPara.isMaden ? 1000 : 0);
-
-        const girisUrun = urunList.find(
-          (u) => (u.kod || "").toUpperCase() === result.girisPara.kod.toUpperCase()
-        );
-        const girisKur = girisUrun ? getKurForProduct(girisUrun, 0) : (result.girisKur > 0 ? result.girisKur : 1);
-
-        const newGridRow: GridRow = {
-          id: String(Date.now()),
-          satirNo: 1,
-          urunId: mainUrun?.id || result.cikisPara.id || 1,
-          urunKodu: mainUrun?.kod || result.cikisPara.kod,
-          urunAdi: mainUrun?.ad || result.cikisPara.ad || result.cikisPara.kod,
-          adet: 1,
-          miktar: result.cikisMiktar,
-          milyem: mainMilyem,
-          hasGram: mainMilyem > 0 ? (result.cikisMiktar * mainMilyem) / 1000 : result.cikisMiktar,
-          iscilikHesaplamaSekli: 0,
-          iscilikiMiktari: 0,
-          iscilikHasGram: 0,
-          kur: mainKur,
-          tutar: mainKur > 0 ? parseFloat((result.cikisMiktar * mainKur).toFixed(2)) : result.girisMiktar,
-          urunTipi: mainUrun?.urunTipi || 0,
-          karat: "",
-          aciklama: result.aciklama || "Arbitraj Satış",
-        };
-        setLines([recomputeRow(newGridRow, Number(altinHasKuru) || 0)]);
-
-        // Tahsilat Tablosu: Alınan Giriş Bacağı
-        const newOdemeRow: OdemeRow = {
-          id: String(Date.now() + 1),
-          satirNo: 1,
-          odemeAraciTuru: 0, // Nakit Vezne
-          bankaId: null,
-          posCihaziId: null,
-          cariKartId: null,
-          cariKod: "",
-          cariUnvan: "",
-          iskontoId: null,
-          paraId: result.girisPara.id || 1,
-          paraKodu: result.girisPara.kod,
-          paraAdi: result.girisPara.ad,
-          adet: 1,
-          miktar: result.girisMiktar,
-          milyem: 0,
-          hasGram: 0,
-          kur: girisKur,
-          tutar: girisKur > 0 ? parseFloat((result.girisMiktar * girisKur).toFixed(2)) : result.girisMiktar,
-          urunTipi: 0,
-        };
-        setOdemeRows([recomputeOdemeRow(newOdemeRow, Number(altinHasKuru) || 0)]);
-      }
-
-      if (result.cariId !== undefined && result.cariId !== null) {
-        setCariKartId(result.cariId);
-      }
-      if (result.cariKodu) {
-        setCariKod(result.cariKodu);
-      }
-      if (result.cariUnvan) {
-        setUnvan(result.cariUnvan);
-        setDetayUnvan(result.cariUnvan);
-      }
-      if (result.vknTckn) {
-        setDetayVergiKimlikNo(result.vknTckn);
-      }
-      if (result.istatistikKodu) {
-        setIstatistikKodu(result.istatistikKodu);
-      }
-
-      setArbitrajActiveInfo({
-        girisKod: result.girisPara.kod,
-        cikisKod: result.cikisPara.kod,
-        parite: result.parite,
-        islemYonu: result.islemYonu,
-      });
-
-      setNotification({
-        type: "success",
-        message: `Arbitraj işlemi (${result.girisPara.kod} -> ${result.cikisPara.kod}) fiş satırlarına başarıyla aktarıldı.`,
-      });
-    },
-    [urunList]
-  );
 
   // ─── Global F-key shortcuts ──────────────────────────────────────────────────
   useEffect(() => {
@@ -4965,13 +4802,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
 
       if (["INPUT", "TEXTAREA", "SELECT"].includes(activeEl?.tagName || "") &&
-        !["F1", "F3", "F4", "F7", "F8", "F9", "F10", "F12"].includes(e.key)) {
+        !["F1", "F3", "F4", "F8", "F9", "F10", "F12"].includes(e.key)) {
         return;
       }
       if (e.key === "F1") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleSave(false, false); }
       else if (e.key === "F3") { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowIstatistikModal(true); }
       else if (e.key === "F4") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleNew(); }
-      else if (e.key === "F7") { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowArbitrajModal(true); }
       else if (e.key === "F8") { e.preventDefault(); e.stopPropagation(); closeAllModals(); openDetayModal(); }
       else if (e.key === "F9") {
         e.preventDefault();
@@ -5205,11 +5041,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             >
               {tip === 0 ? "ALIŞ" : "SATIŞ"}
             </div>
-            {arbitrajActiveInfo && (
-              <Badge bg="warning" className="text-dark fw-bold px-2 py-1 d-inline-flex align-items-center gap-1 shadow-2xs" style={{ fontSize: "11px" }}>
-                <IconArrowsExchange size={14} /> ARBİTRAJ ({arbitrajActiveInfo.girisKod} ⇄ {arbitrajActiveInfo.cikisKod})
-              </Badge>
-            )}
+
           </div>
         }
         rightContent={
@@ -6986,7 +6818,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             </Col>
           </Row>
 
-          {/* ─── Alt Kısayol Çubuğu (Kaydet, F7 Arbitraj, F8 Detay ve Sağda Belge Türü) ───────── */}
+          {/* ─── Alt Kısayol Çubuğu (Kaydet, F8 Detay ve Sağda Belge Türü) ───────── */}
           <div className="d-flex gap-3 flex-wrap mt-2 pt-2 border-top align-items-center justify-content-between">
             <div className="d-flex align-items-center gap-2">
               <span
@@ -6997,15 +6829,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               >
                 <Badge bg="primary" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F1</Badge>
                 <span className="fw-bold text-dark">Kaydet</span>
-              </span>
-              <span
-                className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
-                style={{ fontSize: "11.5px", cursor: "pointer" }}
-                onClick={() => setShowArbitrajModal(true)}
-                title="Arbitraj İşlemi Aç (F7)"
-              >
-                <Badge bg="warning" className="text-dark px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F7</Badge>
-                <span className="fw-bold text-dark">Arbitraj</span>
               </span>
               <span
                 className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
@@ -8135,39 +7958,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         </Modal.Footer>
       </Modal>
 
-      {/* F7) Arbitraj Modalı */}
-      <ArbitrajModal
-        show={showArbitrajModal}
-        onClose={() => setShowArbitrajModal(false)}
-        paralar={kurSatirlar.map((k) => ({
-          id: k.paraId,
-          kod: k.kod,
-          ad: k.ad,
-          isMaden: false,
-          dovizAlis: k.dovizAlis ?? undefined,
-          dovizSatis: k.dovizSatis ?? undefined,
-          efektifAlis: k.efektifAlis ?? undefined,
-          efektifSatis: k.efektifSatis ?? undefined,
-          parite: k.parite ?? undefined,
-        }))}
-        kurSatirlar={kurSatirlar}
-        urunler={urunList}
-        vezneId={vezneId}
-        vezneKod={vezneKod}
-        vezneAd={vezneAd}
-        selectedCariId={cariKartId}
-        selectedUnvan={unvan || detayUnvan}
-        selectedCariKod={cariKod}
-        vknTckn={detayVergiKimlikNo || detayPasaportNo || ""}
-        istatistikKodu={istatistikKodu}
-        hedefTlTutar={totalTutar || 0}
-        cariList={cariList}
-        statisticList={statisticList}
-        companyDefinitions={companyDefinitions}
-        pageType="sarraf"
-        fisTip={tip}
-        onApplyToFis={handleApplyArbitrajToSarrafFis}
-      />
+
 
       {/* F10 Doğrudan Yazdırma Öncesi Küçük Yazıcı Seçim Modalı */}
       <F10YaziciSecimModal

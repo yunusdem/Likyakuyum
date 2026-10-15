@@ -258,6 +258,38 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
   const [sablonlar, setSablonlar] = useState<EtiketSablonItem[]>([]);
   const [kurRows, setKurRows] = useState<KurRowItem[]>([]);
+
+  const lookupKurItems = useMemo(() => {
+    const list: KurRowItem[] = [];
+    const seen = new Set<string>();
+
+    const hasTl = kurRows.some(
+      (k) => (k.kod || "").toUpperCase() === "TL" || (k.kod || "").toUpperCase() === "TRY"
+    );
+    if (!hasTl) {
+      list.push({
+        id: 0,
+        kod: "TL",
+        ad: "Türk Lirası",
+        efektifAlis: 1,
+        efektifSatis: 1,
+        dovizAlis: 1,
+        dovizSatis: 1,
+      } as unknown as KurRowItem);
+      seen.add("TL");
+      seen.add("TRY");
+    }
+
+    for (const k of kurRows) {
+      const kodUpper = (k.kod || "").toUpperCase();
+      if (!kodUpper) continue;
+      if (!seen.has(kodUpper)) {
+        seen.add(kodUpper);
+        list.push(k);
+      }
+    }
+    return list;
+  }, [kurRows]);
   const [yaziciList, setYaziciList] = useState<YaziciItem[]>([]);
   const [vezneList, setVezneList] = useState<VezneItem[]>([]);
   const [vezneId, setVezneId] = useState<number | null>(null);
@@ -305,6 +337,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const [urunLookupSearch, setUrunLookupSearch] = useState("");
   const [grupInitialSearch, setGrupInitialSearch] = useState("");
   const [bankoInitialSearch, setBankoInitialSearch] = useState("");
+  const [kurInitialSearch, setKurInitialSearch] = useState("");
   const [tabloMaddesiModal, setTabloMaddesiModal] = useState<{
     show: boolean;
     tur: number;
@@ -334,8 +367,12 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const monturGramRef = useRef<HTMLInputElement | null>(null);
   const monturAyarRef = useRef<HTMLInputElement | null>(null);
   const monturIscilikRef = useRef<HTMLInputElement | null>(null);
+  const monturIscilikParaRef = useRef<HTMLInputElement | null>(null);
   const satisKariRef = useRef<HTMLInputElement | null>(null);
   const satisFiyatiRef = useRef<HTMLInputElement | null>(null);
+  const satisParaRef = useRef<HTMLInputElement | null>(null);
+  const maliyetRef = useRef<HTMLInputElement | null>(null);
+  const maliyetParaRef = useRef<HTMLInputElement | null>(null);
 
   // Sağ Tık (Context Menu) State
   const [contextMenu, setContextMenu] = useState<{
@@ -743,16 +780,18 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       setMaliyet(formattedMaliyet);
 
       // 7. Satış Fiyatı USD = Maliyet USD * (1 + (Satış Kârı % / 100))
-      const karY =
-        typeof curSatisKarYuzde === "number" || (typeof curSatisKarYuzde === "string" && curSatisKarYuzde !== "")
-          ? parseNum(curSatisKarYuzde)
-          : 100;
+      const hasKarY =
+        typeof curSatisKarYuzde === "number" ||
+        (typeof curSatisKarYuzde === "string" && curSatisKarYuzde.trim() !== "");
 
-      if (calcToplamMaliyet > 0) {
+      if (hasKarY && calcToplamMaliyet > 0) {
+        const karY = parseNum(curSatisKarYuzde);
         const effectiveKarY = karY >= 0 ? karY : 0;
         const calcSatisInMaliyetPara = calcToplamMaliyet * (1 + effectiveKarY / 100);
         const calcSatisInTarget = convertCurrency(calcSatisInMaliyetPara, curMaliyetPara || "USD", curSatisPara || "USD", curKurRef);
         setSatisFiyati(format2(calcSatisInTarget));
+      } else if (!hasKarY) {
+        // Kâr yüzdesi boş bırakılmış: satış fiyatı otomatik doldurulmaz
       } else {
         setSatisFiyati("");
       }
@@ -973,15 +1012,27 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   // ─── Fiyat ve Kâr Manuel Değişimleri ───────────────────────────────────────
   const handleMaliyetChange = (val: string) => {
     setMaliyet(val);
+    if (val === "") {
+      return;
+    }
     const mNum = parseNum(val);
-    const yNum = parseNum(satisKariYuzde) || 100;
-    if (mNum > 0) {
-      setSatisFiyati(formatNumber(mNum * (1 + yNum / 100), 2));
+    const sNum = parseNum(satisFiyati);
+    if (mNum > 0 && sNum > 0) {
+      const sNumInMaliyetPara =
+        satisParaKodu !== maliyetParaKodu
+          ? convertCurrency(sNum, satisParaKodu || "USD", maliyetParaKodu || "USD", kurRef)
+          : sNum;
+      const yuzde = Number((((sNumInMaliyetPara - mNum) / mNum) * 100).toFixed(2));
+      setSatisKariYuzde(yuzde);
     }
   };
 
   const handleSatisFiyatiChange = (val: string) => {
     setSatisFiyati(val);
+    if (val === "") {
+      setSatisKariYuzde("");
+      return;
+    }
     const sNum = parseNum(val);
     const mNum = parseNum(maliyet);
     if (mNum > 0 && sNum > 0) {
@@ -996,6 +1047,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
   const handleKarYuzdeChange = (val: string) => {
     setSatisKariYuzde(val);
+    if (val === "") {
+      setSatisFiyati("");
+      return;
+    }
     recalculateAll(
       monturGram,
       ayar,
@@ -1008,6 +1063,44 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       val,
       kurRef
     );
+  };
+
+  const handleSatisParaChange = (val: string) => {
+    const kod = val.trim().toUpperCase();
+    setSatisParaKodu(kod);
+    if (kod) {
+      recalculateAll(
+        monturGram,
+        ayar,
+        monturIscilik,
+        monturIscilikBirim,
+        monturIscilikParaKodu,
+        taslar,
+        maliyetParaKodu,
+        kod,
+        satisKariYuzde,
+        kurRef
+      );
+    }
+  };
+
+  const handleMaliyetParaChange = (val: string) => {
+    const kod = val.trim().toUpperCase();
+    setMaliyetParaKodu(kod);
+    if (kod) {
+      recalculateAll(
+        monturGram,
+        ayar,
+        monturIscilik,
+        monturIscilikBirim,
+        monturIscilikParaKodu,
+        taslar,
+        kod,
+        satisParaKodu,
+        satisKariYuzde,
+        kurRef
+      );
+    }
   };
 
   const handleKurRefModeChange = (mode: "alis" | "satis") => {
@@ -1215,7 +1308,12 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         EtiketService.getUreticiFirmalar().catch(() => []),
         CariService.getCariKartlar().catch(() => []),
         EtiketService.getSablonlar(1).catch(() => []),
-        KurService.getKurTablosu({ tur: 0 }).then((t) => t?.satirlar || []).catch(() => []),
+        Promise.all([
+          KurService.getKurTablosu({ tur: 0 }).catch(() => null),
+          KurService.getKurTablosu({ tur: 1 }).catch(() => null),
+        ])
+          .then(([t0, t1]) => [...(t1?.satirlar || []), ...(t0?.satirlar || [])])
+          .catch(() => []),
         EtiketService.getBankolar().catch(() => []),
         AyarService.getAyarlar(false).catch(() => []),
         PrinterService.getYazicilar().catch(() => []),
@@ -1587,6 +1685,100 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       } else {
         setBankoInitialSearch(banko || "");
         setShowBankoLookup(true);
+      }
+    }
+  };
+
+  const handleSatisParaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const val = (satisParaKodu || "").trim().toUpperCase();
+      if (!val) {
+        setKurInitialSearch("");
+        setShowKurLookup("satis");
+        return;
+      }
+      const exact = lookupKurItems.find((k) => (k.kod || "").toUpperCase() === val);
+      if (exact) {
+        handleSatisParaChange(exact.kod);
+        maliyetRef.current?.focus();
+        return;
+      }
+      const matches = lookupKurItems.filter(
+        (k) =>
+          (k.kod && k.kod.toUpperCase().includes(val)) ||
+          (k.ad && k.ad.toUpperCase().includes(val))
+      );
+      if (matches.length === 1) {
+        handleSatisParaChange(matches[0].kod);
+        maliyetRef.current?.focus();
+      } else {
+        setKurInitialSearch(val);
+        setShowKurLookup("satis");
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      satisFiyatiRef.current?.focus();
+    }
+  };
+
+  const handleMaliyetParaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const val = (maliyetParaKodu || "").trim().toUpperCase();
+      if (!val) {
+        setKurInitialSearch("");
+        setShowKurLookup("maliyet");
+        return;
+      }
+      const exact = lookupKurItems.find((k) => (k.kod || "").toUpperCase() === val);
+      if (exact) {
+        handleMaliyetParaChange(exact.kod);
+        return;
+      }
+      const matches = lookupKurItems.filter(
+        (k) =>
+          (k.kod && k.kod.toUpperCase().includes(val)) ||
+          (k.ad && k.ad.toUpperCase().includes(val))
+      );
+      if (matches.length === 1) {
+        handleMaliyetParaChange(matches[0].kod);
+      } else {
+        setKurInitialSearch(val);
+        setShowKurLookup("maliyet");
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      maliyetRef.current?.focus();
+    }
+  };
+
+  const handleMonturIscilikParaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const val = (monturIscilikParaKodu || "").trim().toUpperCase();
+      if (!val) {
+        setKurInitialSearch("");
+        setShowKurLookup("monturIscilik");
+        return;
+      }
+      const exact = lookupKurItems.find((k) => (k.kod || "").toUpperCase() === val);
+      if (exact) {
+        setMonturIscilikParaKodu(exact.kod);
+        recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, exact.kod, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, kurRef);
+        return;
+      }
+      const matches = lookupKurItems.filter(
+        (k) =>
+          (k.kod && k.kod.toUpperCase().includes(val)) ||
+          (k.ad && k.ad.toUpperCase().includes(val))
+      );
+      if (matches.length === 1) {
+        setMonturIscilikParaKodu(matches[0].kod);
+        recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, matches[0].kod, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, kurRef);
+      } else {
+        setKurInitialSearch(val);
+        setShowKurLookup("monturIscilik");
       }
     }
   };
@@ -2840,15 +3032,25 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                       </Form.Select>
                       <InputGroup size="sm" style={{ width: "85px" }}>
                         <Form.Control
+                          ref={monturIscilikParaRef}
                           type="text"
-                          readOnly
                           value={monturIscilikParaKodu}
-                          className="font-monospace bg-light fw-bold text-center px-1"
+                          onChange={(e) => {
+                            setMonturIscilikParaKodu(e.target.value.toUpperCase());
+                          }}
+                          onDoubleClick={(e) => e.currentTarget.select()}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onKeyDown={handleMonturIscilikParaKeyDown}
+                          className="font-monospace bg-white fw-bold text-center px-1"
+                          title="İşçilik Para Birimi (Yazıp Enter'a basabilir veya Dürbün ile seçebilirsiniz)"
                         />
                         <Button
                           variant="outline-secondary"
                           className="px-1.5"
-                          onClick={() => setShowKurLookup("monturIscilik")}
+                          onClick={() => {
+                            setKurInitialSearch((monturIscilikParaKodu || "").trim());
+                            setShowKurLookup("monturIscilik");
+                          }}
                           title="Para Tablosundan Seç (Dürbün)"
                         >
                           <IconBinoculars size={14} />
@@ -3090,6 +3292,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                           inputMode="decimal"
                           value={satisKariYuzde !== "" ? `${satisKariYuzde}` : ""}
                           onChange={(e) => handleKarYuzdeChange(cleanInputStr(e.target.value))}
+                          onDoubleClick={(e) => e.currentTarget.select()}
+                          onFocus={(e) => e.currentTarget.select()}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
@@ -3100,7 +3304,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                             }
                           }}
                           className="font-monospace text-end fw-bold text-success bg-white"
-                          title="Satış Kârı %: Kâr oranını serbestçe girebilirsiniz. Satış fiyatı otomatik güncellenir."
+                          title="Satış Kârı %: Kâr oranını serbestçe girebilir veya silebilirsiniz."
                         />
                         <InputGroup.Text className="bg-light">%</InputGroup.Text>
                       </InputGroup>
@@ -3120,26 +3324,37 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                           inputMode="decimal"
                           value={satisFiyati ?? ""}
                           onChange={(e) => handleSatisFiyatiChange(cleanInputStr(e.target.value))}
+                          onDoubleClick={(e) => e.currentTarget.select()}
+                          onFocus={(e) => e.currentTarget.select()}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              handleSave();
+                              satisParaRef.current?.focus();
                             }
                           }}
                           className="fw-bold font-monospace text-primary text-end bg-white fs-6"
-                          title="Satış Fiyatı: Maliyet + Kâr"
+                          title="Satış Fiyatı: Maliyet + Kâr (Çift tıklayarak silebilirsiniz)"
                         />
                         <Form.Control
+                          ref={satisParaRef}
                           type="text"
-                          readOnly
-                          value={satisParaKodu}
-                          className="bg-light font-monospace fw-bold text-primary text-center px-1"
-                          style={{ maxWidth: "55px" }}
+                          value={satisParaKodu ?? ""}
+                          onChange={(e) => handleSatisParaChange(e.target.value)}
+                          onDoubleClick={(e) => e.currentTarget.select()}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onKeyDown={handleSatisParaKeyDown}
+                          className="bg-white font-monospace fw-bold text-primary text-center px-1"
+                          style={{ maxWidth: "58px" }}
+                          placeholder="TL"
+                          title="Para Birimi (Yazıp Enter'a basabilir veya Dürbün ile seçebilirsiniz)"
                         />
                         <Button
                           variant="outline-secondary"
                           className="px-1.5"
-                          onClick={() => setShowKurLookup("satis")}
+                          onClick={() => {
+                            setKurInitialSearch((satisParaKodu || "").trim());
+                            setShowKurLookup("satis");
+                          }}
                           title="Para Tablosundan Seç (Dürbün)"
                         >
                           <IconBinoculars size={14} />
@@ -3156,23 +3371,41 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                     <div className="flex-grow-1 d-flex align-items-center gap-2" style={{ maxWidth: "330px" }}>
                       <InputGroup size="sm" style={{ maxWidth: "220px" }}>
                         <Form.Control
+                          ref={maliyetRef}
                           type="text"
-                          readOnly
                           value={maliyet ?? ""}
-                          className="fw-bold font-monospace text-end bg-light"
-                          title="Gerçek Maliyet: Toplam Montür Maliyeti + Taşlar Tutarı (Kilitli)"
+                          onChange={(e) => handleMaliyetChange(cleanInputStr(e.target.value))}
+                          onDoubleClick={(e) => e.currentTarget.select()}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              maliyetParaRef.current?.focus();
+                            }
+                          }}
+                          className="fw-bold font-monospace text-end bg-white"
+                          title="Gerçek Maliyet (Çift tıklayarak silebilirsiniz)"
                         />
                         <Form.Control
+                          ref={maliyetParaRef}
                           type="text"
-                          readOnly
-                          value={maliyetParaKodu}
-                          className="bg-light font-monospace fw-bold text-center px-1"
-                          style={{ maxWidth: "55px" }}
+                          value={maliyetParaKodu ?? ""}
+                          onChange={(e) => handleMaliyetParaChange(e.target.value)}
+                          onDoubleClick={(e) => e.currentTarget.select()}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onKeyDown={handleMaliyetParaKeyDown}
+                          className="bg-white font-monospace fw-bold text-center px-1"
+                          style={{ maxWidth: "58px" }}
+                          placeholder="TL"
+                          title="Para Birimi (Yazıp Enter'a basabilir veya Dürbün ile seçebilirsiniz)"
                         />
                         <Button
                           variant="outline-secondary"
                           className="px-1.5"
-                          onClick={() => setShowKurLookup("maliyet")}
+                          onClick={() => {
+                            setKurInitialSearch((maliyetParaKodu || "").trim());
+                            setShowKurLookup("maliyet");
+                          }}
                           title="Para Tablosundan Seç (Dürbün)"
                         >
                           <IconBinoculars size={14} />
@@ -4026,6 +4259,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       <LookupModal<KurRowItem>
         show={showKurLookup !== null}
         title="Para Tablosundan Para Birimi / Kur Seç"
+        selectOnDoubleClick={true}
+        initialSearchTerm={kurInitialSearch}
         columns={[
           { header: "Döviz / Para Kodu", width: "120px", render: (it) => <span className="font-monospace fw-bold text-primary">{it.kod}</span> },
           { header: "Açıklama / Para Adı", render: (it) => it.ad || "-" },
@@ -4034,7 +4269,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           { header: "Döviz Alış", width: "110px", render: (it) => it.dovizAlis ?? "-" },
           { header: "Döviz Satış", width: "110px", render: (it) => it.dovizSatis ?? "-" },
         ]}
-        items={kurRows}
+        items={lookupKurItems}
         filterFn={(it, term) => {
           const t = term.toLowerCase();
           return it.kod.toLowerCase().includes(t) || it.ad.toLowerCase().includes(t);
@@ -4089,6 +4324,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
             if (parseNum(monturGram) > 0 || (taslar && taslar.length > 0)) {
               recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, kod, satisParaKodu, satisKariYuzde, kurRef);
             }
+            setShowKurLookup(null);
+            return;
           } else if (showKurLookup === "satis") {
             const oldPara = satisParaKodu;
             setSatisParaKodu(kod);
@@ -4102,9 +4339,16 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
             if (parseNum(monturGram) > 0 || (taslar && taslar.length > 0)) {
               recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, kod, satisKariYuzde, kurRef);
             }
+            setShowKurLookup(null);
+            setTimeout(() => {
+              maliyetRef.current?.focus();
+            }, 50);
+            return;
           } else if (showKurLookup === "monturIscilik") {
             setMonturIscilikParaKodu(kod);
             recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, kod, taslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, kurRef);
+            setShowKurLookup(null);
+            return;
           } else if (showKurLookup === "tasPara" && selectedTasIdForKur) {
             handleTasGuncelle(selectedTasIdForKur, "paraKodu", kod);
             setSelectedTasIdForKur(null);

@@ -34,6 +34,7 @@ export interface KatalogUrun {
   miktarBirimi: string;
   satisFiyati: number;
   satisParaKodu: string;
+  satisDoviz?: number | null;
   hasKuru1?: number | null;
   hasKuru2?: number | null;
   usdKuru1?: number | null;
@@ -45,6 +46,8 @@ export interface KatalogUrun {
   konsinye: boolean;
   satildi: boolean;
   eklemeZamani: string;
+  mamulTipi?: string | null;
+  ozelDetay?: string | null;
   resimler: Array<{
     resimId: number;
     dosyaYolu: string;
@@ -92,7 +95,7 @@ export const notifyKatalogUpdate = () => {
 
 export const MenuService = {
   async getMenus(aktif?: boolean): Promise<MenuItem[]> {
-    const res = await apiClient.get<MenuItem[]>("/menu", aktif !== undefined ? { params: { aktif } } : undefined);
+    const res = await apiClient.get<MenuItem[]>("/menu", aktif !== undefined ? { aktif } : undefined);
     const data = (res.data as any)?.data ?? res.data;
     return Array.isArray(data) ? data : [];
   },
@@ -109,7 +112,7 @@ export const MenuService = {
   },
 
   async getKatalogUrunleri(menuId?: number | null): Promise<KatalogUrun[]> {
-    const res = await apiClient.get<KatalogUrun[]>("/menu/katalog-urunler", menuId ? { params: { menuId } } : undefined);
+    const res = await apiClient.get<KatalogUrun[]>("/menu/katalog-urunler", menuId && menuId > 0 ? { menuId } : undefined);
     const data = (res.data as any)?.data ?? res.data;
     return Array.isArray(data) ? data : [];
   },

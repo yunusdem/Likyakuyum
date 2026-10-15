@@ -50,7 +50,9 @@ export class MenuController {
     });
     static getKatalogUrunleri = asyncHandler(async (req, res) => {
         const dbContext = MenuController.getDbContext(req);
-        const menuId = req.query.menuId ? Number(req.query.menuId) : null;
+        const rawMenuId = req.query.menuId;
+        const parsedMenuId = rawMenuId ? Number(rawMenuId) : null;
+        const menuId = parsedMenuId && !isNaN(parsedMenuId) && parsedMenuId > 0 ? parsedMenuId : null;
         const items = await MenuSqlRepository.getKatalogUrunleri(menuId, dbContext);
         return ApiResponse.ok(res, "Katalog ürünleri getirildi.", items);
     });

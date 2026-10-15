@@ -58,8 +58,12 @@ class ApiClient {
     const activeBaseUrl = getEffectiveApiUrl();
     let url = `${activeBaseUrl}${cleanPath}`;
     if (params) {
+      const queryParams =
+        params.params && typeof params.params === "object" && !Array.isArray(params.params)
+          ? params.params
+          : params;
       const searchParams = new URLSearchParams();
-      Object.entries(params).forEach(([key, value]) => {
+      Object.entries(queryParams).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           searchParams.append(key, String(value));
         }

@@ -96,7 +96,7 @@ export class KurController {
         return ApiResponse.ok(res, "TCMB kurları başarıyla alındı.", rates);
     });
     /**
-     * GET /api/v1/kur/kaynaklar — Anlık Fiyat Listesi'nin sol paneli (kaynaklar + durum + seçili)
+     * GET /api/v1/kur/kaynaklar — seçilebilir kaynaklar + firmada seçili kaynak (sitelere bağlanmaz)
      */
     static kaynaklar = asyncHandler(async (req, res) => {
         res.setHeader("Cache-Control", "no-store");
@@ -111,11 +111,12 @@ export class KurController {
         return ApiResponse.ok(res, "Kur kaynağı seçildi.", { kaynak });
     });
     /**
-     * GET /api/v1/kur/kaynak/:kaynak — kaynaktan çekilmiş, komisyonu uygulanmış kurlar (kaydetmez)
+     * GET /api/v1/kur/kaynak — firmada seçili kaynaktan (ya da /kaynak/:kaynak) çekilmiş, komisyonu uygulanmış kurlar (kaydetmez)
      */
     static kaynaktanCek = asyncHandler(async (req, res) => {
         res.setHeader("Cache-Control", "no-store");
-        const sonuc = await KurKaynakService.cek(String(req.params.kaynak), KurController.getDbContext(req));
+        const kaynak = typeof req.params.kaynak === "string" && req.params.kaynak ? req.params.kaynak : undefined;
+        const sonuc = await KurKaynakService.cek(kaynak, KurController.getDbContext(req));
         return ApiResponse.ok(res, `${sonuc.kaynakAd} kurları alındı.`, sonuc);
     });
     /**

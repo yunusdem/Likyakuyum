@@ -144,9 +144,19 @@ const DashboardLayout: React.FC = () => {
     }
   }, [collapsed]);
 
-  // Route değiştiğinde çekmeceyi otomatik kapat
+  // Mobilde sayfa ilk açıldığında sidebar kapalı başlasın
+  useEffect(() => {
+    if (window.innerWidth < 1200) {
+      handleCollapsed("collapsed");
+    }
+  }, []);
+
+  // Route değiştiğinde çekmeceyi ve mobilde sidebarı otomatik kapat
   useEffect(() => {
     setDrawerOpen(false);
+    if (window.innerWidth < 1200) {
+      handleCollapsed("collapsed");
+    }
   }, [location.pathname]);
 
   // Drawer modu için DOM sınıflarını yönet
@@ -166,15 +176,13 @@ const DashboardLayout: React.FC = () => {
 
   return (
     <div className={`dashboard-layout-root min-vh-100 position-relative ${drawerOpen ? "drawer-open" : ""}`}>
-      {/* 1. Main Sidebar (Style 4: topbar ve Style 6: megamenu modunda gizlenir) */}
-      {sidebarStyle !== "topbar" && sidebarStyle !== "megamenu" && sidebarStyle !== "drawer" && (
-        <Sidebar hideLogo={false} containerId="miniSidebar" />
-      )}
+      {/* 1. Main Sidebar: Masaüstünde seçili stile göre, mobilde (<1200px) ise TÜM stillerde (üst menüler dahil) yandan açılır çekmece olarak çalışır */}
+      <Sidebar hideLogo={false} containerId="miniSidebar" />
 
-      {/* 2. Mobile Backdrop (closes sidebar on tap outside) */}
-      {isExpanded && sidebarStyle !== "topbar" && sidebarStyle !== "megamenu" && sidebarStyle !== "drawer" && (
+      {/* 2. Mobile Backdrop: Mobilde menü açıkken arkadaki karartma ve tıklayınca kapatma */}
+      {isExpanded && (
         <div
-          className="sidebar-backdrop d-lg-none"
+          className="sidebar-backdrop d-xl-none"
           onClick={() => {
             handleCollapsed("collapsed");
           }}
@@ -184,9 +192,11 @@ const DashboardLayout: React.FC = () => {
 
       {/* 3. Main Content Area */}
       <div id="content" className="position-relative min-vh-100 d-flex flex-column">
-        {/* Style 4 & Style 6: En Üstte Header Üstünde Yatay Menü / Mega Menü Çubuğu */}
+        {/* Style 4 & Style 6: Masaüstünde (>= 1200px) Header Üstünde Yatay Menü / Mega Menü Çubuğu (Mobilde Header toggle ile Sidebar açılır) */}
         {(sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer") && (
-          <TopNavbarMenu />
+          <div className="d-none d-xl-block">
+            <TopNavbarMenu />
+          </div>
         )}
 
         <Header />

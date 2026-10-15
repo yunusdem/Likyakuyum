@@ -38,6 +38,7 @@ export interface KatalogUrunModel {
   miktarBirimi: string;
   satisFiyati: number;
   satisParaKodu: string;
+  satisDoviz?: number | null;
   hasKuru1?: number | null;
   hasKuru2?: number | null;
   usdKuru1?: number | null;
@@ -48,7 +49,10 @@ export interface KatalogUrunModel {
   katalog: boolean;
   konsinye: boolean;
   satildi: boolean;
-  eklemeZamani: string;
+  mamulTipi?: string | null;
+  ozelDetay?: string | null;
+  modelOzellik1?: string | null;
+  modelOzellik2?: string | null;
   resimler: Array<{
     resimId: number;
     dosyaYolu: string;
@@ -86,6 +90,30 @@ export class MenuSqlRepository {
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'MENU_ID')
           BEGIN
             ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [MENU_ID] INT NULL;
+          END;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'SATIS_DOVIZ')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [SATIS_DOVIZ] FLOAT NULL;
+          END;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'HAS_KURU_1')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [HAS_KURU_1] FLOAT NULL;
+          END;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'HAS_KURU_2')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [HAS_KURU_2] FLOAT NULL;
+          END;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'USD_KURU_1')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_1] FLOAT NULL;
+          END;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'USD_KURU_2')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [USD_KURU_2] FLOAT NULL;
+          END;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_ALTIN_URUN' AND COLUMN_NAME = 'ALTIN_KURU')
+          BEGIN
+            ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [ALTIN_KURU] FLOAT NULL;
           END;
         END;
 
@@ -204,11 +232,14 @@ export class MenuSqlRepository {
                 a.URUN_NO,
                 a.AYAR,
                 a.MODEL,
+                NULL AS MAMUL_TIPI,
+                NULL AS OZEL_DETAY,
                 a.URETICI_FIRMA,
                 a.MIKTAR,
                 'Gr' AS MIKTAR_BIRIMI,
                 a.SATIS_FIYATI,
                 a.SATIS_PARA_KODU,
+                a.SATIS_DOVIZ,
                 a.HAS_KURU_1,
                 a.HAS_KURU_2,
                 a.USD_KURU_1,
@@ -226,7 +257,8 @@ export class MenuSqlRepository {
                     WHERE r.TIP = 0 AND r.ISLEM_ID = a.ALTIN_URUN_ID
                     ORDER BY r.RESIM_ID ASC
                     FOR JSON PATH
-                ) AS RESIMLER_JSON
+                ) AS RESIMLER_JSON,
+                a.RESIM AS TEK_RESIM_DATA
             FROM dbo.TODVZ_ALTIN_URUN a
             LEFT JOIN dbo.TODVZ_MENU m ON a.MENU_ID = m.MENU_ID
             WHERE a.KATALOG = 1 AND a.SATILDI = 0
@@ -241,12 +273,21 @@ export class MenuSqlRepository {
                 o.GRUP_KODU,
                 o.URUN_NO,
                 o.AYAR,
-                COALESCE(o.MODEL_OZELLIK_1, o.MODEL_OZELLIK_2, o.MAMUL_TIPI) AS MODEL,
+                CASE 
+                    WHEN o.MODEL_OZELLIK_1 IS NOT NULL AND LTRIM(RTRIM(o.MODEL_OZELLIK_1)) <> '' AND LTRIM(RTRIM(o.MODEL_OZELLIK_1)) NOT LIKE '{%'
+                        THEN LTRIM(RTRIM(o.MODEL_OZELLIK_1))
+                    WHEN o.MAMUL_TIPI IS NOT NULL AND LTRIM(RTRIM(o.MAMUL_TIPI)) <> ''
+                        THEN LTRIM(RTRIM(o.MAMUL_TIPI))
+                    ELSE o.GRUP_KODU
+                END AS MODEL,
+                o.MAMUL_TIPI,
+                o.MODEL_OZELLIK_2 AS OZEL_DETAY,
                 o.URETICI_FIRMA,
                 o.MIKTAR,
                 ISNULL(o.MIKTAR_BIRIMI, 'Adet') AS MIKTAR_BIRIMI,
                 o.SATIS_FIYATI,
                 o.SATIS_PARA_KODU,
+                o.SATIS_FIYATI AS SATIS_DOVIZ,
                 NULL AS HAS_KURU_1,
                 NULL AS HAS_KURU_2,
                 NULL AS USD_KURU_1,
@@ -264,7 +305,8 @@ export class MenuSqlRepository {
                     WHERE r.TIP = 1 AND r.ISLEM_ID = o.OZEL_URUN_ID
                     ORDER BY r.RESIM_ID ASC
                     FOR JSON PATH
-                ) AS RESIMLER_JSON
+                ) AS RESIMLER_JSON,
+                o.RESIM AS TEK_RESIM_DATA
             FROM dbo.TODVZ_OZEL_URUN o
             LEFT JOIN dbo.TODVZ_MENU m ON o.MENU_ID = m.MENU_ID
             WHERE o.KATALOG = 1 AND o.SATILDI = 0
@@ -334,8 +376,7 @@ export class MenuSqlRepository {
     await this.ensureTablesAndProcs(pool);
 
     const req = pool.request();
-    req.output("MENU_ID", sql.Int);
-    req.input("MENU_ID", sql.Int, dto.menuId && dto.menuId > 0 ? dto.menuId : null);
+    req.output("MENU_ID", sql.Int, dto.menuId && dto.menuId > 0 ? dto.menuId : null);
     req.input("MENU_KODU", sql.VarChar(50), dto.menuKodu ? dto.menuKodu.trim() : null);
     req.input("MENU_ADI", sql.VarChar(250), dto.menuAdi.trim());
     req.input("ACIKLAMA", sql.VarChar(500), dto.aciklama ? dto.aciklama.trim() : null);
@@ -392,6 +433,28 @@ export class MenuSqlRepository {
           resimler = [];
         }
       }
+
+      if ((!resimler || resimler.length === 0) && r.TEK_RESIM_DATA) {
+        try {
+          let b64: string | null = null;
+          if (Buffer.isBuffer(r.TEK_RESIM_DATA)) {
+            b64 = r.TEK_RESIM_DATA.toString("base64");
+          } else if (typeof r.TEK_RESIM_DATA === "string") {
+            b64 = r.TEK_RESIM_DATA.replace(/^data:image\/\w+;base64,/, "");
+          }
+          if (b64) {
+            resimler = [
+              {
+                RESIM_ID: 1,
+                DOSYA_YOLU: "",
+                DOSYA_ADI: "urun.jpg",
+                RESIM_DATA: b64,
+              },
+            ];
+          }
+        } catch {}
+      }
+
       return {
         urunTipi: r.URUN_TIPI === "ozel" ? "ozel" : "altin",
         urunId: Number(r.URUN_ID),
@@ -400,11 +463,16 @@ export class MenuSqlRepository {
         urunNo: Number(r.URUN_NO),
         ayar: r.AYAR ? String(r.AYAR).trim() : null,
         model: r.MODEL ? String(r.MODEL).trim() : null,
+        mamulTipi: r.MAMUL_TIPI ? String(r.MAMUL_TIPI).trim() : null,
+        ozelDetay: r.OZEL_DETAY ? String(r.OZEL_DETAY).trim() : null,
+        modelOzellik1: r.MODEL_OZELLIK_1 ? String(r.MODEL_OZELLIK_1).trim() : null,
+        modelOzellik2: r.MODEL_OZELLIK_2 ? String(r.MODEL_OZELLIK_2).trim() : null,
         ureticiFirma: r.URETICI_FIRMA ? String(r.URETICI_FIRMA).trim() : null,
         miktar: Number(r.MIKTAR) || 0,
         miktarBirimi: String(r.MIKTAR_BIRIMI || (r.URUN_TIPI === "ozel" ? "Adet" : "Gr")).trim(),
         satisFiyati: Number(r.SATIS_FIYATI) || 0,
         satisParaKodu: String(r.SATIS_PARA_KODU || "TL").trim(),
+        satisDoviz: r.SATIS_DOVIZ !== null && r.SATIS_DOVIZ !== undefined ? Number(r.SATIS_DOVIZ) : null,
         hasKuru1: r.HAS_KURU_1 !== null && r.HAS_KURU_1 !== undefined ? Number(r.HAS_KURU_1) : null,
         hasKuru2: r.HAS_KURU_2 !== null && r.HAS_KURU_2 !== undefined ? Number(r.HAS_KURU_2) : null,
         usdKuru1: r.USD_KURU_1 !== null && r.USD_KURU_1 !== undefined ? Number(r.USD_KURU_1) : null,

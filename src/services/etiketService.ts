@@ -26,6 +26,7 @@ export interface AltinUrunItem {
   maliyetParaKodu: string;
   satisFiyati: number;
   satisParaKodu: string;
+  satisDoviz?: number | null;
   satisKariYuzde: number;
   hasKuru1?: number | null;
   hasKuru2?: number | null;
@@ -74,6 +75,7 @@ export interface SaveAltinUrunPayload {
   maliyetParaKodu?: string;
   satisFiyati?: number;
   satisParaKodu?: string;
+  satisDoviz?: number | null;
   satisKariYuzde?: number;
   hasKuru1?: number | null;
   hasKuru2?: number | null;

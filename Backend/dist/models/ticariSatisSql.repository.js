@@ -1,7 +1,7 @@
 import sql from "mssql";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
-import { ticariFisHesapla } from "../services/ticari/ticariHesap.js";
+import { ticariFisHesapla, GECERLI_KDV_ORANLARI, birimAdiDuzelt } from "../services/ticari/ticariHesap.js";
 import { PerakendeSqlRepository } from "./perakendeSql.repository.js";
 import { STOK_BELGE, TicariStokSqlRepository } from "./ticariStokSql.repository.js";
 import { bakiyeler, eksiStokDenetle } from "./ticariGirisSql.repository.js";
@@ -119,7 +119,8 @@ export class TicariSatisSqlRepository {
     }
     static async kaydet(girdi, kullaniciId, ctx) {
         const pool = await TicariStokSqlRepository.havuz(ctx);
-        const satirGirdi = (girdi.satirlar || []).filter((s) => s && Number(s.stokKartId) > 0);
+        const serbestMi = (s) => !(Number(s.stokKartId) > 0);
+        const satirGirdi = (girdi.satirlar || []).filter((s) => s && (Number(s.stokKartId) > 0 || temiz(s.urunAdi)));
         if (!satirGirdi.length)
             throw ApiError.badRequest("Fişte en az bir ürün satırı olmalı.");
         const tarih = girdi.tarih ? new Date(girdi.tarih) : new Date();
@@ -133,10 +134,23 @@ export class TicariSatisSqlRepository {
         const vezneId = Number(girdi.vezneId) || 1;
         const id0 = Number(girdi.faturaId) || 0;
         // Kartlar: ad, birim, KDV karttan; fiyat girilmemişse karttan (KDV dahile çevrilerek)
-        const kartIdler = [...new Set(satirGirdi.map((s) => Number(s.stokKartId)))];
-        const kr = await pool.request().query(`SELECT STOK_KART_ID, RTRIM(KOD) AS KOD, AD, BIRIM, KDV_ORANI, SATIS_FIYATI, FIYAT_KDV_DAHIL, AKTIF FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${kartIdler.join(",")})`);
+        const kartIdler = [...new Set(satirGirdi.filter((s) => !serbestMi(s)).map((s) => Number(s.stokKartId)))];
+        const kr = kartIdler.length
+            ? await pool.request().query(`SELECT STOK_KART_ID, RTRIM(KOD) AS KOD, AD, BIRIM, KDV_ORANI, SATIS_FIYATI, FIYAT_KDV_DAHIL, AKTIF FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${kartIdler.join(",")})`)
+            : { recordset: [] };
         const kartlar = new Map(kr.recordset.map((x) => [x.STOK_KART_ID, x]));
         const hesapGirdisi = satirGirdi.map((s, i) => {
+            if (serbestMi(s)) {
+                const kdvOrani = sayi(s.kdvOrani);
+                if (!GECERLI_KDV_ORANLARI.includes(kdvOrani))
+                    throw ApiError.badRequest(`${i + 1}. satırdaki serbest ürünün KDV oranı geçersiz.`);
+                const fiyat = sayi(s.kdvDahilFiyat);
+                if (!(fiyat > 0))
+                    throw ApiError.badRequest(`${i + 1}. satırdaki serbest ürünün fiyatı girilmeli.`);
+                if (temiz(s.urunAdi).length > 200)
+                    throw ApiError.badRequest(`${i + 1}. satırdaki ürün adı en çok 200 karakter olabilir.`);
+                return { miktar: sayi(s.miktar), kdvDahilFiyat: fiyat, kdvOrani, iskontoTuru: (Number(s.iskontoTuru) || 0), iskontoDegeri: sayi(s.iskontoDegeri) };
+            }
             const k = kartlar.get(Number(s.stokKartId));
             if (!k)
                 throw ApiError.badRequest(`${i + 1}. satırdaki stok kartı bulunamadı.`);
@@ -230,10 +244,13 @@ export class TicariSatisSqlRepository {
             }
             for (let i = 0; i < hesap.satirlar.length; i++) {
                 const h = hesap.satirlar[i];
-                const k = kartlar.get(Number(satirGirdi[i].stokKartId));
+                const serbest = serbestMi(satirGirdi[i]);
+                const k = serbest ? null : kartlar.get(Number(satirGirdi[i].stokKartId));
+                const ad = serbest ? temiz(satirGirdi[i].urunAdi) : temiz(k.AD);
+                const birim = (serbest ? birimAdiDuzelt(satirGirdi[i].birim) : temiz(k.BIRIM)) || "Adet";
                 await new sql.Request(tx)
-                    .input("FID", sql.Int, faturaId).input("NO", sql.Int, i + 1).input("KART", sql.Int, k.STOK_KART_ID)
-                    .input("AD", sql.VarChar(200), temiz(k.AD).slice(0, 200)).input("M", sql.Float, h.miktar).input("BIRIM", sql.VarChar(20), temiz(k.BIRIM) || "Adet")
+                    .input("FID", sql.Int, faturaId).input("NO", sql.Int, i + 1).input("KART", sql.Int, k ? k.STOK_KART_ID : null)
+                    .input("AD", sql.VarChar(200), ad.slice(0, 200)).input("M", sql.Float, h.miktar).input("BIRIM", sql.VarChar(20), birim)
                     .input("BF", sql.Float, h.birimFiyat).input("T", sql.Float, h.tutar).input("KO", sql.Float, h.kdvOrani).input("KT", sql.Float, h.kdvTutari)
                     .input("TT", sql.Float, h.toplamTutar).input("DF", sql.Float, h.kdvDahilFiyat)
                     .input("IT", sql.TinyInt, h.iskontoTuru || null).input("ID", sql.Float, h.iskontoTuru ? h.iskontoDegeri : null).input("IST", sql.Float, h.iskontoTutari)
@@ -241,8 +258,9 @@ export class TicariSatisSqlRepository {
                     .query(`INSERT INTO dbo.TODVZ_FATURA_SATIRI (FATURA_ID, SATIR_NO, ALTIN_URUN_ID, BARKOD, URUN_ADI, AYAR, MIKTAR, BIRIM, GRAM, HAS_GRAM, BIRIM_FIYAT, TUTAR,
               KDV_ORANI, KDV_TUTARI, TOPLAM_TUTAR, STOK_KART_ID, KDV_DAHIL_FIYAT, SATIR_ISKONTO_TURU, SATIR_ISKONTO_DEGERI, SATIR_ISKONTO_TUTARI)
             VALUES (@FID, @NO, NULL, NULL, @AD, NULL, @M, @BIRIM, 0, 0, @BF, @T, @KO, @KT, @TT, @KART, @DF, @IT, @ID, @IST);
-            INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID)
-            VALUES (@KART, @TARIH, @TUR, @FID, @NO, 0, @M, @BF, @KUL);`);
+            IF @KART IS NOT NULL
+              INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID)
+              VALUES (@KART, @TARIH, @TUR, @FID, @NO, 0, @M, @BF, @KUL);`);
             }
             const posTablosu = (await new sql.Request(tx).query(`SELECT OBJECT_ID('dbo.TODVZ_POS_CIHAZI', 'U') AS V`)).recordset[0]?.V != null;
             let sira = 1;

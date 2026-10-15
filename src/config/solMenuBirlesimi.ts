@@ -13,12 +13,12 @@ import { MenuItemType } from "types/menuTypes";
  *  - Ana başlık harfleri baştan dizilir (S4).
  */
 const BIRLESIMLER: { ev: string; gelen: string; baslik?: string; yalniz?: (m: MenuItemType) => boolean }[] = [
-  { ev: "vezne", gelen: "kur", baslik: "Vezne / Kur İşlemleri" },
-  { ev: "kasa", gelen: "banka", baslik: "Kasa / Banka İşlemleri" },
+  { ev: "vezne", gelen: "kur", baslik: "Vezne / Kur" },
+  { ev: "kasa", gelen: "banka", baslik: "Kasa / Banka" },
   { ev: "yonetici", gelen: "ebelge" },
   // S9: Raporlar altındaki açılır MASAK grubu Yönetici İşlemleri'ne
   { ev: "yonetici", gelen: "raporlar", yalniz: (m) => !!m.children?.length && harfsiz(m.title || m.name) === "MASAK" },
-  { ev: "etiket", gelen: "perakende", baslik: "Etiket / Perakende İşlemleri" },
+  { ev: "etiket", gelen: "perakende", baslik: "Etiket / Perakende" },
 ];
 
 /** S8: menüden kaldırılan sayfalar */

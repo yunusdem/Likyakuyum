@@ -13,11 +13,49 @@ import {
   IconRefresh,
   IconTag,
   IconScale,
+  IconDiamond,
 } from "@tabler/icons-react";
 import { MenuItem, MenuService, KatalogUrun } from "../../services/menuService";
 import { KurService, KurRowItem } from "../../services/kurService";
+import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { useAuth } from "../../context/AuthContext";
 import { getAppBrand } from "../../utils/brandHelper";
+
+const getPlaceholderSvg = (brandText: string = "LİKYA KUYUMCULUK", subText: string = "ÖZEL VİTRİN KOLEKSİYONU") =>
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFDE"/>
+      <stop offset="35%" stop-color="#FDE075"/>
+      <stop offset="70%" stop-color="#E8B84B"/>
+      <stop offset="100%" stop-color="#B8822E"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="300" cy="300" r="160" fill="none" stroke="url(#gold)" stroke-width="2" stroke-opacity="0.35" stroke-dasharray="6 6"/>
+  <g transform="translate(180, 160)" stroke="url(#gold)" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round" filter="url(#glow)">
+    <polygon points="120,40 180,100 120,200 60,100" fill="rgba(253, 224, 117, 0.08)"/>
+    <line x1="60" y1="100" x2="180" y2="100"/>
+    <line x1="120" y1="40" x2="120" y2="200"/>
+    <polygon points="120,40 150,100 120,200 90,100" fill="rgba(253, 224, 117, 0.15)"/>
+    <path d="M 60,100 L 120,40 L 180,100" stroke-width="5"/>
+  </g>
+  <g fill="#FDE075" opacity="0.85">
+    <path d="M 170,190 Q 185,190 185,175 Q 185,190 200,190 Q 185,190 185,205 Q 185,190 170,190 Z" />
+    <path d="M 400,210 Q 412,210 412,198 Q 412,210 424,210 Q 412,210 412,222 Q 412,210 400,210 Z" />
+    <path d="M 370,390 Q 380,390 380,380 Q 380,390 390,390 Q 380,390 380,400 Q 380,390 370,390 Z" />
+  </g>
+  <text x="300" y="440" text-anchor="middle" font-family="'Cinzel', serif" font-size="20" font-weight="700" fill="#FDE075" letter-spacing="3" opacity="0.95">${brandText}</text>
+  <text x="300" y="470" text-anchor="middle" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#cbd5e1" letter-spacing="2">${subText}</text>
+</svg>
+`);
+
+const PLACEHOLDER_JEWELRY_SVG = getPlaceholderSvg();
 
 export const TvKatalogPage: React.FC = () => {
   const { user } = useAuth();
@@ -63,6 +101,34 @@ export const TvKatalogPage: React.FC = () => {
   const currentMenuIdRef = useRef<number | null>(selectedMenuId);
   currentMenuIdRef.current = selectedMenuId;
 
+  // Firma Tanımlarından Katalog Sürelerini Yükle
+  const [companyDefs, setCompanyDefs] = useState<TodvzTanimDto | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    CompanyService.getDefinitions()
+      .then((defs) => {
+        if (isMounted && defs) {
+          setCompanyDefs(defs);
+        }
+      })
+      .catch((err) => console.error("Firma tanımları yüklenemedi:", err));
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const urunSuresiSec = Math.max(1, Number(companyDefs?.KATALOG_URUN_SURESI) || 5);
+  const resimSuresiSec = Math.max(1, Number(companyDefs?.KATALOG_RESIM_SURESI) || 3);
+
+  const urunSuresiSecRef = useRef<number>(urunSuresiSec);
+  urunSuresiSecRef.current = urunSuresiSec;
+
+  const resimSuresiSecRef = useRef<number>(resimSuresiSec);
+  resimSuresiSecRef.current = resimSuresiSec;
+
+  const currentDurationRef = useRef<number>(5000);
+
   // Menüleri yükle
   const fetchMenus = useCallback(async () => {
     try {
@@ -90,23 +156,54 @@ export const TvKatalogPage: React.FC = () => {
   // Canlı Döviz ve Altın Kurlarını Yükle & Dinle
   useEffect(() => {
     let isMounted = true;
-    KurService.getKurTablosu({ tur: 0 })
-      .then((t) => {
-        if (isMounted && t?.satirlar) {
-          setKurRows(t.satirlar);
-        }
-      })
-      .catch(() => {});
 
-    const unsub = KurService.onKurUpdated((updated) => {
-      if (isMounted && updated?.satirlar) {
-        setKurRows(updated.satirlar);
-      }
+    const loadKurlar = async () => {
+      try {
+        const [dovizTablo, altinTablo] = await Promise.all([
+          KurService.getKurTablosu({ tur: 0 }).catch(() => null),
+          KurService.getKurTablosu({ tur: 1 }).catch(() => null),
+        ]);
+        if (isMounted) {
+          const rawList = [
+            ...(dovizTablo?.satirlar || []),
+            ...(altinTablo?.satirlar || []),
+          ];
+          const uniqueMap = new Map<string, KurRowItem>();
+          for (const row of rawList) {
+            const kod = (row.kod || "").toUpperCase();
+            if (!kod) continue;
+            const existing = uniqueMap.get(kod);
+            const hasRate =
+              (Number(row.efektifSatis) ||
+                Number(row.dovizSatis) ||
+                Number(row.efektifAlis) ||
+                Number(row.dovizAlis) ||
+                0) > 0;
+            if (
+              !existing ||
+              (!((Number(existing.efektifSatis) || Number(existing.dovizSatis) || 0) > 0) &&
+                hasRate)
+            ) {
+              uniqueMap.set(kod, row);
+            }
+          }
+          setKurRows(Array.from(uniqueMap.values()));
+        }
+      } catch {}
+    };
+
+    loadKurlar();
+
+    const unsub = KurService.onKurUpdated(() => {
+      loadKurlar();
     });
+
+    const interval = setInterval(loadKurlar, 30000);
 
     return () => {
       isMounted = false;
       if (unsub) unsub();
+      clearInterval(interval);
     };
   }, []);
 
@@ -204,36 +301,151 @@ export const TvKatalogPage: React.FC = () => {
 
   const currentProduct: KatalogUrun | undefined = products[productIndex];
 
+  // Özel ürün taş detaylarını güvenle ayrıştır
+  const parsedOzelDetay = useMemo(() => {
+    if (!currentProduct || currentProduct.urunTipi !== "ozel") return null;
+    const raw = currentProduct.ozelDetay || (currentProduct as any).modelOzellik2;
+    if (!raw) return null;
+    try {
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const rawTaslar = Array.isArray(data.taslar) ? data.taslar : [];
+      const validTaslar = rawTaslar.filter(
+        (t: any) => t && (t.tasCinsi || t.miktar || t.renk || t.saflik || t.kesim)
+      );
+      return {
+        monturGram: data.monturGram,
+        monturHas: data.monturHas,
+        monturIscilik: data.monturIscilik,
+        monturIscilikBirim: data.monturIscilikBirim,
+        monturIscilikParaKodu: data.monturIscilikParaKodu,
+        taslar: validTaslar,
+      };
+    } catch {
+      return null;
+    }
+  }, [currentProduct]);
+
+  // Ürün Adı / Modeli (JSON kalıntılarını tamamen temizle)
+  const resolvedProductTitle = useMemo(() => {
+    if (!currentProduct) return "";
+    let m = (currentProduct.model || "").trim();
+    // Eğer model alanı ham JSON içeriyorsa kesinlikle başlık olarak gösterme
+    if (m.startsWith("{") || m.startsWith("[") || m.includes('"montur') || m.includes('"taslar"')) {
+      m = "";
+    }
+    if (m) return m;
+
+    if (currentProduct.mamulTipi && currentProduct.mamulTipi.trim()) {
+      return currentProduct.mamulTipi.trim();
+    }
+
+    if (currentProduct.urunTipi === "ozel") {
+      const firstTas = parsedOzelDetay?.taslar?.[0];
+      if (firstTas?.tasCinsi && firstTas.tasCinsi.trim()) {
+        return `${firstTas.tasCinsi.trim()} Özel Tasarım`;
+      }
+      return currentProduct.grupKodu ? `${currentProduct.grupKodu} Özel Tasarım` : "Özel Tasarım Mücevher";
+    }
+
+    return currentProduct.grupKodu || "Altın Mücevher";
+  }, [currentProduct, parsedOzelDetay]);
+
   // Ürünün mevcut görselleri
   const productImages = useMemo(() => {
-    if (!currentProduct) return [];
+    const brandName = `${brand.prefix} ${brand.suffix}`;
+    const subTitle = currentProduct?.urunTipi === "ozel" ? "ÖZEL MÜCEVHER VİTRİNİ" : "ALTIN VİTRİN KOLEKSİYONU";
+    const defaultPlaceholder = getPlaceholderSvg(brandName, subTitle);
+
+    if (!currentProduct) return [defaultPlaceholder];
     if (currentProduct.resimler && currentProduct.resimler.length > 0) {
-      return currentProduct.resimler.map((img) => {
-        if (img.resimData) {
-          return img.resimData.startsWith("data:") ? img.resimData : `data:image/jpeg;base64,${img.resimData}`;
-        }
-        if (img.dosyaYolu) {
-          return img.dosyaYolu.startsWith("http") ? img.dosyaYolu : img.dosyaYolu;
-        }
-        return "/images/placeholder-jewelry.svg";
-      });
+      const validImages = currentProduct.resimler
+        .map((img) => {
+          if (img.resimData) {
+            return img.resimData.startsWith("data:")
+              ? img.resimData
+              : `data:image/jpeg;base64,${img.resimData}`;
+          }
+          if (img.dosyaYolu && img.dosyaYolu.trim() !== "") {
+            return img.dosyaYolu.startsWith("http") ? img.dosyaYolu : img.dosyaYolu;
+          }
+          return null;
+        })
+        .filter(Boolean) as string[];
+
+      if (validImages.length > 0) {
+        return validImages;
+      }
     }
-    return ["/images/placeholder-jewelry.svg"];
+    return [defaultPlaceholder];
+  }, [currentProduct, brand]);
+
+  const hasRealImage = useMemo(() => {
+    if (!currentProduct || !currentProduct.resimler || currentProduct.resimler.length === 0) return false;
+    const first = currentProduct.resimler[0];
+    return Boolean(
+      (first.resimData && first.resimData.length > 20) ||
+      (first.dosyaYolu && first.dosyaYolu.length > 3)
+    );
   }, [currentProduct]);
 
   const productImagesRef = useRef<string[]>(productImages);
   productImagesRef.current = productImages;
 
-  // ─── SLAYT VE GÖRSEL GEÇİŞ MOTORU (WEB WORKER İLE ARKA PLANDA ASLA DURMAZ) ───
-  // Her görsel 2 sn gösterilir, son görselin 2 sn si dolunca otomatik diğer ürün açılır,
-  // son ürün bitince ilk ürüne döner. Tarayıcı arka planda / minimize olsa dahi Web Worker kesintisiz çalışır.
-  const restartWorkerTimer = useCallback(() => {
-    if (workerRef.current && isPlayingRef.current) {
-      workerRef.current.postMessage("START");
-    }
-    progressStartTimeRef.current = Date.now();
-    setSlideProgress(0);
-  }, []);
+  // ─── SLAYT VE GÖRSEL GEÇİŞ MOTORU (FİRMA TANIMLARI SÜRELERİ İLE TAM ENTEGRE) ───
+  // Kural:
+  // 1. Tek görselli ürün: Math.max(urunSuresi, resimSuresi) sn kadar ekranda kalır.
+  // 2. Çok görselli ürün (örn. 3 görsel, urunSuresi 5s, resimSuresi 3s):
+  //    - 1. Görsel: 3 sn (resimSuresi)
+  //    - 2. Görsel: 3 sn (resimSuresi)
+  //    - 3. Görsel (Son Görsel): En az 3 sn (resimSuresi) ve varsa arta kalan hedef ürün süresi.
+  //    - Kesinlikle ürünün tüm görselleri bitmeden ürün değişimi yapılmaz!
+  const getSlideDurationMs = useCallback(
+    (pIdx: number, iIdx: number, prodList?: KatalogUrun[]): number => {
+      const list = prodList || productsRef.current;
+      if (!list || list.length === 0) return 3000;
+      const curProd = list[pIdx];
+      const curImgs =
+        curProd?.resimler && curProd.resimler.length > 0 ? curProd.resimler : [null];
+      const totalImgs = curImgs.length;
+
+      const uSec = Math.max(1, urunSuresiSecRef.current);
+      const rSec = Math.max(1, resimSuresiSecRef.current);
+
+      // Tek görselli ürün
+      if (totalImgs <= 1) {
+        return Math.max(uSec, rSec) * 1000;
+      }
+
+      // Çok görselli ürünün ara görselleri: Kesinlikle resim süresi kadar gösterilir
+      if (iIdx < totalImgs - 1) {
+        return rSec * 1000;
+      }
+
+      // Çok görselli ürünün son görseli:
+      // Önceki görsellerde tüketilen süre: (totalImgs - 1) * rSec
+      // Kalan ürün süresi hedefi: uSec - (totalImgs - 1) * rSec
+      // Son görsel kesinlikle en az resim süresi (rSec) kadar kalır, ürün süresi henüz dolmadıysa onu da tamamlar
+      const remainingSec = Math.max(0, uSec - (totalImgs - 1) * rSec);
+      return Math.max(rSec, remainingSec) * 1000;
+    },
+    []
+  );
+
+  const restartWorkerTimer = useCallback(
+    (customDuration?: number) => {
+      const curDur =
+        customDuration ||
+        getSlideDurationMs(productIndexRef.current, imageIndexRef.current);
+      currentDurationRef.current = curDur;
+      progressStartTimeRef.current = Date.now();
+      setSlideProgress(0);
+
+      if (workerRef.current && isPlayingRef.current) {
+        workerRef.current.postMessage({ type: "START", duration: curDur });
+      }
+    },
+    [getSlideDurationMs]
+  );
 
   const advanceSlide = useCallback(() => {
     const curProducts = productsRef.current;
@@ -242,42 +454,60 @@ export const TvKatalogPage: React.FC = () => {
     const curPIdx = productIndexRef.current;
     const curProduct = curProducts[curPIdx];
     const curIIdx = imageIndexRef.current;
-    const curImgs = curProduct?.resimler && curProduct.resimler.length > 0
-      ? curProduct.resimler
-      : [null];
+    const curImgs =
+      curProduct?.resimler && curProduct.resimler.length > 0
+        ? curProduct.resimler
+        : [null];
     const totalImgs = curImgs.length;
+
+    let nextPIdx = curPIdx;
+    let nextIIdx = curIIdx;
+
+    if (totalImgs > 1 && curIIdx + 1 < totalImgs) {
+      // Ürünün bir sonraki görseline geç (tüm görseller sırayla gösterilir)
+      nextIIdx = curIIdx + 1;
+    } else {
+      // Ürünün tüm görselleri tamamlandı -> sonraki ürüne geç ve görseli sıfırla
+      nextIIdx = 0;
+      nextPIdx = (curPIdx + 1) % curProducts.length;
+    }
+
+    const nextDur = getSlideDurationMs(nextPIdx, nextIIdx, curProducts);
+    currentDurationRef.current = nextDur;
 
     setImageTransition(true);
     setTimeout(() => {
-      if (totalImgs > 1 && curIIdx + 1 < totalImgs) {
-        // Ürünün bir sonraki görseline geç
-        setImageIndex(curIIdx + 1);
-      } else {
-        // Ürünün son görselinin 2 saniyesi doldu -> sonraki ürüne geç ve görseli ilk resim yap
-        setImageIndex(0);
-        setProductIndex((prev) => (prev + 1) % curProducts.length);
+      setImageIndex(nextIIdx);
+      if (nextPIdx !== curPIdx) {
+        setProductIndex(nextPIdx);
       }
       setImageTransition(false);
       progressStartTimeRef.current = Date.now();
       setSlideProgress(0);
+
+      if (workerRef.current && isPlayingRef.current) {
+        workerRef.current.postMessage({ type: "START", duration: nextDur });
+      }
     }, 120);
-  }, []);
+  }, [getSlideDurationMs]);
 
   const advanceSlideRef = useRef(advanceSlide);
   advanceSlideRef.current = advanceSlide;
 
-  // Web Worker Başlatma (Tarayıcı arka plana atılsa bile 2000ms aralıklarla kesintisiz tick atar)
+  // Web Worker Başlatma (Tarayıcı arka planda/minimize olsa dahi tam sürelerde kesintisiz çalışır)
   useEffect(() => {
     const workerScript = `
       let timer = null;
       self.onmessage = function(e) {
-        if (e.data === 'START') {
-          if (timer) clearInterval(timer);
-          timer = setInterval(function() {
+        var data = e.data;
+        if (data && (data === 'START' || data.type === 'START')) {
+          if (timer) clearTimeout(timer);
+          var ms = Math.max(500, Number(data.duration) || 3000);
+          timer = setTimeout(function() {
             self.postMessage('TICK');
-          }, 2000);
-        } else if (e.data === 'STOP') {
-          if (timer) clearInterval(timer);
+          }, ms);
+        } else if (data === 'STOP' || (data && data.type === 'STOP')) {
+          if (timer) clearTimeout(timer);
           timer = null;
         }
       };
@@ -296,7 +526,9 @@ export const TvKatalogPage: React.FC = () => {
     };
 
     if (isPlaying && products.length > 0) {
-      worker.postMessage("START");
+      const initialDur = getSlideDurationMs(productIndexRef.current, imageIndexRef.current);
+      currentDurationRef.current = initialDur;
+      worker.postMessage({ type: "START", duration: initialDur });
     }
 
     // Aktif sekmede görsel ilerleme çubuğu için interval
@@ -304,7 +536,8 @@ export const TvKatalogPage: React.FC = () => {
     progressIntervalRef.current = setInterval(() => {
       if (!isPlayingRef.current) return;
       const elapsed = Date.now() - progressStartTimeRef.current;
-      const pct = Math.min(100, (elapsed / 2000) * 100);
+      const dur = currentDurationRef.current || 3000;
+      const pct = Math.min(100, (elapsed / dur) * 100);
       setSlideProgress(pct);
     }, 30);
 
@@ -319,56 +552,99 @@ export const TvKatalogPage: React.FC = () => {
         clearInterval(progressIntervalRef.current);
       }
     };
-  }, []);
+  }, [getSlideDurationMs]);
 
   // isPlaying değiştiğinde worker'a bildir
   useEffect(() => {
     if (!workerRef.current) return;
     if (isPlaying && products.length > 0) {
-      workerRef.current.postMessage("START");
+      const dur = getSlideDurationMs(productIndexRef.current, imageIndexRef.current);
+      currentDurationRef.current = dur;
+      workerRef.current.postMessage({ type: "START", duration: dur });
       progressStartTimeRef.current = Date.now();
     } else {
-      workerRef.current.postMessage("STOP");
+      workerRef.current.postMessage({ type: "STOP" });
       setSlideProgress(0);
     }
-  }, [isPlaying, products.length]);
+  }, [isPlaying, products.length, getSlideDurationMs]);
+
+  // Firma süreleri güncellendiğinde zamanlayıcıyı anında senkronize et
+  useEffect(() => {
+    if (isPlaying && products.length > 0 && workerRef.current) {
+      const dur = getSlideDurationMs(productIndexRef.current, imageIndexRef.current);
+      currentDurationRef.current = dur;
+      workerRef.current.postMessage({ type: "START", duration: dur });
+      progressStartTimeRef.current = Date.now();
+      setSlideProgress(0);
+    }
+  }, [urunSuresiSec, resimSuresiSec, isPlaying, products.length, getSlideDurationMs]);
 
   // Manuel İleri / Geri Resim Değiştirme
   const handleNextSlide = useCallback(() => {
-    if (products.length === 0) return;
-    const curImgs = productImagesRef.current;
+    const curProducts = productsRef.current;
+    if (!curProducts || curProducts.length === 0) return;
+    const curPIdx = productIndexRef.current;
+    const curProduct = curProducts[curPIdx];
+    const curIIdx = imageIndexRef.current;
+    const curImgs =
+      curProduct?.resimler && curProduct.resimler.length > 0
+        ? curProduct.resimler
+        : [null];
+    const totalImgs = curImgs.length;
+
+    let nextPIdx = curPIdx;
+    let nextIIdx = curIIdx;
+
+    if (totalImgs > 1 && curIIdx + 1 < totalImgs) {
+      nextIIdx = curIIdx + 1;
+    } else {
+      nextIIdx = 0;
+      nextPIdx = (curPIdx + 1) % curProducts.length;
+    }
+
+    const nextDur = getSlideDurationMs(nextPIdx, nextIIdx, curProducts);
+
     setImageTransition(true);
     setTimeout(() => {
-      if (curImgs.length > 1 && imageIndexRef.current + 1 < curImgs.length) {
-        setImageIndex((prev) => prev + 1);
-      } else {
-        setImageIndex(0);
-        setProductIndex((prev) => (prev + 1) % products.length);
+      setImageIndex(nextIIdx);
+      if (nextPIdx !== curPIdx) {
+        setProductIndex(nextPIdx);
       }
       setImageTransition(false);
-      restartWorkerTimer();
+      restartWorkerTimer(nextDur);
     }, 120);
-  }, [products.length, restartWorkerTimer]);
+  }, [getSlideDurationMs, restartWorkerTimer]);
 
   const handlePrevSlide = useCallback(() => {
-    if (products.length === 0) return;
-    const curImgs = productImagesRef.current;
+    const curProducts = productsRef.current;
+    if (!curProducts || curProducts.length === 0) return;
+    const curPIdx = productIndexRef.current;
+    const curIIdx = imageIndexRef.current;
+
+    let nextPIdx = curPIdx;
+    let nextIIdx = curIIdx;
+
+    if (curIIdx > 0) {
+      nextIIdx = curIIdx - 1;
+    } else {
+      nextPIdx = (curPIdx - 1 + curProducts.length) % curProducts.length;
+      const prevProduct = curProducts[nextPIdx];
+      const prevProductImgs = prevProduct?.resimler?.length || 1;
+      nextIIdx = Math.max(0, prevProductImgs - 1);
+    }
+
+    const nextDur = getSlideDurationMs(nextPIdx, nextIIdx, curProducts);
+
     setImageTransition(true);
     setTimeout(() => {
-      if (imageIndexRef.current > 0) {
-        setImageIndex((prev) => prev - 1);
-      } else {
-        const prevIdx = (productIndexRef.current - 1 + products.length) % products.length;
-        setProductIndex(prevIdx);
-        // Yeni ürünün son görseline geç
-        const prevProduct = products[prevIdx];
-        const prevProductImgs = prevProduct?.resimler?.length || 1;
-        setImageIndex(Math.max(0, prevProductImgs - 1));
+      setImageIndex(nextIIdx);
+      if (nextPIdx !== curPIdx) {
+        setProductIndex(nextPIdx);
       }
       setImageTransition(false);
-      restartWorkerTimer();
+      restartWorkerTimer(nextDur);
     }, 120);
-  }, [products, restartWorkerTimer]);
+  }, [getSlideDurationMs, restartWorkerTimer]);
 
   // Tam Ekran Kontrolü
   const toggleFullscreen = () => {
@@ -436,91 +712,132 @@ export const TvKatalogPage: React.FC = () => {
   }, []);
 
   // ─── SATIŞ FİYATI ÇÖZÜMLEME (DÖVİZ HESABI) ───
-  // Kullanıcı Kuralı: "Satış Fiyatı : sağında Has kesinlikle değil dolar euro ne varsa orada 2 farklı hesap var biri has diğer döviz sağda kalan döviz hesabı fiyatı ne kadarsa o fiyat yazmalı"
+  // Kullanıcı Kuralı: "Satış Fiyatı bölümündeki sağda kalan fiyat ve para kodu gelmesi gerekiyor fiyatta"
   const getResolvedDisplayPrice = useCallback(
     (product?: KatalogUrun): { tutar: number; paraKodu: string } => {
-      if (!product) return { tutar: 0, paraKodu: "USD" };
+      if (!product) return { tutar: 0, paraKodu: "TL" };
 
-      // Özel ürün (ozel): Zaten doğrudan döviz/TL cinsindendir
+      // 1. Doğrudan sağ kutudaki döviz/TL fiyatı (satisDoviz) kaydedilmişse öncelikli olarak onu ve para kodunu al
+      const directDoviz = Number(product.satisDoviz);
+      let pKod = (product.satisParaKodu || "TL").toUpperCase().trim();
+      if (pKod === "HAS" || !pKod) pKod = "TL";
+
+      if (directDoviz > 0) {
+        return { tutar: directDoviz, paraKodu: pKod };
+      }
+
+      // 2. Özel ürün (ozel): Zaten doğrudan para birimi cinsindedir
       if (product.urunTipi === "ozel") {
-        let pKod = (product.satisParaKodu || "USD").toUpperCase().trim();
-        if (pKod === "HAS" || !pKod) pKod = "USD";
         return { tutar: Number(product.satisFiyati) || 0, paraKodu: pKod };
       }
 
-      // Altın ürün (altin):
+      // 3. Altın ürün (altin):
       // Altın ürün ekranında sol kutudaki 'satisFiyati' HAS tutarıdır.
-      // Sağ kutuda ise döviz/TL karşılığı (USD, EUR, TL vs.) hesaplanır.
-      // Ekranda sağ kutudaki döviz fiyatı ne kadarsa o fiyat gösterilmelidir!
-      let pKod = (product.satisParaKodu || "USD").toUpperCase().trim();
-      if (pKod === "HAS" || !pKod) {
-        pKod = "USD"; // Asla HAS gösterilmez!
-      }
-
+      // Sağ kutuda ise döviz/TL karşılığı (TL, USD, EUR vs.) hesaplanır.
       const rawHasFiyat = Number(product.satisFiyati) || 0;
       if (rawHasFiyat <= 0) {
         return { tutar: 0, paraKodu: pKod };
       }
 
-      // 1. HAS Kuru Bul (Satış kuru öncelikli)
-      const hasRow = kurRows.find((r) => {
-        const k = (r.kod || "").toUpperCase();
-        return k === "HAS" || k === "ALTIN" || k.includes("HAS");
-      });
-      const systemHasKuru = hasRow
-        ? (Number(hasRow.efektifSatis) || Number(hasRow.dovizSatis) || Number(hasRow.efektifAlis) || Number(hasRow.dovizAlis) || 0)
-        : 0;
-      const itemHasKuru = Number(product.hasKuru2) || Number(product.hasKuru1) || Number(product.altinKuru) || 0;
-      const activeHasKuru = systemHasKuru > 0 ? systemHasKuru : (itemHasKuru > 0 ? itemHasKuru : 1);
+      // HAS Kuru Bul (Satış kuru öncelikli)
+      let activeHasKuru = 0;
+      if (Number(product.hasKuru2) && Number(product.hasKuru2) > 100) {
+        activeHasKuru = Number(product.hasKuru2);
+      } else if (Number(product.hasKuru1) && Number(product.hasKuru1) > 100) {
+        activeHasKuru = Number(product.hasKuru1);
+      } else if (Number(product.altinKuru) && Number(product.altinKuru) > 1000) {
+        activeHasKuru = Number(product.altinKuru);
+      }
+
+      if (activeHasKuru <= 0) {
+        const hasRow = kurRows.find((r) => {
+          const k = (r.kod || "").toUpperCase();
+          const ad = (r.ad || "").toUpperCase();
+          const val = Number(r.efektifSatis) || Number(r.dovizSatis) || Number(r.efektifAlis) || 0;
+          return (k === "HAS" || k.includes("HAS") || ad.includes("HAS ALTIN") || ad.includes("HAS")) && val > 100;
+        });
+        if (hasRow) {
+          activeHasKuru =
+            Number(hasRow.efektifSatis) ||
+            Number(hasRow.dovizSatis) ||
+            Number(hasRow.efektifAlis) ||
+            Number(hasRow.dovizAlis) ||
+            0;
+        }
+      }
+
+      // 22 ayardan türet
+      if (activeHasKuru <= 0) {
+        const altin22 = kurRows.find((r) => {
+          const k = (r.kod || "").toUpperCase();
+          const val = Number(r.efektifSatis) || Number(r.dovizSatis) || 0;
+          return k.includes("22") && val > 100;
+        });
+        if (altin22) {
+          const v22 = Number(altin22.efektifSatis) || Number(altin22.dovizSatis) || 0;
+          if (v22 > 100) activeHasKuru = v22 / 0.916;
+        }
+      }
+
+      // Fallback HAS kuru
+      if (activeHasKuru <= 0) {
+        activeHasKuru = 6000;
+      }
 
       // Toplam TL Değeri = Has Tutarı * Has Kuru
       const toplamTL = rawHasFiyat * activeHasKuru;
 
       if (pKod === "TL" || pKod === "TRY" || pKod === "₺") {
-        return { tutar: toplamTL, paraKodu: "TL" };
+        return { tutar: Math.round(toplamTL * 100) / 100, paraKodu: "TL" };
       }
 
-      // 2. Hedef Döviz Kuru Bul (USD, EUR, GBP vs.)
-      const targetCurRow = kurRows.find((r) => (r.kod || "").toUpperCase() === pKod);
-      const systemCurKuru = targetCurRow
-        ? (Number(targetCurRow.efektifSatis) || Number(targetCurRow.dovizSatis) || Number(targetCurRow.efektifAlis) || Number(targetCurRow.dovizAlis) || 0)
-        : 0;
-
-      let itemCurKuru = 0;
+      // Hedef Döviz Kuru Bul (USD, EUR, GBP vs.)
+      let activeCurKuru = 0;
       if (pKod === "USD" || pKod === "$") {
-        itemCurKuru = Number(product.usdKuru2) || Number(product.usdKuru1) || 0;
+        if (Number(product.usdKuru2) && Number(product.usdKuru2) > 1) {
+          activeCurKuru = Number(product.usdKuru2);
+        } else if (Number(product.usdKuru1) && Number(product.usdKuru1) > 1) {
+          activeCurKuru = Number(product.usdKuru1);
+        }
       }
-      const activeCurKuru = systemCurKuru > 0 ? systemCurKuru : (itemCurKuru > 0 ? itemCurKuru : 1);
+
+      if (activeCurKuru <= 0) {
+        const targetCurRow = kurRows.find((r) => {
+          const k = (r.kod || "").toUpperCase();
+          const val = Number(r.efektifSatis) || Number(r.dovizSatis) || 0;
+          return (k === pKod || (pKod === "USD" && k === "$") || (pKod === "EUR" && (k === "€" || k === "EURO"))) && val > 0;
+        });
+        if (targetCurRow) {
+          activeCurKuru =
+            Number(targetCurRow.efektifSatis) ||
+            Number(targetCurRow.dovizSatis) ||
+            Number(targetCurRow.efektifAlis) ||
+            0;
+        }
+      }
+
+      if (activeCurKuru <= 0) {
+        if (pKod === "USD" || pKod === "$") activeCurKuru = 47.08;
+        else if (pKod === "EUR" || pKod === "€") activeCurKuru = 53.65;
+        else activeCurKuru = 1;
+      }
 
       const dovizTutari = activeCurKuru > 0 ? toplamTL / activeCurKuru : toplamTL;
-      return { tutar: dovizTutari, paraKodu: pKod };
+      return { tutar: Math.round(dovizTutari * 100) / 100, paraKodu: pKod };
     },
     [kurRows]
   );
 
   // ─── SATIŞ FİYATI FORMATLAMA ───
-  // USD -> $ , EUR -> € , TL/TRY -> ₺ ; Asla 'HAS' yazılmaz!
+  // Kullanıcı Kuralı: "Satış Fiyatı bölümündeki sağda kalan fiyat ve para kodu gelmesi gerekiyor fiyatta"
   const formatFiyat = (tutar: number, paraBirimi: string = "") => {
     const formatted = new Intl.NumberFormat("tr-TR", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(tutar || 0);
 
-    const p = (paraBirimi || "").toUpperCase().trim();
-    let sembol = "$";
-    if (p === "USD" || p === "$" || p.includes("DOLAR") || p.includes("USD")) {
-      sembol = "$";
-    } else if (p === "EUR" || p === "€" || p.includes("EURO") || p.includes("EUR")) {
-      sembol = "€";
-    } else if (p === "GBP" || p === "£" || p.includes("STERLIN")) {
-      sembol = "£";
-    } else if (p === "TL" || p === "TRY" || p === "₺") {
-      sembol = "₺";
-    } else {
-      sembol = "$";
-    }
-
-    return `${formatted} ${sembol}`;
+    const p = (paraBirimi || "TL").toUpperCase().trim();
+    return `${formatted} ${p}`;
   };
 
   return (
@@ -733,6 +1050,15 @@ export const TvKatalogPage: React.FC = () => {
           letter-spacing: -0.5px;
           color: #046c4e;
           text-shadow: 0 2px 6px rgba(4, 108, 78, 0.12);
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
         }
       `}</style>
 
@@ -973,28 +1299,119 @@ export const TvKatalogPage: React.FC = () => {
                 <IconChevronLeft size={26} stroke={2.5} />
               </button>
 
-              {/* Ürün Görseli (Portrait Oranlı, Temiz Kenarlı) */}
-              <div
-                className="d-flex align-items-center justify-content-center w-100 h-100 overflow-hidden"
-                style={{ borderRadius: "8px" }}
-              >
-                <img
-                  src={productImages[imageIndex]}
-                  alt={currentProduct.model || "Katalog Ürünü"}
-                  style={{
-                    maxHeight: "100%",
-                    maxWidth: "100%",
-                    objectFit: "contain",
-                    borderRadius: "6px",
-                    transition: "opacity 0.15s ease-in-out, transform 2s ease-out",
-                    opacity: imageTransition ? 0.3 : 1,
-                    transform: isPlaying ? "scale(1.02)" : "scale(1)",
-                  }}
-                  onError={(e: any) => {
-                    e.currentTarget.src = "/images/placeholder-jewelry.svg";
-                  }}
-                />
-              </div>
+              {/* Ürün Görseli veya Özel Tasarım Vitrin Sahnesi */}
+              {!hasRealImage ? (
+                /* Gerçek Fotoğrafı Henüz Yüklenmemiş Ürün İçin Lüks Vitrin Sahnesi */
+                <div
+                  className="d-flex flex-column align-items-center justify-content-center w-100 h-100 text-center position-relative user-select-none"
+                  style={{ padding: "1.5rem" }}
+                >
+                  {/* Işıldayan Zümrüt & Altın Halo Halkası */}
+                  <div
+                    className="position-relative d-flex align-items-center justify-content-center mb-4"
+                    style={{ width: "230px", height: "230px" }}
+                  >
+                    <div
+                      className="position-absolute w-100 h-100 rounded-circle"
+                      style={{
+                        border: "2px dashed rgba(253, 224, 117, 0.45)",
+                        animation: "spin 30s linear infinite",
+                      }}
+                    />
+                    <div
+                      className="position-absolute rounded-circle"
+                      style={{
+                        width: "180px",
+                        height: "180px",
+                        background: "radial-gradient(circle, rgba(253, 224, 117, 0.18) 0%, rgba(1, 46, 34, 0) 70%)",
+                        boxShadow: "0 0 50px rgba(253, 224, 117, 0.25)",
+                      }}
+                    />
+                    {/* Ortadaki Büyük Mücevher / Elmas İkonu */}
+                    <div
+                      style={{
+                        transform: "scale(1.2)",
+                        filter: "drop-shadow(0 0 16px rgba(253, 224, 117, 0.7))",
+                      }}
+                    >
+                      {currentProduct.urunTipi === "ozel" ? (
+                        <IconDiamond size={92} stroke={1.4} style={{ color: "#fde047" }} />
+                      ) : (
+                        <IconSparkles size={92} stroke={1.4} style={{ color: "#fde047" }} />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Rozet */}
+                  <span
+                    className="badge rounded-pill px-3 py-1 mb-2.5 text-uppercase fw-bold"
+                    style={{
+                      background: "rgba(212, 175, 55, 0.2)",
+                      border: "1px solid #d4af37",
+                      color: "#fde047",
+                      letterSpacing: "1.5px",
+                      fontSize: "0.76rem",
+                    }}
+                  >
+                    {currentProduct.urunTipi === "ozel" ? "ÖZEL MÜCEVHER KOLEKSİYONU" : "ALTIN VİTRİN KOLEKSİYONU"}
+                  </span>
+
+                  {/* Marka Adı */}
+                  <h2
+                    className="fw-bold text-nowrap mb-1"
+                    style={{
+                      fontFamily: "'Cinzel', serif",
+                      letterSpacing: "2px",
+                      fontSize: "1.9rem",
+                    }}
+                  >
+                    <span className="tv-brand-likya">{brand.prefix}</span>{" "}
+                    <span className="tv-brand-kuyum">{brand.suffix}</span>
+                  </h2>
+
+                  {/* Ürün Tipi / Açıklama */}
+                  <p
+                    className="text-white-50 small mb-3 text-uppercase fw-semibold"
+                    style={{ letterSpacing: "1.5px", fontSize: "0.85rem" }}
+                  >
+                    {resolvedProductTitle}
+                  </p>
+
+                  <div
+                    className="px-3 py-1 rounded-pill small fw-medium text-white-50"
+                    style={{
+                      background: "rgba(0, 0, 0, 0.3)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      fontSize: "0.75rem",
+                    }}
+                  >
+                    Görsel Çekim Aşamasında • Özel Vitrin Sunumu
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="d-flex align-items-center justify-content-center w-100 h-100 overflow-hidden"
+                  style={{ borderRadius: "8px" }}
+                >
+                  <img
+                    src={productImages[imageIndex]}
+                    alt={resolvedProductTitle}
+                    style={{
+                      maxHeight: "100%",
+                      maxWidth: "100%",
+                      objectFit: "contain",
+                      borderRadius: "6px",
+                      transition: "opacity 0.15s ease-in-out, transform 2s ease-out",
+                      opacity: imageTransition ? 0.3 : 1,
+                      transform: isPlaying ? "scale(1.02)" : "scale(1)",
+                    }}
+                    onError={(e: any) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = productImages[0];
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Sağ Yön Oku (Sarı Yuvarlak Buton) */}
               <button
@@ -1094,7 +1511,7 @@ export const TvKatalogPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* 2. Ürün Adı / Modeli (Görseldeki EFSD gibi büyük serif yazı) - TAM ORTALI */}
+                    {/* 2. Ürün Adı / Modeli (Tam ortalı) */}
                     <h1
                       className="fw-bold mb-2 text-white text-center w-100"
                       style={{
@@ -1105,12 +1522,12 @@ export const TvKatalogPage: React.FC = () => {
                         wordBreak: "break-word",
                       }}
                     >
-                      {currentProduct.model || "EFSD"}
+                      {resolvedProductTitle}
                     </h1>
 
                     {/* 3. Barkod Kodu Rozeti - TAM ORTALI */}
                     {currentProduct.barkod && (
-                      <div className="d-flex justify-content-center w-100 mb-2.5">
+                      <div className="d-flex justify-content-center w-100 mb-2">
                         <div
                           className="d-inline-flex align-items-center gap-1.5 px-3 py-1 rounded-pill"
                           style={{
@@ -1124,6 +1541,70 @@ export const TvKatalogPage: React.FC = () => {
                         >
                           <IconBarcode size={15} />
                           <span>{currentProduct.barkod}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3.1 DEĞERLİ TAŞ BİLGİLERİ (Özel Ürün Taş Kırılımı) */}
+                    {currentProduct.urunTipi === "ozel" && parsedOzelDetay?.taslar && parsedOzelDetay.taslar.length > 0 && (
+                      <div
+                        className="w-100 p-2.5 rounded-3 mb-2.5 d-flex flex-column gap-1.5 text-start"
+                        style={{
+                          background: "rgba(0, 0, 0, 0.28)",
+                          border: "1px solid rgba(212, 175, 55, 0.55)",
+                        }}
+                      >
+                        <div className="d-flex align-items-center justify-content-between px-1">
+                          <span
+                            className="fw-bold text-uppercase d-flex align-items-center gap-1"
+                            style={{ color: "#fde047", fontSize: "0.78rem", letterSpacing: "0.5px" }}
+                          >
+                            <IconDiamond size={15} style={{ color: "#fde047" }} />
+                            DEĞERLİ TAŞ BİLGİLERİ
+                          </span>
+                          {parsedOzelDetay.taslar.length > 1 && (
+                            <span className="badge rounded-pill bg-warning text-dark px-2" style={{ fontSize: "0.68rem" }}>
+                              {parsedOzelDetay.taslar.length} Farklı Taş
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="d-flex flex-wrap gap-1.5 justify-content-center">
+                          {parsedOzelDetay.taslar.map((tas, idx) => {
+                            const details = [
+                              tas.renk ? `${tas.renk} Renk` : null,
+                              tas.saflik ? tas.saflik : null,
+                              tas.kesim ? `${tas.kesim} Kesim` : null,
+                            ].filter(Boolean);
+
+                            return (
+                              <div
+                                key={idx}
+                                className="px-2.5 py-1.5 rounded-2 text-center flex-grow-1"
+                                style={{
+                                  background: "rgba(255, 255, 255, 0.05)",
+                                  border: "1px solid rgba(212, 175, 55, 0.35)",
+                                  minWidth: "120px",
+                                }}
+                              >
+                                <div className="d-flex align-items-center justify-content-center gap-1.5">
+                                  <span className="fw-bold text-white" style={{ fontSize: "0.88rem" }}>
+                                    {tas.tasCinsi || "Değerli Taş"}
+                                  </span>
+                                  {tas.miktar && (
+                                    <span className="badge bg-warning text-dark fw-bold px-1.5 py-0.5" style={{ fontSize: "0.75rem" }}>
+                                      {tas.miktar} {tas.birim || "Ct"}
+                                    </span>
+                                  )}
+                                </div>
+                                {details.length > 0 && (
+                                  <div className="text-white-50 mt-1" style={{ fontSize: "0.74rem", letterSpacing: "0.3px" }}>
+                                    {details.join(" • ")}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1142,7 +1623,7 @@ export const TvKatalogPage: React.FC = () => {
                           className="text-uppercase fw-semibold"
                           style={{ letterSpacing: "0.5px", fontSize: "0.78rem", color: "#fde047" }}
                         >
-                          NET AĞIRLIK / GRAMAJ:
+                          {currentProduct.urunTipi === "ozel" ? "MONTÜR / NET AĞIRLIK:" : "NET AĞIRLIK / GRAMAJ:"}
                         </span>
                       </div>
                       <div className="fw-bold" style={{ fontSize: "1.05rem" }}>
@@ -1150,7 +1631,7 @@ export const TvKatalogPage: React.FC = () => {
                           {new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 5 }).format(currentProduct.miktar)}
                         </span>
                         <span style={{ color: "#fde047", fontSize: "0.85rem" }}>
-                          {currentProduct.miktarBirimi || "Gr"}
+                          {currentProduct.miktarBirimi || (currentProduct.urunTipi === "ozel" ? "Gram" : "Gr")}
                         </span>
                       </div>
                     </div>

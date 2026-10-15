@@ -161,6 +161,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
     E_DOVIZ_FIS_BASILSIN: false,
     CARI_DEKONT_KUR_CINSI: null,
     XSLT_DIZINI: "",
+    KATALOG_URUN_SURESI: 5,
+    KATALOG_RESIM_SURESI: 3,
   };
 
   const [formData, setFormData] = useState<TodvzTanimDto>(emptyCompanyData);
@@ -990,9 +992,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
-                    className={`btn btn-sm btn-link text-decoration-none px-2 py-1 d-flex align-items-center gap-1 flex-nowrap text-nowrap transition-all ${
-                      isActive ? "text-dark fw-bold" : "text-secondary fw-semibold"
-                    }`}
+                    className={`btn btn-sm btn-link text-decoration-none px-2 py-1 d-flex align-items-center gap-1 flex-nowrap text-nowrap transition-all ${isActive ? "text-dark fw-bold" : "text-secondary fw-semibold"
+                      }`}
                     style={{
                       border: "none",
                       borderRadius: 0,
@@ -1927,31 +1928,31 @@ export const CompanyDefinitionsPage: React.FC = () => {
                           </Col>
 
                           {ozellik.kuyum && (
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Üretim Hesabı:</Form.Label>
-                              <Col>
-                                <InputGroup size="sm" className="flex-nowrap">
-                                  <div
-                                    className="form-control form-control-sm bg-white text-truncate text-secondary flex-grow-1 text-start"
-                                    style={{ fontSize: "0.82rem", minWidth: 0, cursor: "pointer" }}
-                                    onClick={openUretimHesabiLookup}
-                                    title={getHesapName(formData.URETIM_HESABI_ID)}
-                                  >
-                                    {getHesapName(formData.URETIM_HESABI_ID) || (formData.URETIM_HESABI ? formData.URETIM_HESABI : "Üretim Hesabı Seçiniz (A- Hesap Kayıt)")}
-                                  </div>
-                                  <Button
-                                    variant="outline-primary"
-                                    onClick={openUretimHesabiLookup}
-                                    title="Listeden Seç (Dürbün - A- Hesap Kayıt)"
-                                    className="d-flex align-items-center px-2 flex-shrink-0"
-                                  >
-                                    <IconBinoculars size={16} />
-                                  </Button>
-                                </InputGroup>
-                              </Col>
-                            </Form.Group>
-                          </Col>
+                            <Col xs={12}>
+                              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                                <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Üretim Hesabı:</Form.Label>
+                                <Col>
+                                  <InputGroup size="sm" className="flex-nowrap">
+                                    <div
+                                      className="form-control form-control-sm bg-white text-truncate text-secondary flex-grow-1 text-start"
+                                      style={{ fontSize: "0.82rem", minWidth: 0, cursor: "pointer" }}
+                                      onClick={openUretimHesabiLookup}
+                                      title={getHesapName(formData.URETIM_HESABI_ID)}
+                                    >
+                                      {getHesapName(formData.URETIM_HESABI_ID) || (formData.URETIM_HESABI ? formData.URETIM_HESABI : "Üretim Hesabı Seçiniz (A- Hesap Kayıt)")}
+                                    </div>
+                                    <Button
+                                      variant="outline-primary"
+                                      onClick={openUretimHesabiLookup}
+                                      title="Listeden Seç (Dürbün - A- Hesap Kayıt)"
+                                      className="d-flex align-items-center px-2 flex-shrink-0"
+                                    >
+                                      <IconBinoculars size={16} />
+                                    </Button>
+                                  </InputGroup>
+                                </Col>
+                              </Form.Group>
+                            </Col>
                           )}
 
                           <Col xs={12}>
@@ -2042,30 +2043,30 @@ export const CompanyDefinitionsPage: React.FC = () => {
                           </Col>
 
                           {ozellik.kuyum && (
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İşçilik Hesabı:</Form.Label>
-                              <Col>
-                                <InputGroup size="sm" style={{ maxWidth: "260px" }}>
-                                  <Form.Control
-                                    type="text"
-                                    value={formData.ISCILIK_HESABI || ""}
-                                    onChange={(e) => handleChange("ISCILIK_HESABI", e.target.value)}
-                                    placeholder="İşçilik Hesabı (A- Hesap Kayıt)"
-                                    className="bg-white border font-monospace text-start"
-                                  />
-                                  <Button
-                                    variant="outline-secondary"
-                                    className="bg-white border-start-0 px-2.5 d-flex align-items-center justify-content-center"
-                                    onClick={openIscilikHesabiLookup}
-                                    title="İşçilik Hesabı Seç (A- Hesap Kayıt)"
-                                  >
-                                    <IconBinoculars size={16} />
-                                  </Button>
-                                </InputGroup>
-                              </Col>
-                            </Form.Group>
-                          </Col>
+                            <Col xs={12}>
+                              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                                <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İşçilik Hesabı:</Form.Label>
+                                <Col>
+                                  <InputGroup size="sm" style={{ maxWidth: "260px" }}>
+                                    <Form.Control
+                                      type="text"
+                                      value={formData.ISCILIK_HESABI || ""}
+                                      onChange={(e) => handleChange("ISCILIK_HESABI", e.target.value)}
+                                      placeholder="İşçilik Hesabı (A- Hesap Kayıt)"
+                                      className="bg-white border font-monospace text-start"
+                                    />
+                                    <Button
+                                      variant="outline-secondary"
+                                      className="bg-white border-start-0 px-2.5 d-flex align-items-center justify-content-center"
+                                      onClick={openIscilikHesabiLookup}
+                                      title="İşçilik Hesabı Seç (A- Hesap Kayıt)"
+                                    >
+                                      <IconBinoculars size={16} />
+                                    </Button>
+                                  </InputGroup>
+                                </Col>
+                              </Form.Group>
+                            </Col>
                           )}
 
                           <Col xs={12}>
@@ -2132,22 +2133,22 @@ export const CompanyDefinitionsPage: React.FC = () => {
                           </Col>
 
                           {ozellik.kuyum && (
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İşçilik Giriş Şekli:</Form.Label>
-                              <Col>
-                                <Form.Select
-                                  value={formData.ISCILIK_GIRIS_SEKLI ?? ""}
-                                  onChange={(e) => handleChange("ISCILIK_GIRIS_SEKLI", e.target.value === "" ? null : Number(e.target.value))}
-                                  className="bg-white border"
-                                >
-                                  <option value="">Seçiniz</option>
-                                  <option value={0}>0 - Gram Başına</option>
-                                  <option value={1}>1 - Toplam Tutar</option>
-                                </Form.Select>
-                              </Col>
-                            </Form.Group>
-                          </Col>
+                            <Col xs={12}>
+                              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                                <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">İşçilik Giriş Şekli:</Form.Label>
+                                <Col>
+                                  <Form.Select
+                                    value={formData.ISCILIK_GIRIS_SEKLI ?? ""}
+                                    onChange={(e) => handleChange("ISCILIK_GIRIS_SEKLI", e.target.value === "" ? null : Number(e.target.value))}
+                                    className="bg-white border"
+                                  >
+                                    <option value="">Seçiniz</option>
+                                    <option value={0}>0 - Gram Başına</option>
+                                    <option value={1}>1 - Toplam Tutar</option>
+                                  </Form.Select>
+                                </Col>
+                              </Form.Group>
+                            </Col>
                           )}
 
                           <Col xs={12} className="mt-3">
@@ -2233,21 +2234,21 @@ export const CompanyDefinitionsPage: React.FC = () => {
                           </Col>
 
                           {ozellik.kuyum && (
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Sarrafiye Kimlik Sınırı:</Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="number"
-                                  value={formData.SAR_KIMLIK_KONTROL_SINIRI ?? ""}
-                                  onChange={(e) => handleNumericInput("SAR_KIMLIK_KONTROL_SINIRI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "100px" }}
-                                />
-                              </Col>
-                            </Form.Group>
-                          </Col>
+                            <Col xs={12}>
+                              <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                                <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Sarrafiye Kimlik Sınırı:</Form.Label>
+                                <Col>
+                                  <Form.Control
+                                    type="number"
+                                    value={formData.SAR_KIMLIK_KONTROL_SINIRI ?? ""}
+                                    onChange={(e) => handleNumericInput("SAR_KIMLIK_KONTROL_SINIRI", e.target.value)}
+                                    onKeyDown={(e) => blockNonNumericKeys(e)}
+                                    className="bg-white border font-monospace text-end"
+                                    style={{ maxWidth: "100px" }}
+                                  />
+                                </Col>
+                              </Form.Group>
+                            </Col>
                           )}
 
                           <Col xs={12}>
@@ -2795,6 +2796,60 @@ export const CompanyDefinitionsPage: React.FC = () => {
                                 onChange={(e) => handleChange("FIRMA_DURUMU_RAPORU", e.target.checked)}
                               />
                             </div>
+                          </Col>
+
+                          <Col xs={12} className="mt-3">
+                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                              <Form.Label column style={{ width: "175px", flex: "0 0 175px", maxWidth: "175px" }} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">
+                                Katalog Ürün Geçiş (sn):
+                              </Form.Label>
+                              <Col>
+                                <Form.Control
+                                  type="number"
+                                  min={1}
+                                  max={300}
+                                  value={formData.KATALOG_URUN_SURESI !== null && formData.KATALOG_URUN_SURESI !== undefined ? formData.KATALOG_URUN_SURESI : ""}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.trim();
+                                    if (raw === "") {
+                                      handleChange("KATALOG_URUN_SURESI", null);
+                                    } else {
+                                      const parsed = parseInt(raw, 10);
+                                      handleChange("KATALOG_URUN_SURESI", isNaN(parsed) ? null : parsed);
+                                    }
+                                  }}
+                                  className="bg-white border font-monospace text-end"
+                                  style={{ maxWidth: "85px" }}
+                                />
+                              </Col>
+                            </Form.Group>
+                          </Col>
+
+                          <Col xs={12}>
+                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                              <Form.Label column style={{ width: "175px", flex: "0 0 175px", maxWidth: "175px" }} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">
+                                Katalog Resim Geçiş (sn):
+                              </Form.Label>
+                              <Col>
+                                <Form.Control
+                                  type="number"
+                                  min={1}
+                                  max={120}
+                                  value={formData.KATALOG_RESIM_SURESI !== null && formData.KATALOG_RESIM_SURESI !== undefined ? formData.KATALOG_RESIM_SURESI : ""}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.trim();
+                                    if (raw === "") {
+                                      handleChange("KATALOG_RESIM_SURESI", null);
+                                    } else {
+                                      const parsed = parseInt(raw, 10);
+                                      handleChange("KATALOG_RESIM_SURESI", isNaN(parsed) ? null : parsed);
+                                    }
+                                  }}
+                                  className="bg-white border font-monospace text-end"
+                                  style={{ maxWidth: "85px" }}
+                                />
+                              </Col>
+                            </Form.Group>
                           </Col>
                         </Row>
                       </div>

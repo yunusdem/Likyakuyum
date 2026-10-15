@@ -115,6 +115,8 @@ export interface TodvzTanimDto {
   E_FATURA_PORTAL_ADRESI?: string | null;
   IKINCI_YEDEK_KLASORU?: string | null;
   FIRMA_DURUMU_RAPORU?: boolean | null;
+  KATALOG_URUN_SURESI?: number | null;
+  KATALOG_RESIM_SURESI?: number | null;
   DIG_BORC_BAKIYE_RENGI?: number | null;
   DIG_ALACAK_BAKIYE_RENGI?: number | null;
   E_FATURA_POSTA_KUTUSU?: string | null;
@@ -251,6 +253,8 @@ export const defaultCompanyTanim: TodvzTanimDto = {
   E_FATURA_PORTAL_ADRESI: "",
   IKINCI_YEDEK_KLASORU: "",
   FIRMA_DURUMU_RAPORU: false,
+  KATALOG_URUN_SURESI: 5,
+  KATALOG_RESIM_SURESI: 3,
   DIG_BORC_BAKIYE_RENGI: 0,
   DIG_ALACAK_BAKIYE_RENGI: 0,
   E_FATURA_POSTA_KUTUSU: "",

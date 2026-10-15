@@ -184,25 +184,142 @@ export const TopNavbarMenu: React.FC = () => {
           filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
         }
 
+        /* Desktop Menubar Buton Stilleri (Windows Menü Çubuğu Tarzı Kompakt ve Şık) */
+        .desktop-menubar-btn {
+          font-size: 11px !important;
+          font-weight: 600 !important;
+          color: #334155 !important;
+          padding: 2.5px 5.5px !important;
+          border-radius: 3px !important;
+          border: 1px solid transparent !important;
+          background: transparent !important;
+          white-space: nowrap !important;
+          line-height: 1.25 !important;
+          transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease !important;
+          user-select: none !important;
+          text-decoration: none !important;
+        }
+        .desktop-menubar-btn:hover {
+          background-color: #e0f2fe !important;
+          border-color: #bae6fd !important;
+          color: #0369a1 !important;
+        }
+        .desktop-menubar-btn.active {
+          color: #0284c7 !important;
+          font-weight: 700 !important;
+        }
+        .desktop-menubar-btn.open {
+          background-color: #bde0fe !important;
+          border-color: #90caf9 !important;
+          color: #0284c7 !important;
+        }
+
+        /* İnce Bölüm Ayırıcı Çizgi */
+        .topbar-menu-divider {
+          display: inline-block;
+          width: 1px;
+          height: 13px;
+          background-color: #cbd5e1;
+          margin: 0 1.5px;
+          flex-shrink: 0;
+          opacity: 0.8;
+        }
+
+        /* Responsive Düzenlemeler - Ekran Küçüldüğünde Tam Sığma */
+        @media (max-width: 1366px) {
+          .desktop-menubar-btn {
+            font-size: 10.5px !important;
+            padding: 2px 4.5px !important;
+          }
+          .topbar-brand-box {
+            min-width: 140px !important;
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+          }
+        }
+        @media (max-width: 1200px) {
+          .desktop-menubar-btn {
+            font-size: 10px !important;
+            padding: 1.5px 3.5px !important;
+          }
+          .desktop-menubar-btn .menu-icon-wrap {
+            display: none !important;
+          }
+          .topbar-menu-divider {
+            margin: 0 1px !important;
+          }
+          .topbar-brand-box {
+            min-width: 125px !important;
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+          }
+          .topbar-brand-box .site-logo-text {
+            font-size: 0.9rem !important;
+          }
+          .topbar-info-box {
+            min-width: 105px !important;
+            max-width: 125px !important;
+            padding-left: 5px !important;
+            padding-right: 5px !important;
+          }
+        }
+        @media (max-width: 992px) {
+          .desktop-menubar-btn {
+            font-size: 9.5px !important;
+            padding: 1px 2px !important;
+          }
+        }
+
+        /* Desktop Menubar Açılır Liste */
+        .desktop-dropdown-menu {
+          background: #ffffff !important;
+          border: 1px solid #cbd5e1 !important;
+          border-radius: 3px !important;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+          min-width: 210px !important;
+          padding: 3px 0 !important;
+        }
+        .desktop-dropdown-item {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          padding: 4px 12px !important;
+          font-size: 11.5px !important;
+          color: #1e293b !important;
+          text-decoration: none !important;
+          transition: background-color 0.1s ease, color 0.1s ease !important;
+          white-space: nowrap !important;
+        }
+        .desktop-dropdown-item:hover {
+          background-color: #e0f2fe !important;
+          color: #0369a1 !important;
+        }
+        .desktop-dropdown-item.active {
+          background-color: #eff6ff !important;
+          color: #1d4ed8 !important;
+          font-weight: 700 !important;
+        }
+
         /* 6. MOD MODERN MEGA MENÜ ELEMANLARI (YAZILAR ASLA ÜST ÜSTE BİNMEZ, ARMA YOK) */
         .mega-clean-link {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 8px 12px;
+          padding: 5px 10px;
           background-color: #f8fafc;
           border: 1px solid #f1f5f9;
-          border-radius: 8px;
+          border-radius: 6px;
           text-decoration: none;
           color: #1e293b;
-          transition: all 0.15s ease-in-out;
-          margin-bottom: 6px;
+          font-size: 11.5px;
+          transition: all 0.12s ease-in-out;
+          margin-bottom: 4px;
           white-space: nowrap;
         }
         .mega-clean-link:hover {
           background-color: #ffffff;
           border-color: #38bdf8;
-          box-shadow: 0 4px 14px rgba(56, 189, 248, 0.15);
+          box-shadow: 0 3px 10px rgba(56, 189, 248, 0.12);
           transform: translateX(2px);
           color: #0284c7;
         }
@@ -232,20 +349,20 @@ export const TopNavbarMenu: React.FC = () => {
         className="d-flex align-items-center justify-content-between p-0 w-100"
         style={{ overflow: "visible" }}
       >
-        {/* 1. EN SOLDA YEŞİL BRAND ALANI (1. SİDEBARDTAKİ GİBİ ALTIN YALDIZLI YAZI VE AYNI ARKA PLAN) */}
-        {/* 6. MODDA KULLANICI İSTEĞİ: "solundaki arma kısmını vs kaldır" -> Arma ikonu kaldırıldı, sadece yaldızlı yazı var */}
+        {/* 1. EN SOLDA YEŞİL BRAND ALANI (ALTIN YALDIZLI YAZI VE ŞIK FERAH GENİŞLİK) */}
         <div
           className="brand-logo topbar-brand-box d-flex align-items-center flex-shrink-0 px-3"
           style={{
             background: "linear-gradient(135deg, #059669 0%, #047857 45%, #064e3b 100%)",
-            minHeight: "42px",
+            minHeight: "36px",
+            minWidth: "148px",
             borderRight: "1px solid rgba(0, 0, 0, 0.15)",
             boxShadow: "0 2px 6px rgba(4, 120, 87, 0.2)",
           }}
         >
           <Link
             to="/dashboard"
-            className="d-flex align-items-center text-decoration-none py-1 overflow-hidden"
+            className="d-flex align-items-center text-decoration-none py-0.5 overflow-hidden w-100"
             style={{ minWidth: 0, cursor: "pointer" }}
             title="Ana Sayfa"
           >
@@ -253,11 +370,11 @@ export const TopNavbarMenu: React.FC = () => {
               src="/images/logo/logo.svg"
               alt="Likya Kuyum Logo"
               className="site-logo-img flex-shrink-0 me-2"
-              style={{ width: "26px", height: "26px", objectFit: "contain", display: "inline-block" }}
+              style={{ width: "24px", height: "24px", objectFit: "contain", display: "inline-block" }}
             />
             <span
               className="fw-bold site-logo-text text-nowrap"
-              style={{ fontSize: "1.08rem" }}
+              style={{ fontSize: "1.02rem" }}
             >
               <span className="brand-text-likya">{brand.prefix}</span>{" "}
               <span className="brand-text-kuyum">{brand.suffix}</span>
@@ -267,8 +384,8 @@ export const TopNavbarMenu: React.FC = () => {
 
         {/* 2. ORTA BÖLÜM: 8 ALANIN HEPSİ TAM SIĞACAK ŞEKİLDE SIRALI MODÜL MENÜLERİ (TEK SATIR, ASLA WRAP ETMEZ) */}
         <div
-          className="d-flex align-items-center gap-1 flex-grow-1 px-2 py-1 flex-nowrap"
-          style={{ overflow: "visible", whiteSpace: "nowrap" }}
+          className="topbar-menu-items d-flex align-items-center flex-grow-1 px-1 py-0.5 flex-nowrap"
+          style={{ overflow: "visible", whiteSpace: "nowrap", minWidth: 0 }}
         >
           {gorunenMenu.map((menu, index) => {
             if (menu.grouptitle) return null;
@@ -291,97 +408,73 @@ export const TopNavbarMenu: React.FC = () => {
             };
 
             return (
-              <div
-                key={index}
-                className="position-relative"
-                style={{ overflow: "visible" }}
-                onMouseEnter={() => handleMouseEnter(index)}
-                onMouseLeave={handleMouseLeave}
-              >
-                {/* Modül Butonu: Üzerine gelince (Hover) otomatik açılır, tıklanınca da açılır */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (hasChildren) {
-                      setActiveDropdownIndex(isOpen ? null : index);
-                    } else if (menu.link) {
-                      navigateWithDashboardHop(menu.link);
-                    }
-                  }}
-                  className={`btn btn-sm d-flex align-items-center gap-1.5 px-2 py-1 rounded-2 border-0 transition-all ${
-                    isMenuChildActive || isItemActive(menu.link)
-                      ? "bg-primary text-white shadow-xs fw-bold"
-                      : isOpen
-                      ? "bg-light text-primary fw-bold border border-primary-subtle shadow-xs"
-                      : "btn-light text-secondary fw-semibold hover-bg-light"
-                  }`}
-                  style={{
-                    fontSize: "0.76rem",
-                    transition: "all 0.15s ease",
-                    whiteSpace: "nowrap",
-                    cursor: "pointer",
-                  }}
+              <React.Fragment key={index}>
+                {index > 0 && <span className="topbar-menu-divider" aria-hidden="true" />}
+                <div
+                  className="position-relative d-inline-flex align-items-center"
+                  style={{ overflow: "visible" }}
+                  onMouseEnter={() => handleMouseEnter(index)}
+                  onMouseLeave={handleMouseLeave}
                 >
-                  {menu.icon && (
-                    <span
-                      className="d-inline-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
-                      style={{
-                        width: "18px",
-                        height: "18px",
-                        backgroundColor:
-                          isMenuChildActive || isItemActive(menu.link)
-                            ? "rgba(255,255,255,0.25)"
-                            : theme.bg,
-                        color:
-                          isMenuChildActive || isItemActive(menu.link)
-                            ? "#ffffff"
-                            : theme.color,
-                        fontSize: "0.68rem",
-                      }}
-                    >
-                      {menu.icon}
-                    </span>
-                  )}
-                  <span>{menu.title}</span>
-                  {hasChildren && (
-                    <IconChevronDown
-                      size={12}
-                      className={`flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                      style={{ opacity: 0.7 }}
-                    />
-                  )}
-                </button>
-
-                {/* 4. MOD: STANDART AŞAĞI AÇILIR LİSTE (KOMPAKT) */}
-                {hasChildren && isOpen && !isMegaMenu && (
-                  <div
-                    className="position-absolute shadow-lg bg-white rounded-3 border p-1.5 animate-dropdown-fade"
-                    style={{
-                      top: "calc(100% + 4px)",
-                      left: 0,
-                      minWidth: "250px",
-                      maxWidth: "340px",
-                      zIndex: 1250,
-                      borderColor: "rgba(0, 0, 0, 0.18)",
-                      backgroundColor: "#ffffff",
-                      boxShadow: "0 18px 40px rgba(0, 0, 0, 0.25)",
-                      maxHeight: "80vh",
-                      overflowY: "auto",
+                  {/* Modül Butonu: Masaüstü Windows Menü Çubuğu Tarzı Kompakt Düğme (İkonlu) */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (hasChildren) {
+                        setActiveDropdownIndex(isOpen ? null : index);
+                      } else if (menu.link) {
+                        navigateWithDashboardHop(menu.link);
+                      }
                     }}
-                    onMouseEnter={() => handleMouseEnter(index)}
-                    onMouseLeave={handleMouseLeave}
+                    className={`desktop-menubar-btn d-flex align-items-center gap-1 ${
+                      isOpen ? "open" : isMenuChildActive || isItemActive(menu.link) ? "active" : ""
+                    }`}
+                    style={{ cursor: "pointer" }}
                   >
-                    <div className="d-flex flex-column gap-0.5">
+                    {menu.icon && (
+                      <span
+                        className="menu-icon-wrap d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                        style={{
+                          color: isOpen || isMenuChildActive || isItemActive(menu.link) ? "#0284c7" : theme.color || "#64748b",
+                          fontSize: "0.78rem",
+                        }}
+                      >
+                        {React.isValidElement(menu.icon)
+                          ? React.cloneElement(menu.icon as React.ReactElement<any>, { size: 13 })
+                          : menu.icon}
+                      </span>
+                    )}
+                    <span className="menu-title-text">{menu.title}</span>
+                  </button>
+
+                  {/* 4. MOD: STANDART AŞAĞI AÇILIR LİSTE (KOMPAKT DESKTOP DROPDOWN - EN ÜSTTE MENÜ ADI YAZMAZ, İKONLU) */}
+                  {hasChildren && isOpen && !isMegaMenu && (
+                    <div
+                      className="position-absolute shadow-lg bg-white border animate-dropdown-fade desktop-dropdown-menu"
+                      style={{
+                        top: "calc(100% + 1px)",
+                        left: index >= 6 ? "auto" : 0,
+                        right: index >= 6 ? 0 : "auto",
+                        minWidth: "220px",
+                        maxWidth: "340px",
+                        zIndex: 1250,
+                        maxHeight: "82vh",
+                        overflowY: "auto",
+                      }}
+                      onMouseEnter={() => handleMouseEnter(index)}
+                      onMouseLeave={handleMouseLeave}
+                    >
+                    <div className="d-flex flex-column">
                       {menu.children?.map((child, cIdx) => {
                         const childTitle = child.title || child.name || "";
                         if (child.children && child.children.length > 0) {
                           return (
-                            <div key={cIdx} className="px-1 py-1">
+                            <div key={cIdx}>
                               <div
-                                className="text-muted fw-bold text-uppercase px-2 py-0.5"
-                                style={{ fontSize: "0.68rem", letterSpacing: "0.5px" }}
+                                className="text-secondary fw-bold text-uppercase px-2.5 py-1 border-top border-bottom bg-light"
+                                style={{ fontSize: "10px", letterSpacing: "0.5px" }}
                               >
                                 {childTitle}
                               </div>
@@ -396,13 +489,14 @@ export const TopNavbarMenu: React.FC = () => {
                                     key={sIdx}
                                     to={subTo}
                                     onClick={(e) => handleLinkClick(e, subTo)}
-                                    className={`sidebar-flyout-item ${
+                                    className={`desktop-dropdown-item ${
                                       isActive ? "active text-primary fw-bold" : ""
                                     }`}
-                                    style={{ padding: "5px 8px", fontSize: "0.8rem" }}
                                   >
-                                    {getSubmenuIcon(subTitle)}
-                                    <span>{subTitle}</span>
+                                    <div className="d-flex align-items-center gap-2 overflow-hidden">
+                                      {getSubmenuIcon(subTitle)}
+                                      <span className="text-truncate">{subTitle}</span>
+                                    </div>
                                   </Link>
                                 );
                               })}
@@ -418,13 +512,14 @@ export const TopNavbarMenu: React.FC = () => {
                               key={cIdx}
                               to={to}
                               onClick={(e) => handleLinkClick(e, to)}
-                              className={`sidebar-flyout-item ${
+                              className={`desktop-dropdown-item ${
                                 isActive ? "active text-primary fw-bold" : ""
                               }`}
-                              style={{ padding: "5px 8px", fontSize: "0.8rem" }}
                             >
-                              {getSubmenuIcon(childTitle)}
-                              <span>{childTitle}</span>
+                              <div className="d-flex align-items-center gap-2 overflow-hidden">
+                                {getSubmenuIcon(childTitle)}
+                                <span className="text-truncate">{childTitle}</span>
+                              </div>
                             </Link>
                           );
                         }
@@ -433,44 +528,23 @@ export const TopNavbarMenu: React.FC = () => {
                   </div>
                 )}
 
-                {/* 6. MOD: MODERN ÇOK SÜTUNLU YATAY MEGA PANEL */}
-                {/* KULLANICI TALEBİ: "solundaki arma kısmını vs kaldır, yazı üstüne vs gelmesin, üzerine gelince otomatik açılsın" */}
+                {/* 6. MOD: MODERN ÇOK SÜTUNLU YATAY MEGA PANEL (EN ÜSTTE MENÜ ADI YAZMAZ) */}
                 {hasChildren && isOpen && isMegaMenu && (
                   <div
-                    className="position-absolute bg-white rounded-3 border p-3 animate-dropdown-fade"
+                    className="position-absolute bg-white rounded-2 border p-2.5 animate-dropdown-fade"
                     style={{
-                      top: "calc(100% + 4px)",
+                      top: "calc(100% + 2px)",
                       ...getDropdownAlignment(),
-                      width: "740px",
+                      width: "720px",
                       maxWidth: "calc(100vw - 30px)",
                       zIndex: 1250,
-                      borderColor: "rgba(0, 0, 0, 0.12)",
+                      borderColor: "rgba(0, 0, 0, 0.15)",
                       backgroundColor: "#ffffff",
-                      boxShadow: "0 22px 50px -10px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(15, 23, 42, 0.05)",
+                      boxShadow: "0 18px 45px -10px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(15, 23, 42, 0.05)",
                     }}
                     onMouseEnter={() => handleMouseEnter(index)}
                     onMouseLeave={handleMouseLeave}
                   >
-                    {/* Üst Bilgi Başlığı (Arma/Logo Yok, Temiz ve Şık Modern Başlık) */}
-                    <div className="d-flex align-items-center justify-content-between pb-2 mb-2.5 border-bottom">
-                      <div className="d-flex align-items-center gap-2">
-                        <span
-                          style={{
-                            width: "8px",
-                            height: "8px",
-                            borderRadius: "50%",
-                            backgroundColor: theme.color,
-                          }}
-                        />
-                        <span className="fw-bold text-dark fs-6 text-uppercase" style={{ letterSpacing: "0.5px" }}>
-                          {menu.title}
-                        </span>
-                      </div>
-                      <span className="badge bg-light text-secondary border px-2 py-1 small">
-                        {menu.children?.reduce((acc, c) => acc + (c.children?.length || 1), 0)} İşlem Sayfası
-                      </span>
-                    </div>
-
                     {/* Ferah Çok Sütunlu Sayfa Düzeni (Yazılar Asla Üst Üste Binmez, white-space: nowrap) */}
                     <div
                       style={{
@@ -623,31 +697,44 @@ export const TopNavbarMenu: React.FC = () => {
                   </div>
                 )}
               </div>
+            </React.Fragment>
             );
           })}
         </div>
 
-        {/* 3. EN SAĞDA: Vezne Adı, Kullanıcı Adı, Tarih ve Saat (Küçük Alt Alta) */}
+        {/* 3. EN SAĞDA: Vezne Adı, Kullanıcı Adı, Tarih ve Saat (Daha Düzgün, Kompakt ve Tam Sığacak Şekilde) */}
         <div
-          className="d-none d-lg-flex flex-column align-items-end justify-content-center flex-shrink-0 px-2.5 py-0.5 border-start text-end user-select-none"
-          style={{ minWidth: "125px", lineHeight: 1.25, fontSize: "11px", borderColor: "rgba(0,0,0,0.08)" }}
+          className="topbar-info-box d-flex flex-column justify-content-center flex-shrink-0 px-2 py-0.5 border-start user-select-none ms-auto"
+          style={{
+            minWidth: "116px",
+            maxWidth: "145px",
+            lineHeight: 1.22,
+            backgroundColor: "#f8fafc",
+            borderColor: "#cbd5e1",
+          }}
         >
           {/* Vezne Adı */}
-          <div className="d-flex align-items-center gap-1 font-monospace text-nowrap" title={`Vezne: ${cleanVezne}`}>
-            <span className="text-secondary" style={{ fontSize: "10px" }}>Vezne:</span>
-            <strong className="text-dark text-truncate" style={{ maxWidth: "125px" }}>{cleanVezne}</strong>
+          <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap" title={`Vezne: ${cleanVezne}`}>
+            <span className="text-secondary" style={{ fontSize: "9px", fontWeight: 600 }}>Vezne</span>
+            <span className="text-dark fw-bold text-truncate font-monospace" style={{ fontSize: "9.5px", maxWidth: "80px" }}>
+              {cleanVezne}
+            </span>
           </div>
 
           {/* Kullanıcı Adı */}
-          <div className="d-flex align-items-center gap-1 text-nowrap" title={`Kullanıcı: ${displayName}`}>
-            <span className="text-secondary" style={{ fontSize: "10px" }}>Kullanıcı:</span>
-            <strong className="text-primary text-truncate" style={{ maxWidth: "125px" }}>{displayName}</strong>
+          <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap" title={`Kullanıcı: ${displayName}`}>
+            <span className="text-secondary" style={{ fontSize: "9px", fontWeight: 600 }}>Kul.</span>
+            <span className="text-primary fw-bold text-truncate" style={{ fontSize: "9.5px", maxWidth: "80px" }}>
+              {displayName}
+            </span>
           </div>
 
           {/* Tarih ve Canlı Saat */}
-          <div className="d-flex align-items-center gap-1 text-nowrap font-monospace" style={{ fontSize: "10px" }} title="Tarih ve Saat">
-            <span className="text-secondary">{currentDate}</span>
-            <span className="fw-bold text-dark">{currentTime}</span>
+          <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap font-monospace" style={{ fontSize: "9px" }} title="Tarih ve Saat">
+            <span className="text-muted" style={{ fontSize: "8.5px" }}>{currentDate}</span>
+            <span className="fw-bold text-dark px-1 rounded bg-white border" style={{ fontSize: "9px" }}>
+              {currentTime}
+            </span>
           </div>
         </div>
       </div>

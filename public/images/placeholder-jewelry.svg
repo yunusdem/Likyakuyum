@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFDE"/>
+      <stop offset="35%" stop-color="#FDE075"/>
+      <stop offset="70%" stop-color="#E8B84B"/>
+      <stop offset="100%" stop-color="#B8822E"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <circle cx="300" cy="300" r="160" fill="none" stroke="url(#gold)" stroke-width="2" stroke-opacity="0.35" stroke-dasharray="6 6"/>
+  <g transform="translate(180, 160)" stroke="url(#gold)" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round" filter="url(#glow)">
+    <polygon points="120,40 180,100 120,200 60,100" fill="rgba(253, 224, 117, 0.08)"/>
+    <line x1="60" y1="100" x2="180" y2="100"/>
+    <line x1="120" y1="40" x2="120" y2="200"/>
+    <polygon points="120,40 150,100 120,200 90,100" fill="rgba(253, 224, 117, 0.15)"/>
+    <path d="M 60,100 L 120,40 L 180,100" stroke-width="5"/>
+  </g>
+  <g fill="#FDE075" opacity="0.85">
+    <path d="M 170,190 Q 185,190 185,175 Q 185,190 200,190 Q 185,190 185,205 Q 185,190 170,190 Z" />
+    <path d="M 400,210 Q 412,210 412,198 Q 412,210 424,210 Q 412,210 412,222 Q 412,210 400,210 Z" />
+    <path d="M 370,390 Q 380,390 380,380 Q 380,390 390,390 Q 380,390 380,400 Q 380,390 370,390 Z" />
+  </g>
+  <text x="300" y="440" text-anchor="middle" font-family="'Cinzel', serif" font-size="20" font-weight="700" fill="#FDE075" letter-spacing="3" opacity="0.95">LİKYA KUYUMCULUK</text>
+  <text x="300" y="470" text-anchor="middle" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#cbd5e1" letter-spacing="2">ÖZEL VİTRİN KOLEKSİYONU</text>
+</svg>

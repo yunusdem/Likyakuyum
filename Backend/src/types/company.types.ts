@@ -115,6 +115,8 @@ export interface TodvzTanimEntity {
   E_FATURA_PORTAL_ADRESI: string | null; // varchar(200)
   IKINCI_YEDEK_KLASORU: string | null; // varchar(200)
   FIRMA_DURUMU_RAPORU: boolean | null; // bit
+  KATALOG_URUN_SURESI?: number | null; // int
+  KATALOG_RESIM_SURESI?: number | null; // int
   DIG_BORC_BAKIYE_RENGI: number | null; // int
   DIG_ALACAK_BAKIYE_RENGI: number | null; // int
   E_FATURA_POSTA_KUTUSU: string | null; // varchar(200)

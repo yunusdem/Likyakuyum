@@ -327,8 +327,8 @@ export const LoginPage: React.FC = () => {
           -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
           pointer-events: none;
         }
-        .login-icerik { position: relative; z-index: 1; width: 100%; max-width: 440px; }
-        .login-marka { text-align: center; margin-bottom: 1.75rem; }
+        .login-icerik { position: relative; z-index: 1; width: 100%; max-width: 480px; }
+        .login-marka { text-align: center; margin-bottom: 1.5rem; }
         .login-marka-ad { font-size: 2.1rem; line-height: 1.1; margin: 0; }
         /* Genel marka yazısı koyu zemin için açık altın; açık zeminde okunsun diye koyu altın */
         .login-marka .brand-text-likya,
@@ -352,7 +352,7 @@ export const LoginPage: React.FC = () => {
           background: #ffffff;
           border: 1px solid #ece3d4;
           border-radius: 20px;
-          padding: 2rem 2rem 1.75rem;
+          padding: 1.75rem 1.75rem 1.5rem;
           box-shadow: 0 1px 2px rgba(60, 35, 5, 0.04), 0 24px 48px -20px rgba(90, 50, 10, 0.22);
           overflow: hidden;
         }
@@ -363,15 +363,33 @@ export const LoginPage: React.FC = () => {
           height: 4px;
           background: linear-gradient(90deg, #e8b84b, #c88f18 50%, #9e640b);
         }
-        .login-baslik { font-size: 1.4rem; font-weight: 700; color: #3b2306; margin-bottom: 0.2rem; }
-        .login-aciklama { font-size: 0.85rem; color: #8a7a66; margin-bottom: 1.5rem; }
-        .login-alan { margin-bottom: 1rem; }
-        .login-alan .form-label { font-size: 0.8rem; font-weight: 600; color: #5c4a35; margin-bottom: 0.35rem; }
+        .login-alan { margin-bottom: 0.85rem; }
+        .login-alan-satir {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.85rem;
+        }
+        .login-etiket {
+          width: 105px;
+          min-width: 105px;
+          padding-top: 9px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: #5c4a35;
+          text-align: right;
+          margin-bottom: 0;
+          flex-shrink: 0;
+          line-height: 1.25;
+        }
+        .login-govde {
+          flex: 1;
+          min-width: 0;
+        }
         .login-grup {
           display: flex;
           align-items: stretch;
           border: 1px solid #e4d9c8;
-          border-radius: 12px;
+          border-radius: 10px;
           background: #ffffff;
           transition: border-color 0.15s ease, box-shadow 0.15s ease;
           overflow: hidden;
@@ -380,29 +398,29 @@ export const LoginPage: React.FC = () => {
         .login-grup.hatali { border-color: #dc3545; }
         .login-grup.hatali:focus-within { box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.12); }
         .login-grup.bulundu { border-color: #86c79b; }
-        .login-grup-ikon { display: flex; align-items: center; padding: 0 0.15rem 0 0.85rem; color: #b09a7c; }
+        .login-grup-ikon { display: flex; align-items: center; padding: 0 0.15rem 0 0.75rem; color: #b09a7c; }
         .login-grup .form-control,
         .login-grup .form-select {
           border: none !important;
           box-shadow: none !important;
           background-color: transparent !important;
-          height: 46px;
-          font-size: 0.95rem;
+          height: 38px;
+          font-size: 0.88rem;
           color: #2b1d0e;
         }
         .login-grup .form-control[readonly] { color: #2b1d0e; cursor: default; }
         .login-grup .form-control::placeholder { color: #bcae9a; }
-        .login-goz { border: none; background: transparent; color: #a08a6b; padding: 0 0.9rem; }
+        .login-goz { border: none; background: transparent; color: #a08a6b; padding: 0 0.75rem; }
         .login-goz:hover { color: #784405; }
         .login-sorgula {
           border: none;
-          margin: 4px;
-          padding: 0 1rem;
-          border-radius: 9px;
+          margin: 3px;
+          padding: 0 0.85rem;
+          border-radius: 7px;
           background: linear-gradient(135deg, #22a559 0%, #15803d 100%);
           color: #ffffff;
           font-weight: 600;
-          font-size: 0.85rem;
+          font-size: 0.8rem;
           display: inline-flex;
           align-items: center;
           gap: 0.35rem;
@@ -412,18 +430,19 @@ export const LoginPage: React.FC = () => {
         .login-sorgula:hover:not(:disabled) { filter: brightness(1.08); }
         .login-sorgula:active:not(:disabled) { transform: translateY(1px); }
         .login-sorgula:disabled { opacity: 0.65; }
-        .login-ipucu { font-size: 0.76rem; color: #9a8b78; margin-top: 0.35rem; }
-        .login-hata { font-size: 0.78rem; color: #c0392b; margin-top: 0.35rem; display: flex; align-items: center; gap: 0.3rem; }
+        .login-ipucu { font-size: 0.75rem; color: #9a8b78; margin-top: 0.3rem; }
+        .login-hata { font-size: 0.76rem; color: #c0392b; margin-top: 0.3rem; display: flex; align-items: center; gap: 0.3rem; }
         .login-sayfa .form-check-input:checked { background-color: #c88f18; border-color: #c88f18; }
         .login-sayfa .form-check-input:focus { box-shadow: 0 0 0 0.2rem rgba(200, 143, 24, 0.18); border-color: #c88f18; }
         .login-gir {
           width: 100%;
-          height: 48px;
+          height: 42px;
           border: none !important;
-          border-radius: 12px !important;
+          border-radius: 10px !important;
           background: linear-gradient(135deg, #c88f18 0%, #9e640b 100%) !important;
           color: #ffffff !important;
           font-weight: 600;
+          font-size: 0.92rem;
           box-shadow: 0 8px 18px -8px rgba(158, 100, 11, 0.6) !important;
           transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease !important;
         }
@@ -449,10 +468,12 @@ export const LoginPage: React.FC = () => {
         }
         .login-geri:hover { background: #ffffff; border-color: #c88f18; color: #9e640b; transform: translateX(-2px); }
         @media (max-width: 575.98px) {
-          .login-kart { padding: 1.5rem 1.25rem 1.25rem; border-radius: 16px; }
+          .login-kart { padding: 1.25rem 1rem 1rem; border-radius: 16px; }
           .login-marka-ad { font-size: 1.75rem; }
           .login-geri span { display: none; }
           .login-geri { padding: 0.5rem 0.65rem; top: 1rem; left: 1rem; }
+          .login-etiket { width: 90px; min-width: 90px; font-size: 0.78rem; padding-top: 8px; }
+          .login-alan-satir { gap: 0.5rem; }
         }
       `}</style>
 
@@ -476,9 +497,6 @@ export const LoginPage: React.FC = () => {
         </div>
 
         <div className="login-kart">
-          <div className="login-baslik">Giriş Yap</div>
-          <div className="login-aciklama">Devam etmek için hesap bilgilerinizi girin.</div>
-
           {errorMsg && (
             <Alert variant="danger" className="d-flex align-items-center gap-2 py-2 px-3 mb-3 rounded-3 small">
               <IconAlertCircle size={18} className="flex-shrink-0 text-danger" />
@@ -487,7 +505,7 @@ export const LoginPage: React.FC = () => {
           )}
 
           {kurulum && (
-            <Alert variant={ilkYonetici ? "info" : "light"} className="py-2 small border rounded-3">
+            <Alert variant={ilkYonetici ? "info" : "light"} className="py-2 small border rounded-3 mb-3">
               <div className="fw-semibold">{sistem?.firma?.unvan || "Likya ERP"}</div>
               {ilkYonetici
                 ? "İlk kurulum: programın yöneticisi olacak kullanıcıyı oluşturun. Diğer kullanıcıları içeriden açabilirsiniz."
@@ -499,188 +517,204 @@ export const LoginPage: React.FC = () => {
           <Form onSubmit={handleSubmit} autoComplete="off" noValidate>
             {!kurulum && (
               <>
-                <Form.Group className="login-alan">
-                  <Form.Label htmlFor="musteriNoInput">
+                <Form.Group className="login-alan login-alan-satir">
+                  <Form.Label htmlFor="musteriNoInput" className="login-etiket">
                     Müşteri No <span className="text-danger">*</span>
                   </Form.Label>
-                  <div className={`login-grup ${dbHata ? "hatali" : secili ? "bulundu" : ""}`}>
-                    <span className="login-grup-ikon">
-                      <IconId size={18} />
-                    </span>
-                    <Form.Control
-                      id="musteriNoInput"
-                      type="text"
-                      autoFocus={!musteriNo}
-                      value={musteriNo}
-                      disabled={isLoading}
-                      onChange={(e) => handleMusteriNoChange(e.target.value)}
-                      onKeyDown={(e) => {
-                        // Enter formu göndermez, yalnız sorgular
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (!dbAraniyor) sorgula();
-                        }
-                      }}
-                      placeholder="Örn: D20AC0001"
-                      style={{ letterSpacing: "0.5px" }}
-                      autoComplete="off"
-                      maxLength={20}
-                    />
-                    <button
-                      type="button"
-                      className="login-sorgula"
-                      disabled={isLoading || dbAraniyor || !musteriNo}
-                      onClick={() => sorgula()}
-                      title="Müşteri numarasına ait veritabanlarını getir"
-                    >
-                      {dbAraniyor ? <Spinner animation="border" size="sm" /> : <IconSearch size={16} />}
-                      <span>Sorgula</span>
-                    </button>
-                  </div>
-                  {dbHata ? (
-                    <div className="login-hata">
-                      <IconAlertCircle size={14} />
-                      {dbHata}
+                  <div className="login-govde">
+                    <div className={`login-grup ${dbHata ? "hatali" : secili ? "bulundu" : ""}`}>
+                      <span className="login-grup-ikon">
+                        <IconId size={18} />
+                      </span>
+                      <Form.Control
+                        id="musteriNoInput"
+                        type="text"
+                        autoFocus={!musteriNo}
+                        value={musteriNo}
+                        disabled={isLoading}
+                        onChange={(e) => handleMusteriNoChange(e.target.value)}
+                        onKeyDown={(e) => {
+                          // Enter formu göndermez, yalnız sorgular
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (!dbAraniyor) sorgula();
+                          }
+                        }}
+                        placeholder="Örn: D20AC0001"
+                        style={{ letterSpacing: "0.5px" }}
+                        autoComplete="off"
+                        maxLength={20}
+                      />
+                      <button
+                        type="button"
+                        className="login-sorgula"
+                        disabled={isLoading || dbAraniyor || !musteriNo}
+                        onClick={() => sorgula()}
+                        title="Müşteri numarasına ait veritabanlarını getir"
+                      >
+                        {dbAraniyor ? <Spinner animation="border" size="sm" /> : <IconSearch size={16} />}
+                        <span>Sorgula</span>
+                      </button>
                     </div>
-                  ) : !sorgulanan ? (
-                    <div className="login-ipucu">Numarayı yazıp Enter'a basın ya da Sorgula'ya tıklayın.</div>
-                  ) : null}
+                    {dbHata ? (
+                      <div className="login-hata">
+                        <IconAlertCircle size={14} />
+                        {dbHata}
+                      </div>
+                    ) : !sorgulanan ? (
+                      <div className="login-ipucu">Numarayı yazıp Enter'a basın ya da Sorgula'ya tıklayın.</div>
+                    ) : null}
+                  </div>
                 </Form.Group>
 
                 {/* Veritabanı: tek ise doğrudan gösterilir, birden çoksa seçilir */}
-                <Form.Group className="login-alan">
-                  <Form.Label htmlFor="veritabaniSecim">
+                <Form.Group className="login-alan login-alan-satir">
+                  <Form.Label htmlFor="veritabaniSecim" className="login-etiket">
                     Veritabanı <span className="text-danger">*</span>
                   </Form.Label>
-                  <div className={`login-grup ${secili ? "bulundu" : ""}`}>
-                    <span className="login-grup-ikon">
-                      <IconDatabase size={18} />
-                    </span>
-                    {veritabanlari.length > 1 ? (
-                      <Form.Select
-                        id="veritabaniSecim"
-                        value={firmaId || ""}
-                        disabled={isLoading}
-                        onChange={(e) => setFirmaId(Number(e.target.value) || 0)}
-                      >
-                        <option value="">Veritabanı seçiniz ({veritabanlari.length})</option>
-                        {veritabanlari.map((v) => (
-                          <option key={v.firmaId} value={v.firmaId}>
-                            {v.unvan} — {v.dbName}
-                          </option>
-                        ))}
-                      </Form.Select>
-                    ) : (
-                      <Form.Control
-                        id="veritabaniSecim"
-                        type="text"
-                        readOnly
-                        tabIndex={-1}
-                        value={secili ? `${secili.unvan} — ${secili.dbName}` : ""}
-                        placeholder={dbAraniyor ? "Aranıyor..." : "Müşteri no sorgulanınca gelir"}
-                      />
-                    )}
-                    {secili && (
-                      <span className="login-grup-ikon pe-3" style={{ color: "#15803d" }}>
-                        <IconCircleCheck size={18} />
+                  <div className="login-govde">
+                    <div className={`login-grup ${secili ? "bulundu" : ""}`}>
+                      <span className="login-grup-ikon">
+                        <IconDatabase size={18} />
                       </span>
-                    )}
+                      {veritabanlari.length > 1 ? (
+                        <Form.Select
+                          id="veritabaniSecim"
+                          value={firmaId || ""}
+                          disabled={isLoading}
+                          onChange={(e) => setFirmaId(Number(e.target.value) || 0)}
+                        >
+                          <option value="">Veritabanı seçiniz ({veritabanlari.length})</option>
+                          {veritabanlari.map((v) => (
+                            <option key={v.firmaId} value={v.firmaId}>
+                              {v.unvan} — {v.dbName}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      ) : (
+                        <Form.Control
+                          id="veritabaniSecim"
+                          type="text"
+                          readOnly
+                          tabIndex={-1}
+                          value={secili ? `${secili.unvan} — ${secili.dbName}` : ""}
+                          placeholder={dbAraniyor ? "Aranıyor..." : "Müşteri no sorgulanınca gelir"}
+                        />
+                      )}
+                      {secili && (
+                        <span className="login-grup-ikon pe-3" style={{ color: "#15803d" }}>
+                          <IconCircleCheck size={18} />
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </Form.Group>
               </>
             )}
 
             {kurulum && ilkYonetici && (
-              <Form.Group className="login-alan">
-                <Form.Label>Ad Soyad</Form.Label>
-                <div className="login-grup">
-                  <span className="login-grup-ikon">
-                    <IconUser size={18} />
-                  </span>
-                  <Form.Control value={ilkAdSoyad} disabled={isLoading} onChange={(e) => setIlkAdSoyad(e.target.value)} maxLength={100} />
+              <Form.Group className="login-alan login-alan-satir">
+                <Form.Label className="login-etiket">Ad Soyad</Form.Label>
+                <div className="login-govde">
+                  <div className="login-grup">
+                    <span className="login-grup-ikon">
+                      <IconUser size={18} />
+                    </span>
+                    <Form.Control value={ilkAdSoyad} disabled={isLoading} onChange={(e) => setIlkAdSoyad(e.target.value)} maxLength={100} />
+                  </div>
                 </div>
               </Form.Group>
             )}
 
-            <Form.Group className="login-alan">
-              <Form.Label htmlFor="kullaniciAdiInput">
+            <Form.Group className="login-alan login-alan-satir">
+              <Form.Label htmlFor="kullaniciAdiInput" className="login-etiket">
                 Kullanıcı Adı <span className="text-danger">*</span>
               </Form.Label>
-              <div className="login-grup">
-                <span className="login-grup-ikon">
-                  <IconUser size={18} />
-                </span>
-                <Form.Control
-                  ref={kullaniciAdiRef}
-                  id="kullaniciAdiInput"
-                  type="text"
-                  autoFocus={!!musteriNo || kurulum}
-                  value={username}
-                  disabled={isLoading}
-                  onChange={(e) => handleUsernameChange(e.target.value)}
-                  autoComplete="username"
-                />
+              <div className="login-govde">
+                <div className="login-grup">
+                  <span className="login-grup-ikon">
+                    <IconUser size={18} />
+                  </span>
+                  <Form.Control
+                    ref={kullaniciAdiRef}
+                    id="kullaniciAdiInput"
+                    type="text"
+                    autoFocus={!!musteriNo || kurulum}
+                    value={username}
+                    disabled={isLoading}
+                    onChange={(e) => handleUsernameChange(e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
               </div>
             </Form.Group>
 
-            <Form.Group className="login-alan">
-              <Form.Label htmlFor="passwordInput">
+            <Form.Group className="login-alan login-alan-satir">
+              <Form.Label htmlFor="passwordInput" className="login-etiket">
                 Şifre <span className="text-danger">*</span>
               </Form.Label>
-              <div className="login-grup">
-                <span className="login-grup-ikon">
-                  <IconLock size={18} />
-                </span>
-                <Form.Control
-                  type={showPassword ? "text" : "password"}
-                  name="no_autofill_pwd"
-                  id="passwordInput"
-                  autoComplete="new-password"
-                  value={password}
-                  disabled={isLoading}
-                  onChange={(e) => setPassword(e.target.value)}
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                />
-                <button
-                  type="button"
-                  className="login-goz"
-                  tabIndex={-1}
-                  onClick={() => setShowPassword(!showPassword)}
-                  title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
-                >
-                  {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
-                </button>
-              </div>
-            </Form.Group>
-
-            {kurulum && ilkYonetici && (
-              <Form.Group className="login-alan">
-                <Form.Label>Şifre tekrar</Form.Label>
+              <div className="login-govde">
                 <div className="login-grup">
                   <span className="login-grup-ikon">
                     <IconLock size={18} />
                   </span>
                   <Form.Control
                     type={showPassword ? "text" : "password"}
+                    name="no_autofill_pwd"
+                    id="passwordInput"
                     autoComplete="new-password"
-                    value={sifreTekrar}
+                    value={password}
                     disabled={isLoading}
-                    onChange={(e) => setSifreTekrar(e.target.value)}
+                    onChange={(e) => setPassword(e.target.value)}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                   />
+                  <button
+                    type="button"
+                    className="login-goz"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
+                  >
+                    {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                  </button>
                 </div>
-                <div className="login-ipucu">En az 8 karakter; harf ve rakam içermeli.</div>
+              </div>
+            </Form.Group>
+
+            {kurulum && ilkYonetici && (
+              <Form.Group className="login-alan login-alan-satir">
+                <Form.Label className="login-etiket">Şifre tekrar</Form.Label>
+                <div className="login-govde">
+                  <div className="login-grup">
+                    <span className="login-grup-ikon">
+                      <IconLock size={18} />
+                    </span>
+                    <Form.Control
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={sifreTekrar}
+                      disabled={isLoading}
+                      onChange={(e) => setSifreTekrar(e.target.value)}
+                    />
+                  </div>
+                  <div className="login-ipucu">En az 8 karakter; harf ve rakam içermeli.</div>
+                </div>
               </Form.Group>
             )}
 
-            <Form.Check
-              type="checkbox"
-              id="rememberMeCheck"
-              className="mb-4"
-              checked={rememberMe}
-              onChange={(e) => handleRememberMeChange(e.target.checked)}
-              label={<span className="small" style={{ color: "#6b5a45" }}>Beni hatırla</span>}
-            />
+            <div className="login-alan-satir mb-3">
+              <div className="login-etiket"></div>
+              <div className="login-govde">
+                <Form.Check
+                  type="checkbox"
+                  id="rememberMeCheck"
+                  checked={rememberMe}
+                  onChange={(e) => handleRememberMeChange(e.target.checked)}
+                  label={<span className="small" style={{ color: "#6b5a45" }}>Beni hatırla</span>}
+                />
+              </div>
+            </div>
 
             <Button type="submit" disabled={isLoading} className="login-gir d-flex align-items-center justify-content-center gap-2">
               {isLoading ? (

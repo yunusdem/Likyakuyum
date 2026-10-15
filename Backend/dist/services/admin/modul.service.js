@@ -34,6 +34,17 @@ export const API_MODULLERI = {
     "/etiket": ["etiket", "ust:fiyat", "perakende"],
     // Piyasa (canlı fiyat panosu): yalnız üst çubuktaki kısayoldan açılır
     "/piyasa": ["ust:piyasa"],
+    // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md): dört modülün hızlı satış maddesi, üst kısayol, düzen ekranı ve
+    // fatura sınırının durduğu Firma Tanımları. Satışın kendisi her modülün kendi API'siyle kaydedilir.
+    "/hizli-satis": [
+        "vezne:hizli-satis/sarraf",
+        "vezne:hizli-satis/doviz",
+        "perakende:hizli-satis/perakende",
+        "ticari:hizli-satis/ticari",
+        "ust:hizli-satis",
+        "ayarlar:ayarlar/hizli-satis-duzeni",
+        "ayarlar:ayarlar/firma-tanimlari",
+    ],
     "/rapor": ["raporlar", "vezne", "kasa", "kur", "cari", "yonetici", "banka", "ust:masak", "etiket"],
 };
 // Ağaç kuralı saf dosyada (paket hesabı da kullanır); eski içe aktarmalar için buradan da verilir
