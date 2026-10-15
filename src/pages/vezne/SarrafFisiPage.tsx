@@ -2157,7 +2157,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             miktar: effectiveMik || 0,
             milyem: isPZ ? 0 : (parseDecimal(l.milyem) || 0),
             hasGram: isPZ ? 0 : (parseDecimal(l.hasGram) || 0),
-            adet: isPZ ? (adVal || effectiveMik || 0) : 0,
+            adet: adVal > 0 ? adVal : (isPZ ? (effectiveMik || 1) : 1),
             iscilikiMiktari: isPZ ? 0 : (parseDecimal(l.iscilikiMiktari) || 0),
             iscilikHasGram: isPZ ? 0 : (parseDecimal(l.iscilikHasGram) || 0),
             iscilikHesaplamaSekli: isPZ ? 0 : (l.iscilikHesaplamaSekli !== undefined && l.iscilikHesaplamaSekli !== null && !isNaN(Number(l.iscilikHesaplamaSekli)) ? Number(l.iscilikHesaplamaSekli) : 0),
@@ -5760,7 +5760,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                               }
                               setInvalidRowIds((prev) => ({ ...prev, [row.id]: true }));
                             }}
-                            onDoubleClick={() => openUrunModal(row.id)}
                             onKeyDown={(e) => {
                               if (e.key === "F4") {
                                 e.preventDefault();
@@ -6350,7 +6349,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                     }
                                   }
                                 }}
-                                onDoubleClick={() => openOdemeLookup(oRow.id)}
                                 onKeyDown={(e) => {
                                   if (e.key === "F4" || e.key === "F3") {
                                     e.preventDefault();
@@ -6507,13 +6505,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                   }
                                 }
                                 setInvalidOdemeRowIds((prev) => ({ ...prev, [oRow.id]: true }));
-                              }}
-                              onDoubleClick={() => {
-                                if (isOdemeCari) {
-                                  openOdemeParaIskontoModal(oRow.id, oRow.paraKodu);
-                                } else {
-                                  openOdemeUrunModal(oRow.id);
-                                }
                               }}
                               onKeyDown={(e) => {
                                 if (e.key === "F4" || e.key === "F3") {
