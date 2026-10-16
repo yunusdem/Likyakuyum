@@ -97,7 +97,11 @@ function Tasi([string]$kaynak, [string]$hedef) {
 function OnceYedekle {
   $sunucu = $ayar["KURULUM_DB_SERVER"]; $vt = $ayar["KURULUM_DB_NAME"]
   if (-not $sunucu -or -not $vt) { throw "Veritabani ayari (.env) okunamadi; yedek alinamadi." }
-  $c = New-Object System.Data.SqlClient.SqlConnection "Server=$sunucu;Database=master;Integrated Security=SSPI;Connection Timeout=30"
+  # Uygulamanin SQL girisiyle (db_owner yedek alabilir): var olan baska bir SQL orneginde SYSTEM sysadmin degildir (bolum 17)
+  $b = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
+  $b["Data Source"] = $sunucu; $b["Initial Catalog"] = $vt; $b["Connect Timeout"] = 30
+  if ($ayar["KURULUM_DB_USER"]) { $b["User ID"] = $ayar["KURULUM_DB_USER"]; $b["Password"] = $ayar["KURULUM_DB_PASSWORD"] } else { $b["Integrated Security"] = $true }
+  $c = New-Object System.Data.SqlClient.SqlConnection $b.ConnectionString
   $c.Open()
   try {
     $k = $c.CreateCommand(); $k.CommandTimeout = 60

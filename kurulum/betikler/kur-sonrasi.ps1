@@ -1,7 +1,8 @@
 # Likya Kuyum - kurulum sonrasi hazirlik (Inno Setup tarafindan, yonetici olarak calistirilir)
 # docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, 6.4
 #  1) Veri klasoru (C:\ProgramData\LikyaKuyum) ve firma.lky denetimi
-#  2) SQL Server Express (ornek LIKYA, TCP 14330): yoksa sessiz kurulur
+#  2) SQL Server: uygun var olan ornek kullanilir (sql-bul.ps1), yoksa Express 2025 (ornek LIKYA, TCP 14330) sessiz kurulur
+#     (kurulum dosyasini Inno Setup Microsoft'tan indirir)
 #  3) Firma veritabani sablondan acilir (varsa dokunulmaz), uygulamanin SQL girisi olusturulur / sifresi yenilenir
 #  4) uygulama\backend\.env yazilir (yalniz SYSTEM ve Yoneticiler okuyabilir)
 #  5) Gorev Zamanlayici: bilgisayar acilinca SYSTEM ile calisan "LikyaKuyum" gorevi; guvenlik duvari (5000/TCP)
@@ -73,12 +74,27 @@ try {
   # --- 2) SQL Server
   $sqlYonetimBaglanti = $SqlYonetim
   $sqlUygulama = $UygulamaSunucu
+  # Bilgisayarda kendi ornegimiz yoksa sartlari tutan var olan ornek kullanilir (sql-bul.ps1, bolum 17); ayarlarina dokunulmaz
+  if (-not $sqlYonetimBaglanti) {
+    . (Join-Path $PSScriptRoot "sql-bul.ps1") -Ornek $Ornek -VeritabaniAdi $VeritabaniAdi
+    $secim = SqlOrnekSec { param($m) Yaz $m }
+    if ($secim -and $secim -ne "kendi") {
+      Yaz "Var olan SQL ornegi kullaniliyor: $($secim.Ad) ($($secim.Uygulama))"
+      $sqlYonetimBaglanti = $secim.Yonetim
+      $sqlUygulama = $secim.Uygulama
+    }
+  }
   if (-not $sqlYonetimBaglanti) {
     $servis = Get-Service -Name "MSSQL`$$Ornek" -ErrorAction SilentlyContinue
     # SQL kurulmadan once ya da kurulu ama acilmiyorsa (onceki denemede sektor sorunuyla yarim kalmis olabilir)
     if (-not $servis -or $servis.Status -ne "Running") { SektorDenetle }
     if (-not $servis) {
-      if (-not $SqlKurulum -or -not (Test-Path $SqlKurulum)) { throw "SQL Server bulunamadi ve kurulum dosyasi yok." }
+      if (-not $SqlKurulum -or -not (Test-Path $SqlKurulum)) { throw "SQL Server bulunamadi ve kurulum dosyasi yok (internetten indirilemedi)." }
+      # Dosya kurulum sirasinda Microsoft'tan indirildi: sabit ozet yerine Microsoft imzasi denetlenir
+      $imza = Get-AuthenticodeSignature -FilePath $SqlKurulum
+      if ($imza.Status -ne "Valid" -or "$($imza.SignerCertificate.Subject)" -notmatch 'O=Microsoft Corporation') {
+        throw "Indirilen SQL Server kurulum dosyasinin Microsoft imzasi gecersiz ($($imza.Status)). Internet baglantinizi kontrol edip kurulumu tekrar calistirin."
+      }
       Yaz "SQL Server Express kuruluyor (birkac dakika surer)..."
       $saSifre = RastgeleSifre 32
       $arg = "/Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQLEngine /INSTANCENAME=$Ornek /SECURITYMODE=SQL /SAPWD=`"$saSifre`" /SQLSYSADMINACCOUNTS=`"NT AUTHORITY\SYSTEM`" `"BUILTIN\Administrators`" /TCPENABLED=1 /UPDATEENABLED=0 /SQLSVCSTARTUPTYPE=Automatic"

@@ -14,6 +14,11 @@
 #ifndef Cikti
   #define Cikti "cikti"
 #endif
+; SQL Server 2025 Express Core (bolum 17): exe'ye gomulmez, bilgisayarda uygun SQL yoksa kurulum sirasinda indirilir.
+; kurulum-paketi.ts --sql-adres ile degistirilebilir (ör. kendi sunucumuz).
+#ifndef SqlAdres
+  #define SqlAdres "https://download.microsoft.com/download/dea8c210-c44a-4a9d-9d80-0c81578860c5/ENU/SQLEXPR_x64_ENU.exe"
+#endif
 
 [Setup]
 AppId={{8F0B9C52-4C2A-4F1E-9D47-2B5A1C0E7A11}
@@ -53,11 +58,12 @@ Type: filesandordirs; Name: "{app}\uygulama.yeni"
 [Files]
 ; Kurulumdan önce programı durdurur (PrepareToInstall, geçici klasörden çalışır)
 Source: "{#Kaynak}\araclar\durdur.ps1"; Flags: dontcopy
+; SQL indirme gerekip gerekmedigi (wpReady'den sonra, geçici klasörden çalışır)
+Source: "{#Kaynak}\araclar\sql-bul.ps1"; Flags: dontcopy
 Source: "{#Kaynak}\node\*"; DestDir: "{app}\node"; Flags: recursesubdirs ignoreversion
 Source: "{#Kaynak}\uygulama\*"; DestDir: "{app}\uygulama"; Flags: recursesubdirs ignoreversion
 Source: "{#Kaynak}\araclar\*"; DestDir: "{app}\araclar"; Flags: recursesubdirs ignoreversion
 Source: "{#Kaynak}\sablon\sablon.bak"; DestDir: "{app}\sablon"; Flags: ignoreversion
-Source: "{#Kaynak}\sql\*"; DestDir: "{tmp}\sql"; Flags: recursesubdirs deleteafterinstall skipifsourcedoesntexist
 Source: "{src}\firma.lky"; DestDir: "{commonappdata}\LikyaKuyum"; Flags: external ignoreversion skipifsourcedoesntexist
 
 [INI]
@@ -90,10 +96,46 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 [Code]
 var
   Tamamlandi: Boolean;
+  IndirmeSayfasi: TDownloadWizardPage;
 
 function KurulumTamam(): Boolean;
 begin
   Result := Tamamlandi;
+end;
+
+procedure InitializeWizard();
+begin
+  IndirmeSayfasi := CreateDownloadPage('SQL Server indiriliyor', 'Bu bilgisayarda uygun SQL Server yok; SQL Server 2025 Express Microsoft''tan indiriliyor. İnternet hızına göre birkaç dakika sürebilir.', nil);
+end;
+
+{ Bilgisayarda kendi örneğimiz ya da kullanılabilir bir SQL Server yoksa (sql-bul.ps1 çıkış 10) kurulum dosyası indirilir.
+  Denetim çalışmazsa da indirilir: hangi örneğin kullanılacağına son kararı kur-sonrasi.ps1 verir. }
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Kod: Integer;
+begin
+  Result := True;
+  if CurPageID <> wpReady then
+    exit;
+  ExtractTemporaryFile('sql-bul.ps1');
+  if Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\sql-bul.ps1') + '" -Denetim', '', SW_HIDE, ewWaitUntilTerminated, Kod) and (Kod = 0) then
+    exit;
+  IndirmeSayfasi.Clear;
+  IndirmeSayfasi.Add('{#SqlAdres}', 'SQLEXPR_x64_ENU.exe', '');
+  IndirmeSayfasi.Show;
+  try
+    try
+      IndirmeSayfasi.Download;
+    except
+      if IndirmeSayfasi.AbortedByUser then
+        Log('SQL Server indirmesi kullanıcı tarafından durduruldu.')
+      else
+        MsgBox('SQL Server indirilemedi: ' + GetExceptionMessage + #13#10 + #13#10 + 'İnternet bağlantınızı kontrol edip tekrar deneyin.', mbError, MB_OK);
+      Result := False;
+    end;
+  finally
+    IndirmeSayfasi.Hide;
+  end;
 end;
 
 { Yeniden kurulum: çalışan program durdurulur (node.exe kilitliyken dosyalar yazılamıyordu) }
@@ -124,7 +166,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     WizardForm.StatusLabel.Caption := 'Veritabanı ve program hazırlanıyor (birkaç dakika sürebilir)...';
-    Parametre := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\araclar\kur-sonrasi.ps1') + '" -Kok "' + ExpandConstant('{app}') + '" -SqlKurulum "' + ExpandConstant('{tmp}\sql\SQLEXPR_x64_ENU.exe') + '"';
+    Parametre := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\araclar\kur-sonrasi.ps1') + '" -Kok "' + ExpandConstant('{app}') + '" -SqlKurulum "' + ExpandConstant('{tmp}\SQLEXPR_x64_ENU.exe') + '"';
     if not Exec('powershell.exe', Parametre, '', SW_HIDE, ewWaitUntilTerminated, Kod) then
       Kod := -1;
     Tamamlandi := Kod = 0;
