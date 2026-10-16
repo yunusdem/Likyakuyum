@@ -1140,8 +1140,8 @@ export class SarrafFisSqlRepository {
           DECLARE @TOPLAM_ISCILIK_TUTARI FLOAT = 0;
           SELECT @TOPLAM_ISCILIK_TUTARI = ISNULL(SUM(
             CASE 
-              WHEN ISNULL(ISCILIK_MIKTARI, 0) > 0 THEN ISCILIK_MIKTARI 
               WHEN ISNULL(ISCILIK_HAS_GRAM, 0) > 0 THEN ISCILIK_HAS_GRAM * @IN_ALTIN_HAS_KURU 
+              WHEN ISNULL(ISCILIK_MIKTARI, 0) > 0 THEN ISCILIK_MIKTARI 
               ELSE 0 
             END
           ), 0)
