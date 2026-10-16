@@ -376,6 +376,22 @@ const defaultNewUserTemplate: UserProfile = {
   },
 };
 
+const ensureUserSidebarStyle = (u: any): UserProfile => {
+  if (!u) return u;
+  const currentApp = u.appearance || {};
+  const rawStyle = currentApp.sidebarStyle;
+  const validStyles = ["hover", "classic", "flyout", "topbar", "dual", "megamenu"];
+  const finalStyle = (rawStyle && validStyles.includes(rawStyle)) ? rawStyle : "classic";
+  return {
+    ...u,
+    appearance: {
+      ...defaultNewUserTemplate.appearance,
+      ...currentApp,
+      sidebarStyle: finalStyle,
+    },
+  };
+};
+
 const UserDefinitionsPage: React.FC = () => {
   const { user: authUser, refreshUser } = useAuth();
   const rawDb = localStorage.getItem("kuyumcu_erp_active_db");
@@ -383,10 +399,9 @@ const UserDefinitionsPage: React.FC = () => {
   const rawServer = localStorage.getItem("kuyumcu_erp_active_server");
   const activeServer = rawServer && rawServer !== "test" ? rawServer : "localhost";
 
-
-  const [users, setUsers] = useState<UserProfile[]>([defaultNewUserTemplate]);
+  const [users, setUsers] = useState<UserProfile[]>([ensureUserSidebarStyle(defaultNewUserTemplate)]);
   const [userIndex, setUserIndex] = useState<number>(0);
-  const [currentUser, setCurrentUser] = useState<UserProfile>(defaultNewUserTemplate);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(ensureUserSidebarStyle(defaultNewUserTemplate));
   const [isNewRecord, setIsNewRecord] = useState<boolean>(true);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -612,7 +627,7 @@ const UserDefinitionsPage: React.FC = () => {
       }));
       setCashierList(mappedCashiers);
 
-      const dbUsers = res.data || [];
+      const dbUsers = (res.data || []).map(ensureUserSidebarStyle);
       setUsers(dbUsers);
 
       if (dbUsers.length > 0) {
@@ -630,21 +645,24 @@ const UserDefinitionsPage: React.FC = () => {
         }
 
         setUserIndex(targetIdx);
-        const selectedUser = JSON.parse(JSON.stringify(dbUsers[targetIdx]));
+        const selectedUser = ensureUserSidebarStyle(JSON.parse(JSON.stringify(dbUsers[targetIdx])));
 
         // Eğer yerel depolamada aktif bir görünüm varsa ve aktif kullanıcıysa, formu bu görünümle senkronize et
         const cachedApp = localStorage.getItem("kuyumcu_active_appearance");
         if (cachedApp && (!authUser?.id || String(selectedUser.id) === String(authUser.id))) {
           try {
             selectedUser.appearance = { ...selectedUser.appearance, ...JSON.parse(cachedApp) };
+            if (!selectedUser.appearance.sidebarStyle) {
+              selectedUser.appearance.sidebarStyle = "classic";
+            }
           } catch {}
         }
 
-        setCurrentUser(selectedUser);
+        setCurrentUser(ensureUserSidebarStyle(selectedUser));
         setIsNewRecord(false);
       } else {
         setUserIndex(0);
-        setCurrentUser({
+        setCurrentUser(ensureUserSidebarStyle({
           ...defaultNewUserTemplate,
           id: "",
           username: "",
@@ -652,7 +670,7 @@ const UserDefinitionsPage: React.FC = () => {
           password: "",
           cashierCode: mappedCashiers.length > 0 ? String(mappedCashiers[0].id) : "01",
           isActive: true,
-        });
+        }));
         setIsNewRecord(true);
       }
     } catch (err: any) {
@@ -727,10 +745,13 @@ const UserDefinitionsPage: React.FC = () => {
       ...currentUser.appearance,
       [field]: value,
     };
-    const updatedUser = {
+    if (!updatedAppearance.sidebarStyle) {
+      updatedAppearance.sidebarStyle = "classic";
+    }
+    const updatedUser = ensureUserSidebarStyle({
       ...currentUser,
       appearance: updatedAppearance,
-    };
+    });
 
     setCurrentUser(updatedUser);
 
@@ -787,13 +808,13 @@ const UserDefinitionsPage: React.FC = () => {
         });
         setAlertSuccess(`"${updated?.username || trimmedUsername}" kullanıcısı başarıyla güncellendi.`);
         const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
-        const updatedList = res.data || [];
+        const updatedList = (res.data || []).map(ensureUserSidebarStyle);
         setUsers(updatedList);
         const found = updatedList.find((u) => String(u.id) === String(currentUser.id));
         if (found) {
-          setCurrentUser(found);
+          setCurrentUser(ensureUserSidebarStyle(found));
         } else if (updated) {
-          setCurrentUser(updated);
+          setCurrentUser(ensureUserSidebarStyle(updated));
         }
         if (authUser?.id && String(currentUser.id) === String(authUser.id)) {
           await refreshUser().catch(() => {});
@@ -818,14 +839,14 @@ const UserDefinitionsPage: React.FC = () => {
 
         // Veritabanındaki kullanıcı listesini güncelle
         const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
-        const updatedList = res.data || [];
+        const updatedList = (res.data || []).map(ensureUserSidebarStyle);
         setUsers(updatedList);
         const newIdx = updatedList.findIndex((u) => u.id === created?.id);
         if (newIdx !== -1) {
           setUserIndex(newIdx);
-          setCurrentUser(updatedList[newIdx]);
+          setCurrentUser(ensureUserSidebarStyle(updatedList[newIdx]));
         } else if (created) {
-          setCurrentUser(created);
+          setCurrentUser(ensureUserSidebarStyle(created));
         }
         setIsNewRecord(false);
         setTimeout(() => setAlertSuccess(null), 4500);
@@ -846,7 +867,7 @@ const UserDefinitionsPage: React.FC = () => {
 
 
   const handleNewUser = () => {
-    const blankUser: UserProfile = {
+    const blankUser: UserProfile = ensureUserSidebarStyle({
       ...defaultNewUserTemplate,
       id: "",
       username: "",
@@ -854,7 +875,7 @@ const UserDefinitionsPage: React.FC = () => {
       password: "",
       cashierCode: "",
       isActive: true,
-    };
+    });
     setCurrentUser(blankUser);
     setIsNewRecord(true);
     setAlertSuccess("Yeni kullanıcı modu aktif. Bilgileri girip 'Kaydet' butonuna basınız.");
@@ -895,7 +916,7 @@ const UserDefinitionsPage: React.FC = () => {
     else if (direction === "last") nextIdx = users.length - 1;
 
     setUserIndex(nextIdx);
-    setCurrentUser(JSON.parse(JSON.stringify(users[nextIdx])));
+    setCurrentUser(ensureUserSidebarStyle(JSON.parse(JSON.stringify(users[nextIdx]))));
   };
 
   const handlePrint = () => {
@@ -2549,7 +2570,7 @@ const UserDefinitionsPage: React.FC = () => {
           const idx = users.findIndex((u) => String(u.id) === String(selectedU.id));
           if (idx !== -1) {
             setUserIndex(idx);
-            setCurrentUser(JSON.parse(JSON.stringify(users[idx])));
+            setCurrentUser(ensureUserSidebarStyle(JSON.parse(JSON.stringify(users[idx]))));
             setIsNewRecord(false);
           }
           setShowUserLookupModal(false);

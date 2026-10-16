@@ -6,6 +6,7 @@ import { EbelgeKuyrukRepository } from "../models/ebelgeKuyruk.repository.js";
 import { EbelgeKaynakRepository, kaynakKimlikCoz } from "../models/ebelgeKaynak.repository.js";
 import { FirmaSqlRepository } from "../models/admin/firmaSql.repository.js";
 import { MerkezGirisService } from "./merkezGiris.service.js";
+import { kurulumBaglantisiniKaydet, kurulumDbContext } from "./kurulum/kurulumDb.js";
 import { getInvoiceStatusDetail, gonderimSatirlari, sendDraftDocumentApproval, sendInvoice, } from "./ice/ice.efatura.js";
 import { getEarsivRaporStatu, sendDocumentEmail, sendEarsiv, sendEarsivIptal, } from "./ice/ice.earsiv.js";
 import { getDespatchAdviceStatus, irsaliyeGonderimSatirlari, sendDespatchAdvice } from "./ice/ice.irsaliye.js";
@@ -248,7 +249,13 @@ export class EbelgeKuyrukService {
     }
     static async firmalariBul() {
         try {
-            if (MerkezGirisService.aktifMi()) {
+            if (env.KURULUM_MODU) {
+                // Kurulum (exe): tek firma veritabanı .env'deki KURULUM_DB_*; DB_NAME boş olduğu için yeniden başlatmadan sonra
+                // bekleyen belgeler biri e-Belge ekranına girene kadar gönderilmiyordu
+                kurulumBaglantisiniKaydet();
+                this.baglamKaydet(kurulumDbContext(), false);
+            }
+            else if (MerkezGirisService.aktifMi()) {
                 const firmalar = await FirmaSqlRepository.listele();
                 for (const f of firmalar.filter((x) => x.durum === "AKTIF")) {
                     try {

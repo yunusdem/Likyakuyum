@@ -7,10 +7,11 @@ import { acikAnahtarOku, lisansAcikAnahtari, ozelAnahtarOku } from "../lisans/li
  * İmzalar lisans koduyla aynı Ed25519 anahtar çiftiyle atılır: özel anahtar yalnız merkezde, açık anahtar programa gömülü.
  */
 export const sha256Dosya = async (dosya) => {
-    // Küçük dosyalar tek seferde okunur (binlerce küçük dosyada akış açmak çok yavaş)
-    const st = fs.statSync(dosya);
+    // Küçük dosyalar tek seferde okunur (binlerce küçük dosyada akış açmak çok yavaş). Okuma asenkron: bütünlük taraması
+    // binlerce dosyayı eşzamanlı okurken sunucu her saat saniyelerce donuyordu (E6)
+    const st = await fs.promises.stat(dosya);
     if (st.size <= 1024 * 1024)
-        return crypto.createHash("sha256").update(fs.readFileSync(dosya)).digest("hex");
+        return crypto.createHash("sha256").update(await fs.promises.readFile(dosya)).digest("hex");
     const h = crypto.createHash("sha256");
     for await (const p of fs.createReadStream(dosya, { highWaterMark: 1024 * 1024 }))
         h.update(p);
@@ -58,6 +59,37 @@ export const dosyalariTopla = (kok) => {
             sonuc.push(d);
     return sonuc.sort();
 };
+/**
+ * Asenkron dosya listesi (bütünlük denetimi): kapsam dışındaki klasöre hiç girilmez (`kapsam("<klasör>/")`), olay döngüsü
+ * klasörler arasında serbest kalır.
+ */
+export const dosyalariToplaAsync = async (kok, kapsam = () => true) => {
+    const sonuc = [];
+    const gez = async (alt) => {
+        if (!kapsam(`${alt}/`))
+            return;
+        let girdiler;
+        try {
+            girdiler = await fs.promises.readdir(path.join(kok, alt), { withFileTypes: true });
+        }
+        catch {
+            return;
+        }
+        for (const g of girdiler) {
+            const gorece = `${alt}/${g.name}`.replace(/^\/+/, "");
+            if (g.isDirectory())
+                await gez(gorece);
+            else if (g.isFile() && kapsam(gorece))
+                sonuc.push(gorece);
+        }
+    };
+    for (const k of BUTUNLUK_KLASORLERI)
+        await gez(k);
+    for (const d of BUTUNLUK_DOSYALARI)
+        if (kapsam(d) && fs.existsSync(path.join(kok, d)))
+            sonuc.push(d);
+    return sonuc.sort();
+};
 export const butunlukListesiUret = async (kok, surum, ozelB64) => {
     const dosyalar = [];
     for (const d of dosyalariTopla(kok))
@@ -83,7 +115,7 @@ kapsam = () => true) => {
     if (!acikB64 || !dogrula(listeOzeti(liste.surum, liste.dosyalar), liste.imza, acikB64))
         return "bütünlük listesinin imzası tutmuyor";
     const beklenen = new Map(liste.dosyalar.filter(([d]) => kapsam(d)));
-    for (const d of dosyalariTopla(kok).filter(kapsam)) {
+    for (const d of await dosyalariToplaAsync(kok, kapsam)) {
         const ozet = beklenen.get(d);
         if (!ozet)
             return `listede olmayan dosya: ${d}`;

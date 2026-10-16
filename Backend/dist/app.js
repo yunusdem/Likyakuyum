@@ -27,6 +27,8 @@ export const createApp = () => {
     // 5. Kurulum (exe): arayüz aynı adresten sunulur (tarayıcı kısayolu http://localhost:5000)
     const arayuz = env.KURULUM_MODU && env.ARAYUZ_KLASORU ? path.resolve(env.ARAYUZ_KLASORU) : "";
     if (arayuz && fs.existsSync(path.join(arayuz, "index.html"))) {
+        // Kurulumda kök adres giriş ekranıdır (tanıtım sayfası ve iletişim formu bulut sitesine aittir)
+        app.get("/", (req, res) => res.redirect(302, "/login"));
         app.use(express.static(arayuz, { index: "index.html", maxAge: "1h" }));
         app.get(/^(?!\/api\/|\/uploads\/).*/, (req, res) => res.sendFile(path.join(arayuz, "index.html")));
     }

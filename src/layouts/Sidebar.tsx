@@ -284,10 +284,15 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   // Süzmeden sonra birleşik sol menü (Vezne/Kur, Kasa/Banka, Etiket/Perakende): docs/SOL_MENU_BIRLESTIRME.md
   // Kullanıcının kart menü yetkileri (harf listesi): yetkisiz ana menü / madde çizilmez
   const kullaniciYetkisi = useKullaniciYetkisi();
-  const gorunenMenu = useMemo(
-    () => solMenuyuBirlestir(menuyuKullaniciyaSuz(menuyuSuz(DashboardMenu, user?.merkez?.moduller), kullaniciYetkisi)),
-    [user?.merkez?.moduller, kullaniciYetkisi]
-  );
+  const gorunenMenu = useMemo(() => {
+    const filtered = solMenuyuBirlestir(menuyuKullaniciyaSuz(menuyuSuz(DashboardMenu, user?.merkez?.moduller), kullaniciYetkisi));
+    const hasItems = filtered && filtered.some((item) => (item.children && item.children.length > 0) || item.link);
+    // Emniyet: Menü hiçbir kullanıcıda kaybolmasın, süzme boş dönerse ana menüyü koru
+    if (!hasItems) {
+      return solMenuyuBirlestir(DashboardMenu);
+    }
+    return filtered;
+  }, [user?.merkez?.moduller, kullaniciYetkisi]);
   const gorunenMenuRef = useRef(gorunenMenu);
   gorunenMenuRef.current = gorunenMenu;
 

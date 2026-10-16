@@ -19,7 +19,8 @@ const NEDEN_MESAJI = {
 };
 export class OturumService {
     static aktifMi() {
-        return env.MERKEZ_GIRIS === "zorunlu";
+        // Kurulumda (exe) merkezdeki oturum kaydı yoktur
+        return !env.KURULUM_MODU && env.MERKEZ_GIRIS === "zorunlu";
     }
     static onbellegiTemizle() {
         onbellek.clear();

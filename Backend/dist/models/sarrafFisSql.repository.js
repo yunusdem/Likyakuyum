@@ -99,6 +99,11 @@ export class SarrafFisSqlRepository {
                 query += " AND (SF.FIS_NO LIKE @search OR SF.UNVAN LIKE @search)";
                 req.input("search", sql.VarChar(200), `%${filters.search}%`);
             }
+            // Kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+            if (filters.baslangic) {
+                query += " AND SF.TARIH >= CAST(@bas AS date)";
+                req.input("bas", sql.VarChar(10), filters.baslangic);
+            }
             query += " ORDER BY SF.TARIH DESC, SF.SARRAF_FISI_ID DESC";
             const result = await req.query(query);
             return (result.recordset || []).map((r) => ({

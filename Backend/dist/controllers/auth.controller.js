@@ -55,7 +55,8 @@ export class AuthController {
         return ApiResponse.ok(res, "Profil bilgisi başarıyla getirildi.", user);
     });
     static changePassword = asyncHandler(async (req, res) => {
-        await AuthService.changePassword({ userId: req.user.userId, dbServer: req.user?.dbServer, dbName: req.user?.dbName }, req.body);
-        return ApiResponse.ok(res, "Şifreniz değiştirildi.");
+        const tokens = await AuthService.changePassword({ userId: req.user.userId, dbServer: req.user?.dbServer, dbName: req.user?.dbName }, req.body);
+        // Kurulumda eski jeton şifre damgası yüzünden düşer; istemci yenisini saklar
+        return ApiResponse.ok(res, "Şifreniz değiştirildi.", tokens ? { tokens } : undefined);
     });
 }

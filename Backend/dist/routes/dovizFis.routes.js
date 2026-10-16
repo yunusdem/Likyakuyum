@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { DovizFisController } from "../controllers/dovizFis.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
+import { kayitYetkisi, kimlikVar } from "../services/yetki/menuYetkiKatalogu.js";
 const router = Router();
 router.get("/debug-info", DovizFisController.getDebugInfo);
 router.use(authenticate);
@@ -9,6 +10,6 @@ router.get("/istatistikler", DovizFisController.getIstatistikler);
 router.get("/kayitsiz-musteriler", DovizFisController.getKayitsizMusteriler);
 router.get("/vezne-bakiye/:vezneId", DovizFisController.getVezneBakiye);
 router.get("/:id", DovizFisController.getFisById);
-router.post("/kaydet", DovizFisController.saveFis);
-router.delete("/:id", DovizFisController.deleteFis);
+router.post("/kaydet", kayitYetkisi("doviz", kimlikVar("fisId")), DovizFisController.saveFis);
+router.delete("/:id", kayitYetkisi("doviz", kimlikVar()), DovizFisController.deleteFis);
 export default router;

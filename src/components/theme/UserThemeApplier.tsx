@@ -21,13 +21,16 @@ export function getContrastColor(hex?: string, fallback = "#0f172a"): string {
  * Directly writes CSS custom properties to document.documentElement (instant, 0ms lag, zero React state re-render conflicts)
  */
 export function applyAppearanceToDOM(appearance?: any) {
-  if (!appearance) return;
   const root = document.documentElement;
 
-  // 0. Sidebar Layout Style Mode
-  const sidebarStyle = appearance.sidebarStyle || "classic";
+  // 0. Sidebar Layout Style Mode (Kullanıcı seçmemişse veya tanımsızsa daima 2. Klasik Sabit Menü "classic" gelir)
+  const rawStyle = appearance?.sidebarStyle;
+  const validStyles = ["hover", "classic", "flyout", "topbar", "dual", "megamenu"];
+  const sidebarStyle = (rawStyle && validStyles.includes(rawStyle)) ? rawStyle : "classic";
   root.setAttribute("data-sidebar-style", sidebarStyle);
   document.body.setAttribute("data-sidebar-style", sidebarStyle);
+
+  if (!appearance) return;
 
   // 1. Program & Typography
   if (appearance.programBgColor) {
@@ -117,12 +120,14 @@ if (typeof window !== "undefined") {
       const storedUser = localStorage.getItem("kuyumcu_erp_user");
       if (storedUser) {
         const parsed = JSON.parse(storedUser);
-        if (parsed?.appearance) {
-          applyAppearanceToDOM(parsed.appearance);
-        }
+        applyAppearanceToDOM(parsed?.appearance);
+      } else {
+        applyAppearanceToDOM();
       }
     }
-  } catch {}
+  } catch {
+    applyAppearanceToDOM();
+  }
 }
 
 /**
@@ -143,8 +148,8 @@ export const UserThemeApplier: React.FC = () => {
       }
     } catch {}
 
+    applyAppearanceToDOM(user?.appearance);
     if (user?.appearance) {
-      applyAppearanceToDOM(user.appearance);
       try {
         localStorage.setItem("kuyumcu_active_appearance", JSON.stringify(user.appearance));
       } catch {}
@@ -511,23 +516,29 @@ export const UserThemeApplier: React.FC = () => {
         }
       }
 
-      /* 2. KLASİK MOD: Mevcut Standart Dikey Akordeon (Açıkken 270px, Kapatınca 60px) */
+      /* 2. KLASİK MOD: Mevcut Standart Dikey Akordeon (Açıkken 270px, Kapatınca 60px) - Varsayılan Güvenli Mod */
       @media (min-width: 1200px) {
+        html:not([data-sidebar-style]):not(.collapsed) #miniSidebar,
         html[data-sidebar-style="classic"]:not(.collapsed) #miniSidebar,
+        html:not([data-sidebar-style]).expanded #miniSidebar,
         html[data-sidebar-style="classic"].expanded #miniSidebar {
           width: 270px !important;
           transform: translateX(0) !important;
         }
+        html:not([data-sidebar-style]):not(.collapsed) #content,
         html[data-sidebar-style="classic"]:not(.collapsed) #content,
+        html:not([data-sidebar-style]).expanded #content,
         html[data-sidebar-style="classic"].expanded #content {
           margin-left: 270px !important;
           width: calc(100% - 270px) !important;
         }
 
+        html:not([data-sidebar-style]).collapsed #miniSidebar,
         html[data-sidebar-style="classic"].collapsed #miniSidebar {
           width: 60px !important;
           transform: translateX(0) !important;
         }
+        html:not([data-sidebar-style]).collapsed #content,
         html[data-sidebar-style="classic"].collapsed #content {
           margin-left: 60px !important;
           width: calc(100% - 60px) !important;

@@ -1,4 +1,7 @@
 import { SarrafFisService } from "../services/sarrafFis.service.js";
+import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { bankaHesabiDenetle, sarrafKurDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 export const SarrafFisController = {
     getDbContext(req) {
         return {
@@ -21,6 +24,7 @@ export const SarrafFisController = {
                 tip: tip !== undefined ? Number(tip) : undefined,
                 vezneId: vezneId ? Number(vezneId) : undefined,
                 limit: limit ? Number(limit) : 200,
+                baslangic: await gunSiniri(req),
             }, dbContext);
             res.json({ success: true, data });
         }
@@ -34,6 +38,7 @@ export const SarrafFisController = {
             const id = Number(req.params.id);
             if (!id)
                 return res.status(400).json({ success: false, message: "Geçersiz ID" });
+            await kayitErisimi(req, "sarraf", id);
             const data = await SarrafFisService.getFisById(id, dbContext);
             if (!data)
                 return res.status(404).json({ success: false, message: "Fiş bulunamadı" });
@@ -70,11 +75,22 @@ export const SarrafFisController = {
         try {
             const dbContext = SarrafFisController.getDbContext(req);
             const dto = req.body;
-            if (!dto.vezneId || dto.tip === undefined) {
-                return res.status(400).json({ success: false, message: "vezneId ve tip gerekli" });
+            if (dto.tip === undefined) {
+                return res.status(400).json({ success: false, message: "tip gerekli" });
             }
-            if (!dto.kullaniciId && req.user?.userId) {
+            // Fişi kaydeden oturumdaki kullanıcıdır (istekteki kullaniciId'ye bakılmaz)
+            if (req.user?.userId)
                 dto.kullaniciId = Number(req.user.userId);
+            // Vezne kullanıcının kasası: yenide kart veznesi, düzeltmede kaydın veznesi (istekteki yok sayılır)
+            dto.vezneId = await fisVeznesi(dto.kullaniciId, dbContext, { tur: "sarraf", id: dto.sarrafFisiId });
+            // Gün sınırı, tarih ve fiş numarası yetkisi: numara yetkisi yoksa yenide numaratör, düzeltmede kaydın numarası
+            const { nolar, yetki } = await fisKayitYetkisi(req, "sarraf", dto.sarrafFisiId, dto.tarih);
+            // Banka hesabı ödemesi ve kur yetkisi (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+            bankaHesabiDenetle(yetki, dto.odemeSatirlari);
+            await sarrafKurDenetle(req, yetki, dto);
+            if (nolar) {
+                dto.seriNo = nolar.FIS_NO ?? null;
+                dto.fisNo = dto.belgeNo = dto.irsaliyeNo = nolar.IRSALIYE_NO ?? null;
             }
             const result = await SarrafFisService.saveFis(dto, dbContext);
             res.json({ success: true, data: result });
@@ -87,9 +103,10 @@ export const SarrafFisController = {
         try {
             const dbContext = SarrafFisController.getDbContext(req);
             const id = Number(req.params.id);
-            const kullaniciId = Number(req.body.kullaniciId || req.query.kullaniciId || req.user?.userId);
+            const kullaniciId = Number(req.user?.userId || req.body.kullaniciId || req.query.kullaniciId);
             if (!id)
                 return res.status(400).json({ success: false, message: "Geçersiz ID" });
+            await kayitErisimi(req, "sarraf", id);
             await SarrafFisService.deleteFis(id, kullaniciId, dbContext);
             res.json({ success: true });
         }
@@ -101,6 +118,7 @@ export const SarrafFisController = {
         try {
             const dbContext = SarrafFisController.getDbContext(req);
             const sarrafFisiId = Number(req.params.id);
+            await kayitErisimi(req, "sarraf", sarrafFisiId);
             const dto = {
                 ...req.body,
                 sarrafFisiId,

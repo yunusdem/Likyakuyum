@@ -1,6 +1,7 @@
 import { CariService } from "../services/cari.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 export class CariController {
     static getDbContext(req) {
         return {
@@ -22,6 +23,11 @@ export class CariController {
     static listCariKartlar = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
         const list = await CariService.listCariKartlar(dbContext);
+        // "Cari bakiye görebilir" yetkisi yoksa bakiye alanları gönderilmez (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+        if (!(await kullaniciYetkisi(req)).cariBakiye) {
+            const gizli = list.map(({ borcBakiye, alacakBakiye, netBakiye, bakiyeYon, hasBakiye, hasYon, bakiyeOzet, ...k }) => k);
+            return ApiResponse.ok(res, "Cari kartlar başarıyla listelendi.", gizli);
+        }
         return ApiResponse.ok(res, "Cari kartlar başarıyla listelendi.", list);
     });
     /**

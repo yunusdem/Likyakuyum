@@ -47,6 +47,34 @@ export const sonGuncellemeSonucu = () => {
         return null;
     }
 };
+/** Güncelleme betiği çalışıyor mu (guncelle.ps1 başta yazar, sonda siler; 2 saatten eskisi yarım kalmış sayılır) */
+const ISARET_GECERLILIK_MS = 2 * 60 * 60 * 1000;
+export const guncellemeSuruyor = (simdi = new Date()) => {
+    try {
+        const st = fs.statSync(path.join(klasor(), "uygulaniyor.json"));
+        return simdi.getTime() - st.mtimeMs < ISARET_GECERLILIK_MS;
+    }
+    catch {
+        return false;
+    }
+};
+/** Kaçan gece güncellemesi şimdi uygulanmalı mı (bkz. Guncelleyici.kacanGuncellemeyiUygula) */
+const kacanUygulanabilir = (simdi) => {
+    const b = bekleyenGuncelleme();
+    if (!b || guncellemeSuruyor(simdi))
+        return false;
+    const s = sonGuncellemeSonucu();
+    if (s && s.surum === b.surum && !s.basarili)
+        return false;
+    const plan = new Date(b.zaman);
+    if (Number.isNaN(plan.getTime()))
+        return false;
+    const gece = new Date(plan);
+    gece.setHours(3, 0, 0, 0);
+    if (gece <= plan)
+        gece.setDate(gece.getDate() + 1);
+    return simdi >= gece;
+};
 export class Guncelleyici {
     /** Yeni sürümü indirir, doğrular ve gece güncellemesini planlar. Aynı sürüm zaten bekliyorsa yalnız planı yeniler. */
     static async hazirla(g, merkez, fetchFn = fetch) {
@@ -108,12 +136,60 @@ export class Guncelleyici {
         const b = bekleyenGuncelleme();
         if (!b)
             throw new Error("Bekleyen güncelleme yok.");
+        if (guncellemeSuruyor())
+            throw new Error("Güncelleme şu an uygulanıyor.");
         await planlayici(b.dosya, b.surum, true);
         return b;
+    }
+    /**
+     * Sürüm paketindeki kurulum betikleri ({app}\uygulama\araclar) kurulumun araclar klasörüne yazılır. Güncelleyici ve
+     * planlayıcı oradan çalışır; paket yalnız uygulama klasörünü değiştirdiği için betik düzeltmeleri yeniden kurulum
+     * olmadan ulaşmıyordu. Yalnız farklı olan .ps1 dosyaları yazılır; hata programı durdurmaz.
+     */
+    static betikleriEsitle() {
+        try {
+            const kaynak = path.join(uygulamaKoku(), "..", "araclar");
+            const hedef = path.join(kurulumKoku(), "araclar");
+            if (!fs.existsSync(kaynak) || !fs.existsSync(hedef))
+                return;
+            for (const ad of fs.readdirSync(kaynak)) {
+                if (!ad.toLowerCase().endsWith(".ps1"))
+                    continue;
+                const yeni = fs.readFileSync(path.join(kaynak, ad));
+                const yol = path.join(hedef, ad);
+                if (fs.existsSync(yol) && fs.readFileSync(yol).equals(yeni))
+                    continue;
+                fs.writeFileSync(yol, yeni);
+                logger.info(`[GUNCELLEME] Kurulum betiği yenilendi: ${ad}`);
+            }
+        }
+        catch (err) {
+            logger.warn(`[GUNCELLEME] Kurulum betikleri yenilenemedi: ${err?.message}`);
+        }
+    }
+    /**
+     * Gece 03:00 kaçtıysa (bilgisayar kapalıydı) bekleyen güncelleme program açılır açılmaz uygulanır: bu an kimse programı
+     * kullanmıyordur. Görev Zamanlayıcı'nın "kaçırınca çalıştır" seçeneği gün içinde rastgele bir anda programı
+     * kapatıyordu. Uygulanmaz: aynı sürümün son denemesi başarısızsa (eski sürüme dönülmüşse) ya da güncelleme betiği şu an
+     * çalışıyorsa (programı o başlattı; geri dönüşte eski süreç sonuç yazılmadan açılıp aynı sürümü yeniden uygulatıyor,
+     * güncelle/geri dön döngüsü kuruyordu). 15 sn sonra uygulamadan önce aynı denetim yinelenir.
+     */
+    static kacanGuncellemeyiUygula(simdi = new Date()) {
+        if (!kacanUygulanabilir(simdi))
+            return false;
+        logger.info(`[GUNCELLEME] ${bekleyenGuncelleme().surum} gece uygulanamamış (bilgisayar kapalıydı); açılışta uygulanıyor.`);
+        setTimeout(() => {
+            if (!kacanUygulanabilir(new Date()))
+                return;
+            void this.simdiUygula().catch((err) => logger.error(`[GUNCELLEME] Açılışta uygulanamadı: ${err?.message}`));
+        }, 15_000).unref();
+        return true;
     }
     static baslat() {
         if (!env.KURULUM_MODU)
             return;
+        this.betikleriEsitle();
+        this.kacanGuncellemeyiUygula();
         KurulumBildirim.guncellemeDinle((g, merkez) => void this.hazirla(g, merkez).catch(() => undefined));
         const s = sonGuncellemeSonucu();
         if (s)

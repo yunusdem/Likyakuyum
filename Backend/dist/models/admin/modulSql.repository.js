@@ -7,6 +7,8 @@ const satirdan = (r) => ({
     tur: r.TUR,
     sira: r.SIRA,
 });
+/** ADM_AYAR anahtarı: kataloğu en son eşitleyen panelin derleme zamanı (ms) */
+const KATALOG_DERLEME = "KATALOG_DERLEME";
 /** ADM_MODUL (menü ağacı kataloğu) ve ADM_FIRMA_MODUL (firma bazında açık/kapalı). */
 export class ModulSqlRepository {
     static async katalog() {
@@ -17,12 +19,33 @@ export class ModulSqlRepository {
     /**
      * Kataloğu verilen listeyle birebir eşitler (ekle / güncelle / listede olmayanı sil). Firma ayarlarındaki
      * satırlar silinmez: menüden kalkan bir kod geri gelirse firmanın eski tercihi korunur.
+     *
+     * derleme: listeyi gönderen panelin derleme zamanı. Daha yeni bir panelin eşitlediği katalog, eski bir panelden
+     * (deploy öncesinden açık kalmış sekme, yeniden derlenmemiş panel) gelen listeyle EŞİTLENMEZ: eski liste yeni menü
+     * maddelerini (ör. Hızlı Satış) silip ERP firmalarında kapatıyordu. Son uygulanan derleme ADM_AYAR'da tutulur.
      */
-    static async katalogEsitle(moduller) {
+    static async katalogEsitle(moduller, derleme = 0) {
         const pool = await getAdminPool();
         const tx = new sql.Transaction(pool);
         await tx.begin();
         try {
+            // ADM_AYAR eski kurulumlarda olmayabilir; kilit ipuçlu sorgu olmayan tabloda derlenemediği için önce varlığı sorulur
+            const ayarVar = !!(await new sql.Request(tx).query(`SELECT OBJECT_ID('dbo.ADM_AYAR') AS V`)).recordset[0]?.V;
+            const damga = ayarVar
+                ? await new sql.Request(tx).query(`SELECT DEGER FROM dbo.ADM_AYAR WITH (UPDLOCK, HOLDLOCK) WHERE ANAHTAR = '${KATALOG_DERLEME}'`)
+                : { recordset: [] };
+            const sonDerleme = Number(damga.recordset?.[0]?.DEGER) || 0;
+            if (derleme < sonDerleme) {
+                await tx.commit();
+                return { eklenen: 0, silinen: 0, eskiPanel: true };
+            }
+            if (ayarVar && derleme > sonDerleme) {
+                await new sql.Request(tx).input("d", sql.NVarChar(30), String(derleme)).query(`
+          MERGE dbo.ADM_AYAR WITH (HOLDLOCK) AS h
+          USING (SELECT '${KATALOG_DERLEME}' AS ANAHTAR) AS k ON h.ANAHTAR = k.ANAHTAR
+          WHEN MATCHED THEN UPDATE SET DEGER = @d, TARIH = GETDATE()
+          WHEN NOT MATCHED THEN INSERT (ANAHTAR, DEGER) VALUES (k.ANAHTAR, @d);`);
+            }
             const mevcut = new Set((await new sql.Request(tx).query(`SELECT MODUL_KODU FROM dbo.ADM_MODUL WITH (UPDLOCK, HOLDLOCK)`)).recordset.map((r) => r.MODUL_KODU));
             let eklenen = 0;
             for (const m of moduller) {
@@ -45,7 +68,7 @@ export class ModulSqlRepository {
                 await new sql.Request(tx).input("kod", sql.VarChar(100), kod).query(`DELETE FROM dbo.ADM_MODUL WHERE MODUL_KODU = @kod`);
             }
             await tx.commit();
-            return { eklenen, silinen: mevcut.size };
+            return { eklenen, silinen: mevcut.size, eskiPanel: false };
         }
         catch (err) {
             await tx.rollback().catch(() => undefined);

@@ -37,6 +37,10 @@ const heartbeatSchema = z.object({
             .nullish(),
         kullaniciSayisi: z.number().int().nullish(),
         semaSurumu: z.number().int().nullish(),
+        saatSorusu: z.string().max(64).nullish(),
+        yedek: z
+            .object({ son: z.string().max(40).nullish(), hata: z.string().max(2000).nullish(), vtBoyutMb: z.number().int().nullish() })
+            .nullish(),
     }),
 });
 router.post("/heartbeat", validate(heartbeatSchema), asyncHandler(async (req, res) => {

@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { kurYetkisiKoda, kurYetkisiKoddan, menuDegeriYaz } from "../services/yetki/kullaniciYetkiKural.js";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { UserRole } from "../constants/roles.js";
@@ -116,23 +117,16 @@ const toStatId = (val) => {
     const parsed = parseInt(cleaned, 10);
     return isNaN(parsed) ? null : parsed;
 };
-const kurYetkisiToDb = (val) => {
-    if (typeof val === "number")
-        return val;
-    const str = String(val || "").trim();
-    if (str === "Yok" || str === "0")
-        return 0;
-    if (str === "Limitli" || str === "2")
-        return 2;
-    return 1; // "Var" -> 1
-};
-const kurYetkisiFromDb = (val) => {
-    if (val === 0 || val === "0")
-        return "Yok";
-    if (val === 2 || val === "2")
-        return "Limitli";
-    return "Var";
-};
+// KUR_YETKISI eski programın ekran sırasıyla 0 Var, 1 Yok, 2 Limitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md, K8);
+// önceden 0 "Yok", 1 "Var" okunup yazılıyordu.
+const kurYetkisiToDb = (val) => kurYetkisiKoda(val);
+const kurYetkisiFromDb = (val) => kurYetkisiKoddan(val);
+/**
+ * Menü yetkisi kolonu: kartta NULL olan menü ekrana "" gelir ve dokunulmadan geri gelirse NULL kalır (NULL tam yetkidir,
+ * docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.1); menuDegeriYaz("") A–P yazıp eski programın NULL değerini değiştiriyordu.
+ * Gönderilmeyen alan varsayılanı alır.
+ */
+export const menuKolonu = (v, varsayilan) => typeof v === "string" && !v.trim() ? null : menuDegeriYaz(v ?? varsayilan);
 export class UserSqlRepository {
     static async ensureSidebarColumn(pool) {
         try {
@@ -141,6 +135,7 @@ export class UserSqlRepository {
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [SIDEBAR_GORUNUM] VARCHAR(30) NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_SIDEBAR_GORUNUM DEFAULT 'classic';
         END;
+        UPDATE dbo.TODVZ_KULLANICI SET [SIDEBAR_GORUNUM] = 'classic' WHERE [SIDEBAR_GORUNUM] IS NULL OR LTRIM(RTRIM([SIDEBAR_GORUNUM])) = '';
       `);
         }
         catch (e) {
@@ -194,16 +189,17 @@ export class UserSqlRepository {
             ratePermValue: entity.KUR_TOLERANS_ORANI ?? 0,
             // Right menu permissions
             menuPerms: {
-                mainMenu: String(entity.ANA_MENU_YETKISI ?? "Tam Yetki"),
-                cashier: String(entity.VEZNE_ISLEMLERI_YETKISI ?? "Tam Yetki"),
-                safe: String(entity.KASA_ISLEMLERI_YETKISI ?? "Tam Yetki"),
-                exchange: String(entity.KUR_ISLEMLERI_YETKISI ?? "Tam Yetki"),
-                accounts: String(entity.CARI_ISLEMLER_YETKISI ?? "Tam Yetki"),
-                admin: String(entity.YONETICI_ISLEMLERI_YETKISI ?? (isSysAdmin ? "Tam Yetki" : "Yetki Yok")),
-                accounting: String(entity.MUHASEBE_YETKISI ?? (isSysAdmin ? "Tam Yetki" : "Yetki Yok")),
-                reports: String(entity.RAPORLAR_YETKISI ?? "Tam Yetki"),
-                consolidatedReports: String(entity.KONSOLIDE_RAPORLAR_YETKISI ?? (isSysAdmin ? "Tam Yetki" : "Yetki Yok")),
-                techOps: String(entity.TEKNIK_ISLEMLER_YETKISI ?? (isSysAdmin ? "Tam Yetki" : "Yetki Yok")),
+                // Eski programın harf listeleri olduğu gibi; boş = tam yetki (services/yetki/kullaniciYetkiKural.ts harfListesi)
+                mainMenu: String(entity.ANA_MENU_YETKISI ?? ""),
+                cashier: String(entity.VEZNE_ISLEMLERI_YETKISI ?? ""),
+                safe: String(entity.KASA_ISLEMLERI_YETKISI ?? ""),
+                exchange: String(entity.KUR_ISLEMLERI_YETKISI ?? ""),
+                accounts: String(entity.CARI_ISLEMLER_YETKISI ?? ""),
+                admin: String(entity.YONETICI_ISLEMLERI_YETKISI ?? ""),
+                accounting: String(entity.MUHASEBE_YETKISI ?? ""),
+                reports: String(entity.RAPORLAR_YETKISI ?? ""),
+                consolidatedReports: String(entity.KONSOLIDE_RAPORLAR_YETKISI ?? ""),
+                techOps: String(entity.TEKNIK_ISLEMLER_YETKISI ?? ""),
                 movementType: String(entity.HAREKET_TIPI ?? "1"),
             },
             // Stat codes (Prefer JOINed KOD if available, else string ID)
@@ -385,9 +381,13 @@ export class UserSqlRepository {
      */
     static async resolveValidVezneId(pool, inputVezneId) {
         const rawStr = String(inputVezneId || "").trim();
-        if (!rawStr)
-            return 0;
         const rawNum = parseInt(rawStr, 10);
+        // Vezne seçilmeden açılan kart (kurulumun ilk yöneticisi, panelden açılan kullanıcı) ilk vezneyi alır: fiş ekranları
+        // kart veznesini zorunlu tutar (services/yetki/fisVeznesi.ts), VEZNE_ID 0 kalırsa kullanıcı hiçbir fişi kaydedemiyordu
+        if (!rawStr) {
+            const ilk = await pool.request().query("SELECT TOP 1 [VEZNE_ID] FROM [dbo].[TODVZ_VEZNE] ORDER BY [VEZNE_ID] ASC");
+            return ilk.recordset?.[0]?.VEZNE_ID ?? 0;
+        }
         // 1. Önce VEZNE_ID olarak doğrudan eşleşme ara (ID birincil anahtar ve benzersizdir)
         if (!isNaN(rawNum) && rawNum >= 0) {
             const checkId = await pool.request()
@@ -437,15 +437,15 @@ export class UserSqlRepository {
             request.input("MENU_BASLIK_FONTU", sql.VarChar(200), encodeMenuHeaderFont(app?.menuHeaderFont, app?.menuHeaderBgColor).slice(0, 200));
             request.input("PROGRAM_GRID_BASLIK_RENGI", sql.Int, colorToDb(app?.gridHeaderBgColor, 16768459));
             request.input("MENU_ARKA_PLAN_RENGI", sql.Int, colorToDb(app?.menuBgColor || app?.menuBackdropColor, 16744575));
-            request.input("ANA_MENU_YETKISI", sql.VarChar(16), (menu?.mainMenu || "Tam Yetki").slice(0, 16));
-            request.input("VEZNE_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.cashier || "Tam Yetki").slice(0, 16));
-            request.input("KASA_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.safe || "Tam Yetki").slice(0, 16));
-            request.input("KUR_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.exchange || "Tam Yetki").slice(0, 16));
-            request.input("CARI_ISLEMLER_YETKISI", sql.VarChar(16), (menu?.accounts || "Tam Yetki").slice(0, 16));
-            request.input("YONETICI_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.admin || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
-            request.input("MUHASEBE_YETKISI", sql.VarChar(16), (menu?.accounting || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
-            request.input("RAPORLAR_YETKISI", sql.VarChar(16), (menu?.reports || "Tam Yetki").slice(0, 16));
-            request.input("TEKNIK_ISLEMLER_YETKISI", sql.VarChar(16), (menu?.techOps || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
+            request.input("ANA_MENU_YETKISI", sql.VarChar(16), menuKolonu(menu?.mainMenu, "Tam Yetki"));
+            request.input("VEZNE_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.cashier, "Tam Yetki"));
+            request.input("KASA_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.safe, "Tam Yetki"));
+            request.input("KUR_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.exchange, "Tam Yetki"));
+            request.input("CARI_ISLEMLER_YETKISI", sql.VarChar(16), menuKolonu(menu?.accounts, "Tam Yetki"));
+            request.input("YONETICI_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.admin, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
+            request.input("MUHASEBE_YETKISI", sql.VarChar(16), menuKolonu(menu?.accounting, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
+            request.input("RAPORLAR_YETKISI", sql.VarChar(16), menuKolonu(menu?.reports, "Tam Yetki"));
+            request.input("TEKNIK_ISLEMLER_YETKISI", sql.VarChar(16), menuKolonu(menu?.techOps, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
             request.input("ALAN_ISLEMLERI_YETKISI", sql.Bit, toBit(user.hasWorkspacePerm));
             request.input("TARIH_DEGISTIRME_YETKISI", sql.Bit, toBit(user.hasDateChangePerm));
             request.input("PROGRAM_GRID_ZEMIN_RENGI", sql.Int, colorToDb(app?.gridBgColor, 16777215));
@@ -470,7 +470,7 @@ export class UserSqlRepository {
             request.input("FIS_BANKA_HESABI_SECME_YETKISI", sql.Bit, toBit(user.hasSlipBankAccountPerm));
             request.input("FIS_TUTAR_DEGISTIRME_YETKISI", sql.Bit, toBit(user.hasSlipAmountChangePerm));
             request.input("FIS_GOSTERME_GUN_SAYISI", sql.Int, toInt(user.displayDays, 0));
-            request.input("KONSOLIDE_RAPORLAR_YETKISI", sql.VarChar(16), (menu?.consolidatedReports || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
+            request.input("KONSOLIDE_RAPORLAR_YETKISI", sql.VarChar(16), menuKolonu(menu?.consolidatedReports, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
             const alisStatId = await UserSqlRepository.resolveValidStatId(pool, user.buyStatCode);
             const satisStatId = await UserSqlRepository.resolveValidStatId(pool, user.sellStatCode);
             const arbAlisStatId = await UserSqlRepository.resolveValidStatId(pool, user.arbitrageBuyStatCode);
@@ -571,15 +571,15 @@ export class UserSqlRepository {
             request.input("MENU_BASLIK_FONTU", sql.VarChar(200), encodeMenuHeaderFont(app?.menuHeaderFont, app?.menuHeaderBgColor).slice(0, 200));
             request.input("PROGRAM_GRID_BASLIK_RENGI", sql.Int, colorToDb(app?.gridHeaderBgColor, 16768459));
             request.input("MENU_ARKA_PLAN_RENGI", sql.Int, colorToDb(app?.menuBgColor || app?.menuBackdropColor, 16744575));
-            request.input("ANA_MENU_YETKISI", sql.VarChar(16), (menu?.mainMenu || "Tam Yetki").slice(0, 16));
-            request.input("VEZNE_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.cashier || "Tam Yetki").slice(0, 16));
-            request.input("KASA_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.safe || "Tam Yetki").slice(0, 16));
-            request.input("KUR_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.exchange || "Tam Yetki").slice(0, 16));
-            request.input("CARI_ISLEMLER_YETKISI", sql.VarChar(16), (menu?.accounts || "Tam Yetki").slice(0, 16));
-            request.input("YONETICI_ISLEMLERI_YETKISI", sql.VarChar(16), (menu?.admin || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
-            request.input("MUHASEBE_YETKISI", sql.VarChar(16), (menu?.accounting || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
-            request.input("RAPORLAR_YETKISI", sql.VarChar(16), (menu?.reports || "Tam Yetki").slice(0, 16));
-            request.input("TEKNIK_ISLEMLER_YETKISI", sql.VarChar(16), (menu?.techOps || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
+            request.input("ANA_MENU_YETKISI", sql.VarChar(16), menuKolonu(menu?.mainMenu, "Tam Yetki"));
+            request.input("VEZNE_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.cashier, "Tam Yetki"));
+            request.input("KASA_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.safe, "Tam Yetki"));
+            request.input("KUR_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.exchange, "Tam Yetki"));
+            request.input("CARI_ISLEMLER_YETKISI", sql.VarChar(16), menuKolonu(menu?.accounts, "Tam Yetki"));
+            request.input("YONETICI_ISLEMLERI_YETKISI", sql.VarChar(16), menuKolonu(menu?.admin, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
+            request.input("MUHASEBE_YETKISI", sql.VarChar(16), menuKolonu(menu?.accounting, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
+            request.input("RAPORLAR_YETKISI", sql.VarChar(16), menuKolonu(menu?.reports, "Tam Yetki"));
+            request.input("TEKNIK_ISLEMLER_YETKISI", sql.VarChar(16), menuKolonu(menu?.techOps, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
             request.input("ALAN_ISLEMLERI_YETKISI", sql.Bit, toBit(user.hasWorkspacePerm));
             request.input("TARIH_DEGISTIRME_YETKISI", sql.Bit, toBit(user.hasDateChangePerm));
             request.input("PROGRAM_GRID_ZEMIN_RENGI", sql.Int, colorToDb(app?.gridBgColor, 16777215));
@@ -604,7 +604,7 @@ export class UserSqlRepository {
             request.input("FIS_BANKA_HESABI_SECME_YETKISI", sql.Bit, toBit(user.hasSlipBankAccountPerm));
             request.input("FIS_TUTAR_DEGISTIRME_YETKISI", sql.Bit, toBit(user.hasSlipAmountChangePerm));
             request.input("FIS_GOSTERME_GUN_SAYISI", sql.Int, toInt(user.displayDays, 0));
-            request.input("KONSOLIDE_RAPORLAR_YETKISI", sql.VarChar(16), (menu?.consolidatedReports || (isSysAdmin ? "Tam Yetki" : "Yetki Yok")).slice(0, 16));
+            request.input("KONSOLIDE_RAPORLAR_YETKISI", sql.VarChar(16), menuKolonu(menu?.consolidatedReports, isSysAdmin ? "Tam Yetki" : "Yetki Yok"));
             const updateAlisStatId = await UserSqlRepository.resolveValidStatId(pool, user.buyStatCode);
             const updateSatisStatId = await UserSqlRepository.resolveValidStatId(pool, user.sellStatCode);
             const updateArbAlisStatId = await UserSqlRepository.resolveValidStatId(pool, user.arbitrageBuyStatCode);

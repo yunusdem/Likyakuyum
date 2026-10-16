@@ -6,7 +6,7 @@ export class ModulController {
         return ApiResponse.ok(res, "Modül kataloğu getirildi.", await ModulService.katalog());
     });
     static katalogEsitle = asyncHandler(async (req, res) => {
-        return ApiResponse.ok(res, "Modül kataloğu eşitlendi.", await ModulService.katalogEsitle(req.admin, req.body.moduller));
+        return ApiResponse.ok(res, "Modül kataloğu eşitlendi.", await ModulService.katalogEsitle(req.admin, req.body.moduller, Number(req.body.derleme) || 0));
     });
     static firmaAyari = asyncHandler(async (req, res) => {
         return ApiResponse.ok(res, "Modül ayarı getirildi.", await ModulService.firmaAyari(Number(req.params.id)));

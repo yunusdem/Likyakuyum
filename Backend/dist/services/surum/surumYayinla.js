@@ -74,6 +74,11 @@ export const surumYayinla = async (s) => {
         const zip = new ZipYazici(zipYolu);
         let adet = await klasorEkle(zip, be, "backend");
         adet += await klasorEkle(zip, s.webKok, "web", (g) => g.toLowerCase() === "web.config");
+        // Kurulum betikleri (güncelleyici, planlayıcı): program açılınca kurulumun araclar klasörüne yazılır
+        // (services/kurulum/guncelleyici.ts betikleriEsitle); yoksa betik düzeltmeleri yalnız yeniden kurulumla ulaşıyordu
+        const betikler = path.resolve(s.backendKok, "..", "kurulum", "betikler");
+        if (fs.existsSync(betikler))
+            adet += await klasorEkle(zip, betikler, "araclar");
         await zip.bitir();
         const sha256 = await sha256Dosya(zipYolu);
         const imza = paketImzala(surum, sha256, env.LISANS_OZEL_ANAHTAR);
