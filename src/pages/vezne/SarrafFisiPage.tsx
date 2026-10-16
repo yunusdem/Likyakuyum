@@ -123,22 +123,28 @@ const createEmptyOdemeRow = (satirNo: number): OdemeRow => ({
 
 export const isZiynetProduct = (urun?: { urunTipi?: number; kod?: string; ad?: string; mamulTipi?: string } | null): boolean => {
   if (!urun) return false;
-  // Eğer ürünün urunTipi açıkça tanımlıysa doğrudan ona göre karar ver:
+  // 1. Ürün tanımlarından gelen urunTipi doğrudan esastır (3: Ziynet)
   if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
     return Number(urun.urunTipi) === 3;
   }
+  // 2. Yalnızca urunTipi tanımlı değilse fallback:
   const k = (urun.kod || "").trim().toUpperCase();
   const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
-  const ziynetKeywords = [
-    "CEYREK", "ÇEYREK", "YARIM", "TAM", "ATA", "GREMSE", "BESLI", "BEŞLİ", "CUMHURIYET", "CUMHURİYET",
-    "ZIYNET", "ZİYNET", "SARRAFIYE", "SARRAFİYE", "REŞAT", "RESAT", "HAMIT", "HAMİT"
-  ];
-  return ziynetKeywords.some((kw) => k.includes(kw) || n.includes(kw));
+  const exactZiynetCodes = ["ÇEY", "CEY", "YAR", "ATA", "GRE", "ZIY", "BESLI", "BEŞLİ"];
+  if (exactZiynetCodes.includes(k) || n.startsWith("ÇEYREK") || n.startsWith("CEYREK") || n.startsWith("YARIM") || n.startsWith("ATA ALTIN") || n.startsWith("ZİYNET")) {
+    return true;
+  }
+  return false;
 };
 
 export const isOdemeRowParaOrZiynet = (urun?: { urunTipi?: number | string | null; kod?: string; ad?: string; paraKodu?: string; paraAdi?: string; odemeAraciTuru?: number } | null): boolean => {
   if (!urun) return true;
   if (urun.odemeAraciTuru === 2) return true; // POS
+  if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
+    const tipNum = Number(urun.urunTipi);
+    if (tipNum === 3 || tipNum === 0) return true;
+    if (tipNum === 1 || tipNum === 2) return false;
+  }
   if (isZiynetProduct(urun as any)) return true;
   const k = (urun.paraKodu || urun.kod || "").trim().toUpperCase();
   const n = (urun.paraAdi || urun.ad || "").trim().toUpperCase();
@@ -146,11 +152,6 @@ export const isOdemeRowParaOrZiynet = (urun?: { urunTipi?: number | string | nul
   if (dovizCodes.includes(k)) return true;
   const dovizNames = ["DOLAR", "DOVIZ", "DÖVİZ", "EURO", "AVRO", "LİRA", "LIRA", "POUND", "STERLİN", "STERLIN", "FRANK", "FRANG", "RİYAL", "RIYAL", "RUBLE", "YEN"];
   if (dovizNames.some((d) => n.includes(d))) return true;
-  if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
-    const tipNum = Number(urun.urunTipi);
-    if (tipNum === 3 || tipNum === 0) return true;
-    if (tipNum === 1 || tipNum === 2) return false;
-  }
   return true;
 };
 
@@ -165,30 +166,24 @@ export const getUrunTipiInfo = (urun?: { urunTipi?: number; kod?: string; ad?: s
   // 1. Ürün Tanımları sayfasındaki urunTipi (0: Döviz, 1: Altın, 2: Gümüş, 3: Ziynet)
   if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
     const tipNum = Number(urun.urunTipi);
-    if (tipNum === 3) {
-      return { label: "Ziynet", bg: "danger", textColor: "white" };
-    }
-    if (tipNum === 1) {
-      return { label: "Altın", bg: "warning", textColor: "dark" };
-    }
-    if (tipNum === 2) {
-      return { label: "Gümüş", bg: "secondary", textColor: "white" };
-    }
-    if (tipNum === 0) {
-      return { label: "Döviz", bg: "info", textColor: "white" };
-    }
+    if (tipNum === 3) return { label: "Ziynet", bg: "danger", textColor: "white" };
+    if (tipNum === 1) return { label: "Altın", bg: "warning", textColor: "dark" };
+    if (tipNum === 2) return { label: "Gümüş", bg: "secondary", textColor: "white" };
+    if (tipNum === 0) return { label: "Döviz", bg: "info", textColor: "white" };
   }
 
-  // 2. Fallback (eğer urunTipi hiç tanımlanmamışsa):
-  const k = (urun.kod || "").trim().toUpperCase();
-  const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
-
+  // 2. Fallback (eğer ürün tanımında urunTipi hiç tanımlanmamışsa):
   if (isZiynetProduct(urun)) {
     return { label: "Ziynet", bg: "danger", textColor: "white" };
   }
+
+  const k = (urun.kod || "").trim().toUpperCase();
+  const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
+
   if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || n.includes("GÜMÜŞ") || n.includes("GUMUS")) {
     return { label: "Gümüş", bg: "secondary", textColor: "white" };
   }
+
   const dovizCodes = ["TL", "TRY", "TRL", "USD", "EUR", "GBP", "CHF", "AUD", "CAD", "JPY", "SAR", "AED", "RUB", "KWD", "NOK", "DKK", "SEK"];
   const dovizNames = ["DOLAR", "DOVIZ", "DÖVİZ", "EURO", "AVRO", "LİRA", "POUND", "STERLİN", "FRANK", "RİYAL", "RUBLE", "YEN"];
   if (dovizCodes.includes(k) || dovizNames.some((d) => n.includes(d))) {
@@ -1448,12 +1443,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (data.satirlar && data.satirlar.length > 0) {
         const curHasKuru = Number(data.altinHasKuru) || 0;
         const mapped = data.satirlar.map((s: any) => {
+          const matchedUrun = (s.urunId || s.urunKodu) && urunList.length > 0
+            ? urunList.find((u) => (s.urunId && u.paraId === s.urunId) || (u.kod && s.urunKodu && u.kod.trim().toLowerCase() === s.urunKodu.trim().toLowerCase()))
+            : null;
           let itemMilyem = (s.milyem !== undefined && s.milyem !== null && s.milyem !== "") ? s.milyem : "";
-          if ((itemMilyem === "" || Number(itemMilyem) === 0) && (s.urunId || s.urunKodu) && urunList.length > 0) {
-            const matchedUrun = urunList.find((u) => (s.urunId && u.paraId === s.urunId) || (u.kod && s.urunKodu && u.kod.trim().toLowerCase() === s.urunKodu.trim().toLowerCase()));
-            if (matchedUrun && matchedUrun.hasOrani !== undefined && matchedUrun.hasOrani !== null) {
-              itemMilyem = matchedUrun.hasOrani;
-            }
+          if ((itemMilyem === "" || Number(itemMilyem) === 0) && matchedUrun && matchedUrun.hasOrani !== undefined && matchedUrun.hasOrani !== null) {
+            itemMilyem = matchedUrun.hasOrani;
           }
           const rowObj: GridRow = {
             id: `row-${s.sarrafFisiSatiriId || makeId()}`,
@@ -1471,7 +1466,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             iscilikHasGram: s.iscilikHasGram != null ? s.iscilikHasGram : "",
             kur: s.kur != null ? s.kur : "",
             tutar: s.tutar != null ? s.tutar : "",
-            urunTipi: s.urunTipi || 0,
+            urunTipi: matchedUrun?.urunTipi !== undefined && matchedUrun?.urunTipi !== null ? Number(matchedUrun.urunTipi) : (s.urunTipi || 0),
             karat: s.karat || "",
             aciklama: s.aciklama || "",
           };
@@ -2143,10 +2138,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         kullaniciId: Number(user?.id) || 1,
         yazdirilanBelgeTipi: 0,
         satirlar: validLines.map((l, i) => {
-          const isPZ = (l.urunTipi === 0 || l.urunTipi === 3 || isZiynetProduct({ urunTipi: l.urunTipi, kod: l.urunKodu, ad: l.urunAdi }));
+          const effectiveUrunTipi = (l.urunTipi !== undefined && l.urunTipi !== null && String(l.urunTipi).trim() !== "")
+            ? Number(l.urunTipi)
+            : (isZiynetProduct({ urunTipi: l.urunTipi, kod: l.urunKodu, ad: l.urunAdi }) ? 3 : 1);
+          const isGoldOrSilver = effectiveUrunTipi === 1 || effectiveUrunTipi === 2;
+          const isPZ = effectiveUrunTipi === 0 || effectiveUrunTipi === 3;
           const adVal = parseDecimal(l.adet);
           const mikVal = parseDecimal(l.miktar);
-          const effectiveMik = isPZ ? (adVal > 0 ? adVal : mikVal) : mikVal;
+          // Altın veya Gümüşte vezneye kesinlikle MİKTAR (gram) gitmeli; Döviz veya Ziynette ADET
+          const effectiveMik = isGoldOrSilver ? mikVal : (isPZ ? (adVal > 0 ? adVal : mikVal) : mikVal);
+          const effectiveAdet = isGoldOrSilver ? (adVal > 0 ? adVal : 1) : (adVal > 0 ? adVal : (mikVal > 0 ? mikVal : 1));
           return {
             satirId: l.satirId ?? null,
             satirNo: i + 1,
@@ -2154,14 +2155,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             miktar: effectiveMik || 0,
             milyem: isPZ ? 0 : (parseDecimal(l.milyem) || 0),
             hasGram: isPZ ? 0 : (parseDecimal(l.hasGram) || 0),
-            adet: adVal > 0 ? adVal : (isPZ ? (effectiveMik || 1) : 1),
+            adet: effectiveAdet,
             iscilikiMiktari: isPZ ? 0 : (parseDecimal(l.iscilikiMiktari) || 0),
             iscilikHasGram: isPZ ? 0 : (parseDecimal(l.iscilikHasGram) || 0),
             iscilikHesaplamaSekli: isPZ ? 0 : (l.iscilikHesaplamaSekli !== undefined && l.iscilikHesaplamaSekli !== null && !isNaN(Number(l.iscilikHesaplamaSekli)) ? Number(l.iscilikHesaplamaSekli) : 0),
             aciklama: l.aciklama || null,
             kur: parseDecimal(l.kur) || 0,
             tutar: parseDecimal(l.tutar) || 0,
-            urunTipi: l.urunTipi || 0,
+            urunTipi: effectiveUrunTipi,
             karat: l.karat && parseDecimal(l.karat) > 0 ? parseDecimal(l.karat) : null,
           };
         }),
@@ -2794,12 +2795,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       return;
     }
 
-    const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
-    const isPara = item.urunTipi === 0;
+    const resolvedUrunTipi = (item.urunTipi !== undefined && item.urunTipi !== null && String(item.urunTipi).trim() !== "")
+      ? Number(item.urunTipi)
+      : (isZiynetProduct(item) ? 3 : 1);
+    const isZiynet = resolvedUrunTipi === 3;
+    const isPara = resolvedUrunTipi === 0;
     const isParaOrZiynet = isPara || isZiynet;
     const autoKur = getKurForProduct(item, tip);
     const autoMilyem = getMilyemForProduct(item, tip);
-    const curHasKuru = isParaOrZiynet ? autoKur : (item.urunTipi === 2 ? getGumusKurForTip(tip) : getHasKurForTip(tip));
+    const curHasKuru = isParaOrZiynet ? autoKur : (resolvedUrunTipi === 2 ? getGumusKurForTip(tip) : getHasKurForTip(tip));
     const finalKur = autoKur > 0 ? autoKur : (curHasKuru > 0 ? curHasKuru : 0);
 
     setLines((prev) => prev.map((r) => {
@@ -2824,7 +2828,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         iscilikiMiktari,
         iscilikHasGram: isParaOrZiynet ? "" : r.iscilikHasGram,
         hasGram: isParaOrZiynet ? "" : r.hasGram,
-        urunTipi: item.urunTipi ?? (isZiynet ? 3 : 0),
+        urunTipi: resolvedUrunTipi,
         kur: finalKur > 0 ? finalKur : (r.kur || ""),
       };
       // e-Banka: miktar boşsa banka tutarının kalanı / (kur × milyem)
@@ -2855,13 +2859,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   ) => {
     const code = (item.kod || "").toUpperCase().trim();
     const isTL = code === "TL" || code === "TRY" || code === "TRL";
-    const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
-    const isPara = item.urunTipi === 0 || isTL;
+    const resolvedUrunTipi = isTL ? 0 : (
+      (item.urunTipi !== undefined && item.urunTipi !== null && String(item.urunTipi).trim() !== "")
+        ? Number(item.urunTipi)
+        : (isZiynetProduct(item) ? 3 : 1)
+    );
+    const isZiynet = resolvedUrunTipi === 3;
+    const isPara = resolvedUrunTipi === 0;
     const isParaOrZiynet = isPara || isZiynet;
     const odemeTip: 0 | 1 = tip === 0 ? 1 : 0;
     const autoKur = getKurForProduct(item, odemeTip);
     const autoMilyem = getMilyemForProduct(item, odemeTip);
-    const curHasKuru = isParaOrZiynet ? autoKur : (item.urunTipi === 2 ? getGumusKurForTip(odemeTip) : getHasKurForTip(odemeTip));
+    const curHasKuru = isParaOrZiynet ? autoKur : (resolvedUrunTipi === 2 ? getGumusKurForTip(odemeTip) : getHasKurForTip(odemeTip));
     const finalKur = autoKur > 0 ? autoKur : (curHasKuru > 0 ? curHasKuru : 0);
 
     setOdemeRows((prev) => prev.map((r) => {
@@ -2884,7 +2893,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         miktar,
         milyem,
         hasGram: isParaOrZiynet ? "" : r.hasGram,
-        urunTipi: item.urunTipi ?? (isTL ? 0 : (isZiynet ? 3 : (item.kod?.length === 3 ? 0 : 1))),
+        urunTipi: resolvedUrunTipi,
         kur: isTL ? "" : (finalKur > 0 ? finalKur : (r.kur || "")),
       };
       return recomputeOdemeRow(updated, finalKur);

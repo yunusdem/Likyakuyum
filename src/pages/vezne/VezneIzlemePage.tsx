@@ -38,6 +38,7 @@ import {
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
+import { vezneSync } from "../../services/vezneSyncService";
 
 export const sortVezneRows = (rowsList?: VezneIzlemeRow[]): VezneIzlemeRow[] => {
   if (!rowsList || rowsList.length === 0) return [];
@@ -242,22 +243,54 @@ export const VezneIzlemePage: React.FC = () => {
     fetchData(false);
   }, [fetchData]);
 
-  // Auto-refresh timer based on Firma Tanımları TAZELEME_SURESI
+  // 1. Instant Real-time Sync (SSE + BroadcastChannel + Window Custom Events + Focus/Visibility)
   useEffect(() => {
-    const sec =
+    // Real-time notification from any transaction (Sarraf, Döviz, Perakende, Transfer vb.)
+    const unsubscribe = vezneSync.subscribe(() => {
+      if (!isAnyModalOpen) {
+        fetchData(true);
+      }
+    });
+
+    // Instant refresh when user switches back to this tab / window
+    const handleFocus = () => {
+      if (!isAnyModalOpen) {
+        fetchData(true);
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && !isAnyModalOpen) {
+        fetchData(true);
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isAnyModalOpen, fetchData]);
+
+  // 2. Active Fallback Polling (Max 2s interval for external changes from other clients/terminals)
+  useEffect(() => {
+    const configuredSec =
       companyDefinitions?.TAZELEME_SURESI !== undefined &&
       companyDefinitions?.TAZELEME_SURESI !== null &&
       Number(companyDefinitions.TAZELEME_SURESI) > 0
         ? Number(companyDefinitions.TAZELEME_SURESI)
         : (settings.tazelemeSuresi > 0 ? settings.tazelemeSuresi : 5);
 
-    if (sec <= 0) return;
+    // Fast 2s fallback interval while tab is visible so external changes show up in max 2s without refresh
+    const pollSec = Math.min(configuredSec, 2);
 
     const interval = setInterval(() => {
-      if (!isAnyModalOpen) {
+      if (!isAnyModalOpen && document.visibilityState === "visible") {
         fetchData(true);
       }
-    }, sec * 1000);
+    }, pollSec * 1000);
 
     return () => clearInterval(interval);
   }, [companyDefinitions?.TAZELEME_SURESI, settings.tazelemeSuresi, isAnyModalOpen, fetchData]);
@@ -525,17 +558,30 @@ export const VezneIzlemePage: React.FC = () => {
         hideSearch
         hideNavigation
         rightContent={
-          <div
-            className="d-flex align-items-center gap-2 px-2.5 py-1 rounded border shadow-2xs font-monospace text-nowrap"
-            style={{
-              backgroundColor: "#f8fafc",
-              fontSize: "12.5px",
-              color: "#1e293b",
-              fontWeight: 600,
-            }}
-          >
-            <IconClock size={15} className="text-primary" />
-            <span>{currentDateTime}</span>
+          <div className="d-flex align-items-center gap-2">
+            <span
+              className="badge bg-success-subtle text-success border border-success-subtle d-inline-flex align-items-center gap-1.5 py-1 px-2"
+              style={{ fontSize: "11.5px", fontWeight: 600, letterSpacing: "0.2px" }}
+              title="Anlık Canlı Akış Aktif: Sayfa yenilemeye gerek kalmadan tüm vezne hareketleri anında güncellenir."
+            >
+              <span
+                className="d-inline-block rounded-circle bg-success"
+                style={{ width: "7px", height: "7px", boxShadow: "0 0 6px #10b981" }}
+              />
+              Canlı
+            </span>
+            <div
+              className="d-flex align-items-center gap-2 px-2.5 py-1 rounded border shadow-2xs font-monospace text-nowrap"
+              style={{
+                backgroundColor: "#f8fafc",
+                fontSize: "12.5px",
+                color: "#1e293b",
+                fontWeight: 600,
+              }}
+            >
+              <IconClock size={15} className="text-primary" />
+              <span>{currentDateTime}</span>
+            </div>
           </div>
         }
       />

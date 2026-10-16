@@ -160,20 +160,42 @@ const DashboardLayout: React.FC = () => {
     }
   }, [collapsed]);
 
-  // Mobilde sayfa ilk açıldığında sidebar kapalı başlasın
+  // Mobilde sayfa ilk açıldığında veya üst menü stilinde sidebar kapalı başlasın
   useEffect(() => {
-    if (window.innerWidth < 1200) {
+    const isHeaderStyle = sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer";
+    if (isHeaderStyle || window.innerWidth < 1200) {
       handleCollapsed("collapsed");
     }
-  }, []);
+  }, [sidebarStyle]);
 
   // Route değiştiğinde çekmeceyi ve mobilde sidebarı otomatik kapat
   useEffect(() => {
     setDrawerOpen(false);
-    if (window.innerWidth < 1200) {
+    if (window.innerWidth < 1200 || sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer") {
       handleCollapsed("collapsed");
     }
-  }, [location.pathname]);
+  }, [location.pathname, sidebarStyle]);
+
+  // Ekran boyutu değiştiğinde (sayfa büyütüldüğünde):
+  // 1) Sayfayı büyütünce (<1200px'den >=1200px'e geçince) mobilde açılmış sidebar masaüstünde ASLA otomatik açılmayacak
+  // 2) Üst menü (topbar / megamenu) seçili ise masaüstünde sidebar kesinlikle kapalı kalacak
+  useEffect(() => {
+    let lastWidth = window.innerWidth;
+    const handleWindowResize = () => {
+      const currentWidth = window.innerWidth;
+      const isHeaderStyle = sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer";
+
+      if (lastWidth < 1200 && currentWidth >= 1200) {
+        handleCollapsed("collapsed");
+      } else if (currentWidth >= 1200 && isHeaderStyle) {
+        handleCollapsed("collapsed");
+      }
+      lastWidth = currentWidth;
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, [sidebarStyle, handleCollapsed]);
 
   // Drawer modu için DOM sınıflarını yönet
   useEffect(() => {
@@ -215,7 +237,7 @@ const DashboardLayout: React.FC = () => {
           </div>
         )}
 
-        <Header />
+        <Header isHeaderNav={sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer"} />
         <main className="flex-grow-1 custom-container pt-1 pb-3" data-sayfa-icerik="true">
           <LisansUyariBandi />
           <ModulKorumasi />

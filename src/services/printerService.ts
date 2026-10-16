@@ -31,6 +31,18 @@ export interface DirectPrintPayload {
   copies?: number;
 }
 
+export interface YaziciUsageInfo {
+  hasVezne: boolean;
+  vezneCount: number;
+  vezneDetails: { vezneKod: string; vezneAd: string; roles: string[] }[];
+  hasKullanici: boolean;
+  kullaniciCount: number;
+  kullaniciNames: string[];
+  hasNumerator: boolean;
+  numeratorCount: number;
+  numeratorDetails: { tur: number; onek: string }[];
+}
+
 export class PrinterService {
   public static async getYazicilar(): Promise<YaziciItem[]> {
     const res = await apiClient.get<YaziciItem[]>("/yazici");
@@ -52,8 +64,14 @@ export class PrinterService {
     return res.data;
   }
 
-  public static async deleteYazici(id: number | string): Promise<boolean> {
-    const res = await apiClient.delete<{ id: string }>(`/yazici/${id}`);
+  public static async getYaziciUsage(id: number | string): Promise<YaziciUsageInfo> {
+    const res = await apiClient.get<YaziciUsageInfo>(`/yazici/usage/${id}`);
+    return res.data as YaziciUsageInfo;
+  }
+
+  public static async deleteYazici(id: number | string, options?: { force?: boolean }): Promise<boolean> {
+    const url = options?.force ? `/yazici/${id}?force=true` : `/yazici/${id}`;
+    const res = await apiClient.delete<{ id: string }>(url);
     return res.success;
   }
 

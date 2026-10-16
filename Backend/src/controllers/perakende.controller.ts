@@ -4,6 +4,7 @@ import { logger } from "../utils/logger.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
 import { bankaHesabiDenetle } from "../services/yetki/fisIcerikYetkisi.js";
+import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 
 export const PerakendeController = {
   getDbContext(req: Request) {
@@ -36,6 +37,7 @@ export const PerakendeController = {
         userId ? Number(userId) : undefined,
         dbContext
       );
+      notifyVezneBakiyeDegisti({ type: "perakende" });
       res.status(201).json({
         success: true,
         message: "Fatura ve satış başarıyla kaydedildi",

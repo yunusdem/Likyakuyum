@@ -50,12 +50,12 @@ const DestekZil: React.FC = () => {
     <>
       <Button
         variant="ghost"
-        className="position-relative btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-0"
+        className="position-relative btn-icon rounded-circle d-flex align-items-center justify-content-center text-dark p-0"
         onClick={() => setPanelAcik(true)}
         title={ozet?.kurulu === false ? "Destek" : sayi > 0 ? `${sayi} okunmamış` : "Destek ve bildirimler"}
         style={{ width: "32px", height: "32px" }}
       >
-        <IconBell size={18} />
+        <IconBell size={18} strokeWidth={2.1} />
         {sayi > 0 && (
           <span className="badge rounded-pill bg-danger destek-zil-rozet">
             {sayi > 99 ? "99+" : sayi}

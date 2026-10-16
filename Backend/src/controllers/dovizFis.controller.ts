@@ -6,6 +6,7 @@ import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisY
 import { bankaHesabiDenetle, dovizKurDenetle, komisyonDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
+import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 
 export class DovizFisController {
   private static getDbContext(req: Request) {
@@ -69,6 +70,7 @@ export class DovizFisController {
       cariKartId: (req.body.cariKartId && Number(req.body.cariKartId) > 0) ? Number(req.body.cariKartId) : null,
     };
     const saved = await DovizFisService.saveFis(payload, dbContext);
+    notifyVezneBakiyeDegisti({ type: "doviz" });
     return ApiResponse.ok(res, "Döviz fişi başarıyla kaydedildi.", saved);
   });
 
@@ -82,6 +84,7 @@ export class DovizFisController {
     const kullaniciId = u?.userId || u?.id || 1;
     await kayitErisimi(req, "doviz", id);
     await DovizFisService.deleteFis(id, dbContext, kullaniciId);
+    notifyVezneBakiyeDegisti({ type: "doviz_delete", id });
     return ApiResponse.ok(res, "Döviz fişi başarıyla silindi.", { fisId: id });
   });
 

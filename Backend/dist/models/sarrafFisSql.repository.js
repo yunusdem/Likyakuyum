@@ -2,6 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { ensureSarrafStoredProcedures } from "./sarrafProcsSql.js";
 export class SarrafFisSqlRepository {
     static async getUserVezneId(kullaniciId, dbContext) {
         try {
@@ -126,6 +127,7 @@ export class SarrafFisSqlRepository {
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
       `).catch(() => { });
+            await ensureSarrafStoredProcedures(pool).catch(() => { });
         }
         catch { }
     }

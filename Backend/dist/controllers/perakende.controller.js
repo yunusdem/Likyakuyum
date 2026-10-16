@@ -3,6 +3,7 @@ import { logger } from "../utils/logger.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
 import { bankaHesabiDenetle } from "../services/yetki/fisIcerikYetkisi.js";
+import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 export const PerakendeController = {
     getDbContext(req) {
         return {
@@ -27,6 +28,7 @@ export const PerakendeController = {
             const { nolar, yetki } = await fisKayitYetkisi(req, "fatura", req.body?.faturaId, req.body?.tarih);
             bankaHesabiDenetle(yetki, req.body?.odemeler);
             const result = await PerakendeService.createInvoice({ ...req.body, vezneId, ...(nolar && { faturaNo: nolar.FATURA_NO ?? "" }) }, userId ? Number(userId) : undefined, dbContext);
+            notifyVezneBakiyeDegisti({ type: "perakende" });
             res.status(201).json({
                 success: true,
                 message: "Fatura ve satış başarıyla kaydedildi",

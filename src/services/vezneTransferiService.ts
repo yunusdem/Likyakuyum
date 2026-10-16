@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { notifyVezneBakiyeChanged } from "./vezneSyncService";
 
 export interface VezneTransferiSatiriItem {
   satirNo: number;
@@ -98,6 +99,7 @@ export class VezneTransferiService {
 
   public static async saveTransfer(payload: SaveVezneTransferiPayload): Promise<VezneTransferiModel> {
     const res = await apiClient.post<VezneTransferiModel>("/vezne-transferi", payload);
+    notifyVezneBakiyeChanged({ type: "transfer" });
     return res.data;
   }
 
@@ -108,6 +110,7 @@ export class VezneTransferiService {
     const res = await apiClient.delete<{ id: number }>(`/vezne-transferi/${id}`, {
       body: JSON.stringify({ degisiklikTakipVar }),
     });
+    notifyVezneBakiyeChanged({ type: "transfer_delete", id });
     return res.success;
   }
 

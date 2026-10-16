@@ -2,6 +2,7 @@ import { VezneIzlemeService } from "../services/vezneIzleme.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
+import { vezneEvents, notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 export class VezneIzlemeController {
     static getDbContext(req) {
         return {
@@ -51,6 +52,7 @@ export class VezneIzlemeController {
             throw ApiError.badRequest("Vezne ID ve Para ID zorunludur.");
         }
         await VezneIzlemeService.updateBakiye(Number(vezneId), Number(paraId), Number(miktar) || 0, dbContext, Number(req.user?.id) || null);
+        notifyVezneBakiyeDegisti({ type: "bakiye_update", vezneId, paraId });
         return ApiResponse.ok(res, "Vezne bakiyesi başarıyla güncellendi.");
     });
     /**
@@ -69,6 +71,44 @@ export class VezneIzlemeController {
             miktar: Number(it.miktar) || 0,
         }));
         await VezneIzlemeService.updateAllBakiyeler(cleanItems, dbContext, Number(req.user?.id) || null);
+        notifyVezneBakiyeDegisti({ type: "toplu_bakiye" });
         return ApiResponse.ok(res, "Tablo bakiyeleri başarıyla kaydedildi.");
     });
+    /**
+     * GET /api/v1/vezne/izleme/stream
+     * Real-time Server-Sent Events (SSE) for instant vezne balance updates
+     */
+    static stream = (req, res) => {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
+        if (typeof res.flushHeaders === "function") {
+            res.flushHeaders();
+        }
+        res.write(`data: ${JSON.stringify({ type: "CONNECTED", time: Date.now() })}\n\n`);
+        const onBakiyeChanged = (data) => {
+            try {
+                res.write(`data: ${JSON.stringify(data || { type: "BAKIYE_CHANGED", time: Date.now() })}\n\n`);
+            }
+            catch { }
+        };
+        vezneEvents.on("bakiyeChanged", onBakiyeChanged);
+        const pingTimer = setInterval(() => {
+            try {
+                res.write(": ping\n\n");
+            }
+            catch {
+                clearInterval(pingTimer);
+            }
+        }, 15000);
+        req.on("close", () => {
+            clearInterval(pingTimer);
+            vezneEvents.off("bakiyeChanged", onBakiyeChanged);
+            try {
+                res.end();
+            }
+            catch { }
+        });
+    };
 }

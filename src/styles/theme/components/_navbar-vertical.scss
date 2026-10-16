@@ -13,7 +13,10 @@
   color: var(--#{$prefix}gray-600);
   box-shadow: none;
   z-index: 1034;
-  backdrop-filter: blur(6px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background-color: transparent;
   border-bottom: 1px dashed var(--#{$prefix}gray-300);
   width: calc(100% - 60px);

@@ -1,5 +1,6 @@
 import { apiClient } from "./apiClient";
 import { FastLookupCache } from "./fastLookupCache";
+import { notifyVezneBakiyeChanged } from "./vezneSyncService";
 
 export interface DovizFisSatiriModel {
   satirNo: number;
@@ -228,6 +229,7 @@ export class DovizFisService {
    */
   public static async saveFis(payload: SaveDovizFisPayload): Promise<DovizFisModel> {
     const res = await apiClient.post<DovizFisModel>("/doviz-fis/kaydet", payload);
+    notifyVezneBakiyeChanged({ type: "doviz" });
     return res.data;
   }
 
@@ -236,6 +238,7 @@ export class DovizFisService {
    */
   public static async deleteFis(id: number): Promise<boolean> {
     await apiClient.delete(`/doviz-fis/${id}`);
+    notifyVezneBakiyeChanged({ type: "doviz_delete", id });
     return true;
   }
 

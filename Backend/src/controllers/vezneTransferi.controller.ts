@@ -4,6 +4,7 @@ import { VezneTransferiService } from "../services/vezneTransferi.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
+import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 
 export class VezneTransferiController {
   private static getDbContext(req: Request) {
@@ -98,6 +99,7 @@ export class VezneTransferiController {
       kullaniciId,
     };
     const saved = await VezneTransferiService.saveTransfer(payload, dbContext);
+    notifyVezneBakiyeDegisti({ type: "transfer" });
     return ApiResponse.ok(res, "Vezne transferi başarıyla kaydedildi.", saved);
   });
 
@@ -113,6 +115,7 @@ export class VezneTransferiController {
 
     await kayitErisimi(req, "vezneTransferi", id);
     await VezneTransferiService.deleteTransfer(id, kullaniciId, degisiklikTakipVar, dbContext);
+    notifyVezneBakiyeDegisti({ type: "transfer_delete", id });
     return ApiResponse.ok(res, "Vezne transferi başarıyla silindi.", { id });
   });
 }

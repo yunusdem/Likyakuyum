@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { notifyVezneBakiyeChanged } from "./vezneSyncService";
 
 export interface VezneIzlemeSettings {
   tazelemeSuresi: number;
@@ -56,6 +57,7 @@ export class VezneIzlemeService {
       method: "POST",
       body: JSON.stringify({ vezneId, paraId, miktar }),
     });
+    notifyVezneBakiyeChanged({ type: "bakiye_update", vezneId, paraId });
   }
 
   public static async saveAllBakiyeler(
@@ -65,6 +67,7 @@ export class VezneIzlemeService {
       method: "POST",
       body: JSON.stringify({ items }),
     });
+    notifyVezneBakiyeChanged({ type: "toplu_bakiye" });
   }
 }
 

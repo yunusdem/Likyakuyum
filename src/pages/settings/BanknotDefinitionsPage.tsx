@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   Row,
@@ -19,10 +20,14 @@ import {
   IconAlertCircle,
   IconRefresh,
   IconCoins,
+  IconDeviceTv,
+  IconArrowRight,
+  IconTrash,
+  IconCheck,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal from "../../components/common/LookupModal";
-import BanknotService, { BanknotItem, BanknotCurrencyItem } from "../../services/banknotService";
+import BanknotService, { BanknotItem, BanknotCurrencyItem, CurrencyUsageInfo } from "../../services/banknotService";
 import { useAuth } from "../../context/AuthContext";
 import { getContrastColor } from "../../components/theme/UserThemeApplier";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
@@ -48,11 +53,32 @@ export const BanknotDefinitionsPage: React.FC = () => {
   const [loadingCurrencies, setLoadingCurrencies] = useState<boolean>(true);
   const [loadingBanknotlar, setLoadingBanknotlar] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
-  const [alertInfo, setAlertInfo] = useState<{ type: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
+  const navigate = useNavigate();
+  const [alertInfo, setAlertInfo] = useState<{
+    type: "success" | "danger" | "warning" | "info";
+    message: string;
+    actionText?: string;
+    actionLink?: string;
+    autoClose?: boolean;
+  } | null>(null);
+
+  // In-page delete confirmation state ("Vazgeç" veya "Yine de Sil")
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    targetId: number;
+    targetName: string;
+    targetKod: string;
+    loadingUsage?: boolean;
+    usage?: CurrencyUsageInfo;
+  } | null>(null);
 
   useEffect(() => {
     if (alertInfo) {
-      const timer = setTimeout(() => setAlertInfo(null), 3500);
+      // Do not auto-dismiss if autoClose is explicitly false ("bildirim biraz dursun")
+      if (alertInfo.autoClose === false) {
+        return;
+      }
+      const duration = alertInfo.type === "danger" ? 15000 : 4500;
+      const timer = setTimeout(() => setAlertInfo(null), duration);
       return () => clearTimeout(timer);
     }
   }, [alertInfo]);
@@ -435,24 +461,41 @@ export const BanknotDefinitionsPage: React.FC = () => {
       return;
     }
 
-    // 2. Sol ekrandaki para birimini silmek isteyince: EMİNMİSİNİZ diye sor ve veritabanından TAMAMEN SİL!
+    // 2. Sol ekrandaki para birimini silmek isteyince: Sayfada "Vazgeç" ve "Yine de Sil" onayını aç
     if (!selectedCurrencyId) return;
 
     const currencyToDelete = currencies.find((c) => c.id === selectedCurrencyId) || activeCurrency;
     const targetId = selectedCurrencyId;
     const targetName = currencyToDelete?.ad || currencyToDelete?.kod || `ID: ${targetId}`;
+    const targetKod = currencyToDelete?.kod || "";
 
-    if (
-      !window.confirm(
-        `'${targetName}' (${currencyToDelete?.kod || targetId}) para birimini ve tüm banknotlarını veritabanından tamamen silmek istediğinize emin misiniz?`
-      )
-    ) {
-      return;
-    }
+    setDeleteConfirm({
+      targetId,
+      targetName,
+      targetKod,
+      loadingUsage: true,
+    });
 
+    BanknotService.getCurrencyUsage(targetId)
+      .then((usage) => {
+        setDeleteConfirm((prev) => (prev && prev.targetId === targetId ? { ...prev, loadingUsage: false, usage } : prev));
+      })
+      .catch(() => {
+        setDeleteConfirm((prev) => (prev && prev.targetId === targetId ? { ...prev, loadingUsage: false } : prev));
+      });
+  };
+
+  // "Yine de Sil" butonuna basınca vezneden, bakiyelerden, panodan ve banknot/para tanımlarından tamamen siler
+  const handleExecuteDeleteCurrency = async (
+    targetId: number,
+    targetName: string,
+    usage?: CurrencyUsageInfo
+  ) => {
+    setDeleteConfirm(null);
     setSaving(true);
+    setAlertInfo(null);
     try {
-      await BanknotService.deleteCurrency(targetId);
+      await BanknotService.deleteCurrency(targetId, { force: true });
 
       // Anında sol listeden o isimli ve ID'li kaydı çıkar
       const remaining = currencies.filter((c) => c.id !== targetId);
@@ -470,14 +513,24 @@ export const BanknotDefinitionsPage: React.FC = () => {
       setSelectedBanknotIndex(null);
       setActiveTarget("currency");
 
+      const cleanedParts: string[] = [];
+      if (usage?.hasPano) cleanedParts.push("fiyat panolarından");
+      if (usage?.hasBakiye) cleanedParts.push("kasa/vezne bakiyelerinden");
+      if (usage?.hasVezne) cleanedParts.push("vezne tanımlarından");
+      cleanedParts.push("banknot tanımlarından ve sistemden");
+
       setAlertInfo({
         type: "success",
-        message: `'${targetName}' para birimi veritabanından başarıyla silindi.`,
+        message: `'${targetName}' para birimi; ${cleanedParts.join(", ")} başarıyla silindi ve temizlendi.`,
+        autoClose: true,
       });
     } catch (err: any) {
+      const rawMsg = err?.message || String(err);
+
       setAlertInfo({
         type: "danger",
-        message: "Para birimi silme hatası: " + (err?.message || err),
+        message: "Para birimi silme hatası: " + rawMsg,
+        autoClose: false,
       });
     } finally {
       setSaving(false);
@@ -532,16 +585,305 @@ export const BanknotDefinitionsPage: React.FC = () => {
         disabled={loadingCurrencies || loadingBanknotlar || saving}
       />
 
-      {/* Alert Notifications: Sağ altta beliren ve 3.5 sn sonra yok olan toast */}
+      {/* 2. Para Birimi / Fiyat Panosu Silme Onay Popup'ı (Kullanıcı talebi: Sayfa ortasında popup şeklinde bildirim, Vazgeç ve Yine de Sil butonları) */}
+      <Modal
+        show={!!deleteConfirm}
+        onHide={() => !saving && setDeleteConfirm(null)}
+        centered
+        backdrop="static"
+        keyboard={!saving}
+        size="lg"
+        className="delete-confirmation-modal"
+      >
+        <Modal.Header closeButton={!saving} className="bg-light py-2.5 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconAlertCircle size={20} className="text-danger" />
+            <span>Para Birimi Silme Bildirimi</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3.5">
+          <div className="d-flex align-items-center gap-2 mb-3 pb-2.5 border-bottom">
+            <div
+              className="p-2.5 rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center"
+              style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}
+            >
+              <IconTrash size={26} />
+            </div>
+            <div className="flex-grow-1">
+              <div className="d-flex align-items-center gap-2">
+                <span className="fw-bold fs-5 text-dark">{deleteConfirm?.targetName}</span>
+                <Badge bg="danger" className="text-uppercase px-2.5 py-1 fs-7">
+                  {deleteConfirm?.targetKod}
+                </Badge>
+              </div>
+              <div className="text-secondary small mt-0.5">
+                Bu para biriminin sistemdeki kullanım alanları ve silineceği yerler aşağıda listelenmiştir:
+              </div>
+            </div>
+          </div>
+
+          {deleteConfirm?.loadingUsage ? (
+            <div className="py-4 text-center text-muted small d-flex flex-column align-items-center gap-2">
+              <Spinner size="sm" animation="border" variant="danger" />
+              <span>Para biriminin veritabanındaki kullanım alanları taranıyor...</span>
+            </div>
+          ) : (
+            <div>
+              <div className="fw-bold text-dark small mb-2 d-flex align-items-center gap-1.5">
+                <span>Silme İşleminde Temizlenecek ve Kaldırılacak Yerler:</span>
+              </div>
+
+              <div className="d-flex flex-column gap-2 mb-3">
+                {/* 1. Fiyat Panoları */}
+                {deleteConfirm?.usage?.hasPano ? (
+                  <div className="p-2.5 rounded border border-danger-subtle bg-danger-subtle bg-opacity-25 d-flex align-items-start gap-2.5">
+                    <IconDeviceTv size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-danger small">
+                          1. Fiyat Panoları ({deleteConfirm.usage.panoCount} Adet Pano)
+                        </strong>
+                        <Badge bg="danger">Panolardan Kaldırılacak</Badge>
+                      </div>
+                      <div className="text-dark small mt-1">
+                        Bulunduğu Panolar:{" "}
+                        <strong>{deleteConfirm.usage.panoNames?.join(", ") || "Fiyat Panosu"}</strong>
+                      </div>
+                      <div className="text-muted small mt-0.5">
+                        Pano satırlarından bu döviz kuru tamamen çıkarılacaktır.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-light bg-light d-flex align-items-center gap-2 text-muted small">
+                    <IconCheck size={16} className="text-success" />
+                    <span><strong>1. Fiyat Panoları:</strong> Fiyat panosunda satırı bulunmuyor.</span>
+                  </div>
+                )}
+
+                {/* 2. Kasa / Vezne Bakiyeleri */}
+                {deleteConfirm?.usage?.hasBakiye ? (
+                  <div className="p-2.5 rounded border border-danger-subtle bg-danger-subtle bg-opacity-25 d-flex align-items-start gap-2.5">
+                    <IconCoins size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-danger small">
+                          2. Kasa ve Vezne Bakiyeleri (Toplam: {deleteConfirm.usage.totalBakiye.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {deleteConfirm.targetKod})
+                        </strong>
+                        <Badge bg="danger">Bakiyeler Sıfırlanıp Silinecek</Badge>
+                      </div>
+                      <div className="mt-1 small">
+                        <div className="text-dark mb-1">Mevcut Bakiyeli Vezneler:</div>
+                        <div className="d-flex flex-column gap-1 bg-white p-2 rounded border border-danger-subtle">
+                          {deleteConfirm.usage.bakiyeDetails?.map((b, idx) => (
+                            <div key={idx} className="d-flex justify-content-between align-items-center text-dark">
+                              <span><strong>{b.vezneKod}</strong> - {b.vezneAd}</span>
+                              <span className="badge bg-light text-danger border border-danger-subtle fw-bold">
+                                {b.miktar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {deleteConfirm.targetKod}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-muted small mt-1">
+                        Bu kasalardaki {deleteConfirm.targetKod} bakiyeleri tamamen temizlenecektir.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-light bg-light d-flex align-items-center gap-2 text-muted small">
+                    <IconCheck size={16} className="text-success" />
+                    <span><strong>2. Kasa Bakiyeleri:</strong> Kasalarda bu para birimine ait bakiye bulunmuyor.</span>
+                  </div>
+                )}
+
+                {/* 3. Vezne Tanımları (Varsayılan Para Birimi) */}
+                {deleteConfirm?.usage?.hasVezne ? (
+                  <div className="p-2.5 rounded border border-warning-subtle bg-warning-subtle bg-opacity-25 d-flex align-items-start gap-2.5">
+                    <IconCash size={20} className="text-warning flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-warning-emphasis small">
+                          3. Vezne Tanımları ({deleteConfirm.usage.vezneNames?.length || 0} Adet Vezne)
+                        </strong>
+                        <Badge bg="warning" text="dark">TL'ye Çevrilecek</Badge>
+                      </div>
+                      <div className="text-dark small mt-1">
+                        Varsayılan Para Birimi Seçili Olan Vezneler:{" "}
+                        <strong>{deleteConfirm.usage.vezneNames?.join(", ")}</strong>
+                      </div>
+                      <div className="text-muted small mt-0.5">
+                        Bu veznelerin varsayılan para birimi Türk Lirası (TL / ID: 1) olarak güncellenecektir.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-light bg-light d-flex align-items-center gap-2 text-muted small">
+                    <IconCheck size={16} className="text-success" />
+                    <span><strong>3. Vezne Tanımları:</strong> Hiçbir veznede varsayılan para birimi olarak seçili değil.</span>
+                  </div>
+                )}
+
+                {/* 4. Banknot Kupür Tanımları */}
+                <div className="p-2.5 rounded border border-secondary-subtle bg-light d-flex align-items-start gap-2.5">
+                  <IconCash size={20} className="text-secondary flex-shrink-0 mt-0.5" />
+                  <div className="flex-grow-1">
+                    <div className="d-flex align-items-center justify-content-between">
+                      <strong className="text-dark small">4. Banknot Kupür Tanımları</strong>
+                      <Badge bg="secondary">Silinecek</Badge>
+                    </div>
+                    <div className="text-muted small mt-0.5">
+                      {deleteConfirm?.usage && deleteConfirm.usage.banknotCount > 0
+                        ? `Bu para birimine ait ${deleteConfirm.usage.banknotCount} adet banknot kupür kaydı sistemden silinecektir.`
+                        : "Tanımlı banknot kupür kayıtları sistemden silinecektir."}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Döviz Kurları */}
+                {deleteConfirm?.usage && deleteConfirm.usage.kurCount > 0 && (
+                  <div className="p-2.5 rounded border border-secondary-subtle bg-light d-flex align-items-start gap-2.5">
+                    <IconCoins size={20} className="text-secondary flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-dark small">5. Döviz Kurları ({deleteConfirm.usage.kurCount} Kayıt)</strong>
+                        <Badge bg="secondary">Silinecek</Badge>
+                      </div>
+                      <div className="text-muted small mt-0.5">
+                        Tüm geçmiş ve güncel kur listesi satırları silinecektir.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Fiş ve Cari Bağlantıları */}
+                {deleteConfirm?.usage?.hasFis && (
+                  <div className="p-2.5 rounded border border-danger-subtle bg-danger-subtle bg-opacity-25 d-flex align-items-start gap-2.5">
+                    <IconAlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-danger small">6. Fiş ve Cari Kayıtları ({deleteConfirm.usage.fisCount} Fiş)</strong>
+                        <Badge bg="danger">Bağlantılar Temizlenecek</Badge>
+                      </div>
+                      <div className="text-muted small mt-0.5">
+                        Geçmiş fiş hareketleri ve cari kart favori para birimi bağlantıları kaldırılacaktır.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 7. Para Birimi Tanım Kartı */}
+                <div className="p-2.5 rounded border border-danger-subtle bg-white d-flex align-items-start gap-2.5">
+                  <IconTrash size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                  <div className="flex-grow-1">
+                    <div className="d-flex align-items-center justify-content-between">
+                      <strong className="text-danger small">7. Para Birimi Tanım Kartı</strong>
+                      <Badge bg="danger">Tamamen Silinecek</Badge>
+                    </div>
+                    <div className="text-muted small mt-0.5">
+                      <strong>{deleteConfirm?.targetName} ({deleteConfirm?.targetKod})</strong> para birimi sistemden tamamen kaldırılacaktır.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="alert alert-warning py-2.5 px-3 small mb-0 border-0 rounded-2 text-dark d-flex align-items-start gap-2 shadow-xs"
+                style={{ backgroundColor: "#fef3c7" }}
+              >
+                <IconAlertCircle size={20} className="text-warning flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong>"Yine de Sil"</strong> butonuna bastığınızda, bu para birimi yukarıda listelenen tüm yerlerden (fiyat panoları, kasa bakiyeleri, vezne tanımları ve banknot kayıtları) otomatik olarak silinecektir.
+                </span>
+              </div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="bg-light py-2 px-3 border-top d-flex justify-content-end gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="px-3"
+            onClick={() => setDeleteConfirm(null)}
+            disabled={saving}
+          >
+            Vazgeç
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            className="px-3 fw-bold d-flex align-items-center gap-1.5 shadow-xs"
+            onClick={() =>
+              deleteConfirm &&
+              handleExecuteDeleteCurrency(
+                deleteConfirm.targetId,
+                deleteConfirm.targetName,
+                deleteConfirm.usage
+              )
+            }
+            disabled={saving}
+          >
+            {saving ? (
+              <>
+                <Spinner size="sm" animation="border" />
+                <span>Siliniyor...</span>
+              </>
+            ) : (
+              <>
+                <IconTrash size={16} />
+                <span>Yine de Sil</span>
+              </>
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Alert Notifications: Sağ altta beliren ve yönlendirme butonlu toast */}
       {alertInfo && (
-        <div className="erp-toast-container">
+        <div
+          className="erp-toast-container"
+          data-no-autoclose={alertInfo.autoClose === false ? "true" : undefined}
+          style={{ zIndex: 1060 }}
+        >
           <Alert
             variant={alertInfo.type}
             dismissible
             onClose={() => setAlertInfo(null)}
-            className="erp-toast-item py-2 px-3 mb-0 border-0 shadow small fw-medium"
+            className={`erp-toast-item py-2 px-3 mb-0 border shadow small fw-medium d-flex align-items-center justify-content-between gap-3 ${
+              alertInfo.autoClose === false ? "erp-sticky-notification" : ""
+            }`}
+            data-no-autoclose={alertInfo.autoClose === false ? "true" : undefined}
+            style={{ maxWidth: "560px" }}
           >
-            {alertInfo.message}
+            <div className="d-flex align-items-center gap-2">
+              {alertInfo.type === "danger" && <IconAlertCircle size={18} className="text-danger flex-shrink-0" />}
+              <span>{alertInfo.message}</span>
+            </div>
+            <div className="d-flex align-items-center gap-1.5">
+              {alertInfo.actionLink && alertInfo.actionText && (
+                <Button
+                  variant={alertInfo.type === "danger" ? "danger" : "primary"}
+                  size="sm"
+                  className="py-1 px-2.5 text-nowrap fw-semibold d-flex align-items-center gap-1 shadow-xs"
+                  style={{ fontSize: "11.5px", borderRadius: "4px" }}
+                  onClick={() => navigate(alertInfo.actionLink!)}
+                >
+                  <span>{alertInfo.actionText}</span>
+                  <IconArrowRight size={13} />
+                </Button>
+              )}
+              {alertInfo.autoClose === false && (
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  className="py-0.5 px-2 text-nowrap"
+                  style={{ fontSize: "11.5px" }}
+                  onClick={() => setAlertInfo(null)}
+                >
+                  Kapat
+                </Button>
+              )}
+            </div>
           </Alert>
         </div>
       )}
@@ -647,6 +989,26 @@ export const BanknotDefinitionsPage: React.FC = () => {
               {/* Left Panel: Currency List Box */}
               <div style={{ width: "210px", minWidth: "180px" }}>
                 <div className="d-flex flex-column h-100 border rounded-2 bg-white shadow-2xs overflow-hidden">
+                  {/* Currency Header & Quick Pano Link */}
+                  <div
+                    className="d-flex align-items-center justify-content-between px-2 py-1 border-bottom"
+                    style={{ backgroundColor: "#f8fafc" }}
+                  >
+                    <span className="small fw-bold text-secondary" style={{ fontSize: "11px" }}>
+                      Para Birimleri ({currencies.length})
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm py-0 px-1 d-flex align-items-center gap-1"
+                      style={{ fontSize: "10.5px" }}
+                      title="Fiyat Panosu Tanımına Git"
+                      onClick={() => navigate("/kur/pano-tanimi")}
+                    >
+                      <IconDeviceTv size={12} />
+                      <span>Pano</span>
+                    </button>
+                  </div>
+
                   {/* List Box */}
                   <div
                     className="list-group list-group-flush overflow-y-auto flex-grow-1"

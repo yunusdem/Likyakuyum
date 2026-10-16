@@ -83,8 +83,21 @@ export class YaziciService {
     return updated;
   }
 
+  public static async getYaziciUsage(
+    id: number | string,
+    dbContext?: { dbServer?: string; dbName?: string }
+  ) {
+    const existing = await YaziciSqlRepository.findById(id, dbContext);
+    if (!existing) {
+      throw ApiError.notFound(`Yazıcı (ID: ${id}) bulunamadı.`);
+    }
+
+    return YaziciSqlRepository.getYaziciUsage(id, dbContext);
+  }
+
   public static async deleteYazici(
     id: number | string,
+    options?: { force?: boolean },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<boolean> {
     const existing = await YaziciSqlRepository.findById(id, dbContext);
@@ -92,7 +105,7 @@ export class YaziciService {
       throw ApiError.notFound(`Silinecek yazıcı (ID: ${id}) bulunamadı.`);
     }
 
-    return YaziciSqlRepository.delete(id, dbContext);
+    return YaziciSqlRepository.delete(id, options, dbContext);
   }
 
   /**

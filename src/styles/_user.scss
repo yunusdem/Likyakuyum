@@ -397,7 +397,11 @@ html, body {
   border-top: 0 !important;
   border-bottom: 1px dashed var(--#{$prefix}gray-300) !important;
   background-color: var(--#{$prefix}body-bg, #ffffff) !important;
-  backdrop-filter: blur(8px) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: optimizeLegibility !important;
 }
 
 main.custom-container,
@@ -429,7 +433,8 @@ main.custom-container,
 // Desktop Large Screens (>= 1200px)
 // ----------------------------------------------------
 @media (min-width: 1200px) {
-  html.expanded, html:not(.collapsed) {
+  html.expanded:not([data-sidebar-style="topbar"]):not([data-sidebar-style="megamenu"]):not([data-sidebar-style="drawer"]),
+  html:not(.collapsed):not([data-sidebar-style="topbar"]):not([data-sidebar-style="megamenu"]):not([data-sidebar-style="drawer"]) {
     #miniSidebar {
       width: 270px !important;
       transform: translateX(0) !important;
@@ -454,6 +459,36 @@ main.custom-container,
       width: calc(100% - 270px) !important;
       transition: margin-left 0.25s ease-in-out, width 0.25s ease-in-out !important;
     }
+  }
+
+  /* Üst Header Modlarında (topbar / megamenu) masaüstünde sidebar ve backdrop ASLA gösterilmez, sayfa sola kaymaz */
+  html[data-sidebar-style="topbar"] #miniSidebar,
+  html[data-sidebar-style="megamenu"] #miniSidebar,
+  html[data-sidebar-style="drawer"] #miniSidebar,
+  html.expanded[data-sidebar-style="topbar"] #miniSidebar,
+  html.expanded[data-sidebar-style="megamenu"] #miniSidebar,
+  html.expanded[data-sidebar-style="drawer"] #miniSidebar {
+    display: none !important;
+    width: 0 !important;
+    transform: translateX(-100%) !important;
+  }
+
+  html[data-sidebar-style="topbar"] #content,
+  html[data-sidebar-style="megamenu"] #content,
+  html[data-sidebar-style="drawer"] #content,
+  html.expanded[data-sidebar-style="topbar"] #content,
+  html.expanded[data-sidebar-style="megamenu"] #content,
+  html.expanded[data-sidebar-style="drawer"] #content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+
+  html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
+  html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
+  html[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+    display: none !important;
+    visibility: hidden !important;
   }
 
   html.collapsed {
@@ -539,9 +574,22 @@ main.custom-container,
     right: 0 !important;
     margin-left: 0 !important;
   }
+
+  // Küçük ekranlarda (< 1200px) üst menü seçili olsa bile sol menü oku kesinlikle görünür
+  .sidebar-toggle-btn,
+  html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
+  html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
+  html[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    width: 32px !important;
+    height: 32px !important;
+  }
 }
 
-// Mobile/Tablet Backdrop Overlay
+// Mobile/Tablet Backdrop Overlay - Siyah karartma olmadan sadece hafif blur
 .sidebar-backdrop {
   position: fixed;
   top: 0;
@@ -550,8 +598,9 @@ main.custom-container,
   bottom: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(3px);
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
   z-index: 1050;
   animation: fadeIn 0.2s ease-in-out;
 }
