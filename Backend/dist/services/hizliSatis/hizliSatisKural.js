@@ -9,6 +9,16 @@ export const MODUL_ADI = {
     sarraf: "Sarraf",
     doviz: "Döviz",
 };
+/**
+ * Her modülün hızlı satışının lisans (modül kataloğu) kodu: sol menüdeki maddesi (src/routes/DashboardRoute.tsx,
+ * "<ana menü>:hizli-satis/<modül>"). Firma bazında ayrı açılıp kapanır; sunucu modül uçlarında bu kodu denetler.
+ */
+export const HIZLI_SATIS_MODUL_KODU = {
+    perakende: "perakende:hizli-satis/perakende",
+    ticari: "ticari:hizli-satis/ticari",
+    sarraf: "vezne:hizli-satis/sarraf",
+    doviz: "vezne:hizli-satis/doviz",
+};
 /** Buton ürün türü: 1 Ürün Tanımı / para birimi (TODVZ_PARA), 2 stok kartı, 3 serbest ürün */
 export const URUN_TURU = { PARA: 1, STOK: 2, SERBEST: 3 };
 /** Hangi modülde hangi tür buton konabilir (H7, H9) */

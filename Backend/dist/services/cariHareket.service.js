@@ -60,8 +60,8 @@ export class CariHareketService {
         }
         return CariHareketSqlRepository.delete(id, dbContext);
     }
-    static async getNavigation(currentId, dbContext) {
-        return CariHareketSqlRepository.getNavigationIds(currentId, dbContext);
+    static async getNavigation(currentId, dbContext, baslangic) {
+        return CariHareketSqlRepository.getNavigationIds(currentId, dbContext, baslangic);
     }
     static async getCariBakiye(cariKartId, dbContext) {
         if (!cariKartId) {

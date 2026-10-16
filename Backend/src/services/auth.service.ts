@@ -254,6 +254,7 @@ export class AuthService {
         enableSellHeaderTheme: false,
         sellHeaderBgColor: "#e2e8f0",
         sellHeaderTextColor: "#000000",
+        sidebarStyle: "classic",
       },
     });
 

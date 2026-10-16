@@ -1050,16 +1050,21 @@ export class CariHareketSqlRepository {
             throw ApiError.badRequest("Bu kayıt bir Stok Giriş Fişi'nden oluştu; Ticari İşlemler › Stok Giriş Fişi'nden düzeltin ya da silin.");
         }
     }
-    static async getNavigationIds(currentId, dbContext) {
+    static async getNavigationIds(currentId, dbContext, baslangic) {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             await CariHareketSqlRepository.ensureTablesExist(pool);
+            // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
             const query = `
         SELECT [CARI_HAREKET_ID]
         FROM [dbo].[TODVZ_CARI_HAREKET]
+        ${baslangic ? "WHERE [TARIH] >= CAST(@BAS AS date)" : ""}
         ORDER BY [CARI_HAREKET_ID] ASC;
       `;
-            const res = await pool.request().query(query);
+            const navReq = pool.request();
+            if (baslangic)
+                navReq.input("BAS", sql.VarChar(10), baslangic);
+            const res = await navReq.query(query);
             const ids = (res.recordset || []).map((r) => r.CARI_HAREKET_ID);
             if (ids.length === 0) {
                 return { firstId: null, prevId: null, nextId: null, lastId: null, currentIndex: -1, total: 0 };

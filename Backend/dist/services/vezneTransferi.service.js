@@ -12,8 +12,8 @@ export class VezneTransferiService {
     static async deleteTransfer(id, kullaniciId = 1, degisiklikTakipVar = false, dbContext) {
         return VezneTransferiSqlRepository.deleteViaProcedure(id, kullaniciId, degisiklikTakipVar, dbContext);
     }
-    static async getNavigation(currentId, dbContext) {
-        return VezneTransferiSqlRepository.getNavigation(currentId, dbContext);
+    static async getNavigation(currentId, dbContext, baslangic) {
+        return VezneTransferiSqlRepository.getNavigation(currentId, dbContext, baslangic);
     }
     static async getNextRefNo(dbContext) {
         return VezneTransferiSqlRepository.getNextRefNo(dbContext);

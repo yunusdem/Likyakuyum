@@ -2365,7 +2365,7 @@ export class DovizFisSqlRepository {
     static async findAll(filter, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await DovizFisSqlRepository.ensureTablesAndProceduresExist(pool);
-        const limit = filter?.limit || 100;
+        const limit = Math.max(1, Math.min(5000, Math.trunc(Number(filter?.limit)) || 100));
         const req = pool.request();
         let query = `
       SELECT TOP (${limit})
@@ -2382,7 +2382,8 @@ export class DovizFisSqlRepository {
         F.IPTAL AS iptal,
         V.KOD AS vezneKod,
         V.AD AS vezneAd,
-        (SELECT COUNT(*) FROM [dbo].[TODVZ_FIS_SATIRI] S WHERE S.FIS_ID = F.FIS_ID) AS satirSayisi
+        (SELECT COUNT(*) FROM [dbo].[TODVZ_FIS_SATIRI] S WHERE S.FIS_ID = F.FIS_ID) AS satirSayisi,
+        COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) AS siralama
       FROM [dbo].[TODVZ_FIS] F
       LEFT JOIN [dbo].[TODVZ_VEZNE] V ON V.VEZNE_ID = F.VEZNE_ID
       WHERE 1 = 1
@@ -2400,7 +2401,15 @@ export class DovizFisSqlRepository {
             query += ` AND (F.SERI_NO LIKE @SEARCH OR F.BELGE_NO LIKE @SEARCH OR F.UNVAN LIKE @SEARCH OR F.VERGI_KIMLIK_NO LIKE @SEARCH)`;
             req.input("SEARCH", sql.VarChar(100), term);
         }
-        query += ` ORDER BY COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) ASC, F.FIS_ID ASC`;
+        // Kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+        if (filter?.baslangic) {
+            query += ` AND F.TARIH >= CAST(@BAS AS date)`;
+            req.input("BAS", sql.VarChar(10), filter.baslangic);
+        }
+        // En yeni N fiş, ekrandaki ileri/geri sırası için eskiden yeniye (önceden TOP + ASC en ESKİ N fişi getiriyordu;
+        // çok fişli firmada son fişler düzeltme listesinde görünmüyordu)
+        query += ` ORDER BY COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) DESC, F.FIS_ID DESC`;
+        query = `SELECT * FROM (${query}) X ORDER BY X.siralama ASC, X.fisId ASC`;
         const result = await req.query(query);
         return result.recordset || [];
     }

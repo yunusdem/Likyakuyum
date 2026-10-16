@@ -1,25 +1,55 @@
 import { env } from "../config/env.config.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { API_MODULLERI, ModulService } from "../services/admin/modul.service.js";
+import { KurulumLisansService } from "../services/kurulum/kurulumLisans.service.js";
+import { raporModulKodlari } from "../services/rapor/raporMenu.js";
 import { ApiError } from "../utils/ApiError.js";
 /**
+ * Oturumun firmaya açık modülleri; null = kısıt yok. Kullanıcı uygulaması menüyü aynı listeyle süzer (user.merkez.moduller):
+ * kurulumda (exe) yüklü lisanstaki liste, bulutta merkezdeki firma ayarı. Merkez girişi kapalıyken (MERKEZ_GIRIS) ve
+ * modül ayarı hiç yapılmamış firmada kısıt yoktur.
+ */
+export const oturumModulleri = async (req) => {
+    if (env.KURULUM_MODU)
+        return (await KurulumLisansService.durum()).moduller ?? null;
+    if (env.MERKEZ_GIRIS !== "zorunlu")
+        return null;
+    const { dbServer, dbName } = req.user || {};
+    if (!dbServer || !dbName)
+        return null;
+    return ModulService.oturumModulleri(dbServer, dbName);
+};
+/** Verilen kodlardan en az biri oturumun firmasına açık mı */
+export const modulAcikMi = async (req, kodlar) => {
+    if (kodlar.length === 0)
+        return true;
+    const acik = await oturumModulleri(req);
+    return acik === null || kodlar.some((k) => acik.includes(k));
+};
+export const modulKapaliHatasi = (mesaj = "Bu modül hesabınıza açık değil.") => new ApiError(HttpStatus.FORBIDDEN, mesaj, { kod: "MODUL_KAPALI" });
+/**
+ * /rapor/:kod uçlarında raporun kendi menü maddesi lisansta açık mı (services/rapor/raporMenu.ts). /rapor öneki geniş
+ * bir listeyle açıldığı için ("vezne" açık her firma) lisansta kapalı bir raporun verisi de alınabiliyordu.
+ */
+export const raporLisansKapisi = (req, _res, next) => {
+    const kodlar = raporModulKodlari(String(req.params.kod || ""));
+    if (!kodlar)
+        return next();
+    modulAcikMi(req, kodlar)
+        .then((acik) => next(acik ? undefined : modulKapaliHatasi("Bu rapor hesabınıza açık değil.")))
+        .catch(next);
+};
+/**
  * Firma bazlı modül kısıtı (docs/ADMIN_PANEL_YOL_HARITASI.md, Faz 4). authenticate'ten SONRA çalışır.
- * MERKEZ_GIRIS kapalıyken ve modül ayarı hiç yapılmamış firmada hiçbir şeyi kısıtlamaz.
  * apiOnek, API_MODULLERI'ndeki anahtardır: o listedeki modüllerden biri firmaya açıksa istek geçer.
  */
 export const modulKapisi = (apiOnek) => {
     const kodlar = API_MODULLERI[apiOnek] || [];
     return async (req, res, next) => {
         try {
-            if (env.MERKEZ_GIRIS !== "zorunlu" || kodlar.length === 0)
+            if (await modulAcikMi(req, kodlar))
                 return next();
-            const { dbServer, dbName } = req.user || {};
-            if (!dbServer || !dbName)
-                return next();
-            const acik = await ModulService.oturumModulleri(dbServer, dbName);
-            if (acik === null || kodlar.some((k) => acik.includes(k)))
-                return next();
-            next(new ApiError(HttpStatus.FORBIDDEN, "Bu modül hesabınıza açık değil.", { kod: "MODUL_KAPALI" }));
+            next(modulKapaliHatasi());
         }
         catch (err) {
             next(err);

@@ -517,14 +517,17 @@ export class HizliSatisSqlRepository {
         catch { /* bozuk içerik: null döner */ }
         return { bekleyenId: Number(x.BEKLEYEN_ID), modul: temiz(x.MODUL), tip: Number(x.TIP) === 0 ? 0 : 1, icerik };
     }
-    static async bekleyenSil(id, f, ctx) {
+    /** modulDenetle: sepetin modülü için ek denetim (denetleyici lisansı burada sorar; liste ucuyla aynı kural) */
+    static async bekleyenSil(id, f, ctx, modulDenetle) {
         const pool = await this.havuz(ctx);
-        const r = await pool.request().input("ID", sql.Int, id).query(`SELECT VEZNE_ID, KULLANICI_ID FROM dbo.TODVZ_HIZLI_SATIS_BEKLEYEN WHERE BEKLEYEN_ID = @ID`);
+        const r = await pool.request().input("ID", sql.Int, id).query(`SELECT MODUL, VEZNE_ID, KULLANICI_ID FROM dbo.TODVZ_HIZLI_SATIS_BEKLEYEN WHERE BEKLEYEN_ID = @ID`);
         const x = r.recordset[0];
         if (!x)
             return;
         if (!bekleyenErisimi(x, f))
             throw ApiError.forbidden("Bu bekleyen sepet başka bir vezneye ait.");
+        if (modulDenetle)
+            await modulDenetle(temiz(x.MODUL));
         await pool.request().input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_HIZLI_SATIS_BEKLEYEN WHERE BEKLEYEN_ID = @ID`);
     }
     // ───────────── Fiş işareti (H20) ─────────────

@@ -550,6 +550,11 @@ export class KasaHesapSqlRepository {
             query += ` AND (HH.ACIKLAMA LIKE @SEARCH OR H.AD LIKE @SEARCH OR H.KOD LIKE @SEARCH OR V.AD LIKE @SEARCH)`;
             req.input("SEARCH", sql.VarChar(100), `%${filter.search.trim()}%`);
         }
+        // Kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+        if (filter?.baslangic) {
+            query += ` AND HH.TARIH >= CAST(@BAS AS date)`;
+            req.input("BAS", sql.VarChar(10), filter.baslangic);
+        }
         query += ` ORDER BY HH.TARIH DESC, HH.HESAP_HAREKETI_ID DESC`;
         const res = await req.query(query);
         return (res.recordset || []).map((r) => ({

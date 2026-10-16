@@ -1,6 +1,7 @@
 import { BankaService } from "../services/banka.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
 export class BankaController {
     static getDbContext(req) {
         return {
@@ -60,7 +61,8 @@ export class BankaController {
             cariKartId: cariKartId ? Number(cariKartId) : undefined,
             vezneId: vezneId ? Number(vezneId) : undefined,
             islemTipi: islemTipi !== undefined && islemTipi !== "" ? Number(islemTipi) : undefined,
-            baslangicTarihi: baslangicTarihi ? String(baslangicTarihi) : undefined,
+            // Kullanıcının işlem gösterme sınırı istekteki başlangıçtan sonraysa o geçerli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+            baslangicTarihi: sonrakiGun(baslangicTarihi ? String(baslangicTarihi) : null, await gunSiniri(req)) ?? undefined,
             bitisTarihi: bitisTarihi ? String(bitisTarihi) : undefined,
             search: search ? String(search) : undefined,
             limit: limit ? Number(limit) : 200,
@@ -71,6 +73,7 @@ export class BankaController {
     static getHareketById = asyncHandler(async (req, res) => {
         const dbContext = BankaController.getDbContext(req);
         const id = Number(req.params.id);
+        await kayitErisimi(req, "bankaHareket", id);
         const data = await BankaService.getHareketById(id, dbContext);
         return ApiResponse.ok(res, "Banka hareketi getirildi.", data);
     });
@@ -78,7 +81,9 @@ export class BankaController {
         const dbContext = BankaController.getDbContext(req);
         const userObj = req.user;
         const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
-        const data = await BankaService.saveHareket(req.body, kullaniciId, dbContext);
+        // Gün sınırı, tarih ve belge numarası yetkisi
+        const { nolar } = await fisKayitYetkisi(req, "bankaHareket", req.body?.bankaHareketId, req.body?.tarih);
+        const data = await BankaService.saveHareket({ ...req.body, ...(nolar && { belgeNo: nolar.BELGE_NO ?? null }) }, kullaniciId, dbContext);
         return ApiResponse.ok(res, "Banka hareketi başarıyla kaydedildi.", data);
     });
     static deleteHareket = asyncHandler(async (req, res) => {
@@ -86,6 +91,7 @@ export class BankaController {
         const id = Number(req.params.id);
         const userObj = req.user;
         const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
+        await kayitErisimi(req, "bankaHareket", id);
         await BankaService.deleteHareket(id, kullaniciId, dbContext);
         return ApiResponse.ok(res, "Banka hareketi silindi.");
     });
@@ -95,6 +101,7 @@ export class BankaController {
         const { iptal } = req.body;
         const userObj = req.user;
         const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
+        await kayitErisimi(req, "bankaHareket", id);
         await BankaService.toggleIptalHareket(id, Boolean(iptal), kullaniciId, dbContext);
         return ApiResponse.ok(res, `Banka hareketi ${iptal ? "iptal edildi" : "aktif hale getirildi"}.`);
     });

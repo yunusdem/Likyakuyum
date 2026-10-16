@@ -32,6 +32,24 @@ const VARSAYILAN_ILETISIM = {
     eposta: "",
     metin: "Programı kullanmaya devam etmek için lütfen bizimle iletişime geçin.",
 };
+/** Durum kopyalarındaki izinli kullanıcı sınırı (en büyüğü); hiçbirinde yoksa undefined */
+const izinliSinir = (kopyalar) => {
+    const d = kopyalar.map((x) => x?.izinliKullaniciId).filter((x) => Number.isInteger(x));
+    return d.length ? Math.max(...d) : undefined;
+};
+/** En yeni saat onayı */
+const saatOnayiSec = (kopyalar) => kopyalar
+    .map((x) => x.saatOnayi)
+    .filter((x) => !!x && Number.isFinite(x.zaman))
+    .sort((a, b) => b.zaman - a.zaman)[0];
+/** Çözülebilen kopyaların birleşimi: en ileri zaman, en büyük seri, ilk kilit, en büyük sınır, en yeni saat onayı */
+const durumBirlestir = (kopyalar) => ({
+    sonGorulen: Math.max(...kopyalar.map((x) => x.sonGorulen)),
+    seri: Math.max(...kopyalar.map((x) => x.seri)),
+    kilit: kopyalar.map((x) => x.kilit).find((k) => !!k) ?? null,
+    izinliKullaniciId: izinliSinir(kopyalar),
+    saatOnayi: saatOnayiSec(kopyalar),
+});
 // ------------------------------------------------------------------ test kancaları ---
 let saat = () => Date.now();
 let makine = makineKimligi;
@@ -82,7 +100,15 @@ const dosyaOku = (ad) => {
 const dosyaYaz = (ad, icerik) => {
     fs.mkdirSync(veriYolu(""), { recursive: true });
     const gecici = veriYolu(`${ad}.yeni`);
-    fs.writeFileSync(gecici, icerik, "utf8");
+    // İçerik diske yazılmadan ad değiştirilmez: elektrik kesintisinde boş / yarım dosya kalıp kilit koyuyordu (E8)
+    const fd = fs.openSync(gecici, "w");
+    try {
+        fs.writeSync(fd, icerik, null, "utf8");
+        fs.fsyncSync(fd);
+    }
+    finally {
+        fs.closeSync(fd);
+    }
     fs.renameSync(gecici, veriYolu(ad));
 };
 const tabloHazirla = async (pool) => {
@@ -108,6 +134,14 @@ const dbYaz = async (anahtar, deger) => {
       MERGE dbo.LKY_DURUM WITH (HOLDLOCK) AS h USING (SELECT @a AS ANAHTAR) AS k ON h.ANAHTAR = k.ANAHTAR
       WHEN MATCHED THEN UPDATE SET DEGER = @d, TARIH = GETDATE()
       WHEN NOT MATCHED THEN INSERT (ANAHTAR, DEGER) VALUES (@a, @d);`);
+};
+/** Dosya ve veritabanındaki durum kopyalarından çözülebilenler */
+const durumKopyalari = async () => {
+    const db = await dbOku();
+    return [dosyaOku("durum.lky"), db.durum]
+        .filter((x) => !!x && !!x.trim())
+        .map(durumCoz)
+        .filter((x) => !!x);
 };
 const durumuKaydet = async (d) => {
     const metin = durumSifrele(d);
@@ -138,6 +172,7 @@ const enSonKayitZamani = async () => {
 // ------------------------------------------------------------------ servis ---
 let onbellek = null;
 const kalanGunHesapla = (bitis) => gunFarki(bugunTr(new Date(saat())), bitis);
+let kayitSirasi = Promise.resolve();
 export class KurulumLisansService {
     static onbellegiTemizle() {
         onbellek = null;
@@ -214,30 +249,32 @@ export class KurulumLisansService {
             return kilit("FIRMA_UYUSMUYOR", bilgi);
         if (!mk || lisans.makine !== mk)
             return kilit("MAKINE_UYUSMUYOR", bilgi);
-        // Durum: iki kopya birleştirilir; biri bile değiştirilmişse kilit
+        // Durum: iki kopya birleştirilir. Hiçbiri çözülemiyorsa kilit; çözülemeyen bir kopya (ör. elektrik kesintisinde yarım
+        // kalmış dosya) sağlam kopya varsa yok sayılır ve yeniden yazılır — dosyanın silinmesi de kilit sayılmıyordu (E8)
         const kopyalar = [dosyaOku("durum.lky"), db.durum].filter((x) => !!x && !!x.trim());
-        const cozulen = kopyalar.map(durumCoz);
-        if (kopyalar.length === 0 || cozulen.some((d) => d === null)) {
+        const gecerli = kopyalar.map(durumCoz).filter((x) => !!x);
+        if (gecerli.length === 0) {
             const d = { sonGorulen: simdi, seri: lisans.seri, kilit: { neden: "DURUM_BOZUK", zaman: simdi, seri: lisans.seri } };
             await durumuKaydet(d).catch(() => undefined);
             return kilit("DURUM_BOZUK", bilgi);
         }
-        const d = {
-            sonGorulen: Math.max(...cozulen.map((x) => x.sonGorulen)),
-            seri: Math.max(...cozulen.map((x) => x.seri)),
-            kilit: cozulen.map((x) => x.kilit).find((k) => !!k) ?? null,
-        };
+        const bozukKopya = gecerli.length < kopyalar.length;
+        if (bozukKopya)
+            logger.warn("[LISANS] Durum kopyalarından biri okunamadı; sağlam kopyadan yeniden yazılıyor.");
+        const d = durumBirlestir(gecerli);
         if (d.kilit)
             return kilit(d.kilit.neden, bilgi);
-        // Saat denetimi
+        // Saat denetimi (merkezin onayladığı andaki en son kayda kadar ileri tarihli kayıtlar sayılmaz)
         const sonKayit = await enSonKayitZamani();
-        if (simdi < d.sonGorulen - SAAT_TOLERANS_MS || (sonKayit !== null && simdi < sonKayit - KAYIT_TOLERANS_MS)) {
+        const onayliKayit = d.saatOnayi?.sonKayit ?? null;
+        const kayitIleride = sonKayit !== null && !(onayliKayit !== null && sonKayit <= onayliKayit) && simdi < sonKayit - KAYIT_TOLERANS_MS;
+        if (simdi < d.sonGorulen - SAAT_TOLERANS_MS || kayitIleride) {
             d.kilit = { neden: "SAAT_GERI_ALINDI", zaman: simdi, seri: lisans.seri };
             await durumuKaydet(d);
             logger.warn("[LISANS] Saat geri alınmış; program kilitlendi.");
             return kilit("SAAT_GERI_ALINDI", bilgi);
         }
-        if (simdi - d.sonGorulen > 60_000 || kopyalar.length < 2) {
+        if (simdi - d.sonGorulen > 60_000 || kopyalar.length < 2 || bozukKopya) {
             d.sonGorulen = Math.max(d.sonGorulen, simdi);
             await durumuKaydet(d);
         }
@@ -289,7 +326,9 @@ export class KurulumLisansService {
             throw ApiError.badRequest("Bu kod, yüklü lisanstan daha eski. En son verilen kodu yükleyin.");
         const kopyalar = [dosyaOku("durum.lky"), db.durum].filter((x) => !!x && !!x.trim()).map(durumCoz);
         const gecerli = kopyalar.filter((x) => !!x);
-        const eskiKilit = gecerli.map((x) => x.kilit).find((k) => !!k) ?? (kopyalar.some((x) => x === null) ? { neden: "DURUM_BOZUK", zaman: simdi, seri: eskiSeri } : null);
+        // Hiçbir kopya çözülemiyorsa (hesapla DURUM_BOZUK kilidi koyar) kilit sayılır; biri sağlamsa o geçerlidir (E8)
+        const eskiKilit = gecerli.map((x) => x.kilit).find((k) => !!k) ??
+            (kopyalar.length > 0 && gecerli.length === 0 ? { neden: "DURUM_BOZUK", zaman: simdi, seri: eskiSeri } : null);
         // Kilit (saat / bozuk durum) yalnız kilitlendiği andaki seriden YENİ bir kodla açılır; süre dolması yeni bitişle açılır
         if (eskiKilit && eskiKilit.neden !== "LISANS_DOLDU" && v.seri <= eskiKilit.seri) {
             throw ApiError.badRequest("Program kilitli. Kilidi açmak için merkezden YENİ bir lisans kodu almanız gerekir.");
@@ -298,10 +337,42 @@ export class KurulumLisansService {
         const temizKod = kod.replace(/\s+/g, "");
         dosyaYaz("lisans.lky", temizKod);
         await dbYaz("LISANS", temizKod);
-        await durumuKaydet({ sonGorulen, seri: v.seri, kilit: null });
+        // İzinli kullanıcı sınırı: sayı yeni limitin içindeyse bugünkü en büyük kimlik; aşımdaysa önceki sınır korunur
+        // (lisans düşürüldüğünde mevcut kullanıcılar girer, limit dışında sonradan eklenenler yeni kodla meşrulaşmaz)
+        const eskiSinir = izinliSinir(gecerli);
+        let izinliKullaniciId = eskiSinir;
+        try {
+            const pool = await kurulumHavuzu();
+            const r = (await pool.request().query(`SELECT COUNT(*) AS N, ISNULL(MAX(KULLANICI_ID), 0) AS M FROM dbo.TODVZ_KULLANICI`)).recordset[0];
+            if (Number(r.N) <= v.kullaniciLimiti || eskiSinir === undefined)
+                izinliKullaniciId = Number(r.M);
+        }
+        catch (err) {
+            logger.warn(`[LISANS] Kullanıcı sayısı okunamadı: ${err?.message}`);
+        }
+        await durumuKaydet({ sonGorulen, seri: v.seri, kilit: null, izinliKullaniciId, saatOnayi: gecerli.length ? saatOnayiSec(gecerli) : undefined });
         this.onbellegiTemizle();
         kayitOnbellek = null;
         return this.durum(true);
+    }
+    /**
+     * Girişte kullanıcı limiti (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 6.5, §14 D9): sayı limiti aşmamışsa ya da aşım
+     * lisans düşürülmesinden geliyorsa giriş serbesttir. Aşımda yalnız izinli sınırdaki (kod yüklenirken var olan) ve
+     * kimliği en küçük `limit` kullanıcı girer; limit dışında (ör. doğrudan SQL ile) eklenen kullanıcı reddedilir.
+     */
+    static async girisLimitiDenetle(kullaniciId) {
+        const d = await this.durum();
+        if (d.durum === "KILITLI" || d.kullaniciLimiti === null)
+            return;
+        const pool = await kurulumHavuzu();
+        const idler = (await pool.request().query(`SELECT KULLANICI_ID FROM dbo.TODVZ_KULLANICI ORDER BY KULLANICI_ID`)).recordset.map((x) => Number(x.KULLANICI_ID));
+        if (idler.length <= d.kullaniciLimiti)
+            return;
+        const db = await dbOku();
+        const sinir = izinliSinir([dosyaOku("durum.lky"), db.durum].filter((x) => !!x).map(durumCoz));
+        if (sinir === undefined || kullaniciId <= sinir || idler.slice(0, d.kullaniciLimiti).includes(kullaniciId))
+            return;
+        throw ApiError.forbidden(`Lisanstaki kullanıcı limiti (${d.kullaniciLimiti}) aşılmış (${idler.length} kullanıcı); bu kullanıcı limit dışında eklenmiş. Bizimle iletişime geçin.`);
     }
     /**
      * Merkezden alınan saatle karşılaştırma (internet varken): bilgisayarın saati merkezden 2 günden fazla gerideyse
@@ -330,10 +401,60 @@ export class KurulumLisansService {
             sonGorulen: Math.max(sunucuMs, ...eski.map((x) => x.sonGorulen)),
             seri: Math.max(seri, ...eski.map((x) => x.seri)),
             kilit: { neden: "SAAT_GERI_ALINDI", zaman: simdi, seri },
+            izinliKullaniciId: izinliSinir(eski),
+            saatOnayi: eski.length ? saatOnayiSec(eski) : undefined,
         });
         this.onbellegiTemizle();
         logger.warn("[LISANS] Bilgisayar saati merkez saatinden geride; program kilitlendi.");
         return true;
+    }
+    /**
+     * Merkezin imzalı saati bilgisayar saatini doğruluyorsa (en çok 5 dk fark) SAAT_GERI_ALINDI kilidi kalkar (docs 15.2,
+     * E28): saat yanlışlıkla ileri kurulup düzeltildiğinde yeni kod gerekmesin. Son görülen zaman şimdiye çekilir, o anki
+     * en son kayıt zamanı onaylı yazılır (ileri saatle girilmiş kayıtlar yeniden kilitlemez). Başka nedenli kilit kalkmaz.
+     * İmza ve tek kullanımlık soru KurulumBildirim'de denetlenir (sahte merkez / eski yanıt saati onaylayamaz).
+     */
+    static async saatKilidiniMerkezleAc(sunucuMs) {
+        if (!Number.isFinite(sunucuMs))
+            return false;
+        const simdi = saat();
+        if (Math.abs(simdi - sunucuMs) > SAAT_TOLERANS_MS)
+            return false;
+        const gecerli = await durumKopyalari();
+        const kilitler = gecerli.map((x) => x.kilit).filter((k) => !!k);
+        if (!kilitler.length || kilitler.some((k) => k.neden !== "SAAT_GERI_ALINDI"))
+            return false;
+        kayitOnbellek = null;
+        const sonKayit = await enSonKayitZamani();
+        await durumuKaydet({ ...durumBirlestir(gecerli), sonGorulen: simdi, kilit: null, saatOnayi: { zaman: simdi, sonKayit } });
+        this.onbellegiTemizle();
+        logger.info("[LISANS] Bilgisayar saati merkez saatiyle doğrulandı; saat kilidi kaldırıldı.");
+        return true;
+    }
+    /**
+     * Programdan açılan kullanıcı izinli sınıra yazılır (E9): kod kullanıcılardan önce yüklendiğinde sınır 0 kalıyor,
+     * lisans düşürülünce programdan meşru açılmış kullanıcılar "limit dışında eklenmiş" diye giremiyordu.
+     */
+    static async kullaniciEklendi(kullaniciId) {
+        if (!Number.isInteger(kullaniciId) || kullaniciId <= 0)
+            return;
+        const gecerli = await durumKopyalari();
+        if (!gecerli.length)
+            return;
+        const b = durumBirlestir(gecerli);
+        if (b.izinliKullaniciId !== undefined && b.izinliKullaniciId >= kullaniciId)
+            return;
+        await durumuKaydet({ ...b, izinliKullaniciId: kullaniciId });
+        this.onbellegiTemizle();
+    }
+    /**
+     * Kullanıcı açma işlemlerini (limit denetimi + kayıt, ilk yönetici) sıraya koyar: aynı anda gelen iki istek ikisi de
+     * "limit dolmadı" görüp limiti aşabiliyor, iki ilk yönetici açılabiliyordu. Kurulum tek süreçtir; bellek içi sıra yeter.
+     */
+    static kullaniciKaydiSirasi(is) {
+        const p = kayitSirasi.then(is, is);
+        kayitSirasi = p.catch(() => undefined);
+        return p;
     }
     /** Kullanıcı limitine göre yeni kullanıcı açılabilir mi (kurulum modunda Kullanıcı Tanımları). */
     static async kullaniciAcilabilirMi() {
@@ -344,7 +465,9 @@ export class KurulumLisansService {
         const res = await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`);
         const sayi = res.recordset[0].N;
         if (d.kullaniciLimiti !== null && sayi >= d.kullaniciLimiti) {
-            throw ApiError.conflict(`Lisansınızdaki kullanıcı limiti (${d.kullaniciLimiti}) dolu. Ek kullanıcı için bizimle iletişime geçin.`);
+            throw ApiError.conflict(sayi > d.kullaniciLimiti
+                ? `Lisansınızdaki kullanıcı limiti aşılmış (${sayi} / ${d.kullaniciLimiti}); yeni kullanıcı açılamaz. Ek kullanıcı için bizimle iletişime geçin.`
+                : `Lisansınızdaki kullanıcı limiti (${d.kullaniciLimiti}) dolu. Ek kullanıcı için bizimle iletişime geçin.`);
         }
     }
 }

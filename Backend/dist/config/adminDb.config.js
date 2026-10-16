@@ -82,7 +82,7 @@ const ensureAdminSchema = async (pool) => {
       IF COL_LENGTH('dbo.ADM_LISANS', 'LISANS_KODU') IS NULL
       BEGIN
         ALTER TABLE [dbo].[ADM_LISANS] ADD
-          [LISANS_KODU]                 VARCHAR(4000) NULL,
+          [LISANS_KODU]                 VARCHAR(MAX)  NULL,
           [MAKINE_KIMLIGI]              VARCHAR(40)   NULL,
           [SERI_NO]                     INT           NULL,
           [IPTAL]                       BIT           NOT NULL CONSTRAINT [DF_ADM_LISANS_IPTAL] DEFAULT 0,
@@ -116,6 +116,17 @@ const ensureAdminSchema = async (pool) => {
           [TARIH]               DATETIME       NOT NULL DEFAULT GETDATE()
         );
       END;
+
+      -- Lisans kodu 4000'i aşabilir (tüm ürünlü lisans); eski kurulumlarda kolon genişletilir (MAX = -1)
+      IF COL_LENGTH('dbo.ADM_LISANS', 'LISANS_KODU') > 0
+        ALTER TABLE [dbo].[ADM_LISANS] ALTER COLUMN [LISANS_KODU] VARCHAR(MAX) NULL;
+
+      -- Kurulumun bildirdiği son yedek ve veritabanı boyutu (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 15.1, Y5)
+      IF COL_LENGTH('dbo.ADM_FIRMA', 'BILDIRILEN_SON_YEDEK') IS NULL
+        ALTER TABLE [dbo].[ADM_FIRMA] ADD
+          [BILDIRILEN_SON_YEDEK]        DATETIME       NULL,
+          [BILDIRILEN_YEDEK_HATASI]     NVARCHAR(400)  NULL,
+          [BILDIRILEN_VT_BOYUT_MB]      INT            NULL;
     `);
         logger.info("[ADMIN DB] Şema ve kolon kontrolleri başarıyla doğrulandı / güncellendi.");
     }

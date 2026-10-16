@@ -61,6 +61,18 @@ export const SIDEBAR_STYLES: {
   },
 ];
 
+export const VALID_SIDEBAR_STYLES: SidebarStyleType[] = [
+  "hover", "classic", "flyout", "topbar", "dual", "megamenu",
+];
+
+export function sanitizeSidebarStyle(val: unknown): SidebarStyleType {
+  if (!val || typeof val !== "string") return "classic";
+  const s = val.trim().toLowerCase() as SidebarStyleType;
+  if (s === "drawer") return "megamenu";
+  if (VALID_SIDEBAR_STYLES.includes(s)) return s;
+  return "classic";
+}
+
 export function useSidebarStyle(): SidebarStyleType {
   const { user } = useAuth();
   const [style, setStyle] = useState<SidebarStyleType>(() => {
@@ -68,22 +80,30 @@ export function useSidebarStyle(): SidebarStyleType {
       const cached = localStorage.getItem("kuyumcu_active_appearance");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed?.sidebarStyle) return parsed.sidebarStyle as SidebarStyleType;
+        if (parsed?.sidebarStyle) return sanitizeSidebarStyle(parsed.sidebarStyle);
       }
     } catch {}
-    return (user?.appearance?.sidebarStyle as SidebarStyleType) || "classic";
+    return sanitizeSidebarStyle(user?.appearance?.sidebarStyle);
   });
 
   useEffect(() => {
-    if (user?.appearance?.sidebarStyle) {
-      setStyle(user.appearance.sidebarStyle as SidebarStyleType);
+    const nextStyle = sanitizeSidebarStyle(user?.appearance?.sidebarStyle);
+    setStyle(nextStyle);
+    // DOM senkronizasyonu
+    const currentDom = document.documentElement.getAttribute("data-sidebar-style");
+    if (!currentDom || currentDom !== nextStyle) {
+      document.documentElement.setAttribute("data-sidebar-style", nextStyle);
+      document.body.setAttribute("data-sidebar-style", nextStyle);
     }
   }, [user?.appearance?.sidebarStyle]);
 
   useEffect(() => {
     const handlePreview = (e: CustomEvent) => {
       if (e.detail?.sidebarStyle) {
-        setStyle(e.detail.sidebarStyle as SidebarStyleType);
+        const s = sanitizeSidebarStyle(e.detail.sidebarStyle);
+        setStyle(s);
+        document.documentElement.setAttribute("data-sidebar-style", s);
+        document.body.setAttribute("data-sidebar-style", s);
       }
     };
     window.addEventListener("kuyumcu_preview_appearance" as any, handlePreview);
@@ -92,8 +112,7 @@ export function useSidebarStyle(): SidebarStyleType {
     };
   }, []);
 
-  const normalizedStyle = style === "drawer" ? "megamenu" : style;
-  return normalizedStyle;
+  return sanitizeSidebarStyle(style);
 }
 
 export default useSidebarStyle;

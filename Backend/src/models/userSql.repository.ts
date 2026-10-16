@@ -145,6 +145,7 @@ export class UserSqlRepository {
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [SIDEBAR_GORUNUM] VARCHAR(30) NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_SIDEBAR_GORUNUM DEFAULT 'classic';
         END;
+        UPDATE dbo.TODVZ_KULLANICI SET [SIDEBAR_GORUNUM] = 'classic' WHERE [SIDEBAR_GORUNUM] IS NULL OR LTRIM(RTRIM([SIDEBAR_GORUNUM])) = '';
       `);
     } catch (e) {
       logger.warn("TODVZ_KULLANICI.SIDEBAR_GORUNUM kontrolü sırasında uyarı:", e);

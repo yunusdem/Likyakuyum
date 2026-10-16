@@ -515,9 +515,16 @@ export class TicariSatisSqlRepository {
         }));
     }
     /** Düzeltme ekranında ileri / geri gezinme için fiş kimlikleri (eskiden yeniye) */
-    static async kimlikler(ctx) {
+    /** baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2) */
+    static async kimlikler(ctx, baslangic) {
         const pool = await TicariStokSqlRepository.havuz(ctx);
-        const r = await pool.request().query(`SELECT FATURA_ID, FATURA_NO FROM dbo.TODVZ_FATURA WHERE ISNULL(FIS_KAYNAGI, 0) = ${FIS_KAYNAGI_TICARI} ORDER BY FATURA_ID`);
+        const req = pool.request();
+        let sinir = "";
+        if (baslangic) {
+            sinir = " AND TARIH >= CAST(@BAS AS date)";
+            req.input("BAS", sql.VarChar(10), baslangic);
+        }
+        const r = await req.query(`SELECT FATURA_ID, FATURA_NO FROM dbo.TODVZ_FATURA WHERE ISNULL(FIS_KAYNAGI, 0) = ${FIS_KAYNAGI_TICARI}${sinir} ORDER BY FATURA_ID`);
         return r.recordset.map((x) => ({ faturaId: x.FATURA_ID, faturaNo: temiz(x.FATURA_NO) }));
     }
 }
