@@ -85,7 +85,8 @@ export const firmaEngeli = (firma: FirmaDto): GirisRedKodu | null => {
 
 export class MerkezGirisService {
   public static aktifMi(): boolean {
-    return env.MERKEZ_GIRIS === "zorunlu";
+    // Kurulumda (exe) merkez veritabanı yoktur: .env'de MERKEZ_GIRIS yanlışlıkla "zorunlu" olsa da devreye girmez
+    return !env.KURULUM_MODU && env.MERKEZ_GIRIS === "zorunlu";
   }
 
   /** Girişin 1. adımı: bağlanılan sunucu+veritabanından firmayı bul, durumunu ve lisansını denetle. */

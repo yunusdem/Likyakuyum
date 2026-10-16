@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { fisGunu } from "../../utils/fisTarihi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -188,6 +190,10 @@ interface TransferGridRow {
 
 export const VezneTransferiPage: React.FC = () => {
   const { user } = useAuth();
+  // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+  const kYetki = useKullaniciYetkisi();
+  const tarihYetkisi = kYetki.tarihDegistirme;
+  const refNoYetkisi = kYetki.fisNoDegistirme;
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -923,7 +929,7 @@ export const VezneTransferiPage: React.FC = () => {
     try {
       const payload = {
         id: transferId,
-        tarih,
+        tarih: fisGunu(tarih, !transferId, tarihYetkisi),
         refNo: refNo.trim() || null,
         alanVezneId,
         verenVezneId,
@@ -993,6 +999,7 @@ export const VezneTransferiPage: React.FC = () => {
     lines,
     transferId,
     tarih,
+    tarihYetkisi,
     refNo,
     aciklama,
     getUserVezne,
@@ -1166,6 +1173,8 @@ export const VezneTransferiPage: React.FC = () => {
                 size="sm"
                 value={tarih}
                 onChange={(e) => setTarih(e.target.value)}
+                      disabled={!tarihYetkisi}
+                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
                 style={{ width: "128px", height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
               />
             </div>
@@ -1338,6 +1347,8 @@ export const VezneTransferiPage: React.FC = () => {
               size="sm"
               value={refNo}
               onChange={(e) => setRefNo(e.target.value)}
+              readOnly={!refNoYetkisi}
+              title={refNoYetkisi ? undefined : "Fiş numarası değiştirme yetkiniz yok"}
               placeholder=""
               style={{ width: "160px", height: "28px", fontSize: "12px", borderColor: "#cbd5e1" }}
             />

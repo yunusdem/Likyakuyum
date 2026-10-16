@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { VezneTransferiController } from "../controllers/vezneTransferi.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
+import { kayitYetkisi, kimlikVar } from "../services/yetki/menuYetkiKatalogu.js";
 
 const router = Router();
 
@@ -11,7 +12,7 @@ router.get("/navigation", VezneTransferiController.getNavigation);
 router.get("/next-ref", VezneTransferiController.getNextRefNo);
 router.get("/bakiye/:vezneId", VezneTransferiController.getVezneBakiyeler);
 router.get("/:id", VezneTransferiController.getTransferById);
-router.post("/", VezneTransferiController.saveTransfer);
-router.delete("/:id", VezneTransferiController.deleteTransfer);
+router.post("/", kayitYetkisi("vezneTransferi", kimlikVar("id")), VezneTransferiController.saveTransfer);
+router.delete("/:id", kayitYetkisi("vezneTransferi", kimlikVar()), VezneTransferiController.deleteTransfer);
 
 export default router;

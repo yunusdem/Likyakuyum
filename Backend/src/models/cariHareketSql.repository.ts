@@ -1219,18 +1219,23 @@ export class CariHareketSqlRepository {
 
   public static async getNavigationIds(
     currentId?: number | string,
-    dbContext?: { dbServer?: string; dbName?: string }
+    dbContext?: { dbServer?: string; dbName?: string },
+    baslangic?: string | null
   ) {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       await CariHareketSqlRepository.ensureTablesExist(pool);
 
+      // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
       const query = `
         SELECT [CARI_HAREKET_ID]
         FROM [dbo].[TODVZ_CARI_HAREKET]
+        ${baslangic ? "WHERE [TARIH] >= CAST(@BAS AS date)" : ""}
         ORDER BY [CARI_HAREKET_ID] ASC;
       `;
-      const res = await pool.request().query<{ CARI_HAREKET_ID: number }>(query);
+      const navReq = pool.request();
+      if (baslangic) navReq.input("BAS", sql.VarChar(10), baslangic);
+      const res = await navReq.query<{ CARI_HAREKET_ID: number }>(query);
       const ids = (res.recordset || []).map((r) => r.CARI_HAREKET_ID);
 
       if (ids.length === 0) {

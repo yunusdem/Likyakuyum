@@ -21,6 +21,9 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { acikHizliSatisModulleri, hizliSatisYolu, sonModulYaz } from "../../config/hizliSatis";
+import { useSayfaErisimi } from "../../hooks/useSayfaErisimi";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { kurDegistirilebilir, kurDenetle } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { HizliSatisService, HizliSatisSekme, HizliSatisYetki } from "../../services/hizliSatisService";
 import { PosCihaziItem, PosCihaziService } from "../../services/posCihaziService";
 import { BankaHesapItem, BankaService } from "../../services/bankaService";
@@ -79,7 +82,10 @@ export const HizliSatisPage: React.FC = () => {
   const { showError: hataGoster, showSuccess, showWarning } = useToast();
   const showError = (m: string) => hataGoster(m, 4000);
   const pos = usePosTahsilat();
-  const acikModuller = useMemo(() => acikHizliSatisModulleri(user?.merkez?.moduller), [user?.merkez?.moduller]);
+  const kullaniciYetkisi = useKullaniciYetkisi();
+  const acikModuller = useMemo(() => acikHizliSatisModulleri(user?.merkez?.moduller, kullaniciYetkisi), [user?.merkez?.moduller, kullaniciYetkisi]);
+  // Düzen kısayolu yalnız düzen sayfası açıksa (kapalı sayfaya götürmesin)
+  const duzenAcik = useSayfaErisimi()("/ayarlar/hizli-satis-duzeni");
   const modul: HizliSatisModul | null = modulGecerliMi(modulParam) ? modulParam : null;
 
   const [yetki, setYetki] = useState<HizliSatisYetki>({ fiyatYetkisi: false, sistemYoneticisi: false, faturaSiniri: 12000 });
@@ -116,10 +122,17 @@ export const HizliSatisPage: React.FC = () => {
   /** Alıcı penceresi: zorunlu ise (fatura sınırı / MASAK) onaydan sonra satış kaldığı yerden sürer */
   const [aliciSorusu, setAliciSorusu] = useState<{ zorunlu: AliciZorunlulugu | null; kayitliGerekli?: boolean; sonra?: (m: HizliMusteri) => void } | null>(null);
 
-  const istatistik = useMemo(
-    () => (veri ? varsayilanIstatistik(veri.istatistikler, veri.tanim, tip, tip === 1 ? (user as any)?.sellStatCode : (user as any)?.buyStatCode) : null),
-    [veri, tip, user]
-  );
+  const istatistik = useMemo(() => {
+    const s = veri ? varsayilanIstatistik(veri.istatistikler, veri.tanim, tip, tip === 1 ? (user as any)?.sellStatCode : (user as any)?.buyStatCode) : null;
+    if (!s) return s;
+    // Döviz komisyonu: "Komisyon alma yetkisi" yoksa alınmaz; varsa kullanıcı kartındaki oran (> 0) istatistik oranının yerine
+    if (!kullaniciYetkisi.komisyonAlma) return { ...s, komisyonOrani: 0 };
+    return kullaniciYetkisi.komisyonOrani > 0 ? { ...s, komisyonOrani: kullaniciYetkisi.komisyonOrani } : s;
+  }, [veri, tip, user, kullaniciYetkisi]);
+  // Fiyat Değiştir / elle indirim: Hızlı Satış'ın kendi Fiyat/İndirim yetkisi ya da kullanıcı kartındaki "Fişte tutar değiştirme"
+  // yetkisi; Sarraf/Döviz'de fiyat kurdur, kur yetkisi "Yok" ise değiştirilemez (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+  const fiyatYetkisi = yetki.fiyatYetkisi || kullaniciYetkisi.tutarDegistirme;
+  const fiyatDegistirilebilir = fiyatYetkisi && (!(modul === "sarraf" || modul === "doviz") || kurDegistirilebilir(kullaniciYetkisi));
 
   // ───── Açılış ─────
   useEffect(() => {
@@ -288,8 +301,18 @@ export const HizliSatisPage: React.FC = () => {
       return;
     }
     if (k === "fiyat") {
-      if (!yetki.fiyatYetkisi) return showError("Hızlı Satış – Fiyat/İndirim yetkiniz yok.");
-      const uygula = (d: number) => satirGuncelle(seciliSatir.anahtar, { birimFiyat: d, fiyatElle: true });
+      if (!fiyatDegistirilebilir) return showError(fiyatYetkisi ? "Kur değiştirme yetkiniz yok." : "Hızlı Satış – Fiyat/İndirim yetkiniz yok.");
+      const uygula = (d: number) => {
+        // Sarraf/Döviz'de fiyat kurdur: kur yetkisi, gişe kuru aralığı ve sapma uyarısı
+        if (veri && (modul === "sarraf" || modul === "doviz")) {
+          const u = { paraId: seciliSatir.urunId, urunTipi: seciliSatir.urunTipi };
+          const kur = urunKuru(veri.kurlar, u, tip);
+          const den = kurDenetle(kullaniciYetkisi, kur > 0 ? { kur, alis: urunKuru(veri.kurlar, u, 0) || null, satis: urunKuru(veri.kurlar, u, 1) || null } : null, d);
+          if (den.hata) return showError(den.hata);
+          if (den.uyari && !window.confirm(`${den.uyari}\n\nYine de uygulansın mı?`)) return;
+        }
+        satirGuncelle(seciliSatir.anahtar, { birimFiyat: d, fiyatElle: true });
+      };
       if (n !== null && n > 0) {
         uygula(n);
         setGiris("");
@@ -517,7 +540,8 @@ export const HizliSatisPage: React.FC = () => {
   if (!modul) return <Alert variant="warning" className="m-3">Geçersiz hızlı satış modülü.</Alert>;
   const sekme = duzen.find((s) => s.sekmeId === aktifSekme) || null;
   // Alışta (Sarraf/Döviz) müşteriye ödeme yapılır: POS yok
-  const odemeTurleri = MODUL_ODEMELERI[modul].filter((t) => !(tip === 0 && t === 2));
+  // Banka ödemesi yalnız "Fiş banka hesabı seçme" yetkisinde
+  const odemeTurleri = MODUL_ODEMELERI[modul].filter((t) => !(tip === 0 && t === 2) && (t !== 3 || kullaniciYetkisi.bankaHesabiSecme));
   const alisSatis = ALIS_SATIS_MODULLERI.includes(modul);
   /** Fiyat sütunu kur mu (Sarraf/Döviz) */
   const kurlu = modul === "sarraf" || modul === "doviz";
@@ -553,7 +577,7 @@ export const HizliSatisPage: React.FC = () => {
           </Button>
           <Button variant="outline-secondary" size="sm" title="Hızlı satış fişleri (düzeltme / iade için)" onClick={() => setSonFislerAcik(true)}><IconListDetails size={16} className="me-1" />Fişler</Button>
           <Button variant="outline-secondary" size="sm" title="Kurları ve düzeni yenile" onClick={() => void yukle()}><IconRefresh size={16} /></Button>
-          {yetki.sistemYoneticisi && <Link to="/ayarlar/hizli-satis-duzeni" className="btn btn-sm btn-outline-secondary" title="Hızlı Satış Düzeni"><IconLayoutGrid size={16} /></Link>}
+          {yetki.sistemYoneticisi && duzenAcik && <Link to="/ayarlar/hizli-satis-duzeni" className="btn btn-sm btn-outline-secondary" title="Hızlı Satış Düzeni"><IconLayoutGrid size={16} /></Link>}
         </div>
       </div>
 
@@ -650,7 +674,7 @@ export const HizliSatisPage: React.FC = () => {
                 </Button>
               ))}
             </div>
-            <TusTakimi giris={giris} setGiris={setGiris} onKomut={komut} fiyatYetkisi={yetki.fiyatYetkisi} indirimVar={indirimVar} serbestVar={serbestVar} disabled={kaydediliyor} />
+            <TusTakimi giris={giris} setGiris={setGiris} onKomut={komut} fiyatYetkisi={fiyatDegistirilebilir} indirimVar={indirimVar} serbestVar={serbestVar} disabled={kaydediliyor} />
             <div className="d-flex gap-1 mt-auto">
               <Button variant="outline-danger" className="flex-grow-0" style={{ height: 52 }} disabled={kaydediliyor || (!sepet.length && !odemeler.length)} title="Sepeti boşalt"
                 onClick={() => { if (window.confirm("Sepet boşaltılsın mı?")) temizle(); }}><IconTrash size={18} /></Button>
@@ -672,7 +696,7 @@ export const HizliSatisPage: React.FC = () => {
               {!duzen.length && (
                 <div className="text-center text-muted py-5">
                   Bu modülde henüz hızlı satış butonu yok.
-                  {yetki.sistemYoneticisi ? <div><Link to="/ayarlar/hizli-satis-duzeni">Hızlı Satış Düzeni</Link>'nden ekleyin.</div> : <div>Sistem yöneticisi Hızlı Satış Düzeni'nden ekleyebilir.</div>}
+                  {yetki.sistemYoneticisi && duzenAcik ? <div><Link to="/ayarlar/hizli-satis-duzeni">Hızlı Satış Düzeni</Link>'nden ekleyin.</div> : <div>Sistem yöneticisi Hızlı Satış Düzeni'nden ekleyebilir.</div>}
                 </div>
               )}
               <div className="d-grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))" }}>
@@ -700,7 +724,7 @@ export const HizliSatisPage: React.FC = () => {
       <BekleyenlerModal acik={bekleyenlerAcik} modul={modul} vezneId={veri?.vezne?.id ?? null} yonetici={yetki.sistemYoneticisi}
         kapat={() => setBekleyenlerAcik(false)} ac={(b) => void bekleyeniAc(b)} degisti={sayaciTazele} />
       <IskontoModal acik={iskontoAcik} brut={yuvarla2(toplam.genelToplam + toplam.indirim)} hasKuru={veri ? urunKuru(veri.kurlar, { kod: "HAS", urunTipi: 1 }, 1) : 0}
-        fiyatYetkisi={yetki.fiyatYetkisi} elleVar mevcut={indirim} kapat={() => setIskontoAcik(false)}
+        fiyatYetkisi={fiyatYetkisi} elleVar mevcut={indirim} kapat={() => setIskontoAcik(false)}
         onay={(i) => { setIndirim(i); setOdemeler([]); setIskontoAcik(false); }} />
       <AliciModal acik={!!aliciSorusu} musteri={musteri} zorunlu={aliciSorusu?.zorunlu ?? null} kayitliGerekli={aliciSorusu?.kayitliGerekli}
         kapat={() => setAliciSorusu(null)} onay={(m) => { const f = aliciSorusu?.sonra; setAliciSorusu(null); if (f) f(m); else setMusteri(m); }} />

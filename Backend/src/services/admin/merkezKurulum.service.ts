@@ -11,7 +11,8 @@ import { ApiError } from "../../utils/ApiError.js";
 import { HttpStatus } from "../../constants/httpStatusCodes.js";
 import { logger } from "../../utils/logger.js";
 import { firmaDosyasiUret } from "../kurulum/firmaDosyasi.js";
-import { iletisimOku, lisansImzaAcikMi, lisansKoduHazirla } from "./lisansKod.service.js";
+import { imzaliMetinUret } from "../lisans/lisansKodu.js";
+import { iletisimOku, lisansImzaAcikMi, lisansKoduGuncelMi, lisansKoduHazirla } from "./lisansKod.service.js";
 import { FirmaService } from "./firma.service.js";
 import path from "path";
 import { AyarSqlRepository } from "../../models/admin/ayarSql.repository.js";
@@ -57,6 +58,10 @@ export interface HeartbeatGirdi {
   lisans?: { durum?: string | null; neden?: string | null; seri?: number | null } | null;
   kullaniciSayisi?: number | null;
   semaSurumu?: number | null;
+  /** Kurulumun tek kullanımlık sorusu: merkez saati bununla imzalanır (docs 15.2, E28) */
+  saatSorusu?: string | null;
+  /** Son yedek (ISO), son yedek hatası, veritabanı boyutu (docs 15.1, Y5) */
+  yedek?: { son?: string | null; hata?: string | null; vtBoyutMb?: number | null } | null;
 }
 
 export interface GuncellemeBilgisi {
@@ -179,18 +184,37 @@ export class MerkezKurulumService {
       semaSurumu: Number.isInteger(g.semaSurumu) ? g.semaSurumu! : null,
       ip,
     });
+    if (g.yedek) {
+      const son = g.yedek.son ? new Date(g.yedek.son) : null;
+      await KurulumSqlRepository.yedekBildirimiYaz(firma.firmaId, {
+        son: son && !Number.isNaN(son.getTime()) ? son : null,
+        hata: g.yedek.hata ? String(g.yedek.hata).slice(0, 400) : null,
+        vtBoyutMb: Number.isInteger(g.yedek.vtBoyutMb) ? g.yedek.vtBoyutMb! : null,
+      }).catch((err) => logger.warn(`[MERKEZ] ${firma.firmaKodu} yedek bildirimi yazılamadı: ${err?.message}`));
+    }
     // Kurulum yeni sürümle geldi: firmanın ziline ve admin listesine düşer (K14)
     if (g.surum && oncekiSurum && oncekiSurum !== g.surum) DestekOlay.guncellemeKuruldu(firma.firmaId, oncekiSurum, String(g.surum).slice(0, 30));
 
-    // Lisans: firma aktifse ve bu makine firmanın lisanslı makinesiyse, aktif lisansın kodu yoksa üretilir;
-    // kurulumdaki seriden yeni bir kod varsa geri döner (uzatma elle kod girmeden iner)
+    // Lisans: firma aktifse ve bu makine firmanın lisanslı makinesiyse, aktif lisansın kodu yoksa ya da son kod lisansın /
+    // firmanın bugünkü haliyle (modüller, ürünler, limit, tarihler, iletişim) uyuşmuyorsa yeni seriyle üretilir;
+    // kurulumdaki seriden yeni bir kod varsa geri döner (uzatma ve modül değişikliği elle kod girmeden iner)
     let lisansKodu: string | null = null;
     const guncel = await FirmaService.getir(firma.firmaId);
     if (makine && guncel.durum === "AKTIF" && guncel.makineKimligi === makine && guncel.aktifLisans) {
       try {
         const aktif = await LisansSqlRepository.getir(guncel.aktifLisans.lisansId);
         let son = await LisansSqlRepository.makineIcinSonKod(firma.firmaId, makine);
-        if (aktif && !aktif.iptal && (!son || son.lisansId !== aktif.lisansId)) {
+        // Güncellik denetimi hata verirse (ör. modül ayarı yok) yenileme yapılmaz ama hazır yeni kod yine teslim edilir (E18)
+        let guncelDegil = false;
+        if (son && aktif && son.lisansId === aktif.lisansId) {
+          try {
+            guncelDegil = !(await lisansKoduGuncelMi(son.kod, aktif, guncel.firmaKodu));
+          } catch (err: any) {
+            logger.warn(`[MERKEZ] ${firma.firmaKodu} lisans kodunun güncelliği denetlenemedi: ${err?.message}`);
+          }
+        }
+        const yenile = !son || son.lisansId !== aktif?.lisansId || guncelDegil;
+        if (aktif && !aktif.iptal && yenile) {
           const seri = await LisansSqlRepository.sonrakiSeri(firma.firmaId);
           const kod = await lisansKoduHazirla(aktif, guncel.firmaKodu, makine, seri);
           await LisansSqlRepository.kodYaz(aktif.lisansId, kod, makine, seri);
@@ -213,8 +237,20 @@ export class MerkezKurulumService {
     }
 
     const hedef = await hedefSurum(firma.hedefSurum);
+    const sunucuZamani = new Date().toISOString();
+    // İmzalı saat: kurulum saat kilidini (SAAT_GERI_ALINDI) yalnız bununla kaldırır; soru tek kullanımlık olduğu için
+    // eski bir yanıt tekrar oynatılamaz, imza sahte merkezi engeller
+    let saatOnayi: string | null = null;
+    if (g.saatSorusu && /^[0-9a-f]{32}$/.test(g.saatSorusu) && env.LISANS_OZEL_ANAHTAR) {
+      try {
+        saatOnayi = imzaliMetinUret("LKS1", { firmaKodu: firma.firmaKodu, soru: g.saatSorusu, zaman: sunucuZamani }, env.LISANS_OZEL_ANAHTAR);
+      } catch (err: any) {
+        logger.warn(`[MERKEZ] Saat onayı imzalanamadı: ${err?.message}`);
+      }
+    }
     return {
-      sunucuZamani: new Date().toISOString(),
+      sunucuZamani,
+      saatOnayi,
       iletisim: await iletisimOku(),
       lisansKodu,
       guncelleme: hedef && hedef.surum !== g.surum ? hedef : null,

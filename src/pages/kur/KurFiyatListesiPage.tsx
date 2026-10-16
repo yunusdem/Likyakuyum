@@ -43,6 +43,7 @@ import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { KurKaynakService } from "../../services/kurKaynakService";
 import { printReportTable } from "../../utils/printReport";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import { panoyaKopyala } from "../../utils/pano";
 
 export type KurPageType = "anlik" | "saklanan";
 
@@ -1458,7 +1459,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           }`
       )
       .join("\n");
-    navigator.clipboard.writeText(summary);
+    void panoyaKopyala(summary);
     setAlertSuccess("Kurlar panoya kopyalandı!");
     setTimeout(() => setAlertSuccess(null), 2500);
   };

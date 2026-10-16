@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Form, Modal, Spinner, Table } from "react-bootstr
 import { useNavigate } from "react-router-dom";
 import { HizliSatisFisi, HizliSatisService } from "../../services/hizliSatisService";
 import { HizliSatisModul, MODUL_ADI } from "../../../Backend/src/services/hizliSatis/hizliSatisKural";
+import { useSayfaErisimi } from "../../hooks/useSayfaErisimi";
 
 /** Hızlı satıştan kaydedilen fişler (H20); satıra tıklanınca modülün düzeltme ekranı açılır (iade/iptal oradan, H19) */
 const DUZELTME: Record<HizliSatisModul, string> = {
@@ -20,6 +21,8 @@ const saat = (z: string) => {
 
 export const SonFislerModal: React.FC<{ modul: HizliSatisModul; acik: boolean; kapat: () => void }> = ({ modul, acik, kapat }) => {
   const navigate = useNavigate();
+  // Düzeltme ekranı kapalıysa (lisans / yetki) satır yalnız listelenir, açılmaz
+  const duzeltmeAcik = useSayfaErisimi()(DUZELTME[modul]);
   const [gun, setGun] = useState(1);
   const [liste, setListe] = useState<HizliSatisFisi[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -63,7 +66,8 @@ export const SonFislerModal: React.FC<{ modul: HizliSatisModul; acik: boolean; k
               ) : !liste.length ? (
                 <tr><td colSpan={6} className="text-center text-muted py-4">Bu dönemde hızlı satış fişi yok.</td></tr>
               ) : liste.map((f) => (
-                <tr key={f.fisId} role="button" title="Düzeltme ekranında aç" onClick={() => { kapat(); navigate(`${DUZELTME[modul]}?id=${f.fisId}`); }}>
+                <tr key={f.fisId} role={duzeltmeAcik ? "button" : undefined} title={duzeltmeAcik ? "Düzeltme ekranında aç" : undefined}
+                  onClick={duzeltmeAcik ? () => { kapat(); navigate(`${DUZELTME[modul]}?id=${f.fisId}`); } : undefined}>
                   <td className="small text-nowrap">{saat(f.zaman)}</td>
                   <td className="font-monospace fw-semibold text-primary">{f.fisNo}</td>
                   {alisSatis && <td>{f.tip === 1 ? <Badge bg="danger">Satış</Badge> : <Badge bg="success">Alış</Badge>}</td>}

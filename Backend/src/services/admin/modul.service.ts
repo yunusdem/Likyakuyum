@@ -34,6 +34,11 @@ export const API_MODULLERI: Record<string, string[]> = {
   "/e-belge": ["ebelge", "ust:e-belge", "vezne", "perakende", "ayarlar", "ticari"],
   "/masak": ["ust:masak", "vezne", "cari", "perakende", "raporlar"],
   "/etiket": ["etiket", "ust:fiyat", "perakende"],
+  // Etiket sayım fişi ve TV katalog / menü (barkodlu ürünler): Etiket ile aynı (önceden kapısızdı, lisansta kapalıyken açıktı)
+  "/sayim": ["etiket", "ust:fiyat", "perakende"],
+  "/menu": ["etiket", "ust:fiyat", "perakende"],
+  // Kur panosu ve pano tanımı Kur menüsündedir. /kur (kur listesi) kapısızdır: fiş ekranlarının ortak verisidir
+  "/pano": ["kur", "ust:kur"],
   // Piyasa (canlı fiyat panosu): yalnız üst çubuktaki kısayoldan açılır
   "/piyasa": ["ust:piyasa"],
   // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md): dört modülün hızlı satış maddesi, üst kısayol, düzen ekranı ve
@@ -82,13 +87,16 @@ export class ModulService {
     return ModulSqlRepository.katalog();
   }
 
-  /** Yönetim paneli, kullanıcı uygulamasının menü tanımından ürettiği kataloğu buraya gönderir (aynı repo, aynı sürüm). */
-  public static async katalogEsitle(yapan: AdminBaglam, moduller: ModulKaydi[]): Promise<ModulKaydi[]> {
+  /**
+   * Yönetim paneli, kullanıcı uygulamasının menü tanımından ürettiği kataloğu buraya gönderir (aynı repo, aynı sürüm).
+   * derleme: panelin derleme zamanı; daha eski bir panelden gelen liste uygulanmaz (yeni kodları silmesin), güncel katalog döner.
+   */
+  public static async katalogEsitle(yapan: AdminBaglam, moduller: ModulKaydi[], derleme = 0): Promise<ModulKaydi[]> {
     const kodlar = new Set(moduller.map((m) => m.modulKodu));
     if (kodlar.size !== moduller.length) throw ApiError.badRequest("Katalogda yinelenen modül kodu var.");
     if (moduller.some((m) => m.ustKodu && !kodlar.has(m.ustKodu))) throw ApiError.badRequest("Katalogda üst modülü olmayan kayıt var.");
 
-    const sonuc = await ModulSqlRepository.katalogEsitle(moduller);
+    const sonuc = await ModulSqlRepository.katalogEsitle(moduller, derleme);
     if (sonuc.eklenen > 0 || sonuc.silinen > 0) {
       onbellek.clear();
       await AdminLogSqlRepository.islemLogu({ adminId: yapan.adminId, islem: "MODUL_KATALOG_ESITLENDI", yeni: sonuc });

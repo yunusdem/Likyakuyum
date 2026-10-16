@@ -61,7 +61,8 @@ export class LisansSqlRepository {
     await pool
       .request()
       .input("id", sql.Int, lisansId)
-      .input("kod", sql.VarChar(4000), kod)
+      // Kod açık modül listesini taşır; tüm ürünlü (ERP) lisansta 4000 karakteri aşar
+      .input("kod", sql.VarChar(sql.MAX), kod)
       .input("makine", sql.VarChar(40), makine)
       .input("seri", sql.Int, seri)
       .query(`UPDATE dbo.ADM_LISANS SET LISANS_KODU = @kod, MAKINE_KIMLIGI = @makine, SERI_NO = @seri,

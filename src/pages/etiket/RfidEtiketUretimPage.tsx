@@ -45,6 +45,7 @@ import {
 import RfidSayimPage from "./RfidSayimPage";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
+import { panoyaKopyala } from "../../utils/pano";
 
 // ─── EPC Üretici Fonksiyonu ────────────────────────────────────────────────
 const generateUniqueEpc = (id: number, tip: "altin" | "ozel", ayarStr?: string, grupKodu?: string): string => {
@@ -629,7 +630,7 @@ export const RfidEtiketUretimPage: React.FC = () => {
                         variant="outline-secondary"
                         className="border-secondary text-light"
                         onClick={() => {
-                          navigator.clipboard.writeText(currentEpc);
+                          void panoyaKopyala(currentEpc);
                           showStatus("EPC panoya kopyalandı.", "info");
                         }}
                       >
@@ -828,7 +829,7 @@ export const RfidEtiketUretimPage: React.FC = () => {
             variant="outline-light"
             size="sm"
             onClick={() => {
-              navigator.clipboard.writeText(generatedZpl);
+              void panoyaKopyala(generatedZpl);
               showStatus("ZPL komutu panoya kopyalandı.", "success");
             }}
           >

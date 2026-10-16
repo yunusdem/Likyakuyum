@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { KaynakSuzgeci, kaynakUyar, useHizliSatisIsaretleri } from "../hizliSatis/useHizliSatisIsaretleri";
+import { KaynakSuzgeci, kaynakUyar, useHizliSatisAcik, useHizliSatisIsaretleri } from "../hizliSatis/useHizliSatisIsaretleri";
 import {
   Card,
   Table,
@@ -80,6 +80,7 @@ export const SatisListesiPage: React.FC = () => {
     return Array.from(set).filter(Boolean).sort();
   }, [invoices]);
 
+  const hizliAcik = useHizliSatisAcik("perakende");
   const hizliFisler = useHizliSatisIsaretleri("perakende", useMemo(() => invoices.map((i) => Number(i.faturaId)).filter(Boolean), [invoices]));
 
   // Filtrelenmiş liste
@@ -269,6 +270,7 @@ export const SatisListesiPage: React.FC = () => {
               </Form.Group>
             </Col>
 
+            {hizliAcik && (
             <Col xs={12} sm={6} md={2}>
               <Form.Group>
                 <Form.Label className="small text-muted mb-1 fw-bold">Kaynak</Form.Label>
@@ -279,6 +281,7 @@ export const SatisListesiPage: React.FC = () => {
                 </Form.Select>
               </Form.Group>
             </Col>
+            )}
 
             <Col xs={12} sm={6} md={2}>
               <Form.Group>

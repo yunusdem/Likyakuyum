@@ -6,6 +6,7 @@ import ERPToolbar from "../../components/common/ERPToolbar";
 import { LookupModal } from "../../components/common/LookupModal";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { CariKartItem, CariService } from "../../services/cariService";
 import { KDV_SECENEKLERI, StokKart, TicariService, eksiStokUyarisiMi, miktarYaz, para } from "../../services/ticariService";
 import { girisSatirHesapla, yuvarla2 } from "../../../Backend/src/services/ticari/ticariHesap";
@@ -41,6 +42,8 @@ export const StokGirisFisiPage: React.FC = () => {
   const { showSuccess, showError, showWarning } = useToast();
   const { user } = useAuth();
   const yetki = useTicariYetki();
+  // Tarih değiştirme yetkisi yoksa yeni fiş bugünün tarihiyle, düzeltmede fişin tarihiyle kalır (docs/YETKI_VE_VEZNE_YOL_HARITASI.md)
+  const tarihYetkisi = useKullaniciYetkisi().tarihDegistirme;
   const location = useLocation();
   const navigate = useNavigate();
   const id = Number(new URLSearchParams(location.search).get("id")) || null;
@@ -128,7 +131,7 @@ export const StokGirisFisiPage: React.FC = () => {
     let tekrar = false;
     try {
       const r = await TicariService.girisKaydet({
-        stokGirisId: id, tarih: new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), cariKartId: cari?.id ?? null, belgeNo, aciklama,
+        stokGirisId: id, tarih: !tarihYetkisi && !id ? new Date().toISOString() : new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), cariKartId: cari?.id ?? null, belgeNo, aciklama,
         vezneId: (user as any)?.vezneId ?? null,
         satirlar: satirlar.map((s) => ({ stokKartId: s.stokKartId, miktar: sayi(s.miktar), birimFiyat: sayi(s.birimFiyat), kdvOrani: s.kdvOrani })),
         eksiStokOnay: onay,
@@ -182,11 +185,11 @@ export const StokGirisFisiPage: React.FC = () => {
                 </Col>
                 <Col md={2}>
                   <Form.Label className="small text-muted mb-1 fw-bold">Tarih</Form.Label>
-                  <Form.Control size="sm" type="date" value={tarih} onChange={(e) => setTarih(e.target.value)} />
+                  <Form.Control size="sm" type="date" value={tarih} onChange={(e) => setTarih(e.target.value)} disabled={!tarihYetkisi} title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"} />
                 </Col>
                 <Col md={1}>
                   <Form.Label className="small text-muted mb-1 fw-bold">Saat</Form.Label>
-                  <Form.Control size="sm" type="time" value={saat} onChange={(e) => setSaat(e.target.value)} />
+                  <Form.Control size="sm" type="time" value={saat} onChange={(e) => setSaat(e.target.value)} disabled={!tarihYetkisi} />
                 </Col>
                 <Col md={3}>
                   <Form.Label className="small text-muted mb-1 fw-bold">Tedarikçi (cari)</Form.Label>

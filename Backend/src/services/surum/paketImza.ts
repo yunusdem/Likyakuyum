@@ -9,9 +9,10 @@ import { acikAnahtarOku, lisansAcikAnahtari, ozelAnahtarOku } from "../lisans/li
  */
 
 export const sha256Dosya = async (dosya: string): Promise<string> => {
-  // Küçük dosyalar tek seferde okunur (binlerce küçük dosyada akış açmak çok yavaş)
-  const st = fs.statSync(dosya);
-  if (st.size <= 1024 * 1024) return crypto.createHash("sha256").update(fs.readFileSync(dosya)).digest("hex");
+  // Küçük dosyalar tek seferde okunur (binlerce küçük dosyada akış açmak çok yavaş). Okuma asenkron: bütünlük taraması
+  // binlerce dosyayı eşzamanlı okurken sunucu her saat saniyelerce donuyordu (E6)
+  const st = await fs.promises.stat(dosya);
+  if (st.size <= 1024 * 1024) return crypto.createHash("sha256").update(await fs.promises.readFile(dosya)).digest("hex");
   const h = crypto.createHash("sha256");
   for await (const p of fs.createReadStream(dosya, { highWaterMark: 1024 * 1024 })) h.update(p as Buffer);
   return h.digest("hex");
@@ -71,6 +72,31 @@ export const dosyalariTopla = (kok: string): string[] => {
   return sonuc.sort();
 };
 
+/**
+ * Asenkron dosya listesi (bütünlük denetimi): kapsam dışındaki klasöre hiç girilmez (`kapsam("<klasör>/")`), olay döngüsü
+ * klasörler arasında serbest kalır.
+ */
+export const dosyalariToplaAsync = async (kok: string, kapsam: (gorece: string) => boolean = () => true): Promise<string[]> => {
+  const sonuc: string[] = [];
+  const gez = async (alt: string) => {
+    if (!kapsam(`${alt}/`)) return;
+    let girdiler: fs.Dirent[];
+    try {
+      girdiler = await fs.promises.readdir(path.join(kok, alt), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const g of girdiler) {
+      const gorece = `${alt}/${g.name}`.replace(/^\/+/, "");
+      if (g.isDirectory()) await gez(gorece);
+      else if (g.isFile() && kapsam(gorece)) sonuc.push(gorece);
+    }
+  };
+  for (const k of BUTUNLUK_KLASORLERI) await gez(k);
+  for (const d of BUTUNLUK_DOSYALARI) if (kapsam(d) && fs.existsSync(path.join(kok, d))) sonuc.push(d);
+  return sonuc.sort();
+};
+
 export const butunlukListesiUret = async (kok: string, surum: string, ozelB64: string): Promise<ButunlukListesi> => {
   const dosyalar: [string, string][] = [];
   for (const d of dosyalariTopla(kok)) dosyalar.push([d, await sha256Dosya(path.join(kok, d))]);
@@ -96,7 +122,7 @@ export const butunlukDenetle = async (
   if (!liste || liste.v !== 1 || !Array.isArray(liste.dosyalar) || !liste.imza) return "BUTUNLUK.json hatalı";
   if (!acikB64 || !dogrula(listeOzeti(liste.surum, liste.dosyalar), liste.imza, acikB64)) return "bütünlük listesinin imzası tutmuyor";
   const beklenen = new Map(liste.dosyalar.filter(([d]) => kapsam(d)));
-  for (const d of dosyalariTopla(kok).filter(kapsam)) {
+  for (const d of await dosyalariToplaAsync(kok, kapsam)) {
     const ozet = beklenen.get(d);
     if (!ozet) return `listede olmayan dosya: ${d}`;
     if ((await sha256Dosya(path.join(kok, d))) !== ozet) return `değiştirilmiş dosya: ${d}`;

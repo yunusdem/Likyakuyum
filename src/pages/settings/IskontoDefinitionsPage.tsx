@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import {
   Container,
   Row,
@@ -42,6 +43,8 @@ export const IskontoDefinitionsPage: React.FC<IskontoDefinitionsPageProps> = ({
   onCancel,
 }) => {
   const location = useLocation();
+  // Has gram iskontosu yalnız kuyum (Sarraf / Perakende) fişlerinde uygulanır; Ticari lisansında seçenek çizilmez
+  const hasGramVar = useUrunOzellikleri().kuyum;
 
   // ─── State: İskonto Kartı (TODVZ_ISKONTO) ──────────────────────────────────
   const [iskontoId, setIskontoId] = useState<number | null>(null);
@@ -588,7 +591,7 @@ export const IskontoDefinitionsPage: React.FC<IskontoDefinitionsPageProps> = ({
                     >
                       <IconCurrencyLira size={15} className="me-1" /> Sabit Tutar (TL)
                     </Button>
-                    <Button
+                    {(hasGramVar || iskontoTipi === 3) && <Button
                       variant={iskontoTipi === 3 ? "primary" : "outline-secondary"}
                       onClick={() => {
                         setIskontoTipi(3);
@@ -597,7 +600,7 @@ export const IskontoDefinitionsPage: React.FC<IskontoDefinitionsPageProps> = ({
                       className="px-2.5 py-1 fw-semibold small"
                     >
                       <IconScale size={15} className="me-1" /> Has Gram (gr)
-                    </Button>
+                    </Button>}
                     <Button
                       variant={iskontoTipi === 0 ? "primary" : "outline-secondary"}
                       onClick={() => {

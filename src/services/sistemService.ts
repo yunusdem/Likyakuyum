@@ -32,9 +32,17 @@ export const SistemService = {
       bilgiOnbellek = apiClient
         .get<SistemBilgisi>("/sistem/bilgi")
         .then((r) => r.data as SistemBilgisi)
-        .catch(() => ({ kurulum: false, surum: "" }));
+        .catch(() => {
+          // Hata önbelleğe alınmaz: sunucu açılırken bir kez ulaşılamadıysa kurulum bulut sanılıp kalmasın
+          bilgiOnbellek = null;
+          return { kurulum: false, surum: "" };
+        });
     }
     return bilgiOnbellek;
+  },
+  /** Kilit ekranı: merkezden lisans denetimi (giriş gerekmez; merkeze en çok 30 sn'de bir gidilir) */
+  async lisansKontrol(): Promise<{ merkezeUlasildi: boolean | null; hata: string | null; lisansYuklendi: boolean; lisans: KurulumLisansDurumu }> {
+    return (await apiClient.post<any>("/sistem/lisans-kontrol")).data;
   },
   async lisansDurumu(): Promise<KurulumLisansDurumu> {
     return (await apiClient.get<KurulumLisansDurumu>("/auth/lisans-durum")).data as KurulumLisansDurumu;

@@ -4,12 +4,15 @@ import { apiClient } from "../../services/apiClient";
 import { SistemService } from "../../services/sistemService";
 import { useAuth } from "../../context/AuthContext";
 import { URUN_ADLARI, PaketKodu } from "../../config/urunPaketleri";
+import KurulumYedekKarti from "./KurulumYedekKarti";
 
 interface GuncellemeDurumu {
   surum: string;
   bekleyen: { surum: string; zaman: string } | null;
   sonSonuc: { surum: string; basarili: boolean; mesaj: string; zaman: string } | null;
   bildirim: { sonBasari: string | null; sonHata: string | null; merkez: string };
+  /** Açılıştaki şema göçü (hatalıysa güncelleme eski sürüme döner; bize bildirilmeli) */
+  goc?: { durum: "bekliyor" | "suruyor" | "tamam" | "hata"; mesaj: string | null; zaman: string | null };
   lisans: {
     durum: string;
     neden: string | null;
@@ -150,6 +153,8 @@ const LisansSurumPage: React.FC = () => {
                 calistir("lisans", async () => {
                   await SistemService.lisansYukle(kod.trim());
                   setKod("");
+                  // Yeni koddaki modüller menüye hemen yansısın (sayfa yenilemeden)
+                  window.dispatchEvent(new CustomEvent("likya_moduller_degisti"));
                   return "Lisans yüklendi.";
                 })
               }
@@ -191,15 +196,27 @@ const LisansSurumPage: React.FC = () => {
                     {d.bildirim.sonHata && <div className="small text-danger">{d.bildirim.sonHata}</div>}
                   </td>
                 </tr>
+                {d.goc && d.goc.durum !== "tamam" && (
+                  <tr>
+                    <th className="fw-normal text-muted">Veritabanı güncellemesi</th>
+                    <td>
+                      {d.goc.durum === "hata" ? <Badge bg="danger">Yapılamadı</Badge> : <Badge bg="info">Sürüyor</Badge>}
+                      {d.goc.mesaj && <div className="small text-danger">{d.goc.mesaj} — lütfen bizimle iletişime geçin.</div>}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </Table>
             <p className="small text-muted">
-              İnternet varken yeni sürüm kendiliğinden iner ve gece 03:00'te uygulanır. Program güncelleme sırasında birkaç saniye
-              kapanır; yeni sürüm açılmazsa eski sürüme kendiliğinden döner.
+              İnternet varken yeni sürüm kendiliğinden iner ve gece 03:00'te uygulanır (bilgisayar uykudaysa uyandırılır; kapalıysa
+              program bir sonraki açılışında, kimse kullanmadan uygulanır). Program güncelleme sırasında birkaç saniye kapanır; yeni
+              sürüm açılmazsa eski sürüme kendiliğinden döner.
             </p>
             <div className="d-flex flex-wrap gap-2">
               <Button size="sm" variant="outline-secondary" disabled={!!mesgul} onClick={() => calistir("kontrol", async () => {
-                await apiClient.post("/sistem/guncelleme/kontrol", {});
+                const r = await apiClient.post<{ lisansYuklendi?: boolean }>("/sistem/guncelleme/kontrol", {});
+                // Merkezden yeni lisans kodu indiyse modüller menüye hemen yansısın
+                if ((r.data as any)?.lisansYuklendi) window.dispatchEvent(new CustomEvent("likya_moduller_degisti"));
                 return "Merkezle eşitlendi.";
               })}>
                 {mesgul === "kontrol" ? <Spinner animation="border" size="sm" /> : "Merkezle Eşitle"}
@@ -215,6 +232,7 @@ const LisansSurumPage: React.FC = () => {
             </div>
           </Col>
         </Row>
+        <KurulumYedekKarti yonetici={yonetici} />
       </Card.Body>
     </Card>
   );

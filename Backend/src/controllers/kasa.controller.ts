@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
 import { KasaService } from "../services/kasa.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -60,6 +61,7 @@ export class KasaController {
       vezneId: vezneId ? Number(vezneId) : undefined,
       search: search ? String(search) : undefined,
       limit: limit ? Number(limit) : 200,
+      baslangic: await gunSiniri(req),
     };
     const data = await KasaService.listHareketler(filter, dbContext);
     return ApiResponse.ok(res, "Hesap hareketleri listelendi.", data);
@@ -68,6 +70,7 @@ export class KasaController {
   public static getHareketById = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = KasaController.getDbContext(req);
     const id = Number(req.params.id);
+    await kayitErisimi(req, "kasaHareket", id);
     const data = await KasaService.getHareketById(id, dbContext);
     return ApiResponse.ok(res, "Hesap hareketi getirildi.", data);
   });
@@ -76,6 +79,8 @@ export class KasaController {
     const dbContext = KasaController.getDbContext(req);
     const userObj = req.user as any;
     const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
+    // Gün sınırı ve tarih yetkisi (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+    await fisKayitYetkisi(req, "kasaHareket", req.body?.hesapHareketiId, req.body?.tarih);
     const data = await KasaService.saveHareket(req.body, kullaniciId, dbContext);
     return ApiResponse.ok(res, "Hesap hareketi başarıyla kaydedildi.", data);
   });
@@ -86,6 +91,7 @@ export class KasaController {
     const userObj = req.user as any;
     const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
     const degisiklikTakipVar = Boolean(req.body?.degisiklikTakipVar);
+    await kayitErisimi(req, "kasaHareket", id);
     await KasaService.deleteHareket(id, kullaniciId, degisiklikTakipVar, dbContext);
     return ApiResponse.ok(res, "Hesap hareketi silindi.");
   });

@@ -19,6 +19,7 @@ import { IzlemeSqlRepository } from "../../models/admin/izlemeSql.repository.js"
 import { OturumService } from "../oturum.service.js";
 import { MerkezGirisService } from "../merkezGiris.service.js";
 import { DestekOlay } from "../destek/destekOlay.js";
+import { lisansKoduGuncelMi } from "./lisansKod.service.js";
 
 const bosIseNull = (v: string | null | undefined): string | null => {
   const t = (v ?? "").trim();
@@ -212,8 +213,16 @@ export class FirmaService {
   }
 
   public static async lisanslar(firmaId: number): Promise<LisansDto[]> {
-    await this.getir(firmaId);
-    return LisansSqlRepository.firmaLisanslari(firmaId);
+    const firma = await this.getir(firmaId);
+    const liste = await LisansSqlRepository.firmaLisanslari(firmaId);
+    // Kurulum firması: geçerli kod, kod üretildikten sonraki modül / ürün / limit / iletişim değişikliklerini taşıyor mu
+    // (internetli kurulumda yeni kod kendiliğinden iner; internetsizde panel "Yeni Kod" ister)
+    if (firma.baglantiModu === "setup") {
+      for (const l of liste) {
+        if (l.lisansKodu && l.aktif && !l.iptal) l.kodGuncel = await lisansKoduGuncelMi(l.lisansKodu, l, firma.firmaKodu).catch(() => null);
+      }
+    }
+    return liste;
   }
 
   public static async lisansEkle(

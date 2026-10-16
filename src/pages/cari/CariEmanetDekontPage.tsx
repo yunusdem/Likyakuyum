@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { caprazKurDenetle, kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { kurOnayi } from "../../utils/kurYetkiDenetimi";
+import { CompanyService } from "../../services/companyService";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { fisGunu } from "../../utils/fisTarihi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -74,6 +79,11 @@ type MutabakatType = "capraz" | "has" | "kur";
 
 export const CariEmanetDekontPage: React.FC = () => {
   const { user } = useAuth();
+  // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+  const kYetki = useKullaniciYetkisi();
+  const tarihYetkisi = kYetki.tarihDegistirme;
+  // Kur yetkisi "Yok" ise satır kurları kilitli (has mutabakatında has oranı serbest)
+  const kurAcik = kurDegistirilebilir(kYetki);
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -1198,6 +1208,26 @@ export const CariEmanetDekontPage: React.FC = () => {
       })),
     ];
 
+    // Kur yetkisi (gişe kuru = satırın parite kuru) ve çapraz kur kontrolü (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+    const kurCinsiDegeri = mutabakatTuru === "capraz" ? kurCinsi || 0 : mutabakatTuru === "has" ? 1 : 2;
+    if (mutabakatTuru !== "has") {
+      const kurSatirlari = combinedLines.map((l, i) => ({
+        etiket: `${i + 1}. satırın kuru`,
+        gise: l.giseKuru > 0 && l.giseKuru !== 1 ? { kur: l.giseKuru } : null,
+        kur: l.kur,
+      }));
+      if (!kurOnayi(kYetki, kurSatirlari, (m) => setAlertInfo({ type: "danger", message: m }))) return;
+    }
+    if (!kYetki.caprazKurKontroluYok) {
+      const tanim = await CompanyService.getDefinitions().catch(() => null);
+      const tolerans = kurCinsiDegeri === 2 ? Number(tanim?.CARI_TL_TOLERANSI) || 0 : Number(tanim?.CARI_USD_TOLERANSI) || 0;
+      const caprazHata = caprazKurDenetle(kYetki, combinedLines, kurCinsiDegeri, tolerans);
+      if (caprazHata) {
+        setAlertInfo({ type: "danger", message: caprazHata });
+        return;
+      }
+    }
+
     setIsSaving(true);
     setAlertInfo(null);
 
@@ -1205,7 +1235,7 @@ export const CariEmanetDekontPage: React.FC = () => {
       const payload: SaveCariDekontPayload = {
         cariDekontId: cariDekontId && cariDekontId > 0 ? cariDekontId : null,
         tip,
-        tarih,
+        tarih: fisGunu(tarih, !(cariDekontId && cariDekontId > 0), tarihYetkisi),
         aciklama: aciklama.trim() || undefined,
         kurCinsi: mutabakatTuru === "capraz" ? kurCinsi || 0 : mutabakatTuru === "has" ? 1 : 2,
         borcluId: tip === 2 ? (cariKartId || 1) : (targetCariId || 1),
@@ -1309,7 +1339,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         handleSave();
       } else if (e.key === "F5") {
         e.preventDefault();
-        setShowBakiyeModal(true);
+        if (kYetki.cariBakiye) setShowBakiyeModal(true);
       } else if (e.key === "F6") {
         e.preventDefault();
         handleHesapKapat();
@@ -1497,6 +1527,8 @@ export const CariEmanetDekontPage: React.FC = () => {
                       size="sm"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}
+                      disabled={!tarihYetkisi}
+                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
                       className="font-monospace"
                     />
                   </Col>
@@ -1715,6 +1747,8 @@ export const CariEmanetDekontPage: React.FC = () => {
                       size="sm"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}
+                      disabled={!tarihYetkisi}
+                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
                       className="font-monospace"
                     />
                   </Col>
@@ -2112,6 +2146,7 @@ export const CariEmanetDekontPage: React.FC = () => {
                               id={`grid-input-sol-${idx}-kur`}
                               type="text"
                               inputMode="decimal"
+                              readOnly={mutabakatTuru !== "has" && !kurAcik}
                               value={
                                 mutabakatTuru === "has"
                                   ? (row.hasOrani !== undefined && row.hasOrani !== null ? String(row.hasOrani) : "")
@@ -2427,6 +2462,7 @@ export const CariEmanetDekontPage: React.FC = () => {
                               id={`grid-input-sag-${idx}-kur`}
                               type="text"
                               inputMode="decimal"
+                              readOnly={mutabakatTuru !== "has" && !kurAcik}
                               value={
                                 mutabakatTuru === "has"
                                   ? (row.hasOrani !== undefined && row.hasOrani !== null ? String(row.hasOrani) : "")
@@ -2530,9 +2566,11 @@ export const CariEmanetDekontPage: React.FC = () => {
           <span className="me-3 cursor-pointer" onClick={handleSave} style={{ cursor: "pointer" }}>
             <strong>F1)</strong> Kayıt
           </span>
-          <span className="me-3 cursor-pointer" onClick={() => setShowBakiyeModal(true)} style={{ cursor: "pointer" }}>
-            <strong>F5)</strong> Bakiye
-          </span>
+          {kYetki.cariBakiye && (
+            <span className="me-3 cursor-pointer" onClick={() => setShowBakiyeModal(true)} style={{ cursor: "pointer" }}>
+              <strong>F5)</strong> Bakiye
+            </span>
+          )}
           <span className="me-3 cursor-pointer" onClick={handleHesapKapat} style={{ cursor: "pointer" }}>
             <strong>F6)</strong> Hesap Kapat
           </span>

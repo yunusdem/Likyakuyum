@@ -45,6 +45,8 @@ export function sarrafYuku(b: KaydetBaglami, kartlar: Record<string, PosKarti> =
       iscilikHesaplamaSekli: 0,
       aciklama: null,
       kur,
+      // İskonto kurdan düşüldüyse iskontosuz kur: sunucu kur yetkisini bununla denetler (iskonto kur değişikliği sayılmaz)
+      ...(paylar[i] > 0 && { iskontosuzKur: s.birimFiyat }),
       tutar,
       urunTipi: Number(s.urunTipi) || 0,
       karat: null,

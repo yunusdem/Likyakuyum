@@ -1,5 +1,6 @@
 import { DashboardMenu } from "routes/DashboardRoute";
 import { MenuItemType } from "types/menuTypes";
+import { KullaniciYetkisi, anaMenuAcik, maddeHarfi, menuMaddesiAcik, sayfaKutusuAcik } from "../../Backend/src/services/yetki/kullaniciYetkiKural";
 
 /**
  * Modül kataloğu: yönetim panelinden firma bazında açılıp kapatılan her şey (docs/ADMIN_PANEL_YOL_HARITASI.md, Faz 4).
@@ -118,29 +119,203 @@ export const menuyuSuz = (menu: MenuItemType[], acik: string[] | null | undefine
 };
 
 /**
- * Adres çubuğundan doğrudan gidilen sayfa firmaya kapalı mı? Bir adres menüde/üst çubukta birden fazla yerde
- * geçebilir; herhangi biri açıksa sayfa açıktır. Menüde hiç geçmeyen adresler (ara sayfalar, takma adlar) kısıtlanmaz.
+ * Sol menüyü kullanıcının kart yetkilerine göre süzer (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.1): ana menü harfi
+ * (ANA_MENU_YETKISI) ve ana menünün madde harfleri (VEZNE_ISLEMLERI_YETKISI …). Harfler menü adlarındaki özgün harflerdir;
+ * birleşik sol menü (solMenuBirlesimi) bu süzmeden SONRA çizilir. Gruplar (e-Banka, MASAK) tek madde sayılır.
  */
-export const sayfaKapaliMi = (acik: string[] | null | undefined, pathname: string): boolean => {
-  if (!acik) return false;
-  const yol = yolTemizle(pathname).replace(/\/+$/, "");
-  if (!yol) return false;
+export const menuyuKullaniciyaSuz = (menu: MenuItemType[], y: KullaniciYetkisi): MenuItemType[] => {
+  if (y.yonetici) return menu;
+  // Yetki kutusuna bağlı sayfalar (cari bakiye raporları, şüpheli işlem listeleri …) gruplarının içinde de süzülür
+  const kutular = (ogeler: MenuItemType[]): MenuItemType[] =>
+    ogeler.flatMap((oge) => {
+      if (oge.link && !sayfaKutusuAcik(y, oge.link)) return [];
+      if (!oge.children?.length) return [oge];
+      const c = kutular(oge.children);
+      return c.length ? [{ ...oge, children: c }] : [];
+    });
+  return menu.flatMap((ana) => {
+    if (!ana.key || ana.grouptitle) return [ana];
+    if (!anaMenuAcik(y, ana.key)) return [];
+    if (!ana.children?.length) return [ana];
+    const cocuklar = kutular(ana.children.filter((oge) => menuMaddesiAcik(y, ana.key!, maddeHarfi(oge.name || oge.title))));
+    return cocuklar.length ? [{ ...ana, children: cocuklar }] : [];
+  });
+};
 
-  const kodlar: string[] = [];
-  const tara = (anaKey: string, ogeler: MenuItemType[]) => {
+/** Modül kodu → ana menüsü ve ana menüdeki özgün harfi (gruptaki madde grubun harfini alır; ana menünün kendisi: null) */
+let kodHarfOnbellegi: Map<string, { anaKey: string; harf: string | null }> | null = null;
+const kodHarfleri = () => {
+  if (kodHarfOnbellegi) return kodHarfOnbellegi;
+  const m = new Map<string, { anaKey: string; harf: string | null }>();
+  const tara = (anaKey: string, ogeler: MenuItemType[], harf: string | null) => {
     for (const oge of ogeler) {
-      if (oge.link && yolTemizle(oge.link) === yol) kodlar.push(menuOgesiKodu(anaKey, oge));
-      if (oge.children?.length) tara(anaKey, oge.children);
+      const h = harf ?? maddeHarfi(oge.name || oge.title);
+      m.set(menuOgesiKodu(anaKey, oge), { anaKey, harf: h });
+      if (oge.children?.length) tara(anaKey, oge.children, h);
     }
   };
   for (const ana of DashboardMenu) {
     if (!ana.key) continue;
-    if (ana.link && yolTemizle(ana.link) === yol) kodlar.push(ana.key);
-    if (ana.children?.length) tara(ana.key, ana.children);
+    m.set(ana.key, { anaKey: ana.key, harf: null });
+    if (ana.children?.length) tara(ana.key, ana.children, null);
   }
-  for (const k of UST_KISAYOLLAR) if (k.to && yolTemizle(k.to) === yol) kodlar.push(k.key);
+  kodHarfOnbellegi = m;
+  return m;
+};
 
-  return kodlar.length > 0 && !kodlar.some((k) => acik.includes(k));
+/**
+ * Takma ad adresler (App.tsx'te menüdeki bir ekranı açan, menüde geçmeyen yollar) → asıl menü adresi. Sayfa koruması
+ * takma adı asıl adresiyle denetler; yoksa kapalı bir ekran takma adla açılabiliyordu (ör. Kuyum lisansında Döviz Fişi).
+ * Anahtar ve değer yolAnahtari biçiminde (baş/son "/" yok, küçük harf).
+ */
+const SAYFA_TAKMA_ADLARI: Record<string, string> = {
+  // Ayarlar / tanımlar
+  "tanimlar/kullanici-tanimlari": "ayarlar/kullanici-tanimlari",
+  "tanimlar/firma-tanimlari": "ayarlar/firma-tanimlari",
+  "tanimlar/vezne-tanimlari": "ayarlar/vezne-tanimlari",
+  "tanimlar/yazici-tanimlari": "ayarlar/yazici-tanimlari",
+  "tanimlar/urun-tanimlari": "ayarlar/urun-tanimlari",
+  "tanimlar/istatistik-tanimlari": "ayarlar/istatistik-tanimlari",
+  "tanimlar/numeratorler": "ayarlar/numeratorler",
+  "ayarlar/numaratorler": "ayarlar/numeratorler",
+  "ayarlar/numarator-tanimlari": "ayarlar/numeratorler",
+  "tanimlar/numarator-tanimlari": "ayarlar/numeratorler",
+  "ayarlar/numerator-tanimlari": "ayarlar/numeratorler",
+  "tanimlar/numerator-tanimlari": "ayarlar/numeratorler",
+  "tanimlar/iskonto-tanimlari": "ayarlar/iskonto-tanimlari",
+  "ayarlar/iskonto": "ayarlar/iskonto-tanimlari",
+  "tanimlar/iskonto": "ayarlar/iskonto-tanimlari",
+  "tanimlar/banknot-tanimlari": "ayarlar/banknot-tanimlari",
+  "masak": "ayarlar/masak-dondurulanlar",
+  // Cari
+  "cari/kayit": "cari/kart-kayit",
+  "cari/cari-kart-kayit": "cari/kart-kayit",
+  "cari/listesi": "cari/kart-listesi",
+  "cari/cari-kart-listesi": "cari/kart-listesi",
+  "kasa/hesap-ad-listesi": "cari/hesap-ad-listesi",
+  "cari/hareketler": "cari/hareket-listesi",
+  "cari/emanet-dekont-duzeltme": "cari/emanet-duzeltme",
+  "cari/emanet-dekont-kayit": "cari/emanet-dekont",
+  "cari/emanet-kayit": "cari/emanet-dekont",
+  "cari/cari-emanet-dekont": "cari/emanet-dekont",
+  "cari/emanet": "cari/emanet-dekont",
+  // Vezne
+  "vezne/doviz-fis": "vezne/doviz-fisi-kayit",
+  "vezne/doviz-fis-duzeltme": "vezne/doviz-fisi-duzeltme",
+  "vezne/vezne-transferi-kayit": "vezne/transfer-kayit",
+  "vezne/vezne-transferi": "vezne/transfer-kayit",
+  "vezne/transfer": "vezne/transfer-kayit",
+  "vezne/vezne-transferi-duzeltme": "vezne/transfer-duzeltme",
+  "vezne/vezne-izleme": "vezne/izleme",
+  "vezne/para-sayma": "vezne/para-say",
+  "vezne/vezne-para-say": "vezne/para-say",
+  "vezne/sarraf-fisi": "vezne/sarraf-fisi-kayit",
+  // Perakende
+  "vezne/perakende-fisi": "vezne/perakende-fisi-kayit",
+  "vezne/perakende-fis": "vezne/perakende-fisi-kayit",
+  "vezne/perakende": "vezne/perakende-fisi-kayit",
+  "perakende/perakende-fisi-kayit": "vezne/perakende-fisi-kayit",
+  "perakende/satis": "vezne/perakende-fisi-kayit",
+  "vezne/perakende-duzeltme": "vezne/perakende-fisi-duzeltme",
+  "perakende/perakende-fisi-duzeltme": "vezne/perakende-fisi-duzeltme",
+  "perakende/vitrin-stok-takibi": "perakende/vitrin-stok",
+  "perakende/altin-listesi": "perakende/barkodlu-altin-listesi",
+  "perakende/ozel-urun-listesi": "perakende/barkodlu-ozel-urun-listesi",
+  "perakende/liste": "perakende/satis-listesi",
+  // Kur
+  "kur/gunluk-fiyat-listesi": "kur/anlik-fiyat-listesi",
+  "tanimlar/pano-tanimi": "kur/pano-tanimi",
+  // Banka
+  "banka/hesap-karti": "banka/hesap-kartlari",
+  "banka/pos-cihazi-tanimlari": "banka/pos-tanimlari",
+  "banka/hesap-hareketleri": "banka/hareketler",
+  // Kasa
+  "kasa/kasa-hareket-kayit": "kasa/hareket-kayit",
+  "kasa/hareket": "kasa/hareket-kayit",
+  "kasa/kasa-hareket": "kasa/hareket-kayit",
+  "kasa/kasa-hareket-duzeltme": "kasa/hareket-duzeltme",
+  // Etiket
+  "etiket/altin-urun-tanimlama": "etiket/altin-urun-barkodlama",
+  "etiket/ozel-urun-tanimlama": "etiket/ozel-urun-barkodlama",
+  "etiket/konsinye-altin-urun": "etiket/consinye-altin-urun",
+  "etiket/konsinye-ozel-urun": "etiket/consinye-ozel-urun",
+  "etiket/tasarim": "etiket/altin-etiket-tasarimi",
+  "etiket/barkodlu-sayim-fisi": "etiket/sayim-fisi",
+  // Menü dışı alt sayfalar: ait oldukları menü maddesiyle açılıp kapanır
+  "e-belge/gelen": "e-belge",
+  "e-belge/dogrula": "e-belge",
+  "e-belge/giden": "e-belge",
+  "e-belge/irsaliye": "e-belge",
+  "e-belge/gider": "e-belge",
+  "e-belge/kaynak": "e-belge",
+  "e-belge/mustahsil": "e-belge",
+  "ayarlar/e-belge": "e-belge",
+  "tanimlar/e-belge": "e-belge",
+  "etiket/fiyat-etiketi": "etiket/barkod-fiyat",
+  "etiket/rfid": "etiket/rfid-sayim",
+  "etiket/rfid-etiket-uretim": "etiket/rfid-sayim",
+  "raporlar/cari-hareket-listesi": "cari/hareket-listesi",
+  "raporlar/cari-kart-listesi": "cari/kart-listesi",
+};
+
+/** Adresin karşılaştırma biçimi: baştaki/sondaki "/" atılır, küçük harf (yönlendirici adresleri büyük/küçük harf ayırmaz) */
+const yolAnahtari = (yol: string): string => yolTemizle(yol).replace(/\/+$/, "").toLowerCase();
+
+/**
+ * Adresi açan menü maddelerinin kod zincirleri (ana menü → grup → madde) ve üst kısayol kodları. Takma ad adresler
+ * (App.tsx'te aynı ekranı açan menü dışı yollar) asıl adresine çevrilir.
+ */
+const adresZincirleri = (pathname: string): string[][] => {
+  const ham = yolAnahtari(pathname);
+  const yol = SAYFA_TAKMA_ADLARI[ham] ?? ham;
+  if (!yol) return [];
+  const zincirler: string[][] = [];
+  const tara = (anaKey: string, ogeler: MenuItemType[], ustler: string[]) => {
+    for (const oge of ogeler) {
+      const kod = menuOgesiKodu(anaKey, oge);
+      if (oge.link && yolAnahtari(oge.link) === yol) zincirler.push([...ustler, kod]);
+      if (oge.children?.length) tara(anaKey, oge.children, [...ustler, kod]);
+    }
+  };
+  for (const ana of DashboardMenu) {
+    if (!ana.key) continue;
+    if (ana.link && yolAnahtari(ana.link) === yol) zincirler.push([ana.key]);
+    if (ana.children?.length) tara(ana.key, ana.children, [ana.key]);
+  }
+  for (const k of UST_KISAYOLLAR) if (k.to && yolAnahtari(k.to) === yol) zincirler.push([k.key]);
+  return zincirler;
+};
+
+/**
+ * Adres çubuğundan doğrudan gidilen sayfa firmaya kapalı mı? Bir adres menüde/üst çubukta birden fazla yerde
+ * geçebilir; herhangi biri açıksa sayfa açıktır. Menü maddesi, sol menüdeki gibi ancak üst menüsü (ve grubu) da açıksa
+ * açık sayılır. Menüde hiç geçmeyen adresler (ara sayfalar) kısıtlanmaz; takma adlar asıl adresiyle denetlenir.
+ */
+export const sayfaKapaliMi = (acik: string[] | null | undefined, pathname: string): boolean => {
+  if (!acik) return false;
+  const zincirler = adresZincirleri(pathname);
+  return zincirler.length > 0 && !zincirler.some((z) => z.every((k) => acik.includes(k)));
+};
+
+/** Kod zinciri (ana menü → madde …) kullanıcının menü yetkisinde açık mı */
+const zincirKullaniciyaAcik = (y: KullaniciYetkisi, zincir: string[]): boolean => {
+  const madde = zincir[1] ?? zincir[0];
+  const bilgi = kodHarfleri().get(madde);
+  return !bilgi || menuMaddesiAcik(y, bilgi.anaKey, bilgi.harf);
+};
+
+/**
+ * Sayfaya gidilebilir mi: firmanın lisansında açık (sayfaKapaliMi) VE kullanıcının menü yetkisinde açık. Kullanıcı için
+ * sayfanın menüdeki maddelerinden biri yetkide olmalı; yalnız üst kısayolda bulunan sayfalar (Piyasa, Hızlı Satış
+ * yönlendirmesi) menü yetkisine bağlı değildir. Menüde hiç geçmeyen adresler kısıtlanmaz.
+ */
+export const sayfaErisimi = (acik: string[] | null | undefined, y: KullaniciYetkisi | null | undefined, pathname: string): boolean => {
+  if (sayfaKapaliMi(acik, pathname)) return false;
+  if (!y || y.yonetici) return true;
+  const ham = yolAnahtari(pathname);
+  if (!sayfaKutusuAcik(y, ham) || !sayfaKutusuAcik(y, SAYFA_TAKMA_ADLARI[ham] ?? ham)) return false;
+  const menuZincirleri = adresZincirleri(pathname).filter((z) => !z[0].startsWith(`${UST_KISAYOL_GRUBU}:`));
+  return menuZincirleri.length === 0 || menuZincirleri.some((z) => zincirKullaniciyaAcik(y, z));
 };
 
 /**

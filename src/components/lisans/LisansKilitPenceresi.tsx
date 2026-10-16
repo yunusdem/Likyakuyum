@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
 import { IconLock, IconPhone, IconMail, IconCopy } from "@tabler/icons-react";
 import { SistemService } from "../../services/sistemService";
 import type { LisansIletisim } from "../../services/userService";
+import { panoyaKopyala } from "../../utils/pano";
 
 export interface LisansKilitBilgisi {
   baslik?: string;
@@ -36,6 +37,25 @@ const LisansKilitPenceresi: React.FC<Props> = ({ bilgi, kapat, yuklendi }) => {
   const [hata, setHata] = useState<string | null>(null);
   const [bekliyor, setBekliyor] = useState(false);
   const [kopyalandi, setKopyalandi] = useState(false);
+  const [denetleniyor, setDenetleniyor] = useState(false);
+  const [bilgiNotu, setBilgiNotu] = useState<string | null>(null);
+
+  // Kurulumda kilit açıkken dakikada bir lisans durumu sorulur: program kilitliyken merkeze 5 dakikada bir gider,
+  // kod inince pencere kendiliğinden kapanır
+  // yuklendi ref'te: dinleyici her kilit olayında (ör. 30 sn'lik zil yoklaması 423 alınca) yeni işlev veriyordu, aralık
+  // her seferinde sıfırlanıp hiç dolmuyordu
+  const kurulumKimligi = bilgi?.makineKimligi;
+  const yuklendiRef = useRef(yuklendi);
+  yuklendiRef.current = yuklendi;
+  useEffect(() => {
+    if (!kurulumKimligi) return;
+    const z = window.setInterval(() => {
+      SistemService.lisansDurumu()
+        .then((d) => { if (d.durum !== "KILITLI") yuklendiRef.current?.(); })
+        .catch(() => undefined);
+    }, 60_000);
+    return () => window.clearInterval(z);
+  }, [kurulumKimligi]);
 
   if (!bilgi) return null;
   const kurulum = !!bilgi.makineKimligi;
@@ -59,6 +79,27 @@ const LisansKilitPenceresi: React.FC<Props> = ({ bilgi, kapat, yuklendi }) => {
       setHata(e?.message || "Lisans yüklenemedi.");
     } finally {
       setBekliyor(false);
+    }
+  };
+
+  /** Merkezden denetim: lisans tanımlandıysa kod iner ve program açılır */
+  const merkezdenDenetle = async () => {
+    setHata(null);
+    setBilgiNotu(null);
+    setDenetleniyor(true);
+    try {
+      const d = await SistemService.lisansKontrol();
+      if (d.lisans?.durum !== "KILITLI") {
+        yuklendi?.();
+        return;
+      }
+      if (d.merkezeUlasildi === false) setHata(`Merkeze ulaşılamadı${d.hata ? `: ${d.hata}` : ""}. İnternet bağlantısını kontrol edin ya da kodu elle yapıştırın.`);
+      else if (d.merkezeUlasildi === null) setBilgiNotu("Az önce denetlendi; yarım dakika sonra yeniden deneyin.");
+      else setBilgiNotu("Merkezde bu bilgisayar için yeni bir lisans yok. Lisansınız tanımlandığında tekrar deneyin.");
+    } catch (e: any) {
+      setHata(e?.message || "Merkez denetlenemedi.");
+    } finally {
+      setDenetleniyor(false);
     }
   };
 
@@ -96,12 +137,7 @@ const LisansKilitPenceresi: React.FC<Props> = ({ bilgi, kapat, yuklendi }) => {
                 size="sm"
                 variant="outline-secondary"
                 onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(bilgi.makineKimligi || "");
-                    setKopyalandi(true);
-                  } catch {
-                    setKopyalandi(false);
-                  }
+                  setKopyalandi(await panoyaKopyala(bilgi.makineKimligi || ""));
                 }}
               >
                 <IconCopy size={14} className="me-1" />
@@ -119,15 +155,28 @@ const LisansKilitPenceresi: React.FC<Props> = ({ bilgi, kapat, yuklendi }) => {
                 spellCheck={false}
               />
             </Form.Group>
+            <div className="small text-muted mt-2">
+              İnternet varsa lisansınız tanımlandığında kod kendiliğinden yüklenir (birkaç dakika içinde) ya da "Merkezden Kontrol Et" ile hemen alınır.
+            </div>
             {hata && (
               <Alert variant="danger" className="mt-3 mb-0">
                 {hata}
+              </Alert>
+            )}
+            {bilgiNotu && (
+              <Alert variant="info" className="mt-3 mb-0">
+                {bilgiNotu}
               </Alert>
             )}
           </>
         )}
       </Modal.Body>
       <Modal.Footer>
+        {kurulum && (
+          <Button variant="outline-primary" disabled={denetleniyor || bekliyor} onClick={merkezdenDenetle}>
+            {denetleniyor ? <Spinner animation="border" size="sm" /> : "Merkezden Kontrol Et"}
+          </Button>
+        )}
         {kurulum && (
           <Button variant="primary" disabled={bekliyor || kod.trim().length < 20} onClick={yukle}>
             {bekliyor ? <Spinner animation="border" size="sm" /> : "Lisansı Yükle"}

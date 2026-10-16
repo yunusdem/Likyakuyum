@@ -278,7 +278,7 @@ export const getDbPool = async (
             logger.warn("⚠️ MSSQL veritabanı çevrimdışı veya bağlanılamadı. Lütfen SQL Server servisinin çalıştığından emin olun.");
             poolCache.delete(fullCacheKey);
             throw ApiError.badRequest(
-              `Belirtilen sunucu (${server || targetServer}) veya veritabanına (${targetDb}) ulaşılamadı. Lütfen SQL Server servisinin ve TCP/IP portunun (1433) açık olduğundan emin olunuz.`
+              `Belirtilen sunucu (${server || targetServer}) veya veritabanına (${targetDb}) ulaşılamadı. Lütfen SQL Server servisinin ve TCP/IP portunun (${activeConfig.port || 1433}) açık olduğundan emin olunuz.`
             );
           }
         } else {

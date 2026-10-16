@@ -14,6 +14,8 @@ export interface JwtPayload {
   sid?: string;
   /** Müşteri no ile girişte seçilen firma (LIKYA_ADMIN.ADM_FIRMA). Varsa DB bağlantısı her istekte buradan çözülür. */
   firmaId?: number;
+  /** Kurulum (exe): jeton verildiği andaki şifrenin damgası; şifre değişince eski jetonlar reddedilir (services/kurulum/kurulumKart.ts) */
+  sd?: string;
   iat?: number;
   exp?: number;
 }

@@ -653,7 +653,8 @@ export class VezneTransferiSqlRepository {
    */
   public static async getNavigation(
     currentId?: number | null,
-    dbContext?: { dbServer?: string; dbName?: string }
+    dbContext?: { dbServer?: string; dbName?: string },
+    baslangic?: string | null
   ): Promise<{ firstId: number | null; prevId: number | null; nextId: number | null; lastId: number | null }> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
 
@@ -661,13 +662,16 @@ export class VezneTransferiSqlRepository {
       const cur = Number(currentId) || 0;
       const req = pool.request();
       req.input("curId", sql.Int, cur);
+      // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+      req.input("bas", sql.VarChar(10), baslangic || "1900-01-01");
+      const T = "[dbo].[TODVZ_VEZNE_TRANSFERI] WHERE TARIH >= CAST(@bas AS date)";
 
       const navRes = await req.query(`
         SELECT
-          (SELECT MIN(VEZNE_TRANSFERI_ID) FROM [dbo].[TODVZ_VEZNE_TRANSFERI]) AS firstId,
-          (SELECT MAX(VEZNE_TRANSFERI_ID) FROM [dbo].[TODVZ_VEZNE_TRANSFERI] WHERE VEZNE_TRANSFERI_ID < @curId) AS prevId,
-          (SELECT MIN(VEZNE_TRANSFERI_ID) FROM [dbo].[TODVZ_VEZNE_TRANSFERI] WHERE VEZNE_TRANSFERI_ID > @curId) AS nextId,
-          (SELECT MAX(VEZNE_TRANSFERI_ID) FROM [dbo].[TODVZ_VEZNE_TRANSFERI]) AS lastId
+          (SELECT MIN(VEZNE_TRANSFERI_ID) FROM ${T}) AS firstId,
+          (SELECT MAX(VEZNE_TRANSFERI_ID) FROM ${T} AND VEZNE_TRANSFERI_ID < @curId) AS prevId,
+          (SELECT MIN(VEZNE_TRANSFERI_ID) FROM ${T} AND VEZNE_TRANSFERI_ID > @curId) AS nextId,
+          (SELECT MAX(VEZNE_TRANSFERI_ID) FROM ${T}) AS lastId
       `);
 
       const r = navRes.recordset?.[0] || {};

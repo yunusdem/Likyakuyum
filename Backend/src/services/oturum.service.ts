@@ -24,7 +24,8 @@ const NEDEN_MESAJI: Record<NonNullable<OturumDurumu["neden"]>, string> = {
 
 export class OturumService {
   public static aktifMi(): boolean {
-    return env.MERKEZ_GIRIS === "zorunlu";
+    // Kurulumda (exe) merkezdeki oturum kaydı yoktur
+    return !env.KURULUM_MODU && env.MERKEZ_GIRIS === "zorunlu";
   }
 
   public static onbellegiTemizle(): void {

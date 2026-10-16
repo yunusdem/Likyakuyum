@@ -5,6 +5,7 @@ import { IconBuildingBank, IconCash, IconChevronRight, IconRefresh } from "@tabl
 import { VezneIzlemeService, type VezneIzlemeDataResponse } from "../services/vezneIzlemeService";
 import { EBankaService, type EBankaOzet } from "../services/ebankaService";
 import { paraYaz, zamanYaz } from "./ebanka/ebankaOrtak";
+import { useSayfaErisimi } from "../hooks/useSayfaErisimi";
 
 // Dashboard: solda vezne, sağda banka bakiyeleri. Yalnızca bakiyesi olan birimler görünür;
 // ayrıntı için asıl ekrana gidilir. Yenileme elle. Renkler kullanıcı temasından (menü başlığı) gelir.
@@ -34,6 +35,10 @@ const STIL = `
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  // Lisansa göre: modülü kapalı panel çizilmez, API'si de çağrılmaz (ör. e-Banka yalnız Connector'da)
+  const sayfaAcik = useSayfaErisimi();
+  const vezneAcik = sayfaAcik("/vezne/izleme");
+  const bankaAcik = sayfaAcik("/ebanka/hesaplar");
   const [vezne, setVezne] = useState<VezneIzlemeDataResponse | null>(null);
   const [vezneHata, setVezneHata] = useState("");
   const [banka, setBanka] = useState<EBankaOzet | null>(null);
@@ -44,16 +49,18 @@ const HomePage: React.FC = () => {
   const yenile = useCallback(async () => {
     setYukleniyor(true);
     await Promise.all([
-      VezneIzlemeService.getIzlemeData()
-        .then((v) => { setVezne(v); setVezneHata(""); })
-        .catch((e) => setVezneHata(e?.message || "Vezne bakiyeleri alınamadı.")),
-      EBankaService.getOzet()
-        .then((o) => { setBanka(o); setBankaHata(""); })
-        .catch((e) => setBankaHata(e?.message || "Banka bakiyeleri alınamadı.")),
+      vezneAcik &&
+        VezneIzlemeService.getIzlemeData()
+          .then((v) => { setVezne(v); setVezneHata(""); })
+          .catch((e) => setVezneHata(e?.message || "Vezne bakiyeleri alınamadı.")),
+      bankaAcik &&
+        EBankaService.getOzet()
+          .then((o) => { setBanka(o); setBankaHata(""); })
+          .catch((e) => setBankaHata(e?.message || "Banka bakiyeleri alınamadı.")),
     ]);
     setSaat(new Date());
     setYukleniyor(false);
-  }, []);
+  }, [vezneAcik, bankaAcik]);
 
   useEffect(() => { yenile(); }, [yenile]);
 
@@ -91,7 +98,8 @@ const HomePage: React.FC = () => {
       </div>
 
       <div className="row g-3">
-        <div className="col-lg-6">
+        {vezneAcik && (
+        <div className={bankaAcik ? "col-lg-6" : "col-12"}>
           <div className="lk-panel">
             {panelBasi(<IconCash size={20} />, "Vezne Bakiyeleri", `${vezneler.length} vezne toplamı`, "/vezne/izleme")}
             {vezneHata ? (
@@ -122,7 +130,10 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
-        <div className="col-lg-6">
+        )}
+
+        {bankaAcik && (
+        <div className={vezneAcik ? "col-lg-6" : "col-12"}>
           <div className="lk-panel">
             {panelBasi(<IconBuildingBank size={20} />, "Banka Bakiyeleri", banka?.sonEsitleme ? `Bankadan son güncelleme ${zamanYaz(banka.sonEsitleme)}` : "Bankadan henüz güncellenmedi", "/ebanka/hesaplar")}
             {bankaHata ? (
@@ -149,6 +160,7 @@ const HomePage: React.FC = () => {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

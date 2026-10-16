@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
@@ -444,6 +447,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   isDuzeltme = false,
 }) => {
   const { user } = useAuth();
+  // Kullanıcı kartı yetkileri: tarih, fiş no, kur, banka hesabı, cari bakiye, MASAK uyarısı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2;
+  // sunucu da denetler). Geri çağrılarda güncel değer için ref.
+  const kYetki = useKullaniciYetkisi();
+  const kYetkiRef = useRef(kYetki);
+  kYetkiRef.current = kYetki;
+  const kurAcik = kurDegistirilebilir(kYetki);
+  // Kayıt öncesi kur denetimi için ürün kuru (getKurForProduct aşağıda tanımlanır)
+  const getKurRef = useRef<(u: { paraId?: number; kod?: string; urunTipi?: number; ad?: string }, t: 0 | 1) => number>(() => 0);
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -786,7 +797,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [isLoadingCariBakiye, setIsLoadingCariBakiye] = useState<boolean>(false);
 
   const loadCariBakiye = useCallback(async (cId: number | null) => {
-    if (!cId || cId <= 0) {
+    if (!cId || cId <= 0 || !kYetkiRef.current.cariBakiye) {
       setCariBakiyeSummary(null);
       return;
     }
@@ -1966,6 +1977,21 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     });
     if (!validLines.length) { return; }
 
+    // Kur yetkisi, gişe kuru aralığı ve sapma uyarısı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+    if (!forceFarkApprove) {
+      const gise = (l: (typeof validLines)[number]) => {
+        const u = { paraId: l.urunId, kod: l.urunKodu, ad: l.urunAdi, urunTipi: l.urunTipi };
+        const kur = getKurRef.current(u, tip === 0 ? 0 : 1);
+        return kur > 0 ? { kur, alis: getKurRef.current(u, 0) || null, satis: getKurRef.current(u, 1) || null } : null;
+      };
+      const devam = kurOnayi(
+        kYetkiRef.current,
+        validLines.map((l, i) => ({ etiket: `${i + 1}. satırın kuru`, gise: gise(l), kur: parseDecimal(l.kur) })),
+        (m) => showNotif("danger", m)
+      );
+      if (!devam) return;
+    }
+
     // 185.000 TL veya 5.000 USD MASAK Sınır ve Kimlik Bilgisi Kontrolü
     if (isMasakLimitExceeded) {
       const activeUnvan = (unvan || detayUnvan || "").trim();
@@ -2487,14 +2513,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const isGayriResmi = (istatistikFisDizaynTipi === 1) || (activeStat && Number(activeStat.fisDizaynTipi) === 1);
 
     const selectedCustomerName = (result.unvan || "").trim();
-    if (!isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
+    // "MASAK uyarısı versin" işaretsizse müşteri seçilirken otomatik sorgu / uyarı açılmaz; kayıttaki kontrol sürer
+    if (kYetkiRef.current.masakUyarisi && !isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
       handleSearchMasak(selectedCustomerName, result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || undefined);
     } else {
       setMasakResult({ matches: [], searched: false });
     }
 
     // Kişi seçmede işlem tutarı MASAK sınırını (≥185.000 TL / 5.000 USD) aşıyorsa uyar (Tip 1 hariç)
-    if (isMasakLimitExceeded && !isGayriResmi) {
+    if (kYetkiRef.current.masakUyarisi && isMasakLimitExceeded && !isGayriResmi) {
       setShowMasakCustomerWarningModal(true);
     }
   }, [handleSearchMasak, isMasakLimitExceeded, tip, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
@@ -2779,6 +2806,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     // 4. Hurda / Maden Altın (1) ise Anlık Fiyat Listesindeki HAS Altın Kurunu al
     return getHasKurForTip(islemTip);
   }, [kurSatirlar, getHasKurForTip, getGumusKurForTip]);
+  getKurRef.current = getKurForProduct;
 
   // e-Banka'dan fiş kesiliyorsa banka tutarı (TL); miktarı boş ürün satırında miktar bu tutarın kalanından hesaplanır
   const ebHedefRef = useRef(0);
@@ -5077,7 +5105,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   style={{ width: "110px", fontSize: "11.5px", height: "22px" }}
                   value={tarih}
                   onChange={(e) => setTarih(e.target.value)}
-                  title="Kayıtlı Fiş Tarihi (Düzenlenebilir)"
+                  disabled={!kYetki.tarihDegistirme}
+                  title={kYetki.tarihDegistirme ? "Kayıtlı Fiş Tarihi (Düzenlenebilir)" : "Tarih değiştirme yetkiniz yok"}
                 />
                 <input
                   type="time"
@@ -5085,6 +5114,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   style={{ width: "55px", fontSize: "11px", height: "22px" }}
                   value={saat}
                   onChange={(e) => setSaat(e.target.value)}
+                  disabled={!kYetki.tarihDegistirme}
                   title="Kayıtlı Fiş Saati (Düzenlenebilir)"
                 />
               </div>
@@ -5487,6 +5517,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     title="Fiş Seri No (Boş bırakılırsa numaratörden otomatik atanır)"
                     value={seriNo}
                     onChange={(e) => setSeriNo(e.target.value.toUpperCase())}
+                    readOnly={!kYetki.fisNoDegistirme}
                     onKeyDown={(e) => handleHeaderKeyDown(e, "seriNo")}
                     className="font-monospace"
                     style={{ width: "120px" }}
@@ -5504,6 +5535,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     title="Belge No"
                     value={fisNo}
                     onChange={(e) => setFisNo(e.target.value)}
+                    readOnly={!kYetki.fisNoDegistirme}
                     onKeyDown={(e) => handleHeaderKeyDown(e, "belgeNo")}
                     className="font-monospace"
                     style={{ width: "120px" }}
@@ -5577,6 +5609,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     size="sm"
                     value={altinHasKuru}
                     onChange={(e) => handleAltinHasKuruChange(e.target.value)}
+                    disabled={!kurAcik}
+                    title={kurAcik ? undefined : "Kur değiştirme yetkiniz yok"}
                     onKeyDown={(e) => handleHeaderKeyDown(e, "hasKuru")}
                     className="font-monospace text-end"
                     style={{ width: "95px" }}
@@ -5600,8 +5634,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               </div>
             </div>
 
-            {/* Sağ Alan: Cari Bakiye Durumu (Cari Seçildiğinde) */}
-            {cariKartId ? (
+            {/* Sağ Alan: Cari Bakiye Durumu (Cari Seçildiğinde; "Cari bakiye görebilir" yetkisinde) */}
+            {cariKartId && kYetki.cariBakiye ? (
               <div
                 style={{
                   flex: "0 0 240px",
@@ -5988,6 +6022,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           className={`text-end font-monospace ${isKurMissing ? "text-danger fw-bold" : ""}`}
                           value={row.kur}
                           onChange={(e) => updateRow(row.id, "kur", e.target.value)}
+                          disabled={!kurAcik && !isKurMissing}
                           onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "kur", row.id)}
                           onBlur={() => normalizeRowOnBlur(row.id, "kur")}
                           onFocus={handleKalemRowFocus}
@@ -6157,7 +6192,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                               if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                const nextVal = ((oRow.odemeAraciTuru ?? 0) + 1) % 4;
+                                let nextVal = ((oRow.odemeAraciTuru ?? 0) + 1) % 4;
+                                // Banka hesabı (Hesap) yalnız "Fiş banka hesabı seçme" yetkisinde
+                                if (nextVal === 3 && !kYetkiRef.current.bankaHesabiSecme) nextVal = 0;
                                 const isRegisteredCari = Boolean(cariKartId && unvan && !isAnonymousCustomerName(unvan) && unvan !== "NİHAİ TÜKETİCİ");
                                 setOdemeRows((prev) => prev.map((r) => {
                                   if (r.id !== oRow.id) return r;
@@ -6193,7 +6230,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             <option value={0}>Vezne</option>
                             <option value={1}>Cari</option>
                             <option value={2}>POS</option>
-                            <option value={3}>Hesap</option>
+                            {(kYetki.bankaHesabiSecme || oRow.odemeAraciTuru === 3) && <option value={3} disabled={!kYetki.bankaHesabiSecme}>Hesap</option>}
                           </Form.Select>
                         </td>
 

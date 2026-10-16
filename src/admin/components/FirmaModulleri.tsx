@@ -177,7 +177,9 @@ const FirmaModulleri: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
             onClick={() =>
               kaydet(
                 !urunlu && kisitsiz ? { kisitsiz: true } : { acik: [...acik] },
-                "Modül ayarı kaydedildi. Kullanıcılar bir sonraki sayfa yenilemesinde / girişinde yeni menüyü görür."
+                firma.baglantiModu === "setup"
+                  ? "Modül ayarı kaydedildi. İnternetli kurulumda yeni lisans kodu kendiliğinden iner; internetsizse Lisans sekmesinden Yeni Kod üretip müşteriye iletin."
+                  : "Modül ayarı kaydedildi. Kullanıcılar bir sonraki sayfa yenilemesinde / girişinde yeni menüyü görür."
               )
             }
           >
@@ -191,7 +193,9 @@ const FirmaModulleri: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
       )}
       {firma.baglantiModu === "setup" && degisti && (
         <Alert variant="warning" className="py-2">
-          Kurulum (exe) firması: kaydettikten sonra Lisans sekmesinden yeni lisans kodu üretin; program kısıtı lisans kodundan okur.
+          Kurulum (exe) firması: program kısıtı lisans kodundan okur. Kaydedince internetli kurulumda yeni kod kendiliğinden iner;
+          internetsizse Lisans sekmesinden Yeni Kod üretin.
+          {!urunlu && kisitsiz && " Kısıtlama kapalıyken kurulum firmasına lisans kodu üretilmez; ürün seçin ya da sayfaları belirleyin."}
         </Alert>
       )}
 

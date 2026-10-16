@@ -3,6 +3,7 @@ import { env } from "../config/env.config.js";
 import { ApiError } from "../utils/ApiError.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { KurulumLisansService } from "../services/kurulum/kurulumLisans.service.js";
+import { gocDurumu } from "../services/kurulum/gocDurumu.js";
 
 /**
  * Kurulum (exe) modunda lisans kilidi: lisans geçersiz / süresi dolmuş / saat geri alınmışsa tüm API 423 döner,
@@ -13,6 +14,11 @@ const SERBEST = [/^\/health(\/|$)/, /^\/sistem(\/|$)/, /^\/auth\/lisans-(durum|y
 export const lisansKapisi = (req: Request, res: Response, next: NextFunction) => {
   if (!env.KURULUM_MODU) return next();
   if (SERBEST.some((r) => r.test(req.path))) return next();
+  // Açılıştaki şema göçü sürerken istekler eski şemaya düşmesin (göç hatalıysa istekler geçer; sağlık ucu 503 kalır)
+  const goc = gocDurumu().durum;
+  if (goc === "bekliyor" || goc === "suruyor") {
+    return next(new ApiError(HttpStatus.SERVICE_UNAVAILABLE, "Program güncelleniyor; birkaç saniye sonra yeniden deneyin."));
+  }
   KurulumLisansService.durum()
     .then((d) => {
       if (d.durum !== "KILITLI") return next();

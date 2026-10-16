@@ -21,6 +21,7 @@ const KILIT_ETIKETI: Record<string, string> = {
 const FirmaKurulum: React.FC<Props> = ({ firma, degisti }) => {
   const [gecmis, setGecmis] = useState<HeartbeatDto[]>([]);
   const [sonMakine, setSonMakine] = useState<string | null>(null);
+  const [yedek, setYedek] = useState<{ sonYedek: string | null; hata: string | null; vtBoyutMb: number | null } | null>(null);
   const [surumler, setSurumler] = useState<SurumDto[]>([]);
   const [baglanti, setBaglanti] = useState<{ adres: string; sonGecerlilik: string } | null>(null);
   const [hata, setHata] = useState<string | null>(null);
@@ -32,6 +33,7 @@ const FirmaKurulum: React.FC<Props> = ({ firma, degisti }) => {
       const [d, s] = await Promise.all([adminApi.kurulumDurumu(firma.firmaId), adminApi.surumler()]);
       setGecmis(d.gecmis);
       setSonMakine(d.sonBildirilenMakine);
+      setYedek(d.yedek ?? null);
       setSurumler(s);
     } catch (e: any) {
       setHata(e?.message || "Kurulum bilgisi getirilemedi.");
@@ -99,6 +101,27 @@ const FirmaKurulum: React.FC<Props> = ({ firma, degisti }) => {
               <tr>
                 <th className="fw-normal text-muted">Kullanıcı</th>
                 <td>{firma.bildirilenKullaniciSayisi ?? "-"}</td>
+              </tr>
+              <tr>
+                <th className="fw-normal text-muted">Son yedek</th>
+                <td>
+                  {yedek?.sonYedek ? new Date(yedek.sonYedek).toLocaleString("tr-TR") : "-"}{" "}
+                  {yedek && (!yedek.sonYedek || Date.now() - new Date(yedek.sonYedek).getTime() > 2 * 24 * 60 * 60 * 1000) && (
+                    <Badge bg="danger">{yedek.sonYedek ? "Eski" : "Yok"}</Badge>
+                  )}
+                  {yedek?.hata && (
+                    <div className="small text-danger" title={yedek.hata}>
+                      Son deneme: {yedek.hata.length > 90 ? `${yedek.hata.slice(0, 90)}…` : yedek.hata}
+                    </div>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th className="fw-normal text-muted">Veritabanı</th>
+                <td>
+                  {yedek?.vtBoyutMb != null ? `${(yedek.vtBoyutMb / 1024).toFixed(2)} GB / 10 GB` : "-"}{" "}
+                  {yedek?.vtBoyutMb != null && yedek.vtBoyutMb >= 8192 && <Badge bg="danger">Sınıra yakın</Badge>}
+                </td>
               </tr>
             </tbody>
           </Table>

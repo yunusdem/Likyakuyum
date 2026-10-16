@@ -45,9 +45,10 @@ export class VezneTransferiService {
 
   public static async getNavigation(
     currentId?: number | null,
-    dbContext?: { dbServer?: string; dbName?: string }
+    dbContext?: { dbServer?: string; dbName?: string },
+    baslangic?: string | null
   ): Promise<{ firstId: number | null; prevId: number | null; nextId: number | null; lastId: number | null }> {
-    return VezneTransferiSqlRepository.getNavigation(currentId, dbContext);
+    return VezneTransferiSqlRepository.getNavigation(currentId, dbContext, baslangic);
   }
 
   public static async getNextRefNo(

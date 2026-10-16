@@ -1,5 +1,6 @@
 import { apiClient, getEffectiveApiUrl } from "./apiClient";
 import { trSayiBicimi, trTarihBicimi, trTarihSaatBicimi } from "../utils/intlOnbellek";
+import { RAPOR_MENU, type RaporGrubu } from "../../Backend/src/services/rapor/raporMenu";
 
 /**
  * Rapor servisleri — Backend: /api/v1/rapor. Bkz. docs/raporlar.md.
@@ -104,54 +105,11 @@ export const raporBicimle = (v: any, bicim?: RaporBicim): string => {
 export const raporSayisalMi = (b?: RaporBicim) => b === "sayi" || b === "sayi4" || b === "kur" || b === "tam";
 
 /**
- * Rapor kodu ↔ URL parçası eşlemesi ve menüdeki yeri. Menü yeri eski programın rapor klasörleriyle aynıdır (yönetici kararı 17.09.2026):
- *  - cari / kasa / vezne / yonetici klasörlerindeki raporlar kendi işlem menülerinde (D- Cari, B- Kasa, A- Vezne, E- Yönetici) durur;
- *    o menüde aynı adlı madde zaten varsa madde bu rapora bağlanır (src/routes/DashboardRoute.tsx).
- *  - G- Raporlar altında yalnızca "raporlar" klasöründekiler + açılır "MASAK" grubu bulunur.
- *  - "gizli": menüde gösterilmez (aynı işi yapan ekran menüde zaten var); adresle açılır.
- *  - "etiket": I- Etiket İşlemleri altında (barkodlu altın raporları; docs/BARKODLU_ALTIN_RAPORLARI.md).
+ * Rapor kodu ↔ URL parçası eşlemesi ve menüdeki yeri: Backend/src/services/rapor/raporMenu.ts (sunucu raporun lisans
+ * kodunu da oradan üretir; iki yerde ayrı liste tutulmasın diye tek kaynak).
  */
-export type RaporGrubu = "cari" | "kasa" | "vezne" | "yonetici" | "raporlar" | "masak" | "gizli" | "etiket";
-export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrubu }[] = [
-  { kod: "CARBAK1", yol: "cari-bakiye", ad: "Cari Bakiye Raporu", grup: "cari" },
-  { kod: "CAREKS1", yol: "cari-ekstre", ad: "Cari Ekstre", grup: "cari" },
-  { kod: "CARHAR1", yol: "cari-hareket-listesi", ad: "Cari Hareket Listesi", grup: "gizli" },
-  { kod: "CARKRT1", yol: "cari-kart-listesi", ad: "Cari Kart Listesi", grup: "gizli" },
-  { kod: "VEZBAK1", yol: "vezne-bakiye", ad: "Vezne Bakiye Raporu (Tarih Bazlı)", grup: "vezne" },
-  { kod: "VEZHAR1", yol: "vezne-hareket-listesi", ad: "Vezne Hareket Listesi", grup: "vezne" },
-  { kod: "VERKOM1", yol: "vergiler-komisyon", ad: "Vergiler ve Komisyon", grup: "raporlar" },
-  { kod: "KARZAR1", yol: "kar-zarar", ad: "Kâr / Zarar Faaliyet Analizi", grup: "yonetici" },
-  { kod: "FIRVAR1", yol: "firma-varliklari", ad: "Firma Varlıkları Raporu", grup: "yonetici" },
-  { kod: "KASDEF1", yol: "kasa-defteri", ad: "Kasa Defteri", grup: "kasa" },
-  { kod: "KASHAR1", yol: "kasa-hareket-listesi", ad: "Kasa Hareket Listesi", grup: "kasa" },
-  { kod: "HESEKS1", yol: "hesap-ekstresi", ad: "Hesap Ekstresi", grup: "kasa" },
-  { kod: "HESBAK1", yol: "hesap-bakiye", ad: "Hesap Bakiye Raporu", grup: "kasa" },
-  { kod: "VEZANL1", yol: "vezne-bakiye-anlik", ad: "Vezne Bakiye Raporu (Anlık)", grup: "vezne" },
-  { kod: "KURKON1", yol: "kur-sapma", ad: "Kur Sapma Raporu", grup: "vezne" },
-  { kod: "POSEKS1", yol: "pos-ekstre", ad: "POS Ekstre", grup: "cari" },
-  { kod: "VADISL1", yol: "vadeli-islem-listesi", ad: "Vadeli İşlem Listesi", grup: "cari" },
-  { kod: "FISLIS1", yol: "fis-listeleme", ad: "Fiş Listeleme", grup: "raporlar" },
-  { kod: "GUNFIS1", yol: "gunluk-fis-detay", ad: "Günlük Fiş Detay Raporu", grup: "raporlar" },
-  { kod: "ISTRAP1", yol: "istatistik-raporu", ad: "İstatistik Raporu", grup: "raporlar" },
-  { kod: "ISTKMV1", yol: "istatistik-kmv", ad: "İstatistik Bazında KMV Raporu", grup: "raporlar" },
-  { kod: "VERNUM1", yol: "vergi-numarasi-raporu", ad: "Vergi Numarası Raporu", grup: "raporlar" },
-  { kod: "KARLIL1", yol: "karlilik", ad: "Kârlılık Raporu", grup: "raporlar" },
-  { kod: "ALTISC1", yol: "altin-iscilik", ad: "Altın İşçilik Raporu", grup: "raporlar" },
-  { kod: "PERDEG1", yol: "personel-degerlendirme", ad: "Personel Değerlendirme Raporu", grup: "raporlar" },
-  { kod: "MSKMES1", yol: "masak-meslek", ad: "Meslek Bazında İşlem Listesi", grup: "masak" },
-  { kod: "MSKSEK1", yol: "masak-sektor", ad: "Sektör Bazında İşlem Listesi", grup: "masak" },
-  { kod: "MSKYAS1", yol: "masak-yas", ad: "Yaş Bazında İşlem Listesi", grup: "masak" },
-  { kod: "MSKYUK1", yol: "masak-yuksek-tutar", ad: "Yüksek Tutarda İşlem Listesi", grup: "masak" },
-  { kod: "MSKSUP1", yol: "masak-supheli", ad: "Şüpheli İşlem Listesi", grup: "masak" },
-  { kod: "MSKKON1", yol: "masak-fis-kontrol", ad: "Şüpheli İşlemler Fiş Kontrol Listesi", grup: "masak" },
-  { kod: "FIRSON1", yol: "firma-son-durum", ad: "Firma Son Durum Raporu", grup: "yonetici" },
-  { kod: "LONSHO1", yol: "long-short-denge", ad: "Long / Short Denge Analizi", grup: "yonetici" },
-  { kod: "KNSKLOG1", yol: "knsk-sorgulama-listesi", ad: "KNSK Sorgulama Log Listesi", grup: "masak" },
-  { kod: "KURKON2", yol: "kur-kontrolu", ad: "Kur Kontrolü", grup: "vezne" },
-  { kod: "BALURE1", yol: "barkodlu-altin-uretim", ad: "Barkodlu Altın Üretim Raporu", grup: "etiket" },
-  { kod: "BALSAT1", yol: "barkodlu-altin-satis", ad: "Barkodlu Altın Satış Raporu", grup: "etiket" },
-  { kod: "BALSTK1", yol: "barkodlu-altin-stok", ad: "Barkodlu Altın Stok Raporu", grup: "etiket" },
-];
+export { RAPOR_MENU };
+export type { RaporGrubu };
 const HARF = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 /** Bir rapor kodunun menü linki ("raporlar/<yol>") */
 export const raporLinki = (kod: string) => `raporlar/${RAPOR_MENU.find(m => m.kod === kod)?.yol ?? ""}`;

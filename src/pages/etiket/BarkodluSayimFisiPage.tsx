@@ -33,6 +33,7 @@ import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { EtiketService, AltinUrunItem, OzelUrunItem } from "../../services/etiketService";
 import { onProductChanged } from "../../services/productSyncService";
+import { panoyaKopyala } from "../../utils/pano";
 
 export interface SayimSatirItem {
   id: string;
@@ -1920,7 +1921,7 @@ export const BarkodluSayimFisiPage: React.FC = () => {
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                navigator.clipboard.writeText(contextMenu.barkod);
+                void panoyaKopyala(contextMenu.barkod);
                 setContextMenu(null);
                 showToast(`Barkod kopyalandı: ${contextMenu.barkod}`, "info");
               }}

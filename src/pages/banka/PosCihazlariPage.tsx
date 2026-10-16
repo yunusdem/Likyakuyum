@@ -6,6 +6,7 @@ import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { PosCihaziItem, PosCihaziService } from "../../services/posCihaziService";
 import { PosEntegrasyon, PosIslemService, PosMod, PosTanimlar, PosTerminal, PosTerminalKaydet } from "../../services/posIslemService";
 import { useBildirim } from "../ebanka/ebankaOrtak";
+import { SistemService } from "../../services/sistemService";
 
 // F- Banka / POS > E- POS Cihazları (docs/POS_ENTEGRASYON_YOL_HARITASI.md)
 // Fiziksel cihazlar burada tanımlanır; muhasebe POS kartları (B- POS Cihazı Tanımları) ayrıdır (K15).
@@ -114,6 +115,11 @@ export const PosCihazlariPage: React.FC = () => {
   const vezneAdi = (id: number) => vezneler.find((v) => v.id === id)?.ad || `Vezne ${id}`;
   const modeller = form ? tanimlar?.modeller[form.entegrasyon] || [] : [];
   const kapali = tanimlar?.mod === "kapali";
+  // Kurulumda (exe) entegratör bilgileri merkezde olduğu için POS entegrasyonu hiç açılmaz (yol haritası U4)
+  const [kurulum, setKurulum] = useState(false);
+  useEffect(() => {
+    SistemService.bilgi().then((b) => setKurulum(!!b.kurulum)).catch(() => undefined);
+  }, []);
 
   return (
     <div className="pos-cihazlari-page w-100 pb-3" style={{ overflowX: "hidden" }}>
@@ -133,7 +139,9 @@ export const PosCihazlariPage: React.FC = () => {
 
       {kapali && (
         <Alert variant="light" className="border small py-2">
-          POS cihazı entegrasyonu bu firmada kapalı. Cihazları şimdiden tanımlayabilirsiniz; fişlerden cihaza tutar gönderimi entegrasyon açılınca başlar.
+          {kurulum
+            ? "Bu sürümde (kurulum) POS cihazı entegrasyonu yoktur; tutar cihaza elle girilir. Cihaz tanımları fişlerdeki POS seçimi ve raporlar için kullanılır."
+            : "POS cihazı entegrasyonu bu firmada kapalı. Cihazları şimdiden tanımlayabilirsiniz; fişlerden cihaza tutar gönderimi entegrasyon açılınca başlar."}
         </Alert>
       )}
 

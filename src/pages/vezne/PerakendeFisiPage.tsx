@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Table,
@@ -503,6 +505,11 @@ export interface PerakendeFisiPageProps {
 
 export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme = false }) => {
   const { user } = useAuth();
+  // Kullanıcı kartı yetkileri: tarih, fatura no, fiyat, has kuru, banka hesabı, MASAK uyarısı
+  // (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler). Geri çağrılarda güncel değer için ref.
+  const kYetki = useKullaniciYetkisi();
+  const kYetkiRef = useRef(kYetki);
+  kYetkiRef.current = kYetki;
   const location = useLocation();
   const navigate = useNavigate();
   const { showSuccess, showError, showWarning, showInfo } = useToast();
@@ -4081,13 +4088,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const activeStat = selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (istatistikKodu && s.kod === istatistikKodu)) || getDefaultStatistic(faturaTipi as 0 | 1);
     const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
 
-    if (!isGayriResmi && res.unvan && !isAnonymousCustomerName(res.unvan)) {
+    // "MASAK uyarısı versin" işaretsizse müşteri seçilirken otomatik sorgu / uyarı açılmaz; kayıttaki kontrol sürer
+    if (kYetkiRef.current.masakUyarisi && !isGayriResmi && res.unvan && !isAnonymousCustomerName(res.unvan)) {
       void handleMasakQuery(res.unvan, res.vergiKimlikNo);
     } else {
       setMasakResult({ matches: [], searched: false });
     }
 
-    if (genelToplam >= 185000 && !isGayriResmi) {
+    if (kYetkiRef.current.masakUyarisi && genelToplam >= 185000 && !isGayriResmi) {
       const cleanVkn = (res.vergiKimlikNo || "").trim();
       const isMissingInfo =
         !cleanVkn ||
@@ -4868,6 +4876,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
       setCurrentFaturaId(inv.faturaId);
       setFaturaNo(inv.faturaNo || "");
+      // Düzeltmede fişin kendi veznesi (sunucu da kaydın veznesini korur); yeni fişte kullanıcının veznesine döner
+      if (inv.vezneId) {
+        setSelectedVezne(vezneler.find((v) => v.id === Number(inv.vezneId)) ?? ({ id: Number(inv.vezneId), kod: inv.vezneKod || String(inv.vezneId), ad: inv.vezneAd || "" } as VezneItem));
+      }
       if (inv.tarih) {
         setTarih(inv.tarih.substring(0, 10));
         setSaat(inv.tarih.substring(11, 16) || "12:00");
@@ -5607,6 +5619,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   style={{ width: "110px", fontSize: "11.5px", height: "22px" }}
                   value={tarih}
                   onChange={(e) => setTarih(e.target.value)}
+                  disabled={!kYetki.tarihDegistirme}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -5623,6 +5636,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   style={{ width: "55px", fontSize: "11px", height: "22px" }}
                   value={saat}
                   onChange={(e) => setSaat(e.target.value)}
+                  disabled={!kYetki.tarihDegistirme}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -5701,6 +5715,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               className="form-control form-control-sm font-monospace fw-bold text-primary bg-white"
               value={faturaNo}
               onChange={(e) => setFaturaNo(e.target.value)}
+              readOnly={!kYetki.fisNoDegistirme}
+              title={kYetki.fisNoDegistirme ? undefined : "Fiş numarası değiştirme yetkiniz yok; numara numaratörden verilir"}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -6108,6 +6124,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 value={altinHasKuru}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => handleAltinHasKuruChange(e.target.value)}
+                disabled={!kurDegistirilebilir(kYetki)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -6569,7 +6586,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           }}
                           type="number"
                           step="0.01"
-                          readOnly={false}
+                          readOnly={!kYetki.tutarDegistirme && Number(item.birimFiyat) > 0}
+                          title={!kYetki.tutarDegistirme && Number(item.birimFiyat) > 0 ? "Fişte tutar değiştirme yetkiniz yok" : undefined}
                           tabIndex={0}
                           className="form-control form-control-sm text-end font-monospace fw-bold p-1 text-success"
                           style={{
@@ -6844,7 +6862,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                               if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                const nextVal = ((oRow.odemeAraciTuru ?? 0) + 1) % 4;
+                                let nextVal = ((oRow.odemeAraciTuru ?? 0) + 1) % 4;
+                                // Banka hesabı (Hesap) yalnız "Fiş banka hesabı seçme" yetkisinde
+                                if (nextVal === 3 && !kYetkiRef.current.bankaHesabiSecme) nextVal = 0;
                                 setOdemeRows((prev) => prev.map((r) => {
                                   if (r.id !== oRow.id) return r;
                                   let defKod = "TL";
@@ -6897,7 +6917,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             <option value={0}>Vezne</option>
                             <option value={1}>Cari</option>
                             <option value={2}>POS</option>
-                            <option value={3}>Hesap</option>
+                            {(kYetki.bankaHesabiSecme || oRow.odemeAraciTuru === 3) && <option value={3} disabled={!kYetki.bankaHesabiSecme}>Hesap</option>}
                           </Form.Select>
                         </td>
 

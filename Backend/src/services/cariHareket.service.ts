@@ -115,9 +115,10 @@ export class CariHareketService {
 
   public static async getNavigation(
     currentId?: number | string,
-    dbContext?: { dbServer?: string; dbName?: string }
+    dbContext?: { dbServer?: string; dbName?: string },
+    baslangic?: string | null
   ) {
-    return CariHareketSqlRepository.getNavigationIds(currentId, dbContext);
+    return CariHareketSqlRepository.getNavigationIds(currentId, dbContext, baslangic);
   }
 
   public static async getCariBakiye(

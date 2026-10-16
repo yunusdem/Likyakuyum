@@ -9,7 +9,7 @@ export class ModulController {
   });
 
   public static katalogEsitle = asyncHandler(async (req: Request, res: Response) => {
-    return ApiResponse.ok(res, "Modül kataloğu eşitlendi.", await ModulService.katalogEsitle(req.admin!, req.body.moduller));
+    return ApiResponse.ok(res, "Modül kataloğu eşitlendi.", await ModulService.katalogEsitle(req.admin!, req.body.moduller, Number(req.body.derleme) || 0));
   });
 
   public static firmaAyari = asyncHandler(async (req: Request, res: Response) => {

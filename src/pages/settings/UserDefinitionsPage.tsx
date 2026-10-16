@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef } from "react";
+import MenuYetkileriAlani from "./MenuYetkileriAlani";
 
 import {
   Card,
@@ -53,6 +54,7 @@ import LookupModal from "../../components/common/LookupModal";
 
 import { useAuth } from "../../context/AuthContext";
 import { AuthService } from "../../services/authService";
+import { SistemService } from "../../services/sistemService";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
@@ -280,6 +282,8 @@ export type { ThemePreset };
 export { THEME_PRESETS };
 
 
+/** Kullanıcı listesi tek sayfada (firmada bu kadar kullanıcı olmaz) */
+const TUM_KULLANICILAR = 1000;
 const defaultNewUserTemplate: UserProfile = {
   id: "",
 
@@ -475,6 +479,18 @@ const UserDefinitionsPage: React.FC = () => {
 
   // Yönetim paneli (merkez) açıkken mevcut kullanıcının şifresi buradan yazılmaz; firma yöneticisi sıfırlar
   const merkez = authUser?.merkez;
+  // Kullanıcı kartlarını yöneten (sunucudaki kuralla aynı): merkez açıkken firma yöneticisi, değilse sistem yöneticisi.
+  // Yönetici olmayan yalnız kendi kartını görür; yetki, vezne ve istatistik alanları onda salt okunurdur.
+  const kartYoneticisi = merkez ? !!merkez.firmaYoneticisi : !!authUser?.isSysAdmin || authUser?.role === "admin";
+  // Kurulumda (exe) lisanstaki kullanıcı limiti: doluysa "Yeni" kapalı, aşılmışsa uyarı (bulutta sayım merkezde, burada gösterilmez)
+  const [kurulum, setKurulum] = useState(false);
+  React.useEffect(() => {
+    SistemService.bilgi().then((b) => setKurulum(!!b.kurulum)).catch(() => undefined);
+  }, []);
+  const kullaniciLimiti = kurulum ? merkez?.kullaniciLimiti ?? null : null;
+  const kayitliKullanici = users.filter((u) => Number(u.id) > 0).length;
+  const limitDolu = kullaniciLimiti !== null && kayitliKullanici >= kullaniciLimiti;
+  const limitAsildi = kullaniciLimiti !== null && kayitliKullanici > kullaniciLimiti;
   const [geciciSifre, setGeciciSifre] = useState<{ kullaniciAdi: string; sifre: string } | null>(null);
   const [sifreSifirlaOnay, setSifreSifirlaOnay] = useState<boolean>(false);
 
@@ -569,11 +585,12 @@ const UserDefinitionsPage: React.FC = () => {
   ]);
 
   // Load users from SQL database on mount
+  // (sunucu varsayılan 50'lik sayfa veriyordu: liste ve kurulumdaki "N / limit" sayısı ilk sayfadan hesaplanıyordu)
   const loadUsersFromDb = async (selectIndex?: number) => {
     try {
       setIsLoading(true);
       const [res, cashiers] = await Promise.all([
-        UserService.listUsers(),
+        UserService.listUsers({ limit: TUM_KULLANICILAR }),
         CashDeskService.getVezneler().catch(async () => {
           const c = await UserService.getCashiers().catch(() => []);
           return c.map((item: any) => ({
@@ -755,10 +772,11 @@ const UserDefinitionsPage: React.FC = () => {
 
       if (!isNewRecord && currentUser.id) {
         // Mevcut kullanıcıyı güncelle
-        if (!isCurrentUserSelf) {
+        // Vezne kullanıcının kasasıdır: yalnız yönetici değiştirir (kullanıcı kendi veznesini de değiştiremez)
+        if (!kartYoneticisi) {
           const originalUser = users.find((u) => String(u.id) === String(currentUser.id));
           if (originalUser && String(originalUser.cashierCode).trim() !== cashierVal) {
-            setAlertError("Güvenlik Kısıtlaması: Başka bir kullanıcının veznesini değiştiremezsiniz. Yalnızca kendi veznenizi değiştirebilirsiniz.");
+            setAlertError("Veznenizi yalnız sistem yöneticisi değiştirebilir.");
             return;
           }
         }
@@ -768,7 +786,7 @@ const UserDefinitionsPage: React.FC = () => {
           username: trimmedUsername.replace(/\s+/g, ""),
         });
         setAlertSuccess(`"${updated?.username || trimmedUsername}" kullanıcısı başarıyla güncellendi.`);
-        const res = await UserService.listUsers();
+        const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
         const updatedList = res.data || [];
         setUsers(updatedList);
         const found = updatedList.find((u) => String(u.id) === String(currentUser.id));
@@ -799,7 +817,7 @@ const UserDefinitionsPage: React.FC = () => {
         setAlertSuccess(`"${created?.username || trimmedUsername}" kullanıcısı başarıyla veritabanına eklendi.`);
 
         // Veritabanındaki kullanıcı listesini güncelle
-        const res = await UserService.listUsers();
+        const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
         const updatedList = res.data || [];
         setUsers(updatedList);
         const newIdx = updatedList.findIndex((u) => u.id === created?.id);
@@ -900,7 +918,7 @@ const UserDefinitionsPage: React.FC = () => {
   return (
     <div className="w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        onNew={handleNewUser}
+        onNew={kartYoneticisi && !limitDolu ? handleNewUser : undefined}
         onSave={handleSave}
         onPrint={handlePrint}
         onRefresh={handleRefresh}
@@ -909,14 +927,26 @@ const UserDefinitionsPage: React.FC = () => {
         onNext={() => handleNavigate("next")}
         onLast={() => handleNavigate("last")}
         onSearch={() => setShowUserLookupModal(true)}
-        onDelete={handleDelete}
+        onDelete={kartYoneticisi ? handleDelete : undefined}
         onEDocument={() => setShowEDocumentModal(true)}
         onConsolidatedDB={() => setShowConsolidatedModal(true)}
         hideSearch={false}
-        hideDelete={false}
+        hideDelete={!kartYoneticisi}
+        hideNew={!kartYoneticisi}
         hideNavigation={false}
       />
 
+      {/* Kurulum (exe): lisanstaki kullanıcı limiti (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 6.5; sunucu da denetler) */}
+      {kartYoneticisi && kullaniciLimiti !== null && (
+        <Alert variant={limitAsildi ? "warning" : "light"} className="py-1 px-3 mb-2 small border">
+          Kullanıcı: <strong>{kayitliKullanici}</strong> / {kullaniciLimiti}
+          {limitAsildi
+            ? " — lisanstaki kullanıcı limiti aşılmış. Mevcut kullanıcılar girebilir, yeni kullanıcı açılamaz; ek kullanıcı için bizimle iletişime geçin."
+            : limitDolu
+              ? " — limit dolu; ek kullanıcı için bizimle iletişime geçin."
+              : ""}
+        </Alert>
+      )}
 
       {/* Bildirimler: Sağ altta beliren ve otomatik kaybolan toast */}
       {(alertSuccess || alertError) && (
@@ -1040,7 +1070,7 @@ const UserDefinitionsPage: React.FC = () => {
                     <Form.Select
                       size="sm"
                       value={selectedCashierValue}
-                      disabled={isLoading || (!isNewRecord && !isCurrentUserSelf)}
+                      disabled={isLoading || !kartYoneticisi}
                       onChange={(e) => updateField("cashierCode", e.target.value)}
                       className="border fw-bold font-monospace"
                     >
@@ -1053,18 +1083,18 @@ const UserDefinitionsPage: React.FC = () => {
                     </Form.Select>
                     <Button
                       variant="outline-secondary"
-                      disabled={isLoading || (!isNewRecord && !isCurrentUserSelf)}
+                      disabled={isLoading || !kartYoneticisi}
                       onClick={() => setShowCashierModal(true)}
-                      title={!isNewRecord && !isCurrentUserSelf ? "Yalnızca kendi veznenizi değiştirebilirsiniz" : "Vezne Listesinde Ara & Seç"}
+                      title={!kartYoneticisi ? "Vezneyi yalnız sistem yöneticisi değiştirebilir" : "Vezne Listesinde Ara & Seç"}
                       className="d-flex align-items-center justify-content-center px-2.5 bg-light"
                     >
                       <IconSearch size={16} />
                     </Button>
                   </InputGroup>
-                  {!isNewRecord && !isCurrentUserSelf && (
+                  {!kartYoneticisi && (
                     <div className="text-danger mt-1 fw-semibold d-flex align-items-center gap-1" style={{ fontSize: "11px" }}>
                       <IconShieldLock size={13} />
-                      Yalnızca kendi veznenizi değiştirebilirsiniz.
+                      Vezneyi yalnız sistem yöneticisi değiştirebilir.
                     </div>
                   )}
                 </Col>
@@ -1115,7 +1145,7 @@ const UserDefinitionsPage: React.FC = () => {
               <Tab.Pane eventKey="genel">
                 <Row className="g-4">
                   {/* Sol Kolon: İzinler & Yetkiler Checkbox Listesi */}
-                  <Col xs={12} lg={4}>
+                  <Col xs={12} lg={4} as="fieldset" disabled={!kartYoneticisi}>
                     <div className="p-3 rounded-3 border bg-light h-100">
                       <h6 className="fw-bold text-dark mb-3 pb-2 border-bottom d-flex align-items-center justify-content-between">
                         <span>Yetki ve İzin Seçenekleri</span>
@@ -1373,7 +1403,8 @@ const UserDefinitionsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Komisyon Oranı */}
+                      {/* Komisyon Oranı ve Kur Yetkisi: yalnız yönetici değiştirir */}
+                      <fieldset disabled={!kartYoneticisi} className="d-flex flex-column gap-3">
                       <div className="p-2 bg-white rounded border">
                         <div className="d-flex align-items-center justify-content-between mb-1">
                           <Form.Check
@@ -1437,77 +1468,28 @@ const UserDefinitionsPage: React.FC = () => {
                           />
                         </div>
                       </div>
+                      </fieldset>
                     </div>
                   </Col>
 
                   {/* Sağ Kolon: Menü Yetkileri */}
-                  <Col xs={12} lg={4}>
+                  <Col xs={12} lg={4} as="fieldset" disabled={!kartYoneticisi}>
                     <div className="p-3 rounded-3 border bg-light h-100">
                       <h6 className="fw-bold text-dark pb-2 border-bottom mb-2 d-flex align-items-center justify-content-between">
                         <span>Menü yetkileri</span>
                       </h6>
 
-                      <div className="bg-white rounded border overflow-hidden">
-                        <Table size="sm" className="align-middle mb-0" style={{ tableLayout: "fixed", width: "100%" }}>
-                          <thead className="bg-light">
-                            <tr>
-                              <th className="small text-secondary px-2 py-1" style={{ width: "48%" }}>
-                                Menü
-                              </th>
-                              <th className="small text-secondary px-2 py-1 text-end" style={{ width: "52%" }}>
-                                Yetki
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[
-                              { label: "Ana menü", key: "mainMenu" as const },
-                              { label: "Vezne işlemleri", key: "cashier" as const },
-                              { label: "Kasa işlemleri", key: "safe" as const },
-                              { label: "Kur işlemleri", key: "exchange" as const },
-                              { label: "Cari işlemler", key: "accounts" as const },
-                              { label: "Yönetici işlemleri", key: "admin" as const },
-                              { label: "Muhasebe", key: "accounting" as const },
-                              { label: "Raporlar", key: "reports" as const },
-                              { label: "Konsolide raporlar", key: "consolidatedReports" as const },
-                              { label: "Teknik işlemler", key: "techOps" as const },
-                              { label: "Hareket tipi", key: "movementType" as const },
-                            ].map((item) => (
-                              <tr key={item.key}>
-                                <td className="small fw-medium px-2 py-1 text-truncate" title={item.label}>
-                                  {item.label}
-                                </td>
-                                <td className="px-1 py-1">
-                                  <Form.Select
-                                    size="sm"
-                                    value={currentUser.menuPerms[item.key]}
-                                    onChange={(e) => updateMenuPerm(item.key, e.target.value)}
-                                    className="bg-light border text-dark fw-semibold w-100"
-                                    style={{
-                                      fontSize: "11.5px",
-                                      paddingTop: "2px",
-                                      paddingBottom: "2px",
-                                      paddingLeft: "4px",
-                                      paddingRight: "18px",
-                                      minHeight: "28px",
-                                    }}
-                                  >
-                                    <option value="Tam Yetki">Tam Yetki</option>
-                                    <option value="Kısıtlı">Kısıtlı</option>
-                                    <option value="Görüntüleme">Görüntüleme</option>
-                                    <option value="Yetki Yok">Yetki Yok</option>
-                                  </Form.Select>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      </div>
+                      {/* Eski programla aynı biçim: her menü için madde harfleri (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.1) */}
+                      <MenuYetkileriAlani
+                        deger={currentUser.menuPerms as any}
+                        degistir={(alan, yeni) => updateMenuPerm(alan as keyof UserProfile["menuPerms"], yeni)}
+                        kilitli={!kartYoneticisi}
+                      />
                     </div>
                   </Col>
 
                   {/* Alt Kısım: İstatistik Kodları */}
-                  <Col xs={12}>
+                  <Col xs={12} as="fieldset" disabled={!kartYoneticisi}>
                     <div className="p-3 rounded-3 border bg-light">
                       <h6 className="fw-bold text-dark border-bottom pb-2 mb-3 small">
                         İstatistik Grubu Atama

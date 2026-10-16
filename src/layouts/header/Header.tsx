@@ -36,6 +36,11 @@ import MasakMenu from "components/masak/MasakMenu";
 import { TvKatalogMenuSecimModal } from "components/katalog/TvKatalogMenuSecimModal";
 import { useAuth } from "../../context/AuthContext";
 import { UST_KISAYOLLAR, modulAcikMi } from "../../config/modulKatalogu";
+import { acikHizliSatisModulleri } from "../../config/hizliSatis";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { useSayfaErisimi } from "../../hooks/useSayfaErisimi";
+import { anaMenuAcik } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import HeaderThemeSelector from "components/theme/HeaderThemeSelector";
 import { getAppBrand } from "../../utils/brandHelper";
 import { CashDeskService } from "../../services/cashDeskService";
@@ -107,15 +112,23 @@ const quickActions = [
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
-  // Yönetim panelinden firmaya kapatılan üst kısayollar çizilmez (adres → modül kodu: config/modulKatalogu.ts)
+  // Üst kısayol: firmaya kapalıysa (kısayol kodu, config/modulKatalogu.ts) ya da kullanıcının menü yetkisinde açtığı sayfa
+  // yoksa çizilmez (docs/YETKI_VE_VEZNE_YOL_HARITASI.md)
   const { user } = useAuth();
   const acikModuller = user?.merkez?.moduller;
+  const yetki = useKullaniciYetkisi();
+  const sayfaAcik = useSayfaErisimi();
   const gorunenKisayollar = quickActions.filter((a) => {
     const kisayol = UST_KISAYOLLAR.find((k) => k.to === a.to);
-    return !kisayol || modulAcikMi(acikModuller, kisayol.key);
+    if (kisayol && !modulAcikMi(acikModuller, kisayol.key)) return false;
+    // Hızlı Satış: hiçbir modülün hızlı satışı açık değilse çizilmez (boş sayfaya götürmesin)
+    if (a.to === "/hizli-satis") return acikHizliSatisModulleri(acikModuller, yetki).length > 0;
+    return sayfaAcik(a.to);
   });
-  const masakAcik = modulAcikMi(acikModuller, "ust:masak");
+  const masakAcik = modulAcikMi(acikModuller, "ust:masak") && sayfaAcik("/ayarlar/masak-dondurulanlar");
   const piyasaAcik = modulAcikMi(acikModuller, "ust:piyasa");
+  // Katalog & TV menü barkodlu altın / özel ürünleri gösterir: Etiket (Kuyum) lisansı ve kullanıcının Etiket menü yetkisi
+  const katalogAcik = useUrunOzellikleri().etiket && anaMenuAcik(yetki, "etiket");
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
   const [isTvMenuModalOpen, setIsTvMenuModalOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -446,7 +459,7 @@ const Header: React.FC = () => {
                 )}
 
                 {/* Menü Aç: Katalog & TV Menü Seçim Butonu */}
-                <button
+                {katalogAcik && <button
                   type="button"
                   onClick={() => setIsTvMenuModalOpen(true)}
                   className="btn p-0 border-0 bg-transparent d-flex flex-column align-items-center justify-content-center text-decoration-none px-1 px-xl-1.5 py-0.5 rounded-2 quick-action-btn flex-shrink-0"
@@ -468,7 +481,7 @@ const Header: React.FC = () => {
                   >
                     Katalog Aç
                   </span>
-                </button>
+                </button>}
                 </div>
 
                 {desktopCanScrollRight && (
@@ -622,7 +635,7 @@ const Header: React.FC = () => {
               )}
 
               {/* Mobil Menü Aç Butonu */}
-              <button
+              {katalogAcik && <button
                 type="button"
                 onClick={() => setIsTvMenuModalOpen(true)}
                 className="d-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill btn p-0 flex-shrink-0"
@@ -631,7 +644,7 @@ const Header: React.FC = () => {
               >
                 <IconDeviceTv size={16} strokeWidth={2} style={{ color: "#0284c7" }} />
                 <span style={{ fontSize: "10px", fontWeight: 700, color: "#0284c7" }}>Katalog Aç</span>
-              </button>
+              </button>}
             </div>
 
             {mobileCanScrollRight && (

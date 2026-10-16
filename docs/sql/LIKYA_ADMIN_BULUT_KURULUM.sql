@@ -59,7 +59,7 @@ GO
 /* ------------------------------ ADM_LISANS ekleri ----------------------------- */
 IF COL_LENGTH('dbo.ADM_LISANS', 'LISANS_KODU') IS NULL
   ALTER TABLE [dbo].[ADM_LISANS] ADD
-    [LISANS_KODU]    VARCHAR(4000) NULL,   -- imzalı tam kod (LKY1.<veri>.<imza>)
+    [LISANS_KODU]    VARCHAR(MAX)  NULL,   -- imzalı tam kod (LKY1.<veri>.<imza>)
     [MAKINE_KIMLIGI] VARCHAR(40)   NULL,   -- kurulum lisansı hangi makineye bağlı (bulutta NULL)
     [SERI_NO]        INT           NULL,   -- firma içinde artan; eski kodu yenisinden ayırmak için
     [IPTAL]          BIT           NOT NULL CONSTRAINT [DF_ADM_LISANS_IPTAL] DEFAULT 0,
@@ -67,6 +67,20 @@ IF COL_LENGTH('dbo.ADM_LISANS', 'LISANS_KODU') IS NULL
     [IPTAL_EDEN_ADMIN_ID] INT      NULL,
     [TESLIM]         VARCHAR(10)   NULL,   -- KOD (elle yapıştırıldı) | HEARTBEAT (kendisi indi)
     [TESLIM_TARIHI]  DATETIME      NULL;
+GO
+
+-- Kod açık modül listesini taşır; tüm ürünlü lisansta 4000 karakteri aşar (MAX ise COL_LENGTH = -1)
+IF COL_LENGTH('dbo.ADM_LISANS', 'LISANS_KODU') > 0
+  ALTER TABLE [dbo].[ADM_LISANS] ALTER COLUMN [LISANS_KODU] VARCHAR(MAX) NULL;
+GO
+
+-- Kurulumun bildirdiği son yedek ve veritabanı boyutu (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 15.1, Y5).
+-- Çalıştırılmadan da bildirim bozulmaz: kolonlar yoksa yazılmaz.
+IF COL_LENGTH('dbo.ADM_FIRMA', 'BILDIRILEN_SON_YEDEK') IS NULL
+  ALTER TABLE [dbo].[ADM_FIRMA] ADD
+    [BILDIRILEN_SON_YEDEK]        DATETIME       NULL,
+    [BILDIRILEN_YEDEK_HATASI]     NVARCHAR(400)  NULL,
+    [BILDIRILEN_VT_BOYUT_MB]      INT            NULL;
 GO
 
 /* --------------------------------- ADM_SURUM --------------------------------- */

@@ -45,7 +45,7 @@ export class KasaService {
 
   // ─── Hesap Hareketleri ─────────────────────────────────────────────────────
   public static async listHareketler(
-    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number },
+    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; baslangic?: string | null },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<HesapHareketiModel[]> {
     return KasaHesapSqlRepository.listHareketler(filter, dbContext);

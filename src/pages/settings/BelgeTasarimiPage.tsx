@@ -6,6 +6,8 @@ import {
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { useAuth } from "../../context/AuthContext";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
+import type { UrunOzellikleri } from "../../config/modulKatalogu";
 import {
   BelgeService, type EtkinSablon, type OrnekSablonBilgisi, type SablonDenetimHatasi, type SablonGovdesi, type SablonTuru,
 } from "../../services/belgeService";
@@ -27,8 +29,18 @@ const satimSecenekli = (tur: string) => tur.startsWith("DOVIZ") || tur.startsWit
  * Belge Tasarımı (docs/FIS_TASARIM_YOL_HARITASI.md): firmanın fiş / belge düzenleri.
  * Şablonu indirip düzenleyerek geri yükleme, varsayılana ve önceki sürüme dönme. Yalnızca sistem yöneticisi.
  */
+/** Belge grubu → lisans özelliği: lisansta olmayan fişin düzeni listelenmez */
+const GRUP_OZELLIGI: Record<string, keyof UrunOzellikleri> = {
+  DOVIZ: "doviz",
+  EDOVIZ_PDF: "doviz",
+  SARRAF: "sarraf",
+  PERAKENDE: "perakende",
+  TICARI: "ticari",
+};
+
 const BelgeTasarimiPage: React.FC = () => {
   const { user } = useAuth();
+  const ozellik = useUrunOzellikleri();
   const yetkili = user?.role === "admin" || !!user?.isSysAdmin;
   const [turler, setTurler] = useState<SablonTuru[]>([]);
   const [secili, setSecili] = useState<string>("");
@@ -51,10 +63,10 @@ const BelgeTasarimiPage: React.FC = () => {
   const onizlemeNo = useRef(0);
 
   const turYukle = useCallback(async () => {
-    const liste = await BelgeService.sablonTurleri();
+    const liste = (await BelgeService.sablonTurleri()).filter((t) => !GRUP_OZELLIGI[t.grup] || ozellik[GRUP_OZELLIGI[t.grup]]);
     setTurler(liste);
-    setSecili((s) => s || liste[0]?.tur || "");
-  }, []);
+    setSecili((s) => (liste.some((t) => t.tur === s) ? s : liste[0]?.tur || ""));
+  }, [ozellik]);
 
   const seciliYukle = useCallback(async (tur: string) => {
     if (!tur) return;

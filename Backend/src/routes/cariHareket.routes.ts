@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { CariHareketController } from "../controllers/cariHareket.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
+import { kayitYetkisi, kimlikVar } from "../services/yetki/menuYetkiKatalogu.js";
 
 const router = Router();
 
@@ -11,9 +12,9 @@ router.get("/navigation/:id?", CariHareketController.getNavigation);
 router.get("/bakiye/:cariKartId", CariHareketController.getCariBakiye);
 
 router.get("/", CariHareketController.list);
-router.post("/", CariHareketController.create);
+router.post("/", kayitYetkisi("cariHareket", () => false), CariHareketController.create);
 router.get("/:id", CariHareketController.getById);
-router.put("/:id", CariHareketController.update);
-router.delete("/:id", CariHareketController.delete);
+router.put("/:id", kayitYetkisi("cariHareket", kimlikVar()), CariHareketController.update);
+router.delete("/:id", kayitYetkisi("cariHareket", kimlikVar()), CariHareketController.delete);
 
 export default router;

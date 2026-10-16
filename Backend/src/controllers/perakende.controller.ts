@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { PerakendeService } from "../services/perakende.service.js";
 import { logger } from "../utils/logger.js";
+import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
+import { bankaHesabiDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 
 export const PerakendeController = {
   getDbContext(req: Request) {
@@ -23,7 +26,16 @@ export const PerakendeController = {
       const dbContext = PerakendeController.getDbContext(req);
       const user = req.user as any;
       const userId = user?.userId || user?.id || req.body?.KULLANICI_ID;
-      const result = await PerakendeService.createInvoice(req.body, userId ? Number(userId) : undefined, dbContext);
+      // Vezne kullanıcının kasası: yenide kart veznesi, düzeltmede kaydın veznesi (istekteki yok sayılır)
+      const vezneId = await fisVeznesi(userId, dbContext, { tur: "fatura", id: req.body?.faturaId });
+      // Gün sınırı, tarih ve fatura numarası yetkisi: numara yetkisi yoksa yenide numaratör, düzeltmede kaydın numarası
+      const { nolar, yetki } = await fisKayitYetkisi(req, "fatura", req.body?.faturaId, req.body?.tarih);
+      bankaHesabiDenetle(yetki, req.body?.odemeler);
+      const result = await PerakendeService.createInvoice(
+        { ...req.body, vezneId, ...(nolar && { faturaNo: nolar.FATURA_NO ?? "" }) },
+        userId ? Number(userId) : undefined,
+        dbContext
+      );
       res.status(201).json({
         success: true,
         message: "Fatura ve satış başarıyla kaydedildi",
@@ -52,7 +64,8 @@ export const PerakendeController = {
       } = req.query;
 
       const data = await PerakendeService.listInvoices({
-        baslangicTarihi: baslangicTarihi as string,
+        // Kullanıcının işlem gösterme sınırı istekteki başlangıçtan sonraysa o geçerli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+        baslangicTarihi: (sonrakiGun(baslangicTarihi as string, await gunSiniri(req)) ?? undefined) as string,
         bitisTarihi: bitisTarihi as string,
         aliciVknTckn: aliciVknTckn as string,
         eBelgeDurumu: eBelgeDurumu !== undefined ? Number(eBelgeDurumu) : undefined,
@@ -73,6 +86,7 @@ export const PerakendeController = {
       if (!id || isNaN(id)) {
         return res.status(400).json({ success: false, message: "Geçersiz fatura ID" });
       }
+      await kayitErisimi(req, "fatura", id);
       const data = await PerakendeService.getInvoiceById(id, dbContext);
       if (!data) {
         return res.status(404).json({ success: false, message: "Fatura bulunamadı" });
@@ -90,6 +104,7 @@ export const PerakendeController = {
       if (!id || isNaN(id)) {
         return res.status(400).json({ success: false, message: "Geçersiz fatura ID" });
       }
+      await kayitErisimi(req, "fatura", id);
       await PerakendeService.deleteInvoice(id, dbContext);
       res.json({
         success: true,

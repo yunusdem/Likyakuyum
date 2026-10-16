@@ -83,6 +83,7 @@ export class FirmaController {
     return ApiResponse.ok(res, "Kurulum durumu getirildi.", {
       sonBildirilenMakine: await KurulumSqlRepository.sonBildirilenMakine(firmaId),
       gecmis: await KurulumSqlRepository.heartbeatGecmisi(firmaId, 30),
+      yedek: await KurulumSqlRepository.yedekBildirimi(firmaId).catch(() => null),
     });
   });
 

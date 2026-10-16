@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { fisGunu } from "../../utils/fisTarihi";
 import { useSearchParams } from "react-router-dom";
 import { Container, Row, Col, Card, Form, Button, Badge, Alert, Modal, InputGroup } from "react-bootstrap";
 import {
@@ -46,6 +48,8 @@ const ISLEM_TIPLERI = [
 ];
 
 export const BankaHareketiPage: React.FC = () => {
+  // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+  const tarihYetkisi = useKullaniciYetkisi().tarihDegistirme;
   const [searchParams] = useSearchParams();
   const queryId = searchParams.get("id");
 
@@ -277,7 +281,7 @@ export const BankaHareketiPage: React.FC = () => {
         bankaHesapNo: hesapNo.trim() || undefined,
         bankaHesapAdi: hesapAdi.trim() || undefined,
         cariKartId: cariKartId || null,
-        tarih,
+        tarih: fisGunu(tarih, !hareketId, tarihYetkisi),
         aciklama: aciklama.trim() || null,
         meblag: numMeblag,
         paraId: 1, // TL
@@ -774,6 +778,8 @@ export const BankaHareketiPage: React.FC = () => {
                       size="sm"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}
+                      disabled={!tarihYetkisi}
+                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
                       onKeyDown={(e) => handleInputKeyDown(e, meblagRef, cariAdiRef)}
                       className="font-monospace shadow-none"
                     />

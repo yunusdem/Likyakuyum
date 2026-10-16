@@ -80,6 +80,16 @@ const LisansKoduIslemleri: React.FC<Props> = ({ firma, lisans, degisti }) => {
           </>
         )}
         {lisans.makineKimligi && <span className="small text-muted ms-1">{lisans.makineKimligi}</span>}
+        {lisans.kodGuncel === false && (
+          <Badge
+            bg="warning"
+            text="dark"
+            className="ms-1"
+            title="Modül, ürün, kullanıcı limiti ya da iletişim bilgisi kod üretildikten sonra değişti. İnternetli kurulumda yeni kod kendiliğinden iner; internetsizse Yeni Kod üretip müşteriye iletin."
+          >
+            Kod güncel değil
+          </Badge>
+        )}
         {lisans.teslim === "HEARTBEAT" && (
           <Badge bg="success" className="ms-1" title={lisans.teslimTarihi ? tarihYaz(lisans.teslimTarihi) : ""}>
             Programa indi

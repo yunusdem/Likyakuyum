@@ -24,9 +24,20 @@ export const iletisimOku = async () => {
   return { telefon: a.LISANS_ILETISIM_TELEFON, eposta: a.LISANS_ILETISIM_EPOSTA, metin: a.LISANS_ILETISIM_METIN };
 };
 
-/** Lisans satırından imzalı kod üretir (heartbeat ile kendiliğinden indirme de bunu kullanır). */
-export const lisansKoduHazirla = async (lisans: LisansDto, firmaKodu: string, makine: string, seri: number): Promise<string> => {
-  const veri: LisansVerisi = {
+export const KISITSIZ_KOD_HATASI =
+  "Bu kurulum firmasının sayfa (modül) ayarı yapılmamış; kısıtsız lisans kodu üretilmez. Lisansa ürün seçin ya da Modüller sekmesinden açık sayfaları belirleyin.";
+
+/**
+ * Lisans koduna girecek veri. Modül listesi: firmada açık olanlardan katalogda (ADM_MODUL) bulunanlar, sıralı — menüden
+ * kalkmış eski kodlar kodu büyütüyor (elle yüklemede sınır) ve exe'de eski kodun API'sini açık tutuyordu. Kurulum
+ * firmasında modül ayarı yoksa (null = kısıtsız) kod üretilmez: çevrimdışı müşteride bitişe kadar geri alınamıyordu.
+ */
+export const lisansVerisiHazirla = async (lisans: LisansDto, firmaKodu: string, makine: string | null, seri: number): Promise<LisansVerisi> => {
+  const acik = await ModulSqlRepository.firmaAcikModulleri(lisans.firmaId);
+  if (acik === null) throw ApiError.badRequest(KISITSIZ_KOD_HATASI);
+  const katalog = new Set((await ModulSqlRepository.katalog()).map((m) => m.modulKodu));
+  const moduller = [...new Set(katalog.size ? acik.filter((k) => katalog.has(k)) : acik)].sort();
+  return {
     v: 1,
     firmaKodu,
     firmaId: lisans.firmaId,
@@ -36,12 +47,42 @@ export const lisansKoduHazirla = async (lisans: LisansDto, firmaKodu: string, ma
     baslangic: lisans.baslangic,
     bitis: lisans.bitis,
     kullaniciLimiti: lisans.kullaniciLimiti,
-    moduller: await ModulSqlRepository.firmaAcikModulleri(lisans.firmaId),
-    urunler: lisans.urunler.length ? lisans.urunler : null,
+    moduller,
+    urunler: lisans.urunler.length ? [...lisans.urunler].sort() : null,
     iletisim: await iletisimOku(),
     verilme: new Date().toISOString(),
   };
-  return lisansKoduUret(veri, env.LISANS_OZEL_ANAHTAR);
+};
+
+/** Lisans satırından imzalı kod üretir (heartbeat ile kendiliğinden indirme de bunu kullanır). */
+export const lisansKoduHazirla = async (lisans: LisansDto, firmaKodu: string, makine: string, seri: number): Promise<string> =>
+  lisansKoduUret(await lisansVerisiHazirla(lisans, firmaKodu, makine, seri), env.LISANS_OZEL_ANAHTAR);
+
+/** Kodun kurulumu bağlayan içeriği (seri, makine, verilme hariç); sıra farkı içerik farkı sayılmaz */
+const icerikAnahtari = (v: Partial<LisansVerisi> | null | undefined): string =>
+  JSON.stringify({
+    moduller: Array.isArray(v?.moduller) ? [...v!.moduller].sort() : null,
+    urunler: Array.isArray(v?.urunler) && v!.urunler.length ? [...v!.urunler].sort() : null,
+    kullaniciLimiti: Number(v?.kullaniciLimiti) || 0,
+    baslangic: String(v?.baslangic ?? ""),
+    bitis: String(v?.bitis ?? ""),
+    iletisim: { telefon: v?.iletisim?.telefon ?? "", eposta: v?.iletisim?.eposta ?? "", metin: v?.iletisim?.metin ?? "" },
+  });
+
+/**
+ * Son üretilen kod lisansın ve firmanın bugünkü haliyle aynı mı (modüller, ürünler, kullanıcı limiti, tarihler, iletişim).
+ * Değilse bildirimde yeni seriyle kod üretilir: panelde modül/ürün/limit değişince kod önceden yalnız lisans uzatmasında
+ * yenileniyordu. Kod okunamazsa güncel değil sayılır; modül ayarı yoksa hata fırlatır (KISITSIZ_KOD_HATASI).
+ */
+export const lisansKoduGuncelMi = async (kod: string, lisans: LisansDto, firmaKodu: string): Promise<boolean> => {
+  let eski: Partial<LisansVerisi> | null = null;
+  try {
+    eski = JSON.parse(Buffer.from(String(kod).split(".")[1] || "", "base64url").toString("utf8"));
+  } catch {
+    return false;
+  }
+  const simdi = await lisansVerisiHazirla(lisans, firmaKodu, eski?.makine ?? null, 0);
+  return icerikAnahtari(eski) === icerikAnahtari(simdi);
 };
 
 export class LisansKodService {

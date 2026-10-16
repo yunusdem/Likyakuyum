@@ -9,6 +9,8 @@ import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { CariKartItem, CariService } from "../../services/cariService";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
+import { kullaniciVeznesi } from "../../utils/kullaniciVeznesi";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { PosCihaziItem, PosCihaziService } from "../../services/posCihaziService";
 import { BankaHesapItem, BankaService } from "../../services/bankaService";
 import { IskontoItem, IskontoService } from "../../services/iskontoService";
@@ -94,6 +96,8 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   const { user } = useAuth();
   const { showSuccess, showError, showWarning } = useToast();
   const yetki = useTicariYetki();
+  // Kullanıcı kartı yetkileri: tarih, fatura no, fiyat, banka hesabı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+  const kYetki = useKullaniciYetkisi();
   const location = useLocation();
   const navigate = useNavigate();
   const pos = usePosTahsilat();
@@ -168,8 +172,8 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     }).catch(() => setKurlar(new Map()));
     CashDeskService.getVezneler().then((list) => {
       setVezneler(list || []);
-      const hedef = String((user as any)?.vezneId ?? user?.cashierCode ?? "").toLowerCase().trim();
-      setVezne((list || []).find((v) => String(v.id) === hedef || String(v.kod).toLowerCase().trim() === hedef) || (list || [])[0] || null);
+      // Vezne kullanıcının kasası (değiştirilemez); açık bir fiş varsa onun veznesi korunur
+      setVezne((v) => v ?? kullaniciVeznesi(list, user as any));
     }).catch(() => setVezneler([]));
   }, [kartlariYukle]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -222,16 +226,19 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     const ilk = bosSatir();
     setSatirlar([ilk]); setFisIskTur(0); setFisIskDeger(""); setIskontoId(null); setOdemeler([bosOdeme()]);
     setSenaryo(s); setTarih(yerelTarih()); setSaat(yerelSaat());
+    setVezne(kullaniciVeznesi(vezneler, user as any));
     odak(`${ilk.anahtar}_barkod`);
     if (!isDuzeltme) await siradakiNo(s);
     else setFaturaNo("");
-  }, [isDuzeltme, siradakiNo]);
+  }, [isDuzeltme, siradakiNo, vezneler, user]);
 
   const fisiAc = useCallback(async (id: number) => {
     try {
       const f = await TicariService.satis(id);
       const d = new Date(f.tarih);
       setFaturaId(f.faturaId); setFaturaNo(f.faturaNo); setEBelgeDurumu(f.eBelgeDurumu || 0); setTarih(yerelTarih(d)); setSaat(yerelSaat(d)); setSenaryo(f.senaryo || "EARSIVFATURA");
+      // Düzeltmede fişin kendi veznesi (sunucu da kaydın veznesini korur)
+      setVezne(f.vezneId ? ({ id: f.vezneId, kod: f.vezneKod || String(f.vezneId), ad: f.vezneAd || "" } as VezneItem) : null);
       setVkn(f.aliciVknTckn || ""); setCariKod(f.cariKod || ""); setUnvan(f.aliciUnvan || DEFAULT_CUSTOMER_NAME); setCariKartId(f.cariKartId ?? null);
       setVergiDairesi(f.vergiDairesi || ""); setIl(f.il || ""); setIlce(f.ilce || ""); setTelefon(f.telefon || ""); setEposta(f.eposta || ""); setAdres(f.adres || "");
       setSatirlar([...f.satirlar.map((s) => ({
@@ -387,7 +394,8 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       }));
     if (!odemeYuku.length && genelToplam > 0) odemeYuku = [{ satirNo: 1, odemeAraciTuru: 0, paraKodu: "TL", paraAdi: "TÜRK LİRASI", miktar: genelToplam, kur: 1, tutar: genelToplam }];
     return {
-      faturaId, vezneId: vezne?.id ?? null, faturaNo, tarih: new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), senaryo,
+      // Tarih değiştirme yetkisi yoksa yeni fiş şimdiki zamanla (kilitli kutu gece yarısını geçen ekranda dünü tutuyordu)
+      faturaId, vezneId: vezne?.id ?? null, faturaNo, tarih: !kYetki.tarihDegistirme && !faturaId ? new Date().toISOString() : new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), senaryo,
       cariKartId, aliciVknTckn: temizVkn, aliciUnvan: isAnonymousCustomerName(unvan) ? "NİHAİ TÜKETİCİ" : unvan.trim(),
       adres, ilce, il, vergiDairesi, eposta, telefon,
       iskontoId, iskontoKodu: iskontolar.find((i) => i.iskontoId === iskontoId)?.kod || null, iskontoTuru: fisIskTur, iskontoDegeri: sayi(fisIskDeger),
@@ -554,8 +562,10 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
           isDuzeltme ? (
             <div className="d-flex align-items-center gap-1 bg-white px-2 border rounded font-monospace" style={{ height: 28 }}>
               <span className="text-secondary fw-bold" style={{ fontSize: 11 }}>TARİH</span>
-              <input type="date" className="form-control form-control-sm border-0 p-0 text-center fw-semibold bg-transparent" style={{ width: 110, fontSize: 11.5, height: 22 }} value={tarih} onChange={(e) => setTarih(e.target.value)} />
-              <input type="time" className="form-control form-control-sm border-0 p-0 text-center bg-transparent" style={{ width: 55, fontSize: 11, height: 22 }} value={saat} onChange={(e) => setSaat(e.target.value)} />
+              <input type="date" className="form-control form-control-sm border-0 p-0 text-center fw-semibold bg-transparent" style={{ width: 110, fontSize: 11.5, height: 22 }} value={tarih} onChange={(e) => setTarih(e.target.value)}
+                disabled={!kYetki.tarihDegistirme} title={kYetki.tarihDegistirme ? undefined : "Tarih değiştirme yetkiniz yok"} />
+              <input type="time" className="form-control form-control-sm border-0 p-0 text-center bg-transparent" style={{ width: 55, fontSize: 11, height: 22 }} value={saat} onChange={(e) => setSaat(e.target.value)}
+                disabled={!kYetki.tarihDegistirme} />
             </div>
           ) : (
             <div className="d-flex align-items-center gap-1 px-2 rounded border bg-white font-monospace" style={{ height: 28, fontSize: 11 }} title="Fiş tarihi ve saati (otomatik)">
@@ -571,14 +581,13 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       <div className="d-flex align-items-center flex-wrap gap-3 mb-2 p-1 border rounded bg-light" style={{ fontSize: 12 }}>
         <div className="d-flex align-items-center gap-1">
           <span className="fw-bold text-primary">VEZNE</span>
-          <Form.Select size="sm" value={vezne?.id ?? ""} disabled={!(user as any)?.isSysAdmin && (user as any)?.role !== "admin"} style={{ width: 150, fontSize: 12 }}
-            onChange={(e) => setVezne(vezneler.find((v) => v.id === Number(e.target.value)) || null)}>
-            {vezneler.map((v) => <option key={v.id} value={v.id}>{v.kod} {v.ad}</option>)}
-          </Form.Select>
+          {/* Vezne giriş yapan kullanıcının kasasıdır, değiştirilemez (düzeltmede fişin veznesi) */}
+          <Form.Control size="sm" readOnly disabled value={vezne ? `${vezne.kod} ${vezne.ad}`.trim() : "Tanımsız"} className="fw-bold bg-light"
+            style={{ width: 150, fontSize: 12, cursor: "not-allowed" }} title="Vezne giriş yapan kullanıcıya aittir ve değiştirilemez" />
         </div>
         <div className="d-flex align-items-center gap-1">
           <span className="fw-bold text-secondary">FATURA NO</span>
-          <Form.Control size="sm" className="font-monospace fw-bold text-primary" value={faturaNo} readOnly={isDuzeltme} onChange={(e) => setFaturaNo(e.target.value.toUpperCase())} placeholder="Otomatik" style={{ width: 170, fontSize: 11.5 }} />
+          <Form.Control size="sm" className="font-monospace fw-bold text-primary" value={faturaNo} readOnly={isDuzeltme || !kYetki.fisNoDegistirme} title={!kYetki.fisNoDegistirme ? "Fiş numarası değiştirme yetkiniz yok" : undefined} onChange={(e) => setFaturaNo(e.target.value.toUpperCase())} placeholder="Otomatik" style={{ width: 170, fontSize: 11.5 }} />
         </div>
         <div className="d-flex align-items-center gap-1">
           <span className="fw-bold text-secondary">SENARYO</span>
@@ -679,7 +688,8 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                       </td>
                       <td className="text-center small">{s.birim}</td>
                       <td style={{ padding: "2px 4px" }}>
-                        {doluMu(s) && <Form.Control size="sm" className="text-end" inputMode="decimal" value={s.fiyat} disabled={kilitli} style={{ fontSize: 11.5 }} onChange={(e) => satirDegis(s.anahtar, "fiyat", sadeceSayi(e.target.value))} />}
+                        {doluMu(s) && <Form.Control size="sm" className="text-end" inputMode="decimal" value={s.fiyat} disabled={kilitli || (!s.serbest && !kYetki.tutarDegistirme)} style={{ fontSize: 11.5 }} onChange={(e) => satirDegis(s.anahtar, "fiyat", sadeceSayi(e.target.value))}
+                          title={!s.serbest && !kYetki.tutarDegistirme ? "Fişte tutar değiştirme yetkiniz yok; fiyat stok kartından gelir" : undefined} />}
                       </td>
                       <td style={{ padding: "2px 4px" }}>
                         {doluMu(s) && (
@@ -730,7 +740,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                           </td>
                           <td style={{ padding: "2px 4px" }}>
                             <Form.Select size="sm" value={o.tur} disabled={kilitli} style={{ fontSize: 11, fontWeight: 600 }} onChange={(e) => odemeTuruDegis(o, Number(e.target.value) as 0 | 1 | 2 | 3)}>
-                              {[0, 1, 2, 3].map((t) => <option key={t} value={t}>{ODEME_TURLERI[t]}</option>)}
+                              {[0, 1, 2, 3].filter((t) => t !== 3 || kYetki.bankaHesabiSecme || o.tur === 3).map((t) => <option key={t} value={t} disabled={t === 3 && !kYetki.bankaHesabiSecme}>{ODEME_TURLERI[t]}</option>)}
                             </Form.Select>
                           </td>
                           <td style={{ padding: "2px 4px" }}>

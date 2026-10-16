@@ -225,15 +225,15 @@ export class UserService {
     }
 
     const { menuPerms, appearance, ...restInput } = input;
+    // Depo bütün kolonları yazar: gönderilmeyen alan kartta olduğu gibi kalsın (yoksa boş/varsayılanla eziliyordu).
+    // Şifre karttan taşınmaz; boş giden şifre depoda zaten korunur.
+    const { password: _sifre, passwordHash: _ozet, ...mevcut } = existing;
+    const gonderilen = Object.fromEntries(Object.entries(restInput).filter(([, v]) => v !== undefined)) as Partial<UserModel>;
     const updatePayload: Partial<UserModel> = {
-      ...restInput,
-      role: (restInput.role as any),
-      email: restInput.email ? restInput.email : undefined,
-      displayDays: input.displayDays,
-      horizontalZoom: input.horizontalZoom,
-      verticalZoom: input.verticalZoom,
-      commissionRate: input.commissionRate,
-      ratePermValue: input.ratePermValue,
+      ...mevcut,
+      ...gonderilen,
+      role: (gonderilen.role ?? mevcut.role) as any,
+      email: gonderilen.email ? gonderilen.email : undefined,
     };
 
     if (input.password !== undefined && input.password !== existing.password && input.password !== "") {

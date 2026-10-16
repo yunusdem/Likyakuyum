@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { fisGunu } from "../../utils/fisTarihi";
 import { useLocation } from "react-router-dom";
 import { Container, Row, Col, Card, Form, Button, Badge, Alert, Modal, InputGroup, Table } from "react-bootstrap";
 import {
@@ -28,6 +30,8 @@ import { CompanyService } from "../../services/companyService";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 export const KasaHareketPage: React.FC = () => {
+  // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+  const tarihYetkisi = useKullaniciYetkisi().tarihDegistirme;
   const location = useLocation();
   const isEditPage = location.pathname.includes("hareket-duzeltme");
 
@@ -374,7 +378,7 @@ export const KasaHareketPage: React.FC = () => {
       const payload: SaveHesapHareketiPayload = {
         hesapHareketiId,
         hesapId,
-        tarih,
+        tarih: fisGunu(tarih, !hesapHareketiId, tarihYetkisi),
         aciklama: defaultAciklama,
         paraId,
         meblag: meblagNumber,
@@ -416,7 +420,7 @@ export const KasaHareketPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [hesapId, vezneId, paraId, meblag, tip, aciklama, hesapAd, hesapHareketiId, tarih, kdvOrani, kdvTutari, degisiklikTakipVar, isEditPage, handleNew, fetchVezneBakiyeler]);
+  }, [hesapId, vezneId, paraId, meblag, tip, aciklama, hesapAd, hesapHareketiId, tarih, tarihYetkisi, kdvOrani, kdvTutari, degisiklikTakipVar, isEditPage, handleNew, fetchVezneBakiyeler]);
 
   // ─── Sil / Geri Al Aksiyonu (F2) ─────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
@@ -602,6 +606,8 @@ export const KasaHareketPage: React.FC = () => {
                       size="sm"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}
+                      disabled={!tarihYetkisi}
+                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
                       className="font-monospace"
                     />
                   </div>

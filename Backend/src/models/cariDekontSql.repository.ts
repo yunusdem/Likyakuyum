@@ -821,6 +821,7 @@ export class CariDekontSqlRepository {
       tip?: number;
       vezneId?: number;
       limit?: number;
+      baslangic?: string | null;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<
@@ -868,6 +869,12 @@ export class CariDekontSqlRepository {
         ISNULL(CA.KOD, '') LIKE @search OR
         ISNULL(CA.AD, '') LIKE @search
       )`);
+    }
+
+    // Kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+    if (filter?.baslangic) {
+      req.input("bas", sql.VarChar(10), filter.baslangic);
+      whereClauses.push("D.TARIH >= CAST(@bas AS date)");
     }
 
     const whereSql = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";

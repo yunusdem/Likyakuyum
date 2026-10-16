@@ -7,7 +7,7 @@ import { ApiError } from "../utils/ApiError.js";
 
 export class CariDekontService {
   public static async getDekontList(
-    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number },
+    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null },
     dbContext?: { dbServer?: string; dbName?: string }
   ) {
     return CariDekontSqlRepository.findAll(filter, dbContext);

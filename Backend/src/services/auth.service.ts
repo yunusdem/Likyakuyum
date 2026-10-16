@@ -14,6 +14,7 @@ import { OturumService } from "./oturum.service.js";
 import { env } from "../config/env.config.js";
 import { kurulumBaglantisiniKaydet, kurulumDbContext, kurulumHavuzu } from "./kurulum/kurulumDb.js";
 import { KurulumLisansService } from "./kurulum/kurulumLisans.service.js";
+import { kurulumKartOnbelleginiTemizle, sifreDamgasi } from "./kurulum/kurulumKart.js";
 
 export class AuthService {
   /**
@@ -82,6 +83,8 @@ export class AuthService {
     const user = await UserSqlRepository.findByUsername(username, dbContext);
     const dogru = !!user && (await comparePassword(password, user.passwordHash || user.password || ""));
     if (!user || !dogru) throw ApiError.unauthorized(ResponseMessages.INVALID_CREDENTIALS);
+    // Limit dışında (ör. veritabanına doğrudan) eklenen kullanıcı girmesin; lisans düşürülmesinde mevcutlar girer
+    await KurulumLisansService.girisLimitiDenetle(Number(user.id));
     return this.oturumAc(user, { ...dbContext, firmaId: 0 }, await this.kurulumOturumBilgisi(user));
   }
 
@@ -90,15 +93,20 @@ export class AuthService {
     if (!env.KURULUM_MODU) throw ApiError.notFound("Bu işlem yalnız kurulum sürümünde vardır.");
     MerkezGirisService.sifreKuraliniDenetle(girdi.password);
     kurulumBaglantisiniKaydet();
-    const pool = await kurulumHavuzu();
-    const sayi = (await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`)).recordset[0].N as number;
-    if (sayi > 0) throw ApiError.conflict("İlk yönetici zaten tanımlı. Kullanıcılar programın içinden açılır.");
     const dbContext = kurulumDbContext();
     const { UserService } = await import("./user.service.js");
-    const yeni = await UserService.createUser(
-      { username: girdi.username, fullName: girdi.fullName || girdi.username, password: girdi.password, isSysAdmin: true, role: "admin" } as any,
-      dbContext
-    );
+    // Sayım ve kayıt sırayla: aynı anda gelen iki istek iki ilk yönetici açabiliyordu
+    const yeni = await KurulumLisansService.kullaniciKaydiSirasi(async () => {
+      const pool = await kurulumHavuzu();
+      const sayi = (await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`)).recordset[0].N as number;
+      if (sayi > 0) throw ApiError.conflict("İlk yönetici zaten tanımlı. Kullanıcılar programın içinden açılır.");
+      const u = await UserService.createUser(
+        { username: girdi.username, fullName: girdi.fullName || girdi.username, password: girdi.password, isSysAdmin: true, role: "admin" } as any,
+        dbContext
+      );
+      await KurulumLisansService.kullaniciEklendi(Number(u.id)).catch(() => undefined);
+      return u;
+    });
     const user = await UserSqlRepository.findById(String(yeni.id), dbContext);
     if (!user) throw ApiError.internal("İlk yönetici oluşturulamadı.");
     return this.oturumAc(user, { ...dbContext, firmaId: 0 }, await this.kurulumOturumBilgisi(user));
@@ -111,9 +119,27 @@ export class AuthService {
     return ((await pool.request().query(`SELECT COUNT(*) AS N FROM dbo.TODVZ_KULLANICI`)).recordset[0].N as number) > 0;
   }
 
-  /** Giriş ekranı: müşteri noya bağlı veritabanları. */
-  public static musteriVeritabanlari(musteriNo: string) {
+  /** Giriş ekranı: müşteri noya bağlı veritabanları. Kurulumda (exe) tek veritabanı vardır, merkeze sorulmaz (503 veriyordu). */
+  public static async musteriVeritabanlari(musteriNo: string) {
+    if (env.KURULUM_MODU) return [];
     return MerkezGirisService.musteriVeritabanlari(musteriNo);
+  }
+
+  /** Kurulumda kartın şifre damgası (kurulumKart.kurulumKarti ile aynı hesap: kırpılmış SIFRE) */
+  private static kurulumSifreDamgasi(user: UserModel): string {
+    return sifreDamgasi(String(user.passwordHash || user.password || "").trim());
+  }
+
+  /**
+   * Kurulum: şifresi değişen kullanıcının kendi oturumu için yeni jeton. Eski jeton şifre damgası yüzünden reddedilir;
+   * şifreyi değiştiren kişi ekranda kalsın diye yanıtla yenisi verilir.
+   */
+  public static async kurulumJetonu(userId: string): Promise<TokenPair> {
+    const ctx = kurulumDbContext();
+    kurulumKartOnbelleginiTemizle(userId);
+    const user = await UserSqlRepository.findById(userId, ctx);
+    if (!user) throw ApiError.unauthorized("Kullanıcı kartınız bulunamadı. Lütfen yeniden giriş yapın.");
+    return this.oturumAc(user, { ...ctx, firmaId: 0 }).tokens;
   }
 
   private static oturumAc(
@@ -122,7 +148,8 @@ export class AuthService {
     merkez?: MerkezOturumBilgisi,
     sid?: string
   ): AuthResponseData {
-    // DB kullanıcı adı / şifresi token'a yazılmaz; authenticate bağlantıyı firmaId'den çözer
+    // DB kullanıcı adı / şifresi token'a yazılmaz; authenticate bağlantıyı firmaId'den çözer.
+    // Kurulumda şifre damgası: şifre değişince bu jeton reddedilir (services/kurulum/kurulumKart.ts)
     const tokens = generateAuthTokens({
       userId: user.id,
       username: user.username,
@@ -132,6 +159,7 @@ export class AuthService {
       dbName: dbContext.dbName,
       firmaId: dbContext.firmaId,
       ...(sid && { sid }),
+      ...(env.KURULUM_MODU && { sd: AuthService.kurulumSifreDamgasi(user) }),
     });
 
     return {
@@ -258,6 +286,10 @@ export class AuthService {
       if (!user || !user.isActive) {
         throw ApiError.unauthorized("Geçersiz veya iptal edilmiş oturum tokenı.");
       }
+      // Kurulum: şifre jeton verildiğinden beri değiştiyse yenilenmez (eski oturum yeni jeton alıp sürmesin)
+      if (env.KURULUM_MODU && decoded.sd && decoded.sd !== AuthService.kurulumSifreDamgasi(user)) {
+        throw ApiError.unauthorized("Şifreniz değiştirildi. Lütfen yeniden giriş yapın.");
+      }
 
       const newTokens = generateAuthTokens({
         userId: user.id,
@@ -268,6 +300,7 @@ export class AuthService {
         dbName: decoded.dbName,
         ...(decoded.firmaId && { firmaId: decoded.firmaId }),
         ...(decoded.sid && { sid: decoded.sid }),
+        ...(env.KURULUM_MODU && { sd: AuthService.kurulumSifreDamgasi(user) }),
       });
 
       return newTokens;
@@ -299,7 +332,7 @@ export class AuthService {
   public static async changePassword(
     oturum: { userId: string; dbServer?: string; dbName?: string },
     girdi: { currentPassword: string; newPassword: string }
-  ): Promise<void> {
+  ): Promise<TokenPair | null> {
     const dbContext = { dbServer: oturum.dbServer, dbName: oturum.dbName };
     const user = await UserSqlRepository.findById(oturum.userId, dbContext);
     if (!user) throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
@@ -321,6 +354,8 @@ export class AuthService {
       : await hashPassword(girdi.newPassword);
     await UserSqlRepository.updatePassword(user.id, ozet, dbContext);
     OturumService.onbellegiTemizle(); // "şifre değişmeli" kilidi hemen kalksın
+    // Kurulum: diğer cihazlardaki eski oturumlar düşer; şifreyi değiştiren bu oturum yeni jetonla sürer
+    return env.KURULUM_MODU ? this.kurulumJetonu(String(user.id)) : null;
   }
 }
 

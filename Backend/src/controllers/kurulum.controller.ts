@@ -11,6 +11,20 @@ import { KurulumBildirim } from "../services/kurulum/kurulumBildirim.js";
 import { Guncelleyici, bekleyenGuncelleme, sonGuncellemeSonucu } from "../services/kurulum/guncelleyici.js";
 import { UserSqlRepository } from "../models/userSql.repository.js";
 import { kurulumDbContext } from "../services/kurulum/kurulumDb.js";
+import { gocDurumu } from "../services/kurulum/gocDurumu.js";
+import {
+  KurulumYedek,
+  SAKLANAN_GUN,
+  VT_SINIR_MB,
+  VT_UYARI_MB,
+  vtBoyutuMb,
+  yedekDosyalari,
+  yedekDurumu,
+  yedekKlasoru,
+} from "../services/kurulum/kurulumYedek.js";
+
+const ELLE_KONTROL_ARALIGI_MS = 30_000;
+let sonElleKontrol = 0;
 
 const kurulumOlmali = () => {
   if (!env.KURULUM_MODU) throw ApiError.notFound("Bu işlem yalnız kurulum sürümünde vardır.");
@@ -53,6 +67,7 @@ export class KurulumController {
       bekleyen: bekleyenGuncelleme(),
       sonSonuc: sonGuncellemeSonucu(),
       bildirim: KurulumBildirim.durum(),
+      goc: gocDurumu(),
       lisans: await KurulumLisansService.durum(),
     });
   });
@@ -65,6 +80,25 @@ export class KurulumController {
     return ApiResponse.ok(res, "Merkezle eşitlendi.", { ...sonuc, bekleyen: bekleyenGuncelleme() });
   });
 
+  /**
+   * Kilit ekranından "Merkezden kontrol et" (giriş gerekmez; kilitliyken giriş yapılamıyordu, kod en geç 6 saatte iniyordu).
+   * Merkeze en çok 30 sn'de bir gidilir; dönüşte güncel lisans durumu.
+   */
+  public static lisansKontrol = asyncHandler(async (req: Request, res: Response) => {
+    kurulumOlmali();
+    let sonuc: Awaited<ReturnType<typeof KurulumBildirim.gonder>> | null = null;
+    if (Date.now() - sonElleKontrol >= ELLE_KONTROL_ARALIGI_MS) {
+      sonElleKontrol = Date.now();
+      sonuc = await KurulumBildirim.gonder();
+    }
+    return ApiResponse.ok(res, "Merkez denetlendi.", {
+      merkezeUlasildi: sonuc ? sonuc.basarili : null,
+      hata: sonuc?.hata ?? null,
+      lisansYuklendi: !!sonuc?.lisansYuklendi,
+      lisans: await KurulumLisansService.durum(true),
+    });
+  });
+
   /** Bekleyen güncellemeyi hemen uygular (yalnız sistem yöneticisi; program birkaç saniye kapanır). */
   public static guncellemeSimdi = asyncHandler(async (req: Request, res: Response) => {
     kurulumOlmali();
@@ -75,6 +109,31 @@ export class KurulumController {
     } catch (err: any) {
       throw ApiError.badRequest(err?.message || "Güncelleme başlatılamadı.");
     }
+  });
+
+  /** Lisans ve Sürüm ekranı "Yedek" kartı: son yedek, dosyalar, ek hedefler, veritabanı boyutu (docs 15.1, Y4). */
+  public static yedekDurumu = asyncHandler(async (req: Request, res: Response) => {
+    kurulumOlmali();
+    const d = yedekDurumu();
+    return ApiResponse.ok(res, "Yedek durumu.", {
+      ...d,
+      vtBoyutMb: (await vtBoyutuMb()) ?? d.vtBoyutMb,
+      suruyor: KurulumYedek.suruyorMu(),
+      klasor: yedekKlasoru(),
+      dosyalar: yedekDosyalari(),
+      sinirMb: VT_SINIR_MB,
+      uyariMb: VT_UYARI_MB,
+      saklananGun: SAKLANAN_GUN,
+    });
+  });
+
+  /** "Şimdi Yedekle" (yalnız sistem yöneticisi): yedek arka planda alınır, ekran durumu sorar. */
+  public static yedekAl = asyncHandler(async (req: Request, res: Response) => {
+    kurulumOlmali();
+    const user = await UserSqlRepository.findById(String(req.user?.userId), kurulumDbContext());
+    if (!user?.isSysAdmin) throw ApiError.forbidden("Yedeği yalnız sistem yöneticisi başlatabilir.");
+    void KurulumYedek.yedekAl("elle").catch(() => undefined);
+    return ApiResponse.ok(res, "Yedek alınıyor.", { suruyor: true });
   });
 
   public static ilkYonetici = asyncHandler(async (req: Request, res: Response) => {

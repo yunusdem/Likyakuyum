@@ -1,4 +1,5 @@
-import { sayfaKapaliMi } from "./modulKatalogu";
+import { sayfaErisimi } from "./modulKatalogu";
+import type { KullaniciYetkisi } from "../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { HIZLI_SATIS_MODULLERI, HizliSatisModul } from "../../Backend/src/services/hizliSatis/hizliSatisKural";
 
 /**
@@ -7,8 +8,9 @@ import { HIZLI_SATIS_MODULLERI, HizliSatisModul } from "../../Backend/src/servic
  */
 export const hizliSatisYolu = (m: HizliSatisModul): string => `/hizli-satis/${m}`;
 
-export const acikHizliSatisModulleri = (acik: string[] | null | undefined): HizliSatisModul[] =>
-  HIZLI_SATIS_MODULLERI.filter((m) => !sayfaKapaliMi(acik, hizliSatisYolu(m)));
+/** Lisansta ve (verilirse) kullanıcının menü yetkisinde açık hızlı satış modülleri */
+export const acikHizliSatisModulleri = (acik: string[] | null | undefined, yetki?: KullaniciYetkisi | null): HizliSatisModul[] =>
+  HIZLI_SATIS_MODULLERI.filter((m) => sayfaErisimi(acik, yetki, hizliSatisYolu(m)));
 
 const SON_MODUL_ANAHTARI = "hizliSatis.sonModul";
 
@@ -29,8 +31,8 @@ export const sonModulYaz = (m: HizliSatisModul): void => {
 };
 
 /** Üst kısayol (/hizli-satis): en son kullanılan modül açıksa o, değilse ilk açık modül (H2) */
-export const acilisModulu = (acik: string[] | null | undefined, son: string | null): HizliSatisModul | null => {
-  const liste = acikHizliSatisModulleri(acik);
+export const acilisModulu = (acik: string[] | null | undefined, son: string | null, yetki?: KullaniciYetkisi | null): HizliSatisModul | null => {
+  const liste = acikHizliSatisModulleri(acik, yetki);
   if (son && (liste as string[]).includes(son)) return son as HizliSatisModul;
   return liste[0] ?? null;
 };

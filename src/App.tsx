@@ -8,7 +8,7 @@ import HomePage from "./pages/HomePage";
 import ModulePage from "./pages/ModulePage";
 import UserDefinitionsPage from "./pages/settings/UserDefinitionsPage";
 import ChangePasswordPage from "./pages/auth/ChangePasswordPage";
-import ModulKorumasi from "./components/auth/ModulKorumasi";
+import ModulKorumasi, { OzellikKorumasi } from "./components/auth/ModulKorumasi";
 import CompanyDefinitionsPage from "./pages/settings/CompanyDefinitionsPage";
 import CashDeskDefinitionsPage from "./pages/settings/CashDeskDefinitionsPage";
 import PrinterDefinitionsPage from "./pages/settings/PrinterDefinitionsPage";
@@ -116,6 +116,22 @@ import useMenu from "hooks/useMenu";
 import useEnterNavigation from "./hooks/useEnterNavigation";
 import { useAuth } from "./context/AuthContext";
 import { getAppBrand } from "./utils/brandHelper";
+import { SistemService } from "./services/sistemService";
+
+/** Kök adres: kurulumda (exe) tanıtım sayfası yerine giriş ekranı (tanıtım ve iletişim formu bulut sitesine aittir) */
+const KokSayfa: React.FC = () => {
+  // null: sistem bilgisi gelmedi (kurulumda bir an tanıtım sayfası görünmesin); kurulumda oturum açıksa ana ekrana
+  const [kurulum, setKurulum] = useState<boolean | null>(null);
+  const { isAuthenticated } = useAuth();
+  useEffect(() => {
+    let iptal = false;
+    SistemService.bilgi().then((b) => { if (!iptal) setKurulum(!!b.kurulum); });
+    return () => { iptal = true; };
+  }, []);
+  if (kurulum === null) return null;
+  if (!kurulum) return <LandingPage />;
+  return <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />;
+};
 
 const DashboardLayout: React.FC = () => {
   const { collapsed, handleCollapsed } = useMenu();
@@ -243,7 +259,7 @@ export default function App() {
         <Routes>
 
           {/* Public Routes */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<KokSayfa />} />
           <Route path="/ozellikler" element={<LandingFeaturesPage />} />
           <Route path="/moduller" element={<LandingModulesPage />} />
           <Route path="/canli-pano" element={<LandingPanoPage />} />
@@ -258,9 +274,14 @@ export default function App() {
 
           {/* Protected Standalone Pano & TV Katalog Route - Fullscreen TV & Tablet Mode */}
           <Route element={<ProtectedRoute />}>
-            <Route path="kur/pano" element={<PanoPage />} />
-            <Route path="tv-katalog" element={<TvKatalogPage />} />
-            <Route path="katalog-ekrani" element={<TvKatalogPage />} />
+            {/* Tam ekran sayfalar da lisansa bağlı: pano menü maddesiyle, katalog Etiket (Kuyum) sayfalarıyla */}
+            <Route element={<ModulKorumasi />}>
+              <Route path="kur/pano" element={<PanoPage />} />
+            </Route>
+            <Route element={<OzellikKorumasi ozellik="etiket" anaMenu="etiket" />}>
+              <Route path="tv-katalog" element={<TvKatalogPage />} />
+              <Route path="katalog-ekrani" element={<TvKatalogPage />} />
+            </Route>
           </Route>
 
           {/* Protected Dashboard Routes - Requires Valid JWT Token */}

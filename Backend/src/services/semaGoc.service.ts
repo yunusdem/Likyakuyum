@@ -6,8 +6,12 @@ import { fileURLToPath } from "url";
 /**
  * Firma veritabanı şema göçleri (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, K20).
  * Backend/migrations/NNN_ad.sql dosyaları numara sırasıyla, her veritabanında bir kez uygulanır; uygulananlar
- * LKY_SEMA_SURUMU tablosunda tutulur. Kurulum (exe) açılışta kendi veritabanına, merkez sunucu sürüm yayınlarken
- * şablona ve bulut firmalarına uygular. Her dosya tek işlemdir: biri hata verirse o dosya tamamen geri alınır.
+ * LKY_SEMA_SURUMU tablosunda (numara + dosya adı) tutulur. Kurulum (exe) açılışta kendi veritabanına, merkez sunucu sürüm
+ * yayınlarken şablona ve bulut firmalarına uygular. Her dosya tek işlemdir: biri hata verirse o dosya tamamen geri alınır.
+ *
+ * Uygulanacaklar kayıtlı en büyük numaraya göre değil, numara + adla seçilir: kaydı olmayan (sonradan araya eklenmiş küçük
+ * numara) ya da aynı numarada adı değişmiş dosya (008_hizli_satis → 008_sidebar_gorunum) da uygulanır. Bu yüzden göçler
+ * yeniden çalıştırılabilir yazılır (IF OBJECT_ID / COL_LENGTH korumaları, CREATE OR ALTER).
  */
 
 export interface GocDosyasi {
@@ -59,6 +63,13 @@ export const semaSurumu = async (pool: sql.ConnectionPool): Promise<number> => {
   return Number(res.recordset[0].S);
 };
 
+/** Bir göç dosyası uygulanamadı (bağlantı hatasından ayrı: açılışta yeniden denenmez, bkz. kurulum/gocDurumu.ts) */
+export class GocDosyasiHatasi extends Error {}
+
+/** Göç komutları büyük tabloda (ör. NOT NULL kolon ekleme) havuzun 30 sn'lik zaman aşımını aşabilir */
+const GOC_ZAMAN_ASIMI_MS = 10 * 60 * 1000;
+const gocIstegi = (tx: sql.Transaction): sql.Request => new (sql.Request as any)(tx, { requestTimeout: GOC_ZAMAN_ASIMI_MS });
+
 export const semaGocUygula = async (
   pool: sql.ConnectionPool,
   dosyalar: GocDosyasi[] = gocDosyalari()
@@ -67,21 +78,28 @@ export const semaGocUygula = async (
     IF OBJECT_ID('dbo.LKY_SEMA_SURUMU') IS NULL
       CREATE TABLE dbo.LKY_SEMA_SURUMU (SURUM int NOT NULL PRIMARY KEY, AD nvarchar(200) NOT NULL, TARIH datetime NOT NULL DEFAULT GETDATE());`);
   const onceki = await semaSurumu(pool);
+  const kayitli = new Map<number, string>(
+    ((await pool.request().query(`SELECT SURUM, AD FROM dbo.LKY_SEMA_SURUMU`)).recordset as any[]).map((r) => [Number(r.SURUM), String(r.AD ?? "").trim()])
+  );
   const uygulanan: string[] = [];
-  for (const d of dosyalar.filter((x) => x.no > onceki)) {
+  for (const d of dosyalar.filter((x) => kayitli.get(x.no) !== x.ad)) {
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
-      for (const b of d.batchler) await new sql.Request(tx).batch(b);
+      for (const b of d.batchler) await gocIstegi(tx).batch(b);
       await new sql.Request(tx)
         .input("no", sql.Int, d.no)
         .input("ad", sql.NVarChar(200), d.ad)
-        .query(`INSERT INTO dbo.LKY_SEMA_SURUMU (SURUM, AD) VALUES (@no, @ad)`);
+        .query(`
+          IF EXISTS (SELECT 1 FROM dbo.LKY_SEMA_SURUMU WHERE SURUM = @no)
+            UPDATE dbo.LKY_SEMA_SURUMU SET AD = @ad, TARIH = GETDATE() WHERE SURUM = @no
+          ELSE
+            INSERT INTO dbo.LKY_SEMA_SURUMU (SURUM, AD) VALUES (@no, @ad)`);
       await tx.commit();
       uygulanan.push(d.ad);
     } catch (err: any) {
       await tx.rollback().catch(() => undefined);
-      throw new Error(`Şema göçü ${d.ad} uygulanamadı: ${err?.message || err}`);
+      throw new GocDosyasiHatasi(`Şema göçü ${d.ad} uygulanamadı: ${err?.message || err}`);
     }
   }
   return { onceki, sonraki: await semaSurumu(pool), uygulanan };

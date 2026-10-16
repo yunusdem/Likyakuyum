@@ -55,7 +55,8 @@ import { useAuth } from "../context/AuthContext";
 import { CashDeskService } from "../services/cashDeskService";
 
 import { DashboardMenu } from "routes/DashboardRoute";
-import { menuyuSuz } from "../config/modulKatalogu";
+import { menuyuKullaniciyaSuz, menuyuSuz } from "../config/modulKatalogu";
+import { useKullaniciYetkisi } from "../hooks/useKullaniciYetkisi";
 import { solMenuyuBirlestir } from "../config/solMenuBirlesimi";
 import { SistemService } from "../services/sistemService";
 import { getAppBrand } from "../utils/brandHelper";
@@ -281,9 +282,11 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   }, []);
   // Yönetim panelinden firmaya kapatılan menüler hiç çizilmez (kısayol tuşları da yalnız görünen menüde çalışır).
   // Süzmeden sonra birleşik sol menü (Vezne/Kur, Kasa/Banka, Etiket/Perakende): docs/SOL_MENU_BIRLESTIRME.md
+  // Kullanıcının kart menü yetkileri (harf listesi): yetkisiz ana menü / madde çizilmez
+  const kullaniciYetkisi = useKullaniciYetkisi();
   const gorunenMenu = useMemo(
-    () => solMenuyuBirlestir(menuyuSuz(DashboardMenu, user?.merkez?.moduller)),
-    [user?.merkez?.moduller]
+    () => solMenuyuBirlestir(menuyuKullaniciyaSuz(menuyuSuz(DashboardMenu, user?.merkez?.moduller), kullaniciYetkisi)),
+    [user?.merkez?.moduller, kullaniciYetkisi]
   );
   const gorunenMenuRef = useRef(gorunenMenu);
   gorunenMenuRef.current = gorunenMenu;

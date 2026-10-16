@@ -118,7 +118,9 @@ class ApiClient {
         const errorMessage = json.message || json.error || `HTTP Hata ${response.status}: ${response.statusText}`;
 
         // Handle 401 Unauthorized / Token Expiration on authenticated requests
-        if (response.status === 401 && !url.includes("/auth/login")) {
+        // Yalnız isteğin taşıdığı jeton hâlâ geçerli olansa: şifre değişiminde eski jetonla yolda olan bir istek 401
+        // alınca az önce saklanan yeni jeton da silinip oturum kapanıyordu
+        if (response.status === 401 && !url.includes("/auth/login") && localStorage.getItem("kuyumcu_erp_access_token") === token) {
           localStorage.removeItem("kuyumcu_erp_access_token");
           localStorage.removeItem("kuyumcu_erp_user");
           window.dispatchEvent(new CustomEvent("kuyumcu_session_expired"));
@@ -129,6 +131,12 @@ class ApiClient {
         apiError.kod = json?.errors?.kod;
         apiError.status = response.status;
         apiError.ayrinti = json?.errors;
+
+        // Lisansta / panelde kapatılmış modül (403 MODUL_KAPALI): menü eski listeyle çizilmiş olabilir, oturum bilgisi yenilenir
+        // (kurulumda arka planda yeni lisans kodu inince açık ekranın menüsü değişmiyordu)
+        if (response.status === 403 && json?.errors?.kod === "MODUL_KAPALI") {
+          window.dispatchEvent(new CustomEvent("likya_moduller_degisti"));
+        }
 
         // Kurulum sürümü: lisans kilidi (423) her ekranda kilit penceresini açar (giriş/lisans ekranları kendileri gösterir)
         if (response.status === 423 && json?.errors?.kod === "LISANS_KILIT" && !url.includes("/auth/login") && !url.includes("/auth/lisans")) {

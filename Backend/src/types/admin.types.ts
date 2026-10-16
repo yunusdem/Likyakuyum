@@ -120,6 +120,8 @@ export interface LisansDto {
   teslimTarihi: Date | null;
   /** Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz */
   urunler: string[];
+  /** Kurulum firmasında geçerli kod bugünkü lisans/modül/iletişim bilgisiyle uyuşuyor mu (yalnız lisans listesinde; null = denetlenemedi) */
+  kodGuncel?: boolean | null;
 }
 
 /** İstemciye dönen firma. Veritabanı şifresi hiçbir zaman dönmez; yalnızca tanımlı olup olmadığı bildirilir. */

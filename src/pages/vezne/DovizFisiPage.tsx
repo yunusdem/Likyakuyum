@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { dovizGiseKuru, kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -46,6 +49,7 @@ import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "
 import { KurListesiModal } from "./KurListesiModal";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { CashDeskService } from "../../services/cashDeskService";
+import { kullaniciVeznesi } from "../../utils/kullaniciVeznesi";
 import { FastLookupCache } from "../../services/fastLookupCache";
 import { TlHesabiModal } from "./TlHesabiModal";
 import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
@@ -309,6 +313,20 @@ export const DEFAULT_CUSTOMER_NAME = "İsim beyan edilmemiştir";
 
 export const DovizFisiPage: React.FC = () => {
   const { user } = useAuth();
+  // Kullanıcı kartı yetkileri: tarih, seri/belge no, kur, komisyon, banka hesabı, MASAK uyarısı
+  // (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler). Geri çağrılarda güncel değer için ref.
+  const kYetki = useKullaniciYetkisi();
+  const kYetkiRef = useRef(kYetki);
+  kYetkiRef.current = kYetki;
+  const kurAcik = kurDegistirilebilir(kYetki);
+  /** Satır komisyon oranı: yetkisizde komisyon alınmaz (0); yetkilide kullanıcı kartındaki oran (> 0) yoksa istatistik oranı */
+  const komisyonOraniBul = (stat: { komisyonOrani?: number | string | null } | null | undefined): number => {
+    const y = kYetkiRef.current;
+    if (!y.komisyonAlma) return 0;
+    if (y.komisyonOrani > 0) return y.komisyonOrani;
+    const r = Number(stat?.komisyonOrani);
+    return r > 0 ? r : 0;
+  };
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -476,6 +494,8 @@ export const DovizFisiPage: React.FC = () => {
   const [isLocked, setIsLocked] = useState<boolean>(false); // Read-only if sent to GIB
   const [isGonderildi, setIsGonderildi] = useState<boolean>(false);
   const [vezneId, setVezneId] = useState<number>(1);
+  // undefined: vezneler henüz yüklenmedi; null: kullanıcının kartında vezne yok (sunucu da kaydı reddeder)
+  const kullaniciVezneRef = useRef<VezneItem | null | undefined>(undefined);
   const [vezneKod, setVezneKod] = useState<string>("01");
   const [vezneAd, setVezneAd] = useState<string>("Ana Vezne");
   const [tip, setTip] = useState<number>(0); // 0: Alış, 1: Satış (Varsayılan olarak ALIŞ)
@@ -670,9 +690,7 @@ export const DovizFisiPage: React.FC = () => {
       ? Number(activeStat.kmvOrani)
       : 0;
     const kmvRate = kmvMode !== 1 ? rawStatKmv : 0;
-    const komRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0
-      ? Number(activeStat.komisyonOrani)
-      : 0;
+    const komRate = komisyonOraniBul(activeStat);
 
     return {
       id: `row-${Date.now()}-${Math.random()}`,
@@ -783,6 +801,12 @@ export const DovizFisiPage: React.FC = () => {
 
   // Fetch dynamic balances for current vezne
   const fetchVezneBalances = useCallback(async (vId: number) => {
+    // Vezne seçilmemişse (Tanımsız) bakiye sorulmaz: sunucu 0'ı vezne 1 sayıp başka veznenin bakiyesini gösteriyordu
+    if (!(vId > 0)) {
+      setTopBalances({ tl: 0, usd: 0, eur: 0 });
+      setVezneBakiyeler([]);
+      return;
+    }
     try {
       const res = await DovizFisService.getVezneBakiye(vId);
       setTopBalances({ tl: res.tl, usd: res.usd, eur: res.eur });
@@ -1032,6 +1056,13 @@ export const DovizFisiPage: React.FC = () => {
     setShowVezneBakiyeModal(false);
     setShowTlHesabiModal(false);
     setCurrentIndex(-1);
+    // Yeni fişte vezne kullanıcının veznesine döner (düzeltmede açılan fişin veznesi kalmasın)
+    if (kullaniciVezneRef.current !== undefined) {
+      const uv = kullaniciVezneRef.current;
+      setVezneId(uv?.id ?? 0);
+      setVezneKod(uv ? uv.kod || "01" : "");
+      setVezneAd(uv ? uv.ad || "Ana Vezne" : "Tanımsız");
+    }
 
     // Apply default F8 Detay values
     applyDefaultF8Detay(lookupsParam, compDefParam);
@@ -1104,10 +1135,14 @@ export const DovizFisiPage: React.FC = () => {
       let currentVezneId = 1;
       if (vezneler && vezneler.length > 0) {
         setVezneList(vezneler);
-        currentVezneId = vezneler[0].id;
+        // Vezne giriş yapan kullanıcının kasası (önceden her zaman ilk vezne alınıyordu); sunucu da kart veznesini yazar.
+        // Kartta vezne yoksa ilk vezneye düşülmez: ekran başka bir veznenin bakiyesini gösteriyor, sunucu kaydı reddediyordu.
+        const uv = kullaniciVeznesi(vezneler, user as any);
+        kullaniciVezneRef.current = uv;
+        currentVezneId = uv?.id ?? 0;
         setVezneId(currentVezneId);
-        setVezneKod(vezneler[0].kod || "01");
-        setVezneAd(vezneler[0].ad || "Ana Vezne");
+        setVezneKod(uv ? uv.kod || "01" : "");
+        setVezneAd(uv ? uv.ad || "Ana Vezne" : "Tanımsız");
       }
 
       setStatisticList(istatistikler);
@@ -1124,7 +1159,7 @@ export const DovizFisiPage: React.FC = () => {
           .catch(() => {});
       }
 
-      fetchVezneBalances(currentVezneId).catch(() => { });
+      if (currentVezneId > 0) fetchVezneBalances(currentVezneId).catch(() => { });
 
       const anlikKurSatirlari = kurTabloRes?.satirlar || [];
       const gunlukKurSatirlari = gunlukKurTabloRes?.satirlar || [];
@@ -2073,9 +2108,7 @@ export const DovizFisiPage: React.FC = () => {
       ? Number(stat.kmvOrani)
       : 0;
     const kmvRate = kmvMode !== 1 ? rawStatKmv : 0;
-    const komRate = stat?.komisyonOrani !== undefined && stat?.komisyonOrani !== null && Number(stat.komisyonOrani) > 0
-      ? Number(stat.komisyonOrani)
-      : 0;
+    const komRate = komisyonOraniBul(stat);
 
     setLines((prev) =>
       prev.map((row) => {
@@ -2115,7 +2148,7 @@ export const DovizFisiPage: React.FC = () => {
     const defaultBmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0 ? Number(activeStat.bmvOrani) : 0;
     const rawStatKmv = activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null && Number(activeStat.kmvOrani) > 0 ? Number(activeStat.kmvOrani) : 0;
     const defaultKmvRate = kmvMode !== 1 ? rawStatKmv : 0;
-    const defaultKomRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0 ? Number(activeStat.komisyonOrani) : 0;
+    const defaultKomRate = komisyonOraniBul(activeStat);
 
     setLines((prev) =>
       prev.map((row) => {
@@ -2323,14 +2356,15 @@ export const DovizFisiPage: React.FC = () => {
     const isGayriResmi = (istatistikFisDizaynTipi === 1) || (activeStat && Number(activeStat.fisDizaynTipi) === 1);
 
     const selectedCustomerName = (result.unvan || "").trim();
-    if (!isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
+    // "MASAK uyarısı versin" işaretsizse müşteri seçilirken otomatik sorgu / uyarı açılmaz; kayıttaki kontrol sürer
+    if (kYetkiRef.current.masakUyarisi && !isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
       handleSearchMasak(selectedCustomerName, result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || undefined);
     } else {
       setMasakResult({ matches: [], searched: false });
     }
 
     // 1. Yer: Kişi seçmede işlem tutarı MASAK sınırını (≥185.000 TL / 5.000 USD) aşıyorsa uyar (Fiş Dizayn Tipi = 1 ise uyarmaz)
-    if (isMasakLimitExceeded && !isGayriResmi) {
+    if (kYetkiRef.current.masakUyarisi && isMasakLimitExceeded && !isGayriResmi) {
       setShowMasakCustomerWarningModal(true);
     }
   };
@@ -2664,7 +2698,7 @@ export const DovizFisiPage: React.FC = () => {
 
     const bmvRate = activeStat?.bmvOrani !== undefined && activeStat?.bmvOrani !== null && Number(activeStat.bmvOrani) > 0 ? Number(activeStat.bmvOrani) : 0;
     const kmvRate = (kmvMode !== 1 && activeStat?.kmvOrani !== undefined && activeStat?.kmvOrani !== null && Number(activeStat.kmvOrani) > 0) ? Number(activeStat.kmvOrani) : 0;
-    const komRate = activeStat?.komisyonOrani !== undefined && activeStat?.komisyonOrani !== null && Number(activeStat.komisyonOrani) > 0 ? Number(activeStat.komisyonOrani) : 0;
+    const komRate = komisyonOraniBul(activeStat);
 
     const bmvOrani = bmvRate > 0 ? bmvRate.toString() : "";
     const kmvOrani = kmvRate > 0 ? kmvRate.toString() : "";
@@ -3423,7 +3457,7 @@ export const DovizFisiPage: React.FC = () => {
     if (!vezneId || Number(vezneId) <= 0) {
       setNotification({
         type: "warning",
-        message: "Lütfen bir vezne seçiniz.",
+        message: "Kullanıcı kartınızda vezne tanımlı değil. Kullanıcı Tanımları'ndan veznenizi seçtirin.",
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -3494,6 +3528,24 @@ export const DovizFisiPage: React.FC = () => {
           return;
         }
       }
+    }
+
+    // Kur yetkisi, gişe kuru aralığı ve sapma uyarısı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+    if (!forceMasakApprove) {
+      const kurSatirlari = validLines
+        .filter((l) => !["TL", "TRY", "TRL"].includes((l.paraKodu || "").toUpperCase().trim()))
+        .map((l, i) => {
+          const p = paraList.find((x) => x.id === l.paraId);
+          const gise = p
+            ? dovizGiseKuru(
+                { efektifAlis: parseRate(p.efektifAlis), efektifSatis: parseRate(p.efektifSatis), dovizAlis: parseRate(p.dovizAlis), dovizSatis: parseRate(p.dovizSatis) },
+                tip,
+                kurTuru
+              )
+            : null;
+          return { etiket: `${i + 1}. satırın kuru`, gise, kur: parseKur(l.kur) };
+        });
+      if (!kurOnayi(kYetki, kurSatirlari, (m) => setNotification({ type: "danger", message: m }))) return;
     }
 
     // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolleri (Kaydetmede Kontrol)
@@ -3597,7 +3649,9 @@ export const DovizFisiPage: React.FC = () => {
       }
 
       let finalBankaHesabiId = (detayBankaHesabiId && Number(detayBankaHesabiId) > 0) ? Number(detayBankaHesabiId) : undefined;
-      if (!finalBankaHesabiId && detayBankaHesabi.trim()) {
+      // "Fiş banka hesabı seçme" yetkisi yoksa (müşteri kartından gelse de) banka hesabı kullanılmaz, TL vezneye girer
+      if (!kYetki.bankaHesabiSecme) finalBankaHesabiId = undefined;
+      else if (!finalBankaHesabiId && detayBankaHesabi.trim()) {
         const bList = (lookupData.bankaList && lookupData.bankaList.length > 0) ? lookupData.bankaList : cariList;
         const foundB = bList.find(
           (x) => String(x.kod || "").trim() === detayBankaHesabi.trim() ||
@@ -3691,8 +3745,11 @@ export const DovizFisiPage: React.FC = () => {
         return liveTarih;
       };
 
-      const finalTarih = isDuzeltmeMode ? formatIsoDate(tarih) : liveTarih;
-      const finalZaman = (isDuzeltmeMode ? (saat || liveSaat) : liveSaat).trim().slice(0, 8);
+      // Gezinmeyle açılmış kayıtlı fiş Kayıt ekranında da kendi tarih/saatini korur (bugüne kayıyor, tarih yetkisi
+      // olmayana 403 dönüyordu); yalnız yeni fiş anlık tarih alır
+      const kayitliFis = isDuzeltmeMode || !!fisId;
+      const finalTarih = kayitliFis ? formatIsoDate(tarih) : liveTarih;
+      const finalZaman = (kayitliFis ? (saat || liveSaat) : liveSaat).trim().slice(0, 8);
 
       const payload: SaveDovizFisPayload = {
         fisId: fisId || undefined,
@@ -4194,7 +4251,7 @@ export const DovizFisiPage: React.FC = () => {
     if (!vezneId || Number(vezneId) <= 0) {
       setNotification({
         type: "warning",
-        message: "Lütfen bir vezne seçiniz.",
+        message: "Kullanıcı kartınızda vezne tanımlı değil. Kullanıcı Tanımları'ndan veznenizi seçtirin.",
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -4877,7 +4934,7 @@ export const DovizFisiPage: React.FC = () => {
                       <Form.Control
                         type="date"
                         size="sm"
-                        disabled={!isDuzeltmeMode || isLocked}
+                        disabled={!isDuzeltmeMode || isLocked || !kYetki.tarihDegistirme}
                         value={tarih}
                         onChange={(e) => setTarih(e.target.value)}
                         className={`font-monospace px-2 py-1 ${!isDuzeltmeMode ? "bg-light text-muted" : ""}`}
@@ -4888,7 +4945,7 @@ export const DovizFisiPage: React.FC = () => {
                         type="text"
                         size="sm"
                         autoComplete="off"
-                        disabled={!isDuzeltmeMode || isLocked}
+                        disabled={!isDuzeltmeMode || isLocked || !kYetki.tarihDegistirme}
                         value={saat}
                         onChange={(e) => setSaat(e.target.value)}
                         className={`font-monospace text-center px-1 py-1 ${!isDuzeltmeMode ? "bg-light text-muted" : ""}`}
@@ -4981,6 +5038,7 @@ export const DovizFisiPage: React.FC = () => {
                             value={seriNo}
                             maxLength={20}
                             onChange={(e) => setSeriNo(e.target.value.slice(0, 20))}
+                            readOnly={!kYetki.fisNoDegistirme}
                             className="font-monospace fw-bold px-2.5 py-1"
                             style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           />
@@ -5005,6 +5063,7 @@ export const DovizFisiPage: React.FC = () => {
                           value={seriNo}
                           maxLength={20}
                           onChange={(e) => setSeriNo(e.target.value.slice(0, 20))}
+                            readOnly={!kYetki.fisNoDegistirme}
                           className="font-monospace fw-bold px-2.5 py-1"
                           style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           placeholder="Otomatik (Boş ise atanır)"
@@ -5301,6 +5360,7 @@ export const DovizFisiPage: React.FC = () => {
                             value={belgeNo}
                             maxLength={30}
                             onChange={(e) => setBelgeNo(e.target.value.slice(0, 30))}
+                            readOnly={!kYetki.fisNoDegistirme}
                             className="font-monospace fw-bold px-2.5 py-1"
                             style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           />
@@ -5325,6 +5385,7 @@ export const DovizFisiPage: React.FC = () => {
                           value={belgeNo}
                           maxLength={30}
                           onChange={(e) => setBelgeNo(e.target.value.slice(0, 30))}
+                            readOnly={!kYetki.fisNoDegistirme}
                           className="font-monospace fw-bold px-2.5 py-1"
                           style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           placeholder="Otomatik (Boş ise atanır)"
@@ -5848,7 +5909,7 @@ export const DovizFisiPage: React.FC = () => {
                           type="text"
                           inputMode="decimal"
                           autoComplete="off"
-                          disabled={isLocked || isTL}
+                          disabled={isLocked || isTL || (!kurAcik && !isKurMissing)}
                           readOnly={isTL}
                           tabIndex={isTL ? -1 : undefined}
                           className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${isTL ? "text-muted" : (isKurMissing ? "text-danger fw-bold" : "")
@@ -5887,6 +5948,7 @@ export const DovizFisiPage: React.FC = () => {
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-komisyonOrani`}
+                            readOnly={!kYetki.komisyonAlma}
                             type="text"
                             inputMode="decimal"
                             autoComplete="off"
@@ -5909,6 +5971,7 @@ export const DovizFisiPage: React.FC = () => {
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-komisyon`}
+                            readOnly={!kYetki.komisyonAlma}
                             type="text"
                             inputMode="decimal"
                             autoComplete="off"
@@ -6744,6 +6807,8 @@ export const DovizFisiPage: React.FC = () => {
                     data-detay-idx={28}
                     onKeyDown={(e) => handleDetayFieldKeyDown(e, 28, "bankaHesabi")}
                     value={detayBankaHesabi}
+                    disabled={!kYetki.bankaHesabiSecme}
+                    title={kYetki.bankaHesabiSecme ? undefined : "Fiş banka hesabı seçme yetkiniz yok"}
                     maxLength={100}
                     onChange={(e) => {
                       const val = e.target.value.slice(0, 100);
@@ -6766,6 +6831,7 @@ export const DovizFisiPage: React.FC = () => {
                   <Button
                     variant="outline-secondary"
                     title="Banka Hesabı Seçimi (F4)"
+                    disabled={!kYetki.bankaHesabiSecme}
                     onClick={() => setActiveLookupType("bankaHesabi")}
                   >
                     <IconBinoculars size={13} />

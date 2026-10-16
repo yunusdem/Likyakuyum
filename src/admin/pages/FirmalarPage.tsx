@@ -4,7 +4,7 @@ import { Alert, Button, Card, Form, Modal, Spinner, Table } from "react-bootstra
 import { IconPlus } from "@tabler/icons-react";
 import { adminApi, BulutDurum, FirmaDto, FirmaDurum } from "../services/adminApi";
 import FirmaFormu from "../components/FirmaFormu";
-import { DogrulamaRozeti, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
+import { DogrulamaRozeti, DurumRozeti, EpostaRozeti, KullaniciSayisi, LisansRozeti } from "../components/FirmaRozetleri";
 import { UrunRozetleri } from "../components/UrunSecici";
 
 type DurumFiltresi = "HEPSI" | FirmaDurum;
@@ -146,8 +146,7 @@ const FirmalarPage: React.FC = () => {
                       )}
                     </td>
                     <td>
-                      {f.kullaniciSayisi}
-                      {f.aktifLisans ? ` / ${f.aktifLisans.kullaniciLimiti}` : ""}
+                      <KullaniciSayisi firma={f} />
                     </td>
                     <td>
                       <DogrulamaRozeti dogrulandi={f.dogrulandi} /> <EpostaRozeti firma={f} />

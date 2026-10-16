@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { DashboardMenu } from "../routes/DashboardRoute";
-import { menuyuSuz } from "../config/modulKatalogu";
+import { menuyuKullaniciyaSuz, menuyuSuz } from "../config/modulKatalogu";
+import { useKullaniciYetkisi } from "../hooks/useKullaniciYetkisi";
 import { solMenuyuBirlestir } from "../config/solMenuBirlesimi";
 import { getAppBrand } from "../utils/brandHelper";
 import {
@@ -85,9 +86,11 @@ export const TopNavbarMenu: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<any>(null);
 
+  // Kullanıcının kart menü yetkileri (harf listesi): yetkisiz ana menü / madde çizilmez
+  const kullaniciYetkisi = useKullaniciYetkisi();
   const gorunenMenu = useMemo(
-    () => solMenuyuBirlestir(menuyuSuz(DashboardMenu, user?.merkez?.moduller)),
-    [user?.merkez?.moduller]
+    () => solMenuyuBirlestir(menuyuKullaniciyaSuz(menuyuSuz(DashboardMenu, user?.merkez?.moduller), kullaniciYetkisi)),
+    [user?.merkez?.moduller, kullaniciYetkisi]
   );
 
   // Mouse ile üzerine gelince anında otomatik açılma (Hover)

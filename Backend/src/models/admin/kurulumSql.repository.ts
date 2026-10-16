@@ -63,6 +63,40 @@ export class KurulumSqlRepository {
         DELETE FROM dbo.ADM_HEARTBEAT_LOG WHERE FIRMA_ID = @id AND TARIH < DATEADD(DAY, -30, GETDATE());`);
   }
 
+  /**
+   * Kurulumun bildirdiği son yedek ve veritabanı boyutu (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 15.1, Y5).
+   * Kolonlar sunucuda henüz yoksa (SSMS'te ALTER çalıştırılmadıysa) hiçbir şey yazılmaz; bildirim bozulmaz.
+   */
+  public static async yedekBildirimiYaz(firmaId: number, y: { son: Date | null; hata: string | null; vtBoyutMb: number | null }): Promise<void> {
+    const pool = await getAdminPool();
+    await pool
+      .request()
+      .input("id", sql.Int, firmaId)
+      .input("son", sql.DateTime, y.son)
+      .input("hata", sql.NVarChar(400), y.hata)
+      .input("boyut", sql.Int, y.vtBoyutMb)
+      .query(`
+        IF COL_LENGTH('dbo.ADM_FIRMA', 'BILDIRILEN_SON_YEDEK') IS NOT NULL
+          EXEC sp_executesql
+            N'UPDATE dbo.ADM_FIRMA SET BILDIRILEN_SON_YEDEK = @son, BILDIRILEN_YEDEK_HATASI = @hata, BILDIRILEN_VT_BOYUT_MB = @boyut WHERE FIRMA_ID = @id',
+            N'@id int, @son datetime, @hata nvarchar(400), @boyut int',
+            @id = @id, @son = @son, @hata = @hata, @boyut = @boyut;`);
+  }
+
+  public static async yedekBildirimi(firmaId: number): Promise<{ sonYedek: Date | null; hata: string | null; vtBoyutMb: number | null } | null> {
+    const pool = await getAdminPool();
+    const res = await pool
+      .request()
+      .input("id", sql.Int, firmaId)
+      .query(`
+        IF COL_LENGTH('dbo.ADM_FIRMA', 'BILDIRILEN_SON_YEDEK') IS NOT NULL
+          EXEC sp_executesql
+            N'SELECT BILDIRILEN_SON_YEDEK AS S, BILDIRILEN_YEDEK_HATASI AS H, BILDIRILEN_VT_BOYUT_MB AS B FROM dbo.ADM_FIRMA WHERE FIRMA_ID = @id',
+            N'@id int', @id = @id;`);
+    const r = res.recordset?.[0];
+    return r ? { sonYedek: r.S ?? null, hata: r.H ?? null, vtBoyutMb: r.B ?? null } : null;
+  }
+
   /** Son bildirimdeki makine kimliği (panelde kod üretirken önerilir). */
   public static async sonBildirilenMakine(firmaId: number): Promise<string | null> {
     const pool = await getAdminPool();

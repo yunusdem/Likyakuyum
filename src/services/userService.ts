@@ -1,4 +1,5 @@
 import { apiClient, ApiResponse } from "./apiClient";
+import { AuthService } from "./authService";
 
 /** Yönetim paneli (merkez) açıkken giriş ve /auth/me yanıtında gelen firma/lisans bilgisi; kapalıyken gelmez. */
 export interface MerkezOturumBilgisi {
@@ -155,8 +156,11 @@ export const UserService = {
    * Updates an existing user in MSSQL TODVZ_KULLANICI
    */
   async updateUser(id: string, payload: Partial<UserProfileDto>) {
-    const res = await apiClient.put<UserProfileDto>(`/users/${id}`, payload);
-    return res.data;
+    const res = await apiClient.put<UserProfileDto & { oturumJetonu?: string }>(`/users/${id}`, payload);
+    // Kurulumda (exe) kendi şifresini değiştiren kullanıcının eski jetonu reddedilir; sunucunun verdiği yenisi saklanır
+    const { oturumJetonu, ...kart } = (res.data || {}) as UserProfileDto & { oturumJetonu?: string };
+    if (oturumJetonu) AuthService.jetonuYenile(oturumJetonu);
+    return (res.data ? kart : res.data) as UserProfileDto;
   },
 
   /**

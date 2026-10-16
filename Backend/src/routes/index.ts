@@ -59,9 +59,13 @@ const kapi = (onek: string) => [authenticate, modulKapisi(onek)];
 // Kurulum (exe) modunda lisans kilidi; bulut modunda etkisiz
 apiRouter.use(lisansKapisi);
 apiRouter.get("/sistem/bilgi", KurulumController.bilgi);
+// Kilit ekranından merkezden lisans denetimi (giriş gerekmez, 30 sn'de bir merkeze gider)
+apiRouter.post("/sistem/lisans-kontrol", KurulumController.lisansKontrol);
 apiRouter.get("/sistem/guncelleme", authenticate, KurulumController.guncellemeDurumu);
 apiRouter.post("/sistem/guncelleme/kontrol", authenticate, KurulumController.guncellemeKontrol);
 apiRouter.post("/sistem/guncelleme/simdi", authenticate, KurulumController.guncellemeSimdi);
+apiRouter.get("/sistem/yedek", authenticate, KurulumController.yedekDurumu);
+apiRouter.post("/sistem/yedek", authenticate, KurulumController.yedekAl);
 // Merkez: kurulum (exe) programlarının bildirimi ve güncelleme paketi (yalnız merkez sunucuda çalışır)
 apiRouter.use("/merkez", merkezRoutes);
 apiRouter.use("/health", healthRoutes);
@@ -77,7 +81,7 @@ apiRouter.use("/ayar", ayarRoutes);
 apiRouter.use("/ayarlar-tanim", ayarRoutes);
 apiRouter.use("/iskonto", iskontoRoutes);
 apiRouter.use("/ayarlar/iskonto", iskontoRoutes);
-apiRouter.use("/sayim", sayimRoutes);
+apiRouter.use("/sayim", kapi("/sayim"), sayimRoutes);
 apiRouter.use("/banka", kapi("/banka"), bankaRoutes);
 apiRouter.use("/ebanka", kapi("/ebanka"), ebankaRoutes);
 // Banka, 3D Secure sonrası müşterinin tarayıcısını buraya yollar (GET ya da POST). Oturumsuzdur: yalnızca sabit bir sayfa döner,
@@ -89,8 +93,8 @@ apiRouter.use("/pos", kapi("/pos"), posRoutes);
 apiRouter.post("/pos-donus/token/:firmaId/:islemId/:imza", PosController.tokenDonus);
 apiRouter.post("/pos-donus/inpos", PosController.inposDonus);
 apiRouter.use("/kasa", kapi("/kasa"), kasaRoutes);
-apiRouter.use("/menu", menuRoutes);
-apiRouter.use("/etiket/menu", menuRoutes);
+apiRouter.use("/menu", kapi("/menu"), menuRoutes);
+apiRouter.use("/etiket/menu", kapi("/menu"), menuRoutes);
 apiRouter.use("/etiket", kapi("/etiket"), etiketRoutes);
 apiRouter.use("/vezne/izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);
 apiRouter.use("/vezne-izleme", kapi("/vezne-izleme"), vezneIzlemeRoutes);
@@ -118,8 +122,8 @@ apiRouter.use("/tanimlar", tanimlarRoutes);
 apiRouter.use("/gib", gibRoutes);
 apiRouter.use("/kur", kurRoutes);
 apiRouter.use("/piyasa", kapi("/piyasa"), piyasaRoutes);
-apiRouter.use("/pano", panoRoutes);
-apiRouter.use("/kur/pano-tanimi", panoRoutes);
+apiRouter.use("/pano", kapi("/pano"), panoRoutes);
+apiRouter.use("/kur/pano-tanimi", kapi("/pano"), panoRoutes);
 apiRouter.use("/banknot", banknotRoutes);
 apiRouter.use("/banknotes", banknotRoutes);
 apiRouter.use("/e-belge", kapi("/e-belge"), ebelgeRoutes);

@@ -15,6 +15,7 @@ import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { BankaService, BankaHesapItem, SaveBankaHesapPayload, BankaLookups } from "../../services/bankaService";
 import { CariService } from "../../services/cariService";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
+import { panoyaKopyala } from "../../utils/pano";
 
 const DEFAULT_BANKALAR = [
   { id: 102001, kod: "102.01.001", ad: "Garanti BBVA", unvan: "Garanti BBVA", bankaAdi: "Garanti BBVA", iban: "TR33 0006 2000 0001 2345 6789 01", hesapNo: "6200000-1" },
@@ -232,7 +233,7 @@ export const BankaHesapKartiPage: React.FC<BankaHesapKartiPageProps> = ({
 
   const handleCopyIban = useCallback(() => {
     if (!iban) return;
-    navigator.clipboard.writeText(iban.replace(/\s+/g, ""));
+    void panoyaKopyala(iban.replace(/\s+/g, ""));
     setCopiedIban(true);
     setTimeout(() => setCopiedIban(false), 2000);
   }, [iban]);

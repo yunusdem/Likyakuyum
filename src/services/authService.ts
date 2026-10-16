@@ -99,7 +99,14 @@ export const AuthService = {
    * Kullanıcının kendi şifresini değiştirmesi (ilk girişteki zorunlu değişim dahil)
    */
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    await apiClient.post("/auth/change-password", { currentPassword, newPassword });
+    const res = await apiClient.post<{ tokens?: { accessToken?: string } }>("/auth/change-password", { currentPassword, newPassword });
+    // Kurulumda (exe) şifre değişince eski jeton reddedilir; sunucunun verdiği yenisiyle oturum sürer
+    AuthService.jetonuYenile((res.data as any)?.tokens?.accessToken);
+  },
+
+  /** Sunucunun verdiği yeni erişim jetonunu saklar (kurulumda şifre değişiminden sonra) */
+  jetonuYenile(accessToken: string | null | undefined): void {
+    if (accessToken) localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   },
 
   /**

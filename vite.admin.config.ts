@@ -38,6 +38,8 @@ export default defineConfig((ortam) => {
     {
       plugins: [adminHtml()],
       publicDir: 'public-admin',
+      // Derleme zamanı: modül kataloğu eşitlemesinde gönderilir; sunucu daha eski panelin listesini uygulamaz
+      define: { __PANEL_DERLEME__: JSON.stringify(String(Date.now())) },
       build: {
         outDir: 'dist-admin',
         emptyOutDir: true,

@@ -1,7 +1,11 @@
 import { Request, Response } from "express";
 import { DovizFisService } from "../services/dovizFis.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { bankaHesabiDenetle, dovizKurDenetle, komisyonDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 
 export class DovizFisController {
   private static getDbContext(req: Request) {
@@ -21,6 +25,7 @@ export class DovizFisController {
       tip: req.query.tip !== undefined ? Number(req.query.tip) : undefined,
       vezneId: req.query.vezneId ? Number(req.query.vezneId) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : 100,
+      baslangic: await gunSiniri(req),
     };
     const list = await DovizFisService.getFisList(filter, dbContext);
     return ApiResponse.ok(res, "Döviz fişleri listelendi.", list);
@@ -32,6 +37,7 @@ export class DovizFisController {
   public static getFisById = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = DovizFisController.getDbContext(req);
     const id = Number(req.params.id);
+    await kayitErisimi(req, "doviz", id);
     const fis = await DovizFisService.getFisById(id, dbContext);
     return ApiResponse.ok(res, "Döviz fişi detayları getirildi.", fis);
   });
@@ -44,12 +50,20 @@ export class DovizFisController {
     const dbContext = DovizFisController.getDbContext(req);
     const u = req.user as any;
     const kullaniciId = u?.userId || u?.id || req.body.kullaniciId || 1;
-    const vezneId = (req.body.vezneId && Number(req.body.vezneId) > 0)
-      ? Number(req.body.vezneId)
-      : (u?.vezneId && Number(u.vezneId) > 0 ? Number(u.vezneId) : kullaniciId);
+    // Vezne kullanıcının kasası: yenide kart veznesi, düzeltmede kaydın veznesi (istekteki yok sayılır; önceden vezne
+    // gelmezse kullanıcı numarası vezne sayılıyordu)
+    const vezneId = await fisVeznesi(kullaniciId, dbContext, { tur: "doviz", id: req.body.fisId });
+    // Gün sınırı, tarih ve fiş numarası yetkisi: numara yetkisi yoksa yenide numaratör, düzeltmede kaydın numarası
+    const { nolar, yetki } = await fisKayitYetkisi(req, "doviz", req.body.fisId, req.body.tarih);
+    // Banka hesabı, komisyon ve kur yetkisi; satırların gişe kuru kur tablosundan (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+    const satirlar: any[] = Array.isArray(req.body.satirlar) ? req.body.satirlar : [];
+    bankaHesabiDenetle(yetki, [], req.body.bankaHesabiId, ...satirlar.map((s) => s?.bankaHesabiId));
+    komisyonDenetle(yetki, satirlar);
+    await dovizKurDenetle(req, yetki, req.body);
 
     const payload = {
       ...req.body,
+      ...(nolar && { seriNo: nolar.SERI_NO ?? null, belgeNo: nolar.BELGE_NO ?? null }),
       kullaniciId,
       vezneId,
       cariKartId: (req.body.cariKartId && Number(req.body.cariKartId) > 0) ? Number(req.body.cariKartId) : null,
@@ -66,6 +80,7 @@ export class DovizFisController {
     const id = Number(req.params.id);
     const u = req.user as any;
     const kullaniciId = u?.userId || u?.id || 1;
+    await kayitErisimi(req, "doviz", id);
     await DovizFisService.deleteFis(id, dbContext, kullaniciId);
     return ApiResponse.ok(res, "Döviz fişi başarıyla silindi.", { fisId: id });
   });
@@ -75,7 +90,8 @@ export class DovizFisController {
    */
   public static getVezneBakiye = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = DovizFisController.getDbContext(req);
-    const vezneId = Number(req.params.vezneId) || 1;
+    const vezneId = Number(req.params.vezneId);
+    if (!Number.isInteger(vezneId) || vezneId <= 0) throw ApiError.badRequest("Vezne seçilmedi.");
     const bakiye = await DovizFisService.getVezneBakiye(vezneId, dbContext);
     return ApiResponse.ok(res, "Vezne bakiyesi getirildi.", bakiye);
   });

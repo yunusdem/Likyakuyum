@@ -14,7 +14,10 @@ if ($zaman -le $simdi) { $zaman = $zaman.AddDays(1) }
 $eylem = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg
 $tetik = New-ScheduledTaskTrigger -Once -At $zaman
 $kim = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-$ayar = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+# Uykudaki bilgisayar 03:00'te uyandirilir. StartWhenAvailable yok: kacirilan gorev bilgisayar acilinca rastgele bir anda
+# (kullanici calisirken) program kapatiyordu. Bilgisayar gece kapaliysa program bir sonraki acilisinda, kimse kullanmadan
+# uygular (Backend/src/services/kurulum/guncelleyici.ts kacanGuncellemeyiUygula).
+$ayar = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 Register-ScheduledTask -TaskName "LikyaKuyumGuncelle" -Action $eylem -Trigger $tetik -Principal $kim -Settings $ayar -Force | Out-Null
 if ($Hemen) { Start-ScheduledTask -TaskName "LikyaKuyumGuncelle" }
 Write-Output ("Planlandi: {0} -> {1}" -f $Surum, $(if ($Hemen) { "simdi" } else { $zaman.ToString("yyyy-MM-dd HH:mm") }))

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { resimKucult, URUN_RESIM_PIKSEL } from "../../utils/resimKucult";
 import { Row, Col, Card, Form, Button, Alert, InputGroup, Modal, Dropdown, Badge } from "react-bootstrap";
 import JsBarcode from "jsbarcode";
 import {
@@ -1652,11 +1653,13 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       return new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onload = async (event) => {
-          const base64 = event.target?.result as string;
-          if (!base64) {
+          const ham = event.target?.result as string;
+          if (!ham) {
             resolve("");
             return;
           }
+          // En büyük kenar 1600 px'e küçültülür (okunamayan biçimde olduğu gibi gönderilir)
+          const base64 = await resimKucult(ham, URUN_RESIM_PIKSEL).catch(() => ham);
           try {
             await EtiketService.uploadFoto({
               base64,
@@ -1707,6 +1710,14 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const startCamera = async () => {
     setCameraError(null);
     setShowCameraModal(true);
+    // Kamera yalnız güvenli bağlamda (https ya da programın kurulu olduğu bilgisayarda localhost) açılır; ağdaki diğer
+    // bilgisayarlarda http ile girildiğinde tarayıcı kameraya hiç izin vermez
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setCameraError(
+        "Bu bilgisayarda kamera kullanılamıyor: tarayıcı, ağ üzerinden (http) açılan sayfada kameraya izin vermez. Fotoğrafı programın kurulu olduğu bilgisayardan çekin ya da \"Dosyadan Seç\" ile ekleyin."
+      );
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },

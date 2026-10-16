@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { fisGunu } from "../../utils/fisTarihi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -76,6 +78,11 @@ const HAREKET_TIPI_OPTIONS = [
 
 export const CariHareketPage: React.FC = () => {
   const { user } = useAuth();
+  // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
+  const kYetki = useKullaniciYetkisi();
+  const tarihYetkisi = kYetki.tarihDegistirme;
+  // "Cari bakiye görebilir" yetkisi yoksa sağdaki bakiye paneli çizilmez, bakiye sorulmaz
+  const cariBakiyeYetkisi = kYetki.cariBakiye;
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -406,6 +413,10 @@ export const CariHareketPage: React.FC = () => {
 
   // Load balance whenever cariKartId changes
   const loadCariBakiye = async (cId: number) => {
+    if (!cariBakiyeYetkisi) {
+      setBakiyeSummary(null);
+      return;
+    }
     try {
       setIsLoadingBakiye(true);
       const res = await CariHareketService.getCariBakiye(cId);
@@ -551,7 +562,7 @@ export const CariHareketPage: React.FC = () => {
         cariKartId,
         cariKod: cariKod?.trim() || undefined,
         vezneId,
-        tarih,
+        tarih: fisGunu(tarih, !currentHareketId, tarihYetkisi),
         hareketTipi,
         aciklama,
         tip: cariTipi,
@@ -1250,6 +1261,8 @@ export const CariHareketPage: React.FC = () => {
                       type="date"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}
+                      disabled={!tarihYetkisi}
+                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
                       className="small"
                     />
                   </div>
@@ -1664,7 +1677,8 @@ export const CariHareketPage: React.FC = () => {
           </Card>
         </Col>
 
-        {/* SAĞ PANEL: Cari Bakiye Durumu */}
+        {/* SAĞ PANEL: Cari Bakiye Durumu (yalnız "Cari bakiye görebilir" yetkisinde) */}
+        {cariBakiyeYetkisi && (
         <Col xs={12} lg={5} xl={5}>
           <Card className="border shadow-sm h-100 bg-white">
             {/* Header: HAS / Net Bakiye Özeti */}
@@ -1802,6 +1816,7 @@ export const CariHareketPage: React.FC = () => {
             )}
           </Card>
         </Col>
+        )}
       </Row>
 
       {/* 4. MODALS */}

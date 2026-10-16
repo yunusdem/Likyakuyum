@@ -196,6 +196,8 @@ export const modulKatalogSchema = z.object({
       )
       .min(1)
       .max(2000),
+    // Panelin derleme zamanı (ms); eski panelden gelen eşitleme uygulanmaz (ModulSqlRepository.katalogEsitle)
+    derleme: z.number().int().min(0).optional(),
   }),
 });
 

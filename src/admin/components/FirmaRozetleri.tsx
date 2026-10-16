@@ -18,6 +18,36 @@ const DURUM_RENGI: Record<FirmaDurum, string> = {
   SILINDI: "dark",
 };
 
+/**
+ * "Kullanıcı N / L": kurulum (exe) firmasında N programın son bildirdiği sayıdır (merkezde hesabı yoktur). Sayı limiti
+ * aşarsa kırmızı uyarı: kurulumda kullanıcılar müşterinin veritabanındadır, limit dışı eklenmiş olabilir.
+ */
+export const KullaniciSayisi: React.FC<{
+  firma: Pick<FirmaDto, "kullaniciSayisi" | "aktifLisans" | "baglantiModu" | "sonGorulme">;
+  etiket?: boolean;
+}> = ({ firma, etiket }) => {
+  const limit = firma.aktifLisans?.kullaniciLimiti ?? null;
+  const asim = limit !== null && firma.kullaniciSayisi > limit;
+  const kurulum = firma.baglantiModu === "setup";
+  return (
+    <span
+      className={asim ? "small fw-semibold text-danger" : "text-muted small"}
+      title={
+        kurulum
+          ? firma.sonGorulme
+            ? "Programın son bildirdiği kullanıcı sayısı"
+            : "Program henüz merkeze bildirim göndermedi"
+          : undefined
+      }
+    >
+      {etiket && "Kullanıcı: "}
+      {kurulum && !firma.sonGorulme ? "-" : firma.kullaniciSayisi}
+      {limit !== null ? ` / ${limit}` : ""}
+      {asim && <Badge bg="danger" className="ms-1">Limit aşıldı</Badge>}
+    </span>
+  );
+};
+
 export const DurumRozeti: React.FC<{ durum: FirmaDurum }> = ({ durum }) => (
   <Badge bg={DURUM_RENGI[durum]} text={durum === "DONDURULMUS" ? "dark" : undefined}>
     {DURUM_ETIKETI[durum]}

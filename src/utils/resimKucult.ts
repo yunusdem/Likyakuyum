@@ -3,6 +3,8 @@
  * JPEG data URL'ye çevrilir (saydam alan beyaz olur). Sunucuda resim kitaplığı yok; satış ekranı hızlı açılsın diye küçük tutulur.
  */
 export const BUTON_RESIM_PIKSEL = 300;
+/** Ürün fotoğrafı: telefon fotoğrafı (3–5 MB) olduğu gibi veritabanına yazılıyordu (kurulumda SQL Express 10 GB sınırı) */
+export const URUN_RESIM_PIKSEL = 1600;
 
 export const resimBoyutu = (gen: number, yuk: number, azami: number): { w: number; h: number } => {
   if (gen <= 0 || yuk <= 0) return { w: 0, h: 0 };

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { kayitYetkisi, kimlikVar } from "../services/yetki/menuYetkiKatalogu.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { TicariController as C, ticariSistemYoneticisi, ticariYonetim } from "../controllers/ticari.controller.js";
 
@@ -35,18 +36,18 @@ router.post("/excel/yukle", ticariYonetim, C.excelYukle);
 router.get("/giris/sira-no", ticariYonetim, C.girisSiraNo);
 router.get("/giris", ticariYonetim, C.girisListe);
 router.get("/giris/:id", ticariYonetim, C.girisGetir);
-router.post("/giris", ticariYonetim, C.girisKaydet);
-router.put("/giris/:id", ticariYonetim, C.girisKaydet);
-router.delete("/giris/:id", ticariYonetim, C.girisSil);
+router.post("/giris", ticariYonetim, kayitYetkisi("ticari", kimlikVar()), C.girisKaydet);
+router.put("/giris/:id", ticariYonetim, kayitYetkisi("ticari", kimlikVar()), C.girisKaydet);
+router.delete("/giris/:id", ticariYonetim, kayitYetkisi("ticari", kimlikVar()), C.girisSil);
 
 // Satış fişi
 router.get("/satis/sira-no", C.satisSiraNo);
 router.get("/satis/kimlikler", C.satisKimlikler);
 router.get("/satis", C.satisListe);
 router.get("/satis/:id", C.satisGetir);
-router.post("/satis", C.satisKaydet);
-router.put("/satis/:id", C.satisKaydet);
-router.delete("/satis/:id", C.satisSil);
+router.post("/satis", kayitYetkisi("ticari", kimlikVar()), C.satisKaydet);
+router.put("/satis/:id", kayitYetkisi("ticari", kimlikVar()), C.satisKaydet);
+router.delete("/satis/:id", kayitYetkisi("ticari", kimlikVar()), C.satisSil);
 
 // Raporlar
 router.get("/rapor/stok-durum", C.stokDurum);

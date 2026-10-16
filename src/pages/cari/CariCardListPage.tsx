@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import {
   Card,
   Table,
@@ -41,6 +42,8 @@ const KISILIK_TIPI_LABELS: Record<number, string> = {
 
 export const CariCardListPage: React.FC = () => {
   const navigate = useNavigate();
+  // "Cari bakiye görebilir" yetkisi yoksa bakiye kolonları, özetleri ve süzgeçleri çizilmez (sunucu da bakiyeyi göndermez)
+  const bakiyeGorunur = useKullaniciYetkisi().cariBakiye;
   const location = useLocation();
 
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
@@ -143,20 +146,26 @@ export const CariCardListPage: React.FC = () => {
         kod: c.kod,
         ad: c.ad,
         tip: KISILIK_TIPI_LABELS[c.kisilikTipi] || "Diğer",
-        borc: (c.borcBakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 }),
-        alacak: (c.alacakBakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 }),
-        netBakiye: `${(c.netBakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${c.bakiyeYon || ""}`,
-        hasBakiye: c.hasBakiye ? `${c.hasBakiye.toFixed(2)} HAS ${c.hasYon || ""}` : "-",
+        ...(bakiyeGorunur && {
+          borc: (c.borcBakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 }),
+          alacak: (c.alacakBakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 }),
+          netBakiye: `${(c.netBakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${c.bakiyeYon || ""}`,
+          hasBakiye: c.hasBakiye ? `${c.hasBakiye.toFixed(2)} HAS ${c.hasYon || ""}` : "-",
+        }),
         telefon: c.telefon || "-",
       })),
       columns: [
         { header: "Cari Kodu", key: "kod", width: "12%" },
         { header: "Cari Ünvan / Adı", key: "ad", width: "24%" },
         { header: "Kişilik Tipi", key: "tip", width: "10%" },
-        { header: "Borç (TL)", key: "borc", width: "12%" },
-        { header: "Alacak (TL)", key: "alacak", width: "12%" },
-        { header: "Net Bakiye (TL)", key: "netBakiye", width: "12%" },
-        { header: "HAS Bakiye", key: "hasBakiye", width: "10%" },
+        ...(bakiyeGorunur
+          ? [
+              { header: "Borç (TL)", key: "borc" as const, width: "12%" },
+              { header: "Alacak (TL)", key: "alacak" as const, width: "12%" },
+              { header: "Net Bakiye (TL)", key: "netBakiye" as const, width: "12%" },
+              { header: "HAS Bakiye", key: "hasBakiye" as const, width: "10%" },
+            ]
+          : []),
         { header: "Telefon", key: "telefon", width: "8%" },
       ],
       summaryInfo: `Rapor Tarihi: ${new Date().toLocaleDateString("tr-TR")}`,
@@ -205,6 +214,7 @@ export const CariCardListPage: React.FC = () => {
           </Card>
         </Col>
 
+        {bakiyeGorunur && (
         <Col xs={12} sm={6} md={3}>
           <Card className="border shadow-2xs bg-white">
             <Card.Body className="p-3 d-flex align-items-center justify-content-between">
@@ -220,7 +230,9 @@ export const CariCardListPage: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
+        )}
 
+        {bakiyeGorunur && (
         <Col xs={12} sm={6} md={3}>
           <Card className="border shadow-2xs bg-white">
             <Card.Body className="p-3 d-flex align-items-center justify-content-between">
@@ -236,7 +248,9 @@ export const CariCardListPage: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
+        )}
 
+        {bakiyeGorunur && (
         <Col xs={12} sm={6} md={3}>
           <Card className="border shadow-2xs bg-white">
             <Card.Body className="p-3 d-flex align-items-center justify-content-between">
@@ -252,6 +266,7 @@ export const CariCardListPage: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
+        )}
       </Row>
 
       {/* Sayfa Ortası Popup Bildirimler (ERP Toast) */}
@@ -280,6 +295,7 @@ export const CariCardListPage: React.FC = () => {
                 </span>
 
                 {/* Bakiye filtre butonları */}
+                {bakiyeGorunur && (
                 <div className="btn-group btn-group-sm">
                   <Button
                     variant={bakiyeFilter === "all" ? "primary" : "outline-secondary"}
@@ -314,6 +330,7 @@ export const CariCardListPage: React.FC = () => {
                     Alacaklılar (A)
                   </Button>
                 </div>
+                )}
               </div>
             </Col>
 
@@ -392,11 +409,15 @@ export const CariCardListPage: React.FC = () => {
                     <th style={{ width: "110px" }}>Cari Kodu</th>
                     <th>Cari Ünvanı / Adı</th>
                     <th style={{ width: "100px" }}>Kişilik Tipi</th>
-                    <th style={{ width: "110px" }} className="text-end">Borç (TL)</th>
-                    <th style={{ width: "110px" }} className="text-end">Alacak (TL)</th>
-                    <th style={{ width: "130px" }} className="text-end">Net Bakiye (TL)</th>
-                    <th style={{ width: "120px" }} className="text-center">HAS Bakiye</th>
-                    <th style={{ width: "140px" }}>Bakiye Özeti</th>
+                    {bakiyeGorunur && (
+                      <>
+                        <th style={{ width: "110px" }} className="text-end">Borç (TL)</th>
+                        <th style={{ width: "110px" }} className="text-end">Alacak (TL)</th>
+                        <th style={{ width: "130px" }} className="text-end">Net Bakiye (TL)</th>
+                        <th style={{ width: "120px" }} className="text-center">HAS Bakiye</th>
+                        <th style={{ width: "140px" }}>Bakiye Özeti</th>
+                      </>
+                    )}
                     <th style={{ width: "110px" }}>Telefon</th>
                     <th style={{ width: "80px" }} className="text-center">Durum</th>
                     <th style={{ width: "120px" }} className="text-center">İşlem</th>
@@ -449,6 +470,8 @@ export const CariCardListPage: React.FC = () => {
                           </Badge>
                         </td>
 
+                        {bakiyeGorunur && (
+                        <>
                         {/* Borç (TL) */}
                         <td className="text-end font-monospace">
                           {(item.borcBakiye || 0) > 0.001 ? (
@@ -499,6 +522,8 @@ export const CariCardListPage: React.FC = () => {
                             {item.bakiyeOzet || "0.00 TL"}
                           </span>
                         </td>
+                        </>
+                        )}
 
                         <td>
                           {item.telefon ? (

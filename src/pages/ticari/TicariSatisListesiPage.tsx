@@ -7,7 +7,7 @@ import { useToast } from "../../context/ToastContext";
 import { printReportTable } from "../../utils/printReport";
 import { TicariSatisFisi, TicariSatisListeSatiri, TicariService, para, saatYaz, tarihYaz } from "../../services/ticariService";
 import { TicariFisPrintModal } from "./TicariFisPrintModal";
-import { KaynakSuzgeci, kaynakUyar, useHizliSatisIsaretleri } from "../hizliSatis/useHizliSatisIsaretleri";
+import { KaynakSuzgeci, kaynakUyar, useHizliSatisAcik, useHizliSatisIsaretleri } from "../hizliSatis/useHizliSatisIsaretleri";
 
 const ayBasi = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; };
 const bugun = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -36,6 +36,7 @@ export const TicariSatisListesiPage: React.FC = () => {
   };
   useEffect(() => { void yukle(); }, [bas, bit, eBelge]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const hizliAcik = useHizliSatisAcik("ticari");
   const hizliFisler = useHizliSatisIsaretleri("ticari", useMemo(() => liste.map((x) => x.faturaId), [liste]));
   const gorunen = useMemo(() => liste.filter((x) => kaynakUyar(kaynak, hizliFisler.has(x.faturaId))), [liste, kaynak, hizliFisler]);
 
@@ -91,12 +92,14 @@ export const TicariSatisListesiPage: React.FC = () => {
                 <option value="">Hepsi</option><option value="0">Gönderilmedi</option><option value="1">Gönderildi</option>
               </Form.Select>
             </Col>
+            {hizliAcik && (
             <Col md={2}>
               <Form.Label className="small text-muted mb-1 fw-bold">Kaynak</Form.Label>
               <Form.Select size="sm" value={kaynak} onChange={(e) => setKaynak(e.target.value as KaynakSuzgeci)} aria-label="Kaynak">
                 <option value="all">Tüm Fişler</option><option value="hizli">Hızlı Satış</option><option value="diger">Fiş Ekranı</option>
               </Form.Select>
             </Col>
+            )}
             <Col md={4}>
               <Form.Label className="small text-muted mb-1 fw-bold">Ara</Form.Label>
               <InputGroup size="sm">

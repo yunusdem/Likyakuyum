@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Alert, Card, Form, Table } from "react-bootstrap";
 import { IconSearch } from "@tabler/icons-react";
 import { adminApi, FirmaDto, FirmaDurum } from "../services/adminApi";
-import { DurumRozeti, LisansRozeti } from "./FirmaRozetleri";
+import { DurumRozeti, KullaniciSayisi, LisansRozeti } from "./FirmaRozetleri";
 
 /** Durumun sayı karşılığı: 1 = Aktif, 0 = Pasif, 2 = Dondurulmuş, 3 = Silinecek, 4 = Silindi */
 const DURUM_KODU: Record<FirmaDurum, number> = { AKTIF: 1, PASIF: 0, DONDURULMUS: 2, SILINECEK: 3, SILINDI: 4 };
@@ -93,8 +93,7 @@ const MusteriSorgu: React.FC = () => {
                         <LisansRozeti firma={f} />
                       </td>
                       <td>
-                        {f.kullaniciSayisi}
-                        {f.aktifLisans ? ` / ${f.aktifLisans.kullaniciLimiti}` : ""}
+                        <KullaniciSayisi firma={f} />
                       </td>
                     </tr>
                   ))}

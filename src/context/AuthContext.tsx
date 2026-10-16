@@ -81,6 +81,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [triggerSessionExpired, user]);
 
+  // Açık modül listesi değişmiş olabilir (sunucu MODUL_KAPALI döndü / lisans yüklendi): profil sorulur, yalnız modül ya da
+  // ürün listesi gerçekten değiştiyse kullanıcı güncellenir (her yenilemede açık fiş ekranlarının formu etkilenmesin)
+  useEffect(() => {
+    let son = 0;
+    const yenile = async () => {
+      if (!AuthService.isAuthenticated() || Date.now() - son < 10_000) return;
+      son = Date.now();
+      try {
+        const profil = await AuthService.getMe();
+        setUser((eski) => {
+          const anahtar = (u: any) => JSON.stringify([u?.merkez?.moduller ?? null, u?.merkez?.urunler ?? null]);
+          return eski && anahtar(eski) === anahtar(profil) ? eski : profil;
+        });
+      } catch {
+        /* oturum düşmüşse ayrı olay işler */
+      }
+    };
+    const dinle = () => void yenile();
+    window.addEventListener("likya_moduller_degisti", dinle);
+    return () => window.removeEventListener("likya_moduller_degisti", dinle);
+  }, []);
+
   const login = async (credentials: LoginCredentials) => {
     setIsLoading(true);
     try {

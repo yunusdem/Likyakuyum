@@ -2,6 +2,7 @@ import { Router } from "express";
 import { BankaController } from "../controllers/banka.controller.js";
 import { PosCihaziController } from "../controllers/posCihazi.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
+import { kayitYetkisi, kimlikVar } from "../services/yetki/menuYetkiKatalogu.js";
 
 const router = Router();
 
@@ -21,9 +22,9 @@ router.delete("/hesaplar/:id", BankaController.deleteBanka);
 // Banka Hesap Hareketleri
 router.get("/hareketler", BankaController.listHareketler);
 router.get("/hareketler/:id", BankaController.getHareketById);
-router.post("/hareketler", BankaController.saveHareket);
-router.delete("/hareketler/:id", BankaController.deleteHareket);
-router.post("/hareketler/:id/iptal", BankaController.toggleIptalHareket);
+router.post("/hareketler", kayitYetkisi("bankaHareket", kimlikVar("bankaHareketId")), BankaController.saveHareket);
+router.delete("/hareketler/:id", kayitYetkisi("bankaHareket", kimlikVar()), BankaController.deleteHareket);
+router.post("/hareketler/:id/iptal", kayitYetkisi("bankaHareket", () => true), BankaController.toggleIptalHareket);
 
 // POS Cihazı Tanımları
 router.get("/pos-cihazlari", PosCihaziController.getPosCihazlari);

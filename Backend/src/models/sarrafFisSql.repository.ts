@@ -247,7 +247,7 @@ export class SarrafFisSqlRepository {
     }
   }
 
-  public static async getFisList(filters: { search?: string; tip?: number; vezneId?: number; limit?: number }, dbContext?: { dbServer?: string; dbName?: string }): Promise<SarrafFisListItem[]> {
+  public static async getFisList(filters: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null }, dbContext?: { dbServer?: string; dbName?: string }): Promise<SarrafFisListItem[]> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       let query = `
@@ -265,6 +265,8 @@ export class SarrafFisSqlRepository {
       if (filters.vezneId && filters.vezneId > 0) { query += " AND SF.VEZNE_ID = @vezneId"; req.input("vezneId", sql.Int, filters.vezneId); }
       if (filters.tip !== undefined && filters.tip !== null) { query += " AND SF.TIP = @tip"; req.input("tip", sql.TinyInt, filters.tip); }
       if (filters.search) { query += " AND (SF.FIS_NO LIKE @search OR SF.UNVAN LIKE @search)"; req.input("search", sql.VarChar(200), `%${filters.search}%`); }
+      // Kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+      if (filters.baslangic) { query += " AND SF.TARIH >= CAST(@bas AS date)"; req.input("bas", sql.VarChar(10), filters.baslangic); }
       query += " ORDER BY SF.TARIH DESC, SF.SARRAF_FISI_ID DESC";
       const result = await req.query(query);
       return (result.recordset || []).map((r: any) => ({

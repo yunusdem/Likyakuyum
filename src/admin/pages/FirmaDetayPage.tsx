@@ -12,7 +12,7 @@ import LisansKoduIslemleri from "../components/LisansKoduIslemleri";
 import FirmaKurulum from "../components/FirmaKurulum";
 import UrunSecici, { UrunRozetleri } from "../components/UrunSecici";
 import { paketleriHazirla, secilebilirUrunler } from "../components/paketOrtak";
-import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, LisansRozeti } from "../components/FirmaRozetleri";
+import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, KullaniciSayisi, LisansRozeti } from "../components/FirmaRozetleri";
 
 const DURUM_ACIKLAMASI: Record<FirmaDurum, string> = {
   AKTIF: "Firma normal çalışır.",
@@ -212,10 +212,7 @@ const FirmaDetayPage: React.FC = () => {
                 <LisansRozeti firma={firma} />
                 <DogrulamaRozeti dogrulandi={firma.dogrulandi} />
                 <EpostaRozeti firma={firma} />
-                <span className="text-muted small">
-                  Kullanıcı: {firma.kullaniciSayisi}
-                  {firma.aktifLisans ? ` / ${firma.aktifLisans.kullaniciLimiti}` : ""}
-                </span>
+                <KullaniciSayisi firma={firma} etiket />
               </div>
               {firma.durumNotu && <div className="text-muted small mt-2">Durum notu: {firma.durumNotu}</div>}
             </div>
@@ -379,9 +376,12 @@ const FirmaDetayPage: React.FC = () => {
               </Row>
             </Tab>
 
-            <Tab eventKey="kullanicilar" title={`Kullanıcılar (${firma.kullaniciSayisi})`} mountOnEnter>
-              <FirmaKullanicilari firma={firma} firmaYenile={async () => setFirma(await adminApi.firma(firmaId))} />
-            </Tab>
+            {/* Kurulum (exe) firmasının kullanıcıları programın kendi veritabanındadır; merkezden listelenemez / içe aktarılamaz */}
+            {firma.baglantiModu !== "setup" && (
+              <Tab eventKey="kullanicilar" title={`Kullanıcılar (${firma.kullaniciSayisi})`} mountOnEnter>
+                <FirmaKullanicilari firma={firma} firmaYenile={async () => setFirma(await adminApi.firma(firmaId))} />
+              </Tab>
+            )}
 
             <Tab eventKey="moduller" title="Modüller" mountOnEnter>
               <FirmaModulleri firma={firma} />

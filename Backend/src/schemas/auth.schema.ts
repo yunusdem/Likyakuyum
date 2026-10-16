@@ -13,7 +13,8 @@ export const loginSchema = z.object({
 });
 
 export const lisansYukleSchema = z.object({
-  body: z.object({ kod: z.string().trim().min(20, "Lisans kodunu eksiksiz yapıştırın").max(8000) }),
+  // Kod açık modül listesini taşır (ERP ~6000 karakter, katalog büyüdükçe artar); 8000 sınırı internetsiz müşteriyi kilitliyordu
+  body: z.object({ kod: z.string().trim().min(20, "Lisans kodunu eksiksiz yapıştırın").max(64000) }),
 });
 
 export const ilkYoneticiSchema = z.object({

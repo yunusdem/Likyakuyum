@@ -8,6 +8,7 @@ import { OturumService } from "../services/oturum.service.js";
 import { MerkezGirisService } from "../services/merkezGiris.service.js";
 import { env } from "../config/env.config.js";
 import { kurulumBaglantisiniKaydet, kurulumDbContext } from "../services/kurulum/kurulumDb.js";
+import { kurulumKarti } from "../services/kurulum/kurulumKart.js";
 
 /**
  * Middleware to authenticate requests via JWT Bearer token in Authorization header or cookie.
@@ -46,11 +47,23 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     req.user = decoded;
     req.accessToken = token;
 
-    // Kurulum modu: tek veritabanı .env'den; token ya da istek başlığındaki bağlantı bilgisine hiç bakılmaz
+    // Kurulum modu: tek veritabanı .env'den; token ya da istek başlığındaki bağlantı bilgisine hiç bakılmaz.
+    // Kullanıcı kartı hâlâ var mı ve şifre jeton verildiğinden beri değişmedi mi (kısa önbellekle): silinen ya da şifresi
+    // değiştirilen kullanıcının jetonu süresi dolana (30 gün) kadar geçerli kalıyordu. Damgasız eski jetonlar yalnız kartla denetlenir.
     if (env.KURULUM_MODU) {
       kurulumBaglantisiniKaydet();
       Object.assign(req.user, kurulumDbContext(), { dbUser: undefined, dbPassword: undefined });
-      return next();
+      kurulumKarti(decoded.userId)
+        // Damga uyuşmuyorsa önbelleğe güvenilmez, kart bir kez veritabanından okunur (şifre değişirken yarışta önbellekte
+        // eski damga kalıp yeni jeton 60 sn reddediliyordu)
+        .then((kart) => (kart && decoded.sd && decoded.sd !== kart.damga ? kurulumKarti(decoded.userId, true) : kart))
+        .then((kart) => {
+          if (!kart) return next(ApiError.unauthorized("Kullanıcı kartınız bulunamadı (silinmiş olabilir). Lütfen yeniden giriş yapın."));
+          if (decoded.sd && decoded.sd !== kart.damga) return next(ApiError.unauthorized("Şifreniz değiştirildi. Lütfen yeniden giriş yapın."));
+          next();
+        })
+        .catch(next);
+      return;
     }
 
     // Müşteri no ile açılan oturum: bağlantı firma kaydından sunucuda çözülür, istemci başlıklarına bakılmaz

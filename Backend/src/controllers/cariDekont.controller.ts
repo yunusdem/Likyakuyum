@@ -1,4 +1,6 @@
 import { Request, Response } from "express";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { caprazKurDenetleSunucu } from "../services/yetki/fisIcerikYetkisi.js";
 import { CariDekontService } from "../services/cariDekont.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -22,6 +24,7 @@ export class CariDekontController {
       tip: req.query.tip !== undefined ? Number(req.query.tip) : undefined,
       vezneId: req.query.vezneId ? Number(req.query.vezneId) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : 100,
+      baslangic: await gunSiniri(req),
     };
     const list = await CariDekontService.getDekontList(filter, dbContext);
     return ApiResponse.ok(res, "Cari dekontlar listelendi.", list);
@@ -34,6 +37,7 @@ export class CariDekontController {
   public static getDekontById = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = CariDekontController.getDbContext(req);
     const id = Number(req.params.id);
+    await kayitErisimi(req, "cariDekont", id);
     const dekont = await CariDekontService.getDekontById(id, dbContext);
     return ApiResponse.ok(res, "Cari dekont detayları getirildi.", dekont);
   });
@@ -46,6 +50,9 @@ export class CariDekontController {
     const dbContext = CariDekontController.getDbContext(req);
     const u = req.user as any;
     const kullaniciId = u?.userId || u?.id || req.body.kullaniciId || 1;
+    // Gün sınırı ve tarih yetkisi (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+    const { yetki } = await fisKayitYetkisi(req, "cariDekont", req.body?.cariDekontId, req.body?.tarih);
+    await caprazKurDenetleSunucu(req, yetki, req.body);
     const payload = {
       ...req.body,
       kullaniciId,
@@ -64,6 +71,7 @@ export class CariDekontController {
     const u = req.user as any;
     const kullaniciId = u?.userId || u?.id || req.body?.kullaniciId || 1;
     const degisiklikTakipVar = req.body?.degisiklikTakipVar !== false;
+    await kayitErisimi(req, "cariDekont", id);
     await CariDekontService.deleteDekont(id, kullaniciId, degisiklikTakipVar, dbContext);
     return ApiResponse.ok(res, "Cari dekont başarıyla silindi.", { cariDekontId: id });
   });

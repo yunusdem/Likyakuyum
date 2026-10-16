@@ -477,10 +477,13 @@ export const LoginPage: React.FC = () => {
         }
       `}</style>
 
-      <button type="button" onClick={() => navigate("/")} className="login-geri" title="Tanıtım ve Ana Sayfaya Dön">
-        <IconArrowLeft size={18} style={{ color: "#c88f18" }} />
-        <span>Ana Sayfaya Dön</span>
-      </button>
+      {/* Kurulumda (exe) tanıtım sayfası yok */}
+      {sistem && !kurulum && (
+        <button type="button" onClick={() => navigate("/")} className="login-geri" title="Tanıtım ve Ana Sayfaya Dön">
+          <IconArrowLeft size={18} style={{ color: "#c88f18" }} />
+          <span>Ana Sayfaya Dön</span>
+        </button>
+      )}
 
       <div className="login-icerik">
         {/* Marka */}

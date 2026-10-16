@@ -47,6 +47,8 @@ export interface LisansDto {
   teslimTarihi: string | null;
   /** Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz */
   urunler: string[];
+  /** Kurulum firmasında geçerli kod bugünkü lisans/modül/iletişim bilgisiyle uyuşuyor mu (null = denetlenemedi) */
+  kodGuncel?: boolean | null;
 }
 
 export type AyarAnahtari =
@@ -566,6 +568,10 @@ async function istek<T>(yontem: string, yol: string, govde?: unknown): Promise<T
   return json?.data as T;
 }
 
+/** Panelin derleme zamanı (vite.admin.config.ts define); katalog eşitlemesinde eski panelin yeni kodları silmesini önler */
+declare const __PANEL_DERLEME__: string | undefined;
+const PANEL_DERLEME = (typeof __PANEL_DERLEME__ !== "undefined" && Number(__PANEL_DERLEME__)) || 0;
+
 export const adminApi = {
   giris: (kullaniciAdi: string, sifre: string) =>
     istek<{ token: string; admin: AdminDto }>("POST", "/auth/login", { kullaniciAdi, sifre }),
@@ -623,7 +629,12 @@ export const adminApi = {
     istek<SurumDto[]>("PUT", `/surumler/${encodeURIComponent(surum)}`, veri),
   hedefSurum: (firmaId: number, surum: string | null) => istek<FirmaDto>("PUT", `/firmalar/${firmaId}/hedef-surum`, { surum }),
   kurulumDurumu: (firmaId: number) =>
-    istek<{ sonBildirilenMakine: string | null; gecmis: HeartbeatDto[] }>("GET", `/firmalar/${firmaId}/kurulum`),
+    istek<{
+      sonBildirilenMakine: string | null;
+      gecmis: HeartbeatDto[];
+      /** Kurulumun bildirdiği son yedek ve veritabanı boyutu (kolonlar sunucuda yoksa null) */
+      yedek: { sonYedek: string | null; hata: string | null; vtBoyutMb: number | null } | null;
+    }>("GET", `/firmalar/${firmaId}/kurulum`),
   kurulumBaglantisi: (firmaId: number) =>
     istek<{ adres: string; sonGecerlilik: string }>("POST", `/firmalar/${firmaId}/kurulum/baglanti`),
   /** firma.lky dosyasını oturum anahtarıyla indirir ve tarayıcıya kaydettirir */
@@ -648,7 +659,7 @@ export const adminApi = {
   lisansEkle: (firmaId: number, veri: LisansGirdi) =>
     istek<{ firma: FirmaDto; lisanslar: LisansDto[] }>("POST", `/firmalar/${firmaId}/lisanslar`, veri),
 
-  modulKatalogEsitle: (moduller: ModulKaydi[]) => istek<ModulKaydi[]>("PUT", "/moduller/katalog", { moduller }),
+  modulKatalogEsitle: (moduller: ModulKaydi[]) => istek<ModulKaydi[]>("PUT", "/moduller/katalog", { moduller, derleme: PANEL_DERLEME }),
   firmaModulleri: (firmaId: number) => istek<FirmaModulAyari>("GET", `/firmalar/${firmaId}/moduller`),
   firmaModulleriniYaz: (firmaId: number, veri: { kisitsiz?: boolean; acik?: string[]; paketeDon?: boolean }) =>
     istek<FirmaModulAyari>("PUT", `/firmalar/${firmaId}/moduller`, veri),
