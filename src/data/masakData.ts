@@ -1,7 +1,7 @@
 export interface MasakListInfo {
   key: string;
   /** Backend / TODVZ_MASAK_LISTE.LISTE_KOD karsiligi */
-  listeKod: "A" | "B" | "C" | "3AB";
+  listeKod: "A" | "B" | "C" | "3AB" | "BMGK";
   code: string;
   shortTitle: string;
   title: string;
@@ -75,5 +75,21 @@ export const MASAK_LISTS: MasakListInfo[] = [
     badgeBg: "#ede9fe",
     badgeText: "#5b21b6",
     accentColor: "#7c3aed",
+  },
+  {
+    key: "bmgk",
+    listeKod: "BMGK",
+    code: "BMGK",
+    shortTitle: "BMGK Duyuruları (MASAK sitesi)",
+    title: "BM Güvenlik Konseyi Yaptırım Listesi Duyuruları",
+    description:
+      "MASAK Genel Tebliği (Sıra No: 34) gereği MASAK internet sitesinde duyurulan BMGK listeleme / güncelleme kararlarına konu kişi ve kuruluşlar. Kaynak Excel değil, MASAK sitesinin duyuru servisidir; adres değiştirilemez.",
+    lawReference: "MASAK Genel Tebliği Sıra No: 34 · 5549 S.K. m.19/A",
+    url: "https://masak.hmb.gov.tr/portal/v2/posts",
+    filename: "",
+    tag: "BMGK Duyurusu",
+    badgeBg: "#dcfce7",
+    badgeText: "#166534",
+    accentColor: "#16a34a",
   },
 ];

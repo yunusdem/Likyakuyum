@@ -151,12 +151,12 @@ const LisansKilitPenceresi: React.FC<Props> = ({ bilgi, kapat, yuklendi }) => {
                 rows={4}
                 value={kod}
                 onChange={(e) => setKod(e.target.value)}
-                placeholder="Size gönderilen LKY1. ile başlayan lisans kodunu buraya yapıştırın"
+                placeholder="Size gönderilen aktivasyon anahtarını (LKY-XXXXX-XXXXX-XXXXX) ya da LKY1. ile başlayan lisans kodunu yazın"
                 spellCheck={false}
               />
             </Form.Group>
             <div className="small text-muted mt-2">
-              İnternet varsa lisansınız tanımlandığında kod kendiliğinden yüklenir (birkaç dakika içinde) ya da "Merkezden Kontrol Et" ile hemen alınır.
+              Aktivasyon anahtarı için internet gerekir. İnternet varsa lisansınız tanımlandığında kod kendiliğinden de yüklenir (birkaç dakika içinde) ya da "Merkezden Kontrol Et" ile hemen alınır.
             </div>
             {hata && (
               <Alert variant="danger" className="mt-3 mb-0">
@@ -178,8 +178,8 @@ const LisansKilitPenceresi: React.FC<Props> = ({ bilgi, kapat, yuklendi }) => {
           </Button>
         )}
         {kurulum && (
-          <Button variant="primary" disabled={bekliyor || kod.trim().length < 20} onClick={yukle}>
-            {bekliyor ? <Spinner animation="border" size="sm" /> : "Lisansı Yükle"}
+          <Button variant="primary" disabled={bekliyor || kod.trim().length < 15} onClick={yukle}>
+            {bekliyor ? <Spinner animation="border" size="sm" /> : kod.trim().length < 40 && /^lky-?[0-9a-z]/i.test(kod.trim()) ? "Etkinleştir" : "Lisansı Yükle"}
           </Button>
         )}
         {kapat && (

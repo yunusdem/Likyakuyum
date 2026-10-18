@@ -72,6 +72,12 @@ export class FirmaController {
     return ApiResponse.ok(res, "Lisans kodu üretildi.", sonuc);
   });
 
+  public static aktivasyonAnahtari = asyncHandler(async (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    const lisans = await LisansKodService.aktivasyonAnahtariUret(req.admin!, id(req), Number(req.params.lisansId));
+    return ApiResponse.ok(res, "Aktivasyon anahtarı üretildi.", lisans);
+  });
+
   public static lisansIptal = asyncHandler(async (req: Request, res: Response) => {
     return ApiResponse.ok(res, "Lisans iptal edildi.", await LisansKodService.iptal(req.admin!, id(req), Number(req.params.lisansId)));
   });

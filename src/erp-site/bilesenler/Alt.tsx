@@ -69,6 +69,9 @@ export const Alt: React.FC = () => (
               <Link to="/iletisim">İletişim & Demo</Link>
             </li>
             <li>
+              <a href={SIRKET.girisAdresi}>Giriş Yap</a>
+            </li>
+            <li>
               <Link to="/kvkk">KVKK Aydınlatma Metni</Link>
             </li>
             <li>
@@ -82,6 +85,7 @@ export const Alt: React.FC = () => (
         <nav aria-label="Yasal">
           <Link to="/kvkk">KVKK</Link>
           <Link to="/gizlilik">Gizlilik</Link>
+          <a href={SIRKET.girisAdresi}>Giriş Yap</a>
         </nav>
       </div>
     </div>

@@ -57,6 +57,35 @@ router.post(
   })
 );
 
+// Aktivasyon anahtarı: yanlış anahtar denemeleri için ayrı, dar sınır (docs 16, A6)
+const aktivasyonSiniri = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => istemciIp(req as Request),
+  handler: (req, res, next) => next(new ApiError(429, "Çok fazla deneme yapıldı. Lütfen 15 dakika sonra tekrar deneyiniz.")),
+});
+
+const aktivasyonSchema = z.object({
+  body: z.object({
+    firmaKodu: z.string().trim().min(1).max(20),
+    kurulumAnahtari: z.string().min(10).max(200),
+    makineKimligi: z.string().trim().min(19).max(19),
+    anahtar: z.string().trim().min(15).max(40),
+  }),
+});
+
+router.post(
+  "/aktivasyon",
+  aktivasyonSiniri,
+  validate(aktivasyonSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    return ApiResponse.ok(res, "Lisans etkinleştirildi.", await MerkezKurulumService.aktivasyon(req.body));
+  })
+);
+
 router.get(
   "/kurulum/:token",
   asyncHandler(async (req: Request, res: Response) => {

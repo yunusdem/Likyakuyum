@@ -6,7 +6,8 @@ import { calisanSurum } from "../../utils/surum.js";
 import { semaSurumu } from "../semaGoc.service.js";
 import { kurulumFirmasi } from "./firmaDosyasi.js";
 import { kurulumHavuzu } from "./kurulumDb.js";
-import { KurulumLisansService } from "./kurulumLisans.service.js";
+import { KurulumLisansDurumu, KurulumLisansService } from "./kurulumLisans.service.js";
+import { ApiError } from "../../utils/ApiError.js";
 import { vtBoyutuMb, yedekDurumu } from "./kurulumYedek.js";
 
 /**
@@ -134,6 +135,38 @@ export class KurulumBildirim {
     sonBasari = new Date();
     sonHata = null;
     return sonuc;
+  }
+
+  /**
+   * Aktivasyon anahtarıyla etkinleştirme (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16, A3): anahtar + kurulum anahtarı +
+   * makine kimliği merkeze gider, dönen imzalı kod yüklenir. Merkezin hata mesajı (geçersiz / başka bilgisayarda) aynen döner.
+   */
+  public static async aktiflestir(anahtar: string, fetchFn: typeof fetch = fetch): Promise<KurulumLisansDurumu> {
+    const firma = kurulumFirmasi();
+    if (!firma) throw ApiError.badRequest("firma.lky bulunamadı; kurulum dosyasını yeniden yükleyin.");
+    const makineKimligi = (await KurulumLisansService.durum(true)).makineKimligi;
+    if (!makineKimligi) throw ApiError.badRequest("Bu bilgisayarın kimliği okunamadı; birkaç dakika sonra tekrar deneyin.");
+    let r: Response;
+    let json: any;
+    try {
+      const ctrl = new AbortController();
+      const zaman = setTimeout(() => ctrl.abort(), 20_000);
+      r = await fetchFn(`${merkezAdresi()}/api/v1/merkez/aktivasyon`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firmaKodu: firma.firmaKodu, kurulumAnahtari: firma.kurulumAnahtari, makineKimligi, anahtar }),
+        signal: ctrl.signal,
+      }).finally(() => clearTimeout(zaman));
+      json = await r.json().catch(() => null);
+    } catch (err: any) {
+      const kod = err?.cause?.code || err?.code || "";
+      logger.warn(`[KURULUM] Aktivasyon için merkeze ulaşılamadı (${merkezAdresi()}): ${err?.message}${kod ? ` (${kod})` : ""}`);
+      throw ApiError.badRequest("Merkeze ulaşılamadı. Aktivasyon için internet gerekir; bağlantıyı kontrol edip tekrar deneyin ya da size gönderilen lisans kodunu yapıştırın.");
+    }
+    if (!r.ok || !json?.data?.lisansKodu) throw ApiError.badRequest(json?.message || `Aktivasyon yapılamadı (HTTP ${r.status}).`);
+    const durum = await KurulumLisansService.yukle(json.data.lisansKodu);
+    logger.info("[KURULUM] Aktivasyon anahtarıyla lisans yüklendi.");
+    return durum;
   }
 
   public static baslat(): void {

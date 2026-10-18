@@ -57,6 +57,11 @@ export const MASAK_KAYNAKLAR: Partial<Record<MasakListeKod, MasakKaynakTanimi>> 
     varsayilanUrl:
       "https://ms.hmb.gov.tr/uploads/sites/12/2026/07/D-7262-SAYILI-KANUN-3.A-VE-3.B-MADDELERI-EXCEL-29.07.2026-7065dd0684b9962c.xlsx",
   },
+  BMGK: {
+    listeKod: "BMGK",
+    listeAdi: "BMGK Yaptırım Listesi Duyuruları (MASAK sitesi, Genel Tebliğ Sıra No: 34)",
+    varsayilanUrl: "https://masak.hmb.gov.tr/portal/v2/posts",
+  },
 };
 
 /* ============================================================================
@@ -248,6 +253,10 @@ export const adresGecerliMi = (url?: string | null): boolean => {
   if (!u.toLowerCase().startsWith(MASAK_IZINLI_ONEK)) return false;
   return u.toLowerCase().endsWith(".xlsx") || u.toLowerCase().endsWith(".xls");
 };
+
+/** Excel adresi ya da MASAK duyuru (portal/v2) adresi — güncelleme girdisi için ortak denetim */
+export const kaynakAdresiGecerliMi = (url?: string | null): boolean =>
+  adresGecerliMi(url) || (!!url && url.trim().toLowerCase().startsWith("https://masak.hmb.gov.tr/portal/v2/"));
 
 /**
  * MASAK Excel dosyasını indirir. Başarısızlıkta 3 kez dener.

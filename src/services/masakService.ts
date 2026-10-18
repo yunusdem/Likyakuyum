@@ -11,9 +11,14 @@ import { apiClient } from "./apiClient";
  */
 export type MasakListeKod = string;
 
-export type MasakStandartListeKod = "A" | "B" | "C" | "3AB";
+export type MasakStandartListeKod = "A" | "B" | "C" | "3AB" | "BMGK";
 
-export const MASAK_STANDART_KODLAR: MasakStandartListeKod[] = ["A", "B", "C", "3AB"];
+export const MASAK_STANDART_KODLAR: MasakStandartListeKod[] = ["A", "B", "C", "3AB", "BMGK"];
+
+/** Kaynağı Excel değil MASAK sitesi duyuruları olan liste (adresi ekrandan değiştirilmez) */
+export const MASAK_DUYURU_KODU: MasakStandartListeKod = "BMGK";
+
+export const masakDuyuruListesiMi = (kod?: string | null): boolean => kod === MASAK_DUYURU_KODU;
 
 export const MASAK_LISTE_KOD_DESENI = /^[A-Z0-9][A-Z0-9._-]{0,9}$/;
 
@@ -252,3 +257,7 @@ export const masakAdresGecerliMi = (url?: string | null): boolean => {
   const u = url.trim().toLowerCase();
   return u.startsWith("https://ms.hmb.gov.tr/") && (u.endsWith(".xlsx") || u.endsWith(".xls"));
 };
+
+/** BMGK duyuru listesinin adresi: MASAK sitesinin portal/v2 API'si */
+export const masakDuyuruAdresiGecerliMi = (url?: string | null): boolean =>
+  !!url && url.trim().toLowerCase().startsWith("https://masak.hmb.gov.tr/portal/v2/");

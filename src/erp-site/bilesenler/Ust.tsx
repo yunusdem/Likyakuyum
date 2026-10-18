@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { IconArrowRight, IconChevronDown, IconMenu2, IconPhone, IconX } from "@tabler/icons-react";
+import { IconArrowRight, IconChevronDown, IconLogin2, IconMenu2, IconPhone, IconX } from "@tabler/icons-react";
 import { URUNLER } from "../veri/urunler";
 import { SIRKET, TEL_LINK } from "../veri/sirket";
 import { Logo } from "./Logo";
 import { urunStili } from "./UrunStil";
 
-/** Üst menü: masaüstünde "Ürünler" açılır paneli, mobilde tam ekran menü. Sitede giriş düğmesi yok (K4). */
+/** Üst menü: masaüstünde "Ürünler" açılır paneli, mobilde tam ekran menü. "Giriş Yap" uygulamanın giriş ekranına gider. */
 export const Ust: React.FC = () => {
   const konum = useLocation();
   const [kaydi, setKaydi] = useState(false);
@@ -121,6 +121,9 @@ export const Ust: React.FC = () => {
           </nav>
 
           <div className="menu-sag">
+            <a href={SIRKET.girisAdresi} className="dugme dugme-cizgi dugme-kucuk">
+              <IconLogin2 size={16} aria-hidden="true" /> Giriş Yap
+            </a>
             <a href={TEL_LINK} className="dugme dugme-cizgi dugme-kucuk" aria-label={`Bizi arayın: ${SIRKET.telefon}`}>
               <IconPhone size={16} aria-hidden="true" /> Arayın
             </a>
@@ -166,6 +169,9 @@ export const Ust: React.FC = () => {
         </Link>
         <a href={TEL_LINK} className="dugme dugme-cizgi">
           <IconPhone size={16} aria-hidden="true" /> {SIRKET.telefon}
+        </a>
+        <a href={SIRKET.girisAdresi} className="dugme dugme-cizgi">
+          <IconLogin2 size={16} aria-hidden="true" /> Giriş Yap
         </a>
       </div>
     </>

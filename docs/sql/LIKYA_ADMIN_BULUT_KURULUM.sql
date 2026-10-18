@@ -171,3 +171,16 @@ GO
 
 PRINT N'TAMAM: LIKYA_ADMIN bulut/kurulum/lisans tabloları hazır. Mevcut kayıtlar değişmedi.';
 GO
+
+/* ---------------- Aktivasyon anahtarı (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16, A7) ---------------- */
+-- Çalıştırılmadan da lisans ekranları bozulmaz; yalnız panelde anahtar üretilemez.
+IF COL_LENGTH('dbo.ADM_LISANS', 'AKTIVASYON_ANAHTARI') IS NULL
+  ALTER TABLE [dbo].[ADM_LISANS] ADD
+    [AKTIVASYON_ANAHTARI] VARCHAR(30) NULL,   -- LKY-XXXXX-XXXXX-XXXXX, panelde rastgele üretilir
+    [AKTIVASYON_TARIHI]   DATETIME    NULL,   -- ilk kullanım
+    [AKTIVASYON_MAKINE]   VARCHAR(40) NULL;   -- anahtarın bağlandığı makine
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_ADM_LISANS_AKTIVASYON')
+  CREATE UNIQUE INDEX [UX_ADM_LISANS_AKTIVASYON] ON [dbo].[ADM_LISANS]([AKTIVASYON_ANAHTARI]) WHERE [AKTIVASYON_ANAHTARI] IS NOT NULL;
+GO

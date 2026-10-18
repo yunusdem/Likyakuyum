@@ -78,6 +78,7 @@ export type AdminIslem =
   | "SILINEN_KLASOR_TEMIZLENDI"
   | "AYAR_DEGISTI"
   | "LISANS_KODU_URETILDI"
+  | "AKTIVASYON_ANAHTARI_URETILDI"
   | "LISANS_IPTAL"
   | "MAKINE_KIMLIGI_DEGISTI"
   | "KURULUM_BAGLANTISI"
@@ -120,6 +121,10 @@ export interface LisansDto {
   teslimTarihi: Date | null;
   /** Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz */
   urunler: string[];
+  /** Kurulum (exe) aktivasyon anahtarı ve kullanıldıysa ne zaman / hangi makinede (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16) */
+  aktivasyonAnahtari: string | null;
+  aktivasyonTarihi: Date | null;
+  aktivasyonMakine: string | null;
   /** Kurulum firmasında geçerli kod bugünkü lisans/modül/iletişim bilgisiyle uyuşuyor mu (yalnız lisans listesinde; null = denetlenemedi) */
   kodGuncel?: boolean | null;
 }

@@ -19,6 +19,8 @@ export const SIRKET = {
   site: "https://www.likyaerp.com",
   /** Likya.Kuyum'un kendi tanıtım sitesi */
   kuyumSitesi: "https://likyakuyum.com",
+  /** Uygulama giriş ekranı (müşteri no ile giriş) — Ust ve Alt'taki "Giriş Yap" buraya gider */
+  girisAdresi: "https://likyakuyum.com/login",
 } as const;
 
 export const TEL_LINK = `tel:${SIRKET.telefonHam}`;

@@ -47,6 +47,10 @@ export interface LisansDto {
   teslimTarihi: string | null;
   /** Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md); boş = ürünsüz */
   urunler: string[];
+  /** Kurulum (exe) aktivasyon anahtarı; kullanıldıysa tarih ve makine (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16) */
+  aktivasyonAnahtari: string | null;
+  aktivasyonTarihi: string | null;
+  aktivasyonMakine: string | null;
   /** Kurulum firmasında geçerli kod bugünkü lisans/modül/iletişim bilgisiyle uyuşuyor mu (null = denetlenemedi) */
   kodGuncel?: boolean | null;
 }
@@ -622,6 +626,8 @@ export const adminApi = {
   lisanslar: (firmaId: number) => istek<LisansDto[]>("GET", `/firmalar/${firmaId}/lisanslar`),
   lisansKoduUret: (firmaId: number, lisansId: number, makineKimligi: string) =>
     istek<{ kod: string; lisans: LisansDto }>("POST", `/firmalar/${firmaId}/lisanslar/${lisansId}/kod`, { makineKimligi }),
+  aktivasyonAnahtariUret: (firmaId: number, lisansId: number) =>
+    istek<LisansDto>("POST", `/firmalar/${firmaId}/lisanslar/${lisansId}/aktivasyon-anahtari`),
   lisansIptal: (firmaId: number, lisansId: number) => istek<LisansDto>("POST", `/firmalar/${firmaId}/lisanslar/${lisansId}/iptal`),
   ayarlar: () => istek<AyarlarDto>("GET", "/ayarlar"),
   surumler: () => istek<SurumDto[]>("GET", "/surumler"),

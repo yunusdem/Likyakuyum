@@ -24,13 +24,36 @@ const satirdan = (r: any): LisansDto => ({
   teslim: r.TESLIM ?? null,
   teslimTarihi: r.TESLIM_TARIHI ?? null,
   urunler: urunleriOku(r.URUNLER),
+  aktivasyonAnahtari: r.AKTIVASYON_ANAHTARI ?? null,
+  aktivasyonTarihi: r.AKTIVASYON_TARIHI ?? null,
+  aktivasyonMakine: r.AKTIVASYON_MAKINE ?? null,
 });
+
+// Aktivasyon anahtarı kolonları (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16, A7): sunucuda SSMS betiği çalışana kadar yok;
+// yoksa NULL okunur, lisans ekranları bozulmaz. Var olduğu bir kez görülünce yeniden sorulmaz, yoksa dakikada bir sorulur.
+let aktivasyonVar = false;
+let aktivasyonDenetim = 0;
+export const aktivasyonKolonlariVarMi = async (): Promise<boolean> => {
+  if (aktivasyonVar) return true;
+  if (Date.now() - aktivasyonDenetim < 60_000) return false;
+  aktivasyonDenetim = Date.now();
+  const pool = await getAdminPool();
+  const r = (await pool.request().query(`SELECT CAST(CASE WHEN COL_LENGTH('dbo.ADM_LISANS', 'AKTIVASYON_MAKINE') IS NOT NULL THEN 1 ELSE 0 END AS BIT) AS V`))
+    .recordset[0];
+  aktivasyonVar = !!r.V;
+  return aktivasyonVar;
+};
+
+const aktivasyonKolonlari = async () =>
+  (await aktivasyonKolonlariVarMi())
+    ? "AKTIVASYON_ANAHTARI, AKTIVASYON_TARIHI, AKTIVASYON_MAKINE"
+    : "CAST(NULL AS VARCHAR(30)) AS AKTIVASYON_ANAHTARI, CAST(NULL AS DATETIME) AS AKTIVASYON_TARIHI, CAST(NULL AS VARCHAR(40)) AS AKTIVASYON_MAKINE";
 
 // URUNLER kolonu ürün paketi betiği çalıştırılınca gelir (docs/sql/LIKYA_ADMIN_URUN_PAKET.sql); yoksa NULL okunur
 const secim = async () => `
   SELECT LISANS_ID, FIRMA_ID, LISANS_ANAHTARI, BASLANGIC, BITIS, KULLANICI_LIMITI, PAKET_ADI, NOTLAR, AKTIF,
          OLUSTURAN_ADMIN_ID, OLUSTURMA_TARIHI, LISANS_KODU, MAKINE_KIMLIGI, SERI_NO, IPTAL, TESLIM, TESLIM_TARIHI,
-         ${await PaketSqlRepository.urunKolonu()}
+         ${await PaketSqlRepository.urunKolonu()}, ${await aktivasyonKolonlari()}
   FROM dbo.ADM_LISANS`;
 
 export class LisansSqlRepository {
@@ -90,6 +113,45 @@ export class LisansSqlRepository {
               ORDER BY SERI_NO DESC`);
     const r = res.recordset[0];
     return r ? { lisansId: r.LISANS_ID, kod: r.LISANS_KODU, seri: r.SERI_NO } : null;
+  }
+
+  /** Lisansa yeni aktivasyon anahtarı yazar; önceki anahtar ve kullanım bilgisi silinir (A4). */
+  public static async aktivasyonAnahtariYaz(lisansId: number, anahtar: string): Promise<void> {
+    const pool = await getAdminPool();
+    await pool
+      .request()
+      .input("id", sql.Int, lisansId)
+      .input("anahtar", sql.VarChar(30), anahtar)
+      .query(`UPDATE dbo.ADM_LISANS SET AKTIVASYON_ANAHTARI = @anahtar, AKTIVASYON_TARIHI = NULL, AKTIVASYON_MAKINE = NULL WHERE LISANS_ID = @id`);
+  }
+
+  /** Firmanın bu anahtarı taşıyan lisansı (başka firmanın anahtarı bulunmaz). */
+  public static async aktivasyonAnahtariIleBul(firmaId: number, anahtar: string): Promise<LisansDto | null> {
+    if (!(await aktivasyonKolonlariVarMi())) return null;
+    const pool = await getAdminPool();
+    const res = await pool
+      .request()
+      .input("firmaId", sql.Int, firmaId)
+      .input("anahtar", sql.VarChar(30), anahtar)
+      .query(`${await secim()} WHERE FIRMA_ID = @firmaId AND AKTIVASYON_ANAHTARI = @anahtar`);
+    return res.recordset[0] ? satirdan(res.recordset[0]) : null;
+  }
+
+  /**
+   * Anahtarı makineye bağlar: yalnız henüz kullanılmamışsa ya da aynı makineyle kullanılmışsa true (aynı anda iki makine
+   * yazarsa biri kazanır). rowsAffected yerine OUTPUT: yerel deneme köprüsünde rowsAffected hep 0 geliyor.
+   */
+  public static async aktivasyonAnahtariKullan(lisansId: number, anahtar: string, makine: string): Promise<boolean> {
+    const pool = await getAdminPool();
+    const res = await pool
+      .request()
+      .input("id", sql.Int, lisansId)
+      .input("anahtar", sql.VarChar(30), anahtar)
+      .input("makine", sql.VarChar(40), makine)
+      .query(`UPDATE dbo.ADM_LISANS SET AKTIVASYON_TARIHI = ISNULL(AKTIVASYON_TARIHI, GETDATE()), AKTIVASYON_MAKINE = @makine
+              OUTPUT inserted.LISANS_ID
+              WHERE LISANS_ID = @id AND AKTIVASYON_ANAHTARI = @anahtar AND (AKTIVASYON_MAKINE IS NULL OR AKTIVASYON_MAKINE = @makine)`);
+    return res.recordset.length > 0;
   }
 
   public static async teslimYaz(lisansId: number): Promise<void> {

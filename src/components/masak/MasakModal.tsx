@@ -15,6 +15,8 @@ import { MASAK_LISTS } from "data/masakData";
 import {
   MasakService,
   masakAdresGecerliMi,
+  masakDuyuruAdresiGecerliMi,
+  masakDuyuruListesiMi,
   masakBayatMi,
   masakKodEtiketi,
   masakListeKodGecerliMi,
@@ -222,6 +224,11 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
       if (!satir.baslik.trim()) return "Listenin açıklamasını giriniz.";
     }
     if (!satir.url.trim()) return "Adres giriniz.";
+    if (masakDuyuruListesiMi(satir.listeKod)) {
+      return masakDuyuruAdresiGecerliMi(satir.url)
+        ? null
+        : "BMGK duyuru adresi https://masak.hmb.gov.tr/portal/v2/ ile başlamalıdır.";
+    }
     if (!masakAdresGecerliMi(satir.url)) {
       return "Adres https://ms.hmb.gov.tr/ ile başlamalı ve .xlsx ile bitmelidir.";
     }
@@ -448,6 +455,12 @@ export const MasakModal: React.FC<MasakModalProps> = ({ show, onHide }) => {
                           size="sm"
                           type="text"
                           value={satir.url}
+                          readOnly={masakDuyuruListesiMi(satir.listeKod)}
+                          title={
+                            masakDuyuruListesiMi(satir.listeKod)
+                              ? "MASAK sitesindeki BMGK duyurularından otomatik okunur; adres değiştirilmez."
+                              : undefined
+                          }
                           disabled={mesgul}
                           aria-label={`${masakKodEtiketi(satir.listeKod) || "Yeni"} liste adresi`}
                           autoComplete="off"

@@ -143,12 +143,12 @@ const LisansSurumPage: React.FC = () => {
             )}
             <Form.Group controlId="lsKod">
               <Form.Label>Lisans Yükle</Form.Label>
-              <Form.Control as="textarea" rows={3} value={kod} onChange={(e) => setKod(e.target.value)} placeholder="LKY1. ile başlayan kodu yapıştırın" spellCheck={false} />
+              <Form.Control as="textarea" rows={3} value={kod} onChange={(e) => setKod(e.target.value)} placeholder="Aktivasyon anahtarını (LKY-XXXXX-XXXXX-XXXXX) ya da LKY1. ile başlayan kodu yazın" spellCheck={false} />
             </Form.Group>
             <Button
               size="sm"
               className="mt-2"
-              disabled={!!mesgul || kod.trim().length < 20}
+              disabled={!!mesgul || kod.trim().length < 15}
               onClick={() =>
                 calistir("lisans", async () => {
                   await SistemService.lisansYukle(kod.trim());

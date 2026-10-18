@@ -141,7 +141,7 @@ export const MasakSonucModal: React.FC<MasakSonucModalProps> = ({
             </div>
             <h6 className="fw-bold text-success mb-1">MASAK Kayıtlarında Herhangi Bir Eşleşme Bulunamadı</h6>
             <p className="text-muted small mb-0 px-4">
-              Sorgulanan isim ve kimlik numarası TODVZ_MASAK_LISTE (A, B, C, 3AB) ve güncel malvarlığı dondurulanlar listesinde temizdir. Fiş işleminize mevzuata uygun şekilde devam edebilirsiniz.
+              Sorgulanan isim ve kimlik numarası TODVZ_MASAK_LISTE (A, B, C, 3AB, BMGK duyuruları) ve güncel malvarlığı dondurulanlar listesinde temizdir. Fiş işleminize mevzuata uygun şekilde devam edebilirsiniz.
             </p>
           </div>
         )}
