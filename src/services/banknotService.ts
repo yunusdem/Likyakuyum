@@ -14,6 +14,21 @@ export interface BanknotCurrencyItem {
   banknotSayisi: number;
 }
 
+export interface CurrencyUsageInfo {
+  hasPano: boolean;
+  panoCount: number;
+  panoNames: string[];
+  hasVezne: boolean;
+  vezneNames: string[];
+  hasBakiye: boolean;
+  totalBakiye: number;
+  bakiyeDetails: { vezneKod: string; vezneAd: string; miktar: number }[];
+  banknotCount: number;
+  kurCount: number;
+  hasFis: boolean;
+  fisCount: number;
+}
+
 export class BanknotService {
   /**
    * Fetches all currencies with their banknot count
@@ -59,10 +74,19 @@ export class BanknotService {
   }
 
   /**
-   * Deletes a currency completely (both TODVZ_BANKNOT and TODVZ_PARA)
+   * Fetches currency usage info across pano, vezne, bakiye, and fiş
    */
-  public static async deleteCurrency(paraId: number): Promise<boolean> {
-    const res = await apiClient.delete<{ paraId: number }>(`/banknot/currency/${paraId}`);
+  public static async getCurrencyUsage(paraId: number): Promise<CurrencyUsageInfo> {
+    const res = await apiClient.get<CurrencyUsageInfo>(`/banknot/currency-usage/${paraId}`);
+    return res.data as CurrencyUsageInfo;
+  }
+
+  /**
+   * Deletes a currency completely (TODVZ_BANKNOT, TODVZ_KUR, TODVZ_PANO_SATIRI, TODVZ_VEZNE_BAKIYE, TODVZ_PARA)
+   */
+  public static async deleteCurrency(paraId: number, options?: { force?: boolean }): Promise<boolean> {
+    const url = options?.force ? `/banknot/currency/${paraId}?force=true` : `/banknot/currency/${paraId}`;
+    const res = await apiClient.delete<{ paraId: number }>(url);
     return res.success;
   }
 }

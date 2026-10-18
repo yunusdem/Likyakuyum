@@ -11,6 +11,7 @@ router.get("/currencies", BanknotController.getCurrencies);
 router.post("/create-currency", BanknotController.createCurrency);
 router.get("/:paraId", BanknotController.getBanknotlarByParaId);
 router.post("/:paraId", BanknotController.saveBanknotlar);
+router.get("/currency-usage/:paraId", BanknotController.getCurrencyUsage);
 router.delete("/currency/:paraId", BanknotController.deleteCurrency);
 router.delete("/:paraId", BanknotController.deleteBanknotlar);
 

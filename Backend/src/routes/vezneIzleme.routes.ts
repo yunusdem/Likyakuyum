@@ -8,6 +8,7 @@ router.use(authenticate);
 
 router.get("/", VezneIzlemeController.getIzlemeData);
 router.get("/data", VezneIzlemeController.getIzlemeData);
+router.get("/stream", VezneIzlemeController.stream);
 router.post("/tanim", VezneIzlemeController.saveSettings);
 router.post("/bakiye", VezneIzlemeController.updateBakiye);
 router.post("/toplu-bakiye", VezneIzlemeController.saveAllBakiyeler);

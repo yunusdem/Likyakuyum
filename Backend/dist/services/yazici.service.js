@@ -44,12 +44,19 @@ export class YaziciService {
         }
         return updated;
     }
-    static async deleteYazici(id, dbContext) {
+    static async getYaziciUsage(id, dbContext) {
+        const existing = await YaziciSqlRepository.findById(id, dbContext);
+        if (!existing) {
+            throw ApiError.notFound(`Yazıcı (ID: ${id}) bulunamadı.`);
+        }
+        return YaziciSqlRepository.getYaziciUsage(id, dbContext);
+    }
+    static async deleteYazici(id, options, dbContext) {
         const existing = await YaziciSqlRepository.findById(id, dbContext);
         if (!existing) {
             throw ApiError.notFound(`Silinecek yazıcı (ID: ${id}) bulunamadı.`);
         }
-        return YaziciSqlRepository.delete(id, dbContext);
+        return YaziciSqlRepository.delete(id, options, dbContext);
     }
     /**
      * Doğrudan Yazıcıya Çıktı Gönderme (Direct Hardware / OS Print)

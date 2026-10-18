@@ -22,6 +22,8 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
       token = authHeader.substring(7);
     } else if (req.cookies && req.cookies.accessToken) {
       token = req.cookies.accessToken;
+    } else if (req.query && typeof req.query.token === "string") {
+      token = req.query.token;
     }
 
     if (!token) {

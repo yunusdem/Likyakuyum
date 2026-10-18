@@ -1,5 +1,6 @@
 import { apiClient } from "./apiClient";
 import { FastLookupCache } from "./fastLookupCache";
+import { notifyVezneBakiyeChanged } from "./vezneSyncService";
 
 export interface SarrafFisSatiriItem {
   satirId?: number | null;
@@ -295,11 +296,13 @@ export class SarrafFisService {
 
   static async saveFis(payload: SaveSarrafFisPayload): Promise<{ sarrafFisiId: number; fisNo: string; yeniKayit: boolean }> {
     const res = await apiClient.post<{ sarrafFisiId: number; fisNo: string; yeniKayit: boolean }>("/sarraf-fis", payload);
+    notifyVezneBakiyeChanged({ type: "sarraf", id: res.data?.sarrafFisiId });
     return res.data!;
   }
 
   static async deleteFis(id: number, kullaniciId: number): Promise<void> {
     await apiClient.delete(`/sarraf-fis/${id}?kullaniciId=${kullaniciId}`);
+    notifyVezneBakiyeChanged({ type: "sarraf_delete", id });
   }
 
   static async saveDetay(id: number, payload: Partial<SaveSarrafFisPayload>): Promise<void> {

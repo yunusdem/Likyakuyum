@@ -1,4 +1,5 @@
 import { apiClient } from "./apiClient";
+import { notifyVezneBakiyeChanged } from "./vezneSyncService";
 
 export interface PerakendeUrunItem {
   altinUrunId: number;
@@ -224,6 +225,7 @@ export class PerakendeService {
    */
   static async createInvoice(payload: SavePerakendeFaturaPayload): Promise<PerakendeFaturaModel> {
     const res = await apiClient.post<PerakendeFaturaModel>("/perakende/fatura", payload);
+    notifyVezneBakiyeChanged({ type: "perakende" });
     return res.data!;
   }
 
@@ -248,5 +250,6 @@ export class PerakendeService {
    */
   static async deleteInvoice(id: number): Promise<void> {
     await apiClient.delete(`/perakende/fatura/${id}`);
+    notifyVezneBakiyeChanged({ type: "perakende_delete", id });
   }
 }

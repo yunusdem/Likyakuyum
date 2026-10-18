@@ -8,8 +8,8 @@ export default function MasakMenu({ onUpdate, mobile = false }: { onUpdate: () =
       className={mobile
         ? 'd-flex align-items-center gap-1 text-decoration-none px-2 py-1 rounded-pill bg-light border text-nowrap quick-action-mobile-pill'
         : 'd-flex flex-column align-items-center justify-content-center text-decoration-none px-1.5 py-0.5 rounded-2 quick-action-btn'}>
-      <IconShieldCheck size={mobile ? 15 : 16} strokeWidth={2} style={{ color: '#dc2626' }} />
-      <span style={{ fontSize: '10px', fontWeight: 700, color: '#dc2626', lineHeight: 1 }}>MASAK</span>
+      <IconShieldCheck size={mobile ? 15 : 16} strokeWidth={2.4} style={{ color: '#dc2626' }} />
+      <span style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626', lineHeight: 1.15 }}>MASAK</span>
     </Dropdown.Toggle>
     <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: 200 }}>
       <Dropdown.Item onClick={onUpdate}>MASAK'tan Liste Güncelle</Dropdown.Item>

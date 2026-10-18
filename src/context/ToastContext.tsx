@@ -74,6 +74,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       toastItems.forEach((toastEl) => {
         if ((toastEl as any).__erp_auto_closed) return;
+        if (
+          toastEl.getAttribute("data-no-autoclose") === "true" ||
+          toastEl.classList?.contains("erp-sticky-notification") ||
+          toastEl.closest("[data-no-autoclose='true']")
+        ) {
+          return;
+        }
         (toastEl as any).__erp_auto_closed = true;
 
         setTimeout(() => {

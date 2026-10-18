@@ -357,43 +357,242 @@ export class BanknotSqlRepository {
   /**
    * Deletes a currency completely (both TODVZ_BANKNOT and TODVZ_PARA, along with TODVZ_KUR)
    */
+  /**
+   * Checks where a currency is currently used (pano, vezne, bakiye, fiş)
+   */
+  public static async getCurrencyUsage(
+    paraId: number,
+    dbContext?: { dbServer?: string; dbName?: string }
+  ): Promise<{
+    hasPano: boolean;
+    panoCount: number;
+    panoNames: string[];
+    hasVezne: boolean;
+    vezneNames: string[];
+    hasBakiye: boolean;
+    totalBakiye: number;
+    bakiyeDetails: { vezneKod: string; vezneAd: string; miktar: number }[];
+    banknotCount: number;
+    kurCount: number;
+    hasFis: boolean;
+    fisCount: number;
+  }> {
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+
+    // 1. Pano satırları
+    let panoCount = 0;
+    let panoNames: string[] = [];
+    try {
+      const pRes = await pool
+        .request()
+        .input("paraId", sql.Int, paraId)
+        .query<{ PANO_NO: string }>(`
+          SELECT DISTINCT LTRIM(RTRIM(ISNULL(P.[PANO_NO], CAST(PS.[PANO_ID] AS VARCHAR)))) as PANO_NO 
+          FROM [dbo].[TODVZ_PANO_SATIRI] PS
+          LEFT JOIN [dbo].[TODVZ_PANO] P ON P.[PANO_ID] = PS.[PANO_ID]
+          WHERE PS.[PARA_ID] = @paraId
+        `);
+      panoNames = pRes.recordset.map((r) => r.PANO_NO || "Pano");
+      panoCount = panoNames.length;
+    } catch {}
+
+    // 2. Vezne tanımları
+    let vezneNames: string[] = [];
+    try {
+      const vRes = await pool
+        .request()
+        .input("paraId", sql.Int, paraId)
+        .query<{ AD: string; KOD: string }>("SELECT KOD, AD FROM [dbo].[TODVZ_VEZNE] WHERE [PARA_ID] = @paraId");
+      vezneNames = vRes.recordset.map((v) => `${v.KOD} - ${v.AD}`);
+    } catch {}
+
+    // 3. Vezne bakiyeleri
+    let totalBakiye = 0;
+    let hasBakiye = false;
+    let bakiyeDetails: { vezneKod: string; vezneAd: string; miktar: number }[] = [];
+    try {
+      const bRes = await pool
+        .request()
+        .input("paraId", sql.Int, paraId)
+        .query<{ VEZNE_KOD: string; VEZNE_AD: string; MIKTAR: number }>(`
+          SELECT 
+            LTRIM(RTRIM(ISNULL(V.[KOD], ''))) as VEZNE_KOD, 
+            LTRIM(RTRIM(ISNULL(V.[AD], ''))) as VEZNE_AD, 
+            VB.[MIKTAR] 
+          FROM [dbo].[TODVZ_VEZNE_BAKIYE] VB
+          INNER JOIN [dbo].[TODVZ_VEZNE] V ON V.[VEZNE_ID] = VB.[VEZNE_ID]
+          WHERE VB.[PARA_ID] = @paraId AND ABS(ISNULL(VB.[MIKTAR], 0)) > 0.00001
+        `);
+      bakiyeDetails = bRes.recordset.map((r) => ({
+        vezneKod: r.VEZNE_KOD,
+        vezneAd: r.VEZNE_AD,
+        miktar: Number(r.MIKTAR || 0),
+      }));
+      totalBakiye = bakiyeDetails.reduce((acc, cur) => acc + cur.miktar, 0);
+      hasBakiye = bakiyeDetails.length > 0;
+    } catch {}
+
+    // 4. Banknot sayısı
+    let banknotCount = 0;
+    try {
+      const bnRes = await pool
+        .request()
+        .input("paraId", sql.Int, paraId)
+        .query<{ C: number }>("SELECT COUNT(*) as C FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
+      banknotCount = bnRes.recordset[0]?.C || 0;
+    } catch {}
+
+    // 5. Kur sayısı
+    let kurCount = 0;
+    try {
+      const kRes = await pool
+        .request()
+        .input("paraId", sql.Int, paraId)
+        .query<{ C: number }>("SELECT COUNT(*) as C FROM [dbo].[TODVZ_KUR] WHERE [PARA_ID] = @paraId");
+      kurCount = kRes.recordset[0]?.C || 0;
+    } catch {}
+
+    // 6. Fiş kayıtları
+    let fisCount = 0;
+    try {
+      const fRes = await pool
+        .request()
+        .input("paraId", sql.Int, paraId)
+        .query<{ C: number }>("SELECT COUNT(*) as C FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] WHERE [URUN_ID] = @paraId");
+      fisCount = fRes.recordset[0]?.C || 0;
+    } catch {}
+
+    return {
+      hasPano: panoCount > 0,
+      panoCount,
+      panoNames,
+      hasVezne: vezneNames.length > 0,
+      vezneNames,
+      hasBakiye,
+      totalBakiye,
+      bakiyeDetails,
+      banknotCount,
+      kurCount,
+      hasFis: fisCount > 0,
+      fisCount,
+    };
+  }
+
+  /**
+   * Deletes a currency completely (TODVZ_BANKNOT, TODVZ_KUR, TODVZ_PANO_SATIRI, TODVZ_VEZNE_BAKIYE, TODVZ_VEZNE, TODVZ_PARA)
+   */
   public static async deleteCurrency(
     paraId: number,
+    options?: { force?: boolean },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<boolean> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTableExists(pool);
 
-    // 1. Check if currency is assigned to any Vezne
-    try {
-      const vezneCheck = await pool
-        .request()
-        .input("paraId", sql.Int, paraId)
-        .query<{ COUNT: number }>("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_VEZNE] WHERE [PARA_ID] = @paraId");
+    const isForce = options?.force === true;
 
-      if (vezneCheck.recordset[0]?.COUNT > 0) {
-        throw ApiError.badRequest(
-          "Bu para birimine bağlı vezne tanımları bulunmaktadır. Önce ilgili veznelerdeki para birimini değiştiriniz."
-        );
+    // 1. If NOT force, check vezne definition assignment
+    if (!isForce) {
+      try {
+        const vezneCheck = await pool
+          .request()
+          .input("paraId", sql.Int, paraId)
+          .query<{ COUNT: number }>("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_VEZNE] WHERE [PARA_ID] = @paraId");
+
+        if (vezneCheck.recordset[0]?.COUNT > 0) {
+          throw ApiError.badRequest(
+            "Bu para birimine bağlı vezne tanımları bulunmaktadır. 'Yine de Sil' seçeneği ile veznelerden de temizleyebilirsiniz."
+          );
+        }
+      } catch (e: any) {
+        if (e?.statusCode) throw e;
       }
-    } catch (e: any) {
-      if (e?.statusCode) throw e;
     }
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
-      // 2. Delete all banknotes from TODVZ_BANKNOT for this currency
+      // 2. If assigned to any Vezne (TODVZ_VEZNE), reset them to TL (PARA_ID = 1) or NULL
+      await new sql.Request(transaction)
+        .input("paraId", sql.Int, paraId)
+        .query(`
+          UPDATE [dbo].[TODVZ_VEZNE] 
+          SET [PARA_ID] = 1 
+          WHERE [PARA_ID] = @paraId;
+        `);
+
+      // 3. Delete all balance records from TODVZ_VEZNE_BAKIYE for this currency
+      await new sql.Request(transaction)
+        .input("paraId", sql.Int, paraId)
+        .query("DELETE FROM [dbo].[TODVZ_VEZNE_BAKIYE] WHERE [PARA_ID] = @paraId");
+
+      // 4. Delete from TODVZ_VEZNE_TRANSFERI_SATIRI if exists
+      try {
+        await new sql.Request(transaction)
+          .input("paraId", sql.Int, paraId)
+          .query(`
+            IF EXISTS (SELECT * FROM sys.tables WHERE name = 'TODVZ_VEZNE_TRANSFERI_SATIRI')
+            BEGIN
+              DELETE FROM [dbo].[TODVZ_VEZNE_TRANSFERI_SATIRI] WHERE [PARA_ID] = @paraId;
+            END
+          `);
+      } catch (e) {
+        logger.warn("Transfer satiri cleanup:", e);
+      }
+
+      // 5. Delete display rows from TODVZ_PANO_SATIRI so price boards do not block currency deletion
+      try {
+        await new sql.Request(transaction)
+          .input("paraId", sql.Int, paraId)
+          .query(`
+            IF EXISTS (SELECT * FROM sys.tables WHERE name = 'TODVZ_PANO_SATIRI')
+            BEGIN
+              DELETE FROM [dbo].[TODVZ_PANO_SATIRI] WHERE [PARA_ID] = @paraId;
+            END
+          `);
+      } catch (panoDelErr) {
+        logger.warn(`Could not delete from TODVZ_PANO_SATIRI for paraId ${paraId}:`, panoDelErr);
+      }
+
+      // 6. Delete all banknotes from TODVZ_BANKNOT for this currency
       await new sql.Request(transaction)
         .input("paraId", sql.Int, paraId)
         .query("DELETE FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
 
-      // 3. Delete rates from TODVZ_KUR for this currency
+      // 7. Delete rates from TODVZ_KUR for this currency
       await new sql.Request(transaction)
         .input("paraId", sql.Int, paraId)
         .query("DELETE FROM [dbo].[TODVZ_KUR] WHERE [PARA_ID] = @paraId");
 
-      // 4. Delete the currency from TODVZ_PARA
+      // 8. Reset FAVORI_PARA_ID references in TODVZ_SARRAF_FISI and TODVZ_CARI_KART to 1 (TL)
+      try {
+        await new sql.Request(transaction)
+          .input("paraId", sql.Int, paraId)
+          .query(`
+            UPDATE [dbo].[TODVZ_SARRAF_FISI] SET [FAVORI_PARA_ID] = 1 WHERE [FAVORI_PARA_ID] = @paraId;
+            UPDATE [dbo].[TODVZ_CARI_KART] SET [FAVORI_PARA_ID] = 1 WHERE [FAVORI_PARA_ID] = @paraId;
+          `);
+      } catch (favErr) {
+        logger.warn("Favori para reset warning:", favErr);
+      }
+
+      // 9. If force, clean up receipts or test transactions tied to this currency
+      if (isForce) {
+        try {
+          await new sql.Request(transaction)
+            .input("paraId", sql.Int, paraId)
+            .query(`
+              DELETE FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] WHERE [URUN_ID] = @paraId;
+              DELETE FROM [dbo].[TODVZ_CARI_DEKONT_SATIRI] WHERE [PARA_ID] = @paraId;
+              DELETE FROM [dbo].[TODVZ_ODEME_SATIRI] WHERE [PARA_ID] = @paraId;
+              DELETE FROM [dbo].[TODVZ_BANKA_HAREKET_SATIRI] WHERE [PARA_ID] = @paraId;
+            `);
+        } catch (forceErr) {
+          logger.warn("Force clean receipts warning:", forceErr);
+        }
+      }
+
+      // 10. Delete the currency from TODVZ_PARA
       const delRes = await new sql.Request(transaction)
         .input("paraId", sql.Int, paraId)
         .query("DELETE FROM [dbo].[TODVZ_PARA] WHERE [PARA_ID] = @paraId");
@@ -408,8 +607,8 @@ export class BanknotSqlRepository {
 
       const msg = err?.message || "";
       if (err?.number === 547 || msg.includes("REFERENCE constraint") || msg.includes("FOREIGN KEY")) {
-        if (msg.includes("TODVZ_FIS") || msg.includes("FIS_SATIRI")) {
-          throw ApiError.badRequest("Bu para birimi ile yapılmış döviz alış/satış fişleri bulunmaktadır. Geçmiş fiş hareketi olan para birimleri silinemez.");
+        if (msg.includes("TODVZ_FIS") || msg.includes("FIS_SATIRI") || msg.includes("TODVZ_SARRAF_FISI")) {
+          throw ApiError.badRequest("Bu para birimi ile yapılmış döviz veya altın alış/satış fişleri bulunmaktadır. Geçmiş fiş hareketi olan para birimleri silinemez.");
         }
         if (msg.includes("TODVZ_CARI")) {
           throw ApiError.badRequest("Bu para birimi ile yapılmış cari hesap hareketleri bulunmaktadır. Geçmiş hareketi olan para birimleri silinemez.");
@@ -418,13 +617,16 @@ export class BanknotSqlRepository {
           throw ApiError.badRequest("Bu para birimine ait kasa veya hesap hareketleri bulunmaktadır. Geçmiş hareketi olan para birimleri silinemez.");
         }
         if (msg.includes("TODVZ_BANKA")) {
-          throw ApiError.badRequest("Bu para birimine bağlı banka hareketleri bulunmaktadır. Geçmiş hareketi olan para birimleri silinemez.");
+          throw ApiError.badRequest("Bu para birimine bağlı banka hareketleri veya hesapları bulunmaktadır. Geçmiş hareketi olan para birimleri silinemez.");
         }
         if (msg.includes("TODVZ_VEZNE")) {
-          throw ApiError.badRequest("Bu para birimine bağlı vezne tanımları bulunmaktadır. Önce ilgili veznelerdeki para birimini değiştiriniz.");
+          throw ApiError.badRequest("Bu para birimine bağlı vezne tanımları bulunmaktadır. Önce 'Vezne Tanımları' sayfasından ilgili veznelerdeki para birimini değiştiriniz.");
+        }
+        if (msg.includes("TODVZ_TANIM")) {
+          throw ApiError.badRequest("Bu para birimi şirket genel ayarlarında (varsayılan döviz, rapor para birimi vb.) tanımlıdır. Önce 'Firma Tanımları' sayfasından bu ayarı değiştiriniz.");
         }
         if (msg.includes("TODVZ_PANO")) {
-          throw ApiError.badRequest("Bu para birimi fiyat panosunda yer almaktadır. Önce pano satırlarından çıkarınız.");
+          throw ApiError.badRequest("Bu para birimi fiyat panosunda yer almaktadır. Önce 'Pano Tanımı' sayfasından ilgili satırı çıkarınız.");
         }
         throw ApiError.badRequest("Bu para birimine bağlı geçmiş işlem, fiş veya hesap hareketleri bulunduğu için silinemez.");
       }

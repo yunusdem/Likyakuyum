@@ -20,7 +20,7 @@ const ThemeToggle = React.forwardRef<HTMLButtonElement, { onClick: (e: React.Mou
     <Button
       ref={ref}
       variant="ghost"
-      className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-secondary p-0"
+      className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-dark p-0"
       onClick={(e) => {
         e.preventDefault();
         onClick(e);
@@ -28,7 +28,7 @@ const ThemeToggle = React.forwardRef<HTMLButtonElement, { onClick: (e: React.Mou
       title="Tema ve Renk Seçimi"
       style={{ width: "32px", height: "32px" }}
     >
-      <IconPalette size={18} strokeWidth={1.75} />
+      <IconPalette size={18} strokeWidth={2.1} />
     </Button>
   )
 );

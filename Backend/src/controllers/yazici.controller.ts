@@ -48,11 +48,21 @@ export class YaziciController {
   });
 
   /**
+   * GET /api/v1/yazici/usage/:id
+   */
+  public static getYaziciUsage = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = YaziciController.getDbContext(req);
+    const usage = await YaziciService.getYaziciUsage(req.params.id, dbContext);
+    return ApiResponse.ok(res, "Yazıcı kullanım durumu getirildi.", usage);
+  });
+
+  /**
    * DELETE /api/v1/yazici/:id
    */
   public static deleteYazici = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = YaziciController.getDbContext(req);
-    await YaziciService.deleteYazici(req.params.id, dbContext);
+    const isForce = req.query.force === "true";
+    await YaziciService.deleteYazici(req.params.id, { force: isForce }, dbContext);
     return ApiResponse.ok(res, "Yazıcı tanımı başarıyla silindi.", { id: req.params.id });
   });
 

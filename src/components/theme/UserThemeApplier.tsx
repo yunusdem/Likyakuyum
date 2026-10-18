@@ -24,7 +24,16 @@ export function applyAppearanceToDOM(appearance?: any) {
   const root = document.documentElement;
 
   // 0. Sidebar Layout Style Mode (Kullanıcı seçmemişse veya tanımsızsa daima 2. Klasik Sabit Menü "classic" gelir)
-  const rawStyle = appearance?.sidebarStyle;
+  let rawStyle = appearance?.sidebarStyle;
+  if (!rawStyle) {
+    try {
+      const cached = localStorage.getItem("kuyumcu_active_appearance");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.sidebarStyle) rawStyle = parsed.sidebarStyle;
+      }
+    } catch {}
+  }
   const validStyles = ["hover", "classic", "flyout", "topbar", "dual", "megamenu"];
   const sidebarStyle = (rawStyle && validStyles.includes(rawStyle)) ? rawStyle : "classic";
   root.setAttribute("data-sidebar-style", sidebarStyle);
@@ -377,7 +386,9 @@ export const UserThemeApplier: React.FC = () => {
       }
 
       .sidebar-backdrop {
-        background-color: var(--user-menu-backdrop, rgba(0, 0, 0, 0.5)) !important;
+        background-color: rgba(255, 255, 255, 0.12) !important;
+        backdrop-filter: blur(4px) !important;
+        -webkit-backdrop-filter: blur(4px) !important;
       }
 
       /* 7. Definition Pages (Ürün, Vezne, Yazıcı Tanımları) Theme Integration */
@@ -658,24 +669,61 @@ export const UserThemeApplier: React.FC = () => {
         font-weight: 600;
       }
 
-      /* 4. TOPBAR & 6. MEGAMENU MODLARI: Masaüstünde (>=1200px) Dikey Sidebar Gizlenir, Üst Menü Görünür */
+      /* 4. TOPBAR & 6. MEGAMENU MODLARI: Masaüstünde (>=1200px) Dikey Sidebar ASLA Açılmaz, Üst Menü Görünür */
       @media (min-width: 1200px) {
         html[data-sidebar-style="topbar"] #miniSidebar,
         html[data-sidebar-style="megamenu"] #miniSidebar,
-        html[data-sidebar-style="drawer"] #miniSidebar {
+        html[data-sidebar-style="drawer"] #miniSidebar,
+        html.expanded[data-sidebar-style="topbar"] #miniSidebar,
+        html.expanded[data-sidebar-style="megamenu"] #miniSidebar,
+        html.expanded[data-sidebar-style="drawer"] #miniSidebar {
           display: none !important;
+          width: 0 !important;
+          transform: translateX(-100%) !important;
         }
         html[data-sidebar-style="topbar"] .sidebar-backdrop,
         html[data-sidebar-style="megamenu"] .sidebar-backdrop,
-        html[data-sidebar-style="drawer"] .sidebar-backdrop {
+        html[data-sidebar-style="drawer"] .sidebar-backdrop,
+        html.expanded[data-sidebar-style="topbar"] .sidebar-backdrop,
+        html.expanded[data-sidebar-style="megamenu"] .sidebar-backdrop,
+        html.expanded[data-sidebar-style="drawer"] .sidebar-backdrop {
           display: none !important;
         }
         html[data-sidebar-style="topbar"] #content,
         html[data-sidebar-style="megamenu"] #content,
-        html[data-sidebar-style="drawer"] #content {
+        html[data-sidebar-style="drawer"] #content,
+        html.expanded[data-sidebar-style="topbar"] #content,
+        html.expanded[data-sidebar-style="megamenu"] #content,
+        html.expanded[data-sidebar-style="drawer"] #content {
           margin-left: 0 !important;
           width: 100% !important;
           min-width: 100% !important;
+        }
+        html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
+        html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
+        html[data-sidebar-style="drawer"] .sidebar-toggle-btn,
+        body[data-sidebar-style="topbar"] .sidebar-toggle-btn,
+        body[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
+        body[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+          display: none !important;
+        }
+      }
+
+      /* Küçük ekranlarda (< 1200px) üst menü seçili olsa bile sol menü oku KESİNLİKLE görünür ve tıklanabilir */
+      @media (max-width: 1199.98px) {
+        .sidebar-toggle-btn,
+        html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
+        html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
+        html[data-sidebar-style="drawer"] .sidebar-toggle-btn,
+        body[data-sidebar-style="topbar"] .sidebar-toggle-btn,
+        body[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
+        body[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+          display: inline-flex !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          pointer-events: auto !important;
+          width: 32px !important;
+          height: 32px !important;
         }
       }
 
@@ -687,6 +735,11 @@ export const UserThemeApplier: React.FC = () => {
         right: 0 !important;
         width: 100% !important;
         margin-left: 0 !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+        text-rendering: optimizeLegibility !important;
       }
 
       /* 5. DUAL MODU: Çift Kademeli İkon Şeridi + Yan Panel */

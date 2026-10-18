@@ -70,6 +70,19 @@ export class BanknotController {
         return ApiResponse.ok(res, "Banknot tanımları temizlendi.", { paraId });
     });
     /**
+     * GET /api/v1/banknot/currency-usage/:paraId
+     * Checks where this currency is used (pano, vezne, bakiye, fiş)
+     */
+    static getCurrencyUsage = asyncHandler(async (req, res) => {
+        const dbContext = BanknotController.getDbContext(req);
+        const paraId = Number(req.params.paraId);
+        if (!paraId || isNaN(paraId)) {
+            throw ApiError.badRequest("Geçerli bir Para ID parametresi girilmelidir.");
+        }
+        const usage = await BanknotSqlRepository.getCurrencyUsage(paraId, dbContext);
+        return ApiResponse.ok(res, "Para birimi kullanım durumu getirildi.", usage);
+    });
+    /**
      * DELETE /api/v1/banknot/currency/:paraId
      * Deletes the currency completely from TODVZ_PARA along with its banknotes
      */
@@ -79,7 +92,8 @@ export class BanknotController {
         if (!paraId || isNaN(paraId)) {
             throw ApiError.badRequest("Geçerli bir Para ID parametresi girilmelidir.");
         }
-        await BanknotSqlRepository.deleteCurrency(paraId, dbContext);
+        const isForce = req.query.force === "true" || req.body?.force === true;
+        await BanknotSqlRepository.deleteCurrency(paraId, { force: isForce }, dbContext);
         return ApiResponse.ok(res, "Para birimi ve banknotları veritabanından başarıyla silindi.", { paraId });
     });
 }

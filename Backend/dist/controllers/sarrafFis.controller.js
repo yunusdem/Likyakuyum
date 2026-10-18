@@ -2,6 +2,7 @@ import { SarrafFisService } from "../services/sarrafFis.service.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
 import { bankaHesabiDenetle, sarrafKurDenetle } from "../services/yetki/fisIcerikYetkisi.js";
+import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 export const SarrafFisController = {
     getDbContext(req) {
         return {
@@ -93,6 +94,7 @@ export const SarrafFisController = {
                 dto.fisNo = dto.belgeNo = dto.irsaliyeNo = nolar.IRSALIYE_NO ?? null;
             }
             const result = await SarrafFisService.saveFis(dto, dbContext);
+            notifyVezneBakiyeDegisti({ type: "sarraf", id: result?.sarrafFisiId });
             res.json({ success: true, data: result });
         }
         catch (err) {
@@ -108,6 +110,7 @@ export const SarrafFisController = {
                 return res.status(400).json({ success: false, message: "Geçersiz ID" });
             await kayitErisimi(req, "sarraf", id);
             await SarrafFisService.deleteFis(id, kullaniciId, dbContext);
+            notifyVezneBakiyeDegisti({ type: "sarraf_delete", id });
             res.json({ success: true });
         }
         catch (err) {

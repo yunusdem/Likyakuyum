@@ -158,30 +158,181 @@ export class YaziciSqlRepository {
             throw error;
         }
     }
-    static async delete(id, dbContext) {
+    /**
+     * Checks where a printer is currently assigned/used (Vezneler, Kullanıcılar, Numaratörler)
+     */
+    static async getYaziciUsage(id, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        const parsedId = parseInt(String(id), 10);
+        // 1. Vezne kullanımı
+        let vezneDetails = [];
         try {
-            const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-            const parsedId = parseInt(String(id), 10);
-            // Check if printer is assigned to any Cash Desk (TODVZ_VEZNE)
-            const vezneCheck = await pool.request()
+            const vRes = await pool.request()
                 .input("yaziciId", sql.Int, parsedId)
                 .query(`
-          SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_VEZNE]
+          SELECT 
+            LTRIM(RTRIM(ISNULL(KOD, ''))) as VEZNE_KOD,
+            LTRIM(RTRIM(ISNULL(AD, ''))) as VEZNE_AD,
+            ALIS_FISI_YAZICI_ID,
+            SATIS_FISI_YAZICI_ID,
+            ALTIN_ALIS_FISI_YAZICI_ID,
+            ALTIN_SATIS_FISI_YAZICI_ID,
+            MUSTERI_TANI_FORMU_YAZICI_ID
+          FROM [dbo].[TODVZ_VEZNE]
           WHERE [ALIS_FISI_YAZICI_ID] = @yaziciId 
              OR [SATIS_FISI_YAZICI_ID] = @yaziciId
              OR [ALTIN_ALIS_FISI_YAZICI_ID] = @yaziciId
              OR [ALTIN_SATIS_FISI_YAZICI_ID] = @yaziciId
              OR [MUSTERI_TANI_FORMU_YAZICI_ID] = @yaziciId
         `);
-            if (vezneCheck.recordset[0]?.COUNT > 0) {
-                throw ApiError.badRequest("Bu yazıcıya bağlı vezne tanımları bulunmaktadır. Önce ilgili veznelerdeki yazıcı seçimini değiştiriniz.");
-            }
-            // Check if assigned to any user
-            const userCheck = await pool.request()
+            vezneDetails = vRes.recordset.map((r) => {
+                const roles = [];
+                if (r.ALIS_FISI_YAZICI_ID === parsedId)
+                    roles.push("Döviz Alış Fişi");
+                if (r.SATIS_FISI_YAZICI_ID === parsedId)
+                    roles.push("Döviz Satış Fişi");
+                if (r.ALTIN_ALIS_FISI_YAZICI_ID === parsedId)
+                    roles.push("Altın Alış Fişi");
+                if (r.ALTIN_SATIS_FISI_YAZICI_ID === parsedId)
+                    roles.push("Altın Satış Fişi");
+                if (r.MUSTERI_TANI_FORMU_YAZICI_ID === parsedId)
+                    roles.push("Müşteri Tanıma Formu");
+                return {
+                    vezneKod: r.VEZNE_KOD,
+                    vezneAd: r.VEZNE_AD,
+                    roles,
+                };
+            });
+        }
+        catch (err) {
+            logger.warn("YaziciSqlRepository.getYaziciUsage vezne check warning:", err);
+        }
+        // 2. Kullanıcı kullanımı
+        let kullaniciNames = [];
+        try {
+            const uRes = await pool.request()
                 .input("yaziciId", sql.Int, parsedId)
-                .query("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_KULLANICI] WHERE [YAZICI_ID] = @yaziciId");
-            if (userCheck.recordset[0]?.COUNT > 0) {
-                throw ApiError.badRequest("Bu yazıcıya atanmış kullanıcılar bulunmaktadır. Önce kullanıcıların yazıcı atamasını değiştiriniz.");
+                .query(`
+          SELECT LTRIM(RTRIM(ISNULL(AD, ''))) as AD
+          FROM [dbo].[TODVZ_KULLANICI]
+          WHERE [YAZICI_ID] = @yaziciId
+        `);
+            kullaniciNames = uRes.recordset.map((r) => r.AD || "Kullanıcı");
+        }
+        catch (err) {
+            logger.warn("YaziciSqlRepository.getYaziciUsage user check warning:", err);
+        }
+        // 3. Numaratör kullanımı
+        let numeratorDetails = [];
+        try {
+            const nRes = await pool.request()
+                .input("yaziciId", sql.Int, parsedId)
+                .query(`
+          SELECT TUR, LTRIM(RTRIM(ISNULL(ONEK, ''))) as ONEK
+          FROM [dbo].[TODVZ_NUMERATOR]
+          WHERE [YAZICI_ID] = @yaziciId
+        `);
+            numeratorDetails = nRes.recordset.map((r) => ({
+                tur: r.TUR,
+                onek: r.ONEK || "-",
+            }));
+        }
+        catch (err) {
+            logger.warn("YaziciSqlRepository.getYaziciUsage numerator check warning:", err);
+        }
+        return {
+            hasVezne: vezneDetails.length > 0,
+            vezneCount: vezneDetails.length,
+            vezneDetails,
+            hasKullanici: kullaniciNames.length > 0,
+            kullaniciCount: kullaniciNames.length,
+            kullaniciNames,
+            hasNumerator: numeratorDetails.length > 0,
+            numeratorCount: numeratorDetails.length,
+            numeratorDetails,
+        };
+    }
+    static async delete(id, options, dbContext) {
+        try {
+            const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+            const parsedId = parseInt(String(id), 10);
+            // Force delete: Veznelerdeki, kullanıcılardaki ve numaratörlerdeki bağlantıları temizle
+            if (options?.force) {
+                // 1. Veznelerdeki fiş ve form yazıcı atamalarını sıfırla (NULL yap)
+                try {
+                    await pool.request()
+                        .input("yaziciId", sql.Int, parsedId)
+                        .query(`
+              UPDATE [dbo].[TODVZ_VEZNE]
+              SET 
+                [ALIS_FISI_YAZICI_ID] = CASE WHEN [ALIS_FISI_YAZICI_ID] = @yaziciId THEN NULL ELSE [ALIS_FISI_YAZICI_ID] END,
+                [SATIS_FISI_YAZICI_ID] = CASE WHEN [SATIS_FISI_YAZICI_ID] = @yaziciId THEN NULL ELSE [SATIS_FISI_YAZICI_ID] END,
+                [ALTIN_ALIS_FISI_YAZICI_ID] = CASE WHEN [ALTIN_ALIS_FISI_YAZICI_ID] = @yaziciId THEN NULL ELSE [ALTIN_ALIS_FISI_YAZICI_ID] END,
+                [ALTIN_SATIS_FISI_YAZICI_ID] = CASE WHEN [ALTIN_SATIS_FISI_YAZICI_ID] = @yaziciId THEN NULL ELSE [ALTIN_SATIS_FISI_YAZICI_ID] END,
+                [MUSTERI_TANI_FORMU_YAZICI_ID] = CASE WHEN [MUSTERI_TANI_FORMU_YAZICI_ID] = @yaziciId THEN NULL ELSE [MUSTERI_TANI_FORMU_YAZICI_ID] END
+              WHERE [ALIS_FISI_YAZICI_ID] = @yaziciId 
+                 OR [SATIS_FISI_YAZICI_ID] = @yaziciId
+                 OR [ALTIN_ALIS_FISI_YAZICI_ID] = @yaziciId
+                 OR [ALTIN_SATIS_FISI_YAZICI_ID] = @yaziciId
+                 OR [MUSTERI_TANI_FORMU_YAZICI_ID] = @yaziciId;
+            `);
+                }
+                catch (vErr) {
+                    logger.warn("YaziciSqlRepository.delete cleanup vezne warning:", vErr);
+                }
+                // 2. Kullanıcılardaki yazıcı atamasını sıfırla (NULL yap)
+                try {
+                    await pool.request()
+                        .input("yaziciId", sql.Int, parsedId)
+                        .query(`
+              UPDATE [dbo].[TODVZ_KULLANICI]
+              SET [YAZICI_ID] = NULL
+              WHERE [YAZICI_ID] = @yaziciId;
+            `);
+                }
+                catch (uErr) {
+                    logger.warn("YaziciSqlRepository.delete cleanup user warning:", uErr);
+                }
+                // 3. Yazıcıya bağlı numaratör satırlarını sil
+                try {
+                    await pool.request()
+                        .input("yaziciId", sql.Int, parsedId)
+                        .query(`
+              DELETE FROM [dbo].[TODVZ_NUMERATOR]
+              WHERE [YAZICI_ID] = @yaziciId;
+            `);
+                }
+                catch (nErr) {
+                    logger.warn("YaziciSqlRepository.delete cleanup numerator warning:", nErr);
+                }
+            }
+            else {
+                // Normal delete: Kontrolleri çalıştır
+                const vezneCheck = await pool.request()
+                    .input("yaziciId", sql.Int, parsedId)
+                    .query(`
+            SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_VEZNE]
+            WHERE [ALIS_FISI_YAZICI_ID] = @yaziciId 
+               OR [SATIS_FISI_YAZICI_ID] = @yaziciId
+               OR [ALTIN_ALIS_FISI_YAZICI_ID] = @yaziciId
+               OR [ALTIN_SATIS_FISI_YAZICI_ID] = @yaziciId
+               OR [MUSTERI_TANI_FORMU_YAZICI_ID] = @yaziciId
+          `);
+                if (vezneCheck.recordset[0]?.COUNT > 0) {
+                    throw ApiError.badRequest("Bu yazıcıya bağlı vezne tanımları bulunmaktadır. Önce ilgili veznelerdeki yazıcı seçimini değiştiriniz.");
+                }
+                const userCheck = await pool.request()
+                    .input("yaziciId", sql.Int, parsedId)
+                    .query("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_KULLANICI] WHERE [YAZICI_ID] = @yaziciId");
+                if (userCheck.recordset[0]?.COUNT > 0) {
+                    throw ApiError.badRequest("Bu yazıcıya atanmış kullanıcılar bulunmaktadır. Önce kullanıcıların yazıcı atamasını değiştiriniz.");
+                }
+                const numCheck = await pool.request()
+                    .input("yaziciId", sql.Int, parsedId)
+                    .query("SELECT COUNT(*) as COUNT FROM [dbo].[TODVZ_NUMERATOR] WHERE [YAZICI_ID] = @yaziciId");
+                if (numCheck.recordset[0]?.COUNT > 0) {
+                    throw ApiError.badRequest("Bu yazıcıya ait numaratör tanımları bulunmaktadır.");
+                }
             }
             const request = pool.request();
             request.input("YAZICI_ID", sql.Int, parsedId);

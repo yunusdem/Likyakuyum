@@ -28,6 +28,7 @@ import {
   PrinterService,
   YaziciItem,
   YaziciFormData,
+  YaziciUsageInfo,
 } from "../../services/printerService";
 
 
@@ -60,7 +61,11 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    yazici: YaziciItem;
+    loadingUsage?: boolean;
+    usage?: YaziciUsageInfo;
+  } | null>(null);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
 
   // Load all printers
@@ -216,17 +221,53 @@ export const PrinterDefinitionsPage: React.FC = () => {
   };
 
 
-  const handleDelete = async () => {
-    if (!selectedYazici || isNewRecord) return;
+  const handleOpenDeleteConfirm = (yazici: YaziciItem) => {
+    setDeleteConfirm({
+      yazici,
+      loadingUsage: true,
+    });
+
+    PrinterService.getYaziciUsage(yazici.id)
+      .then((usage) => {
+        setDeleteConfirm((prev) =>
+          prev && prev.yazici.id === yazici.id
+            ? { ...prev, loadingUsage: false, usage }
+            : prev
+        );
+      })
+      .catch(() => {
+        setDeleteConfirm((prev) =>
+          prev && prev.yazici.id === yazici.id
+            ? { ...prev, loadingUsage: false }
+            : prev
+        );
+      });
+  };
+
+  const handleExecuteDelete = async (
+    yazici: YaziciItem,
+    usage?: YaziciUsageInfo
+  ) => {
+    setDeleteConfirm(null);
     try {
       setIsSaving(true);
-      setShowDeleteModal(false);
-      await PrinterService.deleteYazici(selectedYazici.id);
-      setAlertSuccess(`✅ "${selectedYazici.ad}" yazıcısı başarıyla silindi.`);
+      await PrinterService.deleteYazici(yazici.id, { force: true });
+
+      const cleanedParts: string[] = [];
+      if (usage?.hasVezne) cleanedParts.push("vezne tanımlarından");
+      if (usage?.hasKullanici) cleanedParts.push("kullanıcı atamalarından");
+      if (usage?.hasNumerator) cleanedParts.push("numaratör serilerinden");
+      cleanedParts.push("yazıcı tanımlarından ve sistemden");
+
+      setAlertSuccess(
+        `✅ "${yazici.ad}" yazıcısı; ${cleanedParts.join(", ")} başarıyla silindi ve temizlendi.`
+      );
       await loadData(Math.max(0, selectedIndex - 1));
-      setTimeout(() => setAlertSuccess(null), 4000);
+      setTimeout(() => setAlertSuccess(null), 5000);
     } catch (err: any) {
-      setAlertError(`❌ Silme Başarısız: ${err.message || "Yazıcı silinirken bir hata oluştu."}`);
+      setAlertError(
+        `❌ Silme Başarısız: ${err.message || "Yazıcı silinirken bir hata oluştu."}`
+      );
     } finally {
       setIsSaving(false);
     }
@@ -269,7 +310,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
         onSearch={() => setShowLookupModal(true)}
         onDelete={() => {
           if (selectedYazici && !isNewRecord) {
-            setShowDeleteModal(true);
+            handleOpenDeleteConfirm(selectedYazici);
           }
         }}
         onFirst={() => handleNavigate("first")}
@@ -514,27 +555,212 @@ export const PrinterDefinitionsPage: React.FC = () => {
         }}
       />
 
-      {/* Delete Confirmation Modal */}
-      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="fs-5 text-danger d-flex align-items-center gap-2">
-            <IconTrash size={20} /> Yazıcı Silme Onayı
+      {/* Yazıcı Silme Onay Popup'ı (Sayfa ortasında, nerelerden silineceğini açıkça listeleyen popup) */}
+      <Modal
+        show={!!deleteConfirm}
+        onHide={() => !isSaving && setDeleteConfirm(null)}
+        centered
+        backdrop="static"
+        keyboard={!isSaving}
+        size="lg"
+        className="delete-confirmation-modal"
+      >
+        <Modal.Header closeButton={!isSaving} className="bg-light py-2.5 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconAlertCircle size={20} className="text-danger" />
+            <span>Yazıcı Silme Bildirimi</span>
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
-          <p className="mb-2">
-            <strong>[{selectedYazici?.siraNo}] {selectedYazici?.ad}</strong> yazıcısını veritabanından kalıcı olarak silmek istediğinize emin misiniz?
-          </p>
-          <p className="small text-danger mb-0">
-            ⚠️ Bu işlem geri alınamaz. Eğer bu yazıcı herhangi bir Vezneye veya Kullanıcıya atanmışsa silme işlemi engellenecektir.
-          </p>
+        <Modal.Body className="p-3.5">
+          <div className="d-flex align-items-center gap-2 mb-3 pb-2.5 border-bottom">
+            <div
+              className="p-2.5 rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center"
+              style={{ backgroundColor: "#fee2e2", color: "#dc2626" }}
+            >
+              <IconTrash size={26} />
+            </div>
+            <div className="flex-grow-1">
+              <div className="d-flex align-items-center gap-2">
+                <span className="fw-bold fs-5 text-dark">{deleteConfirm?.yazici.ad}</span>
+                <Badge bg="danger" className="text-uppercase px-2.5 py-1 fs-7">
+                  Sıra No: {deleteConfirm?.yazici.siraNo}
+                </Badge>
+                {deleteConfirm?.yazici.baglantiNoktasi && (
+                  <Badge bg="secondary" className="px-2 py-1 fs-7">
+                    Port: {deleteConfirm.yazici.baglantiNoktasi}
+                  </Badge>
+                )}
+              </div>
+              <div className="text-secondary small mt-0.5">
+                Bu yazıcının sistemdeki kullanım alanları ve silineceği yerler aşağıda listelenmiştir:
+              </div>
+            </div>
+          </div>
+
+          {deleteConfirm?.loadingUsage ? (
+            <div className="py-4 text-center text-muted small d-flex flex-column align-items-center gap-2">
+              <Spinner size="sm" animation="border" variant="danger" />
+              <span>Yazıcının veritabanındaki kullanım alanları taranıyor...</span>
+            </div>
+          ) : (
+            <div>
+              <div className="fw-bold text-dark small mb-2 d-flex align-items-center gap-1.5">
+                <span>Silme İşleminde Temizlenecek ve Kaldırılacak Yerler:</span>
+              </div>
+
+              <div className="d-flex flex-column gap-2 mb-3">
+                {/* 1. Vezne Tanımları (Fiş ve Form Yazıcıları) */}
+                {deleteConfirm?.usage?.hasVezne ? (
+                  <div className="p-2.5 rounded border border-danger-subtle bg-danger-subtle bg-opacity-25 d-flex align-items-start gap-2.5">
+                    <IconPrinter size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-danger small">
+                          1. Vezne Tanımları ({deleteConfirm.usage.vezneCount} Adet Vezne)
+                        </strong>
+                        <Badge bg="danger">Yazıcı Seçimleri Sıfırlanacak</Badge>
+                      </div>
+                      <div className="mt-1 small">
+                        <div className="text-dark mb-1">Bu yazıcının tanımlı olduğu vezneler ve fiş tipleri:</div>
+                        <div className="d-flex flex-column gap-1 bg-white p-2 rounded border border-danger-subtle">
+                          {deleteConfirm.usage.vezneDetails?.map((v, idx) => (
+                            <div key={idx} className="d-flex justify-content-between align-items-center text-dark">
+                              <span><strong>{v.vezneKod}</strong> - {v.vezneAd}</span>
+                              <div className="d-flex gap-1 flex-wrap">
+                                {v.roles.map((r, rIdx) => (
+                                  <span key={rIdx} className="badge bg-light text-danger border border-danger-subtle fw-semibold">
+                                    {r}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-muted small mt-1">
+                        Bu veznelerdeki ilgili fiş/form yazıcı seçimleri kaldırılarak boşaltılacaktır.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-light bg-light d-flex align-items-center gap-2 text-muted small">
+                    <IconCheck size={16} className="text-success" />
+                    <span><strong>1. Vezne Tanımları:</strong> Hiçbir vezneye fiş veya form yazıcısı olarak atanmamış.</span>
+                  </div>
+                )}
+
+                {/* 2. Kullanıcı Tanımları (Varsayılan Yazıcı) */}
+                {deleteConfirm?.usage?.hasKullanici ? (
+                  <div className="p-2.5 rounded border border-warning-subtle bg-warning-subtle bg-opacity-25 d-flex align-items-start gap-2.5">
+                    <IconPrinter size={20} className="text-warning flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-warning-emphasis small">
+                          2. Kullanıcı Tanımları ({deleteConfirm.usage.kullaniciCount} Kullanıcı)
+                        </strong>
+                        <Badge bg="warning" text="dark">Varsayılan Yazıcı Sıfırlanacak</Badge>
+                      </div>
+                      <div className="text-dark small mt-1">
+                        Varsayılan Yazıcı Olarak Seçen Kullanıcılar:{" "}
+                        <strong>{deleteConfirm.usage.kullaniciNames?.join(", ")}</strong>
+                      </div>
+                      <div className="text-muted small mt-0.5">
+                        Bu kullanıcıların varsayılan yazıcı ataması temizlenecektir.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-light bg-light d-flex align-items-center gap-2 text-muted small">
+                    <IconCheck size={16} className="text-success" />
+                    <span><strong>2. Kullanıcı Tanımları:</strong> Herhangi bir kullanıcının varsayılan yazıcısı olarak seçili değil.</span>
+                  </div>
+                )}
+
+                {/* 3. Numaratör / Seri No Tanımları */}
+                {deleteConfirm?.usage?.hasNumerator ? (
+                  <div className="p-2.5 rounded border border-danger-subtle bg-danger-subtle bg-opacity-25 d-flex align-items-start gap-2.5">
+                    <IconAdjustments size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-danger small">
+                          3. Numaratör Tanımları ({deleteConfirm.usage.numeratorCount} Adet Özel Seri)
+                        </strong>
+                        <Badge bg="danger">Silinecek</Badge>
+                      </div>
+                      <div className="text-dark small mt-1">
+                        Bu yazıcıya bağlı özel evrak seri tanımları:{" "}
+                        <strong>{deleteConfirm.usage.numeratorDetails?.map((n) => `Tür ${n.tur} (${n.onek})`).join(", ")}</strong>
+                      </div>
+                      <div className="text-muted small mt-0.5">
+                        Yazıcıya özel numaratör serileri sistemden kaldırılacaktır (Genel numaratörler korunur).
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-light bg-light d-flex align-items-center gap-2 text-muted small">
+                    <IconCheck size={16} className="text-success" />
+                    <span><strong>3. Numaratör Tanımları:</strong> Bu yazıcıya özel ayrılmış numaratör serisi bulunmuyor.</span>
+                  </div>
+                )}
+
+                {/* 4. Yazıcı Tanım Kartı */}
+                <div className="p-2.5 rounded border border-danger-subtle bg-white d-flex align-items-start gap-2.5">
+                  <IconTrash size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                  <div className="flex-grow-1">
+                    <div className="d-flex align-items-center justify-content-between">
+                      <strong className="text-danger small">4. Yazıcı Tanım Kartı</strong>
+                      <Badge bg="danger">Tamamen Silinecek</Badge>
+                    </div>
+                    <div className="text-muted small mt-0.5">
+                      <strong>[{deleteConfirm?.yazici.siraNo}] {deleteConfirm?.yazici.ad}</strong> yazıcı kartı sistemden kalıcı olarak silinecektir.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="alert alert-warning py-2.5 px-3 small mb-0 border-0 rounded-2 text-dark d-flex align-items-start gap-2 shadow-xs"
+                style={{ backgroundColor: "#fef3c7" }}
+              >
+                <IconAlertCircle size={20} className="text-warning flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong>"Yine de Sil"</strong> butonuna bastığınızda, bu yazıcı yukarıda listelenen tüm yerlerden (vezneler, kullanıcılar ve numaratör tanımları) otomatik olarak kaldırılacak ve sistemden silinecektir.
+                </span>
+              </div>
+            </div>
+          )}
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" size="sm" onClick={() => setShowDeleteModal(false)}>
-            İptal
+        <Modal.Footer className="bg-light py-2 px-3 border-top d-flex justify-content-end gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="px-3"
+            onClick={() => setDeleteConfirm(null)}
+            disabled={isSaving}
+          >
+            Vazgeç
           </Button>
-          <Button variant="danger" size="sm" onClick={handleDelete} disabled={isSaving}>
-            {isSaving ? "Siliniyor..." : "Evet, Yazıcıyı Sil"}
+          <Button
+            variant="danger"
+            size="sm"
+            className="px-3 fw-bold d-flex align-items-center gap-1.5 shadow-xs"
+            onClick={() =>
+              deleteConfirm &&
+              handleExecuteDelete(deleteConfirm.yazici, deleteConfirm.usage)
+            }
+            disabled={isSaving || deleteConfirm?.loadingUsage}
+          >
+            {isSaving ? (
+              <>
+                <Spinner size="sm" animation="border" />
+                <span>Siliniyor...</span>
+              </>
+            ) : (
+              <>
+                <IconTrash size={16} />
+                <span>Yine de Sil</span>
+              </>
+            )}
           </Button>
         </Modal.Footer>
       </Modal>

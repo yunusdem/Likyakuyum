@@ -1,10 +1,12 @@
 /**
  * Kurulum exe'si üretimi — merkez sunucuda, surum:yayinla'dan SONRA (Inno Setup 6 kurulu olmalı):
  *
- *   npm run kurulum:paketi -- --sql "C:\LikyaYedek\Surumler\araclar\SQLEXPR_x64_ENU.exe"
+ *   npm run kurulum:paketi
  *
- * Seçenekler: --surum <sürüm> (varsayılan: yayındaki en son), --iscc <ISCC.exe yolu>, --sqlsiz (SQL Express gömülmez),
+ * Seçenekler: --surum <sürüm> (varsayılan: yayındaki en son), --iscc <ISCC.exe yolu>,
+ *             --sql-adres <URL> (SQL Express indirme adresi; varsayılan .iss içindeki Microsoft adresi),
  *             --sadece-hazirla (ISCC çalıştırılmaz; deneme)
+ * SQL Server Express exe'ye gömülmez: bilgisayarda uygun SQL yoksa kurulum sırasında indirilir (docs bölüm 17).
  * Çıktı: <SURUM_KLASORU>\kurulum\LikyaKuyumKurulum.exe (panelin firmaya özel indirme bağlantısı bunu verir)
  * docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, bölüm 10
  */
@@ -44,7 +46,7 @@ export const kurulumPaketiHazirla = async (s) => {
         throw new Error(`Kurulum betikleri bulunamadı: ${betikler}`);
     const hazirlik = path.join(s.surumKlasoru, "kurulum-hazirlik");
     fs.rmSync(hazirlik, { recursive: true, force: true });
-    for (const k of ["node", "uygulama", "araclar", "sablon", "sql"])
+    for (const k of ["node", "uygulama", "araclar", "sablon"])
         fs.mkdirSync(path.join(hazirlik, k), { recursive: true });
     log(`Sürüm ${surum} paketi açılıyor…`);
     const r = spawnSync("powershell.exe", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${path.join(hazirlik, "uygulama").replace(/'/g, "''")}' -Force`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
@@ -56,23 +58,16 @@ export const kurulumPaketiHazirla = async (s) => {
     for (const f of fs.readdirSync(betikler))
         fs.copyFileSync(path.join(betikler, f), path.join(hazirlik, "araclar", f));
     fs.copyFileSync(s.sablon, path.join(hazirlik, "sablon", "sablon.bak"));
-    if (s.sqlMedya) {
-        if (!fs.existsSync(s.sqlMedya))
-            throw new Error(`SQL Server Express kurulum dosyası bulunamadı: ${s.sqlMedya}`);
-        fs.copyFileSync(s.sqlMedya, path.join(hazirlik, "sql", "SQLEXPR_x64_ENU.exe"));
-    }
     return { hazirlik, surum: surum };
 };
 const main = async () => {
     const backendKok = process.cwd();
     const surumKlasoru = await AyarSqlRepository.oku("SURUM_KLASORU");
-    const sqlMedya = var_("--sqlsiz") ? null : arg("--sql") || path.join(surumKlasoru, "araclar", "SQLEXPR_x64_ENU.exe");
     const { hazirlik, surum } = await kurulumPaketiHazirla({
         backendKok,
         surumKlasoru,
         surum: arg("--surum"),
         sablon: await AyarSqlRepository.oku("SABLON_YEDEK_DOSYASI"),
-        sqlMedya,
         log: (m) => console.log("  " + m),
     });
     if (var_("--sadece-hazirla")) {
@@ -87,7 +82,11 @@ const main = async () => {
     console.log("  Kurulum exe'si derleniyor (birkaç dakika)…");
     const iss = path.resolve(backendKok, "..", "kurulum", "LikyaKuyum.iss");
     // /Q: yalnız uyarı ve hatalar yazılır (her dosya için "Compressing:" satırı varsayılan 1 MB tamponu taşırıp süreci öldürüyordu)
-    const r = spawnSync(iscc, ["/Q", `/DSurum=${surum}`, `/DKaynak=${hazirlik}`, `/DCikti=${cikti}`, iss], {
+    const sqlAdres = arg("--sql-adres");
+    if (sqlAdres !== null && !/^https:\/\/[^\s"']+$/i.test(sqlAdres))
+        throw new Error("--sql-adres https:// ile başlayan bir adres olmalı.");
+    const tanimlar = [`/DSurum=${surum}`, `/DKaynak=${hazirlik}`, `/DCikti=${cikti}`, ...(sqlAdres ? [`/DSqlAdres=${sqlAdres}`] : [])];
+    const r = spawnSync(iscc, ["/Q", ...tanimlar, iss], {
         encoding: "utf8",
         maxBuffer: 256 * 1024 * 1024,
     });

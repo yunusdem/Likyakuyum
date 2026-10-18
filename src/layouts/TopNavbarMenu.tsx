@@ -174,6 +174,9 @@ export const TopNavbarMenu: React.FC = () => {
         backgroundColor: "#ffffff",
         borderBottom: "1px solid rgba(0, 0, 0, 0.12)",
         overflow: "visible",
+        WebkitFontSmoothing: "antialiased",
+        MozOsxFontSmoothing: "grayscale",
+        textRendering: "optimizeLegibility",
       }}
     >
       <style>{`
@@ -194,11 +197,11 @@ export const TopNavbarMenu: React.FC = () => {
 
         /* Desktop Menubar Buton Stilleri (Windows Menü Çubuğu Tarzı Kompakt ve Şık) */
         .desktop-menubar-btn {
-          font-size: 11px !important;
-          font-weight: 600 !important;
-          color: #334155 !important;
-          padding: 2.5px 5.5px !important;
-          border-radius: 3px !important;
+          font-size: 11.5px !important;
+          font-weight: 700 !important;
+          color: #0f172a !important;
+          padding: 3px 6.5px !important;
+          border-radius: 4px !important;
           border: 1px solid transparent !important;
           background: transparent !important;
           white-space: nowrap !important;
@@ -206,18 +209,22 @@ export const TopNavbarMenu: React.FC = () => {
           transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease !important;
           user-select: none !important;
           text-decoration: none !important;
+          -webkit-font-smoothing: antialiased !important;
+          -moz-osx-font-smoothing: grayscale !important;
+          text-rendering: optimizeLegibility !important;
         }
         .desktop-menubar-btn:hover {
-          background-color: #e0f2fe !important;
-          border-color: #bae6fd !important;
-          color: #0369a1 !important;
+          background-color: #f1f5f9 !important;
+          border-color: #cbd5e1 !important;
+          color: #0284c7 !important;
         }
         .desktop-menubar-btn.active {
           color: #0284c7 !important;
-          font-weight: 700 !important;
+          font-weight: 800 !important;
+          background-color: #e0f2fe !important;
         }
         .desktop-menubar-btn.open {
-          background-color: #bde0fe !important;
+          background-color: #e0f2fe !important;
           border-color: #90caf9 !important;
           color: #0284c7 !important;
         }
@@ -291,12 +298,15 @@ export const TopNavbarMenu: React.FC = () => {
           display: flex !important;
           align-items: center !important;
           justify-content: space-between !important;
-          padding: 4px 12px !important;
-          font-size: 11.5px !important;
-          color: #1e293b !important;
+          padding: 5px 12px !important;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          color: #0f172a !important;
           text-decoration: none !important;
           transition: background-color 0.1s ease, color 0.1s ease !important;
           white-space: nowrap !important;
+          -webkit-font-smoothing: antialiased !important;
+          -moz-osx-font-smoothing: grayscale !important;
         }
         .desktop-dropdown-item:hover {
           background-color: #e0f2fe !important;
@@ -313,21 +323,24 @@ export const TopNavbarMenu: React.FC = () => {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 5px 10px;
+          padding: 6px 11px;
           background-color: #f8fafc;
-          border: 1px solid #f1f5f9;
+          border: 1px solid #e2e8f0;
           border-radius: 6px;
           text-decoration: none;
-          color: #1e293b;
-          font-size: 11.5px;
+          color: #0f172a;
+          font-size: 12px;
+          font-weight: 600;
           transition: all 0.12s ease-in-out;
           margin-bottom: 4px;
           white-space: nowrap;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
         .mega-clean-link:hover {
           background-color: #ffffff;
           border-color: #38bdf8;
-          box-shadow: 0 3px 10px rgba(56, 189, 248, 0.12);
+          box-shadow: 0 3px 10px rgba(56, 189, 248, 0.15);
           transform: translateX(2px);
           color: #0284c7;
         }
@@ -481,8 +494,8 @@ export const TopNavbarMenu: React.FC = () => {
                           return (
                             <div key={cIdx}>
                               <div
-                                className="text-secondary fw-bold text-uppercase px-2.5 py-1 border-top border-bottom bg-light"
-                                style={{ fontSize: "10px", letterSpacing: "0.5px" }}
+                                className="fw-bold text-uppercase px-2.5 py-1 border-top border-bottom bg-light"
+                                style={{ fontSize: "11px", letterSpacing: "0.5px", color: "#0f172a" }}
                               >
                                 {childTitle}
                               </div>
@@ -576,8 +589,8 @@ export const TopNavbarMenu: React.FC = () => {
                               return (
                                 <div key={cIdx} className="d-flex flex-column">
                                   <div
-                                    className="text-secondary fw-bold text-uppercase pb-1 mb-2 border-bottom"
-                                    style={{ fontSize: "0.72rem", letterSpacing: "0.6px" }}
+                                    className="fw-bold text-uppercase pb-1 mb-2 border-bottom"
+                                    style={{ fontSize: "0.75rem", letterSpacing: "0.6px", color: "#0f172a" }}
                                   >
                                     {childTitle}
                                   </div>
@@ -606,7 +619,7 @@ export const TopNavbarMenu: React.FC = () => {
                                                 flexShrink: 0,
                                               }}
                                             />
-                                            <span className="text-truncate fw-medium" style={{ fontSize: "0.82rem" }}>
+                                            <span className="text-truncate fw-semibold" style={{ fontSize: "0.85rem", color: "#0f172a" }}>
                                               {subTitle}
                                             </span>
                                           </div>
@@ -642,7 +655,7 @@ export const TopNavbarMenu: React.FC = () => {
                                         flexShrink: 0,
                                       }}
                                     />
-                                    <span className="text-truncate fw-medium" style={{ fontSize: "0.82rem" }}>
+                                    <span className="text-truncate fw-semibold" style={{ fontSize: "0.85rem", color: "#0f172a" }}>
                                       {childTitle}
                                     </span>
                                   </div>
@@ -687,7 +700,7 @@ export const TopNavbarMenu: React.FC = () => {
                                       flexShrink: 0,
                                     }}
                                   />
-                                  <span className="text-truncate fw-medium" style={{ fontSize: "0.82rem" }}>
+                                  <span className="text-truncate fw-semibold" style={{ fontSize: "0.85rem", color: "#0f172a" }}>
                                     {childTitle}
                                   </span>
                                 </div>
@@ -714,33 +727,33 @@ export const TopNavbarMenu: React.FC = () => {
         <div
           className="topbar-info-box d-flex flex-column justify-content-center flex-shrink-0 px-2 py-0.5 border-start user-select-none ms-auto"
           style={{
-            minWidth: "116px",
-            maxWidth: "145px",
-            lineHeight: 1.22,
+            minWidth: "125px",
+            maxWidth: "155px",
+            lineHeight: 1.25,
             backgroundColor: "#f8fafc",
             borderColor: "#cbd5e1",
           }}
         >
           {/* Vezne Adı */}
           <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap" title={`Vezne: ${cleanVezne}`}>
-            <span className="text-secondary" style={{ fontSize: "9px", fontWeight: 600 }}>Vezne</span>
-            <span className="text-dark fw-bold text-truncate font-monospace" style={{ fontSize: "9.5px", maxWidth: "80px" }}>
+            <span style={{ fontSize: "10px", fontWeight: 700, color: "#475569" }}>Vezne</span>
+            <span className="font-monospace text-truncate" style={{ fontSize: "10.5px", fontWeight: 700, color: "#0f172a", maxWidth: "85px" }}>
               {cleanVezne}
             </span>
           </div>
 
           {/* Kullanıcı Adı */}
           <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap" title={`Kullanıcı: ${displayName}`}>
-            <span className="text-secondary" style={{ fontSize: "9px", fontWeight: 600 }}>Kul.</span>
-            <span className="text-primary fw-bold text-truncate" style={{ fontSize: "9.5px", maxWidth: "80px" }}>
+            <span style={{ fontSize: "10px", fontWeight: 700, color: "#475569" }}>Kul.</span>
+            <span className="text-truncate" style={{ fontSize: "10.5px", fontWeight: 700, color: "#0284c7", maxWidth: "85px" }}>
               {displayName}
             </span>
           </div>
 
           {/* Tarih ve Canlı Saat */}
-          <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap font-monospace" style={{ fontSize: "9px" }} title="Tarih ve Saat">
-            <span className="text-muted" style={{ fontSize: "8.5px" }}>{currentDate}</span>
-            <span className="fw-bold text-dark px-1 rounded bg-white border" style={{ fontSize: "9px" }}>
+          <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap font-monospace" title="Tarih ve Saat">
+            <span style={{ fontSize: "9.5px", fontWeight: 600, color: "#475569" }}>{currentDate}</span>
+            <span className="px-1 rounded bg-white border" style={{ fontSize: "9.5px", fontWeight: 700, color: "#0f172a" }}>
               {currentTime}
             </span>
           </div>
