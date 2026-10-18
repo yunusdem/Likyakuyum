@@ -11,7 +11,8 @@ export default function MasakMenu({ onUpdate, mobile = false }: { onUpdate: () =
       <IconShieldCheck size={mobile ? 15 : 16} strokeWidth={2.4} style={{ color: '#dc2626' }} />
       <span style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626', lineHeight: 1.15 }}>MASAK</span>
     </Dropdown.Toggle>
-    <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: 200 }}>
+    {/* Hızlı başlangıç çubuğu yatay kaydırmalı (overflow) olduğundan menü içinde kırpılıyordu; fixed ile sayfa düzeyinde çizilir */}
+    <Dropdown.Menu className="shadow border-0 py-1" style={{ minWidth: 200 }} popperConfig={{ strategy: 'fixed' }}>
       <Dropdown.Item onClick={onUpdate}>MASAK'tan Liste Güncelle</Dropdown.Item>
       <Dropdown.Item as={Link} to="/ayarlar/masak-dondurulanlar">MASAK'tan Sorgu</Dropdown.Item>
     </Dropdown.Menu>
