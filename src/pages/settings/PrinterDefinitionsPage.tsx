@@ -25,6 +25,7 @@ import CodeLookupInput from "../../components/common/CodeLookupInput";
 import LookupModal from "../../components/common/LookupModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
 import { printReportTable } from "../../utils/printReport";
 import {
   PrinterService,
@@ -48,6 +49,7 @@ const initialFormState: YaziciFormData = {
 export const PrinterDefinitionsPage: React.FC = () => {
   const activeDb = localStorage.getItem("kuyumcu_erp_active_db") || "R2016_dvz";
   const activeServer = localStorage.getItem("kuyumcu_erp_active_server") || "localhost";
+  const { user } = useAuth();
 
   // Data states
   const [yazicilar, setYazicilar] = useState<YaziciItem[]>([]);
@@ -75,20 +77,23 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [showSystemPrintersModal, setShowSystemPrintersModal] = useState<boolean>(false);
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinterItem[]>([]);
   const [isLoadingSystemPrinters, setIsLoadingSystemPrinters] = useState<boolean>(false);
-  const [customPrinterName, setCustomPrinterName] = useState<string>("");
   const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
   const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
   const [selectedSystemPrinterName, setSelectedSystemPrinterName] = useState<string>("");
   const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
 
   const handleOpenSystemPrinters = async () => {
+    try {
+      localStorage.removeItem("likya_client_printers");
+      if (user?.id) localStorage.removeItem(`likya_user_printers_${user.id}`);
+    } catch {}
     setShowSystemPrintersModal(true);
     setIsLoadingSystemPrinters(true);
     setPermissionStatus(null);
     setSystemPrinterSearchTerm("");
     setSelectedSystemPrinterName(formData.cihazAdi || "");
     try {
-      const list = await PrinterService.getSystemPrinters();
+      const list = await PrinterService.getSystemPrinters(user);
       setSystemPrinters(list || []);
       if (!formData.cihazAdi && list && list.length > 0) {
         setSelectedSystemPrinterName(list[0].name);
@@ -104,11 +109,11 @@ export const PrinterDefinitionsPage: React.FC = () => {
     setIsRequestingPermission(true);
     setPermissionStatus(null);
     try {
-      const detected = await PrinterService.requestClientDevicePermission();
+      const detected = await PrinterService.requestClientDevicePermission(user?.id);
       if (detected) {
         setPermissionStatus(`İzin verildi: ${detected.name}`);
         showSuccess(`İzin verildi: "${detected.name}" bu bilgisayardan seçildi.`);
-        const updatedList = await PrinterService.getSystemPrinters();
+        const updatedList = await PrinterService.getSystemPrinters(user);
         setSystemPrinters(updatedList || []);
         handleSelectSystemPrinter(detected.name);
       } else {
@@ -122,20 +127,6 @@ export const PrinterDefinitionsPage: React.FC = () => {
     } finally {
       setIsRequestingPermission(false);
     }
-  };
-
-  const handleAddCustomPrinter = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = customPrinterName.trim();
-    if (!trimmed) return;
-    PrinterService.saveClientPrinter({
-      name: trimmed,
-      source: "manual",
-      isDefault: true,
-    });
-    showSuccess(`"${trimmed}" yazıcısı kaydedildi ve seçildi.`);
-    handleSelectSystemPrinter(trimmed);
-    setCustomPrinterName("");
   };
 
   const handleSelectSystemPrinter = (printerName: string) => {
@@ -558,58 +549,74 @@ export const PrinterDefinitionsPage: React.FC = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">
-          {/* Arama ve Denetim Masası Yazıcısı Ekleme Çubuğu */}
-          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 p-1.5 bg-light rounded border">
-            <div className="input-group input-group-sm" style={{ width: "240px" }}>
+          {/* Kullanıcı ve Yerel Bilgisayar Servis Bağlantı Durumu */}
+          {(() => {
+            const hasLocalPrinters = systemPrinters.some((p) => p.source === "local_agent");
+            const userName = user?.fullName || user?.username || "Giriş Yapan Kullanıcı";
+            return (
+              <div
+                className={`alert ${
+                  hasLocalPrinters ? "alert-success border-success" : "alert-warning border-warning"
+                } py-1.5 px-2.5 small mb-2 d-flex align-items-center justify-content-between shadow-xs`}
+              >
+                <div className="d-flex align-items-center gap-1.5">
+                  {hasLocalPrinters ? (
+                    <>
+                      <IconCheck size={16} className="text-success flex-shrink-0" />
+                      <span>
+                        <strong>Bu Bilgisayarın Yazıcıları Aktif</strong> (Windows Denetim Masası yazıcıları doğrudan bu makineden yüklendi)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <IconAlertCircle size={16} className="text-warning flex-shrink-0" />
+                      <span>
+                        <strong>Yerel Yazıcı Servisi:</strong> Bilgisayarınızdaki yerel Windows yazıcılarını otomatik listelemek için <code>start-print-service.bat</code> çalıştırabilir veya aşağıdan yazıcınızı ekleyebilirsiniz.
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="text-dark small fw-semibold text-nowrap ms-2">
+                  👤 {userName}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Arama ve Canlı Listeyi Yenileme Çubuğu */}
+          <div className="d-flex align-items-center justify-content-between gap-2 mb-2 p-1.5 bg-light rounded border">
+            <div className="input-group input-group-sm" style={{ maxWidth: "380px" }}>
               <span className="input-group-text bg-white px-2">
                 <IconSearch size={14} className="text-secondary" />
               </span>
               <Form.Control
                 type="text"
-                placeholder="Tabloda ara (POS, Samsung vb.)..."
+                placeholder="Canlı yazıcılarda ara (Epson, PDF, Terminal vb.)..."
                 value={systemPrinterSearchTerm}
                 onChange={(e) => setSystemPrinterSearchTerm(e.target.value)}
                 className="py-0.5"
               />
             </div>
 
-            <Form onSubmit={handleAddCustomPrinter} className="d-flex align-items-center gap-1.5 flex-grow-1 justify-content-end mb-0">
-              <Form.Control
-                type="text"
-                size="sm"
-                placeholder="Örn: POS-80C veya Özel Yazıcı"
-                value={customPrinterName}
-                onChange={(e) => setCustomPrinterName(e.target.value)}
-                style={{ maxWidth: "230px" }}
-                className="py-0.5"
-              />
+            <div className="d-flex align-items-center gap-1.5">
               <Button
-                type="submit"
-                variant="outline-primary"
+                variant="primary"
                 size="sm"
-                className="text-nowrap fw-semibold py-0.5 px-2"
-                disabled={!customPrinterName.trim()}
-              >
-                Ekle
-              </Button>
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="py-0.5 px-2 d-flex align-items-center gap-1"
+                className="py-0.5 px-3 d-flex align-items-center gap-1.5 fw-semibold shadow-xs"
                 onClick={handleOpenSystemPrinters}
                 disabled={isLoadingSystemPrinters}
-                title="Listeyi Yenile"
+                title="Canlı Yazıcı Listesini Yenile"
               >
                 <IconRefresh size={14} />
-                <span>Yenile</span>
+                <span>Canlı Listeyi Yenile</span>
               </Button>
-            </Form>
+            </div>
           </div>
 
           {isLoadingSystemPrinters ? (
             <div className="text-center py-4">
               <Spinner animation="border" variant="primary" size="sm" className="me-2" />
-              <span className="text-secondary small">Yazıcılar taranıyor, lütfen bekleyiniz...</span>
+              <span className="text-secondary small">Bu bilgisayardaki yazıcılar taranıyor, lütfen bekleyiniz...</span>
             </div>
           ) : (
             <div className="table-responsive border rounded mb-2" style={{ maxHeight: "320px", overflowY: "auto" }}>
@@ -618,18 +625,30 @@ export const PrinterDefinitionsPage: React.FC = () => {
                   <tr>
                     <th style={{ width: "40px" }} className="text-center">#</th>
                     <th>Yazıcı / Aygıt Adı (Denetim Masası / Donanım)</th>
-                    <th style={{ width: "160px" }} className="text-center">Kaynak</th>
+                    <th style={{ width: "170px" }} className="text-center">Kaynak</th>
                     <th style={{ width: "90px" }} className="text-end">İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {systemPrinters
-                    .filter((p) =>
+                  {(() => {
+                    const filtered = systemPrinters.filter((p) =>
                       !systemPrinterSearchTerm
                         ? true
                         : p.name.toLowerCase().includes(systemPrinterSearchTerm.toLowerCase())
-                    )
-                    .map((p, idx) => {
+                    );
+                    if (filtered.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={4} className="text-center py-4 text-muted">
+                            <div className="fw-semibold">Bu bilgisayarda henüz algılanan yazıcı bulunamadı.</div>
+                            <div className="small mt-1">
+                              Windows yazıcılarınızı doğrudan getirmek için <code>start-print-service.bat</code> dosyasını başlatabilir veya yukarıdaki kutudan yazıcınızın adını girip "Ekle" butonuna basabilirsiniz.
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return filtered.map((p, idx) => {
                       const isSelected = selectedSystemPrinterName === p.name;
                       return (
                         <tr
@@ -642,30 +661,39 @@ export const PrinterDefinitionsPage: React.FC = () => {
                         >
                           <td className="text-center text-secondary small">{idx + 1}</td>
                           <td>
-                            <div className="d-flex align-items-center gap-2">
-                              <IconPrinter size={18} className="text-primary opacity-75" />
-                              <span className={isSelected ? "text-primary fw-bold" : "text-dark"}>
-                                {p.name}
-                              </span>
-                              {formData.cihazAdi === p.name && (
-                                <Badge bg="primary" className="ms-1 px-1.5 py-0.5">Mevcut</Badge>
-                              )}
-                              {p.isDefault && (
-                                <Badge bg="success" className="ms-1 px-1.5 py-0.5">Varsayılan</Badge>
+                            <div className="d-flex flex-column">
+                              <div className="d-flex align-items-center gap-2">
+                                <IconPrinter size={18} className="text-primary opacity-75" />
+                                <span className={isSelected ? "text-primary fw-bold" : "text-dark"}>
+                                  {p.name}
+                                </span>
+                                {formData.cihazAdi === p.name && (
+                                  <Badge bg="primary" className="ms-1 px-1.5 py-0.5">Mevcut</Badge>
+                                )}
+                                {p.isDefault && (
+                                  <Badge bg="success" className="ms-1 px-1.5 py-0.5">Varsayılan</Badge>
+                                )}
+                              </div>
+                              {p.details && (
+                                <div className="text-muted small ps-4" style={{ fontSize: "11px" }}>
+                                  {p.details}
+                                </div>
                               )}
                             </div>
                           </td>
                           <td className="text-center">
-                            {p.source === "usb" ? (
-                              <Badge bg="info" className="px-2 py-0.5">USB / Donanım</Badge>
+                            {p.source === "local_agent" ? (
+                              <Badge bg="success" className="px-2 py-0.5">💻 Bu Bilgisayar (Yerel)</Badge>
+                            ) : p.source === "user_assigned" ? (
+                              <Badge bg="info" className="px-2 py-0.5">👤 Kullanıcı Yazıcısı</Badge>
+                            ) : p.source === "server" ? (
+                              <Badge bg="primary" className="px-2 py-0.5">🏢 Sunucuda Kayıtlı</Badge>
+                            ) : p.source === "usb" ? (
+                              <Badge bg="info" className="px-2 py-0.5">🔌 USB Cihaz</Badge>
                             ) : p.source === "serial" ? (
-                              <Badge bg="warning" text="dark" className="px-2 py-0.5">Seri Port</Badge>
-                            ) : p.source === "system" ? (
-                              <Badge bg="secondary" className="px-2 py-0.5">Denetim Masası</Badge>
-                            ) : p.source === "manual" ? (
-                              <Badge bg="light" text="dark" className="border px-2 py-0.5">Tanımlı Aygıt</Badge>
+                              <Badge bg="warning" text="dark" className="px-2 py-0.5">🔌 Seri Port</Badge>
                             ) : (
-                              <Badge bg="success" className="px-2 py-0.5">Hazır</Badge>
+                              <Badge bg="secondary" className="px-2 py-0.5">🖥️ Sistem</Badge>
                             )}
                           </td>
                           <td className="text-end">
@@ -683,7 +711,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           </td>
                         </tr>
                       );
-                    })}
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>

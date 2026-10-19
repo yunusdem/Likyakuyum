@@ -46,33 +46,53 @@ export interface YaziciUsageInfo {
 export interface SystemPrinterItem {
   name: string;
   isDefault?: boolean;
-  source?: "browser" | "usb" | "serial" | "system" | "manual";
+  isOnline?: boolean;
+  source?: "local_agent" | "user_assigned" | "browser" | "usb" | "serial" | "system" | "manual" | "server";
+  details?: string;
 }
 
 export class PrinterService {
   /**
-   * Tarayıcı yerel hafızasından bu bilgisayara ait kayıtlı/izinli yazıcıları getirir
+   * Tarayıcı yerel hafızasından bu kullanıcıya ve bilgisayara ait kayıtlı yazıcıları getirir
    */
-  public static getClientStoredPrinters(): SystemPrinterItem[] {
+  public static getClientStoredPrinters(userId?: string | number): SystemPrinterItem[] {
+    const list: SystemPrinterItem[] = [];
     try {
+      if (userId) {
+        const userRaw = localStorage.getItem(`likya_user_printers_${userId}`);
+        if (userRaw) {
+          const parsed = JSON.parse(userRaw);
+          if (Array.isArray(parsed)) list.push(...parsed);
+        }
+      }
       const raw = localStorage.getItem("likya_client_printers");
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (!list.some((p) => p.name.toLowerCase() === item.name.toLowerCase())) {
+              list.push(item);
+            }
+          }
+        }
       }
     } catch {}
-    return [];
+    return list;
   }
 
   /**
-   * İstemci yazıcısını bu bilgisayarın tarayıcı hafızasına kaydeder
+   * İstemci yazıcısını bu bilgisayarın ve kullanıcının tarayıcı hafızasına kaydeder
    */
-  public static saveClientPrinter(printer: SystemPrinterItem): void {
+  public static saveClientPrinter(printer: SystemPrinterItem, userId?: string | number): void {
     try {
-      const current = PrinterService.getClientStoredPrinters();
+      const current = PrinterService.getClientStoredPrinters(userId);
       const filtered = current.filter((p) => p.name.toLowerCase() !== printer.name.toLowerCase());
       filtered.unshift(printer);
-      localStorage.setItem("likya_client_printers", JSON.stringify(filtered.slice(0, 30)));
+      const toSave = filtered.slice(0, 30);
+      localStorage.setItem("likya_client_printers", JSON.stringify(toSave));
+      if (userId) {
+        localStorage.setItem(`likya_user_printers_${userId}`, JSON.stringify(toSave));
+      }
     } catch {}
   }
 
@@ -80,7 +100,7 @@ export class PrinterService {
    * Doğrudan bu bilgisayardaki yazıcı/aygıta erişmek için tarayıcı izni ister (WebUSB / WebSerial / Web Printing)
    * Sunucunun değil, anlık tarayıcıdan siteye girilen bilgisayarın donanımlarına erişir.
    */
-  public static async requestClientDevicePermission(): Promise<SystemPrinterItem | null> {
+  public static async requestClientDevicePermission(userId?: string | number): Promise<SystemPrinterItem | null> {
     // 1. Web Printing API (eğer tarayıcı sürümü doğrudan destekliyorsa)
     if ("printing" in navigator && typeof (navigator as any).printing?.getPrinters === "function") {
       try {
@@ -91,7 +111,7 @@ export class PrinterService {
             isDefault: true,
             source: "browser",
           };
-          PrinterService.saveClientPrinter(item);
+          PrinterService.saveClientPrinter(item, userId);
           return item;
         }
       } catch (e) {
@@ -114,7 +134,7 @@ export class PrinterService {
             isDefault: true,
             source: "usb",
           };
-          PrinterService.saveClientPrinter(item);
+          PrinterService.saveClientPrinter(item, userId);
           return item;
         }
       } catch (err: any) {
@@ -137,7 +157,7 @@ export class PrinterService {
             isDefault: true,
             source: "serial",
           };
-          PrinterService.saveClientPrinter(item);
+          PrinterService.saveClientPrinter(item, userId);
           return item;
         }
       } catch (err: any) {
@@ -155,26 +175,109 @@ export class PrinterService {
   }
 
   /**
-   * Bilgisayarda kayıtlı aktif yazıcıları listeler.
-   * Asla 127.0.0.1:25050 gibi rastgele portlara fetch atıp ERR_CONNECTION_REFUSED üretmez.
+   * Yalnızca gerçek ve canlı yazıcıları listeler (Statik/sahte veri içermez):
+   * 1. Bu bilgisayardaki Yerel Yazıcı Servisi (http://127.0.0.1:5050/printers) - Windows Denetim Masası
+   * 2. Bu bilgisayardaki Local Agent (http://127.0.0.1:25050/api/v1/yazici/system-printers)
+   * 3. Sunucuda kayıtlı yazıcılar (TODVZ_YAZICI Veritabanı ve Giriş Yapan Kullanıcının Yazıcısı)
+   * 4. Doğrudan bağlı WebUSB aygıtları
+   * 5. Sunucu işletim sisteminde kurulu yazıcılar
    */
-  public static async getSystemPrinters(): Promise<SystemPrinterItem[]> {
-    const clientPrinters = PrinterService.getClientStoredPrinters();
-    const results: SystemPrinterItem[] = [...clientPrinters];
+  public static async getSystemPrinters(
+    currentUser?: { id?: number | string; fullName?: string; name?: string; username?: string; printerId?: string | number } | null
+  ): Promise<SystemPrinterItem[]> {
+    const results: SystemPrinterItem[] = [];
 
-    // 1. Ana backend üzerinden kurulu işletim sistemi yazıcılarını sorgula
+    // 1. Bu bilgisayarda çalışan Yerel Sessiz Yazıcı Servisini (localhost:5050) sorgula
     try {
-      const res = await apiClient.get<SystemPrinterItem[]>("/yazici/system-printers", undefined, { silent: true });
-      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-        for (const sp of res.data) {
-          if (!results.some((r) => r.name.toLowerCase() === sp.name.toLowerCase())) {
-            results.push({ ...sp, source: sp.source || "system" });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch("http://127.0.0.1:5050/printers", {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.printers) && data.printers.length > 0) {
+          for (const p of data.printers) {
+            const pName = String(p.name || "").trim();
+            if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
+              results.push({
+                name: pName,
+                isDefault: Boolean(p.isDefault),
+                isOnline: p.isOnline !== false,
+                source: "local_agent",
+                details: "Bu Bilgisayarın Denetim Masası Yazıcısı",
+              });
+            }
           }
         }
       }
     } catch {}
 
-    // 2. Tarayıcıda önceden izin verilmiş WebUSB cihazlarını otomatik ekle
+    // 2. Yedek yerel port 25050 (Local Agent Köprüsü) sorgula
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 800);
+      const res = await fetch("http://127.0.0.1:25050/api/v1/yazici/system-printers", {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data?.data;
+        if (Array.isArray(list)) {
+          for (const p of list) {
+            const pName = String(p.name || "").trim();
+            if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
+              results.push({
+                name: pName,
+                isDefault: Boolean(p.isDefault),
+                source: "local_agent",
+                details: "Bu Bilgisayarın Yerel Aygıtı",
+              });
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Sunucuda kayıtlı yazıcılar (TODVZ_YAZICI Veritabanı ve Kullanıcı Tanımları)
+    try {
+      const allYazicilar = await PrinterService.getYazicilar().catch(() => []);
+      const userPrinterTarget = currentUser?.printerId ? String(currentUser.printerId).trim() : null;
+
+      for (const y of allYazicilar) {
+        const printerName = String(y.cihazAdi || y.ad || "").trim();
+        if (!printerName) continue;
+
+        const isUserAssigned =
+          userPrinterTarget && (String(y.id) === userPrinterTarget || String(y.siraNo) === userPrinterTarget);
+        const existing = results.find((r) => r.name.toLowerCase() === printerName.toLowerCase());
+
+        if (existing) {
+          if (isUserAssigned) {
+            existing.isDefault = true;
+            existing.source = "user_assigned";
+            existing.details = `Giriş Yapan Kullanıcının Yazıcısı (${currentUser?.fullName || currentUser?.username || "Kullanıcı"})`;
+          }
+        } else {
+          results.push({
+            name: printerName,
+            isDefault: Boolean(isUserAssigned),
+            source: isUserAssigned ? "user_assigned" : "server",
+            details: isUserAssigned
+              ? `Giriş Yapan Kullanıcının Yazıcısı (${currentUser?.fullName || currentUser?.username || "Kullanıcı"})`
+              : `Sunucuda Kayıtlı: [${y.siraNo}] ${y.ad}`,
+          });
+        }
+      }
+    } catch {}
+
+    // 4. Tarayıcıda önceden izin verilmiş fiziksel WebUSB cihazlarını ekle
     try {
       const navUsb = (navigator as any).usb;
       if (navUsb && typeof navUsb.getDevices === "function") {
@@ -183,28 +286,24 @@ export class PrinterService {
           for (const d of devices) {
             const dName = d.productName || d.manufacturerName || "USB Yazıcı";
             if (!results.some((r) => r.name.toLowerCase() === dName.toLowerCase())) {
-              results.push({ name: dName, source: "usb" });
+              results.push({ name: dName, source: "usb", details: "Bağlı USB Cihaz" });
             }
           }
         }
       }
     } catch {}
 
-    // 3. Denetim Masası / Windows standart donanım yazıcıları (garantili liste)
-    const fallbackList: SystemPrinterItem[] = [
-      { name: "POS-80C", source: "system", isDefault: true },
-      { name: "Samsung SCX-4623 Series", source: "system", isDefault: false },
-      { name: "Microsoft Print to PDF", source: "system", isDefault: false },
-      { name: "Microsoft XPS Document Writer", source: "system", isDefault: false },
-      { name: "OneNote 2010 Uygulamasına Gönder", source: "system", isDefault: false },
-      { name: "OneNote for Windows 10", source: "system", isDefault: false },
-      { name: "Fax", source: "system", isDefault: false },
-    ];
-    for (const fb of fallbackList) {
-      if (!results.some((r) => r.name.toLowerCase() === fb.name.toLowerCase())) {
-        results.push(fb);
+    // 5. Ana backend sunucusundaki işletim sistemi yazıcıları (varsa)
+    try {
+      const res = await apiClient.get<SystemPrinterItem[]>("/yazici/system-printers", undefined, { silent: true });
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        for (const sp of res.data) {
+          if (sp.name && !results.some((r) => r.name.toLowerCase() === sp.name.toLowerCase())) {
+            results.push({ ...sp, source: sp.source || "server", details: "Sunucu İşletim Sistemi Yazıcısı" });
+          }
+        }
       }
-    }
+    } catch {}
 
     return results;
   }
@@ -240,21 +339,64 @@ export class PrinterService {
     return res.success;
   }
 
+  /**
+   * Doğrudan Yazdırma:
+   * 1. Öncelikle kullanıcının bilgisayarındaki Yerel Sessiz Yazıcı Servisine (localhost:5050/print) gönderir.
+   *    Bu sayede kullanıcının yerel Windows yazıcısından önizleme penceresi açılmadan anında sessizce çıkar.
+   * 2. Yerel servis çalışmıyorsa backend sunucusuna (/yazici/direct-print) iletir.
+   * 3. İkisi de yoksa tarayıcının standart yazdırma motorunu yedek olarak devreye sokar.
+   */
   public static async directPrint(
     payload: DirectPrintPayload
   ): Promise<{ success: boolean; message: string; fallbackToBrowser?: boolean }> {
+    // 1. Kullanıcının bilgisayarındaki Yerel Servise (Port 5050) doğrudan POST et
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const localRes = await fetch("http://127.0.0.1:5050/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          html: payload.htmlContent,
+          text: payload.textContent,
+          printerName: payload.printerName,
+          copies: payload.copies || 1,
+          title: payload.documentTitle || "Likya_Fis",
+          isPos: payload.isPos ?? true,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (localRes.ok) {
+        const localData = await localRes.json();
+        return {
+          success: true,
+          message: localData.message || "Fiş kullanıcının yerel yazıcısına doğrudan iletildi.",
+          fallbackToBrowser: false,
+        };
+      }
+    } catch {}
+
+    // 2. Ana sunucu doğrudan yazdırma endpoint'i
     try {
       const res = await apiClient.post<{ success: boolean; message: string; fallbackToBrowser?: boolean }>(
         "/yazici/direct-print",
         payload
       );
-      return res.data || { success: false, message: "Yazıcı yanıt vermedi.", fallbackToBrowser: true };
+      if (res.data && res.data.success) {
+        return res.data;
+      }
     } catch (err: any) {
-      return {
-        success: false,
-        message: err.message || "Yazıcıya doğrudan gönderilemedi.",
-        fallbackToBrowser: true,
-      };
+      console.warn("[PrinterService] Sunucu doğrudan yazdırma yanıt vermedi:", err);
     }
+
+    return {
+      success: false,
+      message: "Yerel yazıcı servisi bulunamadı, tarayıcı yazdırma moduna aktarılıyor.",
+      fallbackToBrowser: true,
+    };
   }
 }

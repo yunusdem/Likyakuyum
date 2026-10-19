@@ -217,16 +217,7 @@ export class YaziciService {
       }
     }
 
-    // Windows Denetim Masası / Aygıtlar ve Yazıcılar varsayılan listesi
-    return [
-      { name: "POS-80C", isDefault: true },
-      { name: "Samsung SCX-4623 Series", isDefault: false },
-      { name: "Microsoft Print to PDF", isDefault: false },
-      { name: "Microsoft XPS Document Writer", isDefault: false },
-      { name: "OneNote 2010 Uygulamasına Gönder", isDefault: false },
-      { name: "OneNote for Windows 10", isDefault: false },
-      { name: "Fax", isDefault: false },
-    ];
+    return [];
   }
 
   /**
