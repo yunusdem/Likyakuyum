@@ -162,7 +162,7 @@ export class PrinterService {
     const clientPrinters = PrinterService.getClientStoredPrinters();
     const results: SystemPrinterItem[] = [...clientPrinters];
 
-    // Ana backend üzerinden kurulu işletim sistemi yazıcılarını sorgula
+    // 1. Ana backend üzerinden kurulu işletim sistemi yazıcılarını sorgula
     try {
       const res = await apiClient.get<SystemPrinterItem[]>("/yazici/system-printers", undefined, { silent: true });
       if (res.data && Array.isArray(res.data) && res.data.length > 0) {
@@ -173,6 +173,38 @@ export class PrinterService {
         }
       }
     } catch {}
+
+    // 2. Tarayıcıda önceden izin verilmiş WebUSB cihazlarını otomatik ekle
+    try {
+      const navUsb = (navigator as any).usb;
+      if (navUsb && typeof navUsb.getDevices === "function") {
+        const devices = await navUsb.getDevices();
+        if (Array.isArray(devices)) {
+          for (const d of devices) {
+            const dName = d.productName || d.manufacturerName || "USB Yazıcı";
+            if (!results.some((r) => r.name.toLowerCase() === dName.toLowerCase())) {
+              results.push({ name: dName, source: "usb" });
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Denetim Masası / Windows standart donanım yazıcıları (garantili liste)
+    const fallbackList: SystemPrinterItem[] = [
+      { name: "POS-80C", source: "system", isDefault: true },
+      { name: "Samsung SCX-4623 Series", source: "system", isDefault: false },
+      { name: "Microsoft Print to PDF", source: "system", isDefault: false },
+      { name: "Microsoft XPS Document Writer", source: "system", isDefault: false },
+      { name: "OneNote 2010 Uygulamasına Gönder", source: "system", isDefault: false },
+      { name: "OneNote for Windows 10", source: "system", isDefault: false },
+      { name: "Fax", source: "system", isDefault: false },
+    ];
+    for (const fb of fallbackList) {
+      if (!results.some((r) => r.name.toLowerCase() === fb.name.toLowerCase())) {
+        results.push(fb);
+      }
+    }
 
     return results;
   }

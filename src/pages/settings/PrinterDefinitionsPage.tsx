@@ -79,11 +79,13 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
   const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
   const [selectedSystemPrinterName, setSelectedSystemPrinterName] = useState<string>("");
+  const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
 
   const handleOpenSystemPrinters = async () => {
     setShowSystemPrintersModal(true);
     setIsLoadingSystemPrinters(true);
     setPermissionStatus(null);
+    setSystemPrinterSearchTerm("");
     setSelectedSystemPrinterName(formData.cihazAdi || "");
     try {
       const list = await PrinterService.getSystemPrinters();
@@ -556,167 +558,143 @@ export const PrinterDefinitionsPage: React.FC = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">
-          {/* İstemci Bilgisayarı Erişim İzni - Kompakt */}
-          <div className="bg-light border rounded px-2.5 py-1.5 mb-2 d-flex align-items-center justify-content-between gap-2">
-            <div className="d-flex align-items-center gap-1.5 small text-secondary">
-              <IconPrinter size={16} className="text-primary flex-shrink-0" />
-              <span><strong>İstemci Yazıcı İzni:</strong> Bilgisayarınıza bağlı (USB/Seri) yazıcıyı algılamak için izin veriniz.</span>
-            </div>
-            <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
-              <Button
-                variant="primary"
-                size="sm"
-                className="py-0.5 px-2.5 d-flex align-items-center gap-1 small fw-semibold"
-                onClick={handleRequestBrowserPermission}
-                disabled={isRequestingPermission}
-              >
-                {isRequestingPermission ? (
-                  <>
-                    <Spinner animation="border" size="sm" />
-                    <span>Bekleniyor...</span>
-                  </>
-                ) : (
-                  <>
-                    <IconCheck size={14} />
-                    <span>İzin Ver / Aygıt Seç</span>
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                className="py-0.5 px-2 d-flex align-items-center gap-1 small"
-                onClick={handleOpenSystemPrinters}
-                disabled={isLoadingSystemPrinters}
-                title="Yeniden Tara"
-              >
-                <IconRefresh size={14} />
-                <span>Yenile</span>
-              </Button>
-            </div>
-          </div>
-          {permissionStatus && (
-            <div className="small mb-2 text-info px-1 fw-semibold">
-              ℹ️ {permissionStatus}
-            </div>
-          )}
-
-          {/* Denetim Masasındaki Yazıcı Adını Doğrudan Girme ve Kaydetme */}
-          <Form onSubmit={handleAddCustomPrinter} className="mb-2">
-            <div className="d-flex align-items-center gap-2 p-1.5 bg-light rounded border">
-              <span className="small fw-semibold text-secondary text-nowrap ms-1">
-                Denetim Masasındaki Adı:
+          {/* Arama ve Denetim Masası Yazıcısı Ekleme Çubuğu */}
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 p-1.5 bg-light rounded border">
+            <div className="input-group input-group-sm" style={{ width: "240px" }}>
+              <span className="input-group-text bg-white px-2">
+                <IconSearch size={14} className="text-secondary" />
               </span>
               <Form.Control
                 type="text"
+                placeholder="Tabloda ara (POS, Samsung vb.)..."
+                value={systemPrinterSearchTerm}
+                onChange={(e) => setSystemPrinterSearchTerm(e.target.value)}
+                className="py-0.5"
+              />
+            </div>
+
+            <Form onSubmit={handleAddCustomPrinter} className="d-flex align-items-center gap-1.5 flex-grow-1 justify-content-end mb-0">
+              <Form.Control
+                type="text"
                 size="sm"
-                placeholder="Örn: POS-80D veya POS-80C"
+                placeholder="Örn: POS-80C veya Özel Yazıcı"
                 value={customPrinterName}
                 onChange={(e) => setCustomPrinterName(e.target.value)}
-                className="flex-grow-1 py-0.5"
+                style={{ maxWidth: "230px" }}
+                className="py-0.5"
               />
               <Button
                 type="submit"
                 variant="outline-primary"
                 size="sm"
-                className="text-nowrap fw-semibold py-0.5 px-2.5"
+                className="text-nowrap fw-semibold py-0.5 px-2"
                 disabled={!customPrinterName.trim()}
               >
-                Ekle ve Seç
+                Ekle
               </Button>
-            </div>
-          </Form>
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="py-0.5 px-2 d-flex align-items-center gap-1"
+                onClick={handleOpenSystemPrinters}
+                disabled={isLoadingSystemPrinters}
+                title="Listeyi Yenile"
+              >
+                <IconRefresh size={14} />
+                <span>Yenile</span>
+              </Button>
+            </Form>
+          </div>
 
           {isLoadingSystemPrinters ? (
             <div className="text-center py-4">
               <Spinner animation="border" variant="primary" size="sm" className="me-2" />
-              <span className="text-secondary small">Bilgisayardaki yazıcılar taranıyor, lütfen bekleyiniz...</span>
+              <span className="text-secondary small">Yazıcılar taranıyor, lütfen bekleyiniz...</span>
             </div>
           ) : (
-            <>
-              {systemPrinters && systemPrinters.length > 0 ? (
-                <div className="table-responsive border rounded mb-2" style={{ maxHeight: "280px", overflowY: "auto" }}>
-                  <table className="table table-hover table-sm align-middle mb-0 user-select-none">
-                    <thead className="table-light sticky-top">
-                      <tr>
-                        <th style={{ width: "40px" }} className="text-center">#</th>
-                        <th>Yazıcı / Aygıt Adı (Denetim Masası / Donanım)</th>
-                        <th style={{ width: "160px" }} className="text-center">Kaynak</th>
-                        <th style={{ width: "90px" }} className="text-end">İşlem</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {systemPrinters.map((p, idx) => {
-                        const isSelected = selectedSystemPrinterName === p.name;
-                        return (
-                          <tr
-                            key={idx}
-                            style={{ cursor: "pointer" }}
-                            onClick={() => setSelectedSystemPrinterName(p.name)}
-                            onDoubleClick={() => handleSelectSystemPrinter(p.name)}
-                            className={isSelected ? "table-primary fw-semibold" : ""}
-                            title="Tek tıklama: Satırı seçer | Çift tıklama: Forma atar ve kapatır"
-                          >
-                            <td className="text-center text-secondary small">{idx + 1}</td>
-                            <td>
-                              <div className="d-flex align-items-center gap-2">
-                                <IconPrinter size={18} className="text-primary opacity-75" />
-                                <span className={isSelected ? "text-primary fw-bold" : "text-dark"}>
-                                  {p.name}
-                                </span>
-                                {formData.cihazAdi === p.name && (
-                                  <Badge bg="primary" className="ms-1 px-1.5 py-0.5">Mevcut</Badge>
-                                )}
-                              </div>
-                            </td>
-                            <td className="text-center">
-                              {p.source === "usb" ? (
-                                <Badge bg="info" className="px-2 py-0.5">USB / Donanım</Badge>
-                              ) : p.source === "serial" ? (
-                                <Badge bg="warning" text="dark" className="px-2 py-0.5">Seri Port</Badge>
-                              ) : p.source === "system" ? (
-                                <Badge bg="secondary" className="px-2 py-0.5">Denetim Masası</Badge>
-                              ) : p.source === "manual" ? (
-                                <Badge bg="light" text="dark" className="border px-2 py-0.5">Tanımlı Aygıt</Badge>
-                              ) : (
-                                <Badge bg="success" className="px-2 py-0.5">Hazır</Badge>
+            <div className="table-responsive border rounded mb-2" style={{ maxHeight: "320px", overflowY: "auto" }}>
+              <table className="table table-hover table-sm align-middle mb-0 user-select-none">
+                <thead className="table-light sticky-top">
+                  <tr>
+                    <th style={{ width: "40px" }} className="text-center">#</th>
+                    <th>Yazıcı / Aygıt Adı (Denetim Masası / Donanım)</th>
+                    <th style={{ width: "160px" }} className="text-center">Kaynak</th>
+                    <th style={{ width: "90px" }} className="text-end">İşlem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {systemPrinters
+                    .filter((p) =>
+                      !systemPrinterSearchTerm
+                        ? true
+                        : p.name.toLowerCase().includes(systemPrinterSearchTerm.toLowerCase())
+                    )
+                    .map((p, idx) => {
+                      const isSelected = selectedSystemPrinterName === p.name;
+                      return (
+                        <tr
+                          key={idx}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => setSelectedSystemPrinterName(p.name)}
+                          onDoubleClick={() => handleSelectSystemPrinter(p.name)}
+                          className={isSelected ? "table-primary fw-semibold" : ""}
+                          title="Tek tıklama: Satırı seçer | Çift tıklama: Forma atar ve kapatır"
+                        >
+                          <td className="text-center text-secondary small">{idx + 1}</td>
+                          <td>
+                            <div className="d-flex align-items-center gap-2">
+                              <IconPrinter size={18} className="text-primary opacity-75" />
+                              <span className={isSelected ? "text-primary fw-bold" : "text-dark"}>
+                                {p.name}
+                              </span>
+                              {formData.cihazAdi === p.name && (
+                                <Badge bg="primary" className="ms-1 px-1.5 py-0.5">Mevcut</Badge>
                               )}
-                            </td>
-                            <td className="text-end">
-                              <Button
-                                variant={isSelected ? "primary" : "outline-primary"}
-                                size="sm"
-                                className="py-0 px-2.5 fw-semibold"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectSystemPrinter(p.name);
-                                }}
-                              >
-                                Seç
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="alert alert-light border text-secondary py-3 px-3 small text-center mb-2">
-                  Bu bilgisayarda henüz algılanmış yazıcı bulunmuyor.
-                  <br />
-                  Yukarıdaki <strong>"İzin Ver / Aygıt Seç"</strong> butonuna tıklayarak veya adını yazarak bu bilgisayara ait yazıcıyı kaydedebilirsiniz.
-                </div>
-              )}
-            </>
+                              {p.isDefault && (
+                                <Badge bg="success" className="ms-1 px-1.5 py-0.5">Varsayılan</Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="text-center">
+                            {p.source === "usb" ? (
+                              <Badge bg="info" className="px-2 py-0.5">USB / Donanım</Badge>
+                            ) : p.source === "serial" ? (
+                              <Badge bg="warning" text="dark" className="px-2 py-0.5">Seri Port</Badge>
+                            ) : p.source === "system" ? (
+                              <Badge bg="secondary" className="px-2 py-0.5">Denetim Masası</Badge>
+                            ) : p.source === "manual" ? (
+                              <Badge bg="light" text="dark" className="border px-2 py-0.5">Tanımlı Aygıt</Badge>
+                            ) : (
+                              <Badge bg="success" className="px-2 py-0.5">Hazır</Badge>
+                            )}
+                          </td>
+                          <td className="text-end">
+                            <Button
+                              variant={isSelected ? "primary" : "outline-primary"}
+                              size="sm"
+                              className="py-0 px-2.5 fw-semibold"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectSystemPrinter(p.name);
+                              }}
+                            >
+                              Seç
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
           )}
         </Modal.Body>
         <Modal.Footer className="bg-light py-2 px-3 d-flex justify-content-between align-items-center">
           <div className="small text-muted">
             {selectedSystemPrinterName ? (
-              <span>Seçili Satır: <strong className="text-dark">{selectedSystemPrinterName}</strong> (Çift tıkla veya 'Seç' butonuyla atayın)</span>
+              <span>Seçili Yazıcı: <strong className="text-dark">{selectedSystemPrinterName}</strong> (Çift tıkla veya 'Seç' butonuyla atayabilirsiniz)</span>
             ) : (
-              <span>Tek tıkla satır seçebilir, çift tıkla formu doldurabilirsiniz.</span>
+              <span>Tek tıklama satırı seçer, çift tıklama forma aktarır.</span>
             )}
           </div>
           <div className="d-flex gap-2">
@@ -725,6 +703,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
               size="sm"
               disabled={!selectedSystemPrinterName}
               onClick={() => handleSelectSystemPrinter(selectedSystemPrinterName)}
+              className="fw-bold px-3"
             >
               Seç ve Ata
             </Button>

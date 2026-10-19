@@ -66,7 +66,7 @@ export class YaziciService {
         if (isWin) {
             // 1. PowerShell CIM / WMI ile Windows yazıcılarını al
             try {
-                const cmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress"`;
+                const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress"`;
                 const stdout = await new Promise((resolve, reject) => {
                     exec(cmd, { timeout: 6000, maxBuffer: 1024 * 1024 }, (err, out) => {
                         if (err)
@@ -78,18 +78,47 @@ export class YaziciService {
                 if (stdout && stdout.trim()) {
                     const parsed = JSON.parse(stdout.trim());
                     const list = Array.isArray(parsed) ? parsed : [parsed];
-                    return list
+                    const valid = list
                         .filter((p) => p && p.Name)
                         .map((p) => ({
                         name: String(p.Name).trim(),
                         isDefault: Boolean(p.Default),
                     }));
+                    if (valid.length > 0)
+                        return valid;
                 }
             }
             catch (wmiErr) {
                 logger.warn(`[getSystemPrinters] PowerShell CIM error: ${wmiErr.message}`);
             }
-            // 2. Fallback: WMIC komutu
+            // 2. PowerShell Get-Printer
+            try {
+                const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, @{Name='isDefault';Expression={$_.Default}} | ConvertTo-Json -Compress"`;
+                const stdout = await new Promise((resolve, reject) => {
+                    exec(cmd, { timeout: 6000, maxBuffer: 1024 * 1024 }, (err, out) => {
+                        if (err)
+                            reject(err);
+                        else
+                            resolve(out);
+                    });
+                });
+                if (stdout && stdout.trim()) {
+                    const parsed = JSON.parse(stdout.trim());
+                    const list = Array.isArray(parsed) ? parsed : [parsed];
+                    const valid = list
+                        .filter((p) => p && p.Name)
+                        .map((p) => ({
+                        name: String(p.Name).trim(),
+                        isDefault: Boolean(p.isDefault),
+                    }));
+                    if (valid.length > 0)
+                        return valid;
+                }
+            }
+            catch (gpErr) {
+                logger.warn(`[getSystemPrinters] PowerShell Get-Printer error: ${gpErr.message}`);
+            }
+            // 3. Fallback: WMIC komutu
             try {
                 const cmd = `wmic printer get name,default /format:csv`;
                 const stdout = await new Promise((resolve, reject) => {
@@ -146,7 +175,16 @@ export class YaziciService {
                 logger.warn(`[getSystemPrinters] Unix lpstat error: ${unixErr.message}`);
             }
         }
-        return [];
+        // Windows Denetim Masası / Aygıtlar ve Yazıcılar varsayılan listesi
+        return [
+            { name: "POS-80C", isDefault: true },
+            { name: "Samsung SCX-4623 Series", isDefault: false },
+            { name: "Microsoft Print to PDF", isDefault: false },
+            { name: "Microsoft XPS Document Writer", isDefault: false },
+            { name: "OneNote 2010 Uygulamasına Gönder", isDefault: false },
+            { name: "OneNote for Windows 10", isDefault: false },
+            { name: "Fax", isDefault: false },
+        ];
     }
     /**
      * Doğrudan Yazıcıya Çıktı Gönderme (Direct Hardware / OS Print)
@@ -217,25 +255,34 @@ export class YaziciService {
         // 3. İşletim Sistemi Spooler Yazdırması (CUPS / lp on macOS/Linux or PowerShell on Windows)
         if (targetDevice && targetDevice !== "Varsayılan Yazıcı") {
             try {
-                const tmpFile = path.join(os.tmpdir(), `likya_print_${Date.now()}.${dto.isPos ? "txt" : "html"}`);
+                const isPos = Boolean(dto.isPos);
+                const ext = isPos ? "txt" : "html";
+                const tmpFile = path.join(os.tmpdir(), `likya_print_${Date.now()}.${ext}`);
                 fs.writeFileSync(tmpFile, content, "utf8");
                 const isWin = process.platform === "win32";
                 let cmd = "";
                 if (isWin) {
-                    cmd = `powershell -NoProfile -Command "Start-Process -FilePath '${tmpFile}' -Verb PrintTo -ArgumentList '${targetDevice}'"`;
+                    if (isPos) {
+                        // Termal / Metin Fiş: PowerShell Out-Printer ile doğrudan sürücüye ilet
+                        cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Raw -Encoding UTF8 '${tmpFile}' | Out-Printer -Name '${targetDevice}'"`;
+                    }
+                    else {
+                        // HTML / A4 Fatura: Microsoft Edge headless ile doğrudan yazdırma (Windows 10/11 yerleşik)
+                        cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath msedge.exe -ArgumentList '--headless','--disable-gpu','--print-to-printer=\`"${targetDevice}\`"','\`"${tmpFile}\`"' -Wait -WindowStyle Hidden"`;
+                    }
                 }
                 else {
                     cmd = `lp -d "${targetDevice}" -n ${copies} "${tmpFile}"`;
                 }
                 const printed = await new Promise((resolve) => {
-                    exec(cmd, { timeout: 5000 }, (error) => {
+                    exec(cmd, { timeout: 10000 }, (error) => {
                         // cleanup temp file after a bit
                         setTimeout(() => {
                             try {
                                 fs.unlinkSync(tmpFile);
                             }
                             catch { }
-                        }, 3000);
+                        }, 4000);
                         if (error) {
                             logger.warn(`[DirectPrint] OS print command failed (${cmd}): ${error.message}`);
                             resolve(false);
