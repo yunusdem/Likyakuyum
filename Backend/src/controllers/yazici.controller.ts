@@ -417,7 +417,15 @@ while ($listener.IsListening) {
    */
   public static directPrint = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = YaziciController.getDbContext(req);
-    const result = await YaziciService.directPrint(req.body, dbContext);
+    const rawIp = (
+      req.headers["cf-connecting-ip"]?.toString().trim() ||
+      req.headers["x-real-ip"]?.toString().trim() ||
+      req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
+      req.socket.remoteAddress ||
+      "127.0.0.1"
+    ).replace(/^.*:/, "");
+    const clientIp = rawIp === "1" ? "127.0.0.1" : rawIp;
+    const result = await YaziciService.directPrint({ ...req.body, clientIp }, dbContext);
     return ApiResponse.ok(res, result.message, result);
   });
 }

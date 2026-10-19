@@ -33,7 +33,7 @@ export const LOCAL_STATUS_URL = "http://localhost:5050/status";
 export async function checkLocalPrintServiceOnline(): Promise<boolean> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 400);
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
     const res = await fetch("http://127.0.0.1:5050/status", {
       method: "GET",
       signal: controller.signal,
@@ -100,12 +100,13 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
   const finalText = text || (html ? extractTextFromHtml(html) : "");
 
-  // 1. Yerel Windows Spooler Servisi (Port 5050 - Varsa anında sessiz çıktı)
-  try {
-    const isOnline = await checkLocalPrintServiceOnline();
-    if (isOnline) {
+  // 1. Yerel Windows Spooler Servisi (Port 5050 - Bu bilgisayardaki yazıcıya anında sessiz çıktı)
+  const isOnline = await checkLocalPrintServiceOnline();
+  if (isOnline) {
+    try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      // Windows yazdırma işlemi birkaç saniye sürebilir; erken kesilirse fiş basılmaz
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
       const res = await fetch("http://127.0.0.1:5050/print", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -115,19 +116,35 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
           targetDevice: printerName,
           text: finalText,
           html,
+          pdfBase64,
           isPos,
           copies,
+          title,
         }),
       });
       clearTimeout(timeoutId);
-      if (res.ok) {
+      const data = await res.json().catch(() => ({} as any));
+      if (res.ok && data?.success !== false) {
         return {
           success: true,
-          message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına yerel servis üzerinden sessiz iletildi.`,
+          message: `Fiş "${data?.printerName || printerName || "Tanımlı Yazıcı"}" yazıcısına gönderildi.`,
         };
       }
+      return {
+        success: false,
+        message: data?.message || `"${printerName || "Tanımlı Yazıcı"}" yazıcısına yazdırılamadı.`,
+      };
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        // Servis işi aldı ama geç tamamladı; tekrar göndermek çift fiş basar
+        return {
+          success: true,
+          message: `Fiş "${printerName || "Tanımlı Yazıcı"}" yazıcısına iletildi (yazdırma sürüyor).`,
+        };
+      }
+      // Bağlantı koptu: aşağıdaki yollara devam et
     }
-  } catch {}
+  }
 
   // 2. Modern Chromium Web Printing API (Doğrudan Yazdırma)
   if (html) {

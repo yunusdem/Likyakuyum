@@ -168,18 +168,6 @@ export async function executePrintJob(job) {
     fs.writeFileSync(htmlFile, fullHtml, "utf-8");
 
     if (platform === "win32") {
-      const edgePaths = [
-        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-        `${process.env["ProgramFiles(x86)"] || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
-        `${process.env.ProgramFiles || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
-        `${process.env.LOCALAPPDATA || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
-        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-      ];
-      const browserExe = edgePaths.find((p) => p && fs.existsSync(p));
-
-      // PowerShell ile Windows Denetim Masası'ndaki en uygun yazıcıyı çözümle
       const safeTarget = (printerName || "").replace(/'/g, "''");
       const psCmd = `powershell -NoProfile -Command "$target = '${safeTarget}'; $p = if ($target) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $target -or $_.DeviceID -eq $target } | Select-Object -First 1 } else { $null }; if (-not $p -and $target) { $clean = ($target -split '[\\\\/]')[-1]; $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $clean + '*') -or $_.DeviceID -like ('*' + $clean + '*') } | Select-Object -First 1 }; $pName = if ($p) { $p.Name } else { (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name }; if ($pName) { Out-File -FilePath '${htmlFile}.target' -InputObject $pName -Encoding UTF8 }"`;
       await execAsync(psCmd).catch(() => {});
@@ -192,20 +180,69 @@ export async function executePrintJob(job) {
         }
       } catch {}
 
-      if (browserExe) {
-        const printerParam = resolvedWinPrinter ? `--print-to-printer="${resolvedWinPrinter}"` : "--print-to-printer";
-        const cmd = `"${browserExe}" --headless=new --disable-gpu --no-pdf-header-footer ${printerParam} "${htmlFile}"`;
-        await execAsync(cmd, { timeout: 12000 }).catch(async () => {
-          const fallbackPs = resolvedWinPrinter
-            ? `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${htmlFile}' -Raw -Encoding UTF8 | Out-Printer -Name '${resolvedWinPrinter.replace(/'/g, "''")}'"`
-            : `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${htmlFile}' -Raw -Encoding UTF8 | Out-Printer"`;
-          await execAsync(fallbackPs).catch(() => {});
-        });
-      } else {
-        const fallbackPs = resolvedWinPrinter
-          ? `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${htmlFile}' -Raw -Encoding UTF8 | Out-Printer -Name '${resolvedWinPrinter.replace(/'/g, "''")}'"`
-          : `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Raw -Encoding UTF8 | Out-Printer"`;
-        await execAsync(fallbackPs).catch(() => {});
+      // HTML'yi gerçek biçimiyle, önizlemesiz ve hedef yazıcıya bas:
+      // Windows'un yerleşik WebBrowser bileşeni (STA PowerShell) ile. Hedef yazıcı geçici olarak
+      // varsayılan yapılır, baskı sonrası eski varsayılan geri yüklenir. Üst/alt bilgi kapatılır.
+      const psFile = path.join(TMP_DIR, `print_${timestamp}.ps1`);
+      const psScript = `
+param([string]$HtmlPath, [string]$Printer, [int]$Copies = 1)
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+$ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
+if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
+$oldHeader = (Get-ItemProperty -Path $ps -Name header -ErrorAction SilentlyContinue).header
+$oldFooter = (Get-ItemProperty -Path $ps -Name footer -ErrorAction SilentlyContinue).footer
+Set-ItemProperty -Path $ps -Name header -Value ''
+Set-ItemProperty -Path $ps -Name footer -Value ''
+$net = New-Object -ComObject WScript.Network
+$prev = (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
+try {
+  if ($Printer) { $net.SetDefaultPrinter($Printer) }
+  for ($i = 0; $i -lt [Math]::Max(1, $Copies); $i++) {
+    $wb = New-Object System.Windows.Forms.WebBrowser
+    $wb.ScriptErrorsSuppressed = $true
+    $script:loaded = $false
+    $wb.add_DocumentCompleted({ $script:loaded = $true })
+    $wb.Navigate($HtmlPath)
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $script:loaded -and $sw.Elapsed.TotalSeconds -lt 10) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 30 }
+    $wb.Print()
+    $sw.Restart()
+    while ($sw.Elapsed.TotalSeconds -lt 2) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 30 }
+    $wb.Dispose()
+  }
+} finally {
+  if ($Printer -and $prev -and $prev -ne $Printer) { try { $net.SetDefaultPrinter($prev) } catch {} }
+  if ($null -ne $oldHeader) { Set-ItemProperty -Path $ps -Name header -Value $oldHeader }
+  if ($null -ne $oldFooter) { Set-ItemProperty -Path $ps -Name footer -Value $oldFooter }
+}
+`;
+      fs.writeFileSync(psFile, "\ufeff" + psScript, "utf-8");
+      const printerArg = resolvedWinPrinter ? `-Printer "${resolvedWinPrinter.replace(/"/g, '""')}"` : "";
+      let htmlPrinted = false;
+      try {
+        await execAsync(
+          `powershell -NoProfile -STA -ExecutionPolicy Bypass -File "${psFile}" -HtmlPath "${htmlFile}" ${printerArg} -Copies ${Number(copies) || 1}`,
+          { timeout: 30000 }
+        );
+        htmlPrinted = true;
+      } catch (err) {
+        console.error("[HTML YAZDIRMA HATASI]", err?.message || err);
+      }
+      setTimeout(() => { try { fs.unlinkSync(psFile); } catch {} }, 4000);
+
+      // Yedek: düz metin olarak hedef yazıcıya gönder (biçimsiz ama çıktı alınır)
+      if (!htmlPrinted && text) {
+        const textFile = path.join(TMP_DIR, `print_${timestamp}.txt`);
+        fs.writeFileSync(textFile, text, "utf-8");
+        const target = resolvedWinPrinter ? ` -Name '${resolvedWinPrinter.replace(/'/g, "''")}'` : "";
+        await execAsync(
+          `powershell -NoProfile -Command "Get-Content -Path '${textFile}' -Raw -Encoding UTF8 | Out-Printer${target}"`
+        ).catch(() => {});
+        setTimeout(() => { try { fs.unlinkSync(textFile); } catch {} }, 4000);
+      }
+      if (!htmlPrinted && !text) {
+        throw new Error(`"${resolvedWinPrinter || printerName || "varsayılan"}" yazıcısına HTML çıktı gönderilemedi.`);
       }
     } else {
       const cleanTarget = (printerName || "").split(/[\\/]/).pop() || "";

@@ -16,6 +16,7 @@ export interface DirectPrintDto {
   textContent?: string | null;
   isPos?: boolean;
   copies?: number;
+  clientIp?: string;
 }
 
 export interface ClientPrinterInfo {
@@ -420,8 +421,11 @@ export class YaziciService {
       }
     }
 
-    // 3. İşletim Sistemi Spooler Yazdırması (CUPS / lp on macOS/Linux or PowerShell on Windows)
-    try {
+    // 3. İşletim Sistemi Spooler Yazdırması — SADECE istek sunucunun kendi bilgisayarından geliyorsa.
+    //    Bulutta sunucunun yazıcıları kullanıcının yazıcıları değildir; o durumda iş istemci kuyruğuna (adım 4) gider.
+    const ip = (dto.clientIp || "").trim();
+    const isLocalRequest = !ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost";
+    if (isLocalRequest) try {
       const isPos = Boolean(dto.isPos);
       const ext = isPos ? "txt" : "html";
       const tmpFile = path.join(os.tmpdir(), `likya_print_${Date.now()}.${ext}`);
@@ -440,8 +444,8 @@ export class YaziciService {
       } else {
         const cleanTarget = (targetDevice && targetDevice !== "Varsayılan Yazıcı" ? targetDevice : "").split(/[\\/]/).pop() || "";
         cmd = cleanTarget
-          ? `lp -d "${cleanTarget}" -n ${copies} "${tmpFile}" 2>/dev/null || lp -n ${copies} "${tmpFile}" 2>/dev/null || true`
-          : `lp -n ${copies} "${tmpFile}" 2>/dev/null || true`;
+          ? `lp -d "${cleanTarget}" -n ${copies} "${tmpFile}"`
+          : `lp -n ${copies} "${tmpFile}"`;
       }
 
       const printed = await new Promise<boolean>((resolve) => {
@@ -479,12 +483,12 @@ export class YaziciService {
         isPos: Boolean(dto.isPos),
         copies,
         token: (dto as any).token,
-        clientIp: (dto as any).clientIp,
+        clientIp: dto.clientIp,
         computerName: (dto as any).computerName,
       });
       return {
         success: true,
-        message: `"${targetDevice}" yazıcısına yazdırma emri iletildi (Kuyruk ID: ${jobId}).`,
+        message: `"${targetDevice}" yazıcısına yazdırma emri bu bilgisayarın yerel yazdırma servisine iletildi (Kuyruk ID: ${jobId}).`,
       };
     }
 

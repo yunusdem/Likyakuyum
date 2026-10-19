@@ -103,11 +103,66 @@ export const isVirtualSystemPrinter = (name?: string | null): boolean => {
   return virtualKeywords.some((k) => n.includes(k));
 };
 
+export const getLocalPrintersFromStorage = (): string[] => {
+  try {
+    const raw = localStorage.getItem("local_printers");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item: any) => (typeof item === "string" ? item : item?.name))
+          .filter((n: any) => typeof n === "string" && n.trim().length > 0);
+      }
+    }
+  } catch {}
+
+  // Geriye dönük uyumluluk: likya_client_printers
+  try {
+    const legacy = localStorage.getItem("likya_client_printers");
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      if (Array.isArray(parsed)) {
+        const names = parsed
+          .map((item: any) => (typeof item === "string" ? item : item?.name))
+          .filter((n: any) => typeof n === "string" && n.trim().length > 0);
+        if (names.length > 0) {
+          saveLocalPrintersToStorage(names);
+          return names;
+        }
+      }
+    }
+  } catch {}
+
+  return [];
+};
+
+export const saveLocalPrintersToStorage = (printers: string[]): void => {
+  try {
+    const cleanList = Array.from(
+      new Set(
+        printers
+          .map((p) => (typeof p === "string" ? p.trim() : ""))
+          .filter((p) => p.length > 0)
+      )
+    );
+    localStorage.setItem("local_printers", JSON.stringify(cleanList));
+    const objList = cleanList.map((name) => ({
+      name,
+      source: isVirtualSystemPrinter(name) ? "system" : "browser",
+      isDefault: false,
+      details: "Bu Bilgisayara Özel Tanımlı Yerel Yazıcı",
+    }));
+    localStorage.setItem("likya_client_printers", JSON.stringify(objList));
+  } catch {}
+};
+
 let lastPort5050FailTime = 0;
 
 export class PrinterService {
   public static isVirtualSystemPrinter = isVirtualSystemPrinter;
   public static isNonPrinterHardware = isNonPrinterHardware;
+  public static getLocalPrinters = getLocalPrintersFromStorage;
+  public static saveLocalPrinters = saveLocalPrintersToStorage;
 
   /**
    * Bu bilgisayara özel benzersiz terminal cihaz kimliği (Terminal UUID)
@@ -130,6 +185,20 @@ export class PrinterService {
   public static getClientStoredPrinters(userId?: string | number): SystemPrinterItem[] {
     const list: SystemPrinterItem[] = [];
     try {
+      // 1. Doğrudan bu bilgisayarın local_printers listesini al
+      const localPrinters = getLocalPrintersFromStorage();
+      for (const pName of localPrinters) {
+        if (!list.some((p) => p.name.toLowerCase() === pName.toLowerCase())) {
+          list.push({
+            name: pName,
+            isDefault: list.length === 0,
+            isOnline: true,
+            source: isVirtualSystemPrinter(pName) ? "system" : "browser",
+            details: "Bu Bilgisayara Özel Tanımlı Yerel Yazıcı",
+          });
+        }
+      }
+
       const cleanRaw = (raw: string | null) => {
         if (!raw) return [];
         const parsed = JSON.parse(raw);
@@ -167,10 +236,18 @@ export class PrinterService {
   public static saveClientPrinter(printer: SystemPrinterItem, userId?: string | number): void {
     try {
       if (!printer.name || isNonPrinterHardware(printer.name)) return;
+      const cleanName = printer.name.trim();
+
+      // local_printers listesine ekle ve kaydet
+      const currentStored = getLocalPrintersFromStorage();
+      const updatedStored = Array.from(new Set([cleanName, ...currentStored]));
+      saveLocalPrintersToStorage(updatedStored);
+
       const current = PrinterService.getClientStoredPrinters(userId);
-      const filtered = current.filter((p) => p.name.toLowerCase() !== printer.name.toLowerCase());
+      const filtered = current.filter((p) => p.name.toLowerCase() !== cleanName.toLowerCase());
       filtered.unshift({
         ...printer,
+        name: cleanName,
         details: printer.details || "Bu Bilgisayara Bağlı Yazıcı",
       });
       const toSave = filtered.slice(0, 30);
@@ -179,16 +256,17 @@ export class PrinterService {
         localStorage.setItem(`likya_user_printers_${userId}`, JSON.stringify(toSave));
       }
       const termUUID = PrinterService.getTerminalUUID();
-      localStorage.setItem(`likya_terminal_printer_${termUUID}`, printer.name);
-      localStorage.setItem("likya_last_selected_printer", printer.name);
-      localStorage.setItem("likya_terminal_last_printer", printer.name);
+      localStorage.setItem(`likya_terminal_printer_${termUUID}`, cleanName);
+      localStorage.setItem("likya_last_selected_printer", cleanName);
+      localStorage.setItem("likya_terminal_last_printer", cleanName);
       localStorage.setItem("likya_terminal_uuid", termUUID);
     } catch {}
   }
 
   /**
    * Sadece o anki bilgisayara bağlı gerçek yazıcıları çok kanallı dinamik çeken fonksiyon
-   * (Yerel Windows Spooler Port 5050, Chromium queryLocalPrinters, Backend client-printers, Spooler system-printers, LocalStorage)
+   * (LocalStorage local_printers, Yerel Spooler Port 5050, Chromium queryLocalPrinters, Navigator Printing)
+   * Kural: Sunucu makinesinin backend yazıcılarını ASLA çekmez!
    */
   public static async fetchRealTimePrinters(): Promise<string[]> {
     const physicalList: string[] = [];
@@ -206,13 +284,17 @@ export class PrinterService {
       }
     };
 
-    // 1. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Windows Spooler)
-    // Chrome'un Yazdır penceresindeki "Hedef" listesi de aynı Windows Spooler'dan gelir; bu yüzden kaynak bu.
-    // PowerShell sorgusu 1-3 sn sürebileceğinden zaman aşımı geniş tutuldu.
+    // 1. Bu bilgisayarın LocalStorage'ında kayıtlı yerel yazıcılar
+    const stored = getLocalPrintersFromStorage();
+    for (const p of stored) {
+      addPrinterName(p);
+    }
+
+    // 2. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Client Makine Spooler)
     if (Date.now() - lastPort5050FailTime > 15000) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         const res = await fetch("http://127.0.0.1:5050/printers", {
           signal: controller.signal,
         });
@@ -223,28 +305,11 @@ export class PrinterService {
           for (const p of list) {
             addPrinterName(p?.name);
           }
-          // Yerel servis cevap verdiyse bu bilgisayarın gerçek listesi budur, başka kaynak eklenmez
-          if (physicalList.length + virtualList.length > 0) {
-            return [...physicalList, ...virtualList];
-          }
         } else {
           lastPort5050FailTime = Date.now();
         }
       } catch {
         lastPort5050FailTime = Date.now();
-      }
-    }
-
-    // 2. Chromium / WICG Web Printing API (window.printing.getPrinters)
-    if (typeof window !== "undefined" && "printing" in window && typeof (window as any).printing?.getPrinters === "function") {
-      try {
-        const printers = await (window as any).printing.getPrinters();
-        for (const p of (printers || [])) {
-          const pName = typeof p?.cachedAttributes === "function" ? p.cachedAttributes()?.printerName : (p?.name || p?.id || p);
-          addPrinterName(pName);
-        }
-      } catch (err: any) {
-        console.debug("window.printing.getPrinters hata:", err);
       }
     }
 
@@ -260,7 +325,20 @@ export class PrinterService {
       }
     }
 
-    // 4. Navigator Printing Standart API
+    // 4. Chromium / WICG Web Printing API (window.printing.getPrinters)
+    if (typeof window !== "undefined" && "printing" in window && typeof (window as any).printing?.getPrinters === "function") {
+      try {
+        const printers = await (window as any).printing.getPrinters();
+        for (const p of (printers || [])) {
+          const pName = typeof p?.cachedAttributes === "function" ? p.cachedAttributes()?.printerName : (p?.name || p?.id || p);
+          addPrinterName(pName);
+        }
+      } catch (err: any) {
+        console.debug("window.printing.getPrinters hata:", err);
+      }
+    }
+
+    // 5. Navigator Printing Standart API
     if (typeof navigator !== "undefined" && "printing" in navigator && typeof (navigator as any).printing?.getPrinters === "function") {
       try {
         const printers = await (navigator as any).printing.getPrinters();
@@ -270,31 +348,7 @@ export class PrinterService {
       } catch {}
     }
 
-    // 5. Yerel servisin buluta senkronize ettiği BU bilgisayarın yazıcıları (/api/v1/yazici/client-printers)
-    try {
-      const clientRes = await apiClient.get<any[]>("/yazici/client-printers", undefined, { silent: true });
-      if (Array.isArray(clientRes.data) && clientRes.data.length > 0) {
-        for (const cp of clientRes.data) {
-          addPrinterName(cp?.name || cp);
-        }
-      }
-    } catch {}
-
-    // 6. Sunucu Spooler yazıcıları SADECE sunucu bu bilgisayardaysa (localhost) geçerlidir.
-    // Bulut sunucuda bu liste sunucunun yazıcılarıdır, kullanıcının bilgisayarının değil.
-    const host = typeof window !== "undefined" ? window.location.hostname : "";
-    const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "::1";
-    if (isLocalHost && physicalList.length + virtualList.length === 0) {
-      try {
-        const sysRes = await apiClient.get<any[]>("/yazici/system-printers", undefined, { silent: true });
-        if (Array.isArray(sysRes.data) && sysRes.data.length > 0) {
-          for (const sp of sysRes.data) {
-            addPrinterName(sp?.name || sp);
-          }
-        }
-      } catch {}
-    }
-
+    // Sunucudan (backend) yazıcı ÇEKİLMEZ - Sadece bu bilgisayarın yazıcıları listelenir.
     return [...physicalList, ...virtualList];
   }
 
