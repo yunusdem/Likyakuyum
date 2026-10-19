@@ -14,7 +14,7 @@ import { Bulunamadi } from "./sayfalar/Bulunamadi";
 import { analitikKur, sayfaGoruntulendi } from "./yardimci/analitik";
 
 /** www.likyaerp.com düzeni ve yolları (docs/LIKYAERP_TANITIM_SITESI.md §4). */
-const Duzen: React.FC = () => {
+export const ErpDuzen: React.FC = () => {
   const { pathname, hash } = useLocation();
 
   useEffect(() => {
@@ -49,7 +49,7 @@ const Duzen: React.FC = () => {
 
 export const ErpApp: React.FC = () => (
   <Routes>
-    <Route element={<Duzen />}>
+    <Route element={<ErpDuzen />}>
       <Route path="/" element={<AnaSayfa />} />
       <Route path="/urunler/:slug" element={<UrunSayfasi />} />
       <Route path="/karsilastir" element={<Karsilastir />} />

@@ -1,15 +1,33 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import ErpApp from "./ErpApp";
+import { Provider } from "react-redux";
+import store from "../store/store";
+import App from "../App";
+import GlobalCalculator from "../components/common/GlobalCalculator";
 
-// Bootstrap / tema yüklenmez: site kendi hafif stilini kullanır (docs/LIKYAERP_TANITIM_SITESI.md)
+// Import Swiper styles
+import "swiper/css";
+import "swiper/css/navigation";
+import "swiper/css/pagination";
+import "swiper/css/scrollbar";
+
+// Import main theme scss
+import "styles/theme.scss";
+// Import erp site styles
 import "./erp.css";
 
+import { initGlobalNumericInputInterceptor } from "../utils/numericInput";
+import { initGlobalSelectSpaceInterceptor } from "../utils/selectSpaceInterceptor";
+
+initGlobalNumericInputInterceptor();
+initGlobalSelectSpaceInterceptor();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+  <Provider store={store}>
     <BrowserRouter>
-      <ErpApp />
+      <App isErpSite={true} />
+      <GlobalCalculator />
     </BrowserRouter>
-  </React.StrictMode>
+  </Provider>
 );

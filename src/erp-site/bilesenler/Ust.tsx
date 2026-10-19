@@ -5,10 +5,12 @@ import { URUNLER } from "../veri/urunler";
 import { SIRKET, TEL_LINK } from "../veri/sirket";
 import { Logo } from "./Logo";
 import { urunStili } from "./UrunStil";
+import { useAuth } from "../../context/AuthContext";
 
 /** Üst menü: masaüstünde "Ürünler" açılır paneli, mobilde tam ekran menü. "Giriş Yap" uygulamanın giriş ekranına gider. */
 export const Ust: React.FC = () => {
   const konum = useLocation();
+  const { isAuthenticated } = useAuth();
   const [kaydi, setKaydi] = useState(false);
   const [urunlerAcik, setUrunlerAcik] = useState(false);
   const [mobilAcik, setMobilAcik] = useState(false);
@@ -121,9 +123,9 @@ export const Ust: React.FC = () => {
           </nav>
 
           <div className="menu-sag">
-            <a href={SIRKET.girisAdresi} className="dugme dugme-cizgi dugme-kucuk">
-              <IconLogin2 size={16} aria-hidden="true" /> Giriş Yap
-            </a>
+            <Link to={isAuthenticated ? "/dashboard" : SIRKET.girisAdresi} className="dugme dugme-cizgi dugme-kucuk">
+              <IconLogin2 size={16} aria-hidden="true" /> {isAuthenticated ? "Yönetim Paneli" : "Giriş Yap"}
+            </Link>
             <a href={TEL_LINK} className="dugme dugme-cizgi dugme-kucuk" aria-label={`Bizi arayın: ${SIRKET.telefon}`}>
               <IconPhone size={16} aria-hidden="true" /> Arayın
             </a>
@@ -170,9 +172,9 @@ export const Ust: React.FC = () => {
         <a href={TEL_LINK} className="dugme dugme-cizgi">
           <IconPhone size={16} aria-hidden="true" /> {SIRKET.telefon}
         </a>
-        <a href={SIRKET.girisAdresi} className="dugme dugme-cizgi">
-          <IconLogin2 size={16} aria-hidden="true" /> Giriş Yap
-        </a>
+        <Link to={isAuthenticated ? "/dashboard" : SIRKET.girisAdresi} className="dugme dugme-cizgi">
+          <IconLogin2 size={16} aria-hidden="true" /> {isAuthenticated ? "Yönetim Paneli" : "Giriş Yap"}
+        </Link>
       </div>
     </>
   );

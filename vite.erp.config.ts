@@ -53,8 +53,16 @@ export default defineConfig((ortam) => {
         strictPort: true,
         open: false,
         proxy: {
-          // Bu siteden yalnız iletişim formu backend'e gider
-          '/api/v1/iletisim': { target: backendOrigin, changeOrigin: true, secure: false }
+          '/api': {
+            target: backendOrigin,
+            changeOrigin: true,
+            secure: false,
+          },
+          '/uploads': {
+            target: backendOrigin,
+            changeOrigin: true,
+            secure: false,
+          }
         }
       }
     } satisfies UserConfig

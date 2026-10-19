@@ -98,6 +98,14 @@ import LandingPanoPage from "./pages/landing/LandingPanoPage";
 import LandingSecurityPage from "./pages/landing/LandingSecurityPage";
 import LandingFaqPage from "./pages/landing/LandingFaqPage";
 import LandingAboutPage from "./pages/landing/LandingAboutPage";
+import { ErpDuzen } from "./erp-site/ErpApp";
+import { AnaSayfa as ErpAnaSayfa } from "./erp-site/sayfalar/AnaSayfa";
+import { UrunSayfasi as ErpUrunSayfasi } from "./erp-site/sayfalar/UrunSayfasi";
+import { Karsilastir as ErpKarsilastir } from "./erp-site/sayfalar/Karsilastir";
+import { Entegrasyonlar as ErpEntegrasyonlar } from "./erp-site/sayfalar/Entegrasyonlar";
+import { Hakkimizda as ErpHakkimizda } from "./erp-site/sayfalar/Hakkimizda";
+import { Iletisim as ErpIletisim } from "./erp-site/sayfalar/Iletisim";
+import { Kvkk as ErpKvkk, Gizlilik as ErpGizlilik } from "./erp-site/sayfalar/Yasal";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import LisansKilitDinleyici from "./components/lisans/LisansKilitDinleyici";
@@ -260,8 +268,19 @@ const DashboardLayout: React.FC = () => {
 
 import { FastLookupCache } from "./services/fastLookupCache";
 
-export default function App() {
+interface AppProps {
+  isErpSite?: boolean;
+}
+
+export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
   useEnterNavigation();
+
+  const isErpSite = isErpSiteProp ?? (
+    typeof window !== "undefined" && (
+      window.location.hostname.includes("likyaerp") ||
+      window.location.port === "3002"
+    )
+  );
 
   useEffect(() => {
     // Pre-warm lookup cache in background so all pages open in 0ms
@@ -279,16 +298,32 @@ export default function App() {
         <Routes>
 
           {/* Public Routes */}
-          <Route path="/" element={<KokSayfa />} />
-          <Route path="/ozellikler" element={<LandingFeaturesPage />} />
-          <Route path="/moduller" element={<LandingModulesPage />} />
-          <Route path="/canli-pano" element={<LandingPanoPage />} />
-          <Route path="/canli-kur" element={<LandingPanoPage />} />
-          <Route path="/guvenlik" element={<LandingSecurityPage />} />
-          <Route path="/mevzuat" element={<LandingSecurityPage />} />
-          <Route path="/sss" element={<LandingFaqPage />} />
-          <Route path="/hakkimizda" element={<LandingAboutPage />} />
-          <Route path="/iletisim" element={<LandingAboutPage />} />
+          {isErpSite ? (
+            <Route element={<ErpDuzen />}>
+              <Route path="/" element={<ErpAnaSayfa />} />
+              <Route path="/urunler/:slug" element={<ErpUrunSayfasi />} />
+              <Route path="/karsilastir" element={<ErpKarsilastir />} />
+              <Route path="/entegrasyonlar" element={<ErpEntegrasyonlar />} />
+              <Route path="/hakkimizda" element={<ErpHakkimizda />} />
+              <Route path="/iletisim" element={<ErpIletisim />} />
+              <Route path="/kvkk" element={<ErpKvkk />} />
+              <Route path="/gizlilik" element={<ErpGizlilik />} />
+            </Route>
+          ) : (
+            <>
+              <Route path="/" element={<KokSayfa />} />
+              <Route path="/ozellikler" element={<LandingFeaturesPage />} />
+              <Route path="/moduller" element={<LandingModulesPage />} />
+              <Route path="/canli-pano" element={<LandingPanoPage />} />
+              <Route path="/canli-kur" element={<LandingPanoPage />} />
+              <Route path="/guvenlik" element={<LandingSecurityPage />} />
+              <Route path="/mevzuat" element={<LandingSecurityPage />} />
+              <Route path="/sss" element={<LandingFaqPage />} />
+              <Route path="/hakkimizda" element={<LandingAboutPage />} />
+              <Route path="/iletisim" element={<LandingAboutPage />} />
+            </>
+          )}
+
           <Route path="/login" element={<LoginPage />} />
           <Route path="/sign-in" element={<Navigate to="/login" replace />} />
 
