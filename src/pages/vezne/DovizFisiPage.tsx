@@ -71,6 +71,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { dovizFisHtml } from "../../utils/belgeSablon/fisCikti";
+import { extractPlainTextFromFis } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
@@ -3913,13 +3914,15 @@ export const DovizFisiPage: React.FC = () => {
         // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
         try {
           const fisCikti = await dovizFisHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
+          const plainText = extractPlainTextFromFis(fisCikti);
           const sonuc = await triggerSilentPrint({
             html: fisCikti.html,
+            text: plainText,
             printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
             copies: copiesToUse,
             isPos,
             title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
-            allowBrowserFallback: true,
+            allowBrowserFallback: false,
           });
           if (!sonuc.success) yazdirmaHatasi = sonuc.message;
         } catch (printErr: any) {

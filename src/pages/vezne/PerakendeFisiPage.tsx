@@ -90,6 +90,7 @@ import { CompanyService } from "../../services/companyService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { perakendeFisHtml } from "../../utils/belgeSablon/fisCikti";
+import { extractPlainTextFromFis } from "../../utils/belgeSablon/yazdir";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -4425,13 +4426,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const isPos = resolved.recommendedPrintType === "POS";
     try {
       const fisCikti = await perakendeFisHtml(previewFatura, isPos ? "80" : "A4");
+      const plainText = extractPlainTextFromFis(fisCikti);
       const sonuc = await triggerSilentPrint({
         html: fisCikti.html,
+        text: plainText,
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
         copies: resolved.kopyaSayisi || 1,
         isPos,
         title: `Perakende_Fisi_${faturaNo || "Yazdir"}`,
-        allowBrowserFallback: true,
+        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         showSuccess("✅ Fiş doğrudan yazıcıya gönderildi.");
@@ -4772,13 +4775,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
         try {
           const fisCikti = await perakendeFisHtml(result || payload, isPos ? "80" : "A4");
+          const plainText = extractPlainTextFromFis(fisCikti);
           const sonuc = await triggerSilentPrint({
             html: fisCikti.html,
+            text: plainText,
             printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
             copies: resolved.kopyaSayisi || 1,
             isPos,
             title: `Perakende_Fisi_${result?.faturaNo || payload?.faturaNo || "Yazdir"}`,
-            allowBrowserFallback: true,
+            allowBrowserFallback: false,
           });
           if (!sonuc.success) {
             printSuccess = false;

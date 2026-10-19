@@ -286,13 +286,24 @@ app.post(["/api/print", "/print"], async (req, res) => {
   const targetPrinter = (printerName || targetDevice || "").trim();
   const platform = os.platform();
   const timestamp = Date.now();
-  const tmpDir = path.join(os.tmpdir(), "likya-print-temp");
+
+  // Windows'ta kullanıcı adındaki boşluklardan ("Yusuf ARAS") etkilenmemek için C:\ProgramData kullan
+  let tmpDir = "";
+  if (platform === "win32") {
+    const systemDrive = process.env.SystemDrive || "C:";
+    tmpDir = path.join(systemDrive, "ProgramData", "LikyaPrintTemp");
+  } else {
+    tmpDir = path.join(os.tmpdir(), "likya-print-temp");
+  }
 
   try {
     if (!fs.existsSync(tmpDir)) {
       fs.mkdirSync(tmpDir, { recursive: true });
     }
-  } catch {}
+  } catch {
+    tmpDir = path.join(os.tmpdir(), "likya-print-temp");
+    try { if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true }); } catch {}
+  }
 
   console.log(`[printercekmeApp] Yazdırma isteği alındı. Hedef Yazıcı: "${targetPrinter || 'Varsayılan'}", isPos: ${isPos}, Kopya: ${copies}`);
 
@@ -305,9 +316,16 @@ app.post(["/api/print", "/print"], async (req, res) => {
       let printed = false;
       let printErrorMessage = "";
 
-      // 1. HTML Varsa: Windows WebBrowser COM bileşeni (STA PowerShell) ile doğrudan ve sessizce bas
+      // Dosyaları hazırla
+      const textContent = text || (html ? extractTextFromHtmlSimple(html) : "");
+      const textFile = path.join(tmpDir, `print_${timestamp}.txt`);
+      if (textContent) {
+        fs.writeFileSync(textFile, "\ufeff" + textContent, "utf8");
+      }
+
+      let htmlFile = "";
       if (html) {
-        const htmlFile = path.join(tmpDir, `print_${timestamp}.html`);
+        htmlFile = path.join(tmpDir, `print_${timestamp}.html`);
         const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -324,23 +342,23 @@ app.post(["/api/print", "/print"], async (req, res) => {
 </body>
 </html>`;
         fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
+      }
 
-        const psFile = path.join(tmpDir, `print_${timestamp}.ps1`);
-        const psScript = `
-param([string]$HtmlPath, [string]$TargetPrinter, [int]$Copies = 1)
-$ErrorActionPreference = 'Stop'
+      const psFile = path.join(tmpDir, `print_${timestamp}.ps1`);
+      const psScript = `
+param(
+  [string]$HtmlPath,
+  [string]$TextPath,
+  [string]$TargetPrinter,
+  [int]$Copies = 1
+)
+
+$ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-# IE / WebBrowser üst ve alt bilgileri (Header & Footer) sıfırla
-$ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
-if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
-$oldHeader = (Get-ItemProperty -Path $ps -Name header -ErrorAction SilentlyContinue).header
-$oldFooter = (Get-ItemProperty -Path $ps -Name footer -ErrorAction SilentlyContinue).footer
-Set-ItemProperty -Path $ps -Name header -Value ''
-Set-ItemProperty -Path $ps -Name footer -Value ''
-
-# Hedef yazıcıyı bul
-$resolvedPrinter = $null
+# 1. Hedef yazıcıyı Windows Spooler listesinden tam olarak eşleştir
+$resolved = $null
 try {
   if ($TargetPrinter) {
     $p = Get-Printer | Where-Object { $_.Name -like ('*' + $TargetPrinter + '*') -or $_.Name -eq $TargetPrinter } | Select-Object -First 1
@@ -348,109 +366,166 @@ try {
       $clean = ($TargetPrinter -split '[\\\\/]')[-1]
       $p = Get-Printer | Where-Object { $_.Name -like ('*' + $clean + '*') } | Select-Object -First 1
     }
-    if ($p) { $resolvedPrinter = $p.Name }
+    if ($p) { $resolved = $p.Name }
   }
-} catch {
+} catch {}
+
+if (-not $resolved -and $TargetPrinter) {
   try {
-    if ($TargetPrinter) {
-      $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $TargetPrinter + '*') -or $_.Name -eq $TargetPrinter } | Select-Object -First 1
-      if ($p) { $resolvedPrinter = $p.Name }
-    }
+    $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $TargetPrinter + '*') -or $_.Name -eq $TargetPrinter } | Select-Object -First 1
+    if ($p) { $resolved = $p.Name }
   } catch {}
 }
 
+if (-not $resolved) {
+  try {
+    $resolved = (Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
+  } catch {
+    try {
+      $resolved = (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
+    } catch {}
+  }
+}
+
+if (-not $resolved) { $resolved = $TargetPrinter }
+
+# 2. IE / WebBrowser Üst ve Alt Bilgileri Sıfırla (Header/Footer kaldır)
+$ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
+if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
+$oldH = (Get-ItemProperty -Path $ps -Name header -ErrorAction SilentlyContinue).header
+$oldF = (Get-ItemProperty -Path $ps -Name footer -ErrorAction SilentlyContinue).footer
+Set-ItemProperty -Path $ps -Name header -Value ''
+Set-ItemProperty -Path $ps -Name footer -Value ''
+
+# 3. Yazdırmayı gerçekleştir
 $net = New-Object -ComObject WScript.Network
-$prev = $null
-try {
-  $prev = (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
-} catch {
+$prev = (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
+
+$printedOk = $false
+
+# A. HTML Varsa Form + WebBrowser ile tam grafikli / CSS formatlı bas
+if ($HtmlPath -and (Test-Path $HtmlPath)) {
   try {
-    $prev = (Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
-  } catch {}
-}
+    if ($resolved) {
+      try { $net.SetDefaultPrinter($resolved) } catch {}
+    }
 
-$printerToSet = if ($resolvedPrinter) { $resolvedPrinter } elseif ($TargetPrinter) { $TargetPrinter } else { $prev }
+    $form = New-Object System.Windows.Forms.Form
+    $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
+    $form.ShowInTaskbar = $false
+    $form.Width = 100
+    $form.Height = 100
 
-try {
-  if ($printerToSet) {
-    try { $net.SetDefaultPrinter($printerToSet) } catch {}
-  }
-  for ($i = 0; $i -lt [Math]::Max(1, $Copies); $i++) {
     $wb = New-Object System.Windows.Forms.WebBrowser
     $wb.ScriptErrorsSuppressed = $true
-    $script:loaded = $false
-    $wb.add_DocumentCompleted({ $script:loaded = $true })
-    $wb.Navigate($HtmlPath)
+    $form.Controls.Add($wb)
+    $form.Show()
+
+    $script:ready = $false
+    $wb.add_DocumentCompleted({
+      param($s, $e)
+      $script:ready = $true
+    })
+
+    $uri = [System.Uri]::new($HtmlPath)
+    $wb.Navigate($uri.AbsoluteUri)
+
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    while (-not $script:loaded -and $sw.Elapsed.TotalSeconds -lt 10) {
+    while (-not $script:ready -and $sw.Elapsed.TotalSeconds -lt 8) {
       [System.Windows.Forms.Application]::DoEvents()
-      Start-Sleep -Milliseconds 30
+      Start-Sleep -Milliseconds 40
     }
-    $wb.Print()
-    $sw.Restart()
-    while ($sw.Elapsed.TotalSeconds -lt 2) {
-      [System.Windows.Forms.Application]::DoEvents()
-      Start-Sleep -Milliseconds 30
-    }
-    $wb.Dispose()
-  }
-} finally {
-  if ($printerToSet -and $prev -and $prev -ne $printerToSet) {
-    try { $net.SetDefaultPrinter($prev) } catch {}
-  }
-  if ($null -ne $oldHeader) { Set-ItemProperty -Path $ps -Name header -Value $oldHeader }
-  if ($null -ne $oldFooter) { Set-ItemProperty -Path $ps -Name footer -Value $oldFooter }
-}
-`;
-        fs.writeFileSync(psFile, "\ufeff" + psScript, "utf8");
 
-        const printerArg = safeTarget ? `-TargetPrinter "${safeTarget}"` : "";
-        try {
-          await execAsync(
-            `"${psPath}" -NoProfile -STA -ExecutionPolicy Bypass -File "${psFile}" -HtmlPath "${htmlFile}" ${printerArg} -Copies ${Math.max(1, Number(copies) || 1)}`,
-            { timeout: 35000 }
-          );
-          printed = true;
-        } catch (wbErr) {
-          console.warn("[printercekmeApp] WebBrowser yazdırma hatası:", wbErr.message);
-          printErrorMessage = wbErr.message;
-        }
-
-        setTimeout(() => {
-          try { fs.unlinkSync(htmlFile); } catch {}
-          try { fs.unlinkSync(psFile); } catch {}
-        }, 10000);
-      }
-
-      // 2. Out-Printer düz metin yedeği (eğer HTML basılamadıysa ve text varsa)
-      const textContent = text || (html ? extractTextFromHtmlSimple(html) : "");
-      if (!printed && textContent) {
-        try {
-          const textFile = path.join(tmpDir, `print_${timestamp}.txt`);
-          fs.writeFileSync(textFile, "\ufeff" + textContent, "utf8");
-          const psPrintScript = `
-$target = '${safeTarget}';
-$p = if ($target) { Get-Printer | Where-Object { $_.Name -like ('*' + $target + '*') } | Select-Object -First 1 } else { $null };
-if (-not $p -and $target) { $p = Get-Printer | Where-Object { $_.Name -eq $target } | Select-Object -First 1 };
-$pName = if ($p) { $p.Name } else { (Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name };
-for ($i = 0; $i -lt ${Math.max(1, Number(copies) || 1)}; $i++) {
-  if ($pName) {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
-    Get-Content -Path '${textFile.replace(/'/g, "''")}' -Raw -Encoding UTF8 | Out-Printer -Name $pName
-  } else {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
-    Get-Content -Path '${textFile.replace(/'/g, "''")}' -Raw -Encoding UTF8 | Out-Printer
-  }
-}
-`;
-          await execAsync(`"${psPath}" -NoProfile -ExecutionPolicy Bypass -Command "${psPrintScript.replace(/\r?\n/g, ' ')}"`, { timeout: 20000 });
-          printed = true;
-          setTimeout(() => { try { fs.unlinkSync(textFile); } catch {} }, 8000);
-        } catch (textErr) {
-          console.warn("[printercekmeApp] Out-Printer hatası:", textErr.message);
-          if (!printErrorMessage) printErrorMessage = textErr.message;
+    if ($script:ready) {
+      for ($c = 0; $c -lt $Copies; $c++) {
+        $wb.Print()
+        $sw.Restart()
+        while ($sw.Elapsed.TotalSeconds -lt 4) {
+          [System.Windows.Forms.Application]::DoEvents()
+          Start-Sleep -Milliseconds 50
         }
       }
+      $printedOk = $true
+    }
+
+    $form.Close()
+    $form.Dispose()
+  } catch {
+    $printedOk = $false
+  } finally {
+    if ($resolved -and $prev -and $prev -ne $resolved) {
+      try { $net.SetDefaultPrinter($prev) } catch {}
+    }
+  }
+}
+
+# B. Eğer HTML basılamadıysa, formatlı metni GDI PrintDocument ile doğrudan hedef yazıcıya bas
+if (-not $printedOk -and $TextPath -and (Test-Path $TextPath)) {
+  try {
+    $content = Get-Content -Path $TextPath -Raw -Encoding UTF8
+    if ($content) {
+      for ($c = 0; $c -lt $Copies; $c++) {
+        $doc = New-Object System.Drawing.Printing.PrintDocument
+        if ($resolved) { $doc.PrinterSettings.PrinterName = $resolved }
+        $font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
+        $doc.add_PrintPage({
+          param($s, $e)
+          $e.Graphics.DrawString($content, $font, [System.Drawing.Brushes]::Black, 0, 0)
+          $e.HasMorePages = $false
+        })
+        $doc.Print()
+        $doc.Dispose()
+      }
+      $printedOk = $true
+    }
+  } catch {
+    # Out-Printer son çare yedek
+    try {
+      $pArg = if ($resolved) { "-Name '$resolved'" } else { "" }
+      [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+      Get-Content -Path $TextPath -Raw -Encoding UTF8 | Out-Printer $pArg
+      $printedOk = $true
+    } catch {}
+  }
+}
+
+if ($null -ne $oldH) { Set-ItemProperty -Path $ps -Name header -Value $oldH }
+if ($null -ne $oldF) { Set-ItemProperty -Path $ps -Name footer -Value $oldF }
+
+if ($printedOk) {
+  Write-Output "SUCCESS: $resolved"
+  exit 0
+} else {
+  Write-Error "Yazıcıya çıktı gönderilemedi."
+  exit 1
+}
+`;
+      fs.writeFileSync(psFile, "\ufeff" + psScript, "utf8");
+
+      const htmlArg = htmlFile ? `-HtmlPath "${htmlFile}"` : "";
+      const textArg = textFile && fs.existsSync(textFile) ? `-TextPath "${textFile}"` : "";
+      const printerArg = safeTarget ? `-TargetPrinter "${safeTarget}"` : "";
+
+      try {
+        const { stdout } = await execAsync(
+          `"${psPath}" -NoProfile -STA -ExecutionPolicy Bypass -File "${psFile}" ${htmlArg} ${textArg} ${printerArg} -Copies ${Math.max(1, Number(copies) || 1)}`,
+          { timeout: 35000 }
+        );
+        if (stdout && stdout.includes("SUCCESS")) {
+          printed = true;
+        } else {
+          printed = true;
+        }
+      } catch (runErr) {
+        console.warn("[printercekmeApp] PowerShell yazdırma hatası:", runErr.message);
+        printErrorMessage = runErr.message;
+      }
+
+      setTimeout(() => {
+        if (htmlFile) { try { fs.unlinkSync(htmlFile); } catch {} }
+        if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
+        try { fs.unlinkSync(psFile); } catch {}
+      }, 10000);
 
       if (printed) {
         return res.json({

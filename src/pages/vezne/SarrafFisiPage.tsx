@@ -45,6 +45,7 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { sarrafFisHtml } from "../../utils/belgeSablon/fisCikti";
+import { extractPlainTextFromFis } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -2272,13 +2273,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         // Fiş firmanın şablonundan basılır
         try {
           const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
+          const plainText = extractPlainTextFromFis(fisCikti);
           const sonuc = await triggerSilentPrint({
             html: fisCikti.html,
+            text: plainText,
             printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
             copies: copiesToUse,
             isPos,
             title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
-            allowBrowserFallback: true,
+            allowBrowserFallback: false,
           });
           if (!sonuc.success) {
             printSuccess = false;
@@ -4868,13 +4871,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const isPos = resolved.recommendedPrintType === "POS";
     try {
       const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
+      const plainText = extractPlainTextFromFis(fisCikti);
       const sonuc = await triggerSilentPrint({
         html: fisCikti.html,
+        text: plainText,
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
         copies: resolved.kopyaSayisi || 1,
         isPos,
         title: `Sarraf_Fisi_${fisNo || "Yazdir"}`,
-        allowBrowserFallback: true,
+        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         showNotif("success", "✅ Fiş doğrudan yazıcıya gönderildi.");

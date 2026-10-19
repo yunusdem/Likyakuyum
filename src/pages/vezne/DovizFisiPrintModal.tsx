@@ -88,11 +88,13 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
 
   const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
     if (!hazir) return;
-    const selectedPrinter = printers.find((p) => p.id === selectedPrinterId) || resolvedResult?.printer;
+    const selectedPrinter = printers.find((p) => p.id === selectedPrinterId);
+    const targetPrinterName = selectedPrinter ? (selectedPrinter.cihazAdi || selectedPrinter.ad) : (resolvedResult?.printerName || null);
+    const targetCopies = selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1);
     const res = await fisiYazdir(hazir, {
       printerId: selectedPrinterId,
-      printerName: selectedPrinter?.cihazAdi || selectedPrinter?.ad || resolvedResult?.printerName,
-      copies: selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1),
+      printerName: targetPrinterName,
+      copies: targetCopies,
       isPos: true,
     });
     if (res.success) {
