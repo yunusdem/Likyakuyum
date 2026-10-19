@@ -2,8 +2,13 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { havuzBasinaBirKez } from "../utils/havuzBirKez.js";
-/** Kod, ad ve adresi sabit olan standart listeler (ekranda her zaman görünür, silinemez) */
-export const MASAK_LISTE_KODLARI = ["A", "B", "C", "3AB"];
+/**
+ * Kod, ad ve adresi sabit olan standart listeler (ekranda her zaman görünür, silinemez).
+ * BMGK: MASAK sitesindeki BM Güvenlik Konseyi duyuruları (Excel değil, portal/v2 JSON).
+ */
+export const MASAK_LISTE_KODLARI = ["A", "B", "C", "3AB", "BMGK"];
+/** Kaynağı Excel değil MASAK sitesi duyuruları olan liste */
+export const MASAK_DUYURU_LISTE_KODU = "BMGK";
 /** Büyük harf, rakam ve . _ - karakterleri; 1-10 karakter (kolon VARCHAR(10)) */
 export const MASAK_LISTE_KOD_DESENI = /^[A-Z0-9][A-Z0-9._-]{0,9}$/;
 export const masakListeKodGecerliMi = (kod) => typeof kod === "string" && MASAK_LISTE_KOD_DESENI.test(kod);

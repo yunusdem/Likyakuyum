@@ -86,7 +86,6 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
     ],
     [D, G, K],
   ],
-  [["vezne:vezne/fiyat-kontrolu"], [K]],
   // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H3): her biri kendi fişinin paketinde; Perakende/Ticari maddeleri ana menüyle gelir
   [["vezne:hizli-satis/sarraf"], [K]],
   [["vezne:hizli-satis/doviz"], [D, G]],
@@ -111,8 +110,6 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
       "cari:cari/detayli-kart-listesi",
       "cari:raporlar/cari-ekstre",
       "cari:raporlar/cari-bakiye",
-      "cari:raporlar/pos-ekstre",
-      "cari:cari/hesap-ad-listesi",
       "cari:raporlar/vadeli-islem-listesi",
     ],
     [D, G, K, T],

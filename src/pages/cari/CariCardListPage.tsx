@@ -176,9 +176,7 @@ export const CariCardListPage: React.FC = () => {
     <div className="cari-card-list-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
         pageTitle={
-          location.pathname.includes("hesap-ad-listesi")
-            ? "M- Hesap Ad Listesi"
-            : location.pathname.includes("detayli")
+          location.pathname.includes("detayli")
             ? "I- Detaylı Cari Kart Listesi"
             : "H- Cari Kart Listesi"
         }

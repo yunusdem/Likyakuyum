@@ -1,6 +1,6 @@
 import { env } from "../../config/env.config.js";
 import { FirmaSqlRepository } from "../../models/admin/firmaSql.repository.js";
-import { LisansSqlRepository } from "../../models/admin/lisansSql.repository.js";
+import { LisansSqlRepository, aktivasyonKolonlariVarMi } from "../../models/admin/lisansSql.repository.js";
 import { ModulSqlRepository } from "../../models/admin/modulSql.repository.js";
 import { AyarSqlRepository } from "../../models/admin/ayarSql.repository.js";
 import { AdminLogSqlRepository } from "../../models/admin/adminLogSql.repository.js";
@@ -9,6 +9,7 @@ import sql from "mssql";
 import { ApiError } from "../../utils/ApiError.js";
 import { lisansKoduUret } from "../lisans/lisansKodu.js";
 import { MAKINE_KIMLIGI_KURALI } from "../lisans/makineKimligi.js";
+import { aktivasyonAnahtariUret } from "../lisans/aktivasyonAnahtari.js";
 /**
  * Panelde kurulum (exe) firmasına çevrimdışı lisans kodu üretme ve iptal (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, K8, K16, K17).
  * Kod, firmanın aktif lisansındaki bitiş/limit, panelde açık modüller ve ayarlardaki iletişim metniyle imzalanır.
@@ -74,55 +75,113 @@ export const lisansKoduGuncelMi = async (kod, lisans, firmaKodu) => {
     const simdi = await lisansVerisiHazirla(lisans, firmaKodu, eski?.makine ?? null, 0);
     return icerikAnahtari(eski) === icerikAnahtari(simdi);
 };
+/**
+ * Lisansa yeni seriyle bu makine için kod üretir, firmanın lisanslı makinesini bu makine yapar (heartbeat kodu yalnız
+ * ona yeniler) ve günlüğe yazar. Panelden elle üretme ve aktivasyon anahtarı ortak kullanır (adminId null = kurulum).
+ */
+const makineyeBagla = async (adminId, firma, lisans, makine, kaynak) => {
+    const seri = await LisansSqlRepository.sonrakiSeri(firma.firmaId);
+    const kod = await lisansKoduHazirla(lisans, firma.firmaKodu, makine, seri);
+    await LisansSqlRepository.kodYaz(lisans.lisansId, kod, makine, seri);
+    if (firma.makineKimligi !== makine) {
+        const pool = await getAdminPool();
+        await pool
+            .request()
+            .input("id", sql.Int, firma.firmaId)
+            .input("makine", sql.VarChar(40), makine)
+            .query(`UPDATE dbo.ADM_FIRMA SET MAKINE_KIMLIGI = @makine, MAKINE_KIMLIGI_TARIHI = GETDATE() WHERE FIRMA_ID = @id`);
+        await AdminLogSqlRepository.islemLogu({
+            adminId,
+            islem: "MAKINE_KIMLIGI_DEGISTI",
+            hedefTur: "FIRMA",
+            hedefId: firma.firmaId,
+            eski: { makineKimligi: firma.makineKimligi },
+            yeni: { makineKimligi: makine, kaynak },
+        });
+    }
+    await AdminLogSqlRepository.islemLogu({
+        adminId,
+        islem: "LISANS_KODU_URETILDI",
+        hedefTur: "LISANS",
+        hedefId: lisans.lisansId,
+        yeni: { firmaId: firma.firmaId, makine, seri, bitis: lisans.bitis, kullaniciLimiti: lisans.kullaniciLimiti, kaynak },
+    });
+    return kod;
+};
+/** Kod üretilebilecek lisans mı (aktif, iptal edilmemiş, firması aktif kurulum firması) */
+const lisansKodaUygun = (firma, lisans, firmaId) => {
+    if (firma.baglantiModu !== "setup")
+        throw ApiError.badRequest("Lisans kodu yalnız kurulum (exe) firmalarına üretilir.");
+    if (firma.durum !== "AKTIF")
+        throw ApiError.badRequest("Firma aktif değil; önce firmayı aktif edin.");
+    if (!lisans || lisans.firmaId !== firmaId)
+        throw ApiError.notFound("Lisans bulunamadı.");
+    if (!lisans.aktif)
+        throw ApiError.badRequest("Yalnız firmanın geçerli (aktif) lisansına kod üretilir.");
+    if (lisans.iptal)
+        throw ApiError.badRequest("Bu lisans iptal edilmiş; yeni lisans ekleyin.");
+    return lisans;
+};
+const imzaAnahtariOlmali = () => {
+    if (!lisansImzaAcikMi()) {
+        throw ApiError.badRequest("Bu sunucuda lisans imza anahtarı tanımlı değil (Backend klasöründe: npm run lisans-anahtar).");
+    }
+};
+const BASKA_MAKINEDE = "Bu aktivasyon anahtarı başka bir bilgisayarda kullanılmış. Bilgisayar değiştiyse yeni anahtar için bizimle iletişime geçin.";
 export class LisansKodService {
     static async kodUret(yapan, firmaId, lisansId, makineKimligi) {
-        if (!lisansImzaAcikMi()) {
-            throw ApiError.badRequest("Bu sunucuda lisans imza anahtarı tanımlı değil (Backend klasöründe: npm run lisans-anahtar).");
-        }
+        imzaAnahtariOlmali();
         const makine = makineKimligi.trim().toUpperCase();
         if (!MAKINE_KIMLIGI_KURALI.test(makine))
             throw ApiError.badRequest("Makine kimliği XXXX-XXXX-XXXX-XXXX biçiminde olmalıdır.");
         const firma = await FirmaSqlRepository.idIleBul(firmaId);
         if (!firma)
             throw ApiError.notFound("Firma bulunamadı.");
-        if (firma.baglantiModu !== "setup")
-            throw ApiError.badRequest("Lisans kodu yalnız kurulum (exe) firmalarına üretilir.");
-        if (firma.durum !== "AKTIF")
-            throw ApiError.badRequest("Firma aktif değil; önce firmayı aktif edin.");
-        const lisans = await LisansSqlRepository.getir(lisansId);
-        if (!lisans || lisans.firmaId !== firmaId)
-            throw ApiError.notFound("Lisans bulunamadı.");
-        if (!lisans.aktif)
-            throw ApiError.badRequest("Yalnız firmanın geçerli (aktif) lisansına kod üretilir.");
-        if (lisans.iptal)
-            throw ApiError.badRequest("Bu lisans iptal edilmiş; yeni lisans ekleyin.");
-        const seri = await LisansSqlRepository.sonrakiSeri(firmaId);
-        const kod = await lisansKoduHazirla(lisans, firma.firmaKodu, makine, seri);
-        await LisansSqlRepository.kodYaz(lisansId, kod, makine, seri);
-        if (firma.makineKimligi !== makine) {
-            const pool = await getAdminPool();
-            await pool
-                .request()
-                .input("id", sql.Int, firmaId)
-                .input("makine", sql.VarChar(40), makine)
-                .query(`UPDATE dbo.ADM_FIRMA SET MAKINE_KIMLIGI = @makine, MAKINE_KIMLIGI_TARIHI = GETDATE() WHERE FIRMA_ID = @id`);
-            await AdminLogSqlRepository.islemLogu({
-                adminId: yapan.adminId,
-                islem: "MAKINE_KIMLIGI_DEGISTI",
-                hedefTur: "FIRMA",
-                hedefId: firmaId,
-                eski: { makineKimligi: firma.makineKimligi },
-                yeni: { makineKimligi: makine },
-            });
+        const lisans = lisansKodaUygun(firma, await LisansSqlRepository.getir(lisansId), firmaId);
+        const kod = await makineyeBagla(yapan.adminId, firma, lisans, makine, "PANEL");
+        return { kod, lisans: (await LisansSqlRepository.getir(lisansId)) };
+    }
+    /** Panel: lisansa yeni rastgele aktivasyon anahtarı (A1, A4); öncekini geçersiz kılar. */
+    static async aktivasyonAnahtariUret(yapan, firmaId, lisansId) {
+        imzaAnahtariOlmali();
+        if (!(await aktivasyonKolonlariVarMi())) {
+            throw ApiError.badRequest("Aktivasyon anahtarı kolonları veritabanında yok (SSMS: docs/sql/LIKYA_ADMIN_BULUT_KURULUM.sql, aktivasyon bloğu).");
         }
+        const firma = await FirmaSqlRepository.idIleBul(firmaId);
+        if (!firma)
+            throw ApiError.notFound("Firma bulunamadı.");
+        const lisans = lisansKodaUygun(firma, await LisansSqlRepository.getir(lisansId), firmaId);
+        await LisansSqlRepository.aktivasyonAnahtariYaz(lisansId, aktivasyonAnahtariUret());
         await AdminLogSqlRepository.islemLogu({
             adminId: yapan.adminId,
-            islem: "LISANS_KODU_URETILDI",
+            islem: "AKTIVASYON_ANAHTARI_URETILDI",
             hedefTur: "LISANS",
             hedefId: lisansId,
-            yeni: { firmaId, makine, seri, bitis: lisans.bitis, kullaniciLimiti: lisans.kullaniciLimiti },
+            eski: lisans.aktivasyonAnahtari ? { kullanildi: !!lisans.aktivasyonTarihi, makine: lisans.aktivasyonMakine } : undefined,
+            yeni: { firmaId },
         });
-        return { kod, lisans: (await LisansSqlRepository.getir(lisansId)) };
+        return (await LisansSqlRepository.getir(lisansId));
+    }
+    /**
+     * Kurulum: anahtarla etkinleştirme (A3, A4). Firma kurulum anahtarıyla doğrulanmış gelir. Anahtar yalnız bu firmanın
+     * lisanslarında aranır; ilk kullanan makineye bağlanır, aynı makine tekrar yazarsa yeniden kod alır.
+     */
+    static async aktiflestir(firma, anahtar, makine) {
+        imzaAnahtariOlmali();
+        const lisans = await LisansSqlRepository.aktivasyonAnahtariIleBul(firma.firmaId, anahtar);
+        if (!lisans)
+            throw ApiError.badRequest("Aktivasyon anahtarı geçersiz. Anahtarı kontrol edip tekrar yazın.");
+        if (lisans.iptal || !lisans.aktif)
+            throw ApiError.badRequest("Bu aktivasyon anahtarı artık geçerli değil. Lütfen bizimle iletişime geçin.");
+        if (firma.durum !== "AKTIF")
+            throw ApiError.badRequest("Firma kaydı aktif değil. Lütfen bizimle iletişime geçin.");
+        if (lisans.aktivasyonMakine && lisans.aktivasyonMakine !== makine)
+            throw ApiError.badRequest(BASKA_MAKINEDE);
+        if (!(await LisansSqlRepository.aktivasyonAnahtariKullan(lisans.lisansId, anahtar, makine)))
+            throw ApiError.badRequest(BASKA_MAKINEDE);
+        const kod = await makineyeBagla(null, firma, lisans, makine, "AKTIVASYON");
+        await LisansSqlRepository.teslimYaz(lisans.lisansId);
+        return kod;
     }
     static async iptal(yapan, firmaId, lisansId) {
         const lisans = await LisansSqlRepository.getir(lisansId);

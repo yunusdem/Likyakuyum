@@ -17,7 +17,7 @@ export class MasakController {
     }
     /**
      * POST /api/v1/masak/guncelle
-     * Body: { kaynaklar?: [{ listeKod: "A"|"B"|"C"|"3AB", url?: string }] }
+     * Body: { kaynaklar?: [{ listeKod: "A"|"B"|"C"|"3AB"|"BMGK", url?: string }] }
      * Gövde boşsa dört listenin tamamı, son kullanılan (yoksa varsayılan) adreslerle güncellenir.
      */
     static guncelle = asyncHandler(async (req, res) => {

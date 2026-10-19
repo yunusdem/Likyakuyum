@@ -55,8 +55,6 @@ import EBankaHareketlerPage from "./pages/ebanka/EBankaHareketlerPage";
 import EBankaBekleyenlerPage from "./pages/ebanka/EBankaBekleyenlerPage";
 import EBankaPosPage from "./pages/ebanka/EBankaPosPage";
 import EBankaVposTahsilatPage from "./pages/ebanka/EBankaVposTahsilatPage";
-import EBankaOdemeLinkleriPage from "./pages/ebanka/EBankaOdemeLinkleriPage";
-import EBankaVposIslemlerPage from "./pages/ebanka/EBankaVposIslemlerPage";
 import KasaHesapKayitPage from "./pages/kasa/KasaHesapKayitPage";
 import KasaHareketPage from "./pages/kasa/KasaHareketPage";
 import BarkodEtiketBasimiPage from "./pages/etiket/BarkodEtiketBasimiPage";
@@ -359,8 +357,6 @@ export default function App() {
               <Route path="cari/listesi" element={<CariCardListPage />} />
               <Route path="cari/cari-kart-listesi" element={<CariCardListPage />} />
               <Route path="cari/detayli-kart-listesi" element={<CariCardListPage />} />
-              <Route path="cari/hesap-ad-listesi" element={<CariCardListPage />} />
-              <Route path="kasa/hesap-ad-listesi" element={<CariCardListPage />} />
               <Route path="cari/hareket-kayit" element={<CariHareketPage />} />
               <Route path="cari/hareket-duzeltme" element={<CariHareketPage />} />
               <Route path="cari/hareket-listesi" element={<CariHareketListPage />} />
@@ -448,9 +444,7 @@ export default function App() {
               <Route path="ebanka/hareketler" element={<EBankaHareketlerPage />} />
               <Route path="ebanka/bekleyenler" element={<EBankaBekleyenlerPage />} />
               <Route path="ebanka/pos" element={<EBankaPosPage />} />
-              <Route path="ebanka/sanal-pos-tahsilat" element={<EBankaVposTahsilatPage />} />
-              <Route path="ebanka/odeme-linkleri" element={<EBankaOdemeLinkleriPage />} />
-              <Route path="ebanka/sanal-pos-islemleri" element={<EBankaVposIslemlerPage />} />
+               <Route path="ebanka/sanal-pos-tahsilat" element={<EBankaVposTahsilatPage />} />
               <Route path="ebanka/ayarlar" element={<EBankaAyarlarPage />} />
               <Route path="ebanka/mutabakat" element={<EBankaMutabakatPage />} />
               <Route path="kasa/hesap-kayit" element={<KasaHesapKayitPage />} />

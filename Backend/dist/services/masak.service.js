@@ -1,8 +1,9 @@
-import { MasakSqlRepository, masakListeKodGecerliMi, masakStandartListeMi, } from "../models/masakSql.repository.js";
-import { MASAK_KAYNAKLAR, adresGecerliMi, indirDosya, normalizeMetin, parseMasakExcel, tarihAyikla, } from "../utils/masakExcel.util.js";
+import { MasakSqlRepository, masakListeKodGecerliMi, masakStandartListeMi, MASAK_DUYURU_LISTE_KODU, } from "../models/masakSql.repository.js";
+import { MASAK_KAYNAKLAR, kaynakAdresiGecerliMi, indirDosya, normalizeMetin, parseMasakExcel, tarihAyikla, } from "../utils/masakExcel.util.js";
+import { bmgkDuyurulariniIndir, parseBmgkDuyurulari, portalAdresiGecerliMi, } from "../utils/masakPortal.util.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
-const LISTE_KOD_HATA = "Geçersiz liste kodu. Büyük harf ve rakamla en fazla 10 karakter olmalıdır (ör. A, B, C, 3AB, D).";
+const LISTE_KOD_HATA = "Geçersiz liste kodu. Büyük harf ve rakamla en fazla 10 karakter olmalıdır (ör. A, B, C, 3AB, BMGK, D).";
 export class MasakService {
     /**
      * Aynı anda ikinci bir güncellemeyi engelleyen kilit (sunucu/agent süreci başına).
@@ -136,7 +137,11 @@ export class MasakService {
                 throw ApiError.badRequest(`${k.listeKod} liste kodu birden fazla kez gönderildi.`);
             }
             gorulen.add(k.listeKod);
-            if (k.url && !adresGecerliMi(k.url)) {
+            const duyuruListesi = k.listeKod === MASAK_DUYURU_LISTE_KODU;
+            if (k.url && duyuruListesi && !portalAdresiGecerliMi(k.url)) {
+                throw ApiError.badRequest(`${k.listeKod} listesi MASAK sitesi duyurularından beslenir; adresi https://masak.hmb.gov.tr/portal/v2/ ile başlamalıdır.`);
+            }
+            if (k.url && !duyuruListesi && !kaynakAdresiGecerliMi(k.url)) {
                 throw ApiError.badRequest(`${k.listeKod} listesi için geçersiz adres. Yalnızca https://ms.hmb.gov.tr/ ile başlayan .xlsx adresleri kabul edilir.`);
             }
             if (!masakStandartListeMi(k.listeKod) && !(k.url && k.url.trim())) {
@@ -173,13 +178,32 @@ export class MasakService {
                 let oncekiSayi = 0;
                 try {
                     oncekiSayi = await MasakSqlRepository.getKayitSayisi(listeKod, dbContext);
-                    const dosya = await indirDosya(url);
-                    const ayristirma = await parseMasakExcel(dosya.buffer, listeKod, listeAdi);
-                    const yazilan = await MasakSqlRepository.replaceListe(listeKod, ayristirma.kayitlar, { listeAdi, kaynakUrl: url, kaynakHash: dosya.hash }, dbContext);
-                    const sureMs = Date.now() - t0;
-                    if (ayristirma.eslesmeyenBasliklar.length > 0) {
-                        logger.warn(`MASAK ${listeKod}: eşlenemeyen kolon başlıkları → ${ayristirma.eslesmeyenBasliklar.join(" | ")}`);
+                    let kayitlar;
+                    let kaynakHash;
+                    let dosyaBoyutu;
+                    if (listeKod === MASAK_DUYURU_LISTE_KODU) {
+                        // BMGK: MASAK sitesindeki duyurular (JSON) — Excel yok
+                        const duyurular = await bmgkDuyurulariniIndir(url);
+                        const ayristirma = parseBmgkDuyurulari(duyurular.yazilar, listeKod, listeAdi);
+                        if (ayristirma.ayristirilamayan.length > 0) {
+                            logger.warn(`MASAK ${listeKod}: adı okunamayan duyurular → ${ayristirma.ayristirilamayan.join(" | ")}`);
+                        }
+                        kayitlar = ayristirma.kayitlar;
+                        kaynakHash = duyurular.hash;
+                        dosyaBoyutu = duyurular.boyut;
                     }
+                    else {
+                        const dosya = await indirDosya(url);
+                        const ayristirma = await parseMasakExcel(dosya.buffer, listeKod, listeAdi);
+                        if (ayristirma.eslesmeyenBasliklar.length > 0) {
+                            logger.warn(`MASAK ${listeKod}: eşlenemeyen kolon başlıkları → ${ayristirma.eslesmeyenBasliklar.join(" | ")}`);
+                        }
+                        kayitlar = ayristirma.kayitlar;
+                        kaynakHash = dosya.hash;
+                        dosyaBoyutu = dosya.boyut;
+                    }
+                    const yazilan = await MasakSqlRepository.replaceListe(listeKod, kayitlar, { listeAdi, kaynakUrl: url, kaynakHash }, dbContext);
+                    const sureMs = Date.now() - t0;
                     await MasakSqlRepository.logGuncelleme({
                         listeKod,
                         baslamaZamani: baslama,
@@ -189,8 +213,8 @@ export class MasakService {
                         kayitSayisi: yazilan,
                         oncekiKayitSayisi: oncekiSayi,
                         kaynakUrl: url,
-                        kaynakHash: dosya.hash,
-                        dosyaBoyutu: dosya.boyut,
+                        kaynakHash,
+                        dosyaBoyutu,
                         kullaniciAdi: kullanici?.kullaniciAdi ?? null,
                         kullaniciId: kullanici?.kullaniciId ?? null,
                     }, dbContext);

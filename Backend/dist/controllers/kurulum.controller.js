@@ -7,6 +7,7 @@ import { AuthService } from "../services/auth.service.js";
 import { KurulumLisansService } from "../services/kurulum/kurulumLisans.service.js";
 import { kurulumFirmasi } from "../services/kurulum/firmaDosyasi.js";
 import { KurulumBildirim } from "../services/kurulum/kurulumBildirim.js";
+import { aktivasyonAnahtariCoz } from "../services/lisans/aktivasyonAnahtari.js";
 import { Guncelleyici, bekleyenGuncelleme, sonGuncellemeSonucu } from "../services/kurulum/guncelleyici.js";
 import { UserSqlRepository } from "../models/userSql.repository.js";
 import { kurulumDbContext } from "../services/kurulum/kurulumDb.js";
@@ -44,7 +45,12 @@ export class KurulumController {
     });
     static lisansYukle = asyncHandler(async (req, res) => {
         kurulumOlmali();
-        return ApiResponse.ok(res, "Lisans yüklendi.", await KurulumLisansService.yukle(String(req.body?.kod || "")));
+        // Aynı alana aktivasyon anahtarı (LKY-XXXXX-XXXXX-XXXXX) ya da uzun lisans kodu yazılır (docs 16, A2)
+        const metin = String(req.body?.kod || "");
+        const anahtar = aktivasyonAnahtariCoz(metin);
+        if (anahtar)
+            return ApiResponse.ok(res, "Lisans etkinleştirildi.", await KurulumBildirim.aktiflestir(anahtar));
+        return ApiResponse.ok(res, "Lisans yüklendi.", await KurulumLisansService.yukle(metin));
     });
     /** Lisans ve Sürüm ekranı: çalışan sürüm, bekleyen güncelleme, son güncelleme sonucu, son bildirim. */
     static guncellemeDurumu = asyncHandler(async (req, res) => {

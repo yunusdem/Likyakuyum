@@ -192,7 +192,6 @@ const SAYFA_TAKMA_ADLARI: Record<string, string> = {
   "cari/cari-kart-kayit": "cari/kart-kayit",
   "cari/listesi": "cari/kart-listesi",
   "cari/cari-kart-listesi": "cari/kart-listesi",
-  "kasa/hesap-ad-listesi": "cari/hesap-ad-listesi",
   "cari/hareketler": "cari/hareket-listesi",
   "cari/emanet-dekont-duzeltme": "cari/emanet-duzeltme",
   "cari/emanet-dekont-kayit": "cari/emanet-dekont",

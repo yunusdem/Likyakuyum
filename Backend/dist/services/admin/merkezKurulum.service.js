@@ -11,7 +11,9 @@ import { HttpStatus } from "../../constants/httpStatusCodes.js";
 import { logger } from "../../utils/logger.js";
 import { firmaDosyasiUret } from "../kurulum/firmaDosyasi.js";
 import { imzaliMetinUret } from "../lisans/lisansKodu.js";
-import { iletisimOku, lisansImzaAcikMi, lisansKoduGuncelMi, lisansKoduHazirla } from "./lisansKod.service.js";
+import { LisansKodService, iletisimOku, lisansImzaAcikMi, lisansKoduGuncelMi, lisansKoduHazirla } from "./lisansKod.service.js";
+import { aktivasyonAnahtariCoz } from "../lisans/aktivasyonAnahtari.js";
+import { MAKINE_KIMLIGI_KURALI } from "../lisans/makineKimligi.js";
 import { FirmaService } from "./firma.service.js";
 import path from "path";
 import { AyarSqlRepository } from "../../models/admin/ayarSql.repository.js";
@@ -219,6 +221,21 @@ export class MerkezKurulumService {
             lisansKodu,
             guncelleme: hedef && hedef.surum !== g.surum ? hedef : null,
         };
+    }
+    /**
+     * Kurulum: aktivasyon anahtarıyla etkinleştirme (docs 16, A3). Kimlik firma kodu + kurulum anahtarı; anahtar bu firmanın
+     * lisansına bağlıdır. Dönüşte bu makine için imzalı lisans kodu.
+     */
+    static async aktivasyon(g) {
+        const dogru = await kurulumuDogrula(g.firmaKodu, g.kurulumAnahtari);
+        const anahtar = aktivasyonAnahtariCoz(g.anahtar);
+        if (!anahtar)
+            throw ApiError.badRequest("Aktivasyon anahtarı LKY-XXXXX-XXXXX-XXXXX biçiminde olmalıdır.");
+        const makine = String(g.makineKimligi || "").toUpperCase();
+        if (!MAKINE_KIMLIGI_KURALI.test(makine))
+            throw ApiError.badRequest("Makine kimliği okunamadı.");
+        const firma = await FirmaService.getir(dogru.firmaId);
+        return { lisansKodu: await LisansKodService.aktiflestir(firma, anahtar, makine) };
     }
     /** Kurulumun sürüm paketini indirmesi (kimlik: başlıklardaki firma kodu + kurulum anahtarı). */
     static async surumIndir(surum, firmaKodu, kurulumAnahtari, res) {

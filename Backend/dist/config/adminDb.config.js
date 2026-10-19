@@ -127,6 +127,19 @@ const ensureAdminSchema = async (pool) => {
           [BILDIRILEN_SON_YEDEK]        DATETIME       NULL,
           [BILDIRILEN_YEDEK_HATASI]     NVARCHAR(400)  NULL,
           [BILDIRILEN_VT_BOYUT_MB]      INT            NULL;
+
+      -- Aktivasyon anahtarı (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16, A7)
+      IF COL_LENGTH('dbo.ADM_LISANS', 'AKTIVASYON_ANAHTARI') IS NULL
+        ALTER TABLE [dbo].[ADM_LISANS] ADD
+          [AKTIVASYON_ANAHTARI]         VARCHAR(30)    NULL,
+          [AKTIVASYON_TARIHI]           DATETIME       NULL,
+          [AKTIVASYON_MAKINE]           VARCHAR(40)    NULL;
+    `);
+        // Dizin ayrı toplu iş: kolonlar aynı toplu işte eklenince derleme anında bilinmiyor
+        await pool.request().query(`
+      IF COL_LENGTH('dbo.ADM_LISANS', 'AKTIVASYON_ANAHTARI') IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_ADM_LISANS_AKTIVASYON')
+        CREATE UNIQUE INDEX [UX_ADM_LISANS_AKTIVASYON] ON [dbo].[ADM_LISANS]([AKTIVASYON_ANAHTARI]) WHERE [AKTIVASYON_ANAHTARI] IS NOT NULL;
     `);
         logger.info("[ADMIN DB] Şema ve kolon kontrolleri başarıyla doğrulandı / güncellendi.");
     }

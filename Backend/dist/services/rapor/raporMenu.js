@@ -14,7 +14,7 @@ export const RAPOR_MENU = [
     { kod: "HESBAK1", yol: "hesap-bakiye", ad: "Hesap Bakiye Raporu", grup: "kasa" },
     { kod: "VEZANL1", yol: "vezne-bakiye-anlik", ad: "Vezne Bakiye Raporu (Anlık)", grup: "vezne" },
     { kod: "KURKON1", yol: "kur-sapma", ad: "Kur Sapma Raporu", grup: "vezne" },
-    { kod: "POSEKS1", yol: "pos-ekstre", ad: "POS Ekstre", grup: "cari" },
+    { kod: "POSEKS1", yol: "pos-ekstre", ad: "POS Ekstre", grup: "gizli" },
     { kod: "VADISL1", yol: "vadeli-islem-listesi", ad: "Vadeli İşlem Listesi", grup: "cari" },
     { kod: "FISLIS1", yol: "fis-listeleme", ad: "Fiş Listeleme", grup: "raporlar" },
     { kod: "GUNFIS1", yol: "gunluk-fis-detay", ad: "Günlük Fiş Detay Raporu", grup: "raporlar" },

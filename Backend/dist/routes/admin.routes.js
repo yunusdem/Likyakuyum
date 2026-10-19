@@ -56,6 +56,7 @@ router.get("/firmalar/:id/lisanslar", validate(adminIdSchema), FirmaController.l
 router.post("/firmalar/:id/lisanslar", validate(lisansEkleSchema), FirmaController.lisansEkle);
 router.post("/firmalar/:id/lisanslar/:lisansId/kod", validate(lisansKodSchema), FirmaController.lisansKodu);
 router.post("/firmalar/:id/lisanslar/:lisansId/iptal", validate(lisansIptalSchema), FirmaController.lisansIptal);
+router.post("/firmalar/:id/lisanslar/:lisansId/aktivasyon-anahtari", validate(lisansIptalSchema), FirmaController.aktivasyonAnahtari);
 router.get("/ayarlar", FirmaController.ayarlar);
 router.get("/firmalar/:id/kurulum", validate(adminIdSchema), FirmaController.kurulumDurumu);
 router.get("/firmalar/:id/kurulum/firma-dosyasi", validate(adminIdSchema), FirmaController.firmaDosyasi);
