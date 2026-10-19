@@ -146,44 +146,9 @@ export async function executePrintJob(job) {
   const timestamp = Date.now();
   const platform = os.platform();
 
-  if (text) {
-    const textFile = path.join(TMP_DIR, `print_${timestamp}.txt`);
-    fs.writeFileSync(textFile, text, "utf-8");
-
-    if (platform === "win32") {
-      const cmd = printerName
-        ? `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${textFile}' -Raw -Encoding UTF8 | Out-Printer -Name '${printerName}'"`
-        : `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${textFile}' -Raw -Encoding UTF8 | Out-Printer"`;
-      await execAsync(cmd);
-    } else {
-      const dest = printerName ? `-d "${printerName}"` : "";
-      await execAsync(`lp ${dest} "${textFile}"`);
-    }
-
-    setTimeout(() => { try { fs.unlinkSync(textFile); } catch {} }, 4000);
-    return { success: true, mode: "text", printerName };
-  }
-
-  if (pdfBase64) {
-    const pdfFile = path.join(TMP_DIR, `print_${timestamp}.pdf`);
-    const buffer = Buffer.from(pdfBase64.replace(/^data:application\/pdf;base64,/, ""), "base64");
-    fs.writeFileSync(pdfFile, buffer);
-
-    if (platform === "win32") {
-      const cmd = printerName
-        ? `powershell -NoProfile -Command "Start-Process -FilePath '${pdfFile}' -Verb PrintTo -ArgumentList '${printerName}' -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force }"`
-        : `powershell -NoProfile -Command "Start-Process -FilePath '${pdfFile}' -Verb Print -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force }"`;
-      await execAsync(cmd);
-    } else {
-      const dest = printerName ? `-d "${printerName}"` : "";
-      await execAsync(`lp ${dest} "${pdfFile}"`);
-    }
-
-    setTimeout(() => { try { fs.unlinkSync(pdfFile); } catch {} }, 4000);
-    return { success: true, mode: "pdf", printerName };
-  }
-
+  // HTML içerik varsa öncelikli olarak tarayıcı motoru (Edge headless) ile biçimlendirilmiş olarak yazdır
   if (html) {
+    let resolvedWinPrinter = printerName;
     const htmlFile = path.join(TMP_DIR, `print_${timestamp}.html`);
     const fullHtml = `<!DOCTYPE html>
 <html>
@@ -214,28 +179,79 @@ export async function executePrintJob(job) {
       ];
       const browserExe = edgePaths.find((p) => p && fs.existsSync(p));
 
+      // PowerShell ile Windows Denetim Masası'ndaki en uygun yazıcıyı çözümle
+      const safeTarget = (printerName || "").replace(/'/g, "''");
+      const psCmd = `powershell -NoProfile -Command "$target = '${safeTarget}'; $p = if ($target) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $target -or $_.DeviceID -eq $target } | Select-Object -First 1 } else { $null }; if (-not $p -and $target) { $clean = ($target -split '[\\\\/]')[-1]; $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $clean + '*') -or $_.DeviceID -like ('*' + $clean + '*') } | Select-Object -First 1 }; $pName = if ($p) { $p.Name } else { (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name }; if ($pName) { Out-File -FilePath '${htmlFile}.target' -InputObject $pName -Encoding UTF8 }"`;
+      await execAsync(psCmd).catch(() => {});
+
+      try {
+        if (fs.existsSync(`${htmlFile}.target`)) {
+          const t = fs.readFileSync(`${htmlFile}.target`, "utf-8").trim();
+          if (t) resolvedWinPrinter = t;
+          fs.unlinkSync(`${htmlFile}.target`);
+        }
+      } catch {}
+
       if (browserExe) {
-        const printerParam = printerName ? `--print-to-printer="${printerName}"` : "--print-to-printer";
+        const printerParam = resolvedWinPrinter ? `--print-to-printer="${resolvedWinPrinter}"` : "--print-to-printer";
         const cmd = `"${browserExe}" --headless=new --disable-gpu --no-pdf-header-footer ${printerParam} "${htmlFile}"`;
         await execAsync(cmd, { timeout: 12000 }).catch(async () => {
-          const psCmd = printerName 
-            ? `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer -Name '${printerName}'"`
-            : `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer"`;
-          await execAsync(psCmd).catch(() => {});
+          const fallbackPs = resolvedWinPrinter
+            ? `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${htmlFile}' -Raw -Encoding UTF8 | Out-Printer -Name '${resolvedWinPrinter.replace(/'/g, "''")}'"`
+            : `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${htmlFile}' -Raw -Encoding UTF8 | Out-Printer"`;
+          await execAsync(fallbackPs).catch(() => {});
         });
       } else {
-        const psCmd = printerName 
-          ? `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer -Name '${printerName}'"`
-          : `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer"`;
-        await execAsync(psCmd).catch(() => {});
+        const fallbackPs = resolvedWinPrinter
+          ? `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${htmlFile}' -Raw -Encoding UTF8 | Out-Printer -Name '${resolvedWinPrinter.replace(/'/g, "''")}'"`
+          : `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Raw -Encoding UTF8 | Out-Printer"`;
+        await execAsync(fallbackPs).catch(() => {});
       }
     } else {
-      const dest = printerName ? `-d "${printerName}"` : "";
-      await execAsync(`lp ${dest} -o fit-to-page "${htmlFile}"`).catch(() => {});
+      const cleanTarget = (printerName || "").split(/[\\/]/).pop() || "";
+      const dest = cleanTarget ? `-d "${cleanTarget}"` : "";
+      await execAsync(`lp ${dest} -o fit-to-page "${htmlFile}" 2>/dev/null || lp -o fit-to-page "${htmlFile}" 2>/dev/null || true`).catch(() => {});
     }
 
     setTimeout(() => { try { fs.unlinkSync(htmlFile); } catch {} }, 4000);
-    return { success: true, mode: "html", printerName };
+    return { success: true, mode: "html", printerName: resolvedWinPrinter || printerName };
+  }
+
+  if (text) {
+    const textFile = path.join(TMP_DIR, `print_${timestamp}.txt`);
+    fs.writeFileSync(textFile, text, "utf-8");
+
+    if (platform === "win32") {
+      const safeTarget = (printerName || "").replace(/'/g, "''");
+      const cmd = `powershell -NoProfile -Command "$target = '${safeTarget}'; $p = if ($target) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $target -or $_.DeviceID -eq $target } | Select-Object -First 1 } else { $null }; if (-not $p -and $target) { $clean = ($target -split '[\\\\/]')[-1]; $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $clean + '*') -or $_.DeviceID -like ('*' + $clean + '*') } | Select-Object -First 1 }; if ($p) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${textFile}' -Raw -Encoding UTF8 | Out-Printer -Name $p.Name } else { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${textFile}' -Raw -Encoding UTF8 | Out-Printer }"`;
+      await execAsync(cmd).catch(() => {});
+    } else {
+      const cleanTarget = (printerName || "").split(/[\\/]/).pop() || "";
+      const dest = cleanTarget ? `-d "${cleanTarget}"` : "";
+      await execAsync(`lp ${dest} "${textFile}" 2>/dev/null || lp "${textFile}" 2>/dev/null || true`).catch(() => {});
+    }
+
+    setTimeout(() => { try { fs.unlinkSync(textFile); } catch {} }, 4000);
+    return { success: true, mode: "text", printerName };
+  }
+
+  if (pdfBase64) {
+    const pdfFile = path.join(TMP_DIR, `print_${timestamp}.pdf`);
+    const buffer = Buffer.from(pdfBase64.replace(/^data:application\/pdf;base64,/, ""), "base64");
+    fs.writeFileSync(pdfFile, buffer);
+
+    if (platform === "win32") {
+      const safeTarget = (printerName || "").replace(/'/g, "''");
+      const cmd = `powershell -NoProfile -Command "$target = '${safeTarget}'; $p = if ($target) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $target -or $_.DeviceID -eq $target } | Select-Object -First 1 } else { $null }; if (-not $p -and $target) { $clean = ($target -split '[\\\\/]')[-1]; $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $clean + '*') -or $_.DeviceID -like ('*' + $clean + '*') } | Select-Object -First 1 }; if ($p) { Start-Process -FilePath '${pdfFile}' -Verb PrintTo -ArgumentList $p.Name -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force } } else { Start-Process -FilePath '${pdfFile}' -Verb Print -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force } }"`;
+      await execAsync(cmd).catch(() => {});
+    } else {
+      const cleanTarget = (printerName || "").split(/[\\/]/).pop() || "";
+      const dest = cleanTarget ? `-d "${cleanTarget}"` : "";
+      await execAsync(`lp ${dest} "${pdfFile}" 2>/dev/null || lp "${pdfFile}" 2>/dev/null || true`).catch(() => {});
+    }
+
+    setTimeout(() => { try { fs.unlinkSync(pdfFile); } catch {} }, 4000);
+    return { success: true, mode: "pdf", printerName };
   }
 
   throw new Error("Yazdırılacak içerik bulunamadı.");

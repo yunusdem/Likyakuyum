@@ -142,35 +142,39 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
 
 
-  // 4. Eğer uygulama yerel sunucu (localhost) üzerinde çalışıyorsa yerel backend Out-Printer'ı dene
-  const isLocalBackend = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  if (isLocalBackend) {
-    try {
-      const backendRes = await apiClient.post<{ success: boolean; message: string; fallbackToBrowser?: boolean }>("/yazici/direct-print", {
-        printerName,
-        documentTitle: title,
-        htmlContent: html,
-        textContent: finalText,
-        isPos,
-        copies,
-      }, { silent: true });
-      if (backendRes.data && backendRes.data.success && !backendRes.data.fallbackToBrowser) {
-        return {
-          success: true,
-          message: backendRes.data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan iletildi.`,
-        };
-      }
-    } catch {}
+  // 3. Arka Plan API Doğrudan Yazdırma Servisi (/yazici/direct-print)
+  try {
+    const backendRes = await apiClient.post<{ success: boolean; message: string; fallbackToBrowser?: boolean }>("/yazici/direct-print", {
+      printerName,
+      documentTitle: title,
+      htmlContent: html,
+      textContent: finalText,
+      isPos,
+      copies,
+    }, { silent: true });
+    if (backendRes.data && backendRes.data.success && !backendRes.data.fallbackToBrowser) {
+      return {
+        success: true,
+        message: backendRes.data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan iletildi.`,
+      };
+    }
+  } catch {}
+
+  // 4. Tarayıcı Yazdırma Penceresi (Yalnızca allowBrowserFallback true ise çalıştırılır)
+  // Kullanıcı F10 ile sessiz çıktı istediğinde Chrome önizleme penceresi KESİNLİKLE açılmaz!
+  if (!allowBrowserFallback) {
+    return {
+      success: false,
+      message: `"${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan erişilemedi (Yerel port 5050 servisi veya yazıcı bağlantısını kontrol ediniz).`,
+    };
   }
 
-  // 5. Kesintisiz Çıktı: Tarayıcının yerel yazdırma motoru (Iframe / Kiosk printing)
-  // Kurulumsuz çalışan tüm istemcilerde Vezne ve Tanımlı yazıcıdan anında çıktı üretir.
   if (html) {
     try {
       printViaHiddenIframe(html, title, isPos);
       return {
         success: true,
-        message: `Fiş "${printerName || 'Vezne Tanımlı Yazıcı'}" için yazdırma akışına gönderildi.`,
+        message: `Fiş "${printerName || 'Vezne Tanımlı Yazıcı'}" için tarayıcı yazdırma akışına gönderildi.`,
         fallbackUsed: true,
       };
     } catch (fallbackErr: any) {

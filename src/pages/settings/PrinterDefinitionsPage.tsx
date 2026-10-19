@@ -21,8 +21,6 @@ import {
   IconDownload,
   IconCopy,
 } from "@tabler/icons-react";
-import { getPowerShellOneLinerCommand } from "../../utils/localPrintAgentScript";
-
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
 import LookupModal from "../../components/common/LookupModal";
@@ -80,63 +78,39 @@ export const PrinterDefinitionsPage: React.FC = () => {
   } | null>(null);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
   const [showSystemPrintersModal, setShowSystemPrintersModal] = useState<boolean>(false);
-  const [printerList, setPrinterList] = useState<string[]>(() => {
-    const termKey = `likya_terminal_printer_${PrinterService.getTerminalUUID()}`;
-    const saved = typeof localStorage !== "undefined"
-      ? localStorage.getItem(termKey) || localStorage.getItem("likya_terminal_last_printer")
-      : null;
-    return saved && !isNonPrinterHardware(saved) ? [saved] : [];
-  });
+  const [printerList, setPrinterList] = useState<string[]>([]);
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinterItem[]>([]);
   const [isLoadingSystemPrinters, setIsLoadingSystemPrinters] = useState<boolean>(false);
   const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
   const [selectedSystemPrinterName, setSelectedSystemPrinterName] = useState<string>("");
   const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
   const [manualPrinterName, setManualPrinterName] = useState<string>("");
-  const [copiedOneLiner, setCopiedOneLiner] = useState<boolean>(false);
-
-  const handleCopyOneLiner = () => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://likyakuyum.com";
-    const cmd = getPowerShellOneLinerCommand(origin);
-    navigator.clipboard.writeText(cmd);
-    setCopiedOneLiner(true);
-    setTimeout(() => setCopiedOneLiner(false), 4000);
-  };
 
   // Sayfa açıldığında bu bilgisayarın yerel yazıcılarını arka planda otomatik çek
   useEffect(() => {
-    // LocalStorage'daki fare/alıcı kalıntılarını temizle
-    try {
-      const raw = localStorage.getItem("likya_client_printers");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const cleaned = parsed.filter(
-          (p: any) => !isNonPrinterHardware(p?.name)
-        );
-        localStorage.setItem("likya_client_printers", JSON.stringify(cleaned));
-      }
-    } catch {}
-
     PrinterService.getSystemPrinters(user)
       .then((list) => {
         if (Array.isArray(list) && list.length > 0) {
           const filtered = list.filter((p) => !isNonPrinterHardware(p.name));
           setSystemPrinters(filtered);
           const names = filtered.map((p) => p.name).filter(Boolean);
-          if (names.length > 0) {
-            setPrinterList(names);
-          }
+          setPrinterList(names);
+        } else {
+          setSystemPrinters([]);
+          setPrinterList([]);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setSystemPrinters([]);
+        setPrinterList([]);
+      });
   }, [user?.id]);
 
   const handleGetPrinters = async () => {
     setIsLoadingSystemPrinters(true);
     setAlertError(null);
     try {
-      // 1. Çok kanallı gerçek zamanlı tarama (Port 5050, Web Printing API, Backend, LocalStorage)
-      // Kesinlikle kullanıcıyı rahatsız eden fare/alıcı WebUSB açılır penceresi açılmaz!
+      // Çok kanallı gerçek zamanlı tarama (Port 5050, Web Printing API, Backend)
       const detected = await PrinterService.fetchRealTimePrinters();
       const allDetected: string[] = [];
 
@@ -146,52 +120,35 @@ export const PrinterDefinitionsPage: React.FC = () => {
         }
       }
 
-      // 2. Yerel backend / spooler yazıcılarını çek
-      try {
-        const sysList = await PrinterService.getSystemPrinters(user);
-        for (const sp of sysList) {
-          if (!isNonPrinterHardware(sp.name) && !allDetected.includes(sp.name)) {
-            allDetected.push(sp.name);
-          }
-        }
-      } catch {}
-
-
-
-      // 3. Yalnızca canlı taramada hiçbir aygıt bulunamadıysa bu bilgisayarın kayıtlı yazıcısını yedek olarak ekle
-      if (allDetected.length === 0) {
-        const termKey = `likya_terminal_printer_${PrinterService.getTerminalUUID()}`;
-        const terminalSaved = localStorage.getItem(termKey) || localStorage.getItem("likya_terminal_last_printer");
-        if (terminalSaved && !isNonPrinterHardware(terminalSaved)) {
-          allDetected.push(terminalSaved);
-        }
-      }
-
-      // Listede gerçek donanım bulunduysa forma ata
-      if (allDetected.length > 0) {
-        setPrinterList(allDetected);
-        const mappedItems: SystemPrinterItem[] = allDetected.map((name, idx) => ({
+      setPrinterList(allDetected);
+      const mappedItems: SystemPrinterItem[] = allDetected.map((name, idx) => {
+        const isVirtual = isVirtualSystemPrinter(name);
+        const lower = name.toLowerCase();
+        const isNet = lower.includes("ağ") || lower.includes("network") || lower.includes("wi-fi") || lower.includes("wifi") || lower.includes("wsd") || lower.includes("tcp") || lower.includes("192.168.") || lower.startsWith("\\\\");
+        return {
           name,
           isDefault: idx === 0,
           isOnline: true,
-          source: isVirtualSystemPrinter(name) ? "system" : "browser",
-          details: isVirtualSystemPrinter(name)
+          source: isVirtual ? "system" : "browser",
+          details: isVirtual
             ? "Sanal Yazıcı / Belge Çıktısı"
-            : "Bu Bilgisayara Bağlı Yazıcı (Denetim Masası)",
-        }));
-        setSystemPrinters(mappedItems);
-        for (const item of mappedItems) {
-          PrinterService.saveClientPrinter(item, user?.id);
-        }
+            : isNet
+            ? "Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
+            : "Bu Bilgisayara Bağlı Kablolu Yazıcı (USB / Port)",
+        };
+      });
+      setSystemPrinters(mappedItems);
+
+      if (allDetected.length > 0) {
         if (!formData.cihazAdi || formData.cihazAdi.trim() === "") {
           handleInputChange("cihazAdi", allDetected[0]);
           if (!formData.ad || formData.ad.trim() === "") {
             handleInputChange("ad", allDetected[0]);
           }
         }
-        showSuccess(`Bilgisayarınıza bağlı ${allDetected.length} adet yazıcı başarıyla tespit edildi!`);
+        showSuccess(`Bilgisayarınızdaki ${allDetected.length} adet bağlı yazıcı tespit edildi.`);
       } else {
-        showSuccess("Yazıcı listesi güncellendi. Dilerseniz modelini kutudan seçebilir veya yazabilirsiniz.");
+        showSuccess("Bu bilgisayara bağlı yazıcı bulunamadı.");
       }
     } catch (error: any) {
       console.debug("Yazıcılar getirilirken hata:", error);
@@ -210,15 +167,30 @@ export const PrinterDefinitionsPage: React.FC = () => {
     setSelectedSystemPrinterName(formData.cihazAdi || "");
 
     try {
-      const list = await PrinterService.getSystemPrinters(user);
-      const activePrinters = (list || []).filter((p) => !isNonPrinterHardware(p.name));
-      setSystemPrinters(activePrinters);
-      const names = activePrinters.map((p) => p.name).filter(Boolean);
-      if (names.length > 0) {
-        setPrinterList(names);
-        if (!formData.cihazAdi) {
-          setSelectedSystemPrinterName(names[0]);
-        }
+      const detected = await PrinterService.fetchRealTimePrinters();
+      const allDetected = (detected || []).filter((d) => !isNonPrinterHardware(d));
+
+      const mappedItems: SystemPrinterItem[] = allDetected.map((name, idx) => {
+        const isVirtual = isVirtualSystemPrinter(name);
+        const lower = name.toLowerCase();
+        const isNet = lower.includes("ağ") || lower.includes("network") || lower.includes("wi-fi") || lower.includes("wifi") || lower.includes("wsd") || lower.includes("tcp") || lower.includes("192.168.") || lower.startsWith("\\\\");
+        return {
+          name,
+          isDefault: idx === 0,
+          isOnline: true,
+          source: isVirtual ? "system" : "browser",
+          details: isVirtual
+            ? "Sanal Yazıcı / Belge Çıktısı"
+            : isNet
+            ? "Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
+            : "Bu Bilgisayara Bağlı Kablolu Yazıcı (USB / Port)",
+        };
+      });
+
+      setSystemPrinters(mappedItems);
+      setPrinterList(allDetected);
+      if (allDetected.length > 0 && !formData.cihazAdi) {
+        setSelectedSystemPrinterName(allDetected[0]);
       }
     } catch (err) {
       console.debug("Sistem yazıcıları listelenirken hata:", err);
@@ -269,6 +241,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
 
       const list = await PrinterService.getYazicilar();
       setYazicilar(list || []);
+
+
 
       if (list && list.length > 0 && targetIndex !== undefined) {
         const idx = targetIndex >= 0 && targetIndex < list.length
@@ -932,23 +906,16 @@ export const PrinterDefinitionsPage: React.FC = () => {
                             </div>
                           </td>
                           <td className="text-center">
-                            {isVirtualSystemPrinter(p.name) ? (
-                              <Badge bg="secondary" className="px-2 py-0.5">📄 PDF / Sanal Yazıcı</Badge>
-                            ) : p.details?.includes("Ağ") || p.details?.includes("Wi-Fi") ? (
-                              <Badge bg="info" className="px-2 py-0.5">🌐 Ağ / Wi-Fi Yazıcısı</Badge>
-                            ) : p.details?.includes("USB") || p.source === "usb" ? (
-                              <Badge bg="primary" className="px-2 py-0.5">🔌 USB Cihaz (Takılı)</Badge>
-                            ) : p.source === "local_agent" || p.source === "browser" ? (
-                              <Badge bg="success" className="px-2 py-0.5">💻 Bu Bilgisayar (Denetim Masası)</Badge>
-                            ) : p.source === "user_assigned" ? (
-                              <Badge bg="info" className="px-2 py-0.5">👤 Kullanıcı Yazıcısı</Badge>
-                            ) : p.source === "server" ? (
-                              <Badge bg="secondary" className="px-2 py-0.5">🏢 Sunucuda Kayıtlı</Badge>
-                            ) : p.source === "serial" ? (
-                              <Badge bg="warning" text="dark" className="px-2 py-0.5">🔌 Seri Port</Badge>
-                            ) : (
-                              <Badge bg="success" className="px-2 py-0.5">💻 Bu Bilgisayar (Denetim Masası)</Badge>
-                            )}
+                            {(() => {
+                              const s = `${p.name} ${p.details || ""}`.toLowerCase();
+                              if (isVirtualSystemPrinter(p.name)) {
+                                return <Badge bg="secondary" className="px-2 py-0.5">📄 PDF / Sanal Yazıcı</Badge>;
+                              }
+                              if (s.includes("ağ") || s.includes("network") || s.includes("wi-fi") || s.includes("wifi") || s.includes("wsd") || s.includes("tcp") || s.includes("192.168.") || s.startsWith("\\\\")) {
+                                return <Badge bg="info" className="px-2 py-0.5">📶 Kablosuz / Ağ (Wi-Fi)</Badge>;
+                              }
+                              return <Badge bg="success" className="px-2 py-0.5">🔌 Kablolu (USB / Port)</Badge>;
+                            })()}
                           </td>
                           <td className="text-end">
                             <Button

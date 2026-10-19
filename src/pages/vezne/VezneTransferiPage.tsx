@@ -29,6 +29,8 @@ import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { triggerSilentPrint } from "../../services/silentPrintService";
+import { PrinterService, YaziciItem } from "../../services/printerService";
+import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { ProductDefinitionService, ProductItem } from "../../services/productDefinitionService";
 import {
   VezneTransferiService,
@@ -221,6 +223,11 @@ export const VezneTransferiPage: React.FC = () => {
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
   const [showParaSayModal, setShowParaSayModal] = useState<boolean>(false);
   const [banknotCounts, setBanknotCounts] = useState<Record<string, Record<number, number>>>({});
+  const [printers, setPrinters] = useState<YaziciItem[]>([]);
+
+  useEffect(() => {
+    PrinterService.getYazicilar().then(setPrinters).catch(() => {});
+  }, []);
 
   // Transfer list for search modal
   const [transferList, setTransferList] = useState<VezneTransferiListItem[]>([]);
@@ -952,12 +959,15 @@ export const VezneTransferiPage: React.FC = () => {
         try {
           const alanV = vezneList.find((v) => v.id === alanVezneId);
           const verenV = vezneList.find((v) => v.id === verenVezneId);
-          const pName =
-            alanV?.satisFisiCihazAdi ||
-            alanV?.satisFisiYaziciAdi ||
-            verenV?.satisFisiCihazAdi ||
-            verenV?.satisFisiYaziciAdi ||
-            null;
+          const activeV = alanV || verenV || (vezneList.length > 0 ? vezneList[0] : null);
+          const resolved = resolveEffectivePrinter({
+            pageType: "perakende",
+            tip: 1,
+            vezne: activeV,
+            user,
+            printers,
+          });
+          const pName = resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null;
 
           const slipHtml = `
             <div style="font-family: monospace; padding: 6px; max-width: 78mm; font-size: 12px;">
@@ -999,7 +1009,7 @@ export const VezneTransferiPage: React.FC = () => {
             printerName: pName,
             title: `Vezne_Transfer_${savedRef}`,
             isPos: true,
-            allowBrowserFallback: true,
+            allowBrowserFallback: false,
           });
         } catch (printErr: any) {
           console.debug("Transfer yazdırma hatası:", printErr);

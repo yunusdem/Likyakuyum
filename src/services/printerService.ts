@@ -103,6 +103,8 @@ export const isVirtualSystemPrinter = (name?: string | null): boolean => {
   return virtualKeywords.some((k) => n.includes(k));
 };
 
+let lastPort5050FailTime = 0;
+
 export class PrinterService {
   public static isVirtualSystemPrinter = isVirtualSystemPrinter;
   public static isNonPrinterHardware = isNonPrinterHardware;
@@ -205,21 +207,28 @@ export class PrinterService {
     };
 
     // 1. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Native PowerShell Spooler Bridge)
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 900);
-      const res = await fetch("http://127.0.0.1:5050/printers", {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data.printers) ? data.printers : [];
-        for (const p of list) {
-          addPrinterName(p?.name);
+    // Konsolu net::ERR_CONNECTION_REFUSED ile doldurmamak için başarısız olursa 60 saniye boyunca tekrar denemez
+    if (Date.now() - lastPort5050FailTime > 60000) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600);
+        const res = await fetch("http://127.0.0.1:5050/printers", {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data.printers) ? data.printers : [];
+          for (const p of list) {
+            addPrinterName(p?.name);
+          }
+        } else {
+          lastPort5050FailTime = Date.now();
         }
+      } catch {
+        lastPort5050FailTime = Date.now();
       }
-    } catch {}
+    }
 
     // 2. Chromium / WICG Web Printing API (window.printing.getPrinters)
     if (typeof window !== "undefined" && "printing" in window && typeof (window as any).printing?.getPrinters === "function") {
@@ -256,27 +265,25 @@ export class PrinterService {
       } catch {}
     }
 
-    // 5. Yerel Bilgisayarda çalışan Backend Spooler (/api/v1/yazici/system-printers)
-    // SADECE ve SADECE istemci ile backend ayni makinede (localhost / 127.0.0.1) ise Windows yazicilarini backend'den al.
-    // Bulut sunucu uzerinden baska sunucunun yazicilari ASLA alinmaz.
-    const isLocalMachine = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-    if (isLocalMachine) {
-      try {
-        const sysRes = await apiClient.get<any[]>("/yazici/system-printers", { silent: true });
-        if (Array.isArray(sysRes.data) && sysRes.data.length > 0) {
-          for (const sp of sysRes.data) {
-            addPrinterName(sp?.name || sp);
-          }
-        }
-      } catch {}
-    }
-
-    // 6. Bu bilgisayarin terminali icin atanmis aktif yerel yazici
+    // 5. Backend Sistem / Spooler Yazıcıları (/api/v1/yazici/system-printers)
+    // Windows ve Unix sunucu ortamlarındaki gerçek yazıcıları döner
     try {
-      const termUUID = PrinterService.getTerminalUUID();
-      const termKey = `likya_terminal_printer_${termUUID}`;
-      const terminalSaved = localStorage.getItem(termKey);
-      if (terminalSaved) addPrinterName(terminalSaved);
+      const sysRes = await apiClient.get<any[]>("/yazici/system-printers", undefined, { silent: true });
+      if (Array.isArray(sysRes.data) && sysRes.data.length > 0) {
+        for (const sp of sysRes.data) {
+          addPrinterName(sp?.name || sp);
+        }
+      }
+    } catch {}
+
+    // 6. Backend İstemci Yazıcıları (/api/v1/yazici/client-printers)
+    try {
+      const clientRes = await apiClient.get<any[]>("/yazici/client-printers", undefined, { silent: true });
+      if (Array.isArray(clientRes.data) && clientRes.data.length > 0) {
+        for (const cp of clientRes.data) {
+          addPrinterName(cp?.name || cp);
+        }
+      }
     } catch {}
 
     // Fiziksel yazıcıları (Argox, CP-Q1T, POS-80C, Samsung vb.) en başa, sanal yazıcıları (PDF vb.) arkaya koy
@@ -317,23 +324,6 @@ export class PrinterService {
       }
     } catch (err: any) {
       console.debug("Yazıcı tarama:", err?.message || err);
-    }
-
-    // 2. Eğer canlı taramada hiçbir şey bulunamadıysa bu bilgisayarın önceden kaydedilmiş yerel yazıcısını getir
-    if (results.length === 0) {
-      try {
-        const termKey = `likya_terminal_printer_${PrinterService.getTerminalUUID()}`;
-        const lastTerminal = localStorage.getItem(termKey) || localStorage.getItem("likya_terminal_last_printer");
-        if (lastTerminal && !isNonPrinterHardware(lastTerminal)) {
-          results.push({
-            name: lastTerminal,
-            isDefault: true,
-            isOnline: true,
-            source: "browser",
-            details: "Bu Bilgisayarda Kayıtlı Terminal Yazıcısı",
-          });
-        }
-      } catch {}
     }
 
     return results;

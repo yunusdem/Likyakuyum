@@ -43,7 +43,6 @@ import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import SarrafFisiPrintModal from "./SarrafFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
-import { F10YaziciSecimModal } from "./F10YaziciSecimModal";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { sarrafFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
@@ -1091,7 +1090,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [istatistikFisDizaynTipi, setIstatistikFisDizaynTipi] = useState<number | null>(null);
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
-  const [showF10PrinterModal, setShowF10PrinterModal] = useState<boolean>(false);
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
@@ -2280,6 +2278,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             copies: copiesToUse,
             isPos,
             title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
+            allowBrowserFallback: false,
           });
           if (!sonuc.success) {
             printSuccess = false;
@@ -4781,7 +4780,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowPrintModal(false);
     setShowIstatistikModal(false);
     setShowFarkConfirmModal({ show: false, andPrint: false });
-    setShowF10PrinterModal(false);
   }, []);
 
   const handleDirectPrintF9 = useCallback(async () => {
@@ -4876,6 +4874,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         copies: resolved.kopyaSayisi || 1,
         isPos,
         title: `Sarraf_Fisi_${fisNo || "Yazdir"}`,
+        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         showNotif("success", "✅ Fiş doğrudan yazıcıya gönderildi.");
@@ -8095,21 +8094,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </Button>
         </Modal.Footer>
       </Modal>
-
-
-
-      {/* F10 Doğrudan Yazdırma Öncesi Küçük Yazıcı Seçim Modalı */}
-      <F10YaziciSecimModal
-        show={showF10PrinterModal}
-        onHide={() => setShowF10PrinterModal(false)}
-        printers={printers}
-        user={user}
-        onConfirm={(selectedPrinter, copies) => {
-          setShowF10PrinterModal(false);
-          void handleSave(false, true, false, selectedPrinter, copies);
-        }}
-        isSaving={isSaving}
-      />
     </div>
   );
 };

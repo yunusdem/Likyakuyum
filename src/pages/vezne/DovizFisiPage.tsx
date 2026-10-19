@@ -43,7 +43,6 @@ import MasakModal from "../../components/masak/MasakModal";
 import { DovizFisiPrintModal } from "./DovizFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
-import { F10YaziciSecimModal } from "./F10YaziciSecimModal";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "./MusteriSecimModal";
 import { KurListesiModal } from "./KurListesiModal";
@@ -385,7 +384,6 @@ export const DovizFisiPage: React.FC = () => {
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState<boolean>(false);
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
-  const [showF10PrinterModal, setShowF10PrinterModal] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [pendingPrinter, setPendingPrinter] = useState<YaziciItem | null>(null);
   const [pendingCopies, setPendingCopies] = useState<number>(1);
@@ -3917,6 +3915,7 @@ export const DovizFisiPage: React.FC = () => {
             copies: copiesToUse,
             isPos,
             title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
+            allowBrowserFallback: false,
           });
           if (!sonuc.success) yazdirmaHatasi = sonuc.message;
         } catch (printErr: any) {
@@ -4241,7 +4240,6 @@ export const DovizFisiPage: React.FC = () => {
     setShowParaModal(false);
     setShowGumrukModal(false);
     setShowPrintModal(false);
-    setShowF10PrinterModal(false);
     setActiveLookupType(null);
   }, []);
 
@@ -4402,6 +4400,7 @@ export const DovizFisiPage: React.FC = () => {
         copies: resolved.kopyaSayisi || 1,
         isPos: true,
         title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || "Yazdir"}`,
+        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         setNotification({
@@ -4513,11 +4512,6 @@ export const DovizFisiPage: React.FC = () => {
           setShowPrintModal(false);
           return;
         }
-        if (showF10PrinterModal) {
-          e.preventDefault();
-          setShowF10PrinterModal(false);
-          return;
-        }
         if (showCariModal) {
           e.preventDefault();
           setShowCariModal(false);
@@ -4598,7 +4592,6 @@ export const DovizFisiPage: React.FC = () => {
     handleDirectPrintF9,
     handleToolbarDelete,
     handleTriggerF10,
-    showF10PrinterModal,
     isDuzeltmeMode,
     vezneId,
     showDetayModal,
@@ -7799,19 +7792,6 @@ export const DovizFisiPage: React.FC = () => {
       <MasakModal
         show={masakManagementOpen}
         onHide={() => setMasakManagementOpen(false)}
-      />
-
-      {/* F10 Doğrudan Yazdırma Öncesi Küçük Yazıcı Seçim Modalı */}
-      <F10YaziciSecimModal
-        show={showF10PrinterModal}
-        onHide={() => setShowF10PrinterModal(false)}
-        printers={printers}
-        user={user}
-        onConfirm={(selectedPrinter, copies) => {
-          setShowF10PrinterModal(false);
-          handleToolbarSave(false, true, selectedPrinter, copies);
-        }}
-        isSaving={isSaving}
       />
     </div>
   );
