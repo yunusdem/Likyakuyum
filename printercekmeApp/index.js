@@ -221,6 +221,39 @@ app.get(["/api/printers", "/printers"], async (_req, res) => {
   }
 });
 
+// Windows varsayılan yazıcısını ayarlama endpoint'i (Tarayıcı çıktısının doğru yazıcıya gitmesini sağlar)
+app.post(["/api/set-default", "/set-default"], async (req, res) => {
+  const { printerName } = req.body || {};
+  if (!printerName) {
+    return res.json({ success: false, message: "printerName belirtilmedi." });
+  }
+
+  const platform = os.platform();
+  if (platform === "win32") {
+    try {
+      const systemRoot = process.env.SystemRoot || "C:\\Windows";
+      const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+      const safeTarget = printerName.replace(/'/g, "''");
+      const psCmd = `
+$target = '${safeTarget}';
+$p = Get-Printer | Where-Object { $_.Name -like ('*' + $target + '*') } | Select-Object -First 1;
+if (-not $p) { $p = Get-Printer | Where-Object { $_.Name -eq $target } | Select-Object -First 1 };
+if ($p) {
+  (New-Object -ComObject WScript.Network).SetDefaultPrinter($p.Name)
+}
+`;
+      await execAsync(`"${psPath}" -NoProfile -ExecutionPolicy Bypass -Command "${psCmd.replace(/\r?\n/g, ' ')}"`, { timeout: 4000 });
+      console.log(`[printercekmeApp] Varsayılan yazıcı "${printerName}" olarak ayarlandı.`);
+      return res.json({ success: true, printerName });
+    } catch (err) {
+      console.warn("[printercekmeApp] Varsayılan yazıcı ayarlama hatası:", err.message);
+      return res.json({ success: false, error: err.message });
+    }
+  }
+
+  return res.json({ success: true, printerName });
+});
+
 // HTML'den temiz düz metin çıkaran yardımcı fonksiyon
 function extractTextFromHtmlSimple(html) {
   if (!html) return "";

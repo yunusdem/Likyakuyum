@@ -4431,7 +4431,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         copies: resolved.kopyaSayisi || 1,
         isPos,
         title: `Perakende_Fisi_${faturaNo || "Yazdir"}`,
-        allowBrowserFallback: false,
+        allowBrowserFallback: true,
       });
       if (sonuc.success) {
         showSuccess("✅ Fiş doğrudan yazıcıya gönderildi.");
@@ -4778,7 +4778,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             copies: resolved.kopyaSayisi || 1,
             isPos,
             title: `Perakende_Fisi_${result?.faturaNo || payload?.faturaNo || "Yazdir"}`,
-            allowBrowserFallback: false,
+            allowBrowserFallback: true,
           });
           if (!sonuc.success) {
             printSuccess = false;

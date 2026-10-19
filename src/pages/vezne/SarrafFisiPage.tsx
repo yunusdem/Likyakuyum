@@ -2278,7 +2278,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             copies: copiesToUse,
             isPos,
             title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
-            allowBrowserFallback: false,
+            allowBrowserFallback: true,
           });
           if (!sonuc.success) {
             printSuccess = false;
@@ -4874,7 +4874,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         copies: resolved.kopyaSayisi || 1,
         isPos,
         title: `Sarraf_Fisi_${fisNo || "Yazdir"}`,
-        allowBrowserFallback: false,
+        allowBrowserFallback: true,
       });
       if (sonuc.success) {
         showNotif("success", "✅ Fiş doğrudan yazıcıya gönderildi.");

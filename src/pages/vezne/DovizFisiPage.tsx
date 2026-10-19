@@ -3915,7 +3915,7 @@ export const DovizFisiPage: React.FC = () => {
             copies: copiesToUse,
             isPos,
             title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
-            allowBrowserFallback: false,
+            allowBrowserFallback: true,
           });
           if (!sonuc.success) yazdirmaHatasi = sonuc.message;
         } catch (printErr: any) {
@@ -4400,7 +4400,7 @@ export const DovizFisiPage: React.FC = () => {
         copies: resolved.kopyaSayisi || 1,
         isPos: true,
         title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || "Yazdir"}`,
-        allowBrowserFallback: false,
+        allowBrowserFallback: true,
       });
       if (sonuc.success) {
         setNotification({

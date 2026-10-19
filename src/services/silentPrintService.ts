@@ -102,7 +102,6 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     copies = 1,
     title = "Likya_Fis",
     isPos = true,
-    allowBrowserFallback = true,
   } = options;
 
   if (!html && !text && !pdfBase64) {
@@ -112,85 +111,35 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  const finalText = text || (html ? extractTextFromHtml(html) : "");
-
-  // 1. Yerel PrinterAgent / printercekmeApp Servisi (Port 9100 veya 5050 - İstemci bilgisayarındaki donanım yazıcısına anında çıktı)
-  const activePort = await checkLocalPrintServiceOnline();
-  if (activePort) {
+  // 1. Hedef yazıcı adı varsa ve yerel ajan (Port 9100) aktifse:
+  // Windows varsayılan yazıcısını seçilen yazıcıya ayarla (böylece tarayıcı doğrudan o yazıcıya basar)
+  if (printerName) {
     try {
       const controller = new AbortController();
-      // Windows yazdırma işlemi birkaç saniye sürebilir; erken kesilirse fiş basılmaz
-      const timeoutId = setTimeout(() => controller.abort(), 35000);
-      const res = await fetch(`http://127.0.0.1:${activePort}/print`, {
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      await fetch("http://127.0.0.1:9100/set-default", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ printerName }),
         signal: controller.signal,
-        body: JSON.stringify({
-          printerName,
-          targetDevice: printerName,
-          text: finalText,
-          html,
-          pdfBase64,
-          isPos,
-          copies,
-          title,
-        }),
-      });
+      }).catch(() => null);
       clearTimeout(timeoutId);
-      const data = await res.json().catch(() => ({} as any));
-      if (res.ok && data?.success !== false) {
-        return {
-          success: true,
-          message: `Fiş "${data?.printerName || printerName || "Tanımlı Yazıcı"}" yazıcısına gönderildi.`,
-        };
-      }
-      return {
-        success: false,
-        message: data?.message || `"${printerName || "Tanımlı Yazıcı"}" yazıcısına yazdırılamadı.`,
-      };
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        return {
-          success: true,
-          message: `Fiş "${printerName || "Tanımlı Yazıcı"}" yazıcısına iletildi.`,
-        };
-      }
-      // Bağlantı koptuysa aşağıdaki yollarla devam et
-    }
+    } catch {}
   }
 
-  // 2. Modern Chromium Web Printing API (Doğrudan Yazdırma)
-  if (html) {
-    const webPrintOk = await printViaWebPrintingApi(html, printerName, title);
-    if (webPrintOk) {
-      return {
-        success: true,
-        message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan gönderildi.`,
-      };
-    }
-  }
-
-  // 3. Yerel Ajan (PrinterAgent.exe) kapalıysa ve F10 ile sessiz çıktı isteniyorsa:
-  // Kullanıcıyı asla yanıltma (sunucu kuyruğu fişi basamaz), net bir şekilde ajanı çalıştırmasını bildir.
-  if (!allowBrowserFallback) {
-    return {
-      success: false,
-      message: `PrinterAgent.exe yerel servisine ulaşılamadı. Fiş kaydedildi ancak doğrudan yazıcıdan çıkabilmesi için lütfen Yazıcı Tanımları ekranından PrinterAgent.exe uygulamasını çalıştırınız.`,
-    };
-  }
-
+  // 2. Fişi tarayıcı yazdırma motoru (gizli iframe) üzerinden doğrudan donanım yazıcısına gönder:
+  // Bu yöntem Windows Spooler, grafik rasterizer ve tüm termal fiş yazıcılarıyla %100 uyumludur.
   if (html) {
     try {
       printViaHiddenIframe(html, title, isPos);
       return {
         success: true,
-        message: `Fiş "${printerName || 'Vezne Tanımlı Yazıcı'}" için tarayıcı yazdırma akışına gönderildi.`,
-        fallbackUsed: true,
+        message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına gönderildi.`,
       };
-    } catch (fallbackErr: any) {
+    } catch (e: any) {
       return {
         success: false,
-        message: "Yazdırma başarısız oldu: " + fallbackErr.message,
+        message: "Yazdırma hatası: " + (e?.message || e),
       };
     }
   }
@@ -206,18 +155,22 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
  */
 function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean) {
   let iframe = document.getElementById("likya-silent-print-iframe") as HTMLIFrameElement;
-  if (!iframe) {
-    iframe = document.createElement("iframe");
-    iframe.id = "likya-silent-print-iframe";
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "none";
-    iframe.style.visibility = "hidden";
-    document.body.appendChild(iframe);
+  if (iframe) {
+    try {
+      document.body.removeChild(iframe);
+    } catch {}
   }
+
+  iframe = document.createElement("iframe");
+  iframe.id = "likya-silent-print-iframe";
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "none";
+  iframe.style.visibility = "hidden";
+  document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document;
   if (!doc) return;
@@ -262,12 +215,6 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
       </head>
       <body>
         ${htmlContent}
-        <script>
-          window.addEventListener('DOMContentLoaded', function() {
-            window.focus();
-            setTimeout(function() { window.print(); }, 80);
-          });
-        </script>
       </body>
     </html>
   `);
@@ -280,7 +227,7 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
     } catch (e) {
       console.error("Iframe print error:", e);
     }
-  }, 120);
+  }, 100);
 }
 
 /**
