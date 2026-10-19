@@ -41,7 +41,8 @@ export default function EBelgeKaynakPage() {
   // e-Banka > Tahsilat / Ödeme Mutabakatı'ndaki "Fatura kes" bu ekranı ?kaynak=&tarih=&ara= ile açar; parametre yoksa davranış değişmez
   const [parametreler] = useSearchParams();
   const pKaynakHam = (KAYNAKLAR.includes((parametreler.get('kaynak') || '') as Kaynak) ? parametreler.get('kaynak') : '') as Kaynak;
-  const pKaynak = secenekler.some(s => s.deger === pKaynakHam) ? pKaynakHam : '';
+  // Döviz ürününde (sarraf fişleri lisansta yok) Kaynak "e-Döviz fişi" seçili açılır; adres parametresi varsa o öncelikli
+  const pKaynak: Kaynak = secenekler.some(s => s.deger === pKaynakHam) ? pKaynakHam : (ozellik.doviz && !ozellik.sarraf ? 'DOVIZ' : '');
   const pTarih = /^\d{4}-\d{2}-\d{2}$/.test(parametreler.get('tarih') || '') ? parametreler.get('tarih')! : '';
   const [arama, setArama] = useState(parametreler.get('ara') || ''); const [durum, setDurum] = useState('');
   const [kaynak, setKaynak] = useState<Kaynak>(pKaynak); const [ilk, setIlk] = useState(pTarih || bugun); const [son, setSon] = useState(pTarih || bugun);

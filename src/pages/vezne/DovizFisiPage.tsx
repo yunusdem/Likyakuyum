@@ -490,6 +490,7 @@ export const DovizFisiPage: React.FC = () => {
   // Active Doviz Fis Form State
   const [fisId, setFisId] = useState<number | null>(null);
   const [isLocked, setIsLocked] = useState<boolean>(false); // Read-only if sent to GIB
+  const [gibeGonderildi, setGibeGonderildi] = useState<boolean>(false); // GİB'e gönderilmiş fiş: düzeltme modunda da silinemez
   const [isGonderildi, setIsGonderildi] = useState<boolean>(false);
   const [vezneId, setVezneId] = useState<number>(1);
   // undefined: vezneler henüz yüklenmedi; null: kullanıcının kartında vezne yok (sunucu da kaydı reddeder)
@@ -986,6 +987,7 @@ export const DovizFisiPage: React.FC = () => {
   const resetForm = useCallback((lookupsParam?: typeof lookupData, compDefParam?: TodvzTanimDto | null) => {
     setFisId(null);
     setIsLocked(false);
+    setGibeGonderildi(false);
     setIsGonderildi(false);
     const now = new Date();
     setTarih(now.toISOString().split("T")[0]);
@@ -1287,7 +1289,9 @@ export const DovizFisiPage: React.FC = () => {
       setMasakResult({ matches: [], searched: false });
       setMasakModalOpen(false);
 
-      const isGibLocked = isDuzeltmeMode ? false : Boolean((fis as any).eBelgeDurumu === 1 || (fis as any).E_BELGE_DURUMU === 1);
+      const gonderildi = Boolean(fis.gibeGonderildi || (fis as any).eBelgeDurumu === 1 || (fis as any).E_BELGE_DURUMU === 1);
+      setGibeGonderildi(gonderildi);
+      const isGibLocked = isDuzeltmeMode ? false : gonderildi;
       setIsLocked(isGibLocked);
       if (isGibLocked) {
         setNotification({
@@ -3982,7 +3986,7 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const handleToolbarDelete = async () => {
-    if (isLocked) {
+    if (isLocked || gibeGonderildi) {
       setNotification({
         type: "warning",
         message: "GİB'e gönderilmiş olan bu fiş silinemez.",

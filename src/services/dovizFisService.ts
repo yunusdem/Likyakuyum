@@ -93,6 +93,8 @@ export interface DovizFisModel {
   odemeTutari: number;
   bsmvTutar: number;
   iptal: boolean;
+  /** GİB'e gönderilmiş fiş: silinemez */
+  gibeGonderildi?: boolean;
   iptalTarihi?: string | null;
   ekleyenId: number;
   eklemeZamani: string;
