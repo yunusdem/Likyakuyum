@@ -206,12 +206,13 @@ export class PrinterService {
       }
     };
 
-    // 1. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Native PowerShell Spooler Bridge)
-    // Konsolu net::ERR_CONNECTION_REFUSED ile doldurmamak için başarısız olursa 60 saniye boyunca tekrar denemez
-    if (Date.now() - lastPort5050FailTime > 60000) {
+    // 1. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Windows Spooler)
+    // Chrome'un Yazdır penceresindeki "Hedef" listesi de aynı Windows Spooler'dan gelir; bu yüzden kaynak bu.
+    // PowerShell sorgusu 1-3 sn sürebileceğinden zaman aşımı geniş tutuldu.
+    if (Date.now() - lastPort5050FailTime > 15000) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 600);
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         const res = await fetch("http://127.0.0.1:5050/printers", {
           signal: controller.signal,
         });
@@ -221,6 +222,10 @@ export class PrinterService {
           const list = Array.isArray(data.printers) ? data.printers : [];
           for (const p of list) {
             addPrinterName(p?.name);
+          }
+          // Yerel servis cevap verdiyse bu bilgisayarın gerçek listesi budur, başka kaynak eklenmez
+          if (physicalList.length + virtualList.length > 0) {
+            return [...physicalList, ...virtualList];
           }
         } else {
           lastPort5050FailTime = Date.now();
@@ -265,18 +270,7 @@ export class PrinterService {
       } catch {}
     }
 
-    // 5. Backend Sistem / Spooler Yazıcıları (/api/v1/yazici/system-printers)
-    // Windows ve Unix sunucu ortamlarındaki gerçek yazıcıları döner
-    try {
-      const sysRes = await apiClient.get<any[]>("/yazici/system-printers", undefined, { silent: true });
-      if (Array.isArray(sysRes.data) && sysRes.data.length > 0) {
-        for (const sp of sysRes.data) {
-          addPrinterName(sp?.name || sp);
-        }
-      }
-    } catch {}
-
-    // 6. Backend İstemci Yazıcıları (/api/v1/yazici/client-printers)
+    // 5. Yerel servisin buluta senkronize ettiği BU bilgisayarın yazıcıları (/api/v1/yazici/client-printers)
     try {
       const clientRes = await apiClient.get<any[]>("/yazici/client-printers", undefined, { silent: true });
       if (Array.isArray(clientRes.data) && clientRes.data.length > 0) {
@@ -286,7 +280,21 @@ export class PrinterService {
       }
     } catch {}
 
-    // Fiziksel yazıcıları (Argox, CP-Q1T, POS-80C, Samsung vb.) en başa, sanal yazıcıları (PDF vb.) arkaya koy
+    // 6. Sunucu Spooler yazıcıları SADECE sunucu bu bilgisayardaysa (localhost) geçerlidir.
+    // Bulut sunucuda bu liste sunucunun yazıcılarıdır, kullanıcının bilgisayarının değil.
+    const host = typeof window !== "undefined" ? window.location.hostname : "";
+    const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "::1";
+    if (isLocalHost && physicalList.length + virtualList.length === 0) {
+      try {
+        const sysRes = await apiClient.get<any[]>("/yazici/system-printers", undefined, { silent: true });
+        if (Array.isArray(sysRes.data) && sysRes.data.length > 0) {
+          for (const sp of sysRes.data) {
+            addPrinterName(sp?.name || sp);
+          }
+        }
+      } catch {}
+    }
+
     return [...physicalList, ...virtualList];
   }
 
@@ -318,7 +326,6 @@ export class PrinterService {
               details: isVirtual ? "Sanal Yazıcı / Belge Çıktısı" : "Bu Bilgisayara Bağlı Yazıcı (Denetim Masası)",
             };
             results.push(item);
-            PrinterService.saveClientPrinter(item, currentUser?.id);
           }
         }
       }

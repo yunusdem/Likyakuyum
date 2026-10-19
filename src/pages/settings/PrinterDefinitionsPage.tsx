@@ -63,13 +63,12 @@ export const PrinterDefinitionsPage: React.FC = () => {
 
   useERPAutoFocus({ dependencies: [isNewRecord, selectedIndex] });
 
-  const { showSuccess, showError } = useToast();
+  const { showError } = useToast();
 
   // UI / Status states
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     yazici: YaziciItem;
@@ -86,31 +85,77 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
   const [manualPrinterName, setManualPrinterName] = useState<string>("");
 
-  // Sayfa açıldığında bu bilgisayarın yerel yazıcılarını arka planda otomatik çek
+  // Sadece bu bilgisayara bağlı / Chrome Yazdır penceresindeki gerçek yazıcıları listeler (Ekstra sunucu verisi eklemez)
+  const updateClientPrinterLists = (
+    detectedList: (SystemPrinterItem | string)[] = systemPrinters
+  ): SystemPrinterItem[] => {
+    const printerMap = new Map<string, SystemPrinterItem>();
+
+    // 1. Tarayıcı / Spooler / İstemcide Algılanan Gerçek Bilgisayar Yazıcıları
+    (detectedList || []).forEach((item) => {
+      const rawName = typeof item === "string" ? item : item.name;
+      if (!rawName || isNonPrinterHardware(rawName)) return;
+      const trimmed = rawName.trim();
+      const key = trimmed.toLowerCase();
+      const isVirtual = isVirtualSystemPrinter(trimmed);
+      const isNet =
+        trimmed.startsWith("\\\\") ||
+        trimmed.includes("192.168.") ||
+        trimmed.toLowerCase().includes("ağ") ||
+        trimmed.toLowerCase().includes("network") ||
+        trimmed.toLowerCase().includes("wi-fi") ||
+        trimmed.toLowerCase().includes("wifi");
+
+      printerMap.set(key, {
+        name: trimmed,
+        isDefault: typeof item === "object" ? Boolean(item.isDefault) : false,
+        isOnline: true,
+        source: isVirtual ? "system" : typeof item === "object" && item.source ? item.source : "browser",
+        details: isVirtual
+          ? "📄 Sanal Yazıcı / Belge Çıktısı (PDF / XPS)"
+          : isNet
+          ? "📶 Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
+          : "🔌 Bu Bilgisayara Bağlı Yerel Yazıcı (Denetim Masası / Port)",
+      });
+    });
+
+    const allItems = Array.from(printerMap.values());
+
+    // Sıralama: Fiziksel Yazıcılar (Argox, CP-Q1T vb.) en başta, sanal (PDF/XPS) en arkada
+    allItems.sort((a, b) => {
+      const aVirt = isVirtualSystemPrinter(a.name);
+      const bVirt = isVirtualSystemPrinter(b.name);
+      if (aVirt && !bVirt) return 1;
+      if (!aVirt && bVirt) return -1;
+      return a.name.localeCompare(b.name, "tr");
+    });
+
+    setSystemPrinters(allItems);
+    setPrinterList(allItems.map((p) => p.name));
+    return allItems;
+  };
+
+  // Sayfa açıldığında bu bilgisayarın yazıcılarını canlı olarak çek (önbellek / statik isim kullanılmaz)
   useEffect(() => {
+    // Eski sürümlerin tarayıcı hafızasına yazdığı bayat yazıcı listelerini temizle
+    try {
+      localStorage.removeItem("likya_client_printers");
+      if (user?.id) localStorage.removeItem(`likya_user_printers_${user.id}`);
+    } catch {}
+
     PrinterService.getSystemPrinters(user)
       .then((list) => {
-        if (Array.isArray(list) && list.length > 0) {
-          const filtered = list.filter((p) => !isNonPrinterHardware(p.name));
-          setSystemPrinters(filtered);
-          const names = filtered.map((p) => p.name).filter(Boolean);
-          setPrinterList(names);
-        } else {
-          setSystemPrinters([]);
-          setPrinterList([]);
-        }
+        const filtered = (list || []).filter((p) => !isNonPrinterHardware(p.name));
+        updateClientPrinterLists(filtered);
       })
-      .catch(() => {
-        setSystemPrinters([]);
-        setPrinterList([]);
-      });
+      .catch(() => updateClientPrinterLists([]));
   }, [user?.id]);
 
   const handleGetPrinters = async () => {
     setIsLoadingSystemPrinters(true);
     setAlertError(null);
     try {
-      // Çok kanallı gerçek zamanlı tarama (Port 5050, Web Printing API, Backend)
+      // Çok kanallı gerçek zamanlı tarama (Port 5050, Web Printing API, Backend, ERP)
       const detected = await PrinterService.fetchRealTimePrinters();
       const allDetected: string[] = [];
 
@@ -120,35 +165,15 @@ export const PrinterDefinitionsPage: React.FC = () => {
         }
       }
 
-      setPrinterList(allDetected);
-      const mappedItems: SystemPrinterItem[] = allDetected.map((name, idx) => {
-        const isVirtual = isVirtualSystemPrinter(name);
-        const lower = name.toLowerCase();
-        const isNet = lower.includes("ağ") || lower.includes("network") || lower.includes("wi-fi") || lower.includes("wifi") || lower.includes("wsd") || lower.includes("tcp") || lower.includes("192.168.") || lower.startsWith("\\\\");
-        return {
-          name,
-          isDefault: idx === 0,
-          isOnline: true,
-          source: isVirtual ? "system" : "browser",
-          details: isVirtual
-            ? "Sanal Yazıcı / Belge Çıktısı"
-            : isNet
-            ? "Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
-            : "Bu Bilgisayara Bağlı Kablolu Yazıcı (USB / Port)",
-        };
-      });
-      setSystemPrinters(mappedItems);
+      const combined = updateClientPrinterLists(allDetected);
 
-      if (allDetected.length > 0) {
+      if (combined.length > 0) {
         if (!formData.cihazAdi || formData.cihazAdi.trim() === "") {
-          handleInputChange("cihazAdi", allDetected[0]);
+          handleInputChange("cihazAdi", combined[0].name);
           if (!formData.ad || formData.ad.trim() === "") {
-            handleInputChange("ad", allDetected[0]);
+            handleInputChange("ad", combined[0].name);
           }
         }
-        showSuccess(`Bilgisayarınızdaki ${allDetected.length} adet bağlı yazıcı tespit edildi.`);
-      } else {
-        showSuccess("Bu bilgisayara bağlı yazıcı bulunamadı.");
       }
     } catch (error: any) {
       console.debug("Yazıcılar getirilirken hata:", error);
@@ -169,28 +194,9 @@ export const PrinterDefinitionsPage: React.FC = () => {
     try {
       const detected = await PrinterService.fetchRealTimePrinters();
       const allDetected = (detected || []).filter((d) => !isNonPrinterHardware(d));
-
-      const mappedItems: SystemPrinterItem[] = allDetected.map((name, idx) => {
-        const isVirtual = isVirtualSystemPrinter(name);
-        const lower = name.toLowerCase();
-        const isNet = lower.includes("ağ") || lower.includes("network") || lower.includes("wi-fi") || lower.includes("wifi") || lower.includes("wsd") || lower.includes("tcp") || lower.includes("192.168.") || lower.startsWith("\\\\");
-        return {
-          name,
-          isDefault: idx === 0,
-          isOnline: true,
-          source: isVirtual ? "system" : "browser",
-          details: isVirtual
-            ? "Sanal Yazıcı / Belge Çıktısı"
-            : isNet
-            ? "Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
-            : "Bu Bilgisayara Bağlı Kablolu Yazıcı (USB / Port)",
-        };
-      });
-
-      setSystemPrinters(mappedItems);
-      setPrinterList(allDetected);
-      if (allDetected.length > 0 && !formData.cihazAdi) {
-        setSelectedSystemPrinterName(allDetected[0]);
+      const combined = updateClientPrinterLists(allDetected);
+      if (combined.length > 0 && !formData.cihazAdi) {
+        setSelectedSystemPrinterName(combined[0].name);
       }
     } catch (err) {
       console.debug("Sistem yazıcıları listelenirken hata:", err);
@@ -210,12 +216,9 @@ export const PrinterDefinitionsPage: React.FC = () => {
     };
     PrinterService.saveClientPrinter(item, user?.id);
     setManualPrinterName("");
-    showSuccess(`"${name}" bu bilgisayarın yerel yazıcısı olarak eklendi ve seçildi.`);
-    handleOpenSystemPrinters();
+    updateClientPrinterLists([...systemPrinters, item]);
     handleSelectSystemPrinter(name);
   };
-
-
 
   const handleSelectSystemPrinter = (printerName: string) => {
     handleInputChange("cihazAdi", printerName);
@@ -232,7 +235,6 @@ export const PrinterDefinitionsPage: React.FC = () => {
     setShowSystemPrintersModal(false);
   };
 
-
   // Load all printers
   const loadData = async (targetIndex?: number) => {
     try {
@@ -241,8 +243,6 @@ export const PrinterDefinitionsPage: React.FC = () => {
 
       const list = await PrinterService.getYazicilar();
       setYazicilar(list || []);
-
-
 
       if (list && list.length > 0 && targetIndex !== undefined) {
         const idx = targetIndex >= 0 && targetIndex < list.length
@@ -298,10 +298,6 @@ export const PrinterDefinitionsPage: React.FC = () => {
       belgeYaziciDizini: "",
       kopyaSayisi: 1,
     });
-    if (showAlert) {
-      setAlertSuccess("Form alanları temizlendi. Yeni bilgileri girip sol üstteki 'Kaydet' (💾) butonuna basınız.");
-      setTimeout(() => setAlertSuccess(null), 3500);
-    }
     setAlertError(null);
   };
 
@@ -367,13 +363,11 @@ export const PrinterDefinitionsPage: React.FC = () => {
       setAlertError(null);
 
       if (isNewRecord || !selectedYazici) {
-        const created = await PrinterService.createYazici(payload);
-        setAlertSuccess(`✅ "${created.ad}" yazıcısı veritabanına başarıyla eklendi.`);
+        await PrinterService.createYazici(payload);
         await loadData();
         handleClear(false);
       } else {
-        const updated = await PrinterService.updateYazici(selectedYazici.id, payload);
-        setAlertSuccess(`✅ "${updated.ad}" yazıcı bilgileri başarıyla güncellendi.`);
+        await PrinterService.updateYazici(selectedYazici.id, payload);
         await loadData();
         handleClear(false);
       }
@@ -390,8 +384,6 @@ export const PrinterDefinitionsPage: React.FC = () => {
         }, user?.id);
         localStorage.setItem("likya_terminal_last_printer", chosenDevice);
       }
-
-      setTimeout(() => setAlertSuccess(null), 4500);
     } catch (err: any) {
       setAlertError(`❌ Kaydetme Başarısız: ${err.message || "İşlem sırasında beklenmeyen bir hata oluştu."}`);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -432,18 +424,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
     try {
       setIsSaving(true);
       await PrinterService.deleteYazici(yazici.id, { force: true });
-
-      const cleanedParts: string[] = [];
-      if (usage?.hasVezne) cleanedParts.push("vezne tanımlarından");
-      if (usage?.hasKullanici) cleanedParts.push("kullanıcı atamalarından");
-      if (usage?.hasNumerator) cleanedParts.push("numaratör serilerinden");
-      cleanedParts.push("yazıcı tanımlarından ve sistemden");
-
-      setAlertSuccess(
-        `✅ "${yazici.ad}" yazıcısı; ${cleanedParts.join(", ")} başarıyla silindi ve temizlendi.`
-      );
       await loadData(Math.max(0, selectedIndex - 1));
-      setTimeout(() => setAlertSuccess(null), 5000);
     } catch (err: any) {
       setAlertError(
         `❌ Silme Başarısız: ${err.message || "Yazıcı silinirken bir hata oluştu."}`
@@ -505,22 +486,13 @@ export const PrinterDefinitionsPage: React.FC = () => {
       />
 
 
-      {/* Notifications: Sağ altta beliren ve otomatik kaybolan toast */}
-      {(alertSuccess || alertError) && (
+      {/* Notifications: Sağ altta beliren ve otomatik kaybolan hata bildirimi */}
+      {alertError && (
         <div className="erp-toast-container">
-          {alertSuccess && (
-            <Alert variant="success" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertSuccess(null)}>
-              <IconCheck size={18} />
-              <span>{alertSuccess}</span>
-            </Alert>
-          )}
-
-          {alertError && (
-            <Alert variant="danger" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
-              <IconAlertCircle size={18} />
-              <span>{alertError}</span>
-            </Alert>
-          )}
+          <Alert variant="danger" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
+            <IconAlertCircle size={18} />
+            <span>{alertError}</span>
+          </Alert>
         </div>
       )}
 
@@ -607,7 +579,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           </div>
 
                           {printerList.length > 0 && (
-                            <div style={{ minWidth: "160px", maxWidth: "240px" }}>
+                            <div style={{ minWidth: "170px", maxWidth: "280px" }}>
                               <Form.Select
                                 size="sm"
                                 value={formData.cihazAdi || ""}
@@ -617,7 +589,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                                   }
                                 }}
                                 className="font-monospace text-dark"
-                                title="Bu bilgisayardaki yazıcılar arasından seç"
+                                title="Tanımlı sistem ve bilgisayar yazıcıları arasından seçiniz"
                               >
                                 <option value="">-- Seçiniz --</option>
                                 {printerList.map((pName) => (
@@ -912,7 +884,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                                 return <Badge bg="secondary" className="px-2 py-0.5">📄 PDF / Sanal Yazıcı</Badge>;
                               }
                               if (s.includes("ağ") || s.includes("network") || s.includes("wi-fi") || s.includes("wifi") || s.includes("wsd") || s.includes("tcp") || s.includes("192.168.") || s.startsWith("\\\\")) {
-                                return <Badge bg="info" className="px-2 py-0.5">📶 Kablosuz / Ağ (Wi-Fi)</Badge>;
+                                return <Badge bg="info" className="px-2 py-0.5">📶 Kablosuz / Ağ</Badge>;
                               }
                               return <Badge bg="success" className="px-2 py-0.5">🔌 Kablolu (USB / Port)</Badge>;
                             })()}
