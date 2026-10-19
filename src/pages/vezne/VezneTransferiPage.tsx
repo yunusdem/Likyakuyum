@@ -28,6 +28,7 @@ import ERPToolbar from "../../components/common/ERPToolbar";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
+import { triggerSilentPrint } from "../../services/silentPrintService";
 import { ProductDefinitionService, ProductItem } from "../../services/productDefinitionService";
 import {
   VezneTransferiService,
@@ -1702,7 +1703,18 @@ export const VezneTransferiPage: React.FC = () => {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => window.print()}
+            onClick={async () => {
+              const el = document.getElementById("printable-transfer-slip");
+              if (el) {
+                await triggerSilentPrint({
+                  html: el.innerHTML,
+                  title: `Vezne_Transfer_${refNo || "Fis"}`,
+                  isPos: true,
+                  allowBrowserFallback: false,
+                });
+              }
+              setShowPrintModal(false);
+            }}
             className="d-flex align-items-center gap-1 fw-bold"
           >
             <IconPrinter size={16} />

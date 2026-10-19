@@ -3923,20 +3923,38 @@ export const DovizFisiPage: React.FC = () => {
           yazdirmaHatasi = printErr?.message || "Fiş yazdırılamadı.";
         }
       }
-      const yazdirmaNotu = andDirectPrint ? (yazdirmaHatasi ? ` Yazdırılamadı: ${yazdirmaHatasi}` : " Yazıcıya gönderildi.") : "";
-
-      setNotification({
-        type: yazdirmaHatasi ? "warning" : "success",
-        message: isDuzeltmeMode
-          ? `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${yazdirmaNotu} Sayfa temizlendi.`
-          : `Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi.${yazdirmaNotu} Yeni fiş kaydına geçildi.`,
-      });
+      if (andDirectPrint && yazdirmaHatasi) {
+        setNotification({
+          type: "warning",
+          message: `⚠️ Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) ${isDuzeltmeMode ? "güncellendi" : "kaydedildi"} ANCAK YAZICIDAN ÇIKTI ALINAMADI: ${yazdirmaHatasi}`,
+        });
+      } else {
+        setNotification({
+          type: "success",
+          message: isDuzeltmeMode
+            ? `✅ Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${andDirectPrint ? " Doğrudan yazıcıya iletildi." : ""} Sayfa temizlendi.`
+            : `✅ Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi.${andDirectPrint ? " Doğrudan yazıcıya iletildi." : ""} Yeni fiş kaydına geçildi.`,
+        });
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
       if (await ebFis.kaydedildi(saved.fisId)) return;
-      // Kayıt ve düzeltme sonrasında tüm alanları temizle ve yeni fişe geç
-      resetForm();
-      applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
-      focusTipSelect();
+      if (andDirectPrint) {
+        // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
+        if (saved.fisId) {
+          setFisId(saved.fisId);
+        }
+        if (saved.belgeNo) {
+          setBelgeNo(saved.belgeNo);
+        }
+        if (saved.seriNo) {
+          setSeriNo(saved.seriNo);
+        }
+      } else {
+        // Normal kayıtta temizle
+        resetForm();
+        applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
+        focusTipSelect();
+      }
     } catch (err: any) {
       console.error("Döviz Fişi Kaydetme Hatası:", err);
       let userFriendlyMsg = "Fiş kaydedilirken bir hata oluştu.";
@@ -4209,6 +4227,24 @@ export const DovizFisiPage: React.FC = () => {
     [paraList]
   );
 
+  const closeAllModals = useCallback(() => {
+    setShowKurListesiModal(false);
+    setShowVezneBakiyeModal(false);
+    setShowTlHesabiModal(false);
+    setShowDetayModal(false);
+    setShowParaSaymaModal(false);
+    setShowIstatistikModal(false);
+    setShowArbitrajModal(false);
+    setShowSearchModal(false);
+    setShowCariModal(false);
+    setShowVezneModal(false);
+    setShowParaModal(false);
+    setShowGumrukModal(false);
+    setShowPrintModal(false);
+    setShowF10PrinterModal(false);
+    setActiveLookupType(null);
+  }, []);
+
   const handleTriggerF10 = useCallback(() => {
     // MASAK Malvarlığı Dondurulanlar Bloke Kontrolü
     if (isMasakBlocked) {
@@ -4281,7 +4317,8 @@ export const DovizFisiPage: React.FC = () => {
       return;
     }
 
-    setShowF10PrinterModal(true);
+    closeAllModals();
+    handleToolbarSave(false, true);
   }, [
     isMasakBlocked,
     masakResult.queriedName,
@@ -4291,9 +4328,99 @@ export const DovizFisiPage: React.FC = () => {
     tarih,
     saat,
     vezneId,
-    istatistikKodu,
+    istatistikValidation.isValid,
+    istatistikValidation.errorMessage,
     lines,
+    closeAllModals,
+    handleToolbarSave,
   ]);
+
+  const handleDirectPrintF9 = useCallback(async () => {
+    const validLines = lines.filter((l) => {
+      const m = parseDecimal(l.miktar);
+      return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
+    });
+
+    if (validLines.length === 0) {
+      setNotification({
+        type: "warning",
+        message: "Yazdırılacak geçerli döviz satırı bulunamadı.",
+      });
+      return;
+    }
+
+    const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+    const currentSnapshot = {
+      fisId: fisId || undefined,
+      tip,
+      tarih: tarih || new Date().toISOString().slice(0, 10),
+      saat: (saat || "12:00").slice(0, 8),
+      seriNo: seriNo || "",
+      belgeNo: belgeNo || "",
+      unvan: unvan || "NİHAİ TÜKETİCİ",
+      vergiKimlikNo: vergiKimlikNo || "",
+      detayIl,
+      detayIlce,
+      detayUyruk,
+      detayPasaportNo,
+      detayMeslek,
+      detayCariTipi,
+      vezneKod,
+      istatistikKodu,
+      lines: lines.map((l) => ({
+        paraKodu: l.paraKodu,
+        paraAdi: l.paraAdi,
+        miktar: l.miktar,
+        kur: l.kur,
+        tutar: l.tutar,
+        bmv: l.bmv,
+        kmv: l.kmv,
+        kmvOrani: l.kmvOrani,
+        komisyon: l.komisyon,
+      })),
+      toplamTutar: totalTutar,
+      odemeTutari: sonToplam,
+      bsmvTutari: calculatedBsmv,
+      kmvTutari: totalKmv,
+      komisyonTutari: totalKomisyon,
+      giseUsdKuru: usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 1,
+    };
+
+    const resolved = resolveEffectivePrinter({
+      pageType: "doviz",
+      tip,
+      vezne: vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null),
+      user,
+      printers,
+    });
+
+    try {
+      const fisCikti = await dovizFisHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
+      const sonuc = await triggerSilentPrint({
+        html: fisCikti.html,
+        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+        copies: resolved.kopyaSayisi || 1,
+        isPos: true,
+        title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || "Yazdir"}`,
+      });
+      if (sonuc.success) {
+        setNotification({
+          type: "success",
+          message: "✅ Fiş doğrudan yazıcıya gönderildi.",
+        });
+      } else {
+        setNotification({
+          type: "warning",
+          message: `⚠️ Fiş yazdırılamadı: ${sonuc.message}`,
+        });
+      }
+    } catch (printErr: any) {
+      setNotification({
+        type: "warning",
+        message: `⚠️ Fiş yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`,
+      });
+    }
+  }, [lines, paraList, fisId, tip, tarih, saat, seriNo, belgeNo, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, totalTutar, sonToplam, calculatedBsmv, totalKmv, totalKomisyon, kurTuru, vezneList, vezneId, user, printers, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi]);
 
   // Keyboard shortcut listener (F1..F10, ESC)
   useEffect(() => {
@@ -4404,24 +4531,6 @@ export const DovizFisiPage: React.FC = () => {
         return;
       }
 
-      const closeAllModals = () => {
-        setShowKurListesiModal(false);
-        setShowVezneBakiyeModal(false);
-        setShowTlHesabiModal(false);
-        setShowDetayModal(false);
-        setShowParaSaymaModal(false);
-        setShowIstatistikModal(false);
-        setShowArbitrajModal(false);
-        setShowSearchModal(false);
-        setShowCariModal(false);
-        setShowVezneModal(false);
-        setShowParaModal(false);
-        setShowGumrukModal(false);
-        setShowPrintModal(false);
-        setShowF10PrinterModal(false);
-        setActiveLookupType(null);
-      };
-
       const isCtrlN = isCtrlNEvent(e);
       if (isCtrlN) {
         e.preventDefault();
@@ -4474,8 +4583,7 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        setIsPendingDirectPrint(false);
-        setShowPrintModal(true);
+        handleDirectPrintF9();
       } else if (isF10) {
         e.preventDefault();
         e.stopPropagation();
@@ -4487,6 +4595,7 @@ export const DovizFisiPage: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     handleToolbarSave,
+    handleDirectPrintF9,
     handleToolbarDelete,
     handleTriggerF10,
     showF10PrinterModal,
@@ -4748,6 +4857,9 @@ export const DovizFisiPage: React.FC = () => {
         pageTitle={isDuzeltmeMode ? "F- Döviz Fişi Düzeltme" : "E- Döviz Fişi Kayıt"}
         onNew={handleToolbarNew}
         onSave={handleToolbarSave}
+        onSaveAndPrint={handleTriggerF10}
+        onDirectPrint={handleDirectPrintF9}
+        onPreview={() => setShowPrintModal(true)}
         onSearch={isDuzeltmeMode ? openFisSecimModal : undefined}
         onDelete={isDuzeltmeMode ? handleToolbarDelete : undefined}
         hideSearch={!isDuzeltmeMode}

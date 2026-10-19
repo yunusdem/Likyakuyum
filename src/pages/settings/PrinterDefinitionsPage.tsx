@@ -19,7 +19,10 @@ import {
   IconAdjustments,
   IconRefresh,
   IconDownload,
+  IconUsb,
+  IconCopy,
 } from "@tabler/icons-react";
+import { triggerDirectBatDownload, getPowerShellOneLinerCommand } from "../../utils/localPrintAgentScript";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
@@ -82,17 +85,45 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
   const [selectedSystemPrinterName, setSelectedSystemPrinterName] = useState<string>("");
   const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
+  const [manualPrinterName, setManualPrinterName] = useState<string>("");
+  const [copiedOneLiner, setCopiedOneLiner] = useState<boolean>(false);
+
+  const handleCopyOneLiner = () => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://likyakuyum.com";
+    const cmd = getPowerShellOneLinerCommand(origin);
+    navigator.clipboard.writeText(cmd);
+    setCopiedOneLiner(true);
+    setTimeout(() => setCopiedOneLiner(false), 4000);
+  };
 
   const handleOpenSystemPrinters = async () => {
-    try {
-      localStorage.removeItem("likya_client_printers");
-      if (user?.id) localStorage.removeItem(`likya_user_printers_${user.id}`);
-    } catch {}
     setShowSystemPrintersModal(true);
     setIsLoadingSystemPrinters(true);
     setPermissionStatus(null);
     setSystemPrinterSearchTerm("");
     setSelectedSystemPrinterName(formData.cihazAdi || "");
+
+    // Önceden izin verilmiş WebUSB cihazlarını otomatik tara ve kaydet
+    try {
+      const navUsb = (navigator as any).usb;
+      if (navUsb && typeof navUsb.getDevices === "function") {
+        const paired = await navUsb.getDevices();
+        if (Array.isArray(paired)) {
+          for (const d of paired) {
+            const dName = d.productName || d.manufacturerName;
+            if (dName) {
+              PrinterService.saveClientPrinter({
+                name: dName,
+                source: "usb",
+                isDefault: false,
+                details: "Bu Bilgisayara Bağlı USB Fiş / Barkod Cihazı",
+              }, user?.id);
+            }
+          }
+        }
+      }
+    } catch { }
+
     try {
       const list = await PrinterService.getSystemPrinters(user);
       setSystemPrinters(list || []);
@@ -104,6 +135,22 @@ export const PrinterDefinitionsPage: React.FC = () => {
     } finally {
       setIsLoadingSystemPrinters(false);
     }
+  };
+
+  const handleAddManualLocalPrinter = () => {
+    const name = manualPrinterName.trim();
+    if (!name) return;
+    const item: SystemPrinterItem = {
+      name,
+      source: "local_agent",
+      isDefault: true,
+      details: "Bu Bilgisayara Özel Tanımlanan Yerel Yazıcı",
+    };
+    PrinterService.saveClientPrinter(item, user?.id);
+    setManualPrinterName("");
+    showSuccess(`"${name}" bu bilgisayarın yerel yazıcısı olarak eklendi ve seçildi.`);
+    handleOpenSystemPrinters();
+    handleSelectSystemPrinter(name);
   };
 
   const handleRequestBrowserPermission = async () => {
@@ -475,16 +522,28 @@ export const PrinterDefinitionsPage: React.FC = () => {
                         Cihaz / Aygıt Adı :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "340px" }}>
-                          <CodeLookupInput
-                            value={formData.cihazAdi || ""}
-                            maxLength={200}
-                            placeholder="Örn: POS-80D veya POS-80C"
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleInputChange("cihazAdi", e.target.value)}
-                            onLookupClick={handleOpenSystemPrinters}
-                            lookupTitle="Bilgisayardaki Aktif Yazıcıları Listele ve Seç (Denetim Masası)"
-                          />
+                        <div style={{ maxWidth: "420px" }} className="d-flex align-items-center gap-1.5">
+                          <div className="flex-grow-1">
+                            <CodeLookupInput
+                              value={formData.cihazAdi || ""}
+                              maxLength={200}
+                              placeholder="Örn: POS-80D veya POS-80C"
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleInputChange("cihazAdi", e.target.value)}
+                              onLookupClick={handleOpenSystemPrinters}
+                              lookupTitle="Bilgisayardaki Aktif Yazıcıları Listele ve Seç (Denetim Masası)"
+                            />
+                          </div>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            className="py-1 px-2.5 d-flex align-items-center gap-1 text-nowrap shadow-xs fw-semibold"
+                            onClick={handleOpenSystemPrinters}
+                            title="Bu bilgisayara USB veya Ağ ile bağlı yazıcıları tara ve listele"
+                          >
+                            <IconPrinter size={15} />
+                            <span style={{ fontSize: "11px" }}>Yazıcıları Getir</span>
+                          </Button>
                         </div>
                       </Col>
                     </Form.Group>
@@ -550,121 +609,70 @@ export const PrinterDefinitionsPage: React.FC = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">
-          {/* Kullanıcı ve Yerel Bilgisayar Servis Bağlantı Durumu */}
-          {(() => {
-            const localPrinters = systemPrinters.filter((p) => p.source === "local_agent");
-            const hasLocalPrinters = localPrinters.length > 0;
-            const userName = user?.fullName || user?.username || "Giriş Yapan Kullanıcı";
-            return hasLocalPrinters ? (
-              <div className="alert alert-success border-success py-2 px-3 small mb-2.5 d-flex align-items-center justify-content-between rounded-2 shadow-xs">
-                <div className="d-flex align-items-center gap-2">
-                  <IconCheck size={20} className="text-success flex-shrink-0" />
-                  <div>
-                    <strong className="text-success">🟢 Bu Bilgisayarın Canlı Yazıcıları Bağlandı!</strong>
-                    <span className="text-dark ms-1.5">
-                      (Windows Denetim Masası'ndan <strong>{localPrinters.length}</strong> adet yazıcı başarıyla yüklendi)
-                    </span>
-                  </div>
-                </div>
-                <div className="text-dark small fw-semibold text-nowrap ms-2">
-                  👤 {userName}
-                </div>
+          {/* Bu Bilgisayara Özel Yazıcılar Durumu */}
+          <div className="alert alert-primary bg-primary bg-opacity-10 border-primary border-opacity-25 py-2 px-3 small mb-2.5 d-flex align-items-center justify-content-between rounded-2 shadow-xs">
+            <div className="d-flex align-items-center gap-2">
+              <IconPrinter size={20} className="text-primary flex-shrink-0" />
+              <div>
+                <strong className="text-primary">Bu Bilgisayara Bağlı Yazıcılar</strong>
+                <span className="text-dark ms-1.5">
+                  — Sunucudan bağımsız olarak doğrudan yalnızca bu bilgisayarın bağlı donanım ve yazıcıları listelenir.
+                </span>
               </div>
-            ) : (
-              <div className="card border-warning bg-warning bg-opacity-10 mb-3 shadow-xs">
-                <div className="card-header bg-warning bg-opacity-25 py-2 px-3 d-flex align-items-center justify-content-between border-warning border-opacity-25">
-                  <div className="d-flex align-items-center gap-2">
-                    <IconAlertCircle size={20} className="text-warning-emphasis flex-shrink-0" />
-                    <strong className="text-dark">
-                      Bu Bilgisayarın Yazıcılarını Otomatik Görüntüleme (3 Basit Adım)
-                    </strong>
-                  </div>
-                  <Badge bg="warning" text="dark" className="px-2 py-1">
-                    👤 {userName}
-                  </Badge>
-                </div>
-                <div className="card-body p-3">
-                  <div className="row g-2 mb-3">
-                    {/* Adım 1 */}
-                    <div className="col-md-4">
-                      <div className="p-2.5 bg-white rounded border h-100 d-flex flex-column justify-content-between">
-                        <div>
-                          <div className="d-flex align-items-center gap-2 mb-1.5">
-                            <span className="badge bg-primary rounded-circle px-2 py-1 fw-bold">1</span>
-                            <strong className="text-dark small">Başlatıcıyı İndirin</strong>
-                          </div>
-                          <p className="text-muted mb-2" style={{ fontSize: "11px", lineHeight: "1.4" }}>
-                            Tek tıkla çalışan güvenli yerel yazıcı aracını bu bilgisayara indirin (Kurulum istemez).
-                          </p>
-                        </div>
-                        <a
-                          href="/likya-yerel-yazici-baslat.bat"
-                          download="likya-yerel-yazici-baslat.bat"
-                          className="btn btn-primary btn-sm fw-bold w-100 d-flex align-items-center justify-content-center gap-1.5 py-1"
-                        >
-                          <IconDownload size={14} />
-                          <span>.BAT Dosyasını İndir</span>
-                        </a>
-                      </div>
-                    </div>
+            </div>
+            <Badge bg="primary" className="px-2 py-1">
+              👤 {user?.fullName || user?.username || "Giriş Yapan Kullanıcı"}
+            </Badge>
+          </div>
 
-                    {/* Adım 2 */}
-                    <div className="col-md-4">
-                      <div className="p-2.5 bg-white rounded border h-100 d-flex flex-column justify-content-between">
-                        <div>
-                          <div className="d-flex align-items-center gap-2 mb-1.5">
-                            <span className="badge bg-primary rounded-circle px-2 py-1 fw-bold">2</span>
-                            <strong className="text-dark small">Çift Tıklayıp Başlatın</strong>
-                          </div>
-                          <p className="text-muted mb-2" style={{ fontSize: "11px", lineHeight: "1.4" }}>
-                            İndirilen <code>likya-yerel-yazici-baslat.bat</code> dosyasına çift tıklayın. Açılan siyah pencere açık kaldığı sürece yazıcılarınız web sitesine aktarılır.
-                          </p>
-                        </div>
-                        <span className="badge bg-light text-secondary border py-1.5" style={{ fontSize: "10px" }}>
-                          ✓ Windows PowerShell ile hazır çalışır
-                        </span>
-                      </div>
-                    </div>
+          {/* İndirmesiz & Doğrudan Bu Bilgisayarın Donanımını Algılama / Manuel Tanımlama Çubuğu */}
+          <div className="p-2 mb-2.5 rounded bg-light border d-flex flex-wrap align-items-center justify-content-between gap-2 shadow-xs">
+            <div className="d-flex align-items-center gap-2">
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="fw-bold d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs"
+                onClick={handleRequestBrowserPermission}
+                disabled={isRequestingPermission}
+                title="Chrome üzerinden bu bilgisayara bağlı termal/USB fiş veya barkod yazıcısını doğrudan seçtirir"
+              >
+                <IconUsb size={16} />
+                <span>🔌 USB / Fiş Yazıcısı Tara</span>
+                {isRequestingPermission && <Spinner size="sm" animation="border" className="ms-1" />}
+              </Button>
+              {permissionStatus && (
+                <span className="small text-muted fst-italic">{permissionStatus}</span>
+              )}
+            </div>
 
-                    {/* Adım 3 */}
-                    <div className="col-md-4">
-                      <div className="p-2.5 bg-white rounded border h-100 d-flex flex-column justify-content-between">
-                        <div>
-                          <div className="d-flex align-items-center gap-2 mb-1.5">
-                            <span className="badge bg-success rounded-circle px-2 py-1 fw-bold">3</span>
-                            <strong className="text-dark small">Listeyi Yenileyin</strong>
-                          </div>
-                          <p className="text-muted mb-2" style={{ fontSize: "11px", lineHeight: "1.4" }}>
-                            Servis başladıktan sonra aşağıdaki butona basın. Bilgisayara takılı tüm yazıcılar listelenecektir.
-                          </p>
-                        </div>
-                        <Button
-                          variant="success"
-                          size="sm"
-                          className="fw-bold w-100 d-flex align-items-center justify-content-center gap-1 py-1"
-                          onClick={handleOpenSystemPrinters}
-                          disabled={isLoadingSystemPrinters}
-                        >
-                          <IconRefresh size={14} />
-                          <span>Yazıcıları Şimdi Çek</span>
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Kalıcı İpucu & Alternatif Seçenek */}
-                  <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 pt-2 border-top border-warning border-opacity-25" style={{ fontSize: "11px" }}>
-                    <div className="text-dark">
-                      💡 <strong>Kalıcı Ayar (Her gün açmamak için):</strong> Dosyayı klavyeden <code>Win+R</code> basıp <code>shell:startup</code> yazarak açılan Windows Başlangıç klasörüne atabilirsiniz.
-                    </div>
-                    <div className="text-muted">
-                      🌐 Dosya indirmek istemiyorsanız alttaki <strong>"Tarayıcı / Windows Varsayılan Yazıcısı"</strong> seçeneğini kullanabilirsiniz.
-                    </div>
-                  </div>
-                </div>
+            <div className="d-flex align-items-center gap-1.5">
+              <span className="small text-secondary fw-semibold text-nowrap">veya Yazıcı Adı Gir:</span>
+              <div className="input-group input-group-sm" style={{ width: "230px" }}>
+                <Form.Control
+                  type="text"
+                  placeholder="Örn: POS-80 veya EPSON"
+                  value={manualPrinterName}
+                  onChange={(e) => setManualPrinterName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddManualLocalPrinter();
+                    }
+                  }}
+                  className="py-0.5"
+                />
+                <Button
+                  variant="primary"
+                  onClick={handleAddManualLocalPrinter}
+                  disabled={!manualPrinterName.trim()}
+                  className="fw-semibold px-2.5"
+                  title="Bu bilgisayara özel yazıcı olarak kaydeder ve forma atar"
+                >
+                  Ekle
+                </Button>
               </div>
-            );
-          })()}
+            </div>
+          </div>
 
           {/* Arama ve Canlı Listeyi Yenileme Çubuğu */}
           <div className="d-flex align-items-center justify-content-between gap-2 mb-2 p-1.5 bg-light rounded border">
@@ -725,7 +733,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           <td colSpan={4} className="text-center py-4 text-muted">
                             <div className="fw-semibold">Bu bilgisayarda henüz algılanan yazıcı bulunamadı.</div>
                             <div className="small mt-1">
-                              Windows yazıcılarınızı doğrudan getirmek için <code>start-print-service.bat</code> dosyasını başlatabilir veya yukarıdaki kutudan yazıcınızın adını girip "Ekle" butonuna basabilirsiniz.
+                              Yukarıdaki <strong>"🔌 USB / Fiş Yazıcısı Tara"</strong> butonuna basabilir veya yazıcınızın adını (Örn: <code>POS-80</code> veya <code>EPSON</code>) kutuya girip <strong>"Ekle"</strong> butonuna basabilirsiniz.
                             </div>
                           </td>
                         </tr>
@@ -765,16 +773,18 @@ export const PrinterDefinitionsPage: React.FC = () => {
                             </div>
                           </td>
                           <td className="text-center">
-                            {p.source === "local_agent" ? (
-                              <Badge bg="success" className="px-2 py-0.5">💻 Bu Bilgisayar (Yerel)</Badge>
+                            {p.details?.includes("Ağ") || p.details?.includes("Wi-Fi") ? (
+                              <Badge bg="info" className="px-2 py-0.5">🌐 Ağ / Wi-Fi Yazıcısı</Badge>
+                            ) : p.details?.includes("USB") || p.source === "usb" ? (
+                              <Badge bg="primary" className="px-2 py-0.5">🔌 USB Cihaz (Takılı)</Badge>
+                            ) : p.source === "local_agent" ? (
+                              <Badge bg="success" className="px-2 py-0.5">💻 Bu Bilgisayar (Denetim Masası)</Badge>
                             ) : p.source === "browser" ? (
                               <Badge bg="primary" className="px-2 py-0.5">🌐 Tarayıcı / Windows</Badge>
                             ) : p.source === "user_assigned" ? (
                               <Badge bg="info" className="px-2 py-0.5">👤 Kullanıcı Yazıcısı</Badge>
                             ) : p.source === "server" ? (
                               <Badge bg="secondary" className="px-2 py-0.5">🏢 Sunucuda Kayıtlı</Badge>
-                            ) : p.source === "usb" ? (
-                              <Badge bg="info" className="px-2 py-0.5">🔌 USB Cihaz</Badge>
                             ) : p.source === "serial" ? (
                               <Badge bg="warning" text="dark" className="px-2 py-0.5">🔌 Seri Port</Badge>
                             ) : (

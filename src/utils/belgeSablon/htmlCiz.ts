@@ -25,19 +25,22 @@ const renk = (r: string, varsayilan = "#000") => (/^#[0-9a-fA-F]{3,8}$/.test(Str
 const gorselAdresi = (u: string | undefined) => (u && /^data:image\/(png|jpe?g);base64,[A-Za-z0-9+/=]+$/.test(u) ? u : "");
 
 export const YAZI_AILESI = {
-  mono: "'Courier New', Courier, monospace",
-  sans: "Arial, Helvetica, sans-serif",
+  mono: "'Consolas', 'Segoe UI Mono', 'Courier New', monospace",
+  sans: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif",
 } as const;
 
 function metinHtml(c: Extract<Cizim, { tip: "metin" }>, sol: number, ust: number): string {
   const hiza = c.hiza === "center" || c.hiza === "right" ? c.hiza : "left";
   const parcalar = kalinParcala(c.metin)
-    .map(p => (p.kalin && !c.kalin ? `<b style="font-weight:700">${kacis(p.metin)}</b>` : kacis(p.metin))).join("");
+    .map(p => (p.kalin && !c.kalin ? `<b style="font-weight:800;color:#000000">${kacis(p.metin)}</b>` : kacis(p.metin))).join("");
+  const rawBoyut = say(c.boyut);
+  const etkinBoyut = rawBoyut > 0 && rawBoyut < 7.8 ? 7.8 : rawBoyut;
   const stil = [
     "position:absolute", `left:${pt(sol + say(c.x))}`, `top:${pt(ust + say(c.y))}`, `width:${pt(c.g)}`,
-    `font-size:${pt(c.boyut)}`, `line-height:${pt(c.boyut * SATIR_ORANI)}`, `font-weight:${c.kalin ? 700 : 400}`,
-    `text-align:${hiza}`, `color:${renk(c.renk)}`, "margin:0", "padding:0",
-    c.tekSatir ? `white-space:pre;overflow:hidden;text-overflow:ellipsis;height:${pt(c.boyut * SATIR_ORANI)}` : "white-space:pre-wrap;overflow-wrap:anywhere",
+    `font-size:${pt(etkinBoyut)}`, `line-height:${pt(etkinBoyut * SATIR_ORANI)}`, `font-weight:${c.kalin ? 800 : 600}`,
+    `text-align:${hiza}`, `color:#000000`, "margin:0", "padding:0",
+    "-webkit-font-smoothing:antialiased",
+    c.tekSatir ? `white-space:pre;overflow:hidden;text-overflow:ellipsis;height:${pt(etkinBoyut * SATIR_ORANI)}` : "white-space:pre-wrap;overflow-wrap:anywhere",
     c.font && YAZI_TIPLERI[c.font] ? `font-family:${YAZI_TIPLERI[c.font].css}` : "",
     c.italik ? "font-style:italic" : "",
     c.altCizgi ? "text-decoration:underline;text-underline-offset:1.5pt" : "",
@@ -58,10 +61,10 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
   for (const c of sahne.cizimler) {
     switch (c.tip) {
       case "kutu":
-        cizgiler.push(`<rect x="${say(k + say(c.x))}" y="${say(k + say(c.y))}" width="${Math.max(0, say(c.g))}" height="${Math.max(0, say(c.h))}" fill="${c.zemin ? renk(c.zemin, "none") : "none"}"${say(c.kalinlik) > 0 ? ` stroke="#333" stroke-width="${say(c.kalinlik)}"` : ""}/>`);
+        cizgiler.push(`<rect x="${say(k + say(c.x))}" y="${say(k + say(c.y))}" width="${Math.max(0, say(c.g))}" height="${Math.max(0, say(c.h))}" fill="${c.zemin ? renk(c.zemin, "none") : "none"}"${say(c.kalinlik) > 0 ? ` stroke="#000" stroke-width="${Math.max(1, say(c.kalinlik))}"` : ""}/>`);
         break;
       case "cizgi":
-        cizgiler.push(`<line x1="${say(k + say(c.x1))}" y1="${say(k + say(c.y1))}" x2="${say(k + say(c.x2))}" y2="${say(k + say(c.y2))}" stroke="#000" stroke-width="${say(c.kalinlik)}"${c.kesikli ? ' stroke-dasharray="2.5 2"' : ""}/>`);
+        cizgiler.push(`<line x1="${say(k + say(c.x1))}" y1="${say(k + say(c.y1))}" x2="${say(k + say(c.x2))}" y2="${say(k + say(c.y2))}" stroke="#000" stroke-width="${Math.max(1, say(c.kalinlik))}"${c.kesikli ? ' stroke-dasharray="3 2"' : ""}/>`);
         break;
       case "metin":
         ustKatman.push(metinHtml(c, k, k));
@@ -79,7 +82,7 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
         break;
       }
       case "filigran":
-        ustKatman.push(`<div style="position:absolute;left:0;top:${pt(H / 2 - 20)};width:${pt(W)};text-align:center;transform:rotate(-35deg);opacity:0.22;font-weight:700;font-size:${pt(Math.min(34, W / 8))};color:${renk(c.renk, "#9a9a9a")};white-space:nowrap;pointer-events:none">${kacis(c.metin)}</div>`);
+        ustKatman.push(`<div style="position:absolute;left:0;top:${pt(H / 2 - 20)};width:${pt(W)};text-align:center;transform:rotate(-35deg);opacity:0.22;font-weight:800;font-size:${pt(Math.min(34, W / 8))};color:${renk(c.renk, "#9a9a9a")};white-space:nowrap;pointer-events:none">${kacis(c.metin)}</div>`);
         break;
     }
   }
@@ -87,7 +90,7 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
   const svg = cizgiler.length
     ? `<svg xmlns="http://www.w3.org/2000/svg" width="${pt(W)}" height="${pt(H)}" viewBox="0 0 ${W} ${H}" style="position:absolute;left:0;top:0">${cizgiler.join("")}</svg>`
     : "";
-  const html = `<div class="belge-sablon" style="position:relative;width:${pt(W)};height:${pt(H)};background:#fff;color:#000;font-family:${YAZI_AILESI[sahne.yaziTipi]};overflow:hidden;box-sizing:border-box;margin:0;padding:0">${svg}${ustKatman.join("")}</div>`;
+  const html = `<div class="belge-sablon" style="position:relative;width:${pt(W)};height:${pt(H)};background:#fff;color:#000000;font-family:${YAZI_AILESI[sahne.yaziTipi]};overflow:hidden;box-sizing:border-box;margin:0;padding:0">${svg}${ustKatman.join("")}</div>`;
   return { html, genislik: W, yukseklik: H, sahne };
 }
 
@@ -95,7 +98,24 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
 export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: number): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${kacis(baslik)}</title><style>
 @page { size: ${pt(genislikPt)} auto; margin: 0; }
+@media print {
+  html, body {
+    width: ${pt(genislikPt)} !important;
+    max-width: ${pt(genislikPt)} !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000000 !important;
+    font-weight: 600 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .belge-sablon {
+    width: 100% !important;
+    page-break-inside: avoid !important;
+  }
+}
 * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-html, body { margin: 0 !important; padding: 0 !important; background: #fff; }
+html, body { margin: 0 !important; padding: 0 !important; background: #fff; color: #000000; font-family: 'Consolas', 'Segoe UI Mono', monospace; font-weight: 600; }
 </style></head><body>${govde}</body></html>`;
 }

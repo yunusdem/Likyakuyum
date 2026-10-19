@@ -32,34 +32,42 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   const faturaRef = useRef(fatura);
   faturaRef.current = fatura;
 
+  const tip = fatura?.faturaTipi === 0 ? 0 : 1;
+
   useEffect(() => {
     if (!show) { setYaziciHazir(false); return; }
     PrinterService.getYazicilar()
       .then((list) => {
         setPrinters(list);
-        const resolved = resolveEffectivePrinter({ pageType: "perakende", tip: 1, vezne, user, printers: list });
+        const resolved = resolveEffectivePrinter({ pageType: "perakende", tip, vezne, user, printers: list });
         setResolvedResult(resolved);
         setSelectedPrinterId(resolved.printerId);
         if (resolved.recommendedPrintType) setPrintType(resolved.recommendedPrintType);
       })
       .catch(() => {
-        setResolvedResult(resolveEffectivePrinter({ pageType: "perakende", tip: 1, vezne, user, printers: [] }));
+        setResolvedResult(resolveEffectivePrinter({ pageType: "perakende", tip, vezne, user, printers: [] }));
       })
       .finally(() => setYaziciHazir(true));
-  }, [show, vezne, user]);
+  }, [show, tip, vezne, user]);
 
   const { fis, hata } = useSablonluFis(show && yaziciHazir && !!fatura, `${printType}|${fatura?.faturaId ?? ""}|${fatura?.faturaNo ?? ""}`,
     () => perakendeFisHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
 
   const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
     if (!hazir) return;
-    await fisiYazdir(hazir, {
+    const selectedPrinter = printers.find((p) => p.id === selectedPrinterId) || resolvedResult?.printer;
+    const res = await fisiYazdir(hazir, {
       printerId: selectedPrinterId,
-      printerName: resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad,
-      copies: resolvedResult?.kopyaSayisi || 1,
+      printerName: selectedPrinter?.cihazAdi || selectedPrinter?.ad || resolvedResult?.printerName,
+      copies: selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1),
       isPos: printType === "POS",
     });
-  }, [fis, selectedPrinterId, resolvedResult, printType]);
+    if (res.success) {
+      onHide();
+    } else {
+      alert(`⚠️ Yazdırma hatası: ${res.message}`);
+    }
+  }, [fis, selectedPrinterId, printers, resolvedResult, printType, onHide]);
 
   // Doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açılır, hata görünür.
   const otomatikBasildi = useRef(false);

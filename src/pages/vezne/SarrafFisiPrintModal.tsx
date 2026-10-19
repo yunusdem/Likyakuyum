@@ -111,13 +111,19 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
 
   const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
     if (!hazir) return;
-    await fisiYazdir(hazir, {
+    const selectedPrinter = printers.find((p) => p.id === selectedPrinterId) || resolvedResult?.printer;
+    const res = await fisiYazdir(hazir, {
       printerId: selectedPrinterId,
-      printerName: resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad,
-      copies: resolvedResult?.kopyaSayisi || 1,
+      printerName: selectedPrinter?.cihazAdi || selectedPrinter?.ad || resolvedResult?.printerName,
+      copies: selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1),
       isPos: printType === "POS",
     });
-  }, [fis, selectedPrinterId, resolvedResult, printType]);
+    if (res.success) {
+      onHide();
+    } else {
+      alert(`⚠️ Yazdırma hatası: ${res.message}`);
+    }
+  }, [fis, selectedPrinterId, printers, resolvedResult, printType, onHide]);
 
   // Doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açılır, hata görünür.
   const otomatikBasildi = useRef(false);

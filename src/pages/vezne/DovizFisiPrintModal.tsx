@@ -88,13 +88,19 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
 
   const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
     if (!hazir) return;
-    await fisiYazdir(hazir, {
+    const selectedPrinter = printers.find((p) => p.id === selectedPrinterId) || resolvedResult?.printer;
+    const res = await fisiYazdir(hazir, {
       printerId: selectedPrinterId,
-      printerName: resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad,
-      copies: resolvedResult?.kopyaSayisi || 1,
+      printerName: selectedPrinter?.cihazAdi || selectedPrinter?.ad || resolvedResult?.printerName,
+      copies: selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1),
       isPos: true,
     });
-  }, [fis, selectedPrinterId, resolvedResult]);
+    if (res.success) {
+      onHide();
+    } else {
+      alert(`⚠️ Yazdırma hatası: ${res.message}`);
+    }
+  }, [fis, selectedPrinterId, printers, resolvedResult, onHide]);
 
   // F10 / doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açık kalır, hata görünür.
   const otomatikBasildi = useRef(false);

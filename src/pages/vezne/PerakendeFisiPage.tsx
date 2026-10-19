@@ -3669,7 +3669,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleOpenPrintPreview();
+        handleDirectPrintF9();
       } else if (isF10) {
         e.preventDefault();
         e.stopPropagation();
@@ -4351,7 +4351,98 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     }
   }, [cariler, findMatchingCustomers, handleSelectCustomer]);
 
-  // F9: Fiş / Fatura Önizleme Modalı Aç
+  // F9: Doğrudan Fiş Yazdırma (Önizlemesiz ve Chrome dialogsuz)
+  const handleDirectPrintF9 = async () => {
+    if (validItems.length === 0) {
+      showWarning("Yazdırılacak geçerli ürün satırı bulunamadı.");
+      return;
+    }
+    const previewSatirlar: PerakendeFaturaSatiriItem[] = validItems.map((r, idx) => {
+      const isZD = isKalemZiynetOrDoviz(r);
+      const effMiktar = isZD ? (parseDecimal(r.adet) || parseDecimal(r.miktar) || 1) : (parseDecimal(r.miktar) || 1);
+      return {
+        satirNo: idx + 1,
+        altinUrunId: r.altinUrunId || null,
+        barkod: r.barkod || null,
+        urunAdi: r.urunAdi || "",
+        ayar: r.ayar || null,
+        miktar: effMiktar,
+        birim: r.birim || (isZD ? "Adet" : "Gr"),
+        gram: Number(r.gram) || 0,
+        hasGram: Number(r.hasGram) || 0,
+        birimFiyat: Number(r.birimFiyat) || 0,
+        tutar: Number(r.tutar) || 0,
+        kdvOrani: Number(r.kdvOrani) || 0,
+        kdvTutari: Number(r.kdvTutari) || 0,
+        toplamTutar: Number(r.toplamTutar) || 0,
+      };
+    });
+
+    const previewFatura: PerakendeFaturaModel = {
+      faturaId: currentFaturaId || 1,
+      vezneId: selectedVezne?.id || 1,
+      vezneKod: selectedVezne?.kod || user?.cashierCode || "01",
+      vezneAd: selectedVezne?.ad || "Ana Vezne",
+      faturaNo: faturaNo || `PRF-${new Date().getFullYear()}-00001`,
+      ettn: "FD5AA22A-A68D-4B2E-87CF-E958E3800001",
+      tarih: `${tarih}T${saat}:00`,
+      faturaTipi: faturaTipi || 1,
+      senaryo: senaryo || "EARSIVFATURA",
+      cariKartId: cariKartId || null,
+      cariKod: cariKod || null,
+      cariUnvan: aliciUnvan || null,
+      aliciVknTckn: (aliciVknTckn || "").replace(/\D/g, "") || "11111111111",
+      aliciUnvan: aliciUnvan || "NİHAİ TÜKETİCİ",
+      adres: adres || "",
+      ilce: ilce || "",
+      il: il || "",
+      vergiDairesi: vergiDairesi || "",
+      eposta: eposta || "",
+      telefon: telefon || "",
+      paraId: 1,
+      paraKodu: "TL",
+      kur: 1,
+      araToplam: araToplam,
+      toplamKdv: toplamKdv,
+      iskontoId: selectedIskonto?.iskontoId || null,
+      iskontoKodu: selectedIskonto?.kod || selectedIskonto?.tanim || null,
+      iskontoOrani: iskontoOrani,
+      iskontoTutari: iskontoTutari,
+      genelToplam: genelToplam,
+      istatistikId: istatistikId || null,
+      istatistikKodu: (istatistikKodu || "").trim() || null,
+      eBelgeDurumu: 0,
+      satirlar: previewSatirlar,
+    };
+
+    const resolved = resolveEffectivePrinter({
+      pageType: "perakende",
+      tip: faturaTipi,
+      vezne: selectedVezne,
+      user,
+      printers,
+    });
+    const isPos = resolved.recommendedPrintType === "POS";
+    try {
+      const fisCikti = await perakendeFisHtml(previewFatura, isPos ? "80" : "A4");
+      const sonuc = await triggerSilentPrint({
+        html: fisCikti.html,
+        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+        copies: resolved.kopyaSayisi || 1,
+        isPos,
+        title: `Perakende_Fisi_${faturaNo || "Yazdir"}`,
+      });
+      if (sonuc.success) {
+        showSuccess("✅ Fiş doğrudan yazıcıya gönderildi.");
+      } else {
+        showWarning(`⚠️ Fiş yazdırılamadı: ${sonuc.message}`);
+      }
+    } catch (err: any) {
+      showWarning(`⚠️ Fiş yazdırılamadı: ${err?.message || "bilinmeyen hata"}`);
+    }
+  };
+
+  // Toolbar Yazdır / İncele: Fiş / Fatura Önizleme Modalı Aç
   const handleOpenPrintPreview = () => {
     if (printedFatura) {
       setIsPendingDirectPrint(false);
@@ -4664,6 +4755,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         return;
       }
 
+      let printSuccess = true;
+      let printErrorMessage = "";
       if (withPrint) {
         // Önizlemesiz doğrudan yerel sessiz yazdırma servisine (localhost:5050) gönder
         const resolved = resolveEffectivePrinter({
@@ -4685,14 +4778,19 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             isPos,
             title: `Perakende_Fisi_${result?.faturaNo || payload?.faturaNo || "Yazdir"}`,
           });
-          if (!sonuc.success) showWarning(`Fiş kaydedildi ancak yazdırılamadı: ${sonuc.message}`);
+          if (!sonuc.success) {
+            printSuccess = false;
+            printErrorMessage = sonuc.message;
+            showWarning(`⚠️ Fiş veritabanına kaydedildi ANCAK YAZICIDAN ÇIKTI ALINAMADI: ${sonuc.message}`);
+          }
         } catch (printErr: any) {
-          showWarning(`Fiş kaydedildi ancak yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`);
+          printSuccess = false;
+          printErrorMessage = printErr?.message || "bilinmeyen hata";
+          showWarning(`⚠️ Fiş veritabanına kaydedildi ANCAK YAZICIDAN ÇIKTI ALINAMADI: ${printErrorMessage}`);
         }
       }
 
       if (isDuzeltmeMode) {
-        showSuccess(withPrint ? "✅ Fiş güncellendi ve doğrudan yazıcıya gönderildi." : "Kayıt güncellendi");
         // Fiş düzenlenince otomatik son kayıt açılsın
         const res: any = await PerakendeService.listInvoices({ limit: 500 });
         const rawList = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
@@ -4737,12 +4835,38 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setHistoryList(mappedList);
         }
         if (await ebFis.kaydedildi(result?.faturaId, true)) return;
-        handleReset();
-        showSuccess(withPrint ? "✅ Fiş başarıyla kaydedildi ve doğrudan yazıcıya gönderildi." : (isDuzeltmeMode ? "Fiş düzeltmesi başarıyla kaydedildi." : "Satış başarıyla kaydedildi."));
+        if (withPrint) {
+          // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
+          if (result?.faturaId) {
+            setCurrentFaturaId(Number(result.faturaId));
+          }
+          if (result?.faturaNo) {
+            setFaturaNo(result.faturaNo);
+          }
+          if (printSuccess) {
+            showSuccess("✅ Fiş başarıyla güncellendi ve doğrudan yazıcıya gönderildi.");
+          }
+        } else {
+          handleReset();
+          showSuccess("Fiş düzeltmesi başarıyla kaydedildi.");
+        }
       } else {
         if (await ebFis.kaydedildi(result?.faturaId, true)) return;
-        handleReset();
-        showSuccess(withPrint ? "✅ Fiş başarıyla kaydedildi ve doğrudan yazıcıya gönderildi." : "Satış başarıyla kaydedildi.");
+        if (withPrint) {
+          // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
+          if (result?.faturaId) {
+            setCurrentFaturaId(Number(result.faturaId));
+          }
+          if (result?.faturaNo) {
+            setFaturaNo(result.faturaNo);
+          }
+          if (printSuccess) {
+            showSuccess("✅ Fiş başarıyla kaydedildi ve doğrudan yazıcıya gönderildi.");
+          }
+        } else {
+          handleReset();
+          showSuccess("Satış başarıyla kaydedildi.");
+        }
       }
     } catch (err: any) {
       const msg =
@@ -5562,7 +5686,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         pageIcon={<IconBarcode size={20} />}
         onNew={handleNew}
         onSave={() => handleCompleteSale(false)}
-        onPrint={() => handleCompleteSale(true)}
+        onSaveAndPrint={() => handleCompleteSale(true)}
+        onDirectPrint={handleDirectPrintF9}
+        onPreview={handleOpenPrintPreview}
         onDetailSearch={openMusteriDetayModal}
         onSearch={isDuzeltmeMode ? handleOpenHistory : undefined}
         onDelete={isDuzeltmeMode && currentFaturaId ? handleDeleteCurrent : undefined}

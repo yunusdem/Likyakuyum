@@ -187,28 +187,65 @@ export class PrinterService {
   ): Promise<SystemPrinterItem[]> {
     const results: SystemPrinterItem[] = [];
 
-    // 1. Bu bilgisayarda çalışan Yerel Sessiz Yazıcı Servisini (localhost:5050) sorgula
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
-      const res = await fetch("http://127.0.0.1:5050/printers", {
-        method: "GET",
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+    // 1. Bu bilgisayarda çalışan Yerel Sessiz Yazıcı Servisini (localhost:5050 & 127.0.0.1:5050) sorgula
+    const localEndpoints = [
+      "http://127.0.0.1:5050/printers",
+      "http://localhost:5050/printers",
+      "http://127.0.0.1:25050/api/v1/yazici/system-printers",
+    ];
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Array.isArray(data.printers) && data.printers.length > 0) {
-          for (const p of data.printers) {
-            const pName = String(p.name || "").trim();
-            if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
+    for (const ep of localEndpoints) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 900);
+        const res = await fetch(ep, {
+          method: "GET",
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (Array.isArray(data.printers) ? data.printers : []);
+          if (list.length > 0) {
+            for (const p of list) {
+              const pName = String(p.name || p.ad || "").trim();
+              if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
+                const isNet = Boolean(p.isNetwork) || pName.startsWith("\\\\");
+                const isUsb = Boolean(p.isUsb) || String(p.portName || "").toUpperCase().includes("USB");
+                results.push({
+                  name: pName,
+                  isDefault: Boolean(p.isDefault || p.default),
+                  isOnline: p.isOnline !== false,
+                  source: "local_agent",
+                  details: isNet
+                    ? `Bu Bilgisayara Bağlı Ağ / Wi-Fi Yazıcısı${p.portName ? ` (${p.portName})` : ""}`
+                    : isUsb
+                    ? `Bu Bilgisayara Takılı USB Yazıcı${p.portName ? ` (${p.portName})` : ""}`
+                    : `Bu Bilgisayarın Denetim Masası Yazıcısı${p.portName ? ` (${p.portName})` : ""}`,
+                });
+              }
+            }
+            break; // Başarılı olursa diğer portlara bakmaya gerek yok
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Tarayıcıda önceden izin verilmiş fiziksel WebUSB cihazlarını ekle (İndirmesiz & Doğrudan)
+    try {
+      const navUsb = (navigator as any).usb;
+      if (navUsb && typeof navUsb.getDevices === "function") {
+        const devices = await navUsb.getDevices();
+        if (Array.isArray(devices)) {
+          for (const d of devices) {
+            const dName = d.productName || d.manufacturerName || "USB Fiş Yazıcısı";
+            if (!results.some((r) => r.name.toLowerCase() === dName.toLowerCase())) {
               results.push({
-                name: pName,
-                isDefault: Boolean(p.isDefault),
-                isOnline: p.isOnline !== false,
-                source: "local_agent",
-                details: "Bu Bilgisayarın Denetim Masası Yazıcısı",
+                name: dName,
+                isDefault: results.length === 0,
+                source: "usb",
+                details: "Bu Bilgisayara Takılı Doğrudan USB Fiş / Barkod Cihazı",
               });
             }
           }
@@ -216,70 +253,51 @@ export class PrinterService {
       }
     } catch {}
 
-    // 2. Her bilgisayarda harici servis gerektirmeden çalışan standart tarayıcı yazdırma seçeneği
+    // 3. W3C Chromium Local Printer API (queryLocalPrinters)
+    if (typeof (window as any).queryLocalPrinters === "function") {
+      try {
+        const winPrinters = await (window as any).queryLocalPrinters();
+        if (Array.isArray(winPrinters)) {
+          for (const wp of winPrinters) {
+            const wpName = String(wp.name || wp.id || "").trim();
+            if (wpName && !results.some((r) => r.name.toLowerCase() === wpName.toLowerCase())) {
+              results.push({
+                name: wpName,
+                isDefault: Boolean(wp.isDefault),
+                source: "local_agent",
+                details: "Bu Bilgisayarın Windows / Sistem Yazıcısı",
+              });
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // 4. Bu bilgisayarda önceden kaydedilmiş veya izin verilmiş yerel aygıtlar (localStorage)
+    try {
+      const clientStored = PrinterService.getClientStoredPrinters(currentUser?.id);
+      for (const cs of clientStored) {
+        if (!results.some((r) => r.name.toLowerCase() === cs.name.toLowerCase())) {
+          results.push(cs);
+        }
+      }
+    } catch {}
+
+    // 5. Her bilgisayarda harici servis gerektirmeden çalışan standart tarayıcı yazdırma seçeneği
     results.push({
       name: "Tarayıcı / Windows Varsayılan Yazıcısı",
       isDefault: results.length === 0,
       source: "browser",
-      details: "Bu bilgisayarın doğrudan varsayılan yazıcısı (Servis gerektirmez)",
+      details: "Bu bilgisayarın doğrudan varsayılan yazıcısı (Servis / Kurulum gerektirmez)",
     });
 
-    // 3. Sunucuda kayıtlı yazıcılar (TODVZ_YAZICI Veritabanı ve Kullanıcı Tanımları)
-    try {
-      const allYazicilar = await PrinterService.getYazicilar().catch(() => []);
-      const userPrinterTarget = currentUser?.printerId ? String(currentUser.printerId).trim() : null;
-
-      for (const y of allYazicilar) {
-        const printerName = String(y.cihazAdi || y.ad || "").trim();
-        if (!printerName) continue;
-
-        const isUserAssigned =
-          userPrinterTarget && (String(y.id) === userPrinterTarget || String(y.siraNo) === userPrinterTarget);
-        const existing = results.find((r) => r.name.toLowerCase() === printerName.toLowerCase());
-
-        if (existing) {
-          if (isUserAssigned) {
-            existing.isDefault = true;
-            existing.source = "user_assigned";
-            existing.details = `Giriş Yapan Kullanıcının Yazıcısı (${currentUser?.fullName || currentUser?.username || "Kullanıcı"})`;
-          }
-        } else {
-          results.push({
-            name: printerName,
-            isDefault: Boolean(isUserAssigned),
-            source: isUserAssigned ? "user_assigned" : "server",
-            details: isUserAssigned
-              ? `Giriş Yapan Kullanıcının Yazıcısı (${currentUser?.fullName || currentUser?.username || "Kullanıcı"})`
-              : `Sunucuda Kayıtlı: [${y.siraNo}] ${y.ad}`,
-          });
-        }
-      }
-    } catch {}
-
-    // 4. Tarayıcıda önceden izin verilmiş fiziksel WebUSB cihazlarını ekle
-    try {
-      const navUsb = (navigator as any).usb;
-      if (navUsb && typeof navUsb.getDevices === "function") {
-        const devices = await navUsb.getDevices();
-        if (Array.isArray(devices)) {
-          for (const d of devices) {
-            const dName = d.productName || d.manufacturerName || "USB Yazıcı";
-            if (!results.some((r) => r.name.toLowerCase() === dName.toLowerCase())) {
-              results.push({ name: dName, source: "usb", details: "Bağlı USB Cihaz" });
-            }
-          }
-        }
-      }
-    } catch {}
-
-    // Sıralama önceliği: Bu bilgisayarın yerel yazıcıları -> Tarayıcı -> Kullanıcı -> Sunucu
+    // Sıralama önceliği: USB Donanım -> Bu bilgisayarın yerel yazıcıları -> Tarayıcı
     results.sort((a, b) => {
       const score = (s?: string) => {
-        if (s === "local_agent") return 1;
-        if (s === "browser") return 2;
-        if (s === "user_assigned") return 3;
-        if (s === "usb") return 4;
-        return 5;
+        if (s === "usb") return 1;
+        if (s === "local_agent") return 2;
+        if (s === "browser") return 3;
+        return 4;
       };
       return score(a.source) - score(b.source);
     });

@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Modal, Table, Button } from "react-bootstrap";
 import { IconBuildingBank, IconX, IconPrinter } from "@tabler/icons-react";
 import { VezneBakiyeDetailItem } from "../../services/dovizFisService";
+import { triggerSilentPrint } from "../../services/silentPrintService";
 
 interface VezneBakiyeModalProps {
   show: boolean;
@@ -48,8 +49,48 @@ export const VezneBakiyeModal: React.FC<VezneBakiyeModalProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [show, onClose]);
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    const rowsHtml = displayItems
+      .map(
+        (item) => `
+      <tr>
+        <td style="padding: 4px 0; border-bottom: 1px dashed #000; font-weight: 600;">${item.kod} ${item.ad && item.ad !== item.kod ? `(${item.ad})` : ""}</td>
+        <td style="padding: 4px 0; border-bottom: 1px dashed #000; text-align: right; font-weight: 700;">${Number(item.miktar).toLocaleString("tr-TR", { minimumFractionDigits: tlKurusSayisi, maximumFractionDigits: tlKurusSayisi })}</td>
+      </tr>
+    `
+      )
+      .join("");
+
+    const slipHtml = `
+      <div style="font-family: 'Consolas', monospace; font-size: 13px; color: #000; width: 100%; max-width: 78mm; padding: 4px;">
+        <div style="text-align: center; font-weight: 800; font-size: 15px; margin-bottom: 4px;">VEZNE BAKİYE DÖKÜMÜ</div>
+        <div style="text-align: center; font-weight: 700; font-size: 12px; margin-bottom: 6px;">${vezneKod} - ${vezneAd}</div>
+        <div style="font-size: 11px; margin-bottom: 8px; border-bottom: 1px solid #000; padding-bottom: 4px;">
+          Tarih: ${new Date().toLocaleDateString("tr-TR")} ${new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+          <thead>
+            <tr style="border-bottom: 1px solid #000;">
+              <th style="text-align: left; padding: 2px 0;">Hesap / Para</th>
+              <th style="text-align: right; padding: 2px 0;">Bakiye</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        <div style="text-align: center; font-size: 10px; margin-top: 12px; border-top: 1px solid #000; padding-top: 4px;">
+          LİKYA ERP - BİLGİ FİŞİDİR
+        </div>
+      </div>
+    `;
+
+    await triggerSilentPrint({
+      html: slipHtml,
+      title: `Vezne_${vezneKod}_Bakiye`,
+      isPos: true,
+      allowBrowserFallback: false,
+    });
   };
 
   const displayItems = bakiyeler && bakiyeler.length > 0 ? bakiyeler : [];

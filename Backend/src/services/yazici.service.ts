@@ -18,7 +18,71 @@ export interface DirectPrintDto {
   copies?: number;
 }
 
+export interface ClientPrinterInfo {
+  name: string;
+  isDefault?: boolean;
+  isOnline?: boolean;
+  isNetwork?: boolean;
+  isLocal?: boolean;
+  portName?: string;
+  driverName?: string;
+}
+
+export interface WorkstationPrintersRecord {
+  computerName?: string;
+  userName?: string;
+  clientIp: string;
+  userId?: number | string;
+  updatedAt: Date;
+  printers: ClientPrinterInfo[];
+}
+
+const workstationPrintersMap = new Map<string, WorkstationPrintersRecord>();
+
 export class YaziciService {
+  public static registerClientPrinters(params: {
+    clientIp: string;
+    computerName?: string;
+    userName?: string;
+    userId?: number | string;
+    printers: ClientPrinterInfo[];
+  }) {
+    const record: WorkstationPrintersRecord = {
+      clientIp: params.clientIp,
+      computerName: params.computerName,
+      userName: params.userName,
+      userId: params.userId,
+      updatedAt: new Date(),
+      printers: params.printers || [],
+    };
+    if (params.clientIp) workstationPrintersMap.set(params.clientIp, record);
+    if (params.computerName) workstationPrintersMap.set(params.computerName.toUpperCase().trim(), record);
+    if (params.userId) workstationPrintersMap.set(`user_${params.userId}`, record);
+    logger.info(`[registerClientPrinters] Workstation ${params.computerName || params.clientIp} registered ${params.printers?.length || 0} printers.`);
+    return { success: true, count: params.printers?.length || 0 };
+  }
+
+  public static getClientPrinters(params: {
+    clientIp?: string;
+    computerName?: string;
+    userId?: number | string;
+  }): ClientPrinterInfo[] {
+    if (params.computerName && workstationPrintersMap.has(params.computerName.toUpperCase().trim())) {
+      return workstationPrintersMap.get(params.computerName.toUpperCase().trim())!.printers;
+    }
+    if (params.userId && workstationPrintersMap.has(`user_${params.userId}`)) {
+      return workstationPrintersMap.get(`user_${params.userId}`)!.printers;
+    }
+    if (params.clientIp && workstationPrintersMap.has(params.clientIp)) {
+      return workstationPrintersMap.get(params.clientIp)!.printers;
+    }
+    // Also try without port if IP has port
+    const strippedIp = params.clientIp?.replace(/:\d+$/, "");
+    if (strippedIp && workstationPrintersMap.has(strippedIp)) {
+      return workstationPrintersMap.get(strippedIp)!.printers;
+    }
+    return [];
+  }
   public static async listYazicilar(
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<YaziciModel[]> {

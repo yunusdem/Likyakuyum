@@ -231,9 +231,9 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
     };
   }
 
-  // Ziynet ve Para işlemlerinde milyem / has / işçilik çalışmaz, doğrudan miktar (veya adet) * kur hesaplanır
+  // Ziynet ve Para işlemlerinde milyem / has / işçilik çalışmaz, doğrudan adet (veya miktar) * kur hesaplanır
   if (isParaOrZiynet) {
-    const base = isZiynet ? (miktar > 0 ? miktar : (adet > 0 ? adet : 0)) : miktar;
+    const base = adet > 0 ? adet : (miktar > 0 ? miktar : 0);
     if (changedField !== "tutar") {
       if (base > 0 && effectiveKur > 0) {
         tutar = parseFloat((base * effectiveKur).toFixed(2));
@@ -245,7 +245,7 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
     }
     return {
       ...r,
-      adet: isPara ? "" : r.adet,
+      adet: r.adet,
       milyem: "",
       hasGram: "",
       tutar,
@@ -283,11 +283,11 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
   const isZiynet = r.urunTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isParaOrZiynet = isPara || isZiynet;
 
-  // Ziynet ve Para işlemlerinde milyem / has / işçilik pasif; tutar = miktar (veya adet) * kur
+  // Ziynet ve Para işlemlerinde milyem / has / işçilik pasif; tutar = adet (veya miktar) * kur
   if (isParaOrZiynet) {
     const adet = parseDecimal(r.adet);
     const miktar = parseDecimal(r.miktar);
-    const base = isPara ? miktar : (miktar > 0 ? miktar : (adet > 0 ? adet : 0));
+    const base = adet > 0 ? adet : (miktar > 0 ? miktar : 0);
     const kur = r.kur !== "" ? r.kur : (defaultKur > 0 ? defaultKur : "");
     const effectiveKur = parseDecimal(kur);
     let tutar: number | string = r.tutar;
@@ -300,7 +300,7 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
     }
     return {
       ...r,
-      adet: isPara ? "" : r.adet,
+      adet: r.adet,
       miktar: r.miktar,
       milyem: "",
       hasGram: "",
@@ -2184,7 +2184,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         await loadFisById(result.sarrafFisiId);
         return;
       }
-      showNotif("success", `Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} — ${result.fisNo || result.sarrafFisiId}${andPrint ? " (Yazıcıya gönderiliyor...)" : ""}`);
+
+      let printSuccess = true;
+      let printErrorMessage = "";
+
       if (andPrint) {
         const snapObj = {
           fisId: result.sarrafFisiId,
@@ -2268,8 +2271,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const isPos = targetPrinter ? targetPrinter.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
         const copiesToUse = targetCopies || resolved.kopyaSayisi || 1;
 
-        // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; docs/FIS_TASARIM_YOL_HARITASI.md).
-        // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
+        // Fiş firmanın şablonundan basılır
         try {
           const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
           const sonuc = await triggerSilentPrint({
@@ -2279,14 +2281,38 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             isPos,
             title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
           });
-          if (!sonuc.success) showNotif("warning", `Fiş kaydedildi ancak yazdırılamadı: ${sonuc.message}`);
+          if (!sonuc.success) {
+            printSuccess = false;
+            printErrorMessage = sonuc.message;
+          }
         } catch (printErr: any) {
-          showNotif("warning", `Fiş kaydedildi ancak yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`);
+          printSuccess = false;
+          printErrorMessage = printErr?.message || "bilinmeyen hata";
         }
       }
+
+      if (andPrint) {
+        if (printSuccess) {
+          showNotif("success", `✅ Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} ve doğrudan yazıcıya gönderildi — ${result.fisNo || result.sarrafFisiId}`);
+        } else {
+          showNotif("warning", `⚠️ Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} ANCAK YAZICIDAN ÇIKTI ALINAMADI: ${printErrorMessage}`);
+        }
+      } else {
+        showNotif("success", `Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} — ${result.fisNo || result.sarrafFisiId}`);
+      }
       if (await ebFis.kaydedildi(result.sarrafFisiId)) return;
-      // Kayıt ve düzeltme sayfalarında fiş kaydedilince sayfa boşalmalı / temizlenmeli
-      resetForm();
+      if (andPrint) {
+        // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
+        if (result.sarrafFisiId) {
+          setFisId(result.sarrafFisiId);
+        }
+        if (result.fisNo) {
+          setFisNo(result.fisNo);
+        }
+      } else {
+        // Yalnızca standart kayıtta yeni fişe geç
+        resetForm();
+      }
       const bak = await SarrafFisService.getVezneBakiye(vezneId).catch(() => bakiyeler);
       setBakiyeler(bak);
       const fl = await SarrafFisService.getFisList({ limit: 200 }).catch(() => fisList);
@@ -3148,7 +3174,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const updateRow = useCallback((rowId: string, field: keyof GridRow, value: any) => {
     let sanitizedValue = value;
     if (field === "adet") {
-      sanitizedValue = onlyDigits(String(value));
+      sanitizedValue = onlyDecimal(String(value));
     } else if (
       field === "miktar" ||
       field === "milyem" ||
@@ -3207,7 +3233,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const updateOdemeRow = useCallback((rowId: string, field: keyof OdemeRow, value: any) => {
     let sanitizedValue = value;
     if (field === "adet") {
-      sanitizedValue = onlyDigits(String(value));
+      sanitizedValue = onlyDecimal(String(value));
     } else if (
       field === "miktar" ||
       field === "milyem" ||
@@ -4758,6 +4784,109 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowF10PrinterModal(false);
   }, []);
 
+  const handleDirectPrintF9 = useCallback(async () => {
+    const validLines = lines.filter((l) => (l.urunId > 0 || (l.urunKodu && l.urunKodu.trim() !== "")) && (parseDecimal(l.miktar) > 0 || parseDecimal(l.adet) > 0));
+    if (!validLines.length) {
+      showNotif("warning", "Yazdırılacak geçerli ürün satırı bulunamadı.");
+      return;
+    }
+
+    const snapObj = {
+      fisId: fisId || undefined,
+      fisNo: fisNo || "",
+      seriNo: seriNo,
+      belgeNo: fisNo,
+      tip: tip,
+      tarih: tarih,
+      saat: saat,
+      unvan: unvan || detayUnvan,
+      vergiKimlikNo: detayVergiKimlikNo,
+      detayIl: "",
+      detayIlce: "",
+      detayAdres: detayAdres,
+      detayTelefonNo: detayTelefonNo,
+      detayPasaportNo: detayPasaportNo,
+      vezneKod: vezneKod,
+      kullaniciAdi: user?.fullName || user?.username || "Kasiyer",
+      satirlar: validLines.map((l, i) => ({
+        satirNo: i + 1,
+        urunKodu: l.urunKodu,
+        urunAdi: l.urunAdi,
+        adet: l.adet,
+        miktar: l.miktar,
+        milyem: l.milyem,
+        hasGram: l.hasGram,
+        iscilikiMiktari: l.iscilikiMiktari,
+        iscilikHasGram: l.iscilikHasGram,
+        iscilikHesaplamaSekli: l.iscilikHesaplamaSekli,
+        kur: l.kur,
+        tutar: l.tutar,
+        aciklama: l.aciklama,
+        urunTipi: l.urunTipi,
+        karat: l.karat,
+      })),
+      odemeSatirlari: odemeRows
+        .map((r) => recomputeOdemeRow(r, Number(altinHasKuru) || 0))
+        .filter((o) => {
+          const mik = parseDecimal(o.miktar);
+          const tut = parseDecimal(o.tutar);
+          const ad = parseDecimal(o.adet);
+          const hasCode = Boolean((o.paraKodu && o.paraKodu.trim() !== "") || (o.paraId && o.paraId > 0));
+          return mik > 0 || tut > 0 || ad > 0 || hasCode;
+        })
+        .map((o, i) => {
+          const mik = parseDecimal(o.miktar);
+          const ad = parseDecimal(o.adet);
+          const effectiveMik = mik > 0 ? mik : (ad > 0 ? ad : 0);
+          const effKur = parseDecimal(o.kur) > 0 ? parseDecimal(o.kur) : 1;
+          const effTut = parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : (effectiveMik * effKur);
+          return {
+            satirNo: i + 1,
+            odemeAraciTuru: o.odemeAraciTuru,
+            paraKodu: o.paraKodu,
+            paraAdi: o.paraAdi,
+            adet: ad || "",
+            miktar: effectiveMik || "",
+            milyem: parseDecimal(o.milyem) || "",
+            hasGram: parseDecimal(o.hasGram) || "",
+            kur: effKur,
+            tutar: effTut,
+          };
+        }),
+      toplamTutar: totalTutar,
+      toplamHas: alisHas,
+      odenenTutar: totalOdemeTutar,
+      kalanTutar: farkTL,
+    };
+
+    const resolved = resolveEffectivePrinter({
+      pageType: "sarraf",
+      tip,
+      vezne: vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null),
+      user,
+      printers,
+    });
+
+    const isPos = resolved.recommendedPrintType === "POS";
+    try {
+      const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
+      const sonuc = await triggerSilentPrint({
+        html: fisCikti.html,
+        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+        copies: resolved.kopyaSayisi || 1,
+        isPos,
+        title: `Sarraf_Fisi_${fisNo || "Yazdir"}`,
+      });
+      if (sonuc.success) {
+        showNotif("success", "✅ Fiş doğrudan yazıcıya gönderildi.");
+      } else {
+        showNotif("warning", `⚠️ Fiş yazdırılamadı: ${sonuc.message}`);
+      }
+    } catch (printErr: any) {
+      showNotif("warning", `⚠️ Fiş yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`);
+    }
+  }, [lines, fisId, fisNo, seriNo, tip, tarih, saat, unvan, detayUnvan, detayVergiKimlikNo, detayAdres, detayTelefonNo, detayPasaportNo, vezneKod, user, odemeRows, altinHasKuru, totalTutar, alisHas, totalOdemeTutar, farkTL, vezneList, vezneId, printers, showNotif]);
+
   const handleTriggerF10 = useCallback(() => {
     if (isMasakBlocked) {
       showNotif("danger", `🚨 İŞLEM ENGELLENDİ: Bu müşteri MASAK Malvarlığı Dondurulanlar / Yaptırım Listesindedir. Kesinlikle fiş ve işlem kaydı yapılamaz!`);
@@ -4777,10 +4906,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }
 
     closeAllModals();
-    setShowF10PrinterModal(true);
-  }, [isMasakBlocked, vezneId, lines, closeAllModals, showNotif]);
-
-
+    handleSave(false, true);
+  }, [isMasakBlocked, vezneId, lines, closeAllModals, handleSave, showNotif]);
 
   // ─── Global F-key shortcuts ──────────────────────────────────────────────────
   useEffect(() => {
@@ -4821,7 +4948,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        openPrintPreview();
+        handleDirectPrintF9();
       }
       else if (e.key === "F10") {
         e.preventDefault();
@@ -4832,7 +4959,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     };
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
-  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals, handleTriggerF10]);
+  }, [handleSave, handleNew, openDetayModal, handleDirectPrintF9, closeAllModals, handleTriggerF10]);
 
   // LookupModal columns
   const fisColumns: LookupColumn<SarrafFisListItem>[] = [
@@ -5023,7 +5150,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         onNext={isDuzeltmeMode ? handleNext : undefined}
         onLast={isDuzeltmeMode ? handleLast : undefined}
         onRefresh={handleRefresh}
-        onPrint={openPrintPreview}
+        onDirectPrint={handleDirectPrintF9}
+        onSaveAndPrint={handleTriggerF10}
         onPreview={openPrintPreview}
         centerContent={
           <div className="d-flex align-items-center gap-2">
@@ -5829,7 +5957,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                       <td>
                         <Form.Control
                           ref={(el) => { rowInputRefs.current[`${row.id}_adet`] = el; }}
-                          inputMode="numeric"
+                          inputMode={isPara ? "decimal" : "numeric"}
+                          data-decimal={isPara ? "true" : undefined}
                           size="sm"
                           readOnly={false}
                           className={`text-end font-monospace ${isAdetMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
@@ -6577,7 +6706,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth }}>
                           <Form.Control
                             ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
-                            inputMode="numeric"
+                            inputMode={isOdemePara ? "decimal" : "numeric"}
+                            data-decimal={isOdemePara ? "true" : undefined}
                             size="sm"
                             readOnly={!isOdemeParaOrZiynet}
                             tabIndex={!isOdemeParaOrZiynet ? -1 : undefined}

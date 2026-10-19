@@ -45,8 +45,31 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
   let sourceLabel = "Tanımlı Yazıcı Yok";
 
   if (pageType === "perakende") {
-    // Perakende Fişi: Doğrudan kullanıcı tanımlarındaki yazıcıyı kullanır
-    if (user?.printerId) {
+    // Perakende Fişi: Vezne Tanımlarındaki Alış / Satış Yazıcısı, yoksa Kullanıcı Tanımı
+    if (isAlis) {
+      if (vezne?.alisFisiYaziciId) {
+        targetId = Number(vezne.alisFisiYaziciId);
+        source = "vezne_alis";
+        sourceLabel = "Vezne Perakende Alış Yazıcısı";
+      } else if (vezne?.altinAlisFisiYaziciId) {
+        targetId = Number(vezne.altinAlisFisiYaziciId);
+        source = "vezne_altin_alis";
+        sourceLabel = "Vezne Alış Yazıcısı";
+      }
+    } else {
+      // Satış (varsayılan)
+      if (vezne?.satisFisiYaziciId) {
+        targetId = Number(vezne.satisFisiYaziciId);
+        source = "vezne_satis";
+        sourceLabel = "Vezne Perakende Satış Yazıcısı";
+      } else if (vezne?.altinSatisFisiYaziciId) {
+        targetId = Number(vezne.altinSatisFisiYaziciId);
+        source = "vezne_altin_satis";
+        sourceLabel = "Vezne Satış Yazıcısı";
+      }
+    }
+
+    if (!targetId && user?.printerId) {
       const parsed = parseInt(String(user.printerId), 10);
       if (!isNaN(parsed) && parsed > 0) {
         targetId = parsed;
@@ -111,11 +134,17 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
   // Match targetId with printers list
   let matched: YaziciItem | null = null;
   if (targetId && printers.length > 0) {
-    matched = printers.find((p) => p.id === targetId || p.siraNo === targetId) || null;
+    matched =
+      printers.find(
+        (p) =>
+          Number(p.id) === Number(targetId) ||
+          Number(p.siraNo) === Number(targetId) ||
+          String(p.cihazAdi || "").toLowerCase() === String(targetId).toLowerCase()
+      ) || null;
   }
 
   if (!matched && printers.length > 0) {
-    matched = printers.find((p) => p.siraNo === 1 || p.id === 1) || printers[0];
+    matched = printers.find((p) => Number(p.siraNo) === 1 || Number(p.id) === 1) || printers[0];
     if (matched && source === "yok") {
       source = "varsayilan";
       sourceLabel = "Varsayılan Sistem Yazıcısı";
