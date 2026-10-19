@@ -4947,7 +4947,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleDirectPrintF9();
+        openPrintPreview();
       }
       else if (e.key === "F10") {
         e.preventDefault();
@@ -4958,7 +4958,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     };
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
-  }, [handleSave, handleNew, openDetayModal, handleDirectPrintF9, closeAllModals, handleTriggerF10]);
+  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals, handleTriggerF10]);
 
   // LookupModal columns
   const fisColumns: LookupColumn<SarrafFisListItem>[] = [

@@ -3669,7 +3669,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleDirectPrintF9();
+        handleOpenPrintPreview();
       } else if (isF10) {
         e.preventDefault();
         e.stopPropagation();

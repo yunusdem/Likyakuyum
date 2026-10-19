@@ -24,25 +24,39 @@ export interface SilentPrintResult {
   fallbackUsed?: boolean;
 }
 
-export const LOCAL_PRINT_URL = "http://localhost:5050/print";
-export const LOCAL_STATUS_URL = "http://localhost:5050/status";
+export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
+export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
 /**
- * Yerel yazdırma servisinin (localhost:5050) çalışıp çalışmadığını kontrol eder.
+ * Yerel yazdırma servislerinin (Port 9100 PrinterAgent / printercekmeApp veya Port 5050)
+ * çalışıp çalışmadığını kontrol eder. Öncelik 9100'dedir.
  */
-export async function checkLocalPrintServiceOnline(): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch("http://127.0.0.1:5050/status", {
-      method: "GET",
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    return res.ok;
-  } catch {
-    return false;
+export async function checkLocalPrintServiceOnline(): Promise<number | null> {
+  const ports = [9100, 5050];
+  for (const port of ports) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`http://127.0.0.1:${port}/status`, {
+        method: "GET",
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeoutId);
+      if (res && res.ok) return port;
+    } catch {}
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`http://127.0.0.1:${port}/health`, {
+        method: "GET",
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeoutId);
+      if (res && res.ok) return port;
+    } catch {}
   }
+  return null;
 }
 
 /**
@@ -100,14 +114,14 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
   const finalText = text || (html ? extractTextFromHtml(html) : "");
 
-  // 1. Yerel Windows Spooler Servisi (Port 5050 - Bu bilgisayardaki yazıcıya anında sessiz çıktı)
-  const isOnline = await checkLocalPrintServiceOnline();
-  if (isOnline) {
+  // 1. Yerel PrinterAgent / printercekmeApp Servisi (Port 9100 veya 5050 - İstemci bilgisayarındaki donanım yazıcısına anında çıktı)
+  const activePort = await checkLocalPrintServiceOnline();
+  if (activePort) {
     try {
       const controller = new AbortController();
       // Windows yazdırma işlemi birkaç saniye sürebilir; erken kesilirse fiş basılmaz
       const timeoutId = setTimeout(() => controller.abort(), 35000);
-      const res = await fetch("http://127.0.0.1:5050/print", {
+      const res = await fetch(`http://127.0.0.1:${activePort}/print`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
@@ -136,13 +150,12 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       };
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        // Servis işi aldı ama geç tamamladı; tekrar göndermek çift fiş basar
         return {
           success: true,
-          message: `Fiş "${printerName || "Tanımlı Yazıcı"}" yazıcısına iletildi (yazdırma sürüyor).`,
+          message: `Fiş "${printerName || "Tanımlı Yazıcı"}" yazıcısına iletildi.`,
         };
       }
-      // Bağlantı koptu: aşağıdaki yollara devam et
+      // Bağlantı koptuysa aşağıdaki yollarla devam et
     }
   }
 
@@ -157,32 +170,12 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     }
   }
 
-
-
-  // 3. Arka Plan API Doğrudan Yazdırma Servisi (/yazici/direct-print)
-  try {
-    const backendRes = await apiClient.post<{ success: boolean; message: string; fallbackToBrowser?: boolean }>("/yazici/direct-print", {
-      printerName,
-      documentTitle: title,
-      htmlContent: html,
-      textContent: finalText,
-      isPos,
-      copies,
-    }, { silent: true });
-    if (backendRes.data && backendRes.data.success && !backendRes.data.fallbackToBrowser) {
-      return {
-        success: true,
-        message: backendRes.data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan iletildi.`,
-      };
-    }
-  } catch {}
-
-  // 4. Tarayıcı Yazdırma Penceresi (Yalnızca allowBrowserFallback true ise çalıştırılır)
-  // Kullanıcı F10 ile sessiz çıktı istediğinde Chrome önizleme penceresi KESİNLİKLE açılmaz!
+  // 3. Yerel Ajan (PrinterAgent.exe) kapalıysa ve F10 ile sessiz çıktı isteniyorsa:
+  // Kullanıcıyı asla yanıltma (sunucu kuyruğu fişi basamaz), net bir şekilde ajanı çalıştırmasını bildir.
   if (!allowBrowserFallback) {
     return {
       success: false,
-      message: `"${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan erişilemedi (Yerel port 5050 servisi veya yazıcı bağlantısını kontrol ediniz).`,
+      message: `PrinterAgent.exe yerel servisine ulaşılamadı. Fiş kaydedildi ancak doğrudan yazıcıdan çıkabilmesi için lütfen Yazıcı Tanımları ekranından PrinterAgent.exe uygulamasını çalıştırınız.`,
     };
   }
 

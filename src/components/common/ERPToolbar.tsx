@@ -605,40 +605,20 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           <>
             <span className="erp-tb-divider" />
 
-            {/* 8A. Doğrudan Yazdır (F9) */}
-            {onDirectPrint && (
+            {/* Fiş Yazdır / Önizleme (F9) - Sayfada tek yazdırma ikonu (önizlemeli ve yazıcı seçimli) */}
+            {(onPreview || onPrint || onDirectPrint || onSaveAndPrint) && (
               <button
                 type="button"
                 disabled={disabled}
-                onClick={onDirectPrint}
+                onClick={onPreview || onPrint || onDirectPrint || onSaveAndPrint}
                 className="erp-tb-btn"
-                title="Doğrudan Yazdır (F9)"
-                aria-label="Doğrudan Yazdır (F9)"
+                title="Fiş Yazdır / Önizleme (F9)"
+                aria-label="Fiş Yazdır / Önizleme (F9)"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 9V3h12v6" />
                   <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                   <rect x="6" y="14" width="12" height="8" rx="0.5" fill="#eff6ff" stroke="#2563eb" strokeWidth="1.8" />
-                  <line x1="9" y1="17" x2="15" y2="17" />
-                  <line x1="9" y1="19.5" x2="13" y2="19.5" />
-                </svg>
-              </button>
-            )}
-
-            {/* 8B. Kaydet / Yazdır (F10) */}
-            {(onSaveAndPrint || onPrint) && (
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={onSaveAndPrint || onPrint || (() => window.print())}
-                className="erp-tb-btn"
-                title={onSaveAndPrint ? "Kaydet ve Yazdır (F10)" : "Yazdır (F10)"}
-                aria-label={onSaveAndPrint ? "Kaydet ve Yazdır (F10)" : "Yazdır (F10)"}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 9V3h12v6" />
-                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                  <rect x="6" y="14" width="12" height="8" rx="0.5" fill="#f8fafc" stroke="#000000" strokeWidth="1.8" />
                   <line x1="9" y1="17" x2="15" y2="17" />
                   <line x1="9" y1="19.5" x2="13" y2="19.5" />
                 </svg>

@@ -118,10 +118,10 @@ export const PrinterDefinitionsPage: React.FC = () => {
         details: isVirtual
           ? "📄 Sanal Yazıcı / Belge Çıktısı (PDF / XPS)"
           : typeof item === "object" && item.details
-          ? item.details
-          : isNet
-          ? "📶 Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
-          : "🔌 printercekmeApp (Yerel Donanım)",
+            ? item.details
+            : isNet
+              ? "📶 Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
+              : "🔌 printercekmeApp (Yerel Donanım)",
       });
     });
 
@@ -752,33 +752,40 @@ export const PrinterDefinitionsPage: React.FC = () => {
               className="py-2.5 px-3 small mb-2.5 border-0 rounded-2 text-dark shadow-xs"
               style={{ backgroundColor: "#fef3c7" }}
             >
-              <div className="d-flex align-items-start justify-content-between gap-2">
+              <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
                 <div className="d-flex align-items-start gap-2">
-                  <IconAlertCircle size={22} className="text-warning flex-shrink-0 mt-0.5" />
+                  <IconAlertCircle size={24} className="text-warning flex-shrink-0 mt-0.5" />
                   <div>
                     <div className="fw-bold text-dark fs-7">
-                      ⚠️ Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.
+                      ⚠️ Yazıcı Ajanı (PrinterAgent) Kapalı veya Henüz Yüklü Değil
                     </div>
-                    <div className="text-secondary mt-0.5" style={{ lineHeight: "1.35" }}>
-                      Bilgisayarınıza takılı fiş ve etiket yazıcılarının doğrudan okunabilmesi için proje dizinindeki{" "}
-                      <strong className="text-dark font-monospace">printercekmeApp</strong> servisini başlatınız:
-                      <div className="mt-1 font-monospace bg-white border p-1 rounded px-2 text-dark user-select-all" style={{ fontSize: "11px" }}>
-                        cd printercekmeApp &amp;&amp; npm start &nbsp; <span className="text-muted">(veya baslat.bat dosyasına çift tıklayın)</span>
-                      </div>
+                    <div className="text-secondary mt-1" style={{ lineHeight: "1.4" }}>
+                      Yandaki butondan <strong>PrinterAgent.exe</strong> dosyasını indirin. İndirdikten sonra <strong>çift tıklayarak açtığınızda</strong> bilgisayarınızdaki tüm fiş ve etiket yazıcıları listeye otomatik olarak gelecektir.
                     </div>
                   </div>
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="fw-bold text-nowrap py-1 px-3 d-flex align-items-center gap-1 shadow-xs"
-                  onClick={loadPrintersFromAgent}
-                  disabled={isLoadingSystemPrinters}
-                >
-                  <IconRefresh size={15} />
-                  <span>Ajanı Yeniden Dene</span>
-                  {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
-                </Button>
+                <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                  <a
+                    href="/PrinterAgent.exe"
+                    download="PrinterAgent.exe"
+                    className="btn btn-success btn-sm fw-bold py-1.5 px-3 d-flex align-items-center gap-1.5 text-decoration-none shadow-xs text-nowrap"
+                    title="Windows için PrinterAgent.exe uygulamasını indirin"
+                  >
+                    <IconDownload size={16} />
+                    <span>PrinterAgent.exe İndir</span>
+                  </a>
+                  <Button
+                    variant="outline-primary"
+                    size="sm"
+                    className="fw-bold py-1.5 px-3 d-flex align-items-center gap-1 shadow-xs text-nowrap"
+                    onClick={loadPrintersFromAgent}
+                    disabled={isLoadingSystemPrinters}
+                  >
+                    <IconRefresh size={15} />
+                    <span>Yeniden Dene</span>
+                    {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
+                  </Button>
+                </div>
               </div>
             </Alert>
           ) : (
@@ -792,7 +799,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
 
           {/* Arama ve Canlı Listeyi Yenileme Çubuğu */}
           <div className="d-flex align-items-center justify-content-between gap-2 mb-2 p-1.5 bg-light rounded border">
-            <div className="input-group input-group-sm" style={{ maxWidth: "380px" }}>
+            <div className="input-group input-group-sm" style={{ maxWidth: "340px" }}>
               <span className="input-group-text bg-white px-2">
                 <IconSearch size={14} className="text-secondary" />
               </span>
@@ -806,10 +813,11 @@ export const PrinterDefinitionsPage: React.FC = () => {
             </div>
 
             <div className="d-flex align-items-center gap-1.5">
+
               <Button
                 variant="outline-primary"
                 size="sm"
-                className="py-0.5 px-3 d-flex align-items-center gap-1.5 fw-semibold shadow-xs"
+                className="py-0.5 px-3 d-flex align-items-center gap-1.5 fw-semibold shadow-xs text-nowrap"
                 onClick={loadPrintersFromAgent}
                 disabled={isLoadingSystemPrinters}
                 title="printercekmeApp (Port 9100) üzerinden yazıcıları canlı yenile"
@@ -848,11 +856,31 @@ export const PrinterDefinitionsPage: React.FC = () => {
                       return (
                         <tr>
                           <td colSpan={4} className="text-center py-4 text-muted">
-                            <div className="fw-semibold text-warning">
-                              ⚠️ Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.
+                            <div className="fw-semibold text-dark fs-7 mb-1">
+                              Henüz yazıcı algılanamadı
                             </div>
-                            <div className="small mt-1 text-secondary">
-                              Bilgisayarınızda <strong>printercekmeApp</strong> servisini başlattıktan sonra yukarıdaki <strong>"Yazıcıları Tara"</strong> butonuna basınız.
+                            <div className="small text-secondary mb-3">
+                              <strong>PrinterAgent.exe</strong> uygulamasını indirip çift tıklayarak çalıştırdığınızda bilgisayarınızdaki yazıcılar otomatik gelecektir.
+                            </div>
+                            <div className="d-flex justify-content-center gap-2">
+                              <a
+                                href="/PrinterAgent.exe"
+                                download="PrinterAgent.exe"
+                                className="btn btn-success btn-sm fw-bold px-3 py-1.5 d-inline-flex align-items-center gap-1.5 text-decoration-none shadow-xs"
+                              >
+                                <IconDownload size={15} />
+                                <span>PrinterAgent.exe İndir</span>
+                              </a>
+                              <Button
+                                variant="outline-primary"
+                                size="sm"
+                                className="fw-semibold px-3 py-1.5"
+                                onClick={loadPrintersFromAgent}
+                                disabled={isLoadingSystemPrinters}
+                              >
+                                <IconRefresh size={14} className="me-1" />
+                                <span>Yeniden Tara</span>
+                              </Button>
                             </div>
                           </td>
                         </tr>

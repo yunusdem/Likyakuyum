@@ -4421,6 +4421,67 @@ export const DovizFisiPage: React.FC = () => {
     }
   }, [lines, paraList, fisId, tip, tarih, saat, seriNo, belgeNo, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, totalTutar, sonToplam, calculatedBsmv, totalKmv, totalKomisyon, kurTuru, vezneList, vezneId, user, printers, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi]);
 
+  const handleOpenPrintPreview = useCallback(() => {
+    const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+    setPrintSnapshot({
+      fisId,
+      tip,
+      tarih,
+      saat,
+      seriNo,
+      belgeNo,
+      unvan,
+      vergiKimlikNo,
+      detayIl,
+      detayIlce,
+      detayUyruk,
+      detayPasaportNo,
+      detayMeslek,
+      detayCariTipi,
+      vezneKod,
+      istatistikKodu,
+      lines: lines.map((l) => ({
+        paraKodu: l.paraKodu,
+        paraAdi: l.paraAdi,
+        miktar: l.miktar,
+        kur: l.kur,
+        tutar: l.tutar,
+        bmv: l.bmv,
+        komisyon: l.komisyon,
+      })),
+      toplamTutar: totalTutar,
+      odemeTutari: sonToplam,
+      bsmvTutari: calculatedBsmv,
+      komisyonTutari: totalKomisyon,
+      giseUsdKuru: usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 1,
+    });
+    setShowPrintModal(true);
+  }, [
+    paraList,
+    fisId,
+    tip,
+    tarih,
+    saat,
+    seriNo,
+    belgeNo,
+    unvan,
+    vergiKimlikNo,
+    detayIl,
+    detayIlce,
+    detayUyruk,
+    detayPasaportNo,
+    detayMeslek,
+    detayCariTipi,
+    vezneKod,
+    istatistikKodu,
+    lines,
+    totalTutar,
+    sonToplam,
+    calculatedBsmv,
+    totalKomisyon,
+    kurTuru,
+  ]);
+
   // Keyboard shortcut listener (F1..F10, ESC)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -4577,7 +4638,7 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleDirectPrintF9();
+        handleOpenPrintPreview();
       } else if (isF10) {
         e.preventDefault();
         e.stopPropagation();
@@ -4589,7 +4650,7 @@ export const DovizFisiPage: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     handleToolbarSave,
-    handleDirectPrintF9,
+    handleOpenPrintPreview,
     handleToolbarDelete,
     handleTriggerF10,
     isDuzeltmeMode,
@@ -4851,8 +4912,8 @@ export const DovizFisiPage: React.FC = () => {
         onNew={handleToolbarNew}
         onSave={handleToolbarSave}
         onSaveAndPrint={handleTriggerF10}
-        onDirectPrint={handleDirectPrintF9}
-        onPreview={() => setShowPrintModal(true)}
+        onDirectPrint={handleOpenPrintPreview}
+        onPreview={handleOpenPrintPreview}
         onSearch={isDuzeltmeMode ? openFisSecimModal : undefined}
         onDelete={isDuzeltmeMode ? handleToolbarDelete : undefined}
         hideSearch={!isDuzeltmeMode}
@@ -4892,42 +4953,7 @@ export const DovizFisiPage: React.FC = () => {
             )}
           </div>
         }
-        onPrint={() => {
-          const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
-          setPrintSnapshot({
-            fisId,
-            tip,
-            tarih,
-            saat,
-            seriNo,
-            belgeNo,
-            unvan,
-            vergiKimlikNo,
-            detayIl,
-            detayIlce,
-            detayUyruk,
-            detayPasaportNo,
-            detayMeslek,
-            detayCariTipi,
-            vezneKod,
-            istatistikKodu,
-            lines: lines.map((l) => ({
-              paraKodu: l.paraKodu,
-              paraAdi: l.paraAdi,
-              miktar: l.miktar,
-              kur: l.kur,
-              tutar: l.tutar,
-              bmv: l.bmv,
-              komisyon: l.komisyon,
-            })),
-            toplamTutar: totalTutar,
-            odemeTutari: sonToplam,
-            bsmvTutari: calculatedBsmv,
-            komisyonTutari: totalKomisyon,
-            giseUsdKuru: usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 1,
-          });
-          setShowPrintModal(true);
-        }}
+        onPrint={handleOpenPrintPreview}
         onRefresh={loadLookupsAndList}
         rightContent={
           <div className="d-flex align-items-center gap-2 px-2 py-0.5 bg-white rounded border shadow-2xs small font-monospace" style={{ fontSize: "11px" }}>

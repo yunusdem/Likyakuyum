@@ -69,7 +69,7 @@ export const CashDeskDefinitionsPage: React.FC<CashDeskDefinitionsPageProps> = (
 
       const [vezneList, printerList, currencyList] = await Promise.all([
         CashDeskService.getVezneler(),
-        CashDeskService.getPrinters(),
+        CashDeskService.getPrinters(true),
         CashDeskService.getCurrencies(),
       ]);
 
