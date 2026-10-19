@@ -1,21 +1,26 @@
 @echo off
 chcp 65001 > nul
-title Likya Kuyumcu ERP - Sessiz Yazdırma Servisi (Port 5050)
+title Likya Kuyumcu ERP - Yerel Sessiz Yazdırma Servisi (Port 5050)
 cd /d "%~dp0"
 
 echo ============================================================
 echo   LİKYA KUYUMCU ERP - YEREL SESSİZ YAZDIRMA SERVİSİ
 echo ============================================================
 echo.
-echo Servis Port: http://localhost:5050
+echo Port: http://127.0.0.1:5050
 echo.
 
-if not exist "local-print-service\node_modules\express" (
-  echo [BİLGİ] Gerekli bağımlılıklar kuruluyor, lütfen bekleyiniz...
-  cd local-print-service
-  call npm install --no-audit --no-fund
-  cd ..
+where node >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+  if exist "local-print-service\node_modules\express" (
+    echo [BİLGİ] Node.js üzerinden servis başlatılıyor...
+    node local-print-service\server.js
+    goto bitir
+  )
 )
 
-node local-print-service\server.js
+echo [BİLGİ] Yerel Windows PowerShell servisi başlatılıyor...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0local-print-service\service-runner.ps1"
+
+:bitir
 pause

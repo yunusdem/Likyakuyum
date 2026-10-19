@@ -18,6 +18,7 @@ import {
   IconTrash,
   IconAdjustments,
   IconRefresh,
+  IconDownload,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -551,33 +552,115 @@ export const PrinterDefinitionsPage: React.FC = () => {
         <Modal.Body className="p-3">
           {/* Kullanıcı ve Yerel Bilgisayar Servis Bağlantı Durumu */}
           {(() => {
-            const hasLocalPrinters = systemPrinters.some((p) => p.source === "local_agent");
+            const localPrinters = systemPrinters.filter((p) => p.source === "local_agent");
+            const hasLocalPrinters = localPrinters.length > 0;
             const userName = user?.fullName || user?.username || "Giriş Yapan Kullanıcı";
-            return (
-              <div
-                className={`alert ${
-                  hasLocalPrinters ? "alert-success border-success" : "alert-warning border-warning"
-                } py-1.5 px-2.5 small mb-2 d-flex align-items-center justify-content-between shadow-xs`}
-              >
-                <div className="d-flex align-items-center gap-1.5">
-                  {hasLocalPrinters ? (
-                    <>
-                      <IconCheck size={16} className="text-success flex-shrink-0" />
-                      <span>
-                        <strong>Bu Bilgisayarın Yazıcıları Aktif</strong> (Windows Denetim Masası yazıcıları doğrudan bu makineden yüklendi)
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <IconAlertCircle size={16} className="text-warning flex-shrink-0" />
-                      <span>
-                        <strong>Yerel Yazıcı Servisi:</strong> Bilgisayarınızdaki yerel Windows yazıcılarını otomatik listelemek için <code>start-print-service.bat</code> çalıştırabilir veya aşağıdan yazıcınızı ekleyebilirsiniz.
-                      </span>
-                    </>
-                  )}
+            return hasLocalPrinters ? (
+              <div className="alert alert-success border-success py-2 px-3 small mb-2.5 d-flex align-items-center justify-content-between rounded-2 shadow-xs">
+                <div className="d-flex align-items-center gap-2">
+                  <IconCheck size={20} className="text-success flex-shrink-0" />
+                  <div>
+                    <strong className="text-success">🟢 Bu Bilgisayarın Canlı Yazıcıları Bağlandı!</strong>
+                    <span className="text-dark ms-1.5">
+                      (Windows Denetim Masası'ndan <strong>{localPrinters.length}</strong> adet yazıcı başarıyla yüklendi)
+                    </span>
+                  </div>
                 </div>
                 <div className="text-dark small fw-semibold text-nowrap ms-2">
                   👤 {userName}
+                </div>
+              </div>
+            ) : (
+              <div className="card border-warning bg-warning bg-opacity-10 mb-3 shadow-xs">
+                <div className="card-header bg-warning bg-opacity-25 py-2 px-3 d-flex align-items-center justify-content-between border-warning border-opacity-25">
+                  <div className="d-flex align-items-center gap-2">
+                    <IconAlertCircle size={20} className="text-warning-emphasis flex-shrink-0" />
+                    <strong className="text-dark">
+                      Bu Bilgisayarın Yazıcılarını Otomatik Görüntüleme (3 Basit Adım)
+                    </strong>
+                  </div>
+                  <Badge bg="warning" text="dark" className="px-2 py-1">
+                    👤 {userName}
+                  </Badge>
+                </div>
+                <div className="card-body p-3">
+                  <div className="row g-2 mb-3">
+                    {/* Adım 1 */}
+                    <div className="col-md-4">
+                      <div className="p-2.5 bg-white rounded border h-100 d-flex flex-column justify-content-between">
+                        <div>
+                          <div className="d-flex align-items-center gap-2 mb-1.5">
+                            <span className="badge bg-primary rounded-circle px-2 py-1 fw-bold">1</span>
+                            <strong className="text-dark small">Başlatıcıyı İndirin</strong>
+                          </div>
+                          <p className="text-muted mb-2" style={{ fontSize: "11px", lineHeight: "1.4" }}>
+                            Tek tıkla çalışan güvenli yerel yazıcı aracını bu bilgisayara indirin (Kurulum istemez).
+                          </p>
+                        </div>
+                        <a
+                          href="/likya-yerel-yazici-baslat.bat"
+                          download="likya-yerel-yazici-baslat.bat"
+                          className="btn btn-primary btn-sm fw-bold w-100 d-flex align-items-center justify-content-center gap-1.5 py-1"
+                        >
+                          <IconDownload size={14} />
+                          <span>.BAT Dosyasını İndir</span>
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Adım 2 */}
+                    <div className="col-md-4">
+                      <div className="p-2.5 bg-white rounded border h-100 d-flex flex-column justify-content-between">
+                        <div>
+                          <div className="d-flex align-items-center gap-2 mb-1.5">
+                            <span className="badge bg-primary rounded-circle px-2 py-1 fw-bold">2</span>
+                            <strong className="text-dark small">Çift Tıklayıp Başlatın</strong>
+                          </div>
+                          <p className="text-muted mb-2" style={{ fontSize: "11px", lineHeight: "1.4" }}>
+                            İndirilen <code>likya-yerel-yazici-baslat.bat</code> dosyasına çift tıklayın. Açılan siyah pencere açık kaldığı sürece yazıcılarınız web sitesine aktarılır.
+                          </p>
+                        </div>
+                        <span className="badge bg-light text-secondary border py-1.5" style={{ fontSize: "10px" }}>
+                          ✓ Windows PowerShell ile hazır çalışır
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Adım 3 */}
+                    <div className="col-md-4">
+                      <div className="p-2.5 bg-white rounded border h-100 d-flex flex-column justify-content-between">
+                        <div>
+                          <div className="d-flex align-items-center gap-2 mb-1.5">
+                            <span className="badge bg-success rounded-circle px-2 py-1 fw-bold">3</span>
+                            <strong className="text-dark small">Listeyi Yenileyin</strong>
+                          </div>
+                          <p className="text-muted mb-2" style={{ fontSize: "11px", lineHeight: "1.4" }}>
+                            Servis başladıktan sonra aşağıdaki butona basın. Bilgisayara takılı tüm yazıcılar listelenecektir.
+                          </p>
+                        </div>
+                        <Button
+                          variant="success"
+                          size="sm"
+                          className="fw-bold w-100 d-flex align-items-center justify-content-center gap-1 py-1"
+                          onClick={handleOpenSystemPrinters}
+                          disabled={isLoadingSystemPrinters}
+                        >
+                          <IconRefresh size={14} />
+                          <span>Yazıcıları Şimdi Çek</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kalıcı İpucu & Alternatif Seçenek */}
+                  <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 pt-2 border-top border-warning border-opacity-25" style={{ fontSize: "11px" }}>
+                    <div className="text-dark">
+                      💡 <strong>Kalıcı Ayar (Her gün açmamak için):</strong> Dosyayı klavyeden <code>Win+R</code> basıp <code>shell:startup</code> yazarak açılan Windows Başlangıç klasörüne atabilirsiniz.
+                    </div>
+                    <div className="text-muted">
+                      🌐 Dosya indirmek istemiyorsanız alttaki <strong>"Tarayıcı / Windows Varsayılan Yazıcısı"</strong> seçeneğini kullanabilirsiniz.
+                    </div>
+                  </div>
                 </div>
               </div>
             );
@@ -684,10 +767,12 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           <td className="text-center">
                             {p.source === "local_agent" ? (
                               <Badge bg="success" className="px-2 py-0.5">💻 Bu Bilgisayar (Yerel)</Badge>
+                            ) : p.source === "browser" ? (
+                              <Badge bg="primary" className="px-2 py-0.5">🌐 Tarayıcı / Windows</Badge>
                             ) : p.source === "user_assigned" ? (
                               <Badge bg="info" className="px-2 py-0.5">👤 Kullanıcı Yazıcısı</Badge>
                             ) : p.source === "server" ? (
-                              <Badge bg="primary" className="px-2 py-0.5">🏢 Sunucuda Kayıtlı</Badge>
+                              <Badge bg="secondary" className="px-2 py-0.5">🏢 Sunucuda Kayıtlı</Badge>
                             ) : p.source === "usb" ? (
                               <Badge bg="info" className="px-2 py-0.5">🔌 USB Cihaz</Badge>
                             ) : p.source === "serial" ? (

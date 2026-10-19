@@ -216,34 +216,13 @@ export class PrinterService {
       }
     } catch {}
 
-    // 2. Yedek yerel port 25050 (Local Agent Köprüsü) sorgula
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 800);
-      const res = await fetch("http://127.0.0.1:25050/api/v1/yazici/system-printers", {
-        method: "GET",
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data?.data;
-        if (Array.isArray(list)) {
-          for (const p of list) {
-            const pName = String(p.name || "").trim();
-            if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
-              results.push({
-                name: pName,
-                isDefault: Boolean(p.isDefault),
-                source: "local_agent",
-                details: "Bu Bilgisayarın Yerel Aygıtı",
-              });
-            }
-          }
-        }
-      }
-    } catch {}
+    // 2. Her bilgisayarda harici servis gerektirmeden çalışan standart tarayıcı yazdırma seçeneği
+    results.push({
+      name: "Tarayıcı / Windows Varsayılan Yazıcısı",
+      isDefault: results.length === 0,
+      source: "browser",
+      details: "Bu bilgisayarın doğrudan varsayılan yazıcısı (Servis gerektirmez)",
+    });
 
     // 3. Sunucuda kayıtlı yazıcılar (TODVZ_YAZICI Veritabanı ve Kullanıcı Tanımları)
     try {
@@ -293,17 +272,17 @@ export class PrinterService {
       }
     } catch {}
 
-    // 5. Ana backend sunucusundaki işletim sistemi yazıcıları (varsa)
-    try {
-      const res = await apiClient.get<SystemPrinterItem[]>("/yazici/system-printers", undefined, { silent: true });
-      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-        for (const sp of res.data) {
-          if (sp.name && !results.some((r) => r.name.toLowerCase() === sp.name.toLowerCase())) {
-            results.push({ ...sp, source: sp.source || "server", details: "Sunucu İşletim Sistemi Yazıcısı" });
-          }
-        }
-      }
-    } catch {}
+    // Sıralama önceliği: Bu bilgisayarın yerel yazıcıları -> Tarayıcı -> Kullanıcı -> Sunucu
+    results.sort((a, b) => {
+      const score = (s?: string) => {
+        if (s === "local_agent") return 1;
+        if (s === "browser") return 2;
+        if (s === "user_assigned") return 3;
+        if (s === "usb") return 4;
+        return 5;
+      };
+      return score(a.source) - score(b.source);
+    });
 
     return results;
   }

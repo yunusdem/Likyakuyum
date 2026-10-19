@@ -66,10 +66,34 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  // 1. Yerel sessiz yazdırma servisine (localhost:5050) doğrudan POST et
+  const isBrowserChoice =
+    Boolean(printerName && (
+      printerName.toLowerCase().includes("tarayıcı") ||
+      printerName.toLowerCase().includes("browser") ||
+      printerName.toLowerCase().includes("varsayılan")
+    ));
+
+  // 1. Eğer doğrudan "Tarayıcı / Windows Varsayılan Yazıcısı" seçildiyse:
+  if (isBrowserChoice && html) {
+    try {
+      printViaHiddenIframe(html, title, isPos);
+      return {
+        success: true,
+        message: "Fiş bu bilgisayarın tarayıcı yazdırma penceresine gönderildi.",
+        fallbackUsed: true,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: "Tarayıcı yazdırma hatası: " + err.message,
+      };
+    }
+  }
+
+  // 2. Yerel sessiz yazdırma servisine (localhost:5050) doğrudan POST et
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
 
     const res = await fetch(LOCAL_PRINT_URL, {
       method: "POST",
@@ -97,17 +121,17 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
         message: data.message || "Fiş tanımlı yazıcıya doğrudan gönderildi (Önizlemesiz).",
       };
     }
-  } catch (err: any) {
-    console.warn("[SilentPrint] Yerel servis (localhost:5050) yanıt vermedi:", err);
+  } catch {
+    // Port 5050 çalışmıyorsa sessizce yakala
   }
 
-  // 2. Sadece açıkça izin verildiyse gizli iframe fallback'i kullan (Önizlemesiz modda popup açılmamalıdır)
-  if (allowBrowserFallback && html) {
+  // 3. Yerel servis kapalıysa ve HTML varsa kullanıcıyı engellememek için tarayıcı yazdırmasına düş
+  if (html) {
     try {
       printViaHiddenIframe(html, title, isPos);
       return {
         success: true,
-        message: "Fiş yazıcıya gönderildi (Tarayıcı yazdırma motoru kullanıldı).",
+        message: "Yerel yazdırma servisi açık olmadığı için tarayıcı yazdırma motoru kullanıldı.",
         fallbackUsed: true,
       };
     } catch (fallbackErr: any) {
@@ -120,7 +144,7 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
   return {
     success: false,
-    message: "Yerel Yazdırma Servisi (localhost:5050) çalışmıyor. Lütfen 'start-print-service.bat' dosyasını başlatın.",
+    message: "Yerel Yazdırma Servisi (localhost:5050) çalışmıyor. Fiş yazdırmak için 'likya-yerel-yazici-baslat.bat' dosyasını başlatabilir veya tarayıcı yazıcısını seçebilirsiniz.",
   };
 }
 
