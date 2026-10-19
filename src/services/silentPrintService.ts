@@ -91,7 +91,7 @@ async function printViaWebPrintingApi(html: string, printerName?: string | null,
 
 /**
  * Gönderilen HTML veya Metin verisini doğrudan yazıcıya gönderir.
- * Kurulumsuz, her istemci bilgisayarında kesintisiz yazdırma sağlar.
+ * Tarayıcı önizleme penceresini açmaz, arka plandaki yerel yazıcı servisine iletir.
  */
 export async function triggerSilentPrint(options: SilentPrintOptions): Promise<SilentPrintResult> {
   const {
@@ -111,42 +111,63 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  // 1. Hedef yazıcı adı varsa ve yerel ajan (Port 9100) aktifse:
-  // Windows varsayılan yazıcısını seçilen yazıcıya ayarla (böylece tarayıcı doğrudan o yazıcıya basar)
-  if (printerName) {
+  // 1. Yerel PrinterAgent (Port 9100 veya 5050) üzerinden doğrudan sessiz yazdırma
+  const ports = [9100, 5050];
+  let lastError = "";
+
+  for (const port of ports) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
-      await fetch("http://127.0.0.1:9100/set-default", {
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const res = await fetch(`http://127.0.0.1:${port}/print`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ printerName }),
+        body: JSON.stringify({
+          html,
+          text,
+          printerName,
+          targetDevice: printerName,
+          copies,
+          isPos,
+          title,
+        }),
         signal: controller.signal,
-      }).catch(() => null);
-      clearTimeout(timeoutId);
-    } catch {}
-  }
+      }).catch((e) => {
+        lastError = e?.message || "Bağlantı kurulamadı";
+        return null;
+      });
 
-  // 2. Fişi tarayıcı yazdırma motoru (gizli iframe) üzerinden doğrudan donanım yazıcısına gönder:
-  // Bu yöntem Windows Spooler, grafik rasterizer ve tüm termal fiş yazıcılarıyla %100 uyumludur.
-  if (html) {
-    try {
-      printViaHiddenIframe(html, title, isPos);
-      return {
-        success: true,
-        message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına gönderildi.`,
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: "Yazdırma hatası: " + (e?.message || e),
-      };
+      clearTimeout(timeoutId);
+
+      if (res) {
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data.success !== false) {
+            return {
+              success: true,
+              message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
+            };
+          } else {
+            lastError = data.message || "Yazdırma servisi hata döndürdü.";
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
+        }
+      }
+    } catch (err: any) {
+      lastError = err?.message || "Servis isteği başarısız.";
     }
   }
 
+  // 2. Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
+  // Tarayıcı önizleme penceresini açmadan, kullanıcıya bildirim olarak hata döndürülür.
   return {
     success: false,
-    message: "Yazdırılacak içerik oluşturulamadı.",
+    message: lastError
+      ? `Yazıcı servisine ulaşılamadı (${lastError}). Lütfen PrinterAgent.exe uygulamasının açık olduğunu kontrol ediniz.`
+      : "Yazıcı servisine (PrinterAgent.exe) ulaşılamadı. Lütfen PrinterAgent uygulamasının açık olduğunu kontrol ediniz.",
   };
 }
 

@@ -34,13 +34,16 @@ function metinHtml(c: Extract<Cizim, { tip: "metin" }>, sol: number, ust: number
   const parcalar = kalinParcala(c.metin)
     .map(p => (p.kalin && !c.kalin ? `<b style="font-weight:800;color:#000000">${kacis(p.metin)}</b>` : kacis(p.metin))).join("");
   const rawBoyut = say(c.boyut);
-  const etkinBoyut = rawBoyut > 0 && rawBoyut < 7.8 ? 7.8 : rawBoyut;
+  const etkinBoyut = rawBoyut > 0 ? rawBoyut : 7.5;
+  const wrapStyle = c.tekSatir
+    ? `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${pt(c.g)};height:${pt(etkinBoyut * SATIR_ORANI)}`
+    : `white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;max-width:${pt(c.g)}`;
   const stil = [
     "position:absolute", `left:${pt(sol + say(c.x))}`, `top:${pt(ust + say(c.y))}`, `width:${pt(c.g)}`,
     `font-size:${pt(etkinBoyut)}`, `line-height:${pt(etkinBoyut * SATIR_ORANI)}`, `font-weight:${c.kalin ? 800 : 600}`,
     `text-align:${hiza}`, `color:#000000`, "margin:0", "padding:0",
     "-webkit-font-smoothing:antialiased",
-    c.tekSatir ? `white-space:pre;overflow:hidden;text-overflow:ellipsis;height:${pt(etkinBoyut * SATIR_ORANI)}` : "white-space:pre-wrap;overflow-wrap:anywhere",
+    wrapStyle,
     c.font && YAZI_TIPLERI[c.font] ? `font-family:${YAZI_TIPLERI[c.font].css}` : "",
     c.italik ? "font-style:italic" : "",
     c.altCizgi ? "text-decoration:underline;text-underline-offset:1.5pt" : "",

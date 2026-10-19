@@ -302,13 +302,10 @@ app.post(["/api/print", "/print"], async (req, res) => {
       const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
       const safeTarget = targetPrinter.replace(/'/g, "''").replace(/"/g, '""');
 
-      const textContent = text || (html ? extractTextFromHtmlSimple(html) : "");
-      const textFile = path.join(tmpDir, `print_${timestamp}.txt`);
-      fs.writeFileSync(textFile, textContent, "utf8");
-
       let printed = false;
+      let printErrorMessage = "";
 
-      // 1. Aşama: HTML varsa ve Edge kuruluysa headless sessiz yazdırma
+      // 1. HTML Varsa: Windows WebBrowser COM bileşeni (STA PowerShell) ile doğrudan ve sessizce bas
       if (html) {
         const htmlFile = path.join(tmpDir, `print_${timestamp}.html`);
         const fullHtml = `<!DOCTYPE html>
@@ -317,43 +314,121 @@ app.post(["/api/print", "/print"], async (req, res) => {
   <meta charset="utf-8" />
   <title>${title}</title>
   <style>
-    @page { size: ${isPos ? "80mm auto" : "A4 portrait"}; margin: ${isPos ? "0mm" : "5mm"} !important; }
+    @page { size: ${isPos ? "80mm auto" : "A4 portrait"}; margin: 0mm !important; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    html, body { width: 100%; max-width: ${isPos ? "78mm" : "210mm"}; margin: 0 !important; padding: 0 !important; font-family: ${isPos ? "'Courier New', Courier, monospace, Arial, sans-serif" : "Arial, sans-serif"}; font-size: ${isPos ? "11px" : "12px"}; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { padding: 2px; }
+    html, body { width: 100%; margin: 0 !important; padding: 0 !important; background: #ffffff; color: #000000; font-family: 'Consolas', 'Courier New', monospace; }
   </style>
 </head>
-<body>${html}</body>
+<body style="margin:0;padding:0;background:#ffffff;">
+  ${html}
+</body>
 </html>`;
-        fs.writeFileSync(htmlFile, fullHtml, "utf8");
+        fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
 
-        const edgePaths = [
-          `${process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"}\\Microsoft\\Edge\\Application\\msedge.exe`,
-          `${process.env.ProgramFiles || "C:\\Program Files"}\\Microsoft\\Edge\\Application\\msedge.exe`,
-          `${systemRoot}\\System32\\msedge.exe`,
-        ];
-        const edgeExe = edgePaths.find((p) => {
-          try { return fs.existsSync(p); } catch { return false; }
-        });
+        const psFile = path.join(tmpDir, `print_${timestamp}.ps1`);
+        const psScript = `
+param([string]$HtmlPath, [string]$TargetPrinter, [int]$Copies = 1)
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
 
-        if (edgeExe) {
-          try {
-            const printArg = safeTarget ? `--print-to-printer="${safeTarget}"` : "--print-to-printer";
-            for (let c = 0; c < Math.max(1, Number(copies) || 1); c++) {
-              await execAsync(`"${edgeExe}" --headless --disable-gpu ${printArg} "${htmlFile}"`, { timeout: 20000 });
-            }
-            printed = true;
-          } catch (edgeErr) {
-            console.warn("[printercekmeApp] Edge headless yazdırma hatası, Out-Printer fallback deneniyor:", edgeErr.message);
-          }
+# IE / WebBrowser üst ve alt bilgileri (Header & Footer) sıfırla
+$ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
+if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
+$oldHeader = (Get-ItemProperty -Path $ps -Name header -ErrorAction SilentlyContinue).header
+$oldFooter = (Get-ItemProperty -Path $ps -Name footer -ErrorAction SilentlyContinue).footer
+Set-ItemProperty -Path $ps -Name header -Value ''
+Set-ItemProperty -Path $ps -Name footer -Value ''
+
+# Hedef yazıcıyı bul
+$resolvedPrinter = $null
+try {
+  if ($TargetPrinter) {
+    $p = Get-Printer | Where-Object { $_.Name -like ('*' + $TargetPrinter + '*') -or $_.Name -eq $TargetPrinter } | Select-Object -First 1
+    if (-not $p) {
+      $clean = ($TargetPrinter -split '[\\\\/]')[-1]
+      $p = Get-Printer | Where-Object { $_.Name -like ('*' + $clean + '*') } | Select-Object -First 1
+    }
+    if ($p) { $resolvedPrinter = $p.Name }
+  }
+} catch {
+  try {
+    if ($TargetPrinter) {
+      $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $TargetPrinter + '*') -or $_.Name -eq $TargetPrinter } | Select-Object -First 1
+      if ($p) { $resolvedPrinter = $p.Name }
+    }
+  } catch {}
+}
+
+$net = New-Object -ComObject WScript.Network
+$prev = $null
+try {
+  $prev = (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
+} catch {
+  try {
+    $prev = (Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
+  } catch {}
+}
+
+$printerToSet = if ($resolvedPrinter) { $resolvedPrinter } elseif ($TargetPrinter) { $TargetPrinter } else { $prev }
+
+try {
+  if ($printerToSet) {
+    try { $net.SetDefaultPrinter($printerToSet) } catch {}
+  }
+  for ($i = 0; $i -lt [Math]::Max(1, $Copies); $i++) {
+    $wb = New-Object System.Windows.Forms.WebBrowser
+    $wb.ScriptErrorsSuppressed = $true
+    $script:loaded = $false
+    $wb.add_DocumentCompleted({ $script:loaded = $true })
+    $wb.Navigate($HtmlPath)
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $script:loaded -and $sw.Elapsed.TotalSeconds -lt 10) {
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 30
+    }
+    $wb.Print()
+    $sw.Restart()
+    while ($sw.Elapsed.TotalSeconds -lt 2) {
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 30
+    }
+    $wb.Dispose()
+  }
+} finally {
+  if ($printerToSet -and $prev -and $prev -ne $printerToSet) {
+    try { $net.SetDefaultPrinter($prev) } catch {}
+  }
+  if ($null -ne $oldHeader) { Set-ItemProperty -Path $ps -Name header -Value $oldHeader }
+  if ($null -ne $oldFooter) { Set-ItemProperty -Path $ps -Name footer -Value $oldFooter }
+}
+`;
+        fs.writeFileSync(psFile, "\ufeff" + psScript, "utf8");
+
+        const printerArg = safeTarget ? `-TargetPrinter "${safeTarget}"` : "";
+        try {
+          await execAsync(
+            `"${psPath}" -NoProfile -STA -ExecutionPolicy Bypass -File "${psFile}" -HtmlPath "${htmlFile}" ${printerArg} -Copies ${Math.max(1, Number(copies) || 1)}`,
+            { timeout: 35000 }
+          );
+          printed = true;
+        } catch (wbErr) {
+          console.warn("[printercekmeApp] WebBrowser yazdırma hatası:", wbErr.message);
+          printErrorMessage = wbErr.message;
         }
-        setTimeout(() => { try { fs.unlinkSync(htmlFile); } catch {} }, 8000);
+
+        setTimeout(() => {
+          try { fs.unlinkSync(htmlFile); } catch {}
+          try { fs.unlinkSync(psFile); } catch {}
+        }, 10000);
       }
 
-      // 2. Aşama: Edge yoksa veya başarısız olduysa PowerShell Out-Printer ile sessizce bas
+      // 2. Out-Printer düz metin yedeği (eğer HTML basılamadıysa ve text varsa)
+      const textContent = text || (html ? extractTextFromHtmlSimple(html) : "");
       if (!printed && textContent) {
-        const psPrintScript = `
+        try {
+          const textFile = path.join(tmpDir, `print_${timestamp}.txt`);
+          fs.writeFileSync(textFile, "\ufeff" + textContent, "utf8");
+          const psPrintScript = `
 $target = '${safeTarget}';
 $p = if ($target) { Get-Printer | Where-Object { $_.Name -like ('*' + $target + '*') } | Select-Object -First 1 } else { $null };
 if (-not $p -and $target) { $p = Get-Printer | Where-Object { $_.Name -eq $target } | Select-Object -First 1 };
@@ -368,17 +443,25 @@ for ($i = 0; $i -lt ${Math.max(1, Number(copies) || 1)}; $i++) {
   }
 }
 `;
-        await execAsync(`"${psPath}" -NoProfile -ExecutionPolicy Bypass -Command "${psPrintScript.replace(/\r?\n/g, ' ')}"`, { timeout: 20000 });
-        printed = true;
+          await execAsync(`"${psPath}" -NoProfile -ExecutionPolicy Bypass -Command "${psPrintScript.replace(/\r?\n/g, ' ')}"`, { timeout: 20000 });
+          printed = true;
+          setTimeout(() => { try { fs.unlinkSync(textFile); } catch {} }, 8000);
+        } catch (textErr) {
+          console.warn("[printercekmeApp] Out-Printer hatası:", textErr.message);
+          if (!printErrorMessage) printErrorMessage = textErr.message;
+        }
       }
-
-      setTimeout(() => { try { fs.unlinkSync(textFile); } catch {} }, 8000);
 
       if (printed) {
         return res.json({
           success: true,
           message: `Fiş "${targetPrinter || 'Varsayılan Yazıcı'}" cihazına başarıyla gönderildi.`,
           printerName: targetPrinter,
+        });
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: `Yazıcıya gönderilemedi: ${printErrorMessage || "Bilinmeyen hata"}`,
         });
       }
     } else {
@@ -401,8 +484,6 @@ for ($i = 0; $i -lt ${Math.max(1, Number(copies) || 1)}; $i++) {
     console.error("[printercekmeApp] Yazdırma hatası:", err);
     return res.status(500).json({ success: false, message: `Yazıcı hatası: ${err.message}` });
   }
-
-  return res.json({ success: true, message: `Fiş "${targetPrinter || 'Varsayılan Yazıcı'}" cihazına iletildi.` });
 });
 
 // ─── HTTP & WebSocket Sunucusu ──────────────────────────────────────────────
