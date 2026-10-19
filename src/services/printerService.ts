@@ -290,11 +290,29 @@ export class PrinterService {
       addPrinterName(p);
     }
 
-    // 2. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Client Makine Spooler)
+    // 2. printercekmeApp Yerel Köprü Servisi (Port 9100 - HTTP & WebSocket)
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
+      const res = await fetch("http://127.0.0.1:9100/api/printers", {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            addPrinterName(item?.name);
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Client Makine Spooler)
     if (Date.now() - lastPort5050FailTime > 15000) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
         const res = await fetch("http://127.0.0.1:5050/printers", {
           signal: controller.signal,
         });
@@ -450,6 +468,90 @@ export class PrinterService {
       success: true,
       message: `"${payload.printerName || 'Tanımlı Yazıcı'}" için yazdırma akışına yönlendirildi.`,
       fallbackToBrowser: true,
+    };
+  }
+
+  /**
+   * printercekmeApp (Yerel Ajan - Port 9100) üzerinden işletim sistemi yazıcılarını çeker
+   */
+  public static async fetchFromPrinterCekmeApp(): Promise<{
+    success: boolean;
+    printers: SystemPrinterItem[];
+    error?: string;
+  }> {
+    // 1. HTTP GET /api/printers
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch("http://127.0.0.1:9100/api/printers", {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const list: SystemPrinterItem[] = data
+            .map((item: any) => ({
+              name: String(item.name || "").trim(),
+              isDefault: Boolean(item.isDefault),
+              isOnline: item.status !== "Çevrimdışı",
+              source: "local_agent" as const,
+              details: `🔌 printercekmeApp (${item.status || "Hazır"})`,
+            }))
+            .filter((p) => p.name.length > 0);
+          return { success: true, printers: list };
+        }
+      }
+    } catch (httpErr) {
+      // 2. WebSocket Fallback (ws://127.0.0.1:9100) - HTTPS mixed content bypass
+      try {
+        if (typeof WebSocket !== "undefined") {
+          const wsList = await new Promise<SystemPrinterItem[]>((resolve, reject) => {
+            const ws = new WebSocket("ws://127.0.0.1:9100");
+            const timer = setTimeout(() => {
+              try {
+                ws.close();
+              } catch {}
+              reject(new Error("WebSocket timeout"));
+            }, 1800);
+
+            ws.onmessage = (event) => {
+              try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === "PRINTER_LIST" && Array.isArray(msg.data)) {
+                  clearTimeout(timer);
+                  ws.close();
+                  const list: SystemPrinterItem[] = msg.data
+                    .map((item: any) => ({
+                      name: String(item.name || "").trim(),
+                      isDefault: Boolean(item.isDefault),
+                      isOnline: item.status !== "Çevrimdışı",
+                      source: "local_agent" as const,
+                      details: `🔌 printercekmeApp WS (${item.status || "Hazır"})`,
+                    }))
+                    .filter((p: any) => p.name.length > 0);
+                  resolve(list);
+                }
+              } catch {}
+            };
+
+            ws.onerror = (err) => {
+              clearTimeout(timer);
+              reject(err);
+            };
+          });
+
+          if (wsList && wsList.length > 0) {
+            return { success: true, printers: wsList };
+          }
+        }
+      } catch {}
+    }
+
+    return {
+      success: false,
+      printers: [],
+      error: "Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.",
     };
   }
 }

@@ -83,11 +83,10 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinterItem[]>([]);
   const [isLoadingSystemPrinters, setIsLoadingSystemPrinters] = useState<boolean>(false);
   const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
-  const [scanWarningMessage, setScanWarningMessage] = useState<string | null>(null);
   const [selectedSystemPrinterName, setSelectedSystemPrinterName] = useState<string>("");
   const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
-  const [manualPrinterName, setManualPrinterName] = useState<string>("");
-  const manualInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [isAgentOnline, setIsAgentOnline] = useState<boolean | null>(null);
+  const [agentErrorMessage, setAgentErrorMessage] = useState<string | null>(null);
 
   // Sadece bu bilgisayara bağlı / Chrome Yazdır penceresindeki gerçek yazıcıları listeler (Sunucu verisi eklemez)
   const updateClientPrinterLists = (
@@ -114,13 +113,15 @@ export const PrinterDefinitionsPage: React.FC = () => {
       printerMap.set(key, {
         name: trimmed,
         isDefault: typeof item === "object" ? Boolean(item.isDefault) : false,
-        isOnline: true,
-        source: isVirtual ? "system" : typeof item === "object" && item.source ? item.source : "browser",
+        isOnline: typeof item === "object" && item.isOnline !== undefined ? Boolean(item.isOnline) : true,
+        source: isVirtual ? "system" : typeof item === "object" && item.source ? item.source : "local_agent",
         details: isVirtual
           ? "📄 Sanal Yazıcı / Belge Çıktısı (PDF / XPS)"
+          : typeof item === "object" && item.details
+          ? item.details
           : isNet
           ? "📶 Bu Bilgisayara Bağlı Kablosuz / Ağ Yazıcısı"
-          : "🔌 Bu Bilgisayara Bağlı Yerel Yazıcı (Denetim Masası / Port)",
+          : "🔌 printercekmeApp (Yerel Donanım)",
       });
     });
 
@@ -140,145 +141,55 @@ export const PrinterDefinitionsPage: React.FC = () => {
     return allItems;
   };
 
+  // printercekmeApp (Port 9100) üzerinden yazıcıları canlı çeker
+  const loadPrintersFromAgent = async () => {
+    setIsLoadingSystemPrinters(true);
+    setPermissionStatus("Yerel yazıcı servisi (printercekmeApp:9100) taranıyor...");
+
+    try {
+      const res = await PrinterService.fetchFromPrinterCekmeApp();
+      if (res.success && res.printers.length > 0) {
+        setIsAgentOnline(true);
+        setAgentErrorMessage(null);
+
+        const stored = getLocalPrintersFromStorage();
+        const combinedNames = Array.from(
+          new Set([...res.printers.map((p) => p.name), ...stored])
+        );
+        saveLocalPrintersToStorage(combinedNames);
+        const list = updateClientPrinterLists(res.printers);
+        setPermissionStatus(`🟢 printercekmeApp bağlı. ${res.printers.length} adet yerel yazıcı algılandı.`);
+        if (list.length > 0) {
+          setSelectedSystemPrinterName((prev) => (prev && list.some((p) => p.name === prev) ? prev : list[0].name));
+        }
+      } else {
+        setIsAgentOnline(false);
+        setAgentErrorMessage("Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.");
+        setPermissionStatus(null);
+        // Fallback olarak yerel hafızadaki yazıcıları göster
+        const stored = getLocalPrintersFromStorage();
+        updateClientPrinterLists(stored);
+      }
+    } catch (err: any) {
+      setIsAgentOnline(false);
+      setAgentErrorMessage("Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.");
+      setPermissionStatus(null);
+    } finally {
+      setIsLoadingSystemPrinters(false);
+    }
+  };
+
   // Sayfa açıldığında bu istemci bilgisayarın LocalStorage'ındaki kayıtlı yazıcılarını yükle
   useEffect(() => {
     const stored = getLocalPrintersFromStorage();
     updateClientPrinterLists(stored);
   }, []);
 
-  // "Yazıcıları Tara / İzin Ver" buton fonksiyonu
-  const handleScanWebPrinters = async (isAutoScanParam?: boolean | React.MouseEvent) => {
-    const isAutoScan = typeof isAutoScanParam === "boolean" ? isAutoScanParam : false;
-    setIsLoadingSystemPrinters(true);
-    setScanWarningMessage(null);
-    setPermissionStatus(null);
-
-    let detected: string[] = [];
-    let apiSucceeded = false;
-
-    try {
-      // 1. Chrome Permissions API kontrolü (İzin durumu 'prompt' ise tetikle veya 'denied' ise uyar)
-      if (typeof navigator !== "undefined" && (navigator as any).permissions?.query) {
-        try {
-          const perm = await (navigator as any).permissions.query({ name: "local-printer" });
-          if (perm && perm.state === "denied") {
-            console.debug("Chrome local-printer permission is denied");
-          }
-        } catch {}
-      }
-
-      // 2. window.queryLocalPrinters API'sini çağır (Chrome otomatik olarak izin dialogu çıkartır)
-      if (typeof window !== "undefined" && typeof (window as any).queryLocalPrinters === "function") {
-        try {
-          const result = await (window as any).queryLocalPrinters();
-          if (Array.isArray(result) && result.length > 0) {
-            for (const item of result) {
-              const name = typeof item === "string" ? item : item?.name || item?.id;
-              if (name && typeof name === "string" && !isNonPrinterHardware(name)) {
-                detected.push(name.trim());
-              }
-            }
-            apiSucceeded = true;
-          } else if (Array.isArray(result)) {
-            apiSucceeded = true;
-          }
-        } catch (err: any) {
-          console.debug("window.queryLocalPrinters izni verilmedi veya hata:", err);
-        }
-      }
-
-      // 3. navigator.printers API'sini çağır
-      if (!apiSucceeded && typeof navigator !== "undefined" && "printers" in navigator) {
-        try {
-          const navPrinters = (navigator as any).printers;
-          let result: any = null;
-          if (typeof navPrinters?.getPrinters === "function") {
-            result = await navPrinters.getPrinters();
-          } else if (typeof navPrinters?.query === "function") {
-            result = await navPrinters.query();
-          }
-          if (Array.isArray(result)) {
-            for (const item of result) {
-              const name = typeof item === "string" ? item : item?.name || item?.id;
-              if (name && typeof name === "string" && !isNonPrinterHardware(name)) {
-                detected.push(name.trim());
-              }
-            }
-            apiSucceeded = true;
-          }
-        } catch (err: any) {
-          console.debug("navigator.printers hatası:", err);
-        }
-      }
-
-      // 4. navigator.printing / window.printing API
-      if (!apiSucceeded) {
-        const printingApi =
-          (typeof navigator !== "undefined" && (navigator as any).printing) ||
-          (typeof window !== "undefined" && (window as any).printing);
-        if (printingApi && typeof printingApi.getPrinters === "function") {
-          try {
-            const result = await printingApi.getPrinters();
-            if (Array.isArray(result)) {
-              for (const item of result) {
-                const name = typeof item?.cachedAttributes === "function"
-                  ? item.cachedAttributes()?.printerName
-                  : item?.name || item?.id || item;
-                if (name && typeof name === "string" && !isNonPrinterHardware(name)) {
-                  detected.push(name.trim());
-                }
-              }
-              apiSucceeded = true;
-            }
-          } catch (err: any) {
-            console.debug("printing.getPrinters hatası:", err);
-          }
-        }
-      }
-
-      // Eğer API başarıyla dönerse: Dönen tüm yazıcı isimlerini (name) modal tablosuna canlı olarak bas
-      if (apiSucceeded && detected.length > 0) {
-        const currentStored = getLocalPrintersFromStorage();
-        const combined = Array.from(new Set([...detected, ...currentStored]));
-        saveLocalPrintersToStorage(combined);
-        const list = updateClientPrinterLists(combined);
-        setScanWarningMessage(null);
-        setPermissionStatus(`✅ ${detected.length} adet yazıcı başarıyla algılandı ve listelendi.`);
-        if (list.length > 0) {
-          setSelectedSystemPrinterName((prev) => prev || list[0].name);
-        }
-      } else {
-        // Eğer API tarayıcıda engelli veya tanımsız ise: Sayfayı kilitleme; kullanıcıya bilgilendirici bir uyarı göster:
-        setScanWarningMessage(
-          "Tarayıcınızın doğrudan donanım okuma izni kapalı. Yan taraftaki kutucuğa yazıcınızın adını (Örn: POS-80C) yazarak 'Ekle' butonuna basabilirsiniz."
-        );
-        // Otomatik ekleme alanına odaklan
-        setTimeout(() => {
-          manualInputRef.current?.focus();
-        }, 150);
-      }
-    } catch (err: any) {
-      setScanWarningMessage(
-        "Tarayıcınızın doğrudan donanım okuma izni kapalı. Yan taraftaki kutucuğa yazıcınızın adını (Örn: POS-80C) yazarak 'Ekle' butonuna basabilirsiniz."
-      );
-      setTimeout(() => {
-        manualInputRef.current?.focus();
-      }, 150);
-    } finally {
-      setIsLoadingSystemPrinters(false);
-    }
-  };
-
-  // Modal Açılışı: Sunucu makinesinin yazıcılarını çekmez, sadece istemci bilgisayarın yazıcılarını listeler
-  // Kullanıcı yazıcıları listelerken chrome izni eğer yok ise izni istesin otomatik ve ona göre geçsin izin
-  const handleOpenSystemPrinters = (forceScanParam?: boolean | React.MouseEvent) => {
-    const forceScan = typeof forceScanParam === "boolean" ? forceScanParam : false;
+  // Modal Açılışı: Otomatik olarak http://127.0.0.1:9100/api/printers adresine istek atar
+  const handleOpenSystemPrinters = () => {
     setShowSystemPrintersModal(true);
-    setIsLoadingSystemPrinters(false);
-    setScanWarningMessage(null);
-    setPermissionStatus(null);
     setSystemPrinterSearchTerm("");
-    setManualPrinterName("");
+    setAgentErrorMessage(null);
 
     const stored = getLocalPrintersFromStorage();
     const currentList = updateClientPrinterLists(stored);
@@ -290,75 +201,80 @@ export const PrinterDefinitionsPage: React.FC = () => {
       setSelectedSystemPrinterName("");
     }
 
-    // İstemci bilgisayarın listesi henüz boşsa veya tarama istendiyse Chrome izni iste ve tara
-    const canAttemptScan =
-      typeof window !== "undefined" &&
-      (typeof (window as any).queryLocalPrinters === "function" ||
-        (typeof navigator !== "undefined" && "printers" in navigator));
+    // Modal açıldığında otomatik printercekmeApp servisinden yazıcıları çek
+    loadPrintersFromAgent();
+  };
 
-    if (forceScan || (stored.length === 0 && canAttemptScan)) {
-      setTimeout(() => {
-        handleScanWebPrinters(true);
-      }, 80);
+  const handleGetPrinters = handleOpenSystemPrinters;
+
+  // Seçilen yazıcıyı forma ata ve doğrudan SQL veritabanına kaydet
+  const handleSelectAndSaveToSQL = async (printerName: string) => {
+    const cleanName = (printerName || "").trim();
+    if (!cleanName) return;
+
+    try {
+      setIsSaving(true);
+
+      // 1. İstemci LocalStorage'ına ekle
+      const stored = getLocalPrintersFromStorage();
+      const updated = Array.from(new Set([cleanName, ...stored]));
+      saveLocalPrintersToStorage(updated);
+      updateClientPrinterLists(updated);
+
+      // 2. Terminal bazlı seçili yazıcı olarak hafızaya al
+      const terminalUUID = PrinterService.getTerminalUUID();
+      PrinterService.saveClientPrinter(
+        {
+          name: cleanName,
+          source: "local_agent",
+          isDefault: true,
+          details: `printercekmeApp [Terminal: ${terminalUUID.substring(0, 10)}]`,
+        },
+        user?.id
+      );
+
+      // 3. Form alanlarını otomatik güncelle
+      const newAd =
+        !formData.ad || formData.ad.trim() === "" || formData.ad === formData.cihazAdi
+          ? cleanName
+          : formData.ad;
+
+      let cleanSiraNo = parseInt(String(formData.siraNo), 10);
+      if (isNaN(cleanSiraNo) || cleanSiraNo <= 0) {
+        const maxSira = yazicilar.reduce((max, y) => {
+          const s = Number(y.siraNo);
+          return !isNaN(s) && s > max ? s : max;
+        }, 0);
+        cleanSiraNo = Math.max(maxSira + 1, yazicilar.length + 1);
+      }
+
+      const payload: YaziciFormData = {
+        ...formData,
+        siraNo: cleanSiraNo,
+        ad: newAd,
+        cihazAdi: cleanName,
+        kopyaSayisi: parseInt(String(formData.kopyaSayisi), 10) || 1,
+      };
+
+      setFormData(payload);
+
+      // 4. Mevcut SQL API rotamıza POST / PUT ederek kaydet
+      if (isNewRecord || !selectedYazici) {
+        await PrinterService.createYazici(payload);
+      } else {
+        await PrinterService.updateYazici(selectedYazici.id, payload);
+      }
+
+      await loadData();
+      setShowSystemPrintersModal(false);
+    } catch (err: any) {
+      setAlertError(`❌ SQL Kayıt Hatası: ${err.message || "Yazıcı veritabanına kaydedilemedi."}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleGetPrinters = () => handleOpenSystemPrinters(true);
-
-  // Manuel Yazıcı Ekleme: Modal tablosuna ekler ve LocalStorage'a kaydeder
-  const handleAddManualLocalPrinter = () => {
-    const name = manualPrinterName.trim();
-    if (!name) return;
-
-    // 1. O anki bilgisayarın LocalStorage'ından mevcut listeyi al
-    const stored = getLocalPrintersFromStorage();
-    // 2. Yeni yazıcıyı listeye ekle
-    const updated = Array.from(new Set([name, ...stored]));
-    // 3. LocalStorage'a kaydet (localStorage.setItem('local_printers', ...))
-    saveLocalPrintersToStorage(updated);
-    // 4. Modal tablosundaki listeyi canlı olarak güncelle
-    const list = updateClientPrinterLists(updated);
-    // 5. Eklenen yazıcıyı seçili yap
-    setSelectedSystemPrinterName(name);
-    // 6. Kutucuğu temizle ve uyarıları kaldır
-    setManualPrinterName("");
-    setScanWarningMessage(null);
-    setPermissionStatus(`✅ "${name}" bu bilgisayarın yazıcı listesine eklendi.`);
-
-    // Kullanıcının ardışık ekleme yapabilmesi için inputta odağı tut
-    setTimeout(() => {
-      manualInputRef.current?.focus();
-    }, 50);
-  };
-
-  // Yerel listeden yazıcı çıkarma
-  const handleRemoveLocalPrinter = (printerNameToRemove: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const stored = getLocalPrintersFromStorage();
-    const updated = stored.filter((n) => n.toLowerCase() !== printerNameToRemove.toLowerCase());
-    saveLocalPrintersToStorage(updated);
-    const list = updateClientPrinterLists(updated);
-    if (selectedSystemPrinterName.toLowerCase() === printerNameToRemove.toLowerCase()) {
-      setSelectedSystemPrinterName(list[0]?.name || "");
-    }
-  };
-
-  // Seçilen yazıcıyı forma ata
-  const handleSelectSystemPrinter = (printerName: string) => {
-    if (!printerName) return;
-    handleInputChange("cihazAdi", printerName);
-    if (!formData.ad || formData.ad.trim() === "" || formData.ad === formData.cihazAdi) {
-      handleInputChange("ad", printerName);
-    }
-    const item: SystemPrinterItem = {
-      name: printerName,
-      source: isVirtualSystemPrinter(printerName) ? "system" : "browser",
-      isDefault: true,
-      details: "Bu Bilgisayarın Seçili Yazıcısı",
-    };
-    PrinterService.saveClientPrinter(item, user?.id);
-    setShowSystemPrintersModal(false);
-  };
+  const handleSelectSystemPrinter = handleSelectAndSaveToSQL;
 
   // Load all printers
   const loadData = async (targetIndex?: number) => {
@@ -801,140 +717,78 @@ export const PrinterDefinitionsPage: React.FC = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">
-          {/* Denetim Masası ve Yerel Yazıcı Durumu */}
-          {(() => {
-            const hasPrinters = systemPrinters.length > 0;
-            return hasPrinters ? (
-              <div className="alert alert-success bg-success bg-opacity-10 border-success border-opacity-25 py-2 px-3 small mb-2.5 d-flex align-items-center justify-content-between rounded-2 shadow-xs">
-                <div className="d-flex align-items-center gap-2">
-                  <IconCheck size={20} className="text-success flex-shrink-0" />
-                  <div>
-                    <strong className="text-success">Bu Bilgisayarın Yerel Yazıcıları ({systemPrinters.length} Adet)</strong>
-                    <span className="text-dark ms-1.5">
-                      — İstemci bilgisayarınıza tanımlı veya taranmış yazıcılar listelenmektedir.
-                    </span>
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-2">
-                  <Badge bg="success" className="px-2 py-1">
-                    🟢 {systemPrinters.length} Yazıcı Hazır
-                  </Badge>
-                  <Button
-                    variant="outline-primary"
-                    size="sm"
-                    className="fw-semibold py-0.5 px-2.5"
-                    onClick={handleScanWebPrinters}
-                    disabled={isLoadingSystemPrinters}
-                    title="Tarayıcı üzerinden donanım izni isteyerek bu bilgisayara bağlı yazıcıları yeniden tara"
-                  >
-                    <IconRefresh size={14} className="me-1" />
-                    <span>Yeniden Tara</span>
-                  </Button>
+          {/* printercekmeApp (Port 9100) Servis Durumu ve Bildirimleri */}
+          {isAgentOnline === true ? (
+            <div className="alert alert-success bg-success bg-opacity-10 border-success border-opacity-25 py-2 px-3 small mb-2.5 d-flex align-items-center justify-content-between rounded-2 shadow-xs">
+              <div className="d-flex align-items-center gap-2">
+                <IconCheck size={20} className="text-success flex-shrink-0" />
+                <div>
+                  <strong className="text-success">printercekmeApp Yerel Ajanı Bağlı (Port 9100)</strong>
+                  <span className="text-dark ms-1.5">
+                    — Bilgisayarınızdaki tüm donanım yazıcıları ({systemPrinters.length} Adet) canlı olarak listelendi.
+                  </span>
                 </div>
               </div>
-            ) : (
-              <div className="alert alert-info bg-info bg-opacity-10 border-info border-opacity-25 p-2.5 small mb-2.5 rounded-2 shadow-xs">
-                <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                  <div className="d-flex align-items-center gap-2">
-                    <IconPrinter size={20} className="text-primary flex-shrink-0" />
-                    <div>
-                      <div className="fw-bold text-dark mb-0.5">
-                        Doğrudan Bu Bilgisayara Bağlı Yazıcıları Tara
-                      </div>
-                      <div className="text-secondary" style={{ lineHeight: "1.3" }}>
-                        Kurulum gerektirmeden, tarayıcınız üzerinden bilgisayarınıza takılı olan fiş ve etiket yazıcılarını algılar.
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="fw-bold d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs text-nowrap"
-                    onClick={handleScanWebPrinters}
-                    disabled={isLoadingSystemPrinters}
-                    title="Bağlı yazıcıları tarar ve izin ister"
-                  >
-                    <IconRefresh size={15} />
-                    <span>🌐 Yazıcıları Tara / İzin Ver</span>
-                    {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
-                  </Button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Tarayıcı Donanım İzni Uyarısı (Eğer izin kapalı veya API tanımsızsa gösterilir) */}
-          {scanWarningMessage && (
-            <Alert
-              variant="warning"
-              className="py-2.5 px-3 small mb-2.5 border-0 rounded-2 text-dark d-flex align-items-start gap-2 shadow-xs"
-              style={{ backgroundColor: "#fef3c7" }}
-            >
-              <IconAlertCircle size={20} className="text-warning flex-shrink-0 mt-0.5" />
-              <div className="flex-grow-1">
-                <div className="fw-bold mb-0.5">Donanım Okuma İzni Uyarısı</div>
-                <div>{scanWarningMessage}</div>
-              </div>
-              <Button
-                variant="close"
-                size="sm"
-                className="ms-auto"
-                onClick={() => setScanWarningMessage(null)}
-                aria-label="Kapat"
-              />
-            </Alert>
-          )}
-
-          {/* Tarama ve Doğrudan İsim Girme Çubuğu */}
-          <div className="p-2 mb-2.5 rounded bg-light border d-flex flex-wrap align-items-center justify-content-between gap-2 shadow-xs">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <Button
-                variant="primary"
-                size="sm"
-                className="fw-bold d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs"
-                onClick={handleScanWebPrinters}
-                disabled={isLoadingSystemPrinters}
-                title="Tarayıcı üzerinden donanım izni isteyerek bu bilgisayara bağlı yazıcıları tara"
-              >
-                <IconPrinter size={16} />
-                <span>🌐 Yazıcıları Tara / İzin Ver</span>
-                {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
-              </Button>
-
-              {permissionStatus && (
-                <span className="small text-success fw-semibold ms-1">{permissionStatus}</span>
-              )}
-            </div>
-
-            <div className="d-flex align-items-center gap-1.5">
-              <span className="small text-secondary fw-semibold text-nowrap">Yazıcı Adı Gir:</span>
-              <div className="input-group input-group-sm" style={{ width: "240px" }}>
-                <Form.Control
-                  ref={manualInputRef}
-                  type="text"
-                  placeholder="Örn: POS-80C"
-                  value={manualPrinterName}
-                  onChange={(e) => setManualPrinterName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddManualLocalPrinter();
-                    }
-                  }}
-                  className="py-0.5"
-                />
+              <div className="d-flex align-items-center gap-2">
+                <Badge bg="success" className="px-2 py-1">
+                  🟢 {systemPrinters.length} Yazıcı Aktif
+                </Badge>
                 <Button
-                  variant="primary"
-                  onClick={handleAddManualLocalPrinter}
-                  disabled={!manualPrinterName.trim()}
-                  className="fw-semibold px-2.5"
-                  title="Bu bilgisayara özel yazıcı olarak ekler ve listeye kaydeder"
+                  variant="outline-primary"
+                  size="sm"
+                  className="fw-semibold py-0.5 px-2.5"
+                  onClick={loadPrintersFromAgent}
+                  disabled={isLoadingSystemPrinters}
+                  title="printercekmeApp üzerinden bilgisayara bağlı yazıcıları yeniden sorgula"
                 >
-                  Ekle
+                  <IconRefresh size={14} className="me-1" />
+                  <span>Yeniden Tara</span>
                 </Button>
               </div>
             </div>
-          </div>
+          ) : isAgentOnline === false || agentErrorMessage ? (
+            <Alert
+              variant="warning"
+              className="py-2.5 px-3 small mb-2.5 border-0 rounded-2 text-dark shadow-xs"
+              style={{ backgroundColor: "#fef3c7" }}
+            >
+              <div className="d-flex align-items-start justify-content-between gap-2">
+                <div className="d-flex align-items-start gap-2">
+                  <IconAlertCircle size={22} className="text-warning flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="fw-bold text-dark fs-7">
+                      ⚠️ Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.
+                    </div>
+                    <div className="text-secondary mt-0.5" style={{ lineHeight: "1.35" }}>
+                      Bilgisayarınıza takılı fiş ve etiket yazıcılarının doğrudan okunabilmesi için proje dizinindeki{" "}
+                      <strong className="text-dark font-monospace">printercekmeApp</strong> servisini başlatınız:
+                      <div className="mt-1 font-monospace bg-white border p-1 rounded px-2 text-dark user-select-all" style={{ fontSize: "11px" }}>
+                        cd printercekmeApp &amp;&amp; npm start &nbsp; <span className="text-muted">(veya baslat.bat dosyasına çift tıklayın)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="fw-bold text-nowrap py-1 px-3 d-flex align-items-center gap-1 shadow-xs"
+                  onClick={loadPrintersFromAgent}
+                  disabled={isLoadingSystemPrinters}
+                >
+                  <IconRefresh size={15} />
+                  <span>Ajanı Yeniden Dene</span>
+                  {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
+                </Button>
+              </div>
+            </Alert>
+          ) : (
+            <div className="p-2 mb-2.5 rounded bg-light border d-flex align-items-center justify-content-between">
+              <span className="small text-secondary">
+                Yerel yazıcı servisi (printercekmeApp) taranıyor, lütfen bekleyiniz...
+              </span>
+              <Spinner size="sm" animation="border" variant="primary" />
+            </div>
+          )}
 
           {/* Arama ve Canlı Listeyi Yenileme Çubuğu */}
           <div className="d-flex align-items-center justify-content-between gap-2 mb-2 p-1.5 bg-light rounded border">
@@ -944,7 +798,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
               </span>
               <Form.Control
                 type="text"
-                placeholder="Canlı yazıcılarda ara (Epson, PDF, Terminal vb.)..."
+                placeholder="Yazıcılarda ara (POS, Argox, Epson vb.)..."
                 value={systemPrinterSearchTerm}
                 onChange={(e) => setSystemPrinterSearchTerm(e.target.value)}
                 className="py-0.5"
@@ -953,15 +807,16 @@ export const PrinterDefinitionsPage: React.FC = () => {
 
             <div className="d-flex align-items-center gap-1.5">
               <Button
-                variant="outline-secondary"
+                variant="outline-primary"
                 size="sm"
                 className="py-0.5 px-3 d-flex align-items-center gap-1.5 fw-semibold shadow-xs"
-                onClick={handleOpenSystemPrinters}
+                onClick={loadPrintersFromAgent}
                 disabled={isLoadingSystemPrinters}
-                title="Kayıtlı Listeyi Yenile"
+                title="printercekmeApp (Port 9100) üzerinden yazıcıları canlı yenile"
               >
                 <IconRefresh size={14} />
-                <span>Listeyi Yenile</span>
+                <span>Yazıcıları Tara</span>
+                {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
               </Button>
             </div>
           </div>
@@ -969,7 +824,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
           {isLoadingSystemPrinters ? (
             <div className="text-center py-4">
               <Spinner animation="border" variant="primary" size="sm" className="me-2" />
-              <span className="text-secondary small">Bu bilgisayardaki yazıcılar taranıyor, lütfen bekleyiniz...</span>
+              <span className="text-secondary small">printercekmeApp üzerinden bilgisayardaki yazıcılar okunuyor...</span>
             </div>
           ) : (
             <div className="table-responsive border rounded mb-2" style={{ maxHeight: "320px", overflowY: "auto" }}>
@@ -978,8 +833,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
                   <tr>
                     <th style={{ width: "40px" }} className="text-center">#</th>
                     <th>Yazıcı / Aygıt Adı (Denetim Masası / Donanım)</th>
-                    <th style={{ width: "170px" }} className="text-center">Kaynak</th>
-                    <th style={{ width: "110px" }} className="text-end">İşlem</th>
+                    <th style={{ width: "170px" }} className="text-center">Durum / Kaynak</th>
+                    <th style={{ width: "130px" }} className="text-end">İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -993,9 +848,11 @@ export const PrinterDefinitionsPage: React.FC = () => {
                       return (
                         <tr>
                           <td colSpan={4} className="text-center py-4 text-muted">
-                            <div className="fw-semibold">Bu bilgisayarda henüz kayıtlı veya algılanan yazıcı bulunamadı.</div>
-                            <div className="small mt-1">
-                              Yukarıdaki <strong>"🌐 Yazıcıları Tara / İzin Ver"</strong> butonuna basabilir veya sağdaki kutucuğa yazıcınızın adını (Örn: POS-80C) yazarak <strong>"Ekle"</strong> butonuna basabilirsiniz.
+                            <div className="fw-semibold text-warning">
+                              ⚠️ Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.
+                            </div>
+                            <div className="small mt-1 text-secondary">
+                              Bilgisayarınızda <strong>printercekmeApp</strong> servisini başlattıktan sonra yukarıdaki <strong>"Yazıcıları Tara"</strong> butonuna basınız.
                             </div>
                           </td>
                         </tr>
@@ -1008,9 +865,9 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           key={idx}
                           style={{ cursor: "pointer" }}
                           onClick={() => setSelectedSystemPrinterName(p.name)}
-                          onDoubleClick={() => handleSelectSystemPrinter(p.name)}
+                          onDoubleClick={() => handleSelectAndSaveToSQL(p.name)}
                           className={isSelected ? "table-primary fw-semibold" : ""}
-                          title="Tek tıklama: Satırı seçer | Çift tıklama: Forma atar ve kapatır"
+                          title="Tek tık: Satırı seçer | Çift tık: Seçip SQL veritabanına otomatik kaydeder"
                         >
                           <td className="text-center text-secondary small">{idx + 1}</td>
                           <td>
@@ -1038,12 +895,12 @@ export const PrinterDefinitionsPage: React.FC = () => {
                             {(() => {
                               const s = `${p.name} ${p.details || ""}`.toLowerCase();
                               if (isVirtualSystemPrinter(p.name)) {
-                                return <Badge bg="secondary" className="px-2 py-0.5">📄 PDF / Sanal Yazıcı</Badge>;
+                                return <Badge bg="secondary" className="px-2 py-0.5">📄 PDF / Sanal</Badge>;
                               }
-                              if (s.includes("ağ") || s.includes("network") || s.includes("wi-fi") || s.includes("wifi") || s.includes("wsd") || s.includes("tcp") || s.includes("192.168.") || s.startsWith("\\\\")) {
-                                return <Badge bg="info" className="px-2 py-0.5">📶 Kablosuz / Ağ</Badge>;
+                              if (s.includes("ağ") || s.includes("network") || s.includes("wi-fi") || s.includes("wifi")) {
+                                return <Badge bg="info" className="px-2 py-0.5">📶 Ağ Yazıcısı</Badge>;
                               }
-                              return <Badge bg="success" className="px-2 py-0.5">🔌 Bu Bilgisayar (Yerel)</Badge>;
+                              return <Badge bg="success" className="px-2 py-0.5">🔌 Hazır (Yerel)</Badge>;
                             })()}
                           </td>
                           <td className="text-end">
@@ -1051,22 +908,19 @@ export const PrinterDefinitionsPage: React.FC = () => {
                               <Button
                                 variant={isSelected ? "primary" : "outline-primary"}
                                 size="sm"
-                                className="py-0 px-2 fw-semibold"
+                                className="py-0 px-2 fw-semibold text-nowrap"
+                                disabled={isSaving}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleSelectSystemPrinter(p.name);
+                                  handleSelectAndSaveToSQL(p.name);
                                 }}
+                                title="Bu yazıcıyı seçip SQL veritabanına otomatik kaydeder"
                               >
-                                Seç
-                              </Button>
-                              <Button
-                                variant="outline-danger"
-                                size="sm"
-                                className="py-0 px-1.5"
-                                title="Bu yazıcıyı bu bilgisayarın listesinden kaldır"
-                                onClick={(e) => handleRemoveLocalPrinter(p.name, e)}
-                              >
-                                <IconTrash size={14} />
+                                {isSaving && selectedSystemPrinterName === p.name ? (
+                                  <Spinner size="sm" animation="border" />
+                                ) : (
+                                  "Seç ve Ata"
+                                )}
                               </Button>
                             </div>
                           </td>
@@ -1082,20 +936,22 @@ export const PrinterDefinitionsPage: React.FC = () => {
         <Modal.Footer className="bg-light py-2 px-3 d-flex justify-content-between align-items-center">
           <div className="small text-muted">
             {selectedSystemPrinterName ? (
-              <span>Seçili Yazıcı: <strong className="text-dark">{selectedSystemPrinterName}</strong> (Çift tıkla veya 'Seç' butonuyla atayabilirsiniz)</span>
+              <span>Seçili Yazıcı: <strong className="text-dark">{selectedSystemPrinterName}</strong> ("Seç ve Ata" veya çift tıklama ile doğrudan SQL'e kaydedilir)</span>
             ) : (
-              <span>Tek tıklama satırı seçer, çift tıklama forma aktarır.</span>
+              <span>Listeden bir yazıcı seçiniz veya satıra çift tıklayınız.</span>
             )}
           </div>
           <div className="d-flex gap-2">
             <Button
               variant="primary"
               size="sm"
-              disabled={!selectedSystemPrinterName}
-              onClick={() => handleSelectSystemPrinter(selectedSystemPrinterName)}
-              className="fw-bold px-3"
+              disabled={!selectedSystemPrinterName || isSaving}
+              onClick={() => handleSelectAndSaveToSQL(selectedSystemPrinterName)}
+              className="fw-bold px-3 d-flex align-items-center gap-1.5"
             >
-              Seç ve Ata
+              <IconCheck size={16} />
+              <span>Seç ve Ata</span>
+              {isSaving && <Spinner size="sm" animation="border" className="ms-1" />}
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowSystemPrintersModal(false)}>
               Kapat

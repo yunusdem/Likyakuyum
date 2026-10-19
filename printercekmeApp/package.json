@@ -1,0 +1,38 @@
+{
+  "name": "printercekme-app",
+  "version": "1.0.0",
+  "description": "Likya ERP - Yerel Yazıcı Köprüsü ve Tarama Ajanı (Local Printer Bridge)",
+  "main": "index.js",
+  "type": "commonjs",
+  "bin": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build:exe": "pkg index.js --targets node22-win-x64 --output dist/PrinterAgent.exe"
+  },
+  "pkg": {
+    "scripts": [
+      "index.js"
+    ],
+    "targets": [
+      "node18-win-x64",
+      "node18-macos-x64"
+    ]
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.23.0",
+    "pkg": "^5.8.1"
+  },
+  "keywords": [
+    "printer",
+    "agent",
+    "bridge",
+    "likya-erp"
+  ],
+  "author": "Likya ERP",
+  "license": "ISC"
+}
