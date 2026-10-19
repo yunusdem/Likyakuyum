@@ -51,6 +51,7 @@ export const API_MODULLERI = {
         "ayarlar:ayarlar/firma-tanimlari",
     ],
     "/rapor": ["raporlar", "vezne", "kasa", "kur", "cari", "yonetici", "banka", "ust:masak", "etiket"],
+    "/xml-dosya": ["raporlar", "vezne", "yonetici"],
 };
 // Ağaç kuralı saf dosyada (paket hesabı da kullanır); eski içe aktarmalar için buradan da verilir
 export { modulleriDuzenle } from "./modulAgaci.js";

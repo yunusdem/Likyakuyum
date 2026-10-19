@@ -30,10 +30,14 @@ export class KurService {
         }
         return KurSqlRepository.deleteKurTablosu(id, dbContext);
     }
+    static tcmbCache = null;
     /**
      * Fetch live / official rates from TCMB XML feed
      */
     static async fetchTcmbRates() {
+        if (this.tcmbCache && Date.now() - this.tcmbCache.timestamp < 3000) {
+            return this.tcmbCache.rates;
+        }
         try {
             const response = await fetch("https://www.tcmb.gov.tr/kurlar/today.xml", {
                 headers: { "User-Agent": "Mozilla/5.0" },
@@ -64,12 +68,15 @@ export class KurService {
                     banknoteSelling: parseTag("BanknoteSelling"),
                 };
             }
+            if (Object.keys(rates).length > 0) {
+                this.tcmbCache = { timestamp: Date.now(), rates };
+            }
             return rates;
         }
         catch (err) {
             logger.warn("KurService.fetchTcmbRates error:", err?.message || err);
-            // Return empty object on error
-            return {};
+            // Return cached rates if available on error
+            return this.tcmbCache?.rates || {};
         }
     }
 }

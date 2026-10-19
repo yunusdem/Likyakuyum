@@ -109,6 +109,92 @@ export class YaziciService {
   }
 
   /**
+   * Bilgisayarda (Windows / macOS / Linux) kurulu aktif sistem yazıcılarını listeler (Aygıtlar ve Yazıcılar)
+   */
+  public static async getSystemPrinters(): Promise<{ name: string; isDefault?: boolean }[]> {
+    const isWin = process.platform === "win32";
+
+    if (isWin) {
+      // 1. PowerShell CIM / WMI ile Windows yazıcılarını al
+      try {
+        const cmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress"`;
+        const stdout = await new Promise<string>((resolve, reject) => {
+          exec(cmd, { timeout: 6000, maxBuffer: 1024 * 1024 }, (err, out) => {
+            if (err) reject(err);
+            else resolve(out);
+          });
+        });
+
+        if (stdout && stdout.trim()) {
+          const parsed = JSON.parse(stdout.trim());
+          const list = Array.isArray(parsed) ? parsed : [parsed];
+          return list
+            .filter((p: any) => p && p.Name)
+            .map((p: any) => ({
+              name: String(p.Name).trim(),
+              isDefault: Boolean(p.Default),
+            }));
+        }
+      } catch (wmiErr: any) {
+        logger.warn(`[getSystemPrinters] PowerShell CIM error: ${wmiErr.message}`);
+      }
+
+      // 2. Fallback: WMIC komutu
+      try {
+        const cmd = `wmic printer get name,default /format:csv`;
+        const stdout = await new Promise<string>((resolve, reject) => {
+          exec(cmd, { timeout: 5000 }, (err, out) => {
+            if (err) reject(err);
+            else resolve(out);
+          });
+        });
+
+        const lines = stdout.split(/\r?\n/).filter((l) => l.trim() && !l.toLowerCase().startsWith("node"));
+        const results: { name: string; isDefault?: boolean }[] = [];
+        for (const line of lines) {
+          const parts = line.split(",");
+          if (parts.length >= 2) {
+            const isDef = parts[1]?.trim().toUpperCase() === "TRUE";
+            const name = parts[2]?.trim() || parts[1]?.trim();
+            if (name) results.push({ name, isDefault: isDef });
+          }
+        }
+        if (results.length > 0) return results;
+      } catch (wmicErr: any) {
+        logger.warn(`[getSystemPrinters] WMIC error: ${wmicErr.message}`);
+      }
+    } else {
+      // macOS / Linux (CUPS lpstat)
+      try {
+        const stdout = await new Promise<string>((resolve) => {
+          exec("lpstat -p -d", { timeout: 4000 }, (_err, out) => {
+            resolve(out || "");
+          });
+        });
+
+        const printers: { name: string; isDefault?: boolean }[] = [];
+        let defaultPrinter = "";
+        const defaultMatch = stdout.match(/system default destination:\s*(.+)/i) || stdout.match(/saptanan hedef:\s*(.+)/i);
+        if (defaultMatch) defaultPrinter = defaultMatch[1].trim();
+
+        const lines = stdout.split("\n");
+        for (const line of lines) {
+          const m = line.match(/^printer\s+([^\s]+)/i) || line.match(/^yazıcı\s+([^\s]+)/i);
+          if (m && m[1]) {
+            const name = m[1].trim();
+            printers.push({ name, isDefault: name === defaultPrinter });
+          }
+        }
+        if (printers.length > 0) return printers;
+      } catch (unixErr: any) {
+        logger.warn(`[getSystemPrinters] Unix lpstat error: ${unixErr.message}`);
+      }
+    }
+
+    return [];
+  }
+
+  /**
    * Doğrudan Yazıcıya Çıktı Gönderme (Direct Hardware / OS Print)
    */
   public static async directPrint(

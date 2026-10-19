@@ -17,18 +17,21 @@ import {
   IconAlertCircle,
   IconTrash,
   IconAdjustments,
+  IconRefresh,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
 import LookupModal from "../../components/common/LookupModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
+import { useToast } from "../../context/ToastContext";
 import { printReportTable } from "../../utils/printReport";
 import {
   PrinterService,
   YaziciItem,
   YaziciFormData,
   YaziciUsageInfo,
+  SystemPrinterItem,
 } from "../../services/printerService";
 
 
@@ -37,9 +40,9 @@ const initialFormState: YaziciFormData = {
   ad: "",
   cihazAdi: "",
   baglantiNoktasi: "",
-  belgeYaziciModu: 2,
+  belgeYaziciModu: 1,
   belgeYaziciDizini: "",
-  kopyaSayisi: "" as any,
+  kopyaSayisi: 1,
 };
 
 export const PrinterDefinitionsPage: React.FC = () => {
@@ -55,6 +58,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
 
   useERPAutoFocus({ dependencies: [isNewRecord, selectedIndex] });
 
+  const { showSuccess, showError } = useToast();
+
   // UI / Status states
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -67,6 +72,77 @@ export const PrinterDefinitionsPage: React.FC = () => {
     usage?: YaziciUsageInfo;
   } | null>(null);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
+  const [showSystemPrintersModal, setShowSystemPrintersModal] = useState<boolean>(false);
+  const [systemPrinters, setSystemPrinters] = useState<SystemPrinterItem[]>([]);
+  const [isLoadingSystemPrinters, setIsLoadingSystemPrinters] = useState<boolean>(false);
+  const [customPrinterName, setCustomPrinterName] = useState<string>("");
+  const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
+  const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
+  const [selectedSystemPrinterName, setSelectedSystemPrinterName] = useState<string>("");
+
+  const handleOpenSystemPrinters = async () => {
+    setShowSystemPrintersModal(true);
+    setIsLoadingSystemPrinters(true);
+    setPermissionStatus(null);
+    setSelectedSystemPrinterName(formData.cihazAdi || "");
+    try {
+      const list = await PrinterService.getSystemPrinters();
+      setSystemPrinters(list || []);
+      if (!formData.cihazAdi && list && list.length > 0) {
+        setSelectedSystemPrinterName(list[0].name);
+      }
+    } catch (err) {
+      console.error("Sistem yazıcıları listelenirken hata:", err);
+    } finally {
+      setIsLoadingSystemPrinters(false);
+    }
+  };
+
+  const handleRequestBrowserPermission = async () => {
+    setIsRequestingPermission(true);
+    setPermissionStatus(null);
+    try {
+      const detected = await PrinterService.requestClientDevicePermission();
+      if (detected) {
+        setPermissionStatus(`İzin verildi: ${detected.name}`);
+        showSuccess(`İzin verildi: "${detected.name}" bu bilgisayardan seçildi.`);
+        const updatedList = await PrinterService.getSystemPrinters();
+        setSystemPrinters(updatedList || []);
+        handleSelectSystemPrinter(detected.name);
+      } else {
+        setPermissionStatus("Aygıt seçimi iptal edildi.");
+      }
+    } catch (err: any) {
+      console.error("İzin isteme hatası:", err);
+      const msg = err.message || "Yazıcı donanım izni alınamadı.";
+      setPermissionStatus(msg);
+      showError(msg);
+    } finally {
+      setIsRequestingPermission(false);
+    }
+  };
+
+  const handleAddCustomPrinter = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = customPrinterName.trim();
+    if (!trimmed) return;
+    PrinterService.saveClientPrinter({
+      name: trimmed,
+      source: "manual",
+      isDefault: true,
+    });
+    showSuccess(`"${trimmed}" yazıcısı kaydedildi ve seçildi.`);
+    handleSelectSystemPrinter(trimmed);
+    setCustomPrinterName("");
+  };
+
+  const handleSelectSystemPrinter = (printerName: string) => {
+    handleInputChange("cihazAdi", printerName);
+    if (!formData.ad || formData.ad.trim() === "" || formData.ad === formData.cihazAdi) {
+      handleInputChange("ad", printerName);
+    }
+    setShowSystemPrintersModal(false);
+  };
 
   // Load all printers
   const loadData = async (targetIndex?: number) => {
@@ -127,9 +203,9 @@ export const PrinterDefinitionsPage: React.FC = () => {
       ad: "",
       cihazAdi: "",
       baglantiNoktasi: "",
-      belgeYaziciModu: 2,
+      belgeYaziciModu: 1,
       belgeYaziciDizini: "",
-      kopyaSayisi: "" as any,
+      kopyaSayisi: 1,
     });
     if (showAlert) {
       setAlertSuccess("Form alanları temizlendi. Yeni bilgileri girip sol üstteki 'Kaydet' (💾) butonuna basınız.");
@@ -378,127 +454,42 @@ export const PrinterDefinitionsPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    {/* Yazıcı Tanım / Paylaşım Adı - Oklu Dürbünlü Kod/Kayıt Seçici */}
+                    {/* Yazıcı Tanımı / Adı - Programdaki ismi (Dürbünsüz) */}
                     <Form.Group as={Row} className="mb-2 align-items-center g-2">
                       <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
                         Yazıcı Tanımı / Adı <span className="text-danger">*</span> :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "280px" }}>
-                          <CodeLookupInput
-                            value={formData.ad}
+                        <div style={{ maxWidth: "340px" }}>
+                          <Form.Control
+                            type="text"
+                            size="sm"
                             maxLength={200}
+                            placeholder="Örn: Fiş Yazıcısı"
+                            value={formData.ad}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("ad", e.target.value)}
                             required
-                            onLookupClick={() => setShowLookupModal(true)}
-                            lookupTitle="Tanımlı Yazıcılardan Seç (Oklu Dürbün)"
                           />
                         </div>
                       </Col>
                     </Form.Group>
 
-                    {/* Cihaz / Aygıt Adı */}
+                    {/* Cihaz / Aygıt Adı - Dürbünlü: O bilgisayardaki yazıcıları seçtirir ve doğrudan düzenlenebilir */}
                     <Form.Group as={Row} className="mb-2 align-items-center g-2">
                       <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
                         Cihaz / Aygıt Adı :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "280px" }}>
-                          <Form.Control
-                            type="text"
-                            size="sm"
-                            maxLength={200}
+                        <div style={{ maxWidth: "340px" }}>
+                          <CodeLookupInput
                             value={formData.cihazAdi || ""}
+                            maxLength={200}
+                            placeholder="Örn: POS-80D veya POS-80C"
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleInputChange("cihazAdi", e.target.value)}
-                          />
-                        </div>
-                      </Col>
-                    </Form.Group>
-
-                    {/* Bağlantı Noktası */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                        Bağlantı Noktası :
-                      </Form.Label>
-                      <Col>
-                        <div style={{ maxWidth: "240px" }}>
-                          <Form.Control
-                            type="text"
-                            size="sm"
-                            maxLength={200}
-                            value={formData.baglantiNoktasi || ""}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleInputChange("baglantiNoktasi", e.target.value)}
-                          />
-                        </div>
-                      </Col>
-                    </Form.Group>
-
-                    {/* Belge Yazıcı Modu */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                        Yazıcı Modu <span className="text-danger">*</span> :
-                      </Form.Label>
-                      <Col>
-                        <div style={{ maxWidth: "340px" }}>
-                          <Form.Select
-                            size="sm"
-                            value={formData.belgeYaziciModu}
-                            onChange={(e) => handleInputChange("belgeYaziciModu", parseInt(e.target.value, 10))}
-                            className="fw-semibold text-dark"
-                          >
-                            <option value={0}>0 - Standart Windows Sürücüsü (A4 / A5 Fatura)</option>
-                            <option value={1}>1 - ESC/POS Direkt Termal (USB/Seri Port)</option>
-                            <option value={2}>2 - Ağ Paylaşımı / Raw (IP / LAN Fiş Yazıcısı)</option>
-                            <option value={3}>3 - Dosyaya Yazdır / Arşiv (Klasöre Kaydetme)</option>
-                          </Form.Select>
-                        </div>
-                      </Col>
-                    </Form.Group>
-
-                    {/* Varsayılan Kopya Sayısı */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                        Kopya Sayısı :
-                      </Form.Label>
-                      <Col>
-                        <div style={{ maxWidth: "130px" }}>
-                          <Form.Control
-                            size="sm"
-                            type="text"
-                            inputMode="numeric"
-                            value={formData.kopyaSayisi || ""}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/[^0-9]/g, "");
-                              handleInputChange("kopyaSayisi", val === "" ? "" : parseInt(val, 10));
-                            }}
-                            onBlur={() => {
-                              const parsed = parseInt(String(formData.kopyaSayisi), 10);
-                              handleInputChange("kopyaSayisi", isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99));
-                            }}
-                            className="font-monospace text-dark"
-                          />
-                        </div>
-                      </Col>
-                    </Form.Group>
-
-                    {/* Belge Yazıcı Dizini */}
-                    <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                      <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
-                        Klasöre Yazdır :
-                      </Form.Label>
-                      <Col>
-                        <div style={{ maxWidth: "340px" }}>
-                          <Form.Control
-                            type="text"
-                            size="sm"
-                            maxLength={60}
-                            placeholder="Alt klasör adı (firma klasörü › Yazdirma)"
-                            value={formData.belgeYaziciDizini || ""}
-                            onChange={(e) => handleInputChange("belgeYaziciDizini", e.target.value)}
+                            onLookupClick={handleOpenSystemPrinters}
+                            lookupTitle="Bilgisayardaki Aktif Yazıcıları Listele ve Seç (Denetim Masası)"
                           />
                         </div>
                       </Col>
@@ -540,13 +531,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
             render: (y) => <span className="fw-semibold text-dark">{y.ad}</span>,
           },
           {
-            header: "Cihaz / Aygıt",
-            render: (y) => y.cihazAdi || "-",
-          },
-          {
-            header: "Bağlantı Portu",
-            width: "120px",
-            render: (y) => <span className="font-monospace text-secondary small">{y.baglantiNoktasi || "-"}</span>,
+            header: "Cihaz / Aygıt Adı",
+            render: (y) => <span className="text-secondary">{y.cihazAdi || "-"}</span>,
           },
         ]}
         onSelect={(y) => {
@@ -554,6 +540,200 @@ export const PrinterDefinitionsPage: React.FC = () => {
           handleSelectYazici(y, foundIdx !== -1 ? foundIdx : 0);
         }}
       />
+
+      {/* Bilgisayardaki Aktif Yazıcıları Seçme Modalı (Denetim Masası / Aygıtlar ve Yazıcılar) */}
+      {/* Bilgisayardaki Aktif Yazıcılar (Tarayıcı İstemci İzni & Denetim Masası) Modalı */}
+      <Modal
+        show={showSystemPrintersModal}
+        onHide={() => setShowSystemPrintersModal(false)}
+        centered
+        size="lg"
+      >
+        <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
+            <IconPrinter size={20} className="text-primary" />
+            <span>Bilgisayardaki Aktif Yazıcılar (İstemci Aygıtları & Denetim Masası)</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          {/* İstemci Bilgisayarı Erişim İzni - Kompakt */}
+          <div className="bg-light border rounded px-2.5 py-1.5 mb-2 d-flex align-items-center justify-content-between gap-2">
+            <div className="d-flex align-items-center gap-1.5 small text-secondary">
+              <IconPrinter size={16} className="text-primary flex-shrink-0" />
+              <span><strong>İstemci Yazıcı İzni:</strong> Bilgisayarınıza bağlı (USB/Seri) yazıcıyı algılamak için izin veriniz.</span>
+            </div>
+            <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
+              <Button
+                variant="primary"
+                size="sm"
+                className="py-0.5 px-2.5 d-flex align-items-center gap-1 small fw-semibold"
+                onClick={handleRequestBrowserPermission}
+                disabled={isRequestingPermission}
+              >
+                {isRequestingPermission ? (
+                  <>
+                    <Spinner animation="border" size="sm" />
+                    <span>Bekleniyor...</span>
+                  </>
+                ) : (
+                  <>
+                    <IconCheck size={14} />
+                    <span>İzin Ver / Aygıt Seç</span>
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="py-0.5 px-2 d-flex align-items-center gap-1 small"
+                onClick={handleOpenSystemPrinters}
+                disabled={isLoadingSystemPrinters}
+                title="Yeniden Tara"
+              >
+                <IconRefresh size={14} />
+                <span>Yenile</span>
+              </Button>
+            </div>
+          </div>
+          {permissionStatus && (
+            <div className="small mb-2 text-info px-1 fw-semibold">
+              ℹ️ {permissionStatus}
+            </div>
+          )}
+
+          {/* Denetim Masasındaki Yazıcı Adını Doğrudan Girme ve Kaydetme */}
+          <Form onSubmit={handleAddCustomPrinter} className="mb-2">
+            <div className="d-flex align-items-center gap-2 p-1.5 bg-light rounded border">
+              <span className="small fw-semibold text-secondary text-nowrap ms-1">
+                Denetim Masasındaki Adı:
+              </span>
+              <Form.Control
+                type="text"
+                size="sm"
+                placeholder="Örn: POS-80D veya POS-80C"
+                value={customPrinterName}
+                onChange={(e) => setCustomPrinterName(e.target.value)}
+                className="flex-grow-1 py-0.5"
+              />
+              <Button
+                type="submit"
+                variant="outline-primary"
+                size="sm"
+                className="text-nowrap fw-semibold py-0.5 px-2.5"
+                disabled={!customPrinterName.trim()}
+              >
+                Ekle ve Seç
+              </Button>
+            </div>
+          </Form>
+
+          {isLoadingSystemPrinters ? (
+            <div className="text-center py-4">
+              <Spinner animation="border" variant="primary" size="sm" className="me-2" />
+              <span className="text-secondary small">Bilgisayardaki yazıcılar taranıyor, lütfen bekleyiniz...</span>
+            </div>
+          ) : (
+            <>
+              {systemPrinters && systemPrinters.length > 0 ? (
+                <div className="table-responsive border rounded mb-2" style={{ maxHeight: "280px", overflowY: "auto" }}>
+                  <table className="table table-hover table-sm align-middle mb-0 user-select-none">
+                    <thead className="table-light sticky-top">
+                      <tr>
+                        <th style={{ width: "40px" }} className="text-center">#</th>
+                        <th>Yazıcı / Aygıt Adı (Denetim Masası / Donanım)</th>
+                        <th style={{ width: "160px" }} className="text-center">Kaynak</th>
+                        <th style={{ width: "90px" }} className="text-end">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {systemPrinters.map((p, idx) => {
+                        const isSelected = selectedSystemPrinterName === p.name;
+                        return (
+                          <tr
+                            key={idx}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => setSelectedSystemPrinterName(p.name)}
+                            onDoubleClick={() => handleSelectSystemPrinter(p.name)}
+                            className={isSelected ? "table-primary fw-semibold" : ""}
+                            title="Tek tıklama: Satırı seçer | Çift tıklama: Forma atar ve kapatır"
+                          >
+                            <td className="text-center text-secondary small">{idx + 1}</td>
+                            <td>
+                              <div className="d-flex align-items-center gap-2">
+                                <IconPrinter size={18} className="text-primary opacity-75" />
+                                <span className={isSelected ? "text-primary fw-bold" : "text-dark"}>
+                                  {p.name}
+                                </span>
+                                {formData.cihazAdi === p.name && (
+                                  <Badge bg="primary" className="ms-1 px-1.5 py-0.5">Mevcut</Badge>
+                                )}
+                              </div>
+                            </td>
+                            <td className="text-center">
+                              {p.source === "usb" ? (
+                                <Badge bg="info" className="px-2 py-0.5">USB / Donanım</Badge>
+                              ) : p.source === "serial" ? (
+                                <Badge bg="warning" text="dark" className="px-2 py-0.5">Seri Port</Badge>
+                              ) : p.source === "system" ? (
+                                <Badge bg="secondary" className="px-2 py-0.5">Denetim Masası</Badge>
+                              ) : p.source === "manual" ? (
+                                <Badge bg="light" text="dark" className="border px-2 py-0.5">Tanımlı Aygıt</Badge>
+                              ) : (
+                                <Badge bg="success" className="px-2 py-0.5">Hazır</Badge>
+                              )}
+                            </td>
+                            <td className="text-end">
+                              <Button
+                                variant={isSelected ? "primary" : "outline-primary"}
+                                size="sm"
+                                className="py-0 px-2.5 fw-semibold"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectSystemPrinter(p.name);
+                                }}
+                              >
+                                Seç
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="alert alert-light border text-secondary py-3 px-3 small text-center mb-2">
+                  Bu bilgisayarda henüz algılanmış yazıcı bulunmuyor.
+                  <br />
+                  Yukarıdaki <strong>"İzin Ver / Aygıt Seç"</strong> butonuna tıklayarak veya adını yazarak bu bilgisayara ait yazıcıyı kaydedebilirsiniz.
+                </div>
+              )}
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="bg-light py-2 px-3 d-flex justify-content-between align-items-center">
+          <div className="small text-muted">
+            {selectedSystemPrinterName ? (
+              <span>Seçili Satır: <strong className="text-dark">{selectedSystemPrinterName}</strong> (Çift tıkla veya 'Seç' butonuyla atayın)</span>
+            ) : (
+              <span>Tek tıkla satır seçebilir, çift tıkla formu doldurabilirsiniz.</span>
+            )}
+          </div>
+          <div className="d-flex gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!selectedSystemPrinterName}
+              onClick={() => handleSelectSystemPrinter(selectedSystemPrinterName)}
+            >
+              Seç ve Ata
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowSystemPrintersModal(false)}>
+              Kapat
+            </Button>
+          </div>
+        </Modal.Footer>
+      </Modal>
 
       {/* Yazıcı Silme Onay Popup'ı (Sayfa ortasında, nerelerden silineceğini açıkça listeleyen popup) */}
       <Modal

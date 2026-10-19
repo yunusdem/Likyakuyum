@@ -5,10 +5,39 @@ import anaConfig from './vite.config';
 
 const erpHtml = (env: Record<string, string>): Plugin => ({
   name: 'likya-erp-html',
-  // Geliştirmede tüm sayfa istekleri erp.html'e düşsün (SPA yönlendirmesi)
+  buildStart() {
+    // public/images altındaki logo ve varlıkları public-erp'ye otomatik senkronize et
+    const srcImages = path.resolve(__dirname, 'public', 'images');
+    const destImages = path.resolve(__dirname, 'public-erp', 'images');
+    if (!fs.existsSync(destImages) && fs.existsSync(srcImages)) {
+      try {
+        fs.cpSync(srcImages, destImages, { recursive: true });
+      } catch {}
+    }
+  },
+  // Geliştirmede tüm sayfa istekleri erp.html'e düşsün, /images/ istekleri public/images'den sunulsun
   configureServer(server) {
-    server.middlewares.use((req, _res, next) => {
+    server.middlewares.use((req, res, next) => {
       const url = req.url || '';
+      if (url.startsWith('/images/')) {
+        const cleanPath = url.split('?')[0];
+        const publicFilePath = path.join(__dirname, 'public', cleanPath);
+        if (fs.existsSync(publicFilePath) && fs.statSync(publicFilePath).isFile()) {
+          const ext = path.extname(cleanPath).toLowerCase();
+          const mimeTypes: Record<string, string> = {
+            '.svg': 'image/svg+xml',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.ico': 'image/x-icon',
+          };
+          res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+          fs.createReadStream(publicFilePath).pipe(res);
+          return;
+        }
+      }
       if (req.method === 'GET' && req.headers.accept?.includes('text/html') && !url.startsWith('/api')) {
         req.url = '/erp.html';
       }
@@ -26,6 +55,15 @@ const erpHtml = (env: Record<string, string>): Plugin => ({
     const cikti = path.resolve(__dirname, 'dist-erp');
     const kaynak = path.join(cikti, 'erp.html');
     if (fs.existsSync(kaynak)) fs.renameSync(kaynak, path.join(cikti, 'index.html'));
+
+    // dist-erp içine images kopyalandığından emin ol
+    const distImages = path.join(cikti, 'images');
+    const srcImages = path.resolve(__dirname, 'public', 'images');
+    if (!fs.existsSync(distImages) && fs.existsSync(srcImages)) {
+      try {
+        fs.cpSync(srcImages, distImages, { recursive: true });
+      } catch {}
+    }
   }
 });
 

@@ -43,7 +43,140 @@ export interface YaziciUsageInfo {
   numeratorDetails: { tur: number; onek: string }[];
 }
 
+export interface SystemPrinterItem {
+  name: string;
+  isDefault?: boolean;
+  source?: "browser" | "usb" | "serial" | "system" | "manual";
+}
+
 export class PrinterService {
+  /**
+   * Tarayıcı yerel hafızasından bu bilgisayara ait kayıtlı/izinli yazıcıları getirir
+   */
+  public static getClientStoredPrinters(): SystemPrinterItem[] {
+    try {
+      const raw = localStorage.getItem("likya_client_printers");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  }
+
+  /**
+   * İstemci yazıcısını bu bilgisayarın tarayıcı hafızasına kaydeder
+   */
+  public static saveClientPrinter(printer: SystemPrinterItem): void {
+    try {
+      const current = PrinterService.getClientStoredPrinters();
+      const filtered = current.filter((p) => p.name.toLowerCase() !== printer.name.toLowerCase());
+      filtered.unshift(printer);
+      localStorage.setItem("likya_client_printers", JSON.stringify(filtered.slice(0, 30)));
+    } catch {}
+  }
+
+  /**
+   * Doğrudan bu bilgisayardaki yazıcı/aygıta erişmek için tarayıcı izni ister (WebUSB / WebSerial / Web Printing)
+   * Sunucunun değil, anlık tarayıcıdan siteye girilen bilgisayarın donanımlarına erişir.
+   */
+  public static async requestClientDevicePermission(): Promise<SystemPrinterItem | null> {
+    // 1. Web Printing API (eğer tarayıcı sürümü doğrudan destekliyorsa)
+    if ("printing" in navigator && typeof (navigator as any).printing?.getPrinters === "function") {
+      try {
+        const printers = await (navigator as any).printing.getPrinters();
+        if (Array.isArray(printers) && printers.length > 0) {
+          const item: SystemPrinterItem = {
+            name: printers[0].name || printers[0].id || "Sistem Yazıcısı",
+            isDefault: true,
+            source: "browser",
+          };
+          PrinterService.saveClientPrinter(item);
+          return item;
+        }
+      } catch (e) {
+        console.warn("Web Printing API çağrısı:", e);
+      }
+    }
+
+    // 2. WebUSB Aygıt İzni (USB Fiş, Barkod ve Masaüstü Yazıcılar - POS-80D, POS-80C vb.)
+    const navUsb = (navigator as any).usb;
+    if (navUsb && typeof navUsb.requestDevice === "function") {
+      try {
+        const device = await navUsb.requestDevice({ filters: [] });
+        if (device) {
+          const rawName =
+            device.productName ||
+            device.manufacturerName ||
+            `USB Yazıcı (${device.vendorId ? device.vendorId.toString(16) : ""}:${device.productId ? device.productId.toString(16) : ""})`;
+          const item: SystemPrinterItem = {
+            name: rawName.trim(),
+            isDefault: true,
+            source: "usb",
+          };
+          PrinterService.saveClientPrinter(item);
+          return item;
+        }
+      } catch (err: any) {
+        if (err.name !== "NotFoundError") {
+          console.warn("WebUSB izin hatası:", err);
+          throw err;
+        }
+        return null;
+      }
+    }
+
+    // 3. WebSerial Aygıt İzni (Seri / COM Port Yazıcıları)
+    if ("serial" in navigator && typeof (navigator as any).serial?.requestPort === "function") {
+      try {
+        const port = await (navigator as any).serial.requestPort();
+        if (port) {
+          const info = port.getInfo?.() || {};
+          const item: SystemPrinterItem = {
+            name: `Seri/COM Yazıcı (USB-VID:${info.usbVendorId || "Auto"})`,
+            isDefault: true,
+            source: "serial",
+          };
+          PrinterService.saveClientPrinter(item);
+          return item;
+        }
+      } catch (err: any) {
+        if (err.name !== "NotFoundError") {
+          console.warn("WebSerial izin hatası:", err);
+          throw err;
+        }
+        return null;
+      }
+    }
+
+    throw new Error(
+      "Tarayıcınız WebUSB/WebSerial donanım izin penceresini desteklemiyor. Lütfen güncel Chrome veya Edge tarayıcı kullanınız."
+    );
+  }
+
+  /**
+   * Bilgisayarda kayıtlı aktif yazıcıları listeler.
+   * Asla 127.0.0.1:25050 gibi rastgele portlara fetch atıp ERR_CONNECTION_REFUSED üretmez.
+   */
+  public static async getSystemPrinters(): Promise<SystemPrinterItem[]> {
+    const clientPrinters = PrinterService.getClientStoredPrinters();
+    const results: SystemPrinterItem[] = [...clientPrinters];
+
+    // Ana backend üzerinden kurulu işletim sistemi yazıcılarını sorgula
+    try {
+      const res = await apiClient.get<SystemPrinterItem[]>("/yazici/system-printers", undefined, { silent: true });
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        for (const sp of res.data) {
+          if (!results.some((r) => r.name.toLowerCase() === sp.name.toLowerCase())) {
+            results.push({ ...sp, source: sp.source || "system" });
+          }
+        }
+      }
+    } catch {}
+
+    return results;
+  }
+
   public static async getYazicilar(): Promise<YaziciItem[]> {
     const res = await apiClient.get<YaziciItem[]>("/yazici");
     return res.data || [];

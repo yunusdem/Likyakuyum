@@ -47,6 +47,7 @@ export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrub
   { kod: "BALURE1", yol: "barkodlu-altin-uretim", ad: "Barkodlu Altın Üretim Raporu", grup: "etiket" },
   { kod: "BALSAT1", yol: "barkodlu-altin-satis", ad: "Barkodlu Altın Satış Raporu", grup: "etiket" },
   { kod: "BALSTK1", yol: "barkodlu-altin-stok", ad: "Barkodlu Altın Stok Raporu", grup: "etiket" },
+  { kod: "XMLDOS1", yol: "xml-dosya", ad: "XML Dosya", grup: "raporlar" },
 ];
 
 /** Rapor grubunun durduğu ana menü (DashboardRoute key); MASAK grubu G- Raporlar altındadır */

@@ -49,6 +49,7 @@ import merkezRoutes from "./merkez.routes.js";
 import destekRoutes from "./destek.routes.js";
 import iletisimRoutes from "./iletisim.routes.js";
 import menuRoutes from "./menu.routes.js";
+import xmlDosyaRoutes from "./xmlDosya.routes.js";
 const apiRouter = Router();
 // Firma bazlı modül kısıtı: önek → kullanan modüller eşlemesi services/admin/modul.service.ts API_MODULLERI'nde.
 // MERKEZ_GIRIS kapalıyken ve modül ayarı yapılmamış firmada hiçbir şeyi kısıtlamaz.
@@ -135,4 +136,6 @@ apiRouter.use("/vezne/perakende", kapi("/perakende"), perakendeRoutes);
 apiRouter.use("/ticari", kapi("/ticari"), ticariRoutes);
 // Hızlı Satış: buton düzeni, ayarlar, fiş işareti (docs/HIZLI_SATIS_YOL_HARITASI.md)
 apiRouter.use("/hizli-satis", kapi("/hizli-satis"), hizliSatisRoutes);
+// XML Dosya İşlemleri (VİM Döviz Transfer XML: Kontrol, Oluşturma, Birleştirme)
+apiRouter.use("/xml-dosya", kapi("/xml-dosya"), xmlDosyaRoutes);
 export default apiRouter;

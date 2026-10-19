@@ -1,0 +1,10 @@
+import { Router } from "express";
+import { XmlDosyaController } from "../controllers/xmlDosya.controller.js";
+const router = Router();
+router.get("/kontrol/merkez-kur", XmlDosyaController.kontrolMerkezKur);
+router.get("/kontrol/firma", XmlDosyaController.kontrolFirma);
+router.get("/kontrol/fis", XmlDosyaController.kontrolFis);
+router.get("/kontrol/fis-satiri", XmlDosyaController.kontrolFisSatiri);
+router.post("/olustur", XmlDosyaController.olustur);
+router.post("/birlestir", XmlDosyaController.birlestir);
+export default router;

@@ -7,6 +7,7 @@ const router = Router();
 router.use(authenticate);
 
 router.post("/direct-print", YaziciController.directPrint);
+router.get("/system-printers", YaziciController.getSystemPrinters);
 router.get("/", YaziciController.listYazicilar);
 router.post("/", YaziciController.createYazici);
 router.get("/usage/:id", YaziciController.getYaziciUsage);

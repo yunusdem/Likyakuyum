@@ -59,6 +59,96 @@ export class YaziciService {
         return YaziciSqlRepository.delete(id, options, dbContext);
     }
     /**
+     * Bilgisayarda (Windows / macOS / Linux) kurulu aktif sistem yazıcılarını listeler (Aygıtlar ve Yazıcılar)
+     */
+    static async getSystemPrinters() {
+        const isWin = process.platform === "win32";
+        if (isWin) {
+            // 1. PowerShell CIM / WMI ile Windows yazıcılarını al
+            try {
+                const cmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress"`;
+                const stdout = await new Promise((resolve, reject) => {
+                    exec(cmd, { timeout: 6000, maxBuffer: 1024 * 1024 }, (err, out) => {
+                        if (err)
+                            reject(err);
+                        else
+                            resolve(out);
+                    });
+                });
+                if (stdout && stdout.trim()) {
+                    const parsed = JSON.parse(stdout.trim());
+                    const list = Array.isArray(parsed) ? parsed : [parsed];
+                    return list
+                        .filter((p) => p && p.Name)
+                        .map((p) => ({
+                        name: String(p.Name).trim(),
+                        isDefault: Boolean(p.Default),
+                    }));
+                }
+            }
+            catch (wmiErr) {
+                logger.warn(`[getSystemPrinters] PowerShell CIM error: ${wmiErr.message}`);
+            }
+            // 2. Fallback: WMIC komutu
+            try {
+                const cmd = `wmic printer get name,default /format:csv`;
+                const stdout = await new Promise((resolve, reject) => {
+                    exec(cmd, { timeout: 5000 }, (err, out) => {
+                        if (err)
+                            reject(err);
+                        else
+                            resolve(out);
+                    });
+                });
+                const lines = stdout.split(/\r?\n/).filter((l) => l.trim() && !l.toLowerCase().startsWith("node"));
+                const results = [];
+                for (const line of lines) {
+                    const parts = line.split(",");
+                    if (parts.length >= 2) {
+                        const isDef = parts[1]?.trim().toUpperCase() === "TRUE";
+                        const name = parts[2]?.trim() || parts[1]?.trim();
+                        if (name)
+                            results.push({ name, isDefault: isDef });
+                    }
+                }
+                if (results.length > 0)
+                    return results;
+            }
+            catch (wmicErr) {
+                logger.warn(`[getSystemPrinters] WMIC error: ${wmicErr.message}`);
+            }
+        }
+        else {
+            // macOS / Linux (CUPS lpstat)
+            try {
+                const stdout = await new Promise((resolve) => {
+                    exec("lpstat -p -d", { timeout: 4000 }, (_err, out) => {
+                        resolve(out || "");
+                    });
+                });
+                const printers = [];
+                let defaultPrinter = "";
+                const defaultMatch = stdout.match(/system default destination:\s*(.+)/i) || stdout.match(/saptanan hedef:\s*(.+)/i);
+                if (defaultMatch)
+                    defaultPrinter = defaultMatch[1].trim();
+                const lines = stdout.split("\n");
+                for (const line of lines) {
+                    const m = line.match(/^printer\s+([^\s]+)/i) || line.match(/^yazıcı\s+([^\s]+)/i);
+                    if (m && m[1]) {
+                        const name = m[1].trim();
+                        printers.push({ name, isDefault: name === defaultPrinter });
+                    }
+                }
+                if (printers.length > 0)
+                    return printers;
+            }
+            catch (unixErr) {
+                logger.warn(`[getSystemPrinters] Unix lpstat error: ${unixErr.message}`);
+            }
+        }
+        return [];
+    }
+    /**
      * Doğrudan Yazıcıya Çıktı Gönderme (Direct Hardware / OS Print)
      */
     static async directPrint(dto, dbContext) {

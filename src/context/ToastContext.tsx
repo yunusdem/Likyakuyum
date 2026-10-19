@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { Alert } from "react-bootstrap";
 import { IconCheck, IconAlertCircle, IconInfoCircle, IconAlertTriangle } from "@tabler/icons-react";
 
@@ -21,6 +21,112 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+// Her bir bildirim için üzerine gelince duraklatan, çekilince devam eden bileşen
+const ToastPopupItem: React.FC<{
+  toast: ToastItem;
+  onClose: (id: string) => void;
+}> = ({ toast, onClose }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startTimer = useCallback(
+    (delay: number) => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      if (delay > 0) {
+        timerRef.current = setTimeout(() => {
+          onClose(toast.id);
+        }, delay);
+      }
+    },
+    [onClose, toast.id]
+  );
+
+  useEffect(() => {
+    const initialDuration = toast.duration && toast.duration > 0 ? toast.duration : 3000;
+    startTimer(initialDuration);
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [toast.duration, startTimer]);
+
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+    // Mouse üzerindeyken zamanlayıcıyı durdur, kaybolmasın
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    // Mouse çekilince 1.5 saniye sonra otomatik kaybolsun
+    startTimer(1500);
+  };
+
+  const variant = toast.type === "danger" ? "danger" : toast.type;
+  const titleMap: Record<ToastType, string> = {
+    success: "İşlem Başarılı",
+    danger: "Hata",
+    warning: "Dikkat / Uyarı",
+    info: "Bilgilendirme",
+  };
+
+  return (
+    <Alert
+      key={toast.id}
+      variant={variant}
+      className={`erp-toast-item alert-${variant} d-flex align-items-start gap-3 mb-0`}
+      dismissible
+      onClose={() => onClose(toast.id)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        cursor: "default",
+        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        transform: isHovered ? "scale(1.02)" : "scale(1)",
+        boxShadow: isHovered
+          ? "0 25px 50px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08)"
+          : undefined,
+      }}
+    >
+      <div
+        className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 mt-0.5"
+        style={{
+          width: "36px",
+          height: "36px",
+          backgroundColor:
+            toast.type === "success"
+              ? "#dcfce7"
+              : toast.type === "danger"
+              ? "#fee2e2"
+              : toast.type === "warning"
+              ? "#fef3c7"
+              : "#e0f2fe",
+        }}
+      >
+        {toast.type === "success" && <IconCheck size={20} className="text-success" />}
+        {toast.type === "danger" && <IconAlertCircle size={20} className="text-danger" />}
+        {toast.type === "warning" && <IconAlertTriangle size={20} className="text-warning" />}
+        {toast.type === "info" && <IconInfoCircle size={20} className="text-info" />}
+      </div>
+      <div className="flex-grow-1 pe-3">
+        <div className="fw-bold text-dark mb-1" style={{ fontSize: "14px" }}>
+          {titleMap[toast.type] || "Bildirim"}
+        </div>
+        <div style={{ fontSize: "13px", color: "#475569", lineHeight: "1.4" }}>
+          {toast.message}
+        </div>
+      </div>
+    </Alert>
+  );
+};
+
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -28,36 +134,31 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback((message: string, type: ToastType = "info", duration = 1500) => {
+  const showToast = useCallback((message: string, type: ToastType = "info", duration = 3000) => {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: ToastItem = { id, message, type, duration };
 
     setToasts((prev) => [...prev, newToast]);
+  }, []);
 
-    if (duration > 0) {
-      setTimeout(() => {
-        removeToast(id);
-      }, duration);
-    }
-  }, [removeToast]);
-
-  const showSuccess = useCallback((msg: string, dur = 1500) => showToast(msg, "success", dur), [showToast]);
-  const showError = useCallback((msg: string, dur = 1500) => showToast(msg, "danger", dur), [showToast]);
-  const showWarning = useCallback((msg: string, dur = 1500) => showToast(msg, "warning", dur), [showToast]);
-  const showInfo = useCallback((msg: string, dur = 1500) => showToast(msg, "info", dur), [showToast]);
+  const showSuccess = useCallback((msg: string, dur = 3000) => showToast(msg, "success", dur), [showToast]);
+  const showError = useCallback((msg: string, dur = 4000) => showToast(msg, "danger", dur), [showToast]);
+  const showWarning = useCallback((msg: string, dur = 3500) => showToast(msg, "warning", dur), [showToast]);
+  const showInfo = useCallback((msg: string, dur = 3000) => showToast(msg, "info", dur), [showToast]);
 
   // Global event listener for non-React or cross-component triggers
   useEffect(() => {
     const handleCustomToast = (e: any) => {
       if (e.detail?.message) {
-        showToast(e.detail.message, e.detail.type || "info", e.detail.duration || 1500);
+        showToast(e.detail.message, e.detail.type || "info", e.detail.duration || 3000);
       }
     };
     window.addEventListener("erp-toast", handleCustomToast);
     return () => window.removeEventListener("erp-toast", handleCustomToast);
   }, [showToast]);
 
-  // Global auto-dismiss for any center popup notifications (.erp-toast-container) across all pages in exactly 1.5s
+  // Global auto-dismiss for any center popup notifications (.erp-toast-container) across all pages
+  // Mouse üzerine gelince duraklatılır, çekilince kaybolur
   useEffect(() => {
     const handleNode = (node: Element) => {
       if (!node || !(node instanceof HTMLElement)) return;
@@ -83,24 +184,45 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
         (toastEl as any).__erp_auto_closed = true;
 
-        setTimeout(() => {
+        let timerId: NodeJS.Timeout | null = null;
+
+        const dismissEl = () => {
           if (!toastEl.isConnected) return;
-          // 1. Try clicking close button
           const closeBtn = toastEl.querySelector<HTMLElement>(".btn-close, button.close, [data-bs-dismiss='alert']");
           if (closeBtn) {
             closeBtn.click();
           } else {
-            // 2. Smoothly fade out and hide
-            toastEl.style.transition = "opacity 0.2s ease, transform 0.2s ease";
+            toastEl.style.transition = "opacity 0.25s ease, transform 0.25s ease";
             toastEl.style.opacity = "0";
             toastEl.style.transform = "scale(0.95)";
             setTimeout(() => {
               if (toastEl.isConnected) {
                 toastEl.style.display = "none";
               }
-            }, 200);
+            }, 250);
           }
-        }, 1500);
+        };
+
+        const scheduleDismiss = (delay: number) => {
+          if (timerId) clearTimeout(timerId);
+          timerId = setTimeout(() => {
+            dismissEl();
+          }, delay);
+        };
+
+        toastEl.addEventListener("mouseenter", () => {
+          if (timerId) {
+            clearTimeout(timerId);
+            timerId = null;
+          }
+        });
+
+        toastEl.addEventListener("mouseleave", () => {
+          scheduleDismiss(1500);
+        });
+
+        // Başlangıçta 3.0 saniye sonra kaybolsun
+        scheduleDismiss(3000);
       });
     };
 
@@ -131,53 +253,9 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {/* Ekranın Tam Ortasında Beliren Estetik Popup Bildirim Kapsayıcısı */}
       {toasts.length > 0 && (
         <div className="erp-toast-container">
-          {toasts.map((toast) => {
-            const variant = toast.type === "danger" ? "danger" : toast.type;
-            const titleMap = {
-              success: "İşlem Başarılı",
-              danger: "Hata",
-              warning: "Dikkat / Uyarı",
-              info: "Bilgilendirme",
-            };
-            return (
-              <Alert
-                key={toast.id}
-                variant={variant}
-                className={`erp-toast-item alert-${variant} d-flex align-items-start gap-3 mb-0`}
-                dismissible
-                onClose={() => removeToast(toast.id)}
-              >
-                <div
-                  className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 mt-0.5"
-                  style={{
-                    width: "36px",
-                    height: "36px",
-                    backgroundColor:
-                      toast.type === "success"
-                        ? "#dcfce7"
-                        : toast.type === "danger"
-                        ? "#fee2e2"
-                        : toast.type === "warning"
-                        ? "#fef3c7"
-                        : "#e0f2fe",
-                  }}
-                >
-                  {toast.type === "success" && <IconCheck size={20} className="text-success" />}
-                  {toast.type === "danger" && <IconAlertCircle size={20} className="text-danger" />}
-                  {toast.type === "warning" && <IconAlertTriangle size={20} className="text-warning" />}
-                  {toast.type === "info" && <IconInfoCircle size={20} className="text-info" />}
-                </div>
-                <div className="flex-grow-1 pe-3">
-                  <div className="fw-bold text-dark mb-1" style={{ fontSize: "14px" }}>
-                    {titleMap[toast.type] || "Bildirim"}
-                  </div>
-                  <div style={{ fontSize: "13px", color: "#475569", lineHeight: "1.4" }}>
-                    {toast.message}
-                  </div>
-                </div>
-              </Alert>
-            );
-          })}
+          {toasts.map((toast) => (
+            <ToastPopupItem key={toast.id} toast={toast} onClose={removeToast} />
+          ))}
         </div>
       )}
     </ToastContext.Provider>
@@ -189,22 +267,23 @@ export const useToast = () => {
   if (!ctx) {
     // Fallback: trigger via window event if outside provider
     return {
-      showToast: (message: string, type: ToastType = "info", duration = 1500) => {
+      showToast: (message: string, type: ToastType = "info", duration = 3000) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type, duration } }));
       },
-      showSuccess: (message: string, duration = 1500) => {
+      showSuccess: (message: string, duration = 3000) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "success", duration } }));
       },
-      showError: (message: string, duration = 1500) => {
+      showError: (message: string, duration = 4000) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "danger", duration } }));
       },
-      showWarning: (message: string, duration = 1500) => {
+      showWarning: (message: string, duration = 3500) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "warning", duration } }));
       },
-      showInfo: (message: string, duration = 1500) => {
+      showInfo: (message: string, duration = 3000) => {
         window.dispatchEvent(new CustomEvent("erp-toast", { detail: { message, type: "info", duration } }));
       },
     };
   }
   return ctx;
 };
+

@@ -101,6 +101,8 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/kur/saklanan-fiyat-listesi": { title: "B- Saklanan Fiyat Listesi", icon: <IconChartLine size={20} /> },
   "/kur/pano": { title: "C- Pano", icon: <IconDeviceTv size={20} /> },
   "/kur/pano-tanimi": { title: "D- Pano Tanımı", icon: <IconDeviceTv size={20} /> },
+  "/kur/merkez-bankasi-kurlari": { title: "V- Merkez Bankası Kurları", icon: <IconChartLine size={20} /> },
+  "/kur/merkez-bankasi-saklananlar": { title: "Y- Merkez Bankası Saklananlar", icon: <IconChartLine size={20} /> },
   "/ayarlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
   "/tanimlar/banknot-tanimlari": { title: "B- Banknot Tanımları", icon: <IconCash size={20} /> },
   // A- Vezne İşlemleri (Tüm 16 Sayfa/Rapor)

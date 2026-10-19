@@ -12,6 +12,15 @@ export class YaziciController {
   }
 
   /**
+   * GET /api/v1/yazici/system-printers
+   * Bilgisayarda kurulu aktif yazıcıları listeler (Denetim Masası / Aygıtlar ve Yazıcılar)
+   */
+  public static getSystemPrinters = asyncHandler(async (_req: Request, res: Response) => {
+    const list = await YaziciService.getSystemPrinters();
+    return ApiResponse.ok(res, "Sistem yazıcıları başarıyla listelendi.", list);
+  });
+
+  /**
    * GET /api/v1/yazici
    */
   public static listYazicilar = asyncHandler(async (req: Request, res: Response) => {

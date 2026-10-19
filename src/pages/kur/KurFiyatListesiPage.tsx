@@ -45,7 +45,7 @@ import { printReportTable } from "../../utils/printReport";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
 import { panoyaKopyala } from "../../utils/pano";
 
-export type KurPageType = "anlik" | "saklanan";
+export type KurPageType = "anlik" | "saklanan" | "merkez" | "merkezSaklanan";
 
 interface KurFiyatListesiPageProps {
   pageType?: KurPageType;
@@ -156,27 +156,52 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Determine effective page type from prop or current URL path: anlik veya saklanan
+  // Determine effective page type from prop or current URL path: anlik, saklanan, merkez, merkezSaklanan
   const effectivePageType: KurPageType =
-    propPageType === "saklanan" || location.pathname.includes("saklanan")
+    propPageType ||
+    (location.pathname.includes("merkez-bankasi-saklananlar") || location.pathname.includes("merkez-saklanan")
+      ? "merkezSaklanan"
+      : location.pathname.includes("merkez-bankasi-kurlari") || location.pathname.includes("merkez-kurlar")
+      ? "merkez"
+      : location.pathname.includes("saklanan")
       ? "saklanan"
-      : "anlik";
+      : "anlik");
 
   // TUR:
   // - A: Anlık Fiyat Listesi (Gişe Kuru) -> TUR = 0
   // - B: Saklanan Fiyat Listesi (Tarihsel Kur Arşivi) -> TUR = 2
-  const tur = effectivePageType === "anlik" ? 0 : 2;
+  // - V: Merkez Bankası Kurları (TCMB) -> TUR = 1
+  // - Y: Merkez Bankası Saklananlar (TCMB Kapanış/Arşiv) -> TUR = 3
+  const tur =
+    effectivePageType === "anlik"
+      ? 0
+      : effectivePageType === "merkez"
+      ? 1
+      : effectivePageType === "saklanan"
+      ? 2
+      : 3;
+
+  const isSaklanan = effectivePageType === "saklanan" || effectivePageType === "merkezSaklanan";
+  const isMerkez = effectivePageType === "merkez" || effectivePageType === "merkezSaklanan";
 
   // Window / Page titles
   const pageTitle =
     effectivePageType === "anlik"
       ? "A- Anlık Fiyat Listesi"
-      : "B- Saklanan Fiyat Listesi";
+      : effectivePageType === "saklanan"
+      ? "B- Saklanan Fiyat Listesi"
+      : effectivePageType === "merkez"
+      ? "V- Merkez Bankası Kurları"
+      : "Y- Merkez Bankası Saklananlar";
 
   const windowTitle =
     effectivePageType === "anlik"
       ? "Gişe kuru"
-      : "Saklanan Fiyat Listesi";
+      : effectivePageType === "saklanan"
+      ? "Saklanan Fiyat Listesi"
+      : effectivePageType === "merkez"
+      ? "Merkez Bankası Kurları"
+      : "Merkez Bankası Saklanan Fiyat Listesi";
 
   // Date & Time helpers for current moment
   const getCurrentDateStr = () => {
@@ -198,7 +223,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
   const [currentClock, setCurrentClock] = useState<Date>(new Date());
 
   useEffect(() => {
-    if (effectivePageType === "anlik") {
+    if (!isSaklanan) {
       const timer = setInterval(() => {
         const now = new Date();
         setCurrentClock(now);
@@ -212,7 +237,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [effectivePageType]);
+  }, [isSaklanan]);
 
   const liveDateStr = currentClock.toLocaleDateString("tr-TR", {
     day: "2-digit",
@@ -455,9 +480,51 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         setIsLoading(true);
         setAlertError(null);
 
-        if (effectivePageType === "anlik") {
-          // A- Anlık Fiyat Listesi: TUR = 0
-          const tablo = await KurService.getKurTablosu({ tur: 0 });
+        if (!isSaklanan) {
+          // A- Anlık Fiyat Listesi (TUR = 0) veya V- Merkez Bankası Kurları (TUR = 1)
+          let tablo = await KurService.getKurTablosu({ tur });
+
+          // V- Merkez Bankası Kurları: Eğer kurlar henüz kayıtlı değilse veya boşsa, doğrudan TCMB'den çek
+          if (
+            isMerkez &&
+            (!tablo || !tablo.satirlar || tablo.satirlar.length === 0 || tablo.satirlar.every((s) => !s.dovizAlis && !s.dovizSatis))
+          ) {
+            try {
+              const tcmbData = await KurService.fetchTcmb();
+              if (tcmbData && Object.keys(tcmbData).length > 0) {
+                const baseSatirlar = (tablo?.satirlar && tablo.satirlar.length > 0)
+                  ? tablo.satirlar
+                  : (await KurService.getKurTablosu({ tur: 0 }))?.satirlar || [];
+                if (baseSatirlar.length > 0) {
+                  const updatedSatirlar = baseSatirlar.map((r) => {
+                    const kod = r.kod.trim().toUpperCase();
+                    const t = tcmbData[kod];
+                    if (t) {
+                      return {
+                        ...r,
+                        dovizAlis: t.forexBuying ?? null,
+                        dovizSatis: t.forexSelling ?? null,
+                        efektifAlis: t.banknoteBuying ?? t.forexBuying ?? null,
+                        efektifSatis: t.banknoteSelling ?? t.forexSelling ?? null,
+                      };
+                    }
+                    return r;
+                  });
+                  tablo = {
+                    ...tablo,
+                    id: tablo?.id || 0,
+                    tur: 1,
+                    tarih: getCurrentDateStr(),
+                    zaman: new Date().toISOString(),
+                    satirlar: updatedSatirlar,
+                  };
+                }
+              }
+            } catch (tcmbErr) {
+              console.warn("Açılışta doğrudan TCMB kurları alınamadı:", tcmbErr);
+            }
+          }
+
           if (tablo) {
             setTabloId(tablo.id);
             setKapanisKurTablosuId(tablo.kapanisKurTablosuId ?? null);
@@ -487,10 +554,10 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             setStatusText(tablo.id ? "Son kayıt" : "Yeni Kayıt");
           }
         } else {
-          // B- Saklanan Fiyat Listesi: TUR = 2
+          // B- Saklanan Fiyat Listesi (TUR = 2) veya Y- Merkez Bankası Saklananlar (TUR = 3)
           // "saklanan fiyatlarda bugünkü son kur gelir"
           const todayStr = getCurrentDateStr();
-          const datesList = await KurService.getStoredDates(2);
+          const datesList = await KurService.getStoredDates(tur);
           setStoredDates(datesList);
 
           let targetId = params?.id;
@@ -526,22 +593,22 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           }
 
           let tablo = await KurService.getKurTablosu({
-            tur: 2,
+            tur,
             tarih: targetTarih,
             id: targetId,
           });
 
-          // Eğer bugünkü arşiv tablosu henüz açılmamışsa veya boşsa, bugünkü son kuru canlı gişe kurundan (TUR=0) getir
+          // Eğer bugünkü arşiv tablosu henüz açılmamışsa veya boşsa, bugünkü son kuru canlı gişe/merkez kurundan getir
           if (
             targetTarih === todayStr &&
             (!tablo || !tablo.id || !tablo.satirlar || tablo.satirlar.every((s) => !s.dovizAlis && !s.dovizSatis))
           ) {
-            const anlikTablo = await KurService.getKurTablosu({ tur: 0 });
+            const anlikTablo = await KurService.getKurTablosu({ tur: isMerkez ? 1 : 0 });
             if (anlikTablo && anlikTablo.satirlar && anlikTablo.satirlar.length > 0) {
               tablo = {
                 ...anlikTablo,
                 id: 0,
-                tur: 2,
+                tur,
                 tarih: todayStr,
                 zaman: anlikTablo.zaman || new Date().toISOString(),
               };
@@ -581,7 +648,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         setIsLoading(false);
       }
     },
-    [effectivePageType]
+    [effectivePageType, isSaklanan, isMerkez, tur]
   );
 
   useEffect(() => {
@@ -694,7 +761,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
     if (e.key === "F12") {
       e.preventDefault();
-      if (effectivePageType === "anlik") {
+      if (!isSaklanan) {
         handleAutoCalculateGoldRates();
       }
       return;
@@ -835,7 +902,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       }
 
       let combinedDateTime: Date;
-      if (effectivePageType === "anlik") {
+      if (!isSaklanan) {
         combinedDateTime = new Date();
       } else {
         const [hours, minutes] = saat.split(":").map(Number);
@@ -878,22 +945,22 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
       setLastSavedZaman(result.zaman);
       setIsDirty(false);
-      setStatusText(effectivePageType === "anlik" ? "Son kayıt" : `Saklanan Kayıt (ID: ${result.id})`);
+      setStatusText(!isSaklanan ? "Son kayıt" : `Saklanan Kayıt (ID: ${result.id})`);
       const savedTimeDisplay =
-        effectivePageType === "anlik"
+        !isSaklanan
           ? new Date(result.zaman).toLocaleTimeString("tr-TR")
           : saat;
       if (!sessizKayitRef.current) {
         setAlertSuccess(
-          effectivePageType === "anlik"
-            ? `Gişede o an işlem gören canlı kurlar ve saati (${savedTimeDisplay}) başarıyla kaydedildi.`
+          !isSaklanan
+            ? `${isMerkez ? "Merkez Bankası kurları" : "Gişede o an işlem gören canlı kurlar"} ve saati (${savedTimeDisplay}) başarıyla kaydedildi.`
             : "Kur tablosu başarıyla kaydedildi."
         );
         setTimeout(() => setAlertSuccess(null), 3500);
       }
 
-      if (effectivePageType === "saklanan") {
-        const updatedDates = await KurService.getStoredDates(2);
+      if (isSaklanan) {
+        const updatedDates = await KurService.getStoredDates(tur);
         setStoredDates(updatedDates);
       }
     } catch (err: any) {
@@ -928,32 +995,34 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     return () => window.removeEventListener("calculator-save-requested", handleCalculatorSave);
   }, [rows, tarih, saat]);
 
-  // Kapanış Kur Tablosunu Anlık Kurlardan Oluştur / Sakla (TUR = 2, @KAYNAK_KUR_TABLOSU_ID = anlikTabloId)
+  // Kapanış Kur Tablosunu Anlık / Merkez Kurlardan Oluştur / Sakla
   const handleCreateGunlukKapanisFromAnlik = async () => {
     try {
       setIsArchiving(true);
       setAlertError(null);
       setAlertSuccess(null);
 
-      // 1. Get live active spot table (TUR = 0)
-      const anlikTablo = await KurService.getKurTablosu({ tur: 0 });
-      if (!anlikTablo || !anlikTablo.id) {
-        setAlertError("Aktif Anlık Fiyat Listesi bulunamadı.");
+      // Kaynak canlı tablo (TUR = 0 anlık veya TUR = 1 merkez)
+      const kaynakTur = isMerkez ? 1 : 0;
+      const targetTur = isMerkez ? 3 : 2;
+      const kaynakTablo = await KurService.getKurTablosu({ tur: kaynakTur });
+      if (!kaynakTablo || !kaynakTablo.id) {
+        setAlertError(isMerkez ? "Aktif Merkez Bankası Kurları bulunamadı." : "Aktif Anlık Fiyat Listesi bulunamadı.");
         return;
       }
 
-      // 2. Call SODVZ_KUR_TABLOSU_KAYDET with @TUR = 2 and @KAYNAK_KUR_TABLOSU_ID = anlikTablo.id
+      // SODVZ_KUR_TABLOSU_KAYDET çağrılır
       const todayStr = new Date().toISOString();
       const kapanisTablo = await KurService.sakla({
-        kaynakKurTablosuId: anlikTablo.id,
-        targetTur: 2,
+        kaynakKurTablosuId: kaynakTablo.id,
+        targetTur,
         zaman: todayStr,
       });
 
       setTabloId(kapanisTablo.id);
       setRows(sortKurRows(kapanisTablo.satirlar));
       setAlertSuccess(
-        `Günün resmi kapanış kur tablosu anlık kurlardan başarıyla oluşturuldu! (ID: ${kapanisTablo.id})`
+        `Günün resmi kapanış kur tablosu ${isMerkez ? "Merkez Bankası kurlarından" : "anlık kurlardan"} başarıyla oluşturuldu! (ID: ${kapanisTablo.id})`
       );
       setStatusText(`Kapanış Oluşturuldu (ID: ${kapanisTablo.id})`);
       setTimeout(() => setAlertSuccess(null), 4000);
@@ -965,16 +1034,19 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     }
   };
 
-  // C- Ekranı: Seçili Arşiv Kurunu Canlı / Anlık Listeye Geri Yükle (@TUR = 0, @KAYNAK_KUR_TABLOSU_ID = tabloId)
+  // Saklanan Ekranı: Seçili Arşiv Kurunu Canlı Listeye Geri Yükle
   const handleRestoreToAnlik = async () => {
     if (!tabloId) {
       setAlertError("Lütfen önce arşivden geçerli bir kur kaydı seçiniz.");
       return;
     }
 
+    const targetTur = isMerkez ? 1 : 0;
+    const targetName = isMerkez ? "MERKEZ BANKASI KURLARI LİSTESİ" : "ANLIK FİYAT LİSTESİ";
+
     if (
       !window.confirm(
-        `Seçili tarihteki (${tarih}) kurları aktif canlı ANLIK FİYAT LİSTESİ'ne kopyalayarak geri yüklemek istediğinize emin misiniz?`
+        `Seçili tarihteki (${tarih}) kurları aktif canlı ${targetName}'ne kopyalayarak geri yüklemek istediğinize emin misiniz?`
       )
     ) {
       return;
@@ -987,22 +1059,22 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
       await KurService.sakla({
         kaynakKurTablosuId: tabloId,
-        targetTur: 0,
+        targetTur,
       });
 
       setAlertSuccess(
-        `Seçili ${tarih} tarihli kurlar canlı Anlık Fiyat Listesine başarıyla aktarıldı!`
+        `Seçili ${tarih} tarihli kurlar aktif ${targetName}'ne başarıyla aktarıldı!`
       );
       setTimeout(() => setAlertSuccess(null), 4000);
     } catch (err: any) {
       console.error("Geri yükleme hatası:", err);
-      setAlertError(err?.message || "Kurlar anlık listeye aktarılamadı.");
+      setAlertError(err?.message || "Kurlar aktif listeye aktarılamadı.");
     } finally {
       setIsArchiving(false);
     }
   };
 
-  // C- Ekranı: Seçili Arşiv Kurunu Başka Bir Güne Kopyala (@TUR = 2, @KAYNAK_KUR_TABLOSU_ID = tabloId, @ZAMAN = copyTargetDate)
+  // Saklanan Ekranı: Seçili Arşiv Kurunu Başka Bir Güne Kopyala
   const handleCopyArchiveToTargetDate = async () => {
     if (!tabloId) {
       setAlertError("Lütfen arşivden kaynak bir kur kaydı seçiniz.");
@@ -1020,9 +1092,10 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       const targetCombinedDate = new Date(copyTargetDate);
       targetCombinedDate.setHours(12, 0, 0, 0);
 
+      const targetTur = isMerkez ? 3 : 2;
       const copied = await KurService.sakla({
         kaynakKurTablosuId: tabloId,
-        targetTur: 2,
+        targetTur,
         zaman: targetCombinedDate.toISOString(),
       });
 
@@ -1033,7 +1106,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       setTimeout(() => setAlertSuccess(null), 4000);
 
       // Refresh dates list and load newly created date
-      const updatedDates = await KurService.getStoredDates(2);
+      const updatedDates = await KurService.getStoredDates(targetTur);
       setStoredDates(updatedDates);
       loadTabloData({ id: copied.id, tarih: copyTargetDate });
     } catch (err: any) {
@@ -1046,7 +1119,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
   // Delete / Reset (F2 Sil)
   const handleDelete = async () => {
-    if (effectivePageType === "saklanan" && tabloId > 0) {
+    if (isSaklanan && tabloId > 0) {
       if (window.confirm("Bu saklanan kur tablosunu silmek istediğinize emin misiniz?")) {
         try {
           setIsSaving(true);
@@ -1101,11 +1174,81 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     // Düğmeden çağrılınca ilk argüman tıklama olayıdır; yalnız true otomatik çekimdir
     const otomatik = otomatikArg === true;
     try {
-      setIsTcmbLoading(true);
       if (!otomatik) {
+        setIsTcmbLoading(true);
         setAlertError(null);
         setAlertSuccess(null);
       }
+
+      // V- Merkez Bankası Kurları veya Y- Merkez Bankası Saklananlar için: DOĞRUDAN TCMB RESMİ KURLARI ÇEKİLİR
+      if (isMerkez) {
+        setKurKaynagiAd("Merkez Bankası");
+        const tcmbData = await KurService.fetchTcmb();
+        const birimler = Object.keys(tcmbData);
+        if (birimler.length === 0) {
+          if (!otomatik) {
+            setAlertError("Merkez Bankası servisine ulaşılamadı veya kurlar alınamadı.");
+          }
+          return;
+        }
+
+        const onceki = rowsRef.current;
+        const updated = onceki.map((r) => {
+          const kod = r.kod.trim().toUpperCase();
+          const t = tcmbData[kod];
+          if (t) {
+            const dovizAlis = t.forexBuying ?? null;
+            const dovizSatis = t.forexSelling ?? null;
+            const efektifAlis = t.banknoteBuying ?? dovizAlis;
+            const efektifSatis = t.banknoteSelling ?? dovizSatis;
+            return {
+              ...r,
+              dovizAlis,
+              dovizSatis,
+              efektifAlis,
+              efektifSatis,
+            };
+          }
+          return { ...r };
+        });
+
+        // Pariteler USD'ye göre
+        const usdRow = updated.find((r) => r.kod.trim().toUpperCase() === "USD");
+        const usdRate = usdRow ? usdRow.efektifAlis || usdRow.dovizAlis : null;
+        if (usdRate && usdRate > 0) {
+          updated.forEach((r) => {
+            const kod = r.kod.trim().toUpperCase();
+            if (kod === "USD") {
+              r.parite = 1.0;
+            } else if (tcmbData[kod]) {
+              const rowRate = r.efektifAlis || r.dovizAlis;
+              if (rowRate && rowRate > 0) r.parite = rowRate / usdRate;
+            }
+          });
+        }
+
+        const girdiler: Record<string, string> = {};
+        updated.forEach((r, idx) => {
+          const kod = r.kod.trim().toUpperCase();
+          if (!tcmbData[kod] && kod !== "USD") return;
+          (["dovizAlis", "dovizSatis", "efektifAlis", "efektifSatis", "parite"] as const).forEach((col) => {
+            const v = r[col];
+            girdiler[getCellKey(idx, col as EditableCol)] = v !== null && v !== undefined ? v.toFixed(6) : "";
+          });
+        });
+
+        setRows(updated);
+        setRawInputs((p) => ({ ...p, ...girdiler }));
+        if (!otomatik) {
+          setIsDirty(true);
+          setAlertSuccess("✅ Doğrudan Türkiye Cumhuriyet Merkez Bankası (TCMB) kurları başarıyla çekildi.");
+          setTimeout(() => setAlertSuccess(null), 3500);
+        }
+        setStatusText("Merkez Bankası resmi kurları doğrudan çekildi (canlı)");
+        setKaynakOzeti(`TCMB Doğrudan · ${new Date().toLocaleTimeString("tr-TR")} · ${birimler.length} birim`);
+        return;
+      }
+
       const sonuc = await KurKaynakService.cek();
       setKurKaynagiAd(sonuc.kaynakAd);
       const gelen = new Map(sonuc.satirlar.map((s) => [s.paraId, s]));
@@ -1169,9 +1312,13 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       }
     } catch (err: any) {
       console.error("Kur kaynağı çekme hatası:", err);
-      setAlertError(err?.message || "Kur kaynağından veri alınamadı.");
+      if (!otomatik) {
+        setAlertError(err?.message || "Kur kaynağından veri alınamadı.");
+      }
     } finally {
-      setIsTcmbLoading(false);
+      if (!otomatik) {
+        setIsTcmbLoading(false);
+      }
     }
   };
 
@@ -1537,9 +1684,9 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
   // Search Modal açma handler'ı (Saklanan modunda güncel tarih listesini de çeker)
   const handleOpenSearchModal = async () => {
-    if (effectivePageType === "saklanan") {
+    if (isSaklanan) {
       try {
-        const datesList = await KurService.getStoredDates(2);
+        const datesList = await KurService.getStoredDates(tur);
         setStoredDates(datesList);
       } catch (e) {
         console.error("Saklanan tarihler yüklenemedi:", e);
@@ -1564,9 +1711,9 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         handleOpenSearchModal();
       } else if (e.key === "F7") {
         e.preventDefault();
-        if (effectivePageType === "anlik") {
+        if (!isSaklanan) {
           handleCreateGunlukKapanisFromAnlik();
-        } else if (effectivePageType === "saklanan") {
+        } else {
           handleRestoreToAnlik();
         }
       } else if (e.key === "F8") {
@@ -1580,7 +1727,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         handlePrint();
       } else if (e.key === "F12") {
         e.preventDefault();
-        if (effectivePageType === "anlik") {
+        if (!isSaklanan) {
           handleAutoCalculateGoldRates();
         }
       }
@@ -1588,7 +1735,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [rows.length, showSearchModal, showCopyDateModal, effectivePageType, handleAutoCalculateGoldRates]);
+  }, [rows.length, showSearchModal, showCopyDateModal, effectivePageType, isSaklanan, handleAutoCalculateGoldRates]);
 
   // Kaynaktan çekim zinciri: önce F12 (HAS geldiyse), otomatik modda ardından sessiz kayıt
   useEffect(() => {
@@ -1604,9 +1751,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kaynakZinciri]);
 
-  // Otomatik çekme (Firma Tanımları › Kur Kaynağı): yalnız Anlık Fiyat Listesi açıkken, tazeleme süresinde bir
-  const otomatikKur = effectivePageType === "anlik" && !!companyDefinitions?.MERKEZ_BANKASI_KURUNU_AL;
-  const tazelemeSn = Math.max(1, Number(companyDefinitions?.TAZELEME_SURESI) || 5);
+  // Otomatik çekme:
+  // 1) V- Merkez Bankası Kurları için: arka planda sessizce (düğmeyi etkilemeden) kontrol eder
+  // 2) Anlık Fiyat Listesi için: Firma Tanımları › Kur Kaynağı tazeleme süresine göre
+  const isMerkezCanli = effectivePageType === "merkez";
+  const otomatikKur = isMerkezCanli || (!isSaklanan && !!companyDefinitions?.MERKEZ_BANKASI_KURUNU_AL);
+  const tazelemeSn = isMerkezCanli ? 30 : Math.max(1, Number(companyDefinitions?.TAZELEME_SURESI) || 5);
   const otomatikCekRef = useRef<() => void>(() => undefined);
   otomatikCekRef.current = () => {
     // Kullanıcının kaydedilmemiş elle girişini ezme
@@ -1621,12 +1771,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
   return (
     <div className="kuyumcu-kur-container w-100 pb-3" style={{ overflowX: "hidden" }}>
-      {/* 1. Sol Üst Standart ERP Toolbar (Anlık Fiyat Listesi'nde Kaydetme Butonu Aktif, Saklanan'da Gezinme Aktif) */}
+      {/* 1. Sol Üst Standart ERP Toolbar */}
       <ERPToolbar
         hideNew={true}
-        hideSave={effectivePageType !== "anlik"}
+        hideSave={isSaklanan}
         hideDelete={true}
-        hideNavigation={effectivePageType !== "saklanan"}
+        hideNavigation={!isSaklanan}
         onFirst={handleFirstDate}
         onPrev={handlePrevDate}
         onNext={handleNextDate}
@@ -1638,7 +1788,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         disabled={isLoading || isSaving}
         pageTitle={pageTitle}
         rightContent={
-          effectivePageType === "anlik" ? (
+          !isSaklanan ? (
             <div className="d-flex align-items-center gap-2">
               <span className="fw-bold text-dark small">Zaman:</span>
               <div
@@ -1656,6 +1806,20 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                   <span className="text-dark">{liveTimeStr}</span>
                 </div>
               </div>
+              {isMerkezCanli && (
+                <Badge
+                  bg="success"
+                  className="d-flex align-items-center gap-1.5 py-1 px-2.5 text-white shadow-xs fw-semibold"
+                  style={{ fontSize: "0.78rem" }}
+                  title="Merkez Bankası canlı kurları"
+                >
+                  <span
+                    className="spinner-grow spinner-grow-sm"
+                    style={{ width: "6px", height: "6px" }}
+                  />
+                  <span>Canlı</span>
+                </Badge>
+              )}
             </div>
           ) : (
             <div className="d-flex align-items-center gap-2">
@@ -1724,12 +1888,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       )}
 
       {/* Saklanan Fiyat Listesi Eylemleri: Anlık Listeye Aktar & Başka Güne Kopyala */}
-      {effectivePageType === "saklanan" && (
+      {isSaklanan && (
         <div className="d-flex align-items-center justify-content-between bg-white border p-2 rounded mb-2 shadow-2xs gap-2">
           <div className="d-flex align-items-center gap-2">
             <IconArchive size={18} className="text-primary" />
             <span className="small text-secondary fw-semibold">
-              Saklanan Kur Kaydı: {tarih} {saat} {tabloId ? `(Kayıt No: ${tabloId})` : "(Bugünkü Son Kur)"}
+              {isMerkez ? "Merkez Bankası Saklanan Kur Kaydı" : "Saklanan Kur Kaydı"}: {tarih} {saat} {tabloId ? `(Kayıt No: ${tabloId})` : "(Bugünkü Son Kur)"}
             </span>
           </div>
 
@@ -1740,10 +1904,10 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               className="d-flex align-items-center gap-1 shadow-xs"
               onClick={handleRestoreToAnlik}
               disabled={!tabloId || isArchiving}
-              title="Seçili arşiv kurlarını canlı Anlık Listeye kopyalar"
+              title={`Seçili arşiv kurlarını ${isMerkez ? "Merkez Bankası Kurlarına" : "canlı Anlık Listeye"} kopyalar`}
             >
               <IconArrowBackUp size={16} />
-              <span>Seçili Kurları Anlık Listeye Aktar</span>
+              <span>{isMerkez ? "Seçili Kurları Merkez Kurlarına Aktar" : "Seçili Kurları Anlık Listeye Aktar"}</span>
             </Button>
 
             <Button
@@ -2115,7 +2279,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                                 transition: "background-color 0.15s ease",
                               }}
                             >
-                              {effectivePageType === "anlik" ? (
+                              {!isSaklanan ? (
                                 <input
                                   ref={(el) => {
                                     inputRefs.current[cellKey] = el;
@@ -2256,7 +2420,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
 
           {/* Hotkey Buttons on Right */}
           <div className="d-flex flex-wrap align-items-center gap-1">
-            {effectivePageType === "anlik" && (
+            {!isSaklanan && (
               <Button
                 variant="warning"
                 size="sm"
@@ -2290,26 +2454,22 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               size="sm"
               className="px-2 py-0 border text-dark bg-white shadow-xs fw-semibold small"
               onClick={() => {
-                if (effectivePageType === "anlik") {
+                if (!isSaklanan) {
                   handleCreateGunlukKapanisFromAnlik();
-                } else if (effectivePageType === "saklanan") {
-                  handleRestoreToAnlik();
                 } else {
-                  handleCreateGunlukKapanisFromAnlik();
+                  handleRestoreToAnlik();
                 }
               }}
               disabled={isArchiving}
               title={
-                effectivePageType === "anlik"
-                  ? "F7: Anlık kurlardan günün kapanışını oluşturur"
-                  : effectivePageType === "saklanan"
-                  ? "F7: Seçili kurları anlık listeye aktarır"
-                  : "F7: Anlık kurlardan kapanışı yeniler"
+                !isSaklanan
+                  ? "F7: Kurlardan günün kapanışını oluşturur"
+                  : "F7: Seçili kurları aktif listeye aktarır"
               }
             >
               {isArchiving ? (
                 <Spinner size="sm" />
-              ) : effectivePageType === "saklanan" ? (
+              ) : isSaklanan ? (
                 "F7)Geri Yükle"
               ) : (
                 "F7)Sakla"
@@ -2322,9 +2482,9 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               className="px-2 py-0 border text-dark bg-white shadow-xs fw-semibold small"
               onClick={() => handleFetchTcmb()}
               disabled={isTcmbLoading}
-              title={`F8: ${kurKaynagiAd} güncel kurlarını çeker`}
+              title={`F8: ${isMerkez ? "Merkez Bankası" : kurKaynagiAd} güncel kurlarını çeker`}
             >
-              {isTcmbLoading ? <Spinner size="sm" /> : `F8)${kurKaynagiAd}`}
+              {isTcmbLoading ? <Spinner size="sm" /> : isMerkez ? "F8)Merkez Bankası" : `F8)${kurKaynagiAd}`}
             </Button>
 
             <Button
@@ -2395,11 +2555,15 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       </Modal>
 
       {/* Lookup / Search Modal */}
-      {effectivePageType === "saklanan" ? (
+      {isSaklanan ? (
         <LookupModal<StoredKurDateItem>
           show={showSearchModal}
           onHide={() => setShowSearchModal(false)}
-          title="Saklanan Fiyat Listesi - Kayıtlı Kur Tarihleri Arama (Dürbün)"
+          title={
+            isMerkez
+              ? "Merkez Bankası Saklanan Kurlar - Kayıtlı Kur Tarihleri Arama (Dürbün)"
+              : "Saklanan Fiyat Listesi - Kayıtlı Kur Tarihleri Arama (Dürbün)"
+          }
           searchPlaceholder="Tarih, saat veya kayıt no arayınız (örn: 07.10.2026, 2026-10)..."
           items={[...storedDates].reverse()}
           isLoading={isLoading}
@@ -2552,7 +2716,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {effectivePageType === "anlik" && (
+          {!isSaklanan && (
             <button
               type="button"
               className="dropdown-item d-flex align-items-center justify-content-between px-3 py-1.5 text-dark"
@@ -2576,18 +2740,16 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             style={{ cursor: "pointer" }}
             onClick={() => {
               setContextMenu(null);
-              if (effectivePageType === "anlik") {
+              if (!isSaklanan) {
                 handleCreateGunlukKapanisFromAnlik();
-              } else if (effectivePageType === "saklanan") {
-                handleRestoreToAnlik();
               } else {
-                handleCreateGunlukKapanisFromAnlik();
+                handleRestoreToAnlik();
               }
             }}
           >
             <div className="d-flex align-items-center gap-2">
               <IconDeviceFloppy size={15} className="text-primary" />
-              <span>{effectivePageType === "saklanan" ? "Geri Yükle" : "Kapanış Oluştur / Sakla"}</span>
+              <span>{isSaklanan ? "Geri Yükle" : "Kapanış Oluştur / Sakla"}</span>
             </div>
             <span className="text-muted font-monospace" style={{ fontSize: "10px" }}>F7</span>
           </button>

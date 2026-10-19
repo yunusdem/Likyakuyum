@@ -9,6 +9,14 @@ export class YaziciController {
         };
     }
     /**
+     * GET /api/v1/yazici/system-printers
+     * Bilgisayarda kurulu aktif yazıcıları listeler (Denetim Masası / Aygıtlar ve Yazıcılar)
+     */
+    static getSystemPrinters = asyncHandler(async (_req, res) => {
+        const list = await YaziciService.getSystemPrinters();
+        return ApiResponse.ok(res, "Sistem yazıcıları başarıyla listelendi.", list);
+    });
+    /**
      * GET /api/v1/yazici
      */
     static listYazicilar = asyncHandler(async (req, res) => {

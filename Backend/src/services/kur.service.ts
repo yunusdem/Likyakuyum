@@ -63,6 +63,11 @@ export class KurService {
     return KurSqlRepository.deleteKurTablosu(id, dbContext);
   }
 
+  private static tcmbCache: {
+    timestamp: number;
+    rates: Record<string, { forexBuying?: number; forexSelling?: number; banknoteBuying?: number; banknoteSelling?: number }>;
+  } | null = null;
+
   /**
    * Fetch live / official rates from TCMB XML feed
    */
@@ -77,6 +82,10 @@ export class KurService {
       }
     >
   > {
+    if (this.tcmbCache && Date.now() - this.tcmbCache.timestamp < 3000) {
+      return this.tcmbCache.rates;
+    }
+
     try {
       const response = await fetch("https://www.tcmb.gov.tr/kurlar/today.xml", {
         headers: { "User-Agent": "Mozilla/5.0" },
@@ -122,11 +131,15 @@ export class KurService {
         };
       }
 
+      if (Object.keys(rates).length > 0) {
+        this.tcmbCache = { timestamp: Date.now(), rates };
+      }
+
       return rates;
     } catch (err: any) {
       logger.warn("KurService.fetchTcmbRates error:", err?.message || err);
-      // Return empty object on error
-      return {};
+      // Return cached rates if available on error
+      return this.tcmbCache?.rates || {};
     }
   }
 }

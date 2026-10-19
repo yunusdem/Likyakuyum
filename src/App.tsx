@@ -26,6 +26,7 @@ import PanoPage from "./pages/kur/PanoPage";
 import TvKatalogPage from "./pages/katalog/TvKatalogPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
 import RaporPage from "./pages/rapor/RaporPage";
+import XmlDosyaPage from "./pages/rapor/XmlDosyaPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
 import DovizFisiPage from "./pages/vezne/DovizFisiPage";
@@ -458,6 +459,10 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
               <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
               <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />
+              <Route path="kur/merkez-bankasi-kurlari" element={<KurFiyatListesiPage pageType="merkez" />} />
+              <Route path="kur/merkez-bankasi-saklananlar" element={<KurFiyatListesiPage pageType="merkezSaklanan" />} />
+              <Route path="kur/merkez-kurlar" element={<Navigate to="/kur/merkez-bankasi-kurlari" replace />} />
+              <Route path="kur/merkez-saklananlar" element={<Navigate to="/kur/merkez-bankasi-saklananlar" replace />} />
               <Route path="kur/pano-tanimi" element={<PanoTanimiPage />} />
               <Route path="tanimlar/pano-tanimi" element={<PanoTanimiPage />} />
               <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
@@ -465,6 +470,7 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               {/* Eski "Belge / Fiş PDF" adresleri e-Belge ana sayfasına gider */}
               <Route path="belge" element={<Navigate to="/e-belge" replace />} />
               <Route path="raporlar/belge" element={<Navigate to="/e-belge" replace />} />
+              <Route path="raporlar/xml-dosya" element={<XmlDosyaPage />} />
               <Route path="raporlar/:yol" element={<RaporPage />} />
               <Route path="banka/hesap-kartlari" element={<BankaHesapKartiPage />} />
               <Route path="banka/hesap-karti" element={<BankaHesapKartiPage />} />

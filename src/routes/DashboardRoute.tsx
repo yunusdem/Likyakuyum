@@ -28,7 +28,7 @@ export const DashboardMenu: MenuItemType[] = [
   {
     id: uuid(),
     key: "vezne", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
-    title: "A- Vezne İşlemleri",
+    title: "A- Vezne / Kur",
     icon: <IconCoins size={18} />,
     children: [
       { id: uuid(), name: "A- Sarraf Fişi Kayıt", link: "vezne/sarraf-fisi-kayit" },
@@ -49,6 +49,12 @@ export const DashboardMenu: MenuItemType[] = [
       // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H3): her modülde ayrı madde, firma bazında ayrı kapatılır
       { id: uuid(), name: "P- Hızlı Satış (Sarraf)", link: "hizli-satis/sarraf" },
       { id: uuid(), name: "Q- Hızlı Satış (Döviz)", link: "hizli-satis/doviz" },
+      { id: uuid(), name: "R- Anlık Fiyat Listesi", link: "kur/anlik-fiyat-listesi" },
+      { id: uuid(), name: "S- Saklanan Fiyat Listesi", link: "kur/saklanan-fiyat-listesi" },
+      { id: uuid(), name: "T- Pano", link: "kur/pano" },
+      { id: uuid(), name: "U- Pano Tanımı", link: "kur/pano-tanimi" },
+      { id: uuid(), name: "V- Merkez Bankası Kurları", link: "kur/merkez-bankasi-kurlari" },
+      { id: uuid(), name: "Y- Merkez Bankası Saklananlar", link: "kur/merkez-bankasi-saklananlar" },
     ],
   },
 
@@ -81,6 +87,8 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "B- Saklanan Fiyat Listesi", link: "kur/saklanan-fiyat-listesi" },
       { id: uuid(), name: "C- Pano", link: "kur/pano" },
       { id: uuid(), name: "D- Pano Tanımı", link: "kur/pano-tanimi" },
+      { id: uuid(), name: "E- Merkez Bankası Kurları", link: "kur/merkez-bankasi-kurlari" },
+      { id: uuid(), name: "F- Merkez Bankası Saklananlar", link: "kur/merkez-bankasi-saklananlar" },
     ],
   },
 

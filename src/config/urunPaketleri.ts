@@ -95,7 +95,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   [["kasa"], [D, G, K, T]],
 
   // C- Kur
-  [["kur:kur/anlik-fiyat-listesi", "kur:kur/saklanan-fiyat-listesi"], [D, G, K]],
+  [["kur:kur/anlik-fiyat-listesi", "kur:kur/saklanan-fiyat-listesi", "kur:kur/merkez-bankasi-kurlari", "kur:kur/merkez-bankasi-saklananlar"], [D, G, K]],
   [["kur:kur/pano", "kur:kur/pano-tanimi"], [D, G, K, C]],
 
   // D- Cari
@@ -129,7 +129,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
 
   // G- Raporlar
   [
-    ["raporlar:raporlar/fis-listeleme", "raporlar:raporlar/gunluk-fis-detay", "raporlar:raporlar/vergiler-komisyon", "raporlar:raporlar/vergi-numarasi-raporu"],
+    ["raporlar:raporlar/fis-listeleme", "raporlar:raporlar/gunluk-fis-detay", "raporlar:raporlar/vergiler-komisyon", "raporlar:raporlar/vergi-numarasi-raporu", "raporlar:raporlar/xml-dosya"],
     [D, G, K, T],
   ],
   [

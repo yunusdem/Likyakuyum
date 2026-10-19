@@ -24,7 +24,8 @@ const BIRLESIMLER: { ev: string; gelen: string; baslik?: string; yalniz?: (m: Me
 /** S8: menüden kaldırılan sayfalar */
 const KALDIRILANLAR = new Set(["ayarlar/devir-islemi", "ayarlar/servis-islemleri"]);
 
-const HARFLER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+// Türk alfabesinde V'den sonra Y gelir (W ve X alfabe sonunda yedek tutulur)
+const HARFLER = "ABCDEFGHIJKLMNOPQRSTUVYZWX";
 const ON_EK = /^\s*([A-Za-zÇĞİÖŞÜçğıöşü])\s*[-–—]\s*/;
 
 const harfSirasi = (metin?: string): number => {
@@ -150,7 +151,7 @@ export const solMenuyuBirlestir = (suzulmus: MenuItemType[]): MenuItemType[] => 
 
   const birlesik = new Map<string, MenuItemType>();
   for (const [evKey, e] of evler) {
-    if (!e.planli.length && !e.sonaKalan.length) continue;
+    if (!e.planli.length && !e.sonaKalan.length && !e.baslik) continue;
     // Ev menü firmaya kapalıysa başlık yalnız gelen maddelerle çizilir; madde kaybolmaz
     const ev = oge(temiz, evKey);
     const kabuk = ev || oge(DashboardMenu, evKey);
