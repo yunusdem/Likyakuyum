@@ -17,6 +17,12 @@ export interface VezneItem {
   paraKodu?: string;
   alisFisiYaziciAdi?: string;
   satisFisiYaziciAdi?: string;
+  alisFisiCihazAdi?: string;
+  satisFisiCihazAdi?: string;
+  altinAlisFisiYaziciAdi?: string;
+  altinAlisFisiCihazAdi?: string;
+  altinSatisFisiYaziciAdi?: string;
+  altinSatisFisiCihazAdi?: string;
 }
 
 export interface VezneFormData {
@@ -79,7 +85,10 @@ export class CashDeskService {
     return res.success;
   }
 
-  public static async getPrinters(): Promise<LookupPrinter[]> {
+  public static async getPrinters(forceRefresh: boolean = false): Promise<LookupPrinter[]> {
+    if (forceRefresh) {
+      FastLookupCache.invalidate("printers");
+    }
     return FastLookupCache.get("printers", async () => {
       const res = await apiClient.get<LookupPrinter[]>("/vezne/printers");
       return res.data || [];

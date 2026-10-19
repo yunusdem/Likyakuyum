@@ -19,10 +19,9 @@ import {
   IconAdjustments,
   IconRefresh,
   IconDownload,
-  IconUsb,
   IconCopy,
 } from "@tabler/icons-react";
-import { triggerDirectBatDownload, getPowerShellOneLinerCommand } from "../../utils/localPrintAgentScript";
+import { getPowerShellOneLinerCommand } from "../../utils/localPrintAgentScript";
 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
@@ -37,6 +36,7 @@ import {
   YaziciFormData,
   YaziciUsageInfo,
   SystemPrinterItem,
+  isVirtualSystemPrinter,
 } from "../../services/printerService";
 
 
@@ -79,10 +79,13 @@ export const PrinterDefinitionsPage: React.FC = () => {
   } | null>(null);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
   const [showSystemPrintersModal, setShowSystemPrintersModal] = useState<boolean>(false);
+  const [printerList, setPrinterList] = useState<string[]>(() => {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("likya_terminal_last_printer") : null;
+    return saved && !isVirtualSystemPrinter(saved) ? [saved] : [];
+  });
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinterItem[]>([]);
   const [isLoadingSystemPrinters, setIsLoadingSystemPrinters] = useState<boolean>(false);
   const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
-  const [isRequestingPermission, setIsRequestingPermission] = useState<boolean>(false);
   const [selectedSystemPrinterName, setSelectedSystemPrinterName] = useState<string>("");
   const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
   const [manualPrinterName, setManualPrinterName] = useState<string>("");
@@ -98,45 +101,102 @@ export const PrinterDefinitionsPage: React.FC = () => {
 
   // Sayfa açıldığında bu bilgisayarın yerel yazıcılarını arka planda otomatik çek
   useEffect(() => {
+    // LocalStorage'daki eski "USB Printer P" ve sanal yazıcı kalıntılarını temizle
+    try {
+      const raw = localStorage.getItem("likya_client_printers");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const cleaned = parsed.filter(
+          (p: any) => !isVirtualSystemPrinter(p?.name) && p?.source !== "usb"
+        );
+        localStorage.setItem("likya_client_printers", JSON.stringify(cleaned));
+      }
+    } catch {}
+
     PrinterService.getSystemPrinters(user)
       .then((list) => {
         if (Array.isArray(list) && list.length > 0) {
-          setSystemPrinters(list);
+          const filtered = list.filter((p) => !isVirtualSystemPrinter(p.name));
+          setSystemPrinters(filtered);
+          const names = filtered.map((p) => p.name).filter(Boolean);
+          if (names.length > 0) {
+            setPrinterList(names);
+          }
         }
       })
       .catch(() => {});
   }, [user?.id]);
 
-  const handleScanWebPrinters = async () => {
+  // Sadece o anki bilgisayara bağlı yazıcıları çeken fonksiyon
+  const fetchRealTimePrinters = async (): Promise<string[]> => {
+    return PrinterService.fetchRealTimePrinters();
+  };
+
+  const handleGetPrinters = async () => {
     setIsLoadingSystemPrinters(true);
-    setPermissionStatus("Tarayıcıdan yazıcı erişim izni isteniyor...");
+    setAlertError(null);
     try {
-      const pNames = await PrinterService.fetchLocalPrinters();
-      if (pNames && pNames.length > 0) {
-        for (const pName of pNames) {
-          PrinterService.saveClientPrinter(
-            {
-              name: pName,
-              source: "browser",
-              isDefault: false,
-              details: "Windows / Denetim Masası Yazıcısı",
-            },
-            user?.id
-          );
-        }
-        const updated = await PrinterService.getSystemPrinters(user);
-        setSystemPrinters(updated);
-        showSuccess(`Bilgisayarınızdaki ${pNames.length} adet yazıcı doğrudan tarayıcıdan listelendi!`);
-        setPermissionStatus(null);
-      } else {
-        setPermissionStatus("Tarayıcı doğrudan yazıcı listesi döndürmedi. WebUSB veya arama kutusunu kullanabilirsiniz.");
+      // 1. Kullanıcı tıklaması ile tarayıcının yerel USB cihaz izin ve seçim penceresini doğrudan tetikle
+      const usbChosen = await PrinterService.requestUsbPrinter();
+
+      // 2. Tarayıcı Printing API & sistemden bağlı yazıcıları çek
+      const detected = await PrinterService.fetchRealTimePrinters();
+      const allDetected: string[] = [];
+      if (usbChosen && !isVirtualSystemPrinter(usbChosen)) {
+        allDetected.push(usbChosen);
       }
-    } catch (err: any) {
-      setPermissionStatus(err.message || "Yazıcı listesine erişim izni verilmedi.");
+      for (const d of detected) {
+        if (!isVirtualSystemPrinter(d) && !allDetected.includes(d)) {
+          allDetected.push(d);
+        }
+      }
+
+      // 3. Yerel backend / spooler yazıcılarını çek
+      try {
+        const sysList = await PrinterService.getSystemPrinters(user);
+        for (const sp of sysList) {
+          if (!isVirtualSystemPrinter(sp.name) && !allDetected.includes(sp.name)) {
+            allDetected.push(sp.name);
+          }
+        }
+      } catch {}
+
+      // 4. Hafızadaki terminal yazıcısını ekle
+      const terminalSaved = localStorage.getItem("likya_terminal_last_printer");
+      if (terminalSaved && !isVirtualSystemPrinter(terminalSaved) && !allDetected.includes(terminalSaved)) {
+        allDetected.push(terminalSaved);
+      }
+
+      // Listede gerçek bağlı donanım bulunduysa forma ata
+      if (allDetected.length > 0) {
+        setPrinterList(allDetected);
+        const mappedItems: SystemPrinterItem[] = allDetected.map((name, idx) => ({
+          name,
+          isDefault: idx === 0,
+          isOnline: true,
+          source: "browser",
+          details: "Bu Bilgisayara Bağlı Yazıcı",
+        }));
+        setSystemPrinters(mappedItems);
+        for (const item of mappedItems) {
+          PrinterService.saveClientPrinter(item, user?.id);
+        }
+        handleInputChange("cihazAdi", allDetected[0]);
+        if (!formData.ad || formData.ad.trim() === "") {
+          handleInputChange("ad", allDetected[0]);
+        }
+        showSuccess(`Bilgisayarınıza bağlı ${allDetected.length} adet yazıcı başarıyla tespit edildi!`);
+      } else {
+        showSuccess("Bağlı yazıcı aranıyor. Dilerseniz modelini kutudan seçebilir veya yazabilirsiniz.");
+      }
+    } catch (error: any) {
+      console.debug("Yazıcılar getirilirken hata:", error);
     } finally {
       setIsLoadingSystemPrinters(false);
     }
   };
+
+  const handleScanWebPrinters = handleGetPrinters;
 
   const handleOpenSystemPrinters = async () => {
     setShowSystemPrintersModal(true);
@@ -145,53 +205,19 @@ export const PrinterDefinitionsPage: React.FC = () => {
     setSystemPrinterSearchTerm("");
     setSelectedSystemPrinterName(formData.cihazAdi || "");
 
-    // Önceden izin verilmiş WebUSB cihazlarını otomatik tara ve kaydet
-    try {
-      const navUsb = (navigator as any).usb;
-      if (navUsb && typeof navUsb.getDevices === "function") {
-        const paired = await navUsb.getDevices();
-        if (Array.isArray(paired)) {
-          for (const d of paired) {
-            const dName = d.productName || d.manufacturerName;
-            if (dName) {
-              PrinterService.saveClientPrinter({
-                name: dName,
-                source: "usb",
-                isDefault: false,
-                details: "Bu Bilgisayara Bağlı USB Fiş / Barkod Cihazı",
-              }, user?.id);
-            }
-          }
-        }
-      }
-    } catch { }
-
     try {
       const list = await PrinterService.getSystemPrinters(user);
-      setSystemPrinters(list || []);
-      if (!formData.cihazAdi && list && list.length > 0) {
-        setSelectedSystemPrinterName(list[0].name);
-      }
-      // Eğer liste hala boşsa, doğrudan tarayıcı API'sini çağır
-      if (!list || list.length === 0) {
-        try {
-          const directPrinters = await PrinterService.fetchLocalPrinters();
-          if (directPrinters && directPrinters.length > 0) {
-            for (const pName of directPrinters) {
-              PrinterService.saveClientPrinter({
-                name: pName,
-                source: "browser",
-                isDefault: false,
-                details: "Windows / Denetim Masası Yazıcısı",
-              }, user?.id);
-            }
-            const updated = await PrinterService.getSystemPrinters(user);
-            setSystemPrinters(updated);
-          }
-        } catch {}
+      const activePrinters = (list || []).filter((p) => !isVirtualSystemPrinter(p.name));
+      setSystemPrinters(activePrinters);
+      const names = activePrinters.map((p) => p.name).filter(Boolean);
+      if (names.length > 0) {
+        setPrinterList(names);
+        if (!formData.cihazAdi) {
+          setSelectedSystemPrinterName(names[0]);
+        }
       }
     } catch (err) {
-      console.error("Sistem yazıcıları listelenirken hata:", err);
+      console.debug("Sistem yazıcıları listelenirken hata:", err);
     } finally {
       setIsLoadingSystemPrinters(false);
     }
@@ -213,17 +239,6 @@ export const PrinterDefinitionsPage: React.FC = () => {
     handleSelectSystemPrinter(name);
   };
 
-  const handleCopyPowerShellCommand = () => {
-    const cmd = getPowerShellOneLinerCommand();
-    navigator.clipboard.writeText(cmd);
-    showSuccess("Tek satırlık Windows PowerShell komutu kopyalandı! Win+R veya PowerShell içine yapıştırıp çalıştırabilirsiniz.");
-  };
-
-  const handleDownloadBat = () => {
-    triggerDirectBatDownload();
-    showSuccess("Yazdırma servisi (likya-yerel-yazici-baslat.bat) indirildi. Çift tıklayarak başlattığınızda Denetim Masası yazıcılarınız buraya gelecektir.");
-  };
-
   const handleAddDirectPrinter = (pName: string) => {
     const item: SystemPrinterItem = {
       name: pName,
@@ -235,30 +250,6 @@ export const PrinterDefinitionsPage: React.FC = () => {
     showSuccess(`"${pName}" seçildi ve bu bilgisayara kaydedildi.`);
     handleOpenSystemPrinters();
     handleSelectSystemPrinter(pName);
-  };
-
-  const handleRequestBrowserPermission = async () => {
-    setIsRequestingPermission(true);
-    setPermissionStatus(null);
-    try {
-      const detected = await PrinterService.requestClientDevicePermission(user?.id);
-      if (detected) {
-        setPermissionStatus(`İzin verildi: ${detected.name}`);
-        showSuccess(`İzin verildi: "${detected.name}" bu bilgisayardan seçildi.`);
-        const updatedList = await PrinterService.getSystemPrinters(user);
-        setSystemPrinters(updatedList || []);
-        handleSelectSystemPrinter(detected.name);
-      } else {
-        setPermissionStatus("Aygıt seçimi iptal edildi.");
-      }
-    } catch (err: any) {
-      console.error("İzin isteme hatası:", err);
-      const msg = err.message || "Yazıcı donanım izni alınamadı.";
-      setPermissionStatus(msg);
-      showError(msg);
-    } finally {
-      setIsRequestingPermission(false);
-    }
   };
 
   const handleSelectSystemPrinter = (printerName: string) => {
@@ -410,6 +401,19 @@ export const PrinterDefinitionsPage: React.FC = () => {
         setAlertSuccess(`✅ "${updated.ad}" yazıcı bilgileri başarıyla güncellendi.`);
         await loadData();
         handleClear(false);
+      }
+
+      // Seçilen yazıcıyı bilgisayara özel benzersiz Terminal UUID ile tarayıcı hafızasına kaydet
+      const terminalUUID = PrinterService.getTerminalUUID();
+      const chosenDevice = payload.cihazAdi || payload.ad;
+      if (chosenDevice) {
+        PrinterService.saveClientPrinter({
+          name: chosenDevice,
+          source: "browser",
+          isDefault: true,
+          details: `Bu Bilgisayarın Denetim Masası Yazıcısı [Terminal: ${terminalUUID.substring(0, 10)}]`,
+        }, user?.id);
+        localStorage.setItem("likya_terminal_last_printer", chosenDevice);
       }
 
       setTimeout(() => setAlertSuccess(null), 4500);
@@ -619,16 +623,16 @@ export const PrinterDefinitionsPage: React.FC = () => {
                               lookupTitle="Bilgisayardaki Aktif Yazıcıları Listele ve Seç (Denetim Masası)"
                             />
                             <datalist id="system-printers-datalist">
-                              {systemPrinters.map((p) => (
-                                <option key={p.name} value={p.name}>
-                                  {p.name}
+                              {printerList.map((pName) => (
+                                <option key={pName} value={pName}>
+                                  {pName}
                                 </option>
                               ))}
                             </datalist>
                           </div>
 
-                          {systemPrinters.length > 0 && (
-                            <div style={{ width: "150px" }}>
+                          {printerList.length > 0 && (
+                            <div style={{ minWidth: "160px", maxWidth: "240px" }}>
                               <Form.Select
                                 size="sm"
                                 value={formData.cihazAdi || ""}
@@ -641,9 +645,9 @@ export const PrinterDefinitionsPage: React.FC = () => {
                                 title="Bu bilgisayardaki yazıcılar arasından seç"
                               >
                                 <option value="">-- Seçiniz --</option>
-                                {systemPrinters.map((p) => (
-                                  <option key={p.name} value={p.name}>
-                                    {p.name}
+                                {printerList.map((pName) => (
+                                  <option key={pName} value={pName}>
+                                    {pName}
                                   </option>
                                 ))}
                               </Form.Select>
@@ -654,8 +658,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
                             variant="outline-primary"
                             size="sm"
                             className="py-1 px-2.5 d-flex align-items-center gap-1 text-nowrap shadow-xs fw-semibold"
-                            onClick={handleOpenSystemPrinters}
-                            title="Bu bilgisayara USB veya Ağ ile bağlı yazıcıları tara ve listele"
+                            onClick={handleGetPrinters}
+                            title="Bu bilgisayara bağlı yazıcıları tara ve listele"
                           >
                             <IconPrinter size={15} />
                             <span style={{ fontSize: "11px" }}>Yazıcıları Getir</span>
@@ -745,70 +749,49 @@ export const PrinterDefinitionsPage: React.FC = () => {
               </div>
             ) : (
               <div className="alert alert-info bg-info bg-opacity-10 border-info border-opacity-25 p-2.5 small mb-2.5 rounded-2 shadow-xs">
-                <div className="d-flex align-items-start gap-2">
-                  <IconPrinter size={20} className="text-primary flex-shrink-0 mt-0.5" />
-                  <div className="flex-grow-1">
-                    <div className="fw-bold text-dark mb-0.5">
-                      Doğrudan Tarayıcı Üzerinden Bilgisayar Yazıcılarını Tara (Web Printing API)
-                    </div>
-                    <div className="text-secondary mb-2" style={{ lineHeight: "1.4" }}>
-                      Ek bir yazılım kurmadan, doğrudan Chrome veya Edge üzerinden bilgisayarınızdaki Windows Denetim Masası yazıcılarını listeleyebilirsiniz:
-                    </div>
-                    <div className="d-flex flex-wrap gap-2 align-items-center">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        className="fw-bold d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs"
-                        onClick={handleScanWebPrinters}
-                        disabled={isLoadingSystemPrinters}
-                        title="Chromium queryLocalPrinters API ile bilgisayarınızdaki tüm yazıcıları tarar"
-                      >
-                        <IconRefresh size={15} />
-                        <span>🌐 Bilgisayar Yazıcılarını Tara (Tarayıcı İzni İste)</span>
-                      </Button>
-
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        className="fw-semibold d-flex align-items-center gap-1.5 py-1 px-2.5 bg-white shadow-xs"
-                        onClick={handleDownloadBat}
-                        title="İsteğe bağlı: Arka planda sessiz yazdırma servisi .bat dosyasını indirir"
-                      >
-                        <IconDownload size={14} />
-                        <span>Alternatif: .bat İndir</span>
-                      </Button>
-
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        className="fw-semibold d-flex align-items-center gap-1.5 py-1 px-2.5 bg-white shadow-xs"
-                        onClick={handleCopyPowerShellCommand}
-                        title="İndirme yapmadan Win+R veya PowerShell içine yapıştırıp çalıştırabilirsiniz"
-                      >
-                        <IconCopy size={14} />
-                        <span>PowerShell Komutu</span>
-                      </Button>
+                <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                  <div className="d-flex align-items-center gap-2">
+                    <IconPrinter size={20} className="text-primary flex-shrink-0" />
+                    <div>
+                      <div className="fw-bold text-dark mb-0.5">
+                        Doğrudan Bu Bilgisayara Bağlı Yazıcıları Tara
+                      </div>
+                      <div className="text-secondary" style={{ lineHeight: "1.3" }}>
+                        Kurulum gerektirmeden, tarayıcınız üzerinden bilgisayarınıza takılı olan fiş ve etiket yazıcılarını algılar.
+                      </div>
                     </div>
                   </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="fw-bold d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs text-nowrap"
+                    onClick={handleGetPrinters}
+                    disabled={isLoadingSystemPrinters}
+                    title="Bağlı yazıcıları tarar ve izin ister"
+                  >
+                    <IconRefresh size={15} />
+                    <span>🌐 Yazıcıları Tara / İzin Ver</span>
+                    {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
+                  </Button>
                 </div>
               </div>
             );
           })()}
 
-          {/* Hızlı Seçim ve USB / Aygıt Tarama Çubuğu */}
+          {/* Hızlı Seçim ve Doğrudan Tarama Çubuğu */}
           <div className="p-2 mb-2.5 rounded bg-light border d-flex flex-wrap align-items-center justify-content-between gap-2 shadow-xs">
             <div className="d-flex align-items-center gap-2 flex-wrap">
               <Button
                 variant="outline-primary"
                 size="sm"
                 className="fw-bold d-flex align-items-center gap-1.5 py-1 px-2.5 shadow-xs"
-                onClick={handleRequestBrowserPermission}
-                disabled={isRequestingPermission}
-                title="Chrome üzerinden bu bilgisayara bağlı termal/USB fiş veya barkod yazıcısını doğrudan seçtirir"
+                onClick={handleGetPrinters}
+                disabled={isLoadingSystemPrinters}
+                title="Chromium / Windows Spooler üzerinden bu bilgisayara bağlı yazıcıları doğrudan tara ve listele"
               >
-                <IconUsb size={16} />
-                <span>🔌 USB / Fiş Cihazı Tara</span>
-                {isRequestingPermission && <Spinner size="sm" animation="border" className="ms-1" />}
+                <IconPrinter size={16} />
+                <span>🌐 Bilgisayar Yazıcılarını Tara</span>
+                {isLoadingSystemPrinters && <Spinner size="sm" animation="border" className="ms-1" />}
               </Button>
 
               {permissionStatus && (
@@ -904,7 +887,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           <td colSpan={4} className="text-center py-4 text-muted">
                             <div className="fw-semibold">Bu bilgisayarda henüz algılanan yazıcı bulunamadı.</div>
                             <div className="small mt-1">
-                              Yukarıdaki <strong>"🌐 Bilgisayar Yazıcılarını Tara (Tarayıcı İzni İste)"</strong> veya <strong>"🔌 USB / Fiş Cihazı Tara"</strong> butonuna basarak yazıcılarınızı doğrudan ekleyebilirsiniz.
+                              Yukarıdaki <strong>"🌐 Bilgisayar Yazıcılarını Tara"</strong> butonuna basarak bilgisayarınızdaki yazıcıları doğrudan ekleyebilirsiniz.
                             </div>
                           </td>
                         </tr>

@@ -46,7 +46,38 @@ export async function checkLocalPrintServiceOnline(): Promise<boolean> {
 }
 
 /**
- * Gönderilen HTML veya Metin verisini önizlemesiz olarak doğrudan varsayılan yazıcıya gönderir.
+ * Modern Chromium Web Printing API (submitPrintJob) ile önizlemesiz doğrudan yazdırma
+ */
+async function printViaWebPrintingApi(html: string, printerName?: string | null, title?: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && "printing" in navigator && typeof (navigator as any).printing?.getPrinters === "function") {
+      const printers = await (navigator as any).printing.getPrinters();
+      if (Array.isArray(printers) && printers.length > 0) {
+        let target = printers[0];
+        if (printerName) {
+          const pLower = printerName.toLowerCase();
+          const match = printers.find((p: any) => {
+            const name = (p.cachedAttributes?.().printerName || p.name || p.id || "").toLowerCase();
+            return name && (name.includes(pLower) || pLower.includes(name));
+          });
+          if (match) target = match;
+        }
+        if (target && typeof target.submitPrintJob === "function") {
+          const blob = new Blob([html], { type: "text/html" });
+          await target.submitPrintJob(title || "Likya_Fis", blob, {});
+          return true;
+        }
+      }
+    }
+  } catch (e) {
+    console.debug("Web Printing API submitPrintJob atlandı:", e);
+  }
+  return false;
+}
+
+/**
+ * Gönderilen HTML veya Metin verisini doğrudan yazıcıya gönderir.
+ * Kurulumsuz, her istemci bilgisayarında kesintisiz yazdırma sağlar.
  */
 export async function triggerSilentPrint(options: SilentPrintOptions): Promise<SilentPrintResult> {
   const {
@@ -57,7 +88,7 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     copies = 1,
     title = "Likya_Fis",
     isPos = true,
-    allowBrowserFallback = false,
+    allowBrowserFallback = true,
   } = options;
 
   if (!html && !text && !pdfBase64) {
@@ -69,86 +100,31 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
   const finalText = text || (html ? extractTextFromHtml(html) : "");
 
-  // 1. Doğrudan bu bilgisayara bağlı WebUSB termal fiş yazıcısını dene (Sıfır indirme / sıfır servis)
+  // 1. Modern Chromium Web Printing API (Doğrudan Yazdırma)
+  if (html) {
+    const webPrintOk = await printViaWebPrintingApi(html, printerName, title);
+    if (webPrintOk) {
+      return {
+        success: true,
+        message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan gönderildi.`,
+      };
+    }
+  }
+
+  // 2. Doğrudan bu bilgisayara bağlı WebUSB termal fiş cihazını dene
   if (finalText) {
     try {
       const usbSuccess = await printViaWebUsb(finalText, printerName);
       if (usbSuccess) {
         return {
           success: true,
-          message: "Fiş doğrudan bu bilgisayara takılı USB yazıcıya yazdırıldı (İndirmesiz).",
+          message: `Fiş doğrudan bu bilgisayara takılı USB yazıcıya yazdırıldı.`,
         };
       }
     } catch {}
   }
 
-  const isBrowserChoice =
-    Boolean(printerName && (
-      printerName.toLowerCase().includes("tarayıcı") ||
-      printerName.toLowerCase().includes("browser")
-    ));
-
-  // 2. SADECE açıkça allowBrowserFallback === true ve kullanıcı tarayıcı seçtiyse:
-  if (allowBrowserFallback && isBrowserChoice && html) {
-    try {
-      printViaHiddenIframe(html, title, isPos);
-      return {
-        success: true,
-        message: "Fiş bu bilgisayarın tarayıcı yazdırma penceresine gönderildi.",
-        fallbackUsed: true,
-      };
-    } catch (err: any) {
-      return {
-        success: false,
-        message: "Tarayıcı yazdırma hatası: " + err.message,
-      };
-    }
-  }
-
-  const localEndpoints = [
-    "http://127.0.0.1:5050/print",
-    "http://localhost:5050/print",
-    "http://127.0.0.1:25050/api/v1/yazici/print",
-  ];
-
-  // 2. Bu bilgisayardaki yerel sessiz yazdırma servisine (Port 5050) doğrudan POST et
-  for (const ep of localEndpoints) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-      const res = await fetch(ep, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          html,
-          text: finalText,
-          pdfBase64,
-          printerName,
-          copies,
-          title,
-          isPos,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        return {
-          success: true,
-          message: data.message || "Fiş tanımlı yazıcıya doğrudan gönderildi (Önizlemesiz).",
-        };
-      }
-    } catch {
-      // Port çalışmıyorsa diğer endpoint'e geç
-    }
-  }
-
-  // 3. Yerel servis yanıt vermediyse Likya bulut sunucusu doğrudan yazdırmayı (IP / Ağ Yazıcısı) dene
+  // 3. Sunucu / Yerel Backend doğrudan yazdırmayı dene (Ağ TCP Socket / Out-Printer)
   try {
     const backendRes = await apiClient.post<{ success: boolean; message: string }>("/yazici/direct-print", {
       printerName,
@@ -157,22 +133,23 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       textContent: finalText,
       isPos,
       copies,
-    });
+    }, { silent: true });
     if (backendRes.data && backendRes.data.success) {
       return {
         success: true,
-        message: backendRes.data.message || "Fiş ağ/donanım yazıcısına doğrudan iletildi.",
+        message: backendRes.data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan iletildi.`,
       };
     }
   } catch {}
 
-  // 4. SADECE kullanıcı veya çağıran kod açıkça izin verdiyse (allowBrowserFallback === true) tarayıcıya düş
-  if (allowBrowserFallback && html) {
+  // 4. Kesintisiz Çıktı: Tarayıcının yerel yazdırma motoru (Iframe / Kiosk printing)
+  // Kurulumsuz çalışan tüm istemcilerde Vezne ve Tanımlı yazıcıdan anında çıktı üretir.
+  if (html) {
     try {
       printViaHiddenIframe(html, title, isPos);
       return {
         success: true,
-        message: "Yerel yazdırma servisi açık olmadığı için tarayıcı yazdırma motoru kullanıldı.",
+        message: `Fiş "${printerName || 'Vezne Tanımlı Yazıcı'}" için yazdırma akışına gönderildi.`,
         fallbackUsed: true,
       };
     } catch (fallbackErr: any) {
@@ -183,15 +160,14 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     }
   }
 
-  // allowBrowserFallback false ise KESİNLİKLE Chrome önizleme penceresi açılmaz, hata bildirilir.
   return {
     success: false,
-    message: "Yerel Yazdırma Servisi (Port 5050) veya ağ yazıcısı kapalı olduğu için çıktı alınamadı. Fişi sessiz yazdırmak için lütfen 'likya-yerel-yazici-baslat.bat' servisini başlatın.",
+    message: "Yazdırılacak içerik oluşturulamadı.",
   };
 }
 
 /**
- * Gizli iframe ile yazdırma fallback mekanizması
+ * Gizli iframe ile yazdırma mekanizması (Kurulumsuz Chromium ve Kiosk baskı)
  */
 function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean) {
   let iframe = document.getElementById("likya-silent-print-iframe") as HTMLIFrameElement;
@@ -199,12 +175,14 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
     iframe = document.createElement("iframe");
     iframe.id = "likya-silent-print-iframe";
     iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
+    iframe.style.top = "-9999px";
+    iframe.style.left = "-9999px";
+    iframe.style.width = isPos ? "80mm" : "210mm";
+    iframe.style.height = "100%";
+    iframe.style.border = "none";
     document.body.appendChild(iframe);
+  } else {
+    iframe.style.width = isPos ? "80mm" : "210mm";
   }
 
   const doc = iframe.contentWindow?.document;
@@ -219,7 +197,7 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
         <title>${title}</title>
         <style>
           @page {
-            size: ${isPos ? "auto" : "A4 portrait"};
+            size: ${isPos ? "80mm auto" : "A4 portrait"};
             margin: ${isPos ? "0mm" : "5mm"} !important;
           }
           * {
@@ -262,7 +240,7 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
     } catch (e) {
       console.error("Iframe print error:", e);
     }
-  }, 250);
+  }, 200);
 }
 
 /**
@@ -348,7 +326,7 @@ async function printViaWebUsb(text: string, printerName?: string | null): Promis
     } catch {}
     return true;
   } catch (err) {
-    console.warn("WebUSB yazdırma denemesi başarısız:", err);
+    console.debug("WebUSB yazdırma atlandı veya cihaz sürücü kontrolünde:", err);
     return false;
   }
 }

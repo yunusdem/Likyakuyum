@@ -19,6 +19,12 @@ export interface TodvzVezneEntity {
   PARA_KODU?: string;
   ALIS_FISI_YAZICI_ADI?: string;
   SATIS_FISI_YAZICI_ADI?: string;
+  ALIS_FISI_CIHAZ_ADI?: string;
+  SATIS_FISI_CIHAZ_ADI?: string;
+  ALTIN_ALIS_FISI_YAZICI_ADI?: string;
+  ALTIN_ALIS_FISI_CIHAZ_ADI?: string;
+  ALTIN_SATIS_FISI_YAZICI_ADI?: string;
+  ALTIN_SATIS_FISI_CIHAZ_ADI?: string;
 }
 
 export interface VezneModel {
@@ -37,6 +43,12 @@ export interface VezneModel {
   paraKodu?: string;
   alisFisiYaziciAdi?: string;
   satisFisiYaziciAdi?: string;
+  alisFisiCihazAdi?: string;
+  satisFisiCihazAdi?: string;
+  altinAlisFisiYaziciAdi?: string;
+  altinAlisFisiCihazAdi?: string;
+  altinSatisFisiYaziciAdi?: string;
+  altinSatisFisiCihazAdi?: string;
 }
 
 export interface VezneInputDto {
@@ -81,6 +93,12 @@ export class VezneSqlRepository {
       paraKodu: entity.PARA_KODU ? entity.PARA_KODU.trim() : undefined,
       alisFisiYaziciAdi: entity.ALIS_FISI_YAZICI_ADI ? entity.ALIS_FISI_YAZICI_ADI.trim() : undefined,
       satisFisiYaziciAdi: entity.SATIS_FISI_YAZICI_ADI ? entity.SATIS_FISI_YAZICI_ADI.trim() : undefined,
+      alisFisiCihazAdi: entity.ALIS_FISI_CIHAZ_ADI ? entity.ALIS_FISI_CIHAZ_ADI.trim() : undefined,
+      satisFisiCihazAdi: entity.SATIS_FISI_CIHAZ_ADI ? entity.SATIS_FISI_CIHAZ_ADI.trim() : undefined,
+      altinAlisFisiYaziciAdi: entity.ALTIN_ALIS_FISI_YAZICI_ADI ? entity.ALTIN_ALIS_FISI_YAZICI_ADI.trim() : undefined,
+      altinAlisFisiCihazAdi: entity.ALTIN_ALIS_FISI_CIHAZ_ADI ? entity.ALTIN_ALIS_FISI_CIHAZ_ADI.trim() : undefined,
+      altinSatisFisiYaziciAdi: entity.ALTIN_SATIS_FISI_YAZICI_ADI ? entity.ALTIN_SATIS_FISI_YAZICI_ADI.trim() : undefined,
+      altinSatisFisiCihazAdi: entity.ALTIN_SATIS_FISI_CIHAZ_ADI ? entity.ALTIN_SATIS_FISI_CIHAZ_ADI.trim() : undefined,
     };
   }
 
@@ -103,11 +121,19 @@ export class VezneSqlRepository {
           v.[MUSTERI_TANI_FORMU_YAZICI_VAR],
           p.[KOD] AS PARA_KODU,
           y1.[AD] AS ALIS_FISI_YAZICI_ADI,
-          y2.[AD] AS SATIS_FISI_YAZICI_ADI
+          y1.[CIHAZ_ADI] AS ALIS_FISI_CIHAZ_ADI,
+          y2.[AD] AS SATIS_FISI_YAZICI_ADI,
+          y2.[CIHAZ_ADI] AS SATIS_FISI_CIHAZ_ADI,
+          y3.[AD] AS ALTIN_ALIS_FISI_YAZICI_ADI,
+          y3.[CIHAZ_ADI] AS ALTIN_ALIS_FISI_CIHAZ_ADI,
+          y4.[AD] AS ALTIN_SATIS_FISI_YAZICI_ADI,
+          y4.[CIHAZ_ADI] AS ALTIN_SATIS_FISI_CIHAZ_ADI
         FROM [dbo].[TODVZ_VEZNE] v
         LEFT JOIN [dbo].[TODVZ_PARA] p ON v.[PARA_ID] = p.[PARA_ID]
         LEFT JOIN [dbo].[TODVZ_YAZICI] y1 ON v.[ALIS_FISI_YAZICI_ID] = y1.[YAZICI_ID]
         LEFT JOIN [dbo].[TODVZ_YAZICI] y2 ON v.[SATIS_FISI_YAZICI_ID] = y2.[YAZICI_ID]
+        LEFT JOIN [dbo].[TODVZ_YAZICI] y3 ON v.[ALTIN_ALIS_FISI_YAZICI_ID] = y3.[YAZICI_ID]
+        LEFT JOIN [dbo].[TODVZ_YAZICI] y4 ON v.[ALTIN_SATIS_FISI_YAZICI_ID] = y4.[YAZICI_ID]
         ORDER BY 
           CASE 
             WHEN LOWER(LTRIM(RTRIM(v.[AD]))) LIKE '%ana%' OR LOWER(LTRIM(RTRIM(v.[KOD]))) = 'ana' OR LTRIM(RTRIM(v.[KOD])) = '00' THEN 0 
@@ -149,11 +175,19 @@ export class VezneSqlRepository {
           v.[MUSTERI_TANI_FORMU_YAZICI_VAR],
           p.[KOD] AS PARA_KODU,
           y1.[AD] AS ALIS_FISI_YAZICI_ADI,
-          y2.[AD] AS SATIS_FISI_YAZICI_ADI
+          y1.[CIHAZ_ADI] AS ALIS_FISI_CIHAZ_ADI,
+          y2.[AD] AS SATIS_FISI_YAZICI_ADI,
+          y2.[CIHAZ_ADI] AS SATIS_FISI_CIHAZ_ADI,
+          y3.[AD] AS ALTIN_ALIS_FISI_YAZICI_ADI,
+          y3.[CIHAZ_ADI] AS ALTIN_ALIS_FISI_CIHAZ_ADI,
+          y4.[AD] AS ALTIN_SATIS_FISI_YAZICI_ADI,
+          y4.[CIHAZ_ADI] AS ALTIN_SATIS_FISI_CIHAZ_ADI
         FROM [dbo].[TODVZ_VEZNE] v
         LEFT JOIN [dbo].[TODVZ_PARA] p ON v.[PARA_ID] = p.[PARA_ID]
         LEFT JOIN [dbo].[TODVZ_YAZICI] y1 ON v.[ALIS_FISI_YAZICI_ID] = y1.[YAZICI_ID]
         LEFT JOIN [dbo].[TODVZ_YAZICI] y2 ON v.[SATIS_FISI_YAZICI_ID] = y2.[YAZICI_ID]
+        LEFT JOIN [dbo].[TODVZ_YAZICI] y3 ON v.[ALTIN_ALIS_FISI_YAZICI_ID] = y3.[YAZICI_ID]
+        LEFT JOIN [dbo].[TODVZ_YAZICI] y4 ON v.[ALTIN_SATIS_FISI_YAZICI_ID] = y4.[YAZICI_ID]
         WHERE v.[VEZNE_ID] = @id;
       `;
       const result = await request.query<TodvzVezneEntity>(query);

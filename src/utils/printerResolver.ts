@@ -100,6 +100,26 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
         sourceLabel = "Vezne Satış Yazıcısı";
       }
     }
+    // Veznede o yöne ait yazıcı bulunmadıysa, veznede tanımlı diğer yazıcıları kontrol et
+    if (!targetId && vezne) {
+      if (vezne.altinAlisFisiYaziciId) {
+        targetId = Number(vezne.altinAlisFisiYaziciId);
+        source = "vezne_altin_alis";
+        sourceLabel = "Vezne Altın Alış Yazıcısı";
+      } else if (vezne.altinSatisFisiYaziciId) {
+        targetId = Number(vezne.altinSatisFisiYaziciId);
+        source = "vezne_altin_satis";
+        sourceLabel = "Vezne Altın Satış Yazıcısı";
+      } else if (vezne.alisFisiYaziciId) {
+        targetId = Number(vezne.alisFisiYaziciId);
+        source = "vezne_alis";
+        sourceLabel = "Vezne Alış Yazıcısı";
+      } else if (vezne.satisFisiYaziciId) {
+        targetId = Number(vezne.satisFisiYaziciId);
+        source = "vezne_satis";
+        sourceLabel = "Vezne Satış Yazıcısı";
+      }
+    }
     // Veznede belirtilmemişse kullanıcı yazıcısına fallback
     if (!targetId && user?.printerId) {
       const parsed = parseInt(String(user.printerId), 10);
@@ -120,6 +140,17 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
       source = "vezne_satis";
       sourceLabel = "Vezne Döviz Satış Yazıcısı";
     }
+    if (!targetId && vezne) {
+      if (vezne.alisFisiYaziciId) {
+        targetId = Number(vezne.alisFisiYaziciId);
+        source = "vezne_alis";
+        sourceLabel = "Vezne Alış Yazıcısı";
+      } else if (vezne.satisFisiYaziciId) {
+        targetId = Number(vezne.satisFisiYaziciId);
+        source = "vezne_satis";
+        sourceLabel = "Vezne Satış Yazıcısı";
+      }
+    }
     // Veznede belirtilmemişse kullanıcı yazıcısına fallback
     if (!targetId && user?.printerId) {
       const parsed = parseInt(String(user.printerId), 10);
@@ -131,6 +162,15 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
     }
   }
 
+  // Vezne nesnesinde doğrudan gelen yazıcı veya aygıt adını tespit et
+  const directVezneName =
+    (isAlis ? (vezne?.altinAlisFisiCihazAdi || vezne?.altinAlisFisiYaziciAdi || vezne?.alisFisiCihazAdi || vezne?.alisFisiYaziciAdi) : null) ||
+    (isSatis ? (vezne?.altinSatisFisiCihazAdi || vezne?.altinSatisFisiYaziciAdi || vezne?.satisFisiCihazAdi || vezne?.satisFisiYaziciAdi) : null) ||
+    vezne?.altinAlisFisiCihazAdi || vezne?.altinAlisFisiYaziciAdi ||
+    vezne?.altinSatisFisiCihazAdi || vezne?.altinSatisFisiYaziciAdi ||
+    vezne?.alisFisiCihazAdi || vezne?.alisFisiYaziciAdi ||
+    vezne?.satisFisiCihazAdi || vezne?.satisFisiYaziciAdi || null;
+
   // Match targetId with printers list
   let matched: YaziciItem | null = null;
   if (targetId && printers.length > 0) {
@@ -139,8 +179,28 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
         (p) =>
           Number(p.id) === Number(targetId) ||
           Number(p.siraNo) === Number(targetId) ||
+          (directVezneName && p.ad?.toLowerCase() === directVezneName.toLowerCase()) ||
+          (directVezneName && p.cihazAdi?.toLowerCase() === directVezneName.toLowerCase()) ||
           String(p.cihazAdi || "").toLowerCase() === String(targetId).toLowerCase()
       ) || null;
+  }
+
+  // Veznede kayıtlı yazıcı adı doğrudan mevcutsa onu kullan
+  if (!matched && directVezneName) {
+    matched = {
+      id: targetId || 1,
+      siraNo: targetId || 1,
+      ad: directVezneName,
+      cihazAdi: directVezneName,
+      baglantiNoktasi: null,
+      belgeYaziciModu: 1, // POS Termal
+      belgeYaziciDizini: null,
+      kopyaSayisi: 1,
+    };
+    if (source === "yok") {
+      source = isAlis ? "vezne_altin_alis" : "vezne_altin_satis";
+      sourceLabel = `Vezne Tanımlı Yazıcı (${directVezneName})`;
+    }
   }
 
   if (!matched && printers.length > 0) {
@@ -151,6 +211,30 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
     }
   }
 
+  // Vezne tanımlarında yazıcı olsa bile veritabanı eşleşmesi yoksa veya liste boşsa, bu bilgisayara ait kayıtlı yazıcıyı al
+  if (!matched && typeof localStorage !== "undefined") {
+    const localLast =
+      localStorage.getItem("likya_terminal_last_printer") ||
+      localStorage.getItem("likya_last_selected_printer") ||
+      "POS-80C";
+    if (localLast) {
+      matched = {
+        id: targetId ? Number(targetId) : 1,
+        siraNo: targetId ? Number(targetId) : 1,
+        ad: localLast,
+        cihazAdi: localLast,
+        baglantiNoktasi: null,
+        belgeYaziciModu: 1,
+        belgeYaziciDizini: null,
+        kopyaSayisi: 1,
+      };
+      if (source === "yok") {
+        source = "varsayilan";
+        sourceLabel = "Bu Bilgisayarın Tanımlı Yazıcısı";
+      }
+    }
+  }
+
   const kopyaSayisi =
     matched?.kopyaSayisi && Number(matched.kopyaSayisi) > 0 ? Number(matched.kopyaSayisi) : 1;
 
@@ -158,10 +242,16 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
   const recommendedPrintType: "A4" | "POS" =
     matched?.belgeYaziciModu === 0 ? "A4" : "POS";
 
+  const finalName =
+    matched?.cihazAdi ||
+    matched?.ad ||
+    directVezneName ||
+    (targetId ? `Yazıcı #${targetId}` : "POS-80C");
+
   return {
     printer: matched,
     printerId: matched?.id ?? targetId,
-    printerName: matched?.ad || (targetId ? `Yazıcı #${targetId}` : "Varsayılan Yazıcı"),
+    printerName: finalName,
     source,
     sourceLabel,
     kopyaSayisi,
