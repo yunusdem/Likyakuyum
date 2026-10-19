@@ -1,4 +1,4 @@
-import { YaziciItem } from "../services/printerService";
+import { YaziciItem, PrinterService } from "../services/printerService";
 import { VezneItem } from "../services/cashDeskService";
 import { UserProfileDto } from "../services/userService";
 
@@ -213,7 +213,9 @@ export function resolveEffectivePrinter(options: ResolvePrinterOptions): Resolve
 
   // Vezne tanımlarında yazıcı olsa bile veritabanı eşleşmesi yoksa veya liste boşsa, bu bilgisayara ait kayıtlı yazıcıyı al
   if (!matched && typeof localStorage !== "undefined") {
+    const termUUID = PrinterService.getTerminalUUID();
     const localLast =
+      localStorage.getItem(`likya_terminal_printer_${termUUID}`) ||
       localStorage.getItem("likya_terminal_last_printer") ||
       localStorage.getItem("likya_last_selected_printer") ||
       "POS-80C";

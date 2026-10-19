@@ -53,12 +53,42 @@ export interface SystemPrinterItem {
 }
 
 /**
- * Sanal, PDF, XPS, Fax veya sahte sistem yazıcılarını filtreler
+ * Fare, Bluetooth, Kart Okuyucu veya 2.4G Alıcı gibi yazıcı olmayan donanımları filtreler
  */
-export const isVirtualSystemPrinter = (name?: string | null): boolean => {
+export const isNonPrinterHardware = (name?: string | null): boolean => {
   if (!name) return true;
   const n = name.toLowerCase().trim();
   if (!n) return true;
+  const nonPrinterKeywords = [
+    "mouse",
+    "fare",
+    "keyboard",
+    "klavye",
+    "receiver",
+    "alici",
+    "alıcı",
+    "2.4g",
+    "card reader",
+    "kart okuyucu",
+    "bluetooth",
+    "adapter",
+    "hub",
+    "controller",
+    "bilinmeyen cihaz",
+    "unknown device",
+    "quanta computer",
+    "imc networks",
+    "realtek",
+  ];
+  return nonPrinterKeywords.some((k) => n.includes(k));
+};
+
+/**
+ * Sanal (PDF, XPS, OneNote, Fax) yazıcıları ayırt eder (Sıralamada arkaya almak veya etiketlemek için)
+ */
+export const isVirtualSystemPrinter = (name?: string | null): boolean => {
+  if (!name) return false;
+  const n = name.toLowerCase().trim();
   const virtualKeywords = [
     "pdf",
     "xps",
@@ -69,14 +99,14 @@ export const isVirtualSystemPrinter = (name?: string | null): boolean => {
     "document writer",
     "root print queue",
     "send to onenote",
-    "samsung scx-4623",
-    "usb printer p",
   ];
   return virtualKeywords.some((k) => n.includes(k));
 };
 
 export class PrinterService {
   public static isVirtualSystemPrinter = isVirtualSystemPrinter;
+  public static isNonPrinterHardware = isNonPrinterHardware;
+
   /**
    * Bu bilgisayara özel benzersiz terminal cihaz kimliği (Terminal UUID)
    */
@@ -103,8 +133,8 @@ export class PrinterService {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
         return parsed.filter((p: any) => {
-          const pName = (p?.name || "").toLowerCase();
-          return pName && !pName.includes("usb printer p") && p?.source !== "usb";
+          const pName = (p?.name || "").toLowerCase().trim();
+          return pName && !isNonPrinterHardware(pName);
         });
       };
       if (userId) {
@@ -115,6 +145,16 @@ export class PrinterService {
           list.push(item);
         }
       }
+      const terminalKey = `likya_terminal_printer_${PrinterService.getTerminalUUID()}`;
+      const termPrinter = localStorage.getItem(terminalKey);
+      if (termPrinter && !isNonPrinterHardware(termPrinter) && !list.some((p) => p.name.toLowerCase() === termPrinter.toLowerCase())) {
+        list.unshift({
+          name: termPrinter,
+          isDefault: true,
+          source: "browser",
+          details: "Bu Bilgisayarın Seçili Terminal Yazıcısı",
+        });
+      }
     } catch {}
     return list;
   }
@@ -124,7 +164,7 @@ export class PrinterService {
    */
   public static saveClientPrinter(printer: SystemPrinterItem, userId?: string | number): void {
     try {
-      if (!printer.name || isVirtualSystemPrinter(printer.name)) return;
+      if (!printer.name || isNonPrinterHardware(printer.name)) return;
       const current = PrinterService.getClientStoredPrinters(userId);
       const filtered = current.filter((p) => p.name.toLowerCase() !== printer.name.toLowerCase());
       filtered.unshift({
@@ -136,104 +176,111 @@ export class PrinterService {
       if (userId) {
         localStorage.setItem(`likya_user_printers_${userId}`, JSON.stringify(toSave));
       }
+      const termUUID = PrinterService.getTerminalUUID();
+      localStorage.setItem(`likya_terminal_printer_${termUUID}`, printer.name);
       localStorage.setItem("likya_last_selected_printer", printer.name);
       localStorage.setItem("likya_terminal_last_printer", printer.name);
-      localStorage.setItem("likya_terminal_uuid", PrinterService.getTerminalUUID());
+      localStorage.setItem("likya_terminal_uuid", termUUID);
     } catch {}
   }
 
   /**
-   * Sadece o anki bilgisayara bağlı gerçek yazıcıları çeken fonksiyon
-   * (Chromium queryLocalPrinters, Navigator printers API, WebUSB)
+   * Sadece o anki bilgisayara bağlı gerçek yazıcıları çok kanallı dinamik çeken fonksiyon
+   * (Yerel Windows Spooler Port 5050, Chromium queryLocalPrinters, Backend client-printers, Spooler system-printers, LocalStorage)
    */
   public static async fetchRealTimePrinters(): Promise<string[]> {
-    let detectedList: string[] = [];
+    const physicalList: string[] = [];
+    const virtualList: string[] = [];
 
-    // Yöntem 1: Chromium queryLocalPrinters API (Chrome / Edge / Opera)
-    if (typeof (window as any).queryLocalPrinters === 'function') {
+    const addPrinterName = (rawName?: string | null) => {
+      if (!rawName) return;
+      const name = rawName.trim();
+      if (!name || isNonPrinterHardware(name)) return;
+      const isVirtual = isVirtualSystemPrinter(name);
+      const targetList = isVirtual ? virtualList : physicalList;
+      if (!physicalList.some((p) => p.toLowerCase() === name.toLowerCase()) &&
+          !virtualList.some((p) => p.toLowerCase() === name.toLowerCase())) {
+        targetList.push(name);
+      }
+    };
+
+    // 1. Yerel Windows Sessiz Yazdırma Servisi (Port 5050 - Native PowerShell Spooler Bridge)
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 900);
+      const res = await fetch("http://127.0.0.1:5050/printers", {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data.printers) ? data.printers : [];
+        for (const p of list) {
+          addPrinterName(p?.name);
+        }
+      }
+    } catch {}
+
+    // 2. Chromium / WICG Web Printing API (window.printing.getPrinters)
+    if (typeof window !== "undefined" && "printing" in window && typeof (window as any).printing?.getPrinters === "function") {
+      try {
+        const printers = await (window as any).printing.getPrinters();
+        for (const p of (printers || [])) {
+          const pName = typeof p?.cachedAttributes === "function" ? p.cachedAttributes()?.printerName : (p?.name || p?.id || p);
+          addPrinterName(pName);
+        }
+      } catch (err: any) {
+        console.debug("window.printing.getPrinters hata:", err);
+      }
+    }
+
+    // 3. Chromium Web Printing API (window.queryLocalPrinters)
+    if (typeof window !== "undefined" && typeof (window as any).queryLocalPrinters === "function") {
       try {
         const printers = await (window as any).queryLocalPrinters();
         for (const p of (printers || [])) {
-          const pName = (p?.name || p || "").trim();
-          if (pName && !isVirtualSystemPrinter(pName) && !detectedList.includes(pName)) {
-            detectedList.push(pName);
-          }
+          addPrinterName(p?.name || p?.id || p);
         }
       } catch (err: any) {
         console.debug("queryLocalPrinters izni verilmedi veya hata:", err);
       }
     }
 
-    // Yöntem 2: Navigator Standart Printers API
-    if ('printers' in navigator && typeof (navigator as any).printers?.queryPrinters === 'function') {
-      try {
-        const printers = await (navigator as any).printers.queryPrinters();
-        for (const p of (printers || [])) {
-          const pName = (p?.name || p || "").trim();
-          if (pName && !isVirtualSystemPrinter(pName) && !detectedList.includes(pName)) {
-            detectedList.push(pName);
-          }
-        }
-      } catch (err: any) {
-        console.debug("navigator.printers izni verilmedi:", err);
-      }
-    }
-
-    // Yöntem 3: Navigator Printing API
-    if ('printing' in navigator && typeof (navigator as any).printing?.getPrinters === 'function') {
+    // 4. Navigator Printing Standart API
+    if (typeof navigator !== "undefined" && "printing" in navigator && typeof (navigator as any).printing?.getPrinters === "function") {
       try {
         const printers = await (navigator as any).printing.getPrinters();
         for (const p of (printers || [])) {
-          const pName = (p?.name || p?.id || p || "").trim();
-          if (pName && !isVirtualSystemPrinter(pName) && !detectedList.includes(pName)) {
-            detectedList.push(pName);
-          }
+          addPrinterName(p?.name || p?.id || p);
         }
-      } catch (err: any) {
-        console.debug("navigator.printing izni verilmedi:", err);
-      }
+      } catch {}
     }
 
-    // Yöntem 4: Önceden yetkilendirilmiş WebUSB cihazları
-    if (typeof navigator !== "undefined" && "usb" in navigator && typeof (navigator as any).usb?.getDevices === "function") {
+    // 5. Yerel Bilgisayarda çalışan Backend Spooler (/api/v1/yazici/system-printers)
+    // SADECE ve SADECE istemci ile backend ayni makinede (localhost / 127.0.0.1) ise Windows yazicilarini backend'den al.
+    // Bulut sunucu uzerinden baska sunucunun yazicilari ASLA alinmaz.
+    const isLocalMachine = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    if (isLocalMachine) {
       try {
-        const usbDevs = await (navigator as any).usb.getDevices();
-        for (const d of (usbDevs || [])) {
-          const pName = (d.productName || "").trim();
-          if (pName && !isVirtualSystemPrinter(pName) && !detectedList.includes(pName)) {
-            detectedList.push(pName);
+        const sysRes = await apiClient.get<any[]>("/yazici/system-printers", { silent: true });
+        if (Array.isArray(sysRes.data) && sysRes.data.length > 0) {
+          for (const sp of sysRes.data) {
+            addPrinterName(sp?.name || sp);
           }
         }
       } catch {}
     }
 
-    return detectedList;
-  }
+    // 6. Bu bilgisayarin terminali icin atanmis aktif yerel yazici
+    try {
+      const termUUID = PrinterService.getTerminalUUID();
+      const termKey = `likya_terminal_printer_${termUUID}`;
+      const terminalSaved = localStorage.getItem(termKey);
+      if (terminalSaved) addPrinterName(terminalSaved);
+    } catch {}
 
-  /**
-   * Kullanıcı butonuna basıldığında tarayıcının yerel USB cihaz izin ve seçim penceresini doğrudan tetikler
-   */
-  public static async requestUsbPrinter(): Promise<string | null> {
-    if (typeof navigator !== "undefined" && "usb" in navigator && typeof (navigator as any).usb?.requestDevice === "function") {
-      try {
-        const dev = await (navigator as any).usb.requestDevice({ filters: [] });
-        if (dev && dev.productName) {
-          const name = dev.productName.trim();
-          if (!isVirtualSystemPrinter(name)) {
-            PrinterService.saveClientPrinter({
-              name,
-              source: "browser",
-              isDefault: true,
-              details: "Bu Bilgisayara Bağlı USB Yazıcı",
-            });
-            return name;
-          }
-        }
-      } catch (err: any) {
-        console.debug("WebUSB cihaz seçimi iptal edildi / atlandı:", err);
-      }
-    }
-    return null;
+    // Fiziksel yazıcıları (Argox, CP-Q1T, POS-80C, Samsung vb.) en başa, sanal yazıcıları (PDF vb.) arkaya koy
+    return [...physicalList, ...virtualList];
   }
 
   public static async fetchLocalPrinters(): Promise<string[]> {
@@ -241,26 +288,27 @@ export class PrinterService {
   }
 
   /**
-   * Bilgisayara bağlı yerel yazıcıları listeler (Sanal/PDF/XPS sistem yazıcıları elenir)
+   * Bilgisayara bağlı yerel yazıcıları listeler (Fiziksel donanımlar önde, sanal yazıcılar arkada)
    */
   public static async getSystemPrinters(
     currentUser?: { id?: number | string; fullName?: string; name?: string; username?: string; printerId?: string | number } | null
   ): Promise<SystemPrinterItem[]> {
     const results: SystemPrinterItem[] = [];
 
-    // 1. Doğrudan Tarayıcı Web Printing & WebUSB API ile gerçek zamanlı dinamik tara
+    // 1. Çok kanallı gerçek zamanlı tarama
     try {
       const realPrinters = await PrinterService.fetchRealTimePrinters();
       if (Array.isArray(realPrinters) && realPrinters.length > 0) {
         for (const pName of realPrinters) {
           const cleanName = String(pName || "").trim();
-          if (cleanName && !isVirtualSystemPrinter(cleanName) && !results.some((r) => r.name.toLowerCase() === cleanName.toLowerCase())) {
+          if (cleanName && !isNonPrinterHardware(cleanName) && !results.some((r) => r.name.toLowerCase() === cleanName.toLowerCase())) {
+            const isVirtual = isVirtualSystemPrinter(cleanName);
             const item: SystemPrinterItem = {
               name: cleanName,
               isDefault: results.length === 0,
               isOnline: true,
-              source: "browser",
-              details: "Bu Bilgisayara Bağlı Yazıcı",
+              source: isVirtual ? "system" : "browser",
+              details: isVirtual ? "Sanal Yazıcı / Belge Çıktısı" : "Bu Bilgisayara Bağlı Yazıcı (Denetim Masası)",
             };
             results.push(item);
             PrinterService.saveClientPrinter(item, currentUser?.id);
@@ -268,32 +316,25 @@ export class PrinterService {
         }
       }
     } catch (err: any) {
-      console.debug("Tarayıcı Web Printing tarama:", err?.message || err);
+      console.debug("Yazıcı tarama:", err?.message || err);
     }
 
-    // 2. Bu bilgisayara önceden kaydedilmiş yerel yazıcılar (LocalStorage)
-    try {
-      const clientStored = PrinterService.getClientStoredPrinters(currentUser?.id);
-      for (const cs of clientStored) {
-        if (!isVirtualSystemPrinter(cs.name) && !results.some((r) => r.name.toLowerCase() === cs.name.toLowerCase())) {
-          results.push(cs);
+    // 2. Eğer canlı taramada hiçbir şey bulunamadıysa bu bilgisayarın önceden kaydedilmiş yerel yazıcısını getir
+    if (results.length === 0) {
+      try {
+        const termKey = `likya_terminal_printer_${PrinterService.getTerminalUUID()}`;
+        const lastTerminal = localStorage.getItem(termKey) || localStorage.getItem("likya_terminal_last_printer");
+        if (lastTerminal && !isNonPrinterHardware(lastTerminal)) {
+          results.push({
+            name: lastTerminal,
+            isDefault: true,
+            isOnline: true,
+            source: "browser",
+            details: "Bu Bilgisayarda Kayıtlı Terminal Yazıcısı",
+          });
         }
-      }
-    } catch {}
-
-    // 3. Son seçilen terminal yazıcısı
-    try {
-      const lastTerminal = localStorage.getItem("likya_terminal_last_printer");
-      if (lastTerminal && !isVirtualSystemPrinter(lastTerminal) && !results.some((r) => r.name.toLowerCase() === lastTerminal.toLowerCase())) {
-        results.push({
-          name: lastTerminal,
-          isDefault: results.length === 0,
-          isOnline: true,
-          source: "browser",
-          details: "Bu Bilgisayarda Kayıtlı Yazıcı",
-        });
-      }
-    } catch {}
+      } catch {}
+    }
 
     return results;
   }

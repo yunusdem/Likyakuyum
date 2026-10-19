@@ -49,14 +49,6 @@ export class YaziciService {
         if (strippedIp && workstationPrintersMap.has(strippedIp)) {
             return workstationPrintersMap.get(strippedIp).printers;
         }
-        // If only one record exists in map, return it as fallback
-        if (workstationPrintersMap.size > 0) {
-            const all = Array.from(workstationPrintersMap.values());
-            const latest = all.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
-            if (latest && latest.printers.length > 0) {
-                return latest.printers;
-            }
-        }
         return [];
     }
     static queuePrintJob(job) {

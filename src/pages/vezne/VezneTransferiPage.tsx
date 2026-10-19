@@ -896,7 +896,7 @@ export const VezneTransferiPage: React.FC = () => {
   };
 
   // Save Transfer (SODVZ_VEZNE_TRANSFERI_KAYDET)
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (withPrint: boolean = false) => {
     if (!alanVezneId || alanVezneId <= 0) {
       setNotification({ type: "warning", message: "Lütfen alan vezneyi seçiniz." });
       return;
@@ -947,6 +947,65 @@ export const VezneTransferiPage: React.FC = () => {
       const saved = await VezneTransferiService.saveTransfer(payload);
       const savedRef = saved.refNo || `#${saved.id}`;
 
+      // F10 basıldığında doğrudan vezne tanımlarındaki yazıcıdan çıktıyı çıkart
+      if (withPrint) {
+        try {
+          const alanV = vezneList.find((v) => v.id === alanVezneId);
+          const verenV = vezneList.find((v) => v.id === verenVezneId);
+          const pName =
+            alanV?.satisFisiCihazAdi ||
+            alanV?.satisFisiYaziciAdi ||
+            verenV?.satisFisiCihazAdi ||
+            verenV?.satisFisiYaziciAdi ||
+            null;
+
+          const slipHtml = `
+            <div style="font-family: monospace; padding: 6px; max-width: 78mm; font-size: 12px;">
+              <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 8px;">
+                <div style="font-size: 15px; font-weight: bold;">LİKYA KUYUMCULUK</div>
+                <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">KASALAR ARASI TRANSFER MAKBUZU</div>
+                <div style="font-size: 11px; margin-top: 4px;">Tarih: ${tarih} | Ref: ${savedRef}</div>
+              </div>
+              <div style="font-size: 11.5px; margin-bottom: 8px; line-height: 1.4;">
+                <div><strong>Veren Vezne:</strong> ${verenVezneKod} - ${verenVezneAd}</div>
+                <div><strong>Alan Vezne:</strong> ${alanVezneKod} - ${alanVezneAd}</div>
+                ${aciklama ? `<div><strong>Açıklama:</strong> ${aciklama}</div>` : ""}
+              </div>
+              <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; border-top: 1px solid #000; border-bottom: 1px solid #000; margin: 6px 0;">
+                <thead>
+                  <tr style="border-bottom: 1px dashed #666;">
+                    <th style="text-align: left; padding: 4px 0;">Para Birimi</th>
+                    <th style="text-align: right; padding: 4px 0;">Miktar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${validLines.map((l) => `
+                    <tr>
+                      <td style="padding: 3px 0;">${l.paraKodu} - ${l.paraAdi}</td>
+                      <td style="text-align: right; font-weight: bold; padding: 3px 0;">${Number(l.miktar).toLocaleString("tr-TR", { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 20px; text-align: center;">
+                <div>Teslim Eden (Veren)<br/><br/>__________________</div>
+                <div>Teslim Alan (Alan)<br/><br/>__________________</div>
+              </div>
+            </div>
+          `;
+
+          await triggerSilentPrint({
+            html: slipHtml,
+            printerName: pName,
+            title: `Vezne_Transfer_${savedRef}`,
+            isPos: true,
+            allowBrowserFallback: true,
+          });
+        } catch (printErr: any) {
+          console.debug("Transfer yazdırma hatası:", printErr);
+        }
+      }
+
       // Reset / Clear all input fields for the next transfer
       setTransferId(null);
       const now = new Date();
@@ -984,7 +1043,9 @@ export const VezneTransferiPage: React.FC = () => {
 
       setNotification({
         type: "success",
-        message: `Vezne transferi başarıyla kaydedildi! (Ref No: ${savedRef})`,
+        message: withPrint
+          ? `Vezne transferi kaydedildi ve doğrudan yazıcıya iletildi! (Ref No: ${savedRef})`
+          : `Vezne transferi başarıyla kaydedildi! (Ref No: ${savedRef})`,
       });
     } catch (err: any) {
       setNotification({
@@ -1077,7 +1138,7 @@ export const VezneTransferiPage: React.FC = () => {
         handleOpenParaSay();
       } else if (e.key === "F10") {
         e.preventDefault();
-        setShowPrintModal(true);
+        handleSave(true);
       }
     };
 
@@ -1150,7 +1211,8 @@ export const VezneTransferiPage: React.FC = () => {
       <ERPToolbar
         hideBottomBar={true}
         onNew={resetForm}
-        onSave={handleSave}
+        onSave={() => handleSave(false)}
+        onSaveAndPrint={() => handleSave(true)}
         onSearch={isDuzeltmeMode ? handleOpenSearchModal : undefined}
         onDelete={isDuzeltmeMode && transferId ? () => setShowDeleteConfirmModal(true) : undefined}
         onFirst={() => handleNavigate("first")}
@@ -1479,7 +1541,7 @@ export const VezneTransferiPage: React.FC = () => {
           }}
         >
           <span
-            onClick={handleSave}
+            onClick={() => handleSave(false)}
             className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-primary"
             role="button"
             title="Transferi Kaydet (F1)"
@@ -1503,12 +1565,12 @@ export const VezneTransferiPage: React.FC = () => {
             F9) Say
           </span>
           <span
-            onClick={() => setShowPrintModal(true)}
-            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-dark"
+            onClick={() => handleSave(true)}
+            className="cursor-pointer hover-opacity text-decoration-none d-inline-flex align-items-center gap-1 text-dark fw-bold"
             role="button"
-            title="Transfer Makbuzunu Yazdır / Kes (F10)"
+            title="Transferi Kaydet ve Makbuzu Yazdır (F10)"
           >
-            F10) Kes
+            F10) Kes / Kaydet
           </span>
           <span
             onClick={resetForm}

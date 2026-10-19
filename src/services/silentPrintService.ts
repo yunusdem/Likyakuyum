@@ -33,8 +33,8 @@ export const LOCAL_STATUS_URL = "http://localhost:5050/status";
 export async function checkLocalPrintServiceOnline(): Promise<boolean> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch(LOCAL_STATUS_URL, {
+    const timeoutId = setTimeout(() => controller.abort(), 400);
+    const res = await fetch("http://127.0.0.1:5050/status", {
       method: "GET",
       signal: controller.signal,
     });
@@ -100,7 +100,36 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
   const finalText = text || (html ? extractTextFromHtml(html) : "");
 
-  // 1. Modern Chromium Web Printing API (Doğrudan Yazdırma)
+  // 1. Yerel Windows Spooler Servisi (Port 5050 - Varsa anında sessiz çıktı)
+  try {
+    const isOnline = await checkLocalPrintServiceOnline();
+    if (isOnline) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch("http://127.0.0.1:5050/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          printerName,
+          targetDevice: printerName,
+          text: finalText,
+          html,
+          isPos,
+          copies,
+        }),
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return {
+          success: true,
+          message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına yerel servis üzerinden sessiz iletildi.`,
+        };
+      }
+    }
+  } catch {}
+
+  // 2. Modern Chromium Web Printing API (Doğrudan Yazdırma)
   if (html) {
     const webPrintOk = await printViaWebPrintingApi(html, printerName, title);
     if (webPrintOk) {
@@ -111,38 +140,30 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     }
   }
 
-  // 2. Doğrudan bu bilgisayara bağlı WebUSB termal fiş cihazını dene
-  if (finalText) {
+
+
+  // 4. Eğer uygulama yerel sunucu (localhost) üzerinde çalışıyorsa yerel backend Out-Printer'ı dene
+  const isLocalBackend = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  if (isLocalBackend) {
     try {
-      const usbSuccess = await printViaWebUsb(finalText, printerName);
-      if (usbSuccess) {
+      const backendRes = await apiClient.post<{ success: boolean; message: string; fallbackToBrowser?: boolean }>("/yazici/direct-print", {
+        printerName,
+        documentTitle: title,
+        htmlContent: html,
+        textContent: finalText,
+        isPos,
+        copies,
+      }, { silent: true });
+      if (backendRes.data && backendRes.data.success && !backendRes.data.fallbackToBrowser) {
         return {
           success: true,
-          message: `Fiş doğrudan bu bilgisayara takılı USB yazıcıya yazdırıldı.`,
+          message: backendRes.data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan iletildi.`,
         };
       }
     } catch {}
   }
 
-  // 3. Sunucu / Yerel Backend doğrudan yazdırmayı dene (Ağ TCP Socket / Out-Printer)
-  try {
-    const backendRes = await apiClient.post<{ success: boolean; message: string }>("/yazici/direct-print", {
-      printerName,
-      documentTitle: title,
-      htmlContent: html,
-      textContent: finalText,
-      isPos,
-      copies,
-    }, { silent: true });
-    if (backendRes.data && backendRes.data.success) {
-      return {
-        success: true,
-        message: backendRes.data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına doğrudan iletildi.`,
-      };
-    }
-  } catch {}
-
-  // 4. Kesintisiz Çıktı: Tarayıcının yerel yazdırma motoru (Iframe / Kiosk printing)
+  // 5. Kesintisiz Çıktı: Tarayıcının yerel yazdırma motoru (Iframe / Kiosk printing)
   // Kurulumsuz çalışan tüm istemcilerde Vezne ve Tanımlı yazıcıdan anında çıktı üretir.
   if (html) {
     try {
@@ -175,14 +196,13 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
     iframe = document.createElement("iframe");
     iframe.id = "likya-silent-print-iframe";
     iframe.style.position = "fixed";
-    iframe.style.top = "-9999px";
-    iframe.style.left = "-9999px";
-    iframe.style.width = isPos ? "80mm" : "210mm";
-    iframe.style.height = "100%";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
     iframe.style.border = "none";
+    iframe.style.visibility = "hidden";
     document.body.appendChild(iframe);
-  } else {
-    iframe.style.width = isPos ? "80mm" : "210mm";
   }
 
   const doc = iframe.contentWindow?.document;
@@ -228,6 +248,12 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
       </head>
       <body>
         ${htmlContent}
+        <script>
+          window.addEventListener('DOMContentLoaded', function() {
+            window.focus();
+            setTimeout(function() { window.print(); }, 80);
+          });
+        </script>
       </body>
     </html>
   `);
@@ -240,7 +266,7 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
     } catch (e) {
       console.error("Iframe print error:", e);
     }
-  }, 200);
+  }, 120);
 }
 
 /**
@@ -267,66 +293,4 @@ function extractTextFromHtml(html: string): string {
   }
 }
 
-/**
- * WebUSB üzerinden bu bilgisayara bağlı termal fiş yazıcısına doğrudan çıktı gönderir (Sıfır yazılım indirme)
- */
-async function printViaWebUsb(text: string, printerName?: string | null): Promise<boolean> {
-  if (typeof navigator === "undefined") return false;
-  const navUsb = (navigator as any).usb;
-  if (!navUsb || typeof navUsb.getDevices !== "function") return false;
-  try {
-    const devices = await navUsb.getDevices();
-    if (!Array.isArray(devices) || devices.length === 0) return false;
 
-    let targetDev = devices[0];
-    if (printerName) {
-      const pLower = printerName.toLowerCase();
-      const matched = devices.find((d: any) => {
-        const name = `${d.productName || ""} ${d.manufacturerName || ""}`.toLowerCase();
-        return name && (pLower.includes(name) || name.includes(pLower));
-      });
-      if (matched) targetDev = matched;
-    }
-
-    if (!targetDev.opened) {
-      await targetDev.open();
-    }
-    if (targetDev.configuration === null) {
-      await targetDev.selectConfiguration(1);
-    }
-
-    let ifaceNum = 0;
-    let endpointNum = 1;
-    const ifaces = targetDev.configuration?.interfaces || [];
-    for (const iface of ifaces) {
-      const alt = iface.alternates?.[0];
-      const outEp = alt?.endpoints?.find((e: any) => e.direction === "out");
-      if (outEp) {
-        ifaceNum = iface.interfaceNumber;
-        endpointNum = outEp.endpointNumber;
-        break;
-      }
-    }
-    await targetDev.claimInterface(ifaceNum);
-
-    const encoder = new TextEncoder();
-    const initCmd = new Uint8Array([0x1b, 0x40]); // ESC @
-    const cutCmd = new Uint8Array([0x1b, 0x64, 0x03, 0x1d, 0x56, 0x41, 0x10]); // Feed 3 lines & Cut
-    const textBytes = encoder.encode(text);
-
-    const fullPayload = new Uint8Array(initCmd.length + textBytes.length + cutCmd.length);
-    fullPayload.set(initCmd, 0);
-    fullPayload.set(textBytes, initCmd.length);
-    fullPayload.set(cutCmd, initCmd.length + textBytes.length);
-
-    await targetDev.transferOut(endpointNum, fullPayload);
-    try {
-      await targetDev.releaseInterface(ifaceNum);
-      await targetDev.close();
-    } catch {}
-    return true;
-  } catch (err) {
-    console.debug("WebUSB yazdırma atlandı veya cihaz sürücü kontrolünde:", err);
-    return false;
-  }
-}
