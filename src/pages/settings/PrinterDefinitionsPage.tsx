@@ -96,6 +96,48 @@ export const PrinterDefinitionsPage: React.FC = () => {
     setTimeout(() => setCopiedOneLiner(false), 4000);
   };
 
+  // Sayfa açıldığında bu bilgisayarın yerel yazıcılarını arka planda otomatik çek
+  useEffect(() => {
+    PrinterService.getSystemPrinters(user)
+      .then((list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          setSystemPrinters(list);
+        }
+      })
+      .catch(() => {});
+  }, [user?.id]);
+
+  const handleScanWebPrinters = async () => {
+    setIsLoadingSystemPrinters(true);
+    setPermissionStatus("Tarayıcıdan yazıcı erişim izni isteniyor...");
+    try {
+      const pNames = await PrinterService.fetchLocalPrinters();
+      if (pNames && pNames.length > 0) {
+        for (const pName of pNames) {
+          PrinterService.saveClientPrinter(
+            {
+              name: pName,
+              source: "browser",
+              isDefault: false,
+              details: "Windows / Denetim Masası Yazıcısı",
+            },
+            user?.id
+          );
+        }
+        const updated = await PrinterService.getSystemPrinters(user);
+        setSystemPrinters(updated);
+        showSuccess(`Bilgisayarınızdaki ${pNames.length} adet yazıcı doğrudan tarayıcıdan listelendi!`);
+        setPermissionStatus(null);
+      } else {
+        setPermissionStatus("Tarayıcı doğrudan yazıcı listesi döndürmedi. WebUSB veya arama kutusunu kullanabilirsiniz.");
+      }
+    } catch (err: any) {
+      setPermissionStatus(err.message || "Yazıcı listesine erişim izni verilmedi.");
+    } finally {
+      setIsLoadingSystemPrinters(false);
+    }
+  };
+
   const handleOpenSystemPrinters = async () => {
     setShowSystemPrintersModal(true);
     setIsLoadingSystemPrinters(true);
@@ -130,6 +172,24 @@ export const PrinterDefinitionsPage: React.FC = () => {
       if (!formData.cihazAdi && list && list.length > 0) {
         setSelectedSystemPrinterName(list[0].name);
       }
+      // Eğer liste hala boşsa, doğrudan tarayıcı API'sini çağır
+      if (!list || list.length === 0) {
+        try {
+          const directPrinters = await PrinterService.fetchLocalPrinters();
+          if (directPrinters && directPrinters.length > 0) {
+            for (const pName of directPrinters) {
+              PrinterService.saveClientPrinter({
+                name: pName,
+                source: "browser",
+                isDefault: false,
+                details: "Windows / Denetim Masası Yazıcısı",
+              }, user?.id);
+            }
+            const updated = await PrinterService.getSystemPrinters(user);
+            setSystemPrinters(updated);
+          }
+        } catch {}
+      }
     } catch (err) {
       console.error("Sistem yazıcıları listelenirken hata:", err);
     } finally {
@@ -151,6 +211,30 @@ export const PrinterDefinitionsPage: React.FC = () => {
     showSuccess(`"${name}" bu bilgisayarın yerel yazıcısı olarak eklendi ve seçildi.`);
     handleOpenSystemPrinters();
     handleSelectSystemPrinter(name);
+  };
+
+  const handleCopyPowerShellCommand = () => {
+    const cmd = getPowerShellOneLinerCommand();
+    navigator.clipboard.writeText(cmd);
+    showSuccess("Tek satırlık Windows PowerShell komutu kopyalandı! Win+R veya PowerShell içine yapıştırıp çalıştırabilirsiniz.");
+  };
+
+  const handleDownloadBat = () => {
+    triggerDirectBatDownload();
+    showSuccess("Yazdırma servisi (likya-yerel-yazici-baslat.bat) indirildi. Çift tıklayarak başlattığınızda Denetim Masası yazıcılarınız buraya gelecektir.");
+  };
+
+  const handleAddDirectPrinter = (pName: string) => {
+    const item: SystemPrinterItem = {
+      name: pName,
+      source: "local_agent",
+      isDefault: true,
+      details: "Bu Bilgisayarın Denetim Masası Yazıcısı",
+    };
+    PrinterService.saveClientPrinter(item, user?.id);
+    showSuccess(`"${pName}" seçildi ve bu bilgisayara kaydedildi.`);
+    handleOpenSystemPrinters();
+    handleSelectSystemPrinter(pName);
   };
 
   const handleRequestBrowserPermission = async () => {
@@ -516,24 +600,56 @@ export const PrinterDefinitionsPage: React.FC = () => {
                       </Col>
                     </Form.Group>
 
-                    {/* Cihaz / Aygıt Adı - Dürbünlü: O bilgisayardaki yazıcıları seçtirir ve doğrudan düzenlenebilir */}
+                    {/* Cihaz / Aygıt Adı - Datalist + Dropdown Seçim + Dürbünlü Arama */}
                     <Form.Group as={Row} className="mb-2 align-items-center g-2">
                       <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
                         Cihaz / Aygıt Adı :
                       </Form.Label>
                       <Col>
-                        <div style={{ maxWidth: "420px" }} className="d-flex align-items-center gap-1.5">
-                          <div className="flex-grow-1">
+                        <div style={{ maxWidth: "480px" }} className="d-flex align-items-center gap-1.5 flex-wrap">
+                          <div className="flex-grow-1" style={{ minWidth: "220px" }}>
                             <CodeLookupInput
+                              list="system-printers-datalist"
                               value={formData.cihazAdi || ""}
                               maxLength={200}
-                              placeholder="Örn: POS-80D veya POS-80C"
+                              placeholder="Yazıcı seçiniz veya yazınız"
                               onFocus={(e) => e.target.select()}
                               onChange={(e) => handleInputChange("cihazAdi", e.target.value)}
                               onLookupClick={handleOpenSystemPrinters}
                               lookupTitle="Bilgisayardaki Aktif Yazıcıları Listele ve Seç (Denetim Masası)"
                             />
+                            <datalist id="system-printers-datalist">
+                              {systemPrinters.map((p) => (
+                                <option key={p.name} value={p.name}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </datalist>
                           </div>
+
+                          {systemPrinters.length > 0 && (
+                            <div style={{ width: "150px" }}>
+                              <Form.Select
+                                size="sm"
+                                value={formData.cihazAdi || ""}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleInputChange("cihazAdi", e.target.value);
+                                  }
+                                }}
+                                className="font-monospace text-dark"
+                                title="Bu bilgisayardaki yazıcılar arasından seç"
+                              >
+                                <option value="">-- Seçiniz --</option>
+                                {systemPrinters.map((p) => (
+                                  <option key={p.name} value={p.name}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                              </Form.Select>
+                            </div>
+                          )}
+
                           <Button
                             variant="outline-primary"
                             size="sm"
@@ -609,39 +725,94 @@ export const PrinterDefinitionsPage: React.FC = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">
-          {/* Bu Bilgisayara Özel Yazıcılar Durumu */}
-          <div className="alert alert-primary bg-primary bg-opacity-10 border-primary border-opacity-25 py-2 px-3 small mb-2.5 d-flex align-items-center justify-content-between rounded-2 shadow-xs">
-            <div className="d-flex align-items-center gap-2">
-              <IconPrinter size={20} className="text-primary flex-shrink-0" />
-              <div>
-                <strong className="text-primary">Bu Bilgisayara Bağlı Yazıcılar</strong>
-                <span className="text-dark ms-1.5">
-                  — Sunucudan bağımsız olarak doğrudan yalnızca bu bilgisayarın bağlı donanım ve yazıcıları listelenir.
-                </span>
+          {/* Denetim Masası ve Yerel Yazıcı Durumu */}
+          {(() => {
+            const hasPrinters = systemPrinters.length > 0;
+            return hasPrinters ? (
+              <div className="alert alert-success bg-success bg-opacity-10 border-success border-opacity-25 py-2 px-3 small mb-2.5 d-flex align-items-center justify-content-between rounded-2 shadow-xs">
+                <div className="d-flex align-items-center gap-2">
+                  <IconCheck size={20} className="text-success flex-shrink-0" />
+                  <div>
+                    <strong className="text-success">Bu Bilgisayarın Denetim Masası Yazıcıları Aktif ({systemPrinters.length} Adet)</strong>
+                    <span className="text-dark ms-1.5">
+                      — İstemci bilgisayarınızdaki yazıcılar doğrudan algılandı ve listelendi.
+                    </span>
+                  </div>
+                </div>
+                <Badge bg="success" className="px-2 py-1">
+                  🟢 {systemPrinters.length} Yazıcı Hazır
+                </Badge>
               </div>
-            </div>
-            <Badge bg="primary" className="px-2 py-1">
-              👤 {user?.fullName || user?.username || "Giriş Yapan Kullanıcı"}
-            </Badge>
-          </div>
+            ) : (
+              <div className="alert alert-info bg-info bg-opacity-10 border-info border-opacity-25 p-2.5 small mb-2.5 rounded-2 shadow-xs">
+                <div className="d-flex align-items-start gap-2">
+                  <IconPrinter size={20} className="text-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-grow-1">
+                    <div className="fw-bold text-dark mb-0.5">
+                      Doğrudan Tarayıcı Üzerinden Bilgisayar Yazıcılarını Tara (Web Printing API)
+                    </div>
+                    <div className="text-secondary mb-2" style={{ lineHeight: "1.4" }}>
+                      Ek bir yazılım kurmadan, doğrudan Chrome veya Edge üzerinden bilgisayarınızdaki Windows Denetim Masası yazıcılarını listeleyebilirsiniz:
+                    </div>
+                    <div className="d-flex flex-wrap gap-2 align-items-center">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="fw-bold d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs"
+                        onClick={handleScanWebPrinters}
+                        disabled={isLoadingSystemPrinters}
+                        title="Chromium queryLocalPrinters API ile bilgisayarınızdaki tüm yazıcıları tarar"
+                      >
+                        <IconRefresh size={15} />
+                        <span>🌐 Bilgisayar Yazıcılarını Tara (Tarayıcı İzni İste)</span>
+                      </Button>
 
-          {/* İndirmesiz & Doğrudan Bu Bilgisayarın Donanımını Algılama / Manuel Tanımlama Çubuğu */}
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        className="fw-semibold d-flex align-items-center gap-1.5 py-1 px-2.5 bg-white shadow-xs"
+                        onClick={handleDownloadBat}
+                        title="İsteğe bağlı: Arka planda sessiz yazdırma servisi .bat dosyasını indirir"
+                      >
+                        <IconDownload size={14} />
+                        <span>Alternatif: .bat İndir</span>
+                      </Button>
+
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        className="fw-semibold d-flex align-items-center gap-1.5 py-1 px-2.5 bg-white shadow-xs"
+                        onClick={handleCopyPowerShellCommand}
+                        title="İndirme yapmadan Win+R veya PowerShell içine yapıştırıp çalıştırabilirsiniz"
+                      >
+                        <IconCopy size={14} />
+                        <span>PowerShell Komutu</span>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Hızlı Seçim ve USB / Aygıt Tarama Çubuğu */}
           <div className="p-2 mb-2.5 rounded bg-light border d-flex flex-wrap align-items-center justify-content-between gap-2 shadow-xs">
-            <div className="d-flex align-items-center gap-2">
+            <div className="d-flex align-items-center gap-2 flex-wrap">
               <Button
                 variant="outline-primary"
                 size="sm"
-                className="fw-bold d-flex align-items-center gap-1.5 py-1 px-3 shadow-xs"
+                className="fw-bold d-flex align-items-center gap-1.5 py-1 px-2.5 shadow-xs"
                 onClick={handleRequestBrowserPermission}
                 disabled={isRequestingPermission}
                 title="Chrome üzerinden bu bilgisayara bağlı termal/USB fiş veya barkod yazıcısını doğrudan seçtirir"
               >
                 <IconUsb size={16} />
-                <span>🔌 USB / Fiş Yazıcısı Tara</span>
+                <span>🔌 USB / Fiş Cihazı Tara</span>
                 {isRequestingPermission && <Spinner size="sm" animation="border" className="ms-1" />}
               </Button>
+
               {permissionStatus && (
-                <span className="small text-muted fst-italic">{permissionStatus}</span>
+                <span className="small text-muted fst-italic ms-2">{permissionStatus}</span>
               )}
             </div>
 
@@ -650,7 +821,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
               <div className="input-group input-group-sm" style={{ width: "230px" }}>
                 <Form.Control
                   type="text"
-                  placeholder="Örn: POS-80 veya EPSON"
+                  placeholder="Örn: POS-80C"
                   value={manualPrinterName}
                   onChange={(e) => setManualPrinterName(e.target.value)}
                   onKeyDown={(e) => {
@@ -733,7 +904,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           <td colSpan={4} className="text-center py-4 text-muted">
                             <div className="fw-semibold">Bu bilgisayarda henüz algılanan yazıcı bulunamadı.</div>
                             <div className="small mt-1">
-                              Yukarıdaki <strong>"🔌 USB / Fiş Yazıcısı Tara"</strong> butonuna basabilir veya yazıcınızın adını (Örn: <code>POS-80</code> veya <code>EPSON</code>) kutuya girip <strong>"Ekle"</strong> butonuna basabilirsiniz.
+                              Yukarıdaki <strong>"🌐 Bilgisayar Yazıcılarını Tara (Tarayıcı İzni İste)"</strong> veya <strong>"🔌 USB / Fiş Cihazı Tara"</strong> butonuna basarak yazıcılarınızı doğrudan ekleyebilirsiniz.
                             </div>
                           </td>
                         </tr>

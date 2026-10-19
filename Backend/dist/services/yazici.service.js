@@ -7,7 +7,97 @@ import { YaziciSqlRepository } from "../models/yaziciSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
 import { altKlasorAdiDenetle, firmaKlasoru } from "./firmaKlasoru.js";
+const workstationPrintersMap = new Map();
+const printJobsQueue = [];
 export class YaziciService {
+    static registerClientPrinters(params) {
+        const record = {
+            clientIp: params.clientIp,
+            computerName: params.computerName,
+            userName: params.userName,
+            token: params.token,
+            userId: params.userId,
+            updatedAt: new Date(),
+            printers: params.printers || [],
+        };
+        if (params.token)
+            workstationPrintersMap.set(`token_${params.token}`, record);
+        if (params.clientIp)
+            workstationPrintersMap.set(params.clientIp, record);
+        if (params.computerName)
+            workstationPrintersMap.set(params.computerName.toUpperCase().trim(), record);
+        if (params.userId)
+            workstationPrintersMap.set(`user_${params.userId}`, record);
+        logger.info(`[registerClientPrinters] Workstation ${params.computerName || params.clientIp} registered ${params.printers?.length || 0} printers.`);
+        return { success: true, count: params.printers?.length || 0 };
+    }
+    static getClientPrinters(params) {
+        if (params.token && workstationPrintersMap.has(`token_${params.token}`)) {
+            return workstationPrintersMap.get(`token_${params.token}`).printers;
+        }
+        if (params.computerName && workstationPrintersMap.has(params.computerName.toUpperCase().trim())) {
+            return workstationPrintersMap.get(params.computerName.toUpperCase().trim()).printers;
+        }
+        if (params.userId && workstationPrintersMap.has(`user_${params.userId}`)) {
+            return workstationPrintersMap.get(`user_${params.userId}`).printers;
+        }
+        if (params.clientIp && workstationPrintersMap.has(params.clientIp)) {
+            return workstationPrintersMap.get(params.clientIp).printers;
+        }
+        // Also try without port if IP has port
+        const strippedIp = params.clientIp?.replace(/:\d+$/, "");
+        if (strippedIp && workstationPrintersMap.has(strippedIp)) {
+            return workstationPrintersMap.get(strippedIp).printers;
+        }
+        // If only one record exists in map, return it as fallback
+        if (workstationPrintersMap.size > 0) {
+            const all = Array.from(workstationPrintersMap.values());
+            const latest = all.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+            if (latest && latest.printers.length > 0) {
+                return latest.printers;
+            }
+        }
+        return [];
+    }
+    static queuePrintJob(job) {
+        const id = "job_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+        const item = {
+            ...job,
+            id,
+            createdAt: Date.now(),
+            completed: false,
+        };
+        printJobsQueue.push(item);
+        if (printJobsQueue.length > 100)
+            printJobsQueue.shift();
+        return id;
+    }
+    static getPendingPrintJobs(params) {
+        const now = Date.now();
+        return printJobsQueue.filter((j) => {
+            if (j.completed)
+                return false;
+            if (now - j.createdAt > 60000)
+                return false;
+            if (params.token && j.token && params.token.toLowerCase() === j.token.toLowerCase())
+                return true;
+            if (params.computerName && j.computerName && params.computerName.toUpperCase() === j.computerName.toUpperCase())
+                return true;
+            if (params.clientIp && j.clientIp && params.clientIp === j.clientIp)
+                return true;
+            if (!j.token && !j.computerName)
+                return true;
+            return false;
+        });
+    }
+    static completePrintJob(id) {
+        const job = printJobsQueue.find((j) => j.id === id);
+        if (job) {
+            job.completed = true;
+            return true;
+        }
+        return false;
+    }
     static async listYazicilar(dbContext) {
         return YaziciSqlRepository.findAll(dbContext);
     }
@@ -294,6 +384,23 @@ export class YaziciService {
             catch (osErr) {
                 logger.warn(`[DirectPrint] OS print error: ${osErr.message}`);
             }
+        }
+        // 4. İstemci Bilgisayarı Kuyruğu (Bulut sunucusundan istemci bilgisayara sessiz yazdırma)
+        if (targetDevice && targetDevice !== "Varsayılan Yazıcı") {
+            const jobId = YaziciService.queuePrintJob({
+                targetDevice,
+                text: dto.textContent || undefined,
+                html: dto.htmlContent || undefined,
+                isPos: Boolean(dto.isPos),
+                copies,
+                token: dto.token,
+                clientIp: dto.clientIp,
+                computerName: dto.computerName,
+            });
+            return {
+                success: true,
+                message: `"${targetDevice}" yazıcısına yazdırma emri iletildi (Kuyruk ID: ${jobId}).`,
+            };
         }
         // Fallback: Tarayıcı yazdırma motoru tetiklenecek
         return {

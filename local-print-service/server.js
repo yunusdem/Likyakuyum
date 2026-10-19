@@ -2,11 +2,16 @@
  * Likya Kuyumcu ERP - Yerel Sessiz Yazdırma Servisi (Local Silent Print Agent)
  * 
  * Bu servis kullanıcının yerel bilgisayarında (localhost:5050) çalışarak
- * web uygulamasından gönderilen fiş, etiket ve faturaları tarayıcı
- * önizleme penceresi (print preview) açılmadan doğrudan varsayılan veya
- * seçilen yazıcıdan anında sessizce (silent print) çıkartır.
+ * web uygulamasından (likyakuyum.com / likyaerp.com veya localhost) gönderilen
+ * fiş, etiket ve faturaları tarayıcı önizleme penceresi açılmadan doğrudan
+ * Windows Denetim Masası yazıcılarından sessizce (silent print) çıkartır.
  * 
- * Port: 5050
+ * Özellikler:
+ * 1. Port 5050 üzerinde yerel HTTP dinler (localhost için anında erişim).
+ * 2. Bulut sunucularına (likyaerp.com, likyakuyum.com) bu bilgisayarın 
+ *    tüm Denetim Masası yazıcılarını otomatik senkronize eder (HTTPS Mixed Content engelini çözer).
+ * 3. Bulut yazdırma kuyruğunu dinleyerek web sitesinden gönderilen fişleri 
+ *    arka planda sessizce donanım yazıcısına iletir.
  */
 
 import express from "express";
@@ -25,7 +30,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5050;
 
-// Middleware
+// Cloud sunucu adresleri (Yazıcı listesi ve yazdırma kuyruğu senkronizasyonu)
+const CLOUD_ENDPOINTS = [
+  "https://www.likyaerp.com/api/v1/yazici",
+  "https://likyaerp.com/api/v1/yazici",
+  "https://likyakuyum.com/api/v1/yazici",
+  "https://www.likyakuyum.com/api/v1/yazici",
+  "http://localhost:5000/api/v1/yazici",
+  "http://127.0.0.1:5000/api/v1/yazici",
+];
+
+// CORS ve Private Network Access Middleware
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE");
@@ -46,7 +61,247 @@ if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true });
 }
 
-// ─── 1. Durum / Health Check ────────────────────────────────────────────────
+// ─── Yerel Windows / OS Yazıcılarını Listeleme Fonksiyonu ───────────────────────
+export async function getLocalPrinters() {
+  const platform = os.platform();
+  let printers = [];
+
+  if (platform === "win32") {
+    // 1. PowerShell CIM (Win32_Printer)
+    const psCommand = `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name, DeviceID, Default, Local, Network, WorkOffline, PortName | ConvertTo-Json -Compress"`;
+    try {
+      const { stdout } = await execAsync(psCommand);
+      if (stdout.trim()) {
+        const parsed = JSON.parse(stdout);
+        const rawList = Array.isArray(parsed) ? parsed : [parsed];
+        printers = rawList
+          .filter((p) => p && (p.Name || p.DeviceID))
+          .map((p) => {
+            const pName = String(p.Name || p.DeviceID).trim();
+            const isNet = Boolean(p.Network) || pName.startsWith("\\\\") || /^\d{1,3}\.\d{1,3}/.test(String(p.PortName || ""));
+            const isUsb = Boolean(p.PortName && (p.PortName.includes("USB") || p.PortName.includes("DOT4")));
+            return {
+              name: pName,
+              isDefault: Boolean(p.Default),
+              isOnline: !Boolean(p.WorkOffline),
+              isLocal: Boolean(p.Local),
+              isNetwork: isNet,
+              isUsb,
+              portName: p.PortName || undefined,
+            };
+          });
+      }
+    } catch {
+      // 2. WMIC Fallback
+      try {
+        const { stdout } = await execAsync(`wmic printer get name,default,portname /format:csv`);
+        const lines = stdout.trim().split(/\r?\n/).slice(1);
+        printers = lines
+          .map((line) => line.trim().split(","))
+          .filter((parts) => parts.length >= 3 && parts[2])
+          .map((parts) => ({
+            name: parts[2].trim(),
+            isDefault: parts[1]?.toLowerCase() === "true",
+            portName: parts[3]?.trim() || undefined,
+          }));
+      } catch {}
+    }
+  } else {
+    // macOS / Linux CUPS
+    try {
+      const { stdout } = await execAsync("lpstat -p -d");
+      const lines = stdout.split("\n");
+      let defaultPrinter = "";
+      for (const line of lines) {
+        if (line.includes("system default destination:")) {
+          defaultPrinter = line.split(":")[1]?.trim() || "";
+        } else if (line.startsWith("printer ")) {
+          const pName = line.split(" ")[1]?.trim();
+          if (pName) {
+            printers.push({
+              name: pName,
+              isDefault: pName === defaultPrinter,
+            });
+          }
+        }
+      }
+    } catch {
+      printers = [];
+    }
+  }
+
+  return printers;
+}
+
+// ─── Yazdırma İşini Donanımda Yürütme ──────────────────────────────────────────
+export async function executePrintJob(job) {
+  const printerName = job.printerName || job.targetDevice;
+  const text = job.text || job.textContent;
+  const html = job.html || job.htmlContent;
+  const pdfBase64 = job.pdfBase64;
+  const isPos = Boolean(job.isPos);
+  const title = job.title || job.documentTitle || "Likya_Fis";
+  const copies = job.copies || 1;
+
+  const timestamp = Date.now();
+  const platform = os.platform();
+
+  if (text) {
+    const textFile = path.join(TMP_DIR, `print_${timestamp}.txt`);
+    fs.writeFileSync(textFile, text, "utf-8");
+
+    if (platform === "win32") {
+      const cmd = printerName
+        ? `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${textFile}' -Raw -Encoding UTF8 | Out-Printer -Name '${printerName}'"`
+        : `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Path '${textFile}' -Raw -Encoding UTF8 | Out-Printer"`;
+      await execAsync(cmd);
+    } else {
+      const dest = printerName ? `-d "${printerName}"` : "";
+      await execAsync(`lp ${dest} "${textFile}"`);
+    }
+
+    setTimeout(() => { try { fs.unlinkSync(textFile); } catch {} }, 4000);
+    return { success: true, mode: "text", printerName };
+  }
+
+  if (pdfBase64) {
+    const pdfFile = path.join(TMP_DIR, `print_${timestamp}.pdf`);
+    const buffer = Buffer.from(pdfBase64.replace(/^data:application\/pdf;base64,/, ""), "base64");
+    fs.writeFileSync(pdfFile, buffer);
+
+    if (platform === "win32") {
+      const cmd = printerName
+        ? `powershell -NoProfile -Command "Start-Process -FilePath '${pdfFile}' -Verb PrintTo -ArgumentList '${printerName}' -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force }"`
+        : `powershell -NoProfile -Command "Start-Process -FilePath '${pdfFile}' -Verb Print -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force }"`;
+      await execAsync(cmd);
+    } else {
+      const dest = printerName ? `-d "${printerName}"` : "";
+      await execAsync(`lp ${dest} "${pdfFile}"`);
+    }
+
+    setTimeout(() => { try { fs.unlinkSync(pdfFile); } catch {} }, 4000);
+    return { success: true, mode: "pdf", printerName };
+  }
+
+  if (html) {
+    const htmlFile = path.join(TMP_DIR, `print_${timestamp}.html`);
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${title}</title>
+  <style>
+    @page { size: ${isPos ? "80mm auto" : "A4 portrait"}; margin: ${isPos ? "0mm" : "5mm"} !important; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { width: 100%; max-width: ${isPos ? "78mm" : "210mm"}; margin: 0 !important; padding: 0 !important; font-family: ${isPos ? "'Courier New', Courier, monospace, Arial, sans-serif" : "Arial, sans-serif"}; font-size: ${isPos ? "11px" : "12px"}; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: 2px; }
+  </style>
+</head>
+<body>${html}</body>
+</html>`;
+    fs.writeFileSync(htmlFile, fullHtml, "utf-8");
+
+    if (platform === "win32") {
+      const edgePaths = [
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+        `${process.env["ProgramFiles(x86)"] || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
+        `${process.env.ProgramFiles || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
+        `${process.env.LOCALAPPDATA || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
+      ];
+      const browserExe = edgePaths.find((p) => p && fs.existsSync(p));
+
+      if (browserExe) {
+        const printerParam = printerName ? `--print-to-printer="${printerName}"` : "--print-to-printer";
+        const cmd = `"${browserExe}" --headless=new --disable-gpu --no-pdf-header-footer ${printerParam} "${htmlFile}"`;
+        await execAsync(cmd, { timeout: 12000 }).catch(async () => {
+          const psCmd = printerName 
+            ? `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer -Name '${printerName}'"`
+            : `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer"`;
+          await execAsync(psCmd).catch(() => {});
+        });
+      } else {
+        const psCmd = printerName 
+          ? `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer -Name '${printerName}'"`
+          : `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer"`;
+        await execAsync(psCmd).catch(() => {});
+      }
+    } else {
+      const dest = printerName ? `-d "${printerName}"` : "";
+      await execAsync(`lp ${dest} -o fit-to-page "${htmlFile}"`).catch(() => {});
+    }
+
+    setTimeout(() => { try { fs.unlinkSync(htmlFile); } catch {} }, 4000);
+    return { success: true, mode: "html", printerName };
+  }
+
+  throw new Error("Yazdırılacak içerik bulunamadı.");
+}
+
+// ─── Bulut Sunucularına Senkronizasyon ─────────────────────────────────────────
+async function syncPrintersToCloud() {
+  try {
+    const printers = await getLocalPrinters();
+    if (!printers || printers.length === 0) return;
+
+    const payload = {
+      computerName: os.hostname(),
+      userName: os.userInfo()?.username || "",
+      platform: os.platform(),
+      printers,
+    };
+
+    for (const base of CLOUD_ENDPOINTS) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        await fetch(`${base}/register-client-printers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+      } catch {}
+    }
+  } catch {}
+}
+
+// ─── Bulut Sunucusundan Bekleyen Yazdırma İşlerini Çekme ───────────────────────
+async function pollCloudPrintJobs() {
+  try {
+    const compName = encodeURIComponent(os.hostname());
+    for (const base of CLOUD_ENDPOINTS) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch(`${base}/print-jobs?computerName=${compName}`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const json = await res.json();
+          const jobs = json.data;
+          if (Array.isArray(jobs) && jobs.length > 0) {
+            for (const job of jobs) {
+              console.log(`[BULUT İŞ ALINDI] ${job.targetDevice || job.printerName} yazdırılıyor...`);
+              await executePrintJob(job);
+              await fetch(`${base}/print-jobs/${job.id}/complete`, {
+                method: "POST",
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+// ─── HTTP Endpoint'leri ───────────────────────────────────────────────────────
 app.get(["/status", "/health", "/"], (req, res) => {
   res.json({
     success: true,
@@ -59,67 +314,14 @@ app.get(["/status", "/health", "/"], (req, res) => {
   });
 });
 
-// ─── 2. Sistemdeki Yazıcıları Listele (GET /printers) ────────────────────────
 app.get("/printers", async (req, res) => {
   try {
-    const platform = os.platform();
-    let printers = [];
-
-    if (platform === "win32") {
-      // Windows PowerShell ile yazıcı listesi
-      const psCommand = `powershell -NoProfile -Command "Get-CimInstance Win32_Printer | Select-Object Name, DeviceID, Default, Local, Network, WorkOffline | ConvertTo-Json"`;
-      try {
-        const { stdout } = await execAsync(psCommand);
-        if (stdout.trim()) {
-          const parsed = JSON.parse(stdout);
-          const rawList = Array.isArray(parsed) ? parsed : [parsed];
-          printers = rawList.map((p) => ({
-            name: p.Name || p.DeviceID,
-            isDefault: Boolean(p.Default),
-            isOnline: !Boolean(p.WorkOffline),
-            isLocal: Boolean(p.Local),
-            isNetwork: Boolean(p.Network),
-          }));
-        }
-      } catch (err) {
-        // Fallback wmic
-        const { stdout } = await execAsync(`wmic printer get name,default /format:csv`);
-        const lines = stdout.trim().split("\n").slice(1);
-        printers = lines
-          .map((line) => line.trim().split(","))
-          .filter((parts) => parts.length >= 3 && parts[2])
-          .map((parts) => ({
-            name: parts[2].trim(),
-            isDefault: parts[1]?.toLowerCase() === "true",
-          }));
-      }
-    } else {
-      // macOS / Linux CUPS
-      try {
-        const { stdout } = await execAsync("lpstat -p -d");
-        const lines = stdout.split("\n");
-        let defaultPrinter = "";
-        for (const line of lines) {
-          if (line.includes("system default destination:")) {
-            defaultPrinter = line.split(":")[1]?.trim() || "";
-          } else if (line.startsWith("printer ")) {
-            const pName = line.split(" ")[1]?.trim();
-            if (pName) {
-              printers.push({
-                name: pName,
-                isDefault: pName === defaultPrinter,
-              });
-            }
-          }
-        }
-      } catch {
-        printers = [{ name: "Default_Printer", isDefault: true }];
-      }
-    }
-
+    const printers = await getLocalPrinters();
     res.json({
       success: true,
       count: printers.length,
+      computerName: os.hostname(),
+      userName: os.userInfo()?.username || "",
       printers,
     });
   } catch (err) {
@@ -131,237 +333,42 @@ app.get("/printers", async (req, res) => {
   }
 });
 
-// ─── 3. Sessiz Yazdırma Endpoint'i (POST /print) ─────────────────────────────
 app.post("/print", async (req, res) => {
-  const {
-    html,
-    text,
-    pdfBase64,
-    printerName,
-    copies = 1,
-    title = "Likya_Fis",
-    isPos = true,
-  } = req.body;
-
-  if (!html && !text && !pdfBase64) {
-    return res.status(400).json({
-      success: false,
-      message: "Yazdırılacak içerik (html, text veya pdfBase64) belirtilmelidir.",
-    });
-  }
-
-  const timestamp = Date.now();
-  const platform = os.platform();
-
   try {
-    // ── DURUM A: Düz Metin / ESC-POS / ZPL Yazdırma ──
-    if (text) {
-      const textFile = path.join(TMP_DIR, `print_${timestamp}.txt`);
-      fs.writeFileSync(textFile, text, "utf-8");
-
-      if (platform === "win32") {
-        let cmd = "";
-        if (printerName) {
-          cmd = `powershell -NoProfile -Command "Get-Content -Path '${textFile}' -Raw | Out-Printer -Name '${printerName}'"`;
-        } else {
-          cmd = `powershell -NoProfile -Command "Get-Content -Path '${textFile}' -Raw | Out-Printer"`;
-        }
-        await execAsync(cmd);
-      } else {
-        const dest = printerName ? `-d "${printerName}"` : "";
-        await execAsync(`lp ${dest} "${textFile}"`);
-      }
-
-      // Temizlik
-      setTimeout(() => {
-        try { fs.unlinkSync(textFile); } catch {}
-      }, 5000);
-
-      return res.json({
-        success: true,
-        message: "Metin çıktısı varsayılan yazıcıya başarıyla gönderildi.",
-        mode: "text",
-        printerName: printerName || "Varsayılan",
-      });
-    }
-
-    // ── DURUM B: Base64 PDF Yazdırma ──
-    if (pdfBase64) {
-      const pdfFile = path.join(TMP_DIR, `print_${timestamp}.pdf`);
-      const buffer = Buffer.from(pdfBase64.replace(/^data:application\/pdf;base64,/, ""), "base64");
-      fs.writeFileSync(pdfFile, buffer);
-
-      if (platform === "win32") {
-        // PDF-to-Printer / Sumatra / Acrobat veya PowerShell
-        let cmd = "";
-        if (printerName) {
-          cmd = `powershell -NoProfile -Command "Start-Process -FilePath '${pdfFile}' -Verb PrintTo -ArgumentList '${printerName}' -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force }"`;
-        } else {
-          cmd = `powershell -NoProfile -Command "Start-Process -FilePath '${pdfFile}' -Verb Print -PassThru | ForEach-Object { Start-Sleep -Seconds 2; Stop-Process -Id $_.Id -Force }"`;
-        }
-        await execAsync(cmd);
-      } else {
-        const dest = printerName ? `-d "${printerName}"` : "";
-        await execAsync(`lp ${dest} "${pdfFile}"`);
-      }
-
-      setTimeout(() => {
-        try { fs.unlinkSync(pdfFile); } catch {}
-      }, 5000);
-
-      return res.json({
-        success: true,
-        message: "PDF çıktısı varsayılan yazıcıya başarıyla gönderildi.",
-        mode: "pdf",
-        printerName: printerName || "Varsayılan",
-      });
-    }
-
-    // ── DURUM C: HTML İçeriği Sessiz Yazdırma ──
-    if (html) {
-      const htmlFile = path.join(TMP_DIR, `print_${timestamp}.html`);
-      
-      // Standart tam teşekküllü HTML sarmalayıcı
-      const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${title}</title>
-  <style>
-    @page {
-      size: ${isPos ? "80mm auto" : "A4 portrait"};
-      margin: ${isPos ? "0mm" : "5mm"} !important;
-    }
-    * {
-      box-sizing: border-box;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    html, body {
-      width: 100%;
-      max-width: ${isPos ? "78mm" : "210mm"};
-      margin: 0 !important;
-      padding: 0 !important;
-      background: #ffffff;
-      font-family: ${isPos ? "'Courier New', Courier, monospace, Arial, sans-serif" : "Arial, Helvetica, sans-serif"};
-      color: #000000;
-      font-size: ${isPos ? "11px" : "12px"};
-    }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-    th, td {
-      padding: 2px;
-    }
-  </style>
-</head>
-<body>
-  ${html}
-</body>
-</html>`;
-
-      fs.writeFileSync(htmlFile, fullHtml, "utf-8");
-
-      if (platform === "win32") {
-        // Windows Edge Headless veya mshtml PrintHTML veya PowerShell
-        const edgePaths = [
-          "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-          "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-          `${process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"}\\Microsoft\\Edge\\Application\\msedge.exe`,
-          `${process.env.ProgramFiles || "C:\\Program Files"}\\Microsoft\\Edge\\Application\\msedge.exe`,
-          `${process.env.LOCALAPPDATA || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
-          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-        ];
-        
-        let browserExe = edgePaths.find((p) => p && fs.existsSync(p));
-
-        if (browserExe) {
-          const printerParam = printerName ? `--kiosk-printer-device="${printerName}"` : "";
-          const cmd = `"${browserExe}" --headless --disable-gpu --run-all-compositor-stages-before-draw --print-to-printer ${printerParam} "${htmlFile}"`;
-          try {
-            await execAsync(cmd, { timeout: 10000 });
-          } catch {
-            // Alternatif mshtml.dll yazdırma
-            try {
-              await execAsync(`rundll32.exe mshtml.dll,PrintHTML "${htmlFile}"`);
-            } catch {
-              // PowerShell fallback
-              const psCmd = printerName 
-                ? `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer -Name '${printerName}'"`
-                : `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer"`;
-              await execAsync(psCmd).catch(() => {});
-            }
-          }
-        } else {
-          // Fallback mshtml.dll / PowerShell
-          try {
-            await execAsync(`rundll32.exe mshtml.dll,PrintHTML "${htmlFile}"`);
-          } catch {
-            const psCmd = printerName 
-              ? `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer -Name '${printerName}'"`
-              : `powershell -NoProfile -Command "Get-Content -Path '${htmlFile}' -Raw | Out-Printer"`;
-            await execAsync(psCmd).catch(() => {});
-          }
-        }
-      } else if (platform === "darwin") {
-        // macOS: CUPS lp / lpr
-        const dest = printerName ? `-d "${printerName}"` : "";
-        try {
-          await execAsync(`lp ${dest} -o fit-to-page "${htmlFile}"`);
-        } catch (macErr) {
-          try {
-            await execAsync(`lpr ${printerName ? `-P "${printerName}"` : ""} "${htmlFile}"`);
-          } catch (lprErr) {
-            console.warn("[macOS Print Simulation]: Fiziksel/CUPS yazıcı bulunamadı, simüle edildi:", lprErr?.message || macErr?.message);
-          }
-        }
-      } else {
-        // Linux CUPS
-        const dest = printerName ? `-d "${printerName}"` : "";
-        try {
-          await execAsync(`lp ${dest} "${htmlFile}"`);
-        } catch (linuxErr) {
-          console.warn("[Linux Print Warning]:", linuxErr?.message);
-        }
-      }
-
-      setTimeout(() => {
-        try { fs.unlinkSync(htmlFile); } catch {}
-      }, 5000);
-
-      return res.json({
-        success: true,
-        message: `Fiş çıktısı tanımlı yazıcıya (${printerName || "Varsayılan"}) önizlemesiz olarak doğrudan gönderildi.`,
-        mode: "html",
-        printerName: printerName || "Varsayılan",
-      });
-    }
-
-  } catch (err) {
-    console.error("[Sessiz Yazdırma Hatası]:", err);
-    return res.status(200).json({
+    const result = await executePrintJob(req.body);
+    res.json({
       success: true,
-      message: "Yazdırma isteği alındı (Yerel servis arka plan kuyruğuna iletti).",
-      warning: err.message || String(err),
+      message: "Yazdırma komutu başarıyla iletildi.",
+      ...result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Yazdırma hatası: " + (err.message || String(err)),
     });
   }
 });
 
 // Sunucuyu başlat
 app.listen(PORT, "0.0.0.0", () => {
-  console.clear();
   console.log("\x1b[32m%s\x1b[0m", "============================================================");
-  console.log("\x1b[36m%s\x1b[0m", "   LIKYA KUYUMCU ERP - SESSIZ YAZDIRMA SERVISI (LOCAL PRINT)  ");
+  console.log("\x1b[36m%s\x1b[0m", "   LIKYA KUYUMCU ERP - YEREL SESSIZ YAZDIRMA SERVISI        ");
   console.log("\x1b[32m%s\x1b[0m", "============================================================");
   console.log(` \x1b[33m[DURUM]\x1b[0m        : \x1b[32mAKTIF VE DINLEMEDE (ONLINE)\x1b[0m`);
   console.log(` \x1b[33m[SERVIS PORT]\x1b[0m  : \x1b[37mhttp://localhost:${PORT}\x1b[0m`);
-  console.log(` \x1b[33m[ENDPOINT]\x1b[0m     : \x1b[37mPOST http://localhost:${PORT}/print\x1b[0m`);
-  console.log(` \x1b[33m[ISLETIM SISTEMI]\x1b[0m: \x1b[37m${os.platform()} (${os.arch()})\x1b[0m`);
+  console.log(` \x1b[33m[BILGISAYAR]\x1b[0m   : \x1b[37m${os.hostname()}\x1b[0m`);
+  console.log(` \x1b[33m[BULUT SYNC]\x1b[0m   : \x1b[32mOTOMATIK BULUT SENKRONIZASYONU AKTIF\x1b[0m`);
   console.log("\x1b[32m%s\x1b[0m", "============================================================");
-  console.log(" F10 tuşuna basıldığında tarayıcı önizleme penceresi AÇILMADAN");
-  console.log(" fiş ve etiketler doğrudan varsayılan yazıcıdan çıkartılır.");
-  console.log("\x1b[32m%s\x1b[0m", "============================================================");
-  console.log(" Çıkmak için Ctrl + C tuşlarına basabilirsiniz.\n");
+  console.log(" likyakuyum.com / likyaerp.com veya localhost üzerinden");
+  console.log(" bu bilgisayara bağlı tüm yazıcılar otomatik algılanır.");
+  console.log("\x1b[32m%s\x1b[0m", "============================================================\n");
+
+  // İlk açılışta hemen buluta senkronize et
+  syncPrintersToCloud();
+
+  // Her 10 saniyede bir yazıcı listesini bulutla senkronize et
+  setInterval(syncPrintersToCloud, 10000);
+
+  // Her 1.5 saniyede bir buluttan bekleyen yazdırma işlerini kontrol et
+  setInterval(pollCloudPrintJobs, 1500);
 });

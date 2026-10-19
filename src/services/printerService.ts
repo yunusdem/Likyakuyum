@@ -182,57 +182,104 @@ export class PrinterService {
    * 4. Doğrudan bağlı WebUSB aygıtları
    * 5. Sunucu işletim sisteminde kurulu yazıcılar
    */
+  /**
+   * Doğrudan Chromium / Web Printing API üzerinden istemci bilgisayara bağlı
+   * yerel yazıcıları ek bir yazılım (.bat vb.) kurmadan tarar.
+   */
+  public static async fetchLocalPrinters(): Promise<string[]> {
+    try {
+      // 1. Yol: queryLocalPrinters API (Chromium / Chrome / Edge)
+      if (typeof (window as any).queryLocalPrinters === "function") {
+        const printers = await (window as any).queryLocalPrinters();
+        return (printers || []).map((p: any) => p.name || p).filter(Boolean);
+      }
+
+      // 2. Yol: navigator.printers API
+      if ("printers" in navigator && typeof (navigator as any).printers?.queryPrinters === "function") {
+        const printers = await (navigator as any).printers.queryPrinters();
+        return (printers || []).map((p: any) => p.name || p).filter(Boolean);
+      }
+
+      // 3. Yol: navigator.printing API
+      if ("printing" in navigator && typeof (navigator as any).printing?.getPrinters === "function") {
+        const printers = await (navigator as any).printing.getPrinters();
+        return (printers || []).map((p: any) => p.name || p.id || p).filter(Boolean);
+      }
+
+      return [];
+    } catch (error: any) {
+      console.error("Yazıcı tarama hatası:", error);
+      throw new Error("Yazıcı listesine erişim izni verilmedi veya desteklenmiyor.");
+    }
+  }
+
+  /**
+   * Bilgisayara bağlı yerel yazıcıları listeler:
+   * 1. Doğrudan Tarayıcı Web Printing API (queryLocalPrinters / navigator.printers) - Sıfır yazılım / .bat gerektirmez
+   * 2. Tarayıcı WebUSB / WebSerial doğrudan bağlı aygıtlar
+   * 3. İstemci hafızası (localStorage) ve bulut senkronizasyonu
+   */
   public static async getSystemPrinters(
     currentUser?: { id?: number | string; fullName?: string; name?: string; username?: string; printerId?: string | number } | null
   ): Promise<SystemPrinterItem[]> {
     const results: SystemPrinterItem[] = [];
 
-    // 1. Bu bilgisayarda çalışan Yerel Sessiz Yazıcı Servisini (localhost:5050 & 127.0.0.1:5050) sorgula
-    const localEndpoints = [
-      "http://127.0.0.1:5050/printers",
-      "http://localhost:5050/printers",
-      "http://127.0.0.1:25050/api/v1/yazici/system-printers",
-    ];
-
-    for (const ep of localEndpoints) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 900);
-        const res = await fetch(ep, {
-          method: "GET",
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : (Array.isArray(data.printers) ? data.printers : []);
-          if (list.length > 0) {
-            for (const p of list) {
-              const pName = String(p.name || p.ad || "").trim();
-              if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
-                const isNet = Boolean(p.isNetwork) || pName.startsWith("\\\\");
-                const isUsb = Boolean(p.isUsb) || String(p.portName || "").toUpperCase().includes("USB");
-                results.push({
-                  name: pName,
-                  isDefault: Boolean(p.isDefault || p.default),
-                  isOnline: p.isOnline !== false,
-                  source: "local_agent",
-                  details: isNet
-                    ? `Bu Bilgisayara Bağlı Ağ / Wi-Fi Yazıcısı${p.portName ? ` (${p.portName})` : ""}`
-                    : isUsb
-                    ? `Bu Bilgisayara Takılı USB Yazıcı${p.portName ? ` (${p.portName})` : ""}`
-                    : `Bu Bilgisayarın Denetim Masası Yazıcısı${p.portName ? ` (${p.portName})` : ""}`,
-                });
-              }
-            }
-            break; // Başarılı olursa diğer portlara bakmaya gerek yok
+    // 1. Doğrudan Tarayıcı Web Printing API ile tara (.bat veya harici kurulum OLMADAN)
+    try {
+      const browserPrinters = await PrinterService.fetchLocalPrinters();
+      if (Array.isArray(browserPrinters) && browserPrinters.length > 0) {
+        for (const p of browserPrinters) {
+          const pName = String(p || "").trim();
+          if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
+            const item: SystemPrinterItem = {
+              name: pName,
+              isDefault: results.length === 0,
+              isOnline: true,
+              source: "browser",
+              details: "Windows / Denetim Masası Yazıcısı (Tarayıcı API)",
+            };
+            results.push(item);
+            PrinterService.saveClientPrinter(item, currentUser?.id);
           }
         }
-      } catch {}
+      }
+    } catch (err: any) {
+      console.warn("Tarayıcı Web Printing tarama:", err?.message || err);
     }
 
-    // 2. Tarayıcıda önceden izin verilmiş fiziksel WebUSB cihazlarını ekle (İndirmesiz & Doğrudan)
+    // 2. Bu bilgisayara önceden izin verilmiş yerel yazıcılar (LocalStorage önbelleği)
+    try {
+      const clientStored = PrinterService.getClientStoredPrinters(currentUser?.id);
+      for (const cs of clientStored) {
+        if (!results.some((r) => r.name.toLowerCase() === cs.name.toLowerCase())) {
+          results.push(cs);
+        }
+      }
+    } catch {}
+
+    // 3. Bulut sunucusuna bu bilgisayar/kullanıcı tarafından iletilmiş yazıcılar
+    try {
+      const storedComp = typeof localStorage !== "undefined" ? localStorage.getItem("likya_workstation_comp") : null;
+      const queryParam = storedComp ? `?computerName=${encodeURIComponent(storedComp)}` : "";
+      const clientRes = await apiClient.get<any[]>("/yazici/client-printers" + queryParam, undefined, { silent: true });
+      const clientList = Array.isArray(clientRes.data) ? clientRes.data : [];
+      for (const cp of clientList) {
+        const cpName = String(cp.name || "").trim();
+        if (cpName && !results.some((r) => r.name.toLowerCase() === cpName.toLowerCase())) {
+          const item: SystemPrinterItem = {
+            name: cpName,
+            isDefault: Boolean(cp.isDefault),
+            isOnline: cp.isOnline !== false,
+            source: "local_agent",
+            details: `Denetim Masası Yazıcısı${cp.portName ? ` (${cp.portName})` : ""}`,
+          };
+          results.push(item);
+          PrinterService.saveClientPrinter(item, currentUser?.id);
+        }
+      }
+    } catch {}
+
+    // 4. Doğrudan bağlı WebUSB / Termal Fiş aygıtları
     try {
       const navUsb = (navigator as any).usb;
       if (navUsb && typeof navUsb.getDevices === "function") {
@@ -245,7 +292,7 @@ export class PrinterService {
                 name: dName,
                 isDefault: results.length === 0,
                 source: "usb",
-                details: "Bu Bilgisayara Takılı Doğrudan USB Fiş / Barkod Cihazı",
+                details: "Doğrudan Bağlı USB Fiş / Barkod Cihazı",
               });
             }
           }
@@ -253,54 +300,36 @@ export class PrinterService {
       }
     } catch {}
 
-    // 3. W3C Chromium Local Printer API (queryLocalPrinters)
-    if (typeof (window as any).queryLocalPrinters === "function") {
+    // 5. Yerel servis çalışıyorsa (127.0.0.1:5050) sorgula (hatasız / sessiz)
+    if (results.length === 0) {
       try {
-        const winPrinters = await (window as any).queryLocalPrinters();
-        if (Array.isArray(winPrinters)) {
-          for (const wp of winPrinters) {
-            const wpName = String(wp.name || wp.id || "").trim();
-            if (wpName && !results.some((r) => r.name.toLowerCase() === wpName.toLowerCase())) {
-              results.push({
-                name: wpName,
-                isDefault: Boolean(wp.isDefault),
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600);
+        const res = await fetch("http://127.0.0.1:5050/printers", {
+          method: "GET",
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (Array.isArray(data.printers) ? data.printers : []);
+          for (const p of list) {
+            const pName = String(p.name || p.ad || "").trim();
+            if (pName && !results.some((r) => r.name.toLowerCase() === pName.toLowerCase())) {
+              const item: SystemPrinterItem = {
+                name: pName,
+                isDefault: Boolean(p.isDefault),
+                isOnline: p.isOnline !== false,
                 source: "local_agent",
-                details: "Bu Bilgisayarın Windows / Sistem Yazıcısı",
-              });
+                details: "Denetim Masası Yazıcısı",
+              };
+              results.push(item);
+              PrinterService.saveClientPrinter(item, currentUser?.id);
             }
           }
         }
       } catch {}
     }
-
-    // 4. Bu bilgisayarda önceden kaydedilmiş veya izin verilmiş yerel aygıtlar (localStorage)
-    try {
-      const clientStored = PrinterService.getClientStoredPrinters(currentUser?.id);
-      for (const cs of clientStored) {
-        if (!results.some((r) => r.name.toLowerCase() === cs.name.toLowerCase())) {
-          results.push(cs);
-        }
-      }
-    } catch {}
-
-    // 5. Her bilgisayarda harici servis gerektirmeden çalışan standart tarayıcı yazdırma seçeneği
-    results.push({
-      name: "Tarayıcı / Windows Varsayılan Yazıcısı",
-      isDefault: results.length === 0,
-      source: "browser",
-      details: "Bu bilgisayarın doğrudan varsayılan yazıcısı (Servis / Kurulum gerektirmez)",
-    });
-
-    // Sıralama önceliği: USB Donanım -> Bu bilgisayarın yerel yazıcıları -> Tarayıcı
-    results.sort((a, b) => {
-      const score = (s?: string) => {
-        if (s === "usb") return 1;
-        if (s === "local_agent") return 2;
-        if (s === "browser") return 3;
-        return 4;
-      };
-      return score(a.source) - score(b.source);
-    });
 
     return results;
   }
