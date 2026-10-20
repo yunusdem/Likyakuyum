@@ -12,7 +12,7 @@ const execAsync = util.promisify(exec);
 
 const app = express();
 const PORT = process.env.PORT || 9100;
-const HOST = "127.0.0.1";
+const HOST = "0.0.0.0";
 
 // ─── CORS ve Chrome Private Network Access Ayarları ─────────────────────────
 app.use((req, res, next) => {
@@ -575,33 +575,34 @@ app.post(["/api/print", "/print"], async (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-wss.on("connection", async (ws) => {
+wss.on("connection", (ws) => {
   console.log("[printercekmeApp] Yeni WebSocket istemcisi bağlandı.");
+
+  let isPrinting = false;
 
   const sendPrinters = async () => {
     try {
       const list = await getSystemPrinters();
-      if (ws.readyState === ws.OPEN) {
+      if (ws.readyState === ws.OPEN && !isPrinting) {
         // İstemcinin beklediği doğrudan JSON yazıcı listesi
         ws.send(JSON.stringify(list || []));
       }
     } catch (err) {
-      if (ws.readyState === ws.OPEN) {
+      if (ws.readyState === ws.OPEN && !isPrinting) {
         ws.send(JSON.stringify([]));
       }
     }
   };
 
-  // Bağlantı kurulur kurulmaz yazıcı listesini ilet
-  await sendPrinters();
-
-  // İstemciden istek geldiğinde
+  // 1. ÖNCELİKLE MESAJ DİNLENİR (Bağlantı anında gönderilen print isteğini ASLA kaçırmamak için!)
   ws.on("message", async (data) => {
     try {
-      const text = data ? data.toString() : "";
+      const text = data ? (Buffer.isBuffer(data) ? data.toString("utf8") : String(data)).trim() : "";
       if (text.startsWith("{")) {
         const msg = JSON.parse(text);
         if (msg.action === "print" || msg.type === "PRINT") {
+          isPrinting = true;
+          console.log(`[printercekmeApp] WebSocket üzerinden yazdırma komutu alındı: "${msg.printerName || msg.targetDevice || 'Varsayılan'}"`);
           const result = await executePrintJob(msg);
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ action: "print_result", ...result }));
@@ -609,13 +610,18 @@ wss.on("connection", async (ws) => {
           return;
         }
       }
-    } catch {}
+    } catch (msgErr) {
+      console.warn("[printercekmeApp] Gelen mesaj ayrıştırılamadı:", msgErr.message);
+    }
     await sendPrinters();
   });
 
   ws.on("close", () => {
     console.log("[printercekmeApp] WebSocket istemcisi ayrıldı.");
   });
+
+  // 2. İlk yazıcı listesini arka planda asenkron gönder (await etmeden, listener aktifken)
+  sendPrinters();
 });
 
 server.listen(PORT, HOST, () => {

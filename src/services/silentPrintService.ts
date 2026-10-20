@@ -90,71 +90,82 @@ async function printViaWebPrintingApi(html: string, printerName?: string | null,
 }
 
 /**
- * WebSocket (ws://127.0.0.1:9100) üzerinden doğrudan sessiz yazdırma.
+ * WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) üzerinden doğrudan sessiz yazdırma.
  * Canlı HTTPS siteler yerel WebSocket bağlantılarını engellemediğinden
  * Mixed Content / Private Network Access hatası olmadan doğrudan çalışır.
  */
 async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPrintResult | null> {
   if (typeof WebSocket === "undefined") return null;
 
-  return new Promise((resolve) => {
-    let resolved = false;
-    let ws: WebSocket | null = null;
+  const tryConnect = (wsUrl: string): Promise<SilentPrintResult | null> => {
+    return new Promise((resolve) => {
+      let resolved = false;
+      let ws: WebSocket | null = null;
 
-    const finish = (result: SilentPrintResult | null) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timer);
-        if (ws) {
-          try { ws.close(); } catch {}
-        }
-        resolve(result);
-      }
-    };
-
-    const timer = setTimeout(() => {
-      finish(null);
-    }, 15000);
-
-    try {
-      ws = new WebSocket("ws://127.0.0.1:9100");
-
-      ws.onopen = () => {
-        try {
-          ws?.send(
-            JSON.stringify({
-              action: "print",
-              html: options.html,
-              text: options.text,
-              printerName: options.printerName,
-              targetDevice: options.printerName,
-              copies: options.copies || 1,
-              isPos: options.isPos !== false,
-              title: options.title || "Likya_Fis",
-            })
-          );
-        } catch {
-          finish(null);
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const parsed = JSON.parse(event.data);
-          if (parsed.action === "print_result") {
-            finish({
-              success: parsed.success !== false,
-              message: parsed.message || (parsed.success ? "Fiş yazıcıya başarıyla gönderildi." : "Yazdırma hatası."),
-            });
+      const finish = (result: SilentPrintResult | null) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          if (ws) {
+            try { ws.close(); } catch {}
           }
-        } catch {}
+          resolve(result);
+        }
       };
 
-      ws.onerror = () => finish(null);
-    } catch {
-      finish(null);
-    }
-  });
+      const timer = setTimeout(() => {
+        finish(null);
+      }, 12000);
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          try {
+            ws?.send(
+              JSON.stringify({
+                action: "print",
+                html: options.html,
+                text: options.text,
+                printerName: options.printerName,
+                targetDevice: options.printerName,
+                copies: options.copies || 1,
+                isPos: options.isPos !== false,
+                title: options.title || "Likya_Fis",
+              })
+            );
+          } catch {
+            finish(null);
+          }
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const parsed = JSON.parse(event.data);
+            if (parsed && (parsed.action === "print_result" || parsed.success !== undefined)) {
+              finish({
+                success: parsed.success !== false,
+                message: parsed.message || (parsed.success ? "Fiş yazıcıya başarıyla gönderildi." : "Yazdırma hatası."),
+              });
+            }
+          } catch {}
+        };
+
+        ws.onerror = () => finish(null);
+      } catch {
+        finish(null);
+      }
+    });
+  };
+
+  // Önce 127.0.0.1, ardından localhost adresini dene
+  const res1 = await tryConnect("ws://127.0.0.1:9100");
+  if (res1) return res1;
+
+  const res2 = await tryConnect("ws://localhost:9100");
+  if (res2) return res2;
+
+  return null;
 }
 
 /**
@@ -179,7 +190,7 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
+  // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
   try {
     const wsResult = await printViaWebSocket(options);
     if (wsResult) {
@@ -189,62 +200,60 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     console.warn("[triggerSilentPrint] WebSocket yazdırma denenirken hata:", wsErr);
   }
 
-  // 2. Sadece localhost veya düz HTTP ortamında çalışırken fallback olarak HTTP POST (Port 9100 veya 5050)
-  const isLocalhostOrHttp =
-    typeof window !== "undefined" &&
-    (window.location.protocol === "http:" ||
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1");
+  // 2. Yedek: Yerel HTTP POST (Port 9100 ve Port 5050 - 127.0.0.1 & localhost)
+  const candidateUrls = [
+    "http://127.0.0.1:9100/print",
+    "http://127.0.0.1:9100/api/print",
+    "http://localhost:9100/print",
+    "http://localhost:9100/api/print",
+    "http://127.0.0.1:5050/print",
+  ];
 
   let lastError = "";
 
-  if (isLocalhostOrHttp) {
-    const ports = [9100, 5050];
+  for (const url of candidateUrls) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    for (const port of ports) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          html,
+          text,
+          printerName,
+          targetDevice: printerName,
+          copies,
+          isPos,
+          title,
+        }),
+        signal: controller.signal,
+      }).catch((e) => {
+        lastError = e?.message || "Bağlantı kurulamadı";
+        return null;
+      });
 
-        const res = await fetch(`http://127.0.0.1:${port}/print`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            html,
-            text,
-            printerName,
-            targetDevice: printerName,
-            copies,
-            isPos,
-            title,
-          }),
-          signal: controller.signal,
-        }).catch((e) => {
-          lastError = e?.message || "Bağlantı kurulamadı";
-          return null;
-        });
+      clearTimeout(timeoutId);
 
-        clearTimeout(timeoutId);
-
-        if (res) {
-          if (res.ok) {
-            const data = await res.json().catch(() => ({}));
-            if (data.success !== false) {
-              return {
-                success: true,
-                message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
-              };
-            } else {
-              lastError = data.message || "Yazdırma servisi hata döndürdü.";
-            }
+      if (res) {
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data.success !== false) {
+            return {
+              success: true,
+              message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
+            };
           } else {
-            const errData = await res.json().catch(() => ({}));
-            lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
+            lastError = data.message || "Yazdırma servisi hata döndürdü.";
           }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
         }
-      } catch (err: any) {
-        lastError = err?.message || "Servis isteği başarısız.";
       }
+    } catch (err: any) {
+      lastError = err?.message || "Servis isteği başarısız.";
     }
   }
 
