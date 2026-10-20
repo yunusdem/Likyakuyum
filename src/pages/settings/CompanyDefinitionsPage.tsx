@@ -34,7 +34,8 @@ import { CompanyService, TodvzTanimDto, defaultCompanyTanim } from "../../servic
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import FirmaKlasoruModal from "../../components/common/FirmaKlasoruModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
-import { CariService, CariLookups, LookupItem, CariKartItem, DEFAULT_POSTA_KODLARI } from "../../services/cariService";
+import { CariService, CariLookups, LookupItem, CariKartItem } from "../../services/cariService";
+import { ilPlakaKodu, ilPlakaliAd } from "../../utils/ilPlaka";
 import { KasaService, HesapItem } from "../../services/kasaService";
 import { IskontoService, IskontoItem } from "../../services/iskontoService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
@@ -176,6 +177,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
   const [isGibSorgulaniyor, setIsGibSorgulaniyor] = useState<boolean>(false);
   const [targetGibField, setTargetGibField] = useState<"E_FATURA_POSTA_KUTUSU" | "E_IRSALIYE_POSTA_KUTUSU">("E_FATURA_POSTA_KUTUSU");
   const [gibSecimListesi, setGibSecimListesi] = useState<GibKullanici[]>([]);
+  // Posta kodu ID değil metin olarak yazılır (cari karttaki gibi); kayıtlı POSTA_KODU_ID'nin metni buraya eşlenir.
+  const [postaKoduMetni, setPostaKoduMetni] = useState<string>("");
 
   const gibKaydiniUygula = (k: GibKullanici, field: "E_FATURA_POSTA_KUTUSU" | "E_IRSALIYE_POSTA_KUTUSU") => {
     const alias = k.Alias || k.Identifier || "";
@@ -343,19 +346,12 @@ export const CompanyDefinitionsPage: React.FC = () => {
   const getIlName = (id?: number | null) => {
     if (!id) return "";
     const it = lookups.ilList.find((x) => x.id === id || Number(x.id) === Number(id));
-    return it ? it.ad : "";
+    return it ? ilPlakaliAd(it.ad, it.kod) : "";
   };
 
   const getIlceName = (id?: number | null) => {
     if (!id) return "";
     const it = lookups.ilceList.find((x) => x.id === id || Number(x.id) === Number(id));
-    return it ? it.ad : "";
-  };
-
-  const getPostaKoduName = (id?: number | null) => {
-    if (!id) return "";
-    const list = lookups.postaKoduList && lookups.postaKoduList.length > 0 ? lookups.postaKoduList : DEFAULT_POSTA_KODLARI;
-    const it = list.find((x) => x.id === id || Number(x.id) === Number(id) || x.kod === String(id));
     return it ? it.ad : "";
   };
 
@@ -421,12 +417,12 @@ export const CompanyDefinitionsPage: React.FC = () => {
       items: lk.ilList || [],
       selectedId: formData.IL_ID,
       columns: [
-        { header: "Plaka", render: (it) => <Badge bg="primary" className="font-monospace">{it.kod || it.id}</Badge>, width: "90px" },
+        { header: "Plaka", render: (it) => <Badge bg="primary" className="font-monospace">{ilPlakaKodu(it.ad, it.kod) || "-"}</Badge>, width: "90px" },
         { header: "İl Adı", render: (it) => <span className="fw-medium">{it.ad}</span> },
       ],
       filterFn: (it, term) => {
         const t = term.toLowerCase();
-        return (it.ad && it.ad.toLowerCase().includes(t)) || (it.kod && String(it.kod).includes(t)) || String(it.id).includes(t);
+        return (it.ad && it.ad.toLowerCase().includes(t)) || ilPlakaKodu(it.ad, it.kod).includes(t);
       },
       onSelect: (it) => {
         handleChange("IL_ID", it.id);
@@ -455,35 +451,6 @@ export const CompanyDefinitionsPage: React.FC = () => {
       },
       onSelect: (it) => {
         handleChange("ILCE_ID", it.id);
-        setLookupModalConfig((prev) => ({ ...prev, show: false }));
-      },
-    });
-  };
-
-  const openPostaKoduLookup = async () => {
-    const lk = await ensureLookups();
-    const list = lk.postaKoduList && lk.postaKoduList.length > 0 ? lk.postaKoduList : DEFAULT_POSTA_KODLARI;
-    setLookupModalConfig({
-      show: true,
-      title: "Posta Kodu Seçimi",
-      items: list,
-      selectedId: formData.POSTA_KODU_ID,
-      columns: [
-        { header: "Posta Kodu", render: (it) => <Badge bg="primary" className="font-monospace">{it.kod || it.id}</Badge>, width: "120px" },
-        { header: "Bölge / Mahalle", render: (it) => <span className="fw-medium">{it.ad}</span> },
-        { header: "İl / İlçe", render: (it) => <span className="text-muted">{`${it.il || ""} ${it.ilce || ""}`.trim() || "-"}</span>, width: "160px" },
-      ],
-      filterFn: (it, term) => {
-        const t = term.toLowerCase();
-        return (
-          (it.kod && String(it.kod).includes(t)) ||
-          (it.ad && it.ad.toLowerCase().includes(t)) ||
-          (it.il && it.il.toLowerCase().includes(t)) ||
-          (it.ilce && it.ilce.toLowerCase().includes(t))
-        );
-      },
-      onSelect: (it) => {
-        handleChange("POSTA_KODU_ID", it.id || Number(it.kod));
         setLookupModalConfig((prev) => ({ ...prev, show: false }));
       },
     });
@@ -820,6 +787,17 @@ export const CompanyDefinitionsPage: React.FC = () => {
     };
   }, []);
 
+  // Kayıtlı POSTA_KODU_ID → ekrandaki metin (kayıt ya da liste yüklenince)
+  useEffect(() => {
+    if (formData.POSTA_KODU !== undefined && formData.POSTA_KODU !== null) return; // kullanıcı yazıyor
+    if (!formData.POSTA_KODU_ID) {
+      setPostaKoduMetni("");
+      return;
+    }
+    const es = lookups.postaKoduList.find((pk) => pk.id === formData.POSTA_KODU_ID || Number(pk.id) === Number(formData.POSTA_KODU_ID));
+    setPostaKoduMetni(es ? String(es.kod || es.ad || "") : "");
+  }, [formData.POSTA_KODU_ID, formData.POSTA_KODU, lookups.postaKoduList]);
+
   const handleChange = (field: keyof TodvzTanimDto, value: any) => {
     setFormData((prev) => ({
       ...prev,
@@ -866,6 +844,10 @@ export const CompanyDefinitionsPage: React.FC = () => {
       const cleanData = sanitizeData(formData);
       const updated = await CompanyService.updateDefinitions(cleanData);
       setFormData(sanitizeData(updated) || cleanData);
+      // Yeni yazılan posta kodu referans tabloya eklenmiş olabilir; liste tazelenmeden metin eşlenemez.
+      if (cleanData.POSTA_KODU !== undefined) {
+        CariService.getLookups(true).then((lk) => lk && setLookups(lk)).catch(() => undefined);
+      }
       CompanyService.getKlasor().then(setFirmaKlasoru).catch(() => setFirmaKlasoru(null));
       setAlertSuccess("Firma tanımları ve genel parametreler başarıyla kaydedildi.");
       setTimeout(() => setAlertSuccess(null), 4000);
@@ -887,6 +869,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
         { alan: "Vergi Dairesi ID / VKN", deger: `${formData.VERGI_DAIRESI_ID || "-"} / ${formData.VERGI_KIMLIK_NO || "-"}` },
         { alan: "Telefon", deger: formData.TELEFON || "-" },
         { alan: "Adres", deger: formData.ADRES || "-" },
+        { alan: "Posta Kodu / İlçe / İl", deger: `${postaKoduMetni || "-"} / ${getIlceName(formData.ILCE_ID) || "-"} / ${getIlName(formData.IL_ID) || "-"}` },
         { alan: "Belge Klasörü", deger: firmaKlasoru?.yol || formData.BELGE_DIZINI || "-" },
         { alan: "Sistem Sürümü", deger: formData.SURUM || "-" },
       ],
@@ -1241,19 +1224,28 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyleIletisim} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Posta Kodu:</Form.Label>
                               <Col>
-                                <InputGroup size="sm" className="flex-nowrap">
-                                  <div className="form-control form-control-sm bg-white text-truncate text-secondary" style={{ fontSize: "0.82rem" }} title={getPostaKoduName(formData.POSTA_KODU_ID)}>
-                                    {getPostaKoduName(formData.POSTA_KODU_ID) || "Seçilmedi"}
-                                  </div>
-                                  <Button
-                                    variant="outline-primary"
-                                    onClick={openPostaKoduLookup}
-                                    title="Listeden Seç (Dürbün)"
-                                    className="d-flex align-items-center px-2 flex-shrink-0"
-                                  >
-                                    <IconBinoculars size={16} />
-                                  </Button>
-                                </InputGroup>
+                                <Form.Control
+                                  size="sm"
+                                  type="text"
+                                  inputMode="numeric"
+                                  maxLength={10}
+                                  list="firma-posta-kodu-onerileri"
+                                  value={postaKoduMetni}
+                                  onChange={(e) => {
+                                    const yazilan = e.target.value.replace(/\D/g, "").slice(0, 10);
+                                    setPostaKoduMetni(yazilan);
+                                    const es = lookups.postaKoduList.find((pk) => String(pk.kod ?? "").trim() === yazilan);
+                                    setFormData((prev) => ({ ...prev, POSTA_KODU: yazilan, POSTA_KODU_ID: es ? es.id : null }));
+                                  }}
+                                  className="font-monospace"
+                                  style={{ fontSize: "0.82rem" }}
+                                  placeholder="20100"
+                                />
+                                <datalist id="firma-posta-kodu-onerileri">
+                                  {lookups.postaKoduList.filter((pk) => /^\d+$/.test(String(pk.kod ?? ""))).map((pk) => (
+                                    <option key={pk.id} value={pk.kod ?? ""} />
+                                  ))}
+                                </datalist>
                               </Col>
                             </Form.Group>
                           </Col>

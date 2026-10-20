@@ -10,6 +10,8 @@ export interface TodvzTanimDto {
   VERGI_KIMLIK_NO?: string | null;
   ADRES?: string | null;
   POSTA_KODU_ID?: number | null;
+  /** Ekranda yazılan posta kodu metni; sunucu bunu TODVZ_TABLO_MADDESI (TUR=1) ID'sine çevirir */
+  POSTA_KODU?: string | null;
   ILCE_ID?: number | null;
   IL_ID?: number | null;
   ULKE_ID?: number | null;
