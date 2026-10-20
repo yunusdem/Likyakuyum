@@ -372,37 +372,51 @@ $textPath = '${escapedTextPath}'
 $htmlPath = '${escapedHtmlPath}'
 $copies = ${numCopies}
 
-# 1. Metin / Termal POS Fişi: Out-Printer (En hızlı, doğrudan Windows kuyruğu, 0.05 saniye)
+# 1. Metin / Termal POS Fişi: System.Drawing.Printing (0 Kenar Boşluğu, 80mm Tam Genişlik)
 if ($textPath -and (Test-Path $textPath)) {
   try {
+    Add-Type -AssemblyName System.Drawing
+    $script:lines = Get-Content -LiteralPath $textPath -Encoding UTF8
+    $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
+
     for ($c = 0; $c -lt $copies; $c++) {
-      if ($target) {
-        Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer -Name $target
-      } else {
-        Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer
-      }
+      $doc = New-Object System.Drawing.Printing.PrintDocument
+      $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+      if ($target) { $doc.PrinterSettings.PrinterName = $target }
+      $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+      $doc.OriginAtMargins = $false
+
+      $doc.add_PrintPage({
+        param($sender, $ev)
+        $g = $ev.Graphics
+        # Termal kâğıt başlangıcı (sol kenardan 4 piksel / ~1mm estetik boşluk)
+        $x = 4.0
+        $y = 0.0
+        $lineHeight = $script:font.GetHeight($g) + 1.5
+        foreach ($line in $script:lines) {
+          if ($line -ne $null) {
+            $g.DrawString($line, $script:font, [System.Drawing.Brushes]::Black, $x, $y)
+          }
+          $y += $lineHeight
+        }
+        $ev.HasMorePages = $false
+      })
+      $doc.Print()
+      $doc.Dispose()
     }
-    Write-Output "SUCCESS: Out-Printer $target"
+    Write-Output "SUCCESS: GDI $target"
     exit 0
   } catch {
-    # Out-Printer istisna fırlatırsa StandardPrintController ile dene
+    # Fallback: Out-Printer (Genel kuyruk)
     try {
-      Add-Type -AssemblyName System.Drawing
       for ($c = 0; $c -lt $copies; $c++) {
-        $doc = New-Object System.Drawing.Printing.PrintDocument
-        $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
-        if ($target) { $doc.PrinterSettings.PrinterName = $target }
-        $script:txt = Get-Content -LiteralPath $textPath -Raw -Encoding UTF8
-        $script:fnt = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
-        $doc.add_PrintPage({
-          param($s, $e)
-          $e.Graphics.DrawString($script:txt, $script:fnt, [System.Drawing.Brushes]::Black, 0, 0)
-          $e.HasMorePages = $false
-        })
-        $doc.Print()
-        $doc.Dispose()
+        if ($target) {
+          Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer -Name $target
+        } else {
+          Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer
+        }
       }
-      Write-Output "SUCCESS: GDI $target"
+      Write-Output "SUCCESS: Out-Printer $target"
       exit 0
     } catch {
       Write-Output "ERROR: $($_.Exception.Message)"

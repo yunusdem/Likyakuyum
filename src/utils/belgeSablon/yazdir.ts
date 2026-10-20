@@ -11,27 +11,46 @@ export interface YaziciSecimi {
 export function extractPlainTextFromFis(fis: FisHtml): string {
   if (!fis?.sahne || !Array.isArray(fis.sahne.cizimler)) return "";
   try {
-    const texts = (fis.sahne.cizimler as any[])
-      .filter((c) => c && c.tip === "metin" && c.metin)
-      .map((c) => ({
-        text: String(c.metin).replace(/\*\*/g, "").trim(),
-        y: Math.round(Number(c.y || 0) / 9) * 9,
-        x: Number(c.x || 0),
-        align: c.hiza || "left",
-      }))
-      .filter((c) => c.text.length > 0)
-      .sort((a, b) => a.y - b.y || a.x - b.x);
+    const W_CHARS = 40; // 80mm standart termal karakter genişliği
 
-    const linesMap = new Map<number, typeof texts>();
-    for (const t of texts) {
-      if (!linesMap.has(t.y)) linesMap.set(t.y, []);
-      linesMap.get(t.y)!.push(t);
+    const elements: { y: number; x: number; text: string; align: string; isDivider?: boolean }[] = [];
+    for (const c of (fis.sahne.cizimler as any[])) {
+      if (!c) continue;
+      if (c.tip === "metin" && c.metin) {
+        const t = String(c.metin).replace(/\*\*/g, "").trim();
+        if (t) {
+          elements.push({
+            text: t,
+            y: Math.round(Number(c.y || 0) / 9) * 9,
+            x: Number(c.x || 0),
+            align: c.hiza || "left",
+          });
+        }
+      } else if (c.tip === "cizgi") {
+        elements.push({
+          text: "-".repeat(W_CHARS),
+          y: Math.round(Number(c.y1 || c.y || 0) / 9) * 9,
+          x: 0,
+          align: "left",
+          isDivider: true,
+        });
+      }
+    }
+
+    elements.sort((a, b) => a.y - b.y || a.x - b.x);
+
+    const linesMap = new Map<number, typeof elements>();
+    for (const el of elements) {
+      if (!linesMap.has(el.y)) linesMap.set(el.y, []);
+      linesMap.get(el.y)!.push(el);
     }
 
     const lines: string[] = [];
-    const W_CHARS = 40; // 80mm standart termal karakter genişliği
-
     for (const [_, items] of linesMap) {
+      if (items.some((i) => i.isDivider)) {
+        lines.push("-".repeat(W_CHARS));
+        continue;
+      }
       if (items.length === 1) {
         const it = items[0];
         if (it.align === "center") {
