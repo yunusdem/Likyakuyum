@@ -344,11 +344,12 @@ async function executePrintJob(job) {
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <title>${title}</title>
   <style>
     @page { size: ${isPos ? "80mm auto" : "A4 portrait"}; margin: 0mm !important; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    html, body { width: 100%; margin: 0 !important; padding: 0 !important; background: #ffffff; color: #000000; font-family: 'Consolas', 'Courier New', monospace; }
+    html, body { width: 100%; margin: 0 !important; padding: 0 !important; background: #ffffff; color: #000000; }
   </style>
 </head>
 <body style="margin:0;padding:0;background:#ffffff;">
@@ -362,18 +363,96 @@ async function executePrintJob(job) {
       const escapedTextPath = textFile && fs.existsSync(textFile) ? textFile.replace(/'/g, "''") : "";
       const numCopies = Math.max(1, Number(copies) || 1);
 
-      // Ultra hafif, donanım kuyruğuna doğrudan yazan ve asla kilitlenmeyen PowerShell scripti
+      // WebBrowser (HTML/SVG/QR/Logo) öncelikli, anında donanıma basan PowerShell scripti
       const psScript = `
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
 $target = '${safeTarget}'
-$textPath = '${escapedTextPath}'
 $htmlPath = '${escapedHtmlPath}'
+$textPath = '${escapedTextPath}'
 $copies = ${numCopies}
 
-# 1. Metin / Termal POS Fişi: System.Drawing.Printing (0 Kenar Boşluğu, 80mm Tam Genişlik)
-if ($textPath -and (Test-Path $textPath)) {
+# 1. Mevcut varsayılan yazıcıyı kayıt defterinden gecikmesiz al
+$prev = $null
+try {
+  $dev = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name Device -ErrorAction SilentlyContinue).Device
+  if ($dev) { $prev = $dev.Split(',')[0] }
+} catch {}
+
+# 2. IE / WebBrowser sayfa kenar boşluklarını ve başlık/altbilgileri sıfırla
+try {
+  $ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
+  if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
+  Set-ItemProperty -Path $ps -Name header -Value '' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name footer -Value '' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_left -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_right -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_top -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_bottom -Value '0' -ErrorAction SilentlyContinue
+} catch {}
+
+$printedOk = $false
+
+# 3. ÖNCELİK: HTML Varsa WebBrowser ile birebir modaldaki gibi grafik, QR kod, logo ve kutularla bas
+if ($htmlPath -and (Test-Path $htmlPath)) {
+  try {
+    if ($target) {
+      try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($target) } catch {}
+    }
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
+    $form.ShowInTaskbar = $false
+    $form.Width = 100
+    $form.Height = 100
+
+    $wb = New-Object System.Windows.Forms.WebBrowser
+    $wb.ScriptErrorsSuppressed = $true
+    $form.Controls.Add($wb)
+    $form.Show()
+
+    $script:ready = $false
+    $wb.add_DocumentCompleted({
+      param($s, $e)
+      $script:ready = $true
+    })
+
+    $wb.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
+
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $script:ready -and $sw.Elapsed.TotalSeconds -lt 4) {
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 30
+    }
+
+    if ($script:ready) {
+      for ($c = 0; $c -lt $copies; $c++) {
+        $wb.Print()
+        $sw.Restart()
+        while ($sw.Elapsed.TotalSeconds -lt 1.5) {
+          [System.Windows.Forms.Application]::DoEvents()
+          Start-Sleep -Milliseconds 40
+        }
+      }
+      $printedOk = $true
+    }
+
+    $form.Close()
+    $form.Dispose()
+  } catch {
+    $printedOk = $false
+  } finally {
+    if ($target -and $prev -and $prev -ne $target) {
+      try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($prev) } catch {}
+    }
+  }
+}
+
+# 4. YEDEK: HTML yoksa veya basılamadıysa GDI PrintDocument ile bas
+if (-not $printedOk -and $textPath -and (Test-Path $textPath)) {
   try {
     Add-Type -AssemblyName System.Drawing
     $script:lines = Get-Content -LiteralPath $textPath -Encoding UTF8
@@ -389,7 +468,6 @@ if ($textPath -and (Test-Path $textPath)) {
       $doc.add_PrintPage({
         param($sender, $ev)
         $g = $ev.Graphics
-        # Termal kâğıt başlangıcı (sol kenardan 4 piksel / ~1mm estetik boşluk)
         $x = 4.0
         $y = 0.0
         $lineHeight = $script:font.GetHeight($g) + 1.5
@@ -404,59 +482,21 @@ if ($textPath -and (Test-Path $textPath)) {
       $doc.Print()
       $doc.Dispose()
     }
-    Write-Output "SUCCESS: GDI $target"
-    exit 0
-  } catch {
-    # Fallback: Out-Printer (Genel kuyruk)
-    try {
-      for ($c = 0; $c -lt $copies; $c++) {
-        if ($target) {
-          Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer -Name $target
-        } else {
-          Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer
-        }
-      }
-      Write-Output "SUCCESS: Out-Printer $target"
-      exit 0
-    } catch {
-      Write-Output "ERROR: $($_.Exception.Message)"
-      exit 1
-    }
-  }
+    $printedOk = $true
+  } catch {}
 }
 
-# 2. HTML Yazdırma (Metin Olmadığında / A4)
-if ($htmlPath -and (Test-Path $htmlPath)) {
-  try {
-    $ie = New-Object -ComObject InternetExplorer.Application
-    $ie.Visible = $false
-    $ie.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    while ($ie.ReadyState -ne 4 -and $sw.Elapsed.TotalSeconds -lt 4) {
-      Start-Sleep -Milliseconds 50
-    }
-    for ($c = 0; $c -lt $copies; $c++) {
-      $ie.ExecWB(6, 2)
-      Start-Sleep -Milliseconds 300
-    }
-    $sw2 = [Diagnostics.Stopwatch]::StartNew()
-    while ($sw2.Elapsed.TotalSeconds -lt 1) { Start-Sleep -Milliseconds 50 }
-    $ie.Quit()
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ie) | Out-Null
-    Write-Output "SUCCESS: HTML $target"
-    exit 0
-  } catch {
-    Write-Output "ERROR: HTML $($_.Exception.Message)"
-    exit 1
-  }
+if ($printedOk) {
+  Write-Output "SUCCESS: $target"
+  exit 0
+} else {
+  Write-Output "ERROR: Yazdırma başarısız"
+  exit 1
 }
-
-Write-Output "ERROR: Yazdırılacak içerik yok"
-exit 1
 `;
 
       try {
-        const { stdout } = await runPowerShell(psScript, 8000);
+        const { stdout } = await runPowerShell(psScript, 10000);
         if (stdout && stdout.includes("SUCCESS")) {
           printed = true;
           console.log(`[printercekmeApp] Yazdırma BAŞARILI: "${targetPrinter || 'Varsayılan'}"`);
