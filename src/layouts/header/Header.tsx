@@ -15,6 +15,7 @@ import {
   IconFileCertificate,
   IconRefresh,
   IconEye,
+  IconEyeCog,
   IconChartCandle,
   IconShoppingBag,
   IconBolt,
@@ -39,6 +40,7 @@ import { UST_KISAYOLLAR, modulAcikMi } from "../../config/modulKatalogu";
 import { acikHizliSatisModulleri } from "../../config/hizliSatis";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { useKullaniciGorunum } from "../../hooks/useKullaniciGorunum";
 import { useSayfaErisimi } from "../../hooks/useSayfaErisimi";
 import { anaMenuAcik } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import HeaderThemeSelector from "components/theme/HeaderThemeSelector";
@@ -149,7 +151,10 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
   const masakAcik = modulAcikMi(acikModuller, "ust:masak") && sayfaAcik("/ayarlar/masak-dondurulanlar");
   const piyasaAcik = modulAcikMi(acikModuller, "ust:piyasa");
   // Katalog & TV menü barkodlu altın / özel ürünleri gösterir: Etiket (Kuyum) lisansı ve kullanıcının Etiket menü yetkisi
-  const katalogAcik = useUrunOzellikleri().etiket && anaMenuAcik(yetki, "etiket");
+  // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G3/G8): yöneticinin kapattığı kontrol düğmeleri çizilmez,
+  // yöneticiye Görünüm Ayarları düğmesi
+  const { kontrolAcik, yonetici: gorunumYoneticisi } = useKullaniciGorunum();
+  const katalogAcik = useUrunOzellikleri().etiket && anaMenuAcik(yetki, "etiket") && kontrolAcik("kontrol:katalog");
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
   const [isTvMenuModalOpen, setIsTvMenuModalOpen] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -628,12 +633,30 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
               as={"ul"}
               className="d-flex align-items-center mb-0 gap-1 gap-sm-1.5 flex-shrink-0 ms-auto"
             >
+              {/* Görünüm Ayarları (yalnız yönetici): çalışanlara menü / kısayol / düğme gizleme */}
+              {gorunumYoneticisi && (
+                <ListGroup.Item as="li" className="d-none d-sm-block flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-dark p-0"
+                    onClick={() => navigate("/ayarlar/gorunum")}
+                    title="Görünüm Ayarları (çalışanlara gizle / göster)"
+                    style={{ width: "32px", height: "32px" }}
+                  >
+                    <IconEyeCog size={18} strokeWidth={2.1} />
+                  </Button>
+                </ListGroup.Item>
+              )}
+
               {/* Theme Quick Selector Dropdown & Modal */}
+              {kontrolAcik("kontrol:tema") && (
               <ListGroup.Item as="li" className="me-0.5 flex-shrink-0">
                 <HeaderThemeSelector />
               </ListGroup.Item>
+              )}
 
               {/* Sayfa Yenileme Butonu (Masaüstü & Tablet) */}
+              {kontrolAcik("kontrol:yenile") && (
               <ListGroup.Item as="li" className="d-none d-sm-block flex-shrink-0">
                 <Button
                   variant="ghost"
@@ -645,8 +668,10 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
                   <IconRefresh size={18} strokeWidth={2.1} />
                 </Button>
               </ListGroup.Item>
+              )}
 
               {/* Fullscreen Toggle Button (Masaüstü & Tablet) */}
+              {kontrolAcik("kontrol:tam-ekran") && (
               <ListGroup.Item as="li" className="d-none d-sm-block flex-shrink-0">
                 <Button
                   variant="ghost"
@@ -662,11 +687,14 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
                   )}
                 </Button>
               </ListGroup.Item>
+              )}
 
               {/* Destek zili: sayaç, sağ panel, Talep Oluştur */}
+              {kontrolAcik("kontrol:destek") && (
               <ListGroup.Item as="li" className="flex-shrink-0">
                 <DestekZil />
               </ListGroup.Item>
+              )}
 
               {/* User Profile Menu / Çıkış Yap */}
               <ListGroup.Item as="li" className="flex-shrink-0">

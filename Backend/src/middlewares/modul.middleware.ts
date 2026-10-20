@@ -5,6 +5,7 @@ import { API_MODULLERI, ModulService } from "../services/admin/modul.service.js"
 import { KurulumLisansService } from "../services/kurulum/kurulumLisans.service.js";
 import { raporModulKodlari } from "../services/rapor/raporMenu.js";
 import { ApiError } from "../utils/ApiError.js";
+import { etkinModuller, oturumKapalilari } from "../services/gorunum/kullaniciGorunum.service.js";
 
 /**
  * Oturumun firmaya açık modülleri; null = kısıt yok. Kullanıcı uygulaması menüyü aynı listeyle süzer (user.merkez.moduller):
@@ -12,6 +13,14 @@ import { ApiError } from "../utils/ApiError.js";
  * modül ayarı hiç yapılmamış firmada kısıt yoktur.
  */
 export const oturumModulleri = async (req: Request): Promise<string[] | null> => {
+  const lisans = await firmaModulleri(req);
+  if (!lisans) return null;
+  // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G2): yöneticinin çalışana kapattıkları lisanstan düşer
+  return etkinModuller(lisans, await oturumKapalilari(req).catch(() => []));
+};
+
+/** Yalnız firma lisansı (kullanıcı görünümü uygulanmadan) */
+const firmaModulleri = async (req: Request): Promise<string[] | null> => {
   if (env.KURULUM_MODU) return (await KurulumLisansService.durum()).moduller ?? null;
   if (env.MERKEZ_GIRIS !== "zorunlu") return null;
   const { dbServer, dbName } = req.user || {};

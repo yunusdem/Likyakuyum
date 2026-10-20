@@ -37,6 +37,7 @@ import PiyasaPage from "./pages/piyasa/PiyasaPage";
 import HizliSatisPage from "./pages/hizliSatis/HizliSatisPage";
 import HizliSatisYonlendir from "./pages/hizliSatis/HizliSatisYonlendir";
 import HizliSatisDuzeniPage from "./pages/hizliSatis/HizliSatisDuzeniPage";
+import GorunumAyarlariPage from "./pages/settings/GorunumAyarlariPage";
 import SarrafFisiPage from "./pages/vezne/SarrafFisiPage";
 import PerakendeFisiPage from "./pages/vezne/PerakendeFisiPage";
 import VitrinStokTakibiPage from "./pages/perakende/VitrinStokTakibiPage";
@@ -420,6 +421,8 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="hizli-satis" element={<HizliSatisYonlendir />} />
               <Route path="hizli-satis/:modul" element={<HizliSatisPage />} />
               <Route path="ayarlar/hizli-satis-duzeni" element={<HizliSatisDuzeniPage />} />
+              {/* Kullanıcı görünümü: yöneticinin çalışanlara gizle / göster ayarı (docs/KULLANICI_GORUNUM_YOL_HARITASI.md) */}
+              <Route path="ayarlar/gorunum" element={<GorunumAyarlariPage />} />
               <Route path="vezne/izleme" element={<VezneIzlemePage />} />
               <Route path="vezne/vezne-izleme" element={<VezneIzlemePage />} />
               <Route path="vezne/para-say" element={<VezneParaSayPage />} />

@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import MenuYetkileriAlani from "./MenuYetkileriAlani";
+import KisayolYetkileriAlani, { digerKodlar, kisayolKodlari } from "./KisayolYetkileriAlani";
+import { KullaniciGorunumService } from "../../services/kullaniciGorunumService";
 
 import {
   Card,
@@ -394,6 +396,10 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
 
 const UserDefinitionsPage: React.FC = () => {
   const { user: authUser, refreshUser } = useAuth();
+  // Hızlı menü (üst kısayol) ve üst çubuk düğmeleri: kullanıcı görünümü tablosundaki kapalı kodlar
+  // (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G10). Yalnız yönetici okur/yazar; kart kaydıyla birlikte kaydedilir.
+  const [kisayolKapali, setKisayolKapali] = useState<string[]>([]);
+  const kisayolYuklenen = useRef<{ id: string; kapali: string[] } | null>(null);
   const rawDb = localStorage.getItem("kuyumcu_erp_active_db");
   const activeDb = rawDb && rawDb !== "test" ? rawDb : "R2016_dvz";
   const rawServer = localStorage.getItem("kuyumcu_erp_active_server");
@@ -497,6 +503,35 @@ const UserDefinitionsPage: React.FC = () => {
   // Kullanıcı kartlarını yöneten (sunucudaki kuralla aynı): merkez açıkken firma yöneticisi, değilse sistem yöneticisi.
   // Yönetici olmayan yalnız kendi kartını görür; yetki, vezne ve istatistik alanları onda salt okunurdur.
   const kartYoneticisi = merkez ? !!merkez.firmaYoneticisi : !!authUser?.isSysAdmin || authUser?.role === "admin";
+
+  const seciliKullaniciId = currentUser?.id ? String(currentUser.id) : "";
+  React.useEffect(() => {
+    kisayolYuklenen.current = null;
+    setKisayolKapali([]);
+    if (!kartYoneticisi || !seciliKullaniciId) return;
+    let iptal = false;
+    KullaniciGorunumService.oku(seciliKullaniciId)
+      .then((d) => {
+        if (iptal) return;
+        kisayolYuklenen.current = { id: seciliKullaniciId, kapali: d.kapali };
+        setKisayolKapali(kisayolKodlari(d.kapali));
+      })
+      .catch(() => undefined);
+    return () => {
+      iptal = true;
+    };
+  }, [kartYoneticisi, seciliKullaniciId]);
+
+  /** Kart kaydından sonra kısayol kapatmalarını yazar; Görünüm Ayarları sayfasının menü kapatmaları korunur */
+  const kisayollariKaydet = async (id: string) => {
+    if (!kartYoneticisi) return;
+    const eski = kisayolYuklenen.current?.id === id ? kisayolYuklenen.current.kapali : [];
+    const yeni = [...digerKodlar(eski), ...kisayolKapali];
+    const ayni = yeni.length === eski.length && yeni.every((k) => eski.includes(k));
+    if (ayni) return;
+    const d = await KullaniciGorunumService.kaydet(id, yeni);
+    kisayolYuklenen.current = { id, kapali: d.kapali };
+  };
   // Kurulumda (exe) lisanstaki kullanıcı limiti: doluysa "Yeni" kapalı, aşılmışsa uyarı (bulutta sayım merkezde, burada gösterilmez)
   const [kurulum, setKurulum] = useState(false);
   React.useEffect(() => {
@@ -806,6 +841,7 @@ const UserDefinitionsPage: React.FC = () => {
           ...currentUser,
           username: trimmedUsername.replace(/\s+/g, ""),
         });
+        await kisayollariKaydet(String(currentUser.id));
         setAlertSuccess(`"${updated?.username || trimmedUsername}" kullanıcısı başarıyla güncellendi.`);
         const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
         const updatedList = (res.data || []).map(ensureUserSidebarStyle);
@@ -835,6 +871,7 @@ const UserDefinitionsPage: React.FC = () => {
           ...newUserData,
           username: trimmedUsername.replace(/\s+/g, ""),
         });
+        if (created?.id && kisayolKapali.length) await kisayollariKaydet(String(created.id));
         setAlertSuccess(`"${created?.username || trimmedUsername}" kullanıcısı başarıyla veritabanına eklendi.`);
 
         // Veritabanındaki kullanıcı listesini güncelle
@@ -1506,6 +1543,8 @@ const UserDefinitionsPage: React.FC = () => {
                         degistir={(alan, yeni) => updateMenuPerm(alan as keyof UserProfile["menuPerms"], yeni)}
                         kilitli={!kartYoneticisi}
                       />
+                      {/* Hızlı menü (üst kısayol çubuğu) ve üst çubuk düğmeleri: aynı mantık, kullanıcı görünümü tablosunda */}
+                      {kartYoneticisi && <KisayolYetkileriAlani kapali={kisayolKapali} degistir={setKisayolKapali} kilitli={!kartYoneticisi} />}
                     </div>
                   </Col>
 

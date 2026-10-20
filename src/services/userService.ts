@@ -28,6 +28,8 @@ export interface LisansIletisim {
 
 export interface UserProfileDto {
   merkez?: MerkezOturumBilgisi;
+  /** Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md): yöneticinin bu kullanıcıya kapattığı modül kodları */
+  gorunumKapali?: string[];
   id: string;
   username: string;
   fullName: string;

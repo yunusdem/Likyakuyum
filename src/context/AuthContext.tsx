@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { AuthService, LoginCredentials } from "../services/authService";
 import { UserProfileDto } from "../services/userService";
 import { SessionExpiredModal } from "../components/auth/SessionExpiredModal";
+import { profiliGorunumeGoreHazirla } from "../config/kullaniciGorunum";
 
 interface AuthContextType {
   user: UserProfileDto | null;
@@ -16,7 +17,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfileDto | null>(() => AuthService.getUser());
+  // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G2): profil ekrana her gelişinde etkin modül listesine indirilir
+  const [user, setUserHam] = useState<UserProfileDto | null>(() => profiliGorunumeGoreHazirla(AuthService.getUser()));
+  const setUser = useCallback(
+    (u: UserProfileDto | null | ((eski: UserProfileDto | null) => UserProfileDto | null)) =>
+      setUserHam((eski) => profiliGorunumeGoreHazirla(typeof u === "function" ? u(eski) : u)),
+    []
+  );
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSessionExpiredModalOpen, setIsSessionExpiredModalOpen] = useState<boolean>(false);
 
@@ -91,8 +98,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const profil = await AuthService.getMe();
         setUser((eski) => {
-          const anahtar = (u: any) => JSON.stringify([u?.merkez?.moduller ?? null, u?.merkez?.urunler ?? null]);
-          return eski && anahtar(eski) === anahtar(profil) ? eski : profil;
+          const anahtar = (u: any) => JSON.stringify([u?.merkez?.moduller ?? null, u?.merkez?.urunler ?? null, u?.gorunumKapali ?? []]);
+          return eski && anahtar(eski) === anahtar(profiliGorunumeGoreHazirla(profil)) ? eski : profil;
         });
       } catch {
         /* oturum düşmüşse ayrı olay işler */

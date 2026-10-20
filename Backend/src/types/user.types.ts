@@ -103,6 +103,9 @@ export interface UserModel {
   // Theme Settings
   appearance: UserAppearanceTheme;
 
+  /** Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md): yöneticinin bu kullanıcıya kapattığı modül kodları (yöneticide boş) */
+  gorunumKapali?: string[];
+
   refreshToken?: string;
   createdAt?: Date;
   updatedAt?: Date;
