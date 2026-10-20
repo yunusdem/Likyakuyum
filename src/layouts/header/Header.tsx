@@ -15,7 +15,6 @@ import {
   IconFileCertificate,
   IconRefresh,
   IconEye,
-  IconEyeCog,
   IconChartCandle,
   IconShoppingBag,
   IconBolt,
@@ -151,9 +150,8 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
   const masakAcik = modulAcikMi(acikModuller, "ust:masak") && sayfaAcik("/ayarlar/masak-dondurulanlar");
   const piyasaAcik = modulAcikMi(acikModuller, "ust:piyasa");
   // Katalog & TV menü barkodlu altın / özel ürünleri gösterir: Etiket (Kuyum) lisansı ve kullanıcının Etiket menü yetkisi
-  // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G3/G8): yöneticinin kapattığı kontrol düğmeleri çizilmez,
-  // yöneticiye Görünüm Ayarları düğmesi
-  const { kontrolAcik, yonetici: gorunumYoneticisi } = useKullaniciGorunum();
+  // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G3): Kullanıcı Tanımları'nda kapatılan kontrol düğmeleri çizilmez
+  const { kontrolAcik } = useKullaniciGorunum();
   const katalogAcik = useUrunOzellikleri().etiket && anaMenuAcik(yetki, "etiket") && kontrolAcik("kontrol:katalog");
   const [isMasakModalOpen, setIsMasakModalOpen] = useState<boolean>(false);
   const [isTvMenuModalOpen, setIsTvMenuModalOpen] = useState<boolean>(false);
@@ -633,21 +631,6 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
               as={"ul"}
               className="d-flex align-items-center mb-0 gap-1 gap-sm-1.5 flex-shrink-0 ms-auto"
             >
-              {/* Görünüm Ayarları (yalnız yönetici): çalışanlara menü / kısayol / düğme gizleme */}
-              {gorunumYoneticisi && (
-                <ListGroup.Item as="li" className="d-none d-sm-block flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    className="btn-icon rounded-circle d-flex align-items-center justify-content-center text-dark p-0"
-                    onClick={() => navigate("/ayarlar/gorunum")}
-                    title="Görünüm Ayarları (çalışanlara gizle / göster)"
-                    style={{ width: "32px", height: "32px" }}
-                  >
-                    <IconEyeCog size={18} strokeWidth={2.1} />
-                  </Button>
-                </ListGroup.Item>
-              )}
-
               {/* Theme Quick Selector Dropdown & Modal */}
               {kontrolAcik("kontrol:tema") && (
               <ListGroup.Item as="li" className="me-0.5 flex-shrink-0">

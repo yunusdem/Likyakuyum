@@ -20,7 +20,7 @@ interface Bolum {
 export const KISAYOL_ONEKLERI = [`${UST_KISAYOL_GRUBU}:`, `${KONTROL_GRUBU}:`];
 /** Kapalı listeden bu alanın yönettiği kodlar */
 export const kisayolKodlari = (kapali: string[]): string[] => kapali.filter((k) => KISAYOL_ONEKLERI.some((o) => k.startsWith(o)));
-/** Bu alanın yönetmediği kodlar (Görünüm Ayarları sayfasının menü kapatmaları) */
+/** Bu alanın yönetmediği kodlar (varsa başka kaynaktan yazılmış menü kodları korunur) */
 export const digerKodlar = (kapali: string[]): string[] => kapali.filter((k) => !KISAYOL_ONEKLERI.some((o) => k.startsWith(o)));
 
 export const KisayolYetkileriAlani: React.FC<{
