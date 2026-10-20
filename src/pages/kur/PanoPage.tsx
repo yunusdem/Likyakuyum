@@ -27,6 +27,22 @@ const formatDigitalRate = (val: number | null | undefined): string => {
   });
 };
 
+// Dynamic rate font size auto-scaler: prevents any overflow or overlap if numbers are long
+const getDigitalRateFontSize = (str: string, isMajor: boolean = false): string => {
+  const len = str.length;
+  if (isMajor) {
+    if (len >= 11) return "clamp(1.1rem, min(2.2vw, 3.4vh), 2.3rem)";
+    if (len >= 9) return "clamp(1.3rem, min(2.8vw, 4.4vh), 3.0rem)";
+    if (len >= 7) return "clamp(1.5rem, min(3.5vw, 5.4vh), 3.7rem)";
+    return "clamp(1.8rem, min(4.2vw, 6.2vh), 4.4rem)";
+  } else {
+    if (len >= 11) return "clamp(0.95rem, min(1.6vw, 2.8vh), 2.0rem)";
+    if (len >= 9) return "clamp(1.1rem, min(2.0vw, 3.6vh), 2.5rem)";
+    if (len >= 7) return "clamp(1.25rem, min(2.4vw, 4.4vh), 2.9rem)";
+    return "clamp(1.4rem, min(2.9vw, 5.2vh), 3.5rem)";
+  }
+};
+
 // Standalone vector SVG flags with realistic waving fabric overlay
 export const WavingFlag: React.FC<{ code: string; width?: number | string; height?: number | string }> = ({
   code,
@@ -463,7 +479,6 @@ export const PanoPage: React.FC = () => {
       style={{
         backgroundColor: "#161920",
         color: "#ffffff",
-        overflow: "hidden",
         position: "relative",
       }}
     >
@@ -473,7 +488,7 @@ export const PanoPage: React.FC = () => {
         .font-digital-title {
           font-family: 'Orbitron', 'Chakra Petch', sans-serif;
           font-weight: 700;
-          letter-spacing: 2px;
+          letter-spacing: 1.5px;
         }
 
         .font-digital-number {
@@ -481,11 +496,69 @@ export const PanoPage: React.FC = () => {
           font-weight: 700;
           font-variant-numeric: slashed-zero;
           font-feature-settings: "zero" 1;
-          letter-spacing: 2px;
+          letter-spacing: 1px;
         }
 
-        .cyber-line-pulse {
-          transition: transform 0.3s ease, filter 0.3s ease;
+        /* Responsive Layout Overrides: prevent ANY overlap on small screens/laptops */
+        @media (max-width: 991.98px) {
+          .pano-main-layout {
+            flex-direction: column !important;
+            overflow-y: auto !important;
+            height: auto !important;
+            min-height: 100% !important;
+          }
+          .pano-left-col {
+            width: 100% !important;
+            border-right: none !important;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.25) !important;
+            height: auto !important;
+            min-height: auto !important;
+          }
+          .pano-right-col {
+            width: 100% !important;
+            height: auto !important;
+            min-height: auto !important;
+          }
+          .pano-major-card {
+            height: auto !important;
+            min-height: 180px !important;
+            padding: 1rem 0.5rem !important;
+          }
+          .pano-live-page {
+            overflow-y: auto !important;
+          }
+        }
+
+        @media (min-width: 992px) {
+          .pano-main-layout {
+            flex-direction: row !important;
+            height: 100% !important;
+            overflow: hidden !important;
+          }
+          .pano-left-col {
+            width: 48% !important;
+            height: 100% !important;
+            border-right: 2px solid rgba(255, 255, 255, 0.25) !important;
+          }
+          .pano-right-col {
+            width: 52% !important;
+            height: 100% !important;
+          }
+          .pano-major-card {
+            height: 50% !important;
+          }
+        }
+
+        /* Tight screen height protections (e.g. laptops 768px height) */
+        @media (max-height: 720px) and (min-width: 992px) {
+          .pano-major-card {
+            padding-top: 4px !important;
+            padding-bottom: 4px !important;
+          }
+          .rate-box-compact {
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+          }
         }
 
         /* Subtle flash animations for live rate change */
@@ -510,7 +583,7 @@ export const PanoPage: React.FC = () => {
       {/* Cyber/Geometric Background Polygonal Mesh (Matching the photo behind the board) */}
       <svg
         className="position-absolute top-0 start-0 w-100 h-100 pointer-events-none"
-        style={{ zIndex: 0, opacity: 0.22 }}
+        style={{ zIndex: 0, opacity: 0.18 }}
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
@@ -651,7 +724,7 @@ export const PanoPage: React.FC = () => {
         style={{
           zIndex: 1,
           height: isFullscreen ? "100vh" : "calc(100vh - 46px)",
-          maxHeight: isFullscreen ? "100vh" : "calc(100vh - 46px)",
+          minHeight: 0,
         }}
       >
         {loading && !activePano ? (
@@ -668,20 +741,14 @@ export const PanoPage: React.FC = () => {
             </Button>
           </div>
         ) : (
-          <div className="d-flex flex-row flex-grow-1 w-100 h-100">
+          <div className="pano-main-layout d-flex w-100 flex-grow-1">
             {/* ========================================================
                 LEFT COLUMN (USD & EUR Major Currencies) - approx 48%
                ======================================================== */}
-            <div
-              className="d-flex flex-column h-100"
-              style={{
-                width: "48%",
-                borderRight: "2px solid rgba(255, 255, 255, 0.25)",
-              }}
-            >
+            <div className="pano-left-col d-flex flex-column">
               {/* --- USD BLOCK --- */}
               <div
-                className={`d-flex flex-row align-items-center h-50 px-3 px-md-4 py-2 border-bottom ${
+                className={`pano-major-card d-flex flex-row align-items-center px-3 px-xl-4 py-2 border-bottom ${
                   flashedItems["USD"] ? (flashedItems["USD"] === "up" ? "flash-up" : "flash-down") : ""
                 }`}
                 style={{
@@ -690,180 +757,228 @@ export const PanoPage: React.FC = () => {
               >
                 {/* Left: "USD" label & Flag */}
                 <div
-                  className="d-flex flex-column align-items-center justify-content-center"
-                  style={{ width: "28%", minWidth: "120px" }}
+                  className="d-flex flex-column align-items-center justify-content-center flex-shrink-0"
+                  style={{ width: "26%", minWidth: "85px" }}
                 >
                   <div
-                    className="font-digital-title text-uppercase"
+                    className="font-digital-title text-uppercase text-nowrap"
                     style={{
-                      fontSize: "clamp(2.4rem, 4.4vw, 4rem)",
+                      fontSize: "clamp(1.6rem, min(3.8vw, 6vh), 3.6rem)",
                       color: "#b0bac9",
                       lineHeight: 1.1,
-                      letterSpacing: "3px",
+                      letterSpacing: "2px",
                     }}
                   >
                     USD
                   </div>
-                  <div className="mt-2 mt-md-3">
-                    <WavingFlag code="USD" width="clamp(75px, 8.5vw, 115px)" height="clamp(46px, 5.2vw, 70px)" />
+                  <div className="mt-1 mt-md-2">
+                    <WavingFlag
+                      code="USD"
+                      width="clamp(58px, min(6.8vw, 9.5vh), 105px)"
+                      height="clamp(36px, min(4.2vw, 6vh), 65px)"
+                    />
                   </div>
                 </div>
 
                 {/* Right: Alış & Satış Rate Boxes */}
-                <div className="d-flex flex-column justify-content-center gap-2 gap-md-3 flex-grow-1 ps-2 ps-md-3">
+                <div className="d-flex flex-column justify-content-center gap-1 gap-md-2 flex-grow-1 ps-2 ps-md-3 min-w-0" style={{ minWidth: 0 }}>
                   {/* USD ALIŞ - WE BUY Box */}
                   <div
+                    className="rate-box-compact"
                     style={{
                       border: "2px solid #ef4444",
-                      backgroundColor: "rgba(0, 0, 0, 0.4)",
-                      boxShadow: "0 0 15px rgba(239, 68, 68, 0.15)",
+                      backgroundColor: "rgba(0, 0, 0, 0.45)",
+                      boxShadow: "0 0 12px rgba(239, 68, 68, 0.15)",
+                      overflow: "hidden",
                     }}
                   >
                     <div
-                      className="text-center font-digital-title text-white py-0.5"
+                      className="text-center font-digital-title text-white text-nowrap py-0.5 px-1"
                       style={{
                         backgroundColor: "#8a2428",
                         borderBottom: "1.5px solid #ef4444",
-                        fontSize: "clamp(0.85rem, 1.25vw, 1.3rem)",
-                        letterSpacing: "2.5px",
+                        fontSize: "clamp(0.72rem, min(1vw, 1.8vh), 1.15rem)",
+                        letterSpacing: "1.5px",
+                        lineHeight: 1.2,
                       }}
                     >
                       ALIŞ - WE BUY
                     </div>
-                    <div
-                      className="text-center font-digital-number text-white py-1 px-2"
-                      style={{
-                        fontSize: "clamp(2.5rem, 4.8vw, 4.6rem)",
-                        lineHeight: 1.05,
-                        textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
-                      }}
-                    >
-                      {formatDigitalRate(usdItem.dovizAlis)}
-                    </div>
+                    {(() => {
+                      const str = formatDigitalRate(usdItem.dovizAlis);
+                      return (
+                        <div
+                          className="text-center font-digital-number text-white text-nowrap py-0.5 px-1"
+                          style={{
+                            fontSize: getDigitalRateFontSize(str, true),
+                            letterSpacing: str.length >= 8 ? "0.5px" : "1.5px",
+                            lineHeight: 1.05,
+                            textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {str}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* USD SATIŞ - WE SELL Box */}
                   <div
+                    className="rate-box-compact"
                     style={{
                       border: "2px solid #22c55e",
-                      backgroundColor: "rgba(0, 0, 0, 0.4)",
-                      boxShadow: "0 0 15px rgba(34, 197, 94, 0.15)",
+                      backgroundColor: "rgba(0, 0, 0, 0.45)",
+                      boxShadow: "0 0 12px rgba(34, 197, 94, 0.15)",
+                      overflow: "hidden",
                     }}
                   >
                     <div
-                      className="text-center font-digital-title text-white py-0.5"
+                      className="text-center font-digital-title text-white text-nowrap py-0.5 px-1"
                       style={{
                         backgroundColor: "#1b5e32",
                         borderBottom: "1.5px solid #22c55e",
-                        fontSize: "clamp(0.85rem, 1.25vw, 1.3rem)",
-                        letterSpacing: "2.5px",
+                        fontSize: "clamp(0.72rem, min(1vw, 1.8vh), 1.15rem)",
+                        letterSpacing: "1.5px",
+                        lineHeight: 1.2,
                       }}
                     >
                       SATIŞ - WE SELL
                     </div>
-                    <div
-                      className="text-center font-digital-number text-white py-1 px-2"
-                      style={{
-                        fontSize: "clamp(2.5rem, 4.8vw, 4.6rem)",
-                        lineHeight: 1.05,
-                        textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
-                      }}
-                    >
-                      {formatDigitalRate(usdItem.dovizSatis)}
-                    </div>
+                    {(() => {
+                      const str = formatDigitalRate(usdItem.dovizSatis);
+                      return (
+                        <div
+                          className="text-center font-digital-number text-white text-nowrap py-0.5 px-1"
+                          style={{
+                            fontSize: getDigitalRateFontSize(str, true),
+                            letterSpacing: str.length >= 8 ? "0.5px" : "1.5px",
+                            lineHeight: 1.05,
+                            textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {str}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
 
               {/* --- EUR BLOCK --- */}
               <div
-                className={`d-flex flex-row align-items-center h-50 px-3 px-md-4 py-2 ${
+                className={`pano-major-card d-flex flex-row align-items-center px-3 px-xl-4 py-2 ${
                   flashedItems["EUR"] ? (flashedItems["EUR"] === "up" ? "flash-up" : "flash-down") : ""
                 }`}
               >
                 {/* Left: "EUR" label & Flag */}
                 <div
-                  className="d-flex flex-column align-items-center justify-content-center"
-                  style={{ width: "28%", minWidth: "120px" }}
+                  className="d-flex flex-column align-items-center justify-content-center flex-shrink-0"
+                  style={{ width: "26%", minWidth: "85px" }}
                 >
                   <div
-                    className="font-digital-title text-uppercase"
+                    className="font-digital-title text-uppercase text-nowrap"
                     style={{
-                      fontSize: "clamp(2.4rem, 4.4vw, 4rem)",
+                      fontSize: "clamp(1.6rem, min(3.8vw, 6vh), 3.6rem)",
                       color: "#b0bac9",
                       lineHeight: 1.1,
-                      letterSpacing: "3px",
+                      letterSpacing: "2px",
                     }}
                   >
                     EUR
                   </div>
-                  <div className="mt-2 mt-md-3">
-                    <WavingFlag code="EUR" width="clamp(75px, 8.5vw, 115px)" height="clamp(46px, 5.2vw, 70px)" />
+                  <div className="mt-1 mt-md-2">
+                    <WavingFlag
+                      code="EUR"
+                      width="clamp(58px, min(6.8vw, 9.5vh), 105px)"
+                      height="clamp(36px, min(4.2vw, 6vh), 65px)"
+                    />
                   </div>
                 </div>
 
                 {/* Right: Alış & Satış Rate Boxes */}
-                <div className="d-flex flex-column justify-content-center gap-2 gap-md-3 flex-grow-1 ps-2 ps-md-3">
+                <div className="d-flex flex-column justify-content-center gap-1 gap-md-2 flex-grow-1 ps-2 ps-md-3 min-w-0" style={{ minWidth: 0 }}>
                   {/* EUR ALIŞ - WE BUY Box */}
                   <div
+                    className="rate-box-compact"
                     style={{
                       border: "2px solid #ef4444",
-                      backgroundColor: "rgba(0, 0, 0, 0.4)",
-                      boxShadow: "0 0 15px rgba(239, 68, 68, 0.15)",
+                      backgroundColor: "rgba(0, 0, 0, 0.45)",
+                      boxShadow: "0 0 12px rgba(239, 68, 68, 0.15)",
+                      overflow: "hidden",
                     }}
                   >
                     <div
-                      className="text-center font-digital-title text-white py-0.5"
+                      className="text-center font-digital-title text-white text-nowrap py-0.5 px-1"
                       style={{
                         backgroundColor: "#8a2428",
                         borderBottom: "1.5px solid #ef4444",
-                        fontSize: "clamp(0.85rem, 1.25vw, 1.3rem)",
-                        letterSpacing: "2.5px",
+                        fontSize: "clamp(0.72rem, min(1vw, 1.8vh), 1.15rem)",
+                        letterSpacing: "1.5px",
+                        lineHeight: 1.2,
                       }}
                     >
                       ALIŞ - WE BUY
                     </div>
-                    <div
-                      className="text-center font-digital-number text-white py-1 px-2"
-                      style={{
-                        fontSize: "clamp(2.5rem, 4.8vw, 4.6rem)",
-                        lineHeight: 1.05,
-                        textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
-                      }}
-                    >
-                      {formatDigitalRate(eurItem.dovizAlis)}
-                    </div>
+                    {(() => {
+                      const str = formatDigitalRate(eurItem.dovizAlis);
+                      return (
+                        <div
+                          className="text-center font-digital-number text-white text-nowrap py-0.5 px-1"
+                          style={{
+                            fontSize: getDigitalRateFontSize(str, true),
+                            letterSpacing: str.length >= 8 ? "0.5px" : "1.5px",
+                            lineHeight: 1.05,
+                            textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {str}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* EUR SATIŞ - WE SELL Box */}
                   <div
+                    className="rate-box-compact"
                     style={{
                       border: "2px solid #22c55e",
-                      backgroundColor: "rgba(0, 0, 0, 0.4)",
-                      boxShadow: "0 0 15px rgba(34, 197, 94, 0.15)",
+                      backgroundColor: "rgba(0, 0, 0, 0.45)",
+                      boxShadow: "0 0 12px rgba(34, 197, 94, 0.15)",
+                      overflow: "hidden",
                     }}
                   >
                     <div
-                      className="text-center font-digital-title text-white py-0.5"
+                      className="text-center font-digital-title text-white text-nowrap py-0.5 px-1"
                       style={{
                         backgroundColor: "#1b5e32",
                         borderBottom: "1.5px solid #22c55e",
-                        fontSize: "clamp(0.85rem, 1.25vw, 1.3rem)",
-                        letterSpacing: "2.5px",
+                        fontSize: "clamp(0.72rem, min(1vw, 1.8vh), 1.15rem)",
+                        letterSpacing: "1.5px",
+                        lineHeight: 1.2,
                       }}
                     >
                       SATIŞ - WE SELL
                     </div>
-                    <div
-                      className="text-center font-digital-number text-white py-1 px-2"
-                      style={{
-                        fontSize: "clamp(2.5rem, 4.8vw, 4.6rem)",
-                        lineHeight: 1.05,
-                        textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
-                      }}
-                    >
-                      {formatDigitalRate(eurItem.dovizSatis)}
-                    </div>
+                    {(() => {
+                      const str = formatDigitalRate(eurItem.dovizSatis);
+                      return (
+                        <div
+                          className="text-center font-digital-number text-white text-nowrap py-0.5 px-1"
+                          style={{
+                            fontSize: getDigitalRateFontSize(str, true),
+                            letterSpacing: str.length >= 8 ? "0.5px" : "1.5px",
+                            lineHeight: 1.05,
+                            textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {str}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -872,50 +987,45 @@ export const PanoPage: React.FC = () => {
             {/* ========================================================
                 RIGHT COLUMN (Other Currencies Table) - approx 52%
                ======================================================== */}
-            <div
-              className="d-flex flex-column h-100 px-3 px-md-4"
-              style={{
-                width: "52%",
-              }}
-            >
-              {/* Column Headers (ALIŞ-WE BUY & SATIŞ-WE SELL) */}
+            <div className="pano-right-col d-flex flex-column px-2 px-md-3 px-xl-4 min-w-0" style={{ minWidth: 0 }}>
+              {/* Column Headers (ALIŞ-WE BUY & SATIŞ-WE SELL) with strict 26% / 37% / 37% column widths */}
               <div
-                className="d-flex align-items-center py-2"
+                className="d-flex align-items-center py-1 py-md-2"
                 style={{
                   borderBottom: "1.5px solid rgba(255, 255, 255, 0.25)",
                 }}
               >
-                {/* Left empty spacer above Flag & Code */}
-                <div style={{ width: "32%", minWidth: "120px" }} />
+                {/* Left empty spacer above Flag & Code (26%) */}
+                <div style={{ width: "26%", flexShrink: 0 }} />
 
-                {/* Header: ALIŞ-WE BUY */}
-                <div className="flex-fill text-center px-2">
+                {/* Header: ALIŞ-WE BUY (37%) */}
+                <div style={{ width: "37%", flexShrink: 0, textAlign: "center", overflow: "hidden" }}>
                   <span
-                    className="font-digital-title text-uppercase"
+                    className="font-digital-title text-uppercase text-nowrap d-inline-block"
                     style={{
                       color: "#f87171",
-                      borderBottom: "2.5px solid #ef4444",
-                      fontSize: "clamp(1.1rem, 1.6vw, 1.7rem)",
-                      letterSpacing: "1.5px",
+                      borderBottom: "2px solid #ef4444",
+                      fontSize: "clamp(0.82rem, min(1.35vw, 2.5vh), 1.6rem)",
+                      letterSpacing: "1px",
                       paddingBottom: "2px",
-                      display: "inline-block",
+                      maxWidth: "100%",
                     }}
                   >
                     ALIŞ-WE BUY
                   </span>
                 </div>
 
-                {/* Header: SATIŞ-WE SELL */}
-                <div className="flex-fill text-center px-2">
+                {/* Header: SATIŞ-WE SELL (37%) */}
+                <div style={{ width: "37%", flexShrink: 0, textAlign: "center", overflow: "hidden" }}>
                   <span
-                    className="font-digital-title text-uppercase"
+                    className="font-digital-title text-uppercase text-nowrap d-inline-block"
                     style={{
                       color: "#4ade80",
-                      borderBottom: "2.5px solid #22c55e",
-                      fontSize: "clamp(1.1rem, 1.6vw, 1.7rem)",
-                      letterSpacing: "1.5px",
+                      borderBottom: "2px solid #22c55e",
+                      fontSize: "clamp(0.82rem, min(1.35vw, 2.5vh), 1.6rem)",
+                      letterSpacing: "1px",
                       paddingBottom: "2px",
-                      display: "inline-block",
+                      maxWidth: "100%",
                     }}
                   >
                     SATIŞ-WE SELL
@@ -923,15 +1033,18 @@ export const PanoPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Currency Data Rows */}
-              <div className="d-flex flex-column flex-grow-1 justify-content-around">
+              {/* Currency Data Rows with strict 26% / 37% / 37% column widths */}
+              <div className="d-flex flex-column flex-grow-1 justify-content-around min-w-0" style={{ minWidth: 0 }}>
                 {otherItems.map((item, idx) => {
                   const codeUpper = (item.kod || "").toUpperCase();
                   const flash = flashedItems[codeUpper];
+                  const alisStr = formatDigitalRate(item.dovizAlis);
+                  const satisStr = formatDigitalRate(item.dovizSatis);
+
                   return (
                     <div
                       key={`${item.paraId}-${codeUpper}-${idx}`}
-                      className={`d-flex align-items-center py-2 ${
+                      className={`d-flex align-items-center py-1 py-md-2 ${
                         flash ? (flash === "up" ? "flash-up" : "flash-down") : ""
                       }`}
                       style={{
@@ -941,53 +1054,57 @@ export const PanoPage: React.FC = () => {
                             : "none",
                       }}
                     >
-                      {/* Flag + Yellow Currency Code */}
+                      {/* Flag + Yellow Currency Code (26%) */}
                       <div
-                        className="d-flex align-items-center gap-2 gap-md-3"
-                        style={{ width: "32%", minWidth: "120px" }}
+                        className="d-flex align-items-center gap-1 gap-md-2 flex-shrink-0"
+                        style={{ width: "26%", overflow: "hidden" }}
                       >
                         <WavingFlag
                           code={codeUpper}
-                          width="clamp(44px, 4.5vw, 62px)"
-                          height="clamp(28px, 2.9vw, 40px)"
+                          width="clamp(36px, min(3.8vw, 5vh), 56px)"
+                          height="clamp(22px, min(2.4vw, 3.2vh), 36px)"
                         />
                         <span
-                          className="font-digital-title fw-bold text-uppercase"
+                          className="font-digital-title fw-bold text-uppercase text-nowrap"
                           style={{
                             color: "#facc15",
-                            fontSize: "clamp(1.6rem, 2.6vw, 2.8rem)",
-                            letterSpacing: "2px",
+                            fontSize: "clamp(1.15rem, min(2.2vw, 4vh), 2.5rem)",
+                            letterSpacing: "1px",
                           }}
                         >
                           {codeUpper}
                         </span>
                       </div>
 
-                      {/* Alış Rate */}
-                      <div className="flex-fill text-center px-2">
+                      {/* Alış Rate (37%) */}
+                      <div style={{ width: "37%", flexShrink: 0, textAlign: "center", overflow: "hidden" }}>
                         <span
-                          className="font-digital-number text-white"
+                          className="font-digital-number text-white text-nowrap d-inline-block"
                           style={{
-                            fontSize: "clamp(2rem, 3.4vw, 3.6rem)",
+                            fontSize: getDigitalRateFontSize(alisStr, false),
+                            letterSpacing: alisStr.length >= 8 ? "0.5px" : "1px",
                             lineHeight: 1,
                             textShadow: "0 0 6px rgba(255, 255, 255, 0.25)",
+                            maxWidth: "100%",
                           }}
                         >
-                          {formatDigitalRate(item.dovizAlis)}
+                          {alisStr}
                         </span>
                       </div>
 
-                      {/* Satış Rate */}
-                      <div className="flex-fill text-center px-2">
+                      {/* Satış Rate (37%) */}
+                      <div style={{ width: "37%", flexShrink: 0, textAlign: "center", overflow: "hidden" }}>
                         <span
-                          className="font-digital-number text-white"
+                          className="font-digital-number text-white text-nowrap d-inline-block"
                           style={{
-                            fontSize: "clamp(2rem, 3.4vw, 3.6rem)",
+                            fontSize: getDigitalRateFontSize(satisStr, false),
+                            letterSpacing: satisStr.length >= 8 ? "0.5px" : "1px",
                             lineHeight: 1,
                             textShadow: "0 0 6px rgba(255, 255, 255, 0.25)",
+                            maxWidth: "100%",
                           }}
                         >
-                          {formatDigitalRate(item.dovizSatis)}
+                          {satisStr}
                         </span>
                       </div>
                     </div>
