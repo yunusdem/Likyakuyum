@@ -4401,13 +4401,15 @@ export const DovizFisiPage: React.FC = () => {
 
     try {
       const fisCikti = await dovizFisHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
+      const plainText = extractPlainTextFromFis(fisCikti);
       const sonuc = await triggerSilentPrint({
         html: fisCikti.html,
+        text: plainText,
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
         copies: resolved.kopyaSayisi || 1,
         isPos: true,
         title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || "Yazdir"}`,
-        allowBrowserFallback: true,
+        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         setNotification({

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Modal, Button, Form } from "react-bootstrap";
+import { Modal, Button, Form, Spinner } from "react-bootstrap";
 import { IconPrinter, IconX, IconReceipt, IconFileText } from "@tabler/icons-react";
 import { PerakendeFaturaModel } from "../../services/perakendeService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
@@ -26,9 +26,10 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   const { user } = useAuth();
   const [printType, setPrintType] = useState<"A4" | "POS">("POS");
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
-  const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<number | string | null>(null);
   const [resolvedResult, setResolvedResult] = useState<ResolvedPrinterResult | null>(null);
   const [yaziciHazir, setYaziciHazir] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const faturaRef = useRef(fatura);
   faturaRef.current = fatura;
 
@@ -41,11 +42,13 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
         setPrinters(list);
         const resolved = resolveEffectivePrinter({ pageType: "perakende", tip, vezne, user, printers: list });
         setResolvedResult(resolved);
-        setSelectedPrinterId(resolved.printerId);
+        setSelectedPrinterId(resolved.printerId !== null && resolved.printerId !== undefined ? resolved.printerId : (resolved.printerName || null));
         if (resolved.recommendedPrintType) setPrintType(resolved.recommendedPrintType);
       })
       .catch(() => {
-        setResolvedResult(resolveEffectivePrinter({ pageType: "perakende", tip, vezne, user, printers: [] }));
+        const resolved = resolveEffectivePrinter({ pageType: "perakende", tip, vezne, user, printers: [] });
+        setResolvedResult(resolved);
+        setSelectedPrinterId(resolved.printerId !== null && resolved.printerId !== undefined ? resolved.printerId : (resolved.printerName || null));
       })
       .finally(() => setYaziciHazir(true));
   }, [show, tip, vezne, user]);
@@ -54,22 +57,34 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
     () => perakendeFisHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
 
   const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
-    if (!hazir) return;
-    const selectedPrinter = printers.find((p) => p.id === selectedPrinterId);
-    const targetPrinterName = selectedPrinter ? (selectedPrinter.cihazAdi || selectedPrinter.ad) : (resolvedResult?.printerName || null);
-    const targetCopies = selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1);
-    const res = await fisiYazdir(hazir, {
-      printerId: selectedPrinterId,
-      printerName: targetPrinterName,
-      copies: targetCopies,
-      isPos: printType === "POS",
-    });
-    if (res.success) {
-      onHide();
-    } else {
-      alert(`⚠️ Yazdırma hatası: ${res.message}`);
+    if (!hazir || isPrinting) return;
+    setIsPrinting(true);
+    try {
+      const selectedPrinter = printers.find(
+        (p) =>
+          String(p.id) === String(selectedPrinterId) ||
+          (p.cihazAdi && String(p.cihazAdi).trim().toLowerCase() === String(selectedPrinterId).trim().toLowerCase()) ||
+          (p.ad && String(p.ad).trim().toLowerCase() === String(selectedPrinterId).trim().toLowerCase())
+      );
+      const targetPrinterName = selectedPrinter
+        ? (selectedPrinter.cihazAdi?.trim() || selectedPrinter.ad?.trim() || null)
+        : (selectedPrinterId ? String(selectedPrinterId) : (resolvedResult?.printerName || null));
+      const targetCopies = selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1);
+      const res = await fisiYazdir(hazir, {
+        printerId: selectedPrinter ? selectedPrinter.id : null,
+        printerName: targetPrinterName,
+        copies: targetCopies,
+        isPos: printType === "POS",
+      });
+      if (res.success) {
+        onHide();
+      } else {
+        alert(`⚠️ Yazdırma hatası: ${res.message}`);
+      }
+    } finally {
+      setIsPrinting(false);
     }
-  }, [fis, selectedPrinterId, printers, resolvedResult, printType, onHide]);
+  }, [fis, isPrinting, selectedPrinterId, printers, resolvedResult, printType, onHide]);
 
   // Doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açılır, hata görünür.
   const otomatikBasildi = useRef(false);
@@ -121,8 +136,8 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
               <span className="text-secondary small fw-bold">Yazıcı:</span>
               <Form.Select
                 size="sm"
-                value={selectedPrinterId || ""}
-                onChange={(e) => setSelectedPrinterId(e.target.value ? Number(e.target.value) : null)}
+                value={selectedPrinterId !== null && selectedPrinterId !== undefined ? String(selectedPrinterId) : ""}
+                onChange={(e) => setSelectedPrinterId(e.target.value || null)}
                 style={{ width: "200px", fontSize: "12px", fontWeight: 600 }}
               >
                 {printers.map((p) => (
@@ -158,15 +173,25 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
       </Modal.Body>
 
       <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none">
-        <Button variant="outline-secondary" size="sm" onClick={onHide}>
+        <Button variant="outline-secondary" size="sm" onClick={onHide} disabled={isPrinting}>
           <IconX size={16} className="me-1" />
           Kapat
         </Button>
-        <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis}>
-          <IconPrinter size={16} className="me-1" />
-          Yazdır
+        <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting}>
+          {isPrinting ? (
+            <>
+              <Spinner as="span" animation="border" size="sm" className="me-1" />
+              Yazdırılıyor...
+            </>
+          ) : (
+            <>
+              <IconPrinter size={16} className="me-1" />
+              Yazdır (F10)
+            </>
+          )}
         </Button>
       </Modal.Footer>
     </Modal>
   );
 };
+

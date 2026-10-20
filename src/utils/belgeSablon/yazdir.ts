@@ -74,6 +74,6 @@ export async function fisiYazdir(fis: FisHtml, y: YaziciSecimi): Promise<SilentP
     copies: y.copies || 1,
     isPos: y.isPos,
     title: fis.baslik,
-    allowBrowserFallback: true,
+    allowBrowserFallback: false,
   });
 }

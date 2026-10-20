@@ -11,14 +11,14 @@ const util = require("util");
 const execAsync = util.promisify(exec);
 
 // PowerShell scriptlerini Base64 Unicode (-EncodedCommand) ile güvenle ve asılı kalmadan çalıştıran fonksiyon
-function runPowerShell(script, timeoutMs = 15000) {
+function runPowerShell(script, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const systemRoot = process.env.SystemRoot || "C:\\Windows";
     const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
     // PowerShell -EncodedCommand UTF-16LE Base64 bekler
     const b64 = Buffer.from(script, "utf16le").toString("base64");
 
-    const ps = spawn(psPath, ["-NoProfile", "-STA", "-EncodedCommand", b64], {
+    const ps = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", b64], {
       windowsHide: true,
     });
 
@@ -361,185 +361,91 @@ async function executePrintJob(job) {
       const escapedHtmlPath = htmlFile ? htmlFile.replace(/'/g, "''") : "";
       const escapedTextPath = textFile && fs.existsSync(textFile) ? textFile.replace(/'/g, "''") : "";
       const numCopies = Math.max(1, Number(copies) || 1);
-      const isPosJob = Boolean(isPos !== false);
 
+      // Ultra hafif, donanım kuyruğuna doğrudan yazan ve asla kilitlenmeyen PowerShell scripti
       const psScript = `
-$ErrorActionPreference = 'Continue'
-$HtmlPath = '${escapedHtmlPath}'
-$TextPath = '${escapedTextPath}'
-$TargetPrinter = '${safeTarget}'
-$Copies = ${numCopies}
-$isPosJob = ${isPosJob ? "$true" : "$false"}
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+$target = '${safeTarget}'
+$textPath = '${escapedTextPath}'
+$htmlPath = '${escapedHtmlPath}'
+$copies = ${numCopies}
 
-# 1. Hedef yazıcıyı Windows Spooler listesinden tam olarak eşleştir
-$resolved = $null
-try {
-  if ($TargetPrinter) {
-    $cleanName = ($TargetPrinter -split '[\\\\/]')[-1]
-    $allP = @(Get-Printer -ErrorAction SilentlyContinue)
-    if (-not $allP -or $allP.Count -eq 0) {
-      $allP = @(Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue)
-    }
-    
-    # Birebir tam isim eşleşmesi
-    $match = $allP | Where-Object { $_.Name -eq $TargetPrinter } | Select-Object -First 1
-    # Temiz ad eşleşmesi (örn: EPSON TM-T20 Receipt)
-    if (-not $match -and $cleanName) {
-      $match = $allP | Where-Object { $_.Name -eq $cleanName } | Select-Object -First 1
-    }
-    # Kısmi ad eşleşmesi (örn: POS-80C)
-    if (-not $match) {
-      $match = $allP | Where-Object { $_.Name -like ('*' + $cleanName + '*') -or $_.Name -like ('*' + $TargetPrinter + '*') } | Select-Object -First 1
-    }
-    if ($match) { $resolved = $match.Name }
-  }
-} catch {}
-
-if (-not $resolved) {
+# 1. Metin / Termal POS Fişi: Out-Printer (En hızlı, doğrudan Windows kuyruğu, 0.05 saniye)
+if ($textPath -and (Test-Path $textPath)) {
   try {
-    $resolved = (Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
+    for ($c = 0; $c -lt $copies; $c++) {
+      if ($target) {
+        Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer -Name $target
+      } else {
+        Get-Content -LiteralPath $textPath -Encoding UTF8 | Out-Printer
+      }
+    }
+    Write-Output "SUCCESS: Out-Printer $target"
+    exit 0
   } catch {
+    # Out-Printer istisna fırlatırsa StandardPrintController ile dene
     try {
-      $resolved = (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
-    } catch {}
-  }
-}
-
-if (-not $resolved) { $resolved = $TargetPrinter }
-
-# 2. IE / WebBrowser Üst ve Alt Bilgileri Sıfırla (Header/Footer kaldır)
-try {
-  $ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
-  if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
-  Set-ItemProperty -Path $ps -Name header -Value '' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name footer -Value '' -ErrorAction SilentlyContinue
-} catch {}
-
-$printedOk = $false
-
-# 3A. POS Termal Fiş ise: Metin üzerinden GDI PrintDocument ile doğrudan ve anında bas (0.1 sn)
-if ($isPosJob -and $TextPath -and (Test-Path $TextPath)) {
-  try {
-    $content = Get-Content -Path $TextPath -Raw -Encoding UTF8
-    if ($content -and $content.Trim()) {
-      for ($c = 0; $c -lt $Copies; $c++) {
+      Add-Type -AssemblyName System.Drawing
+      for ($c = 0; $c -lt $copies; $c++) {
         $doc = New-Object System.Drawing.Printing.PrintDocument
-        if ($resolved) { $doc.PrinterSettings.PrinterName = $resolved }
-        $font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
+        $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+        if ($target) { $doc.PrinterSettings.PrinterName = $target }
+        $script:txt = Get-Content -LiteralPath $textPath -Raw -Encoding UTF8
+        $script:fnt = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
         $doc.add_PrintPage({
           param($s, $e)
-          $e.Graphics.DrawString($content, $font, [System.Drawing.Brushes]::Black, 0, 0)
+          $e.Graphics.DrawString($script:txt, $script:fnt, [System.Drawing.Brushes]::Black, 0, 0)
           $e.HasMorePages = $false
         })
         $doc.Print()
         $doc.Dispose()
       }
-      $printedOk = $true
+      Write-Output "SUCCESS: GDI $target"
+      exit 0
+    } catch {
+      Write-Output "ERROR: $($_.Exception.Message)"
+      exit 1
     }
-  } catch {}
+  }
 }
 
-# 3B. HTML Varsa (veya POS değilse) Form + WebBrowser ile bas
-if (-not $printedOk -and $HtmlPath -and (Test-Path $HtmlPath)) {
+# 2. HTML Yazdırma (Metin Olmadığında / A4)
+if ($htmlPath -and (Test-Path $htmlPath)) {
   try {
-    $net = New-Object -ComObject WScript.Network
-    $prev = (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name
-    if ($resolved) {
-      try { $net.SetDefaultPrinter($resolved) } catch {}
-    }
-
-    $form = New-Object System.Windows.Forms.Form
-    $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
-    $form.ShowInTaskbar = $false
-    $form.Width = 100
-    $form.Height = 100
-
-    $wb = New-Object System.Windows.Forms.WebBrowser
-    $wb.ScriptErrorsSuppressed = $true
-    $form.Controls.Add($wb)
-    $form.Show()
-
-    $script:ready = $false
-    $wb.add_DocumentCompleted({
-      param($s, $e)
-      $script:ready = $true
-    })
-
-    $uri = [System.Uri]::new($HtmlPath)
-    $wb.Navigate($uri.AbsoluteUri)
-
+    $ie = New-Object -ComObject InternetExplorer.Application
+    $ie.Visible = $false
+    $ie.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    while (-not $script:ready -and $sw.Elapsed.TotalSeconds -lt 4) {
-      [System.Windows.Forms.Application]::DoEvents()
-      Start-Sleep -Milliseconds 30
+    while ($ie.ReadyState -ne 4 -and $sw.Elapsed.TotalSeconds -lt 4) {
+      Start-Sleep -Milliseconds 50
     }
-
-    if ($script:ready) {
-      for ($c = 0; $c -lt $Copies; $c++) {
-        $wb.Print()
-        $sw.Restart()
-        while ($sw.Elapsed.TotalSeconds -lt 2) {
-          [System.Windows.Forms.Application]::DoEvents()
-          Start-Sleep -Milliseconds 40
-        }
-      }
-      $printedOk = $true
+    for ($c = 0; $c -lt $copies; $c++) {
+      $ie.ExecWB(6, 2)
+      Start-Sleep -Milliseconds 300
     }
-
-    $form.Close()
-    $form.Dispose()
-
-    if ($resolved -and $prev -and $prev -ne $resolved) {
-      try { $net.SetDefaultPrinter($prev) } catch {}
-    }
-  } catch {}
-}
-
-# 3C. Son Çare Yedek: GDI PrintDocument veya Out-Printer
-if (-not $printedOk -and $TextPath -and (Test-Path $TextPath)) {
-  try {
-    $content = Get-Content -Path $TextPath -Raw -Encoding UTF8
-    if ($content) {
-      for ($c = 0; $c -lt $Copies; $c++) {
-        $doc = New-Object System.Drawing.Printing.PrintDocument
-        if ($resolved) { $doc.PrinterSettings.PrinterName = $resolved }
-        $font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
-        $doc.add_PrintPage({
-          param($s, $e)
-          $e.Graphics.DrawString($content, $font, [System.Drawing.Brushes]::Black, 0, 0)
-          $e.HasMorePages = $false
-        })
-        $doc.Print()
-        $doc.Dispose()
-      }
-      $printedOk = $true
-    }
+    $sw2 = [Diagnostics.Stopwatch]::StartNew()
+    while ($sw2.Elapsed.TotalSeconds -lt 1) { Start-Sleep -Milliseconds 50 }
+    $ie.Quit()
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ie) | Out-Null
+    Write-Output "SUCCESS: HTML $target"
+    exit 0
   } catch {
-    try {
-      $pArg = if ($resolved) { "-Name '$resolved'" } else { "" }
-      [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-      Get-Content -Path $TextPath -Raw -Encoding UTF8 | Out-Printer $pArg
-      $printedOk = $true
-    } catch {}
+    Write-Output "ERROR: HTML $($_.Exception.Message)"
+    exit 1
   }
 }
 
-if ($printedOk) {
-  Write-Output "SUCCESS: $resolved"
-  exit 0
-} else {
-  Write-Output "ERROR: Yazıcıya çıktı gönderilemedi."
-  exit 1
-}
+Write-Output "ERROR: Yazdırılacak içerik yok"
+exit 1
 `;
 
       try {
-        const { stdout } = await runPowerShell(psScript, 15000);
+        const { stdout } = await runPowerShell(psScript, 8000);
         if (stdout && stdout.includes("SUCCESS")) {
           printed = true;
+          console.log(`[printercekmeApp] Yazdırma BAŞARILI: "${targetPrinter || 'Varsayılan'}"`);
         } else if (stdout && stdout.includes("ERROR")) {
           printed = false;
           printErrorMessage = stdout.trim();

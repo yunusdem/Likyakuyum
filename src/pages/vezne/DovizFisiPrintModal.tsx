@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Modal, Button, Form } from "react-bootstrap";
+import { Modal, Button, Form, Spinner } from "react-bootstrap";
 import { IconPrinter, IconX } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
@@ -61,8 +61,9 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
   const isSatis = tip === 1;
   const { user } = useAuth();
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
-  const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<number | string | null>(null);
   const [resolvedResult, setResolvedResult] = useState<ResolvedPrinterResult | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
   const propsRef = useRef(props);
   propsRef.current = props;
   // Fiş HTML'i: pencere her açıldığında ekranın o anki görüntüsüyle şablondan üretilir.
@@ -79,30 +80,44 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
         setPrinters(list);
         const resolved = resolveEffectivePrinter({ pageType: "doviz", tip, vezne, user, printers: list });
         setResolvedResult(resolved);
-        setSelectedPrinterId(resolved.printerId);
+        setSelectedPrinterId(resolved.printerId !== null && resolved.printerId !== undefined ? resolved.printerId : (resolved.printerName || null));
       })
       .catch(() => {
-        setResolvedResult(resolveEffectivePrinter({ pageType: "doviz", tip, vezne, user, printers: [] }));
+        const resolved = resolveEffectivePrinter({ pageType: "doviz", tip, vezne, user, printers: [] });
+        setResolvedResult(resolved);
+        setSelectedPrinterId(resolved.printerId !== null && resolved.printerId !== undefined ? resolved.printerId : (resolved.printerName || null));
       });
   }, [show, tip, vezne, user]);
 
   const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
-    if (!hazir) return;
-    const selectedPrinter = printers.find((p) => p.id === selectedPrinterId);
-    const targetPrinterName = selectedPrinter ? (selectedPrinter.cihazAdi || selectedPrinter.ad) : (resolvedResult?.printerName || null);
-    const targetCopies = selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1);
-    const res = await fisiYazdir(hazir, {
-      printerId: selectedPrinterId,
-      printerName: targetPrinterName,
-      copies: targetCopies,
-      isPos: true,
-    });
-    if (res.success) {
-      onHide();
-    } else {
-      alert(`⚠️ Yazdırma hatası: ${res.message}`);
+    if (!hazir || isPrinting) return;
+    setIsPrinting(true);
+    try {
+      const selectedPrinter = printers.find(
+        (p) =>
+          String(p.id) === String(selectedPrinterId) ||
+          (p.cihazAdi && String(p.cihazAdi).trim().toLowerCase() === String(selectedPrinterId).trim().toLowerCase()) ||
+          (p.ad && String(p.ad).trim().toLowerCase() === String(selectedPrinterId).trim().toLowerCase())
+      );
+      const targetPrinterName = selectedPrinter
+        ? (selectedPrinter.cihazAdi?.trim() || selectedPrinter.ad?.trim() || null)
+        : (selectedPrinterId ? String(selectedPrinterId) : (resolvedResult?.printerName || null));
+      const targetCopies = selectedPrinter?.kopyaSayisi ? Number(selectedPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1);
+      const res = await fisiYazdir(hazir, {
+        printerId: selectedPrinter ? selectedPrinter.id : null,
+        printerName: targetPrinterName,
+        copies: targetCopies,
+        isPos: true,
+      });
+      if (res.success) {
+        onHide();
+      } else {
+        alert(`⚠️ Yazdırma hatası: ${res.message}`);
+      }
+    } finally {
+      setIsPrinting(false);
     }
-  }, [fis, selectedPrinterId, printers, resolvedResult, onHide]);
+  }, [fis, isPrinting, selectedPrinterId, printers, resolvedResult, onHide]);
 
   // F10 / doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açık kalır, hata görünür.
   const otomatikBasildi = useRef(false);
@@ -145,8 +160,8 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
             <span className="text-secondary small fw-bold">Yazıcı:</span>
             <Form.Select
               size="sm"
-              value={selectedPrinterId || ""}
-              onChange={(e) => setSelectedPrinterId(e.target.value ? Number(e.target.value) : null)}
+              value={selectedPrinterId !== null && selectedPrinterId !== undefined ? String(selectedPrinterId) : ""}
+              onChange={(e) => setSelectedPrinterId(e.target.value || null)}
               style={{ width: "200px", fontSize: "12px", fontWeight: 600 }}
             >
               {printers.map((p) => (
@@ -170,13 +185,23 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
       </Modal.Body>
 
       <Modal.Footer className="bg-light py-2 d-flex justify-content-between">
-        <Button variant="secondary" size="sm" onClick={onHide} className="d-flex align-items-center gap-1">
+        <Button variant="secondary" size="sm" onClick={onHide} disabled={isPrinting} className="d-flex align-items-center gap-1">
           <IconX size={15} /> Kapat
         </Button>
-        <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis} className="d-flex align-items-center gap-1 px-4 fw-bold shadow-xs">
-          <IconPrinter size={16} /> Yazdır (F8 / Termal Çıktı)
+        <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting} className="d-flex align-items-center gap-1 px-4 fw-bold shadow-xs">
+          {isPrinting ? (
+            <>
+              <Spinner as="span" animation="border" size="sm" className="me-1" />
+              Yazdırılıyor...
+            </>
+          ) : (
+            <>
+              <IconPrinter size={16} /> Yazdır (F8 / Termal Çıktı)
+            </>
+          )}
         </Button>
       </Modal.Footer>
     </Modal>
   );
 };
+
