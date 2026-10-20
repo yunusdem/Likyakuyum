@@ -1290,7 +1290,7 @@ export const DovizFisiPage: React.FC = () => {
       setMasakResult({ matches: [], searched: false });
       setMasakModalOpen(false);
 
-      const gonderildi = Boolean(fis.gibeGonderildi || (fis as any).eBelgeDurumu === 1 || (fis as any).E_BELGE_DURUMU === 1);
+      const gonderildi = Boolean(fis.gibeGonderildi); // sunucu Kaynak ekranıyla aynı kuralla belirler
       setGibeGonderildi(gonderildi);
       const isGibLocked = isDuzeltmeMode ? false : gonderildi;
       setIsLocked(isGibLocked);

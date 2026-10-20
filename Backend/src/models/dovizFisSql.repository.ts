@@ -98,7 +98,7 @@ export interface DovizFisModel {
   odemeTutari: number;
   bsmvTutar: number;
   iptal: boolean;
-  /** Fiş GİB'e gönderilmiş (satırda E_BELGE_DURUMU=1 veya e-Belge giden kaydı GONDERILDI): silinemez */
+  /** Fiş GİB'e gönderilmiş (e-Belge giden kaydı gönderildi/kuyrukta): silinemez */
   gibeGonderildi?: boolean;
   iptalTarihi?: string | null;
   ekleyenId: number;
@@ -2413,19 +2413,19 @@ export class DovizFisSqlRepository {
   }
 
   /**
-   * Get single Döviz Fişi by ID with lines
-   */
-  /**
-   * Fiş GİB'e gönderilmiş mi: eski masaüstü satır alanı (E_BELGE_DURUMU=1) ya da web e-Belge giden kaydı (99:<fisId>:% GONDERILDI)
+   * Fiş GİB'e gönderilmiş mi: Kaynak ekranındaki "Gönderildi" ile aynı kural — e-Belge giden kaydı (99:<fisId>:...) gönderilmiş
+   * ya da sonucu beklenen (kuyrukta) olan fiş. Eski satır alanı E_BELGE_DURUMU tek başına gönderildi sayılmaz (ekranda "Kontrol gerekli").
    */
   public static async gibeGonderildiMi(pool: sql.ConnectionPool, id: number): Promise<boolean> {
-    const r = await pool.request().input("ID", sql.Int, id).input("K", sql.VarChar(60), `99:${id}:%`).query(`
-      SELECT CASE WHEN EXISTS (SELECT 1 FROM [dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @ID AND ISNULL(E_BELGE_DURUMU, 0) = 1) THEN 1
-        WHEN OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_GIDEN] WHERE KAYNAK_FIS_ID LIKE @K AND GONDERIM_DURUMU = 'GONDERILDI') THEN 1
-        ELSE 0 END AS G`);
+    const r = await pool.request().input("K", sql.VarChar(60), `99:${id}:%`).query(`
+      SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_GIDEN]
+        WHERE KAYNAK_FIS_ID LIKE @K AND GONDERIM_DURUMU IN ('GONDERILDI','KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR')) THEN 1 ELSE 0 END AS G`);
     return Number(r.recordset?.[0]?.G) === 1;
   }
 
+  /**
+   * Get single Döviz Fişi by ID with lines
+   */
   public static async findById(
     id: number,
     dbContext?: { dbServer?: string; dbName?: string }
