@@ -108,7 +108,24 @@ export default function EBelgeKaynakPage() {
     }
     await yukle(sayfa);
   };
+  // GİB'e gitmemiş (Gönderildi rozeti olmayan) fiş listeden silinebilir; kesin karar sunucuda (gönderilmiş / kuyruktaki fiş reddedilir)
+  const silinebilir = (k: EbelgeKaynakSatiri) => k.durum !== 'GONDERILDI';
+  const sil = async () => {
+    const silinecekler = kayitlar.filter(r => silinebilir(r) && secili.includes(key(r)));
+    if (!silinecekler.length) return;
+    if (!window.confirm(`${silinecekler.length} fiş silinecek (${silinecekler.map(r => r.belgeNo).slice(0, 5).join(', ')}${silinecekler.length > 5 ? ', …' : ''}). Fişler kaynak kayıtlarıyla birlikte silinir; GİB'e gönderilmiş fiş silinmez. Devam edilsin mi?`)) return;
+    setBusy(true); setHata(''); setSonuclar({});
+    for (const k of silinecekler) {
+      setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Siliniyor', mesaj: '' } }));
+      try { await ebelgeService.kaynakSil(k); setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Silindi', mesaj: '' } })); }
+      catch (e: any) { setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Silinemedi', mesaj: e.message || 'Fiş silinemedi.' } })); }
+    }
+    await yukle(sayfa);
+  };
   const secilebilir = kayitlar.filter(k => k.secilebilir);
+  const isaretlenebilir = kayitlar.filter(k => k.secilebilir || silinebilir(k));
+  const seciliGidecek = secilebilir.filter(k => secili.includes(key(k))).length;
+  const seciliSilinecek = kayitlar.filter(k => silinebilir(k) && secili.includes(key(k))).length;
   return <div className="w-100 pb-3 ebelge-kaynak">
     {hata && <Alert variant="danger">{hata}</Alert>}
     {secBilgi && <Alert variant={secBilgi.tur} className="py-2">{secBilgi.metin}</Alert>}
@@ -123,13 +140,15 @@ export default function EBelgeKaynakPage() {
     </fieldset></Form></Card.Body></Card>
     <Card><Card.Body>
       <div className="d-flex flex-wrap gap-2 align-items-center mb-2">
-        <Button size="sm" disabled={busy || !secilebilir.length} onClick={() => { setSecili(secilebilir.every(k => secili.includes(key(k))) ? [] : secilebilir.map(key)); }}>Tümünü seç / kaldır</Button>
-        <Button size="sm" disabled={busy || !secili.length} onClick={gonder}>Gönder</Button>
-        <span className="small">{secili.length} seçili</span>
+        <Button size="sm" disabled={busy || !isaretlenebilir.length} onClick={() => setSecili(isaretlenebilir.map(key))}>Tümünü seç</Button>
+        <Button size="sm" variant="outline-secondary" disabled={busy || !secili.length} onClick={() => setSecili([])}>Seçimi kaldır</Button>
+        <Button size="sm" disabled={busy || !seciliGidecek} onClick={gonder}>Gönder</Button>
+        <Button size="sm" variant="danger" disabled={busy || !seciliSilinecek} onClick={sil} title="Seçili fişlerden GİB'e gönderilmemiş olanları siler">Seçilenleri sil</Button>
+        <span className="small">{secili.length} seçili{secili.length ? ` · ${seciliGidecek} gönderilebilir · ${seciliSilinecek} silinebilir` : ''}</span>
       </div>
       <Table responsive size="sm" hover className="kaynak-tablo"><thead><tr><th>Seç</th><th>Belge no</th><th>Tarih</th><th>Ünvan</th><th>Tutar</th><th>Tür</th><th>Durum / hata açıklaması</th></tr></thead>
         <tbody>{kayitlar.map(k => { const rozet=durumRozet(k.durum); return <tr key={key(k)}>
-          <td title={k.engel || undefined}><Form.Check aria-label={`${k.belgeNo} seç`} disabled={busy || !k.secilebilir} checked={secili.includes(key(k))} onChange={e => {
+          <td title={k.engel || undefined}><Form.Check aria-label={`${k.belgeNo} seç`} disabled={busy || !(k.secilebilir || silinebilir(k))} checked={secili.includes(key(k))} onChange={e => {
             setSecili(o => e.target.checked ? [...o,key(k)] : o.filter(id => id!==key(k)));
           }} /></td><td>{k.kaynak === 'DOVIZ' ? <Link to={`/vezne/doviz-fisi-duzeltme?id=${k.belgeId}`} title="Döviz fişini aç">{k.belgeNo}</Link> : <Button className="p-0 text-start" variant="link" disabled={busy} onClick={() => detayAc(k)}>{k.belgeNo}</Button>}</td><td><Button className="p-0 text-nowrap" variant="link" disabled={busy} title="PDF önizlemesini aç" onClick={() => pdfAc(k)}>{tarihYaz(k.tarih)}</Button></td><td>{k.unvan}</td><td className="text-nowrap">{ebelgeTutar(k.tutar,k.paraBirimi)}</td><td>{turAdi(k)}</td>
           <td className="kaynak-aciklama"><Badge bg={rozet.bg} text={rozet.text}>{rozet.etiket}</Badge>{k.hata && <div className="mt-1">{k.hata}</div>}

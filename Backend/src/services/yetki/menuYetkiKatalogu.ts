@@ -106,6 +106,12 @@ export const kayitYetkisi = (tur: keyof typeof KAYIT_MADDELERI, duzeltmeMi: (req
       .catch(next);
   };
 
+/** `kayitYetkisi` ara katmanının işlev hâli: fiş türü istek işlenirken belli olan uç noktalar için (e-Belge › Kaynak'tan silme) */
+export async function kayitDuzeltmeYetkisi(req: Request, tur: keyof typeof KAYIT_MADDELERI): Promise<void> {
+  const y = await kullaniciYetkisi(req);
+  if (!(y.yonetici || birAcik(y, KAYIT_MADDELERI[tur].duzeltme))) throw ApiError.forbidden("Bu fişi düzeltme / silme yetkiniz yok.");
+}
+
 /** İstekte pozitif bir kimlik var mı (gövde alanı ya da :id) */
 export const kimlikVar = (...alanlar: string[]) => (req: Request): boolean =>
   Number(req.params?.id) > 0 || alanlar.some((a) => Number((req.body || {})[a]) > 0);

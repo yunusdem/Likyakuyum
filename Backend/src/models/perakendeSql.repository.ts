@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { EVRAK_TURU_PERAKENDE, gibeGonderildiyseEngelle } from "./ebelgeGonderimKilidi.js";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -1836,6 +1837,8 @@ export class PerakendeSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTablesAndProcedures(pool);
     await PerakendeSqlRepository.ticariFisiDegil(pool, faturaId);
+    // GİB'e gönderilmiş (e-Belge giden kaydı gönderildi/kuyrukta) fiş hiçbir ekrandan silinemez — döviz fişiyle aynı kural
+    await gibeGonderildiyseEngelle(pool, EVRAK_TURU_PERAKENDE, faturaId, "perakende fişi");
 
     try {
       const req = pool.request();

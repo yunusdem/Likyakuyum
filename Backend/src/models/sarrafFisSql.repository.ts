@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { EVRAK_TURU_SARRAF, gibeGonderildiyseEngelle } from "./ebelgeGonderimKilidi.js";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -1278,8 +1279,10 @@ export class SarrafFisSqlRepository {
   }
 
   public static async deleteFis(sarrafFisiId: number, kullaniciId: number, dbContext?: { dbServer?: string; dbName?: string }): Promise<void> {
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    // GİB'e gönderilmiş (e-Belge giden kaydı gönderildi/kuyrukta) fiş hiçbir ekrandan silinemez — döviz fişiyle aynı kural
+    await gibeGonderildiyseEngelle(pool, EVRAK_TURU_SARRAF, sarrafFisiId, "sarraf fişi");
     try {
-      const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       // Fişin işçilik hesabına yazılmış kasa kaydı ("Sarraf Fişi İşçilik - Fiş No: <fiş no>") fiş silinince kalmasın (rapor denetimi 01.10.2026)
       const fisNo = String((await pool.request().input("ID", sql.Int, sarrafFisiId).query(`SELECT RTRIM(ISNULL(FIS_NO,'')) f FROM [dbo].[TODVZ_SARRAF_FISI] WHERE SARRAF_FISI_ID = @ID`)).recordset[0]?.f || "");
       const req = pool.request();

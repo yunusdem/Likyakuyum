@@ -11,6 +11,11 @@ import { EbelgeService } from "./ebelge.service.js";
 import { hesapla, UblFaturaGirdi } from "./ice/ubl/invoiceBuilder.js";
 import { ApiError } from "../utils/ApiError.js";
 import { KaynakFisDetay, kaynakFisPdf, eDovizBelgePdf } from './ebelgeKaynakPdf.js';
+import { KaynakSilTuru } from "../models/ebelgeGonderimKilidi.js";
+import { SarrafFisService } from "./sarrafFis.service.js";
+import { DovizFisService } from "./dovizFis.service.js";
+import { PerakendeService } from "./perakende.service.js";
+import { TicariSatisSqlRepository } from "../models/ticariSatisSql.repository.js";
 
 const temiz = (v: unknown) => String(v ?? "").trim();
 export const kaynakParmakizi = (kaynak: unknown) => createHash("sha256").update(JSON.stringify(kaynak)).digest("hex");
@@ -361,6 +366,17 @@ export class EbelgeKaynakService {
     if (sarrafMi(k)) return this.sarrafHazirla(k, kullanici, ctx);
     throw ApiError.badRequest("Bilinmeyen kaynak belge türü.");
   }
+  /**
+   * Kaynak listesinden fiş silme: GİB'e gitmemiş fiş kendi ekranındaki silme yoluyla (vezne / stok / cari etkisi geri
+   * alınarak) silinir; gönderilmiş / kuyruktaki fiş her türde aynı kilitle (ebelgeGonderimKilidi) engellenir.
+   */
+  static async sil(k: KaynakKimlik, tur: KaynakSilTuru, kullaniciId: number, ctx?: DbContext): Promise<void> {
+    if (tur === "sarraf") return SarrafFisService.deleteFis(k.belgeId, kullaniciId, ctx);
+    if (tur === "doviz") { await DovizFisService.deleteFis(k.belgeId, ctx, kullaniciId); return; }
+    if (tur === "perakende") return PerakendeService.deleteInvoice(k.belgeId, ctx);
+    return TicariSatisSqlRepository.sil(k.belgeId, ctx);
+  }
+
   static async gonder(k: KaynakKimlik, parmakizi: string, senaryo: string, kullanici: string, ctx?: DbContext) {
     if (dovizMi(k)) return this.dovizGonder(k, parmakizi, kullanici, ctx);
     if (perakendeMi(k)) return this.perakendeGonder(k, parmakizi, senaryo, kullanici, ctx);
