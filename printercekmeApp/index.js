@@ -4,11 +4,45 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 const os = require("os");
 const util = require("util");
 
 const execAsync = util.promisify(exec);
+
+// PowerShell scriptlerini stdin üzerinden güvenle, disk'e .ps1 bırakmadan çalıştıran yardımcı fonksiyon
+function runPowerShell(script, timeoutMs = 25000) {
+  return new Promise((resolve, reject) => {
+    const systemRoot = process.env.SystemRoot || "C:\\Windows";
+    const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+    const ps = spawn(psPath, ["-NoProfile", "-STA", "-NonInteractive", "-Command", "-"], {
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      try { ps.kill(); } catch {}
+      reject(new Error("PowerShell işlem zaman aşımına uğradı."));
+    }, timeoutMs);
+
+    ps.stdout.on("data", (d) => { stdout += d.toString("utf8"); });
+    ps.stderr.on("data", (d) => { stderr += d.toString("utf8"); });
+
+    ps.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ stdout, stderr, code });
+    });
+
+    ps.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    ps.stdin.write(script, "utf8");
+    ps.stdin.end();
+  });
+}
 
 const app = express();
 const PORT = process.env.PORT || 9100;
@@ -38,17 +72,15 @@ async function getSystemPrinters() {
   try {
     const platform = os.platform();
 
-    // 1. Windows Ortamı: PowerShell -> Registry -> WMIC
+    // 1. Windows Ortamı: Get-Printer -> Get-CimInstance -> .NET PrinterSettings
     if (platform === "win32") {
       const systemRoot = process.env.SystemRoot || "C:\\Windows";
       const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-      const regPath = `${systemRoot}\\System32\\reg.exe`;
-      const wmicPath = `${systemRoot}\\System32\\wbem\\wmic.exe`;
 
-      // 1. Aşama: Tam yoldan PowerShell Get-Printer
+      // 1. Aşama: PowerShell Get-Printer (Temiz -NoProfile -Command, Bypass bayrağı olmadan)
       let psSuccess = false;
       try {
-        const psCommand = `"${psPath}" -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, Default, PrinterStatus | ConvertTo-Json -Compress"`;
+        const psCommand = `"${psPath}" -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, Default, PrinterStatus | ConvertTo-Json -Compress"`;
         const { stdout } = await execAsync(psCommand, { encoding: "utf8", timeout: 8000 });
         if (stdout && stdout.trim()) {
           const parsed = JSON.parse(stdout.trim());
@@ -74,72 +106,56 @@ async function getSystemPrinters() {
           }
         }
       } catch (psErr) {
-        console.warn("[printercekmeApp] PowerShell çağrısı başarısız, Registry fallback deneniyor:", psErr.message);
+        console.warn("[printercekmeApp] Get-Printer çağrısı başarısız, CIM fallback deneniyor:", psErr.message);
       }
 
-      // 2. Aşama: Windows Registry (Kayıt Defteri) Fallback
-      // reg.exe her Windows makinesinde C:\Windows\System32\reg.exe konumunda mevcuttur
+      // 2. Aşama: Get-CimInstance Fallback
       if (!psSuccess || printers.length === 0) {
         try {
-          console.log("[printercekmeApp] Windows Registry (reg.exe) üzerinden yazıcılar taranıyor...");
-          let defaultPrinter = "";
-          try {
-            const { stdout: defOut } = await execAsync(
-              `"${regPath}" query "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows" /v Device`,
-              { timeout: 3000 }
-            );
-            const defMatch = defOut.match(/Device\s+REG_SZ\s+([^,]+)/i);
-            if (defMatch && defMatch[1]) {
-              defaultPrinter = defMatch[1].trim();
-            }
-          } catch {}
-
-          const { stdout: regOut } = await execAsync(
-            `"${regPath}" query "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Devices"`,
-            { timeout: 4000 }
-          );
-          const lines = regOut.split(/\r?\n/);
-          for (const line of lines) {
-            const match = line.match(/^\s*(.+?)\s+REG_SZ\s+/i);
-            if (match && match[1]) {
-              const name = match[1].trim();
+          const cimCmd = `"${psPath}" -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress"`;
+          const { stdout: cimOut } = await execAsync(cimCmd, { encoding: "utf8", timeout: 6000 });
+          if (cimOut && cimOut.trim()) {
+            const parsed = JSON.parse(cimOut.trim());
+            const list = Array.isArray(parsed) ? parsed : [parsed];
+            for (const item of list) {
+              if (!item) continue;
+              const name = String(item.Name || "").trim();
               if (name && !printers.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
-                const isDef = Boolean(defaultPrinter && defaultPrinter.toLowerCase() === name.toLowerCase());
                 printers.push({
                   name,
-                  isDefault: isDef,
+                  isDefault: Boolean(item.Default),
                   status: "Hazır",
                 });
               }
             }
+            if (printers.length > 0) psSuccess = true;
           }
-        } catch (regErr) {
-          console.warn("[printercekmeApp] Windows Registry hatası:", regErr.message);
+        } catch (cimErr) {
+          console.warn("[printercekmeApp] CIM fallback hatası:", cimErr.message);
         }
       }
 
-      // 3. Aşama: WMIC Fallback (Eğer hala bulunamadıysa)
+      // 3. Aşama: .NET InstalledPrinters Fallback (Hafif ve evrensel)
       if (printers.length === 0) {
         try {
-          console.log("[printercekmeApp] WMIC fallback deneniyor...");
-          const { stdout: wmicOut } = await execAsync(`"${wmicPath}" printer get name,default /format:csv`, { timeout: 5000 });
-          const lines = wmicOut.trim().split(/\r?\n/).slice(1);
-          for (const line of lines) {
-            const parts = line.trim().split(",");
-            if (parts.length >= 3) {
-              const isDef = parts[1]?.trim().toUpperCase() === "TRUE";
-              const name = parts[2]?.trim();
-              if (name && !printers.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+          const netCmd = `"${psPath}" -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Drawing.Printing.PrinterSettings]::InstalledPrinters | ConvertTo-Json -Compress"`;
+          const { stdout: netOut } = await execAsync(netCmd, { encoding: "utf8", timeout: 5000 });
+          if (netOut && netOut.trim()) {
+            const parsed = JSON.parse(netOut.trim());
+            const list = Array.isArray(parsed) ? parsed : [parsed];
+            for (const name of list) {
+              const cleanName = String(name || "").trim();
+              if (cleanName && !printers.some((p) => p.name.toLowerCase() === cleanName.toLowerCase())) {
                 printers.push({
-                  name,
-                  isDefault: isDef,
+                  name: cleanName,
+                  isDefault: false,
                   status: "Hazır",
                 });
               }
             }
           }
-        } catch (wmicErr) {
-          console.warn("[printercekmeApp] WMIC hatası:", wmicErr.message);
+        } catch (netErr) {
+          console.warn("[printercekmeApp] .NET fallback hatası:", netErr.message);
         }
       }
     } else {
@@ -242,7 +258,7 @@ if ($p) {
   (New-Object -ComObject WScript.Network).SetDefaultPrinter($p.Name)
 }
 `;
-      await execAsync(`"${psPath}" -NoProfile -ExecutionPolicy Bypass -Command "${psCmd.replace(/\r?\n/g, ' ')}"`, { timeout: 4000 });
+      await execAsync(`"${psPath}" -NoProfile -NonInteractive -Command "${psCmd.replace(/\r?\n/g, ' ')}"`, { timeout: 4000 });
       console.log(`[printercekmeApp] Varsayılan yazıcı "${printerName}" olarak ayarlandı.`);
       return res.json({ success: true, printerName });
     } catch (err) {
@@ -309,8 +325,6 @@ async function executePrintJob(job) {
 
   try {
     if (platform === "win32") {
-      const systemRoot = process.env.SystemRoot || "C:\\Windows";
-      const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
       const safeTarget = targetPrinter.replace(/'/g, "''").replace(/"/g, '""');
 
       let printed = false;
@@ -344,16 +358,17 @@ async function executePrintJob(job) {
         fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
       }
 
-      const psFile = path.join(tmpDir, `print_${timestamp}.ps1`);
-      const psScript = `
-param(
-  [string]$HtmlPath,
-  [string]$TextPath,
-  [string]$TargetPrinter,
-  [int]$Copies = 1
-)
+      const escapedHtmlPath = htmlFile ? htmlFile.replace(/\\/g, "\\\\").replace(/'/g, "''") : "";
+      const escapedTextPath = textFile && fs.existsSync(textFile) ? textFile.replace(/\\/g, "\\\\").replace(/'/g, "''") : "";
+      const numCopies = Math.max(1, Number(copies) || 1);
 
+      const psScript = `
 $ErrorActionPreference = 'Continue'
+$HtmlPath = '${escapedHtmlPath}'
+$TextPath = '${escapedTextPath}'
+$TargetPrinter = '${safeTarget}'
+$Copies = ${numCopies}
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -500,17 +515,9 @@ if ($printedOk) {
   exit 1
 }
 `;
-      fs.writeFileSync(psFile, "\ufeff" + psScript, "utf8");
-
-      const htmlArg = htmlFile ? `-HtmlPath "${htmlFile}"` : "";
-      const textArg = textFile && fs.existsSync(textFile) ? `-TextPath "${textFile}"` : "";
-      const printerArg = safeTarget ? `-TargetPrinter "${safeTarget}"` : "";
 
       try {
-        const { stdout } = await execAsync(
-          `"${psPath}" -NoProfile -STA -ExecutionPolicy Bypass -File "${psFile}" ${htmlArg} ${textArg} ${printerArg} -Copies ${Math.max(1, Number(copies) || 1)}`,
-          { timeout: 35000 }
-        );
+        const { stdout } = await runPowerShell(psScript, 35000);
         if (stdout && stdout.includes("SUCCESS")) {
           printed = true;
         } else {
@@ -524,7 +531,6 @@ if ($printedOk) {
       setTimeout(() => {
         if (htmlFile) { try { fs.unlinkSync(htmlFile); } catch {} }
         if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
-        try { fs.unlinkSync(psFile); } catch {}
       }, 10000);
 
       if (printed) {
